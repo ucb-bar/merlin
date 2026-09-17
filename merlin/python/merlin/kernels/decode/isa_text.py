@@ -13,6 +13,7 @@ mnemonic. Resolution therefore goes through the model's own resolver, which alre
 separators, and anything it cannot place is REPORTED by name rather than dropped — mining the subset
 that happened to parse is the recorded silent-drop failure.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -30,7 +31,7 @@ class TextInsn:
 
     index: int
     addr: int
-    identity: str                        # the model's instruction CLASS, or the raw text
+    identity: str  # the model's instruction CLASS, or the raw text
     roles: tuple[str, ...] = ()
     from_endpoint: bool = False
     mnemonic: str = ""
@@ -46,9 +47,9 @@ def _mnemonic_and_operands(line: str) -> tuple[str, tuple[str, ...]]:
             line = line[:cut]
     line = line.strip()
     if not line or line.endswith(":"):
-        return "", ()                    # blank, or a label
+        return "", ()  # blank, or a label
     if line.startswith("."):
-        return "", ()                    # an assembler directive, not an instruction
+        return "", ()  # an assembler directive, not an instruction
     head, _, rest = line.partition(" ")
     ops = tuple(t for t in (o.strip() for o in rest.replace("\t", " ").split(",")) if t)
     return head.strip(), ops
@@ -91,8 +92,8 @@ def _assembler_bridge(target: str, endpoint) -> dict:
         from merlin.kernels import endpoints as _ep
         from merlin.targetgen import isa_model as _IM
 
-        block = ((_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {})
-        decl = ((block.get("encoding") or {}).get("assembler") or {})
+        block = (_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {}
+        decl = (block.get("encoding") or {}).get("assembler") or {}
         if not decl.get("pin") or not decl.get("path"):
             return out
         root = Path(_prov.verify(str(decl["pin"])).observed.path)
@@ -102,7 +103,7 @@ def _assembler_bridge(target: str, endpoint) -> dict:
 
         model = _IM.isa_model_for_target(target)
         by_ident: dict = {}
-        for name in (getattr(model, "by_mnemonic", None) or {}):
+        for name in getattr(model, "by_mnemonic", None) or {}:
             entry = model.resolve(name)
             if entry and entry.get("opcode") is not None:
                 by_ident.setdefault((int(entry["opcode"]), int(entry.get("funct7") or 0)), entry)
@@ -144,7 +145,7 @@ def _prefix_resolve(model, mnemonic: str):
     if not want:
         return None, ""
     hits = []
-    for name in (getattr(model, "by_mnemonic", None) or {}):
+    for name in getattr(model, "by_mnemonic", None) or {}:
         norm = str(name).replace(".", "_").replace("-", "_").upper()
         # A genuine extension, not a coincidental shared start: the next character must be a separator.
         if norm.startswith(want) and (len(norm) == len(want) or norm[len(want)] == "_"):
@@ -155,10 +156,15 @@ def _prefix_resolve(model, mnemonic: str):
     entries = [e for e in entries if e]
     roles = {str((e or {}).get("role") or "") for e in entries}
     if len(roles) != 1:
-        return None, (f"{mnemonic!r} prefix-matches {len(hits)} model mnemonic(s) with disagreeing "
-                      f"roles {sorted(roles)}; refusing to guess")
-    return entries[0], (f"{mnemonic!r} resolved by prefix to {len(hits)} operand-encoded variant(s) "
-                        f"(e.g. {hits[0]!r})" if len(hits) > 1 else "")
+        return None, (
+            f"{mnemonic!r} prefix-matches {len(hits)} model mnemonic(s) with disagreeing "
+            f"roles {sorted(roles)}; refusing to guess"
+        )
+    return entries[0], (
+        f"{mnemonic!r} resolved by prefix to {len(hits)} operand-encoded variant(s) (e.g. {hits[0]!r})"
+        if len(hits) > 1
+        else ""
+    )
 
 
 def decode_text(lines, target: str, endpoint=None) -> list[TextInsn]:
@@ -169,6 +175,7 @@ def decode_text(lines, target: str, endpoint=None) -> list[TextInsn]:
     endpoint's role table already carries that split.
     """
     from merlin.targetgen import isa_model as _IM
+
     try:
         model = _IM.isa_model_for_target(target)
     except Exception:  # noqa: BLE001 — no derived model: nothing can be tagged, and say so
@@ -189,8 +196,10 @@ def decode_text(lines, target: str, endpoint=None) -> list[TextInsn]:
         if entry is None and bridge:
             entry = bridge.get(str(mnemonic).replace("_", ".").upper())
             if entry is not None and "assembler bridge" not in "".join(notes):
-                notes.append(f"resolved {len(bridge)} corpus spelling(s) through the target's own "
-                             f"assembler bridge (joined by encoding, not by name)")
+                notes.append(
+                    f"resolved {len(bridge)} corpus spelling(s) through the target's own "
+                    f"assembler bridge (joined by encoding, not by name)"
+                )
         if entry is None and model is not None:
             entry, why = _prefix_resolve(model, mnemonic)
             if why:
@@ -201,13 +210,19 @@ def decode_text(lines, target: str, endpoint=None) -> list[TextInsn]:
         # An instruction the model places but this endpoint does not claim belongs to the OTHER engine
         # on the same ISA. Recorded, not tagged.
         mine = bool(cls) and (not claims or cls in claims)
-        out.append(TextInsn(
-            index=i, addr=i, identity=cls or mnemonic,
-            roles=((role,) if (role and mine) else ()),
-            from_endpoint=mine,
-            mnemonic=mnemonic, operands=ops,
-            fields={"isa_role": isa_role} if isa_role else {}))
-    decode_text.last_notes = tuple(dict.fromkeys(notes))     # surfaced by the audit, never dropped
+        out.append(
+            TextInsn(
+                index=i,
+                addr=i,
+                identity=cls or mnemonic,
+                roles=((role,) if (role and mine) else ()),
+                from_endpoint=mine,
+                mnemonic=mnemonic,
+                operands=ops,
+                fields={"isa_role": isa_role} if isa_role else {},
+            )
+        )
+    decode_text.last_notes = tuple(dict.fromkeys(notes))  # surfaced by the audit, never dropped
     return out
 
 

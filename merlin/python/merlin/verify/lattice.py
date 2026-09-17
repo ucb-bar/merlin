@@ -20,6 +20,7 @@ Those points were dead code before this module: ``corpus_synth.extents_for`` rea
 collapses the query before bit-blasting anything. The expensive ``sat`` direction only applies when a
 pass is actually broken, and then the smallest failing shape is the one you want anyway.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -64,18 +65,20 @@ def load_spec(target: str) -> dict[str, Any]:
     if not p.is_file():
         raise FileNotFoundError(
             f"no derived conformance spec for {target!r} at {p}. The lattice is derived from the "
-            f"target's own facts; without the spec there is nothing to sweep and nothing to assume.")
+            f"target's own facts; without the spec there is nothing to sweep and nothing to assume."
+        )
     return yaml.safe_load(p.read_text(encoding="utf-8")) or {}
 
 
 def lattice_points(spec: dict[str, Any]) -> list[int]:
     """The derived extents, deduplicated and ordered. Empty when the target has no derivable edge."""
-    probes = ((spec.get("boundaries") or {}).get("extent_probes") or [])
+    probes = (spec.get("boundaries") or {}).get("extent_probes") or []
     return sorted({int(p) for pr in probes for p in (pr.get("points") or []) if int(p) >= 1})
 
 
-def sweep(target: str, *, timeout_ms: int = 300_000, acc_width: int = 32,
-          reuse: int = 2, max_points: int | None = None) -> dict[str, Any]:
+def sweep(
+    target: str, *, timeout_ms: int = 300_000, acc_width: int = 32, reuse: int = 2, max_points: int | None = None
+) -> dict[str, Any]:
     """Validate the compilation at every (cell, extent) the target's own facts define."""
     from .evaluate import _finish_lowering, _lower_to_interface
     from .refine import validate_compilation
@@ -116,13 +119,32 @@ def sweep(target: str, *, timeout_ms: int = 300_000, acc_width: int = 32,
                 status = v.status
             except UnsupportedSemantics as exc:
                 status = "abstained"
-                results.append({"cell": name, "dtype": dtype, "m": p, "k": p, "n": p,
-                                "status": status, "seconds": round(time.time() - t0, 2),
-                                "reason": str(exc)[:200], "covers_cells": covered})
+                results.append(
+                    {
+                        "cell": name,
+                        "dtype": dtype,
+                        "m": p,
+                        "k": p,
+                        "n": p,
+                        "status": status,
+                        "seconds": round(time.time() - t0, 2),
+                        "reason": str(exc)[:200],
+                        "covers_cells": covered,
+                    }
+                )
                 continue
-            results.append({"cell": name, "dtype": dtype, "m": p, "k": p, "n": p,
-                            "status": status, "seconds": round(time.time() - t0, 2),
-                            "covers_cells": covered})
+            results.append(
+                {
+                    "cell": name,
+                    "dtype": dtype,
+                    "m": p,
+                    "k": p,
+                    "n": p,
+                    "status": status,
+                    "seconds": round(time.time() - t0, 2),
+                    "covers_cells": covered,
+                }
+            )
 
     verified = [r for r in results if r["status"] == "unsat"]
     refuted = [r for r in results if r["status"] == "sat"]
@@ -149,10 +171,12 @@ def sweep(target: str, *, timeout_ms: int = 300_000, acc_width: int = 32,
                 "quantifier": "every integer input at each shape",
             },
             "dynamic": witnesses_graded(target),
-            "note": ("The two numbers measure different things and neither subsumes the other: the "
-                     "dynamic ladder is the only layer that touches hardware, and the formal sweep "
-                     "says nothing about it. What the formal side adds is the quantifier -- all "
-                     "inputs rather than one stimulus -- at the shapes it can reach."),
+            "note": (
+                "The two numbers measure different things and neither subsumes the other: the "
+                "dynamic ladder is the only layer that touches hardware, and the formal sweep "
+                "says nothing about it. What the formal side adds is the quantifier -- all "
+                "inputs rather than one stimulus -- at the shapes it can reach."
+            ),
         },
     }
 
@@ -168,9 +192,8 @@ def witnesses_graded(target: str) -> dict[str, Any]:
     """
     import yaml
 
-    from merlin.targetgen.target_experiment import TargetExperiment  # noqa: F401  (import guard)
-
     from merlin.common.paths import merlin_dir
+    from merlin.targetgen.target_experiment import TargetExperiment  # noqa: F401  (import guard)
 
     root = merlin_dir() / "contract" / "capsules"
     if not root.is_dir():
@@ -184,13 +207,16 @@ def witnesses_graded(target: str) -> dict[str, Any]:
         except Exception:
             continue
         capsules += 1
-        for spec in (doc.get("inputs") or []):
+        for spec in doc.get("inputs") or []:
             shape = spec.get("shape")
             if shape:
                 shapes.add(tuple(shape))
-    return {"capsules": capsules, "distinct_shapes": len(shapes),
-            "note": "counted from tracked capsule.yaml files, excluding hidden/; each is graded on "
-                    "one deterministic stimulus"}
+    return {
+        "capsules": capsules,
+        "distinct_shapes": len(shapes),
+        "note": "counted from tracked capsule.yaml files, excluding hidden/; each is graded on "
+        "one deterministic stimulus",
+    }
 
 
 def _family_omission(family: str) -> str:
@@ -203,40 +229,50 @@ def _family_omission(family: str) -> str:
     # Deliberately does NOT name the interface op: the family name and the op name differ (the
     # `elementwise_map` family lowers to `interface.elementwise`), and inventing `interface.<family>`
     # would put a plausible-looking but wrong symbol in a ledger people cite.
-    return (f"family {family!r} is not swept: the in-tree reference target declares only "
-            f"{ops or 'UNKNOWN'}, so lower_to_target refuses this family's interface op and no "
-            f"command buffer is produced — there is nothing to validate. The SMT encoder is not the "
-            f"limit (it already handles VECTOR_MAP, VREDUCE and MOVEMENT); a target declaring those "
-            f"ops is.")
+    return (
+        f"family {family!r} is not swept: the in-tree reference target declares only "
+        f"{ops or 'UNKNOWN'}, so lower_to_target refuses this family's interface op and no "
+        f"command buffer is produced — there is nothing to validate. The SMT encoder is not the "
+        f"limit (it already handles VECTOR_MAP, VREDUCE and MOVEMENT); a target declaring those "
+        f"ops is."
+    )
 
 
 def _lattice_source(spec: dict[str, Any]) -> str:
     """Where the extents came from — a shape with no provenance is not citable."""
-    probes = ((spec.get("boundaries") or {}).get("extent_probes") or [])
+    probes = (spec.get("boundaries") or {}).get("extent_probes") or []
     if not probes:
-        return ("no derivable boundary: this target's RTL facts carry no mesh edge, so no lattice "
-                "exists to sweep and none is invented")
-    return "; ".join(f"{pr.get('boundary')} edge={pr.get('edge')} from {pr.get('source')}"
-                     for pr in probes)
+        return (
+            "no derivable boundary: this target's RTL facts carry no mesh edge, so no lattice "
+            "exists to sweep and none is invented"
+        )
+    return "; ".join(f"{pr.get('boundary')} edge={pr.get('edge')} from {pr.get('source')}" for pr in probes)
 
 
 def render(rec: dict[str, Any]) -> str:
     out = [f"lattice sweep: {rec['target']}", ""]
     out.append(f"  extents      {rec['lattice_points'] or '(none derivable)'}")
     out.append(f"  source       {rec['lattice_source']}")
-    out.append(f"  cells        {len(rec['cells_covered'])} covered of {rec['cells_declared']} "
-               f"declared, via {rec['cell_groups_swept']} distinct query group(s)")
+    out.append(
+        f"  cells        {len(rec['cells_covered'])} covered of {rec['cells_declared']} "
+        f"declared, via {rec['cell_groups_swept']} distinct query group(s)"
+    )
     out.append(f"               (alignment is expressed by the extent, not by a separate query)")
-    out.append(f"  points       {rec['points_verified']} verified / {rec['points_refuted']} REFUTED "
-               f"/ {rec['points_abstained']} abstained  (of {rec['points_total']})")
+    out.append(
+        f"  points       {rec['points_verified']} verified / {rec['points_refuted']} REFUTED "
+        f"/ {rec['points_abstained']} abstained  (of {rec['points_total']})"
+    )
     ss = rec.get("shape_space") or {}
     if ss:
         d = ss.get("dynamic") or {}
         out.append("")
-        out.append(f"  shape space  formal: {ss['formal']['shapes_proved']} shape(s) proved over "
-                   f"{ss['formal']['quantifier']}")
-        out.append(f"               dynamic: {d.get('capsules', 0)} capsule(s) across "
-                   f"{d.get('distinct_shapes', 0)} distinct shape(s), one stimulus each")
+        out.append(
+            f"  shape space  formal: {ss['formal']['shapes_proved']} shape(s) proved over {ss['formal']['quantifier']}"
+        )
+        out.append(
+            f"               dynamic: {d.get('capsules', 0)} capsule(s) across "
+            f"{d.get('distinct_shapes', 0)} distinct shape(s), one stimulus each"
+        )
         out.append("               (different questions -- only the dynamic ladder touches hardware)")
     if rec["points_refuted"]:
         out.append("")
@@ -257,16 +293,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--target", required=True)
     ap.add_argument("--timeout-ms", type=int, default=300_000)
     ap.add_argument("--reuse", type=int, default=2)
-    ap.add_argument("--max-points", type=int, default=None,
-                    help="cap the extents swept (for a quick pass); the record says what was capped")
+    ap.add_argument(
+        "--max-points",
+        type=int,
+        default=None,
+        help="cap the extents swept (for a quick pass); the record says what was capped",
+    )
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--write", action="store_true")
-    ap.add_argument("--emit-counterexamples", action="store_true",
-                    help="write refuted shapes as corpus profile entries so the bench grades them")
+    ap.add_argument(
+        "--emit-counterexamples",
+        action="store_true",
+        help="write refuted shapes as corpus profile entries so the bench grades them",
+    )
     args = ap.parse_args(argv)
 
-    rec = sweep(args.target, timeout_ms=args.timeout_ms, reuse=args.reuse,
-                max_points=args.max_points)
+    rec = sweep(args.target, timeout_ms=args.timeout_ms, reuse=args.reuse, max_points=args.max_points)
     print(json.dumps(rec, indent=1) if args.json else render(rec))
     if args.write:
         _write(rec)
@@ -289,32 +331,45 @@ def emit_counterexamples(rec: dict[str, Any]) -> None:
         print("\nno refuted points: nothing to add to the corpus")
         return
     target = rec["target"]
-    entries = [counterexample_entry(target=target, m=r["m"], k=r["k"], n=r["n"],
-                                    dtype=r.get("dtype", "i8"),
-                                    family=str(r["cell"]).split("/")[0],
-                                    bound_ms=rec.get("timeout_ms"))
-               for r in refuted]
+    entries = [
+        counterexample_entry(
+            target=target,
+            m=r["m"],
+            k=r["k"],
+            n=r["n"],
+            dtype=r.get("dtype", "i8"),
+            family=str(r["cell"]).split("/")[0],
+            bound_ms=rec.get("timeout_ms"),
+        )
+        for r in refuted
+    ]
     write_profile(target, entries, provenance={"lattice_source": rec["lattice_source"]})
     path = write_evidence(target, refuted)
     if path:
         print(f"counterexample values: {path}")
-    print("run `python -m merlin.contract.capsules.generate_corpus --target "
-          f"{target}` to materialise them as capsules")
+    print(f"run `python -m merlin.contract.capsules.generate_corpus --target {target}` to materialise them as capsules")
 
 
 def _write(rec: dict[str, Any]):
     from merlin.common.artifacts import new_product
 
-    prod = new_product("verification", version=1, target=rec["target"], sources=[
-        f"derived lattice: {spec_path(rec['target'])}",
-        f"extents: {rec['lattice_points']}",
-        f"lattice source: {rec['lattice_source']}",
-        f"solver bound: {rec['timeout_ms']} ms per point",
-    ], notes=(
-        "Verification of a target's derived extent lattice. Each point proves the compiled program "
-        "computes the declared contraction for EVERY input at that shape, versus the dynamic ladder "
-        "which grades one stimulus per witness. Cells and extents come from the target's own "
-        "capability manifest and RTL facts, so the verified set is generated rather than curated."))
+    prod = new_product(
+        "verification",
+        version=1,
+        target=rec["target"],
+        sources=[
+            f"derived lattice: {spec_path(rec['target'])}",
+            f"extents: {rec['lattice_points']}",
+            f"lattice source: {rec['lattice_source']}",
+            f"solver bound: {rec['timeout_ms']} ms per point",
+        ],
+        notes=(
+            "Verification of a target's derived extent lattice. Each point proves the compiled program "
+            "computes the declared contraction for EVERY input at that shape, versus the dynamic ladder "
+            "which grades one stimulus per witness. Cells and extents come from the target's own "
+            "capability manifest and RTL facts, so the verified set is generated rather than curated."
+        ),
+    )
     out = prod.add_artifact("lattice.json")
     out.write_text(json.dumps(rec, indent=1), encoding="utf-8")
     prod.write_manifest()

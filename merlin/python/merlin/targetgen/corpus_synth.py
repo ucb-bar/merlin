@@ -24,6 +24,7 @@ silent omission: a requirement that quietly produces no capsule is indistinguish
 met. Same for exceeding the budget -- it raises rather than truncating, because a silently dropped point
 reads downstream as a covered one.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -44,6 +45,7 @@ class SynthesisError(ValueError):
 
 def _op_family_map() -> dict[str, str]:
     from merlin.targetgen import semantic_families as sf
+
     return dict(sf._OP_FAMILY)
 
 
@@ -54,10 +56,12 @@ def available_ops() -> set[str]:
     capsule nothing can write.
     """
     from merlin.targetgen.corpus_spec import BUILDERS
+
     try:
         from merlin.targetgen.capsule_source import _OP_BODIES
+
         bodies = set(_OP_BODIES)
-    except Exception:                              # noqa: BLE001 -- no torch bodies is not zero ops
+    except Exception:  # noqa: BLE001 -- no torch bodies is not zero ops
         bodies = set()
     return set(BUILDERS) | bodies
 
@@ -69,10 +73,22 @@ def _cost(op: str) -> tuple:
     capsule a cell gets unless that op is genuinely cheaper.
     """
     from merlin.targetgen.corpus_spec import BUILDERS
+
     # Operand ROLES, not tensor count: `linear` carries an optional bias role that `matmul` does not,
     # so the bare contraction is the cheaper way to evidence a contraction cell.
-    operands = {"matmul": 2, "linear": 3, "movement": 1, "rmsnorm": 1, "softmax": 1, "layernorm": 1,
-                "add": 2, "reduce_sum": 1, "gelu": 1, "silu": 1, "bias_add": 2}
+    operands = {
+        "matmul": 2,
+        "linear": 3,
+        "movement": 1,
+        "rmsnorm": 1,
+        "softmax": 1,
+        "layernorm": 1,
+        "add": 2,
+        "reduce_sum": 1,
+        "gelu": 1,
+        "silu": 1,
+        "bias_add": 2,
+    }
     return (operands.get(op, 3), 0 if op in BUILDERS else 1, op)
 
 
@@ -123,8 +139,9 @@ def _canonical(dtype: str) -> str | None:
     """``dtype``'s canonical float name, or ``None`` when it has none (an integer format, say)."""
     try:
         from merlin.runtime.fp8_formats import canonical_float
+
         return canonical_float(str(dtype))
-    except Exception:                              # noqa: BLE001 -- not a float format is a real answer
+    except Exception:  # noqa: BLE001 -- not a float format is a real answer
         return None
 
 
@@ -177,11 +194,12 @@ def source_for_op(op: str) -> str | None:
     source automatically, in the direction that prefers the direct path.
     """
     from merlin.targetgen.corpus_spec import BUILDERS
+
     if op in BUILDERS:
         return None
     try:
         from merlin.targetgen.capsule_source import _OP_BODIES
-    except Exception:                              # noqa: BLE001 -- no bodies available
+    except Exception:  # noqa: BLE001 -- no bodies available
         return None
     return "pytorch" if op in _OP_BODIES else None
 
@@ -209,14 +227,21 @@ _LAYOUT_OPS: frozenset = frozenset()
 def _sf_primitives(family: str) -> tuple[str, ...]:
     """The primitive families ``family`` decomposes into, or itself when it is one."""
     from merlin.targetgen import semantic_families as sf
+
     try:
         return tuple(sf.primitives_of(family)) or (family,)
-    except Exception:                              # noqa: BLE001 -- an unknown family is its own primitive
+    except Exception:  # noqa: BLE001 -- an unknown family is its own primitive
         return (family,)
 
 
-def op_for_shape(family: str, *, admitted_ops: set[str] | None = None, dtype: str | None = None,
-                 rank: int = 2, layout: str | None = None) -> str | None:
+def op_for_shape(
+    family: str,
+    *,
+    admitted_ops: set[str] | None = None,
+    dtype: str | None = None,
+    rank: int = 2,
+    layout: str | None = None,
+) -> str | None:
     """The op that exercises ``family`` at ``rank``/``layout``, or ``None`` when nothing materializes it.
 
     A thin constraint over :func:`op_for_family`: the family and dtype still decide WHICH op represents
@@ -245,8 +270,9 @@ def op_for_shape(family: str, *, admitted_ops: set[str] | None = None, dtype: st
         # op of its own is a hole again, and says so.
         pool = admitted_ops if admitted_ops is not None else available_ops()
         fam_map = _op_family_map()
-        batched = sorted(op for op in (_BATCHED_OPS & ops_gradeable_at(str(dtype or ""), set(pool)))
-                         if fam_map.get(op) == family)
+        batched = sorted(
+            op for op in (_BATCHED_OPS & ops_gradeable_at(str(dtype or ""), set(pool))) if fam_map.get(op) == family
+        )
         return batched[0] if batched else None
     return op
 
@@ -289,8 +315,9 @@ _CONV_OPS_BY_RANK: dict[int, tuple[str, ...]] = {
 }
 
 
-def op_for_family(family: str, *, admitted_ops: set[str] | None = None,
-                  dtype: str | None = None, writer: str | None = None) -> str | None:
+def op_for_family(
+    family: str, *, admitted_ops: set[str] | None = None, dtype: str | None = None, writer: str | None = None
+) -> str | None:
     """The cheapest op that exercises ``family`` AND can actually be written at ``dtype``.
 
     WRITABILITY COMES FIRST, cost second. Ranking by cost alone picked the cheapest op in the abstract
@@ -312,13 +339,11 @@ def op_for_family(family: str, *, admitted_ops: set[str] | None = None,
     pool = admitted_ops if admitted_ops is not None else available_ops()
     cands = [op for op, fam in _op_family_map().items() if fam == family and op in pool]
     if writer is not None:
-        cands = [op for op in cands
-                 if _writer_for({"op": op, "operand_dtype": dtype}) == writer]
+        cands = [op for op in cands if _writer_for({"op": op, "operand_dtype": dtype}) == writer]
     if dtype is None:
         return sorted(cands, key=_cost)[0] if cands else None
     # False sorts before True, so a writable op outranks an unwritable one whatever it costs.
-    ranked = sorted(cands, key=lambda op: (_writer_for({"op": op, "operand_dtype": dtype}) is None,
-                                           _cost(op)))
+    ranked = sorted(cands, key=lambda op: (_writer_for({"op": op, "operand_dtype": dtype}) is None, _cost(op)))
     return ranked[0] if ranked else None
 
 
@@ -428,7 +453,7 @@ def cap_to_affordable(entry: dict, spec_doc: dict, *, extends: str = "") -> "str
     resolve, leaves the tier untouched. Capping on a cost nobody measured would shrink the certified
     corpus on a guess, which is worse than an expensive capsule somebody can see in the bill.
     """
-    aff = (spec_doc.get("cert_affordability") or {})
+    aff = spec_doc.get("cert_affordability") or {}
     ceiling = aff.get("max_elements")
     if not ceiling:
         return None
@@ -454,18 +479,23 @@ def cap_to_affordable(entry: dict, spec_doc: dict, *, extends: str = "") -> "str
     tiers = [str(t) for t in (spec_doc.get("oracle_tiers") or ())]
     loop_tier = tiers[0] if len(tiers) > 1 else None
     if loop_tier is None:
-        return (f"{elements} written output elements exceeds the {int(ceiling)} a "
-                f"{aff.get('budget_s')}s certification budget affords, and this target declares no "
-                f"tier cheaper than its cert tier ({tiers or 'none resolved'}) to fall back to, so the "
-                f"capsule is emitted UNCAPPED and is expected to be expensive")
+        return (
+            f"{elements} written output elements exceeds the {int(ceiling)} a "
+            f"{aff.get('budget_s')}s certification budget affords, and this target declares no "
+            f"tier cheaper than its cert tier ({tiers or 'none resolved'}) to fall back to, so the "
+            f"capsule is emitted UNCAPPED and is expected to be expensive"
+        )
     entry["max_oracle_tier"] = loop_tier
     if extends:
         entry["extends"] = extends
-    return (f"{elements} written output elements exceeds the {int(ceiling)} a {aff.get('budget_s')}s "
-            f"certification budget affords on this target, so it is graded at {loop_tier} and "
-            f"rests on {extends!r}" if extends else
-            f"{elements} written output elements exceeds the {int(ceiling)} a {aff.get('budget_s')}s "
-            f"certification budget affords on this target, so it is graded at {loop_tier}")
+    return (
+        f"{elements} written output elements exceeds the {int(ceiling)} a {aff.get('budget_s')}s "
+        f"certification budget affords on this target, so it is graded at {loop_tier} and "
+        f"rests on {extends!r}"
+        if extends
+        else f"{elements} written output elements exceeds the {int(ceiling)} a {aff.get('budget_s')}s "
+        f"certification budget affords on this target, so it is graded at {loop_tier}"
+    )
 
 
 def narrowest_admitted(admitted: "set[str] | frozenset[str]") -> str:
@@ -495,7 +525,7 @@ def narrowest_admitted(admitted: "set[str] | frozenset[str]") -> str:
     def _rank(token: str) -> tuple:
         try:
             return (0, int(dtype_bits(str(token))), str(token))
-        except Exception:                          # noqa: BLE001 -- unknown width sorts last, not raises
+        except Exception:  # noqa: BLE001 -- unknown width sorts last, not raises
             return (1, 0, str(token))
 
     return sorted((str(d) for d in admitted), key=_rank)[0]
@@ -510,7 +540,7 @@ def quanta_by_dtype(spec_doc: dict) -> dict[str, dict]:
     spelling it had -- the pre-existing behaviour, not a guessed granularity.
     """
     out: dict[str, dict] = {}
-    for row in (spec_doc.get("cells") or ()):
+    for row in spec_doc.get("cells") or ():
         q = (row or {}).get("shape_quantum")
         dt = str((row or {}).get("dtype") or "")
         if dt and isinstance(q, dict):
@@ -528,8 +558,8 @@ def _quantize(mult: int, quantum: int, tile: int) -> str:
     """
     if not quantum or not tile or quantum <= tile:
         return "tile" if mult == 1 else f"{mult}*tile"
-    step = -(-int(quantum) // int(tile))               # the quantum, in tile units (ceil for safety)
-    m = -(-int(mult) // step) * step                   # round the multiplier up to a whole step
+    step = -(-int(quantum) // int(tile))  # the quantum, in tile units (ceil for safety)
+    m = -(-int(mult) // step) * step  # round the multiplier up to a whole step
     return "tile" if m == 1 else f"{m}*tile"
 
 
@@ -553,12 +583,12 @@ def extents_for(alignment: str, probes: list[dict], quantum: dict | None = None)
         raise SynthesisError(
             "no extent probe: this target's boundaries carry no tile edge, so an alignment-indexed "
             "requirement cannot be turned into a shape. Fix the boundary derivation rather than "
-            "guessing an edge")
+            "guessing an edge"
+        )
     # The TILE-EDGE probe by name. `probes` also carries the block-scale-group boundary (edge 32 where
     # the tile edge is 16), so taking the first probe -- or the widest -- would spell every extent
     # against the wrong edge.
-    tile = next((int(pr.get("edge") or 0) for pr in probes
-                 if str((pr or {}).get("boundary") or "") == "tile_edge"), 0)
+    tile = next((int(pr.get("edge") or 0) for pr in probes if str((pr or {}).get("boundary") or "") == "tile_edge"), 0)
     row_q = int((quantum or {}).get("row") or 1)
     red_q = int((quantum or {}).get("reduction") or 1)
     if alignment == "partial":
@@ -583,8 +613,7 @@ def extents_for(alignment: str, probes: list[dict], quantum: dict | None = None)
     # zero tiles and returns an all-zero golden -- a golden any broken kernel matches, and the
     # `UnfalsifiablePolicy` refusal that made 4 of these capsules fail to generate. Rounding UP keeps
     # every non-quantized dtype at exactly the extents it had.
-    return {"M": _quantize(1, row_q, tile), "K": _quantize(2, red_q, tile),
-            "N": _quantize(1, row_q, tile)}
+    return {"M": _quantize(1, row_q, tile), "K": _quantize(2, red_q, tile), "N": _quantize(1, row_q, tile)}
 
 
 def filtered_precision(preference: list[str], admitted: set[str]) -> tuple[list[str], list[str]]:
@@ -620,7 +649,7 @@ def pass_requirements_for(entry: dict, spec_doc: dict) -> list[str]:
 
     out = [_P.TARGET_ISA_LOWERING]
     tile = 0
-    for probe in ((spec_doc.get("boundaries") or {}).get("extent_probes") or ()):
+    for probe in (spec_doc.get("boundaries") or {}).get("extent_probes") or ():
         tile = max(tile, int(probe.get("edge") or 0))
     for axis in ("M", "K", "N"):
         token = str(entry.get(axis) or "")
@@ -657,7 +686,7 @@ def _writer_for(entry: dict) -> str | None:
         return "builder"
     try:
         regime = regime_for_dtype(str(entry.get("operand_dtype") or ""))
-    except Exception:                              # noqa: BLE001 -- an unknown regime is not a float one
+    except Exception:  # noqa: BLE001 -- an unknown regime is not a float one
         regime = None
     return "pytorch" if regime in _PYTORCH_REGIMES else None
 
@@ -677,8 +706,7 @@ def _mark_source(entry: dict) -> None:
         entry["source"] = "pytorch"
 
 
-def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
-               budget: int | None = None) -> dict:
+def synthesize(spec_doc: dict, *, workload_spec: dict | None = None, budget: int | None = None) -> dict:
     """``{"capsules": [entry...], "provenance": {...}}`` for one target's derived requirement.
 
     Pure: no I/O, no target name in the control flow. The spec is the derived conformance document, so
@@ -694,19 +722,21 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     # A preference is declared in REGISTRY spelling ("int8"); a cell carries the CAPSULE spelling
     # ("i8"). Comparing them raw reported every token as dropped and the whole preference as inert.
     from merlin.targetgen.conformance import capsule_dtype
+
     _pref = []
-    for tok in (ws.get("precision_preference") or ()):
+    for tok in ws.get("precision_preference") or ():
         try:
             _pref.append(capsule_dtype(str(tok)))
-        except Exception:                          # noqa: BLE001 -- an unmappable token is not a dtype
+        except Exception:  # noqa: BLE001 -- an unmappable token is not a dtype
             _pref.append(str(tok))
     kept, dropped = filtered_precision(_pref, admitted_dtypes)
 
     cap_map: dict[str, Any] = {}
     try:
         from merlin.targetgen.eligibility import capability_map_for_target
+
         cap_map = capability_map_for_target(target) or {}
-    except Exception:                              # noqa: BLE001 -- no map means no composed-with facts
+    except Exception:  # noqa: BLE001 -- no map means no composed-with facts
         cap_map = {}
 
     #: What granularity each dtype's own datapath imposes on an extent, published per cell by
@@ -749,16 +779,27 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
 
         name = f"{SYNTH_PREFIX}_{family}_{dtype}_{alignment}".replace("-", "_")
         entry: dict[str, Any] = {
-            "cat": "isa", "kind": "isa", "name": name, "op": op,
-            "operand_dtype": dtype, "out": "Y0", "lhs": "A0", "weight": "W",
+            "cat": "isa",
+            "kind": "isa",
+            "name": name,
+            "op": op,
+            "operand_dtype": dtype,
+            "out": "Y0",
+            "lhs": "A0",
+            "weight": "W",
             "source_role": SOURCE_ROLE,
             "source_reference": (
                 f"synthesized for conformance cell {cell.get('cell')} "
                 f"(basis={cell.get('basis')}, admitted_by={list(cell.get('admitted_by') or ())}); "
                 f"extents from boundaries.extent_probes"
-                + (f"; {family} is admitted only in composition with {list(composed)}, so it is carried "
-                   f"as a fused epilogue on {op} -- a standalone capsule for it would be refused by the "
-                   f"eligibility oracle as a false fallback" if fused else "")),
+                + (
+                    f"; {family} is admitted only in composition with {list(composed)}, so it is carried "
+                    f"as a fused epilogue on {op} -- a standalone capsule for it would be refused by the "
+                    f"eligibility oracle as a false fallback"
+                    if fused
+                    else ""
+                )
+            ),
             "label": "public",
             **extents_for(alignment, probes, quantum=_quanta.get(dtype)),
         }
@@ -769,7 +810,8 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         if _writer is None:
             unwritable.append(
                 f"{cell.get('cell')} (op {op!r} has no direct-MLIR builder and dtype {dtype!r} is not "
-                f"a regime the PyTorch writer can express)")
+                f"a regime the PyTorch writer can express)"
+            )
             continue
         if _writer == "pytorch":
             entry["source"] = "pytorch"
@@ -793,8 +835,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     regime_extents = mem_block.get("regime_extents")
     regimes_resolved = regime_extents is not None
     regime_extents = regime_extents or {}
-    regime_dtype = str(mem_block.get("regime_dtype") or "") or (
-        sorted(admitted_dtypes)[0] if admitted_dtypes else "")
+    regime_dtype = str(mem_block.get("regime_dtype") or "") or (sorted(admitted_dtypes)[0] if admitted_dtypes else "")
     unreachable_regimes: list[str] = []
     regime_op = op_for_family("contraction", admitted_ops=pool)
     for regime in sorted((mem_block.get("required") or {}) if regimes_resolved else {}):
@@ -806,18 +847,26 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             unreachable_regimes.append(str(regime))
             continue
         entry = {
-            "cat": "isa", "kind": "isa", "name": f"{SYNTH_PREFIX}_regime_{regime}",
-            "op": regime_op, "operand_dtype": regime_dtype,
-            "out": "Y0", "lhs": "A0", "weight": "W",
+            "cat": "isa",
+            "kind": "isa",
+            "name": f"{SYNTH_PREFIX}_regime_{regime}",
+            "op": regime_op,
+            "operand_dtype": regime_dtype,
+            "out": "Y0",
+            "lhs": "A0",
+            "weight": "W",
             "source_role": SOURCE_ROLE,
             "source_reference": (
                 f"synthesized for memory regime {regime!r}: the declared inputs occupy "
                 f"{ext.get('rows')} of {ext.get('capacity_rows')} operand-store rows "
                 f"({ext.get('fraction_of_capacity')} of capacity), which is what puts this capsule in "
                 f"that regime. Extents resolved by memory_regime.extents_for_regime with the same "
-                f"sizing the coverage gate measures with"),
+                f"sizing the coverage gate measures with"
+            ),
             "label": "public",
-            "M": ext["M"], "K": ext["K"], "N": ext["N"],
+            "M": ext["M"],
+            "K": ext["K"],
+            "N": ext["N"],
         }
         # A REGIME THAT FILLS THE STORE CANNOT BE CERTIFIED, and saying so is what keeps the corpus
         # runnable. Measured on gemmini: `fits_single` and `spills` resolve to 131k and 262k operand
@@ -869,32 +918,42 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     # rule tried here first and was wrong in both directions: it blocked `normalization` on gemmini,
     # where a layernorm capsule proves the lane, and passed it on a target whose rmsnorm program
     # contains an eligible region anyway.
-    for _pair in ((spec_doc.get("host_lane") or {}).get("required") or ()):
+    for _pair in (spec_doc.get("host_lane") or {}).get("required") or ():
         family, dtype = str(_pair.get("family") or ""), str(_pair.get("dtype") or "")
         if not family or not dtype or family in {str(f) for f in (host_block.get("families") or ())}:
-            continue                               # the narrow axis below already carries this family
+            continue  # the narrow axis below already carries this family
         # `writer="pytorch"` because this is a HOST axis: see `op_for_family`.
         op = op_for_family(family, admitted_ops=pool, dtype=dtype, writer="pytorch")
         if op is None:
             unsized_host.append(f"{family}/{dtype} (no materializable op at this dtype)")
             continue
         entry = {
-            "cat": "model_slices", "kind": "model_slice",
+            "cat": "model_slices",
+            "kind": "model_slice",
             "name": f"{SYNTH_PREFIX}_host_lane_{family}_{dtype}".replace("-", "_").replace(".", "_"),
-            "op": op, "operand_dtype": dtype, "out": "Y0", "lhs": "A0", "weight": "W",
+            "op": op,
+            "operand_dtype": dtype,
+            "out": "Y0",
+            "lhs": "A0",
+            "weight": "W",
             "source_role": SOURCE_ROLE,
             "source_reference": (
                 f"synthesized for the host lane: real captures contain {_pair.get('n_regions')} "
                 f"{family!r} region(s) at {dtype}, and this target's manifest admits {family!r} at no "
                 f"such dtype -- so every one of them must be placed on the host. A corpus with no "
-                f"capsule here cannot tell a compiler that routes them correctly from one that does not"),
+                f"capsule here cannot tell a compiler that routes them correctly from one that does not"
+            ),
             "label": "public",
             "lanes": {"forbid": ["on_mesh"]},
-            "generalization": {"must_accelerate": False, "eligible": False,
-                         "generalization_axis": "host_lane",
-                         "not_asserted_reason": (
-                             "the target admits no datapath for this family at this dtype; the capsule "
-                             "exists to prove the compiler does NOT accelerate it")},
+            "generalization": {
+                "must_accelerate": False,
+                "eligible": False,
+                "generalization_axis": "host_lane",
+                "not_asserted_reason": (
+                    "the target admits no datapath for this family at this dtype; the capsule "
+                    "exists to prove the compiler does NOT accelerate it"
+                ),
+            },
             **extents_for("aligned", probes, quantum=_quanta.get(dtype)),
         }
         # AN OP WITH A `merlin_iface` BUILDER CANNOT SERVE THIS AXIS, whatever dtype it declares.
@@ -913,7 +972,8 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             unsized_host.append(
                 f"{family}/{dtype} (op {op!r} has a merlin_iface builder, so its capsule carries an "
                 f"accelerator-dialect interface and classifies as accelerator work whatever dtype it "
-                f"declares; this axis needs an op of this family the interface dialect cannot express)")
+                f"declares; this axis needs an op of this family the interface dialect cannot express)"
+            )
             continue
         entry["source"] = "pytorch"
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
@@ -924,15 +984,23 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         # `writer="pytorch"` because this is a HOST axis: see `op_for_family`.
         op = op_for_family(family, admitted_ops=pool, dtype=dtype, writer="pytorch")
         if op is None or not dtype:
-            _why = ("no dtype for it is observed in any capture" if not dtype else
-                    "no op of this family is one the interface dialect cannot express, so every "
-                    "candidate classifies as accelerator work and the forbid could never be proven")
+            _why = (
+                "no dtype for it is observed in any capture"
+                if not dtype
+                else "no op of this family is one the interface dialect cannot express, so every "
+                "candidate classifies as accelerator work and the forbid could never be proven"
+            )
             unsized_host.append(f"{family} ({_why})")
             continue
         entry = {
-            "cat": "model_slices", "kind": "model_slice",
+            "cat": "model_slices",
+            "kind": "model_slice",
             "name": f"{SYNTH_PREFIX}_host_only_{family}".replace("-", "_"),
-            "op": op, "operand_dtype": dtype, "out": "Y0", "lhs": "A0", "weight": "W",
+            "op": op,
+            "operand_dtype": dtype,
+            "out": "Y0",
+            "lhs": "A0",
+            "weight": "W",
             # PyTorch-sourced regardless of whether a direct-MLIR builder exists for the op: a host-only
             # capsule is a model slice at a float dtype, and the frontend-faithful lowering is what makes
             # it the program a real model would hand the host.
@@ -941,13 +1009,18 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "source_reference": (
                 f"synthesized for host-only family {family!r}: real captures contain it and this "
                 f"target's capability manifest admits no capability for it, so the compiler must leave "
-                f"it on the host lane. dtype {dtype} is the one the captures carry for this family"),
+                f"it on the host lane. dtype {dtype} is the one the captures carry for this family"
+            ),
             "label": "public",
             "lanes": {"forbid": ["on_mesh"]},
-            "generalization": {"must_accelerate": False, "eligible": False,
-                         "not_asserted_reason": (
-                             "the target declares no capability for this family; the capsule exists to "
-                             "prove the compiler does NOT accelerate it")},
+            "generalization": {
+                "must_accelerate": False,
+                "eligible": False,
+                "not_asserted_reason": (
+                    "the target declares no capability for this family; the capsule exists to "
+                    "prove the compiler does NOT accelerate it"
+                ),
+            },
             **extents_for("aligned", probes, quantum=_quanta.get(dtype)),
         }
         entry["pass_requirements"] = pass_requirements_for(entry, spec_doc)
@@ -966,14 +1039,17 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     composition = dict((spec_doc.get("composition") or {}).get("required") or {})
     if composition:
         entry = {
-            "cat": "model", "kind": "model", "name": f"{SYNTH_PREFIX}_micro_model",
+            "cat": "model",
+            "kind": "model",
+            "name": f"{SYNTH_PREFIX}_micro_model",
             "micro_model": True,
             "source_role": SOURCE_ROLE,
             "source_reference": (
                 "synthesized for the composition axis: one layer per admitted family, one per family a "
                 "real capture contains that the manifest does not admit, sized to the target's own tile "
                 "edge, with host layers interleaved into the interior. Inventory and extents come from "
-                f"micro_model.spec; the shapes the requirement names are {sorted(composition)}"),
+                f"micro_model.spec; the shapes the requirement names are {sorted(composition)}"
+            ),
             "label": "public",
             "lanes": {"require": ["on_mesh"]},
             "generalization": {"generalization_axis": "composition"},
@@ -994,7 +1070,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     # declares the weight [K, N] while a quantized `nn.Linear` stores it [N, K], which is a real feature
     # rather than a check to loosen). Those are capability gaps to argue about with the probe NAMED, and
     # the alternative -- leaving the axis out entirely, as before -- is the one that hides them.
-    for req in ((spec_doc.get("shape_generalization") or {}).get("required") or ()):
+    for req in (spec_doc.get("shape_generalization") or {}).get("required") or ():
         axis = str(req.get("axis") or "")
         family = str(req.get("family") or "")
         dtype = str(req.get("dtype") or "")
@@ -1006,12 +1082,17 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         # that is not always the one a writer covers: mx-gemmini leads with mxfp4 while the batched
         # golden grades mxfp8 only, so the region is reachable and the lead dtype alone said it was not.
         _family_dtypes = [dtype] + sorted(
-            {str(c.get("dtype")) for c in cells
-             if c.get("dtype") and str(c.get("family")) == family and str(c.get("dtype")) != dtype})
+            {
+                str(c.get("dtype"))
+                for c in cells
+                if c.get("dtype") and str(c.get("family")) == family and str(c.get("dtype")) != dtype
+            }
+        )
         op, chosen_dtype = None, dtype
         for _dt in _family_dtypes:
-            op = op_for_shape(family, admitted_ops=pool, dtype=_dt,
-                              rank=int(req.get("rank") or 2), layout=req.get("layout"))
+            op = op_for_shape(
+                family, admitted_ops=pool, dtype=_dt, rank=int(req.get("rank") or 2), layout=req.get("layout")
+            )
             if op is not None:
                 chosen_dtype = _dt
                 break
@@ -1020,17 +1101,24 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             shape_unwritable.append(
                 f"{probe} ({axis} axis, family {family!r}, dtype {dtype!r}): no builder materializes a "
                 f"{'rank-' + str(req.get('rank')) if axis == 'rank' else str(req.get('layout')) + '-layout'} "
-                f"region for this family at this dtype")
+                f"region for this family at this dtype"
+            )
             continue
         entry = {
-            "cat": "model_slices", "kind": "model_slice",
+            "cat": "model_slices",
+            "kind": "model_slice",
             "name": f"{SYNTH_PREFIX}_{axis}_{probe.replace('.', '_')}",
-            "op": op, "operand_dtype": dtype, "out": "Y0", "lhs": "A0", "weight": "W",
+            "op": op,
+            "operand_dtype": dtype,
+            "out": "Y0",
+            "lhs": "A0",
+            "weight": "W",
             "source_role": SOURCE_ROLE,
             "source_reference": (
                 f"synthesized for the {axis} axis: this target's capability manifest declares "
                 f"{family!r} handles a {probe.split('.')[-1]} region, and a (family, dtype, alignment) "
-                f"cell cannot demand one. Shape and layout come from capability_probes"),
+                f"cell cannot demand one. Shape and layout come from capability_probes"
+            ),
             "label": "public",
             "generalization": {"generalization_axis": axis},
         }
@@ -1061,7 +1149,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     #
     # The requirement side evidences each stage from the manifest or from the target's own instruction
     # taxonomy; here we only have to write one contraction per stage.
-    for _st in ((spec_doc.get("epilogue") or {}).get("required") or ()):
+    for _st in (spec_doc.get("epilogue") or {}).get("required") or ():
         stage = str(_st.get("stage") or "")
         if not stage:
             continue
@@ -1070,17 +1158,22 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             unexpressable.append(f"epilogue axis: no admitted dtype to build a {stage!r} stage at")
             continue
         entry = {
-            "cat": "layers", "kind": "layer",
+            "cat": "layers",
+            "kind": "layer",
             "name": f"{SYNTH_PREFIX}_epilogue_{stage}",
-            "op": "matmul", "operand_dtype": dtype,
-            "lhs": "A0", "weight": "W", "out": "Y0",
+            "op": "matmul",
+            "operand_dtype": dtype,
+            "lhs": "A0",
+            "weight": "W",
+            "out": "Y0",
             "epilogue": [stage],
             "source_role": SOURCE_ROLE,
             "source_reference": (
                 f"synthesized for the epilogue axis: this target can fuse a {stage!r} stage onto a "
                 f"contraction (evidenced by {_st.get('evidenced_by')}), and a (family, dtype, "
                 f"alignment) cell cannot demand a particular stage -- so without this the capability is "
-                f"reported covered by whichever single stage the cell axis happened to pick"),
+                f"reported covered by whichever single stage the cell axis happened to pick"
+            ),
             "label": "public",
             "generalization": {"generalization_axis": "epilogue"},
             **extents_for("aligned", probes, quantum=_quanta.get(dtype)),
@@ -1105,7 +1198,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     # would be making a claim the evidence does not support. What such a member does test is the
     # window and its stepping, which is real coverage and is stated as exactly that much.
     conv_dtype = regime_dtype or (kept[0] if kept else narrowest_admitted(admitted_dtypes))
-    for _cw in ((spec_doc.get("conv_geometry") or {}).get("required") or ()):
+    for _cw in (spec_doc.get("conv_geometry") or {}).get("required") or ():
         sig = str(_cw.get("signature") or "")
         if not sig:
             continue
@@ -1120,17 +1213,23 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             # one and lacks the member is uncovered.
             unexpressable.append(
                 f"conv-window axis: this target's op pool materializes no rank-{len(kern)} "
-                f"convolution, so window {sig} has no member here")
+                f"convolution, so window {sig} has no member here"
+            )
             continue
         pad_known = bool(_cw.get("pad_known"))
         pb = [int(v) for v in (_cw.get("pad_before") or ())] if pad_known else [0] * len(kern)
         pa = [int(v) for v in (_cw.get("pad_after") or ())] if pad_known else [0] * len(kern)
         entry = {
-            "cat": "layers", "kind": "layer",
+            "cat": "layers",
+            "kind": "layer",
             "name": f"{SYNTH_PREFIX}_conv_{sig.replace('/', '_').replace('-', '_')}",
-            "op": _op, "operand_dtype": conv_dtype,
-            "lhs": "A0", "weight": "W", "out": "Y0",
-            "kh": kern[0], "kw": kern[-1],
+            "op": _op,
+            "operand_dtype": conv_dtype,
+            "lhs": "A0",
+            "weight": "W",
+            "out": "Y0",
+            "kh": kern[0],
+            "kw": kern[-1],
             "stride": [int(v) for v in (_cw.get("stride") or ())] or [1] * len(kern),
             "dilation": [int(v) for v in (_cw.get("dilation") or ())] or [1] * len(kern),
             "padding": list(pb) + list(pa),
@@ -1141,20 +1240,32 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             # the window for a fixed small output -- the inverse of `conv_out_dims` -- which keeps
             # every window's member the same size in the thing certification is actually priced on
             # (written output) regardless of how large the window is.
-            **dict(zip(("Himg", "Wimg"), _image_for_window(
-                kern, [int(v) for v in (_cw.get("stride") or ())] or [1] * len(kern),
-                [int(v) for v in (_cw.get("dilation") or ())] or [1] * len(kern),
-                pb, pa))),
+            **dict(
+                zip(
+                    ("Himg", "Wimg"),
+                    _image_for_window(
+                        kern,
+                        [int(v) for v in (_cw.get("stride") or ())] or [1] * len(kern),
+                        [int(v) for v in (_cw.get("dilation") or ())] or [1] * len(kern),
+                        pb,
+                        pa,
+                    ),
+                )
+            ),
             "source_role": SOURCE_ROLE,
             "source_reference": (
                 f"synthesized for the convolution-window axis: window {sig}, recovered structurally "
                 f"from {_cw.get('n_regions')} region(s) of {_cw.get('sources')}. torch-mlir emits "
                 f"im2col, so a captured convolution carries no padding/stride/dilation attribute at "
                 f"all and the geometry comes from the gather's affine map and its padding producer"
-                + ("" if pad_known else
-                   ". THE PADDING WAS NOT READABLE in the capture -- it is applied by an index gather, "
-                   "i.e. a reflection pad -- so this member tests the WINDOW and its stepping at zero "
-                   "padding and asserts nothing about a padding identity that is not zero")),
+                + (
+                    ""
+                    if pad_known
+                    else ". THE PADDING WAS NOT READABLE in the capture -- it is applied by an index gather, "
+                    "i.e. a reflection pad -- so this member tests the WINDOW and its stepping at zero "
+                    "padding and asserts nothing about a padding identity that is not zero"
+                )
+            ),
             "label": "public",
             # THE OBLIGATION THIS MEMBER DISCHARGES, named. A `padUNKNOWN` window cannot be matched by
             # re-deriving a signature from the member's attributes: the member declares zero padding
@@ -1190,10 +1301,13 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     # not exist on a target whose cells are float -- an L2-only capsule pointing at nothing, which is
     # precisely the orphan the `extends` field exists to prevent.
     geom_dtype = regime_dtype or (kept[0] if kept else narrowest_admitted(admitted_dtypes))
-    geom_op = op_for_family("contraction", admitted_ops=ops_gradeable_at(geom_dtype, pool),
-                            dtype=geom_dtype) if geom_dtype else None
+    geom_op = (
+        op_for_family("contraction", admitted_ops=ops_gradeable_at(geom_dtype, pool), dtype=geom_dtype)
+        if geom_dtype
+        else None
+    )
     _emitted = {str(e.get("name")) for e in entries}
-    for _req in (geom_block.get("required") or ()):
+    for _req in geom_block.get("required") or ():
         klass = str(_req.get("class") or "")
         # A SKIP THAT SAYS NOTHING READS AS COVERAGE. Both of these are refusals to emit, and both
         # used to be a bare `continue` -- so the class left the requirement without leaving a trace,
@@ -1205,7 +1319,8 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         if not klass:
             unsized_geometry.append(
                 "<unnamed> (a requirement row carries no class, so there is no aspect ratio to "
-                "synthesize and no name to report it under)")
+                "synthesize and no name to report it under)"
+            )
             continue
         if klass == "unknown":
             # Deliberately not emitted, and that is a judgement rather than a wall: `unknown` is the
@@ -1215,7 +1330,8 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"{klass} (the taxonomy's residual label, not an aspect ratio: {_req.get('n_regions')} "
                 f"region(s) carrying {_req.get('mac_fraction')} of all contraction MAC work match no "
                 f"named class, so they share no geometry one capsule could represent -- a member named "
-                f"after the fall-through would claim a coverage the classifier never asserted)")
+                f"after the fall-through would claim a coverage the classifier never asserted)"
+            )
             continue
         if not geom_op or not geom_dtype:
             unsized_geometry.append(f"{klass} (no contraction op gradeable at any admitted dtype)")
@@ -1223,7 +1339,8 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         m, k, n = _req.get("M"), _req.get("K"), _req.get("N")
         if not (isinstance(m, int) and isinstance(k, int) and isinstance(n, int)):
             unsized_geometry.append(
-                f"{klass} ({_req.get('unreachable') or 'the requirement carries no resolved M/K/N'})")
+                f"{klass} ({_req.get('unreachable') or 'the requirement carries no resolved M/K/N'})"
+            )
             continue
         _sib = f"{SYNTH_PREFIX}_contraction_{geom_dtype}_aligned"
         if _sib not in _emitted:
@@ -1231,29 +1348,37 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             # functional guarantee that does not exist. Reported, never emitted.
             unsized_geometry.append(
                 f"{klass} (no certified sibling {_sib!r} was emitted for this dtype, so a loop-tier "
-                f"capsule of this geometry would rest on nothing)")
+                f"capsule of this geometry would rest on nothing)"
+            )
             continue
         # The dtype's own datapath granularity applies to a REAL shape exactly as it does to a
         # tile-relative one: a block-scaled format cannot execute a K that is not a whole group.
         q = _quanta.get(geom_dtype) or {}
         row_q, red_q = int(q.get("row") or 1), int(q.get("reduction") or 1)
-        up = lambda v, g: -(-int(v) // int(g)) * int(g)      # noqa: E731 -- local rounding helper
+        up = lambda v, g: -(-int(v) // int(g)) * int(g)  # noqa: E731 -- local rounding helper
         m, n, k = up(m, row_q), up(n, row_q), up(k, red_q)
         entry = {
-            "cat": "isa", "kind": "isa",
+            "cat": "isa",
+            "kind": "isa",
             "name": f"{SYNTH_PREFIX}_geometry_{klass}".replace("-", "_"),
-            "op": geom_op, "operand_dtype": geom_dtype,
-            "out": "Y0", "lhs": "A0", "weight": "W",
+            "op": geom_op,
+            "operand_dtype": geom_dtype,
+            "out": "Y0",
+            "lhs": "A0",
+            "weight": "W",
             "source_role": SOURCE_ROLE,
             "source_reference": (
                 f"synthesized for geometry class {klass!r}: real captures present "
                 f"{_req.get('n_regions')} contraction region(s) of this aspect ratio carrying "
                 f"{_req.get('mac_fraction')} of all contraction MAC work, and the heaviest of them is "
                 f"M={m} K={k} N={n}. Every other synthesized capsule is square, so without this the "
-                f"corpus cannot tell a compiler that tiles this ratio well from one that does not"),
+                f"corpus cannot tell a compiler that tiles this ratio well from one that does not"
+            ),
             "label": "public",
             "generalization": {"generalization_axis": "shape_geometry"},
-            "M": m, "K": k, "N": n,
+            "M": m,
+            "K": k,
+            "N": n,
         }
         _why = cap_to_affordable(entry, spec_doc, extends=_sib)
         if _why:
@@ -1279,11 +1404,11 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     # inside the budget -- and the residency points ride on it as L2-only perf extensions. That ordering
     # is load-bearing: emit the certified capsule first, and admit a deeper one only when it exists, so
     # a large capsule can never enter the corpus resting on nothing.
-    _depth = ((spec_doc.get("memory_mapping") or {}).get("reduction_depth") or {})
-    _depth_dtype = ((spec_doc.get("memory_mapping") or {}).get("regime_dtype")
-                    or (sorted(admitted_dtypes)[0] if admitted_dtypes else ""))
-    _depth_op = (op_for_family("contraction", admitted_ops=pool, dtype=_depth_dtype)
-                 if _depth_dtype else None)
+    _depth = (spec_doc.get("memory_mapping") or {}).get("reduction_depth") or {}
+    _depth_dtype = (spec_doc.get("memory_mapping") or {}).get("regime_dtype") or (
+        sorted(admitted_dtypes)[0] if admitted_dtypes else ""
+    )
+    _depth_op = op_for_family("contraction", admitted_ops=pool, dtype=_depth_dtype) if _depth_dtype else None
     _certified_depth_name = ""
     #: Depths this target could not size, kept OUT of `cells_no_writer_can_express`. That list means
     #: "a required cell has no writer" -- a capability gap in the corpus. A target with no measured
@@ -1297,11 +1422,19 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         # portable in spelling, which is the property `derived_sweep` promises. Only the application
         # axis bakes integers, because only there is the shape a model's rather than the target's.
         e = {
-            "cat": "layers", "kind": "layer", "name": name,
-            "op": _depth_op, "operand_dtype": _depth_dtype,
-            "lhs": "A0", "weight": "W", "out": "Y0",
-            "M": "tile", "K": f"{int(point['K_tiles'])}*tile", "N": "tile",
-            "source_role": SOURCE_ROLE, "source_reference": why,
+            "cat": "layers",
+            "kind": "layer",
+            "name": name,
+            "op": _depth_op,
+            "operand_dtype": _depth_dtype,
+            "lhs": "A0",
+            "weight": "W",
+            "out": "Y0",
+            "M": "tile",
+            "K": f"{int(point['K_tiles'])}*tile",
+            "N": "tile",
+            "source_role": SOURCE_ROLE,
+            "source_reference": why,
             "label": "public",
             "generalization": {"generalization_axis": "accumulation_depth"},
         }
@@ -1320,19 +1453,27 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
         # certifies -- which, since a reduction writes one output tile, is the normal case -- the
         # anchor is a strictly shallower duplicate of a capsule already in the corpus, and shipping it
         # would be one more certification buying nothing.
-        _regime_depths = [pt for blk in (_depth.get("by_regime") or {}).values()
-                          for pt in (blk.get("points") or ()) if pt.get("K")]
+        _regime_depths = [
+            pt for blk in (_depth.get("by_regime") or {}).values() for pt in (blk.get("points") or ()) if pt.get("K")
+        ]
         _cert_pt = _depth.get("certified") if not _regime_depths else None
         if _cert_pt:
             _certified_depth_name = f"{SYNTH_PREFIX}_kdepth_certified"
-            entries.append(_depth_entry(
-                _certified_depth_name, _cert_pt, tier="L3",
-                why=(f"synthesized for the accumulation-depth axis: {_cert_pt['K_tiles']} accumulation "
-                     f"passes, the shallowest reduction that writes the accumulator more than once. "
-                     f"Emitted only because this target's residency regimes yield no depth of their "
-                     f"own; where they do, they produce deeper capsules and this would duplicate one. "
-                     f"Costs {_cert_pt['predicted_seconds']}s against a {_cert_pt['budget_s']}s "
-                     f"budget -- priced on the OUTPUT tile, which the reduction depth does not move")))
+            entries.append(
+                _depth_entry(
+                    _certified_depth_name,
+                    _cert_pt,
+                    tier="L3",
+                    why=(
+                        f"synthesized for the accumulation-depth axis: {_cert_pt['K_tiles']} accumulation "
+                        f"passes, the shallowest reduction that writes the accumulator more than once. "
+                        f"Emitted only because this target's residency regimes yield no depth of their "
+                        f"own; where they do, they produce deeper capsules and this would duplicate one. "
+                        f"Costs {_cert_pt['predicted_seconds']}s against a {_cert_pt['budget_s']}s "
+                        f"budget -- priced on the OUTPUT tile, which the reduction depth does not move"
+                    ),
+                )
+            )
         elif _depth.get("certified_refusal"):
             unsized_depth.append(str(_depth["certified_refusal"]))
 
@@ -1349,15 +1490,19 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             # accumulation depth at minimum simulation cost -- and capping it would have thrown away
             # the cycle-accurate guarantee on the very behaviour hardest to get right.
             _e = _depth_entry(
-                f"{SYNTH_PREFIX}_kdepth_{_regime}", _deep, tier="L3",
-                why=(f"synthesized for the accumulation-depth axis: the deepest reduction the "
-                     f"{_regime!r} residency regime admits ({_deep['K_tiles']} accumulation passes, "
-                     f"{_deep.get('fraction_of_capacity')} of the operand store). The reduction moves "
-                     f"the operands and not the result, so this certifies at one output tile"))
+                f"{SYNTH_PREFIX}_kdepth_{_regime}",
+                _deep,
+                tier="L3",
+                why=(
+                    f"synthesized for the accumulation-depth axis: the deepest reduction the "
+                    f"{_regime!r} residency regime admits ({_deep['K_tiles']} accumulation passes, "
+                    f"{_deep.get('fraction_of_capacity')} of the operand store). The reduction moves "
+                    f"the operands and not the result, so this certifies at one output tile"
+                ),
+            )
             _why = cap_to_affordable(
-                _e, spec_doc,
-                extends=(_certified_depth_name
-                         or f"{SYNTH_PREFIX}_contraction_{_depth_dtype}_aligned"))
+                _e, spec_doc, extends=(_certified_depth_name or f"{SYNTH_PREFIX}_contraction_{_depth_dtype}_aligned")
+            )
             if _why:
                 _e["source_reference"] += f". {_why}"
                 _e["pass_requirements"] = pass_requirements_for(_e, spec_doc)
@@ -1381,7 +1526,7 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     #: list flat would then still emit its L2 partner, resting on nothing. That is precisely the
     #: failure the `extends` relation exists to prevent, arriving through the back door.
     _certified_classes: set = set()
-    for _cap in (_app.get("required") or ()):
+    for _cap in _app.get("required") or ():
         _cls = str(_cap.get("class") or "")
         _tier = str(_cap.get("tier") or "L3")
         _dtype = _cls.split("/")[1] if "/" in _cls else ""
@@ -1395,15 +1540,22 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             unwritable.append(
                 f"application class {_cls}: its L2 capsule extends a cycle-accurate sibling that was "
                 f"not emitted, so it would rest on nothing; dropped rather than shipped as a large "
-                f"capsule nothing certifies")
+                f"capsule nothing certifies"
+            )
             continue
         _slug = _cls.replace("/", "_").replace("-", "_")
         entry = {
-            "cat": "layers", "kind": "layer",
+            "cat": "layers",
+            "kind": "layer",
             "name": f"{SYNTH_PREFIX}_app_{_slug}_{_tier.lower()}",
-            "op": _op, "operand_dtype": _dtype,
-            "lhs": "A0", "weight": "W", "out": "Y0",
-            "M": int(_cap["M"]), "K": int(_cap["K"]), "N": int(_cap["N"]),
+            "op": _op,
+            "operand_dtype": _dtype,
+            "lhs": "A0",
+            "weight": "W",
+            "out": "Y0",
+            "M": int(_cap["M"]),
+            "K": int(_cap["K"]),
+            "N": int(_cap["N"]),
             # NOT `derived_sweep`: a sweep's shapes track the target's geometry, and this one tracks a
             # model's. Conflating them would tell a reader the extents move with the tile edge.
             "source_role": "model_derived",
@@ -1411,10 +1563,18 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"synthesized for the application axis: behavioural class {_cls}, representing "
                 f"{_cap['basis'].get('representative_of')} region(s) of "
                 f"{_cap['basis'].get('source')}. Sized by {_cap['basis'].get('sized_by')}"
-                + (f" against a {_app.get('cert_budget_s')}s certification budget"
-                   if _cap["basis"].get("sized_by") == "measured_cost_model" else "")
-                + (f"; extends {_cap['extends']}, which carries the cycle-accurate guarantee this "
-                   f"larger shape rests on" if _cap.get("extends") else "")),
+                + (
+                    f" against a {_app.get('cert_budget_s')}s certification budget"
+                    if _cap["basis"].get("sized_by") == "measured_cost_model"
+                    else ""
+                )
+                + (
+                    f"; extends {_cap['extends']}, which carries the cycle-accurate guarantee this "
+                    f"larger shape rests on"
+                    if _cap.get("extends")
+                    else ""
+                )
+            ),
             "label": "public",
             "generalization": {"generalization_axis": "application"},
         }
@@ -1453,12 +1613,13 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
     # synthesizes NO roster capsule and says so -- compiling a roster model in a format the hardware
     # lacks is not a weaker result, it is a different one.
     roster = [str(m) for m in (ws.get("models") or ())]
-    contraction_dtypes = {str(c.get("dtype")) for c in cells
-                          if c.get("dtype") and str(c.get("family")) == "contraction"}
+    contraction_dtypes = {
+        str(c.get("dtype")) for c in cells if c.get("dtype") and str(c.get("family")) == "contraction"
+    }
     if roster and contraction_dtypes:
         from merlin.targetgen.precision_policy import best_format
-        policy = best_format(target, preference=(ws.get("precision_preference") or None),
-                             admitted=contraction_dtypes)
+
+        policy = best_format(target, preference=(ws.get("precision_preference") or None), admitted=contraction_dtypes)
         chosen = policy.get("chosen") or {}
         if chosen.get("capsule_dtype"):
             # THE SCHEME, NOT THE DTYPE. A capture asked for "int8" quantizes WEIGHTS ONLY and emits a
@@ -1467,12 +1628,16 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             # derived from the format rather than declared; a format whose activation-quantizing scheme
             # is unknown raises there rather than silently capturing float arithmetic here.
             from merlin.targetgen.capsule_source import activation_quantizing_scheme
+
             scheme = activation_quantizing_scheme(chosen["capsule_dtype"])
             for model in roster:
                 entry = {
-                    "cat": "model", "kind": "model", "op": "model",
+                    "cat": "model",
+                    "kind": "model",
+                    "op": "model",
                     "name": f"{SYNTH_PREFIX}_model_{model}",
-                    "model": model, "out": "Y0",
+                    "model": model,
+                    "out": "Y0",
                     "operand_dtype": chosen["capsule_dtype"],
                     **({"quant_scheme": scheme} if scheme else {}),
                     "source_role": SOURCE_ROLE,
@@ -1480,10 +1645,14 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                         f"synthesized for the roster axis: whole model {model!r} at {chosen['format']}, "
                         f"the highest-ranked precision this target's manifest admits for a contraction "
                         f"out of the declared preference {policy.get('preference')}"
-                        + (f", captured with {scheme} so the program contains the target's own "
-                           f"arithmetic rather than a float matmul over dequantized weights"
-                           if scheme else "")
-                        + f". Accuracy in that format is {policy['certified']['status']}"),
+                        + (
+                            f", captured with {scheme} so the program contains the target's own "
+                            f"arithmetic rather than a float matmul over dequantized weights"
+                            if scheme
+                            else ""
+                        )
+                        + f". Accuracy in that format is {policy['certified']['status']}"
+                    ),
                     "label": "public",
                     # Same deferral every whole-model capstone carries: a roster model is worth running
                     # only once the op suite it is made of passes, or the failure says nothing.
@@ -1502,20 +1671,23 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 f"roster axis: {policy.get('status')} -- the declared preference "
                 f"{policy.get('preference')} names no format this target admits for a contraction "
                 f"(admitted: {policy.get('admitted')}), so no roster model can be compiled at a format "
-                f"the hardware has")
+                f"the hardware has"
+            )
 
     if unexpressable:
         raise SynthesisError(
             "no materializable op expresses these required cells, so synthesizing would silently leave "
             "them uncovered: " + "; ".join(unexpressable) + ". Add a builder or a PyTorch body for the "
-            "family, or establish that the requirement is wrong -- do not drop the cell")
+            "family, or establish that the requirement is wrong -- do not drop the cell"
+        )
 
     cap = int(budget if budget is not None else (ws.get("max_synthesized_capsules") or 160))
     if len(entries) > cap:
         raise SynthesisError(
             f"synthesis would emit {len(entries)} capsules against a budget of {cap}. Raise "
             f"workload_spec.max_synthesized_capsules deliberately, or narrow the roster -- never "
-            f"truncate, because a silently dropped point reads downstream as a covered one")
+            f"truncate, because a silently dropped point reads downstream as a covered one"
+        )
 
     return {
         "capsules": entries,
@@ -1536,18 +1708,21 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
             "cells_no_writer_note": (
                 "a required cell whose op has no direct-MLIR builder and whose dtype the PyTorch writer "
                 "cannot express. Reported as an uncovered cell to argue about rather than emitted as an "
-                "entry nothing can write; adding a builder for that op closes it"),
+                "entry nothing can write; adding a builder for that op closes it"
+            ),
             "composition_shapes_required": sorted(composition),
             "composition_note": (
                 "one micro-model capsule is synthesized for this axis, and its composition is whatever "
                 "the derived inventory produces. A shape listed here that the micro model does not "
                 "reach is not covered by synthesis -- emitting a capsule per shape would mean inventing "
-                "inventories no capture supports"),
+                "inventories no capture supports"
+            ),
             "host_only_unsynthesizable": unsized_host,
             "host_only_note": (
                 "a host-only family with no materializable op or no dtype observed in any capture. "
                 "Reported rather than dropped: a negative lane nobody demanded reads downstream exactly "
-                "like one nothing violates"),
+                "like one nothing violates"
+            ),
             # Geometry classes real captures present that no entry could be emitted for. A separate
             # list because it licenses a separate action: not a builder and not a certification run,
             # but a shape the writer refused -- and a class silently absent here reads downstream as a
@@ -1557,7 +1732,8 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 "a geometric class (aspect ratio) real models present that the corpus could not emit a "
                 "capsule for. The classes that WERE emitted carry the real M/K/N of the heaviest region "
                 "in the class, and their tier follows that size: one too large to certify inside the "
-                "budget is graded at the loop tier and names the certified sibling it rests on"),
+                "budget is graded at the loop tier and names the certified sibling it rests on"
+            ),
             # A missing model-owned quantization representation must survive corpus synthesis. Without
             # this field, regeneration would honestly emit no MX application capsule but erase why,
             # leaving the absence indistinguishable from an axis nobody asked for.
@@ -1569,18 +1745,21 @@ def synthesize(spec_doc: dict, *, workload_spec: dict | None = None,
                 "no writer needs a builder, while an unsized depth needs a CERTIFICATION RUN -- the "
                 "writer is there and the measured history to size it against is not. Reporting them "
                 "together would make 'we never timed this target' read as 'the corpus cannot express "
-                "this'"),
+                "this'"
+            ),
             "memory_regimes_status": "resolved" if regimes_resolved else "not_resolved",
             "memory_regimes_unreachable": unreachable_regimes,
             "memory_regime_note": (
                 "the spec carries no `regime_extents`; it predates the axis and must be regenerated "
                 "before a regime can be synthesized or declared unreachable"
-                if not regimes_resolved else 
-                "a regime with no capsule shape that reaches it on this target. `fits_on_reuse` is "
+                if not regimes_resolved
+                else "a regime with no capsule shape that reaches it on this target. `fits_on_reuse` is "
                 "always here: a capsule's declared inputs are all live at once, so peak-live and total "
-                "coincide and the regime that separates them cannot arise from inputs alone"),
+                "coincide and the regime that separates them cannot arise from inputs alone"
+            ),
             "precision_note": (
                 "a preference RANKS the dtypes the target already admits and can never widen them; a "
-                "dropped token is reported rather than silently ignored"),
+                "dropped token is reported rather than silently ignored"
+            ),
         },
     }

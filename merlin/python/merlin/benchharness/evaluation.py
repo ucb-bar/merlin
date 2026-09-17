@@ -42,8 +42,14 @@ STATUSES = ("pass", "fail", "error", "unsupported", "declined")
 #: Utilization counters carried from a tier, when the target's perf hook supplies them. Named
 #: explicitly rather than copied wholesale so an unrelated tier key cannot leak into agent feedback.
 _UTIL_FIELDS = (
-    "warp_occupancy", "fp_util", "int_util", "sfu_util",
-    "smem_lane_util", "dma_util", "tensor_util", "smem_conflict_rate",
+    "warp_occupancy",
+    "fp_util",
+    "int_util",
+    "sfu_util",
+    "smem_lane_util",
+    "dma_util",
+    "tensor_util",
+    "smem_conflict_rate",
 )
 
 #: Correctness verdicts. ``not_certified`` means the kernel ran but nothing compared its output --
@@ -54,6 +60,7 @@ VERDICTS = ("match", "mismatch", "not_certified", "structurally_unwinnable", "un
 @dataclass
 class Caveat:
     """A machine-readable limit on how far a result may be quoted."""
+
     code: str
     detail: str = ""
 
@@ -190,8 +197,11 @@ def from_capsule_result(
     failure = result.get("failure") or {}
 
     ev = EvaluationResult(
-        task_id=task_id, config_id=config_id, target=target,
-        method=method, arm=arm,
+        task_id=task_id,
+        config_id=config_id,
+        target=target,
+        method=method,
+        arm=arm,
         artifact_provenance=artifact_provenance,
         tiers=tiers,
         toolchain_shas=dict(result.get("toolchain_shas") or {}),
@@ -264,12 +274,16 @@ def from_capsule_result(
     # A cycle-accurate tier that passed while reporting NO cycles leaves the latency coming from a
     # functional model. That is legitimate -- it is an execution cert, not a timing one -- but it must
     # never be read as a measured latency, so it is named here rather than left to the tier table.
-    rtl_timed = [t for t in passed
-                 if isinstance(tiers[t], dict) and tiers[t].get("cycle_accurate")
-                 and tiers[t].get("cycles") is not None]
-    rtl_untimed = [t for t in passed
-                   if isinstance(tiers[t], dict) and tiers[t].get("cycle_accurate")
-                   and tiers[t].get("cycles") is None]
+    rtl_timed = [
+        t
+        for t in passed
+        if isinstance(tiers[t], dict) and tiers[t].get("cycle_accurate") and tiers[t].get("cycles") is not None
+    ]
+    rtl_untimed = [
+        t
+        for t in passed
+        if isinstance(tiers[t], dict) and tiers[t].get("cycle_accurate") and tiers[t].get("cycles") is None
+    ]
     if rtl_untimed and not rtl_timed and ev.cycles is not None and not ev.cycles_cycle_accurate:
         ev.add_caveat(
             "latency_is_a_model_estimate",

@@ -8,6 +8,7 @@ Most motifs map 1:1 from a marker-derived feature. ``accumulator_commit`` is a *
 decision (accumulator live across an epilogue on a contraction op) — deliberately narrower
 than the raw ``epilogue_before_commit`` marker, which also fires on elementwise clamp ops.
 """
+
 from __future__ import annotations
 
 _CONTRACTION_OPS = {"gemm", "matmul", "conv", "dwconv", "igemm", "trmm", "gemv"}
@@ -22,9 +23,7 @@ _MOTIF_RULES = {
     ),
     # Reuse is now *measured*: a packed RHS that is actually reused >=2x is the resident-
     # tensor signal (distinct from merely "a pack happened").
-    "reused_packed_rhs": lambda f, op: bool(
-        f.get("packed_rhs") and f.get("rhs_reuse_count", 0) >= 2
-    ),
+    "reused_packed_rhs": lambda f, op: bool(f.get("packed_rhs") and f.get("rhs_reuse_count", 0) >= 2),
     "vector_length_polymorphic": lambda f, op: f.get("vector_length_strategy") == "scalable",
     "tiling_blocking": lambda f, op: bool(f.get("tiling")),
     "double_buffering": lambda f, op: bool(f.get("double_buffering")),
@@ -38,9 +37,7 @@ _MOTIF_RULES = {
     # These are the codegen choices expert RVV kernels make that our schedule must reproduce;
     # each promotes to a schedule-level policy_rule consumed by the tuning agent's lever map.
     "lmul_grouping": lambda f, op: f.get("rvv", {}).get("lmul_class") in {"m2", "m4", "m8"},
-    "scalar_broadcast_fma": lambda f, op: (
-        f.get("rvv", {}).get("fma_form") == "vf" and op in _CONTRACTION_OPS
-    ),
+    "scalar_broadcast_fma": lambda f, op: f.get("rvv", {}).get("fma_form") == "vf" and op in _CONTRACTION_OPS,
     "int8_widening_mac": lambda f, op: bool(f.get("rvv", {}).get("int_widening")),
     "vl_polymorphic_tail": lambda f, op: f.get("rvv", {}).get("vl_strategy") == "vsetvl_loop",
     "vector_reduction": lambda f, op: f.get("rvv", {}).get("reduction_form", "none") not in (None, "none"),

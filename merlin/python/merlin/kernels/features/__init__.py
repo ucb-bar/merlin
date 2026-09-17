@@ -8,18 +8,19 @@ XNNPACK-RVV, Autocomp-Gemmini, and Exo-compiled C.
 All feature values are *decisions* (bool / small enum / structural count), never tuned
 constants such as tile sizes or LMUL values.
 """
+
 from __future__ import annotations
 
 from merlin.kernels.markers import fired_markers
 from merlin.kernels.types import NormalizedKernel
 
+from .ast_struct import extract_ast_struct
 from .async_ops import extract_async_ops
 from .dispatch import extract_dispatch
 from .epilogue import extract_epilogue
 from .loops import extract_loops
 from .memory import extract_memory
 from .packing import extract_packing
-from .ast_struct import extract_ast_struct
 from .roles import extract_roles
 from .rvv_intrinsics import extract_rvv_intrinsics
 from .shape_regime import extract_shape_regime

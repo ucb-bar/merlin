@@ -10,13 +10,14 @@ names no target — any mxfp8 datapath shares it.
 Reference anchors (mx_fp_math.h): ``fp8_e4m3_to_code`` (lines 205-224), ``fp8_e4m3_decode`` (227-236),
 ``fpe8m0_decode`` (249-252), ``round_half_to_even`` (196-203).
 """
+
 from __future__ import annotations
 
 import math
 
 _E4M3_BIAS = 7
 _E4M3_EMIN = -6
-_E4M3_EMAX = 8      # OCP e4m3 carries one binade past the nominal bias (max normal 448)
+_E4M3_EMAX = 8  # OCP e4m3 carries one binade past the nominal bias (max normal 448)
 
 
 def _round_half_to_even(x: float) -> int:
@@ -57,17 +58,17 @@ def fp8_e4m3_encode(v: float) -> int:
     E = int(math.floor(math.log2(av)))
     if E < _E4M3_EMIN:
         # subnormal grid: decode(e=0, m) = (m/8) * 2^(1-bias) = m * 2^-9, m in 1..7
-        m = _round_half_to_even(av * (2.0 ** (_E4M3_BIAS + 3 - 1)))   # av / 2^-9
+        m = _round_half_to_even(av * (2.0 ** (_E4M3_BIAS + 3 - 1)))  # av / 2^-9
         if m <= 0:
             return 0
-        if m >= 8:   # rounded up to the smallest normal (2^-6): e=1, m=0
+        if m >= 8:  # rounded up to the smallest normal (2^-6): e=1, m=0
             return (s << 7) | (((1) & 0xF) << 3)
         return (s << 7) | (m & 0x7)
     if E > _E4M3_EMAX:
         e_used, mant = _E4M3_EMAX, 6
     else:
         e_used = E
-        base = 2.0 ** e_used
+        base = 2.0**e_used
         delta = base / 8.0
         k = _round_half_to_even((av - base) / delta)
         if k >= 8:
@@ -134,14 +135,16 @@ def _e8m0_encode(v: float, exp_bits: int) -> int:
     the same failure this module's own header describes for e4m3-encoded-as-e5m2.
     """
     if v < 0.0:
-        raise ValueError(f"E8M0 is unsigned and cannot represent {v!r}; a negative block scale is not "
-                         f"a representable value, and encoding |v| would silently drop the sign")
+        raise ValueError(
+            f"E8M0 is unsigned and cannot represent {v!r}; a negative block scale is not "
+            f"a representable value, and encoding |v| would silently drop the sign"
+        )
     bias = (1 << (exp_bits - 1)) - 1
-    top = (1 << exp_bits) - 2                  # all-ones is NaN, so the largest finite code is one less
+    top = (1 << exp_bits) - 2  # all-ones is NaN, so the largest finite code is one less
     if not math.isfinite(v):
-        return (1 << exp_bits) - 1             # NaN
+        return (1 << exp_bits) - 1  # NaN
     if v == 0.0:
-        return 0                               # no zero on this grid; saturate to the smallest scale
+        return 0  # no zero on this grid; saturate to the smallest scale
     code = _round_half_to_even(math.log2(v)) + bias
     return int(min(max(code, 0), top))
 
@@ -189,7 +192,7 @@ def _ocp_fpx_encode(v: float, exp_bits: int, mant_bits: int) -> int:
         e_used, mant = emax, mant_max
     else:
         e_used = E
-        base = 2.0 ** e_used
+        base = 2.0**e_used
         delta = base / (1 << mant_bits)
         k = _round_half_to_even((av - base) / delta)
         if k > mant_max:
@@ -218,9 +221,11 @@ def ocp_encode(v: float, exp_bits: int, mant_bits: int, *, signed: bool = True) 
     """
     if not signed:
         if mant_bits:
-            raise ValueError(f"no unsigned OCP grid with a mantissa is defined "
-                             f"(exp_bits={exp_bits}, mant_bits={mant_bits}); the only unsigned OCP "
-                             f"format is the mantissa-less block scale")
+            raise ValueError(
+                f"no unsigned OCP grid with a mantissa is defined "
+                f"(exp_bits={exp_bits}, mant_bits={mant_bits}); the only unsigned OCP "
+                f"format is the mantissa-less block scale"
+            )
         return _e8m0_encode(v, exp_bits)
     return _ocp_fpx_encode(v, exp_bits, mant_bits)
 
@@ -229,8 +234,9 @@ def ocp_decode(code: int, exp_bits: int, mant_bits: int, *, signed: bool = True)
     """Decode an OCP fp code of ANY width — the inverse of :func:`ocp_encode`."""
     if not signed:
         if mant_bits:
-            raise ValueError(f"no unsigned OCP grid with a mantissa is defined "
-                             f"(exp_bits={exp_bits}, mant_bits={mant_bits})")
+            raise ValueError(
+                f"no unsigned OCP grid with a mantissa is defined (exp_bits={exp_bits}, mant_bits={mant_bits})"
+            )
         return _e8m0_decode(code, exp_bits)
     return _ocp_fpx_decode(code, exp_bits, mant_bits)
 

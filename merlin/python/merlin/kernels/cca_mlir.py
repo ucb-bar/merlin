@@ -6,6 +6,7 @@ MLIR artifact; ``from_mlir`` parses it back. Round-trippable for every scalar fa
 consume. Lives on the analysis side (``kernels``) so the dialect (``xdsl_dialects.cca``) never depends on
 ``kernels``. No LLM in this path — pure, deterministic (de)serialization.
 """
+
 from __future__ import annotations
 
 from .cca import CCA, ComputeFacet, MemoryFacet, VectorFacet
@@ -26,10 +27,14 @@ def _s(v) -> str | None:
 def _compute_props(c: ComputeFacet) -> dict[str, str]:
     mr = c.register_block[0] if isinstance(c.register_block, (tuple, list)) and c.register_block else None
     fields = {
-        "contraction_form": c.contraction_form, "accumulator_dtype": c.accumulator_dtype,
-        "widening": c.widening, "reduction_form": c.reduction_form,
-        "register_block_mr": mr, "epilogue": c.epilogue,
-        "accumulator_resident": c.accumulator_resident, "nr_is_vsetvlmax": c.nr_is_vsetvlmax,
+        "contraction_form": c.contraction_form,
+        "accumulator_dtype": c.accumulator_dtype,
+        "widening": c.widening,
+        "reduction_form": c.reduction_form,
+        "register_block_mr": mr,
+        "epilogue": c.epilogue,
+        "accumulator_resident": c.accumulator_resident,
+        "nr_is_vsetvlmax": c.nr_is_vsetvlmax,
         "activation_vectorization": c.activation_vectorization,
     }
     return {k: _s(v) for k, v in fields.items() if _s(v) is not None}
@@ -41,8 +46,7 @@ def _vector_props(v: VectorFacet) -> dict[str, str]:
 
 
 def _memory_props(m) -> dict[str, str]:
-    fields = {"access_pattern": m.access_pattern, "panel_reuse": m.panel_reuse,
-              "a_broadcast_vf": m.a_broadcast_vf}
+    fields = {"access_pattern": m.access_pattern, "panel_reuse": m.panel_reuse, "a_broadcast_vf": m.a_broadcast_vf}
     return {k: _s(val) for k, val in fields.items() if _s(val) is not None}
 
 
@@ -62,10 +66,13 @@ def to_mlir(cca: CCA) -> str:
         inner.append(D.VectorOp(properties=_props(_vector_props(cca.vector))))
     if cca.memory is not None:
         inner.append(D.MemoryOp(properties=_props(_memory_props(cca.memory))))
-    kprops = {"op": cca.op, "backend": ",".join(cca.backend), "source": cca.provenance.get("source"),
-              "level": cca.provenance.get("level")}
-    kernel = D.KernelOp(properties=_props({k: v for k, v in kprops.items() if v}),
-                        regions=[Region([Block(inner)])])
+    kprops = {
+        "op": cca.op,
+        "backend": ",".join(cca.backend),
+        "source": cca.provenance.get("source"),
+        "level": cca.provenance.get("level"),
+    }
+    kernel = D.KernelOp(properties=_props({k: v for k, v in kprops.items() if v}), regions=[Region([Block(inner)])])
     return text(ModuleOp([kernel]))
 
 
@@ -105,27 +112,36 @@ def from_mlir(mlir_text: str) -> CCA:
             epilogue=_get(compute_op, "epilogue"),
             accumulator_resident=_b(_get(compute_op, "accumulator_resident")),
             nr_is_vsetvlmax=_b(_get(compute_op, "nr_is_vsetvlmax")),
-            activation_vectorization=_get(compute_op, "activation_vectorization"))
+            activation_vectorization=_get(compute_op, "activation_vectorization"),
+        )
 
     vector = None
     if vector_op is not None:
         sew = _get(vector_op, "sew")
         lmul = _get(vector_op, "lmul")
-        vector = VectorFacet(sew=int(sew) if sew is not None else None,
-                             lmul=float(lmul) if lmul is not None else None,
-                             vl_strategy=_get(vector_op, "vl_strategy"),
-                             tail=_get(vector_op, "tail"))
+        vector = VectorFacet(
+            sew=int(sew) if sew is not None else None,
+            lmul=float(lmul) if lmul is not None else None,
+            vl_strategy=_get(vector_op, "vl_strategy"),
+            tail=_get(vector_op, "tail"),
+        )
 
     memory = None
     if memory_op is not None:
-        memory = MemoryFacet(access_pattern=_get(memory_op, "access_pattern"),
-                             panel_reuse=_b(_get(memory_op, "panel_reuse")),
-                             a_broadcast_vf=_b(_get(memory_op, "a_broadcast_vf")))
+        memory = MemoryFacet(
+            access_pattern=_get(memory_op, "access_pattern"),
+            panel_reuse=_b(_get(memory_op, "panel_reuse")),
+            a_broadcast_vf=_b(_get(memory_op, "a_broadcast_vf")),
+        )
 
     backend = _get(kernel, "backend")
-    return CCA(op=_get(kernel, "op") or (compute.op or "unknown"),
-               backend=backend.split(",") if backend else [],
-               compute=compute, vector=vector, memory=memory,
-               provenance={k: v for k, v in
-                           (("source", _get(kernel, "source")), ("level", _get(kernel, "level")))
-                           if v is not None})
+    return CCA(
+        op=_get(kernel, "op") or (compute.op or "unknown"),
+        backend=backend.split(",") if backend else [],
+        compute=compute,
+        vector=vector,
+        memory=memory,
+        provenance={
+            k: v for k, v in (("source", _get(kernel, "source")), ("level", _get(kernel, "level"))) if v is not None
+        },
+    )

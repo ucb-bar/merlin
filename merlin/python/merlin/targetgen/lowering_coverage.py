@@ -22,6 +22,7 @@ Three outcomes, and the third is the bug this exists to name:
 Target-agnostic: the extents come from the target's DERIVED tile edge and the dtypes from its own corpus
 binding. Nothing here knows which accelerator it is looking at.
 """
+
 from __future__ import annotations
 
 import tempfile
@@ -57,38 +58,38 @@ TAIL_CORNERS: dict[str, tuple[int, int, int]] = {
 class CoverageResult:
     corner: str
     shape: tuple[int, int, int]
-    outcome: str                  # lowered | declined | collapsed | empty | error
+    outcome: str  # lowered | declined | collapsed | empty | error
     detail: str | None = None
-    work: int = 0                 # size of the emitted target artifact (see `sweep`)
+    work: int = 0  # size of the emitted target artifact (see `sweep`)
 
     def to_dict(self) -> dict:
-        d = {"corner": self.corner, "shape": list(self.shape), "outcome": self.outcome,
-             "emitted_work": self.work}
+        d = {"corner": self.corner, "shape": list(self.shape), "outcome": self.outcome, "emitted_work": self.work}
         if self.detail:
             d["detail"] = self.detail
         return d
 
 
-def contraction_interface(m: int, k: int, n: int, *, target: str, operand_mlir: str,
-                          accum_mlir: str) -> str:
+def contraction_interface(m: int, k: int, n: int, *, target: str, operand_mlir: str, accum_mlir: str) -> str:
     """The single-contraction interface module, at the extents asked for.
 
     Byte-identical in structure to what the corpus generator emits for a contraction capsule, so a
     backend that lowers its own corpus lowers this too -- the ONLY difference is the extents, which is
     what makes the probe a clean shape experiment rather than a new op.
     """
-    return (f'module attributes {{merlin_iface.version = "0.1", merlin_iface.target = "{target}", '
-            f'merlin_iface.abi_version = "0.1"}} {{\n'
-            f'  %W = merlin_iface.tensor {{name = "W", role = "weight"}} : tensor<{k}x{n}x{operand_mlir}>\n'
-            f'  %A0 = merlin_iface.tensor {{name = "A0", role = "input"}} : tensor<{m}x{k}x{operand_mlir}>\n'
-            f'  %W_res = merlin_iface.resident_pack %W {{layout = "packed_rhs"}} : '
-            f'(tensor<{k}x{n}x{operand_mlir}>) -> !merlin_iface.resident\n'
-            f'  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<{m}x{k}x{operand_mlir}>, '
-            f'!merlin_iface.resident) -> !merlin_iface.acc<{accum_mlir}>\n'
-            f'  %Y0 = merlin_iface.commit %acc0 {{name = "Y0", epilogue = [], '
-            f'output_dtype = "{accum_mlir}"}} : (!merlin_iface.acc<{accum_mlir}>) -> '
-            f'tensor<{m}x{n}x{accum_mlir}>\n'
-            f'  merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()\n}}\n')
+    return (
+        f'module attributes {{merlin_iface.version = "0.1", merlin_iface.target = "{target}", '
+        f'merlin_iface.abi_version = "0.1"}} {{\n'
+        f'  %W = merlin_iface.tensor {{name = "W", role = "weight"}} : tensor<{k}x{n}x{operand_mlir}>\n'
+        f'  %A0 = merlin_iface.tensor {{name = "A0", role = "input"}} : tensor<{m}x{k}x{operand_mlir}>\n'
+        f'  %W_res = merlin_iface.resident_pack %W {{layout = "packed_rhs"}} : '
+        f"(tensor<{k}x{n}x{operand_mlir}>) -> !merlin_iface.resident\n"
+        f"  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<{m}x{k}x{operand_mlir}>, "
+        f"!merlin_iface.resident) -> !merlin_iface.acc<{accum_mlir}>\n"
+        f'  %Y0 = merlin_iface.commit %acc0 {{name = "Y0", epilogue = [], '
+        f'output_dtype = "{accum_mlir}"}} : (!merlin_iface.acc<{accum_mlir}>) -> '
+        f"tensor<{m}x{n}x{accum_mlir}>\n"
+        f"  merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()\n}}\n"
+    )
 
 
 def _binding(target: str):
@@ -99,15 +100,25 @@ def _binding(target: str):
     """
     from .corpora import experiment_for
     from .corpus_spec import derive_binding
+
     te = experiment_for(target)
     if te is None:
         raise ValueError(f"no experiment descriptor for target {target!r}: cannot derive its dtypes")
     return derive_binding(te, {})
 
 
-def probe_shape(package: str | Path, *, target: str, m: int, k: int, n: int,
-                operand_mlir: str, accum_mlir: str, contract: str | Path | None = None,
-                timeout: int = 300) -> tuple[str, str | None, int]:
+def probe_shape(
+    package: str | Path,
+    *,
+    target: str,
+    m: int,
+    k: int,
+    n: int,
+    operand_mlir: str,
+    accum_mlir: str,
+    contract: str | Path | None = None,
+    timeout: int = 300,
+) -> tuple[str, str | None, int]:
     """Run ONLY the emit half of the contract for one shape; classify what came back.
 
     No oracle, no golden, no simulator -- the four entrypoints and the artifact they produce. That is
@@ -121,15 +132,28 @@ def probe_shape(package: str | Path, *, target: str, m: int, k: int, n: int,
         cdir = Path(td) / "capsule"
         cdir.mkdir()
         (cdir / "capsule.interface.mlir").write_text(
-            contraction_interface(m, k, n, target=target, operand_mlir=operand_mlir,
-                                  accum_mlir=accum_mlir), encoding="utf-8")
-        capsule = {"name": f"lowcov_{m}x{k}x{n}", "__dir__": str(cdir),
-                   "interface_mlir": "capsule.interface.mlir"}
-        paths = make_run_paths(Path(td) / "runs", capsule["name"], suite=f"{target}-lowering-coverage",
-                               target=target, dtype=operand_mlir, benchmark="matmul")
+            contraction_interface(m, k, n, target=target, operand_mlir=operand_mlir, accum_mlir=accum_mlir),
+            encoding="utf-8",
+        )
+        capsule = {"name": f"lowcov_{m}x{k}x{n}", "__dir__": str(cdir), "interface_mlir": "capsule.interface.mlir"}
+        paths = make_run_paths(
+            Path(td) / "runs",
+            capsule["name"],
+            suite=f"{target}-lowering-coverage",
+            target=target,
+            dtype=operand_mlir,
+            benchmark="matmul",
+        )
         try:
-            _pkg, cb, _art = run_entrypoints(None, package, capsule, paths, contract=contract,
-                                             timeout=timeout, fourth_output_name="lowered.llvm.mlir")
+            _pkg, cb, _art = run_entrypoints(
+                None,
+                package,
+                capsule,
+                paths,
+                contract=contract,
+                timeout=timeout,
+                fourth_output_name="lowered.llvm.mlir",
+            )
         except BackendDeclined as bd:
             return "declined", bd.reason, 0
         except CertFailure as cf:
@@ -140,9 +164,15 @@ def probe_shape(package: str | Path, *, target: str, m: int, k: int, n: int,
         # a stated `declined`), so reaching it means a backend produced a terminator-only program some
         # other way -- still a silent refusal, and still named as one rather than scored as bad math.
         if not (cb.get("commands") or []):
-            return "empty", ("emitted a program with no commands and did not declare `declined` -- a "
-                             "silent refusal, which at the numeric tier is indistinguishable from "
-                             "arithmetic that ran and was wrong"), 0
+            return (
+                "empty",
+                (
+                    "emitted a program with no commands and did not declare `declined` -- a "
+                    "silent refusal, which at the numeric tier is indistinguishable from "
+                    "arithmetic that ran and was wrong"
+                ),
+                0,
+            )
         # THE COMMAND BUFFER IS NOT THE PROGRAM on every endpoint. A self-hosted-ISA backend emits its
         # kernel as the FOURTH artifact and can build a perfectly well-formed command buffer beside a
         # kernel that is a bare terminator -- measured: identical 4-command buffers for a shape it
@@ -151,10 +181,15 @@ def probe_shape(package: str | Path, *, target: str, m: int, k: int, n: int,
         return "lowered", None, len([ln for ln in (_art or "").splitlines() if ln.strip()])
 
 
-def sweep(package: str | Path, *, target: str, contract: str | Path | None = None,
-          corners: dict[str, tuple[int, int, int]] | None = None,
-          tail_corners: dict[str, tuple[int, int, int]] | None = None,
-          timeout: int = 300) -> dict:
+def sweep(
+    package: str | Path,
+    *,
+    target: str,
+    contract: str | Path | None = None,
+    corners: dict[str, tuple[int, int, int]] | None = None,
+    tail_corners: dict[str, tuple[int, int, int]] | None = None,
+    timeout: int = 300,
+) -> dict:
     """Probe every corner and summarise, PER AXIS.
 
     Per axis because a lowering that loops over K and N but not M covers two of three, and only naming
@@ -170,16 +205,32 @@ def sweep(package: str | Path, *, target: str, contract: str | Path | None = Non
     work: dict[str, int] = {}
     for name, (fm, fk, fn) in corners.items():
         m, k, n = tile * fm, tile * fk, tile * fn
-        outcome, detail, w = probe_shape(package, target=target, m=m, k=k, n=n,
-                                         operand_mlir=operand_mlir, accum_mlir=accum_mlir,
-                                         contract=contract, timeout=timeout)
+        outcome, detail, w = probe_shape(
+            package,
+            target=target,
+            m=m,
+            k=k,
+            n=n,
+            operand_mlir=operand_mlir,
+            accum_mlir=accum_mlir,
+            contract=contract,
+            timeout=timeout,
+        )
         work[name] = w
         results.append(CoverageResult(name, (m, k, n), outcome, detail, w))
     for name, (dm, dk, dn) in tail_corners.items():
         m, k, n = max(1, tile + dm), max(1, tile + dk), max(1, tile + dn)
-        outcome, detail, w = probe_shape(package, target=target, m=m, k=k, n=n,
-                                         operand_mlir=operand_mlir, accum_mlir=accum_mlir,
-                                         contract=contract, timeout=timeout)
+        outcome, detail, w = probe_shape(
+            package,
+            target=target,
+            m=m,
+            k=k,
+            n=n,
+            operand_mlir=operand_mlir,
+            accum_mlir=accum_mlir,
+            contract=contract,
+            timeout=timeout,
+        )
         work[name] = w
         results.append(CoverageResult(name, (m, k, n), outcome, detail, w))
 
@@ -198,20 +249,27 @@ def sweep(package: str | Path, *, target: str, contract: str | Path | None = Non
     base_work = work.get("tile", 0)
     for i, r in enumerate(results):
         is_larger = all(x >= tile for x in r.shape) and any(x > tile for x in r.shape)
-        if r.corner != "tile" and is_larger and r.outcome == "lowered" \
-                and base_work and r.work < base_work:
+        if r.corner != "tile" and is_larger and r.outcome == "lowered" and base_work and r.work < base_work:
             results[i] = CoverageResult(
-                r.corner, r.shape, "collapsed",
-                (f"emitted {r.work} instruction word(s) for a problem {r.shape} that is LARGER than the "
-                 f"{tile}x{tile}x{tile} baseline, which took {base_work}. A program cannot compute more "
-                 f"by doing less -- this is a silent refusal. Declare `declined` instead, or lower it."),
-                r.work)
+                r.corner,
+                r.shape,
+                "collapsed",
+                (
+                    f"emitted {r.work} instruction word(s) for a problem {r.shape} that is LARGER than the "
+                    f"{tile}x{tile}x{tile} baseline, which took {base_work}. A program cannot compute more "
+                    f"by doing less -- this is a silent refusal. Declare `declined` instead, or lower it."
+                ),
+                r.work,
+            )
 
     by = {r.corner: r.outcome for r in results}
     baseline_ok = by.get("tile") == "lowered"
     out = {
-        "target": target, "package": str(package), "tile_edge": tile,
-        "operand_dtype": b.operand_dtype, "accum_dtype": b.accum_dtype,
+        "target": target,
+        "package": str(package),
+        "tile_edge": tile,
+        "operand_dtype": b.operand_dtype,
+        "accum_dtype": b.accum_dtype,
         "corners": [r.to_dict() for r in results],
         "baseline_tile_lowered": baseline_ok,
         "n_declined": sum(1 for r in results if r.outcome == "declined"),
@@ -221,11 +279,12 @@ def sweep(package: str | Path, *, target: str, contract: str | Path | None = Non
     }
     if baseline_ok:
         out["multi_tile_axes_uncovered"] = sorted(
-            {c[0] for c, o in by.items() if c.endswith("_2tiles") and o != "lowered"})
-        out["tail_cases_uncovered"] = sorted(
-            c for c in tail_corners if by.get(c) != "lowered")
+            {c[0] for c, o in by.items() if c.endswith("_2tiles") and o != "lowered"}
+        )
+        out["tail_cases_uncovered"] = sorted(c for c in tail_corners if by.get(c) != "lowered")
         out["tail_axes_uncovered"] = sorted(
-            {c[0] for c in out["tail_cases_uncovered"] if c in {"m_tail", "k_tail", "n_tail"}})
+            {c[0] for c in out["tail_cases_uncovered"] if c in {"m_tail", "k_tail", "n_tail"}}
+        )
         out["all_covered"] = not (out["multi_tile_axes_uncovered"] or out["tail_cases_uncovered"])
     else:
         # Refusing to answer beats answering wrongly: with the baseline down, every multi-tile corner
@@ -235,6 +294,8 @@ def sweep(package: str | Path, *, target: str, contract: str | Path | None = Non
         out["tail_cases_uncovered"] = []
         out["tail_axes_uncovered"] = []
         out["all_covered"] = False
-        out["unmeasured"] = ("the single-tile baseline did not lower, so nothing here can be attributed "
-                             "to shape generalization -- fix the baseline, then re-read this")
+        out["unmeasured"] = (
+            "the single-tile baseline did not lower, so nothing here can be attributed "
+            "to shape generalization -- fix the baseline, then re-read this"
+        )
     return out

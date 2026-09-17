@@ -32,6 +32,7 @@ distinction the compiler can act on, so the honest answer is
 evidence has to exist too, and a target with the trait but no measurement gets an ``Unavailable``
 that names *evidence*, not *trait*, so the two situations stay distinguishable.
 """
+
 from __future__ import annotations
 
 import math
@@ -152,8 +153,7 @@ class WorkloadAmplification:
         return math.log(g) / math.log(r)
 
 
-def movement_trait(manifest: Mapping[str, Any] | None = None,
-                   facts: Mapping[str, Any] | None = None) -> Trait:
+def movement_trait(manifest: Mapping[str, Any] | None = None, facts: Mapping[str, Any] | None = None) -> Trait:
     """Does this target have explicit DMA or a software-managed scratchpad?
 
     Derived from the target's own description, never from its name:
@@ -186,15 +186,16 @@ def movement_trait(manifest: Mapping[str, Any] | None = None,
 
     memories = [m for m in (body.get("memories") or ()) if isinstance(m, Mapping)]
     if memories:
-        evidence.append("RTL facts discover on-chip memories "
-                        f"{sorted(m.get('name', '?') for m in memories)}")
+        evidence.append(f"RTL facts discover on-chip memories {sorted(m.get('name', '?') for m in memories)}")
 
     if evidence:
         return Trait("explicit_movement", True, evidence="; ".join(evidence))
-    return Trait("explicit_movement", None,
-                 evidence="no declared movement capability, managed memory model or discovered "
-                          "on-chip memory",
-                 missing=("explicit DMA or a software-managed scratchpad",))
+    return Trait(
+        "explicit_movement",
+        None,
+        evidence="no declared movement capability, managed memory model or discovered on-chip memory",
+        missing=("explicit DMA or a software-managed scratchpad",),
+    )
 
 
 def _block_and_min(obs: MovementObservation) -> tuple[float | _Unknown, int | _Unknown]:
@@ -217,10 +218,13 @@ def _block_and_min(obs: MovementObservation) -> tuple[float | _Unknown, int | _U
     return block, max(1, math.ceil(obs.useful_bytes / block))
 
 
-def amplification(obs: MovementObservation, *,
-                  trait: Trait | None = None,
-                  manifest: Mapping[str, Any] | None = None,
-                  facts: Mapping[str, Any] | None = None) -> WorkloadAmplification | Unavailable:
+def amplification(
+    obs: MovementObservation,
+    *,
+    trait: Trait | None = None,
+    manifest: Mapping[str, Any] | None = None,
+    facts: Mapping[str, Any] | None = None,
+) -> WorkloadAmplification | Unavailable:
     """Amplification for one workload, with the fixed-granule sensitivity attached.
 
     Returns :class:`Unavailable` when the movement trait is not established (the target has no
@@ -229,33 +233,51 @@ def amplification(obs: MovementObservation, *,
     """
     tr = trait if trait is not None else movement_trait(manifest, facts)
     if tr.satisfied is not True:
-        return Unavailable("data-movement amplification", tr.missing or ("explicit data movement",),
-                           tr.evidence)
+        return Unavailable("data-movement amplification", tr.missing or ("explicit data movement",), tr.evidence)
     if obs.useful_bytes <= 0:
-        return Unavailable("data-movement amplification",
-                           ("the bytes the computation needs (operand shapes + dtypes)",),
-                           f"{obs.workload}: useful_bytes={obs.useful_bytes}")
+        return Unavailable(
+            "data-movement amplification",
+            ("the bytes the computation needs (operand shapes + dtypes)",),
+            f"{obs.workload}: useful_bytes={obs.useful_bytes}",
+        )
     if obs.moved_bytes <= 0:
-        return Unavailable("data-movement amplification",
-                           ("measured moved bytes (beats x the port width)",),
-                           f"{obs.workload}: moved_bytes={obs.moved_bytes}")
+        return Unavailable(
+            "data-movement amplification",
+            ("measured moved bytes (beats x the port width)",),
+            f"{obs.workload}: moved_bytes={obs.moved_bytes}",
+        )
 
     ratio = obs.moved_bytes / obs.useful_bytes
     block, tmin = _block_and_min(obs)
     if block is UNKNOWN:
         return WorkloadAmplification(
-            workload=obs.workload, moved_bytes=obs.moved_bytes, useful_bytes=obs.useful_bytes,
-            ratio=ratio, block_bytes=UNKNOWN, transfers_min=UNKNOWN, granularity_factor=UNKNOWN,
-            redundancy_factor=UNKNOWN, fill_fraction=UNKNOWN, provenance=obs.provenance)
+            workload=obs.workload,
+            moved_bytes=obs.moved_bytes,
+            useful_bytes=obs.useful_bytes,
+            ratio=ratio,
+            block_bytes=UNKNOWN,
+            transfers_min=UNKNOWN,
+            granularity_factor=UNKNOWN,
+            redundancy_factor=UNKNOWN,
+            fill_fraction=UNKNOWN,
+            provenance=obs.provenance,
+        )
 
     n_transfers = len(obs.transfer_bytes) if obs.transfer_bytes else int(obs.transfers)
     granularity = (tmin * block) / obs.useful_bytes
     redundancy = n_transfers / tmin
     return WorkloadAmplification(
-        workload=obs.workload, moved_bytes=obs.moved_bytes, useful_bytes=obs.useful_bytes,
-        ratio=ratio, block_bytes=block, transfers_min=tmin, granularity_factor=granularity,
+        workload=obs.workload,
+        moved_bytes=obs.moved_bytes,
+        useful_bytes=obs.useful_bytes,
+        ratio=ratio,
+        block_bytes=block,
+        transfers_min=tmin,
+        granularity_factor=granularity,
         redundancy_factor=redundancy,
-        fill_fraction=(obs.useful_bytes / n_transfers) / block, provenance=obs.provenance)
+        fill_fraction=(obs.useful_bytes / n_transfers) / block,
+        provenance=obs.provenance,
+    )
 
 
 @dataclass(frozen=True)
@@ -300,10 +322,13 @@ class CorpusAmplification:
         return {n: w.ratio for n, w in self.workloads.items()}
 
 
-def corpus_amplification(observations: Iterable[MovementObservation], *,
-                         trait: Trait | None = None,
-                         manifest: Mapping[str, Any] | None = None,
-                         facts: Mapping[str, Any] | None = None) -> CorpusAmplification:
+def corpus_amplification(
+    observations: Iterable[MovementObservation],
+    *,
+    trait: Trait | None = None,
+    manifest: Mapping[str, Any] | None = None,
+    facts: Mapping[str, Any] | None = None,
+) -> CorpusAmplification:
     """:func:`amplification` over a corpus, with the corpus-level sensitivity.
 
     The sensitivity needs **at least two workloads that resolved a granule** -- one point cannot
@@ -326,7 +351,8 @@ def corpus_amplification(observations: Iterable[MovementObservation], *,
             "amplification sensitivity",
             ("at least two workloads with >=2 movement commands each",),
             f"{len(resolved)} workload(s) resolved a per-transfer granule; a fixed per-transfer "
-            f"cost cannot be separated from a scale-invariant one on one point")
+            f"cost cannot be separated from a scale-invariant one on one point",
+        )
         return CorpusAmplification(workloads=ok, unavailable=bad, sensitivity=sens)
 
     blocks = {n: float(w.block_bytes) for n, w in resolved.items()}
@@ -339,7 +365,11 @@ def corpus_amplification(observations: Iterable[MovementObservation], *,
         amortized_ratio=_geomean([float(w.redundancy_factor) for w in resolved.values()]),
         granularity_factor=_geomean([float(w.granularity_factor) for w in resolved.values()]),
         artifact_share=(sum(shares) / len(shares)) if shares else UNKNOWN,
-        note=("the per-command granule is uniform across the corpus" if consistent else
-              "the per-command granule VARIES across the corpus -- it is a per-workload descriptor "
-              "choice, so a single corpus-wide block would be a fit to a mixed population"))
+        note=(
+            "the per-command granule is uniform across the corpus"
+            if consistent
+            else "the per-command granule VARIES across the corpus -- it is a per-workload descriptor "
+            "choice, so a single corpus-wide block would be a fit to a mixed population"
+        ),
+    )
     return CorpusAmplification(workloads=ok, unavailable=bad, sensitivity=sens)

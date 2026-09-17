@@ -4,6 +4,7 @@ Small, dependency-light helpers so the rest of the package never hard-codes layo
 assumptions. Honors ``MERLIN_REPO_ROOT`` for installed/relocated checkouts; otherwise
 resolves the repo root relative to this source file.
 """
+
 from __future__ import annotations
 
 import os
@@ -62,6 +63,7 @@ def data_path(*parts: str) -> Path:
         return cand
     try:
         import importlib.resources as _ir
+
         base = _ir.files("merlin").joinpath("_data", *rel.parts)
         # normally-installed (unzipped) wheel -> a real filesystem path
         return Path(str(base))
@@ -236,8 +238,6 @@ def ext_path(name: str) -> Path:
     key = f"MERLIN_EXT_{name.upper()}"
     val = os.environ.get(key) or _dotenv().get(key)
     if not val:
-        known = sorted(k[len("MERLIN_EXT_"):].lower() for k in _dotenv() if k.startswith("MERLIN_EXT_"))
-        raise KeyError(
-            f"external path {name!r} unset — set {key} in .env (copy .env.example). Known: {known}"
-        )
+        known = sorted(k[len("MERLIN_EXT_") :].lower() for k in _dotenv() if k.startswith("MERLIN_EXT_"))
+        raise KeyError(f"external path {name!r} unset — set {key} in .env (copy .env.example). Known: {known}")
     return Path(val)

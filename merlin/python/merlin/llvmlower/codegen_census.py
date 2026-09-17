@@ -28,6 +28,7 @@ could not fail reported success. "Unparseable" means unparseable in BOTH MLIR fo
 not refused, because refusing it would make this census a build-breaker for every model containing
 an op xDSL has no custom-format parser for.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -43,8 +44,8 @@ class CodegenCensusError(RuntimeError):
 class Census:
     live_structured_ops: int
     total_structured_ops: int
-    emitted_instructions: int       # over the whole object (outlined helpers included)
-    entry_instructions: int         # the entry symbol alone
+    emitted_instructions: int  # over the whole object (outlined helpers included)
+    entry_instructions: int  # the entry symbol alone
     symbol: str
 
     @property
@@ -52,11 +53,14 @@ class Census:
         return self.emitted_instructions / self.live_structured_ops if self.live_structured_ops else 0.0
 
     def as_dict(self) -> dict:
-        return {"symbol": self.symbol, "live_structured_ops": self.live_structured_ops,
-                "total_structured_ops": self.total_structured_ops,
-                "emitted_instructions": self.emitted_instructions,
-                "entry_instructions": self.entry_instructions,
-                "instructions_per_live_op": round(self.ratio, 3)}
+        return {
+            "symbol": self.symbol,
+            "live_structured_ops": self.live_structured_ops,
+            "total_structured_ops": self.total_structured_ops,
+            "emitted_instructions": self.emitted_instructions,
+            "entry_instructions": self.entry_instructions,
+            "instructions_per_live_op": round(self.ratio, 3),
+        }
 
 
 def _defining_op(value):
@@ -118,6 +122,7 @@ def live_structured_ops_in_file(prepared_mlir: str | Path) -> tuple[int, int]:
     erased model, which is the exact failure this file exists to catch.
     """
     from .generic_form import parse_mlir_file_any_form
+
     return live_structured_ops(parse_mlir_file_any_form(Path(prepared_mlir)))
 
 
@@ -137,7 +142,8 @@ def disassembly_census(obj: str | Path, objdump: str | Path | None = None) -> di
     if not Path(tool).is_file():
         raise CodegenCensusError(
             f"post-codegen census cannot run: no llvm-objdump at {tool} (set MERLIN_OBJDUMP). "
-            "Refusing rather than passing a build nothing inspected.")
+            "Refusing rather than passing a build nothing inspected."
+        )
     proc = subprocess.run([str(tool), "-d", str(obj)], capture_output=True, text=True)
     if proc.returncode != 0:
         raise CodegenCensusError(f"llvm-objdump failed on {obj}: {proc.stderr[-2000:]}")
@@ -146,7 +152,7 @@ def disassembly_census(obj: str | Path, objdump: str | Path | None = None) -> di
     for line in proc.stdout.splitlines():
         stripped = line.strip()
         if stripped.endswith(":") and "<" in stripped and ">" in stripped:
-            inner = stripped[stripped.index("<") + 1:stripped.rindex(">")]
+            inner = stripped[stripped.index("<") + 1 : stripped.rindex(">")]
             if inner:
                 current = inner
                 counts.setdefault(current, 0)
@@ -165,8 +171,7 @@ def disassembly_census(obj: str | Path, objdump: str | Path | None = None) -> di
     return counts
 
 
-def census(prepared_mlir: str | Path, obj: str | Path, symbol: str,
-           objdump: str | Path | None = None) -> Census:
+def census(prepared_mlir: str | Path, obj: str | Path, symbol: str, objdump: str | Path | None = None) -> Census:
     """Census of ``obj`` against the prepared module, keyed to entry point ``symbol``.
 
     The delivery count is the instruction total over the WHOLE object, not over ``symbol`` alone:
@@ -180,14 +185,20 @@ def census(prepared_mlir: str | Path, obj: str | Path, symbol: str,
     if symbol not in per_symbol:
         raise CodegenCensusError(
             f"post-codegen census: entry point {symbol!r} is not defined in {obj} "
-            f"(symbols: {sorted(per_symbol)[:12]}). Refusing the build.")
-    return Census(live_structured_ops=live, total_structured_ops=total,
-                  emitted_instructions=sum(per_symbol.values()),
-                  entry_instructions=per_symbol[symbol], symbol=str(symbol))
+            f"(symbols: {sorted(per_symbol)[:12]}). Refusing the build."
+        )
+    return Census(
+        live_structured_ops=live,
+        total_structured_ops=total,
+        emitted_instructions=sum(per_symbol.values()),
+        entry_instructions=per_symbol[symbol],
+        symbol=str(symbol),
+    )
 
 
-def require_commensurate(prepared_mlir: str | Path, obj: str | Path, symbol: str,
-                         objdump: str | Path | None = None) -> Census:
+def require_commensurate(
+    prepared_mlir: str | Path, obj: str | Path, symbol: str, objdump: str | Path | None = None
+) -> Census:
     """Raise :class:`CodegenCensusError` unless the emitted entry point can plausibly BE the model.
 
     Returns the :class:`Census` so a caller can record it on the build artifact.
@@ -197,7 +208,8 @@ def require_commensurate(prepared_mlir: str | Path, obj: str | Path, symbol: str
         raise CodegenCensusError(
             f"post-codegen census: {symbol} in {obj} disassembles to NO instructions "
             f"(prepared IR has {c.live_structured_ops} live structured ops). The object cannot be "
-            "the model; refusing the build.")
+            "the model; refusing the build."
+        )
     if c.live_structured_ops and c.emitted_instructions < c.live_structured_ops:
         raise CodegenCensusError(
             f"post-codegen census: {symbol} emitted {c.emitted_instructions} instructions for "
@@ -205,5 +217,6 @@ def require_commensurate(prepared_mlir: str | Path, obj: str | Path, symbol: str
             f"({c.total_structured_ops} total) — fewer than one instruction per op that reaches an "
             "output, so compute the model requires is not in the object. The usual cause is poison "
             "or undefined behaviour in the lowered IR letting the backend delete reachable code "
-            "(see fix_bool_fptosi). Refusing the build rather than timing an empty kernel.")
+            "(see fix_bool_fptosi). Refusing the build rather than timing an empty kernel."
+        )
     return c

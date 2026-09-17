@@ -20,19 +20,22 @@ The kernel is compiled into ``main`` with ``always_inline`` so its single call s
 relocation — a relocation-preserving transcode is the general fix, tracked with the multi-thread lane).
 This covers the whole-computation kernel functions the functional ladder needs.
 """
+
 from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
 
+
 @dataclass
 class TensorArg:
     """One kernel argument: a named tensor with a shape and its flat row-major values."""
+
     name: str
     rows: int
     cols: int
-    values: list[float]      # flat, row-major, length rows*cols
-    dtype: str               # "f32" | "i32" (the C element type the kernel sees)
+    values: list[float]  # flat, row-major, length rows*cols
+    dtype: str  # "f32" | "i32" (the C element type the kernel sees)
 
 
 def _f32_bits(x: float) -> int:
@@ -75,8 +78,9 @@ static void _pf(float x){{if(x<0.0f){{_pc('-');x=-x;}}uint32_t ip=(uint32_t)x;fl
 """
 
 
-def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[TensorArg],
-                  *, kernel_symbol: str, model) -> str:
+def build_program(
+    kernel_fn_src: str, args: list[TensorArg], outputs: list[TensorArg], *, kernel_symbol: str, model
+) -> str:
     """Assemble the self-contained C program: helpers + the agent's kernel function + a ``main`` that
     embeds every input, calls ``kernel_symbol(<inputs>, <outputs>)``, and prints ``OUT <name> <r> <c> ...``
     for each output followed by ``DONE``. ``args`` is the kernel's input arguments in ABI order (weight,
@@ -86,8 +90,14 @@ def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[Tenso
     # reassemble-after-transcode path. Prepended to the agent's definition (which starts with its return
     # type), yielding e.g. `static inline __attribute__((always_inline)) void radiance_kernel(...)`.
     kernel_inlined = "static inline __attribute__((always_inline)) " + kernel_fn_src.strip()
-    body: list[str] = [_render_helpers(model).strip(), "", kernel_inlined, "", "int main(void){",
-                       "  if(_hid()!=0)return 0;"]
+    body: list[str] = [
+        _render_helpers(model).strip(),
+        "",
+        kernel_inlined,
+        "",
+        "int main(void){",
+        "  if(_hid()!=0)return 0;",
+    ]
     call_ptrs: list[str] = []
     for a in args:
         arr = f"_in_{a.name}"
@@ -95,7 +105,7 @@ def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[Tenso
         call_ptrs.append(f"(float*){arr}" if a.dtype == "f32" else f"(int32_t*){arr}")
     for o in outputs:
         arr = f"_out_{o.name}"
-        body.append(f"  volatile uint32_t {arr}[{o.rows * o.cols}];")   # stack (SP-relative -> no reloc)
+        body.append(f"  volatile uint32_t {arr}[{o.rows * o.cols}];")  # stack (SP-relative -> no reloc)
         call_ptrs.append(f"(float*){arr}" if o.dtype == "f32" else f"(int32_t*){arr}")
     body.append(f"  {kernel_symbol}({', '.join(call_ptrs)});")
     for o in outputs:
@@ -168,14 +178,15 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
         # raws still gets them, and a wrong-operand run fails the golden rather than passing it.
         try:
             from .commandbuffer import materialize_inputs
+
             env = materialize_inputs(cb)
-        except Exception:                             # noqa: BLE001 - unmaterializable -> old behaviour
+        except Exception:  # noqa: BLE001 - unmaterializable -> old behaviour
             return None
         values = {}
         for _nm, _tv in (env or {}).items():
             try:
                 values[_nm] = {"values": [float(x) for x in _flatten_floats(_tv.to_list())]}
-            except Exception:                         # noqa: BLE001 - skip what will not flatten
+            except Exception:  # noqa: BLE001 - skip what will not flatten
                 continue
         if not values:
             return None
@@ -195,15 +206,15 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
     # Both maps are built from the DATAFLOW, not from opcode names: any command that copies a declared
     # tensor to an undeclared one makes an alias, and any command that copies an undeclared one to a
     # declared one is a commit. So a target spelling these differently still resolves.
-    alias_of: dict[str, str] = {}          # undeclared producer name -> the declared tensor behind it
-    commits_to: dict[str, str] = {}        # undeclared name -> the declared tensor it is committed to
+    alias_of: dict[str, str] = {}  # undeclared producer name -> the declared tensor behind it
+    commits_to: dict[str, str] = {}  # undeclared name -> the declared tensor it is committed to
     for cmd in cb.get("commands", []):
         o = cmd.get("operands", {}) or {}
         src, dst = _pick(o, "src"), _pick(o, "dst", "out")
         if not (isinstance(src, str) and isinstance(dst, str)):
             continue
         if src in tensors and dst not in tensors:
-            alias_of.setdefault(dst, src)          # a declared tensor copied to a resident slot
+            alias_of.setdefault(dst, src)  # a declared tensor copied to a resident slot
         elif src not in tensors:
             # An UNDECLARED source being copied somewhere is an intermediate leaving the accumulator;
             # the destination is the result's name whether or not the buffer bothered to declare it.
@@ -229,7 +240,7 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
                 seen.add(nm)
                 bucket.append(nm)
     if not (lhses and outs):
-        return None                                   # not a shape we can harness -> compile as-is
+        return None  # not a shape we can harness -> compile as-is
 
     def _arg(name: str, with_values: bool) -> TensorArg | None:
         shp = (tensors.get(name) or {}).get("shape")
@@ -252,6 +263,5 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
     in_args = [_arg(n, True) for n in (weights + lhses)]
     out_args = [_arg(n, False) for n in outs]
     if any(a is None for a in in_args + out_args):
-        return None                                   # a missing operand/shape -> fail safe, do not guess
-    return build_program(kernel_fn_src, in_args, out_args, kernel_symbol=_kernel_symbol(kernel_fn_src),
-                         model=model)
+        return None  # a missing operand/shape -> fail safe, do not guess
+    return build_program(kernel_fn_src, in_args, out_args, kernel_symbol=_kernel_symbol(kernel_fn_src), model=model)

@@ -30,6 +30,7 @@ Consumed by ``kernels.cca_contract`` (which facet family an axis belongs to) and
 ``runtime.backends.base`` (which derives its coarse ``TargetClass`` from this rather than maintaining
 a third vocabulary in parallel).
 """
+
 from __future__ import annotations
 
 from typing import Iterable
@@ -44,11 +45,11 @@ from typing import Iterable
 #: engine-agnostic (every target has one). Mapping it to ``envelope`` would wrongly imply a target
 #: with a scalar core has an engine-scoped facet nothing else does.
 ENGINE_FACET: dict[str, str | None] = {
-    "systolic": "spatial",   # stationary-weight wavefront
-    "spatial": "spatial",    # rank-1 outer-product accumulate into a tile — same facet, different dataflow
-    "simt": "simt",          # threads of control: warps, divergence, barriers, managed scratchpad
-    "vector": "vector",      # element-parallel WITHIN one thread of control: VL/LMUL/SEW, tail policy
-    "scalar": None,          # not an engine — see above
+    "systolic": "spatial",  # stationary-weight wavefront
+    "spatial": "spatial",  # rank-1 outer-product accumulate into a tile — same facet, different dataflow
+    "simt": "simt",  # threads of control: warps, divergence, barriers, managed scratchpad
+    "vector": "vector",  # element-parallel WITHIN one thread of control: VL/LMUL/SEW, tail policy
+    "scalar": None,  # not an engine — see above
 }
 
 #: The facets that are ENGINE-SCOPED (populated only for a target that has the engine). Every other
@@ -61,30 +62,36 @@ ENGINE_FACETS: frozenset[str] = frozenset(f for f in ENGINE_FACET.values() if f)
 #: inferred as "everything not in ENGINE_FACETS", so that adding a facet to the CCA forces a decision:
 #: :func:`check_facets_are_classified` fails on a facet in neither set. A facet nobody has classified
 #: would otherwise default to agnostic and be populated for targets whose silicon cannot exhibit it.
-AGNOSTIC_FACETS: frozenset[str] = frozenset({
-    "compute",    # op, contraction form, accumulator, widening, reduction, epilogue
-    "memory",     # access pattern, panel reuse, operand broadcast
-    "envelope",   # what is emitted AROUND the loop -- including a scalar core's contribution
-    "coverage",   # whole-model claim; model-scoped rather than per-kernel
-    "dispatch",   # HOW the endpoint is driven — every endpoint is driven by something
-    "layout",     # how operands are laid out before the region runs
-    # What crosses a BOUNDARY. Agnostic because every target moves operands to and from whatever
-    # computes on them -- a systolic mesh, SIMT lanes and a vector unit all need feeding, and the
-    # measured cost of that movement (183 runtime weight transposes moving 2,493 MiB per inference
-    # on one model here) is a property of the program, not of which datapath is at the far end.
-    "communication",
-})
+AGNOSTIC_FACETS: frozenset[str] = frozenset(
+    {
+        "compute",  # op, contraction form, accumulator, widening, reduction, epilogue
+        "memory",  # access pattern, panel reuse, operand broadcast
+        "envelope",  # what is emitted AROUND the loop -- including a scalar core's contribution
+        "coverage",  # whole-model claim; model-scoped rather than per-kernel
+        "dispatch",  # HOW the endpoint is driven — every endpoint is driven by something
+        "layout",  # how operands are laid out before the region runs
+        # What crosses a BOUNDARY. Agnostic because every target moves operands to and from whatever
+        # computes on them -- a systolic mesh, SIMT lanes and a vector unit all need feeding, and the
+        # measured cost of that movement (183 runtime weight transposes moving 2,493 MiB per inference
+        # on one model here) is a property of the program, not of which datapath is at the far end.
+        "communication",
+    }
+)
 
 
 def check_facets_are_classified(facets: Iterable[str]) -> None:
     """Raise unless every CCA facet is declared engine-scoped or engine-agnostic, and not both."""
     known = set(facets)
     if both := sorted(ENGINE_FACETS & AGNOSTIC_FACETS):
-        raise KeyError(f"facet(s) {both} are declared both engine-scoped and agnostic; a facet is "
-                       f"populated either because a target HAS an engine or regardless of it")
+        raise KeyError(
+            f"facet(s) {both} are declared both engine-scoped and agnostic; a facet is "
+            f"populated either because a target HAS an engine or regardless of it"
+        )
     if unclassified := sorted(known - ENGINE_FACETS - AGNOSTIC_FACETS):
-        raise KeyError(f"CCA facet(s) {unclassified} are neither engine-scoped nor agnostic; add each "
-                       f"to ENGINE_FACET (via the engine it describes) or to AGNOSTIC_FACETS")
+        raise KeyError(
+            f"CCA facet(s) {unclassified} are neither engine-scoped nor agnostic; add each "
+            f"to ENGINE_FACET (via the engine it describes) or to AGNOSTIC_FACETS"
+        )
     if phantom := sorted((ENGINE_FACETS | AGNOSTIC_FACETS) - known):
         raise KeyError(f"facet(s) {phantom} are classified here but are not in the CCA schema")
 
@@ -97,11 +104,15 @@ def check_covers_kinds(kinds: Iterable[str]) -> None:
     """
     declared, known = set(ENGINE_FACET), set(kinds)
     if missing := sorted(known - declared):
-        raise KeyError(f"compute-unit kind(s) {missing} have no engine->facet mapping; add them to "
-                       f"ENGINE_FACET (map to None if the kind is not an accelerator engine)")
+        raise KeyError(
+            f"compute-unit kind(s) {missing} have no engine->facet mapping; add them to "
+            f"ENGINE_FACET (map to None if the kind is not an accelerator engine)"
+        )
     if stale := sorted(declared - known):
-        raise KeyError(f"ENGINE_FACET maps {stale}, which are not compute-unit kinds any more; "
-                       f"remove them rather than leaving a mapping for something that cannot occur")
+        raise KeyError(
+            f"ENGINE_FACET maps {stale}, which are not compute-unit kinds any more; "
+            f"remove them rather than leaving a mapping for something that cannot occur"
+        )
 
 
 def facet_for(kind: str) -> str | None:
@@ -142,7 +153,7 @@ def engines_for(target: str) -> frozenset[str]:
     try:
         from merlin.targetgen import target_registry as _tr
         from merlin.targetgen.compute_units import compute_units
-    except ImportError:                      # targetgen not installed in this sandbox
+    except ImportError:  # targetgen not installed in this sandbox
         return frozenset()
     try:
         contract = _tr.load_contract(target)
@@ -183,10 +194,10 @@ def facet_families_for(target: str) -> frozenset[str]:
 # registration, and that is a fact about the backend, not something to compute away. What is derived is
 # the RELATIONSHIP -- given a target's engines, which class it is -- so the two can no longer disagree.
 TARGET_CLASS_OF_ENGINE: dict[str, str] = {
-    "systolic": "npu",   # tensor accelerator
-    "spatial": "npu",    # ditto: a different array datapath, the same coarse class of silicon
+    "systolic": "npu",  # tensor accelerator
+    "spatial": "npu",  # ditto: a different array datapath, the same coarse class of silicon
     "simt": "gpu",
-    "vector": "cpu",     # a lane engine is a CPU feature, not a separate device
+    "vector": "cpu",  # a lane engine is a CPU feature, not a separate device
     "scalar": "cpu",
 }
 
@@ -222,16 +233,19 @@ def check_class_map_is_total(kinds: Iterable[str], classes: Iterable[str]) -> No
     """
     known, declared = set(kinds), set(TARGET_CLASS_OF_ENGINE)
     if missing := sorted(known - declared):
-        raise KeyError(f"compute-unit kind(s) {missing} map to no TargetClass; add them to "
-                       f"TARGET_CLASS_OF_ENGINE")
+        raise KeyError(f"compute-unit kind(s) {missing} map to no TargetClass; add them to TARGET_CLASS_OF_ENGINE")
     if stale := sorted(declared - known):
         raise KeyError(f"TARGET_CLASS_OF_ENGINE maps {stale}, which are not compute-unit kinds")
     produced, valid = set(TARGET_CLASS_OF_ENGINE.values()), set(classes)
     if bad := sorted(produced - valid):
         raise KeyError(f"TARGET_CLASS_OF_ENGINE produces {bad}, which are not TargetClass values")
     if unreachable := sorted(valid - produced):
-        raise KeyError(f"TargetClass value(s) {unreachable} are reachable from no compute-unit kind, "
-                       f"so nothing could ever derive them")
+        raise KeyError(
+            f"TargetClass value(s) {unreachable} are reachable from no compute-unit kind, "
+            f"so nothing could ever derive them"
+        )
     if missing_prec := sorted(known - set(_CLASS_PRECEDENCE)):
-        raise KeyError(f"kind(s) {missing_prec} have no precedence rank, so a hybrid containing one "
-                       f"would have an order-dependent class")
+        raise KeyError(
+            f"kind(s) {missing_prec} have no precedence rank, so a hybrid containing one "
+            f"would have an order-dependent class"
+        )

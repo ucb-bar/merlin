@@ -5,6 +5,7 @@ their concrete lowering, but it must return a receipt that accounts for every em
 the logical program boundary to the executable boundary.  This keeps target opcodes out of the core
 without allowing a plugin to attach a plan as inert metadata while executing the old program.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -44,8 +45,12 @@ class EmittedComponent:
                 raise ValueError(f"component repeats a logical {direction} buffer")
 
     def to_dict(self) -> dict[str, Any]:
-        return {"plan_id": self.plan_id, "node_indices": list(self.node_indices),
-                "inputs": dict(self.inputs), "outputs": dict(self.outputs)}
+        return {
+            "plan_id": self.plan_id,
+            "node_indices": list(self.node_indices),
+            "inputs": dict(self.inputs),
+            "outputs": dict(self.outputs),
+        }
 
 
 @dataclass(frozen=True)
@@ -63,8 +68,11 @@ class BoundaryMapping:
             raise ValueError("boundary mapping must name both buffers")
 
     def to_dict(self) -> dict[str, str]:
-        return {"direction": self.direction, "logical_buffer": self.logical_buffer,
-                "emitted_buffer": self.emitted_buffer}
+        return {
+            "direction": self.direction,
+            "logical_buffer": self.logical_buffer,
+            "emitted_buffer": self.emitted_buffer,
+        }
 
 
 @dataclass(frozen=True)
@@ -102,8 +110,7 @@ class GlobalPlanEmission:
 class GlobalPlanEmitter(Protocol):
     """Target plugin seam; concrete encodings and fused kernels live behind this protocol."""
 
-    def emit_global_plan(self, program: DispatchProgram,
-                         plan: GlobalPlan) -> GlobalPlanEmission: ...
+    def emit_global_plan(self, program: DispatchProgram, plan: GlobalPlan) -> GlobalPlanEmission: ...
 
 
 def _boundary_buffers(program: DispatchProgram, direction: str) -> set[str]:
@@ -112,19 +119,18 @@ def _boundary_buffers(program: DispatchProgram, direction: str) -> set[str]:
     return {name for name, buffer in program.buffers.items() if buffer.kind == "arg"}
 
 
-def _component_boundary(program: DispatchProgram, indices: tuple[int, ...]
-                        ) -> tuple[set[str], set[str]]:
+def _component_boundary(program: DispatchProgram, indices: tuple[int, ...]) -> tuple[set[str], set[str]]:
     inside = set(indices)
     produced = {buffer for index in inside for buffer in program.nodes[index].outputs}
     read = {buffer for index in inside for buffer in program.nodes[index].inputs}
     external_reads = set(program.results)
-    external_reads.update(buffer for index, node in enumerate(program.nodes) if index not in inside
-                          for buffer in node.inputs)
+    external_reads.update(
+        buffer for index, node in enumerate(program.nodes) if index not in inside for buffer in node.inputs
+    )
     return read - produced, produced & external_reads
 
 
-def _verify_dataflow(program: DispatchProgram, plan: GlobalPlan,
-                     emission: GlobalPlanEmission) -> list[str]:
+def _verify_dataflow(program: DispatchProgram, plan: GlobalPlan, emission: GlobalPlanEmission) -> list[str]:
     """Check component boundaries and every edge; counting owned nodes is insufficient.
 
     This proves wiring, not kernel arithmetic equivalence. A selected implementation still needs
@@ -135,18 +141,15 @@ def _verify_dataflow(program: DispatchProgram, plan: GlobalPlan,
     regions = {row.plan_id: row for row in emission.regions}
     transitions = {row.plan_id: row for row in emission.transitions}
     owners = {index: item.id for item in plan.selected for index in item.nodes}
-    producers = {buffer: owners[index] for index, node in enumerate(program.nodes)
-                 for buffer in node.outputs}
-    boundary = {(row.direction, row.logical_buffer): row.emitted_buffer
-                for row in emission.boundaries}
+    producers = {buffer: owners[index] for index, node in enumerate(program.nodes) for buffer in node.outputs}
+    boundary = {(row.direction, row.logical_buffer): row.emitted_buffer for row in emission.boundaries}
 
     for item in plan.selected:
         row = regions[item.id]
         expected_in, expected_out = _component_boundary(program, item.nodes)
         if set(dict(row.inputs)) != expected_in or set(dict(row.outputs)) != expected_out:
             problems.append(f"region {item.id!r} does not map its complete logical boundary")
-        if {r.buffer for r in item.inputs} != expected_in \
-                or {r.buffer for r in item.outputs} != expected_out:
+        if {r.buffer for r in item.inputs} != expected_in or {r.buffer for r in item.outputs} != expected_out:
             problems.append(f"region {item.id!r} representations differ from its graph boundary")
 
     for item in plan.transitions:
@@ -174,10 +177,12 @@ def _verify_dataflow(program: DispatchProgram, plan: GlobalPlan,
         if key in visited:
             return
         visited.add(key)
-        source = (dict(regions[producer].outputs).get(buffer) if producer is not None else
-                  boundary.get(("input", buffer)))
-        destination = (dict(regions[consumer].inputs).get(buffer) if consumer is not None else
-                       boundary.get(("output", buffer)))
+        source = (
+            dict(regions[producer].outputs).get(buffer) if producer is not None else boundary.get(("input", buffer))
+        )
+        destination = (
+            dict(regions[consumer].inputs).get(buffer) if consumer is not None else boundary.get(("output", buffer))
+        )
         matches = by_edge.get(key, [])
         if source is None or destination is None:
             problems.append(f"logical edge {key!r} has no emitted endpoint")
@@ -195,9 +200,11 @@ def _verify_dataflow(program: DispatchProgram, plan: GlobalPlan,
         else:
             if source != destination:
                 problems.append(f"logical edge {key!r} is disconnected in emitted dataflow")
-            if producer is not None and consumer is not None \
-                    and selected[producer].output_representation(buffer) \
-                    != selected[consumer].input_representation(buffer):
+            if (
+                producer is not None
+                and consumer is not None
+                and selected[producer].output_representation(buffer) != selected[consumer].input_representation(buffer)
+            ):
                 problems.append(f"logical edge {key!r} changes encoding without a transition")
 
     for item in plan.selected:
@@ -211,8 +218,7 @@ def _verify_dataflow(program: DispatchProgram, plan: GlobalPlan,
     return problems
 
 
-def verify_global_plan_emission(program: DispatchProgram, plan: GlobalPlan,
-                                emission: GlobalPlanEmission) -> list[str]:
+def verify_global_plan_emission(program: DispatchProgram, plan: GlobalPlan, emission: GlobalPlanEmission) -> list[str]:
     """Return every inconsistency between a logical plan and its executable lowering."""
     problems = list(verify_global_plan(program, plan))
     problems.extend(f"logical dispatch: {problem}" for problem in verify_program(program))
@@ -245,12 +251,9 @@ def verify_global_plan_emission(program: DispatchProgram, plan: GlobalPlan,
                 problems.append(f"materializing transition {row.plan_id!r} emitted no node")
             for index in row.node_indices:
                 if index < 0 or index >= len(emission.dispatch.nodes):
-                    problems.append(
-                        f"{kind} {row.plan_id!r} accounts for absent emitted node {index}")
+                    problems.append(f"{kind} {row.plan_id!r} accounts for absent emitted node {index}")
                 elif index in owners:
-                    problems.append(
-                        f"emitted node {index} is owned by both {owners[index]!r} and "
-                        f"{row.plan_id!r}")
+                    problems.append(f"emitted node {index} is owned by both {owners[index]!r} and {row.plan_id!r}")
                 else:
                     owners[index] = row.plan_id
     unowned = sorted(set(range(len(emission.dispatch.nodes))) - set(owners))
@@ -286,17 +289,23 @@ def verify_global_plan_emission(program: DispatchProgram, plan: GlobalPlan,
         for row in rows:
             logical_spec = program.buffers.get(row.logical_buffer)
             emitted_spec = emission.dispatch.buffers.get(row.emitted_buffer)
-            if (logical_spec is not None and emitted_spec is not None
-                    and (logical_spec.shape != emitted_spec.shape
-                         or logical_spec.dtype != emitted_spec.dtype)):
+            if (
+                logical_spec is not None
+                and emitted_spec is not None
+                and (logical_spec.shape != emitted_spec.shape or logical_spec.dtype != emitted_spec.dtype)
+            ):
                 problems.append(
                     f"boundary {direction} {row.logical_buffer!r}->{row.emitted_buffer!r} "
-                    "changes the external shape or dtype")
-            if (direction == "input" and logical_spec is not None and emitted_spec is not None
-                    and logical_spec.arg_index != emitted_spec.arg_index):
+                    "changes the external shape or dtype"
+                )
+            if (
+                direction == "input"
+                and logical_spec is not None
+                and emitted_spec is not None
+                and logical_spec.arg_index != emitted_spec.arg_index
+            ):
                 problems.append(f"boundary input {row.logical_buffer!r} changes its ABI argument index")
-    output_map = {row.logical_buffer: row.emitted_buffer for row in emission.boundaries
-                  if row.direction == "output"}
+    output_map = {row.logical_buffer: row.emitted_buffer for row in emission.boundaries if row.direction == "output"}
     if [output_map.get(name) for name in program.results] != emission.dispatch.results:
         problems.append("emission changes model result order")
     # Only traverse indices and owner maps after their structural checks succeeded.
@@ -305,8 +314,7 @@ def verify_global_plan_emission(program: DispatchProgram, plan: GlobalPlan,
     return problems
 
 
-def emit_global_plan(program: DispatchProgram, plan: GlobalPlan,
-                     emitter: GlobalPlanEmitter) -> GlobalPlanEmission:
+def emit_global_plan(program: DispatchProgram, plan: GlobalPlan, emitter: GlobalPlanEmitter) -> GlobalPlanEmission:
     """Invoke a target emitter and refuse any incomplete or inert accounting receipt."""
     emission = emitter.emit_global_plan(program, plan)
     if not isinstance(emission, GlobalPlanEmission):

@@ -25,6 +25,7 @@ residency verdict downstream of it with nobody noticing.
 TARGET-AGNOSTIC: the sweep, the oracle call and the verdict are all keyed on the target parameter;
 nothing here names a device, a store or a size.
 """
+
 from __future__ import annotations
 
 import math
@@ -40,7 +41,7 @@ class ProbePoint:
     m: int
     k: int
     n: int
-    elements: int                      # the working set in operand elements (lhs + weight)
+    elements: int  # the working set in operand elements (lhs + weight)
     ran: bool
     detail: str = ""
     seconds: float | None = None
@@ -56,9 +57,16 @@ class ProbePoint:
     verdict: str = "declined"
 
     def to_dict(self) -> dict[str, Any]:
-        return {"m": self.m, "k": self.k, "n": self.n, "elements": self.elements,
-                "ran": self.ran, "verdict": self.verdict, "detail": self.detail[:300],
-                "seconds": self.seconds}
+        return {
+            "m": self.m,
+            "k": self.k,
+            "n": self.n,
+            "elements": self.elements,
+            "ran": self.ran,
+            "verdict": self.verdict,
+            "detail": self.detail[:300],
+            "seconds": self.seconds,
+        }
 
 
 @dataclass
@@ -67,9 +75,9 @@ class DeclineBracket:
 
     target: str
     dtype: str
-    largest_ran: int | None = None      # elements
-    smallest_declined: int | None = None      # could not run AT ALL -- the only capacity evidence
-    smallest_wrong: int | None = None         # ran and miscomputed -- a correctness boundary, not this
+    largest_ran: int | None = None  # elements
+    smallest_declined: int | None = None  # could not run AT ALL -- the only capacity evidence
+    smallest_wrong: int | None = None  # ran and miscomputed -- a correctness boundary, not this
     points: list[ProbePoint] = field(default_factory=list)
     unavailable: str = ""
 
@@ -88,14 +96,20 @@ class DeclineBracket:
         return int(self.largest_ran) <= int(capacity_elements) < int(self.smallest_declined)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"target": self.target, "dtype": self.dtype,
-                "largest_ran_elements": self.largest_ran,
-                "smallest_declined_elements": self.smallest_declined,
-                "decided": self.decided, "unavailable": self.unavailable,
-                "points": [p.to_dict() for p in self.points],
-                "method": ("one contraction's working set grown until the target's own program oracle "
-                           "stops producing a correct result; the bracket is (largest that ran, "
-                           "smallest that declined] in operand elements")}
+        return {
+            "target": self.target,
+            "dtype": self.dtype,
+            "largest_ran_elements": self.largest_ran,
+            "smallest_declined_elements": self.smallest_declined,
+            "decided": self.decided,
+            "unavailable": self.unavailable,
+            "points": [p.to_dict() for p in self.points],
+            "method": (
+                "one contraction's working set grown until the target's own program oracle "
+                "stops producing a correct result; the bracket is (largest that ran, "
+                "smallest that declined] in operand elements"
+            ),
+        }
 
 
 #: Oracle tiers cheapest-first. A probe grades at the cheapest tier that RUNS: the question is whether
@@ -131,9 +145,19 @@ def ladder(edge: int, *, floor_elements: int, ceiling_elements: int) -> list[tup
     return out
 
 
-def probe(target: str, *, dtype: str, edge: int, package_dir, model_ext: str = "",
-          floor_elements: int = 4096, ceiling_elements: int = 1 << 24,
-          timeout: int = 1800, workroot=None, runs_root=None) -> DeclineBracket:
+def probe(
+    target: str,
+    *,
+    dtype: str,
+    edge: int,
+    package_dir,
+    model_ext: str = "",
+    floor_elements: int = 4096,
+    ceiling_elements: int = 1 << 24,
+    timeout: int = 1800,
+    workroot=None,
+    runs_root=None,
+) -> DeclineBracket:
     """Run the ladder against ``target``'s own capsule path and bracket the decline.
 
     THE CAPSULE PATH, not a bespoke one. What has to be measured is where the backend stops holding a
@@ -155,13 +179,15 @@ def probe(target: str, *, dtype: str, edge: int, package_dir, model_ext: str = "
     out = DeclineBracket(target=target, dtype=dtype)
     try:
         from merlin.common.paths import merlin_dir
+
         caps = merlin_dir() / "contract" / "capsules"
         if str(caps) not in sys.path:
             sys.path.insert(0, str(caps))
-        import generate_corpus as GC                                   # noqa: PLC0415
-        from merlin.targetgen import capsule_runner as CR              # noqa: PLC0415
+        import generate_corpus as GC  # noqa: PLC0415
+
+        from merlin.targetgen import capsule_runner as CR  # noqa: PLC0415
         from merlin.targetgen.target_experiment import load_target_experiment
-    except Exception as exc:                    # noqa: BLE001 — cannot ask: undecided, with the reason
+    except Exception as exc:  # noqa: BLE001 — cannot ask: undecided, with the reason
         out.unavailable = f"{type(exc).__name__}: {exc}"
         return out
 
@@ -174,7 +200,7 @@ def probe(target: str, *, dtype: str, edge: int, package_dir, model_ext: str = "
         te = load_target_experiment(GC._descriptor_for(target))
         binding = GC.CS.derive_binding(te, _datapath_of(target))
         adapters = CR.oracle_adapters(target, te.sim_via) or {}
-    except Exception as exc:                    # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         out.unavailable = f"{type(exc).__name__}: {exc}"
         return out
     if not adapters:
@@ -183,30 +209,45 @@ def probe(target: str, *, dtype: str, edge: int, package_dir, model_ext: str = "
 
     shapes = ladder(edge, floor_elements=floor_elements, ceiling_elements=ceiling_elements)
     if not shapes:
-        out.unavailable = (f"no shape between {floor_elements} and {ceiling_elements} elements at edge "
-                           f"{edge}: widen the range rather than reading this as a decline")
+        out.unavailable = (
+            f"no shape between {floor_elements} and {ceiling_elements} elements at edge "
+            f"{edge}: widen the range rather than reading this as a decline"
+        )
         return out
 
     root = Path(workroot) if workroot is not None else Path(tempfile.mkdtemp(prefix="store_probe_"))
     root.mkdir(parents=True, exist_ok=True)
     runs = Path(runs_root) if runs_root is not None else (root / "runs")
-    for (m, k, n) in shapes:
+    for m, k, n in shapes:
         elems = working_set_elements(m, k, n)
         started = time.time()
         ok, detail = False, ""
         try:
-            entry = {"cat": "isa", "kind": "isa", "name": f"PROBE_store_m{m}k{k}n{n}",
-                     "op": "matmul", "operand_dtype": dtype, "out": "Y0", "lhs": "A0", "weight": "W",
-                     "source_role": "derived_sweep", "label": "public", "modes": {},
-                     "source_reference": ("operand-store decline probe: this shape asks the device to "
-                                          f"hold {elems} operand elements"),
-                     "M": m, "K": k, "N": n}
+            entry = {
+                "cat": "isa",
+                "kind": "isa",
+                "name": f"PROBE_store_m{m}k{k}n{n}",
+                "op": "matmul",
+                "operand_dtype": dtype,
+                "out": "Y0",
+                "lhs": "A0",
+                "weight": "W",
+                "source_role": "derived_sweep",
+                "label": "public",
+                "modes": {},
+                "source_reference": (
+                    f"operand-store decline probe: this shape asks the device to hold {elems} operand elements"
+                ),
+                "M": m,
+                "K": k,
+                "N": n,
+            }
             built = GC._write_capsule(entry, binding, root / f"m{m}k{k}n{n}")
-            import yaml                                                # noqa: PLC0415
+            import yaml  # noqa: PLC0415
+
             cap = yaml.safe_load((Path(built) / "capsule.yaml").read_text(encoding="utf-8"))
             cap["__dir__"] = str(built)
-            res = CR.run_capsule(cap, pkg, runs_root=runs, oracle_adapters=adapters,
-                                 target=target, timeout=timeout)
+            res = CR.run_capsule(cap, pkg, runs_root=runs, oracle_adapters=adapters, target=target, timeout=timeout)
             tiers = (res or {}).get("tiers") or {}
             # THE CHEAPEST TIER THAT ACTUALLY GRADED, in the target's own declared order. Taking the
             # alphabetically-first tier read `L0: skipped` as a decline on a float datapath, where L0
@@ -214,9 +255,10 @@ def probe(target: str, *, dtype: str, edge: int, package_dir, model_ext: str = "
             # device refusing 6,144 elements when nothing had asked it anything. A skipped or
             # unavailable tier is not evidence about the hardware; only a tier that ran is.
             ok, detail, verdict = False, "no tier produced a verdict", "declined"
-            for _t in sorted(adapters, key=lambda t: _TIER_ORDER.index(str(t))
-                             if str(t) in _TIER_ORDER else len(_TIER_ORDER)):
-                status = str(((tiers.get(_t) or {})).get("status") or "")
+            for _t in sorted(
+                adapters, key=lambda t: _TIER_ORDER.index(str(t)) if str(t) in _TIER_ORDER else len(_TIER_ORDER)
+            ):
+                status = str((tiers.get(_t) or {}).get("status") or "")
                 if status in ("", "skipped", "unavailable", "not_run", "inapplicable"):
                     continue
                 ok = status == "pass"
@@ -224,24 +266,29 @@ def probe(target: str, *, dtype: str, edge: int, package_dir, model_ext: str = "
                 # wrongly, which is a fact about the backend's arithmetic at this shape and not about
                 # what the store can hold.
                 verdict = "pass" if ok else ("wrong" if status == "fail" else "declined")
-                detail = "" if ok else f"tier {_t}: {status}: " + str(
-                    ((tiers.get(_t) or {})).get("reason") or "")[:160]
+                detail = "" if ok else f"tier {_t}: {status}: " + str((tiers.get(_t) or {}).get("reason") or "")[:160]
                 break
-        except Exception as exc:                # noqa: BLE001 — a decline is an answer; record it
+        except Exception as exc:  # noqa: BLE001 — a decline is an answer; record it
             ok, detail = False, f"{type(exc).__name__}: {str(exc)[:200]}"
-        pt = ProbePoint(m=m, k=k, n=n, elements=elems, ran=ok, detail=detail,
-                        seconds=round(time.time() - started, 2), verdict=verdict)
+        pt = ProbePoint(
+            m=m,
+            k=k,
+            n=n,
+            elements=elems,
+            ran=ok,
+            detail=detail,
+            seconds=round(time.time() - started, 2),
+            verdict=verdict,
+        )
         out.points.append(pt)
         if ok:
             out.largest_ran = elems if out.largest_ran is None else max(out.largest_ran, elems)
         elif verdict == "wrong":
-            out.smallest_wrong = (elems if out.smallest_wrong is None
-                                  else min(out.smallest_wrong, elems))
-            break        # a miscomputed point ends the sweep -- every larger one inherits the defect
+            out.smallest_wrong = elems if out.smallest_wrong is None else min(out.smallest_wrong, elems)
+            break  # a miscomputed point ends the sweep -- every larger one inherits the defect
         else:
-            out.smallest_declined = (elems if out.smallest_declined is None
-                                     else min(out.smallest_declined, elems))
-            break                                # the first decline brackets it; larger is not news
+            out.smallest_declined = elems if out.smallest_declined is None else min(out.smallest_declined, elems)
+            break  # the first decline brackets it; larger is not news
     return out
 
 
@@ -250,6 +297,7 @@ def _datapath_of(target: str) -> dict:
     import yaml
 
     from merlin.common.paths import merlin_dir
+
     path = merlin_dir() / "contract" / "capsules" / "profiles" / f"{target}.yaml"
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) if path.is_file() else {}
     return (doc or {}).get("datapath") or {}
@@ -267,8 +315,9 @@ def elements_for_bytes(nbytes: int, dtype: str) -> int | None:
     """A byte capacity in elements of ``dtype``, or ``None`` when the width is unknown."""
     try:
         from merlin.targetgen.address_space import element_bits
+
         bits = element_bits(dtype)
-    except Exception:                            # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None
     return (int(nbytes) * 8) // int(bits) if bits else None
 
@@ -278,30 +327,39 @@ def summarize(bracket: DeclineBracket, candidates: dict | None = None) -> str:
     lines = [f"decline probe — {bracket.target} @ {bracket.dtype}"]
     _mark = {"pass": "ran ", "wrong": "WRONG", "declined": "DECL"}
     for p in bracket.points:
-        lines.append(f"  {_mark.get(p.verdict, 'DECL'):5s} m{p.m} k{p.k} n{p.n}  "
-                     f"{p.elements:>10,} elements  {p.seconds}s  {p.detail[:110]}")
+        lines.append(
+            f"  {_mark.get(p.verdict, 'DECL'):5s} m{p.m} k{p.k} n{p.n}  "
+            f"{p.elements:>10,} elements  {p.seconds}s  {p.detail[:110]}"
+        )
     if bracket.unavailable:
         lines.append(f"  UNDECIDED: {bracket.unavailable}")
     elif bracket.decided:
         lines.append(f"  boundary in ({bracket.largest_ran:,}, {bracket.smallest_declined:,}] elements")
     elif bracket.smallest_wrong is not None and bracket.smallest_declined is None:
-        lines.append(f"  UNDECIDED about CAPACITY: the sweep stopped at {bracket.smallest_wrong:,} "
-                     f"elements because the backend MISCOMPUTED that shape, not because the device "
-                     f"could not hold it. That is a correctness boundary and it refutes no capacity: "
-                     f"what it establishes is that the store holds at least "
-                     f"{(bracket.largest_ran or 0):,} elements, and that this backend needs fixing at "
-                     f"the shape above before the capacity question can be asked at all")
+        lines.append(
+            f"  UNDECIDED about CAPACITY: the sweep stopped at {bracket.smallest_wrong:,} "
+            f"elements because the backend MISCOMPUTED that shape, not because the device "
+            f"could not hold it. That is a correctness boundary and it refutes no capacity: "
+            f"what it establishes is that the store holds at least "
+            f"{(bracket.largest_ran or 0):,} elements, and that this backend needs fixing at "
+            f"the shape above before the capacity question can be asked at all"
+        )
     elif bracket.smallest_declined is not None:
-        lines.append(f"  UNDECIDED: the FIRST point tried already declined "
-                     f"({bracket.smallest_declined:,} elements), so nothing brackets the boundary from "
-                     f"below. Either the store is smaller than every point, or -- far likelier at this "
-                     f"size -- the decline is not about capacity at all and its reason above says so")
+        lines.append(
+            f"  UNDECIDED: the FIRST point tried already declined "
+            f"({bracket.smallest_declined:,} elements), so nothing brackets the boundary from "
+            f"below. Either the store is smaller than every point, or -- far likelier at this "
+            f"size -- the decline is not about capacity at all and its reason above says so"
+        )
     else:
-        lines.append("  UNDECIDED: no decline was reached; the store is larger than every point tried, "
-                     "which refutes any candidate below the largest that ran and establishes no upper "
-                     "bound")
+        lines.append(
+            "  UNDECIDED: no decline was reached; the store is larger than every point tried, "
+            "which refutes any candidate below the largest that ran and establishes no upper "
+            "bound"
+        )
     for name, verdict in (capacity_candidates(bracket, candidates or {})).items():
-        lines.append(f"  candidate {name}: "
-                     + ("PREDICTS the boundary" if verdict else
-                        "REFUTED" if verdict is False else "undecided"))
+        lines.append(
+            f"  candidate {name}: "
+            + ("PREDICTS the boundary" if verdict else "REFUTED" if verdict is False else "undecided")
+        )
     return "\n".join(lines)

@@ -20,10 +20,10 @@ a swappable cost model. :func:`route` stays as the first-candidate wrapper so ex
 unaffected, and the split is what makes an ablation possible: an ``eager`` model that always prefers the
 matrix unit is a deliberately bad baseline to measure a real one against.
 """
+
 from __future__ import annotations
 
 import pathlib
-
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 
@@ -41,11 +41,11 @@ class OpDemand:
 
     op: str
     in_fmt: str
-    weight_fmt: str | None = None   # None for unary/elementwise ops
-    site: str = ""                  # optional label (weight name / op id) for reporting
-    m: int | None = None            # the op's real extents when known (a contraction's M x K x N), so a
-    n: int | None = None            # whole-model matmul LAYER is compiled at its true shape (the backend
-    k: int | None = None            # tiles it into DxD mesh tiles) rather than a single fixed tile
+    weight_fmt: str | None = None  # None for unary/elementwise ops
+    site: str = ""  # optional label (weight name / op id) for reporting
+    m: int | None = None  # the op's real extents when known (a contraction's M x K x N), so a
+    n: int | None = None  # whole-model matmul LAYER is compiled at its true shape (the backend
+    k: int | None = None  # tiles it into DxD mesh tiles) rather than a single fixed tile
     #: The op's OUTPUT rank, when the producer knows it. Optional for the same reason the extents are:
     #: a demand that omits it is still routable. It exists because a unit's declared shape envelope
     #: (``SemanticCapability.ranks`` / ``batch``) could not be consulted at all without it -- the
@@ -79,9 +79,9 @@ class OpDemand:
 @dataclass(frozen=True)
 class RouteResult:
     demand: OpDemand
-    unit: str | None                # chosen compute unit, or None if gapped
-    acc: str | None                 # accumulator token from the matched rule, if any
-    gap: str | None                 # honest reason when unroutable
+    unit: str | None  # chosen compute unit, or None if gapped
+    acc: str | None  # accumulator token from the matched rule, if any
+    gap: str | None  # honest reason when unroutable
 
 
 def _fmt_ok(want: str | None, allowed) -> bool:
@@ -100,6 +100,7 @@ def _fmt_ok(want: str | None, allowed) -> bool:
     legal on an e4m3 unit).
     """
     from merlin.targetgen.eligibility import _dtype_ok
+
     return _dtype_ok(want, tuple(allowed or ()))
 
 
@@ -140,7 +141,8 @@ def _legal_on(unit: _cu.ComputeUnit, demand: OpDemand) -> tuple[bool, str | None
         return True, None
     for rule in unit.accumulate:
         if _fmt_ok(demand.in_fmt, (rule.inp,)) and (
-                demand.weight_fmt is None or _fmt_ok(demand.weight_fmt, (rule.weight,))):
+            demand.weight_fmt is None or _fmt_ok(demand.weight_fmt, (rule.weight,))
+        ):
             return True, rule.acc
     return False, None
 
@@ -189,8 +191,9 @@ def _gap_text(d: OpDemand) -> str:
     return f"no compute unit supports op={d.op} in={d.in_fmt}{wf}{site}"
 
 
-def route_candidates(demands: Sequence[OpDemand], units: Sequence[_cu.ComputeUnit], *,
-                     target_endpoint_kind: str | None = None) -> list[RouteCandidates]:
+def route_candidates(
+    demands: Sequence[OpDemand], units: Sequence[_cu.ComputeUnit], *, target_endpoint_kind: str | None = None
+) -> list[RouteCandidates]:
     """Every legal (demand, unit) pairing — the input a cost model needs to have a choice at all.
 
     Order is contract-declaration order, so ``candidates[0]`` is exactly what :func:`route` would have
@@ -204,11 +207,15 @@ def route_candidates(demands: Sequence[OpDemand], units: Sequence[_cu.ComputeUni
         for u in effective:
             ok, acc = _legal_on(u, d)
             if ok:
-                legal.append(Candidate(unit=u.name, kind=u.kind, acc=acc,
-                                       exposure=_cu.resolve_exposure(
-                                           u, target_endpoint_kind=target_endpoint_kind)))
-        out.append(RouteCandidates(demand=d, candidates=tuple(legal),
-                                   gap=None if legal else _gap_text(d)))
+                legal.append(
+                    Candidate(
+                        unit=u.name,
+                        kind=u.kind,
+                        acc=acc,
+                        exposure=_cu.resolve_exposure(u, target_endpoint_kind=target_endpoint_kind),
+                    )
+                )
+        out.append(RouteCandidates(demand=d, candidates=tuple(legal), gap=None if legal else _gap_text(d)))
     return out
 
 
@@ -229,8 +236,7 @@ def eager_cost(demand: OpDemand, candidate: Candidate) -> float:
     the obvious policy, it is wrong for the narrow shapes the workload census found in quantity, and an
     ablation needs the bad policy actually implemented rather than described.
     """
-    return {"spatial": 0.0, "systolic": 0.0, "simt": 1.0, "vector": 2.0, "scalar": 3.0}.get(
-        candidate.kind, 4.0)
+    return {"spatial": 0.0, "systolic": 0.0, "simt": 1.0, "vector": 2.0, "scalar": 3.0}.get(candidate.kind, 4.0)
 
 
 @dataclass(frozen=True)
@@ -283,9 +289,9 @@ class MeasuredCost:
     def __call__(self, demand: OpDemand, candidate: Candidate) -> float | None:
         rate = self.macs_per_cycle.get(candidate.unit)
         if rate is None or rate <= 0:
-            return None                      # unmeasured: decline rather than guess
+            return None  # unmeasured: decline rather than guess
         if not demand.has_shape:
-            return None                      # a cost model without extents would be scoring a wish
+            return None  # a cost model without extents would be scoring a wish
         m, n, k = float(demand.m), float(demand.n), float(demand.k)
         tile = int(self.tile_edge.get(candidate.unit, 0) or 0)
         if tile > 0:
@@ -316,8 +322,12 @@ COST_MODELS: dict[str, CostModel] = {
 }
 
 
-def select(candidates: Sequence[RouteCandidates], cost_model: CostModel = first_candidate_cost,
-           *, context: Mapping[str, object] | None = None) -> list[RouteResult]:
+def select(
+    candidates: Sequence[RouteCandidates],
+    cost_model: CostModel = first_candidate_cost,
+    *,
+    context: Mapping[str, object] | None = None,
+) -> list[RouteResult]:
     """Choose one unit per demand under ``cost_model``, preserving declaration order on ties.
 
     A candidate the model declines to score is kept as a fallback rather than dropped: declining means
@@ -342,17 +352,27 @@ def select(candidates: Sequence[RouteCandidates], cost_model: CostModel = first_
     return results
 
 
-def explain(candidates: Sequence[RouteCandidates],
-            cost_model: CostModel = first_candidate_cost) -> list[dict[str, object]]:
+def explain(
+    candidates: Sequence[RouteCandidates], cost_model: CostModel = first_candidate_cost
+) -> list[dict[str, object]]:
     """Per-demand scores for every candidate — so a routing decision can be inspected, not just taken."""
     out: list[dict[str, object]] = []
     for entry in candidates:
-        scored = [{"unit": c.unit, "kind": c.kind, "exposure": c.exposure,
-                   "score": cost_model(entry.demand, c)}
-                  for c in entry.candidates]
-        out.append({"op": entry.demand.op, "site": entry.demand.site,
-                    "m": entry.demand.m, "n": entry.demand.n, "k": entry.demand.k,
-                    "gap": entry.gap, "candidates": scored})
+        scored = [
+            {"unit": c.unit, "kind": c.kind, "exposure": c.exposure, "score": cost_model(entry.demand, c)}
+            for c in entry.candidates
+        ]
+        out.append(
+            {
+                "op": entry.demand.op,
+                "site": entry.demand.site,
+                "m": entry.demand.m,
+                "n": entry.demand.n,
+                "k": entry.demand.k,
+                "gap": entry.gap,
+                "candidates": scored,
+            }
+        )
     return out
 
 
@@ -404,8 +424,9 @@ def reachable_lanes(target_name: str) -> set[str]:
     :func:`route_plan` does, so reachability is judged against exactly the units that will do the routing."""
     from merlin.targetgen import target_registry as tr
 
-    return reachable_lanes_on(_cu.compute_units(tr.load_contract(target_name)),
-                              host_declared=host_is_declared(target_name))
+    return reachable_lanes_on(
+        _cu.compute_units(tr.load_contract(target_name)), host_declared=host_is_declared(target_name)
+    )
 
 
 def host_is_declared(target_name: str) -> bool | None:
@@ -424,13 +445,12 @@ def host_is_declared(target_name: str) -> bool | None:
         from merlin.common.paths import merlin_dir
         from merlin.targetgen.target_experiment import load_target_experiment
 
-        p = (merlin_dir() / "experiments" / "capsule_bench" / "targets" / target_name
-             / "target_experiment.yaml")
+        p = merlin_dir() / "experiments" / "capsule_bench" / "targets" / target_name / "target_experiment.yaml"
         if not p.is_file():
             return None
         te = load_target_experiment(p)
         return bool(getattr(te, "host_lanes", None) or getattr(te, "host_board", None))
-    except Exception:                              # noqa: BLE001 -- unreadable descriptor answers nothing
+    except Exception:  # noqa: BLE001 -- unreadable descriptor answers nothing
         return None
 
 
@@ -449,7 +469,7 @@ def facts_are_extracted(target_name: str) -> bool | None:
         from merlin.targetgen.rtl.facts import load_facts
 
         doc = load_facts(target_name)
-    except Exception:                              # noqa: BLE001 -- unreadable facts answer nothing
+    except Exception:  # noqa: BLE001 -- unreadable facts answer nothing
         return None
     if not isinstance(doc, dict):
         return None
@@ -485,9 +505,9 @@ def host_board_gap(target_name: str) -> str | None:
         from merlin.targetgen.target_experiment import load_target_experiment
 
         te = load_target_experiment(
-            merlin_dir() / "experiments" / "capsule_bench" / "targets" / target_name
-            / "target_experiment.yaml")
-    except Exception:                              # noqa: BLE001
+            merlin_dir() / "experiments" / "capsule_bench" / "targets" / target_name / "target_experiment.yaml"
+        )
+    except Exception:  # noqa: BLE001
         return None
     if getattr(te, "host_board", None):
         return None
@@ -498,7 +518,7 @@ def host_board_gap(target_name: str) -> str | None:
 
         trait = (derive_profile(target_name).traits or {}).get("self_hosted_program")
         self_hosted = getattr(trait, "satisfied", None)
-    except Exception:                              # noqa: BLE001 -- no profile answers nothing
+    except Exception:  # noqa: BLE001 -- no profile answers nothing
         self_hosted = None
 
     if self_hosted is True:
@@ -506,19 +526,25 @@ def host_board_gap(target_name: str) -> str | None:
         # interface is an assertion, and "this target needs no host board" is exactly the conclusion that
         # must not be drawn from one.
         if facts_are_extracted(target_name) is False:
-            return (f"{target_name} reads as self-hosted, so no host.board would be needed -- but that "
-                    f"answer is ASSERTED, not extracted: its facts name no generator and no input "
-                    f"files, and its interface carries no evidence. Extract its facts before relying on "
-                    f"the absent board being correct")
+            return (
+                f"{target_name} reads as self-hosted, so no host.board would be needed -- but that "
+                f"answer is ASSERTED, not extracted: its facts name no generator and no input "
+                f"files, and its interface carries no evidence. Extract its facts before relying on "
+                f"the absent board being correct"
+            )
         return None
     if self_hosted is None:
-        return (f"{target_name} declares no host.board and its `self_hosted_program` trait is UNKNOWN, "
-                f"so whether it even needs one is undetermined; establish the trait before treating the "
-                f"absent board as a gap or as correct")
-    return (f"{target_name} is NOT self-hosted -- it is reached from a host -- and declares no "
-            f"host.board, so the placement model has no hart count and no VLEN for it and synthesizes "
-            f"a scalar host unit alone; an op needing the host's vector lane is then placed on a core "
-            f"the model says cannot vectorize")
+        return (
+            f"{target_name} declares no host.board and its `self_hosted_program` trait is UNKNOWN, "
+            f"so whether it even needs one is undetermined; establish the trait before treating the "
+            f"absent board as a gap or as correct"
+        )
+    return (
+        f"{target_name} is NOT self-hosted -- it is reached from a host -- and declares no "
+        f"host.board, so the placement model has no hart count and no VLEN for it and synthesizes "
+        f"a scalar host unit alone; an op needing the host's vector lane is then placed on a core "
+        f"the model says cannot vectorize"
+    )
 
 
 def route_plan_on(demands: list[OpDemand], units: list[_cu.ComputeUnit]) -> dict:

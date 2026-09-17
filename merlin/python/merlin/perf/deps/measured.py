@@ -23,6 +23,7 @@ tightest separation the machine was ever seen to accept and is the informative o
 that never issued is excluded and reported -- an unexecuted instruction has no separation, which is
 not the same as a separation of zero.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -31,8 +32,14 @@ from dataclasses import dataclass
 from merlin.perf.decompose import UNKNOWN
 
 __all__ = [
-    "ClassPricing", "CounterOffset", "SeparationObservation", "TimeAttribution",
-    "derive_counter_offset", "issue_times", "measured_separations", "price_unknown_classes",
+    "ClassPricing",
+    "CounterOffset",
+    "SeparationObservation",
+    "TimeAttribution",
+    "derive_counter_offset",
+    "issue_times",
+    "measured_separations",
+    "price_unknown_classes",
     "time_attribution",
 ]
 
@@ -64,9 +71,12 @@ class CounterOffset:
         return self.total > 0 and self.matched == self.total
 
 
-def derive_counter_offset(dwell_a: Mapping[int, int], dwell_b: Mapping[int, int],
-                          changed_instructions: "Sequence[int]",
-                          candidates: "Sequence[int]" = tuple(range(0, 9))) -> CounterOffset:
+def derive_counter_offset(
+    dwell_a: Mapping[int, int],
+    dwell_b: Mapping[int, int],
+    changed_instructions: "Sequence[int]",
+    candidates: "Sequence[int]" = tuple(range(0, 9)),
+) -> CounterOffset:
     """The constant lead between the traced counter and the executing instruction.
 
     ``dwell_*`` are ``{counter value: cycles spent there}`` from two runs of the SAME program that
@@ -75,8 +85,7 @@ def derive_counter_offset(dwell_a: Mapping[int, int], dwell_b: Mapping[int, int]
     maps one set onto the other. Requiring EVERY changed instruction to be explained is what makes
     this a derivation and not a fit: a partial match returns ``established`` False.
     """
-    moved = {pc for pc in set(dwell_a) | set(dwell_b)
-             if dwell_a.get(pc, 0) != dwell_b.get(pc, 0)}
+    moved = {pc for pc in set(dwell_a) | set(dwell_b) if dwell_a.get(pc, 0) != dwell_b.get(pc, 0)}
     want = set(int(i) for i in changed_instructions)
     if not want:
         return CounterOffset(0, 0, 0, "no instruction was changed, so nothing pins the offset")
@@ -86,9 +95,15 @@ def derive_counter_offset(dwell_a: Mapping[int, int], dwell_b: Mapping[int, int]
         if best is None or hit > best[1]:
             best = (k, hit)
     k, hit = best
-    return CounterOffset(slots=k, matched=hit, total=len(want),
-                         detail=(f"{hit} of {len(want)} changed instruction(s) explained by a lead of "
-                                 f"{k} slot(s); counter values that moved: {sorted(moved)}"))
+    return CounterOffset(
+        slots=k,
+        matched=hit,
+        total=len(want),
+        detail=(
+            f"{hit} of {len(want)} changed instruction(s) explained by a lead of "
+            f"{k} slot(s); counter values that moved: {sorted(moved)}"
+        ),
+    )
 
 
 def issue_times(pc_by_cycle: "Sequence[int]", *, offset: int = 0) -> dict[int, tuple[int, ...]]:
@@ -137,8 +152,7 @@ class SeparationObservation:
         return self.measured - float(self.predicted)
 
 
-def measured_separations(dag, issues: Mapping[int, "tuple[int, ...]"]
-                         ) -> tuple[list[SeparationObservation], list[str]]:
+def measured_separations(dag, issues: Mapping[int, "tuple[int, ...]"]) -> tuple[list[SeparationObservation], list[str]]:
     """``(observations, skipped)`` -- every edge whose endpoints both issued, confronted.
 
     ``skipped`` names the edges that could not be checked because an endpoint never executed. They
@@ -157,10 +171,17 @@ def measured_separations(dag, issues: Mapping[int, "tuple[int, ...]"]
         if not seps:
             skipped.append(f"{e.src}->{e.dst} ({e.kind}): dst never issued after src")
             continue
-        obs.append(SeparationObservation(
-            src=e.src, dst=e.dst, kind=e.kind, edge_class=e.edge_class,
-            predicted=(e.cycles if e.known else UNKNOWN),
-            measured=seps[0], all_measured=seps))
+        obs.append(
+            SeparationObservation(
+                src=e.src,
+                dst=e.dst,
+                kind=e.kind,
+                edge_class=e.edge_class,
+                predicted=(e.cycles if e.known else UNKNOWN),
+                measured=seps[0],
+                all_measured=seps,
+            )
+        )
     return obs, skipped
 
 
@@ -174,8 +195,10 @@ class ClassPricing:
     tightest: int
     loosest: int
     #: Stated on every pricing, because it is the whole caveat: this narrows the unknown from above.
-    basis: str = ("trace_derived: a correct run left at least the required separation, so this is an "
-                  "UPPER bound on the requirement and may not be promoted to the latency")
+    basis: str = (
+        "trace_derived: a correct run left at least the required separation, so this is an "
+        "UPPER bound on the requirement and may not be promoted to the latency"
+    )
 
 
 def price_unknown_classes(observations: "Sequence[SeparationObservation]") -> dict[str, ClassPricing]:
@@ -189,8 +212,10 @@ def price_unknown_classes(observations: "Sequence[SeparationObservation]") -> di
     for o in observations:
         if o.predicted is UNKNOWN:
             by_class.setdefault(o.edge_class or "unclassified", []).append(o.measured)
-    return {k: ClassPricing(edge_class=k, n_edges=len(v), tightest=min(v), loosest=max(v))
-            for k, v in sorted(by_class.items())}
+    return {
+        k: ClassPricing(edge_class=k, n_edges=len(v), tightest=min(v), loosest=max(v))
+        for k, v in sorted(by_class.items())
+    }
 
 
 @dataclass(frozen=True)
@@ -210,8 +235,7 @@ class TimeAttribution:
         return sum(c for _i, c in self.top[:n]) / self.total_cycles if self.total_cycles else 0.0
 
 
-def time_attribution(pc_by_cycle: "Sequence[int]",
-                     instructions: "Sequence | None" = None) -> TimeAttribution:
+def time_attribution(pc_by_cycle: "Sequence[int]", instructions: "Sequence | None" = None) -> TimeAttribution:
     """Attribute every cycle of a run to the instruction the counter was sitting on.
 
     NOT a longest path. A chain of MEASURED separations is a chain of elapsed times, so its longest
@@ -232,5 +256,4 @@ def time_attribution(pc_by_cycle: "Sequence[int]",
                 m = getattr(instructions[i], "mnemonic", None) or "?"
                 by_m[m] = by_m.get(m, 0) + c
     top = tuple(sorted(by_i.items(), key=lambda kv: -kv[1]))
-    return TimeAttribution(total_cycles=len(pc_by_cycle), by_instruction=by_i,
-                           by_mnemonic=by_m, top=top)
+    return TimeAttribution(total_cycles=len(pc_by_cycle), by_instruction=by_i, by_mnemonic=by_m, top=top)

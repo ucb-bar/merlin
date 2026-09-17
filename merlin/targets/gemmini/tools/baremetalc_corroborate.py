@@ -24,6 +24,7 @@ line is its bareMetalC Makefile. Shared code never names it. The contract declar
 ``plugin.reference_programs`` and callers load it with
 ``merlin.targetgen.plugins.load_declared(target, "reference_programs")``.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -113,17 +114,46 @@ int main() {
 def _build_cmd(src: Path, elf: Path) -> list[str]:
     """Identical flags/toolchain to contract.compile.link_elf, with our .c as the main."""
     from merlin.runtime.backends import base as _bk
+
     gem = _bk.get_backend("gemmini")
     rt, common = gem.rocc_tests_dir(), gem._common_dir()
-    return [str(gem.gcc_path()), "-DPREALLOCATE=1", "-DMULTITHREAD=1", "-mcmodel=medany",
-            "-std=gnu99", "-O2", "-ffast-math", "-fno-common", "-fno-builtin-printf",
-            "-fno-tree-loop-distribute-patterns", "-march=rv64gc", "-Wa,-march=rv64gc",
-            "-lm", "-lgcc", "-I", str(rt / "riscv-tests"), "-I", str(rt / "riscv-tests/env"),
-            "-I", str(rt), "-I", str(common), "-DID_STRING=", "-DPRINT_TILE=0",
-            "-nostdlib", "-nostartfiles", "-static", "-T", str(common / "test.ld"), "-DBAREMETAL=1",
-            str(src), "-o", str(elf),
-            *(str(p) for p in sorted(common.glob("*.c"))),
-            *(str(p) for p in sorted(common.glob("*.S")))]
+    return [
+        str(gem.gcc_path()),
+        "-DPREALLOCATE=1",
+        "-DMULTITHREAD=1",
+        "-mcmodel=medany",
+        "-std=gnu99",
+        "-O2",
+        "-ffast-math",
+        "-fno-common",
+        "-fno-builtin-printf",
+        "-fno-tree-loop-distribute-patterns",
+        "-march=rv64gc",
+        "-Wa,-march=rv64gc",
+        "-lm",
+        "-lgcc",
+        "-I",
+        str(rt / "riscv-tests"),
+        "-I",
+        str(rt / "riscv-tests/env"),
+        "-I",
+        str(rt),
+        "-I",
+        str(common),
+        "-DID_STRING=",
+        "-DPRINT_TILE=0",
+        "-nostdlib",
+        "-nostartfiles",
+        "-static",
+        "-T",
+        str(common / "test.ld"),
+        "-DBAREMETAL=1",
+        str(src),
+        "-o",
+        str(elf),
+        *(str(p) for p in sorted(common.glob("*.c"))),
+        *(str(p) for p in sorted(common.glob("*.S"))),
+    ]
 
 
 def build(src_text: str, name: str, workdir: Path) -> Path:
@@ -139,14 +169,16 @@ def build(src_text: str, name: str, workdir: Path) -> Path:
 
 def run(elf: Path, simulator: str, timeout: int = 600) -> dict:
     from merlin.runtime.backends import base as _bk
+
     gem = _bk.get_backend("gemmini")
     console = gem.run_elf(elf, simulator=simulator, timeout=timeout)
     outputs, raw = gem.parse_output(console)
     return {"outputs": outputs, "cycles": raw.get("cycles"), "console": console}
 
 
-def matmul_source(I: int, K: int, J: int, *, name_a: str, name_b: str,
-                  act="NO_ACTIVATION", scale="ACC_SCALE_IDENTITY", full_C=True) -> str:
+def matmul_source(
+    I: int, K: int, J: int, *, name_a: str, name_b: str, act="NO_ACTIVATION", scale="ACC_SCALE_IDENTITY", full_C=True
+) -> str:
     """C source filling A/B with exactly ``Tensor.deterministic(name_a/name_b, ...)``."""
     seed_a, seed_b = STIM.det_seed(name_a), STIM.det_seed(name_b)
     if full_C:
@@ -157,10 +189,21 @@ def matmul_source(I: int, K: int, J: int, *, name_a: str, name_b: str,
         cdecl = "static elem_t C[MI][MJ] row_align(1);"
         celem = "C[i][j]"
         fc = "false"
-    return _MATMUL_C.format(I=I, K=K, J=J, seed_a=seed_a, seed_b=seed_b, act=act, scale=scale,
-                            full_C=fc, cdecl=cdecl, celem=celem, mix_fn=STIM.C_MIX_FN,
-                            fill_a=STIM.c_fill_loop_2d("A", "MI", "MK", "SEED_A"),
-                            fill_b=STIM.c_fill_loop_2d("B", "MK", "MJ", "SEED_B"))
+    return _MATMUL_C.format(
+        I=I,
+        K=K,
+        J=J,
+        seed_a=seed_a,
+        seed_b=seed_b,
+        act=act,
+        scale=scale,
+        full_C=fc,
+        cdecl=cdecl,
+        celem=celem,
+        mix_fn=STIM.C_MIX_FN,
+        fill_a=STIM.c_fill_loop_2d("A", "MI", "MK", "SEED_A"),
+        fill_b=STIM.c_fill_loop_2d("B", "MK", "MJ", "SEED_B"),
+    )
 
 
 def _i8(x: int) -> int:
@@ -185,34 +228,62 @@ def _matmul_golden(name_a, name_b, I, K, J, *, relu=False, acc_scale=None, i8out
 # Each anchor: (name, builder -> src, golden, capsule, classes-note)
 def _anchors():
     return [
-        {"name": "mvin_mvout", "specimen": "bareMetalC/mvin_mvout.c (upstream, instrumented)",
-         "capsule": "A1_mvin_mvout", "feature": "MVIN/MVOUT movement (identity, i8)",
-         "src": _MVIN_MVOUT_C,
-         "golden": [[_i8(i * 16 + j) for j in range(16)] for i in range(16)]},
-        {"name": "ref_matmul_16", "specimen": "tiled_matmul_auto (canonical Gemmini lib), WS",
-         "capsule": "A2_single_tile_matmul", "feature": "single-tile i8xi8->i32 matmul",
-         "src": matmul_source(16, 16, 16, name_a="A0", name_b="W"),
-         "golden": _matmul_golden("A0", "W", 16, 16, 16)},
-        {"name": "ref_matmul_k32", "specimen": "tiled_matmul_auto, K=32 (K-accumulation)",
-         "capsule": "A3_k_accumulation", "feature": "K-accumulation (Kt>1)",
-         "src": matmul_source(16, 32, 16, name_a="A0", name_b="W"),
-         "golden": _matmul_golden("A0", "W", 16, 32, 16)},
-        {"name": "ref_matmul_relu", "specimen": "tiled_matmul_auto + RELU", "capsule": "A5_relu_epilogue",
-         "feature": "relu epilogue", "src": matmul_source(16, 16, 16, name_a="A0", name_b="W", act="RELU"),
-         "golden": _matmul_golden("A0", "W", 16, 16, 16, relu=True)},
-        {"name": "ref_acc_scale_i8", "specimen": "tiled_matmul_auto + acc_scale->i8",
-         "capsule": "A4_acc_scale_i8", "feature": "acc_scale (f32) + saturating i8 readout",
-         "src": matmul_source(16, 16, 16, name_a="A0", name_b="W", scale="0.0625f", full_C=False),
-         "golden": _matmul_golden("A0", "W", 16, 16, 16, acc_scale=0.0625, i8out=True)},
+        {
+            "name": "mvin_mvout",
+            "specimen": "bareMetalC/mvin_mvout.c (upstream, instrumented)",
+            "capsule": "A1_mvin_mvout",
+            "feature": "MVIN/MVOUT movement (identity, i8)",
+            "src": _MVIN_MVOUT_C,
+            "golden": [[_i8(i * 16 + j) for j in range(16)] for i in range(16)],
+        },
+        {
+            "name": "ref_matmul_16",
+            "specimen": "tiled_matmul_auto (canonical Gemmini lib), WS",
+            "capsule": "A2_single_tile_matmul",
+            "feature": "single-tile i8xi8->i32 matmul",
+            "src": matmul_source(16, 16, 16, name_a="A0", name_b="W"),
+            "golden": _matmul_golden("A0", "W", 16, 16, 16),
+        },
+        {
+            "name": "ref_matmul_k32",
+            "specimen": "tiled_matmul_auto, K=32 (K-accumulation)",
+            "capsule": "A3_k_accumulation",
+            "feature": "K-accumulation (Kt>1)",
+            "src": matmul_source(16, 32, 16, name_a="A0", name_b="W"),
+            "golden": _matmul_golden("A0", "W", 16, 32, 16),
+        },
+        {
+            "name": "ref_matmul_relu",
+            "specimen": "tiled_matmul_auto + RELU",
+            "capsule": "A5_relu_epilogue",
+            "feature": "relu epilogue",
+            "src": matmul_source(16, 16, 16, name_a="A0", name_b="W", act="RELU"),
+            "golden": _matmul_golden("A0", "W", 16, 16, 16, relu=True),
+        },
+        {
+            "name": "ref_acc_scale_i8",
+            "specimen": "tiled_matmul_auto + acc_scale->i8",
+            "capsule": "A4_acc_scale_i8",
+            "feature": "acc_scale (f32) + saturating i8 readout",
+            "src": matmul_source(16, 16, 16, name_a="A0", name_b="W", scale="0.0625f", full_C=False),
+            "golden": _matmul_golden("A0", "W", 16, 16, 16, acc_scale=0.0625, i8out=True),
+        },
     ]
 
 
 def corroborate_all(workdir: Path, simulators=("spike",), out_report: Path | None = None) -> list[dict]:
     rows = []
     for anc in _anchors():
-        row = {"name": anc["name"], "specimen": anc["specimen"], "capsule": anc["capsule"],
-               "feature": anc["feature"], "built": False, "results": {}, "golden_match": {},
-               "status": "fail"}
+        row = {
+            "name": anc["name"],
+            "specimen": anc["specimen"],
+            "capsule": anc["capsule"],
+            "feature": anc["feature"],
+            "built": False,
+            "results": {},
+            "golden_match": {},
+            "status": "fail",
+        }
         try:
             elf = build(anc["src"], anc["name"], workdir)
             row["built"] = True
@@ -225,14 +296,15 @@ def corroborate_all(workdir: Path, simulators=("spike",), out_report: Path | Non
             try:
                 res = run(elf, sim)
                 got = res["outputs"].get("C")
-                match = (got == anc["golden"])
+                match = got == anc["golden"]
                 row["results"][sim] = {"cycles": res["cycles"], "match": match}
                 row["golden_match"][sim] = match
                 ok_any = ok_any or match
             except Exception as e:
                 row["results"][sim] = {"error": str(e)[-200:]}
-        row["status"] = "pass" if ok_any and all(
-            v.get("match", False) for v in row["results"].values() if "match" in v) else "fail"
+        row["status"] = (
+            "pass" if ok_any and all(v.get("match", False) for v in row["results"].values() if "match" in v) else "fail"
+        )
         rows.append(row)
     if out_report:
         _write_report(rows, out_report, simulators)
@@ -240,17 +312,23 @@ def corroborate_all(workdir: Path, simulators=("spike",), out_report: Path | Non
 
 
 def _write_report(rows, out: Path, simulators) -> None:
-    L = ["# bareMetalC corroboration report (capsule_bench_v0)", "",
-         "Real Gemmini reference programs (the canonical primitives the bareMetalC corpus uses: the",
-         "upstream `mvin_mvout` movement test + `tiled_matmul_auto`, the library matmul called by",
-         "`conv_perf.c`/`tiled_matmul_ws.c`) built with the IDENTICAL toolchain/flags as our package",
-         "ELFs and run on the SAME spike + verilator. Inputs use the same deterministic formula as our",
-         "capsule leaves, so the real-Gemmini output must equal our `Tensor` golden (== capsule golden).",
-         "These are external reference ORACLES only — never copied/called inside any submission.", "",
-         "**The anchor:** `real_gemmini_output == our_Tensor_golden == capsule_golden`.", "",
-         "| anchor | reference specimen | equiv capsule | feature | built | " +
-         " | ".join(f"{s} match (cyc)" for s in simulators) + " | status |",
-         "|---|---|---|---|---|" + "---|" * (len(simulators) + 1)]
+    L = [
+        "# bareMetalC corroboration report (capsule_bench_v0)",
+        "",
+        "Real Gemmini reference programs (the canonical primitives the bareMetalC corpus uses: the",
+        "upstream `mvin_mvout` movement test + `tiled_matmul_auto`, the library matmul called by",
+        "`conv_perf.c`/`tiled_matmul_ws.c`) built with the IDENTICAL toolchain/flags as our package",
+        "ELFs and run on the SAME spike + verilator. Inputs use the same deterministic formula as our",
+        "capsule leaves, so the real-Gemmini output must equal our `Tensor` golden (== capsule golden).",
+        "These are external reference ORACLES only — never copied/called inside any submission.",
+        "",
+        "**The anchor:** `real_gemmini_output == our_Tensor_golden == capsule_golden`.",
+        "",
+        "| anchor | reference specimen | equiv capsule | feature | built | "
+        + " | ".join(f"{s} match (cyc)" for s in simulators)
+        + " | status |",
+        "|---|---|---|---|---|" + "---|" * (len(simulators) + 1),
+    ]
     for r in rows:
         cells = []
         for s in simulators:
@@ -258,25 +336,33 @@ def _write_report(rows, out: Path, simulators) -> None:
             if "match" in res:
                 cells.append(f"{'yes' if res['match'] else 'NO'} ({res.get('cycles')})")
             else:
-                cells.append(f"err: {res.get('error','-')[:30]}" if res else "—")
-        L.append(f"| {r['name']} | {r['specimen']} | {r['capsule']} | {r['feature']} | "
-                 f"{'yes' if r['built'] else 'NO'} | " + " | ".join(cells) + f" | {r['status']} |")
+                cells.append(f"err: {res.get('error', '-')[:30]}" if res else "—")
+        L.append(
+            f"| {r['name']} | {r['specimen']} | {r['capsule']} | {r['feature']} | "
+            f"{'yes' if r['built'] else 'NO'} | " + " | ".join(cells) + f" | {r['status']} |"
+        )
     npass = sum(1 for r in rows if r["status"] == "pass")
-    L += ["", f"**{npass}/{len(rows)} anchors corroborated.**", "",
-          "## Interpretation", "",
-          "- A passing anchor means our golden engine (and thus the capsule it backs) reproduces real",
-          "  Gemmini hardware output bit-exactly for identical inputs — closing the 'goldens are only",
-          "  our own engine' gap for movement, single-tile matmul, K-accumulation, relu, and",
-          "  acc_scale→i8.",
-          "- conv2d corroboration is deferred: spike's Gemmini ISS does not run conv, and a verilator",
-          "  conv anchor is future work (recorded honestly, not silently omitted).",
-          "- These reference programs are NOT part of any submission; the integrity scan + ABI boundary",
-          "  forbid copying/calling Gemmini library kernels in a graded backend."]
+    L += [
+        "",
+        f"**{npass}/{len(rows)} anchors corroborated.**",
+        "",
+        "## Interpretation",
+        "",
+        "- A passing anchor means our golden engine (and thus the capsule it backs) reproduces real",
+        "  Gemmini hardware output bit-exactly for identical inputs — closing the 'goldens are only",
+        "  our own engine' gap for movement, single-tile matmul, K-accumulation, relu, and",
+        "  acc_scale→i8.",
+        "- conv2d corroboration is deferred: spike's Gemmini ISS does not run conv, and a verilator",
+        "  conv anchor is future work (recorded honestly, not silently omitted).",
+        "- These reference programs are NOT part of any submission; the integrity scan + ABI boundary",
+        "  forbid copying/calling Gemmini library kernels in a graded backend.",
+    ]
     out.write_text("\n".join(L) + "\n", encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--workdir", default="/tmp/bmc_corro")
     ap.add_argument("--simulators", default="spike")
@@ -285,8 +371,10 @@ def main(argv: list[str] | None = None) -> int:
     sims = tuple(a.simulators.split(","))
     rows = corroborate_all(Path(a.workdir), simulators=sims, out_report=Path(a.report))
     for r in rows:
-        print(f"  [{r['status']:4s}] {r['name']:18s} {r['capsule']:22s} "
-              + " ".join(f"{s}={r['results'].get(s,{}).get('match')}" for s in sims))
+        print(
+            f"  [{r['status']:4s}] {r['name']:18s} {r['capsule']:22s} "
+            + " ".join(f"{s}={r['results'].get(s, {}).get('match')}" for s in sims)
+        )
     print(f"wrote {a.report}")
     return 0 if all(r["status"] == "pass" for r in rows) else 1
 

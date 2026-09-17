@@ -30,6 +30,7 @@ This module also owns the small vocabulary the rest of the performance analyses 
 :class:`Unavailable`) so the four analyses agree on what a resource is without importing each other's
 internals.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -109,7 +110,8 @@ class _Unknown:
         raise UnknownValueError(
             "this quantity is UNKNOWN and cannot be used as a number. It is not zero and it is not "
             "missing-so-assume-nothing-happened: it was never established. Handle it explicitly "
-            "(`is UNKNOWN` / `is_unknown`) or propagate it; never write `x or 0`.")
+            "(`is UNKNOWN` / `is_unknown`) or propagate it; never write `x or 0`."
+        )
 
     __bool__ = _refuse
     __float__ = _refuse
@@ -154,7 +156,8 @@ class Unavailable:
 
     def __str__(self) -> str:
         return f"{UNKNOWN_TOKEN}: {self.what} -- missing {', '.join(self.missing)}" + (
-            f" ({self.detail})" if self.detail else "")
+            f" ({self.detail})" if self.detail else ""
+        )
 
 
 def is_unknown(value: object) -> bool:
@@ -236,11 +239,16 @@ class ActivitySource:
         raise KeyError(f"{self.workload}: no resource named {name!r}")
 
 
-def activity_from_busy(workload: str, total_cycles: int, busy: Mapping[str, int],
-                       kinds: Mapping[str, ResourceKind], *,
-                       partitioned: bool | None = None,
-                       completion_observable: bool | None = None,
-                       provenance: str = "") -> ActivitySource:
+def activity_from_busy(
+    workload: str,
+    total_cycles: int,
+    busy: Mapping[str, int],
+    kinds: Mapping[str, ResourceKind],
+    *,
+    partitioned: bool | None = None,
+    completion_observable: bool | None = None,
+    provenance: str = "",
+) -> ActivitySource:
     """Build an :class:`ActivitySource` from a plain ``{unit: busy_cycles}`` mapping.
 
     ``kinds`` must name every unit. It is required rather than guessed: the bucket names belong to
@@ -252,11 +260,17 @@ def activity_from_busy(workload: str, total_cycles: int, busy: Mapping[str, int]
     if missing:
         raise ValueError(
             f"{workload}: no declared ResourceKind for unit(s) {missing}. Supply the kind from the "
-            f"target's manifest/ISA roles -- it must not be inferred from the bucket's name.")
+            f"target's manifest/ISA roles -- it must not be inferred from the bucket's name."
+        )
     resources = tuple(Resource(name=n, kind=kinds[n], busy_cycles=int(v)) for n, v in busy.items())
-    return ActivitySource(workload=workload, total_cycles=int(total_cycles), resources=resources,
-                          partitioned=partitioned, completion_observable=completion_observable,
-                          provenance=provenance)
+    return ActivitySource(
+        workload=workload,
+        total_cycles=int(total_cycles),
+        resources=resources,
+        partitioned=partitioned,
+        completion_observable=completion_observable,
+        provenance=provenance,
+    )
 
 
 @dataclass(frozen=True)
@@ -274,9 +288,12 @@ class Trait:
     missing: tuple[str, ...] = ()
 
 
-def activity_trait(sources: Sequence[ActivitySource] = (), *,
-                   manifest: Mapping[str, Any] | None = None,
-                   facts: Mapping[str, Any] | None = None) -> Trait:
+def activity_trait(
+    sources: Sequence[ActivitySource] = (),
+    *,
+    manifest: Mapping[str, Any] | None = None,
+    facts: Mapping[str, Any] | None = None,
+) -> Trait:
     """Does this target expose a per-unit activity decomposition?
 
     Satisfied when at least one workload comes with **two or more engine buckets** and a
@@ -290,21 +307,30 @@ def activity_trait(sources: Sequence[ActivitySource] = (), *,
         names = sorted({r.name for s in usable for r in usable[0].engines})
         provs = sorted({s.provenance for s in usable if s.provenance})
         if not provs:
-            return Trait("per_unit_activity_decomposition", None,
-                         evidence=f"{len(usable)} workload(s) with buckets {names}",
-                         missing=("provenance for the activity source",))
-        return Trait("per_unit_activity_decomposition", True,
-                     evidence=f"{len(usable)} workload(s), engine buckets {names}, from {provs}")
+            return Trait(
+                "per_unit_activity_decomposition",
+                None,
+                evidence=f"{len(usable)} workload(s) with buckets {names}",
+                missing=("provenance for the activity source",),
+            )
+        return Trait(
+            "per_unit_activity_decomposition",
+            True,
+            evidence=f"{len(usable)} workload(s), engine buckets {names}, from {provs}",
+        )
 
     declared = 0
     if manifest is not None:
         declared = len(manifest.get("compute_units") or ()) + len(manifest.get("derived_compute_units") or ())
-    detail = f"the manifest declares {declared} compute unit(s)" if manifest is not None else \
-        "no manifest supplied"
+    detail = f"the manifest declares {declared} compute unit(s)" if manifest is not None else "no manifest supplied"
     if sources:
         detail += f"; {len(sources)} activity source(s) supplied but none carries >=2 engine buckets"
-    return Trait("per_unit_activity_decomposition", None, evidence=detail,
-                 missing=("per-unit busy-cycle accounting (>=2 engine buckets for one workload)",))
+    return Trait(
+        "per_unit_activity_decomposition",
+        None,
+        evidence=detail,
+        missing=("per-unit busy-cycle accounting (>=2 engine buckets for one workload)",),
+    )
 
 
 @dataclass(frozen=True)
@@ -349,16 +375,20 @@ def decompose(source: ActivitySource | None) -> Decomposition | Unavailable:
     engine buckets, or ran for zero cycles.
     """
     if source is None:
-        return Unavailable("bottleneck decomposition", ("a per-unit activity source",),
-                           "no activity source supplied")
+        return Unavailable("bottleneck decomposition", ("a per-unit activity source",), "no activity source supplied")
     trait = activity_trait([source])
     if trait.satisfied is not True and len(source.engines) < 2:
-        return Unavailable("bottleneck decomposition",
-                           trait.missing or ("per-unit busy-cycle accounting",),
-                           f"{source.workload}: {trait.evidence}")
+        return Unavailable(
+            "bottleneck decomposition",
+            trait.missing or ("per-unit busy-cycle accounting",),
+            f"{source.workload}: {trait.evidence}",
+        )
     if source.total_cycles <= 0:
-        return Unavailable("bottleneck decomposition", ("a non-zero total cycle count",),
-                           f"{source.workload}: total_cycles={source.total_cycles}")
+        return Unavailable(
+            "bottleneck decomposition",
+            ("a non-zero total cycle count",),
+            f"{source.workload}: total_cycles={source.total_cycles}",
+        )
 
     total = source.total_cycles
     busy = {r.name: r.busy_cycles for r in source.resources}
@@ -369,12 +399,19 @@ def decompose(source: ActivitySource | None) -> Decomposition | Unavailable:
     binding = engines[0]
     second = engines[1].busy_cycles / total if len(engines) > 1 else 0.0
     return Decomposition(
-        workload=source.workload, total_cycles=total, busy=busy, shares=shares, kinds=kinds,
-        binding=binding.name, binding_share=binding.busy_cycles / total,
+        workload=source.workload,
+        total_cycles=total,
+        busy=busy,
+        shares=shares,
+        kinds=kinds,
+        binding=binding.name,
+        binding_share=binding.busy_cycles / total,
         margin_to_second=binding.busy_cycles / total - second,
         fixed_share=source.fixed_cycles / total,
         unattributed_cycles=total - sum(busy.values()),
-        partitioned=source.partitioned, provenance=source.provenance)
+        partitioned=source.partitioned,
+        provenance=source.provenance,
+    )
 
 
 @dataclass(frozen=True)

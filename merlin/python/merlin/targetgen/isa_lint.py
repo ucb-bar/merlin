@@ -14,11 +14,12 @@ signal the datapath-derived taxonomy does not expose. Both are future extensions
 
 No golden, no target name, no ``re``.
 """
+
 from __future__ import annotations
 
-from .isa_model import IsaModel
 from . import isa_disasm as D
 from . import isa_taxonomy as IT
+from .isa_model import IsaModel
 
 Finding = dict
 
@@ -34,10 +35,16 @@ def _ambiguous_findings(recs: list[Finding]) -> list[Finding]:
         amb = r.get("ambiguous")
         if amb:
             names = ", ".join(str(a) for a in amb)
-            out.append({"rule": "ambiguous_decode", "severity": "error", "index": r["index"],
-                        "detail": f"word {r['word']} matches {len(amb)} instruction signatures ({names}) — "
-                                  "an overlapping/ambiguous encoding the decoder cannot resolve to one op; "
-                                  "assemble it with the derived encoder instead of hand-packing the word"})
+            out.append(
+                {
+                    "rule": "ambiguous_decode",
+                    "severity": "error",
+                    "index": r["index"],
+                    "detail": f"word {r['word']} matches {len(amb)} instruction signatures ({names}) — "
+                    "an overlapping/ambiguous encoding the decoder cannot resolve to one op; "
+                    "assemble it with the derived encoder instead of hand-packing the word",
+                }
+            )
     return out
 
 
@@ -52,14 +59,25 @@ def _lint_fixed(model: IsaModel, words: list[int]) -> list[Finding]:
     real = [r for r in recs if not r.get("illegal")]
     for r in recs:
         if r.get("illegal"):
-            findings.append({"rule": "illegal_opcode", "severity": "error", "index": r["index"],
-                             "detail": f"word {r['word']} has an opcode this ISA does not define — an "
-                                       "invented or mis-encoded instruction (use the derived encoder)"})
+            findings.append(
+                {
+                    "rule": "illegal_opcode",
+                    "severity": "error",
+                    "index": r["index"],
+                    "detail": f"word {r['word']} has an opcode this ISA does not define — an "
+                    "invented or mis-encoded instruction (use the derived encoder)",
+                }
+            )
     findings.extend(_ambiguous_findings(real))
     if words and not real:
-        findings.append({"rule": "no_recognized_instructions", "severity": "error",
-                         "detail": "no emitted word decodes to a defined instruction — the kernel is empty "
-                                   "or entirely mis-encoded"})
+        findings.append(
+            {
+                "rule": "no_recognized_instructions",
+                "severity": "error",
+                "detail": "no emitted word decodes to a defined instruction — the kernel is empty "
+                "or entirely mis-encoded",
+            }
+        )
     if model.address_spaces and model.address_space_field:
         valid = set(model.address_spaces.values())
         by_val = {v: k for k, v in model.address_spaces.items()}
@@ -67,11 +85,17 @@ def _lint_fixed(model: IsaModel, words: list[int]) -> list[Finding]:
             v = r.get("operands", {}).get(model.address_space_field)
             if v is not None and v not in valid:
                 spaces = ", ".join(f"{k}={n}" for k, n in sorted(model.address_spaces.items()))
-                findings.append({"rule": "undefined_address_space", "severity": "warning", "index": r["index"],
-                                 "detail": f"instruction '{r.get('mnemonic')}' selects address space "
-                                           f"{v} in field '{model.address_space_field}', which this target "
-                                           f"does not define (spaces: {spaces}) — the memory access will not "
-                                           "route to a real space"})
+                findings.append(
+                    {
+                        "rule": "undefined_address_space",
+                        "severity": "warning",
+                        "index": r["index"],
+                        "detail": f"instruction '{r.get('mnemonic')}' selects address space "
+                        f"{v} in field '{model.address_space_field}', which this target "
+                        f"does not define (spaces: {spaces}) — the memory access will not "
+                        "route to a real space",
+                    }
+                )
     return findings
 
 
@@ -87,8 +111,9 @@ def _encoding_errata_findings(model: IsaModel, recs: list[Finding]) -> list[Find
     why the separate gate (``check_isa_matches_rtl.py``) fails CLOSED on the same condition."""
     try:
         from .isa_rtl_crosscheck import contradicted_mnemonics
+
         bad = contradicted_mnemonics(model.target)
-    except Exception:                      # noqa: BLE001 — an unreachable cross-check is not a verdict
+    except Exception:  # noqa: BLE001 — an unreachable cross-check is not a verdict
         return []
     if not bad:
         return []
@@ -112,17 +137,24 @@ def _encoding_errata_findings(model: IsaModel, recs: list[Finding]) -> list[Find
                 continue
             against = ", ".join(row.get("hardware_against") or ()) or "this target's hardware"
             ev = "; ".join(f"{k}={v}" for k, v in sorted((row.get("evidence") or {}).items()))
-            out.append({"rule": "encoding_contradicts_rtl", "severity": "error", "index": r["index"],
-                        "detail": f"{name} is encoded as this target's SHIPPED ISA definition describes it "
-                                  f"({row.get('declared')}), but {against} decodes those bits as a "
-                                  f"different instruction ({ev}). This word will assemble, disassemble and "
-                                  "execute — as something else, with no error anywhere. Emit the "
-                                  "hardware's encoding; see merlin/contract/isa_errata.yaml."})
+            out.append(
+                {
+                    "rule": "encoding_contradicts_rtl",
+                    "severity": "error",
+                    "index": r["index"],
+                    "detail": f"{name} is encoded as this target's SHIPPED ISA definition describes it "
+                    f"({row.get('declared')}), but {against} decodes those bits as a "
+                    f"different instruction ({ev}). This word will assemble, disassemble and "
+                    "execute — as something else, with no error anywhere. Emit the "
+                    "hardware's encoding; see merlin/contract/isa_errata.yaml.",
+                }
+            )
     return out
 
 
-def analyze_schedule(model: IsaModel, words: list[int], *, schedule_contract: dict | None = None,
-                     cycle_budget: int | None = None) -> dict:
+def analyze_schedule(
+    model: IsaModel, words: list[int], *, schedule_contract: dict | None = None, cycle_budget: int | None = None
+) -> dict:
     """Analyze explicit scheduling without naming a target or guessing a latency.
 
     Self-hosted accelerators commonly omit dynamic dependency interlocks and expose a delay
@@ -159,8 +191,7 @@ def analyze_schedule(model: IsaModel, words: list[int], *, schedule_contract: di
     # immediate bits, but only the target knows how a decoded value advances its internal PC. Keeping
     # that unit conversion in data avoids assuming byte-addressed PCs in generic infrastructure.
     branch_edges: list[dict] = []
-    control_flow = (contract.get("control_flow")
-                    if isinstance(contract.get("control_flow"), dict) else {})
+    control_flow = contract.get("control_flow") if isinstance(contract.get("control_flow"), dict) else {}
     relative_rules = control_flow.get("relative_branches") or []
     if not isinstance(relative_rules, list):
         relative_rules = []
@@ -169,9 +200,14 @@ def analyze_schedule(model: IsaModel, words: list[int], *, schedule_contract: di
         immediate_operand = str(rule.get("immediate_operand") or "")
         immediate_bits = rule.get("immediate_bits")
         units_per_instruction = rule.get("decoded_immediate_units_per_instruction")
-        if (not mnemonics or not immediate_operand or not isinstance(immediate_bits, int)
-                or immediate_bits <= 0 or not isinstance(units_per_instruction, int)
-                or units_per_instruction <= 0):
+        if (
+            not mnemonics
+            or not immediate_operand
+            or not isinstance(immediate_bits, int)
+            or immediate_bits <= 0
+            or not isinstance(units_per_instruction, int)
+            or units_per_instruction <= 0
+        ):
             continue
         register_operands = [str(x) for x in (rule.get("comparison_registers") or [])]
         destination_operand = str(rule.get("destination_operand") or "")
@@ -187,24 +223,31 @@ def analyze_schedule(model: IsaModel, words: list[int], *, schedule_contract: di
             masked = raw & ((1 << immediate_bits) - 1)
             signed = masked - (1 << immediate_bits) if masked & (1 << (immediate_bits - 1)) else masked
             if signed % units_per_instruction:
-                findings.append({
-                    "rule": "misaligned_relative_branch",
-                    "severity": str(rule.get("misaligned_severity") or "error"),
-                    "index": rec["index"],
-                    "detail": (f"{mnemonic} decoded displacement {signed} is not divisible by the "
-                               f"target-declared {units_per_instruction} immediate units per instruction"),
-                })
+                findings.append(
+                    {
+                        "rule": "misaligned_relative_branch",
+                        "severity": str(rule.get("misaligned_severity") or "error"),
+                        "index": rec["index"],
+                        "detail": (
+                            f"{mnemonic} decoded displacement {signed} is not divisible by the "
+                            f"target-declared {units_per_instruction} immediate units per instruction"
+                        ),
+                    }
+                )
                 continue
             target = int(rec["index"]) + signed // units_per_instruction
-            branch_edges.append({"index": int(rec["index"]), "target": target,
-                                 "mnemonic": mnemonic, "decoded_displacement": signed})
+            branch_edges.append(
+                {"index": int(rec["index"]), "target": target, "mnemonic": mnemonic, "decoded_displacement": signed}
+            )
             if target < 0 or target >= len(recs):
-                findings.append({
-                    "rule": "relative_branch_out_of_program",
-                    "severity": str(rule.get("out_of_program_severity") or "error"),
-                    "index": rec["index"],
-                    "detail": f"{mnemonic} resolves to instruction {target}, outside 0..{len(recs) - 1}",
-                })
+                findings.append(
+                    {
+                        "rule": "relative_branch_out_of_program",
+                        "severity": str(rule.get("out_of_program_severity") or "error"),
+                        "index": rec["index"],
+                        "detail": f"{mnemonic} resolves to instruction {target}, outside 0..{len(recs) - 1}",
+                    }
+                )
                 continue
             if target >= int(rec["index"]) or not destination_operand:
                 continue
@@ -213,36 +256,40 @@ def analyze_schedule(model: IsaModel, words: list[int], *, schedule_contract: di
             if zero_register is not None:
                 compared.discard(zero_register)
             for register in compared:
-                for body_rec in recs[target:int(rec["index"])]:
+                for body_rec in recs[target : int(rec["index"])]:
                     body_operands = body_rec.get("operands") or {}
                     if body_operands.get(destination_operand) != register:
                         continue
                     sources = {body_operands.get(name) for name in source_operands}
                     if register in sources:
                         continue
-                    findings.append({
-                        "rule": "loop_comparison_register_reinitialized",
-                        "severity": str(rule.get("reinitialization_severity") or "warning"),
-                        "index": rec["index"],
-                        "target": target,
-                        "definition_index": body_rec["index"],
-                        "detail": (f"backward {mnemonic} to instruction {target} includes instruction "
-                                   f"{body_rec['index']}, which overwrites compared register {register} "
-                                   "without reading its prior value; this commonly means the branch "
-                                   "displacement used the wrong PC units and resets the loop counter"),
-                    })
+                    findings.append(
+                        {
+                            "rule": "loop_comparison_register_reinitialized",
+                            "severity": str(rule.get("reinitialization_severity") or "warning"),
+                            "index": rec["index"],
+                            "target": target,
+                            "definition_index": body_rec["index"],
+                            "detail": (
+                                f"backward {mnemonic} to instruction {target} includes instruction "
+                                f"{body_rec['index']}, which overwrites compared register {register} "
+                                "without reading its prior value; this commonly means the branch "
+                                "displacement used the wrong PC units and resets the loop counter"
+                            ),
+                        }
+                    )
                     break
 
     raw_rules = contract.get("minimum_issue_gap") or []
     rules = [r for r in raw_rules if isinstance(r, dict)] if isinstance(raw_rules, list) else []
     last_issue: list[tuple[int, str] | None] = [None for _ in rules]
     raw_dependency_rules = contract.get("register_dependency_gap") or []
-    dependency_rules = ([r for r in raw_dependency_rules if isinstance(r, dict)]
-                        if isinstance(raw_dependency_rules, list) else [])
+    dependency_rules = (
+        [r for r in raw_dependency_rules if isinstance(r, dict)] if isinstance(raw_dependency_rules, list) else []
+    )
     # Per rule, remember the most recent write to each physical register bank. A span is target data:
     # e.g. one Atlas BF16 operand names a two-register pair, whereas a scalar/RVV rule can use one.
-    last_register_write: list[dict[int, tuple[int, str, int]]] = [
-        {} for _ in dependency_rules]
+    last_register_write: list[dict[int, tuple[int, str, int]]] = [{} for _ in dependency_rules]
 
     def _banks(value, span: int) -> set[int]:
         if isinstance(value, bool) or not isinstance(value, int):
@@ -263,35 +310,45 @@ def analyze_schedule(model: IsaModel, words: list[int], *, schedule_contract: di
             source_operands = [str(x) for x in (rule.get("consumer_source_operands") or [])]
             span = rule.get("register_span", 1)
             required = rule.get("cycles")
-            if (not producers or not consumers or not destination_operand or not source_operands
-                    or not isinstance(span, int) or span <= 0
-                    or not isinstance(required, int) or required < 0):
+            if (
+                not producers
+                or not consumers
+                or not destination_operand
+                or not source_operands
+                or not isinstance(span, int)
+                or span <= 0
+                or not isinstance(required, int)
+                or required < 0
+            ):
                 continue
             if mnemonic in consumers:
                 source_banks: set[int] = set()
                 for operand in source_operands:
                     source_banks |= _banks(operands.get(operand), span)
-                dependencies = {last_register_write[i][bank] for bank in source_banks
-                                if bank in last_register_write[i]}
+                dependencies = {last_register_write[i][bank] for bank in source_banks if bank in last_register_write[i]}
                 for previous_cycle, previous_mnemonic, previous_index in sorted(dependencies):
                     actual = cycle - previous_cycle
                     if actual < required:
-                        findings.append({
-                            "rule": "register_dependency_gap",
-                            "schedule_rule": str(rule.get("name") or f"dependency_rule_{i}"),
-                            "severity": str(rule.get("severity") or "warning"),
-                            "index": rec["index"],
-                            "definition_index": previous_index,
-                            "producer_mnemonic": previous_mnemonic,
-                            "consumer_mnemonic": mnemonic,
-                            "actual_cycles": actual,
-                            "required_cycles": required,
-                            "missing_cycles": required - actual,
-                            "detail": (f"{mnemonic} reads a register written by {previous_mnemonic} "
-                                       f"only {actual} cycle(s) earlier, but the target's scheduling "
-                                       f"contract requires at least {required}; insert/schedule "
-                                       f"{required - actual} more cycle(s) before this dependent use"),
-                        })
+                        findings.append(
+                            {
+                                "rule": "register_dependency_gap",
+                                "schedule_rule": str(rule.get("name") or f"dependency_rule_{i}"),
+                                "severity": str(rule.get("severity") or "warning"),
+                                "index": rec["index"],
+                                "definition_index": previous_index,
+                                "producer_mnemonic": previous_mnemonic,
+                                "consumer_mnemonic": mnemonic,
+                                "actual_cycles": actual,
+                                "required_cycles": required,
+                                "missing_cycles": required - actual,
+                                "detail": (
+                                    f"{mnemonic} reads a register written by {previous_mnemonic} "
+                                    f"only {actual} cycle(s) earlier, but the target's scheduling "
+                                    f"contract requires at least {required}; insert/schedule "
+                                    f"{required - actual} more cycle(s) before this dependent use"
+                                ),
+                            }
+                        )
             # Consumers are checked before this update so an in-place instruction reads the previous
             # definition, not the definition it is itself about to create.
             if mnemonic in producers:
@@ -308,20 +365,24 @@ def analyze_schedule(model: IsaModel, words: list[int], *, schedule_contract: di
                 previous_cycle, previous_mnemonic = previous
                 actual = cycle - previous_cycle
                 if actual < required:
-                    findings.append({
-                        "rule": "minimum_issue_gap",
-                        "schedule_rule": str(rule.get("name") or f"rule_{i}"),
-                        "severity": str(rule.get("severity") or "warning"),
-                        "index": rec["index"],
-                        "producer_mnemonic": previous_mnemonic,
-                        "consumer_mnemonic": mnemonic,
-                        "actual_cycles": actual,
-                        "required_cycles": required,
-                        "missing_cycles": required - actual,
-                        "detail": (f"{mnemonic} issues {actual} cycle(s) after {previous_mnemonic}, but "
-                                   f"the target's scheduling contract requires at least {required}; "
-                                   f"insert/schedule {required - actual} more cycle(s) before this use"),
-                    })
+                    findings.append(
+                        {
+                            "rule": "minimum_issue_gap",
+                            "schedule_rule": str(rule.get("name") or f"rule_{i}"),
+                            "severity": str(rule.get("severity") or "warning"),
+                            "index": rec["index"],
+                            "producer_mnemonic": previous_mnemonic,
+                            "consumer_mnemonic": mnemonic,
+                            "actual_cycles": actual,
+                            "required_cycles": required,
+                            "missing_cycles": required - actual,
+                            "detail": (
+                                f"{mnemonic} issues {actual} cycle(s) after {previous_mnemonic}, but "
+                                f"the target's scheduling contract requires at least {required}; "
+                                f"insert/schedule {required - actual} more cycle(s) before this use"
+                            ),
+                        }
+                    )
             if mnemonic in producers:
                 last_issue[i] = (cycle, mnemonic)
         cost = 1
@@ -332,14 +393,18 @@ def analyze_schedule(model: IsaModel, words: list[int], *, schedule_contract: di
         cycle += cost
 
     if isinstance(cycle_budget, int) and cycle_budget >= 0 and lower_bound > cycle_budget:
-        findings.append({
-            "rule": "static_cycle_budget_exceeded",
-            "severity": "error",
-            "detail": (f"the straight-line program needs at least {lower_bound} cycles "
-                       f"({len(words)} issued instructions + {explicit_delay} explicit delay cycles), "
-                       f"already above the {cycle_budget}-cycle budget before any loop iteration or "
-                       "runtime stall is counted"),
-        })
+        findings.append(
+            {
+                "rule": "static_cycle_budget_exceeded",
+                "severity": "error",
+                "detail": (
+                    f"the straight-line program needs at least {lower_bound} cycles "
+                    f"({len(words)} issued instructions + {explicit_delay} explicit delay cycles), "
+                    f"already above the {cycle_budget}-cycle budget before any loop iteration or "
+                    "runtime stall is counted"
+                ),
+            }
+        )
     return {
         "straight_line_min_cycles": lower_bound,
         "instruction_count": len(words),
@@ -350,9 +415,17 @@ def analyze_schedule(model: IsaModel, words: list[int], *, schedule_contract: di
     }
 
 
-def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype: str | None = None,
-         epilogue: tuple[str, ...] = (), movement: bool = False,
-         schedule_contract: dict | None = None, cycle_budget: int | None = None) -> list[Finding]:
+def lint(
+    model: IsaModel,
+    words: list[int],
+    *,
+    op: str = "matmul",
+    output_dtype: str | None = None,
+    epilogue: tuple[str, ...] = (),
+    movement: bool = False,
+    schedule_contract: dict | None = None,
+    cycle_budget: int | None = None,
+) -> list[Finding]:
     """Lint an assembled word stream → a list of findings, each
     ``{rule, severity, detail[, index]}`` (severity ∈ error/warning/info). Empty findings = clean by these
     checks (not a full correctness proof — that is the oracle's job). An empty model yields a single INFO
@@ -364,11 +437,18 @@ def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype:
     model — no target name, no class literal, no golden — and skips any role the target's ISA does not
     define (derive-or-skip, never a false positive)."""
     if model.is_fixed_format():
-        return _lint_fixed(model, words) + analyze_schedule(
-            model, words, schedule_contract=schedule_contract, cycle_budget=cycle_budget)["findings"]
+        return (
+            _lint_fixed(model, words)
+            + analyze_schedule(model, words, schedule_contract=schedule_contract, cycle_budget=cycle_budget)["findings"]
+        )
     if model.is_empty():
-        return [{"rule": "no_isa_model", "severity": "info",
-                 "detail": "this target ships no ISA definition; static ISA lint is unavailable"}]
+        return [
+            {
+                "rule": "no_isa_model",
+                "severity": "info",
+                "detail": "this target ships no ISA definition; static ISA lint is unavailable",
+            }
+        ]
 
     recs = D.disassemble(model, words)
     findings: list[Finding] = []
@@ -376,9 +456,15 @@ def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype:
     # 1) illegal opcode — a word matching no derived decode signature.
     for r in recs:
         if r.get("illegal"):
-            findings.append({"rule": "illegal_opcode", "severity": "error", "index": r["index"],
-                             "detail": f"word {r['word']} decodes to no instruction this ISA defines — "
-                                       "an invented or mis-packed encoding (use the derived assembler)"})
+            findings.append(
+                {
+                    "rule": "illegal_opcode",
+                    "severity": "error",
+                    "index": r["index"],
+                    "detail": f"word {r['word']} decodes to no instruction this ISA defines — "
+                    "an invented or mis-packed encoding (use the derived assembler)",
+                }
+            )
 
     # 2) program termination — a kernel that never reaches a terminating instruction runs to the cycle cap
     #    and fails the functional tier before numerics. Matched by the terminator ops' DERIVED decode
@@ -391,22 +477,39 @@ def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype:
     findings.extend(_ambiguous_findings(real))
 
     if model.halt_signatures:
+
         def _is_halt(w: int) -> bool:
             return any((w & m) == v for m, v in model.halt_signatures)
+
         names = ", ".join(model.halt_mnemonics) or "the ISA terminator"
         if not any(_is_halt(w) for w in words):
-            findings.append({"rule": "no_halt", "severity": "error",
-                             "detail": f"no terminating instruction ({names}) present — the program will not "
-                                       "halt and every capsule fails before numerics; emit the terminator as "
-                                       "the final instruction"})
+            findings.append(
+                {
+                    "rule": "no_halt",
+                    "severity": "error",
+                    "detail": f"no terminating instruction ({names}) present — the program will not "
+                    "halt and every capsule fails before numerics; emit the terminator as "
+                    "the final instruction",
+                }
+            )
         elif words and not _is_halt(words[-1]):
-            findings.append({"rule": "halt_not_last", "severity": "warning",
-                             "detail": f"a terminating instruction ({names}) is present but is not the last "
-                                       "instruction; ensure every control path ends at the terminator"})
+            findings.append(
+                {
+                    "rule": "halt_not_last",
+                    "severity": "warning",
+                    "detail": f"a terminating instruction ({names}) is present but is not the last "
+                    "instruction; ensure every control path ends at the terminator",
+                }
+            )
     else:
-        findings.append({"rule": "halt_unknown", "severity": "info",
-                         "detail": "termination could not be statically verified (no terminator op is derived "
-                                   "for this target); confirm the kernel reaches the ISA terminator"})
+        findings.append(
+            {
+                "rule": "halt_unknown",
+                "severity": "info",
+                "detail": "termination could not be statically verified (no terminator op is derived "
+                "for this target); confirm the kernel reaches the ISA terminator",
+            }
+        )
 
     # 2b) the encoding itself is wrong — the word is a PERFECTLY LEGAL member of this ISA as the shipped
     #     definition describes it, and the hardware decodes it as a DIFFERENT instruction. Nothing above
@@ -420,9 +523,14 @@ def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype:
     # 3) no recognized instructions — every word is illegal (or the kernel is empty). The program does
     #    nothing the ISA can execute; the output region is never written.
     if words and not real:
-        findings.append({"rule": "no_recognized_instructions", "severity": "error",
-                         "detail": "no emitted word decodes to a defined instruction — the kernel is empty "
-                                   "or entirely mis-encoded, so it cannot produce output"})
+        findings.append(
+            {
+                "rule": "no_recognized_instructions",
+                "severity": "error",
+                "detail": "no emitted word decodes to a defined instruction — the kernel is empty "
+                "or entirely mis-encoded, so it cannot produce output",
+            }
+        )
 
     # 4) required-role coverage — a kernel that omits a semantic ROLE the capsule's op needs (e.g. a matmul
     #    capsule with no systolic multiply, or no memory op to load operands / store the result) produces
@@ -430,21 +538,26 @@ def lint(model: IsaModel, words: list[int], *, op: str = "matmul", output_dtype:
     #    classes per role, and it skips any role the target's ISA does not define (a target that reaches the
     #    op a different way is never falsely flagged).
     present_roles = {r.get("role") for r in real if r.get("role")}
-    for slot in IT.required_role_slots(op=op, output_dtype=output_dtype, epilogue=epilogue,
-                                       movement=movement):
-        defined = [r for r in slot if model.roles.get(r)]          # roles this target actually ships
+    for slot in IT.required_role_slots(op=op, output_dtype=output_dtype, epilogue=epilogue, movement=movement):
+        defined = [r for r in slot if model.roles.get(r)]  # roles this target actually ships
         if not defined:
-            continue                                               # target has no such role → do not require it
+            continue  # target has no such role → do not require it
         if not any(r in present_roles for r in slot):
             label = defined[0]
             classes = ", ".join((model.roles.get(label) or [])[:3]) or label
-            findings.append({"rule": "missing_required_role", "severity": "warning",
-                             "detail": f"a '{op}' kernel needs a '{label}'-role instruction (this ISA "
-                                       f"defines {classes}) but the kernel emits none — its output cannot "
-                                       "be correct; add it before spending an oracle run"})
+            findings.append(
+                {
+                    "rule": "missing_required_role",
+                    "severity": "warning",
+                    "detail": f"a '{op}' kernel needs a '{label}'-role instruction (this ISA "
+                    f"defines {classes}) but the kernel emits none — its output cannot "
+                    "be correct; add it before spending an oracle run",
+                }
+            )
 
-    findings.extend(analyze_schedule(
-        model, words, schedule_contract=schedule_contract, cycle_budget=cycle_budget)["findings"])
+    findings.extend(
+        analyze_schedule(model, words, schedule_contract=schedule_contract, cycle_budget=cycle_budget)["findings"]
+    )
 
     return findings
 

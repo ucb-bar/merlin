@@ -19,6 +19,7 @@ pins and one lie.
 PARTIAL IS REFUSED. `capture_store.capture_key` returns None on an incomplete pin set, so a half
 resolved set silently files nothing. Refusing here, by name, turns that silence into a sentence.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -27,16 +28,16 @@ __all__ = ["REQUIRED_ROLES", "EnginePinsUnavailable", "engine_pins"]
 
 #: The roles a capture is keyed on. The same five `perf_gsim_gate.REQUIRED_PINS` names, because this
 #: resolves exactly that set and a second spelling of it would drift.
-REQUIRED_ROLES: tuple[str, ...] = (
-    "gsim_binary", "gsim_firrtl", "gsim_model", "verilator_binary", "verilator_firrtl")
+REQUIRED_ROLES: tuple[str, ...] = ("gsim_binary", "gsim_firrtl", "gsim_model", "verilator_binary", "verilator_firrtl")
 
 
 class EnginePinsUnavailable(RuntimeError):
     """The engine set for a target could not be established, and why."""
 
 
-def engine_pins(target: str, *, roles: "tuple[str, ...]" = REQUIRED_ROLES,
-                registry: Any = None) -> dict[str, dict[str, str]]:
+def engine_pins(
+    target: str, *, roles: "tuple[str, ...]" = REQUIRED_ROLES, registry: Any = None
+) -> dict[str, dict[str, str]]:
     """``{role: {"path": str, "sha256": str}}`` for ``target``, every entry verified against disk.
 
     Raises :class:`EnginePinsUnavailable` naming the roles that could not be established. Callers that
@@ -69,12 +70,12 @@ def engine_pins(target: str, *, roles: "tuple[str, ...]" = REQUIRED_ROLES,
         if check.matches is not True:
             problems.append(
                 f"{role}: {names[0]} is present but does not match its declared digest"
-                if check.matches is False else
-                f"{role}: {names[0]} declares no digest, so it would certify itself")
+                if check.matches is False
+                else f"{role}: {names[0]} declares no digest, so it would certify itself"
+            )
             continue
         resolved[role] = {"path": str(check.path), "sha256": str(check.digest)}
 
     if problems:
-        raise EnginePinsUnavailable(
-            f"engine pins for {target!r} are incomplete: " + "; ".join(problems))
+        raise EnginePinsUnavailable(f"engine pins for {target!r} are incomplete: " + "; ".join(problems))
     return resolved

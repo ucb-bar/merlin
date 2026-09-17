@@ -14,6 +14,7 @@ the mount fail).
 surfaces still reachable. Empty == the sandbox masks the full derived answer set. This runs WITHOUT
 launching bwrap, so it is the CI-safe isolation proof.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -28,7 +29,7 @@ from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, answer_surfa
 from merlin.targetgen.target_experiment import TargetExperiment
 
 _EXPOSE_OPS = ("--ro-bind", "--bind", "--dev-bind", "--ro-bind-try", "--bind-try")
-_HIDE_DEST_OPS = ("--tmpfs",)            # single-arg-dest hide ops
+_HIDE_DEST_OPS = ("--tmpfs",)  # single-arg-dest hide ops
 _DEVNULL = "/dev/null"
 _SNAPSHOT_DIR = "bundle_inputs"
 _SNAPSHOT_COMPLETE = "snapshot.json"
@@ -105,8 +106,9 @@ def _resolve_target_package_grant(rel: str) -> "Path | None":
         return None
     try:
         from merlin.targetgen import target_registry as _tr
+
         info = _tr.resolve(target)
-    except Exception:                         # noqa: BLE001 — unknown target: not our shape
+    except Exception:  # noqa: BLE001 — unknown target: not our shape
         return None
     if not tail.endswith("rtl_facts"):
         base = Path(info.contract_path).parent
@@ -125,8 +127,9 @@ def _resolve_target_package_grant(rel: str) -> "Path | None":
 def _rtl_facts_dir(target: str) -> "Path | None":
     try:
         from merlin.targetgen.rtl.facts import rtl_facts_path
+
         return Path(rtl_facts_path(target)).parent
-    except Exception:                         # noqa: BLE001 — no facts location for this target
+    except Exception:  # noqa: BLE001 — no facts location for this target
         return None
 
 
@@ -154,8 +157,7 @@ def _snapshot_path(root: Path, source: Path, repo: Path) -> Path:
 
 
 def _grant_sources(bundle: dict, repo: Path) -> list[tuple[str, Path]]:
-    return [(str(entry["path"]), resolve_grant(str(entry["path"]), repo))
-            for entry in bundle.get("allowed", [])]
+    return [(str(entry["path"]), resolve_grant(str(entry["path"]), repo)) for entry in bundle.get("allowed", [])]
 
 
 def _snapshot_content(root: Path) -> tuple[str, int, int]:
@@ -163,8 +165,7 @@ def _snapshot_content(root: Path) -> tuple[str, int, int]:
     rows: list[tuple[str, str, int]] = []
     total = 0
     marker = root / _SNAPSHOT_COMPLETE
-    for path in sorted(p for p in root.rglob("*")
-                       if p.is_file() and p != marker):
+    for path in sorted(p for p in root.rglob("*") if p.is_file() and p != marker):
         digest = hashlib.sha256()
         size = 0
         with path.open("rb") as stream:
@@ -242,8 +243,9 @@ def _snapshot_grants(ws: Path, bundle: dict, repo: Path) -> tuple[dict, list[tup
         if resolved_source != resolved_root and resolved_root not in resolved_source.parents:
             raise RuntimeError(f"bundle input snapshot path escapes its root for {expected!r}")
         relative_source = source.relative_to(root)
-        if any((root / Path(*relative_source.parts[:i])).is_symlink()
-               for i in range(1, len(relative_source.parts) + 1)):
+        if any(
+            (root / Path(*relative_source.parts[:i])).is_symlink() for i in range(1, len(relative_source.parts) + 1)
+        ):
             raise RuntimeError(f"bundle input snapshot contains a symlink for {expected!r}")
         if path_kind(source) == "missing":
             raise RuntimeError(f"bundle input snapshot grant is incomplete for {expected!r}")
@@ -261,19 +263,21 @@ def verify_bundle_snapshot(ws: Path, bundle: dict, *, repo: Path | None = None) 
     expected = {key: manifest.get(key) for key in observed}
     if observed != expected:
         raise RuntimeError(
-            f"bundle input snapshot content verification failed at {root}: "
-            f"expected {expected}, observed {observed}")
+            f"bundle input snapshot content verification failed at {root}: expected {expected}, observed {observed}"
+        )
     return manifest
 
 
 def snapshot_record(ws: Path) -> dict:
     """Small provenance block copied into the run's environment record."""
     manifest = _read_snapshot_manifest(ws)
-    return {"path": str(bundle_snapshot_root(ws)),
-            "content_sha256": manifest.get("content_sha256"),
-            "n_files": manifest.get("n_files"),
-            "n_bytes": manifest.get("n_bytes"),
-            "version": manifest.get("version")}
+    return {
+        "path": str(bundle_snapshot_root(ws)),
+        "content_sha256": manifest.get("content_sha256"),
+        "n_files": manifest.get("n_files"),
+        "n_bytes": manifest.get("n_bytes"),
+        "version": manifest.get("version"),
+    }
 
 
 def _make_snapshot_writable(root: Path) -> None:
@@ -282,11 +286,10 @@ def _make_snapshot_writable(root: Path) -> None:
     paths = list(root.rglob("*"))
     symlinks = [path for path in paths if path.is_symlink()]
     if symlinks:
-        raise RuntimeError(
-            f"refusing to chmod tampered bundle snapshot containing symlink: {symlinks[0]}")
+        raise RuntimeError(f"refusing to chmod tampered bundle snapshot containing symlink: {symlinks[0]}")
     for path in sorted(paths, key=lambda p: len(p.parts)):
         if content_store.is_shared(path):
-            continue                          # unlink needs the DIRECTORY writable, not the file
+            continue  # unlink needs the DIRECTORY writable, not the file
         path.chmod(0o700 if path.is_dir() else 0o600)
     root.chmod(0o700)
 
@@ -325,13 +328,11 @@ def materialize_bundle_inputs(ws: Path, bundle: dict, *, repo: Path | None = Non
     grants = _grant_sources(bundle, repo)
     missing = [rel for rel, source in grants if path_kind(source) == "missing"]
     if missing:
-        raise FileNotFoundError(
-            "bundle declares unresolvable allowed grant(s): " + ", ".join(sorted(missing)))
+        raise FileNotFoundError("bundle declares unresolvable allowed grant(s): " + ", ".join(sorted(missing)))
 
     # Copy the union, not every overlapping spelling.  For example, a broad
     # contract grant plus its isa/layers children must produce one snapshot.
-    unique_sources = sorted({source.absolute() for _, source in grants},
-                            key=lambda p: (len(p.parts), str(p)))
+    unique_sources = sorted({source.absolute() for _, source in grants}, key=lambda p: (len(p.parts), str(p)))
     roots: list[Path] = []
     for source in unique_sources:
         if any(parent == source or parent in source.parents for parent in roots):
@@ -358,11 +359,13 @@ def materialize_bundle_inputs(ws: Path, bundle: dict, *, repo: Path | None = Non
         digest, n_files, n_bytes = _snapshot_content(pending)
         grant_records = []
         for rel, source in grants:
-            grant_records.append({
-                "path": rel,
-                "destination": str(source.absolute()),
-                "snapshot": _snapshot_path(pending, source, repo).relative_to(pending).as_posix(),
-            })
+            grant_records.append(
+                {
+                    "path": rel,
+                    "destination": str(source.absolute()),
+                    "snapshot": _snapshot_path(pending, source, repo).relative_to(pending).as_posix(),
+                }
+            )
         manifest = {
             "version": 2,
             "repo": str(repo),
@@ -374,12 +377,13 @@ def materialize_bundle_inputs(ws: Path, bundle: dict, *, repo: Path | None = Non
             "n_bytes": n_bytes,
         }
         (pending / _SNAPSHOT_COMPLETE).write_text(
-            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         for path in sorted(pending.rglob("*"), key=lambda p: len(p.parts), reverse=True):
             # Host-immutable means clear write bits, not executable bits.  A
             # bundle may grant compilers and scripts that must remain runnable.
             if content_store.is_shared(path):
-                continue                      # already read-only in the store, and shared
+                continue  # already read-only in the store, and shared
             path.chmod(path.stat().st_mode & ~0o222)
         pending.chmod(pending.stat().st_mode & ~0o222)
         pending.rename(root)
@@ -391,8 +395,7 @@ def materialize_bundle_inputs(ws: Path, bundle: dict, *, repo: Path | None = Non
         raise
 
 
-def _bundle_mount_args(ws: Path, bundle: dict, repo: Path,
-                       *, _policy_test_live_inputs: bool = False) -> list[str]:
+def _bundle_mount_args(ws: Path, bundle: dict, repo: Path, *, _policy_test_live_inputs: bool = False) -> list[str]:
     """Frozen allow mounts and deny overlays, ordered so the MOST SPECIFIC declaration wins.
 
     bwrap applies mount operations in argv order, so whichever declaration is emitted LAST decides
@@ -417,14 +420,18 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path,
     if not bundle.get("allowed"):
         grants = []
     elif _policy_test_live_inputs:
-        grants = [(str(entry["path"]), resolve_grant(entry["path"], repo),
-                   resolve_grant(entry["path"], repo))
-                  for entry in bundle.get("allowed", [])]
+        grants = [
+            (str(entry["path"]), resolve_grant(entry["path"], repo), resolve_grant(entry["path"], repo))
+            for entry in bundle.get("allowed", [])
+        ]
     else:
         _, grants = _snapshot_grants(ws, bundle, repo)
     # (depth, deny_wins_the_tie, args). sorted() is stable, so same-depth entries keep manifest order.
-    live = [(destination, frozen) for _, destination, frozen in grants
-            if path_kind(destination) != "missing" or not _policy_test_live_inputs]
+    live = [
+        (destination, frozen)
+        for _, destination, frozen in grants
+        if path_kind(destination) != "missing" or not _policy_test_live_inputs
+    ]
     allow_dests = [d.absolute() for d, _ in live]
     deny_dests: list[tuple[Path, str]] = []
     for denied in bundle.get("denied", []):
@@ -455,7 +462,8 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path,
             parent_real = os.path.realpath(destination.parent)
             args += ["--dir", parent_real]
             if parent_real != str(destination.parent) and any(
-                    a != destination and destination.parent.is_relative_to(a) for a in allow_dests):
+                a != destination and destination.parent.is_relative_to(a) for a in allow_dests
+            ):
                 mount_at = Path(parent_real) / destination.name
         args += ["--ro-bind", str(frozen), str(mount_at)]
         ops.append((len(destination.parts), 0, args))
@@ -469,8 +477,7 @@ def _bundle_mount_args(ws: Path, bundle: dict, repo: Path,
     return out
 
 
-def reapply_bundle_snapshot(argv: list[str], ws: Path, bundle: dict,
-                            *, repo: Path | None = None) -> list[str]:
+def reapply_bundle_snapshot(argv: list[str], ws: Path, bundle: dict, *, repo: Path | None = None) -> list[str]:
     """Reassert frozen grants after later trusted-runtime/toolchain binds.
 
     A universal toolchain path may also be a declared arm input.  Since bwrap is
@@ -490,31 +497,71 @@ def reapply_bundle_snapshot(argv: list[str], ws: Path, bundle: dict,
     return [*argv, *_bundle_mount_args(ws, bundle, repo), "--bind", str(ws), str(ws)]
 
 
-def base_argv(ws: Path, bundle: dict, *, repo: Path | None = None,
-              _policy_test_live_inputs: bool = False) -> list[str]:
+def base_argv(ws: Path, bundle: dict, *, repo: Path | None = None, _policy_test_live_inputs: bool = False) -> list[str]:
     """Deny-by-default bwrap argv prefix: system RO, /scratch* tmpfs-hidden, ONLY the bundle's allowed
     paths bound RO, denied sub-paths re-masked, workspace writable+last. Target-agnostic — the ``bundle``
     (or an empty ``{}``) is the only input beyond the workspace."""
     repo = repo or repo_root()
-    parts = ["bwrap", "--die-with-parent", "--unshare-pid",
-             "--ro-bind", "/usr", "/usr", "--ro-bind", "/bin", "/bin", "--ro-bind", "/lib", "/lib",
-             "--ro-bind", "/lib64", "/lib64", "--ro-bind", "/etc", "/etc",
-             # DNS: /etc/resolv.conf is a symlink into the systemd-resolved runtime dir. Binding /etc alone
-             # leaves that symlink dangling inside the sandbox, so every name lookup fails and the agent's
-             # `claude` session hangs on an unreachable API. Bind the resolver dir so the symlink resolves.
-             # --ro-bind-try tolerates non-systemd hosts (where resolv.conf is a real file under /etc).
-             "--ro-bind-try", "/run/systemd/resolve", "/run/systemd/resolve",
-             "--tmpfs", "/scratch", "--tmpfs", "/scratch2", "--tmpfs", "/tmp",
-             "--proc", "/proc", "--dev", "/dev",
-             # a writable XDG runtime dir under the tmpfs /tmp — the Bun-based `claude` opens a socket there.
-             "--dir", "/tmp/.xdg", "--setenv", "XDG_RUNTIME_DIR", "/tmp/.xdg",
-             "--chdir", str(ws)]
+    parts = [
+        "bwrap",
+        "--die-with-parent",
+        "--unshare-pid",
+        "--ro-bind",
+        "/usr",
+        "/usr",
+        "--ro-bind",
+        "/bin",
+        "/bin",
+        "--ro-bind",
+        "/lib",
+        "/lib",
+        "--ro-bind",
+        "/lib64",
+        "/lib64",
+        "--ro-bind",
+        "/etc",
+        "/etc",
+        # DNS: /etc/resolv.conf is a symlink into the systemd-resolved runtime dir. Binding /etc alone
+        # leaves that symlink dangling inside the sandbox, so every name lookup fails and the agent's
+        # `claude` session hangs on an unreachable API. Bind the resolver dir so the symlink resolves.
+        # --ro-bind-try tolerates non-systemd hosts (where resolv.conf is a real file under /etc).
+        "--ro-bind-try",
+        "/run/systemd/resolve",
+        "/run/systemd/resolve",
+        "--tmpfs",
+        "/scratch",
+        "--tmpfs",
+        "/scratch2",
+        "--tmpfs",
+        "/tmp",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        # a writable XDG runtime dir under the tmpfs /tmp — the Bun-based `claude` opens a socket there.
+        "--dir",
+        "/tmp/.xdg",
+        "--setenv",
+        "XDG_RUNTIME_DIR",
+        "/tmp/.xdg",
+        "--chdir",
+        str(ws),
+    ]
     # Drop Claude-Code nesting markers inherited from a parent agent session so the sandboxed `claude`
     # starts a clean top-level session. A leaked CLAUDE_CODE_MESSAGING_SOCKET / CLAUDECODE makes it wait on
     # a parent IPC socket that is not inside the box and hang. Auth vars (ANTHROPIC_API_KEY,
     # CLAUDE_CODE_USE_BEDROCK) are intentionally NOT cleared — the launch may need them.
-    for _v in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SSE_PORT", "CLAUDE_CODE_MESSAGING_SOCKET",
-               "CLAUDE_CODE_CHILD_SESSION", "CLAUDE_CODE_SESSION_ID", "CLAUDE_PID", "CLAUDE_EFFORT", "AI_AGENT"):
+    for _v in (
+        "CLAUDECODE",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_SSE_PORT",
+        "CLAUDE_CODE_MESSAGING_SOCKET",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_PID",
+        "CLAUDE_EFFORT",
+        "AI_AGENT",
+    ):
         parts += ["--unsetenv", _v]
     home_claude = os.path.expanduser("~/.claude")
     if Path(home_claude).exists():
@@ -531,8 +578,7 @@ def base_argv(ws: Path, bundle: dict, *, repo: Path | None = None,
         if Path(projects).exists():
             parts += ["--tmpfs", projects]
 
-    parts += _bundle_mount_args(ws, bundle, repo,
-                                _policy_test_live_inputs=_policy_test_live_inputs)
+    parts += _bundle_mount_args(ws, bundle, repo, _policy_test_live_inputs=_policy_test_live_inputs)
     # Bind the writable workspace LAST so no mask clobbers it.
     parts += ["--bind", str(ws), str(ws)]
     return parts
@@ -544,8 +590,7 @@ def claude_runtime_binds() -> list[str]:
     'claude: command not found'. None of these are an answer surface."""
     binds: list[str] = []
     home = Path(os.path.expanduser("~"))
-    for p in (home / ".local" / "bin", home / ".local" / "share" / "claude",
-              home / ".nvm", home / ".config"):
+    for p in (home / ".local" / "bin", home / ".local" / "share" / "claude", home / ".nvm", home / ".config"):
         if p.exists():
             binds += ["--ro-bind", str(p), str(p)]
     cj = home / ".claude.json"
@@ -582,7 +627,7 @@ def _mounts(argv: list[str]) -> list[tuple[str, str, str]]:
             i += 2
             continue
         if a in ("--dev", "--proc") and i + 1 < n:
-            ops.append(("hide", "", argv[i + 1]))   # devtmpfs/procfs — hides host content under dest
+            ops.append(("hide", "", argv[i + 1]))  # devtmpfs/procfs — hides host content under dest
             i += 2
             continue
         i += 1
@@ -631,7 +676,7 @@ class _MountVisibility:
         try:
             return mapped.exists()
         except PermissionError:
-            return True           # locked-but-present still exposes content
+            return True  # locked-but-present still exposes content
         except OSError:
             return False
 
@@ -669,15 +714,20 @@ def apply_answer_masks(argv: list[str], surfaces: list[AnswerSurface]) -> list[s
 
 
 # --------------------------------------------------------------------------- full assembly
-def full_argv(te: TargetExperiment, ws: Path, bundle: dict | None = None,
-              *, _policy_test_live_inputs: bool = False) -> list[str]:
+def full_argv(
+    te: TargetExperiment, ws: Path, bundle: dict | None = None, *, _policy_test_live_inputs: bool = False
+) -> list[str]:
     """The complete isolation argv for one target+arm: deny-by-default base + claude runtime + toolchain
     binds + derived answer masks. ``bundle`` may be ``{}``/None for a descriptor-only (bundle-less)
     target — the answer masks are then driven purely by the descriptor."""
-    from merlin.targetgen.sandbox import toolchain as TC   # local: avoid a heavy import at module load
+    from merlin.targetgen.sandbox import toolchain as TC  # local: avoid a heavy import at module load
+
     bundle = bundle or {}
-    argv = (base_argv(ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs)
-            + claude_runtime_binds() + TC.toolchain_binds(te))
+    argv = (
+        base_argv(ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs)
+        + claude_runtime_binds()
+        + TC.toolchain_binds(te)
+    )
     if bundle:
         if _policy_test_live_inputs:
             argv += _bundle_mount_args(ws, bundle, repo_root(), _policy_test_live_inputs=True)
@@ -697,8 +747,9 @@ def full_argv(te: TargetExperiment, ws: Path, bundle: dict | None = None,
 _MAX_ARG_BYTES = 32 * 1024
 
 
-def wrap(te: TargetExperiment, ws: Path, inner: str, bundle: dict | None = None,
-         *, _policy_test_live_inputs: bool = False) -> str:
+def wrap(
+    te: TargetExperiment, ws: Path, inner: str, bundle: dict | None = None, *, _policy_test_live_inputs: bool = False
+) -> str:
     """A ready-to-run ``bash -c`` string: full argv + the sandbox env exports + the inner command.
 
     THE BIND LIST DOES NOT SCALE INSIDE A COMMAND STRING, and every caller of this function passes the
@@ -713,6 +764,7 @@ def wrap(te: TargetExperiment, ws: Path, inner: str, bundle: dict | None = None,
     kept, so nothing changes for a small corpus and the two forms can be compared.
     """
     from merlin.targetgen.sandbox import toolchain as TC
+
     argv = full_argv(te, ws, bundle, _policy_test_live_inputs=_policy_test_live_inputs)
     return compose_command(argv, f" bash -c '{TC.sandbox_env(te, ws)} {inner}'", ws)
 
@@ -741,12 +793,11 @@ def _wrap_via_args_fd(argv: list[str], tail: str, ws: Path) -> str:
     the argument list that isolates it. ``exec {fd}<file`` opens it and ``--args $fd`` tells bwrap to
     parse from there; the redirection is a shell builtin, so no extra process sees the arguments.
     """
+    import hashlib
     import shlex
 
-    import hashlib
     digest = hashlib.sha256("\0".join(argv).encode("utf-8")).hexdigest()[:12]
     payload = ws.parent / f".{ws.name}.bwrap-args.{digest}"
     payload.write_bytes(b"\0".join(a.encode("utf-8") for a in argv[1:]) + b"\0")
     payload.chmod(0o600)
-    return (f"exec {{__bwargs}}<{shlex.quote(str(payload))} && "
-            f"{shlex.quote(argv[0])} --args $__bwargs" + tail)
+    return f"exec {{__bwargs}}<{shlex.quote(str(payload))} && {shlex.quote(argv[0])} --args $__bwargs" + tail

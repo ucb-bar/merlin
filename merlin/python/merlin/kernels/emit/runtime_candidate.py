@@ -1,4 +1,5 @@
 """Emit a runtime_candidate dict (conforming to ``runtime_candidate.schema.yaml``)."""
+
 from __future__ import annotations
 
 from typing import Iterable

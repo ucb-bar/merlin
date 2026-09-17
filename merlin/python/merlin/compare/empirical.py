@@ -20,13 +20,15 @@ For isolated gemm shapes the source is ``cross_framework_matrix_k1.jsonl`` whose
   baseline -> "ours_baseline", xnnpack -> "xnnpack", openblas -> "openblas",
   ours_*   -> "ours-intrinsic" (best ours intrinsic kernel) else the like-named source.
 """
+
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from merlin.common.paths import repo_root
 from typing import Any
+
+from merlin.common.paths import repo_root
 
 from .spec import Config, Workload
 
@@ -39,7 +41,10 @@ def _repo_root() -> Path:
 # Whole-model JSONs, in PREFERENCE order per workload. A vf-bearing file is preferred when a config
 # needs ours_wholemodel_vf (only k1_vf_*.json carries it); otherwise the 4-way file is canonical.
 _MODEL_SOURCES = {
-    "openvla": ["out/artifacts/kernel-mining/rvv/bench/k1_vf_openvla.json", "out/artifacts/kernel-mining/rvv/bench/k1_4way_openvla.json"],
+    "openvla": [
+        "out/artifacts/kernel-mining/rvv/bench/k1_vf_openvla.json",
+        "out/artifacts/kernel-mining/rvv/bench/k1_4way_openvla.json",
+    ],
     "rdt2": ["out/artifacts/kernel-mining/rvv/bench/k1_4way_rdt2.json"],
     "bitvla": ["out/artifacts/kernel-mining/rvv/bench/k1_4way_bitvla.json"],
 }
@@ -65,11 +70,11 @@ class Measurement:
     workload: str
     target: str
     metric: str
-    status: str                     # "measured" | "not_measured"
-    value: float | None = None      # min wall (ns) or instret, per metric
+    status: str  # "measured" | "not_measured"
+    value: float | None = None  # min wall (ns) or instret, per metric
     spread_pct: float | None = None
     cos: float | None = None
-    source: str | None = None       # the file the number came from (provenance)
+    source: str | None = None  # the file the number came from (provenance)
     detail: dict[str, Any] = field(default_factory=dict)
 
 
@@ -88,8 +93,7 @@ def _gemm_source_for(cfg: Config) -> str:
     return cfg.name
 
 
-def _ingest_model(cfg: Config, wl: Workload, target: str, metric: str,
-                  root: Path) -> Measurement:
+def _ingest_model(cfg: Config, wl: Workload, target: str, metric: str, root: Path) -> Measurement:
     key = _model_key_for(cfg)
     for rel in _MODEL_SOURCES.get(wl.name, []):
         p = root / rel
@@ -103,21 +107,25 @@ def _ingest_model(cfg: Config, wl: Workload, target: str, metric: str,
             continue
         spread = node.get("spread") or {}
         return Measurement(
-            config=cfg.name, workload=wl.name, target=target, metric=metric,
+            config=cfg.name,
+            workload=wl.name,
+            target=target,
+            metric=metric,
             status="measured",
             value=float(node["min_wall_ns"]),
             spread_pct=spread.get("range_pct"),
             cos=node.get("fp32_cos"),
             source=rel,
-            detail={"run_id": node.get("run_id"), "tag": node.get("tag"),
-                    "compiler_features": node.get("compiler_features")},
+            detail={
+                "run_id": node.get("run_id"),
+                "tag": node.get("tag"),
+                "compiler_features": node.get("compiler_features"),
+            },
         )
-    return Measurement(config=cfg.name, workload=wl.name, target=target, metric=metric,
-                       status="not_measured")
+    return Measurement(config=cfg.name, workload=wl.name, target=target, metric=metric, status="not_measured")
 
 
-def _ingest_gemm(cfg: Config, wl: Workload, target: str, metric: str,
-                 root: Path) -> Measurement:
+def _ingest_gemm(cfg: Config, wl: Workload, target: str, metric: str, root: Path) -> Measurement:
     src = _gemm_source_for(cfg)
     m, n, k = wl.mnk
     p = root / _GEMM_SOURCE
@@ -130,23 +138,33 @@ def _ingest_gemm(cfg: Config, wl: Workload, target: str, metric: str,
             if o.get("source") == src and (o.get("M"), o.get("N"), o.get("K")) == (m, n, k):
                 wall = o.get("wall_ns_est")
                 return Measurement(
-                    config=cfg.name, workload=wl.name, target=target, metric=metric,
+                    config=cfg.name,
+                    workload=wl.name,
+                    target=target,
+                    metric=metric,
                     status="measured" if wall is not None else "not_measured",
                     value=float(wall) if wall is not None else None,
                     spread_pct=None,
                     cos=None,
                     source=_GEMM_SOURCE,
-                    detail={"ticks": o.get("ticks"), "kernel_file": o.get("kernel_file"),
-                            "kernel_status": o.get("status"), "mnk": [m, n, k]},
+                    detail={
+                        "ticks": o.get("ticks"),
+                        "kernel_file": o.get("kernel_file"),
+                        "kernel_status": o.get("status"),
+                        "mnk": [m, n, k],
+                    },
                 )
-    return Measurement(config=cfg.name, workload=wl.name, target=target, metric=metric,
-                       status="not_measured")
+    return Measurement(config=cfg.name, workload=wl.name, target=target, metric=metric, status="not_measured")
 
 
 # workload name -> its recapture bundle (the model2MLIR capture the four-way driver builds from).
 def _model_dir(name: str, root: Path) -> Path | None:
-    exact = {"bitvla": "bitvla_fp32_consistent", "openvla": "openvla_fp32_consistent",
-             "rdt2": "rdt2_fp32_consistent", "tiny_llama": "tiny_llama_bf16"}
+    exact = {
+        "bitvla": "bitvla_fp32_consistent",
+        "openvla": "openvla_fp32_consistent",
+        "rdt2": "rdt2_fp32_consistent",
+        "tiny_llama": "tiny_llama_bf16",
+    }
     rec = root / "out/artifacts/recaptures"
     if name in exact and (rec / exact[name]).is_dir():
         return rec / exact[name]
@@ -167,11 +185,14 @@ def prime_board_cache(spec, root: Path, *, n: int = 3) -> dict[str, str]:
     import sys as _sys
 
     from merlin.mining import k1 as _k1
+
     if not _k1.available():
-        raise RuntimeError("merlin-compare --run: K1 board unavailable (set MERLIN_K1_HOST / "
-                           "MERLIN_K1_SSH_KEY / MERLIN_K1_TOOLCHAIN in .env). Remove --run to ingest cache.")
+        raise RuntimeError(
+            "merlin-compare --run: K1 board unavailable (set MERLIN_K1_HOST / "
+            "MERLIN_K1_SSH_KEY / MERLIN_K1_TOOLCHAIN in .env). Remove --run to ingest cache."
+        )
     _sys.path.insert(0, str(root / "build_tools" / "scripts"))
-    import k1_e2e_xnnpack as _e2e   # the refactored driver exposing run_workload()
+    import k1_e2e_xnnpack as _e2e  # the refactored driver exposing run_workload()
 
     status: dict[str, str] = {}
     models = [wl for wl in spec.workloads if wl.kind == "model"]
@@ -181,7 +202,7 @@ def prime_board_cache(spec, root: Path, *, n: int = 3) -> dict[str, str]:
             status[wl.name] = "no_recapture"
             continue
         out = _four_way_out(wl.name, root)
-        _e2e.run_workload(md, n=n, out=str(out))   # writes the schema _ingest_model reads
+        _e2e.run_workload(md, n=n, out=str(out))  # writes the schema _ingest_model reads
         status[wl.name] = f"measured -> {out}"
     return status
 
@@ -194,31 +215,46 @@ _BASELINE_TREE = "out/artifacts/measurements/k1_spacemit"
 
 def _ingest_external(cfg: Config, wl: Workload, target: str, metric: str, root: Path) -> Measurement:
     from ..baselines import aggregate as _agg
+
     tree = root / _BASELINE_TREE
     if not tree.is_dir():
-        return Measurement(config=cfg.name, workload=wl.name, target=target, metric=metric,
-                           status="not_measured")
+        return Measurement(config=cfg.name, workload=wl.name, target=target, metric=metric, status="not_measured")
     rows = _agg.dedupe_latest(_agg.collect_dir(tree))
     mine = [r for r in rows if r.framework == cfg.name and r.model == wl.name and r.e2e_wall_ns]
     # not_run_is_not_pass: only a PASSING result counts as a real number. A fail (e.g. ET openvla's
     # degenerate 16 ms) is NOT reported as measured — it's a not_measured cell with the reason kept.
     passing = [r for r in mine if r.status() == "pass"]
-    passing.sort(key=lambda r: (r.variant == "fp32"), reverse=True)   # prefer fp32 (matches four-way)
+    passing.sort(key=lambda r: r.variant == "fp32", reverse=True)  # prefer fp32 (matches four-way)
     r = passing[0] if passing else None
     if r is None:
         fail = next((x for x in mine), None)
-        return Measurement(config=cfg.name, workload=wl.name, target=target, metric=metric,
-                           status="not_measured",
-                           detail={"reason": f"no passing {cfg.name} result"
-                                   + (f" (latest {fail.variant}={fail.status()})" if fail else "")})
-    return Measurement(config=cfg.name, workload=wl.name, target=target, metric=metric,
-                       status="measured", value=float(r.e2e_wall_ns),
-                       cos=getattr(r, "cos", None), source=f"{_BASELINE_TREE} (baselines.aggregate)",
-                       detail={"framework": r.framework, "variant": r.variant, "status": r.status()})
+        return Measurement(
+            config=cfg.name,
+            workload=wl.name,
+            target=target,
+            metric=metric,
+            status="not_measured",
+            detail={
+                "reason": f"no passing {cfg.name} result"
+                + (f" (latest {fail.variant}={fail.status()})" if fail else "")
+            },
+        )
+    return Measurement(
+        config=cfg.name,
+        workload=wl.name,
+        target=target,
+        metric=metric,
+        status="measured",
+        value=float(r.e2e_wall_ns),
+        cos=getattr(r, "cos", None),
+        source=f"{_BASELINE_TREE} (baselines.aggregate)",
+        detail={"framework": r.framework, "variant": r.variant, "status": r.status()},
+    )
 
 
-def measure(cfg: Config, wl: Workload, target: str, metric: str = "wall", *,
-            run: bool = False, root: Path | None = None) -> Measurement:
+def measure(
+    cfg: Config, wl: Workload, target: str, metric: str = "wall", *, run: bool = False, root: Path | None = None
+) -> Measurement:
     """The measurement seam. Ingests cached numbers; when ``run=True`` the board cache is refreshed
     first by :func:`prime_board_cache` (called once in :func:`measure_all`), so this per-cell path
     always ingests the freshly-written JSON. External-framework arms (executorch/tvm/...) ingest from
@@ -240,6 +276,5 @@ def measure_all(spec, *, run: bool = False, root: Path | None = None) -> dict:
     out: dict[tuple[str, str], Measurement] = {}
     for cfg in spec.configs:
         for wl in spec.workloads:
-            out[(cfg.name, wl.name)] = measure(cfg, wl, spec.target, spec.metric,
-                                               run=run, root=root)
+            out[(cfg.name, wl.name)] = measure(cfg, wl, spec.target, spec.metric, run=run, root=root)
     return out

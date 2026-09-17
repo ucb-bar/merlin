@@ -7,6 +7,7 @@ does NOT prove that an arbitrary emitted consumer uses that address map, that
 padding is numerically neutral, or that a caller actually packed its arguments.
 Those obligations need artifact-bound evidence at the consuming boundary.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -28,35 +29,35 @@ class GroupedAxesStorage:
     offset_elements: int = 0
 
     def validate(self) -> None:
-        if (not isinstance(self.logical_shape, tuple)
-                or not isinstance(self.physical_shape, tuple)
-                or not isinstance(self.strides_elements, tuple)
-                or not isinstance(self.axis_groups, tuple)
-                or any(not isinstance(group, tuple) for group in self.axis_groups)
-                or any(type(dim) is not int or dim <= 0
-                       for dim in (*self.logical_shape, *self.physical_shape))
-                or not isinstance(self.dtype, str)
-                or type(self.storage_elements) is not int or self.storage_elements <= 0):
+        if (
+            not isinstance(self.logical_shape, tuple)
+            or not isinstance(self.physical_shape, tuple)
+            or not isinstance(self.strides_elements, tuple)
+            or not isinstance(self.axis_groups, tuple)
+            or any(not isinstance(group, tuple) for group in self.axis_groups)
+            or any(type(dim) is not int or dim <= 0 for dim in (*self.logical_shape, *self.physical_shape))
+            or not isinstance(self.dtype, str)
+            or type(self.storage_elements) is not int
+            or self.storage_elements <= 0
+        ):
             raise ValueError("storage encoding requires immutable static positive dimensions")
         if len(self.axis_groups) != len(self.physical_shape):
             raise ValueError("each physical axis requires one logical axis group")
         axes = tuple(axis for group in self.axis_groups for axis in group)
-        if (any(type(axis) is not int for axis in axes)
-                or sorted(axes) != list(range(len(self.logical_shape)))):
+        if any(type(axis) is not int for axis in axes) or sorted(axes) != list(range(len(self.logical_shape))):
             raise ValueError("axis groups must partition every logical axis exactly once")
-        expected = tuple(prod(self.logical_shape[axis] for axis in group)
-                         for group in self.axis_groups)
+        expected = tuple(prod(self.logical_shape[axis] for axis in group) for group in self.axis_groups)
         if self.physical_shape != expected:
             raise ValueError("physical shape differs from grouped logical extents")
         width = _element_bytes(self.dtype)
-        StaticStridedLayout(self.physical_shape, self.strides_elements,
-                            self.storage_elements * width,
-                            self.offset_elements).validate(self.dtype)
+        StaticStridedLayout(
+            self.physical_shape, self.strides_elements, self.storage_elements * width, self.offset_elements
+        ).validate(self.dtype)
         # Prove the derived logical address map too. Grouping is mixed-radix,
         # with the last axis in each group varying fastest; it is not a sort.
-        StaticStridedLayout(self.logical_shape, self._logical_strides(),
-                            self.storage_elements * width,
-                            self.offset_elements).validate(self.dtype)
+        StaticStridedLayout(
+            self.logical_shape, self._logical_strides(), self.storage_elements * width, self.offset_elements
+        ).validate(self.dtype)
 
     def _logical_strides(self) -> tuple[int, ...]:
         result = [0] * len(self.logical_shape)
@@ -73,36 +74,60 @@ class GroupedAxesStorage:
 
     def element_offset(self, indices: Sequence[int]) -> int:
         self.validate()
-        if (len(indices) != len(self.logical_shape)
-                or any(type(index) is not int or not 0 <= index < dim
-                       for index, dim in zip(indices, self.logical_shape, strict=True))):
+        if len(indices) != len(self.logical_shape) or any(
+            type(index) is not int or not 0 <= index < dim
+            for index, dim in zip(indices, self.logical_shape, strict=True)
+        ):
             raise ValueError("logical index is outside the storage encoding domain")
-        return self.offset_elements + sum(index * stride for index, stride
-                                         in zip(indices, self._logical_strides(), strict=True))
+        return self.offset_elements + sum(
+            index * stride for index, stride in zip(indices, self._logical_strides(), strict=True)
+        )
 
     def to_dict(self) -> dict:
         self.validate()
-        return {"schema": "grouped_axes_storage_v1", "logical_shape": list(self.logical_shape),
-                "dtype": self.dtype, "axis_groups": [list(group) for group in self.axis_groups],
-                "physical_shape": list(self.physical_shape),
-                "strides_elements": list(self.strides_elements),
-                "storage_elements": self.storage_elements, "offset_elements": self.offset_elements}
+        return {
+            "schema": "grouped_axes_storage_v1",
+            "logical_shape": list(self.logical_shape),
+            "dtype": self.dtype,
+            "axis_groups": [list(group) for group in self.axis_groups],
+            "physical_shape": list(self.physical_shape),
+            "strides_elements": list(self.strides_elements),
+            "storage_elements": self.storage_elements,
+            "offset_elements": self.offset_elements,
+        }
 
     @classmethod
     def from_dict(cls, record: Mapping) -> GroupedAxesStorage:
-        fields = {"schema", "logical_shape", "dtype", "axis_groups", "physical_shape",
-                  "strides_elements", "storage_elements", "offset_elements"}
-        if (not isinstance(record, Mapping) or set(record) != fields
-                or record.get("schema") != "grouped_axes_storage_v1"):
+        fields = {
+            "schema",
+            "logical_shape",
+            "dtype",
+            "axis_groups",
+            "physical_shape",
+            "strides_elements",
+            "storage_elements",
+            "offset_elements",
+        }
+        if (
+            not isinstance(record, Mapping)
+            or set(record) != fields
+            or record.get("schema") != "grouped_axes_storage_v1"
+        ):
             raise ValueError("unsupported or incomplete storage encoding contract")
-        if (any(not isinstance(record[name], list) for name in
-                ("logical_shape", "physical_shape", "strides_elements", "axis_groups"))
-                or any(not isinstance(group, list) for group in record["axis_groups"])):
+        if any(
+            not isinstance(record[name], list)
+            for name in ("logical_shape", "physical_shape", "strides_elements", "axis_groups")
+        ) or any(not isinstance(group, list) for group in record["axis_groups"]):
             raise ValueError("storage encoding axes and extents must be JSON arrays")
-        result = cls(tuple(record["logical_shape"]), record["dtype"],
-                     tuple(tuple(group) for group in record["axis_groups"]),
-                     tuple(record["physical_shape"]), tuple(record["strides_elements"]),
-                     record["storage_elements"], record["offset_elements"])
+        result = cls(
+            tuple(record["logical_shape"]),
+            record["dtype"],
+            tuple(tuple(group) for group in record["axis_groups"]),
+            tuple(record["physical_shape"]),
+            tuple(record["strides_elements"]),
+            record["storage_elements"],
+            record["offset_elements"],
+        )
         result.validate()
         return result
 
@@ -127,7 +152,7 @@ class GroupedAxesStorage:
         strides = self._logical_strides()
         for linear, indices in enumerate(product(*(range(dim) for dim in self.logical_shape))):
             destination = (self.offset_elements + sum(i * s for i, s in zip(indices, strides))) * width
-            result[destination:destination + width] = logical[linear * width:(linear + 1) * width]
+            result[destination : destination + width] = logical[linear * width : (linear + 1) * width]
         return bytes(result)
 
     def unpack_bytes(self, physical: bytes, *, max_storage_bytes: int) -> bytes:
@@ -139,5 +164,5 @@ class GroupedAxesStorage:
         strides = self._logical_strides()
         for linear, indices in enumerate(product(*(range(dim) for dim in self.logical_shape))):
             source = (self.offset_elements + sum(i * s for i, s in zip(indices, strides))) * width
-            result[linear * width:(linear + 1) * width] = physical[source:source + width]
+            result[linear * width : (linear + 1) * width] = physical[source : source + width]
         return bytes(result)

@@ -5,7 +5,9 @@ This builder removes the hand-rolled serializer (~80 LOC) AND the `command_buffe
 it validates against `merlin/contract/schemas/command_buffer.schema.json` before writing. It does NOT pick
 opcodes or operands for you (that's the agent's target lowering); it only guarantees a well-formed buffer.
 """
+
 from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import Any
@@ -22,8 +24,7 @@ class CommandBufferBuilder:
     """
 
     def __init__(self, target: str, backend: str = "", abi_version: str = "0.1"):
-        self._cb: dict[str, Any] = {"abi_version": abi_version, "target": target,
-                                    "tensors": {}, "commands": []}
+        self._cb: dict[str, Any] = {"abi_version": abi_version, "target": target, "tensors": {}, "commands": []}
         if backend:
             self._cb["backend"] = backend
 
@@ -34,8 +35,9 @@ class CommandBufferBuilder:
         self._cb["tensors"][name] = spec
         return self
 
-    def command(self, opcode: str, operands: dict | None = None,
-                attributes: dict | None = None) -> "CommandBufferBuilder":
+    def command(
+        self, opcode: str, operands: dict | None = None, attributes: dict | None = None
+    ) -> "CommandBufferBuilder":
         c: dict[str, Any] = {"opcode": opcode}
         if operands:
             c["operands"] = operands
@@ -62,6 +64,7 @@ class CommandBufferBuilder:
                 problems.append(f"commands[{i}]: missing 'opcode'")
         try:
             import jsonschema  # optional, stronger
+
             schema = json.loads(_SCHEMA.read_text())
             for e in jsonschema.Draft7Validator(schema).iter_errors(self._cb):
                 problems.append(f"schema: {e.message} at {'/'.join(map(str, e.path))}")

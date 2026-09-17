@@ -5,6 +5,7 @@ resident_tensor / accumulator) is synthesized by :func:`..factory.build_dialect`
 ``merlin/targets/toy_npu/contracts/dialect_plan.yaml`` — no hand-written IRDL classes. ToyNPU is an
 NPU with real resident storage, so its matmul RHS is type-constrained to the resident tensor.
 """
+
 from __future__ import annotations
 
 from .._common import HAS_XDSL

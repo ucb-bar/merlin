@@ -11,9 +11,9 @@ The UNKNOWN semantics are the point
 not a float, not ``None``, and every numeric protocol on it *raises*:
 
     >>> t = PerformanceTerm.unknown("overlap_cycles", "cycles", prov, validity, "buckets partition")
-    >>> float(t.value)                      # UnknownValueError
-    >>> t.value + 3                         # UnknownValueError
-    >>> float(t.value or 0)                 # UnknownValueError -- `or` calls __bool__, which refuses
+    >>> float(t.value)  # UnknownValueError
+    >>> t.value + 3  # UnknownValueError
+    >>> float(t.value or 0)  # UnknownValueError -- `or` calls __bool__, which refuses
 
 That last line is the whole reason ``__bool__`` refuses. The failure this guards against is not a
 caller who checks and mishandles UNKNOWN; it is a caller who never checks, writes ``x or 0``, and
@@ -38,6 +38,7 @@ converted once enough real terms exist to say what the unified lattice should be
 does NOT attempt that unification now: five provenance representations exist across this tree, and
 merging them before there is anything to merge churns. See the task register's R1.7.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -47,8 +48,16 @@ from typing import Any
 from merlin.dse_guidance.evidence import EVIDENCE_TYPES, confidence_for, weakest_evidence
 
 __all__ = [
-    "Bounds", "PerformanceTerm", "Provenance", "UNKNOWN", "UNKNOWN_TOKEN", "UnknownValueError",
-    "Validity", "combine_kinds", "is_unknown", "known_or_raise",
+    "Bounds",
+    "PerformanceTerm",
+    "Provenance",
+    "UNKNOWN",
+    "UNKNOWN_TOKEN",
+    "UnknownValueError",
+    "Validity",
+    "combine_kinds",
+    "is_unknown",
+    "known_or_raise",
 ]
 
 #: How "not known" is spelled once serialized. Deliberately the same token
@@ -114,7 +123,8 @@ class _Unknown:
             "this quantity is UNKNOWN and cannot be used as a number. It is not zero and it is not "
             "missing-so-assume-nothing-happened: it is a value that was not established. Handle it "
             "explicitly (`is UNKNOWN` / `PerformanceTerm.is_unknown`) or propagate it; do NOT write "
-            "`x or 0`, `float(x or 0)` or a numeric default, which would publish a fabricated zero.")
+            "`x or 0`, `float(x or 0)` or a numeric default, which would publish a fabricated zero."
+        )
 
     __bool__ = _refuse
     __float__ = _refuse
@@ -186,10 +196,11 @@ def _check_number(value: Any, field: str) -> "float | int | _Unknown":
             return UNKNOWN
         raise TypeError(f"{field} must be a number or UNKNOWN, got the string {value!r}")
     if isinstance(value, bool):
-        raise TypeError(f"{field} must be a number or UNKNOWN, not a bool ({value!r}); a bool "
-                        "priced as 1 is a fabricated quantity")
+        raise TypeError(
+            f"{field} must be a number or UNKNOWN, not a bool ({value!r}); a bool priced as 1 is a fabricated quantity"
+        )
     if isinstance(value, (int, float)):
-        if value != value:                      # NaN: neither a number nor an honest UNKNOWN
+        if value != value:  # NaN: neither a number nor an honest UNKNOWN
             raise ValueError(f"{field} is NaN; record UNKNOWN with a reason instead")
         return value
     raise TypeError(f"{field} must be a number or UNKNOWN, got {type(value).__name__}")
@@ -208,12 +219,16 @@ class Provenance:
 
     def __post_init__(self) -> None:
         if self.kind not in EVIDENCE_TYPES:
-            raise ValueError(f"unknown evidence kind {self.kind!r}; the vocabulary is "
-                             f"{list(EVIDENCE_TYPES)} (merlin.dse_guidance.evidence)")
+            raise ValueError(
+                f"unknown evidence kind {self.kind!r}; the vocabulary is "
+                f"{list(EVIDENCE_TYPES)} (merlin.dse_guidance.evidence)"
+            )
         ev = tuple(str(e) for e in self.evidence)
         if not ev or any(not e.strip() for e in ev):
-            raise ValueError(f"provenance {self.kind!r} carries no evidence; a term must name what "
-                             "it rests on (a source id, a file, a measurement, a derivation)")
+            raise ValueError(
+                f"provenance {self.kind!r} carries no evidence; a term must name what "
+                "it rests on (a source id, a file, a measurement, a derivation)"
+            )
         object.__setattr__(self, "evidence", ev)
 
     @property
@@ -261,19 +276,27 @@ class Validity:
 
     def __post_init__(self) -> None:
         if not str(self.validated_regime).strip():
-            raise ValueError("validity.validated_regime is required; a term with no stated regime "
-                             "claims to hold everywhere, which no measurement supports")
+            raise ValueError(
+                "validity.validated_regime is required; a term with no stated regime "
+                "claims to hold everywhere, which no measurement supports"
+            )
 
     def to_dict(self) -> dict[str, Any]:
-        return {"validated_regime": self.validated_regime, "expected_error": self.expected_error,
-                "weak_regime": self.weak_regime, "escalate_when": self.escalate_when}
+        return {
+            "validated_regime": self.validated_regime,
+            "expected_error": self.expected_error,
+            "weak_regime": self.weak_regime,
+            "escalate_when": self.escalate_when,
+        }
 
     @classmethod
     def from_dict(cls, raw: Mapping[str, Any]) -> "Validity":
-        return cls(validated_regime=str(raw["validated_regime"]),
-                   expected_error=str(raw.get("expected_error") or ""),
-                   weak_regime=str(raw.get("weak_regime") or ""),
-                   escalate_when=str(raw.get("escalate_when") or ""))
+        return cls(
+            validated_regime=str(raw["validated_regime"]),
+            expected_error=str(raw.get("expected_error") or ""),
+            weak_regime=str(raw.get("weak_regime") or ""),
+            escalate_when=str(raw.get("escalate_when") or ""),
+        )
 
     @classmethod
     def from_fidelity_contract(cls, contract: Any) -> "Validity":
@@ -282,10 +305,12 @@ class Validity:
         Duck-typed on purpose: this package must not import ModeLIR, which is a separately pinned
         external checkout that may not be present.
         """
-        return cls(validated_regime=str(getattr(contract, "validated_regime", "") or ""),
-                   expected_error=str(getattr(contract, "expected_error", "") or ""),
-                   weak_regime=str(getattr(contract, "weak_regime", "") or ""),
-                   escalate_when=str(getattr(contract, "escalate_when", "") or ""))
+        return cls(
+            validated_regime=str(getattr(contract, "validated_regime", "") or ""),
+            expected_error=str(getattr(contract, "expected_error", "") or ""),
+            weak_regime=str(getattr(contract, "weak_regime", "") or ""),
+            escalate_when=str(getattr(contract, "escalate_when", "") or ""),
+        )
 
 
 @dataclass(frozen=True)
@@ -328,8 +353,9 @@ class Bounds:
     def from_dict(cls, raw: "Mapping[str, Any] | None") -> "Bounds":
         if not raw:
             return cls()
-        return cls(lower=_deserialize(raw.get("lower", UNKNOWN_TOKEN)),
-                   upper=_deserialize(raw.get("upper", UNKNOWN_TOKEN)))
+        return cls(
+            lower=_deserialize(raw.get("lower", UNKNOWN_TOKEN)), upper=_deserialize(raw.get("upper", UNKNOWN_TOKEN))
+        )
 
 
 def _serialize(value: Any) -> Any:
@@ -364,8 +390,9 @@ class PerformanceTerm:
         if not str(self.name).strip():
             raise ValueError("a term must be named")
         if not str(self.unit).strip():
-            raise ValueError(f"term {self.name!r} has no unit; an unlabelled number is not a "
-                             "measurement (cycles? bytes? a ratio?)")
+            raise ValueError(
+                f"term {self.name!r} has no unit; an unlabelled number is not a measurement (cycles? bytes? a ratio?)"
+            )
         object.__setattr__(self, "value", _check_number(self.value, f"term {self.name!r} value"))
         if self.confidence is None:
             object.__setattr__(self, "confidence", self.provenance.confidence)
@@ -378,14 +405,16 @@ class PerformanceTerm:
         if self.value is UNKNOWN and not reason:
             raise ValueError(
                 f"term {self.name!r} is UNKNOWN with no reason. Recording UNKNOWN is the honest "
-                "outcome; recording it silently is not -- say what could not be established.")
+                "outcome; recording it silently is not -- say what could not be established."
+            )
         if self.value is not UNKNOWN and reason:
             raise ValueError(f"term {self.name!r} has a known value but carries an unknown_reason")
         object.__setattr__(self, "unknown_reason", reason)
         inside = self.bounds.contains(self.value)
         if inside is False:
-            raise ValueError(f"term {self.name!r} value {self.value} falls outside its own bounds "
-                             f"{self.bounds.to_dict()}")
+            raise ValueError(
+                f"term {self.name!r} value {self.value} falls outside its own bounds {self.bounds.to_dict()}"
+            )
 
     @property
     def is_unknown(self) -> bool:
@@ -422,12 +451,27 @@ class PerformanceTerm:
         )
 
     @classmethod
-    def unknown(cls, name: str, unit: str, provenance: Provenance, validity: Validity,
-                reason: str, *, bounds: "Bounds | None" = None) -> "PerformanceTerm":
+    def unknown(
+        cls,
+        name: str,
+        unit: str,
+        provenance: Provenance,
+        validity: Validity,
+        reason: str,
+        *,
+        bounds: "Bounds | None" = None,
+    ) -> "PerformanceTerm":
         """A term that records "not established", with the reason it was not.
 
         Note that an UNKNOWN term still carries provenance and a validity domain: knowing *which
         attempt* failed and *over what regime* is what makes the gap actionable rather than a hole.
         """
-        return cls(name=name, value=UNKNOWN, unit=unit, provenance=provenance, validity=validity,
-                   bounds=bounds or Bounds(), unknown_reason=reason)
+        return cls(
+            name=name,
+            value=UNKNOWN,
+            unit=unit,
+            provenance=provenance,
+            validity=validity,
+            bounds=bounds or Bounds(),
+            unknown_reason=reason,
+        )

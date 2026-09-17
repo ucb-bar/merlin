@@ -27,20 +27,20 @@ WHAT A CALLER DOES WITH THE VERDICT. :data:`REFUSING_STATUSES` mirrors
 is a correctness defect and not a performance one -- but flipping a long-passing capsule to failing
 is a corpus decision, so this module reports and the caller chooses.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-__all__ = ["ReadoutCapability", "StageVerdict", "Assessment", "assess", "STATUSES",
-           "REFUSING_STATUSES"]
+__all__ = ["ReadoutCapability", "StageVerdict", "Assessment", "assess", "STATUSES", "REFUSING_STATUSES"]
 
 #: Every verdict this module can reach.
 STATUSES: tuple[str, ...] = (
-    "applied",     # every declared stage is applied by the readout the program selected
-    "discarded",   # the readout does NOT apply a declared stage: the program computes something else
-    "unknown",     # the target described no readout matching this program's; refuse, never assume
+    "applied",  # every declared stage is applied by the readout the program selected
+    "discarded",  # the readout does NOT apply a declared stage: the program computes something else
+    "unknown",  # the target described no readout matching this program's; refuse, never assume
     "not_applicable",  # the program declares no epilogue, so there is nothing to apply
 )
 
@@ -67,8 +67,7 @@ class ReadoutCapability:
     evidence: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {"selector": self.selector, "applies": sorted(self.applies),
-                "evidence": self.evidence}
+        return {"selector": self.selector, "applies": sorted(self.applies), "evidence": self.evidence}
 
 
 @dataclass(frozen=True)
@@ -83,9 +82,14 @@ class StageVerdict:
     why: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {"command_index": self.command_index, "opcode": self.opcode,
-                "readout": self.readout, "stage": self.stage, "applied": self.applied,
-                "why": self.why}
+        return {
+            "command_index": self.command_index,
+            "opcode": self.opcode,
+            "readout": self.readout,
+            "stage": self.stage,
+            "applied": self.applied,
+            "why": self.why,
+        }
 
 
 @dataclass
@@ -106,11 +110,15 @@ class Assessment:
         return tuple(v for v in self.stages if not v.applied)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"schema": "merlin_epilogue_applicability_v1", "status": self.status,
-                "detail": self.detail, "refusing": self.refusing,
-                "readouts_declared": list(self.readouts_declared),
-                "n_discarded": len(self.discarded),
-                "stages": [v.to_dict() for v in self.stages]}
+        return {
+            "schema": "merlin_epilogue_applicability_v1",
+            "status": self.status,
+            "detail": self.detail,
+            "refusing": self.refusing,
+            "readouts_declared": list(self.readouts_declared),
+            "n_discarded": len(self.discarded),
+            "stages": [v.to_dict() for v in self.stages],
+        }
 
 
 def _epilogue_of(command: Mapping[str, Any]) -> tuple[str, ...]:
@@ -125,8 +133,7 @@ def _readout_of(command: Mapping[str, Any]) -> str | None:
     return str(value) if isinstance(value, str) and value else None
 
 
-def assess(command_buffer: Mapping[str, Any],
-           readouts: Sequence[ReadoutCapability]) -> Assessment:
+def assess(command_buffer: Mapping[str, Any], readouts: Sequence[ReadoutCapability]) -> Assessment:
     """Whether every epilogue stage this program declares is applied by the readout it selected.
 
     ``readouts`` is the target's own declaration. Required and never defaulted: a program whose
@@ -137,8 +144,9 @@ def assess(command_buffer: Mapping[str, Any],
     declared = tuple(sorted(by_selector))
     commands = command_buffer.get("commands")
     if not isinstance(commands, Sequence) or isinstance(commands, (str, bytes)):
-        return Assessment(status="unknown", detail="the command buffer declares no command sequence",
-                          readouts_declared=declared)
+        return Assessment(
+            status="unknown", detail="the command buffer declares no command sequence", readouts_declared=declared
+        )
 
     stages: list[StageVerdict] = []
     unknown_readouts: set[str] = set()
@@ -152,45 +160,86 @@ def assess(command_buffer: Mapping[str, Any],
         readout = _readout_of(command)
         if readout is None:
             unknown_readouts.add("<undeclared>")
-            stages.extend(StageVerdict(index, opcode, "<undeclared>", stage, False,
-                                       "the command declares epilogue stages but no readout, so "
-                                       "which readout would apply them is UNKNOWN")
-                          for stage in epilogue)
+            stages.extend(
+                StageVerdict(
+                    index,
+                    opcode,
+                    "<undeclared>",
+                    stage,
+                    False,
+                    "the command declares epilogue stages but no readout, so which readout would apply them is UNKNOWN",
+                )
+                for stage in epilogue
+            )
             continue
         capability = by_selector.get(readout)
         if capability is None:
             unknown_readouts.add(readout)
-            stages.extend(StageVerdict(index, opcode, readout, stage, False,
-                                       f"the target describes no readout {readout!r} "
-                                       f"(it declares {list(declared)}), so whether it applies this "
-                                       f"stage is UNKNOWN and is refused rather than assumed")
-                          for stage in epilogue)
+            stages.extend(
+                StageVerdict(
+                    index,
+                    opcode,
+                    readout,
+                    stage,
+                    False,
+                    f"the target describes no readout {readout!r} "
+                    f"(it declares {list(declared)}), so whether it applies this "
+                    f"stage is UNKNOWN and is refused rather than assumed",
+                )
+                for stage in epilogue
+            )
             continue
         for stage in epilogue:
             applied = stage in capability.applies
-            stages.append(StageVerdict(
-                index, opcode, readout, stage, applied,
-                "" if applied else
-                (f"readout {readout!r} does not apply {stage!r} (it applies "
-                 f"{sorted(capability.applies)}){': ' + capability.evidence if capability.evidence else ''}"
-                 f" -- the emitted program therefore computes something other than what it declares")))
+            stages.append(
+                StageVerdict(
+                    index,
+                    opcode,
+                    readout,
+                    stage,
+                    applied,
+                    ""
+                    if applied
+                    else (
+                        f"readout {readout!r} does not apply {stage!r} (it applies "
+                        f"{sorted(capability.applies)}){': ' + capability.evidence if capability.evidence else ''}"
+                        f" -- the emitted program therefore computes something other than what it declares"
+                    ),
+                )
+            )
 
     if not stages:
-        return Assessment(status="not_applicable",
-                          detail="the program declares no epilogue stage, so none can be discarded",
-                          readouts_declared=declared)
+        return Assessment(
+            status="not_applicable",
+            detail="the program declares no epilogue stage, so none can be discarded",
+            readouts_declared=declared,
+        )
     if unknown_readouts:
         return Assessment(
-            status="unknown", stages=stages, readouts_declared=declared,
-            detail=(f"readout(s) {sorted(unknown_readouts)} are not described by the target, so "
-                    f"whether the declared stages are applied cannot be established"))
+            status="unknown",
+            stages=stages,
+            readouts_declared=declared,
+            detail=(
+                f"readout(s) {sorted(unknown_readouts)} are not described by the target, so "
+                f"whether the declared stages are applied cannot be established"
+            ),
+        )
     dropped = [v for v in stages if not v.applied]
     if dropped:
         first = dropped[0]
         return Assessment(
-            status="discarded", stages=stages, readouts_declared=declared,
-            detail=(f"{len(dropped)} declared epilogue stage(s) are not applied by the readout the "
-                    f"program selected; first at command {first.command_index} "
-                    f"({first.opcode}): {first.why}"))
-    return Assessment(status="applied", stages=stages, readouts_declared=declared,
-                      detail=f"all {len(stages)} declared stage(s) are applied by their readout")
+            status="discarded",
+            stages=stages,
+            readouts_declared=declared,
+            detail=(
+                f"{len(dropped)} declared epilogue stage(s) are not applied by the readout the "
+                f"program selected; first at command {first.command_index} "
+                f"({first.opcode}): {first.why}"
+            ),
+        )
+    return Assessment(
+        status="applied",
+        stages=stages,
+        readouts_declared=declared,
+        detail=f"all {len(stages)} declared stage(s) are applied by their readout",
+    )

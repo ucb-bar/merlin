@@ -19,6 +19,7 @@ Design constraints (see the plan / contract):
   return only the commands it recognised and say nothing about the rest, which silently mis-read 15
   of 160 shipped interface capsules; see the exception's docstring for the measurement.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -104,8 +105,7 @@ def _tensor_type(spec: dict[str, Any]) -> str:
 
 # float output dtype -> the float accumulate dtype its datapath commits in (a float MXU accumulates in
 # bf16/f32, an integer array widens to i32). Keyed on the dtype, never on a target name.
-_FLOAT_ACC = {"bf16": "bf16", "bfloat16": "bf16", "f16": "bf16", "float16": "bf16",
-              "f32": "f32", "float32": "f32"}
+_FLOAT_ACC = {"bf16": "bf16", "bfloat16": "bf16", "f16": "bf16", "float16": "bf16", "f32": "f32", "float32": "f32"}
 
 
 def _acc_dtype(cb: dict[str, Any]) -> str:
@@ -153,9 +153,11 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
 
     # leaf inputs declared up front, in declaration order
     lines: list[str] = []
-    header = (f'module attributes {{merlin_iface.version = "{GRAMMAR_VERSION}", '
-              f'merlin_iface.target = "{cb.get("target", "")}", '
-              f'merlin_iface.abi_version = "{cb.get("abi_version", "0.1")}"}} {{')
+    header = (
+        f'module attributes {{merlin_iface.version = "{GRAMMAR_VERSION}", '
+        f'merlin_iface.target = "{cb.get("target", "")}", '
+        f'merlin_iface.abi_version = "{cb.get("abi_version", "0.1")}"}} {{'
+    )
     lines.append(header)
 
     for name, spec in tensors.items():
@@ -168,8 +170,7 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
                 tensor_attrs["scale_of"] = spec["scale_of"]
             if "block" in spec:
                 tensor_attrs["block"] = spec["block"]
-        lines.append(f'  %{name} = merlin_iface.tensor '
-                     f'{_fmt_attrs(tensor_attrs)} : {_tensor_type(spec)}')
+        lines.append(f"  %{name} = merlin_iface.tensor {_fmt_attrs(tensor_attrs)} : {_tensor_type(spec)}")
 
     acc_t = _acc_dtype(cb)
     # remember each leaf/handle type for printing operand type lists
@@ -182,13 +183,16 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
         if op == "RES_PACK":
             src, dst = ops["src"], ops["dst"]
             a = _fmt_attrs({"layout": attrs.get("layout", "packed_rhs")})
-            lines.append(f'  %{dst} = merlin_iface.resident_pack %{src} {a} : '
-                         f'({val_type[src]}) -> !merlin_iface.resident')
+            lines.append(
+                f"  %{dst} = merlin_iface.resident_pack %{src} {a} : ({val_type[src]}) -> !merlin_iface.resident"
+            )
             val_type[dst] = "!merlin_iface.resident"
         elif op in ("MATMUL_RESIDENT", "MATMUL"):
             lhs, rhs, dst = ops["lhs"], ops["rhs"], ops["dst"]
-            lines.append(f'  %{dst} = merlin_iface.matmul %{lhs}, %{rhs} : '
-                         f'({val_type[lhs]}, {val_type[rhs]}) -> !merlin_iface.acc<{acc_t}>')
+            lines.append(
+                f"  %{dst} = merlin_iface.matmul %{lhs}, %{rhs} : "
+                f"({val_type[lhs]}, {val_type[rhs]}) -> !merlin_iface.acc<{acc_t}>"
+            )
             val_type[dst] = f"!merlin_iface.acc<{acc_t}>"
         elif op == "COMMIT":
             src, dst = ops["src"], ops["dst"]
@@ -197,12 +201,14 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
             out_attrs = {"name": dst, **out_attrs}
             odt = attrs.get("output_dtype", "i8")
             m, n = _commit_out_shape(cb, src, attrs)
-            lines.append(f'  %{dst} = merlin_iface.commit %{src} {_fmt_attrs(out_attrs)} : '
-                         f'(!merlin_iface.acc<{acc_t}>) -> tensor<{m}x{n}x{odt}>')
+            lines.append(
+                f"  %{dst} = merlin_iface.commit %{src} {_fmt_attrs(out_attrs)} : "
+                f"(!merlin_iface.acc<{acc_t}>) -> tensor<{m}x{n}x{odt}>"
+            )
             val_type[dst] = f"tensor<{m}x{n}x{odt}>"
         elif op == "EVICT":
             h = ops["handle"]
-            lines.append(f'  merlin_iface.evict %{h} : (!merlin_iface.resident) -> ()')
+            lines.append(f"  merlin_iface.evict %{h} : (!merlin_iface.resident) -> ()")
         else:  # pragma: no cover - defensive
             raise ValueError(f"unsupported opcode {op!r} for interface grammar v{GRAMMAR_VERSION}")
 
@@ -210,8 +216,7 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _commit_out_shape(cb: dict[str, Any], acc_name: str,
-                      attrs: dict[str, Any] | None = None) -> tuple[int, int]:
+def _commit_out_shape(cb: dict[str, Any], acc_name: str, attrs: dict[str, Any] | None = None) -> tuple[int, int]:
     """(m, n) for a commit: m from the matmul lhs rows, n from the resident weight cols.
 
     A POOLING epilogue reduces m: the accumulator's rows unflatten to a ``pool_in_dims`` plane and the
@@ -234,6 +239,7 @@ def _commit_out_shape(cb: dict[str, Any], acc_name: str,
             if "maxpool" in ((attrs or {}).get("epilogue") or []):
                 from merlin.runtime.commandbuffer import pool_params
                 from merlin.runtime.tensor import pool_out_dims
+
                 p = pool_params(attrs or {}, op=f"COMMIT of {acc_name!r}")
                 H, W = p["pool_in_dims"]
                 Ho, Wo = pool_out_dims(H, W, p["pool_size"], p["pool_stride"], p["pool_padding"])
@@ -277,7 +283,7 @@ def _braced(text: str, start: int = 0) -> tuple[str, int]:
         elif text[i] == "}":
             depth -= 1
             if depth == 0:
-                return text[open_i + 1:i], i + 1
+                return text[open_i + 1 : i], i + 1
     return "", -1
 
 
@@ -311,7 +317,7 @@ def _op_line(line: str) -> dict | None:
         lhs = head.split("=", 1)[0].strip()
         if lhs.startswith("%"):
             result = lhs[1:].strip()
-    rest = line[at + len(_DIALECT):]
+    rest = line[at + len(_DIALECT) :]
     mnemonic = ""
     for i, ch in enumerate(rest):
         if ch.isalnum() or ch == "_":
@@ -325,8 +331,13 @@ def _op_line(line: str) -> dict | None:
     attrs_body, after = _braced(rest)
     tail = rest[after:] if after != -1 else rest
     _, _, tail = tail.partition(":")
-    return {"result": result, "mnemonic": mnemonic, "operands": operands,
-            "attrs_body": attrs_body, "tail": tail.strip()}
+    return {
+        "result": result,
+        "mnemonic": mnemonic,
+        "operands": operands,
+        "attrs_body": attrs_body,
+        "tail": tail.strip(),
+    }
 
 
 def _module_attrs(text: str) -> str:
@@ -341,7 +352,7 @@ def _module_attrs(text: str) -> str:
     """
     at = text.find(_MODULE_KW)
     while at != -1:
-        after = text[at + len(_MODULE_KW):]
+        after = text[at + len(_MODULE_KW) :]
         kw = after.find(_ATTRIBUTES_KW)
         brace = after.find("{")
         # The keyword must come before the brace it introduces; otherwise this `module` is something
@@ -422,7 +433,7 @@ def _shape_dtype(ttype: str) -> tuple[list[int], str]:
     lb, rb = s.find("<"), s.rfind(">")
     if not s.startswith("tensor") or lb < 0 or rb <= lb:
         raise ValueError(f"unparseable tensor type {ttype!r}")
-    body = s[lb + 1:rb].split(",", 1)[0].strip()   # drop any trailing layout/encoding attribute
+    body = s[lb + 1 : rb].split(",", 1)[0].strip()  # drop any trailing layout/encoding attribute
     parts = body.split("x")
     if len(parts) < 2:
         raise ValueError(f"unparseable tensor type {ttype!r} (need at least one dim and an element type)")
@@ -477,7 +488,7 @@ def op_mnemonics(text: str) -> list[str]:
             continue
         head, sep, rest = line.partition(_IFACE_MARKER)
         while sep:
-            if not head.endswith(_TYPE_SIGIL):        # `!merlin_iface.resident` is a type, not an op
+            if not head.endswith(_TYPE_SIGIL):  # `!merlin_iface.resident` is a type, not an op
                 mnem = rest
                 for stop in _MNEMONIC_STOPS:
                     mnem = mnem.partition(stop)[0]
@@ -485,7 +496,7 @@ def op_mnemonics(text: str) -> list[str]:
                 # grammar is. Checking that as well as the `module` line means a header wrapped across
                 # lines cannot be misread as three ops named version/target/abi_version — a false
                 # "undefined mnemonic" would be as unhelpful as the silent drop it replaces.
-                if mnem and not rest[len(mnem):].lstrip().startswith("="):
+                if mnem and not rest[len(mnem) :].lstrip().startswith("="):
                     out.append(mnem)
             head, sep, rest = rest.partition(_IFACE_MARKER)
     return out
@@ -532,7 +543,7 @@ def declared_result_elements(text: str) -> dict[str, int]:
             continue
         ttype = _last_type(op["tail"])
         if not ttype:
-            continue                               # declares no result type at all: UNKNOWN, not zero
+            continue  # declares no result type at all: UNKNOWN, not zero
         try:
             dims, _dtype = _shape_dtype(ttype)
         except ValueError:
@@ -571,7 +582,8 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
             f"interface grammar v{GRAMMAR_VERSION} does not define merlin_iface op(s) "
             f"{', '.join(repr(m) for m in undefined)}; it defines "
             f"{', '.join(repr(m) for m in sorted(defined_mnemonics()))}. Parsing would drop the "
-            f"undefined op(s) and return a command list that is missing that work")
+            f"undefined op(s) and return a command list that is missing that work"
+        )
 
     mod_attrs = _parse_attr_block(_module_attrs(text))
     cb: dict[str, Any] = {
@@ -592,13 +604,13 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
         output`` and dataflow (not role spelling) distinguishes the final result.
         """
         if not isinstance(name, str) or not name:
-            raise InterfaceGrammarError(
-                f"merlin_iface.{op['mnemonic']} needs a non-empty named tensor result")
+            raise InterfaceGrammarError(f"merlin_iface.{op['mnemonic']} needs a non-empty named tensor result")
         try:
             shape, dtype = _shape_dtype(_last_type(op["tail"]))
         except ValueError as exc:
             raise InterfaceGrammarError(
-                f"merlin_iface.{op['mnemonic']} result {name!r} must have a tensor type: {exc}") from exc
+                f"merlin_iface.{op['mnemonic']} result {name!r} must have a tensor type: {exc}"
+            ) from exc
         declared = cb["tensors"].get(name)
         result_spec = {"shape": shape, "dtype": dtype, "role": "output"}
         if declared is None:
@@ -607,7 +619,8 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
         if (declared.get("shape"), declared.get("dtype")) != (shape, dtype):
             raise InterfaceGrammarError(
                 f"merlin_iface.{op['mnemonic']} result {name!r} has type "
-                f"{_last_type(op['tail'])!r}, inconsistent with its tensor declaration {declared!r}")
+                f"{_last_type(op['tail'])!r}, inconsistent with its tensor declaration {declared!r}"
+            )
 
     # ONE decomposition per line, then a dispatch on the mnemonic. Previously each op form had its own
     # pattern and the line was tried against each in turn, which is what let an undefined op fall
@@ -626,37 +639,39 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
         if mnem == "tensor":
             name = attrs.get("name", result)
             shape, dtype = _shape_dtype(_last_type(op["tail"]))
-            tensor_spec = {"shape": shape, "dtype": dtype,
-                           "role": attrs.get("role", "input")}
+            tensor_spec = {"shape": shape, "dtype": dtype, "role": attrs.get("role", "input")}
             if tensor_spec["role"] == "scale":
                 for key in ("scale_of", "block"):
                     if key in attrs:
                         tensor_spec[key] = attrs[key]
             cb["tensors"][name] = tensor_spec
         elif mnem == "resident_pack":
-            cb["commands"].append({"opcode": "RES_PACK",
-                                   "operands": {"src": srcs[0], "dst": result},
-                                   "attributes": {"layout": attrs.get("layout", "packed_rhs")}})
+            cb["commands"].append(
+                {
+                    "opcode": "RES_PACK",
+                    "operands": {"src": srcs[0], "dst": result},
+                    "attributes": {"layout": attrs.get("layout", "packed_rhs")},
+                }
+            )
         elif mnem == "matmul":
-            cb["commands"].append({"opcode": "MATMUL_RESIDENT",
-                                   "operands": {"lhs": srcs[0], "rhs": srcs[1], "dst": result}})
+            cb["commands"].append(
+                {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": srcs[0], "rhs": srcs[1], "dst": result}}
+            )
         elif mnem in _NAMED_OP_OPERAND_KEYS:
             keys = _NAMED_OP_OPERAND_KEYS[mnem]
             if len(srcs) != len(keys):
                 raise InterfaceGrammarError(
                     f"merlin_iface.{mnem} needs exactly {len(keys)} operand(s) "
-                    f"{keys}, got {len(srcs)} {srcs}; truncating either side would change its ABI")
+                    f"{keys}, got {len(srcs)} {srcs}; truncating either side would change its ABI"
+                )
             operands = {k: s for k, s in zip(keys, srcs)}
             dst = attrs.pop("name", result)
             operands["dst"] = dst
             declare_named_result(dst, op)
-            cb["commands"].append({"opcode": _NAMED_OP_TO_OPCODE[mnem],
-                                   "operands": operands, "attributes": attrs})
+            cb["commands"].append({"opcode": _NAMED_OP_TO_OPCODE[mnem], "operands": operands, "attributes": attrs})
         elif mnem == "commit":
             dst = attrs.pop("name", result)
-            cb["commands"].append({"opcode": "COMMIT",
-                                   "operands": {"src": srcs[0], "dst": dst},
-                                   "attributes": attrs})
+            cb["commands"].append({"opcode": "COMMIT", "operands": {"src": srcs[0], "dst": dst}, "attributes": attrs})
         elif mnem == "evict":
             cb["commands"].append({"opcode": "EVICT", "operands": {"handle": srcs[0]}})
 
@@ -671,7 +686,8 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
         raise InterfaceGrammarError(
             f"no merlin_iface op or tensor was found; interface grammar v{GRAMMAR_VERSION} cannot read "
             f"this module, which declares {_module_attrs(text)[:120]!r}. Returning an empty program "
-            f"would be indistinguishable from a program that genuinely does nothing")
+            f"would be indistinguishable from a program that genuinely does nothing"
+        )
     return cb
 
 
@@ -700,7 +716,8 @@ def to_generic_form(text: str) -> str:
     if undefined:
         raise InterfaceGrammarError(
             f"cannot re-spell in generic form: interface grammar v{GRAMMAR_VERSION} does not define "
-            f"merlin_iface op(s) {', '.join(repr(m) for m in undefined)}")
+            f"merlin_iface op(s) {', '.join(repr(m) for m in undefined)}"
+        )
 
     out: list[str] = []
     for raw in text.splitlines():
@@ -710,9 +727,9 @@ def to_generic_form(text: str) -> str:
             continue
         indent = raw[: len(raw) - len(raw.lstrip())]
         ftype = _functional_type(op)
-        attrs = f' {{{op["attrs_body"]}}}' if op["attrs_body"] else ""
+        attrs = f" {{{op['attrs_body']}}}" if op["attrs_body"] else ""
         operands = ", ".join(f"%{s}" for s in op["operands"])
-        lhs = f'%{op["result"]} = ' if op["result"] else ""
+        lhs = f"%{op['result']} = " if op["result"] else ""
         out.append(f'{indent}{lhs}"{_IFACE_MARKER}{op["mnemonic"]}"({operands}){attrs} : {ftype}')
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
@@ -733,7 +750,8 @@ def _functional_type(op: dict) -> str:
         # types from the module's own signature. Refuse instead of guessing them.
         raise InterfaceGrammarError(
             f"merlin_iface.{op['mnemonic']} prints a bare result type but takes "
-            f"{len(op['operands'])} operand(s); its operand types cannot be recovered from the line")
+            f"{len(op['operands'])} operand(s); its operand types cannot be recovered from the line"
+        )
     return f"() -> {tail}"
 
 
@@ -747,4 +765,4 @@ def _is_op_statement(line: str, mnemonic: str) -> bool:
     ``"merlin_iface.version"() : () ->`` and the module loses its version, target and abi_version.
     """
     at = line.find(_IFACE_MARKER)
-    return not line[at + len(_IFACE_MARKER) + len(mnemonic):].lstrip().startswith("=")
+    return not line[at + len(_IFACE_MARKER) + len(mnemonic) :].lstrip().startswith("=")

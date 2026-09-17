@@ -40,14 +40,23 @@ memory-regime module reasons that a deep-K sweep is cheap on the grounds that co
 size (``memory_regime.deep_k_rows``). It is cheapER -- doubling K moved A3 only 5 s -- but the
 largest operand does grow with K, so deep-K is not free and this module does not pretend it is.
 """
+
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-__all__ = ["CostFit", "CycleCostFit", "fit_for", "fit_cycles_for", "fits_cycles_for",
-           "max_elements_within", "predict_seconds", "capsule_elements"]
+__all__ = [
+    "CostFit",
+    "CycleCostFit",
+    "fit_for",
+    "fit_cycles_for",
+    "fits_cycles_for",
+    "max_elements_within",
+    "predict_seconds",
+    "capsule_elements",
+]
 
 #: How far past the largest measured capsule a prediction is still honest, as a multiple. A fit is a
 #: local linearisation of a simulator's behaviour, not a law; beyond this the answer is "unknown".
@@ -124,8 +133,10 @@ class CostFit:
         tracked artifact -- passes ``with_sources=True``.
         """
         out = {
-            "target": self.target, "intercept_s": round(self.intercept_s, 3),
-            "per_element_s": round(self.per_element_s, 6), "r2": round(self.r2, 4),
+            "target": self.target,
+            "intercept_s": round(self.intercept_s, 3),
+            "per_element_s": round(self.per_element_s, 6),
+            "r2": round(self.r2, 4),
             "n_samples": self.n_samples,
             "measured_range_elements": [self.elements_min, self.elements_max],
             "metric": self.metric,
@@ -154,7 +165,7 @@ def _linalg_result_elements(mlir_text: str) -> int:
         return 0
     try:
         module = parse_mlir_text(mlir_text)
-    except Exception:                              # noqa: BLE001 -- unparseable is not zero-cost
+    except Exception:  # noqa: BLE001 -- unparseable is not zero-cost
         return 0
     total = 0
     for op in module.walk():
@@ -236,15 +247,16 @@ def capsule_output_elements(interface_mlir_text: str) -> int:
     for i, cmd in enumerate(commands):
         dst = (cmd.get("operands") or {}).get("dst")
         if not dst:
-            continue                               # a lifetime op writes nothing
-        if any(dst in _read_names(later) for later in commands[i + 1:]):
-            continue                               # an intermediate, not an output
+            continue  # a lifetime op writes nothing
+        if any(dst in _read_names(later) for later in commands[i + 1 :]):
+            continue  # an intermediate, not an output
         if dst not in declared:
             raise ValueError(
                 f"terminal write {dst!r} ({cmd.get('opcode')}) declares no readable result type, so "
                 f"what it writes is UNKNOWN; pricing it by an operand it read is what this refusal "
-                f"replaces")
-        total += int(declared[dst])                # 0 for device state (a resident handle / an acc)
+                f"replaces"
+            )
+        total += int(declared[dst])  # 0 for device state (a resident handle / an acc)
     return total
 
 
@@ -299,12 +311,12 @@ def capsule_elements(capsule_yaml: dict) -> int:
     unmeasurable, it just does not move this metric.
     """
     biggest = 0
-    for operand in (capsule_yaml.get("inputs") or ()):
+    for operand in capsule_yaml.get("inputs") or ():
         n = 1
-        for dim in (operand.get("shape") or ()):
+        for dim in operand.get("shape") or ():
             try:
                 n *= int(dim)
-            except (TypeError, ValueError):        # a symbolic dim contributes no size
+            except (TypeError, ValueError):  # a symbolic dim contributes no size
                 n = 0
                 break
         biggest = max(biggest, n)
@@ -377,8 +389,9 @@ def _cycle_accurate_pick(timing: dict) -> tuple[float | None, str, str]:
             if not (isinstance(secs, (int, float)) and secs > 0):
                 secs = rec.get("adapter_wall_s")
                 if secs is None:
-                    secs = (rec.get("timing") or {}).get("adapter_wall_s") \
-                        if isinstance(rec.get("timing"), dict) else None
+                    secs = (
+                        (rec.get("timing") or {}).get("adapter_wall_s") if isinstance(rec.get("timing"), dict) else None
+                    )
                 wall_basis = "+wall_clock"
             if isinstance(secs, (int, float)) and secs > 0:
                 # Deepest reported wins if several qualify; a longer one is the binding cost.
@@ -400,8 +413,14 @@ def _cycle_accurate_pick(timing: dict) -> tuple[float | None, str, str]:
     # path. An old score file is not evidence about certification cost; it is evidence that somebody
     # graded something.
     if timing.get("sim_active_s"):
-        return None, ("summed over tiers with no per-tier block, so no cycle-accurate time can be "
-                      "attributed; re-grade to contribute a sample"), ""
+        return (
+            None,
+            (
+                "summed over tiers with no per-tier block, so no cycle-accurate time can be "
+                "attributed; re-grade to contribute a sample"
+            ),
+            "",
+        )
     return None, "no positive sim_active_s", ""
 
 
@@ -420,29 +439,31 @@ def _per_tier_from_result(doc: dict) -> dict:
         tm = rec.get("timing")
         if not isinstance(tm, dict):
             continue
-        out[str(name)] = {"sim_active_s": tm.get("sim_active_s"),
-                          "build_s": tm.get("build_s"),
-                          "oracle_wait_s": tm.get("oracle_wait_s"),
-                          # CARRIED SO THE FALLBACK CAN SEE IT. This reshaping dropped
-                          # `adapter_wall_s`, which is the only timing one target's entire history
-                          # records -- so that target read as having no certification history at all
-                          # while 704 passing cycle-accurate runs sat on disk. Same class of defect as
-                          # the dropped `engine` field below: the record had the number and the
-                          # projection threw it away.
-                          "adapter_wall_s": tm.get("adapter_wall_s"),
-                          "cycle_accurate": rec.get("cycle_accurate"),
-                          "derived_from_rtl": rec.get("derived_from_rtl"),
-                          # WHICH ENGINE PRODUCED THIS SECOND. Two elaborated-RTL engines answer the same
-                          # capsule at the same fidelity and are NOT interchangeable as cost samples:
-                          # measured on gemmini against the identical ELF, GSIM answers in 3.31 s where
-                          # Verilator takes 86.83 s. A fit over a mixture of the two prices a capsule at
-                          # neither engine's cost, and until this field was carried the mixture was
-                          # invisible -- the record had the engine and this reshaping dropped it.
-                          "engine": rec.get("engine"),
-                          "sim": rec.get("sim"),
-                          "simulator": rec.get("simulator"),
-                          "oracle": rec.get("oracle"),
-                          "evidence": rec.get("evidence")}
+        out[str(name)] = {
+            "sim_active_s": tm.get("sim_active_s"),
+            "build_s": tm.get("build_s"),
+            "oracle_wait_s": tm.get("oracle_wait_s"),
+            # CARRIED SO THE FALLBACK CAN SEE IT. This reshaping dropped
+            # `adapter_wall_s`, which is the only timing one target's entire history
+            # records -- so that target read as having no certification history at all
+            # while 704 passing cycle-accurate runs sat on disk. Same class of defect as
+            # the dropped `engine` field below: the record had the number and the
+            # projection threw it away.
+            "adapter_wall_s": tm.get("adapter_wall_s"),
+            "cycle_accurate": rec.get("cycle_accurate"),
+            "derived_from_rtl": rec.get("derived_from_rtl"),
+            # WHICH ENGINE PRODUCED THIS SECOND. Two elaborated-RTL engines answer the same
+            # capsule at the same fidelity and are NOT interchangeable as cost samples:
+            # measured on gemmini against the identical ELF, GSIM answers in 3.31 s where
+            # Verilator takes 86.83 s. A fit over a mixture of the two prices a capsule at
+            # neither engine's cost, and until this field was carried the mixture was
+            # invisible -- the record had the engine and this reshaping dropped it.
+            "engine": rec.get("engine"),
+            "sim": rec.get("sim"),
+            "simulator": rec.get("simulator"),
+            "oracle": rec.get("oracle"),
+            "evidence": rec.get("evidence"),
+        }
     return out
 
 
@@ -469,8 +490,9 @@ def _engine_of(record: dict) -> "tuple[str, str]":
     return (UNKNOWN_ENGINE if engine == TA.ENGINE_UNATTRIBUTED else engine), field
 
 
-def _timing_records(target: str, root: Path | None = None,
-                    extra_roots=()) -> "dict[tuple[str, str], tuple[float, str]]":
+def _timing_records(
+    target: str, root: Path | None = None, extra_roots=()
+) -> "dict[tuple[str, str], tuple[float, str]]":
     """``(capsule, engine) -> (cycle_accurate_seconds, source)`` from every run this target has on disk.
 
     KEYED ON THE PAIR, not on the capsule. Keyed on the name alone, a capsule certified on two engines
@@ -496,8 +518,7 @@ def _timing_records(target: str, root: Path | None = None,
     # target -- including one that does not exist -- got the same fit, and atlas capsules were priced
     # from gemmini measurements. That silently broke this module's own stated refusal, that a target
     # with no certification history has no basis for sizing. The layout is out/runs/<target>/<suite>/.
-    bases = [Path(root)] if root else [artifacts_dir() / "capsule-bench" / str(target),
-                                       runs_dir() / str(target)]
+    bases = [Path(root)] if root else [artifacts_dir() / "capsule-bench" / str(target), runs_dir() / str(target)]
     bases += [Path(r) for r in extra_roots]
     out: "dict[tuple[str, str], tuple[float, str]]" = {}
     for base in bases:
@@ -508,7 +529,7 @@ def _timing_records(target: str, root: Path | None = None,
                 continue
             try:
                 doc = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):   # unreadable is not a measurement
+            except (OSError, json.JSONDecodeError):  # unreadable is not a measurement
                 continue
             block = doc.get("timing_diagnostic")
             if isinstance(block, dict) and block:
@@ -563,7 +584,7 @@ def _capsule_sizes(corpus_roots) -> dict[str, int]:
             if ifc.is_file():
                 try:
                     size = capsule_output_elements(ifc.read_text(encoding="utf-8"))
-                except Exception:                  # noqa: BLE001 -- fall back, do not drop
+                except Exception:  # noqa: BLE001 -- fall back, do not drop
                     size = 0
             if size <= 0:
                 size = capsule_elements(doc)
@@ -572,8 +593,9 @@ def _capsule_sizes(corpus_roots) -> dict[str, int]:
     return sizes
 
 
-def fit_for(target: str, *, corpus_roots=None, timing_root=None,
-            extra_timing_roots=(), engine: str | None = None) -> "CostFit | None":
+def fit_for(
+    target: str, *, corpus_roots=None, timing_root=None, extra_timing_roots=(), engine: str | None = None
+) -> "CostFit | None":
     """The cost model for ``target``, or ``None`` when nothing has been measured.
 
     ``None`` is a real answer and the caller must honour it: a target with no certification history
@@ -620,7 +642,7 @@ def fit_for(target: str, *, corpus_roots=None, timing_root=None,
         if "wall_clock" not in source:
             wall_only = False
     if len(xs) < _MIN_SAMPLES or len(set(xs)) < 2:
-        return None                                # a line through one x tells you nothing
+        return None  # a line through one x tells you nothing
 
     n = len(xs)
     mean_x = sum(xs) / n
@@ -642,9 +664,17 @@ def fit_for(target: str, *, corpus_roots=None, timing_root=None,
     # unmeasured until something records simulator seconds.
     if wall_only and (slope <= 0 or r2 < _WALL_CLOCK_MIN_R2):
         return None
-    return CostFit(target=str(target), intercept_s=intercept, per_element_s=slope, r2=r2,
-                   n_samples=n, elements_min=min(xs), elements_max=max(xs),
-                   sources=tuple(sorted(sources)), engines=tuple(sorted(engines)))
+    return CostFit(
+        target=str(target),
+        intercept_s=intercept,
+        per_element_s=slope,
+        r2=r2,
+        n_samples=n,
+        elements_min=min(xs),
+        elements_max=max(xs),
+        sources=tuple(sorted(sources)),
+        engines=tuple(sorted(engines)),
+    )
 
 
 def predict_seconds(fit: "CostFit | None", elements: int) -> "float | None":
@@ -672,12 +702,13 @@ def max_elements_within(fit: "CostFit | None", budget_s: float) -> "int | None":
     if fit is None or budget_s <= 0:
         return None
     if budget_s <= fit.intercept_s:
-        return None                                # the floor alone exceeds the budget
+        return None  # the floor alone exceeds the budget
     if fit.per_element_s <= 0:
-        return int(fit.elements_max)               # size did not move cost over the measured range
+        return int(fit.elements_max)  # size did not move cost over the measured range
     raw = int((budget_s - fit.intercept_s) / fit.per_element_s)
     ceiling = int(fit.elements_max * _EXTRAPOLATION_MARGIN)
     return max(1, min(raw, ceiling))
+
 
 # ---------------------------------------------------------------------------------------------------
 # sizing by WORK rather than by shape
@@ -730,21 +761,24 @@ class CycleCostFit:
         they name holdout capsules. This fit has no tracked-artifact writer today, which is exactly why
         it is worth closing now -- the sibling fit did not have one either until the conformance spec
         started embedding it, and the leak was found in a tracked file rather than in review."""
-        out = {"target": self.target, "engine": self.engine, "engine_basis": self.engine_basis,
-               "intercept_s": round(self.intercept_s, 3),
-               "per_cycle_s": round(self.per_cycle_s, 6), "r2": round(self.r2, 4),
-               "n_samples": self.n_samples,
-               "measured_range_cycles": [self.cycles_min, self.cycles_max],
-               "functional_to_cycle_accurate_ratio": (round(self.functional_ratio, 3)
-                                                      if self.functional_ratio else None),
-               "n_ratio_samples": self.n_ratio_samples}
+        out = {
+            "target": self.target,
+            "engine": self.engine,
+            "engine_basis": self.engine_basis,
+            "intercept_s": round(self.intercept_s, 3),
+            "per_cycle_s": round(self.per_cycle_s, 6),
+            "r2": round(self.r2, 4),
+            "n_samples": self.n_samples,
+            "measured_range_cycles": [self.cycles_min, self.cycles_max],
+            "functional_to_cycle_accurate_ratio": (round(self.functional_ratio, 3) if self.functional_ratio else None),
+            "n_ratio_samples": self.n_ratio_samples,
+        }
         if with_sources:
             out["sources"] = list(self.sources)
         return out
 
 
-def _cycle_records(target: str, root: Path | None = None,
-                   extra_roots=()) -> "dict[tuple[str, str], dict]":
+def _cycle_records(target: str, root: Path | None = None, extra_roots=()) -> "dict[tuple[str, str], dict]":
     """``(capsule, engine) -> {seconds, cycles, functional_cycles, engine_field, source}``.
 
     KEYED ON THE PAIR, for the reason :func:`_timing_records` is and this function was not. Keyed on the
@@ -763,8 +797,7 @@ def _cycle_records(target: str, root: Path | None = None,
 
     # Target-scoped for the reason spelled out in `_timing_records`: an unscoped runs root hands
     # every target the same measurements.
-    bases = [Path(root)] if root else [artifacts_dir() / "capsule-bench" / str(target),
-                                       runs_dir() / str(target)]
+    bases = [Path(root)] if root else [artifacts_dir() / "capsule-bench" / str(target), runs_dir() / str(target)]
     bases += [Path(r) for r in extra_roots]
     out: "dict[tuple[str, str], dict]" = {}
     for base in bases:
@@ -796,10 +829,14 @@ def _cycle_records(target: str, root: Path | None = None,
                 elif isinstance(c, int) and c > 0 and func_cycles is None:
                     func_cycles = int(c)
             for engine, (secs, cycles, field) in accurate.items():
-                out[(str(name), engine)] = {"seconds": secs, "cycles": cycles,
-                                            "functional_cycles": func_cycles,
-                                            "engine": engine, "engine_field": field,
-                                            "source": str(path)}
+                out[(str(name), engine)] = {
+                    "seconds": secs,
+                    "cycles": cycles,
+                    "functional_cycles": func_cycles,
+                    "engine": engine,
+                    "engine_field": field,
+                    "source": str(path),
+                }
     return out
 
 
@@ -824,16 +861,25 @@ def _cycle_bucket_fit(target: str, engine: str, recs: "list[dict]") -> "CycleCos
         rs = sorted(ratios)
         med = rs[len(rs) // 2] if len(rs) % 2 else (rs[len(rs) // 2 - 1] + rs[len(rs) // 2]) / 2
     fields = {str(r.get("engine_field") or "") for r in recs}
-    return CycleCostFit(target=str(target), engine=str(engine), intercept_s=icept, per_cycle_s=slope,
-                        r2=r2, n_samples=n, cycles_min=min(xs), cycles_max=max(xs),
-                        functional_ratio=med, n_ratio_samples=len(ratios),
-                        engine_basis=_STATED_ENGINE_FIELD if fields == {_STATED_ENGINE_FIELD}
-                        else ("+".join(sorted(f for f in fields if f)) or ""),
-                        sources=tuple(sorted({r["source"] for r in recs})))
+    return CycleCostFit(
+        target=str(target),
+        engine=str(engine),
+        intercept_s=icept,
+        per_cycle_s=slope,
+        r2=r2,
+        n_samples=n,
+        cycles_min=min(xs),
+        cycles_max=max(xs),
+        functional_ratio=med,
+        n_ratio_samples=len(ratios),
+        engine_basis=_STATED_ENGINE_FIELD
+        if fields == {_STATED_ENGINE_FIELD}
+        else ("+".join(sorted(f for f in fields if f)) or ""),
+        sources=tuple(sorted({r["source"] for r in recs})),
+    )
 
 
-def fits_cycles_for(target: str, *, timing_root=None,
-                    extra_timing_roots=()) -> "dict[str, CycleCostFit]":
+def fits_cycles_for(target: str, *, timing_root=None, extra_timing_roots=()) -> "dict[str, CycleCostFit]":
     """``engine -> CycleCostFit`` for every engine whose samples can support a line.
 
     An EMPTY mapping is a real answer, honoured the way :func:`fit_for`'s ``None`` is: a target nobody
@@ -852,8 +898,9 @@ def fits_cycles_for(target: str, *, timing_root=None,
     return out
 
 
-def fit_cycles_for(target: str, *, engine: str | None = None, timing_root=None,
-                   extra_timing_roots=()) -> "CycleCostFit | None":
+def fit_cycles_for(
+    target: str, *, engine: str | None = None, timing_root=None, extra_timing_roots=()
+) -> "CycleCostFit | None":
     """Seconds-per-cycle for ``target``'s cycle-accurate tier, or None when too little was measured.
 
     ``None`` is a real answer, honoured the same way :func:`fit_for`'s is: a target nobody has timed
@@ -881,8 +928,9 @@ def predict_seconds_from_cycles(fit: "CycleCostFit | None", cycles: int) -> "flo
     return fit.intercept_s + fit.per_cycle_s * float(cycles)
 
 
-def predict_seconds_from_functional_cycles(fit: "CycleCostFit | None",
-                                           functional_cycles: int) -> "tuple[float | None, str]":
+def predict_seconds_from_functional_cycles(
+    fit: "CycleCostFit | None", functional_cycles: int
+) -> "tuple[float | None, str]":
     """Estimate the cycle-accurate cost from a FUNCTIONAL run's cycle count.
 
     This is the cheap path the ladder exists to justify: the functional tier costs milliseconds and
@@ -894,12 +942,16 @@ def predict_seconds_from_functional_cycles(fit: "CycleCostFit | None",
     if not functional_cycles or functional_cycles <= 0:
         return None, "no functional cycle count to scale"
     if not fit.functional_ratio:
-        return None, ("no capsule has run at BOTH tiers on this target, so the functional-to-"
-                      "cycle-accurate cycle ratio is unmeasured and cannot be assumed")
+        return None, (
+            "no capsule has run at BOTH tiers on this target, so the functional-to-"
+            "cycle-accurate cycle ratio is unmeasured and cannot be assumed"
+        )
     est = fit.intercept_s + fit.per_cycle_s * functional_cycles * fit.functional_ratio
-    return est, (f"functional cycles x measured ratio {fit.functional_ratio:.2f} "
-                 f"(n={fit.n_ratio_samples}), then {fit.per_cycle_s:.4f} s/cycle "
-                 f"over a {fit.intercept_s:.0f}s floor")
+    return est, (
+        f"functional cycles x measured ratio {fit.functional_ratio:.2f} "
+        f"(n={fit.n_ratio_samples}), then {fit.per_cycle_s:.4f} s/cycle "
+        f"over a {fit.intercept_s:.0f}s floor"
+    )
 
 
 def max_cycles_within(fit: "CycleCostFit | None", budget_s: float) -> "int | None":
@@ -914,4 +966,3 @@ def max_cycles_within(fit: "CycleCostFit | None", budget_s: float) -> "int | Non
         return None
     raw = int((budget_s - fit.intercept_s) / fit.per_cycle_s)
     return max(1, min(raw, int(fit.cycles_max * _EXTRAPOLATION_MARGIN)))
-

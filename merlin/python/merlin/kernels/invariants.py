@@ -14,6 +14,7 @@ Runs inside ``kernel-extract`` over the full corpus + promoted artifacts. Three 
 Advisory by design: results land in the report (and ``--json``); only ``--strict`` callers
 turn hard violations into a nonzero exit.
 """
+
 from __future__ import annotations
 
 import collections
@@ -32,21 +33,46 @@ _TARGET_RESTRICTED = {"vector_length_polymorphic": {"rvv"}}
 
 # Op families where a weight-reuse / dataflow motif firing is a *surprise* worth auditing.
 _ELEMENTWISE_OPS = {
-    "vadd", "vmul", "vsub", "vdiv", "vclamp", "velu", "vsigmoid", "vtanh", "vgelu",
-    "vsqrt", "vrsqrt", "vexp", "vcvt", "copy", "scal", "swap", "axpy", "axpby",
-    "amax", "amin", "asum", "sum", "max", "min", "rot", "nrm2", "dropout", "transpose",
+    "vadd",
+    "vmul",
+    "vsub",
+    "vdiv",
+    "vclamp",
+    "velu",
+    "vsigmoid",
+    "vtanh",
+    "vgelu",
+    "vsqrt",
+    "vrsqrt",
+    "vexp",
+    "vcvt",
+    "copy",
+    "scal",
+    "swap",
+    "axpy",
+    "axpby",
+    "amax",
+    "amin",
+    "asum",
+    "sum",
+    "max",
+    "min",
+    "rot",
+    "nrm2",
+    "dropout",
+    "transpose",
 }
 _SURPRISE_MOTIFS = ("packed_rhs", "reused_packed_rhs", "weight_stationary_dataflow")
 
 
-def check_invariants(records: list[dict], stats: dict[str, MotifStat],
-                     promo: PromotionResult) -> dict:
+def check_invariants(records: list[dict], stats: dict[str, MotifStat], promo: PromotionResult) -> dict:
     """Return ``{checks: [...], surprises: [...], total_violations: int}``."""
     checks: list[dict] = []
 
     def _check(name: str, bad: list[str]) -> None:
-        checks.append({"name": name, "status": "ok" if not bad else "VIOLATED",
-                       "violations": len(bad), "examples": bad[:5]})
+        checks.append(
+            {"name": name, "status": "ok" if not bad else "VIOLATED", "violations": len(bad), "examples": bad[:5]}
+        )
 
     subset_bad: dict[str, list[str]] = {f"{c} ⊆ {' ∩ '.join(p)}": [] for c, p in _SUBSET_RULES}
     target_bad: list[str] = []
@@ -79,8 +105,11 @@ def check_invariants(records: list[dict], stats: dict[str, MotifStat],
     _check("target-restricted motifs fire only on their targets", target_bad)
 
     # Motif table counts must equal an independent recount.
-    count_bad = [f"{m}: table={st.kernel_count} recount={recount.get(m, 0)}"
-                 for m, st in stats.items() if st.kernel_count != recount.get(m, 0)]
+    count_bad = [
+        f"{m}: table={st.kernel_count} recount={recount.get(m, 0)}"
+        for m, st in stats.items()
+        if st.kernel_count != recount.get(m, 0)
+    ]
     _check("motif table equals recount", count_bad)
 
     # Every promoted artifact's evidence ids must exist in the corpus.
@@ -93,14 +122,18 @@ def check_invariants(records: list[dict], stats: dict[str, MotifStat],
     _check("promoted evidence ids exist in corpus", ev_bad)
 
     # Dispatch metrics must exist wherever many_small_dispatches fired.
-    dm_bad = [rec.get("path", "?") for rec in records
-              if "many_small_dispatches" in (rec.get("evidence", {}) or {}).get("motifs", [])
-              and not (rec.get("features", {}) or {}).get("dispatch_metrics")]
+    dm_bad = [
+        rec.get("path", "?")
+        for rec in records
+        if "many_small_dispatches" in (rec.get("evidence", {}) or {}).get("motifs", [])
+        and not (rec.get("features", {}) or {}).get("dispatch_metrics")
+    ]
     _check("many_small_dispatches implies dispatch metrics", dm_bad)
 
-    surprises = [{"motif": m, "op": op, "source": src, "count": n,
-                  "example": surprise_example[(m, op, src)]}
-                 for (m, op, src), n in surprise_counter.most_common(12)]
+    surprises = [
+        {"motif": m, "op": op, "source": src, "count": n, "example": surprise_example[(m, op, src)]}
+        for (m, op, src), n in surprise_counter.most_common(12)
+    ]
     return {
         "checks": checks,
         "surprises": surprises,

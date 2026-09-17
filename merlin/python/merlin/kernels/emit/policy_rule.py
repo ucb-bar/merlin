@@ -1,4 +1,5 @@
 """Emit a policy_rule dict (conforming to ``policy_rule.schema.yaml``)."""
+
 from __future__ import annotations
 
 from typing import Iterable

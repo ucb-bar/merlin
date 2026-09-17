@@ -7,12 +7,14 @@ Each stage is a plain module->module transform (wrappable as xDSL passes once th
 stabilizes); every intermediate module is verified and kept on the result so tests and
 tools can inspect the whole descent.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
 from merlin.common.paths import repo_root
+from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 from .._common import HAS_XDSL
 from .contract_facts import DEFAULT_TARGET_CONTRACT, lower_to_contract
@@ -22,7 +24,6 @@ from .interface_lowering import LoweringError, lower_to_interface
 from .runtime_lowering import lower_to_runtime
 from .schedule_decisions import lower_to_schedule
 from .target_lowering import lower_to_target
-from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 
 def load_curated_contract(target: str) -> dict:
@@ -45,6 +46,7 @@ def load_curated_contract(target: str) -> dict:
         return dict(DEFAULT_TARGET_CONTRACT)
 
     from merlin.targetgen.target_registry import all_targets, resolve
+
     try:
         return resolve(target).load_contract()
     except Exception as exc:  # noqa: BLE001 — any resolution failure is a hard stop
@@ -52,7 +54,8 @@ def load_curated_contract(target: str) -> dict:
             f"no target contract for {target!r}: it has no in-tree contract at {path} and the "
             f"registry could not resolve it ({type(exc).__name__}: {exc}). Known targets: "
             f"{all_targets()}. An out-of-tree target is reached by pointing MERLIN_TARGET_PATH at "
-            f"its package, or by passing target_package=.") from exc
+            f"its package, or by passing target_package=."
+        ) from exc
 
 
 @dataclass
@@ -68,8 +71,14 @@ class LoweringResult:
     command_buffer: dict[str, Any] = field(default_factory=dict)
 
     def modules(self):
-        return [self.input_module, self.contract_module, self.schedule_module,
-                self.interface_module, self.target_module, self.runtime_module]
+        return [
+            self.input_module,
+            self.contract_module,
+            self.schedule_module,
+            self.interface_module,
+            self.target_module,
+            self.runtime_module,
+        ]
 
 
 def lower_module(
@@ -119,6 +128,7 @@ def lower_module(
         tc = target_contract or load_curated_contract(target)
         name = tc["name"]
     from merlin.targetgen.target_registry import backend_for
+
     backend = backend or backend_for(name)
     input_module.verify()
     contract_module = lower_to_contract(input_module, tc)

@@ -15,6 +15,7 @@ experiment sweep K to show the legal->endorsed transition at K=256.
 ``accumulator_commit`` is independent of residency: it is legal whenever its mined policy fires
 (a contraction with a live accumulator across a fused epilogue), regardless of weight reuse.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -30,25 +31,32 @@ FEATURE_ACCUMULATOR = "accumulator_commit"
 # abstractions a contract exposes; ``requires`` lists the legality predicates it needs.
 CONTRACTS = [
     {
-        "id": "I0", "name": "opaque_call",
+        "id": "I0",
+        "name": "opaque_call",
         "interface_ops": ["opaque_call"],
         "interface_types": ["transient_tensor"],
-        "features": [], "requires": [],
+        "features": [],
+        "requires": [],
     },
     {
-        "id": "I1", "name": "explicit_scratchpad_dma",
+        "id": "I1",
+        "name": "explicit_scratchpad_dma",
         "interface_ops": ["dma_load", "compute", "dma_store"],
         "interface_types": ["scratchpad_view", "transient_tensor"],
-        "features": [], "requires": [],
+        "features": [],
+        "requires": [],
     },
     {
-        "id": "I2", "name": "resident_packed_tensor",
+        "id": "I2",
+        "name": "resident_packed_tensor",
         "interface_ops": ["resident_pack", "resident_matmul", "evict"],
         "interface_types": ["resident_packed_tensor"],
-        "features": [FEATURE_RESIDENT], "requires": ["resident"],
+        "features": [FEATURE_RESIDENT],
+        "requires": ["resident"],
     },
     {
-        "id": "I3", "name": "resident_packed_tensor+accumulator_commit",
+        "id": "I3",
+        "name": "resident_packed_tensor+accumulator_commit",
         "interface_ops": ["resident_pack", "resident_matmul", "commit_epilogue", "evict"],
         "interface_types": ["resident_packed_tensor", "accumulator"],
         "features": [FEATURE_RESIDENT, FEATURE_ACCUMULATOR],
@@ -68,8 +76,7 @@ def _policy(policies: list[dict], name: str) -> dict | None:
     return next((r for r in policies if r.get("policy") == name), None)
 
 
-def _resident_structural(rpv: dict, policies: list[dict],
-                         resident_store_bytes: int | None) -> tuple[bool, list[str]]:
+def _resident_structural(rpv: dict, policies: list[dict], resident_store_bytes: int | None) -> tuple[bool, list[str]]:
     """Structural legality of resident_packed_tensor: operand pressure + capacity.
 
     Evaluates ``packed_rhs_policy.when`` against facts with ``K`` removed (K>=256 is treated
@@ -86,11 +93,9 @@ def _resident_structural(rpv: dict, policies: list[dict],
         return False, blocked
     # Capacity: distinct resident weights must fit in resident storage, when one is given.
     if resident_store_bytes is not None:
-        need = int(rpv["metrics"].get("distinct_weights", 1)) * int(
-            rpv["metrics"].get("pack_bytes", 0))
+        need = int(rpv["metrics"].get("distinct_weights", 1)) * int(rpv["metrics"].get("pack_bytes", 0))
         if need > resident_store_bytes:
-            blocked.append(
-                f"capacity: need {need}B > resident_store {resident_store_bytes}B")
+            blocked.append(f"capacity: need {need}B > resident_store {resident_store_bytes}B")
             return False, blocked
     return True, blocked
 
@@ -103,8 +108,7 @@ def _resident_endorsed(rpv: dict, policies: list[dict]) -> bool:
     return policy.evaluate_when(rule["when"], rpv["facts"])
 
 
-def _accumulator_legal(rpv: dict, policies: list[dict],
-                       accumulator_entries: int | None) -> tuple[bool, list[str]]:
+def _accumulator_legal(rpv: dict, policies: list[dict], accumulator_entries: int | None) -> tuple[bool, list[str]]:
     rule = _policy(policies, "accumulator_commit_policy")
     blocked: list[str] = []
     if rule is None:
@@ -120,9 +124,9 @@ def _accumulator_legal(rpv: dict, policies: list[dict],
     return True, blocked
 
 
-def legal_contracts(rpv: dict, policies: list[dict],
-                    resident_store_bytes: int | None = None,
-                    accumulator_entries: int | None = None) -> list[dict]:
+def legal_contracts(
+    rpv: dict, policies: list[dict], resident_store_bytes: int | None = None, accumulator_entries: int | None = None
+) -> list[dict]:
     """Return the I0–I3 ladder annotated with legality, endorsement and justification."""
     res_legal, res_block = _resident_structural(rpv, policies, resident_store_bytes)
     res_endorsed = _resident_endorsed(rpv, policies)
@@ -159,8 +163,7 @@ def legal_contracts(rpv: dict, policies: list[dict],
     return out
 
 
-def recommended_features(rpv: dict, policies: list[dict],
-                         resident_store_bytes: int | None = None) -> list[str]:
+def recommended_features(rpv: dict, policies: list[dict], resident_store_bytes: int | None = None) -> list[str]:
     """The mined abstraction features that structurally fire for this region.
 
     Independent (residency and accumulator-commit do not require each other). Returned in a

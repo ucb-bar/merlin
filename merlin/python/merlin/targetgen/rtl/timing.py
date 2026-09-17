@@ -24,6 +24,7 @@ maximum AS the depth would be the flattering answer to a question this method ca
 module with any cyclic output records ``partial_depth`` under its own name and leaves
 ``pipeline_depth`` UNKNOWN. Two differently-derived numbers must not share one field.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -65,7 +66,7 @@ def value_depth(graph, root) -> int | object:
                 done[k] = CYCLIC if sub is CYCLIC else (sub or 0) + 1
             else:
                 best = 0
-                for operand in (op.operands if op is not None else ()):
+                for operand in op.operands if op is not None else ():
                     sub = done.get(_key(operand), 0)
                     if sub is CYCLIC:
                         best = CYCLIC
@@ -117,8 +118,13 @@ def module_timing(graph, module) -> dict[str, Any]:
     }
     driven = [v for out in outputs for v in out.operands]
     if not driven:
-        rec.update(pipeline_depth=None, partial_depth=None, n_outputs=0, n_cyclic=0,
-                   evidence=f"module {module.name} drives no hw.output operand: nothing to walk")
+        rec.update(
+            pipeline_depth=None,
+            partial_depth=None,
+            n_outputs=0,
+            n_cyclic=0,
+            evidence=f"module {module.name} drives no hw.output operand: nothing to walk",
+        )
         return rec
 
     depths = [value_depth(graph, v) for v in driven]
@@ -129,17 +135,22 @@ def module_timing(graph, module) -> dict[str, Any]:
 
     if n_cyclic == 0:
         depth = max(acyclic)
-        rec.update(pipeline_depth=depth, partial_depth=None,
-                   evidence=f"longest seq.firreg chain from an input port to any of "
-                            f"{len(depths)} hw.output operands in module {module.name} "
-                            f"({registers} registers, no feedback on any output) = {depth}")
+        rec.update(
+            pipeline_depth=depth,
+            partial_depth=None,
+            evidence=f"longest seq.firreg chain from an input port to any of "
+            f"{len(depths)} hw.output operands in module {module.name} "
+            f"({registers} registers, no feedback on any output) = {depth}",
+        )
     else:
-        rec.update(pipeline_depth=None,
-                   partial_depth=(max(acyclic) if acyclic else None),
-                   evidence=f"{n_cyclic} of {len(depths)} hw.output operands of module "
-                            f"{module.name} are reached through feedback: this unit is SEQUENCED, "
-                            f"so no finite wiring depth is its latency (needs the sequencer's own "
-                            f"limits or a measurement)")
+        rec.update(
+            pipeline_depth=None,
+            partial_depth=(max(acyclic) if acyclic else None),
+            evidence=f"{n_cyclic} of {len(depths)} hw.output operands of module "
+            f"{module.name} are reached through feedback: this unit is SEQUENCED, "
+            f"so no finite wiring depth is its latency (needs the sequencer's own "
+            f"limits or a measurement)",
+        )
     return rec
 
 

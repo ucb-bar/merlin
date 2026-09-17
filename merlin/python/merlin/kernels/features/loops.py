@@ -9,6 +9,7 @@ their marker fires. For C-vector families (RVV/AVX/NEON) the tiling marker is me
 "a loop exists", so we additionally require either a >=2-deep nest or register blocking
 (multiple live accumulators) to avoid calling a flat vector loop "tiled".
 """
+
 from __future__ import annotations
 
 from merlin.kernels.framework_contracts import load_feature_contract

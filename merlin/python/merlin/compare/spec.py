@@ -6,12 +6,12 @@ isolated GEMM shapes), the ``target`` (the board substrate the ingest layer meas
 and the measurement ``metric``/``reps``. Nothing here is RVV-specific; the RVV/K1 mapping lives in
 the ingest layer. Parsing is total and validating so a malformed spec fails loud, not silent.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-
 
 # The comparison-point kinds. A config is EITHER an "ours" feature-set, OR a kernel backend
 # (xnnpack/openblas), OR an EXTERNAL baseline framework (its own end-to-end compiler/runtime), OR
@@ -40,6 +40,7 @@ def implemented_targets() -> tuple[str, ...]:
     substrate label -- read from it rather than restated, so a spec can never name a target the ingest
     layer would then measure on a different device."""
     from merlin.mining import k1 as board
+
     return (board.SUBSTRATE,)
 
 
@@ -48,8 +49,7 @@ def default_target() -> str:
     one implemented there is no honest default, so the spec must name its target."""
     implemented = implemented_targets()
     if len(implemented) != 1:
-        raise ValueError(f"spec names no target and {len(implemented)} are implemented "
-                         f"({implemented}); name one")
+        raise ValueError(f"spec names no target and {len(implemented)} are implemented ({implemented}); name one")
     return implemented[0]
 
 
@@ -60,10 +60,12 @@ def _known_targets() -> tuple[str, ...]:
     discovered: tuple[str, ...] = ()
     try:
         from merlin.targetgen.target_registry import all_targets
+
         discovered = tuple(all_targets())
     except Exception:
         discovered = ()
     return tuple(sorted(set(implemented_targets()) | set(_SEAM_SUBSTRATES) | set(discovered)))
+
 
 _METRICS = ("wall", "instret")
 
@@ -77,6 +79,7 @@ class Config:
     compiler_features: for ``ours`` configs, the feature-set (informational here; the ingest layer
         maps the spec name to the cached JSON key). For non-ours, empty.
     """
+
     name: str
     kind: str
     compiler_features: tuple[str, ...] = ()
@@ -103,7 +106,8 @@ class Config:
         else:
             raise ValueError(
                 f"unknown config '{name}': must be 'baseline', one of {_KERNEL_BACKENDS}, "
-                f"one of {_EXTERNAL_FRAMEWORKS}, or start with '{_OURS_PREFIX}'")
+                f"one of {_EXTERNAL_FRAMEWORKS}, or start with '{_OURS_PREFIX}'"
+            )
         return Config(name=name, kind=kind, compiler_features=feats)
 
 
@@ -111,9 +115,10 @@ class Config:
 class Workload:
     """A workload to compare over: a whole-model (``kind='model'``, e.g. ``openvla``) or an isolated
     GEMM shape (``kind='gemm'``, ``gemm:64`` -> M=N=K=64, or ``gemm:17x192x576``)."""
-    name: str          # the spec token, e.g. "openvla" or "gemm:64"
-    kind: str          # "model" | "gemm"
-    mnk: tuple[int, int, int] | None = None   # for gemm
+
+    name: str  # the spec token, e.g. "openvla" or "gemm:64"
+    kind: str  # "model" | "gemm"
+    mnk: tuple[int, int, int] | None = None  # for gemm
 
     @staticmethod
     def parse(raw: str) -> "Workload":
@@ -160,8 +165,8 @@ class Spec:
         implemented = implemented_targets()
         if target not in implemented:
             raise ValueError(
-                f"target '{target}' is a declared seam but not implemented in v1 "
-                f"(implemented: {implemented})")
+                f"target '{target}' is a declared seam but not implemented in v1 (implemented: {implemented})"
+            )
         metric = raw.get("metric", "wall")
         if metric not in _METRICS:
             raise ValueError(f"unknown metric '{metric}'; known: {_METRICS}")
@@ -178,6 +183,7 @@ class Spec:
     @staticmethod
     def from_yaml(path: str | Path) -> "Spec":
         import yaml
+
         return Spec.parse(yaml.safe_load(Path(path).read_text()))
 
     def to_dict(self) -> dict:
@@ -187,13 +193,10 @@ class Spec:
             "metric": self.metric,
             "reps": self.reps,
             "configs": [
-                {"name": c.name, "kind": c.kind,
-                 "compiler_features": list(c.compiler_features)}
-                for c in self.configs
+                {"name": c.name, "kind": c.kind, "compiler_features": list(c.compiler_features)} for c in self.configs
             ],
             "workloads": [
-                {"name": w.name, "kind": w.kind, "mnk": list(w.mnk) if w.mnk else None}
-                for w in self.workloads
+                {"name": w.name, "kind": w.kind, "mnk": list(w.mnk) if w.mnk else None} for w in self.workloads
             ],
             "notes": dict(self.notes),
         }

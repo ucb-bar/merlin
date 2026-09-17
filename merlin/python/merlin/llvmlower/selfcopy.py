@@ -24,6 +24,7 @@ there is nothing to move and no aliasing subtlety. It is nonetheless gated as a 
 feature (``erase_self_copy``) so the frozen ``hand_v0`` control keeps a byte-identical lowering; the
 beam enables it as the PASS that closes an ``envelope.runtime_calls`` divergence.
 """
+
 from __future__ import annotations
 
 FEATURE = "erase_self_copy"
@@ -165,4 +166,4 @@ def with_canonicalize(pipeline: str) -> str:
         return pipeline
     passes = [p for p in pipeline.split(",") if p]
     k = next(i for i, p in enumerate(passes) if "buffer-loop-hoisting" in p)
-    return ",".join(passes[:k + 1] + ["canonicalize", "cse"] + passes[k + 1:])
+    return ",".join(passes[: k + 1] + ["canonicalize", "cse"] + passes[k + 1 :])

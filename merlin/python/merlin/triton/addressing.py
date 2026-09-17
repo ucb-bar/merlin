@@ -27,6 +27,7 @@ past the end, so ignoring a mask turns coverage from exact into over-covering an
 The most dangerous bug in this area — a dropped mask, which still computes the right answer whenever
 the block size happens to divide the extent — cannot survive it.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -80,25 +81,30 @@ class Affine:
     def broadcast_to(self, shape: tuple[int, ...]) -> Affine:
         """Stretch unit dimensions. A stretched dimension must carry no iota, or it would alias."""
         if len(shape) != len(self.shape):
-            raise BridgeError(
-                f"broadcast changes rank {len(self.shape)} -> {len(shape)}", op="tt.broadcast")
+            raise BridgeError(f"broadcast changes rank {len(self.shape)} -> {len(shape)}", op="tt.broadcast")
         for d, (have, want) in enumerate(zip(self.shape, shape)):
             if have != want and (have != 1 or self.iota.get(d)):
-                raise BridgeError(
-                    f"cannot broadcast dimension {d} from {have} to {want}", op="tt.broadcast")
+                raise BridgeError(f"cannot broadcast dimension {d} from {have} to {want}", op="tt.broadcast")
         return Affine(shape=shape, const=self.const, pid=dict(self.pid), iota=dict(self.iota))
 
     def __add__(self, other: Affine) -> Affine:
         shape = self.shape or other.shape
         if self.shape and other.shape and self.shape != other.shape:
             raise BridgeError(f"cannot add index values of shapes {self.shape} and {other.shape}")
-        return Affine(shape=shape, const=self.const + other.const,
-                      pid=_merge(self.pid, other.pid), iota=_merge(self.iota, other.iota))
+        return Affine(
+            shape=shape,
+            const=self.const + other.const,
+            pid=_merge(self.pid, other.pid),
+            iota=_merge(self.iota, other.iota),
+        )
 
     def scaled(self, factor: int) -> Affine:
-        return Affine(shape=self.shape, const=self.const * factor,
-                      pid={k: v * factor for k, v in self.pid.items()},
-                      iota={k: v * factor for k, v in self.iota.items()})
+        return Affine(
+            shape=self.shape,
+            const=self.const * factor,
+            pid={k: v * factor for k, v in self.pid.items()},
+            iota={k: v * factor for k, v in self.iota.items()},
+        )
 
     def __mul__(self, other: Affine) -> Affine:
         """Affine × affine is only affine when one side is a constant — otherwise refuse."""
@@ -109,7 +115,8 @@ class Affine:
         raise BridgeError(
             "index expression is not affine: both operands of a multiply vary",
             hint="tile offsets must be `constant * program_id/iota` sums; a product of two varying "
-                 "indices needs a real polyhedral analysis, which the bridge does not do")
+            "indices needs a real polyhedral analysis, which the bridge does not do",
+        )
 
     def with_shape(self, shape: tuple[int, ...]) -> Affine:
         return Affine(shape=shape, const=self.const, pid=dict(self.pid), iota=dict(self.iota))
@@ -130,9 +137,14 @@ class Predicate:
     rhs: Affine
     kind: str  # "slt" | "sle" | "sgt" | "sge" | "eq" | "ne"
 
-    _OPS = {"slt": lambda a, b: a < b, "sle": lambda a, b: a <= b,
-            "sgt": lambda a, b: a > b, "sge": lambda a, b: a >= b,
-            "eq": lambda a, b: a == b, "ne": lambda a, b: a != b}
+    _OPS = {
+        "slt": lambda a, b: a < b,
+        "sle": lambda a, b: a <= b,
+        "sgt": lambda a, b: a > b,
+        "sge": lambda a, b: a >= b,
+        "eq": lambda a, b: a == b,
+        "ne": lambda a, b: a != b,
+    }
 
     def holds(self, program_id: tuple[int, int, int], index: tuple[int, ...]) -> bool:
         try:
@@ -192,8 +204,9 @@ def _tile_indices(shape: tuple[int, ...]):
             idx[d] = 0
 
 
-def whole_tensor_access(ptr: PointerTensor, *, shape: tuple[int, ...], grid: tuple[int, int, int],
-                        mask: Predicate | Conjunction | None) -> str:
+def whole_tensor_access(
+    ptr: PointerTensor, *, shape: tuple[int, ...], grid: tuple[int, int, int], mask: Predicate | Conjunction | None
+) -> str:
     """Verify that the launch reads/writes every element of ``shape`` exactly once, in order.
 
     Returns a short description of the recognized pattern for the capability report, or raises
@@ -214,7 +227,8 @@ def whole_tensor_access(ptr: PointerTensor, *, shape: tuple[int, ...], grid: tup
             f"access to {ptr.base!r} spans {visited} elements, above the {MAX_ENUMERATED_ELEMENTS} "
             "the bridge will enumerate",
             hint="verifying coverage concretely is what makes masks impossible to ignore; a kernel "
-                 "this large needs the symbolic form of the check")
+            "this large needs the symbolic form of the check",
+        )
 
     order: list[int] = []
     for pz in range(grid[2]):
@@ -235,13 +249,14 @@ def whole_tensor_access(ptr: PointerTensor, *, shape: tuple[int, ...], grid: tup
     if len(seen) != len(order):
         raise BridgeError(
             f"argument {ptr.base!r} is accessed more than once at some element — the bridge re-raises "
-            "an argument to a single tensor value and cannot express overlapping access")
+            "an argument to a single tensor value and cannot express overlapping access"
+        )
     if seen == set(range(total)):
         raise BridgeError(
-            f"argument {ptr.base!r} is accessed in full but not in order (a permutation such as a "
-            "transposed tile)",
+            f"argument {ptr.base!r} is accessed in full but not in order (a permutation such as a transposed tile)",
             hint="express the permutation in the kernel, or wait for the bridge to emit an explicit "
-                 "linalg.transpose for it")
+            "linalg.transpose for it",
+        )
     missing = sorted(set(range(total)) - seen)
     extra = sorted(seen - set(range(total)))
     detail = []
@@ -250,7 +265,7 @@ def whole_tensor_access(ptr: PointerTensor, *, shape: tuple[int, ...], grid: tup
     if extra:
         detail.append(f"{len(extra)} access(es) outside the declared shape (first: {extra[0]})")
     raise BridgeError(
-        f"argument {ptr.base!r} declared {list(shape)} is not covered exactly by the launch: "
-        + "; ".join(detail),
+        f"argument {ptr.base!r} declared {list(shape)} is not covered exactly by the launch: " + "; ".join(detail),
         hint="check the declared shape, the grid, and whether the kernel's mask bounds match the "
-             "extent stated in the spec — an out-of-range access here usually means a missing mask")
+        "extent stated in the spec — an out-of-range access here usually means a missing mask",
+    )

@@ -24,6 +24,7 @@ Prints ``ET_EXPORT_JSON {...}`` with the pte/ptd/input paths, output shape/dtype
 graph nodes XNNPACK delegated vs stayed portable (a coarse delegation signal complementing the
 binary-level RVV audit).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -75,6 +76,7 @@ def _apply_loader_compat_shims() -> list[str]:
     applied: list[str] = []
     try:  # torch_compilable_check no-op (lerobot 0.6 eo1 policy vs transformers>=5)
         import transformers.utils as _tu
+
         if not hasattr(_tu, "torch_compilable_check"):
             # lerobot.policies.__init__ eagerly imports eo1, which imports this compile-guard
             # util removed in transformers>=5. It is a torch.compile guard, a no-op for eager
@@ -89,8 +91,10 @@ def _apply_loader_compat_shims() -> list[str]:
         pass
     try:  # BitNet capitalized-key alias (bitvla)
         from transformers.models.auto.configuration_auto import CONFIG_MAPPING
+
         if "BitNet" not in CONFIG_MAPPING:
             from transformers.models.bitnet.configuration_bitnet import BitNetConfig
+
             CONFIG_MAPPING.register("BitNet", BitNetConfig, exist_ok=True)
             applied.append("bitnet-config-alias")
     except Exception:  # noqa: BLE001 - shim is best-effort; loader failure surfaces the real reason
@@ -129,19 +133,19 @@ def _vision_position_ids(self, pixel_values, patch_attention_mask):
 
     batch_size, _, max_im_h, max_im_w = pixel_values.shape
     max_nb_patches_h, max_nb_patches_w = max_im_h // self.patch_size, max_im_w // self.patch_size
-    boundaries = torch.arange(1 / self.num_patches_per_side, 1.0,
-                              1 / self.num_patches_per_side, device=pixel_values.device)
-    position_ids = torch.full(size=(batch_size, max_nb_patches_h * max_nb_patches_w),
-                              fill_value=0, device=pixel_values.device)
+    boundaries = torch.arange(
+        1 / self.num_patches_per_side, 1.0, 1 / self.num_patches_per_side, device=pixel_values.device
+    )
+    position_ids = torch.full(
+        size=(batch_size, max_nb_patches_h * max_nb_patches_w), fill_value=0, device=pixel_values.device
+    )
 
-    nb_patches_h = patch_attention_mask[:, :, 0].sum(dim=1)   # a VALUE, never a shape
+    nb_patches_h = patch_attention_mask[:, :, 0].sum(dim=1)  # a VALUE, never a shape
     nb_patches_w = patch_attention_mask[:, 0, :].sum(dim=1)
     step_h, step_w = 1.0 / nb_patches_h, 1.0 / nb_patches_w
 
-    h_indices = torch.arange(patch_attention_mask.size(1), device=position_ids.device,
-                             dtype=torch.float32)
-    w_indices = torch.arange(patch_attention_mask.size(2), device=position_ids.device,
-                             dtype=torch.float32)
+    h_indices = torch.arange(patch_attention_mask.size(1), device=position_ids.device, dtype=torch.float32)
+    w_indices = torch.arange(patch_attention_mask.size(2), device=position_ids.device, dtype=torch.float32)
     fractional_coords_h = torch.clamp(h_indices[None, :] * step_h[:, None], max=(1.0 - 1e-6))
     fractional_coords_w = torch.clamp(w_indices[None, :] * step_w[:, None], max=(1.0 - 1e-6))
     fractional_coords_h = fractional_coords_h.to(pixel_values.dtype)
@@ -149,8 +153,9 @@ def _vision_position_ids(self, pixel_values, patch_attention_mask):
 
     bucket_coords_h = torch.bucketize(fractional_coords_h, boundaries, right=True)
     bucket_coords_w = torch.bucketize(fractional_coords_w, boundaries, right=True)
-    pos_ids = (bucket_coords_h[:, :, None] * self.num_patches_per_side
-               + bucket_coords_w[:, None, :]).reshape(batch_size, -1)
+    pos_ids = (bucket_coords_h[:, :, None] * self.num_patches_per_side + bucket_coords_w[:, None, :]).reshape(
+        batch_size, -1
+    )
 
     mask = patch_attention_mask.reshape(batch_size, -1)
     return torch.where(mask, pos_ids.to(position_ids.dtype), torch.zeros_like(position_ids))
@@ -160,8 +165,7 @@ def _shape_static_vision_patch_forward(self, pixel_values, patch_attention_mask)
     """The patched forward: static position table + the unchanged patch embedding."""
     patch_embeds = self.patch_embedding(pixel_values)
     embeddings = patch_embeds.flatten(2).transpose(1, 2)
-    return embeddings + self.position_embedding(
-        _vision_position_ids(self, pixel_values, patch_attention_mask))
+    return embeddings + self.position_embedding(_vision_position_ids(self, pixel_values, patch_attention_mask))
 
 
 def _frozen_vision_patch_forward(self, pixel_values, patch_attention_mask):
@@ -232,8 +236,10 @@ def verify_shape_static_vision_patch(model, captured) -> str:
     for mod in mods:
         got = seen.get(id(mod))
         if got is None:
-            raise RuntimeError("vision patch-position shim: the patched module was never called on "
-                               "the captured input, so the rewrite could not be verified")
+            raise RuntimeError(
+                "vision patch-position shim: the patched module was never called on "
+                "the captured input, so the rewrite could not be verified"
+            )
         pix, msk = got
         with torch.no_grad():
             ref = _ORIGINAL_VISION_PATCH_FORWARD(mod, pix, msk)
@@ -242,23 +248,26 @@ def verify_shape_static_vision_patch(model, captured) -> str:
         if not torch.equal(ref, new):
             raise RuntimeError(
                 "vision patch-position shim CHANGED NUMERICS "
-                f"(max |diff| {float((ref.float() - new.float()).abs().max())}); refusing to export")
+                f"(max |diff| {float((ref.float() - new.float()).abs().max())}); refusing to export"
+            )
         # Freeze the table (no aten::bucketize kernel exists in ANY ExecuTorch kernel library), then
         # prove the frozen form too -- a specialisation accepted on an argument is how a wrong
         # constant gets into a program that still looks exported.
-        mod.register_buffer("_merlin_frozen_position_ids", table.detach().clone(),
-                            persistent=False)
+        mod.register_buffer("_merlin_frozen_position_ids", table.detach().clone(), persistent=False)
         mod.forward = types.MethodType(_frozen_vision_patch_forward, mod)
         with torch.no_grad():
             frozen = mod.forward(pix, msk)
         if not torch.equal(ref, frozen):
             raise RuntimeError(
                 "frozen vision patch-position table CHANGED NUMERICS "
-                f"(max |diff| {float((ref.float() - frozen.float()).abs().max())}); refusing")
+                f"(max |diff| {float((ref.float() - frozen.float()).abs().max())}); refusing"
+            )
         checked.append(f"{tuple(int(x) for x in msk.shape)}")
-    return ("shape-static + FROZEN vision patch positions, VERIFIED bit-identical to upstream on "
-            f"{len(checked)} module(s) with mask shape(s) {', '.join(checked)}; removes the "
-            "unbacked symint AND the aten::bucketize ExecuTorch has no kernel for")
+    return (
+        "shape-static + FROZEN vision patch positions, VERIFIED bit-identical to upstream on "
+        f"{len(checked)} module(s) with mask shape(s) {', '.join(checked)}; removes the "
+        "unbacked symint AND the aten::bucketize ExecuTorch has no kernel for"
+    )
 
 
 def upcast_bf16_for_quantized_kernels(model, *, torch) -> str:
@@ -283,6 +292,7 @@ def upcast_bf16_for_quantized_kernels(model, *, torch) -> str:
     here: a bf16 quantized graph aborts in the portable kernel and XNNPACK does not partition bf16
     either, so anything this touches was already unrunnable.
     """
+
     def _bf16(t):
         return t is not None and t.dtype == torch.bfloat16
 
@@ -290,8 +300,7 @@ def upcast_bf16_for_quantized_kernels(model, *, torch) -> str:
     for mod in model.modules():
         for name, param in list(mod._parameters.items()):
             if _bf16(param):
-                mod._parameters[name] = torch.nn.Parameter(param.data.to(torch.float32),
-                                                           requires_grad=False)
+                mod._parameters[name] = torch.nn.Parameter(param.data.to(torch.float32), requires_grad=False)
                 changed += 1
         for name, buf in list(mod._buffers.items()):
             if _bf16(buf):
@@ -299,13 +308,16 @@ def upcast_bf16_for_quantized_kernels(model, *, torch) -> str:
                 changed += 1
     if not changed:
         return ""
-    left = ([n for n, p in model.named_parameters() if _bf16(p)]
-            + [n for n, b in model.named_buffers() if _bf16(b)])
+    left = [n for n, p in model.named_parameters() if _bf16(p)] + [n for n, b in model.named_buffers() if _bf16(b)]
     if left:
-        raise RuntimeError(f"bfloat16 tensors survived the fp32 upcast ({left[:5]}); refusing to "
-                           "export a graph ExecuTorch's quantized kernels cannot execute")
-    return (f"upcast {changed} bfloat16 tensor(s) to fp32 (ExecuTorch's quantized kernels dispatch "
-            "over Float/Double/Half only and abort on bf16: 'Unhandled output dtype 15')")
+        raise RuntimeError(
+            f"bfloat16 tensors survived the fp32 upcast ({left[:5]}); refusing to "
+            "export a graph ExecuTorch's quantized kernels cannot execute"
+        )
+    return (
+        f"upcast {changed} bfloat16 tensor(s) to fp32 (ExecuTorch's quantized kernels dispatch "
+        "over Float/Double/Half only and abort on bf16: 'Unhandled output dtype 15')"
+    )
 
 
 def _load_loader(loader_path: Path):
@@ -340,15 +352,13 @@ def reconcile_input_arity(captured, keys, example, *, source: str = "inputs.npz"
         raise RuntimeError(
             f"input-arity mismatch: {source} holds {len(captured)} tensors {list(keys)} but the "
             f"loader's forward takes {len(example)} — the bundle and the loader disagree about this "
-            "model's ABI (refusing to guess which inputs to drop)")
+            "model's ABI (refusing to guess which inputs to drop)"
+        )
     if len(captured) == len(example):
         return tuple(captured), list(keys), ""
-    tail = tuple(example[len(captured):])
-    note = (f"input arity {len(captured)} captured + {len(tail)} loader-initial "
-            f"{[tuple(t.shape) for t in tail]}")
-    return (tuple(captured) + tail,
-            list(keys) + [f"loader_init{i}" for i in range(len(tail))],
-            note)
+    tail = tuple(example[len(captured) :])
+    note = f"input arity {len(captured)} captured + {len(tail)} loader-initial {[tuple(t.shape) for t in tail]}"
+    return (tuple(captured) + tail, list(keys) + [f"loader_init{i}" for i in range(len(tail))], note)
 
 
 def _dtype_preserving_quantizer(quantizer_cls, qcfg):
@@ -380,8 +390,7 @@ def _dtype_preserving_quantizer(quantizer_cls, qcfg):
     later and separately, inside the XNNPACK partitioner, with a dependency cycle).
     """
     import torch
-    from executorch.backends.xnnpack.quantizer.xnnpack_quantizer_utils import (
-        get_new_attr_name_with_prefix)
+    from executorch.backends.xnnpack.quantizer.xnnpack_quantizer_utils import get_new_attr_name_with_prefix
 
     scalar_ops = (torch.ops.aten.add.Tensor, torch.ops.aten.mul.Tensor)
 
@@ -393,7 +402,7 @@ def _dtype_preserving_quantizer(quantizer_cls, qcfg):
                 val = n.meta.get("val")
                 dtype = getattr(val, "dtype", None)
                 if dtype is not None and not dtype.is_floating_point:
-                    continue          # integer arithmetic: leave it integer
+                    continue  # integer arithmetic: leave it integer
                 new_args = []
                 for arg in n.args:
                     if isinstance(arg, torch.fx.Node):
@@ -404,8 +413,7 @@ def _dtype_preserving_quantizer(quantizer_cls, qcfg):
                     model.register_buffer(name, const)
                     with model.graph.inserting_before(n):
                         attr = model.graph.create_node("get_attr", name, (), {})
-                        attr.meta["val"] = n.meta["val"].fake_mode.from_tensor(
-                            const, static_shapes=True)
+                        attr.meta["val"] = n.meta["val"].fake_mode.from_tensor(const, static_shapes=True)
                     new_args.append(attr)
                 n.args = tuple(new_args)
             model.recompile()
@@ -480,18 +488,27 @@ def _bound_dynamic_qdq_channels_last_walk() -> str:
         src = inspect.getsource(cls.input_to_nhwc)
     except (OSError, TypeError) as e:
         return f"channels-last qd8 walk NOT bounded (source unavailable: {e})"
-    if ("is_dynamic_qdq(input_node)" not in src or "input_node = input_node.args[0]" not in src
-            or "input_node.replace_all_uses_with(input_node_nhwc)" not in src):
-        return ("channels-last qd8 walk NOT bounded (upstream input_to_nhwc no longer matches the "
-                "pinned shape this fix was written against — re-verify before re-applying)")
+    if (
+        "is_dynamic_qdq(input_node)" not in src
+        or "input_node = input_node.args[0]" not in src
+        or "input_node.replace_all_uses_with(input_node_nhwc)" not in src
+    ):
+        return (
+            "channels-last qd8 walk NOT bounded (upstream input_to_nhwc no longer matches the "
+            "pinned shape this fix was written against — re-verify before re-applying)"
+        )
 
     # The chain the relayout is allowed to move through, named as OP IDENTITIES rather than as
     # spellings of their names, so a renamed overload fails loudly instead of quietly matching
     # nothing (which would collapse the walk to a no-op and re-open failure 1).
     _qd = exir_ops.edge.quantized_decomposed
-    _QDQ_TARGETS = {_qd.quantize_per_tensor.default, _qd.quantize_per_tensor.tensor,
-                    _qd.dequantize_per_tensor.default, _qd.dequantize_per_tensor.tensor,
-                    _qd.choose_qparams.tensor}
+    _QDQ_TARGETS = {
+        _qd.quantize_per_tensor.default,
+        _qd.quantize_per_tensor.tensor,
+        _qd.dequantize_per_tensor.default,
+        _qd.dequantize_per_tensor.tensor,
+        _qd.choose_qparams.tensor,
+    }
 
     def _is_qdq(node) -> bool:
         """True iff the node is part of the quantize chain the copy may be pushed under."""
@@ -504,9 +521,10 @@ def _bound_dynamic_qdq_channels_last_walk() -> str:
 
     def input_to_nhwc(self, graph_module, input_node, target_node):
         if is_param_node(self.exported_program, input_node):
-            if (cls.XNN_NHWC_NODE in input_node.meta and cls.is_nchw_node(input_node)):
-                raise AssertionError("The same constant data tensor can't be used in NCHW format "
-                                     "in one place and NHWC in another")
+            if cls.XNN_NHWC_NODE in input_node.meta and cls.is_nchw_node(input_node):
+                raise AssertionError(
+                    "The same constant data tensor can't be used in NCHW format in one place and NHWC in another"
+                )
             self.mark_as_nhwc_node(input_node)
         if input_node.op == "placeholder":
             if self._is_nhwc(input_node.meta["val"][0]):
@@ -524,16 +542,22 @@ def _bound_dynamic_qdq_channels_last_walk() -> str:
             is_dynamic_input = clp.is_dynamic_qdq(input_node)
             if is_dynamic_input:
                 validated_rank = _rank(input_node)
-                while (_is_qdq(input_node) and getattr(input_node, "args", None)
-                       and isinstance(input_node.args[0], torch.fx.Node)):
+                while (
+                    _is_qdq(input_node)
+                    and getattr(input_node, "args", None)
+                    and isinstance(input_node.args[0], torch.fx.Node)
+                ):
                     candidate = input_node.args[0]
                     if _rank(candidate) != validated_rank:
-                        break            # bound 1a: never leave the rank that was validated
-                    input_node = candidate   # bound 1b: `while _is_qdq` — stop at the source node
+                        break  # bound 1a: never leave the rank that was validated
+                    input_node = candidate  # bound 1b: `while _is_qdq` — stop at the source node
             with graph_module.graph.inserting_after(input_node):
                 input_node_nhwc = self.create_call_function_node(
-                    graph_module=graph_module, target=exir_ops.edge.aten._to_copy.default,
-                    args=(input_node,), memory_format=torch.channels_last)
+                    graph_module=graph_module,
+                    target=exir_ops.edge.aten._to_copy.default,
+                    args=(input_node,),
+                    memory_format=torch.channels_last,
+                )
                 cls.mark_as_nhwc_node(input_node_nhwc)
             if is_dynamic_input:
                 # Bound 2: only the quantize chain follows the relayout. Any other consumer of the
@@ -543,12 +567,11 @@ def _bound_dynamic_qdq_channels_last_walk() -> str:
                 input_node_nhwc.args = (input_node,)
 
         self.insert_copy_and_assign_partner_nodes_quantization_sensitive(
-            graph_module=graph_module, original_input=input_node,
-            copy_node=input_node_nhwc, target_node=target_node)
+            graph_module=graph_module, original_input=input_node, copy_node=input_node_nhwc, target_node=target_node
+        )
 
     cls.input_to_nhwc = input_to_nhwc
-    return ("channels-last qd8 walk bounded to the qdq chain; "
-            "NHWC rewiring bounded to qdq consumers")
+    return "channels-last qd8 walk bounded to the qdq chain; NHWC rewiring bounded to qdq consumers"
 
 
 def _linear_subgraph(model):
@@ -589,25 +612,32 @@ def _linear_subgraph(model):
             q's output); the k/v outputs are kept live (reduced + broadcast) so every projection is
             quantized. This is NOT the attention numerics — it is a linear-coverage vehicle so all
             of the layer's GEMMs run int8 on XNNPACK qs8 RVV, gated cos vs the SAME-shape fp32."""
+
             def __init__(self, attn, mlp, act):
                 super().__init__()
                 self.q, self.k, self.v, self.o = attn.q_proj, attn.k_proj, attn.v_proj, attn.o_proj
                 self.g, self.u, self.dn, self.act = mlp.gate_proj, mlp.up_proj, mlp.down_proj, act
 
             def forward(self, x):
-                a = self.o(self.q(x))                                   # q_proj, o_proj (q_out->d)
+                a = self.o(self.q(x))  # q_proj, o_proj (q_out->d)
                 kv = self.k(x).sum(-1, keepdim=True) + self.v(x).sum(-1, keepdim=True)  # keep k,v live
-                m = self.dn(self.act(self.g(x)) * self.u(x))            # MLP linears
+                m = self.dn(self.act(self.g(x)) * self.u(x))  # MLP linears
                 return a + m + kv
 
         sub = _AllLinears(attn, mlp, act).eval()
         torch.manual_seed(0)
         x = torch.randn(1, 8, d)
-        return sub, (x,), ["hidden_state"], (
-            f"int8-subgraph=decoder-layer-ALL-linears(q/k/v/o+gate/up/down, d={d}, "
-            f"h={mlp.gate_proj.out_features}); fp32-glue=embedding+RoPE-index+causal-mask+softmax+"
-            "RMSNorm (full-model int8 blocked: prepare_pt2e transform_for_annotation corrupts the "
-            "cumsum->index.Tensor dtype even with an empty quantizer)")
+        return (
+            sub,
+            (x,),
+            ["hidden_state"],
+            (
+                f"int8-subgraph=decoder-layer-ALL-linears(q/k/v/o+gate/up/down, d={d}, "
+                f"h={mlp.gate_proj.out_features}); fp32-glue=embedding+RoPE-index+causal-mask+softmax+"
+                "RMSNorm (full-model int8 blocked: prepare_pt2e transform_for_annotation corrupts the "
+                "cumsum->index.Tensor dtype even with an empty quantizer)"
+            ),
+        )
 
     # Generic fallback: stack the first few Linears.
     lins = [m for _, m in model.named_modules() if isinstance(m, torch.nn.Linear)]
@@ -629,8 +659,12 @@ def _linear_subgraph(model):
     sub = _Seq(lins).eval()
     torch.manual_seed(0)
     x = torch.randn(1, 8, d)
-    return sub, (x,), ["hidden_state"], (
-        f"int8-subgraph=first-linears(d={d}); non-linear ops excluded (full-model int8 blocked)")
+    return (
+        sub,
+        (x,),
+        ["hidden_state"],
+        (f"int8-subgraph=first-linears(d={d}); non-linear ops excluded (full-model int8 blocked)"),
+    )
 
 
 _TORCH_TO_NP = {}  # filled after torch import
@@ -677,19 +711,20 @@ def reconcile_captured_state_dict(captured_state, live_state):
     if len(captured_keys) != len(live_keys):
         raise RuntimeError(
             "captured/live state dictionaries do not form a bijection: "
-            f"{len(captured_keys)} captured tensors vs {len(live_keys)} live tensors")
+            f"{len(captured_keys)} captured tensors vs {len(live_keys)} live tensors"
+        )
 
     def metadata(tensor):
         return tuple(int(x) for x in tensor.shape), str(tensor.dtype)
 
     incompatible_exact = [
-        key for key in captured_keys
-        if key in live_state and metadata(captured_state[key]) != metadata(live_state[key])
+        key for key in captured_keys if key in live_state and metadata(captured_state[key]) != metadata(live_state[key])
     ]
     if incompatible_exact:
         raise RuntimeError(
             "captured/live state has exact-name tensors with incompatible shape or dtype: "
-            + ", ".join(incompatible_exact[:4]))
+            + ", ".join(incompatible_exact[:4])
+        )
 
     mapping = {key: key for key in captured_keys if key in live_state}
     captured_left = [key for key in captured_keys if key not in mapping]
@@ -698,19 +733,14 @@ def reconcile_captured_state_dict(captured_state, live_state):
         return dict(captured_state), f"captured state matched exactly ({len(mapping)}/{len(mapping)})"
 
     candidates = {
-        old: [new for new in live_left
-              if metadata(captured_state[old]) == metadata(live_state[new])]
+        old: [new for new in live_left if metadata(captured_state[old]) == metadata(live_state[new])]
         for old in captured_left
     }
     missing = [old for old, choices in candidates.items() if not choices]
     if missing:
-        raise RuntimeError("no shape/dtype-compatible live tensor for captured state key(s): "
-                           + ", ".join(missing[:4]))
+        raise RuntimeError("no shape/dtype-compatible live tensor for captured state key(s): " + ", ".join(missing[:4]))
 
-    scored = {
-        old: {new: _state_key_score(old, new) for new in choices}
-        for old, choices in candidates.items()
-    }
+    scored = {old: {new: _state_key_score(old, new) for new in choices} for old, choices in candidates.items()}
     proposed = {}
     for old, choices in scored.items():
         best_score = max(choices.values())
@@ -720,7 +750,8 @@ def reconcile_captured_state_dict(captured_state, live_state):
         if len(best) != 1 or best_score[0] < 2:
             raise RuntimeError(
                 f"ambiguous or low-confidence captured state mapping for {old!r}: "
-                f"best score {best_score}, candidates {best[:4]}")
+                f"best score {best_score}, candidates {best[:4]}"
+            )
         proposed[old] = best[0]
 
     if len(set(proposed.values())) != len(proposed):
@@ -737,17 +768,18 @@ def reconcile_captured_state_dict(captured_state, live_state):
         best_score = max(reverse.values())
         best = [candidate for candidate, score in reverse.items() if score == best_score]
         if best != [old]:
-            raise RuntimeError(
-                f"ambiguous reciprocal captured state mapping for {new!r}: candidates {best[:4]}")
+            raise RuntimeError(f"ambiguous reciprocal captured state mapping for {new!r}: candidates {best[:4]}")
     mapping.update(proposed)
     if set(mapping.values()) != set(live_keys):
         raise RuntimeError("captured/live state mapping did not produce a complete bijection")
 
-    remapped = {live: captured_state[old] for live in live_keys
-                for old in (next(k for k, v in mapping.items() if v == live),)}
+    remapped = {
+        live: captured_state[old] for live in live_keys for old in (next(k for k, v in mapping.items() if v == live),)
+    }
     return remapped, (
         f"captured state structurally remapped {len(proposed)}/{len(captured_keys)} tensor keys "
-        "through a unique shape/dtype/path bijection")
+        "through a unique shape/dtype/path bijection"
+    )
 
 
 def _int8_whole_model_bias_preserving(model):
@@ -781,9 +813,9 @@ def _int8_whole_model_bias_preserving(model):
             super().__init__()
             self.in_features = lin.in_features
             self.out_features = lin.out_features
-            w = lin.weight.detach().float()                     # [out, in]
-            amax = w.abs().amax(dim=1, keepdim=True)            # per-output-channel
-            scales = (amax / 127.0).clamp(min=1e-12)            # symmetric int8
+            w = lin.weight.detach().float()  # [out, in]
+            amax = w.abs().amax(dim=1, keepdim=True)  # per-output-channel
+            scales = (amax / 127.0).clamp(min=1e-12)  # symmetric int8
             q = torch.round(w / scales).clamp(-128, 127).to(torch.int8)
             self.register_buffer("weight", q)
             self.register_buffer("scales", scales.squeeze(-1).float())
@@ -806,8 +838,7 @@ def _int8_whole_model_bias_preserving(model):
                 _swap(child)
 
     n_lin = sum(1 for m in model.modules() if isinstance(m, torch.nn.Linear))
-    n_biased = sum(1 for m in model.modules()
-                   if isinstance(m, torch.nn.Linear) and m.bias is not None)
+    n_biased = sum(1 for m in model.modules() if isinstance(m, torch.nn.Linear) and m.bias is not None)
     _swap(model)
     return model.eval(), n_lin, n_biased
 
@@ -817,46 +848,66 @@ def main() -> int:
     ap.add_argument("--loader", required=True, help="path to model2MLIR workloads/<model>/loader.py")
     ap.add_argument("--inputs-npz", required=True, help="captured inputs.npz (seeds the golden)")
     ap.add_argument("--golden-npy", required=True, help="captured golden.npy (reference output)")
-    ap.add_argument("--captured-weights", default=None,
-                    help="optional bundle weights.safetensors to load strictly into the live model "
-                         "before export; mismatched state identity refuses the run")
-    ap.add_argument("--compute-golden", action="store_true",
-                    help="compute the reference by running the eager torch model on the captured "
-                         "input (writes it to --golden-npy). Use when the captured golden was made "
-                         "with a DIFFERENT model config (e.g. a layer-reduced fit-on-board build), "
-                         "so the correctness gate compares ExecuTorch vs eager-torch for THIS model.")
+    ap.add_argument(
+        "--captured-weights",
+        default=None,
+        help="optional bundle weights.safetensors to load strictly into the live model "
+        "before export; mismatched state identity refuses the run",
+    )
+    ap.add_argument(
+        "--compute-golden",
+        action="store_true",
+        help="compute the reference by running the eager torch model on the captured "
+        "input (writes it to --golden-npy). Use when the captured golden was made "
+        "with a DIFFERENT model config (e.g. a layer-reduced fit-on-board build), "
+        "so the correctness gate compares ExecuTorch vs eager-torch for THIS model.",
+    )
     ap.add_argument("--out", required=True, help="output .pte path (ptd + input0.bin go alongside)")
     ap.add_argument("--model-name", default="model")
-    ap.add_argument("--no-xnnpack", action="store_true",
-                    help="skip the XNNPACK partitioner (portable-kernel-only baseline)")
-    ap.add_argument("--quantize", action="store_true",
-                    help="PT2E W8A8 quantize before lowering (exercises XNNPACK's int8 qs8/qd8 RVV "
-                         "ukernels). ExecuTorch does its OWN quantization, so pair with "
-                         "--compute-golden (gate = eager-vs-ExecuTorch for THIS config). NOTE: this "
-                         "is IGNORED when --int8-whole-model is also set (that path is a module "
-                         "swap, not PT2E) — pass --qd8 with --quantize and WITHOUT "
-                         "--int8-whole-model to reach XNNPACK's dynamic-W8A8 deployment path.")
-    ap.add_argument("--qd8", action="store_true",
-                    help="with --quantize: use per-channel weights + DYNAMIC per-row activation "
-                         "quantization (XNNPACK qd8) instead of the default static per-tensor qs8. "
-                         "This is the same dynamic-W8A8 deployment class and expert-kernel family "
-                         "used to guide Merlin, but its affine activation qparams differ from "
-                         "Merlin's symmetric TorchAO recipe. Compare whole-system latency only "
-                         "after both outputs clear the same fp32 quality gate.")
-    ap.add_argument("--m2m-root", default="/path/to/model2MLIR",
-                    help="model2MLIR repo root (added to sys.path for its deps)")
-    ap.add_argument("--int8-whole-model", action="store_true",
-                    help="WHOLE-MODEL int8 via ExecuTorch's OFFICIAL llama recipe: source-transform "
-                         "weight-only int8 per-channel (WeightOnlyInt8QuantHandler — an eager "
-                         "MODULE SWAP, replacing every nn.Linear with a WeightOnlyInt8Linear). "
-                         "Because it is a module swap it NEVER runs PT2E's transform_for_annotation "
-                         "pass, so it SIDESTEPS the cumsum->index.Tensor dtype corruption that "
-                         "blocks generic full-model PT2E on HF Llama — all layers quantize + export "
-                         "cleanly. Forces --compute-golden (int8-vs-fp32 gate).")
-    ap.add_argument("--int8-subgraph", action="store_true",
-                    help="int8 FALLBACK path (only if whole-model won't export): quantize the REAL "
-                         "decoder-layer linear subgraph (q/k/v/o + gate/up/down) W8A8 on a seeded "
-                         "hidden-state input, embeddings/mask fp32. Honestly labeled.")
+    ap.add_argument(
+        "--no-xnnpack", action="store_true", help="skip the XNNPACK partitioner (portable-kernel-only baseline)"
+    )
+    ap.add_argument(
+        "--quantize",
+        action="store_true",
+        help="PT2E W8A8 quantize before lowering (exercises XNNPACK's int8 qs8/qd8 RVV "
+        "ukernels). ExecuTorch does its OWN quantization, so pair with "
+        "--compute-golden (gate = eager-vs-ExecuTorch for THIS config). NOTE: this "
+        "is IGNORED when --int8-whole-model is also set (that path is a module "
+        "swap, not PT2E) — pass --qd8 with --quantize and WITHOUT "
+        "--int8-whole-model to reach XNNPACK's dynamic-W8A8 deployment path.",
+    )
+    ap.add_argument(
+        "--qd8",
+        action="store_true",
+        help="with --quantize: use per-channel weights + DYNAMIC per-row activation "
+        "quantization (XNNPACK qd8) instead of the default static per-tensor qs8. "
+        "This is the same dynamic-W8A8 deployment class and expert-kernel family "
+        "used to guide Merlin, but its affine activation qparams differ from "
+        "Merlin's symmetric TorchAO recipe. Compare whole-system latency only "
+        "after both outputs clear the same fp32 quality gate.",
+    )
+    ap.add_argument(
+        "--m2m-root", default="/path/to/model2MLIR", help="model2MLIR repo root (added to sys.path for its deps)"
+    )
+    ap.add_argument(
+        "--int8-whole-model",
+        action="store_true",
+        help="WHOLE-MODEL int8 via ExecuTorch's OFFICIAL llama recipe: source-transform "
+        "weight-only int8 per-channel (WeightOnlyInt8QuantHandler — an eager "
+        "MODULE SWAP, replacing every nn.Linear with a WeightOnlyInt8Linear). "
+        "Because it is a module swap it NEVER runs PT2E's transform_for_annotation "
+        "pass, so it SIDESTEPS the cumsum->index.Tensor dtype corruption that "
+        "blocks generic full-model PT2E on HF Llama — all layers quantize + export "
+        "cleanly. Forces --compute-golden (int8-vs-fp32 gate).",
+    )
+    ap.add_argument(
+        "--int8-subgraph",
+        action="store_true",
+        help="int8 FALLBACK path (only if whole-model won't export): quantize the REAL "
+        "decoder-layer linear subgraph (q/k/v/o + gate/up/down) W8A8 on a seeded "
+        "hidden-state input, embeddings/mask fp32. Honestly labeled.",
+    )
     args = ap.parse_args()
     if args.int8_whole_model:
         args.quantize = True
@@ -886,6 +937,7 @@ def main() -> int:
     # `executorch.plan_kernels` already reports as `libraries={'quantized'}` + its cmake option.
     try:
         import executorch.kernels.quantized  # noqa: F401
+
         _qkernels = "quantized-out-variants=registered"
     except Exception as _e:  # noqa: BLE001
         _qkernels = f"quantized-out-variants=UNAVAILABLE({type(_e).__name__}: {_e})"
@@ -935,12 +987,12 @@ def main() -> int:
         _captured_state = _load_safetensors(args.captured_weights, device="cpu")
         # The final strict load is the identity boundary. Reconciliation permits only a proven
         # one-to-one namespace migration; a partial load would silently retain fresh parameters.
-        _captured_state, _reconcile_note = reconcile_captured_state_dict(
-            _captured_state, model.state_dict())
+        _captured_state, _reconcile_note = reconcile_captured_state_dict(_captured_state, model.state_dict())
         model.load_state_dict(_captured_state, strict=True)
         _captured_weight_note = (
             f"strictly replayed {len(_captured_state)} captured state tensors from "
-            f"{Path(args.captured_weights).name}; {_reconcile_note}")
+            f"{Path(args.captured_weights).name}; {_reconcile_note}"
+        )
         print(f"[{args.model_name}] {_captured_weight_note}", file=sys.stderr)
 
     # PT2E emits quantized_decomposed ops that run OUTSIDE the delegate, and those kernels handle
@@ -955,8 +1007,7 @@ def main() -> int:
     npz = np.load(args.inputs_npz)
     keys = list(npz.keys())
     captured = tuple(torch.from_numpy(npz[k]) for k in keys)
-    captured, keys, _arity_note = reconcile_input_arity(captured, keys, _example,
-                                                        source=args.inputs_npz)
+    captured, keys, _arity_note = reconcile_input_arity(captured, keys, _example, source=args.inputs_npz)
     if _arity_note:
         print(f"[{args.model_name}] {_arity_note}", file=sys.stderr)
 
@@ -996,8 +1047,7 @@ def main() -> int:
         )
 
         n_lin = sum(1 for _ in model.modules() if isinstance(_, torch.nn.Linear))
-        n_biased = sum(1 for m in model.modules()
-                       if isinstance(m, torch.nn.Linear) and m.bias is not None)
+        n_biased = sum(1 for m in model.modules() if isinstance(m, torch.nn.Linear) and m.bias is not None)
         # The official llama handler is bias-free (its WeightOnlyInt8Linear drops bias and its
         # load_state_dict rejects any leftover .bias key). Use it verbatim for the bias-free
         # llama family (identical attribution/numbers as before). For a model with ANY biased
@@ -1006,23 +1056,31 @@ def main() -> int:
         # does the same math but keeps the fp32 bias. Same const-fold/arena behavior either way.
         if n_biased == 0:
             model = WeightOnlyInt8QuantHandler(model).quantized_model().eval()
-            recipe = ("official-llama-recipe(WeightOnlyInt8QuantHandler, weight-only int8 "
-                      f"per-channel, ALL {n_lin} nn.Linear swapped -> WeightOnlyInt8Linear)")
+            recipe = (
+                "official-llama-recipe(WeightOnlyInt8QuantHandler, weight-only int8 "
+                f"per-channel, ALL {n_lin} nn.Linear swapped -> WeightOnlyInt8Linear)"
+            )
         else:
             model, n_lin, n_biased = _int8_whole_model_bias_preserving(model)
-            recipe = (f"bias-preserving-int8(weight-only int8 per-channel, ALL {n_lin} nn.Linear "
-                      f"swapped, {n_biased} carry fp32 bias; official handler drops bias/rejects "
-                      "biased state_dict so this superset is used)")
+            recipe = (
+                f"bias-preserving-int8(weight-only int8 per-channel, ALL {n_lin} nn.Linear "
+                f"swapped, {n_biased} carry fp32 bias; official handler drops bias/rejects "
+                "biased state_dict so this superset is used)"
+            )
         quantized = True
         subgraph_note = (subgraph_note + " " if subgraph_note else "") + (
             f"int8-whole-model={recipe}; embeddings/mask/softmax/norm fp32; "
-            "module-swap sidesteps PT2E transform_for_annotation index-corruption")
+            "module-swap sidesteps PT2E transform_for_annotation index-corruption"
+        )
 
     # 2b. PT2E W8A8 quantization (int8 subgraph path). Only when NOT whole-model int8.
     if args.quantize and not args.int8_whole_model:
         try:
             from executorch.backends.xnnpack.quantizer.xnnpack_quantizer import (
-                XNNPACKQuantizer, get_symmetric_quantization_config)
+                XNNPACKQuantizer,
+                get_symmetric_quantization_config,
+            )
+
             try:
                 from torchao.quantization.pt2e.quantize_pt2e import convert_pt2e, prepare_pt2e
             except Exception:  # noqa: BLE001
@@ -1038,8 +1096,11 @@ def main() -> int:
             # data-dependent zero point), not Merlin/TorchAO's symmetric (-127/127, zero point 0).
             # A deployment latency comparison is valid only under a shared fp32 quality gate; an
             # arithmetic-equivalence claim is not.
-            qcfg = (get_symmetric_quantization_config(is_per_channel=True, is_dynamic=True)
-                    if args.qd8 else get_symmetric_quantization_config())
+            qcfg = (
+                get_symmetric_quantization_config(is_per_channel=True, is_dynamic=True)
+                if args.qd8
+                else get_symmetric_quantization_config()
+            )
             # Not a plain XNNPACKQuantizer: its transform_for_annotation retypes INTEGER scalar
             # arithmetic to float, which corrupts the index feeding HF's causal-mask
             # `aten.index.Tensor` and made whole-model PT2E impossible on every transformers
@@ -1052,16 +1113,19 @@ def main() -> int:
                 _nhwc_status = _bound_dynamic_qdq_channels_last_walk()
             prepared = prepare_pt2e(cap, quantizer)
             with torch.no_grad():
-                prepared(*captured)          # calibrate on the captured input
-            model = convert_pt2e(prepared)   # now an int8 graph module
+                prepared(*captured)  # calibrate on the captured input
+            model = convert_pt2e(prepared)  # now an int8 graph module
             quantized = True
             # Which recipe produced these numbers, recorded WITH them. Two different int8 recipes
             # (weight-only module swap vs PT2E qd8 vs PT2E qs8) produce walls that are not
             # comparable to each other, and an unlabelled one gets compared anyway.
-            _pt2e_recipe = ("pt2e-qd8(affine, per-channel weights, DYNAMIC activation "
-                            "quant -> XNNPACK qd8 int8 ukernels; same deployment class but not "
-                            "the symmetric TorchAO arithmetic in Merlin passes_quant_int)" if args.qd8 else
-                            "pt2e-qs8(symmetric, per-tensor, STATIC activation quant)")
+            _pt2e_recipe = (
+                "pt2e-qd8(affine, per-channel weights, DYNAMIC activation "
+                "quant -> XNNPACK qd8 int8 ukernels; same deployment class but not "
+                "the symmetric TorchAO arithmetic in Merlin passes_quant_int)"
+                if args.qd8
+                else "pt2e-qs8(symmetric, per-tensor, STATIC activation quant)"
+            )
             if args.qd8:
                 _pt2e_recipe += "; " + _nhwc_status
             subgraph_note = (subgraph_note + " " if subgraph_note else "") + _pt2e_recipe
@@ -1094,15 +1158,17 @@ def main() -> int:
     #     (a bucketize-derived stride the static memory planner can't evaluate); folding the constant
     #     boundaries resolves it, which is why the int8 path (already const-propped) exported cleanly.
     #     So run it for the fp32 whole-model xnnpack path too (not just int8).
-    _whole_model = args.int8_whole_model or (not args.no_xnnpack and not args.int8_subgraph
-                                             and not args.quantize)
+    _whole_model = args.int8_whole_model or (not args.no_xnnpack and not args.int8_subgraph and not args.quantize)
     if _whole_model:
         try:
             from executorch.exir.passes.constant_prop_pass import constant_prop_pass
+
             exported = constant_prop_pass(exported)
-            subgraph_note += (" +const-prop(dequant-weights-folded->const, arena 4.25GB->2MB)"
-                              if args.int8_whole_model
-                              else " +const-prop(fp32 whole-model; resolves bucketize data-dep symint)")
+            subgraph_note += (
+                " +const-prop(dequant-weights-folded->const, arena 4.25GB->2MB)"
+                if args.int8_whole_model
+                else " +const-prop(fp32 whole-model; resolves bucketize data-dep symint)"
+            )
         except Exception as e:  # noqa: BLE001
             subgraph_note += f" const-prop-skipped({str(e)[:80]})"
 
@@ -1114,6 +1180,7 @@ def main() -> int:
         partitioners.append(XnnpackPartitioner())
 
     from executorch.exir import EdgeCompileConfig
+
     # Disable the advisory core-ATen IR-validity check for ALL models (not just quantized): some
     # real forwards emit ops outside the strict "core ATen opset" (e.g. smolvla fp32 emits
     # aten.bucketize.Tensor) that the verifier rejects even though a runtime kernel exists / can be
@@ -1123,15 +1190,12 @@ def main() -> int:
     _cc = EdgeCompileConfig(_check_ir_validity=False)
     edge = to_edge_transform_and_lower(exported, partitioner=partitioners, compile_config=_cc)
     nodes = list(edge.exported_program().graph.nodes)
-    delegated = sum(1 for n in nodes
-                    if n.op == "call_function" and "call_delegate" in str(n.target))
+    delegated = sum(1 for n in nodes if n.op == "call_function" and "call_delegate" in str(n.target))
     total_calls = sum(1 for n in nodes if n.op == "call_function")
 
     # 4. to_executorch with EXTERNAL constants: weights land in a .ptd next to the .pte, so the
     #    program flatbuffer stays under the 2 GB limit for the big fp32 LLMs.
-    et_program = edge.to_executorch(
-        config=ExecutorchBackendConfig(external_constants=True)
-    )
+    et_program = edge.to_executorch(config=ExecutorchBackendConfig(external_constants=True))
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -1144,12 +1208,16 @@ def main() -> int:
     etrecord_path = ""
     try:
         from executorch.devtools import generate_etrecord
+
         etrecord_path = str(out.parent / "etrecord.bin")
         generate_etrecord(etrecord_path, edge, et_program, exported_program=exported)
     except Exception as e:  # noqa: BLE001 - etrecord is for per-region timing; absence is not fatal
         etrecord_path = ""
-        print(f"[warn] generate_etrecord failed ({type(e).__name__}: {str(e)[:120]}); "
-              "per-region ET timing will be unavailable", file=sys.stderr)
+        print(
+            f"[warn] generate_etrecord failed ({type(e).__name__}: {str(e)[:120]}); "
+            "per-region ET timing will be unavailable",
+            file=sys.stderr,
+        )
 
     with open(out, "wb") as fh:
         et_program.write_to_file(fh)
@@ -1170,8 +1238,9 @@ def main() -> int:
         arr = np.ascontiguousarray(t.detach().cpu().numpy())
         p = out.parent / f"input{i}.bin"
         p.write_bytes(arr.tobytes())
-        input_files.append({"path": str(p), "key": k, "dtype": str(arr.dtype),
-                            "shape": list(arr.shape), "nbytes": arr.nbytes})
+        input_files.append(
+            {"path": str(p), "key": k, "dtype": str(arr.dtype), "shape": list(arr.shape), "nbytes": arr.nbytes}
+        )
 
     # --- AOT PROFILE: what ExecuTorch's ahead-of-time pipeline actually DID to this graph ---------
     # Counts alone ("42 of 60 nodes delegated") say a partition happened, not what it bought. These
@@ -1181,6 +1250,7 @@ def main() -> int:
     # comparable to our own allocation behaviour -- we emit 209 `tensor.empty` on this model.
     def _aot_profile() -> dict:
         import collections
+
         prof: dict = {}
         try:
             portable = collections.Counter()
@@ -1193,8 +1263,9 @@ def main() -> int:
                     # the lowered module carries its backend id
                     try:
                         lm = n.args[0]
-                        delegated_backends[str(getattr(lm, "backend_id", "") or
-                                                getattr(lm, "_backend_id", "") or "unknown")] += 1
+                        delegated_backends[
+                            str(getattr(lm, "backend_id", "") or getattr(lm, "_backend_id", "") or "unknown")
+                        ] += 1
                     except Exception:  # noqa: BLE001
                         delegated_backends["unknown"] += 1
                 else:
@@ -1210,17 +1281,19 @@ def main() -> int:
             plans = et_program.executorch_program.execution_plan
             prof["memory_plan_arenas"] = [list(pl.non_const_buffer_sizes) for pl in plans]
             prof["memory_plan_total_bytes"] = sum(
-                sum(x for x in pl.non_const_buffer_sizes if isinstance(x, int) and x > 0)
-                for pl in plans)
+                sum(x for x in pl.non_const_buffer_sizes if isinstance(x, int) and x > 0) for pl in plans
+            )
         except Exception as e:  # noqa: BLE001
             prof["memory_plan_error"] = f"{type(e).__name__}: {e}"
         # Weight ENCODING: how the constants are actually stored (dtype x count x bytes).
         try:
-            enc = collections.Counter(); byts = collections.Counter()
+            enc = collections.Counter()
+            byts = collections.Counter()
             gm = exported.graph_module
             for name, t in list(getattr(exported, "state_dict", {}).items()):
                 try:
-                    enc[str(t.dtype)] += 1; byts[str(t.dtype)] += t.numel() * t.element_size()
+                    enc[str(t.dtype)] += 1
+                    byts[str(t.dtype)] += t.numel() * t.element_size()
                 except Exception:  # noqa: BLE001
                     pass
             prof["weight_dtypes"] = dict(enc)

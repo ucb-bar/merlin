@@ -5,6 +5,7 @@ overlap. Pareto dominance minimizes the named integer axes independently. A
 frontier is relative to the supplied alternatives and objective, not hardware
 performance. Existing cycle-ranking ``global_planner.optimize_program`` is unchanged.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,8 +16,12 @@ from merlin.perf.global_planner import PlanRefusal, _representations_and_transit
 from merlin.perf.structural_transitions import StructuralTransitionAdapterView
 from merlin.xdsl_dialects.lowering.dispatch_program import DispatchProgram, verify_program
 from merlin.xdsl_dialects.lowering.global_plan import (
-    CycleInterval, GlobalPlan, RegionAlternative, TransitionAlternative,
-    ValueRepresentation, verify_global_plan,
+    CycleInterval,
+    GlobalPlan,
+    RegionAlternative,
+    TransitionAlternative,
+    ValueRepresentation,
+    verify_global_plan,
 )
 
 
@@ -46,15 +51,24 @@ class StructuralEvaluation:
 
 class StructuralPlanningAdapter(Protocol):
     def region_alternatives(self, program: DispatchProgram) -> Sequence[RegionAlternative]: ...
-    def boundary_representation(self, program: DispatchProgram, buffer: str,
-                                direction: str) -> ValueRepresentation: ...
-    def transition(self, program: DispatchProgram, *, buffer: str,
-                   producer: RegionAlternative | None, consumer: RegionAlternative | None,
-                   source: ValueRepresentation, destination: ValueRepresentation
-                   ) -> TransitionAlternative | None: ...
-    def evaluate_structure(self, program: DispatchProgram, selected: Sequence[RegionAlternative],
-                           transitions: Sequence[TransitionAlternative],
-                           axes: Sequence[StructuralAxis]) -> StructuralEvaluation: ...
+    def boundary_representation(self, program: DispatchProgram, buffer: str, direction: str) -> ValueRepresentation: ...
+    def transition(
+        self,
+        program: DispatchProgram,
+        *,
+        buffer: str,
+        producer: RegionAlternative | None,
+        consumer: RegionAlternative | None,
+        source: ValueRepresentation,
+        destination: ValueRepresentation,
+    ) -> TransitionAlternative | None: ...
+    def evaluate_structure(
+        self,
+        program: DispatchProgram,
+        selected: Sequence[RegionAlternative],
+        transitions: Sequence[TransitionAlternative],
+        axes: Sequence[StructuralAxis],
+    ) -> StructuralEvaluation: ...
 
 
 @dataclass(frozen=True)
@@ -92,22 +106,38 @@ class StructuralResult:
             "schema": "structural_plan_result_v1",
             "status": "selected_structural_frontier" if self.frontier else "refused",
             "axes": [{"name": axis.name, "unit": axis.unit} for axis in self.axes],
-            "frontier": [{"plan": item.plan.to_dict(), "values": list(item.evaluation.values),
-                          "provenance": list(item.evaluation.provenance)} for item in self.frontier],
-            "expanded_states": self.expanded_states, "complete_plans": self.complete_plans,
-            "exhausted": self.exhausted, "elapsed_s": self.elapsed_s,
-            "stop_reason": self.stop_reason, "refusals": list(self.refusals),
+            "frontier": [
+                {
+                    "plan": item.plan.to_dict(),
+                    "values": list(item.evaluation.values),
+                    "provenance": list(item.evaluation.provenance),
+                }
+                for item in self.frontier
+            ],
+            "expanded_states": self.expanded_states,
+            "complete_plans": self.complete_plans,
+            "exhausted": self.exhausted,
+            "elapsed_s": self.elapsed_s,
+            "stop_reason": self.stop_reason,
+            "refusals": list(self.refusals),
             "equivalent_vectors_collapsed": self.equivalent_vectors_collapsed,
             "frontier_truncated": self.frontier_truncated,
-            "complete_frontier_for_supplied_alternatives": self.exhausted and not self.refusals and not self.frontier_truncated,
-            "cycles": None, "performance_optimality": "UNPROVEN",
+            "complete_frontier_for_supplied_alternatives": self.exhausted
+            and not self.refusals
+            and not self.frontier_truncated,
+            "cycles": None,
+            "performance_optimality": "UNPROVEN",
             "scope": "one representative per nondominated structural cost vector; no timing or physical movement inference",
         }
 
 
-def optimize_structure(program: DispatchProgram, adapter: StructuralPlanningAdapter, *,
-                       axes: Sequence[StructuralAxis], policy: StructuralPolicy | None = None
-                       ) -> StructuralResult:
+def optimize_structure(
+    program: DispatchProgram,
+    adapter: StructuralPlanningAdapter,
+    *,
+    axes: Sequence[StructuralAxis],
+    policy: StructuralPolicy | None = None,
+) -> StructuralResult:
     """Enumerate compatible exact covers and retain nondominated structural costs."""
     objective = tuple(axes)
     if not objective or len({axis.name for axis in objective}) != len(objective):
@@ -131,15 +161,16 @@ def optimize_structure(program: DispatchProgram, adapter: StructuralPlanningAdap
     if set().union(*(set(item.nodes) for item in alternatives)) != set(all_nodes):
         problems.append("alternatives do not cover the complete source graph")
     if problems:
-        return StructuralResult(objective, (), 0, 0, True, monotonic()-started,
-                                "invalid_alternatives", tuple(problems))
+        return StructuralResult(
+            objective, (), 0, 0, True, monotonic() - started, "invalid_alternatives", tuple(problems)
+        )
     stack = [(frozenset(), ())]
     frontier = []
     expanded = complete = collapsed = 0
     truncated = False
     stop = "exhausted"
     while stack:
-        if monotonic()-started >= policy.timeout_s:
+        if monotonic() - started >= policy.timeout_s:
             stop = "timeout"
             break
         if expanded >= policy.max_states:
@@ -148,7 +179,7 @@ def optimize_structure(program: DispatchProgram, adapter: StructuralPlanningAdap
         covered, selected = stack.pop()
         expanded += 1
         if covered != all_nodes:
-            anchor = min(all_nodes-covered)
+            anchor = min(all_nodes - covered)
             for item in reversed(by_anchor.get(anchor, ())):
                 nodes = frozenset(item.nodes)
                 if not nodes.intersection(covered):
@@ -157,10 +188,12 @@ def optimize_structure(program: DispatchProgram, adapter: StructuralPlanningAdap
         complete += 1
         try:
             transitions = _representations_and_transitions(program, selected, StructuralTransitionAdapterView(adapter))
-            plan = GlobalPlan(tuple(sorted(selected, key=lambda item: item.nodes)),
+            plan = GlobalPlan(
+                tuple(sorted(selected, key=lambda item: item.nodes)),
                 tuple(sorted(transitions, key=lambda item: item.id)),
                 CycleInterval.unknown("non-cycle structural selection has no timing model"),
-                notes=("selected using explicit structural axes, not cycle costs",))
+                notes=("selected using explicit structural axes, not cycle costs",),
+            )
             invalid = verify_global_plan(program, plan)
             if invalid:
                 raise PlanRefusal("; ".join(invalid))
@@ -175,12 +208,21 @@ def optimize_structure(program: DispatchProgram, adapter: StructuralPlanningAdap
             continue
         if any(all(a <= b for a, b in zip(item.evaluation.values, cost.values)) for item in frontier):
             continue
-        frontier = [item for item in frontier
-                    if not all(a <= b for a, b in zip(cost.values, item.evaluation.values))]
+        frontier = [item for item in frontier if not all(a <= b for a, b in zip(cost.values, item.evaluation.values))]
         frontier.append(StructuralChoice(plan, cost))
         frontier.sort(key=lambda item: item.evaluation.values)
         if len(frontier) > policy.max_frontier:
             truncated = True
-            frontier = frontier[:policy.max_frontier]
-    return StructuralResult(objective, tuple(frontier), expanded, complete, not stack,
-        monotonic()-started, stop, tuple(dict.fromkeys(problems)), collapsed, truncated)
+            frontier = frontier[: policy.max_frontier]
+    return StructuralResult(
+        objective,
+        tuple(frontier),
+        expanded,
+        complete,
+        not stack,
+        monotonic() - started,
+        stop,
+        tuple(dict.fromkeys(problems)),
+        collapsed,
+        truncated,
+    )

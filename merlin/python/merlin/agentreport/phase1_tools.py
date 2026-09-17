@@ -11,6 +11,7 @@ the filenames the harness stages for each granted tool. That is a lower bound by
 tool imported inside a script the agent wrote is used without ever appearing in a command line, and
 this reader cannot see that. It is reported as a lower bound and never as "the agent did not use it".
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,17 +23,19 @@ from merlin.agentreport.spans import SpanSet
 
 #: The substrate every arm gets, whatever its bundle: a synchronous self-check and an asynchronous
 #: oracle. Named here because they are staged by the run loop rather than by the tool registry.
-SUBSTRATE = {"agent_selfcheck.py": "synchronous redacted self-check",
-             "simjob.py": "asynchronous oracle (submit / poll / wait)"}
+SUBSTRATE = {
+    "agent_selfcheck.py": "synchronous redacted self-check",
+    "simjob.py": "asynchronous oracle (submit / poll / wait)",
+}
 
 
 @dataclass
 class ToolUse:
-    name: str                 # the granted tool's registry name, or the substrate filename
+    name: str  # the granted tool's registry name, or the substrate filename
     blurb: str = ""
     invocations: int = 0
     granted: bool = True
-    invocable: bool = False   # does this grant expose a filename a command line could name?
+    invocable: bool = False  # does this grant expose a filename a command line could name?
 
 
 @dataclass
@@ -50,8 +53,9 @@ def _stage_names(spec) -> list[str]:
     return [staged for _, staged in getattr(broker, "shims", ()) or ()]
 
 
-def read_phase1_tools(spanset: SpanSet, arm_name: str, registry: Mapping,
-                      arm_tools: Mapping[str, Sequence[str]]) -> Phase1Tools:
+def read_phase1_tools(
+    spanset: SpanSet, arm_name: str, registry: Mapping, arm_tools: Mapping[str, Sequence[str]]
+) -> Phase1Tools:
     """Granted tools for ``arm_name`` and how often each was named on a command line.
 
     ``registry`` and ``arm_tools`` are passed in rather than imported so this stays a pure function
@@ -59,31 +63,42 @@ def read_phase1_tools(spanset: SpanSet, arm_name: str, registry: Mapping,
     out = Phase1Tools(arm=arm_name)
     granted = arm_tools.get(arm_name)
     if granted is None:
-        out.availability.set("phase1_tools", unavailable(
-            f"arm {arm_name!r} is not in the tool registry, so what it was granted cannot be stated"))
+        out.availability.set(
+            "phase1_tools",
+            unavailable(f"arm {arm_name!r} is not in the tool registry, so what it was granted cannot be stated"),
+        )
         return out
 
     commands = [(sp.detail or "") for sp in spanset.spans]
     blob = "\n".join(commands)
 
     for filename, blurb in SUBSTRATE.items():
-        out.tools.append(ToolUse(name=filename, blurb=blurb, invocations=blob.count(filename),
-                                 granted=True, invocable=True))
+        out.tools.append(
+            ToolUse(name=filename, blurb=blurb, invocations=blob.count(filename), granted=True, invocable=True)
+        )
     for name in granted:
         spec = registry.get(name)
         blurb = (getattr(spec, "blurb", "") or "").strip()
         names = _stage_names(spec)
         count = sum(blob.count(n) for n in names)
-        out.tools.append(ToolUse(name=name, blurb=blurb, invocations=count, granted=True,
-                                 invocable=bool(names)))
+        out.tools.append(ToolUse(name=name, blurb=blurb, invocations=count, granted=True, invocable=bool(names)))
 
     if not spanset.spans:
-        out.availability.set("phase1_tools", unavailable(
-            spanset.availability.get("spans").reason
-            or "this run has no tool spans, so nothing can be said about what it invoked"))
+        out.availability.set(
+            "phase1_tools",
+            unavailable(
+                spanset.availability.get("spans").reason
+                or "this run has no tool spans, so nothing can be said about what it invoked"
+            ),
+        )
     else:
-        out.availability.set("phase1_tools", derived(
-            "counted by matching staged tool filenames in the command text of this run's own spans; "
-            "a LOWER BOUND, because a tool imported inside a script the agent wrote never appears on "
-            "a command line", source=spanset.source))
+        out.availability.set(
+            "phase1_tools",
+            derived(
+                "counted by matching staged tool filenames in the command text of this run's own spans; "
+                "a LOWER BOUND, because a tool imported inside a script the agent wrote never appears on "
+                "a command line",
+                source=spanset.source,
+            ),
+        )
     return out

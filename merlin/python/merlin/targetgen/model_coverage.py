@@ -27,6 +27,7 @@ becomes a lie. Provenance tags are used when present but never trusted to be pre
 leave a large fraction of regions untagged, and tags disagree with the IR often enough that they are a
 hint, not an authority (structural evidence wins where both exist).
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -40,21 +41,35 @@ from merlin.targetgen.eligibility import RegionDescriptor, capability_map_for_ta
 #: the descriptor carries an honest "unknown dtype" rather than a guessed width (a wrong dtype silently
 #: changes an eligibility verdict, so guessing here would fabricate coverage).
 _ELEM_DTYPE: dict[str, str] = {
-    "f32": "fp32", "f16": "fp16", "bf16": "bf16", "i8": "int8", "i4": "int4",
+    "f32": "fp32",
+    "f16": "fp16",
+    "bf16": "bf16",
+    "i8": "int8",
+    "i4": "int4",
 }
 
 #: Weights-manifest dtype spelling (torch names) -> quant-format registry name. Unlisted spellings are
 #: DROPPED rather than mapped to a nearby width: a wrong precision silently flips an eligibility verdict.
 _MANIFEST_DTYPE: dict[str, str] = {
-    "float32": "fp32", "float16": "fp16", "bfloat16": "bf16",
-    "int8": "int8", "int4": "int4",
-    "float8_e4m3fn": "fp8_e4m3", "float8_e5m2": "fp8_e5m2",
+    "float32": "fp32",
+    "float16": "fp16",
+    "bfloat16": "bf16",
+    "int8": "int8",
+    "int4": "int4",
+    "float8_e4m3fn": "fp8_e4m3",
+    "float8_e5m2": "fp8_e5m2",
 }
 
 #: Storage width per format, used only to pick the quantized payload out of a parametrization that also
 #: carries its fp32 scale. Narrowest wins, so the metadata never masks the quantization.
 _FORMAT_BITS: dict[str, int] = {
-    "int4": 4, "fp8_e4m3": 8, "fp8_e5m2": 8, "int8": 8, "fp16": 16, "bf16": 16, "fp32": 32,
+    "int4": 4,
+    "fp8_e4m3": 8,
+    "fp8_e5m2": 8,
+    "int8": 8,
+    "fp16": 16,
+    "bf16": 16,
+    "fp32": 32,
 }
 
 
@@ -109,16 +124,20 @@ class CoverageReport:
 
     def to_dict(self) -> dict:
         return {
-            "model": self.model, "target": self.target, "n_regions": self.n_regions,
+            "model": self.model,
+            "target": self.target,
+            "n_regions": self.n_regions,
             "family_supported": self.family_supported,
             "family_unsupported": self.family_unsupported,
             "unclassified": self.unclassified,
             "family_fraction_of_classified": round(self.family_fraction, 4),
             "classified_fraction": round(self.classified_fraction, 4),
             "precision_known": self.precision_known,
-            "dtype_ok": self.dtype_ok, "dtype_blocked": self.dtype_blocked,
-            "precision_fraction_of_judged": (None if self.precision_fraction is None
-                                             else round(self.precision_fraction, 4)),
+            "dtype_ok": self.dtype_ok,
+            "dtype_blocked": self.dtype_blocked,
+            "precision_fraction_of_judged": (
+                None if self.precision_fraction is None else round(self.precision_fraction, 4)
+            ),
             "by_family": dict(self.by_family.most_common()),
             "by_op": dict(self.by_op.most_common()),
             "unclassified_ops": dict(self.unclassified_ops.most_common()),
@@ -262,8 +281,19 @@ def regions_from_module(module, *, precisions: dict[str, str] | None = None) -> 
         # None and reported it as "the capture does not present one" -- a declared-and-unfilled field is
         # indistinguishable downstream from a measured absence.
         m, k, n, rank = extents.get(id(op), (None, None, None, None))
-        out.append(RegionDescriptor(source=short, op=short, family=family, in_dtype=precision,
-                                    m=m, k=k, n=n, rank=rank, config=_declared_config(op)))
+        out.append(
+            RegionDescriptor(
+                source=short,
+                op=short,
+                family=family,
+                in_dtype=precision,
+                m=m,
+                k=k,
+                n=n,
+                rank=rank,
+                config=_declared_config(op),
+            )
+        )
     return tuple(out)
 
 
@@ -316,7 +346,6 @@ def _declared_config(op) -> dict:
     return out
 
 
-
 def region_ops(module) -> tuple:
     """The linalg ops :func:`regions_from_module` describes, in the SAME order.
 
@@ -327,8 +356,8 @@ def region_ops(module) -> tuple:
     """
     return tuple(op for op in module.walk() if _is_region_op(op))
 
-def coverage_for(regions: tuple[RegionDescriptor, ...], target: str, *,
-                 model: str = "") -> CoverageReport:
+
+def coverage_for(regions: tuple[RegionDescriptor, ...], target: str, *, model: str = "") -> CoverageReport:
     """Ask ``target``'s capability contract about each region. Pure accounting — no lowering is attempted,
     so this is the CEILING a submission for this target could reach, not what any submission does reach."""
     cap_map = capability_map_for_target(target)
@@ -380,8 +409,14 @@ def route_model(regions: tuple[RegionDescriptor, ...], target: str) -> dict:
         if region.resolved_family() is None:
             unnamed += 1
             continue
-        demands.append(OpDemand(op=region.op or "", in_fmt=region.in_dtype or "",
-                                weight_fmt=region.weight_dtype, site=region.source or ""))
+        demands.append(
+            OpDemand(
+                op=region.op or "",
+                in_fmt=region.in_dtype or "",
+                weight_fmt=region.weight_dtype,
+                site=region.source or "",
+            )
+        )
     plan = route_plan(demands, target)
     return {
         "target": target,

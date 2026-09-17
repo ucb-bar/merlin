@@ -15,6 +15,7 @@ which backend provides the codegen callbacks, NOT what the IR means — TTIR is 
 pre-scheduling, and carries no target dialect. ``test_ttir_is_independent_of_the_nominal_backend``
 holds that claim to account rather than trusting it.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -85,7 +86,8 @@ def make_ttir(spec: TritonKernelSpec) -> TTIRModule:
     if not hasattr(fn, "cache_key"):
         raise TritonFrontendError(
             f"{spec.name!r} is not a @triton.jit function (no cache_key). Note that triton reads the "
-            "decorated function's SOURCE, so it must be defined in a real .py file, not exec'd.")
+            "decorated function's SOURCE, so it must be defined in a real .py file, not exec'd."
+        )
 
     target = GPUTarget(_NOMINAL_BACKEND, _NOMINAL_ARCH, _NOMINAL_WARP_SIZE)
     backend = make_backend(target)
@@ -96,8 +98,9 @@ def make_ttir(spec: TritonKernelSpec) -> TTIRModule:
 
     try:
         src = ASTSource(fn=fn, signature=_signature(spec), constexprs=dict(spec.constexprs))
-        module = src.make_ir(target, options, backend.get_codegen_implementation(options),
-                             backend.get_module_map(), context)
+        module = src.make_ir(
+            target, options, backend.get_codegen_implementation(options), backend.get_module_map(), context
+        )
     except Exception as exc:  # noqa: BLE001 — re-raised with the kernel named
         raise TritonFrontendError(f"triton could not translate kernel {spec.name!r}: {exc}") from exc
 
@@ -111,8 +114,12 @@ def make_ttir(spec: TritonKernelSpec) -> TTIRModule:
         ops=tuple(sorted(set(ops))),
         digest=hashlib.sha256(text.encode("utf-8")).hexdigest()[:16],
         triton_version=probe.installed or "unknown",
-        provenance={"nominal_backend": _NOMINAL_BACKEND, "nominal_arch": _NOMINAL_ARCH,
-                    "warp_size": _NOMINAL_WARP_SIZE, "constexprs": dict(spec.constexprs)},
+        provenance={
+            "nominal_backend": _NOMINAL_BACKEND,
+            "nominal_arch": _NOMINAL_ARCH,
+            "warp_size": _NOMINAL_WARP_SIZE,
+            "constexprs": dict(spec.constexprs),
+        },
     )
 
 
@@ -147,7 +154,7 @@ def tensor_shape(type_text: str) -> tuple[int, ...]:
     text = str(type_text)
     if not text.startswith("tensor<") or not text.endswith(">"):
         return ()
-    dims = text[len("tensor<"):-1].split("x")[:-1]
+    dims = text[len("tensor<") : -1].split("x")[:-1]
     try:
         return tuple(int(d) for d in dims)
     except ValueError:
@@ -171,7 +178,7 @@ def _parse_splat_literal(attr_text: str, type_text: str) -> int | float | bool:
     """
     body = attr_text.strip()
     if body.startswith("dense<") and body.endswith(">"):
-        body = body[len("dense<"):-1].strip()
+        body = body[len("dense<") : -1].strip()
         if body.startswith("["):
             raise TritonFrontendError(f"non-splat constant {attr_text!r} is not supported")
     if body in ("true", "false"):
@@ -207,14 +214,15 @@ def constant_table(ttir: TTIRModule) -> dict[int, int | float | bool]:
             continue
         # `dense<0> : tensor<4xi32>` carries its type; `true` does not, because MLIR prints a
         # boolean constant bare. An absent type is recorded as None rather than mis-split.
-        remainder = rhs[len("arith.constant "):]
+        remainder = rhs[len("arith.constant ") :]
         attr_text, sep, type_text = remainder.rpartition(" : ")
         printed.append((attr_text, type_text) if sep else (remainder, None))
 
     if len(printed) != len(walked):
         raise TritonFrontendError(
             f"{len(walked)} arith.constant op(s) in the walked IR but {len(printed)} in the printed "
-            "IR — the two renderings disagree, so constants cannot be read reliably")
+            "IR — the two renderings disagree, so constants cannot be read reliably"
+        )
 
     table: dict[int, int | float | bool] = {}
     for op, (attr_text, type_text) in zip(walked, printed):
@@ -222,7 +230,8 @@ def constant_table(ttir: TTIRModule) -> dict[int, int | float | bool]:
         if type_text is not None and str(result.get_type()) != type_text.strip():
             raise TritonFrontendError(
                 f"constant type mismatch between walked ({result.get_type()}) and printed "
-                f"({type_text.strip()}) IR — the two renderings are not in the same order")
+                f"({type_text.strip()}) IR — the two renderings are not in the same order"
+            )
         value = _parse_splat_literal(attr_text, type_text)
         direct = op.get_int_attr("value")
         # A one-bit `true` reads back as -1 through the integer accessor (all bits set), so booleans
@@ -230,7 +239,6 @@ def constant_table(ttir: TTIRModule) -> dict[int, int | float | bool]:
         if isinstance(value, bool) and direct is not None:
             direct = direct != 0
         if direct is not None and direct != value:
-            raise TritonFrontendError(
-                f"constant value mismatch: walked IR says {direct}, printed IR says {value}")
+            raise TritonFrontendError(f"constant value mismatch: walked IR says {direct}, printed IR says {value}")
         table[result.id()] = value
     return table

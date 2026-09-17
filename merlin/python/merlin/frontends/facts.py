@@ -10,6 +10,7 @@ pattern, with real layer shapes.
 (M, K, N); :func:`record_dse` measures residency variants and emits `dse` IR + a
 ``dse_result.yaml``-shaped dict.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -29,11 +30,13 @@ def dtype_bytes(dtype: str) -> int:
     if dtype in DTYPE_BYTES:
         return DTYPE_BYTES[dtype]
     from merlin.common import quant_formats
+
     if quant_formats.has(dtype):
-        return (quant_formats.get(dtype).element_bits + 7) // 8   # ceil(bits/8)
+        return (quant_formats.get(dtype).element_bits + 7) // 8  # ceil(bits/8)
     raise ValueError(
         f"unknown dtype {dtype!r}: neither a known scalar type ({sorted(DTYPE_BYTES)}) nor a registered "
-        f"quant format ({quant_formats.names()}); cannot size its element in bytes")
+        f"quant format ({quant_formats.names()}); cannot size its element in bytes"
+    )
 
 
 @dataclass
@@ -46,12 +49,11 @@ class WeightReuseFact:
     dtype: str
     nbytes: int
     uses_per_invocation: int
-    reused_across_invocations: bool   # denoise loop: weights live across steps
+    reused_across_invocations: bool  # denoise loop: weights live across steps
     gemm_shapes: list[tuple[int, int, int]]
 
 
-def lift_weight_reuse(inventory: list[MatmulRecord],
-                      invocations: int = 10) -> list[WeightReuseFact]:
+def lift_weight_reuse(inventory: list[MatmulRecord], invocations: int = 10) -> list[WeightReuseFact]:
     """Group matmuls by resolved weight and lift immutability/reuse facts."""
     by_weight: dict[int, list[MatmulRecord]] = {}
     for rec in inventory:
@@ -63,32 +65,31 @@ def lift_weight_reuse(inventory: list[MatmulRecord],
         elems = 1
         for d in r0.rhs_shape:
             elems *= d
-        facts.append(WeightReuseFact(
-            weight_name=r0.weight_name or f"arg{idx}",
-            weight_arg_index=idx,
-            shape=r0.rhs_shape,
-            dtype=r0.dtype,
-            nbytes=elems * dtype_bytes(r0.dtype),
-            uses_per_invocation=len(recs),
-            reused_across_invocations=invocations > 1,
-            gemm_shapes=[(r.m, r.k, r.n) for r in recs
-                         if r.m is not None],
-        ))
+        facts.append(
+            WeightReuseFact(
+                weight_name=r0.weight_name or f"arg{idx}",
+                weight_arg_index=idx,
+                shape=r0.rhs_shape,
+                dtype=r0.dtype,
+                nbytes=elems * dtype_bytes(r0.dtype),
+                uses_per_invocation=len(recs),
+                reused_across_invocations=invocations > 1,
+                gemm_shapes=[(r.m, r.k, r.n) for r in recs if r.m is not None],
+            )
+        )
     return facts
 
 
-def select_gemm(inventory: list[MatmulRecord],
-                max_macs: int | None = None) -> MatmulRecord:
+def select_gemm(inventory: list[MatmulRecord], max_macs: int | None = None) -> MatmulRecord:
     """A representative 2-D weight GEMM (smallest that fits the MAC budget)."""
-    candidates = [r for r in inventory
-                  if r.m is not None and r.weight_arg_index is not None]
+    candidates = [r for r in inventory if r.m is not None and r.weight_arg_index is not None]
     if not candidates:
         raise ValueError("no 2-D weight matmuls in the inventory")
     candidates.sort(key=lambda r: r.m * r.k * r.n)
     if max_macs is not None:
         fitting = [r for r in candidates if r.m * r.k * r.n <= max_macs]
         if fitting:
-            return fitting[-1]   # largest that fits the budget
+            return fitting[-1]  # largest that fits the budget
     return candidates[0]
 
 
@@ -103,8 +104,7 @@ def drive_pipeline(record: MatmulRecord, *, target: str, reuse: int = 2):
     """
     from ..xdsl_dialects.lowering import lower_repeated_rhs_matmul
 
-    return lower_repeated_rhs_matmul(reuse=reuse, m=record.m, k=record.k, n=record.n,
-                                     target=target)
+    return lower_repeated_rhs_matmul(reuse=reuse, m=record.m, k=record.k, n=record.n, target=target)
 
 
 def baseline_variant(cb: dict[str, Any]) -> dict[str, Any]:
@@ -130,9 +130,12 @@ def baseline_variant(cb: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def record_dse(record: MatmulRecord, resident_cb: dict[str, Any],
-               spike_metrics: dict[str, Any] | None = None,
-               workload: str = "smolvla_gemm") -> dict[str, Any]:
+def record_dse(
+    record: MatmulRecord,
+    resident_cb: dict[str, Any],
+    spike_metrics: dict[str, Any] | None = None,
+    workload: str = "smolvla_gemm",
+) -> dict[str, Any]:
     """Measure residency variants on the engine (+ optional spike numbers) and emit
     `dse` IR plus a ``dse_result``-shaped dict. Returns
     {module, results, regime, candidate}."""
@@ -159,52 +162,72 @@ def record_dse(record: MatmulRecord, resident_cb: dict[str, Any],
 
     module = None
     if _common.HAS_XDSL:
-        from xdsl.ir import Block, Region
-        from xdsl.dialects.builtin import (ArrayAttr, DictionaryAttr, FunctionType,
-                                           IntegerAttr, ModuleOp, StringAttr)
+        from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, FunctionType, IntegerAttr, ModuleOp, StringAttr
         from xdsl.dialects.func import FuncOp, ReturnOp
+        from xdsl.ir import Block, Region
 
         blk = Block()
         cand = dse.CandidateOp(
             result_types=[dse.InterfaceCandidateType(StringAttr("resident_packed_tensor"))],
             properties={
                 "candidate_name": StringAttr("resident_packed_tensor"),
-                "interface_ops": ArrayAttr([StringAttr("interface.resident_pack"),
-                                            StringAttr("interface.matmul"),
-                                            StringAttr("interface.resident_evict")]),
+                "interface_ops": ArrayAttr(
+                    [
+                        StringAttr("interface.resident_pack"),
+                        StringAttr("interface.matmul"),
+                        StringAttr("interface.resident_evict"),
+                    ]
+                ),
                 "justified_by": ArrayAttr([StringAttr(workload)]),
-            })
+            },
+        )
         ops = [cand]
         for variant_name in ("baseline", "software_visible"):
             metrics = runs[variant_name]
-            ops.append(dse.ResultOp(operands=[cand.candidate], properties={
-                "variant": dse.VariantAttr(_common.Visibility(variant_name)),
-                "workload": StringAttr(workload),
-                "backend": StringAttr("simulator"),
-                "metrics": DictionaryAttr({
-                    name: IntegerAttr(int(metrics[name]), 64)
-                    for name in ("cycles", "bytes_moved", "bytes_read",
-                                 "resident_hits", "resident_misses")}),
-            }))
-        ops.append(dse.RegimeTagOp(operands=[cand.candidate], properties={
-            "regime": dse.RegimeAttr(dse.Regime(regime)),
-            "reason": StringAttr(
-                f"measured on {workload} "
-                f"({record.m}x{record.k}x{record.n}, weight={record.weight_name})")}))
+            ops.append(
+                dse.ResultOp(
+                    operands=[cand.candidate],
+                    properties={
+                        "variant": dse.VariantAttr(_common.Visibility(variant_name)),
+                        "workload": StringAttr(workload),
+                        "backend": StringAttr("simulator"),
+                        "metrics": DictionaryAttr(
+                            {
+                                name: IntegerAttr(int(metrics[name]), 64)
+                                for name in ("cycles", "bytes_moved", "bytes_read", "resident_hits", "resident_misses")
+                            }
+                        ),
+                    },
+                )
+            )
+        ops.append(
+            dse.RegimeTagOp(
+                operands=[cand.candidate],
+                properties={
+                    "regime": dse.RegimeAttr(dse.Regime(regime)),
+                    "reason": StringAttr(
+                        f"measured on {workload} ({record.m}x{record.k}x{record.n}, weight={record.weight_name})"
+                    ),
+                },
+            )
+        )
         ops.append(ReturnOp())
         blk.add_ops(ops)
-        module = ModuleOp([FuncOp("dse_records", FunctionType.from_lists([], []),
-                                  Region([blk]))])
+        module = ModuleOp([FuncOp("dse_records", FunctionType.from_lists([], []), Region([blk]))])
 
     results = {
         "candidate": "resident_packed_tensor",
         "workload": workload,
-        "gemm": {"m": record.m, "k": record.k, "n": record.n,
-                 "weight": record.weight_name, "capture_dtype": record.dtype},
-        "variants": {name: {k: v for k, v in metrics.items()
-                            if not isinstance(v, dict)}
-                     for name, metrics in runs.items()},
+        "gemm": {
+            "m": record.m,
+            "k": record.k,
+            "n": record.n,
+            "weight": record.weight_name,
+            "capture_dtype": record.dtype,
+        },
+        "variants": {
+            name: {k: v for k, v in metrics.items() if not isinstance(v, dict)} for name, metrics in runs.items()
+        },
         "regime": regime,
     }
-    return {"module": module, "results": results, "regime": regime,
-            "candidate": "resident_packed_tensor"}
+    return {"module": module, "results": results, "regime": regime, "candidate": "resident_packed_tensor"}

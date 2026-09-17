@@ -22,6 +22,7 @@ of seconds -- 0.01-0.5 s against 17-35 s on the same tier and engine. The median
 populations is a number about the pass rate, not about cost. ``status`` is therefore carried on every
 row so a caller can split, and :func:`summarize` refuses to pool them.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,8 +31,7 @@ from pathlib import Path
 from statistics import median
 from typing import Iterable, Sequence
 
-from merlin.agentreport.availability import (Availability, MEASURED, Status, measured,
-                                             unavailable)
+from merlin.agentreport.availability import MEASURED, Availability, Status, measured, unavailable
 
 #: Fractional disagreement allowed between ``adapter_wall_s`` and the sum of its parts before the
 #: wall figure is declared inconsistent (a prefetch wave makes it near-zero, not merely noisy).
@@ -104,11 +104,16 @@ def read_capsule_timings(grading_dir: Path) -> list[TierTiming]:
             timing = entry.get("timing")
             conc = entry.get("concurrency")
             row = TierTiming(
-                capsule=capsule, tier=str(tier), status=str(entry.get("status") or ""),
+                capsule=capsule,
+                tier=str(tier),
+                status=str(entry.get("status") or ""),
                 engine=str(entry.get("engine") or ""),
                 measured_now=entry.get("measured_now") if isinstance(entry.get("measured_now"), bool) else None,
-                workers=int(conc["workers"]) if isinstance(conc, dict) and isinstance(conc.get("workers"), int) else None,
-                reason=str(entry.get("reason") or "")[:300])
+                workers=int(conc["workers"])
+                if isinstance(conc, dict) and isinstance(conc.get("workers"), int)
+                else None,
+                reason=str(entry.get("reason") or "")[:300],
+            )
             if isinstance(timing, dict):
                 row.build_s = _num(timing.get("build_s"))
                 row.sim_active_s = _num(timing.get("sim_active_s"))
@@ -151,10 +156,18 @@ def summarize(rows: Sequence[TierTiming], *, tier: str, status: str) -> TierSumm
     out.n_no_timing = len(picked) - len(timed)
     out.wall_inconsistent = sum(1 for r in timed if r.wall_is_consistent is False)
     if not timed:
-        out.availability.set("tier_cost", unavailable(
-            f"{len(picked)} capsule(s) at {tier} with status {status!r}, none carrying a timing block"
-            + (f" ({out.n_carried} carried a verdict from an earlier grade, which records no duration"
-               f" because copying one forward would fabricate a measurement)" if out.n_carried else "")))
+        out.availability.set(
+            "tier_cost",
+            unavailable(
+                f"{len(picked)} capsule(s) at {tier} with status {status!r}, none carrying a timing block"
+                + (
+                    f" ({out.n_carried} carried a verdict from an earlier grade, which records no duration"
+                    f" because copying one forward would fabricate a measurement)"
+                    if out.n_carried
+                    else ""
+                )
+            ),
+        )
         return out
     values = sorted(r.active_s for r in timed if r.active_s is not None)
     out.median_active_s = median(values)
@@ -165,10 +178,11 @@ def summarize(rows: Sequence[TierTiming], *, tier: str, status: str) -> TierSumm
     if out.n_carried:
         note += f"; {out.n_carried} carried"
     if out.wall_inconsistent:
-        note += (f"; {out.wall_inconsistent} row(s) have an adapter wall that disagrees with their own "
-                 f"parts (a prefetched measurement), so only sim/build time is used")
-    out.availability.set("tier_cost", Status(MEASURED, reason=note,
-                                             source="capsule_result.timing"))
+        note += (
+            f"; {out.wall_inconsistent} row(s) have an adapter wall that disagrees with their own "
+            f"parts (a prefetched measurement), so only sim/build time is used"
+        )
+    out.availability.set("tier_cost", Status(MEASURED, reason=note, source="capsule_result.timing"))
     return out
 
 

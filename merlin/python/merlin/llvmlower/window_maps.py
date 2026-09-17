@@ -27,6 +27,7 @@ unbound, and which captured layer it came from, so the diagnosis costs one line 
 bisection. It is consulted only after a lowering has already failed, so it costs nothing on the
 path that works.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -37,10 +38,10 @@ from typing import Any
 class UnboundWindow:
     """One op whose iteration space is not recoverable from its indexing maps."""
 
-    op: str                                  # the op's real name, e.g. "linalg.generic"
-    dims: tuple[int, ...]                    # iteration dims that never appear as a bare dim
-    maps: tuple[str, ...]                    # the op's indexing maps, as printed
-    prov: dict[str, str] = field(default_factory=dict)   # prov.* tags of the offending op
+    op: str  # the op's real name, e.g. "linalg.generic"
+    dims: tuple[int, ...]  # iteration dims that never appear as a bare dim
+    maps: tuple[str, ...]  # the op's indexing maps, as printed
+    prov: dict[str, str] = field(default_factory=dict)  # prov.* tags of the offending op
 
     def describe(self) -> str:
         names = ", ".join(f"d{d}" for d in self.dims)
@@ -110,10 +111,8 @@ def unbound_windows(src: Any) -> list[UnboundWindow]:
         if not dims:
             continue
         attrs = getattr(op, "attributes", {}) or {}
-        prov = {k.split(".", 1)[1]: getattr(attrs[k], "data", str(attrs[k]))
-                for k in _PROV_KEYS if k in attrs}
-        found.append(UnboundWindow(op=op_name(op), dims=dims,
-                                   maps=tuple(str(m) for m in maps), prov=prov))
+        prov = {k.split(".", 1)[1]: getattr(attrs[k], "data", str(attrs[k])) for k in _PROV_KEYS if k in attrs}
+        found.append(UnboundWindow(op=op_name(op), dims=dims, maps=tuple(str(m) for m in maps), prov=prov))
     return found
 
 
@@ -125,13 +124,13 @@ def explain(src: Any) -> str | None:
     """
     try:
         found = unbound_windows(src)
-    except Exception:                       # noqa: BLE001 -- a diagnosis must never mask the real error
+    except Exception:  # noqa: BLE001 -- a diagnosis must never mask the real error
         return None
     if not found:
         return None
     lines = [
         f"{len(found)} op(s) have an iteration space their indexing maps do not bind, which MLIR "
-        "rejects when it parses the module (\"invalid indexing maps are non-invertible\"):",
+        'rejects when it parses the module ("invalid indexing maps are non-invertible"):',
         *(w.describe() for w in found),
         "",
         "A dim used only inside a compound result (a strided window read such as `d2 * 2 + d4`) "

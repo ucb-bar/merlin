@@ -28,6 +28,7 @@ what this configuration DID emit. Those differ — the same generator elaborates
 build from one source tree — and a capability read off the source rather than the elaboration is the
 over-declaration this repo has already shipped once.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -76,8 +77,13 @@ class PortField:
         return "ready" in self.leaves and "valid" in self.leaves
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "leaves": list(self.leaves), "direction": self.direction,
-                "port": self.port, "decoupled": self.is_decoupled()}
+        return {
+            "name": self.name,
+            "leaves": list(self.leaves),
+            "direction": self.direction,
+            "port": self.port,
+            "decoupled": self.is_decoupled(),
+        }
 
 
 @dataclass
@@ -85,7 +91,7 @@ class ModulePorts:
     """The port fields one module exposes."""
 
     module: str
-    fields: list = field(default_factory=list)          # [PortField]
+    fields: list = field(default_factory=list)  # [PortField]
 
     def field_named(self, name: str):
         return next((f for f in self.fields if f.name == name), None)
@@ -160,7 +166,7 @@ def _leaf_names(chunk: str) -> tuple[str, ...]:
                 break
     if close_i == -1:
         return ()
-    inner = rest[open_i + 1:close_i]
+    inner = rest[open_i + 1 : close_i]
     return tuple(n for n in (_field_name(c) for c in _split_top_level(inner)) if n)
 
 
@@ -221,8 +227,15 @@ def parse_ports(fir_text: str) -> dict:
             # A scalar port. Recorded as a field of its own so a bare `busy : UInt<1>` at the top level
             # of a module (rather than inside an `io` bundle) is still found.
             out.setdefault(current, ModulePorts(current)).fields.append(
-                PortField(name=port_name, leaves=(), direction=direction, port=port_name,
-                          type_text=_own_type(parts[1]), flipped=_is_flipped(parts[1])))
+                PortField(
+                    name=port_name,
+                    leaves=(),
+                    direction=direction,
+                    port=port_name,
+                    type_text=_own_type(parts[1]),
+                    flipped=_is_flipped(parts[1]),
+                )
+            )
             continue
         mp = out.setdefault(current, ModulePorts(current))
         _, _, rest = parts[1].partition(":")
@@ -236,14 +249,21 @@ def parse_ports(fir_text: str) -> dict:
                 if depth == 0:
                     close_i = i
                     break
-        inner = rest[open_i + 1:close_i] if close_i != -1 else ""
+        inner = rest[open_i + 1 : close_i] if close_i != -1 else ""
         for chunk in _split_top_level(inner):
             fname = _field_name(chunk)
             if fname:
-                mp.fields.append(PortField(name=fname, leaves=_leaf_names(chunk),
-                                           direction=direction, port=port_name,
-                                           types=_leaf_types(chunk), type_text=_own_type(chunk),
-                                           flipped=_is_flipped(chunk)))
+                mp.fields.append(
+                    PortField(
+                        name=fname,
+                        leaves=_leaf_names(chunk),
+                        direction=direction,
+                        port=port_name,
+                        types=_leaf_types(chunk),
+                        type_text=_own_type(chunk),
+                        flipped=_is_flipped(chunk),
+                    )
+                )
     return out
 
 
@@ -278,7 +298,7 @@ def _hw_port_entries(sig: str) -> list[str] | None:
                 break
     if close_i == -1:
         return None
-    body, out, cur, depth = sig[open_i + 1:close_i], [], [], 0
+    body, out, cur, depth = sig[open_i + 1 : close_i], [], [], 0
     for ch in body:
         if ch in pairs:
             depth += 1
@@ -332,7 +352,7 @@ def hw_module_ports(text: str) -> tuple[dict, dict[str, str]]:
         if at == -1:
             unreadable[line[:60]] = "the declaration names no symbol"
             continue
-        rest = line[at + 1:]
+        rest = line[at + 1 :]
         stop = min((i for i in (rest.find("("), rest.find(" ")) if i != -1), default=-1)
         module = rest[:stop] if stop != -1 else rest
         module = module.strip().strip('"')
@@ -362,13 +382,16 @@ def hw_module_ports(text: str) -> tuple[dict, dict[str, str]]:
                 if leaf is not None:
                     fields[seg].add(leaf)
         if refused:
-            unreadable[module] = (f"{refused} of {len(entries)} port entries could not be read; the "
-                                  f"module's field list is therefore incomplete")
+            unreadable[module] = (
+                f"{refused} of {len(entries)} port entries could not be read; the "
+                f"module's field list is therefore incomplete"
+            )
             continue
         mp = ModulePorts(module)
         for name, leaves in sorted(fields.items()):
-            mp.fields.append(PortField(name=name, leaves=tuple(sorted(leaves)),
-                                       direction=directions.get(name, ""), port=name))
+            mp.fields.append(
+                PortField(name=name, leaves=tuple(sorted(leaves)), direction=directions.get(name, ""), port=name)
+            )
         ports[module] = mp
     return ports, unreadable
 
@@ -397,8 +420,9 @@ def elaboration_kind(target: str) -> tuple[str, str]:
     """
     try:
         from merlin.targetgen.rtl.facts import load_facts
+
         doc = load_facts(target) or {}
-    except Exception as exc:                                   # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         return "none", f"facts unreadable: {type(exc).__name__}: {exc}"
     body = doc.get("facts") or {}
     # `facts.source` is a MAPPING carrying a `fir` key on one target and a bare STRING on another.
@@ -447,7 +471,7 @@ def hw_path_for(target: str) -> Path | None:
     for cand in absolute:
         if cand.is_file():
             return cand
-    for base in absolute:                          # a sibling of a named absolute path
+    for base in absolute:  # a sibling of a named absolute path
         for n in names:
             if n.startswith("/"):
                 continue
@@ -464,9 +488,11 @@ def _why_no_fir(target: str) -> str:
         return f"the elaborated FIRRTL this target's facts name ({detail}) could not be located"
     if kind == "hw_mlir":
         if hw_path_for(target) is None:
-            return (f"this target's elaboration is recorded as CIRCT hw dialect ({detail}) and that "
-                    f"file is not on this host")
-        return (f"this target's elaboration is CIRCT hw dialect ({detail}); it was read")
+            return (
+                f"this target's elaboration is recorded as CIRCT hw dialect ({detail}) and that "
+                f"file is not on this host"
+            )
+        return f"this target's elaboration is CIRCT hw dialect ({detail}); it was read"
     return f"no elaboration artifact is named by this target's facts ({detail})"
 
 
@@ -478,27 +504,30 @@ def fir_path_for(target: str) -> Path | None:
     """
     try:
         from merlin.targetgen.rtl.facts import load_facts
+
         body = (load_facts(target) or {}).get("facts") or {}
         name = ((body.get("source") or {}).get("fir") or "").strip()
         config = ((body.get("source") or {}).get("config") or "").strip()
-    except Exception:                                          # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None
     if not name:
         return None
     try:
         from merlin.targetgen.rtl.introspect import find_artifacts
+
         # the elaboration the SAME facts record they were read from (source.config); none -> skip this step
         found = find_artifacts(None, config) if config else None
         for cand in (found or {}).values() if isinstance(found, dict) else ():
             p = Path(str(cand))
             if p.name == name and p.is_file():
                 return p
-    except Exception:                                          # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pass
     try:
         from merlin.common.paths import _dotenv
+
         root = (_dotenv() or {}).get("MERLIN_CHIPYARD")
-    except Exception:                                          # noqa: BLE001
+    except Exception:  # noqa: BLE001
         root = None
     if not root:
         return None
@@ -529,29 +558,37 @@ def port_facts(target: str, *, fields=("completed", "busy"), fir=None) -> dict:
         if hw is not None:
             path, dialect = hw, "hw"
     if path is None or not path.is_file():
-        return {"status": "unavailable", "fir": str(path) if path else None,
-                "why": (f"{_why_no_fir(target)}; port facts are UNKNOWN, which is not the same as "
-                        f"the RTL exposing no such port"),
-                "fields": {}}
+        return {
+            "status": "unavailable",
+            "fir": str(path) if path else None,
+            "why": (
+                f"{_why_no_fir(target)}; port facts are UNKNOWN, which is not the same as the RTL exposing no such port"
+            ),
+            "fields": {},
+        }
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError as e:
-        return {"status": "unavailable", "fir": str(path),
-                "why": f"unreadable: {type(e).__name__}: {e}", "fields": {}}
+        return {"status": "unavailable", "fir": str(path), "why": f"unreadable: {type(e).__name__}: {e}", "fields": {}}
     if dialect == "hw":
         ports, unreadable = hw_module_ports(text)
         if unreadable:
             # A signature this could not read leaves the field list INCOMPLETE, and an incomplete list
             # answered as though complete is how "no completion port" gets concluded from a parse gap.
-            return {"status": "unavailable", "fir": str(path), "dialect": dialect,
-                    "why": (f"{len(unreadable)} module signature(s) could not be read "
-                            f"({sorted(unreadable)[:3]}), so the port list is incomplete and port "
-                            f"facts are UNKNOWN"),
-                    "fields": {}}
+            return {
+                "status": "unavailable",
+                "fir": str(path),
+                "dialect": dialect,
+                "why": (
+                    f"{len(unreadable)} module signature(s) could not be read "
+                    f"({sorted(unreadable)[:3]}), so the port list is incomplete and port "
+                    f"facts are UNKNOWN"
+                ),
+                "fields": {},
+            }
     else:
         ports = parse_ports(text)
-    out: dict = {"status": "derived", "fir": str(path), "dialect": dialect,
-                 "n_modules": len(ports), "fields": {}}
+    out: dict = {"status": "derived", "fir": str(path), "dialect": dialect, "n_modules": len(ports), "fields": {}}
     for name in fields:
         found = modules_exposing(ports, name)
         out["fields"][name] = {
@@ -586,7 +623,7 @@ def _leaf_types(chunk: str) -> dict[str, str]:
     if close_i == -1:
         return {}
     out: dict[str, str] = {}
-    for c in _split_top_level(rest[open_i + 1:close_i]):
+    for c in _split_top_level(rest[open_i + 1 : close_i]):
         name = _field_name(c)
         if name:
             out[name] = c.partition(":")[2].strip()
@@ -598,7 +635,7 @@ def _uint_width(type_text: str) -> int | None:
     t = type_text.strip()
     if not t.startswith("UInt<") or not t.endswith(">"):
         return None
-    inner = t[len("UInt<"):-1]
+    inner = t[len("UInt<") : -1]
     return int(inner) if inner.isdigit() else None
 
 
@@ -653,7 +690,7 @@ def _uint_literal(text: str) -> tuple[int, int | None] | None:
     t = text.strip()
     if not t.startswith("UInt"):
         return None
-    rest = t[len("UInt"):]
+    rest = t[len("UInt") :]
     width: int | None = None
     if rest.startswith("<"):
         close = rest.find(">")
@@ -663,7 +700,7 @@ def _uint_literal(text: str) -> tuple[int, int | None] | None:
         if not inner.isdigit():
             return None
         width = int(inner)
-        rest = rest[close + 1:]
+        rest = rest[close + 1 :]
     if not (rest.startswith("(") and rest.endswith(")")):
         return None
     value = _radix_int(rest[1:-1])
@@ -714,7 +751,7 @@ def _primop_calls(line: str, names: tuple[str, ...]) -> list[list[str]]:
                     break
         if close == -1:
             continue
-        out.append(_split_call_args(line[i + 1:close]))
+        out.append(_split_call_args(line[i + 1 : close]))
     return out
 
 
@@ -737,8 +774,7 @@ def module_bodies(fir_text: str, modules) -> dict[str, list[str]]:
     return out
 
 
-def pin_bank_count(lines, *, rows_per_bank: int, addr_bits: int,
-                   max_banks: int) -> tuple[int | None, str]:
+def pin_bank_count(lines, *, rows_per_bank: int, addr_bits: int, max_banks: int) -> tuple[int | None, str]:
     """``(banks, evidence)`` when the module's own statements pin the bank count, else ``(None, why)``.
 
     A banked store's port geometry BOUNDS the bank count (the index is ``n`` bits, so at most ``2**n``
@@ -778,13 +814,17 @@ def pin_bank_count(lines, *, rows_per_bank: int, addr_bits: int,
                     continue
                 candidates.setdefault(banks, line)
     if not candidates:
-        return None, ("no ordering comparison in this module tests an address against a whole multiple "
-                      f"of the {rows_per_bank} rows a bank holds that also fits the {addr_bits}-bit line "
-                      "address, so the bank count is BOUNDED by the index width and not pinned")
+        return None, (
+            "no ordering comparison in this module tests an address against a whole multiple "
+            f"of the {rows_per_bank} rows a bank holds that also fits the {addr_bits}-bit line "
+            "address, so the bank count is BOUNDED by the index width and not pinned"
+        )
     if len(candidates) > 1:
-        return None, (f"{len(candidates)} admissible line-address limits disagree on the bank count "
-                      f"({sorted(candidates)}), so which one bounds this store is UNKNOWN; the index "
-                      "width bound is reported instead of a guess")
+        return None, (
+            f"{len(candidates)} admissible line-address limits disagree on the bank count "
+            f"({sorted(candidates)}), so which one bounds this store is UNKNOWN; the index "
+            "width bound is reported instead of a guess"
+        )
     banks, line = next(iter(candidates.items()))
     return banks, line
 
@@ -827,9 +867,7 @@ def banked_store_ports(fir_text: str) -> list[dict]:
             for types in levels:
                 data = [(n, w) for n, t in types.items() if (w := _uint_width(t)) is not None]
                 masks = [(n, ev) for n, t in types.items() if (ev := _uint_vec(t)) is not None]
-                found = next((w for _, w in data
-                              for _, (mb, ml) in masks
-                              if mb == 1 and w == ml * 8), None)
+                found = next((w for _, w in data for _, (mb, ml) in masks if mb == 1 and w == ml * 8), None)
                 if found is None:
                     continue
                 addrs = sorted((w for n, w in data if w != found), reverse=True)
@@ -843,19 +881,27 @@ def banked_store_ports(fir_text: str) -> list[dict]:
             rows_per_bank = 1 << row_addr_bits
             max_banks = (1 << bank_id_bits) if bank_id_bits else 1
             rec = {
-                "module": module, "port": f.port, "field": f.name,
-                "row_bits": row_bits, "row_bytes": row_bits // 8,
-                "row_addr_bits": row_addr_bits, "rows_per_bank": rows_per_bank,
+                "module": module,
+                "port": f.port,
+                "field": f.name,
+                "row_bits": row_bits,
+                "row_bytes": row_bits // 8,
+                "row_addr_bits": row_addr_bits,
+                "rows_per_bank": rows_per_bank,
                 "bank_id_bits": bank_id_bits,
                 "line_addr_bits": row_addr_bits + bank_id_bits,
                 "max_banks": max_banks,
                 # The index width is a BOUND, and it travels whether or not the count gets pinned, so a
                 # reader of a pinned record can still see what the geometry alone allowed.
-                "banks_min": 1, "banks_max": max_banks,
-                "banks": None, "banks_exact": False, "total_rows": None, "bytes": None,
+                "banks_min": 1,
+                "banks_max": max_banks,
+                "banks": None,
+                "banks_exact": False,
+                "total_rows": None,
+                "bytes": None,
                 "evidence": f"{module}.{f.port}.{f.name}: {row_bits}-bit row with a {row_bits // 8}-lane "
-                            f"byte enable, {row_addr_bits}-bit row address"
-                            + (f", {bank_id_bits}-bit bank index" if bank_id_bits else ""),
+                f"byte enable, {row_addr_bits}-bit row address"
+                + (f", {bank_id_bits}-bit bank index" if bank_id_bits else ""),
             }
             out.append(rec)
     if not out:
@@ -865,21 +911,28 @@ def banked_store_ports(fir_text: str) -> list[dict]:
     # megabytes of statements and none of the rest can bound this store.
     bodies = module_bodies(fir_text, {r["module"] for r in out})
     for rec in out:
-        banks, why = pin_bank_count(bodies.get(rec["module"], ()),
-                                    rows_per_bank=rec["rows_per_bank"],
-                                    addr_bits=rec["line_addr_bits"],
-                                    max_banks=rec["max_banks"])
+        banks, why = pin_bank_count(
+            bodies.get(rec["module"], ()),
+            rows_per_bank=rec["rows_per_bank"],
+            addr_bits=rec["line_addr_bits"],
+            max_banks=rec["max_banks"],
+        )
         if banks is None:
             # NOT a guess and NOT a silent drop: the record keeps the bound it did establish and says
             # in its own words why the exact count is UNKNOWN.
             rec["banks_unknown"] = why
             continue
-        rec.update({
-            "banks": banks, "banks_exact": True,
-            "total_rows": banks * rec["rows_per_bank"],
-            "bytes": banks * rec["rows_per_bank"] * rec["row_bytes"],
-            "banks_evidence": why,
-        })
-        rec["evidence"] += (f"; the module range-checks a line address against {banks * rec['rows_per_bank']} "
-                            f"lines ({why}), which is {banks} banks of {rec['rows_per_bank']} rows")
+        rec.update(
+            {
+                "banks": banks,
+                "banks_exact": True,
+                "total_rows": banks * rec["rows_per_bank"],
+                "bytes": banks * rec["rows_per_bank"] * rec["row_bytes"],
+                "banks_evidence": why,
+            }
+        )
+        rec["evidence"] += (
+            f"; the module range-checks a line address against {banks * rec['rows_per_bank']} "
+            f"lines ({why}), which is {banks} banks of {rec['rows_per_bank']} rows"
+        )
     return out

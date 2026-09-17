@@ -37,14 +37,24 @@ The fit form and the size metric are ``cert_cost``'s, read from it rather than r
 cannot drift; :func:`fit_for` over a target whose whole history is one engine reproduces
 ``cert_cost.fit_for`` exactly, and a test pins that.
 """
+
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
 from pathlib import Path
 
-__all__ = ["UNATTRIBUTED", "Sample", "EngineFit", "engine_of", "samples_for", "fit_for",
-           "fits_for", "cohort_price", "affordability"]
+__all__ = [
+    "UNATTRIBUTED",
+    "Sample",
+    "EngineFit",
+    "engine_of",
+    "samples_for",
+    "fit_for",
+    "fits_for",
+    "cohort_price",
+    "affordability",
+]
 
 #: A cycle-accurate second whose engine the record does not state. Spelled with delimiters no engine
 #: token can produce, so it can never collide with a real engine name.
@@ -85,13 +95,18 @@ class EngineFit:
     sources: tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
-        return {"target": self.target, "engine": self.engine,
-                "intercept_s": round(self.intercept_s, 3),
-                "per_element_s": round(self.per_element_s, 6), "r2": round(self.r2, 4),
-                "n_samples": self.n_samples,
-                "measured_range_elements": [self.elements_min, self.elements_max],
-                "metric": self.metric, "n_sources": len(self.sources),
-                "attributed_by": self.attributed_by()}
+        return {
+            "target": self.target,
+            "engine": self.engine,
+            "intercept_s": round(self.intercept_s, 3),
+            "per_element_s": round(self.per_element_s, 6),
+            "r2": round(self.r2, 4),
+            "n_samples": self.n_samples,
+            "measured_range_elements": [self.elements_min, self.elements_max],
+            "metric": self.metric,
+            "n_sources": len(self.sources),
+            "attributed_by": self.attributed_by(),
+        }
 
     def attributed_by(self) -> dict:
         """``{record field -> n sources}``: whether this fit rests on stated engines or inferred ones."""
@@ -125,8 +140,7 @@ def engine_of(tier_record) -> "str | None":
 def _cycle_accurate(rec) -> bool:
     """Whether a tier record DECLARES itself cycle-accurate. ``derived_from_rtl`` is the older spelling
     of the same claim, accepted for the same reason ``cert_cost`` accepts it."""
-    return isinstance(rec, dict) and (rec.get("cycle_accurate") is True
-                                      or rec.get("derived_from_rtl") is True)
+    return isinstance(rec, dict) and (rec.get("cycle_accurate") is True or rec.get("derived_from_rtl") is True)
 
 
 def _seconds(rec) -> "float | None":
@@ -184,7 +198,7 @@ def _timing_by_engine(target: str, root=None, extra_roots=()) -> dict:
                 continue
             try:
                 doc = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):     # unreadable is not a measurement
+            except (OSError, json.JSONDecodeError):  # unreadable is not a measurement
                 continue
             block = doc.get("timing_diagnostic")
             if isinstance(block, dict) and block:
@@ -238,10 +252,14 @@ def samples_for(target: str, *, corpus_roots=None, timing_root=None, extra_timin
             unsized += 1
             continue
         by_engine.setdefault(engine, []).append(
-            Sample(capsule=capsule, elements=int(size), seconds=float(seconds),
-                   engine=engine, source=source))
-    return {"by_engine": {e: tuple(v) for e, v in sorted(by_engine.items())},
-            "unattributed": unattributed, "unsized": unsized, "metric": metric}
+            Sample(capsule=capsule, elements=int(size), seconds=float(seconds), engine=engine, source=source)
+        )
+    return {
+        "by_engine": {e: tuple(v) for e, v in sorted(by_engine.items())},
+        "unattributed": unattributed,
+        "unsized": unsized,
+        "metric": metric,
+    }
 
 
 def _least_squares(xs, ys) -> "tuple[float, float, float] | None":
@@ -254,21 +272,20 @@ def _least_squares(xs, ys) -> "tuple[float, float, float] | None":
     slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / denom
     intercept = mean_y - slope * mean_x
     ss_tot = sum((y - mean_y) ** 2 for y in ys)
-    r2 = (1.0 - sum((y - (intercept + slope * x)) ** 2 for x, y in zip(xs, ys)) / ss_tot
-          if ss_tot else 0.0)
+    r2 = 1.0 - sum((y - (intercept + slope * x)) ** 2 for x, y in zip(xs, ys)) / ss_tot if ss_tot else 0.0
     return intercept, slope, r2
 
 
-def fit_for(target: str, engine: str, *, corpus_roots=None, timing_root=None,
-            extra_timing_roots=()) -> "EngineFit | None":
+def fit_for(
+    target: str, engine: str, *, corpus_roots=None, timing_root=None, extra_timing_roots=()
+) -> "EngineFit | None":
     """The cost model for one ``(target, engine)``, or ``None`` when it has no measured history.
 
     ``None`` is a real answer and the caller must honour it. There is no fallback to the target's other
     engine, to another target, or to a module-level constant: the whole point of the engine axis is that
     one engine's seconds do not describe another's.
     """
-    got = samples_for(target, corpus_roots=corpus_roots, timing_root=timing_root,
-                      extra_timing_roots=extra_timing_roots)
+    got = samples_for(target, corpus_roots=corpus_roots, timing_root=timing_root, extra_timing_roots=extra_timing_roots)
     return _fit_rows(target, engine, got["by_engine"].get(str(engine)) or (), got["metric"])
 
 
@@ -280,15 +297,23 @@ def _fit_rows(target: str, engine: str, rows, metric: str) -> "EngineFit | None"
     xs = [s.elements for s in rows]
     ys = [s.seconds for s in rows]
     if len(xs) < CC._MIN_SAMPLES or len(set(xs)) < 2:
-        return None                                 # a line through one x tells you nothing
+        return None  # a line through one x tells you nothing
     fit = _least_squares(xs, ys)
     if fit is None:
         return None
     intercept, slope, r2 = fit
-    return EngineFit(target=str(target), engine=str(engine), intercept_s=intercept,
-                     per_element_s=slope, r2=r2, n_samples=len(xs),
-                     elements_min=min(xs), elements_max=max(xs), metric=str(metric),
-                     sources=tuple(sorted({s.source for s in rows})))
+    return EngineFit(
+        target=str(target),
+        engine=str(engine),
+        intercept_s=intercept,
+        per_element_s=slope,
+        r2=r2,
+        n_samples=len(xs),
+        elements_min=min(xs),
+        elements_max=max(xs),
+        metric=str(metric),
+        sources=tuple(sorted({s.source for s in rows})),
+    )
 
 
 def fits_for(target: str, **kw) -> dict:
@@ -302,12 +327,15 @@ def fits_for(target: str, **kw) -> dict:
     the second says nothing has ever run there.
     """
     got = samples_for(target, **kw)
-    engines = {engine: _fit_rows(target, engine, rows, got["metric"])
-               for engine, rows in got["by_engine"].items()}
-    return {"target": str(target), "engines": engines,
-            "sample_counts": {e: len(v) for e, v in got["by_engine"].items()},
-            "unattributed_samples": got["unattributed"], "unsized_samples": got["unsized"],
-            "metric": got["metric"]}
+    engines = {engine: _fit_rows(target, engine, rows, got["metric"]) for engine, rows in got["by_engine"].items()}
+    return {
+        "target": str(target),
+        "engines": engines,
+        "sample_counts": {e: len(v) for e, v in got["by_engine"].items()},
+        "unattributed_samples": got["unattributed"],
+        "unsized_samples": got["unsized"],
+        "metric": got["metric"],
+    }
 
 
 def cohort_price(fit: "EngineFit | None", sizes) -> dict:
@@ -320,9 +348,13 @@ def cohort_price(fit: "EngineFit | None", sizes) -> dict:
     there is no fit at all — the affordability of an unmeasured engine is unknown, not zero.
     """
     if fit is None:
-        return {"total_s": None, "priced": 0, "beyond_evidence": [],
-                "unpriceable": sorted(str(c) for c in sizes),
-                "basis": "no measured (target, engine) history"}
+        return {
+            "total_s": None,
+            "priced": 0,
+            "beyond_evidence": [],
+            "unpriceable": sorted(str(c) for c in sizes),
+            "basis": "no measured (target, engine) history",
+        }
     from merlin.targetgen import cert_cost as CC
 
     total, priced, beyond, unpriceable = 0.0, 0, [], []
@@ -337,11 +369,17 @@ def cohort_price(fit: "EngineFit | None", sizes) -> dict:
             continue
         total += fit.intercept_s + fit.per_element_s * float(n)
         priced += 1
-    return {"total_s": total, "priced": priced, "beyond_evidence": beyond,
-            "unpriceable": unpriceable,
-            "basis": (f"{fit.n_samples} measured {fit.engine} certification(s) of {fit.target}, "
-                      f"r2 {fit.r2:.2f}, over {fit.elements_min}..{fit.elements_max} "
-                      f"{fit.metric}")}
+    return {
+        "total_s": total,
+        "priced": priced,
+        "beyond_evidence": beyond,
+        "unpriceable": unpriceable,
+        "basis": (
+            f"{fit.n_samples} measured {fit.engine} certification(s) of {fit.target}, "
+            f"r2 {fit.r2:.2f}, over {fit.elements_min}..{fit.elements_max} "
+            f"{fit.metric}"
+        ),
+    }
 
 
 def affordability(target: str, *, budget_s: float, sizes=None, **kw) -> dict:
@@ -355,21 +393,37 @@ def affordability(target: str, *, budget_s: float, sizes=None, **kw) -> dict:
     from merlin.targetgen import cert_cost as CC
 
     got = fits_for(target, **kw)
-    out = {"target": str(target), "budget_s": float(budget_s), "engines": {},
-           "unattributed_samples": got["unattributed_samples"],
-           "unsized_samples": got["unsized_samples"], "metric": got["metric"]}
+    out = {
+        "target": str(target),
+        "budget_s": float(budget_s),
+        "engines": {},
+        "unattributed_samples": got["unattributed_samples"],
+        "unsized_samples": got["unsized_samples"],
+        "metric": got["metric"],
+    }
     for engine, fit in got["engines"].items():
-        row: dict = {"n_samples": got["sample_counts"].get(engine, 0),
-                     "fit": fit.to_dict() if fit is not None else None,
-                     "max_elements": None, "cohort": None}
+        row: dict = {
+            "n_samples": got["sample_counts"].get(engine, 0),
+            "fit": fit.to_dict() if fit is not None else None,
+            "max_elements": None,
+            "cohort": None,
+        }
         if fit is not None:
             # Reuse cert_cost's own inverse so the budget rule (floor exceeds budget -> None; clamp to
             # the measured range) exists in one place.
             row["max_elements"] = CC.max_elements_within(
-                CC.CostFit(target=fit.target, intercept_s=fit.intercept_s,
-                           per_element_s=fit.per_element_s, r2=fit.r2, n_samples=fit.n_samples,
-                           elements_min=fit.elements_min, elements_max=fit.elements_max,
-                           metric=fit.metric), budget_s)
+                CC.CostFit(
+                    target=fit.target,
+                    intercept_s=fit.intercept_s,
+                    per_element_s=fit.per_element_s,
+                    r2=fit.r2,
+                    n_samples=fit.n_samples,
+                    elements_min=fit.elements_min,
+                    elements_max=fit.elements_max,
+                    metric=fit.metric,
+                ),
+                budget_s,
+            )
         if sizes is not None:
             row["cohort"] = cohort_price(fit, sizes)
         out["engines"][engine] = row

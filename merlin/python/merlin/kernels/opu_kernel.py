@@ -29,6 +29,7 @@ Layout is a derived requirement rather than a choice: the hardware indexes both 
 expert kernel reads ``at[k*M + i]`` and ``b[k*N + j]``), so the left operand arrives transposed and the
 packing that produces it is a real cost term the routing decision has to price.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -49,13 +50,13 @@ class KernelSpec:
     integer registers.
     """
 
-    accumulate: str                # the encoding-table name of the accumulate
-    broadcast: str                 # the encoding-table name of the bias/zero broadcast
-    readout: str                   # the encoding-table name of the row readout
+    accumulate: str  # the encoding-table name of the accumulate
+    broadcast: str  # the encoding-table name of the bias/zero broadcast
+    readout: str  # the encoding-table name of the row readout
     matrix_reg: int = 1
-    row_vreg: int = 5              # holds the LHS row operand
-    col_vreg: int = 4              # holds the RHS column operand
-    out_vreg: int = 0              # readout destination, and the broadcast source
+    row_vreg: int = 5  # holds the LHS row operand
+    col_vreg: int = 4  # holds the RHS column operand
+    out_vreg: int = 0  # readout destination, and the broadcast source
     func_name: str = "opu_gemm_i8"
     #: A SECOND register for the left operand, rotated with ``row_vreg`` across reduction steps. None
     #: keeps the single-register form.
@@ -98,20 +99,24 @@ class KernelSpec:
         if int(self.out_vreg) % self.acc_lmul:
             raise ValueError(
                 f"out_vreg={self.out_vreg} must be a multiple of {self.acc_lmul} (the accumulator is a "
-                f"{self.acc_lmul}-register group, and a group must be aligned to its size)")
+                f"{self.acc_lmul}-register group, and a group must be aligned to its size)"
+            )
         span = range(int(self.out_vreg), int(self.out_vreg) + self.acc_lmul)
         pairs = [("row_vreg", self.row_vreg), ("col_vreg", self.col_vreg)]
         if self.row_vreg_alt is not None:
             pairs.append(("row_vreg_alt", self.row_vreg_alt))
             if int(self.row_vreg_alt) == int(self.row_vreg):
-                raise ValueError("row_vreg_alt must differ from row_vreg, or it rotates nothing and the "
-                                 "write still targets the register the accumulate is reading")
+                raise ValueError(
+                    "row_vreg_alt must differ from row_vreg, or it rotates nothing and the "
+                    "write still targets the register the accumulate is reading"
+                )
         for name, reg in pairs:
             if int(reg) in span:
                 raise ValueError(
                     f"{name}=v{reg} falls inside the accumulator group "
                     f"v{self.out_vreg}..v{self.out_vreg + self.acc_lmul - 1}; the operand loads would "
-                    "overwrite the accumulator between the broadcast and the readout")
+                    "overwrite the accumulator between the broadcast and the readout"
+                )
 
 
 def _x(n: int) -> str:
@@ -122,12 +127,12 @@ def _x(n: int) -> str:
 def _require(encodings: Mapping[str, Any], *names: str) -> None:
     missing = [n for n in names if n not in encodings]
     if missing:
-        raise ValueError(f"the derived encoding table is missing {missing}; refusing to emit a kernel "
-                         "with a guessed instruction")
+        raise ValueError(
+            f"the derived encoding table is missing {missing}; refusing to emit a kernel with a guessed instruction"
+        )
 
 
-def emit_microkernel(encodings: Mapping[str, Any], spec: KernelSpec, *,
-                     derivation_ok: bool = True) -> str:
+def emit_microkernel(encodings: Mapping[str, Any], spec: KernelSpec, *, derivation_ok: bool = True) -> str:
     """The C source for one tile's worth of GEMM on the extension.
 
     ``encodings`` is :attr:`targetgen.rtl.opu_isa.IsaDerivation.encodings`. ``derivation_ok`` is that
@@ -135,28 +140,31 @@ def emit_microkernel(encodings: Mapping[str, Any], spec: KernelSpec, *,
     bake in whichever side happened to be read, so this refuses rather than picking one.
     """
     if not derivation_ok:
-        raise ValueError("the encoding derivation did not agree with its cross-check source; refusing "
-                         "to emit a kernel from an unresolved encoding")
+        raise ValueError(
+            "the encoding derivation did not agree with its cross-check source; refusing "
+            "to emit a kernel from an unresolved encoding"
+        )
     _require(encodings, spec.accumulate, spec.broadcast, spec.readout)
-    acc, bcast, out = (encodings[spec.accumulate], encodings[spec.broadcast],
-                       encodings[spec.readout])
+    acc, bcast, out = (encodings[spec.accumulate], encodings[spec.broadcast], encodings[spec.readout])
     md, vr, vc, vo = _x(spec.matrix_reg), _x(spec.row_vreg), _x(spec.col_vreg), _x(spec.out_vreg)
 
     def _fused(row_reg: int) -> str:
         """One reduction step, with the left operand in ``row_reg``."""
-        return "\\n\\t".join([
-            # Zero every row lane at the maximum length, so lanes past the real panel hold 0 rather than
-            # whatever the register happened to contain.
-            "vsetvli t0, zero, e8, m1, ta, ma",
-            f"vmv.v.i v{row_reg}, 0",
-            # Row operand: `ml` lanes, tail UNDISTURBED so the zeros above survive.
-            "vsetvli zero, %[ml], e8, m1, tu, ma",
-            f"vle8.v v{row_reg}, (%[ap])",
-            # Column operand: `nl` lanes. This is also the length the accumulate runs at.
-            "vsetvli zero, %[nl], e8, m1, ta, ma",
-            f"vle8.v v{spec.col_vreg}, (%[bp])",
-            acc.insn_r(md, _x(row_reg), vc),
-        ])
+        return "\\n\\t".join(
+            [
+                # Zero every row lane at the maximum length, so lanes past the real panel hold 0 rather than
+                # whatever the register happened to contain.
+                "vsetvli t0, zero, e8, m1, ta, ma",
+                f"vmv.v.i v{row_reg}, 0",
+                # Row operand: `ml` lanes, tail UNDISTURBED so the zeros above survive.
+                "vsetvli zero, %[ml], e8, m1, tu, ma",
+                f"vle8.v v{row_reg}, (%[ap])",
+                # Column operand: `nl` lanes. This is also the length the accumulate runs at.
+                "vsetvli zero, %[nl], e8, m1, ta, ma",
+                f"vle8.v v{spec.col_vreg}, (%[bp])",
+                acc.insn_r(md, _x(row_reg), vc),
+            ]
+        )
 
     # Bound for the partial-N tail scratch below. It is a CAP, not an assumption: the emitted guard falls
     # back to the direct (unpadded) call when k exceeds it, so a deeper contraction still compiles and runs
@@ -254,7 +262,7 @@ static void {spec.func_name}_tile(int32_t *c, const int8_t *at, const int8_t *b,
    * accumulator width" but "vl must be able to span a tile row". */
   asm volatile("vsetvli zero, %[nl], e{spec.acc_bits}, m{spec.acc_lmul}, ta, ma" :: [nl] "r"(nl));
   for (size_t r = 0; r < ml; ++r) {{
-    asm volatile("{out.insn_r(vo, '%[r]', md)}\\n\\t"
+    asm volatile("{out.insn_r(vo, "%[r]", md)}\\n\\t"
                  "vse32.v v{spec.out_vreg}, (%[cp])"
                  :: [r] "r"(r), [cp] "r"(c + r * n)
                  : "memory");
@@ -463,8 +471,10 @@ def _reduction_loop(fused: str, fused_alt: "str | None", spec: KernelSpec) -> st
     The odd step is peeled rather than handled by a predicated tail, so the loop body stays exactly the
     fused block and nothing new appears between an accumulate and the next write.
     """
-    operands = ('                 :: [ml] "r"(ml), [nl] "r"(nl), [ap] "r"(ap), [bp] "r"(bp)\n'
-                '                 : "t0", "memory");')
+    operands = (
+        '                 :: [ml] "r"(ml), [nl] "r"(nl), [ap] "r"(ap), [bp] "r"(bp)\n'
+        '                 : "t0", "memory");'
+    )
     if fused_alt is None:
         return f"""  for (size_t kk = 0; kk < k; ++kk) {{{{
     const int8_t *ap = at + kk * m;
@@ -493,6 +503,7 @@ def _reduction_loop(fused: str, fused_alt: "str | None", spec: KernelSpec) -> st
     asm volatile("{fused}"
 {operands}
   }}}}"""
+
 
 def emit_reference_c(func_name: str = "opu_gemm_i8_ref") -> str:
     """A scalar C reference with the SAME signature, for a host-side or in-image comparison.

@@ -28,17 +28,19 @@ def decode_for_endpoint(raws, target: str, endpoint):
     """
     from merlin.kernels import endpoints as _ep
 
-    block = ((_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {})
+    block = (_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {}
     enc_block = block.get("encoding") or {}
     kind = str(enc_block.get("source") or "")
 
     if kind == "rtl_facts":
         from merlin.kernels.decode import rocc as _rocc
+
         return _rocc.decode_stream(raws, _rocc.funct_table_for(target), endpoint.roles_of)
 
     if kind == "isa_encoding":
         from merlin.kernels.decode import derived_isa as _isa
         from merlin.kernels.decode import insn_header as _ih
+
         enc = dict(_isa.encoding_for(target))
         width = enc_block.get("stream_width")
         if width:
@@ -49,15 +51,16 @@ def decode_for_endpoint(raws, target: str, endpoint):
             for e in _ep.endpoints_for(target)
             if e.name != getattr(endpoint, "name", "")
             for other in [((_ep._spec()["endpoints"].get(e.name) or {}).get("encoding") or {})]
-            if str(other.get("discriminator") or "") == "funct7" and other.get("opcode_space"))
-        return _isa.decode_stream(raws, enc, enc_block.get("spaces") or (),
-                                  endpoint.roles_of, custom, cede)
+            if str(other.get("discriminator") or "") == "funct7" and other.get("opcode_space")
+        )
+        return _isa.decode_stream(raws, enc, enc_block.get("spaces") or (), endpoint.roles_of, custom, cede)
 
     if kind == "mnemonic_grammar":
         # The vocabulary is DECLARED from the ISA grammar rather than derived from a decode table.
         # Omitting this branch is how the reference lane backend broke: its expert object lifted to
         # None and the mining run reported "divergences=0" -- agreement with an expert it never read.
         from merlin.kernels.decode import grammar as _gram
+
         return _gram.decode_stream(raws, endpoint)
 
     if kind == "funct_header":
@@ -69,16 +72,20 @@ def decode_for_endpoint(raws, target: str, endpoint):
         from merlin.kernels import asm_audit as _aa
         from merlin.kernels.decode import rocc as _rocc
         from merlin.targetgen.rtl.circt_introspect import _functs_from_headers
+
         try:
             root = _Path(_prov.verify(str(enc_block.get("pin"))).observed.path)
             by_code = _functs_from_headers([root / str(enc_block.get("path"))])
         except (KeyError, OSError, ValueError):
-            return []          # header unresolved: decode nothing rather than guess a table
+            return []  # header unresolved: decode nothing rather than guess a table
         opcode = (_aa._derived_opcodes(target) or {}).get(str(enc_block.get("opcode_space") or ""))
         if opcode is None:
-            return []          # refuse to guess an opcode value that is not in the derived table
-        table = {"custom_opcode": opcode, "legal_funct": sorted(by_code),
-                 "names": {str(k): v for k, v in by_code.items()}}
+            return []  # refuse to guess an opcode value that is not in the derived table
+        table = {
+            "custom_opcode": opcode,
+            "legal_funct": sorted(by_code),
+            "names": {str(k): v for k, v in by_code.items()},
+        }
         decoded = _rocc.decode_stream(raws, table, endpoint.roles_of)
         if str(enc_block.get("discriminator") or "") == "funct7":
             # Shares its opcode space with the target's SIMT surface, told apart by field: a command
@@ -93,11 +100,12 @@ def decode_for_endpoint(raws, target: str, endpoint):
     if kind == "matrix_units":
         from merlin.kernels import asm_audit as _aa
         from merlin.kernels.decode import opu as _opu
+
         encodings, _why = _aa._matrix_encodings(target, block)
         if not encodings:
             return []
         decoded = _opu.decode_stream(raws, encodings, endpoint.roles_of)
-        for d in decoded:   # this decoder spells it `from_extension`; consumers read `from_endpoint`
+        for d in decoded:  # this decoder spells it `from_extension`; consumers read `from_endpoint`
             object.__setattr__(d, "from_endpoint", d.from_extension)
         return decoded
 
@@ -112,7 +120,5 @@ def disasm_settings(target: str, endpoint) -> dict:
     """
     from merlin.kernels import endpoints as _ep
 
-    enc = (((_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {})
-           .get("encoding") or {})
-    return {"triple": str(enc.get("disasm_triple") or "riscv64"),
-            "mattr": enc.get("disasm_mattr")}
+    enc = ((_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {}).get("encoding") or {}
+    return {"triple": str(enc.get("disasm_triple") or "riscv64"), "mattr": enc.get("disasm_mattr")}

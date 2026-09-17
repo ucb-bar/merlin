@@ -9,6 +9,7 @@ compiled kernel with nothing to point at. So the version is exact-pinned and che
 The pin lives in exactly two places that a test keeps in agreement: :data:`PINNED_TRITON` here and
 the ``triton`` extra in ``pyproject.toml``. There is deliberately no third lock file restating it.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -27,16 +28,20 @@ class TritonToolchainError(RuntimeError):
 class Probe:
     """What is actually installed, and whether we are willing to use it."""
 
-    installed: str | None            # triton version found, or None if absent
+    installed: str | None  # triton version found, or None if absent
     pinned: str = PINNED_TRITON
     compatible: bool = False
     reason: str = ""
     notes: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
-        return {"triton": self.installed, "pinned": self.pinned,
-                "compatible": self.compatible, "reason": self.reason,
-                "notes": list(self.notes)}
+        return {
+            "triton": self.installed,
+            "pinned": self.pinned,
+            "compatible": self.compatible,
+            "reason": self.reason,
+            "notes": list(self.notes),
+        }
 
 
 def _installed_version() -> str | None:
@@ -80,18 +85,26 @@ def probe() -> Probe:
     """Report the toolchain state without raising — for CLIs, diagnostics and tests."""
     found = _installed_version()
     if found is None:
-        return Probe(installed=None, compatible=False,
-                     reason="triton is not installed (install the `triton` extra)")
+        return Probe(installed=None, compatible=False, reason="triton is not installed (install the `triton` extra)")
     notes: list[str] = []
     if not _native_library_present():
-        notes.append("triton._C.libtriton not importable — the install looks Python-only/stripped "
-                     "and cannot build TTIR")
+        notes.append(
+            "triton._C.libtriton not importable — the install looks Python-only/stripped and cannot build TTIR"
+        )
     if found != PINNED_TRITON:
-        return Probe(installed=found, compatible=False, notes=notes,
-                     reason=f"triton version mismatch: expected {PINNED_TRITON}, found {found}")
+        return Probe(
+            installed=found,
+            compatible=False,
+            notes=notes,
+            reason=f"triton version mismatch: expected {PINNED_TRITON}, found {found}",
+        )
     if notes:
-        return Probe(installed=found, compatible=False, notes=notes,
-                     reason="triton is present at the pinned version but is not a usable install")
+        return Probe(
+            installed=found,
+            compatible=False,
+            notes=notes,
+            reason="triton is present at the pinned version but is not a usable install",
+        )
     return Probe(installed=found, compatible=True, reason="", notes=notes)
 
 
@@ -108,5 +121,6 @@ def require() -> Probe:
             f"{p.reason}\n"
             f"  merlin.triton is pinned to triton=={PINNED_TRITON} because it uses triton's\n"
             f"  compiler-internal frontend (ASTSource/make_ir), which is not a stable API."
-            + (f"\n  {detail}" if detail else ""))
+            + (f"\n  {detail}" if detail else "")
+        )
     return p

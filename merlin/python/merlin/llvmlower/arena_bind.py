@@ -43,6 +43,7 @@ cannot read at all raises :class:`ArenaBindError` rather than emitting a partial
 Default OFF. ``lower_model`` calls this only when asked (``static_arena=True`` or
 ``MERLIN_STATIC_ARENA=1``), so an unflagged build is byte-identical to the frozen baseline.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -55,8 +56,7 @@ from ..xdsl_dialects.lowering.arena_plan import ARENA_ALIGN, _align_up, pack_dis
 ARENA_SYMBOL = "merlin_arena"
 
 #: LLVM identifier characters that may follow a ``%`` in an unquoted SSA name.
-_NAME_CHARS = frozenset(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.$-")
+_NAME_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.$-")
 
 #: Opcodes allowed to consume the RAW (unaligned) malloc pointer.
 #:
@@ -76,47 +76,153 @@ _ALLOWED_RAW_USES = ("ptrtoint", "insertvalue")
 #: Callees that neither free nor retain a pointer argument past the call. These are the LLVM
 #: intrinsics and the MLIR C-runner entry points the memref lowering emits; they are not facts about
 #: any target. An unknown callee is not assumed harmless -- it disables the descriptor relaxation.
-_NON_CAPTURING_CALLEES = frozenset({
-    "@free", "@malloc", "@memrefCopy",
-    "@llvm.memcpy.p0.p0.i64", "@llvm.memset.p0.i64", "@llvm.memmove.p0.p0.i64",
-    "@llvm.stacksave.p0", "@llvm.stackrestore.p0",
-})
+_NON_CAPTURING_CALLEES = frozenset(
+    {
+        "@free",
+        "@malloc",
+        "@memrefCopy",
+        "@llvm.memcpy.p0.p0.i64",
+        "@llvm.memset.p0.i64",
+        "@llvm.memmove.p0.p0.i64",
+        "@llvm.stacksave.p0",
+        "@llvm.stackrestore.p0",
+    }
+)
 
 #: Pure libm calls: value in, value out, no pointer argument. Listed by EXACT name on purpose --
 #: prefix matching would admit ``@sincosf`` under ``@sin`` and ``@frexpf`` under ``@f``, and both
 #: write through a pointer out-parameter, which is exactly the capture this check exists to catch.
-_PURE_LIBM_CALLEES = frozenset({
-    "@fabs", "@fabsf", "@sqrt", "@sqrtf", "@exp", "@expf", "@exp2", "@exp2f",
-    "@expm1", "@expm1f", "@log", "@logf", "@log2", "@log2f", "@log10", "@log10f",
-    "@log1p", "@log1pf", "@pow", "@powf", "@sin", "@sinf", "@cos", "@cosf",
-    "@tan", "@tanf", "@asin", "@asinf", "@acos", "@acosf", "@atan", "@atanf",
-    "@atan2", "@atan2f", "@sinh", "@sinhf", "@cosh", "@coshf", "@tanh", "@tanhf",
-    "@erf", "@erff", "@erfc", "@erfcf", "@cbrt", "@cbrtf", "@hypot", "@hypotf",
-    "@fmod", "@fmodf", "@remainder", "@remainderf", "@copysign", "@copysignf",
-    "@ceil", "@ceilf", "@floor", "@floorf", "@trunc", "@truncf", "@round", "@roundf",
-    "@roundeven", "@roundevenf", "@rint", "@rintf", "@nearbyint", "@nearbyintf",
-    "@fmax", "@fmaxf", "@fmin", "@fminf", "@fma", "@fmaf",
-})
+_PURE_LIBM_CALLEES = frozenset(
+    {
+        "@fabs",
+        "@fabsf",
+        "@sqrt",
+        "@sqrtf",
+        "@exp",
+        "@expf",
+        "@exp2",
+        "@exp2f",
+        "@expm1",
+        "@expm1f",
+        "@log",
+        "@logf",
+        "@log2",
+        "@log2f",
+        "@log10",
+        "@log10f",
+        "@log1p",
+        "@log1pf",
+        "@pow",
+        "@powf",
+        "@sin",
+        "@sinf",
+        "@cos",
+        "@cosf",
+        "@tan",
+        "@tanf",
+        "@asin",
+        "@asinf",
+        "@acos",
+        "@acosf",
+        "@atan",
+        "@atanf",
+        "@atan2",
+        "@atan2f",
+        "@sinh",
+        "@sinhf",
+        "@cosh",
+        "@coshf",
+        "@tanh",
+        "@tanhf",
+        "@erf",
+        "@erff",
+        "@erfc",
+        "@erfcf",
+        "@cbrt",
+        "@cbrtf",
+        "@hypot",
+        "@hypotf",
+        "@fmod",
+        "@fmodf",
+        "@remainder",
+        "@remainderf",
+        "@copysign",
+        "@copysignf",
+        "@ceil",
+        "@ceilf",
+        "@floor",
+        "@floorf",
+        "@trunc",
+        "@truncf",
+        "@round",
+        "@roundf",
+        "@roundeven",
+        "@roundevenf",
+        "@rint",
+        "@rintf",
+        "@nearbyint",
+        "@nearbyintf",
+        "@fmax",
+        "@fmaxf",
+        "@fmin",
+        "@fminf",
+        "@fma",
+        "@fmaf",
+    }
+)
 
 #: ``@llvm.*`` intrinsic families that compute on values only. Matched by prefix because each family
 #: is spelled with its overload suffix (``@llvm.maximum.f32``), and every member of a listed family
 #: has the same value-only signature.
-_PURE_CALLEE_PREFIXES = ("@llvm.fabs.", "@llvm.sqrt.", "@llvm.exp.", "@llvm.exp2.", "@llvm.log.",
-                         "@llvm.log2.", "@llvm.log10.", "@llvm.pow.", "@llvm.powi.",
-                         "@llvm.sin.", "@llvm.cos.", "@llvm.tan.", "@llvm.fma.",
-                         "@llvm.fmuladd.", "@llvm.maximum.", "@llvm.minimum.", "@llvm.maxnum.",
-                         "@llvm.minnum.", "@llvm.smax.", "@llvm.smin.", "@llvm.umax.",
-                         "@llvm.umin.", "@llvm.abs.", "@llvm.floor.", "@llvm.ceil.",
-                         "@llvm.trunc.", "@llvm.rint.", "@llvm.nearbyint.", "@llvm.round.",
-                         "@llvm.roundeven.", "@llvm.copysign.", "@llvm.fshl.", "@llvm.fshr.",
-                         "@llvm.ctlz.", "@llvm.cttz.", "@llvm.ctpop.", "@llvm.bswap.",
-                         "@llvm.sadd.sat.", "@llvm.ssub.sat.", "@llvm.uadd.sat.",
-                         "@llvm.usub.sat.", "@llvm.assume", "@llvm.expect.")
+_PURE_CALLEE_PREFIXES = (
+    "@llvm.fabs.",
+    "@llvm.sqrt.",
+    "@llvm.exp.",
+    "@llvm.exp2.",
+    "@llvm.log.",
+    "@llvm.log2.",
+    "@llvm.log10.",
+    "@llvm.pow.",
+    "@llvm.powi.",
+    "@llvm.sin.",
+    "@llvm.cos.",
+    "@llvm.tan.",
+    "@llvm.fma.",
+    "@llvm.fmuladd.",
+    "@llvm.maximum.",
+    "@llvm.minimum.",
+    "@llvm.maxnum.",
+    "@llvm.minnum.",
+    "@llvm.smax.",
+    "@llvm.smin.",
+    "@llvm.umax.",
+    "@llvm.umin.",
+    "@llvm.abs.",
+    "@llvm.floor.",
+    "@llvm.ceil.",
+    "@llvm.trunc.",
+    "@llvm.rint.",
+    "@llvm.nearbyint.",
+    "@llvm.round.",
+    "@llvm.roundeven.",
+    "@llvm.copysign.",
+    "@llvm.fshl.",
+    "@llvm.fshr.",
+    "@llvm.ctlz.",
+    "@llvm.cttz.",
+    "@llvm.ctpop.",
+    "@llvm.bswap.",
+    "@llvm.sadd.sat.",
+    "@llvm.ssub.sat.",
+    "@llvm.uadd.sat.",
+    "@llvm.usub.sat.",
+    "@llvm.assume",
+    "@llvm.expect.",
+)
 
 
 def _is_non_capturing(callee: str) -> bool:
-    return (callee in _NON_CAPTURING_CALLEES or callee in _PURE_LIBM_CALLEES
-            or callee.startswith(_PURE_CALLEE_PREFIXES))
+    return callee in _NON_CAPTURING_CALLEES or callee in _PURE_LIBM_CALLEES or callee.startswith(_PURE_CALLEE_PREFIXES)
 
 
 class ArenaBindError(RuntimeError):
@@ -132,17 +238,17 @@ class ArenaBindError(RuntimeError):
 @dataclass
 class _Block:
     label: str
-    insts: list[int] = field(default_factory=list)   # indices into the function's line list
+    insts: list[int] = field(default_factory=list)  # indices into the function's line list
     succs: list[str] = field(default_factory=list)
 
 
 @dataclass
 class _Alloc:
-    name: str                  # raw SSA name, e.g. "%555"
-    size: int                  # the constant byte count the malloc asks for
-    malloc_line: int           # index into the function's line list
-    malloc_block: int          # block index
-    malloc_pos: int            # position within the block
+    name: str  # raw SSA name, e.g. "%555"
+    size: int  # the constant byte count the malloc asks for
+    malloc_line: int  # index into the function's line list
+    malloc_block: int  # block index
+    malloc_pos: int  # position within the block
     free_line: int
     free_block: int
     free_pos: int
@@ -221,12 +327,11 @@ def _callees(lines: list[str], blocks: list["_Block"]) -> set[str]:
         for li in b.insts:
             inst = lines[li].strip()
             body = inst.partition(" = ")[2] or inst
-            if not body.startswith(("call ", "tail call ", "musttail call ", "notail call ",
-                                    "invoke ")):
+            if not body.startswith(("call ", "tail call ", "musttail call ", "notail call ", "invoke ")):
                 continue
             at = body.find("@")
             if at < 0:
-                out.add("<indirect>")           # a call through a value: never assumed harmless
+                out.add("<indirect>")  # a call through a value: never assumed harmless
                 continue
             end = at + 1
             while end < len(body) and body[end] in _NAME_CHARS:
@@ -267,8 +372,7 @@ def _blocks_of(lines: list[str], start: int, end: int) -> list[_Block]:
             continue
         head, sep, _ = line.partition(":")
         if not sep or not head:
-            raise ArenaBindError(f"line {i} in the function body is neither indented nor a label: "
-                                 f"{line!r}")
+            raise ArenaBindError(f"line {i} in the function body is neither indented nor a label: {line!r}")
         blocks.append(_Block(label="%" + head))
     for blk in blocks:
         if not blk.insts:
@@ -280,9 +384,11 @@ def _blocks_of(lines: list[str], start: int, end: int) -> list[_Block]:
             continue
         blk.succs = _label_targets(term)
         if not blk.succs:
-            raise ArenaBindError(f"block {blk.label} branches but no successor could be read from "
-                                 f"{term!r}; a CFG with a missing edge yields a dominance relation "
-                                 "that is wrong in the direction nothing checks")
+            raise ArenaBindError(
+                f"block {blk.label} branches but no successor could be read from "
+                f"{term!r}; a CFG with a missing edge yields a dominance relation "
+                "that is wrong in the direction nothing checks"
+            )
     return blocks
 
 
@@ -386,7 +492,7 @@ def _parse_malloc(inst: str) -> tuple[str, int] | None:
     try:
         size = int(arg.strip())
     except ValueError:
-        return None                      # a non-literal size: dynamic, refuse
+        return None  # a non-literal size: dynamic, refuse
     return lhs.strip(), size
 
 
@@ -421,7 +527,7 @@ def _window_blocks(a: "_Alloc", succs: list[list[int]]) -> set[int]:
             continue
         seen.add(blk)
         if blk == a.free_block:
-            continue                     # dead from here on: do not walk past the free
+            continue  # dead from here on: do not walk past the free
         stack.extend(succs[blk])
     return seen
 
@@ -446,8 +552,7 @@ def _store_destination(inst: str) -> str | None:
     return name if name.startswith("%") else None
 
 
-def _aggregate_escapes(raw: str, lines: list[str], blocks: list["_Block"],
-                       uses: dict[str, list[int]]) -> bool:
+def _aggregate_escapes(raw: str, lines: list[str], blocks: list["_Block"], uses: dict[str, list[int]]) -> bool:
     """Does the memref descriptor built around ``raw`` reach memory the caller can see?
 
     Admitting ``insertvalue`` on the raw pointer (see :data:`_ALLOWED_RAW_USES`) is only sound while
@@ -482,10 +587,10 @@ def _aggregate_escapes(raw: str, lines: list[str], blocks: list["_Block"],
                 continue
             dest = _store_destination(inst)
             if dest is None:
-                return True                  # some other consumer: not shown to be local
+                return True  # some other consumer: not shown to be local
             src = defs.get(dest)
             if src is None or not lines[src].strip().partition(" = ")[2].startswith("alloca "):
-                return True                  # stored through a pointer this function did not make
+                return True  # stored through a pointer this function did not make
     return False
 
 
@@ -500,13 +605,18 @@ class BindReport:
     symbol: str
 
     def to_dict(self) -> dict[str, Any]:
-        return {"arena_bytes": self.arena_bytes, "bound": self.bound, "refused": self.refused,
-                "refusals": dict(self.refusals), "naive_total_bytes": self.naive_total_bytes,
-                "reuse_factor": self.reuse_factor, "symbol": self.symbol}
+        return {
+            "arena_bytes": self.arena_bytes,
+            "bound": self.bound,
+            "refused": self.refused,
+            "refusals": dict(self.refusals),
+            "naive_total_bytes": self.naive_total_bytes,
+            "reuse_factor": self.reuse_factor,
+            "symbol": self.symbol,
+        }
 
 
-def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL,
-               entry: str = "forward") -> tuple[str, BindReport]:
+def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL, entry: str = "forward") -> tuple[str, BindReport]:
     """Rewrite the provable heap allocations of ``@entry`` into one arena. Returns ``(ll, report)``.
 
     With no bindable allocation the text is returned UNCHANGED (not merely equivalent), so a module
@@ -519,7 +629,8 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL,
         raise ArenaBindError(
             f"@{entry} does not return void ({define.split('@')[0].strip()!r}); a returned value "
             "could carry an arena pointer out of the call, past the point the plan says those bytes "
-            "belong to another buffer")
+            "belong to another buffer"
+        )
 
     blocks = _blocks_of(lines, start, end)
     by_label = {b.label: i for i, b in enumerate(blocks)}
@@ -544,7 +655,7 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL,
             line_block[li] = (bi, pos)
 
     # ---- collect candidates -----------------------------------------------------------------
-    mallocs: dict[str, tuple[int, int]] = {}        # name -> (line, size)
+    mallocs: dict[str, tuple[int, int]] = {}  # name -> (line, size)
     frees: dict[str, list[int]] = {}
     uses: dict[str, list[int]] = {}
     for bi, b in enumerate(blocks):
@@ -581,10 +692,12 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL,
             refuse("no_single_free" if not fl else "multiple_frees")
             continue
         fline = fl[0]
-        bad = [li for li in uses.get(name, [])
-               if li != fline
-               and not lines[li].strip().partition(" = ")[2].startswith(
-                   tuple(op + " " for op in allowed_uses))]
+        bad = [
+            li
+            for li in uses.get(name, [])
+            if li != fline
+            and not lines[li].strip().partition(" = ")[2].startswith(tuple(op + " " for op in allowed_uses))
+        ]
         if bad:
             refuse("raw_pointer_escapes")
             continue
@@ -596,13 +709,29 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL,
         if mb in cyclic or fb in cyclic:
             refuse("in_loop")
             continue
-        allocs.append(_Alloc(name=name, size=size, malloc_line=mline, malloc_block=mb,
-                             malloc_pos=mp, free_line=fline, free_block=fb, free_pos=fp))
+        allocs.append(
+            _Alloc(
+                name=name,
+                size=size,
+                malloc_line=mline,
+                malloc_block=mb,
+                malloc_pos=mp,
+                free_line=fline,
+                free_block=fb,
+                free_pos=fp,
+            )
+        )
 
     if not allocs:
-        return ll_text, BindReport(arena_bytes=0, bound=0, refused=sum(refusals.values()),
-                                   refusals=refusals, naive_total_bytes=0, reuse_factor=0.0,
-                                   symbol=symbol)
+        return ll_text, BindReport(
+            arena_bytes=0,
+            bound=0,
+            refused=sum(refusals.values()),
+            refusals=refusals,
+            naive_total_bytes=0,
+            reuse_factor=0.0,
+            symbol=symbol,
+        )
 
     reachable = _reachable(succs)
     kept = [a for a in allocs if a.malloc_block in reachable and a.free_block in reachable]
@@ -610,9 +739,15 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL,
         refuse("unreachable_block")
     allocs = kept
     if not allocs:
-        return ll_text, BindReport(arena_bytes=0, bound=0, refused=sum(refusals.values()),
-                                   refusals=refusals, naive_total_bytes=0, reuse_factor=0.0,
-                                   symbol=symbol)
+        return ll_text, BindReport(
+            arena_bytes=0,
+            bound=0,
+            refused=sum(refusals.values()),
+            refusals=refusals,
+            naive_total_bytes=0,
+            reuse_factor=0.0,
+            symbol=symbol,
+        )
 
     window = {a.name: _window_blocks(a, succs) for a in allocs}
 
@@ -634,15 +769,15 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL,
     # buffers are on mutually exclusive arms and can never coexist.
     conflicts: dict[str, set[str]] = {a.name: set() for a in allocs}
     for i, a in enumerate(allocs):
-        for b in allocs[i + 1:]:
-            if (in_window(a, window[a.name], b.malloc_block, b.malloc_pos)
-                    or in_window(b, window[b.name], a.malloc_block, a.malloc_pos)):
+        for b in allocs[i + 1 :]:
+            if in_window(a, window[a.name], b.malloc_block, b.malloc_pos) or in_window(
+                b, window[b.name], a.malloc_block, a.malloc_pos
+            ):
                 conflicts[a.name].add(b.name)
                 conflicts[b.name].add(a.name)
 
     sizes = {a.name: _align_up(a.size) for a in allocs}
-    order = sorted(((a.name, sizes[a.name]) for a in allocs),
-                   key=lambda kv: (-kv[1], kv[0]))
+    order = sorted(((a.name, sizes[a.name]) for a in allocs), key=lambda kv: (-kv[1], kv[0]))
     offsets, arena_bytes = pack_disjoint(order, conflicts)
 
     # ---- the property the pass exists for, re-checked on the placement it is about to emit ----
@@ -651,25 +786,29 @@ def bind_arena(ll_text: str, *, symbol: str = ARENA_SYMBOL,
     # ---- rewrite ------------------------------------------------------------------------------
     out = list(lines)
     for a in allocs:
-        out[a.malloc_line] = (f"  {a.name} = getelementptr inbounds i8, ptr @{symbol}, "
-                              f"i64 {offsets[a.name]}")
-        out[a.free_line] = None                      # type: ignore[call-overload]
+        out[a.malloc_line] = f"  {a.name} = getelementptr inbounds i8, ptr @{symbol}, i64 {offsets[a.name]}"
+        out[a.free_line] = None  # type: ignore[call-overload]
     out = [ln for ln in out if ln is not None]
     first_define = next(i for i, ln in enumerate(out) if ln.startswith("define "))
     out.insert(first_define, "")
-    out.insert(first_define, f"@{symbol} = internal global [{arena_bytes} x i8] zeroinitializer, "
-                             f"align {ARENA_ALIGN}")
+    out.insert(first_define, f"@{symbol} = internal global [{arena_bytes} x i8] zeroinitializer, align {ARENA_ALIGN}")
 
     naive = sum(sizes.values())
     report = BindReport(
-        arena_bytes=arena_bytes, bound=len(allocs), refused=sum(refusals.values()),
-        refusals=refusals, naive_total_bytes=naive,
-        reuse_factor=round(naive / arena_bytes, 2) if arena_bytes else 0.0, symbol=symbol)
+        arena_bytes=arena_bytes,
+        bound=len(allocs),
+        refused=sum(refusals.values()),
+        refusals=refusals,
+        naive_total_bytes=naive,
+        reuse_factor=round(naive / arena_bytes, 2) if arena_bytes else 0.0,
+        symbol=symbol,
+    )
     return "\n".join(out), report
 
 
-def _assert_no_conflicting_overlap(offsets: dict[str, int], sizes: dict[str, int],
-                                   conflicts: dict[str, set[str]]) -> None:
+def _assert_no_conflicting_overlap(
+    offsets: dict[str, int], sizes: dict[str, int], conflicts: dict[str, set[str]]
+) -> None:
     """Refuse to emit a placement in which two conflicting buffers share a byte.
 
     This is the one invariant whose violation is invisible: the module still verifies, still links,
@@ -685,4 +824,5 @@ def _assert_no_conflicting_overlap(offsets: dict[str, int], sizes: dict[str, int
             if oa < ob + sb and ob < oa + sa:
                 raise ArenaBindError(
                     f"placement seats conflicting buffers {a} [{oa},{oa + sa}) and {b} "
-                    f"[{ob},{ob + sb}) on overlapping bytes")
+                    f"[{ob},{ob + sb}) on overlapping bytes"
+                )

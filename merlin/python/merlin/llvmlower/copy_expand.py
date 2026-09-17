@@ -54,6 +54,7 @@ carries the same no-overlap requirement -- so this changes no guarantee that was
 Default OFF so the frozen baseline lowering stays byte-identical; the search enables it as the PASS
 that closes an ``envelope.runtime_calls`` divergence.
 """
+
 from __future__ import annotations
 
 FEATURE = "expand_memref_copy"

@@ -15,6 +15,7 @@ the directory is the portable unit; (3) run isolation — multiple candidate dia
 The core ships only the reference targets (toy_npu, saturn); everything generated is loaded
 from its package via :func:`load_target`.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -33,19 +34,23 @@ class TargetPackage:
     run_id: str
     directory: Path
     dialect_module: Any
-    spec: Any                       # a target_lowering.TargetSpec (op/type classes)
+    spec: Any  # a target_lowering.TargetSpec (op/type classes)
     lowering_table: dict[str, str]  # interface op -> target op
-    opcode_table: dict[str, str]    # target op -> command-buffer opcode
+    opcode_table: dict[str, str]  # target op -> command-buffer opcode
     contract: dict[str, Any]
 
     def dialect_plan(self) -> dict[str, Any]:
         """A dialect_plan dict (lowering rules) the core pipeline can consume."""
-        return {"target": self.name, "dialect_name": self.name,
-                "lowering": [{"from": k, "to": v} for k, v in self.lowering_table.items()]}
+        return {
+            "target": self.name,
+            "dialect_name": self.name,
+            "lowering": [{"from": k, "to": v} for k, v in self.lowering_table.items()],
+        }
 
 
 def _import_module(path: Path, name: str):
     import sys
+
     spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
     # Register before exec so xDSL's annotation/type-hint resolution (get_type_hints) can find
@@ -79,11 +84,10 @@ def load_target(package_dir: str | Path) -> TargetPackage:
     # is silently ignored by everything downstream, so a misspelled `backend` is not a broken backend but
     # no backend at all — discovered as a missing feature much later, if at all.
     from .plugins import validate as _validate_plugin
-    problems = _validate_plugin(contract.get("plugin"), root=d,
-                                where=f"{cpath.name}:plugin")
+
+    problems = _validate_plugin(contract.get("plugin"), root=d, where=f"{cpath.name}:plugin")
     if problems:
-        raise ValueError(f"target package {d} has an incoherent plugin block:\n  - "
-                         + "\n  - ".join(problems))
+        raise ValueError(f"target package {d} has an incoherent plugin block:\n  - " + "\n  - ".join(problems))
 
     # A package MAY require properties on its target ops that only its own contract can supply —
     # a SIMT target's warp width, for instance. It derives them itself (and fails closed if the
@@ -92,14 +96,28 @@ def load_target(package_dir: str | Path) -> TargetPackage:
     derive = getattr(mod, "op_properties", None)
     if callable(derive):
         op_properties = derive(contract)
-    spec = TargetSpec(mod.DIALECT_NAME, mod, ops["pack"], ops["matmul"], ops["commit"],
-                      ops["evict"], ops["resident_type"], ops["accumulator_type"],
-                      op_properties=op_properties,
-                      elementwise_op=ops.get("elementwise"))
+    spec = TargetSpec(
+        mod.DIALECT_NAME,
+        mod,
+        ops["pack"],
+        ops["matmul"],
+        ops["commit"],
+        ops["evict"],
+        ops["resident_type"],
+        ops["accumulator_type"],
+        op_properties=op_properties,
+        elementwise_op=ops.get("elementwise"),
+    )
     return TargetPackage(
-        name=mod.DIALECT_NAME, run_id=run_id, directory=d, dialect_module=mod, spec=spec,
+        name=mod.DIALECT_NAME,
+        run_id=run_id,
+        directory=d,
+        dialect_module=mod,
+        spec=spec,
         lowering_table=dict(low["interface_to_target"]),
-        opcode_table=dict(low["target_to_opcode"]), contract=contract)
+        opcode_table=dict(low["target_to_opcode"]),
+        contract=contract,
+    )
 
 
 def default_run(generated_root: str | Path, target: str) -> Path:

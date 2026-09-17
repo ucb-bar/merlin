@@ -21,6 +21,7 @@ Declared per target in its ``target_experiment.yaml`` under ``measurement``; abs
 authority that answers UNKNOWN for everything rather than falling back to a default substrate. An
 undeclared authority must not silently become somebody else's.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -38,8 +39,8 @@ class MeasurementAuthority:
     """Which substrate may produce which quantity for one target, and at what tier."""
 
     target: str
-    cycles_from: str | None = None        # substrate label authoritative for cycle counts
-    wall_from: str | None = None          # substrate label authoritative for wall time
+    cycles_from: str | None = None  # substrate label authoritative for cycle counts
+    wall_from: str | None = None  # substrate label authoritative for wall time
     cycles_tier: str = "functional"
     wall_tier: str = "silicon"
     #: The attainment DENOMINATOR: the model a measured rate is compared against.
@@ -47,7 +48,7 @@ class MeasurementAuthority:
     #: Tier a number must reach before it may be quoted as a hardware result.
     citable_tier: str = "rtl"
     notes: tuple[str, ...] = ()
-    declared: bool = False                # False = nothing was declared; every answer is UNKNOWN
+    declared: bool = False  # False = nothing was declared; every answer is UNKNOWN
     #: Where the declaration was read from, so a reader never has to guess which file answered.
     source: str | None = None
     #: Why the lookup failed, when it did. An undeclared authority and an UNREADABLE one are
@@ -60,11 +61,15 @@ class MeasurementAuthority:
         """What this target cannot measure, stated. An empty authority is a gap, not a zero."""
         if not self.declared:
             if self.lookup_error:
-                return (f"{self.target}: measurement authority could NOT BE READ ({self.lookup_error})"
-                        f" — this is a failed lookup, not a target that declares nothing; cycles, "
-                        f"wall time and attainment are UNKNOWN until it resolves",)
-            return (f"{self.target}: no measurement authority declared — cycles, wall time and "
-                    f"attainment are all UNKNOWN, which is NOT the same as zero",)
+                return (
+                    f"{self.target}: measurement authority could NOT BE READ ({self.lookup_error})"
+                    f" — this is a failed lookup, not a target that declares nothing; cycles, "
+                    f"wall time and attainment are UNKNOWN until it resolves",
+                )
+            return (
+                f"{self.target}: no measurement authority declared — cycles, wall time and "
+                f"attainment are all UNKNOWN, which is NOT the same as zero",
+            )
         out = []
         if not self.cycles_from:
             out.append(f"{self.target}: no cycle authority declared")
@@ -75,11 +80,20 @@ class MeasurementAuthority:
         return tuple(out)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"target": self.target, "cycles_from": self.cycles_from, "wall_from": self.wall_from,
-                "cycles_tier": self.cycles_tier, "wall_tier": self.wall_tier,
-                "speed_of_light": self.speed_of_light, "citable_tier": self.citable_tier,
-                "declared": self.declared, "gaps": list(self.gaps()), "notes": list(self.notes),
-                "source": self.source, "lookup_error": self.lookup_error}
+        return {
+            "target": self.target,
+            "cycles_from": self.cycles_from,
+            "wall_from": self.wall_from,
+            "cycles_tier": self.cycles_tier,
+            "wall_tier": self.wall_tier,
+            "speed_of_light": self.speed_of_light,
+            "citable_tier": self.citable_tier,
+            "declared": self.declared,
+            "gaps": list(self.gaps()),
+            "notes": list(self.notes),
+            "source": self.source,
+            "lookup_error": self.lookup_error,
+        }
 
 
 def _tracked_measurement_block(target: str) -> tuple[dict, str | None]:
@@ -122,6 +136,7 @@ def authority_for(target: str, descriptor: dict | None = None) -> MeasurementAut
     else:
         try:
             from merlin.targetgen.target_experiment import load_capability_manifest
+
             contract = load_capability_manifest(target).contract
             block = dict((contract.get("measurement") or {}))
             source = "capability_manifest"
@@ -186,8 +201,9 @@ def citable(authority: MeasurementAuthority, tier_reached: str) -> bool:
     return TIER_ORDER.index(tier_reached) >= TIER_ORDER.index(authority.citable_tier)
 
 
-def whole_model_objective(claimed_mac_fraction: float | None, attainment: float | None, *,
-                          numerics_ok: bool) -> float | None:
+def whole_model_objective(
+    claimed_mac_fraction: float | None, attainment: float | None, *, numerics_ok: bool
+) -> float | None:
     """The whole-model objective: claimed MAC fraction x measured attainment, gated on numerics.
 
     Never a bare pass count. A kernel-scoped score can look excellent while the model runs at a few

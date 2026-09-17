@@ -23,6 +23,7 @@ The result therefore names a candidate and states which of the three it rests on
 accuracy assurance must read ``certified`` and refuse to proceed on ``not_established``; a caller that
 only needs a legal datapath can use ``admitted`` alone.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -39,12 +40,17 @@ def _is_expressible(token: str) -> bool | None:
         from merlin.common import quant_formats as QF
 
         return bool(QF.has(token))
-    except Exception:                              # noqa: BLE001 -- an unreadable registry answers nothing
+    except Exception:  # noqa: BLE001 -- an unreadable registry answers nothing
         return None
 
 
-def best_format(target: str, *, preference: list | tuple | None = None,
-                family: str = "contraction", admitted: "set | frozenset | None" = None) -> dict:
+def best_format(
+    target: str,
+    *,
+    preference: list | tuple | None = None,
+    family: str = "contraction",
+    admitted: "set | frozenset | None" = None,
+) -> dict:
     """The highest-ranked precision ``target`` admits for ``family``, with the rejections named.
 
     ``preference`` defaults to the target's declared ``workload_spec.precision_preference``. Every
@@ -67,10 +73,10 @@ def best_format(target: str, *, preference: list | tuple | None = None,
     else:
         admitted_by_family = CF.admitted(target)
         admitted = set()
-        for d in (admitted_by_family.get(family) or ()):
+        for d in admitted_by_family.get(family) or ():
             try:
                 admitted.add(CF.capsule_dtype(str(d)))
-            except Exception:                      # noqa: BLE001 -- keep an unmappable token visible
+            except Exception:  # noqa: BLE001 -- keep an unmappable token visible
                 admitted.add(str(d))
 
     if preference is None:
@@ -84,15 +90,25 @@ def best_format(target: str, *, preference: list | tuple | None = None,
         if known is None:
             registry_readable = False
         if known is False:
-            rejected.append({"format": token, "why": "not_expressible",
-                             "detail": "no registry entry decodes this token; it is a spelling error "
-                                       "rather than a capability gap"})
+            rejected.append(
+                {
+                    "format": token,
+                    "why": "not_expressible",
+                    "detail": "no registry entry decodes this token; it is a spelling error "
+                    "rather than a capability gap",
+                }
+            )
             continue
         capsule_spelling = CF.capsule_dtype(token)
         if capsule_spelling not in admitted:
-            rejected.append({"format": token, "capsule_dtype": capsule_spelling,
-                             "why": "not_admitted",
-                             "detail": f"the capability manifest declares no {family} datapath for it"})
+            rejected.append(
+                {
+                    "format": token,
+                    "capsule_dtype": capsule_spelling,
+                    "why": "not_admitted",
+                    "detail": f"the capability manifest declares no {family} datapath for it",
+                }
+            )
             continue
         chosen = {"format": token, "capsule_dtype": capsule_spelling}
         break
@@ -102,9 +118,12 @@ def best_format(target: str, *, preference: list | tuple | None = None,
     # qualified" when the truth is "nobody was asked".
     no_preference = not ranked
     return {
-        "target": target, "family": family, "preference": ranked,
-        "status": ("no_preference_declared" if no_preference
-                   else "ok" if chosen else "no_admitted_format_in_preference"),
+        "target": target,
+        "family": family,
+        "preference": ranked,
+        "status": (
+            "no_preference_declared" if no_preference else "ok" if chosen else "no_admitted_format_in_preference"
+        ),
         "admitted": sorted(admitted),
         "chosen": chosen,
         "rejected": rejected,
@@ -112,12 +131,16 @@ def best_format(target: str, *, preference: list | tuple | None = None,
         # calling it best is how a compiler ships a model that runs fast and answers wrong.
         "certified": {
             "status": "not_established",
-            "detail": ("no accuracy gate has measured this model in this format on this target; "
-                       "`admitted` says the hardware has the datapath, not that the model survives it"),
+            "detail": (
+                "no accuracy gate has measured this model in this format on this target; "
+                "`admitted` says the hardware has the datapath, not that the model survives it"
+            ),
         },
         "registry_readable": registry_readable,
-        "basis": ("preference RANKS; the manifest ADMITS; the registry EXPRESSES. A preference can "
-                  "never widen what the hardware has, and none of the three is an accuracy claim"),
+        "basis": (
+            "preference RANKS; the manifest ADMITS; the registry EXPRESSES. A preference can "
+            "never widen what the hardware has, and none of the three is an accuracy claim"
+        ),
     }
 
 
@@ -137,5 +160,5 @@ def _declared_preference(target: str) -> list:
             return []
         ws: dict[str, Any] = dict(getattr(load_target_experiment(p), "workload_spec", None) or {})
         return [str(x) for x in (ws.get("precision_preference") or ())]
-    except Exception:                              # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return []

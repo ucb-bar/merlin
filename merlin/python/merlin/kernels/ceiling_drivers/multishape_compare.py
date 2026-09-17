@@ -28,12 +28,14 @@ MEASUREMENT METHOD — identical footing for ALL five columns:
 
 Run:  ``.venv/bin/python -m merlin.kernels.ceiling_drivers.multishape_compare``
 """
+
 from __future__ import annotations
 
 import subprocess
 import tempfile
 from dataclasses import replace
 from pathlib import Path
+
 from merlin.common.paths import runtime_dir
 
 from ...common.driver_output import int_after as _int_after
@@ -43,9 +45,9 @@ from . import run_expert_gemm as expert
 
 HERE = Path(__file__).resolve().parent
 
-SHAPES = (32, 64, 128)            # square M=N=K; all divisible by 8 (OpenBLAS MR/NR) and 16 (XNNPACK NR @ vlen128)
+SHAPES = (32, 64, 128)  # square M=N=K; all divisible by 8 (OpenBLAS MR/NR) and 16 (XNNPACK NR @ vlen128)
 OURS_FORKS = (
-    ("ours_baseline", []),                          # hand_v0, byte-identical baseline lowering
+    ("ours_baseline", []),  # hand_v0, byte-identical baseline lowering
     ("ours_vfmacc_contraction", ["fused_vfmacc_contraction"]),
     ("ours_vfmacc_tiled", ["fused_vfmacc_tiled"]),
     # winner of the (MR,NR,KC) tuning sweep (output/kernels/ceiling/tiled_vfmacc_tuning.md):
@@ -77,10 +79,12 @@ OURS_FORKS = (
 # ---------------------------------------------------------------------------
 # Experts: reuse run_expert_gemm's build/run, but inject the shape via -D flags.
 # ---------------------------------------------------------------------------
-def _build_expert(driver: Path, incs: list[Path], out: Path, *, M: int, N: int, K: int,
-                  timeout: int = 300) -> str | None:
+def _build_expert(
+    driver: Path, incs: list[Path], out: Path, *, M: int, N: int, K: int, timeout: int = 300
+) -> str | None:
     """Same as run_expert_gemm._build but with -DM/-DN/-DK injected (shape override)."""
     from ...runtime.backends import spike
+
     gcc = spike.gcc_path()
     sat = bench_ceiling.build_asm.benchmarks_dir()
     if sat is None:
@@ -93,9 +97,20 @@ def _build_expert(driver: Path, incs: list[Path], out: Path, *, M: int, N: int, 
         inc_flags += ["-I", str(d)]
     inc_flags += ["-I", str(sat / "env"), "-I", str(sat / "common"), "-I", str(enc)]
     shape = [f"-DGEMM_M={M}", f"-DGEMM_N={N}", f"-DGEMM_K={K}"]
-    cmd = [str(gcc), *inc_flags, *expert._CFLAGS, *shape, "-o", str(out), str(driver),
-           str(sat / "common" / "syscalls.c"), str(sat / "common" / "crt.S"),
-           *expert._LINK, "-T", str(sat / "common" / "test.ld")]
+    cmd = [
+        str(gcc),
+        *inc_flags,
+        *expert._CFLAGS,
+        *shape,
+        "-o",
+        str(out),
+        str(driver),
+        str(sat / "common" / "syscalls.c"),
+        str(sat / "common" / "crt.S"),
+        *expert._LINK,
+        "-T",
+        str(sat / "common" / "test.ld"),
+    ]
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except (subprocess.TimeoutExpired, OSError) as e:
@@ -116,9 +131,16 @@ def measure_intrinsic(*, M: int, N: int, K: int) -> dict:
     source = "ours_intrinsic"
     regime = bench_ceiling.shape_regime("matmul", M, N, K)
     base = {
-        "op": "matmul", "dtype": "f32", "M": M, "N": N, "K": K,
-        "shape_regime": regime, "source": source, "target": "spike",
-        "mode": "inner_compute", "isa": bench_ceiling.DEFAULT_ISA,
+        "op": "matmul",
+        "dtype": "f32",
+        "M": M,
+        "N": N,
+        "K": K,
+        "shape_regime": regime,
+        "source": source,
+        "target": "spike",
+        "mode": "inner_compute",
+        "isa": bench_ceiling.DEFAULT_ISA,
         "kernel_file": "merlin/python/merlin/kernels/ceiling_drivers/ours_intrinsic_gemm_driver.c",
         "measure_method": "standalone_baremetal_inner_compute",
         "fingerprint_key": bench_ceiling.fingerprint_key("matmul", "f32", regime),
@@ -137,10 +159,18 @@ def measure_expert(source: str, *, M: int, N: int, K: int) -> dict:
     spec = expert._experts()[source]
     regime = bench_ceiling.shape_regime("matmul", M, N, K)
     base = {
-        "op": "matmul", "dtype": spec["dtype"], "M": M, "N": N, "K": K,
-        "shape_regime": regime, "source": source, "target": "spike",
-        "mode": "inner_compute", "isa": bench_ceiling.DEFAULT_ISA,
-        "kernel_file": spec["kernel_file"], "measure_method": "standalone_baremetal_inner_compute",
+        "op": "matmul",
+        "dtype": spec["dtype"],
+        "M": M,
+        "N": N,
+        "K": K,
+        "shape_regime": regime,
+        "source": source,
+        "target": "spike",
+        "mode": "inner_compute",
+        "isa": bench_ceiling.DEFAULT_ISA,
+        "kernel_file": spec["kernel_file"],
+        "measure_method": "standalone_baremetal_inner_compute",
         "fingerprint_key": bench_ceiling.fingerprint_key("matmul", spec["dtype"], regime),
     }
     with tempfile.TemporaryDirectory(prefix="merlin_expert_") as tmp:
@@ -163,26 +193,34 @@ def _ours_package(run_id: str, features: list[str]):
     auto-fork directories; baseline (features==[]) is byte-identical to hand_v0.
     """
     from ...mining.registry import load_rvv_package
+
     base = load_rvv_package(artifacts_dir() / "targets" / "rvv" / "hand_v0")
     return replace(base, run_id=run_id, compiler_features=list(features))
 
 
 def _gen_matmul_bundle(M: int, N: int, K: int) -> Path:
     from ...mining import workloads
+
     out_root = artifacts_dir() / "cache" / "rvv_workloads"
     return workloads.gen_matmul_f32(out_root, M=M, N=N, K=K)
 
 
-def measure_ours(run_id: str, features: list[str], *, M: int, N: int, K: int,
-                 timeout: int = 600) -> dict:
+def measure_ours(run_id: str, features: list[str], *, M: int, N: int, K: int, timeout: int = 600) -> dict:
     from ...mining.apply import apply_rvv_package
     from ...runtime.backends import spike
 
     regime = bench_ceiling.shape_regime("matmul", M, N, K)
     base = {
-        "op": "matmul", "dtype": "f32", "M": M, "N": N, "K": K,
-        "shape_regime": regime, "source": run_id, "target": "spike",
-        "mode": "inner_compute", "isa": bench_ceiling.DEFAULT_ISA,
+        "op": "matmul",
+        "dtype": "f32",
+        "M": M,
+        "N": N,
+        "K": K,
+        "shape_regime": regime,
+        "source": run_id,
+        "target": "spike",
+        "mode": "inner_compute",
+        "isa": bench_ceiling.DEFAULT_ISA,
         "kernel_file": f"merlin RVV codegen fork (features={features or 'baseline'})",
         "compiler_features": features,
         "measure_method": "standalone_baremetal_inner_compute",
@@ -198,14 +236,23 @@ def measure_ours(run_id: str, features: list[str], *, M: int, N: int, K: int,
             apply_rvv_package(pkg, bundle, work, board="spike_riscv64", harts=1, arena_mb=64)
         except Exception as e:  # noqa: BLE001
             import traceback
-            return {**base, "cycles": None, "status": "not_run",
-                    "blocker": f"build (apply_rvv_package) failed: {type(e).__name__}: {e} "
-                               f"| {traceback.format_exc()[-400:]}"}
+
+            return {
+                **base,
+                "cycles": None,
+                "status": "not_run",
+                "blocker": f"build (apply_rvv_package) failed: {type(e).__name__}: {e} "
+                f"| {traceback.format_exc()[-400:]}",
+            }
         model_o = work / "model.o"
         cgen = work / "cgen"
         if not model_o.is_file() or not (cgen / "model_call.c").is_file():
-            return {**base, "cycles": None, "status": "not_run",
-                    "blocker": f"missing model.o or cgen artifacts under {work}"}
+            return {
+                **base,
+                "cycles": None,
+                "status": "not_run",
+                "blocker": f"missing model.o or cgen artifacts under {work}",
+            }
 
         # 2. link our bare-metal driver + generic runtime + model.o on the Saturn harness.
         elf = Path(tmp) / "ours_gemm.riscv"
@@ -216,9 +263,9 @@ def measure_ours(run_id: str, features: list[str], *, M: int, N: int, K: int,
     return _parse(base, console, run_id, detail)
 
 
-def _build_ours(out: Path, model_o: Path, cgen: Path, *, M: int, N: int, K: int,
-                timeout: int = 600) -> str | None:
+def _build_ours(out: Path, model_o: Path, cgen: Path, *, M: int, N: int, K: int, timeout: int = 600) -> str | None:
     from ...runtime.backends import spike
+
     gcc = spike.gcc_path()
     sat = bench_ceiling.build_asm.benchmarks_dir()
     if sat is None:
@@ -227,7 +274,7 @@ def _build_ours(out: Path, model_o: Path, cgen: Path, *, M: int, N: int, K: int,
     if enc is None:
         return "encoding.h not found (set MERLIN_CHIPYARD)"
     runtime_c = runtime_dir() / "c" / "merlin_model.c"
-    mlir_rt = repo_root() / "merlin" / "runtime" / "abi" / "mlir_runtime.c"   # memrefCopy + math shims
+    mlir_rt = repo_root() / "merlin" / "runtime" / "abi" / "mlir_runtime.c"  # memrefCopy + math shims
     incs = [HERE, cgen, runtime_c.parent]
     inc_flags: list[str] = []
     for d in incs:
@@ -237,15 +284,25 @@ def _build_ours(out: Path, model_o: Path, cgen: Path, *, M: int, N: int, K: int,
     # model.o is rv64gcv (Saturn vector); compile the C the same march/abi as the experts.
     # baremetal_support.c supplies malloc/free (bump allocator) for the lowered model's
     # tensor.empty allocs; mlir_runtime.c supplies memrefCopy — both absent under -nostdlib.
-    cmd = [str(gcc), *inc_flags, *expert._CFLAGS, *shape, "-o", str(out),
-           str(HERE / "ours_gemm_driver.c"),
-           str(cgen / "model_call.c"),
-           str(runtime_c),
-           str(mlir_rt),
-           str(HERE / "baremetal_support.c"),
-           str(model_o),
-           str(sat / "common" / "syscalls.c"), str(sat / "common" / "crt.S"),
-           *expert._LINK, "-T", str(sat / "common" / "test.ld")]
+    cmd = [
+        str(gcc),
+        *inc_flags,
+        *expert._CFLAGS,
+        *shape,
+        "-o",
+        str(out),
+        str(HERE / "ours_gemm_driver.c"),
+        str(cgen / "model_call.c"),
+        str(runtime_c),
+        str(mlir_rt),
+        str(HERE / "baremetal_support.c"),
+        str(model_o),
+        str(sat / "common" / "syscalls.c"),
+        str(sat / "common" / "crt.S"),
+        *expert._LINK,
+        "-T",
+        str(sat / "common" / "test.ld"),
+    ]
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except (subprocess.TimeoutExpired, OSError) as e:
@@ -259,8 +316,8 @@ def _run_spike(elf: Path, *, timeout: int = 600) -> tuple[str | None, str]:
     """Run an ELF on spike; return (stdout-or-None, detail). Captures stderr so a fault
     (tohost!=0) surfaces as a precise blocker instead of a vague 'failed/empty'."""
     from ...runtime.backends import spike
-    cmd = [str(spike.spike_path()), f"--isa={bench_ceiling.DEFAULT_ISA}", "-p1",
-           bench_ceiling.SPIKE_MEM, str(elf)]
+
+    cmd = [str(spike.spike_path()), f"--isa={bench_ceiling.DEFAULT_ISA}", "-p1", bench_ceiling.SPIKE_MEM, str(elf)]
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -268,18 +325,28 @@ def _run_spike(elf: Path, *, timeout: int = 600) -> tuple[str | None, str]:
     except OSError as e:
         return None, f"spike exec error: {e}"
     if p.returncode != 0:
-        return None, (f"spike faulted rc={p.returncode}; stderr: {p.stderr.strip()[-200:]}; "
-                      f"stdout tail: {p.stdout.strip()[-200:]}")
+        return None, (
+            f"spike faulted rc={p.returncode}; stderr: {p.stderr.strip()[-200:]}; "
+            f"stdout tail: {p.stdout.strip()[-200:]}"
+        )
     return p.stdout, "ok"
 
 
 def _parse(base: dict, console: str | None, source: str, detail: str = "") -> dict:
     if console is None:
-        return {**base, "cycles": None, "status": "not_run",
-                "blocker": f"spike run failed: {detail}" if detail else "spike run failed/empty"}
+        return {
+            **base,
+            "cycles": None,
+            "status": "not_run",
+            "blocker": f"spike run failed: {detail}" if detail else "spike run failed/empty",
+        }
     if "VERIFY PASS" not in console:
-        return {**base, "cycles": None, "status": "not_run",
-                "blocker": f"verify did not pass; console tail: {console.strip()[-300:]}"}
+        return {
+            **base,
+            "cycles": None,
+            "status": "not_run",
+            "blocker": f"verify did not pass; console tail: {console.strip()[-300:]}",
+        }
     cycles = _int_after(console, "CYCLES")
     instret = _int_after(console, "INSTRET")
     if cycles is None:
@@ -328,10 +395,13 @@ def _notrun_path() -> Path:
 
 def _emit(row: dict, out_path: Path) -> None:
     import json
+
     if row.get("status") == "pass":
         bench_ceiling.append_ceiling(row, out_path)
-        print(f"  {row['source']:24s} {row['M']}^3  cycles={row['cycles']:>9}  "
-              f"instret={row.get('instructions','?')}  -> appended")
+        print(
+            f"  {row['source']:24s} {row['M']}^3  cycles={row['cycles']:>9}  "
+            f"instret={row.get('instructions', '?')}  -> appended"
+        )
     else:
         # not_run rows are NOT mixed into ceiling.jsonl (which carries measured numbers),
         # but ARE persisted to a sidecar so the matrix is reproducible from disk with the
@@ -340,17 +410,20 @@ def _emit(row: dict, out_path: Path) -> None:
         nrp.parent.mkdir(parents=True, exist_ok=True)
         with nrp.open("a", encoding="utf-8") as f:
             f.write(json.dumps(row, sort_keys=True) + "\n")
-        print(f"  {row['source']:24s} {row['M']}^3  NOT_RUN: {row.get('blocker','')[:160]}")
+        print(f"  {row['source']:24s} {row['M']}^3  NOT_RUN: {row.get('blocker', '')[:160]}")
 
 
 def write_matrix(grid: dict, out_md: Path) -> None:
-    cols = [("openblas", "OpenBLAS"), ("xnnpack", "XNNPACK"),
-            ("ours_intrinsic", "ours-intrinsic (scalable)"),
-            ("ours_baseline", "ours-baseline"),
-            ("ours_vfmacc_contraction", "ours-vfmacc"),
-            ("ours_vfmacc_tiled", "ours-tiled"),
-            ("ours_tiled_best", "ours-tiled-best"),
-            ("ours_vfmacc_packed", "ours-packed (pack-incl)")]
+    cols = [
+        ("openblas", "OpenBLAS"),
+        ("xnnpack", "XNNPACK"),
+        ("ours_intrinsic", "ours-intrinsic (scalable)"),
+        ("ours_baseline", "ours-baseline"),
+        ("ours_vfmacc_contraction", "ours-vfmacc"),
+        ("ours_vfmacc_tiled", "ours-tiled"),
+        ("ours_tiled_best", "ours-tiled-best"),
+        ("ours_vfmacc_packed", "ours-packed (pack-incl)"),
+    ]
 
     def cyc(sz, key):
         r = grid[sz].get(key, {})
@@ -358,9 +431,11 @@ def write_matrix(grid: dict, out_md: Path) -> None:
 
     lines: list[str] = []
     lines.append("# Cross-framework fp32 GEMM ceiling matrix (spike, one substrate)\n")
-    lines.append("All columns measured on **spike** (functional, ISA `rv64gcv_zfh_zvfh`), "
-                 "`mode=inner_compute`, bit-exact verified vs a scalar reference, cycles read "
-                 "from the `mcycle` CSR (a **cycle proxy**, not cycle-accurate).\n")
+    lines.append(
+        "All columns measured on **spike** (functional, ISA `rv64gcv_zfh_zvfh`), "
+        "`mode=inner_compute`, bit-exact verified vs a scalar reference, cycles read "
+        "from the `mcycle` CSR (a **cycle proxy**, not cycle-accurate).\n"
+    )
     lines.append("## Cycles\n")
     head = "| shape (M=N=K) | " + " | ".join(c[1] for c in cols) + " |"
     lines.append(head)
@@ -375,19 +450,29 @@ def write_matrix(grid: dict, out_md: Path) -> None:
 
     # Attainment: best-expert/ours (>1 => ours faster than the best expert; <1 => slower).
     lines.append("## Attainment\n")
-    lines.append("`expert/ours` columns = (kernel cycles) / (ours-baseline cycles): how many "
-                 "**ours-baseline** runs fit in one expert run (>1 => the expert is slower than "
-                 "our baseline). `best-expert / ours-best` = min(OpenBLAS, XNNPACK) divided by "
-                 "our fastest fork (>1 => ours beats the best expert; <1 => still a gap, the "
-                 "factor we trail by is its reciprocal).\n")
-    lines.append("| shape | OpenBLAS/ours-base | XNNPACK/ours-base | best-expert | ours-best | "
-                 "best-expert / ours-best |")
+    lines.append(
+        "`expert/ours` columns = (kernel cycles) / (ours-baseline cycles): how many "
+        "**ours-baseline** runs fit in one expert run (>1 => the expert is slower than "
+        "our baseline). `best-expert / ours-best` = min(OpenBLAS, XNNPACK) divided by "
+        "our fastest fork (>1 => ours beats the best expert; <1 => still a gap, the "
+        "factor we trail by is its reciprocal).\n"
+    )
+    lines.append(
+        "| shape | OpenBLAS/ours-base | XNNPACK/ours-base | best-expert | ours-best | best-expert / ours-best |"
+    )
     lines.append("|---|---|---|---|---|---|")
     for sz in SHAPES:
         ob, xn = cyc(sz, "openblas"), cyc(sz, "xnnpack")
-        ours = [cyc(sz, k) for k in ("ours_intrinsic", "ours_baseline",
-                                     "ours_vfmacc_contraction",
-                                     "ours_vfmacc_tiled", "ours_tiled_best")]
+        ours = [
+            cyc(sz, k)
+            for k in (
+                "ours_intrinsic",
+                "ours_baseline",
+                "ours_vfmacc_contraction",
+                "ours_vfmacc_tiled",
+                "ours_tiled_best",
+            )
+        ]
         ours = [c for c in ours if c is not None]
         base = cyc(sz, "ours_baseline")
         best_exp = min([c for c in (ob, xn) if c is not None], default=None)
@@ -398,13 +483,17 @@ def write_matrix(grid: dict, out_md: Path) -> None:
                 return "—"
             r = num / den
             return f"{r:.2f}x" if r >= 0.01 else f"{r:.2e}x"
+
         attain = ratio(best_exp, ours_best)
         # if ours trails, also state the slowdown factor (how many x slower ours-best is)
-        slow = (f" (ours {ours_best/best_exp:.1f}x slower)"
-                if (best_exp and ours_best and ours_best > best_exp) else "")
-        lines.append(f"| {sz}^3 | {ratio(ob, base)} | {ratio(xn, base)} | "
-                     f"{(f'{best_exp:,}') if best_exp else '—'} | "
-                     f"{(f'{ours_best:,}') if ours_best else '—'} | {attain}{slow} |")
+        slow = (
+            f" (ours {ours_best / best_exp:.1f}x slower)" if (best_exp and ours_best and ours_best > best_exp) else ""
+        )
+        lines.append(
+            f"| {sz}^3 | {ratio(ob, base)} | {ratio(xn, base)} | "
+            f"{(f'{best_exp:,}') if best_exp else '—'} | "
+            f"{(f'{ours_best:,}') if ours_best else '—'} | {attain}{slow} |"
+        )
     lines.append("")
 
     # Not-run / blockers. Distill the verbose toolchain text to the line that matters.
@@ -413,14 +502,21 @@ def write_matrix(grid: dict, out_md: Path) -> None:
             return "not_run (no blocker recorded)"
         for ln in blk.splitlines():
             low = ln.lower()
-            if ("relocation truncated" in low or "*** failed ***" in low
-                    or "tohost" in low or "undefined reference" in low):
+            if (
+                "relocation truncated" in low
+                or "*** failed ***" in low
+                or "tohost" in low
+                or "undefined reference" in low
+            ):
                 return ln.strip()
         return blk.splitlines()[0].strip()
 
-    blocked = [(sz, key, grid[sz][key].get("blocker"))
-               for sz in SHAPES for key, _ in cols
-               if grid[sz].get(key, {}).get("status") != "pass"]
+    blocked = [
+        (sz, key, grid[sz][key].get("blocker"))
+        for sz in SHAPES
+        for key, _ in cols
+        if grid[sz].get(key, {}).get("status") != "pass"
+    ]
     lines.append("## not_run (honest blockers)\n")
     if not blocked:
         lines.append("None — every (shape, kernel) built, ran, and verified bit-exact.\n")
@@ -440,7 +536,8 @@ def write_matrix(grid: dict, out_md: Path) -> None:
             ".text is bounded and it builds, runs and verifies bit-exact at 32^3, 64^3 AND 128^3 "
             "(no JAL wall, and no more `tohost=1337` spike fault — that fault was an oversized "
             "vector<64x16>/<4x64> regalloc spill overrunning the stack into BSS, removed by "
-            "bounding the K tile). Nothing is faked into a cycle number.\n")
+            "bounding the K tile). Nothing is faked into a cycle number.\n"
+        )
 
     lines.append("## Comparability caveats (read before trusting the numbers)\n")
     lines.append(
@@ -452,7 +549,8 @@ def write_matrix(grid: dict, out_md: Path) -> None:
         "NOT a Saturn-RTL / FireSim cycle-accurate number. On the functional model IPC=1, so "
         "`cycles ≈ instret` (retired instructions); the proxy therefore ranks codegen by "
         "**instruction count**, not by RTL timing — a real Saturn would re-rank vector-heavy "
-        "kernels, but the cross-framework ORDERING here is robust because all columns share it.")
+        "kernels, but the cross-framework ORDERING here is robust because all columns share it."
+    )
     lines.append(
         "- **Inner-compute scope; the fill asymmetry is now SUBTRACTED (caveat #1 fixed).** For "
         "all columns the one-time setup is hoisted OUT of the timed region (experts: operand "
@@ -463,19 +561,22 @@ def write_matrix(grid: dict, out_md: Path) -> None:
         "exact traffic `linalg.fill` does, on the same `mcycle` CSR) and the `ours-*` cycles "
         "above are MATMUL-ONLY = (fill+matmul) − (fill-only). The fill is a small fraction "
         "(~3K/12K/49K cycles at 32/64/128); the driver also records `CYCLES_FULL` (fill+matmul). "
-        "So the columns now compare GEMM-compute to GEMM-compute, no fill bias.")
+        "So the columns now compare GEMM-compute to GEMM-compute, no fill bias."
+    )
     lines.append(
         "- **We deliberately do NOT use the runner's whole-model spike `cycles`.** That number "
         "(e.g. ~27.1 M cycles for hand_v0 at 64^3) is the entire Zephyr SMP image — boot, "
         "thread-create, cpu-pin, `merlin_run`, reboot — and is NOT comparable to an "
         "inner-compute kernel measurement. Using it would invalidate the comparison; this "
-        "matrix uses the bare-metal inner-compute path for ours instead, on identical footing.")
+        "matrix uses the bare-metal inner-compute path for ours instead, on identical footing."
+    )
     lines.append(
         "- **Kernel notes.** OpenBLAS `sgemm_kernel_8x8_zvl128b` (MR=NR=8, A ncopy / B tcopy "
         "pre-packed). XNNPACK `xnn_f32_gemm_ukernel_1x4v__rvv` (mr=1, called M times; weights "
         "goi-pre-packed; NR=`vsetvlmax_e32m4`=16 @ vlen128). Shapes 32/64/128 are divisible by "
         "both 8 and 16, so neither kernel takes a tail path. Ours = the frozen `hand_v0` RVV "
-        "transform schedule (tile/vector [4,8,1]) with the named default-off impr feature.")
+        "transform schedule (tile/vector [4,8,1]) with the named default-off impr feature."
+    )
     out_md.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -486,22 +587,30 @@ def rebuild_matrix_from_jsonl() -> Path:
     want = {"openblas", "xnnpack", "ours_intrinsic", *(f[0] for f in OURS_FORKS)}
     grid: dict[int, dict[str, dict]] = {sz: {} for sz in SHAPES}
     for r in rows:
-        if (r.get("op") == "matmul" and r.get("dtype") == "f32"
-                and r.get("measure_method") == "standalone_baremetal_inner_compute"
-                and r.get("M") in SHAPES and r.get("M") == r.get("N") == r.get("K")
-                and r.get("source") in want):
+        if (
+            r.get("op") == "matmul"
+            and r.get("dtype") == "f32"
+            and r.get("measure_method") == "standalone_baremetal_inner_compute"
+            and r.get("M") in SHAPES
+            and r.get("M") == r.get("N") == r.get("K")
+            and r.get("source") in want
+        ):
             grid[r["M"]][r["source"]] = {**r, "status": r.get("status", "pass")}
     # merge the not_run sidecar (honest blockers for cells that did not build/run/verify)
     import json
+
     nrp = _notrun_path()
     if nrp.is_file():
         for ln in nrp.read_text(encoding="utf-8").splitlines():
             if not ln.strip():
                 continue
             r = json.loads(ln)
-            if (r.get("M") in SHAPES and r.get("M") == r.get("N") == r.get("K")
-                    and r.get("source") in want
-                    and r["source"] not in grid.get(r["M"], {})):  # a pass wins over a stale not_run
+            if (
+                r.get("M") in SHAPES
+                and r.get("M") == r.get("N") == r.get("K")
+                and r.get("source") in want
+                and r["source"] not in grid.get(r["M"], {})
+            ):  # a pass wins over a stale not_run
                 grid[r["M"]][r["source"]] = r
     out_md = artifacts_dir() / "ceiling" / "cross_framework_matrix.md"
     out_md.parent.mkdir(parents=True, exist_ok=True)
@@ -511,6 +620,7 @@ def rebuild_matrix_from_jsonl() -> Path:
 
 def main() -> int:
     import sys
+
     argv = sys.argv or []
     # --ours <feature[,feature]> appends a column, so a newly mined lever can be weighed against the
     # expert columns without editing this file. Repeatable. Validated against the registry first: an
@@ -519,6 +629,7 @@ def main() -> int:
         if tok == "--ours" and i + 1 < len(argv):
             feats = [f for f in argv[i + 1].split(",") if f]
             from ...llvmlower import impr_features as _F
+
             unknown = [f for f in feats if f not in _F._REGISTRY]
             if unknown:
                 print(f"multishape_compare: unregistered impr feature(s) {unknown}")
@@ -529,6 +640,7 @@ def main() -> int:
         print(f"matrix (from jsonl) -> {p}")
         return 0
     from ...runtime.backends import spike
+
     if not spike.available():
         print("multishape_compare: spike/riscv-gcc unavailable; cannot measure.")
         return 2

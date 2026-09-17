@@ -25,6 +25,7 @@ bit-exactness learns nothing here. The question this module answers is narrower 
 two orders compute the same VALUES. A commit that writes a tensor a later matmul reads may not be moved
 after it, whatever the hardware would tolerate.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -111,8 +112,11 @@ def work_fingerprint(commands) -> dict:
         codes[code] = codes.get(code, 0) + 1
         for n in sorted(reads(c) | writes(c)):
             names[n] = names.get(n, 0) + 1
-    return {"opcodes": dict(sorted(codes.items())), "operands": dict(sorted(names.items())),
-            "n_commands": len(list(commands or ()))}
+    return {
+        "opcodes": dict(sorted(codes.items())),
+        "operands": dict(sorted(names.items())),
+        "n_commands": len(list(commands or ())),
+    }
 
 
 def hoist(commands, index: int, above: int):
@@ -131,7 +135,7 @@ def hoist(commands, index: int, above: int):
         if why is not None:
             return None, tuple(crossed), why
         crossed.append(str((seq[i] or {}).get("opcode") or ""))
-    out = seq[:above] + [mover] + seq[above:index] + seq[index + 1:]
+    out = seq[:above] + [mover] + seq[above:index] + seq[index + 1 :]
     return out, tuple(crossed), None
 
 
@@ -150,11 +154,17 @@ class ReorderPair:
     refusal: str = ""
 
     def to_dict(self) -> dict:
-        return {"moved_opcode": self.moved_opcode, "moved_from": self.moved_from,
-                "moved_to": self.moved_to, "crossed": list(self.crossed),
-                "identical_work": self.identical_work, "fingerprint": self.fingerprint,
-                "refusal": self.refusal,
-                "n_baseline": len(self.baseline), "n_candidate": len(self.candidate)}
+        return {
+            "moved_opcode": self.moved_opcode,
+            "moved_from": self.moved_from,
+            "moved_to": self.moved_to,
+            "crossed": list(self.crossed),
+            "identical_work": self.identical_work,
+            "fingerprint": self.fingerprint,
+            "refusal": self.refusal,
+            "n_baseline": len(self.baseline),
+            "n_candidate": len(self.candidate),
+        }
 
 
 def reorder_pair(commands, *, movable=None) -> ReorderPair:
@@ -184,9 +194,17 @@ def reorder_pair(commands, *, movable=None) -> ReorderPair:
             if (index - above) > span:
                 span = index - above
                 fp_a, fp_b = work_fingerprint(seq), work_fingerprint(out)
-                best = ReorderPair(baseline=seq, candidate=out, moved_opcode=code,
-                                   moved_from=index, moved_to=above, crossed=crossed,
-                                   fingerprint=fp_a, identical_work=(fp_a == fp_b), refusal="")
+                best = ReorderPair(
+                    baseline=seq,
+                    candidate=out,
+                    moved_opcode=code,
+                    moved_from=index,
+                    moved_to=above,
+                    crossed=crossed,
+                    fingerprint=fp_a,
+                    identical_work=(fp_a == fp_b),
+                    refusal="",
+                )
             break
     return best
 
@@ -204,11 +222,17 @@ def negative_control(commands) -> ReorderPair:
         for above in range(0, index):
             out, crossed, why = hoist(seq, index, above)
             if out is None and why not in (None, REFUSED_NO_CANDIDATE):
-                return ReorderPair(baseline=seq, candidate=[],
-                                   moved_opcode=str((seq[index] or {}).get("opcode") or ""),
-                                   moved_from=index, moved_to=above, crossed=crossed,
-                                   fingerprint=work_fingerprint(seq),
-                                   identical_work=False, refusal=why)
+                return ReorderPair(
+                    baseline=seq,
+                    candidate=[],
+                    moved_opcode=str((seq[index] or {}).get("opcode") or ""),
+                    moved_from=index,
+                    moved_to=above,
+                    crossed=crossed,
+                    fingerprint=work_fingerprint(seq),
+                    identical_work=False,
+                    refusal=why,
+                )
     return ReorderPair(baseline=seq, candidate=[], refusal=REFUSED_NO_CANDIDATE)
 
 
@@ -225,8 +249,15 @@ def pair_from_interface(mlir_text: str, *, movable=None) -> dict:
     cmds = list(cb.get("commands") or ())
     pair = reorder_pair(cmds, movable=movable)
     ctl = negative_control(cmds)
-    return {"target": cb.get("target", ""), "n_commands": len(cmds),
-            "pair": pair.to_dict(), "negative_control": ctl.to_dict(),
-            "pass_condition": ("eta must RISE on the candidate; bit-exactness proves nothing here "
-                              "because the hardware resolves hazards, so every reordering is correct"),
-            "baseline": pair.baseline, "candidate": pair.candidate}
+    return {
+        "target": cb.get("target", ""),
+        "n_commands": len(cmds),
+        "pair": pair.to_dict(),
+        "negative_control": ctl.to_dict(),
+        "pass_condition": (
+            "eta must RISE on the candidate; bit-exactness proves nothing here "
+            "because the hardware resolves hazards, so every reordering is correct"
+        ),
+        "baseline": pair.baseline,
+        "candidate": pair.candidate,
+    }

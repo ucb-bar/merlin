@@ -58,6 +58,7 @@ record. Two different formats admissible at one width is an ambiguity, not a vot
 too. Every dtype token that comes out of here is a name the format registry
 (:mod:`merlin.common.quant_formats`) already knows; nothing here spells a bits->name table of its own.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -151,7 +152,7 @@ def format_tokens(identifier: str) -> tuple[str, ...]:
     while i < len(low):
         if i in starts:
             for size in range(min(longest, len(low) - i), 0, -1):
-                hit = table.get(low[i:i + size])
+                hit = table.get(low[i : i + size])
                 if hit is not None:
                     out.append(hit)
                     i += size
@@ -191,7 +192,7 @@ def _int_width(type_text: str) -> int | None:
         t = head.strip()
     for prefix in ("UInt<", "SInt<"):
         if t.startswith(prefix) and t.endswith(">"):
-            inner = t[len(prefix):-1]
+            inner = t[len(prefix) : -1]
             return int(inner) if inner.isdigit() else None
     return None
 
@@ -212,7 +213,7 @@ def instance_edges(fir_text: str) -> dict[str, set[str]]:
     out: dict[str, set[str]] = {}
     current = ""
     for raw in fir_text.splitlines():
-        name = module_name(raw)      # the one module-header reader, shared with the port reader
+        name = module_name(raw)  # the one module-header reader, shared with the port reader
         if name:
             current = name
             out.setdefault(current, set())
@@ -282,7 +283,7 @@ class CellDatapath:
     accum_dtype: str | None = None
     operand_dtype_why: str = ""
     accum_dtype_why: str = ""
-    naming: dict = field(default_factory=dict)   # bits -> (format, module that names it)
+    naming: dict = field(default_factory=dict)  # bits -> (format, module that names it)
 
     def key(self) -> tuple:
         """What two readings of the same cell must agree on to be folded into one."""
@@ -296,10 +297,15 @@ class CellDatapath:
         """
         out: list[dict[str, Any]] = []
         for role, bits, dtype, why, ports in (
-                (OPERAND_ROLE, self.operand_bits, self.operand_dtype, self.operand_dtype_why,
-                 self.operand_ports),
-                (ACCUM_ROLE, self.accum_bits, self.accum_dtype, self.accum_dtype_why,
-                 self.accum_in_ports + self.accum_out_ports)):
+            (OPERAND_ROLE, self.operand_bits, self.operand_dtype, self.operand_dtype_why, self.operand_ports),
+            (
+                ACCUM_ROLE,
+                self.accum_bits,
+                self.accum_dtype,
+                self.accum_dtype_why,
+                self.accum_in_ports + self.accum_out_ports,
+            ),
+        ):
             # The naming clause travels only with a RESOLVED dtype. Quoting one module's name beside a
             # width this reader refused to name would read as the evidence for a fact it did not state.
             named = self.naming.get(bits) if dtype else None
@@ -310,10 +316,15 @@ class CellDatapath:
                 "source": SOURCE,
                 "module": self.module,
                 "ports": list(ports),
-                "evidence": (f"module {self.module} (the replicated compute element) declares "
-                             f"{', '.join(ports)} as {bits}-bit"
-                             + (f"; its instance closure names {named[0]} in `{named[1]}`, which "
-                                f"declares a {bits}-bit port" if named else "")),
+                "evidence": (
+                    f"module {self.module} (the replicated compute element) declares "
+                    f"{', '.join(ports)} as {bits}-bit"
+                    + (
+                        f"; its instance closure names {named[0]} in `{named[1]}`, which declares a {bits}-bit port"
+                        if named
+                        else ""
+                    )
+                ),
             }
             if dtype is None:
                 rec["dtype_unknown"] = why
@@ -343,20 +354,26 @@ def cell_datapath(source: str | Elaboration, module: str) -> tuple[CellDatapath 
             continue
         (inward if f.is_input() else outward).setdefault(bits, []).append(f.name)
     if not inward or not outward:
-        return None, (f"module {module} declares no scalar data field in one of the two directions "
-                      f"(inward widths {sorted(inward)}, outward widths {sorted(outward)}), so no "
-                      f"accumulation chain is visible on its ports")
+        return None, (
+            f"module {module} declares no scalar data field in one of the two directions "
+            f"(inward widths {sorted(inward)}, outward widths {sorted(outward)}), so no "
+            f"accumulation chain is visible on its ports"
+        )
     chain = sorted(set(inward) & set(outward))
     if not chain:
-        return None, (f"module {module} declares no width that both enters and leaves it (in "
-                      f"{sorted(inward)}, out {sorted(outward)}), so it carries no accumulation chain "
-                      f"and this reader will not name one")
+        return None, (
+            f"module {module} declares no width that both enters and leaves it (in "
+            f"{sorted(inward)}, out {sorted(outward)}), so it carries no accumulation chain "
+            f"and this reader will not name one"
+        )
     accum_bits = chain[-1]
     operands = [w for w in inward if w < accum_bits]
     if not operands:
-        return None, (f"module {module} declares no inward field narrower than its {accum_bits}-bit "
-                      f"accumulation chain, so which of its inputs is the operand is not decidable "
-                      f"from the port geometry")
+        return None, (
+            f"module {module} declares no inward field narrower than its {accum_bits}-bit "
+            f"accumulation chain, so which of its inputs is the operand is not decidable "
+            f"from the port geometry"
+        )
     operand_bits = max(operands)
 
     closure = instance_closure(el.edges, module)
@@ -381,24 +398,33 @@ def cell_datapath(source: str | Elaboration, module: str) -> tuple[CellDatapath 
             return found[0], ""
         candidates = _formats_of_width(bits)
         if not found:
-            return None, (f"the elaboration states a {bits}-bit width and no format NAME for it: no "
-                          f"module in {module}'s instance closure ({len(closure)} modules) is "
-                          f"identified with a registered {bits}-bit format carrying a {bits}-bit port. "
-                          f"{bits} bits is any of {list(candidates)}, and picking one would be a "
-                          f"convention, not a measurement")
-        return None, (f"{len(found)} different {bits}-bit formats are named in {module}'s instance "
-                      f"closure ({found}); which one this datapath carries is UNKNOWN, and a vote "
-                      f"between two encodings is not evidence")
+            return None, (
+                f"the elaboration states a {bits}-bit width and no format NAME for it: no "
+                f"module in {module}'s instance closure ({len(closure)} modules) is "
+                f"identified with a registered {bits}-bit format carrying a {bits}-bit port. "
+                f"{bits} bits is any of {list(candidates)}, and picking one would be a "
+                f"convention, not a measurement"
+            )
+        return None, (
+            f"{len(found)} different {bits}-bit formats are named in {module}'s instance "
+            f"closure ({found}); which one this datapath carries is UNKNOWN, and a vote "
+            f"between two encodings is not evidence"
+        )
 
     op_dtype, op_why = _resolve(operand_bits)
     ac_dtype, ac_why = _resolve(accum_bits)
     return CellDatapath(
-        module=module, operand_bits=operand_bits, accum_bits=accum_bits,
+        module=module,
+        operand_bits=operand_bits,
+        accum_bits=accum_bits,
         operand_ports=tuple(sorted(inward[operand_bits])),
         accum_in_ports=tuple(sorted(inward[accum_bits])),
         accum_out_ports=tuple(sorted(outward[accum_bits])),
-        closure=closure, operand_dtype=op_dtype, accum_dtype=ac_dtype,
-        operand_dtype_why=op_why, accum_dtype_why=ac_why,
+        closure=closure,
+        operand_dtype=op_dtype,
+        accum_dtype=ac_dtype,
+        operand_dtype_why=op_why,
+        accum_dtype_why=ac_why,
         naming={b: naming[b] for b in (operand_bits, accum_bits) if b in naming},
     ), ""
 
@@ -420,12 +446,13 @@ def compute_elements(kinds: Iterable[str], facts: dict) -> tuple[tuple[str, ...]
         # NOT silence. A target whose kind does not resolve has an unlocatable compute element for a
         # reason a reader can act on (no contract, no compute_units), and returning an empty answer with
         # no note is how "nobody looked" comes to read as "there is nothing there".
-        return (), ["no compute-unit kind resolves for this target, so which subclass its compute "
-                    "element belongs to -- and therefore how to locate it -- is UNKNOWN"]
+        return (), [
+            "no compute-unit kind resolves for this target, so which subclass its compute "
+            "element belongs to -- and therefore how to locate it -- is UNKNOWN"
+        ]
     for kind in wanted:
         if kind not in known_kinds():
-            notes.append(f"kind {kind!r} is not a known compute-unit kind, so no compute element is "
-                         f"located for it")
+            notes.append(f"kind {kind!r} is not a known compute-unit kind, so no compute element is located for it")
             continue
         how = family_profile(kind).compute_element
         if how == "array_element":
@@ -438,26 +465,35 @@ def compute_elements(kinds: Iterable[str], facts: dict) -> tuple[tuple[str, ...]
             if elements:
                 found += elements
             elif declined:
-                notes.append(f"kind {kind!r}: the only replication these facts carry ({declined}) is "
-                             f"one the array discovery declined to identify as the compute array, so "
-                             f"its element is not the compute element either")
+                notes.append(
+                    f"kind {kind!r}: the only replication these facts carry ({declined}) is "
+                    f"one the array discovery declined to identify as the compute array, so "
+                    f"its element is not the compute element either"
+                )
             else:
-                notes.append(f"kind {kind!r} takes its compute element from the discovered compute "
-                             f"array, and these facts declare no array carrying an `element`")
+                notes.append(
+                    f"kind {kind!r} takes its compute element from the discovered compute "
+                    f"array, and these facts declare no array carrying an `element`"
+                )
         elif how == "lane_replication":
             simt = facts.get("simt") if isinstance(facts.get("simt"), dict) else {}
             lanes = simt.get("lanes_per_warp")
             groups = [g for g in facts.get("replication_groups") or [] if isinstance(g, dict)]
             if not isinstance(lanes, int) or lanes <= 0:
-                notes.append(f"kind {kind!r} takes its compute element from the module replicated once "
-                             f"per lane, and these facts declare no lane width")
+                notes.append(
+                    f"kind {kind!r} takes its compute element from the module replicated once "
+                    f"per lane, and these facts declare no lane width"
+                )
             elif not groups:
-                notes.append(f"kind {kind!r} needs the elaboration's replication groups to find the "
-                             f"module instantiated {lanes} times, and these facts carry none (the "
-                             f"structural census did not run on this target's elaboration)")
+                notes.append(
+                    f"kind {kind!r} needs the elaboration's replication groups to find the "
+                    f"module instantiated {lanes} times, and these facts carry none (the "
+                    f"structural census did not run on this target's elaboration)"
+                )
             else:
-                matched = sorted({str(g["element"]) for g in groups
-                                  if g.get("element") and g.get("instances") == lanes})
+                matched = sorted(
+                    {str(g["element"]) for g in groups if g.get("element") and g.get("instances") == lanes}
+                )
                 if len(matched) == 1:
                     found += matched
                 elif matched:
@@ -468,23 +504,30 @@ def compute_elements(kinds: Iterable[str], facts: dict) -> tuple[tuple[str, ...]
                     # taking the first would publish a bus monitor's port widths as this device's
                     # arithmetic. The lane count alone cannot settle it; something that distinguishes a
                     # datapath from a channel must.
-                    notes.append(f"kind {kind!r}: {len(matched)} distinct modules are replicated once "
-                                 f"per lane ({matched[:6]}{'...' if len(matched) > 6 else ''}), so "
-                                 f"which one is the compute element is UNKNOWN — replication count "
-                                 f"alone does not separate a lane datapath from per-lane interconnect")
+                    notes.append(
+                        f"kind {kind!r}: {len(matched)} distinct modules are replicated once "
+                        f"per lane ({matched[:6]}{'...' if len(matched) > 6 else ''}), so "
+                        f"which one is the compute element is UNKNOWN — replication count "
+                        f"alone does not separate a lane datapath from per-lane interconnect"
+                    )
                 else:
                     counts = sorted({g.get("instances") for g in groups})
-                    notes.append(f"kind {kind!r} declares {lanes} lanes and no replication group has "
-                                 f"that many instances (groups: {counts}), so the per-lane compute "
-                                 f"element is not identified")
+                    notes.append(
+                        f"kind {kind!r} declares {lanes} lanes and no replication group has "
+                        f"that many instances (groups: {counts}), so the per-lane compute "
+                        f"element is not identified"
+                    )
         else:
-            notes.append(f"kind {kind!r} has no replicated compute element ({how}); its datapath is "
-                         f"not derivable from cell geometry")
+            notes.append(
+                f"kind {kind!r} has no replicated compute element ({how}); its datapath is "
+                f"not derivable from cell geometry"
+            )
     return tuple(dict.fromkeys(found)), notes
 
 
-def datapaths_from_compute_cells(facts: dict, fir_paths: Iterable[Path | str],
-                                 kinds: Iterable[str]) -> tuple[list[dict[str, Any]], list[str]]:
+def datapaths_from_compute_cells(
+    facts: dict, fir_paths: Iterable[Path | str], kinds: Iterable[str]
+) -> tuple[list[dict[str, Any]], list[str]]:
     """``(datapath facts, why-not notes)`` derived from the compute cells of ``fir_paths``.
 
     Several elaborations may declare the same cell. Readings that AGREE are folded into one; readings
@@ -516,14 +559,18 @@ def datapaths_from_compute_cells(facts: dict, fir_paths: Iterable[Path | str],
     for element in elements:
         recs = readings[element]
         if not recs:
-            notes.append(f"compute element {element}: no elaboration yielded a datapath — "
-                         + "; ".join(per_element_why[element] or ["no elaboration was readable"]))
+            notes.append(
+                f"compute element {element}: no elaboration yielded a datapath — "
+                + "; ".join(per_element_why[element] or ["no elaboration was readable"])
+            )
             continue
         distinct = {r.key(): r for r in recs}
         if len(distinct) > 1:
-            notes.append(f"compute element {element}: {len(distinct)} elaborations disagree about its "
-                         f"datapath ({sorted(k[1:] for k in distinct)}); which configuration is under "
-                         f"test is UNKNOWN, so no datapath is published for it")
+            notes.append(
+                f"compute element {element}: {len(distinct)} elaborations disagree about its "
+                f"datapath ({sorted(k[1:] for k in distinct)}); which configuration is under "
+                f"test is UNKNOWN, so no datapath is published for it"
+            )
             continue
         rec = next(iter(distinct.values()))
         # The first element that resolves takes the ROLE names every consumer keys on; a second compute

@@ -4,6 +4,7 @@ Only pure, explicitly supported integer instructions are evaluated. Loads,
 block arguments and unknown instructions stay unknown. Integer widths and
 signedness come from the IR, never from a target or a model's identity.
 """
+
 from __future__ import annotations
 
 from xdsl.dialects.builtin import IntegerAttr, IntegerType
@@ -56,8 +57,9 @@ def constant_integer(value: SSAValue) -> int | None:
                 elif op.name in ("llvm.xor", "arith.xori"):
                     result = a ^ b
                 elif op.name in ("llvm.shl", "llvm.ashr", "llvm.lshr") and 0 <= b < width:
-                    result = a << b if op.name == "llvm.shl" else (
-                        a >> b if op.name == "llvm.ashr" else (a & mask) >> b)
+                    result = (
+                        a << b if op.name == "llvm.shl" else (a >> b if op.name == "llvm.ashr" else (a & mask) >> b)
+                    )
                 else:
                     return None
             else:

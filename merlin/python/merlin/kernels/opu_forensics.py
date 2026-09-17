@@ -23,6 +23,7 @@ subtile, and nothing else.
 Everything here is pure arithmetic over arrays the caller already has. No hardware, no simulator, no
 target facts.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -38,7 +39,7 @@ __all__ = ["Explanation", "explain_deltas", "find_dropped_step", "uninitialised_
 class Explanation:
     """One candidate account of the deltas, with everything needed to check it."""
 
-    kind: str                      # "dropped_step" | "double_counted_step" | "uninitialised" | "rank_1"
+    kind: str  # "dropped_step" | "double_counted_step" | "uninitialised" | "rank_1"
     detail: dict[str, Any] = field(default_factory=dict)
     #: How many of the examined positions the explanation reproduces EXACTLY.
     exact: int = 0
@@ -51,12 +52,21 @@ class Explanation:
         return self.examined > 0 and self.exact == self.examined
 
     def to_dict(self) -> dict[str, Any]:
-        return {"kind": self.kind, "detail": dict(self.detail), "exact": self.exact,
-                "examined": self.examined, "complete": self.complete, "note": self.note}
+        return {
+            "kind": self.kind,
+            "detail": dict(self.detail),
+            "exact": self.exact,
+            "examined": self.examined,
+            "complete": self.complete,
+            "note": self.note,
+        }
 
 
-def find_dropped_step(lhs: np.ndarray, rhs: np.ndarray, deltas: Mapping[tuple[int, int], int],
-                      ) -> list[Explanation]:
+def find_dropped_step(
+    lhs: np.ndarray,
+    rhs: np.ndarray,
+    deltas: Mapping[tuple[int, int], int],
+) -> list[Explanation]:
     """Reduction steps whose contribution explains ``deltas`` exactly, dropped or double-counted.
 
     ``lhs``/``rhs`` are K-major as the unit requires: ``lhs[k, i]``, ``rhs[k, j]``. ``deltas`` maps
@@ -82,14 +92,19 @@ def find_dropped_step(lhs: np.ndarray, rhs: np.ndarray, deltas: Mapping[tuple[in
         for sign, kind in ((-1, "dropped_step"), (1, "double_counted_step")):
             if all(sign * int(a[k, row]) * int(b[k, col]) == int(d) for (row, col), d in items):
                 rows = sorted({row for (row, _c) in deltas})
-                out.append(Explanation(
-                    kind=kind,
-                    detail={"k": int(k), "rows": rows,
-                            "lhs_values": {int(r): int(a[k, r]) for r in rows}},
-                    exact=len(items), examined=len(items),
-                    note=(f"every delta equals {'minus ' if sign < 0 else ''}lhs[{k}, row] * "
-                          f"rhs[{k}, col], so reduction step {k}'s contribution is "
-                          f"{'missing from' if sign < 0 else 'counted twice in'} these positions")))
+                out.append(
+                    Explanation(
+                        kind=kind,
+                        detail={"k": int(k), "rows": rows, "lhs_values": {int(r): int(a[k, r]) for r in rows}},
+                        exact=len(items),
+                        examined=len(items),
+                        note=(
+                            f"every delta equals {'minus ' if sign < 0 else ''}lhs[{k}, row] * "
+                            f"rhs[{k}, col], so reduction step {k}'s contribution is "
+                            f"{'missing from' if sign < 0 else 'counted twice in'} these positions"
+                        ),
+                    )
+                )
     return out
 
 
@@ -104,14 +119,18 @@ def uninitialised_columns(device: np.ndarray, reference: np.ndarray) -> Explanat
     if values.size != 1:
         return None
     return Explanation(
-        kind="uninitialised", detail={"value": int(values[0]), "elements": int(bad.sum())},
-        exact=int(bad.sum()), examined=int(bad.sum()),
-        note=(f"every disagreeing element reads {int(values[0])}, i.e. the region was never written "
-              "rather than computed wrongly"))
+        kind="uninitialised",
+        detail={"value": int(values[0]), "elements": int(bad.sum())},
+        exact=int(bad.sum()),
+        examined=int(bad.sum()),
+        note=(
+            f"every disagreeing element reads {int(values[0])}, i.e. the region was never written "
+            "rather than computed wrongly"
+        ),
+    )
 
 
-def explain_deltas(lhs: np.ndarray, rhs: np.ndarray, device: np.ndarray,
-                   reference: np.ndarray) -> list[Explanation]:
+def explain_deltas(lhs: np.ndarray, rhs: np.ndarray, device: np.ndarray, reference: np.ndarray) -> list[Explanation]:
     """Every complete explanation of the difference between ``device`` and ``reference``.
 
     Returns the ones that account for ALL disagreeing positions, most specific first. An empty result is

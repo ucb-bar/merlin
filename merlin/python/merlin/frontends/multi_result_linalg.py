@@ -24,6 +24,7 @@ a pattern narrow enough to be safe here would be wide enough to eat an affine ma
 and this tree has been bitten by exactly that. The count is returned so a caller can report what it
 changed rather than silently rewriting a module.
 """
+
 from __future__ import annotations
 
 __all__ = ["normalize_multi_result_linalg"]
@@ -71,20 +72,20 @@ def normalize_multi_result_linalg(text: str) -> tuple[str, int]:
             return "".join(out), changed
         cursor = _skip_space(text, brace + 1)
         if not text.startswith("->", cursor):
-            out.append(text[at:brace + 1])
+            out.append(text[at : brace + 1])
             at = brace + 1
             continue
         cursor = _skip_space(text, cursor + 2)
         if cursor >= len(text) or text[cursor] != "(":
-            out.append(text[at:brace + 1])
+            out.append(text[at : brace + 1])
             at = brace + 1
             continue
         close = _matching_paren(text, cursor)
-        if close is None:                      # unbalanced: leave it for the parser to report
-            out.append(text[at:brace + 1])
+        if close is None:  # unbalanced: leave it for the parser to report
+            out.append(text[at : brace + 1])
             at = brace + 1
             continue
-        out.append(text[at:cursor])            # everything up to and including the arrow
-        out.append(text[cursor + 1:close])     # the type list, without its parentheses
+        out.append(text[at:cursor])  # everything up to and including the arrow
+        out.append(text[cursor + 1 : close])  # the type list, without its parentheses
         at = close + 1
         changed += 1

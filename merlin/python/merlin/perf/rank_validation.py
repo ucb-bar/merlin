@@ -25,6 +25,7 @@ Design notes that matter for honesty:
 
 Nothing here knows any target, opcode, or unit: a record is (workload, program, measured, score).
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -42,7 +43,7 @@ class Program:
     workload: str
     program: str
     measured: float
-    group: str = ""          # optional coarser slice, e.g. the family the workload belongs to
+    group: str = ""  # optional coarser slice, e.g. the family the workload belongs to
 
 
 @dataclass(frozen=True)
@@ -60,8 +61,13 @@ class Agreement:
         return (self.agreed / self.decided) if self.decided else None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"pairs": self.pairs, "decided": self.decided, "agreed": self.agreed,
-                "undecided": self.undecided, "rate": self.rate}
+        return {
+            "pairs": self.pairs,
+            "decided": self.decided,
+            "agreed": self.agreed,
+            "undecided": self.undecided,
+            "rate": self.rate,
+        }
 
 
 def ordered_pairs(programs: Sequence[Program]) -> list[tuple[Program, Program]]:
@@ -83,8 +89,9 @@ def ordered_pairs(programs: Sequence[Program]) -> list[tuple[Program, Program]]:
     return out
 
 
-def agreement(pairs: Sequence[tuple[Program, Program]],
-              score: Mapping[str, float], *, margin: float = 0.0) -> Agreement:
+def agreement(
+    pairs: Sequence[tuple[Program, Program]], score: Mapping[str, float], *, margin: float = 0.0
+) -> Agreement:
     """How often the scorer's ordering matches the oracle's, over pairs it decides.
 
     ``margin`` is the separation the scorer must show before it is taken to have an opinion. Raising
@@ -104,8 +111,9 @@ def agreement(pairs: Sequence[tuple[Program, Program]],
     return Agreement(pairs=len(pairs), decided=decided, agreed=agreed, undecided=undecided)
 
 
-def held_out(programs: Sequence[Program], score: Mapping[str, float], *,
-             by: str = "workload", margin: float = 0.0) -> dict[str, Agreement]:
+def held_out(
+    programs: Sequence[Program], score: Mapping[str, float], *, by: str = "workload", margin: float = 0.0
+) -> dict[str, Agreement]:
     """Agreement computed separately per slice, to expose a scorer that learned one slice.
 
     ``by`` selects the slice key: ``"workload"`` or ``"group"``. A scorer that scores well overall
@@ -116,13 +124,18 @@ def held_out(programs: Sequence[Program], score: Mapping[str, float], *,
     slices: dict[str, list[Program]] = {}
     for p in programs:
         slices.setdefault(getattr(p, by), []).append(p)
-    return {name: agreement(ordered_pairs(rows), score, margin=margin)
-            for name, rows in sorted(slices.items())}
+    return {name: agreement(ordered_pairs(rows), score, margin=margin) for name, rows in sorted(slices.items())}
 
 
-def verdict(overall: Agreement, slices: Mapping[str, Agreement], *,
-            minimum_rate: float, minimum_decided: int,
-            minimum_slice_decided: int, minimum_slices: int = 2) -> dict[str, Any]:
+def verdict(
+    overall: Agreement,
+    slices: Mapping[str, Agreement],
+    *,
+    minimum_rate: float,
+    minimum_decided: int,
+    minimum_slice_decided: int,
+    minimum_slices: int = 2,
+) -> dict[str, Any]:
     """Is this scorer fit to be shown to a search? Refuses by default, and says why.
 
     Three ways to fail, each reported rather than collapsed into a boolean: too little evidence,
@@ -131,15 +144,19 @@ def verdict(overall: Agreement, slices: Mapping[str, Agreement], *,
     """
     reasons: list[str] = []
     if overall.decided < minimum_decided:
-        reasons.append(f"decided only {overall.decided} pair(s), below the required "
-                       f"{minimum_decided}; the rate is not evidence at this count")
+        reasons.append(
+            f"decided only {overall.decided} pair(s), below the required "
+            f"{minimum_decided}; the rate is not evidence at this count"
+        )
     rate = overall.rate
     if rate is None:
         reasons.append("the scorer decided nothing; it separates no pair of programs")
     else:
         if rate <= CHANCE:
-            reasons.append(f"agreement {rate:.3f} is at or below chance ({CHANCE}); a signal that "
-                           f"does not beat a coin will be followed and must not be shown")
+            reasons.append(
+                f"agreement {rate:.3f} is at or below chance ({CHANCE}); a signal that "
+                f"does not beat a coin will be followed and must not be shown"
+            )
         elif rate < minimum_rate:
             reasons.append(f"agreement {rate:.3f} is below the required {minimum_rate}")
     # EVIDENCE FROM ONE SLICE IS NOT EVIDENCE THAT GENERALISES. A scorer whose every decided pair
@@ -149,18 +166,28 @@ def verdict(overall: Agreement, slices: Mapping[str, Agreement], *,
     # one family, while a workload inside that same family scored 0.486 -- below chance.
     qualifying = {name: a for name, a in slices.items() if a.decided >= minimum_slice_decided}
     if len(qualifying) < minimum_slices:
-        reasons.append(f"only {len(qualifying)} slice(s) carry at least {minimum_slice_decided} "
-                       f"decided pair(s), below the required {minimum_slices}; a rate measured on "
-                       f"one slice says nothing about the others, which decided too little to check")
-    weak = {name: a.rate for name, a in qualifying.items()
-            if a.rate is None or a.rate < minimum_rate}
+        reasons.append(
+            f"only {len(qualifying)} slice(s) carry at least {minimum_slice_decided} "
+            f"decided pair(s), below the required {minimum_slices}; a rate measured on "
+            f"one slice says nothing about the others, which decided too little to check"
+        )
+    weak = {name: a.rate for name, a in qualifying.items() if a.rate is None or a.rate < minimum_rate}
     if weak:
-        reasons.append(f"{len(weak)} slice(s) with enough evidence fall below the bar: "
-                       + ", ".join(f"{n}={r:.3f}" if r is not None else f"{n}=undecided"
-                                   for n, r in sorted(weak.items())))
-    return {"exposable": not reasons, "reasons": reasons, "overall": overall.to_dict(),
-            "slices": {n: a.to_dict() for n, a in slices.items()},
-            "qualifying_slices": sorted(qualifying),
-            "thresholds": {"minimum_rate": minimum_rate, "minimum_decided": minimum_decided,
-                           "minimum_slice_decided": minimum_slice_decided,
-                           "minimum_slices": minimum_slices, "chance": CHANCE}}
+        reasons.append(
+            f"{len(weak)} slice(s) with enough evidence fall below the bar: "
+            + ", ".join(f"{n}={r:.3f}" if r is not None else f"{n}=undecided" for n, r in sorted(weak.items()))
+        )
+    return {
+        "exposable": not reasons,
+        "reasons": reasons,
+        "overall": overall.to_dict(),
+        "slices": {n: a.to_dict() for n, a in slices.items()},
+        "qualifying_slices": sorted(qualifying),
+        "thresholds": {
+            "minimum_rate": minimum_rate,
+            "minimum_decided": minimum_decided,
+            "minimum_slice_decided": minimum_slice_decided,
+            "minimum_slices": minimum_slices,
+            "chance": CHANCE,
+        },
+    }

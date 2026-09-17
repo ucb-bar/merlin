@@ -5,6 +5,7 @@ It compares instruction payloads and operand relationships rather than operation
 result deliberately distinguishes instruction equivalence from timing-context equivalence: a
 matching sequence does not prove matching memory contention, pointer alignment, or cache state.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -28,12 +29,17 @@ class InstructionMotif:
     facts: Mapping[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
-        return {"schema": "extracted_instruction_motif_v1",
-                "signature": self.signature.to_dict() if self.signature else None,
-                "task_index": self.task_index, "instruction_indices": list(self.instruction_indices),
-                "artifact_digest": self.artifact_digest, "missing": list(self.missing),
-                "timing_context_missing": list(self.timing_context_missing), "facts": dict(self.facts),
-                "licence": "exact emitted instruction motif; timing-context qualification is separate"}
+        return {
+            "schema": "extracted_instruction_motif_v1",
+            "signature": self.signature.to_dict() if self.signature else None,
+            "task_index": self.task_index,
+            "instruction_indices": list(self.instruction_indices),
+            "artifact_digest": self.artifact_digest,
+            "missing": list(self.missing),
+            "timing_context_missing": list(self.timing_context_missing),
+            "facts": dict(self.facts),
+            "licence": "exact emitted instruction motif; timing-context qualification is separate",
+        }
 
 
 def _owner(op: Any) -> int | None:
@@ -46,14 +52,13 @@ def _operand(value: Mapping[str, Any], bindings: Mapping[int, int]) -> dict[str,
     if kind == "const" and isinstance(value.get("raw"), int):
         return {"kind": "const", "value": value["raw"]}
     if kind == "argbase" and value.get("arg_index") in bindings:
-        return {"kind": "operand", "operand": bindings[value["arg_index"]],
-                "byte_offset": value["offset"]}
+        return {"kind": "operand", "operand": bindings[value["arg_index"]], "byte_offset": value["offset"]}
     raise ValueError("unresolved or non-task instruction operand")
 
 
-def extract_task_instruction_motif(*, artifact: bytes, command_buffer: Mapping[str, Any],
-                                    target: str, task_index: int,
-                                    parsed_module: Any = None) -> InstructionMotif:
+def extract_task_instruction_motif(
+    *, artifact: bytes, command_buffer: Mapping[str, Any], target: str, task_index: int, parsed_module: Any = None
+) -> InstructionMotif:
     """Extract actual task ownership, decoded payloads, extents, def-use and capacity facts.
 
     Only straight-line custom-command tasks are supported. A host segment is not silently reduced
@@ -71,8 +76,7 @@ def extract_task_instruction_motif(*, artifact: bytes, command_buffer: Mapping[s
     facts: dict[str, Any] = {}
 
     def result(signature=None, indices=()):
-        return InstructionMotif(signature, task_index, tuple(indices), digest,
-                                tuple(missing), tuple(context), facts)
+        return InstructionMotif(signature, task_index, tuple(indices), digest, tuple(missing), tuple(context), facts)
 
     plan = command_buffer.get("params", {}).get("global_program_plan", {})
     task = next((row for row in plan.get("tasks", []) if row.get("task_index") == task_index), None)
@@ -110,20 +114,23 @@ def extract_task_instruction_motif(*, artifact: bytes, command_buffer: Mapping[s
     emitted_classes = {row["class"] for row in rows}
     if not config_classes or not config_classes.issubset(emitted_classes):
         missing.append("task inherits configuration; standalone configuration equivalence not established")
-    before = trace["instructions"][:indices[0]]
-    after = trace["instructions"][indices[-1] + 1:]
+    before = trace["instructions"][: indices[0]]
+    after = trace["instructions"][indices[-1] + 1 :]
     opened = rows[0]["class"] == "FENCE" or bool(before and before[-1]["class"] == "FENCE")
     closed = rows[-1]["class"] == "FENCE" or bool(after and after[0]["class"] == "FENCE")
     facts["device_boundary_fences"] = {"entry": opened, "exit": closed}
     if not opened or not closed:
         context.append("task lacks an observed device-drained entry/exit boundary")
-    context.extend(("runtime operand base alignment and memory-bank mapping are not bound",
-                    "external memory/cache state and concurrent port traffic are not bound"))
+    context.extend(
+        (
+            "runtime operand base alignment and memory-bank mapping are not bound",
+            "external memory/cache state and concurrent port traffic are not bound",
+        )
+    )
 
     names = list(dict.fromkeys([*task.get("reads", []), *task.get("writes", [])]))
     abi = command_buffer.get("kernel_abi", {}).get("args", [])
-    bindings = {i: names.index(arg["tensor"]) for i, arg in enumerate(abi)
-                if arg.get("tensor") in names}
+    bindings = {i: names.index(arg["tensor"]) for i, arg in enumerate(abi) if arg.get("tensor") in names}
     semantics = []
     try:
         for row in rows:
@@ -136,7 +143,8 @@ def extract_task_instruction_motif(*, artifact: bytes, command_buffer: Mapping[s
     except ValueError as error:
         missing.append(str(error))
     instructions, effects = dependencies.instructions_and_effects(
-        {"instructions": rows}, flag_masks=dependencies.flag_masks_for(target))
+        {"instructions": rows}, flag_masks=dependencies.flag_masks_for(target)
+    )
     unresolved = [reason for effect in effects for reason in effect.unresolved]
     missing.extend(unresolved)
     # Preserve actual physical addresses and every mode bit in the instruction payload. The footprint
@@ -183,13 +191,14 @@ def extract_task_instruction_motif(*, artifact: bytes, command_buffer: Mapping[s
         if slots and (min(slots) < 0 or max(slots) >= store.total_rows):
             missing.append(f"decoded {file} address exceeds derived physical capacity")
         capacity[store.name] = memory_regime.classify(len(slots), len(slots), store.total_rows)
-    facts["physical_footprint"] = {file: {"touched_rows": len(slots),
-                                          "max_row": max(slots, default=None)}
-                                   for file, slots in touched.items()}
+    facts["physical_footprint"] = {
+        file: {"touched_rows": len(slots), "max_row": max(slots, default=None)} for file, slots in touched.items()
+    }
     facts["physical_stores"] = [store.to_dict() for store in stores]
-    facts["def_use"] = [{"defs": [(a.file, a.slot) for a in effect.defs],
-                         "uses": [(a.file, a.slot) for a in effect.uses]}
-                        for effect in effects]
+    facts["def_use"] = [
+        {"defs": [(a.file, a.slot) for a in effect.defs], "uses": [(a.file, a.slot) for a in effect.uses]}
+        for effect in effects
+    ]
     tensors = command_buffer.get("tensors", {})
     dtype = stores[0].element_dtype
     if not dtype:
@@ -203,11 +212,22 @@ def extract_task_instruction_motif(*, artifact: bytes, command_buffer: Mapping[s
         if not current_dtype:
             missing.append("task tensor dtype is absent")
             continue
-        reps.append(ValueRepresentation("external-pointer", "decoded-stride-and-offset",
-                                        current_dtype, "exact-decoded-command-payload",
-                                        quantization="decoded-config-state"))
-    extents = sorted({(row.get("decoded", {}).get("rows"), row.get("decoded", {}).get("cols"))
-                      for row in rows if "rows" in row.get("decoded", {})})
+        reps.append(
+            ValueRepresentation(
+                "external-pointer",
+                "decoded-stride-and-offset",
+                current_dtype,
+                "exact-decoded-command-payload",
+                quantization="decoded-config-state",
+            )
+        )
+    extents = sorted(
+        {
+            (row.get("decoded", {}).get("rows"), row.get("decoded", {}).get("cols"))
+            for row in rows
+            if "rows" in row.get("decoded", {})
+        }
+    )
     facts["transfer_extents"] = [list(extent) for extent in extents]
     if not extents or any(not isinstance(v, int) or v <= 0 for extent in extents for v in extent):
         missing.append("transfer extents are not completely decoded")
@@ -227,26 +247,32 @@ def extract_task_instruction_motif(*, artifact: bytes, command_buffer: Mapping[s
         movement_commands += 1
     signature = derive_mechanism_signature(
         representations=reps,
-        events=[ActivityEvent("task", "whole_motif", "compute", 0,
-                              movement_bytes=movement_bytes, movement_commands=movement_commands)],
-        capacity_regime=capacity, tile_shape=[v for extent in extents for v in extent],
+        events=[
+            ActivityEvent(
+                "task", "whole_motif", "compute", 0, movement_bytes=movement_bytes, movement_commands=movement_commands
+            )
+        ],
+        capacity_regime=capacity,
+        tile_shape=[v for extent in extents for v in extent],
         edge_cases=[f"exact-transfer-extent:{r}x{c}" for r, c in extents],
         repetition_semantics="one complete issued command motif; no inter-motif overlap inferred",
-        instruction_semantics=semantics)
+        instruction_semantics=semantics,
+    )
     return result(signature, indices)
 
 
 def compare_instruction_motifs(model: InstructionMotif, probe: InstructionMotif) -> dict[str, Any]:
-    matched = (model.signature is not None and probe.signature is not None
-               and model.signature == probe.signature)
+    matched = model.signature is not None and probe.signature is not None and model.signature == probe.signature
     context = sorted(set(model.timing_context_missing + probe.timing_context_missing))
-    return {"instruction_equivalent": matched,
-            "timing_calibration_admissible": matched and not context,
-            "missing": sorted(set(model.missing + probe.missing)),
-            "timing_context_missing": context,
-            "model_artifact_digest": model.artifact_digest,
-            "probe_artifact_digest": probe.artifact_digest,
-            "licence": "matching instruction sequences alone do not establish matching elapsed cycles"}
+    return {
+        "instruction_equivalent": matched,
+        "timing_calibration_admissible": matched and not context,
+        "missing": sorted(set(model.missing + probe.missing)),
+        "timing_context_missing": context,
+        "model_artifact_digest": model.artifact_digest,
+        "probe_artifact_digest": probe.artifact_digest,
+        "licence": "matching instruction sequences alone do not establish matching elapsed cycles",
+    }
 
 
 def initialized_compute_primitives(trace: Mapping[str, Any], *, target: str) -> list[dict[str, Any]]:
@@ -272,9 +298,13 @@ def initialized_compute_primitives(trace: Mapping[str, Any], *, target: str) -> 
         cls = row.get("class")
         payload = row.get("decoded", {})
         known_state_effect = (
-            cls in config_classes or cls in INHERITS_DESTINATION
-            or cls in set(INHERITS_DESTINATION.values()) or cls == "FENCE"
-            or "spad_addr" in payload or "acc_addr" in payload)
+            cls in config_classes
+            or cls in INHERITS_DESTINATION
+            or cls in set(INHERITS_DESTINATION.values())
+            or cls == "FENCE"
+            or "spad_addr" in payload
+            or "acc_addr" in payload
+        )
         if not known_state_effect:
             # An instruction the adapter cannot model may overwrite staging or configuration.
             # Keeping the old state would manufacture initialization evidence across a blind spot.
@@ -283,17 +313,18 @@ def initialized_compute_primitives(trace: Mapping[str, Any], *, target: str) -> 
         # The existing structural decoder exposes subtype EX, independent of selector encoding.
         if cls in config_classes and payload.get("subtype") == "EX":
             try:
-                latest_execution = {"selector": row["funct"],
-                                    "rs1": _operand(row["rs1"], {}),
-                                    "rs2": _operand(row["rs2"], {})}
+                latest_execution = {
+                    "selector": row["funct"],
+                    "rs1": _operand(row["rs1"], {}),
+                    "rs2": _operand(row["rs2"], {}),
+                }
             except ValueError:
                 latest_execution = None
         if "spad_addr" in payload:
             address, count = payload["spad_addr"], payload.get("rows")
             if isinstance(address, int) and isinstance(count, int) and count > 0:
                 for slot in range(address, address + count):
-                    live[slot] = {"writer_index": index, "base": address,
-                                  "rows": count, "cols": payload.get("cols")}
+                    live[slot] = {"writer_index": index, "base": address, "rows": count, "cols": payload.get("cols")}
         stager = INHERITS_DESTINATION.get(cls)
         if stager is None or index == 0:
             continue
@@ -320,38 +351,60 @@ def initialized_compute_primitives(trace: Mapping[str, Any], *, target: str) -> 
             if any(live.get(slot) != state for slot in range(address, address + state["rows"])):
                 missing.append(f"{operand} staging tile was partially overwritten")
                 continue
-            inputs.append({"operand": operand, "address": address, "rows": state["rows"],
-                           "cols": state["cols"], "producer_index": state["writer_index"]})
+            inputs.append(
+                {
+                    "operand": operand,
+                    "address": address,
+                    "rows": state["rows"],
+                    "cols": state["cols"],
+                    "producer_index": state["writer_index"],
+                }
+            )
         semantics = []
         for command in (prior, row):
             try:
-                semantics.append({"class": command["class"], "selector": command["funct"],
-                                  "rs1": _operand(command["rs1"], {}),
-                                  "rs2": _operand(command["rs2"], {})})
+                semantics.append(
+                    {
+                        "class": command["class"],
+                        "selector": command["funct"],
+                        "rs1": _operand(command["rs1"], {}),
+                        "rs2": _operand(command["rs2"], {}),
+                    }
+                )
             except ValueError:
                 missing.append("primitive payload contains unresolved or external operands")
         # Writer index is provenance, not hardware semantics: different program positions may
         # initialize exactly the same operand extents and physical addresses.
-        domain = {"target_isa_digest": _digest(isa),
-                  "execution_configuration": latest_execution, "instructions": semantics,
-                  "initialized_operands": [{k: v for k, v in entry.items() if k != "producer_index"}
-                                           for entry in inputs],
-                  "accumulator_initialization": "overwrite",
-                  "calibration_context": "operand producers completed; all other engines drained"}
+        domain = {
+            "target_isa_digest": _digest(isa),
+            "execution_configuration": latest_execution,
+            "instructions": semantics,
+            "initialized_operands": [{k: v for k, v in entry.items() if k != "producer_index"} for entry in inputs],
+            "accumulator_initialization": "overwrite",
+            "calibration_context": "operand producers completed; all other engines drained",
+        }
         if any(entry["cols"] is None for entry in inputs):
             missing.append("initialized operand extent is unresolved")
-        out.append({"schema": "initialized_compute_primitive_v1",
-                    "instruction_indices": [index - 1, index],
-                    "domain": domain, "domain_digest": _digest(domain) if not missing else None,
-                    "initialization_provenance": inputs, "missing": missing,
-                    "calibration_admissible": False,
-                    "required_probe_instrumentation": [
-                        "finish operand initialization before measurement",
-                        "drain all competing engines before measurement",
-                        "measure only the primitive and its completion using warm 1 + measured 1"],
-                    "unpriced_behavior": [
-                        "input-value dependent timing, unless excluded by target facts or bounded by probes",
-                        "in-context memory and execution contention"],
-                    "in_context_cycles": None,
-                    "licence": "isolated engine primitive; queued producer/neighbor contention remains UNKNOWN"})
+        out.append(
+            {
+                "schema": "initialized_compute_primitive_v1",
+                "instruction_indices": [index - 1, index],
+                "domain": domain,
+                "domain_digest": _digest(domain) if not missing else None,
+                "initialization_provenance": inputs,
+                "missing": missing,
+                "calibration_admissible": False,
+                "required_probe_instrumentation": [
+                    "finish operand initialization before measurement",
+                    "drain all competing engines before measurement",
+                    "measure only the primitive and its completion using warm 1 + measured 1",
+                ],
+                "unpriced_behavior": [
+                    "input-value dependent timing, unless excluded by target facts or bounded by probes",
+                    "in-context memory and execution contention",
+                ],
+                "in_context_cycles": None,
+                "licence": "isolated engine primitive; queued producer/neighbor contention remains UNKNOWN",
+            }
+        )
     return out

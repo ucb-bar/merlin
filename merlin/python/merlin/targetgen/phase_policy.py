@@ -38,16 +38,32 @@ sizing a capsule from a number nobody measured is how a corpus acquires a claim 
 be neither certified nor priced, which is a finding about the corpus and must not be silently
 indistinguishable from a capsule nobody asked for.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 __all__ = [
-    "YES", "NO", "UNKNOWN", "Verdict", "PhaseVerdict",
-    "PHASE1", "PHASE2", "BOTH", "NEITHER", "UNDETERMINED",
-    "certifiable", "priceable", "phase_of", "declared_macs", "split_report", "anchors",
-    "cycle_accurate_seen", "lever_is_reachable", "lever_reach_report",
+    "YES",
+    "NO",
+    "UNKNOWN",
+    "Verdict",
+    "PhaseVerdict",
+    "PHASE1",
+    "PHASE2",
+    "BOTH",
+    "NEITHER",
+    "UNDETERMINED",
+    "certifiable",
+    "priceable",
+    "phase_of",
+    "declared_macs",
+    "split_report",
+    "anchors",
+    "cycle_accurate_seen",
+    "lever_is_reachable",
+    "lever_reach_report",
 ]
 
 #: Tri-state. ``UNKNOWN`` is not a soft ``NO``: it says the question could not be answered here, which
@@ -142,7 +158,7 @@ def declared_macs(capsule: Mapping[str, Any]) -> tuple[int | None, str]:
     recoverable from any two rank-2 operands sharing one axis. Where the shared axis cannot be
     identified the answer is ``None`` WITH the reason, never a guess.
     """
-    op = (capsule.get("operation") or {})
+    op = capsule.get("operation") or {}
     if not isinstance(op, Mapping):
         return None, "the capsule declares no operation block"
     shapes = _operand_shapes(capsule)
@@ -200,8 +216,10 @@ def declared_macs(capsule: Mapping[str, Any]) -> tuple[int | None, str]:
         if lhs[-1] == weight[-1]:
             m, k, n = _leading(lhs), lhs[-1], _leading(weight)
             return m * k * n, "contraction: declared lhs x weight (transposed)"
-        return None, (f"the declared operands share no reduction axis: lhs {lhs} and weight {weight} "
-                      "cannot both be extents of one contraction")
+        return None, (
+            f"the declared operands share no reduction axis: lhs {lhs} and weight {weight} "
+            "cannot both be extents of one contraction"
+        )
 
     family = ((capsule.get("semantic") or {}) or {}).get("semantic_family")
 
@@ -230,15 +248,20 @@ def declared_macs(capsule: Mapping[str, Any]) -> tuple[int | None, str]:
                     total += _leading(a) * a[-1] * _leading(w)
                     counted += 1
             if counted == len(acts):
-                return total, (f"contraction: {counted} declared activation(s) sharing one weight"
-                               if counted > 1 else "contraction: declared roles")
+                return total, (
+                    f"contraction: {counted} declared activation(s) sharing one weight"
+                    if counted > 1
+                    else "contraction: declared roles"
+                )
         # No weight at all. A contraction between two ACTIVATIONS is still a contraction -- a scores
         # block contracts Q against K and neither is a parameter -- so the reduction axis is found the
         # same way it is everywhere else here: as the extent the two operands share.
         if not weights and len(acts) >= 2:
             a, b = acts[0], acts[1]
             if len(a) >= 2 and len(b) >= 2 and a[-1] == b[-1]:
-                return _leading(a) * a[-1] * _leading(b), "contraction: two declared activations sharing a reduction axis"
+                return _leading(a) * a[-1] * _leading(
+                    b
+                ), "contraction: two declared activations sharing a reduction axis"
 
     # An attention block contracts twice and carries no weight at all -- Q, K and V are all
     # activations -- so neither the attribute pair nor the weight/activation roles reach it. Its work
@@ -255,14 +278,21 @@ def declared_macs(capsule: Mapping[str, Any]) -> tuple[int | None, str]:
             q, k = acts
             if q[-1] == k[-1]:
                 return _leading(q) * q[-1] * _leading(k), "attention: scores only (Q.K^T), no context operand declared"
-        return None, (f"attention declares {len(acts)} rank>=2 operands; a scores-and-context pair needs "
-                      "three whose head and key extents agree")
+        return None, (
+            f"attention declares {len(acts)} rank>=2 operands; a scores-and-context pair needs "
+            "three whose head and key extents agree"
+        )
 
     # The family decides whether multiply-accumulate work is a meaningful quantity at all here.
     if family in ("elementwise_map", "movement", "synchronization", "reduction", "normalization", "softmax"):
-        return 0, (f"{family} contracts nothing, so its multiply-accumulate work is zero -- a true "
-                   "quantity, not a missing price")
-    return None, f"no contraction operands are recoverable from the declaration and family {family!r} does not fix the work"
+        return 0, (
+            f"{family} contracts nothing, so its multiply-accumulate work is zero -- a true "
+            "quantity, not a missing price"
+        )
+    return (
+        None,
+        f"no contraction operands are recoverable from the declaration and family {family!r} does not fix the work",
+    )
 
 
 def _leading(shape: Sequence[int]) -> int:
@@ -276,9 +306,15 @@ def _trailing(shape: Sequence[int]) -> int:
     return int(shape[-1])
 
 
-def certifiable(capsule: Mapping[str, Any], *, target: str, fit: Any = None,
-                budget_s: float | None = None, max_operand_elements: int | None = None,
-                cycle_accurate_available: "bool | None" = None) -> Verdict:
+def certifiable(
+    capsule: Mapping[str, Any],
+    *,
+    target: str,
+    fit: Any = None,
+    budget_s: float | None = None,
+    max_operand_elements: int | None = None,
+    cycle_accurate_available: "bool | None" = None,
+) -> Verdict:
     """Can this member's answer be checked at full fidelity, on THIS target, inside a budget?
 
     ``cycle_accurate_available`` is a property of the TARGET and the caller must establish it. ``None``
@@ -294,29 +330,44 @@ def certifiable(capsule: Mapping[str, Any], *, target: str, fit: Any = None,
     # capsule-level ceiling is the explicit cap; target capability is supplied by the caller.
     cap = capsule.get("max_oracle_tier")
     if cap is not None and str(cap) not in _CYCLE_ACCURATE_TIERS:
-        return Verdict(NO, f"caps its oracle tier at {str(cap)!r}, which is not cycle-accurate, so it is "
-                           "screened rather than certified and must name the sibling it rests on")
+        return Verdict(
+            NO,
+            f"caps its oracle tier at {str(cap)!r}, which is not cycle-accurate, so it is "
+            "screened rather than certified and must name the sibling it rests on",
+        )
     if cycle_accurate_available is False:
         return Verdict(NO, f"{target!r} has no cycle-accurate tier available, so nothing can certify it")
     if cycle_accurate_available is None:
-        return Verdict(UNKNOWN, f"whether {target!r} can run a cycle-accurate tier was not established; "
-                                "a required-tier list does not answer it, because such a tier may run "
-                                "without gating any capsule")
+        return Verdict(
+            UNKNOWN,
+            f"whether {target!r} can run a cycle-accurate tier was not established; "
+            "a required-tier list does not answer it, because such a tier may run "
+            "without gating any capsule",
+        )
 
     ceiling = CC.MEASURED_MAX_OPERAND_ELEMENTS if max_operand_elements is None else int(max_operand_elements)
     operand = largest_operand_elements(capsule)
     if operand > ceiling:
-        return Verdict(NO, f"largest operand {operand} elements exceeds the measured range {ceiling}; "
-                           "the cost of moving it is unknown, not merely large")
+        return Verdict(
+            NO,
+            f"largest operand {operand} elements exceeds the measured range {ceiling}; "
+            "the cost of moving it is unknown, not merely large",
+        )
 
     if budget_s is None:
-        return Verdict(YES, "a cycle-accurate tier is available and its operands are inside the measured "
-                            "range; no budget was supplied, so size was not tested against one")
+        return Verdict(
+            YES,
+            "a cycle-accurate tier is available and its operands are inside the measured "
+            "range; no budget was supplied, so size was not tested against one",
+        )
 
     affordable = CC.max_elements_within(fit, float(budget_s))
     if affordable is None:
-        return Verdict(UNKNOWN, f"{target!r} has no measured certification history, so no size can be shown "
-                                "affordable; certify this target's existing corpus first")
+        return Verdict(
+            UNKNOWN,
+            f"{target!r} has no measured certification history, so no size can be shown "
+            "affordable; certify this target's existing corpus first",
+        )
     size = CC.capsule_elements(dict(capsule))
     if size > affordable:
         return Verdict(NO, f"{size} elements exceeds the {affordable} a {budget_s:g}s budget affords here")
@@ -332,24 +383,35 @@ def priceable(capsule: Mapping[str, Any], *, achievable_macs_per_cycle: float | 
     """
     macs, why = declared_macs(capsule)
     if macs is None:
-        return Verdict(NO, f"work cannot be priced -- {why}; an unpriced member also disables the "
-                           "corpus-wide attainment stop condition for every other member")
+        return Verdict(
+            NO,
+            f"work cannot be priced -- {why}; an unpriced member also disables the "
+            "corpus-wide attainment stop condition for every other member",
+        )
     if macs == 0:
         return Verdict(NO, f"declares zero multiply-accumulates ({why}), so it carries no utilization to improve")
     if achievable_macs_per_cycle is None:
-        return Verdict(YES, f"{macs} MACs are derivable ({why}); no achievable ceiling was supplied, so "
-                            "headroom was not tested")
+        return Verdict(
+            YES, f"{macs} MACs are derivable ({why}); no achievable ceiling was supplied, so headroom was not tested"
+        )
     if achievable_macs_per_cycle <= 0:
         return Verdict(UNKNOWN, "the achievable ceiling is not positive, so share-of-achievable cannot be formed")
     return Verdict(YES, f"{macs} MACs against an achievable {achievable_macs_per_cycle:g} MAC/cycle")
 
 
-def phase_of(capsule: Mapping[str, Any], *, target: str, fit: Any = None, budget_s: float | None = None,
-             achievable_macs_per_cycle: float | None = None,
-             cycle_accurate_available: "bool | None" = None) -> PhaseVerdict:
+def phase_of(
+    capsule: Mapping[str, Any],
+    *,
+    target: str,
+    fit: Any = None,
+    budget_s: float | None = None,
+    achievable_macs_per_cycle: float | None = None,
+    cycle_accurate_available: "bool | None" = None,
+) -> PhaseVerdict:
     """Which phase this capsule can serve. ``both`` is the healthy state; ``neither`` is a finding."""
-    cert = certifiable(capsule, target=target, fit=fit, budget_s=budget_s,
-                       cycle_accurate_available=cycle_accurate_available)
+    cert = certifiable(
+        capsule, target=target, fit=fit, budget_s=budget_s, cycle_accurate_available=cycle_accurate_available
+    )
     price = priceable(capsule, achievable_macs_per_cycle=achievable_macs_per_cycle)
     if cert.value == UNKNOWN or price.value == UNKNOWN:
         # Fail closed on the EVIDENCE, not on the capsule. An UNKNOWN folded into NO would report a
@@ -366,19 +428,32 @@ def phase_of(capsule: Mapping[str, Any], *, target: str, fit: Any = None, budget
     return PhaseVerdict(phase=phase, cert=cert, price=price, name=str(capsule.get("name") or ""))
 
 
-def split_report(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = None,
-                 budget_s: float | None = None,
-                 achievable_macs_per_cycle: float | None = None,
-                 cycle_accurate_available: "bool | None" = None) -> dict[str, Any]:
+def split_report(
+    capsules: Sequence[Mapping[str, Any]],
+    *,
+    target: str,
+    fit: Any = None,
+    budget_s: float | None = None,
+    achievable_macs_per_cycle: float | None = None,
+    cycle_accurate_available: "bool | None" = None,
+) -> dict[str, Any]:
     """The phase split for one target's corpus, with every single-phase member's reason kept.
 
     A count on its own cannot be acted on: the useful output is WHY a member is single-phase, because
     that names the thing to fix -- a missing golden engine, an unpriced family, or a size nobody can
     afford to certify.
     """
-    verdicts = [phase_of(c, target=target, fit=fit, budget_s=budget_s,
-                         achievable_macs_per_cycle=achievable_macs_per_cycle,
-                         cycle_accurate_available=cycle_accurate_available) for c in capsules]
+    verdicts = [
+        phase_of(
+            c,
+            target=target,
+            fit=fit,
+            budget_s=budget_s,
+            achievable_macs_per_cycle=achievable_macs_per_cycle,
+            cycle_accurate_available=cycle_accurate_available,
+        )
+        for c in capsules
+    ]
     counts: dict[str, int] = {BOTH: 0, PHASE1: 0, PHASE2: 0, NEITHER: 0, UNDETERMINED: 0}
     for v in verdicts:
         counts[v.phase] += 1
@@ -402,6 +477,7 @@ def split_report(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any
 
 # --------------------------------------------------------------------------------- the anchor relation
 
+
 def _obligation_key(capsule: Mapping[str, Any]) -> tuple:
     """What makes two capsules witnesses of the SAME obligation, independent of scale.
 
@@ -413,16 +489,29 @@ def _obligation_key(capsule: Mapping[str, Any]) -> tuple:
     op = capsule.get("operation") or {}
     attrs = op.get("attributes") or {}
     epilogue = tuple(sorted(str(e) for e in (attrs.get("epilogue") or ())))
-    dtypes = tuple(sorted({str(r.get("dtype")) for r in (capsule.get("inputs") or ())
-                           if isinstance(r, Mapping) and r.get("dtype")}))
-    return (str(sem.get("semantic_family") or op.get("op") or "?"), dtypes, epilogue,
-            str(attrs.get("output_dtype") or ""))
+    dtypes = tuple(
+        sorted(
+            {str(r.get("dtype")) for r in (capsule.get("inputs") or ()) if isinstance(r, Mapping) and r.get("dtype")}
+        )
+    )
+    return (
+        str(sem.get("semantic_family") or op.get("op") or "?"),
+        dtypes,
+        epilogue,
+        str(attrs.get("output_dtype") or ""),
+    )
 
 
-def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = None,
-            budget_s: float | None = None,
-            cycle_accurate_available: "bool | None" = None,
-            verify: bool = False, roots: Any = None) -> dict[str, Any]:
+def anchors(
+    capsules: Sequence[Mapping[str, Any]],
+    *,
+    target: str,
+    fit: Any = None,
+    budget_s: float | None = None,
+    cycle_accurate_available: "bool | None" = None,
+    verify: bool = False,
+    roots: Any = None,
+) -> dict[str, Any]:
     """Pair every phase-2 member with the certified sibling it can rest on.
 
     The relation this computes is the one ``extends`` already declares and nothing verifies: a member
@@ -455,7 +544,7 @@ def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = No
             from merlin.targetgen import tier_policy as TP
 
             attested = TP.certified_on_disk(str(target), roots=roots)
-        except Exception:                     # noqa: BLE001 - an unreadable run tree is no evidence
+        except Exception:  # noqa: BLE001 - an unreadable run tree is no evidence
             attested = {}
 
     def _name(capsule: Mapping[str, Any]) -> str:
@@ -463,27 +552,34 @@ def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = No
 
     by_ob: dict[tuple, list[tuple[Mapping[str, Any], PhaseVerdict]]] = {}
     for c in capsules:
-        v = phase_of(c, target=target, fit=fit, budget_s=budget_s,
-                     cycle_accurate_available=cycle_accurate_available)
+        v = phase_of(c, target=target, fit=fit, budget_s=budget_s, cycle_accurate_available=cycle_accurate_available)
         by_ob.setdefault(_obligation_key(c), []).append((c, v))
 
     paired: list[dict[str, Any]] = []
     orphaned: list[dict[str, Any]] = []
     self_certified: list[dict[str, Any]] = []
     for key, members in sorted(by_ob.items(), key=lambda kv: str(kv[0])):
-        certified = [(c, v) for c, v in members
-                     if v.cert.value == YES or _name(c) in attested]
-        extensions = [(c, v) for c, v in members
-                      if v.cert.value != YES and _name(c) not in attested and v.price.value == YES]
+        certified = [(c, v) for c, v in members if v.cert.value == YES or _name(c) in attested]
+        extensions = [
+            (c, v) for c, v in members if v.cert.value != YES and _name(c) not in attested and v.price.value == YES
+        ]
         # Only where EVIDENCE OVERRULED THE PREDICTION. A member the cost fit already calls certifiable
         # and that also ran is unremarkable; the finding is the member priced out of certification that
         # has nonetheless certified, because that is the one the gate would have demanded an anchor from.
         for c, v in members:
             if v.cert.value != YES and _name(c) in attested:
                 tier, source = attested[_name(c)]
-                self_certified.append({"member": _name(c), "tier": tier, "source": source,
-                                       "why": (f"priced out of certification ({v.cert.reason}) but has "
-                                               f"PASSED {tier}, a cycle-accurate tier, on this target")})
+                self_certified.append(
+                    {
+                        "member": _name(c),
+                        "tier": tier,
+                        "source": source,
+                        "why": (
+                            f"priced out of certification ({v.cert.reason}) but has "
+                            f"PASSED {tier}, a cycle-accurate tier, on this target"
+                        ),
+                    }
+                )
         if not extensions:
             continue
         if certified:
@@ -492,19 +588,25 @@ def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = No
             # different verification verdict -- depending on how its capsules were walked. Measured: the
             # same corpus reported 6 verified from one enumeration and 0 from another. The attested
             # flag leads the key so evidence outranks size, and the name still breaks every tie.
-            anchor = max(certified, key=lambda cv: (1 if _name(cv[0]) in attested else 0,
-                                                    largest_operand_elements(cv[0]), _name(cv[0])))
+            anchor = max(
+                certified,
+                key=lambda cv: (1 if _name(cv[0]) in attested else 0, largest_operand_elements(cv[0]), _name(cv[0])),
+            )
             for c, v in extensions:
                 computed = _name(anchor[0])
                 declared = str(c.get("extends") or "").strip()
-                row = {"member": _name(c), "anchor": declared or computed,
-                       "computed_anchor": computed,
-                       # WHICH SIBLING IS BEING CHECKED. Verifying the computed anchor while the capsule
-                       # declares a different one reports on a claim the capsule never made: measured,
-                       # five members whose own `extends` names a sibling with a passing L3 on disk read
-                       # as UNVERIFIED because the gate checked a computed sibling that had never run.
-                       "anchor_source": "declared" if declared else "computed",
-                       "obligation": key, "why": v.cert.reason}
+                row = {
+                    "member": _name(c),
+                    "anchor": declared or computed,
+                    "computed_anchor": computed,
+                    # WHICH SIBLING IS BEING CHECKED. Verifying the computed anchor while the capsule
+                    # declares a different one reports on a claim the capsule never made: measured,
+                    # five members whose own `extends` names a sibling with a passing L3 on disk read
+                    # as UNVERIFIED because the gate checked a computed sibling that had never run.
+                    "anchor_source": "declared" if declared else "computed",
+                    "obligation": key,
+                    "why": v.cert.reason,
+                }
                 if verify:
                     # PAIRED IS NOT VERIFIED. That a certifiable sibling EXISTS is structural; that it
                     # was CERTIFIED is evidential, and only the second entitles a member to rest on it.
@@ -516,10 +618,12 @@ def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = No
                     cap = _screened_at(c)
                     if cap is None:
                         row["verified"] = False
-                        row["verification"] = ("the tier this member is screened at cannot be read from "
-                                               "it -- it declares neither a `max_oracle_tier` cap nor a "
-                                               "required-tier list -- so no sibling can be shown to have "
-                                               "gone deeper")
+                        row["verification"] = (
+                            "the tier this member is screened at cannot be read from "
+                            "it -- it declares neither a `max_oracle_tier` cap nor a "
+                            "required-tier list -- so no sibling can be shown to have "
+                            "gone deeper"
+                        )
                     elif cap in _CYCLE_ACCURATE_TIERS:
                         # NOT A VERIFICATION FAILURE OF THE SIBLING. The member declares a
                         # cycle-accurate tier for ITSELF and is priced out of it, so there is no rung
@@ -531,7 +635,8 @@ def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = No
                         row["verification"] = (
                             f"declares {cap} for itself rather than capping below it, so no sibling can "
                             f"pass a tier deeper than the one this member already claims; either certify "
-                            f"it or cap it (`max_oracle_tier`) and name the sibling it rests on")
+                            f"it or cap it (`max_oracle_tier`) and name the sibling it rests on"
+                        )
                     else:
                         probe = dict(c)
                         probe["extends"] = row["anchor"]
@@ -541,13 +646,23 @@ def anchors(capsules: Sequence[Mapping[str, Any]], *, target: str, fit: Any = No
                 paired.append(row)
         else:
             for c, v in extensions:
-                orphaned.append({"member": _name(c), "obligation": key,
-                                 "why": "no certifiable witness of this obligation exists on this target"})
-    out = {"target": target, "n_obligations": len(by_ob),
-           "paired": paired, "orphaned": orphaned,
-           "self_certified": sorted(self_certified, key=lambda r: r["member"]),
-           "n_paired": len(paired), "n_orphaned": len(orphaned),
-           "n_self_certified": len(self_certified)}
+                orphaned.append(
+                    {
+                        "member": _name(c),
+                        "obligation": key,
+                        "why": "no certifiable witness of this obligation exists on this target",
+                    }
+                )
+    out = {
+        "target": target,
+        "n_obligations": len(by_ob),
+        "paired": paired,
+        "orphaned": orphaned,
+        "self_certified": sorted(self_certified, key=lambda r: r["member"]),
+        "n_paired": len(paired),
+        "n_orphaned": len(orphaned),
+        "n_self_certified": len(self_certified),
+    }
     if verify:
         out["n_verified"] = sum(1 for r in paired if r.get("verified"))
         out["n_unverified"] = len(paired) - out["n_verified"]
@@ -599,6 +714,7 @@ def cycle_accurate_seen(target: str, *, roots: Any = None) -> "bool | None":
 
 # ----------------------------------------------------- necessity, and whether a member is worth timing
 
+
 def covers_cell(capsule: Mapping[str, Any]) -> tuple:
     """The conformance cell this capsule witnesses: ``(family, dtype, alignment-unknown)``.
 
@@ -609,8 +725,9 @@ def covers_cell(capsule: Mapping[str, Any]) -> tuple:
     """
     sem = capsule.get("semantic") or {}
     family = sem.get("semantic_family") or (capsule.get("operation") or {}).get("op")
-    dtypes = sorted({str(r.get("dtype")) for r in (capsule.get("inputs") or ())
-                     if isinstance(r, Mapping) and r.get("dtype")})
+    dtypes = sorted(
+        {str(r.get("dtype")) for r in (capsule.get("inputs") or ()) if isinstance(r, Mapping) and r.get("dtype")}
+    )
     if not family or not dtypes:
         return ()
     return (str(family), tuple(dtypes))
@@ -626,19 +743,25 @@ def necessary(capsule: Mapping[str, Any], required: "set[tuple] | None") -> Verd
     cannot express -- so this REPORTS rather than condemns.
     """
     if required is None:
-        return Verdict(UNKNOWN, "the requirement for this target could not be derived, so necessity "
-                                "cannot be decided -- and an underived requirement is not an empty one")
+        return Verdict(
+            UNKNOWN,
+            "the requirement for this target could not be derived, so necessity "
+            "cannot be decided -- and an underived requirement is not an empty one",
+        )
     cell = covers_cell(capsule)
     if not cell:
-        return Verdict(UNKNOWN, "the capsule states neither a family nor an operand dtype, so what it "
-                                "witnesses cannot be read off it")
+        return Verdict(
+            UNKNOWN,
+            "the capsule states neither a family nor an operand dtype, so what it witnesses cannot be read off it",
+        )
     if cell in required:
         return Verdict(YES, f"witnesses required cell {cell[0]}/{'+'.join(cell[1])}")
     return Verdict(NO, f"witnesses {cell[0]}/{'+'.join(cell[1])}, which the requirement does not ask for")
 
 
-def worth_timing(capsule: Mapping[str, Any], *, share_of_achievable: float | None = None,
-                 band: float = 0.10) -> Verdict:
+def worth_timing(
+    capsule: Mapping[str, Any], *, share_of_achievable: float | None = None, band: float = 0.10
+) -> Verdict:
     """Is there enough headroom in this member for a performance claim to be about anything?
 
     THE MEASURED REASON THIS EXISTS. A campaign converged at roughly 0.2% while improving members with
@@ -650,14 +773,22 @@ def worth_timing(capsule: Mapping[str, Any], *, share_of_achievable: float | Non
     a measurement could distinguish from noise. ``None`` is UNKNOWN, never "assume there is room".
     """
     if share_of_achievable is None:
-        return Verdict(UNKNOWN, "no measured share of the achievable rate for this member, so headroom "
-                                "is undecided -- assuming room is how a corpus admits members that "
-                                "cannot move its objective")
+        return Verdict(
+            UNKNOWN,
+            "no measured share of the achievable rate for this member, so headroom "
+            "is undecided -- assuming room is how a corpus admits members that "
+            "cannot move its objective",
+        )
     if share_of_achievable >= 1.0 - band:
-        return Verdict(NO, f"at {share_of_achievable:.0%} of the achievable rate, inside the {band:.0%} "
-                           "band, so any improvement is indistinguishable from noise")
-    return Verdict(YES, f"at {share_of_achievable:.0%} of achievable, {1 - share_of_achievable:.0%} of "
-                        "the rate is still on the table")
+        return Verdict(
+            NO,
+            f"at {share_of_achievable:.0%} of the achievable rate, inside the {band:.0%} "
+            "band, so any improvement is indistinguishable from noise",
+        )
+    return Verdict(
+        YES,
+        f"at {share_of_achievable:.0%} of achievable, {1 - share_of_achievable:.0%} of the rate is still on the table",
+    )
 
 
 def lever_is_reachable(capsule: Mapping[str, Any]) -> Verdict:
@@ -693,17 +824,25 @@ def lever_is_reachable(capsule: Mapping[str, Any]) -> Verdict:
     obstructions = tuple(reach.obstructions)
     if obstructions:
         detail = "; ".join(f"{o.get('rule')}: {o.get('detail')}" for o in obstructions)
-        return Verdict(NO, f"family {family!r} contradicts itself, so no admissible measurement reaches "
-                           f"its lever -- {detail}")
+        return Verdict(
+            NO, f"family {family!r} contradicts itself, so no admissible measurement reaches its lever -- {detail}"
+        )
     if not reach.satisfiable:
         return Verdict(NO, f"family {family!r} is not satisfiable, so nothing reaches its lever")
     if not reach.decidable_today:
         notes = "; ".join(str(n) for n in reach.notes)
-        return Verdict(UNKNOWN, notes or (f"family {family!r} states no contradiction but names no "
-                                          "analyzer, so nothing computes its verdict from its rows "
-                                          "today -- a wiring state, not a contradiction"))
-    return Verdict(YES, f"family {family!r} states no contradiction and names the analyzer that turns "
-                        f"its evidence into a verdict")
+        return Verdict(
+            UNKNOWN,
+            notes
+            or (
+                f"family {family!r} states no contradiction but names no "
+                "analyzer, so nothing computes its verdict from its rows "
+                "today -- a wiring state, not a contradiction"
+            ),
+        )
+    return Verdict(
+        YES, f"family {family!r} states no contradiction and names the analyzer that turns its evidence into a verdict"
+    )
 
 
 def lever_reach_report(capsules: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -730,8 +869,11 @@ def lever_reach_report(capsules: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
             unreachable.setdefault(v.reason, []).append(name)
         else:
             undecidable.setdefault(v.reason, []).append(name)
-    return {"n_reachable": reachable, "n_unreachable": sum(len(v) for v in unreachable.values()),
-            "n_undecidable": sum(len(v) for v in undecidable.values()),
-            "n_no_performance_claim": no_claim,
-            "unreachable": {k: sorted(v) for k, v in sorted(unreachable.items())},
-            "undecidable": {k: sorted(v) for k, v in sorted(undecidable.items())}}
+    return {
+        "n_reachable": reachable,
+        "n_unreachable": sum(len(v) for v in unreachable.values()),
+        "n_undecidable": sum(len(v) for v in undecidable.values()),
+        "n_no_performance_claim": no_claim,
+        "unreachable": {k: sorted(v) for k, v in sorted(unreachable.items())},
+        "undecidable": {k: sorted(v) for k, v in sorted(undecidable.items())},
+    }

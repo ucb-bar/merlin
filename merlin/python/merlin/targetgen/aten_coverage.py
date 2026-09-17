@@ -34,6 +34,7 @@ decomposition table, the ops removed on the way TO Core ATen (measured: 1004 ent
 core-tagged overloads). The opset comes from ``torch.Tag.core`` via :mod:`_aten_opset_worker`, and it is
 cached per torch version because it is a property of torch, not of this repo.
 """
+
 from __future__ import annotations
 
 import json
@@ -50,6 +51,7 @@ _CACHE_DIR = "aten_opset"
 
 def _m2m_python() -> Path:
     from merlin.targetgen.capsule_source import _m2m_python as _p
+
     return _p()
 
 
@@ -66,10 +68,10 @@ def core_opset(*, refresh: bool = False) -> dict:
     if not python.exists():
         raise RuntimeError(
             f"no m2m venv python at {python}; the Core ATen opset is a property of torch and torch "
-            f"lives only there. Set MERLIN_M2M_PYTHON / MERLIN_M2M_DIR")
+            f"lives only there. Set MERLIN_M2M_PYTHON / MERLIN_M2M_DIR"
+        )
     env = dict(os.environ)
-    proc = subprocess.run([str(python), str(worker)], capture_output=True, text=True,
-                          timeout=300, env=env)
+    proc = subprocess.run([str(python), str(worker)], capture_output=True, text=True, timeout=300, env=env)
     if proc.returncode != 0 or not proc.stdout.strip():
         raise RuntimeError(f"could not resolve the Core ATen opset: {proc.stderr[-400:]}")
     doc = json.loads(proc.stdout)
@@ -111,9 +113,12 @@ def census(captures: dict[str, str | Path], *, opset: dict | None = None) -> dic
             per_model[name] = {"status": "unreadable", "detail": f"{type(exc).__name__}: {exc}"}
             continue
         seen.update(ops)
-        per_model[name] = {"status": "ok", "n_ops": len(ops),
-                           "core": sorted(set(ops) & core),
-                           "non_core": sorted(set(ops) - core)}
+        per_model[name] = {
+            "status": "ok",
+            "n_ops": len(ops),
+            "core": sorted(set(ops) & core),
+            "non_core": sorted(set(ops) - core),
+        }
     observed_core = sorted(set(seen) & core)
     non_core = set(seen) - core
     # A non-core tag is a FRONTEND COMPOSITE when torch's decomposition table knows how to take it
@@ -160,7 +165,7 @@ def _parse_failure(path: Path, exc: Exception) -> dict:
     loc = None
     try:
         loc = span.get_location() if span is not None else None
-    except Exception:                              # noqa: BLE001 -- a span without a location is not fatal
+    except Exception:  # noqa: BLE001 -- a span without a location is not fatal
         loc = None
     line_no = getattr(loc, "line", None)
     if not isinstance(line_no, int) or line_no < 1:
@@ -184,9 +189,8 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
     OWN capability contract. ``unclassified`` stays its own column: the routing denominator is
     ``routed + fallback``, and a region nobody could classify belongs to neither.
     """
-    from merlin.targetgen import model_coverage as MC
-
     from merlin.kernels import work as WK
+    from merlin.targetgen import model_coverage as MC
 
     cen = census(captures, opset=opset)
     routed = fallback = unclassified = 0
@@ -205,7 +209,7 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
             regions = MC.regions_from_module(_module)
             cov = MC.coverage_for(regions, target, model=name)
             _ops = MC.region_ops(_module)
-        except Exception as exc:                   # noqa: BLE001 -- an unreadable model is not zero coverage
+        except Exception as exc:  # noqa: BLE001 -- an unreadable model is not zero coverage
             per_model[name] = {"status": "unreadable", **_parse_failure(Path(path), exc)}
             continue
         d = cov.to_dict() if hasattr(cov, "to_dict") else dict(cov)
@@ -255,37 +259,56 @@ def coverage(captures: dict[str, str | Path], target: str, *, opset: dict | None
     return {
         "target": target,
         "opset": {"n_core": cen["n_core"], "torch": (opset or {}).get("torch")},
-        "models": {"counted_for_operators": counted, "measured_for_routing": routed_models,
-                   "unparsed_for_routing": unparsed,
-                   "agree": counted == routed_models},
-        "observed": {"n_core_observed": cen["n_observed_core"],
-                     "core_fraction": (cen["n_observed_core"] / cen["n_core"]) if cen["n_core"] else None,
-                     "non_core_observed": cen["non_core_observed"],
-                     "composite_observed": cen.get("composite_observed") or [],
-                     "unclassified_observed": cen.get("unclassified_observed") or [],
-                     "why_composites_are_separate": (
-                         "prov.aten records the FRONTEND op, so a non-core tag does not mean the "
-                         "capture is at the wrong IR level; a composite whose lowering is core is a "
-                         "different fact from an op nothing can name")},
-        "precision": {"dtype_ok": dtype_ok, "dtype_blocked": dtype_blocked,
-                      "why_separate": (
-                          "precision is judged only over the family-admitted subset; a region whose "
-                          "family is admitted but whose dtype is not is a precision gap, not a "
-                          "routing one, and reporting it as a routing gap would misattribute it")},
-        "routing": {"routed": routed, "fallback": fallback, "unclassified": unclassified,
-                    "denominator": denominator,
-                    "routed_fraction": (routed / denominator) if denominator else None,
-                    "why_unclassified_is_separate": (
-                        "a region whose family could not be determined is evidence neither of coverage "
-                        "nor of a gap; folding it into either is how a coverage number becomes a lie")},
-        "work": {"routed": routed_work, "fallback": fallback_work,
-                 "unclassified": unclassified_work, "denominator": work_denominator,
-                 "routed_fraction": (routed_work / work_denominator) if work_denominator else None,
-                 # A LOWER BOUND is not a measurement. `iteration_space` returns `complete=False` when a
-                 # nest was only partially recovered, and a partially recovered nest that reads as exact
-                 # is how a heavy op gets ranked light.
-                 "exact": work_complete,
-                 "unit": "iteration-space extents x body arithmetic ops (merlin.kernels.work)"},
+        "models": {
+            "counted_for_operators": counted,
+            "measured_for_routing": routed_models,
+            "unparsed_for_routing": unparsed,
+            "agree": counted == routed_models,
+        },
+        "observed": {
+            "n_core_observed": cen["n_observed_core"],
+            "core_fraction": (cen["n_observed_core"] / cen["n_core"]) if cen["n_core"] else None,
+            "non_core_observed": cen["non_core_observed"],
+            "composite_observed": cen.get("composite_observed") or [],
+            "unclassified_observed": cen.get("unclassified_observed") or [],
+            "why_composites_are_separate": (
+                "prov.aten records the FRONTEND op, so a non-core tag does not mean the "
+                "capture is at the wrong IR level; a composite whose lowering is core is a "
+                "different fact from an op nothing can name"
+            ),
+        },
+        "precision": {
+            "dtype_ok": dtype_ok,
+            "dtype_blocked": dtype_blocked,
+            "why_separate": (
+                "precision is judged only over the family-admitted subset; a region whose "
+                "family is admitted but whose dtype is not is a precision gap, not a "
+                "routing one, and reporting it as a routing gap would misattribute it"
+            ),
+        },
+        "routing": {
+            "routed": routed,
+            "fallback": fallback,
+            "unclassified": unclassified,
+            "denominator": denominator,
+            "routed_fraction": (routed / denominator) if denominator else None,
+            "why_unclassified_is_separate": (
+                "a region whose family could not be determined is evidence neither of coverage "
+                "nor of a gap; folding it into either is how a coverage number becomes a lie"
+            ),
+        },
+        "work": {
+            "routed": routed_work,
+            "fallback": fallback_work,
+            "unclassified": unclassified_work,
+            "denominator": work_denominator,
+            "routed_fraction": (routed_work / work_denominator) if work_denominator else None,
+            # A LOWER BOUND is not a measurement. `iteration_space` returns `complete=False` when a
+            # nest was only partially recovered, and a partially recovered nest that reads as exact
+            # is how a heavy op gets ranked light.
+            "exact": work_complete,
+            "unit": "iteration-space extents x body arithmetic ops (merlin.kernels.work)",
+        },
         "per_model": per_model,
         "census": cen,
     }
@@ -333,13 +356,13 @@ def claim_sentence(report: dict) -> str:
         f"{report['opset']['n_core']} PyTorch Core ATen operators appear"
         + (f" ({_pct(frac)})" if frac is not None else "")
         + f"; on {report['target']}, over the {len(measured)} of those whose capture could be parsed, "
-          f"{rt['routed']} of {rt['denominator']} classifiable regions route to the accelerator"
+        f"{rt['routed']} of {rt['denominator']} classifiable regions route to the accelerator"
         + (f" ({_pct(rfrac)})" if rfrac is not None else "")
         + f", with {rt['unclassified']} region(s) unclassified and reported separately"
-        + (f"; {', '.join(unparsed)} did not parse and contributed no routing evidence" if unparsed
-           else "")
+        + (f"; {', '.join(unparsed)} did not parse and contributed no routing evidence" if unparsed else "")
         + (_work_clause(report.get("work") or {}))
-        + ".")
+        + "."
+    )
 
 
 def _work_clause(wk: dict) -> str:
@@ -351,6 +374,5 @@ def _work_clause(wk: dict) -> str:
     frac = wk.get("routed_fraction")
     if frac is None:
         return ""
-    qualifier = "" if wk.get("exact") else " (a lower bound; at least one iteration nest was only "\
-                                          "partially recovered)"
-    return (f"; those account for {_pct(frac)} of the roster's total loop-nest work{qualifier}")
+    qualifier = "" if wk.get("exact") else " (a lower bound; at least one iteration nest was only partially recovered)"
+    return f"; those account for {_pct(frac)} of the roster's total loop-nest work{qualifier}"

@@ -19,6 +19,7 @@ detection rate we guessed would corrupt the whole comparison.
 One mutation propagates to all three layers because it is applied to the ``interface`` module and the
 remaining lowering is then re-run from it, exactly as the pipeline would.
 """
+
 from __future__ import annotations
 
 import json
@@ -89,6 +90,7 @@ def _finish_lowering(interface_module, tc):
 
 # --- the three layers -----------------------------------------------------------------------------
 
+
 def _static(interface_module) -> tuple[bool, str]:
     """FileCheck the structural obligations over the module's printed form."""
     from merlin.common.paths import merlin_dir
@@ -100,8 +102,7 @@ def _static(interface_module) -> tuple[bool, str]:
     if fc is None or not checks.is_file():
         # The layer could not RUN. That is an abstention, never a clean result.
         return False, "abstained", "FileCheck or check file unavailable"
-    r = subprocess.run([fc, str(checks)], input=_common.text(interface_module),
-                       capture_output=True, text=True)
+    r = subprocess.run([fc, str(checks)], input=_common.text(interface_module), capture_output=True, text=True)
     # non-zero = FileCheck rejected the output = the fault was DETECTED
     if r.returncode:
         return True, "detected", (r.stderr or "").strip().splitlines()[0]
@@ -180,9 +181,15 @@ def _dynamic_cb(cb, golden) -> tuple[bool, str, str]:
     return False, "clean", ""
 
 
-def run_cb_matrix(*, m: int = 4, k: int = 4, n: int = 4, reuse: int = 2,
-                  timeout_ms: int = 60_000,
-                  faults: tuple[Fault, ...] = CB_CORPUS) -> dict[str, Any]:
+def run_cb_matrix(
+    *,
+    m: int = 4,
+    k: int = 4,
+    n: int = 4,
+    reuse: int = 2,
+    timeout_ms: int = 60_000,
+    faults: tuple[Fault, ...] = CB_CORPUS,
+) -> dict[str, Any]:
     """Run the COMMAND-BUFFER fault corpus past the layers that can see a command buffer.
 
     Separate from :func:`run_matrix` because the subject is different. ``run_matrix`` mutates the
@@ -214,8 +221,10 @@ def run_cb_matrix(*, m: int = 4, k: int = 4, n: int = 4, reuse: int = 2,
         out.append((("dynamic"), hit, outcome, diag, time.time() - t0))
         return out
 
-    baseline = [Detection("<none: unmutated>", layer, hit, secs, diag, outcome)
-                for layer, hit, outcome, diag, secs in _run(copy.deepcopy(clean_cb))]
+    baseline = [
+        Detection("<none: unmutated>", layer, hit, secs, diag, outcome)
+        for layer, hit, outcome, diag, secs in _run(copy.deepcopy(clean_cb))
+    ]
 
     rows: list[Detection] = []
     applicable: list[Fault] = []
@@ -242,19 +251,19 @@ def run_cb_matrix(*, m: int = 4, k: int = 4, n: int = 4, reuse: int = 2,
         "layers": list(layers),
         "layers_not_applicable": {
             "static": "FileCheck patterns match MLIR text; a command buffer is JSON, so this layer "
-                      "cannot look at the artifact at all — recorded as inapplicable, not as a miss",
+            "cannot look at the artifact at all — recorded as inapplicable, not as a miss",
             "rtl": "needs a simulator/hardware this harness does not have; reported, not assumed",
         },
         "false_positives": [asdict(d) for d in baseline],
         "detections": [asdict(d) for d in rows],
-        "faults": [{"name": f.name, "summary": f.summary, "expected": list(f.expected)}
-                   for f in applicable],
+        "faults": [{"name": f.name, "summary": f.summary, "expected": list(f.expected)} for f in applicable],
         "faults_inapplicable": inapplicable,
     }
 
 
-def run_matrix(*, m: int = 4, k: int = 4, n: int = 4, reuse: int = 2,
-               timeout_ms: int = 60_000, faults: tuple[Fault, ...] = CORPUS) -> dict[str, Any]:
+def run_matrix(
+    *, m: int = 4, k: int = 4, n: int = 4, reuse: int = 2, timeout_ms: int = 60_000, faults: tuple[Fault, ...] = CORPUS
+) -> dict[str, Any]:
     """Run the corpus past every layer. Returns a JSON-serializable record."""
     clean_iface, tc = _lower_to_interface(m, k, n, reuse)
     from merlin.runtime import simulate
@@ -263,9 +272,11 @@ def run_matrix(*, m: int = 4, k: int = 4, n: int = 4, reuse: int = 2,
 
     # A layer that flags the UNMUTATED program is broken; measure that first.
     baseline: list[Detection] = []
-    for layer, fn in (("static", lambda mod: _static(mod)),
-                      ("formal", lambda mod: _formal(mod, timeout_ms)),
-                      ("dynamic", lambda mod: _dynamic(mod, tc, golden))):
+    for layer, fn in (
+        ("static", lambda mod: _static(mod)),
+        ("formal", lambda mod: _formal(mod, timeout_ms)),
+        ("dynamic", lambda mod: _dynamic(mod, tc, golden)),
+    ):
         mod, _ = _lower_to_interface(m, k, n, reuse)
         t0 = time.time()
         hit, outcome, diag = fn(mod)
@@ -273,9 +284,11 @@ def run_matrix(*, m: int = 4, k: int = 4, n: int = 4, reuse: int = 2,
 
     rows: list[Detection] = []
     for fault in faults:
-        for layer, fn in (("static", lambda mod: _static(mod)),
-                          ("formal", lambda mod: _formal(mod, timeout_ms)),
-                          ("dynamic", lambda mod: _dynamic(mod, tc, golden))):
+        for layer, fn in (
+            ("static", lambda mod: _static(mod)),
+            ("formal", lambda mod: _formal(mod, timeout_ms)),
+            ("dynamic", lambda mod: _dynamic(mod, tc, golden)),
+        ):
             mod, _ = _lower_to_interface(m, k, n, reuse)
             fault.mutate(mod)
             t0 = time.time()
@@ -298,8 +311,7 @@ def run_matrix(*, m: int = 4, k: int = 4, n: int = 4, reuse: int = 2,
         },
         "false_positives": [asdict(d) for d in baseline],
         "detections": [asdict(d) for d in rows],
-        "faults": [{"name": f.name, "summary": f.summary, "expected": list(f.expected)}
-                   for f in faults],
+        "faults": [{"name": f.name, "summary": f.summary, "expected": list(f.expected)} for f in faults],
     }
 
 
@@ -343,7 +355,7 @@ def render(record: dict[str, Any]) -> str:
     # found nothing, and from one we simply did not run. All three are spelled out.
     for layer, why in (record.get("layers_not_applicable") or {}).items():
         out.append(f"not applicable: {layer} -- {why}")
-    for item in (record.get("faults_inapplicable") or []):
+    for item in record.get("faults_inapplicable") or []:
         out.append(f"fault not applicable at this shape: {item['fault']} -- {item['reason']}")
     return "\n".join(out)
 
@@ -356,9 +368,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--k", type=int, default=4)
     ap.add_argument("--n", type=int, default=4)
     ap.add_argument("--reuse", type=int, default=2)
-    ap.add_argument("--timeout-ms", type=int, default=60_000,
-                    help="solver bound per formal attempt; recorded in the artifact, because a "
-                         "detection count is uninterpretable without the bound it was measured under")
+    ap.add_argument(
+        "--timeout-ms",
+        type=int,
+        default=60_000,
+        help="solver bound per formal attempt; recorded in the artifact, because a "
+        "detection count is uninterpretable without the bound it was measured under",
+    )
     ap.add_argument("--json", action="store_true", help="emit the record instead of the table")
     ap.add_argument("--write", action="store_true", help="write a versioned product under out/artifacts")
     args = ap.parse_args(argv)
@@ -381,6 +397,7 @@ def _write_product(rec: dict[str, Any]) -> Path:
     import subprocess
 
     from merlin.common.artifacts import new_product
+
     from .tools import find_filecheck, find_mlir_tool
 
     def _ver(path: str | None, flag: str) -> str:
@@ -395,25 +412,32 @@ def _write_product(rec: dict[str, Any]) -> Path:
     z3_version = "unavailable"
     try:
         import z3
+
         z3_version = f"z3 {z3.get_version_string()}"
     except Exception:
         pass
 
     shape = rec["shape"]
-    prod = new_product("verification", version=1, sources=[
-        f"fault corpus: merlin.verify.faults.CORPUS ({len(rec['faults'])} seeded faults)",
-        f"program under test: merlin.xdsl_dialects.lowering.pipeline.lower_repeated_rhs_matmul"
-        f"(m={shape['m']}, k={shape['k']}, n={shape['n']}, reuse={shape['reuse']})",
-        f"static layer checks: merlin/tests/data/lit/core/materialize_interface_residency.mlir",
-        f"solver: {z3_version} (bound {rec.get('timeout_ms', 'UNKNOWN')} ms per attempt)",
-        f"exporter: {_ver(find_mlir_tool('mlir-translate'), '--version')}",
-        f"matcher: {_ver(find_filecheck(), '--version')}",
-    ], notes=(
-        "Fault-detection matrix for the compiler-verification layers. Each seeded fault is injected "
-        "into the interface module the real pass produced and the remaining lowering is re-run from "
-        "it, so ONE mutation reaches all three layers consistently. The RTL tiers are recorded as "
-        "not measured (no simulator access in this harness) rather than assumed — a guessed "
-        "detection rate would corrupt the comparison. See docs/design/compiler_verification.md."))
+    prod = new_product(
+        "verification",
+        version=1,
+        sources=[
+            f"fault corpus: merlin.verify.faults.CORPUS ({len(rec['faults'])} seeded faults)",
+            f"program under test: merlin.xdsl_dialects.lowering.pipeline.lower_repeated_rhs_matmul"
+            f"(m={shape['m']}, k={shape['k']}, n={shape['n']}, reuse={shape['reuse']})",
+            f"static layer checks: merlin/tests/data/lit/core/materialize_interface_residency.mlir",
+            f"solver: {z3_version} (bound {rec.get('timeout_ms', 'UNKNOWN')} ms per attempt)",
+            f"exporter: {_ver(find_mlir_tool('mlir-translate'), '--version')}",
+            f"matcher: {_ver(find_filecheck(), '--version')}",
+        ],
+        notes=(
+            "Fault-detection matrix for the compiler-verification layers. Each seeded fault is injected "
+            "into the interface module the real pass produced and the remaining lowering is re-run from "
+            "it, so ONE mutation reaches all three layers consistently. The RTL tiers are recorded as "
+            "not measured (no simulator access in this harness) rather than assumed — a guessed "
+            "detection rate would corrupt the comparison. See docs/design/compiler_verification.md."
+        ),
+    )
 
     out = prod.add_artifact("detection_matrix.json")
     out.write_text(json.dumps(rec, indent=1), encoding="utf-8")

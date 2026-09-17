@@ -12,6 +12,7 @@ The correction payload contains complete declared and hardware words.  Fixed
 field values are therefore derived from those words; this module contains no
 target opcode or funct value.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -23,11 +24,10 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-
 # Positions in the 32-bit RISC-V instruction format.  A field is patched only
 # when the class currently carries the value extracted from the declared word.
 _FIXED_FIELD_SPANS = {
-    "opcode": (0, 7),   # derived-ok: RISC-V base instruction format, opcode = inst[6:0]
+    "opcode": (0, 7),  # derived-ok: RISC-V base instruction format, opcode = inst[6:0]
     "funct3": (12, 3),  # derived-ok: RISC-V base instruction format, funct3 = inst[14:12]
     "funct7": (25, 7),  # derived-ok: RISC-V base instruction format, funct7 = inst[31:25]
 }
@@ -64,26 +64,23 @@ def apply_reviewed_errata(
             current = getattr(cls, field_name, None)
             if current is None or int(current) != old:
                 raise ValueError(
-                    f"{class_name}.{field_name}: model value {current!r} does not match "
-                    f"reviewed declared value {old}"
+                    f"{class_name}.{field_name}: model value {current!r} does not match reviewed declared value {old}"
                 )
             setattr(cls, field_name, new)
             changed[field_name] = {"declared": old, "hardware": new}
 
         if declared != hardware and not changed:
-            raise ValueError(
-                f"{class_name}: correction changes no supported fixed instruction field"
-            )
+            raise ValueError(f"{class_name}: correction changes no supported fixed instruction field")
         if changed:
-            applied.append({
-                "class": class_name,
-                "declared": f"0x{declared:08x}",
-                "hardware": f"0x{hardware:08x}",
-                "fields": changed,
-                "sources_against_spec": list(
-                    correction.get("sources_against_spec") or []
-                ),
-            })
+            applied.append(
+                {
+                    "class": class_name,
+                    "declared": f"0x{declared:08x}",
+                    "hardware": f"0x{hardware:08x}",
+                    "fields": changed,
+                    "sources_against_spec": list(correction.get("sources_against_spec") or []),
+                }
+            )
     return applied
 
 
@@ -93,12 +90,8 @@ def _wrap_vmem_base_unit(cls, unit_bytes: int) -> None:
     def exec_with_address_unit(self, state):
         original_read = state.read_vmem
         original_write = state.write_vmem
-        state.read_vmem = lambda base, offset, length: original_read(
-            int(base) * unit_bytes, offset, length
-        )
-        state.write_vmem = lambda base, offset, data: original_write(
-            int(base) * unit_bytes, offset, data
-        )
+        state.read_vmem = lambda base, offset, length: original_read(int(base) * unit_bytes, offset, length)
+        state.write_vmem = lambda base, offset, data: original_write(int(base) * unit_bytes, offset, data)
         try:
             return original_exec(self, state)
         finally:
@@ -172,9 +165,7 @@ def apply_reviewed_model_errata(
         for class_name in class_names:
             cls = getattr(isa_module, class_name, None)
             if cls is None or not callable(getattr(cls, "exec", None)):
-                raise ValueError(
-                    f"{name}: functional-model class {class_name!r} is absent or has no exec"
-                )
+                raise ValueError(f"{name}: functional-model class {class_name!r} is absent or has no exec")
             classes.append(cls)
 
         parameters: dict[str, int | str]
@@ -185,8 +176,7 @@ def apply_reviewed_model_errata(
                 raise ValueError(f"{name}: invalid VMEM address-unit review")
             for cls in classes:
                 _wrap_vmem_base_unit(cls, hardware)
-            parameters = {"declared_unit_bytes": declared,
-                          "hardware_unit_bytes": hardware}
+            parameters = {"declared_unit_bytes": declared, "hardware_unit_bytes": hardware}
         elif kind == "e8m0_biased_exponent":
             bias = int(correction["exponent_bias"])
             minimum = int(correction["exponent_min"])
@@ -195,8 +185,7 @@ def apply_reviewed_model_errata(
                 raise ValueError(f"{name}: invalid E8M0 exponent review")
             for cls in classes:
                 _wrap_e8m0_scale(cls, bias, minimum, maximum)
-            parameters = {"exponent_bias": bias, "exponent_min": minimum,
-                          "exponent_max": maximum}
+            parameters = {"exponent_bias": bias, "exponent_min": minimum, "exponent_max": maximum}
         elif kind == "weight_buffer_output_lane_major":
             declared = str(correction.get("declared_matmul_view") or "")
             hardware = str(correction.get("hardware_matmul_view") or "")
@@ -204,19 +193,18 @@ def apply_reviewed_model_errata(
                 raise ValueError(f"{name}: invalid weight-buffer layout review")
             for cls in classes:
                 _wrap_weight_buffer_lane_major(cls)
-            parameters = {"declared_matmul_view": declared,
-                          "hardware_matmul_view": hardware}
+            parameters = {"declared_matmul_view": declared, "hardware_matmul_view": hardware}
         else:
             raise ValueError(f"{name}: unsupported functional-model correction {kind!r}")
-        applied.append({
-            "name": name,
-            "correction": kind,
-            "model_classes": class_names,
-            "parameters": parameters,
-            "sources_against_model": list(
-                correction.get("sources_against_model") or []
-            ),
-        })
+        applied.append(
+            {
+                "name": name,
+                "correction": kind,
+                "model_classes": class_names,
+                "parameters": parameters,
+                "sources_against_model": list(correction.get("sources_against_model") or []),
+            }
+        )
     return applied
 
 

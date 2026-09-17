@@ -4,6 +4,7 @@ The per-process package build cache, simulator selection for the OOT certificati
 diagnostic record of why the last mesh attempt declined (``_MESH_REFUSAL``), and the content-addressed
 ids that give each mesh layer and invocation its own artifact directory.
 """
+
 from __future__ import annotations
 
 import itertools
@@ -11,8 +12,7 @@ import json
 import threading
 from pathlib import Path
 
-
-_MESH_REFUSAL: dict = {}      # diagnostic only: why the last mesh attempt returned None
+_MESH_REFUSAL: dict = {}  # diagnostic only: why the last mesh attempt returned None
 
 
 def _refuse(reason: str):
@@ -22,7 +22,7 @@ def _refuse(reason: str):
     return None
 
 
-_MESH_RUN_SEQ = itertools.count()      # one run dir per mesh-layer invocation
+_MESH_RUN_SEQ = itertools.count()  # one run dir per mesh-layer invocation
 _MESH_PKG_CACHE: dict[str, object] = {}
 _MESH_PKG_LOCK = threading.Lock()
 
@@ -39,7 +39,8 @@ def _built_mesh_package(pkg_dir: str, timeout: int):
     if hit is not None:
         return hit
     from ..targetgen.oot_runner import build_package, integrity_scan, load_package
-    obj = load_package(pkg_dir, contract=None)     # the same sequence run_entrypoints does when pkg is None
+
+    obj = load_package(pkg_dir, contract=None)  # the same sequence run_entrypoints does when pkg is None
     integrity_scan(obj)
     build_package(obj)
     with _MESH_PKG_LOCK:
@@ -68,8 +69,7 @@ def _resolve_oot_mesh_simulator(target: str, simulator: str | None = None) -> st
     requested = _requested_mesh_simulator(simulator)
     required = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
     if required is not None and requested is not None and requested != required:
-        raise RuntimeError(
-            f"required RTL engine {required!r} conflicts with requested mesh simulator {requested!r}")
+        raise RuntimeError(f"required RTL engine {required!r} conflicts with requested mesh simulator {requested!r}")
 
     # An unpinned explicit request is deliberate (e.g. Spike bootstrap), so preserve it.  A required
     # engine, even when repeated in MERLIN_MESH_SIM, is still availability-checked by the central policy.
@@ -83,13 +83,11 @@ def _resolve_oot_mesh_simulator(target: str, simulator: str | None = None) -> st
     if not engine:
         raise RuntimeError(f"{target}: chipyard L3 policy returned no RTL engine")
     if required is not None and engine != required:
-        raise RuntimeError(
-            f"{target}: selected RTL engine {engine!r} differs from required RTL engine {required!r}")
+        raise RuntimeError(f"{target}: selected RTL engine {engine!r} differs from required RTL engine {required!r}")
     return engine
 
 
-def _mesh_layer_id(m: int, k: int, n: int, binding, epilogue: list | None,
-                   acc_scale: float | None) -> str:
+def _mesh_layer_id(m: int, k: int, n: int, binding, epilogue: list | None, acc_scale: float | None) -> str:
     """A per-layer artifact identity for the mesh run directory.
 
     Every mesh layer used the SAME run_id ("mesh_layer"), so all of a model's layers wrote to and read
@@ -103,8 +101,7 @@ def _mesh_layer_id(m: int, k: int, n: int, binding, epilogue: list | None,
     accumulator dtype, and the epilogue (an acc_scale requant emits a different kernel). Two genuinely
     identical layers therefore still share one directory -- small_llama repeats the same extent eight
     times and should compile once -- while two different layers can never collide."""
-    parts = [f"{m}x{k}x{n}",
-             binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(binding.accum_dtype)]
+    parts = [f"{m}x{k}x{n}", binding.cap_dtype(binding.operand_dtype), binding.cap_dtype(binding.accum_dtype)]
     if epilogue:
         parts.append("-".join(str(e) for e in epilogue))
     if acc_scale is not None:
@@ -123,6 +120,5 @@ def _mesh_invocation_id(layer_id: str, A: list, W: list) -> str:
     """
     import hashlib
 
-    payload = json.dumps({"A": A, "W": W}, sort_keys=True, separators=(",", ":"),
-                         allow_nan=False).encode("utf-8")
+    payload = json.dumps({"A": A, "W": W}, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
     return f"{layer_id}_input_{hashlib.sha256(payload).hexdigest()}"

@@ -33,6 +33,7 @@ returns the same 2-arg closure. Each feature proposal MERGES one new feature int
 ``compiler_features`` (depth-N accumulates a stack), dropping any that cannot compose (two
 full-schedule-replacement features clobber).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -40,11 +41,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..kernels.knobs import ForkProposal
-# `_composes` resolves every lever name through `impr_features`, and an UNREGISTERED name is
-# swallowed there as "does not compose" -- so a lever registered lazily elsewhere would be
-# silently never proposed rather than rejected. Register it here, where the list lives.
-from ..llvmlower.transpose_maps import ensure_registered as _register_fold_weight_transpose
-from ..llvmlower.weight_prepack import ensure_registered as _register_prepack_weight_layout
+
 # `cse_through_provenance` is registered by `llvmlower.lower`, which this module never imports -- so
 # `_composes` raised KeyError and returned False for EVERY parent stack carrying it. That is not a
 # lever of its own being skipped: it is in the config the search currently calls best, so while it was
@@ -52,15 +49,21 @@ from ..llvmlower.weight_prepack import ensure_registered as _register_prepack_we
 # build on. Exactly the failure the comment above describes, one import short of being prevented.
 from ..llvmlower.concat_dps import ensure_registered as _register_concat_dps
 from ..llvmlower.epilogue_fusion import ensure_registered as _register_fuse_epilogue_loops
-from ..llvmlower.prov_cse import ensure_registered as _register_cse_through_provenance
-from ..llvmlower.perop_blocks import ensure_registered as _register_conv_register_block
 from ..llvmlower.im2col_pack import ensure_registered as _register_im2col_panel_pack
+from ..llvmlower.parallel_coarsen import FEATURE as _COARSEN_OPENMP_FEATURE
+from ..llvmlower.parallel_coarsen import ensure_registered as _register_coarsen_openmp
+from ..llvmlower.perop_blocks import ensure_registered as _register_conv_register_block
+from ..llvmlower.prov_cse import ensure_registered as _register_cse_through_provenance
 from ..llvmlower.quant_round import ensure_registered as _register_fuse_quantize_round_convert
 from ..llvmlower.requant_fuse import ensure_registered as _register_fuse_requant_into_contraction
 from ..llvmlower.residual_autovec import ensure_registered as _register_vectorize_scalar_residue
 from ..llvmlower.residual_parallel import ensure_registered as _register_residual_parallel
-from ..llvmlower.parallel_coarsen import FEATURE as _COARSEN_OPENMP_FEATURE
-from ..llvmlower.parallel_coarsen import ensure_registered as _register_coarsen_openmp
+
+# `_composes` resolves every lever name through `impr_features`, and an UNREGISTERED name is
+# swallowed there as "does not compose" -- so a lever registered lazily elsewhere would be
+# silently never proposed rather than rejected. Register it here, where the list lives.
+from ..llvmlower.transpose_maps import ensure_registered as _register_fold_weight_transpose
+from ..llvmlower.weight_prepack import ensure_registered as _register_prepack_weight_layout
 
 _register_fold_weight_transpose()
 _register_prepack_weight_layout()
@@ -185,7 +188,7 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # unregistered name costs is not a rejection but INVISIBILITY -- `_composes` catches the KeyError
     # and returns False, and the lever is then never proposed at all.
     ("perop_mr_fill_register", False),
-    ("fuse_transpose_b", False),                          # transpose: 38% byte-traffic, measured -6.5% openvla
+    ("fuse_transpose_b", False),  # transpose: 38% byte-traffic, measured -6.5% openvla
     # `fold_weight_transpose` IS NOT LISTED, and that is a result rather than an omission. It is the
     # general form of the fold above -- it folds a weight transpose into any linalg consumer's maps,
     # so unlike `fuse_transpose_b` it does fire on a quantized model (15 of small_llama int8's 25
@@ -198,16 +201,16 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # on this model means it folds 0 of 25 -- so ranking it would buy the beam a whole-model lowering
     # to rediscover that it does nothing here. It stays registered and selectable for models whose
     # permutations leave the hot axis alone.
-    ("accumulator_resident_wholemodel_vf_mrpad", True),   # matmul MR register block: 1.49x rdt2 matmul bucket
-    ("vectorize_reduction", True),                        # reduce/softmax: 2nd byte-traffic family, was unvectorized
-    ("erase_self_copy", False),                           # envelope: per-tile memrefCopy elimination
+    ("accumulator_resident_wholemodel_vf_mrpad", True),  # matmul MR register block: 1.49x rdt2 matmul bucket
+    ("vectorize_reduction", True),  # reduce/softmax: 2nd byte-traffic family, was unvectorized
+    ("erase_self_copy", False),  # envelope: per-tile memrefCopy elimination
     # The other half of the same axis, and the reason the erase alone never closed it. The erase can
     # only remove copies that are REDUNDANT; a copy into a `memref.subview` moves real data and stays
     # a call to the rank-generic `@memrefCopy`. MEASURED on small_llama int8 (hand_v0_int8, whole
     # model, host-executed, bit-identical output): erase alone leaves `envelope.runtime_calls` at
     # ('free','malloc','memcpy','memrefCopy','memset') with 24 prologue @memrefCopy sites; adding this
     # takes it to ('free','malloc','memset') with 0 memrefCopy and 0 memcpy.
-    ("expand_memref_copy", False),                        # envelope: memrefCopy/memcpy -> emitted loops
+    ("expand_memref_copy", False),  # envelope: memrefCopy/memcpy -> emitted loops
     # The third lever on the same byte-traffic axis, and the one that attacks the linalg.generic long
     # tail rather than the copies around it. `linalg-specialize-generic-ops` has to run before the
     # schedule (it recovers the contraction NAMES the transform arms match on), and it un-fuses every
@@ -221,7 +224,7 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # which is the whole reason it is listed instead of defaulted. No `ensure_registered` import is
     # needed above: unlike the satellite-module levers this one is registered eagerly by
     # `impr_features` itself, where its `edit_pipeline` hook lives.
-    ("fuse_elementwise_post_contraction", False),         # tail: broadcast/elementwise -> fused, 50 -> 13
+    ("fuse_elementwise_post_contraction", False),  # tail: broadcast/elementwise -> fused, 50 -> 13
     # The quantize chain's counterpart to the activation lever right above, and it is listed next to it
     # because it is the SAME composition: an elementwise generic whose body carries a `math.*` op is
     # refused outright by the `merlin.vec_r{rank}` tagger, so the op never reaches an arm; the fix is
@@ -238,8 +241,8 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # is: alone the rewrite trades a call for inline arith and measures as a wash. NO SPEED CLAIM --
     # the wall is unmeasured and this list already carries two levers whose static case was clean and
     # whose measurement was not.
-    ("fuse_quantize_round_convert", False),               # quantize: roundevenf call/elem -> inline arith
-    ("vectorized_transcendental_activation", True),       # gelu/sigmoid/silu: closes the 10-17x activation gap
+    ("fuse_quantize_round_convert", False),  # quantize: roundevenf call/elem -> inline arith
+    ("vectorized_transcendental_activation", True),  # gelu/sigmoid/silu: closes the 10-17x activation gap
     # The OTHER half of the im2col tail, and the only lever on this list that changes an operand's
     # LAYOUT rather than what is computed from it. model2MLIR lays the column matrix out [K][M] and
     # the per-op schedule tiles [MR, NR, 0] then K by 1, so K is the innermost loop and the B-operand
@@ -297,8 +300,8 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # as the ATTRIBUTION CONTROL -- an ablation that drops only the reshape is the only way to price
     # the two halves apart on the board -- but ranking it would spend beam width on the arm whose
     # static case is worse on the model this stack is being tuned for.
-    ("fuse_requant_into_contraction_vec", False),         # epilogue: 2nd full pass over i32 acc -> in-tile
-    ("im2col_panel_pack", False),                         # im2col: [K][M] -> [M/NR][K][NR] packed panels
+    ("fuse_requant_into_contraction_vec", False),  # epilogue: 2nd full pass over i32 acc -> in-tile
+    ("im2col_panel_pack", False),  # im2col: [K][M] -> [M/NR][K][NR] packed panels
     # The convolutional half of the same tail, and the only lever here that DELETES an intermediate
     # tensor rather than scheduling one better. model2MLIR expands every conv into im2col + matmul
     # before merlin sees it, so the operand the int8 pass dynamically quantizes IS the expanded
@@ -324,7 +327,7 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
     # d4f86238: the digest was compared on deepjscc alone and generalised. On small_llama the lever
     # computed a WRONG answer (cos 0.968) that varied with the initial stack address, because a
     # packed `vector<8xi1>` store was read back one byte per element from the causal mask.
-    ("quantize_before_gather", False),                    # im2col: quantize A, not G(A); erase the f32 expansion
+    ("quantize_before_gather", False),  # im2col: quantize A, not G(A); erase the f32 expansion
 ]
 
 
@@ -338,9 +341,9 @@ RANKED_LEVERS: list[tuple[str, bool]] = [
 @dataclass(frozen=True)
 class FamilyTeacher:
     census_family: str
-    op: str                        # CCA op tag used when lifting (drives activation/reduction inference)
-    fixture: str | None            # basename under merlin/tests/data/cca_asm/ (None => no teacher)
-    ukernel_src: str | None = None # rel path under <XNNPACK>/src for the harvester (None => already harvested)
+    op: str  # CCA op tag used when lifting (drives activation/reduction inference)
+    fixture: str | None  # basename under merlin/tests/data/cca_asm/ (None => no teacher)
+    ukernel_src: str | None = None  # rel path under <XNNPACK>/src for the harvester (None => already harvested)
     note: str = ""
 
 
@@ -349,21 +352,39 @@ class FamilyTeacher:
 # build_tools/scripts/harvest_xnnpack_fixtures.py into the SAME cca_asm/ dir.
 FAMILY_TEACHERS: dict[str, FamilyTeacher] = {
     # contractions -> the existing GEMM expert fixture (MR=1, NR=vsetvlmax, accumulator-resident).
-    "matmul": FamilyTeacher("matmul", "matmul", "xnnpack_f32_gemm_rvv.objdump",
-                            "f32-gemm/gen/f32-gemm-1x4v-minmax-rvv.c",
-                            note="f32 GEMM ukernel 1x4v"),
-    "addmm":  FamilyTeacher("addmm", "matmul", "xnnpack_f32_gemm_rvv.objdump",
-                            note="linear+bias == GEMM"),
+    "matmul": FamilyTeacher(
+        "matmul",
+        "matmul",
+        "xnnpack_f32_gemm_rvv.objdump",
+        "f32-gemm/gen/f32-gemm-1x4v-minmax-rvv.c",
+        note="f32 GEMM ukernel 1x4v",
+    ),
+    "addmm": FamilyTeacher("addmm", "matmul", "xnnpack_f32_gemm_rvv.objdump", note="linear+bias == GEMM"),
     "linear": FamilyTeacher("linear", "matmul", "xnnpack_f32_gemm_rvv.objdump", note="== GEMM"),
     # activations -> vectorized-polynomial ukernels. The flagship non-GEMM teacher: expert lifts
     # activation_vectorization='vectorized_polynomial', ours (scalar libm) 'scalar_libm_call' ->
     # routes to vectorized_transcendental_activation.
-    "gelu": FamilyTeacher("gelu", "gelu", "xnnpack_gelu_rvv.objdump",
-                          "f32-vgelu/gen/f32-vgelu-rvv-rational-12-10-div-u4v.c", "rational-12-10 vgelu"),
-    "sigmoid": FamilyTeacher("sigmoid", "sigmoid", "xnnpack_sigmoid_rvv.objdump",
-                             "f32-vsigmoid/gen/f32-vsigmoid-rvv-rr2-p5-div-u4v.c", "rr2-p5 vsigmoid"),
-    "silu": FamilyTeacher("silu", "silu", "xnnpack_sigmoid_rvv.objdump", None,
-                          "SiLU = x*sigmoid; f32-vsigmoid is the closest transcendental teacher"),
+    "gelu": FamilyTeacher(
+        "gelu",
+        "gelu",
+        "xnnpack_gelu_rvv.objdump",
+        "f32-vgelu/gen/f32-vgelu-rvv-rational-12-10-div-u4v.c",
+        "rational-12-10 vgelu",
+    ),
+    "sigmoid": FamilyTeacher(
+        "sigmoid",
+        "sigmoid",
+        "xnnpack_sigmoid_rvv.objdump",
+        "f32-vsigmoid/gen/f32-vsigmoid-rvv-rr2-p5-div-u4v.c",
+        "rr2-p5 vsigmoid",
+    ),
+    "silu": FamilyTeacher(
+        "silu",
+        "silu",
+        "xnnpack_sigmoid_rvv.objdump",
+        None,
+        "SiLU = x*sigmoid; f32-vsigmoid is the closest transcendental teacher",
+    ),
     # THE TRANSFORMER TAIL. `sin`, `cos` and `rsqrt` are census families already -- the census has
     # emitted them all along -- and they were in NEITHER this registry NOR NO_TEACHER_FAMILIES, so no
     # expert was ever lifted for them and no divergence could form. That is the whole reason the loop
@@ -374,11 +395,15 @@ FAMILY_TEACHERS: dict[str, FamilyTeacher] = {
     # XNNPACK ships RVV kernels for exactly these, so the teacher is HARVESTED like every other one --
     # no declared or hand-authored expert, which would have broken the "the CCA is tool-composed"
     # principle the beam rests on.
-    "rsqrt": FamilyTeacher("rsqrt", "rsqrt", "xnnpack_rsqrt_rvv.objdump",
-                           "f32-vrsqrt/gen/f32-vrsqrt-rvv-rsqrt-u4v.c",
-                           "RMSNorm normaliser; XNNPACK uses the native rsqrt estimate + Newton, "
-                           "which lifts as a vfmacc chain (the axis distinguishes vector-inline math "
-                           "from a scalar libm call, not the specific approximation)"),
+    "rsqrt": FamilyTeacher(
+        "rsqrt",
+        "rsqrt",
+        "xnnpack_rsqrt_rvv.objdump",
+        "f32-vrsqrt/gen/f32-vrsqrt-rvv-rsqrt-u4v.c",
+        "RMSNorm normaliser; XNNPACK uses the native rsqrt estimate + Newton, "
+        "which lifts as a vfmacc chain (the axis distinguishes vector-inline math "
+        "from a scalar libm call, not the specific approximation)",
+    ),
     # sin/cos: fixture=None, an HONEST no-teacher record. XNNPACK DOES ship f32-vsin / f32-vcos RVV
     # kernels, but they do not compile in this revision: both call a TWO-argument
     # `xnn_round_f32(vx_div_2pi, vl)`, and no such overload exists anywhere in the tree -- the SIMD
@@ -388,35 +413,51 @@ FAMILY_TEACHERS: dict[str, FamilyTeacher] = {
     # make the EXPERT CCA a thing we wrote, and the expert's instruction mix IS the search target.
     # Recorded rather than dropped so RoPE's missing teacher is a visible gap with a reason, and so
     # the next XNNPACK bump can flip it by supplying the ukernel_src again.
-    "sin": FamilyTeacher("sin", "sin", None,
-                         "f32-vsin/gen/f32-vsin-rvv-rational-5-4-div-u4v.c",
-                         "RoPE rotation. UNHARVESTABLE in this XNNPACK revision: the RVV kernel calls "
-                         "a 2-arg xnn_round_f32 that the tree does not define. Ours pays glibc's "
-                         "__kernel_rem_pio2f as a scalar call per element; no expert to diff against."),
-    "cos": FamilyTeacher("cos", "cos", None,
-                         "f32-vcos/gen/f32-vcos-rvv-rational-5-4-div-u4v.c",
-                         "RoPE rotation, cos half. Same 2-arg xnn_round_f32 blocker as sin."),
+    "sin": FamilyTeacher(
+        "sin",
+        "sin",
+        None,
+        "f32-vsin/gen/f32-vsin-rvv-rational-5-4-div-u4v.c",
+        "RoPE rotation. UNHARVESTABLE in this XNNPACK revision: the RVV kernel calls "
+        "a 2-arg xnn_round_f32 that the tree does not define. Ours pays glibc's "
+        "__kernel_rem_pio2f as a scalar call per element; no expert to diff against.",
+    ),
+    "cos": FamilyTeacher(
+        "cos",
+        "cos",
+        None,
+        "f32-vcos/gen/f32-vcos-rvv-rational-5-4-div-u4v.c",
+        "RoPE rotation, cos half. Same 2-arg xnn_round_f32 blocker as sin.",
+    ),
     # reductions -> horizontal-reduce ukernels. Expert lifts reduction_form='vredsum_tree', ours
     # (scalar accumulate) 'none' -> routes to vectorize_reduction.
-    "reduce": FamilyTeacher("reduce", "reduce", "xnnpack_reduce_rvv.objdump",
-                            "f32-rsum/gen/f32-rsum-rvv-u4v.c", "f32-rsum horizontal reduce"),
-    "reduce_mean": FamilyTeacher("reduce_mean", "reduce", "xnnpack_reduce_rvv.objdump", None,
-                                 "mean == rsum * 1/N"),
+    "reduce": FamilyTeacher(
+        "reduce",
+        "reduce",
+        "xnnpack_reduce_rvv.objdump",
+        "f32-rsum/gen/f32-rsum-rvv-u4v.c",
+        "f32-rsum horizontal reduce",
+    ),
+    "reduce_mean": FamilyTeacher("reduce_mean", "reduce", "xnnpack_reduce_rvv.objdump", None, "mean == rsum * 1/N"),
     # softmax's vectorizable reduction is the row-SUM (exp-sum); taught by f32-rsum (reduction_form=
     # vredsum_tree). op tag 'reduce' (not 'softmax') so the lifter reads the reduction facet, not a
     # spurious activation classification. The row-MAX (f32-rmax) uses vfredmax, which the lifter does
     # not classify as a reduction_form -> no divergence -> not a useful teacher, so it is not used.
-    "softmax": FamilyTeacher("softmax", "reduce", "xnnpack_reduce_rvv.objdump", None,
-                             "softmax sum-reduce taught by f32-rsum"),
+    "softmax": FamilyTeacher(
+        "softmax", "reduce", "xnnpack_reduce_rvv.objdump", None, "softmax sum-reduce taught by f32-rsum"
+    ),
     # clamp / elementwise binary -> vectorized ukernels (the CCA diff here is thin; harvested for
     # completeness — the beam wall decides, no fork is forced if compare emits nothing).
-    "minmax": FamilyTeacher("minmax", "minmax", "xnnpack_clamp_rvv.objdump",
-                            "f32-vclamp/gen/f32-vclamp-rvv-u4v.c", "clamp/relu"),
-    "add": FamilyTeacher("add", "add", "xnnpack_vbinary_add_rvv.objdump",
-                         "f32-vbinary/gen/f32-vadd-rvv-u4v.c", "elementwise add"),
+    "minmax": FamilyTeacher(
+        "minmax", "minmax", "xnnpack_clamp_rvv.objdump", "f32-vclamp/gen/f32-vclamp-rvv-u4v.c", "clamp/relu"
+    ),
+    "add": FamilyTeacher(
+        "add", "add", "xnnpack_vbinary_add_rvv.objdump", "f32-vbinary/gen/f32-vadd-rvv-u4v.c", "elementwise add"
+    ),
     "sub": FamilyTeacher("sub", "add", "xnnpack_vbinary_add_rvv.objdump", None, "vsub == vadd family"),
-    "mul": FamilyTeacher("mul", "mul", "xnnpack_vbinary_mul_rvv.objdump",
-                         "f32-vbinary/gen/f32-vmul-rvv-u4v.c", "elementwise mul"),
+    "mul": FamilyTeacher(
+        "mul", "mul", "xnnpack_vbinary_mul_rvv.objdump", "f32-vbinary/gen/f32-vmul-rvv-u4v.c", "elementwise mul"
+    ),
 }
 
 # NO-TEACHER families: census families with NO XNNPACK vector primitive (FAMILY_MAP element [0] is
@@ -442,16 +483,20 @@ def _coverage_maps() -> tuple[dict, dict]:
     try:
         from build_tools.scripts.kernel_coverage_matrix import FAMILY_MAP  # type: ignore
         from build_tools.scripts.xnnpack_kernel_catalog import _MAP  # type: ignore
+
         return FAMILY_MAP, _MAP
     except Exception:
         try:
             import sys
+
             from ..common.paths import repo_root
+
             root = str(repo_root())
             if root not in sys.path:
                 sys.path.insert(0, root)
             from build_tools.scripts.kernel_coverage_matrix import FAMILY_MAP  # type: ignore
             from build_tools.scripts.xnnpack_kernel_catalog import _MAP  # type: ignore
+
             return FAMILY_MAP, _MAP
         except Exception:
             return {}, {}
@@ -481,6 +526,7 @@ def family_coverage(family: str) -> tuple[str | None, str | None]:
 def _composes(features: list[str]) -> bool:
     """True iff the feature set is co-enable-able (no two full-schedule-replacement features)."""
     from ..llvmlower import impr_features as I
+
     try:
         I.normalize(features)
     except Exception:  # CompositionError (two schedule_replace) or unknown feature
@@ -489,8 +535,9 @@ def _composes(features: list[str]) -> bool:
     return len(reps) <= 1
 
 
-def _feature_fork(feat: str, parent_feats: list[str], *, targets: str, evidence: list[str],
-                  note: str, action: Any = None) -> ForkProposal | None:
+def _feature_fork(
+    feat: str, parent_feats: list[str], *, targets: str, evidence: list[str], note: str, action: Any = None
+) -> ForkProposal | None:
     """Merge one feature onto the parent's feature stack, honoring the <=1 schedule-replace rule.
 
     Returns a forkable ForkProposal, or None if the feature is already enabled or cannot compose even
@@ -502,12 +549,20 @@ def _feature_fork(feat: str, parent_feats: list[str], *, targets: str, evidence:
         # e.g. a schedule-replace feature on top of a parent that already carries one. Try replacing
         # the conflicting schedule-replacement feature instead of stacking.
         from ..llvmlower import impr_features as I
+
         base = [f for f in parent_feats if not getattr(I.get(f), "schedule_replace", False)]
         merged = base + [feat]
         if not _composes(merged):
             return None
-    return ForkProposal(overrides={"compiler_features": merged}, lever="feature", targets=targets,
-                        evidence=list(evidence), forkable=True, note=note, action=action)
+    return ForkProposal(
+        overrides={"compiler_features": merged},
+        lever="feature",
+        targets=targets,
+        evidence=list(evidence),
+        forkable=True,
+        note=note,
+        action=action,
+    )
 
 
 #: Search ladders for the two levers whose MAGNITUDE was reachable only through an environment
@@ -554,68 +609,78 @@ def refinement_forks(parent_feats: list[str]) -> list[ForkProposal]:
     # regions from 780 to 361.
     if "parallelize_residual_loops_0" in have and _COARSEN_OPENMP_FEATURE not in have:
         fp = _feature_fork(
-            _COARSEN_OPENMP_FEATURE, parent_feats,
+            _COARSEN_OPENMP_FEATURE,
+            parent_feats,
             targets=f"wholemodel:{_COARSEN_OPENMP_FEATURE}",
             evidence=["measured:k1-lstmnetvit-w8a8", "refine:parallelize_residual_loops_0"],
-            note=("coarsen adjacent OpenMP worksharing regions while preserving their barriers; "
-                  "measured 780->361 static regions and ~1.5% eight-core latency reduction"))
+            note=(
+                "coarsen adjacent OpenMP worksharing regions while preserving their barriers; "
+                "measured 780->361 static regions and ~1.5% eight-core latency reduction"
+            ),
+        )
         if fp is not None:
             out.append(fp)
 
     # -- stack promotion: retune the per-buffer cap the parent is already promoting under.
-    if I.PROMOTE_STACK_NAME in have or any(
-            f.startswith(f"{I.PROMOTE_STACK_NAME}_") for f in have):
-        base = [f for f in parent_feats
-                if f != I.PROMOTE_STACK_NAME and not f.startswith(f"{I.PROMOTE_STACK_NAME}_")]
+    if I.PROMOTE_STACK_NAME in have or any(f.startswith(f"{I.PROMOTE_STACK_NAME}_") for f in have):
+        base = [f for f in parent_feats if f != I.PROMOTE_STACK_NAME and not f.startswith(f"{I.PROMOTE_STACK_NAME}_")]
         for nbytes in _STACK_CAP_LADDER:
             name = I.ensure_promote_stack(nbytes)
             if name in have:
                 continue
             merged = base + [name]
             if _composes(merged):
-                out.append(ForkProposal(
-                    overrides={"compiler_features": merged}, lever="knob",
-                    targets=f"wholemodel:{I.PROMOTE_STACK_NAME}:cap",
-                    evidence=["census:byte-traffic", f"refine:{I.PROMOTE_STACK_NAME}"],
-                    forkable=True,
-                    note=f"retune the stack-promotion per-buffer cap to {nbytes} bytes"))
+                out.append(
+                    ForkProposal(
+                        overrides={"compiler_features": merged},
+                        lever="knob",
+                        targets=f"wholemodel:{I.PROMOTE_STACK_NAME}:cap",
+                        evidence=["census:byte-traffic", f"refine:{I.PROMOTE_STACK_NAME}"],
+                        forkable=True,
+                        note=f"retune the stack-promotion per-buffer cap to {nbytes} bytes",
+                    )
+                )
 
     # -- per-op blocking: retune the MR cap the block table is derived under.
-    if I.PEROP_BLOCK_NAME in have or any(
-            I.parse_perop_mr_sentinel(f) is not None for f in have):
-        base = [f for f in parent_feats
-                if f != I.PEROP_BLOCK_NAME and I.parse_perop_mr_sentinel(f) is None]
+    if I.PEROP_BLOCK_NAME in have or any(I.parse_perop_mr_sentinel(f) is not None for f in have):
+        base = [f for f in parent_feats if f != I.PEROP_BLOCK_NAME and I.parse_perop_mr_sentinel(f) is None]
         for mr in _MR_CAP_LADDER:
             name = I.perop_mr_sentinel(mr)
             if name in have:
                 continue
             merged = base + [name]
             if _composes(merged):
-                out.append(ForkProposal(
-                    overrides={"compiler_features": merged}, lever="knob",
-                    targets=f"wholemodel:{I.PEROP_BLOCK_NAME}:mr_cap",
-                    evidence=["census:byte-traffic", f"refine:{I.PEROP_BLOCK_NAME}"],
-                    forkable=True,
-                    note=f"retune the per-op register-block MR cap to {mr}"))
+                out.append(
+                    ForkProposal(
+                        overrides={"compiler_features": merged},
+                        lever="knob",
+                        targets=f"wholemodel:{I.PEROP_BLOCK_NAME}:mr_cap",
+                        evidence=["census:byte-traffic", f"refine:{I.PEROP_BLOCK_NAME}"],
+                        forkable=True,
+                        note=f"retune the per-op register-block MR cap to {mr}",
+                    )
+                )
 
     # -- per-op blocking: independently retune the N cap. The plain request means NR=16 on K1;
     # named rungs expose the register-pressure/locality tradeoff without changing a source constant.
-    if I.PEROP_BLOCK_NAME in have or any(
-            I.parse_perop_nr_sentinel(f) is not None for f in have):
-        base = [f for f in parent_feats
-                if f != I.PEROP_BLOCK_NAME and I.parse_perop_nr_sentinel(f) is None]
+    if I.PEROP_BLOCK_NAME in have or any(I.parse_perop_nr_sentinel(f) is not None for f in have):
+        base = [f for f in parent_feats if f != I.PEROP_BLOCK_NAME and I.parse_perop_nr_sentinel(f) is None]
         for name in I.PEROP_NR_LADDER:
             if name in have:
                 continue
             nr = I.parse_perop_nr_sentinel(name)
             merged = base + [name]
             if _composes(merged):
-                out.append(ForkProposal(
-                    overrides={"compiler_features": merged}, lever="knob",
-                    targets=f"wholemodel:{I.PEROP_BLOCK_NAME}:nr_cap",
-                    evidence=["census:register-pressure", f"refine:{I.PEROP_BLOCK_NAME}"],
-                    forkable=True,
-                    note=f"retune the per-op register-block NR cap to {nr}"))
+                out.append(
+                    ForkProposal(
+                        overrides={"compiler_features": merged},
+                        lever="knob",
+                        targets=f"wholemodel:{I.PEROP_BLOCK_NAME}:nr_cap",
+                        evidence=["census:register-pressure", f"refine:{I.PEROP_BLOCK_NAME}"],
+                        forkable=True,
+                        note=f"retune the per-op register-block NR cap to {nr}",
+                    )
+                )
 
     # -- named-op M-pad register block: retune the TILE on the int8 datapath.
     # This lever only exists once the contraction keeps its named form: the int8 quant pass rewrites
@@ -630,28 +695,39 @@ def refinement_forks(parent_feats: list[str]) -> list[ForkProposal]:
     # the pair does anything, so the pair is the proposal.
     tiles = getattr(I, "MRPAD_INT8_TILES", ())
     enabler = I.NAMED_INT8_CONTRACTION_NAME
-    if tiles and (I.PEROP_BLOCK_NAME in have
-                  or any(I.parse_perop_mr_sentinel(f) is not None for f in have)
-                  or any(I.parse_perop_nr_sentinel(f) is not None for f in have)
-                  or enabler in have):
+    if tiles and (
+        I.PEROP_BLOCK_NAME in have
+        or any(I.parse_perop_mr_sentinel(f) is not None for f in have)
+        or any(I.parse_perop_nr_sentinel(f) is not None for f in have)
+        or enabler in have
+    ):
         # The tile REPLACES whatever register block the parent carries -- both emit a complete
         # transform schedule, and two of those cannot compose (the feature layer refuses the pair
         # outright). Stacking them produced a CompositionError and no measurement at all.
-        base = [f for f in parent_feats
-                if f not in set(tiles) and f != enabler and f != I.PEROP_BLOCK_NAME
-                and I.parse_perop_mr_sentinel(f) is None
-                and I.parse_perop_nr_sentinel(f) is None]
+        base = [
+            f
+            for f in parent_feats
+            if f not in set(tiles)
+            and f != enabler
+            and f != I.PEROP_BLOCK_NAME
+            and I.parse_perop_mr_sentinel(f) is None
+            and I.parse_perop_nr_sentinel(f) is None
+        ]
         for name in tiles:
             if name in have:
                 continue
             merged = base + [enabler, name]
             if _composes(merged):
-                out.append(ForkProposal(
-                    overrides={"compiler_features": merged}, lever="knob",
-                    targets=f"wholemodel:{I.MRPAD_NAME}:tile",
-                    evidence=["census:byte-traffic", f"refine:{I.MRPAD_NAME}"],
-                    forkable=True,
-                    note=f"retune the named-op register-block tile to {name.rsplit('_i32_', 1)[-1]}"))
+                out.append(
+                    ForkProposal(
+                        overrides={"compiler_features": merged},
+                        lever="knob",
+                        targets=f"wholemodel:{I.MRPAD_NAME}:tile",
+                        evidence=["census:byte-traffic", f"refine:{I.MRPAD_NAME}"],
+                        forkable=True,
+                        note=f"retune the named-op register-block tile to {name.rsplit('_i32_', 1)[-1]}",
+                    )
+                )
     return out
 
 
@@ -684,9 +760,13 @@ def census_hardcode_forks(parent_feats: list[str]) -> list[ForkProposal]:
     """One fork per not-yet-enabled whole-model hardcode lever, merged onto the parent's features."""
     out: list[ForkProposal] = []
     for feat, _is_replace in RANKED_LEVERS:
-        fp = _feature_fork(feat, parent_feats, targets=f"wholemodel:{feat}",
-                           evidence=["census:byte-traffic", f"lever:{feat}"],
-                           note=f"enable whole-model lever {feat} (byte-traffic ranked)")
+        fp = _feature_fork(
+            feat,
+            parent_feats,
+            targets=f"wholemodel:{feat}",
+            evidence=["census:byte-traffic", f"lever:{feat}"],
+            note=f"enable whole-model lever {feat} (byte-traffic ranked)",
+        )
         if fp is not None:
             out.append(fp)
     return out
@@ -700,29 +780,42 @@ def route_divergence_forks(divergences: Any, knobs: dict[str, Any]) -> list[Fork
     each feature fork onto the parent's stack (composition). Non-feature forks (knob / work_item) pass
     through unchanged, preserving their forkable/deferred status and the CompilerAction for audit."""
     from .fork_from_action import propose_forks_from_cca
+
     parent_feats = list(knobs.get("compiler_features") or [])
     out: list[ForkProposal] = []
     for fp in propose_forks_from_cca(list(divergences or []), knobs):
         feats = fp.overrides.get("compiler_features") if fp.lever == "feature" and fp.forkable else None
         if feats:
             for feat in feats:  # normally a single feature per routed action
-                merged = _feature_fork(feat, parent_feats, targets=fp.targets,
-                                       evidence=list(fp.evidence) + ["teacher:xnnpack-cca"],
-                                       note=fp.note, action=fp.action)
+                merged = _feature_fork(
+                    feat,
+                    parent_feats,
+                    targets=fp.targets,
+                    evidence=list(fp.evidence) + ["teacher:xnnpack-cca"],
+                    note=fp.note,
+                    action=fp.action,
+                )
                 if merged is not None:
                     out.append(merged)
         else:
-            out.append(fp)   # knob / recorded work-item — keep as-is (honest)
+            out.append(fp)  # knob / recorded work-item — keep as-is (honest)
     return out
 
 
 def no_teacher_records(notes: list[tuple[str, str]]) -> list[ForkProposal]:
     """Honest, non-forkable records for families with no XNNPACK teacher — recorded by the beam as
     deferred, never minted or faked into a divergence."""
-    return [ForkProposal(overrides={}, lever="work_item", targets=f"noteacher:{fam}",
-                         evidence=[f"census-family:{fam}", "no-xnnpack-primitive"],
-                         forkable=False, note=reason)
-            for fam, reason in notes]
+    return [
+        ForkProposal(
+            overrides={},
+            lever="work_item",
+            targets=f"noteacher:{fam}",
+            evidence=[f"census-family:{fam}", "no-xnnpack-primitive"],
+            forkable=False,
+            note=reason,
+        )
+        for fam, reason in notes
+    ]
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -756,13 +849,21 @@ def dtype_fixture_teachers() -> list["FamilyTeacher"]:
     every loop-scoped facet lifted as None and the expert silently taught nothing about register
     blocking, accumulator residency or memory.
     """
-    return [FamilyTeacher(census_family="matmul", op="matmul", fixture=fx, ukernel_src=src,
-                          note="dtype-matched GEMM fixture, harvested linked")
-            for fx, src in sorted(_DTYPE_UKERNEL_SRC.items())]
+    return [
+        FamilyTeacher(
+            census_family="matmul",
+            op="matmul",
+            fixture=fx,
+            ukernel_src=src,
+            note="dtype-matched GEMM fixture, harvested linked",
+        )
+        for fx, src in sorted(_DTYPE_UKERNEL_SRC.items())
+    ]
 
 
 def cca_asm_dir() -> Path:
     from ..common.paths import repo_root
+
     return repo_root() / "merlin" / "tests" / "data" / "cca_asm"
 
 
@@ -787,15 +888,21 @@ _DTYPE_UKERNEL_SRC: dict[str, str] = {
 }
 
 _DTYPE_FIXTURES: dict[str, dict[str, str]] = {
-    "matmul": {"int8": "xnnpack_qd8_gemm_rvv.objdump",
-               "fp16": "xnnpack_f16_gemm_rvv.objdump",
-               "fp32": "xnnpack_f32_gemm_rvv.objdump"},
-    "addmm":  {"int8": "xnnpack_qd8_gemm_rvv.objdump",
-               "fp16": "xnnpack_f16_gemm_rvv.objdump",
-               "fp32": "xnnpack_f32_gemm_rvv.objdump"},
-    "linear": {"int8": "xnnpack_qd8_gemm_rvv.objdump",
-               "fp16": "xnnpack_f16_gemm_rvv.objdump",
-               "fp32": "xnnpack_f32_gemm_rvv.objdump"},
+    "matmul": {
+        "int8": "xnnpack_qd8_gemm_rvv.objdump",
+        "fp16": "xnnpack_f16_gemm_rvv.objdump",
+        "fp32": "xnnpack_f32_gemm_rvv.objdump",
+    },
+    "addmm": {
+        "int8": "xnnpack_qd8_gemm_rvv.objdump",
+        "fp16": "xnnpack_f16_gemm_rvv.objdump",
+        "fp32": "xnnpack_f32_gemm_rvv.objdump",
+    },
+    "linear": {
+        "int8": "xnnpack_qd8_gemm_rvv.objdump",
+        "fp16": "xnnpack_f16_gemm_rvv.objdump",
+        "fp32": "xnnpack_f32_gemm_rvv.objdump",
+    },
 }
 
 
@@ -805,9 +912,19 @@ _DTYPE_FIXTURES: dict[str, dict[str, str]] = {
 #: the alias set is explicit and the valid TARGETS are derived from the registry itself -- an alias
 #: pointing at a key no fixture table has is a bug this raises on, not a silent None.
 _DTYPE_ALIASES: dict[str, str] = {
-    "f32": "fp32", "fp32": "fp32", "float32": "fp32", "float": "fp32",
-    "f16": "fp16", "fp16": "fp16", "float16": "fp16", "half": "fp16",
-    "i8": "int8", "int8": "int8", "qint8": "int8", "qd8": "int8", "s8": "int8",
+    "f32": "fp32",
+    "fp32": "fp32",
+    "float32": "fp32",
+    "float": "fp32",
+    "f16": "fp16",
+    "fp16": "fp16",
+    "float16": "fp16",
+    "half": "fp16",
+    "i8": "int8",
+    "int8": "int8",
+    "qint8": "int8",
+    "qd8": "int8",
+    "s8": "int8",
 }
 
 
@@ -825,7 +942,7 @@ def canonical_dtype(spelling: str | None) -> str | None:
     if key is None:
         return None
     known = {k for table in _DTYPE_FIXTURES.values() for k in table}
-    if key not in known:                    # an alias that outlived its fixture table
+    if key not in known:  # an alias that outlived its fixture table
         raise KeyError(f"dtype alias {spelling!r} -> {key!r} names no key in _DTYPE_FIXTURES {sorted(known)}")
     return key
 
@@ -840,7 +957,7 @@ def expert_fixture_for(family: str, dtype: str | None = None) -> str | None:
     if dtype:
         by_dtype = _DTYPE_FIXTURES.get(family)
         if by_dtype is not None:
-            return by_dtype.get(dtype)          # None => fail closed, no expert for this pair
+            return by_dtype.get(dtype)  # None => fail closed, no expert for this pair
     t = FAMILY_TEACHERS.get(family)
     return t.fixture if t is not None else None
 
@@ -861,12 +978,13 @@ def expert_family_cca(family: str, *, fixture_dir: Path | None = None, dtype: st
     if not path.is_file():
         return None
     from .beam_cli import lift_expert_cca
+
     return lift_expert_cca(path, teacher.op)
 
 
-def divergences_across_teachers(ours, *, dtype: str | None = None,
-                                families: "tuple[str, ...] | None" = None,
-                                fixture_dir: "Path | None" = None):
+def divergences_across_teachers(
+    ours, *, dtype: str | None = None, families: "tuple[str, ...] | None" = None, fixture_dir: "Path | None" = None
+):
     """Divergences for OURS against EVERY family teacher, unioned by axis.
 
     A whole model is not one kernel, and no single expert can answer every axis. An expert GEMM has no
@@ -886,9 +1004,9 @@ def divergences_across_teachers(ours, *, dtype: str | None = None,
     census's rather than this function's. Returns ``(divergences, taught_by, uncomparable)`` -- and the
     third element is the point: an axis NO teacher could answer is reported, not dropped.
     """
-    from ..kernels import cca_compare
-
     from dataclasses import asdict as _asdict
+
+    from ..kernels import cca_compare
 
     #: `compute.op` is the op LABEL, not a property of the code. A cross-family teacher differs on it
     #: by construction -- comparing our matmul against the `mul` teacher reports ours='matmul'
@@ -934,10 +1052,13 @@ def divergences_across_teachers(ours, *, dtype: str | None = None,
     return list(seen.values()), taught_by, unanswered
 
 
-def teacher_compare_fn(*, dtype: str | None = None,
-                       families: "tuple[str, ...] | None" = None,
-                       fixture_dir: "Path | None" = None,
-                       record: list | None = None):
+def teacher_compare_fn(
+    *,
+    dtype: str | None = None,
+    families: "tuple[str, ...] | None" = None,
+    fixture_dir: "Path | None" = None,
+    record: list | None = None,
+):
     """A ``compare_fn(ours) -> [Divergence]`` for :func:`mining.beam.run_beam`, backed by EVERY teacher.
 
     The beam's default expert side is ONE lifted fixture, which silently bounds what the search can
@@ -957,10 +1078,17 @@ def teacher_compare_fn(*, dtype: str | None = None,
 
     def _compare(ours):
         divs, taught_by, unanswered = divergences_across_teachers(
-            ours, dtype=dt, families=families, fixture_dir=fixture_dir)
+            ours, dtype=dt, families=families, fixture_dir=fixture_dir
+        )
         if record is not None:
-            record.append({"dtype": dt, "n_divergences": len(divs),
-                           "taught_by": dict(taught_by), "unanswered_axes": list(unanswered)})
+            record.append(
+                {
+                    "dtype": dt,
+                    "n_divergences": len(divs),
+                    "taught_by": dict(taught_by),
+                    "unanswered_axes": list(unanswered),
+                }
+            )
         return divs
 
     return _compare
@@ -970,6 +1098,7 @@ def family_region_ids(model_dir: str | Path, family: str) -> list[str]:
     """The ``prov.region_id``s of the top-level @forward ops whose family matches ``family`` (matching
     either ``prov.op`` or ``prov.family``) — the section the teacher scopes OUR CCA to."""
     from ..llvmlower.op_profile import find_forward_ops
+
     text = Path(model_dir, "model.mlir").read_text()
     _, _, ops = find_forward_ops(text)
     rids: list[str] = []
@@ -988,28 +1117,37 @@ def family_region_ids(model_dir: str | Path, family: str) -> list[str]:
 SectionBuildFn = Callable[[Path], "tuple[str, tuple[str, ...] | None]"]
 
 
-def ours_section_cca(model_dir: str | Path, family: str, *, build_fn: SectionBuildFn,
-                     op: str | None = None, work_root: str | Path | None = None, seed: int = 0):
+def ours_section_cca(
+    model_dir: str | Path,
+    family: str,
+    *,
+    build_fn: SectionBuildFn,
+    op: str | None = None,
+    work_root: str | Path | None = None,
+    seed: int = 0,
+):
     """Lift OUR per-family CCA by slicing the model to ``family``'s regions, building that section, and
     lifting the emitted asm — the section-scoped analog of ``beam._cca_divergences``.
 
     Returns None when the model has no op of that family (nothing to teach). ``build_fn`` is the board
     seam (see :data:`SectionBuildFn`); everything else is host-side and deterministic."""
     from .section_build import build_section_bundle
+
     op = op or (FAMILY_TEACHERS.get(family).op if FAMILY_TEACHERS.get(family) else family)
     rids = family_region_ids(model_dir, family)
     if not rids:
         return None
     if work_root is None:
         from ..common.artifacts import cache_dir
+
         work_root = cache_dir("beam-sections")
     work = Path(work_root) / f"section_{family}"
     build_section_bundle(model_dir, rids, work, seed=seed)
     objdump_text, undef = build_fn(work)
     from ..kernels import cca
     from ..kernels.decode import rvv
-    return cca.lift_asm(rvv.decode_text(objdump_text), op=op, source="ours",
-                        undefined_symbols=undef)
+
+    return cca.lift_asm(rvv.decode_text(objdump_text), op=op, source="ours", undefined_symbols=undef)
 
 
 def default_teacher_families() -> list[str]:
@@ -1027,7 +1165,9 @@ def default_teacher_families() -> list[str]:
 def _census_byte_order() -> list[str]:
     """Census families ordered by descending ``mean_bytes_share`` (empty if the census json is absent)."""
     import json
+
     from ..common.paths import artifacts_dir
+
     p = artifacts_dir() / "ceiling" / "model_op_census.json"
     if not p.is_file():
         return []
@@ -1040,16 +1180,20 @@ def _census_byte_order() -> list[str]:
     return [r["family"] for r in rows]
 
 
-def per_family_teacher_divergences(model_dir: str | Path, families: list[str] | None = None, *,
-                                   build_fn: SectionBuildFn | None = None,
-                                   expert_fn: Callable[[str], Any] | None = None,
-                                   ours_fn: Callable[[str], Any] | None = None,
-                                   ) -> tuple[list, list[tuple[str, str]]]:
+def per_family_teacher_divergences(
+    model_dir: str | Path,
+    families: list[str] | None = None,
+    *,
+    build_fn: SectionBuildFn | None = None,
+    expert_fn: Callable[[str], Any] | None = None,
+    ours_fn: Callable[[str], Any] | None = None,
+) -> tuple[list, list[tuple[str, str]]]:
     """Pair a per-family EXPERT CCA against OUR per-family section CCA and compare -> (all divergences,
     no-teacher notes). ``expert_fn``/``ours_fn`` default to the fixture + section-lift paths; tests
     inject mocks so no board/compile is needed. A family with an expert but no emitted section (or vice
     versa) is honestly recorded as a no-teacher note, not a divergence."""
     from ..kernels import cca_compare
+
     expert_fn = expert_fn or expert_family_cca
     if ours_fn is None:
         if build_fn is None:
@@ -1076,12 +1220,14 @@ def per_family_teacher_divergences(model_dir: str | Path, families: list[str] | 
     return divergences, notes
 
 
-def make_per_op_teacher_proposer(model_dir: str | Path | None = None,
-                                 families: list[str] | None = None, *,
-                                 build_fn: SectionBuildFn | None = None,
-                                 precomputed_divergences: list | None = None,
-                                 no_teacher_notes: list[tuple[str, str]] | None = None,
-                                 ) -> Callable[[Any, dict], list[ForkProposal]]:
+def make_per_op_teacher_proposer(
+    model_dir: str | Path | None = None,
+    families: list[str] | None = None,
+    *,
+    build_fn: SectionBuildFn | None = None,
+    precomputed_divergences: list | None = None,
+    no_teacher_notes: list[tuple[str, str]] | None = None,
+) -> Callable[[Any, dict], list[ForkProposal]]:
     """Bind the per-FAMILY teacher and return a ``(divergences, knobs) -> [ForkProposal]`` closure.
 
     The closure routes the precomputed per-family teacher divergences (expert-fixture-vs-our-section,
@@ -1096,10 +1242,12 @@ def make_per_op_teacher_proposer(model_dir: str | Path | None = None,
         board path: build_fn runs the K1 section build)."""
     if precomputed_divergences is None:
         if model_dir is None or build_fn is None:
-            raise ValueError("make_per_op_teacher_proposer needs precomputed_divergences, or "
-                             "model_dir + build_fn to compute them")
+            raise ValueError(
+                "make_per_op_teacher_proposer needs precomputed_divergences, or model_dir + build_fn to compute them"
+            )
         precomputed_divergences, no_teacher_notes = per_family_teacher_divergences(
-            model_dir, families, build_fn=build_fn)
+            model_dir, families, build_fn=build_fn
+        )
     teacher_divs = list(precomputed_divergences or [])
     notes = list(no_teacher_notes or [])
 

@@ -17,6 +17,7 @@ Several kernel libraries coexist in one process safely because ``HostModel.load`
 them ``RTLD_LOCAL`` (no trampoline needed at this arity), so their shared
 ``_mlir_ciface_forward``/``memrefCopy`` symbols don't clash.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,8 +27,14 @@ from typing import Any
 import numpy as np
 
 _NP_DTYPE = {
-    "f32": np.float32, "f64": np.float64, "f16": np.float16,
-    "i64": np.int64, "i32": np.int32, "i16": np.int16, "i8": np.int8, "i1": np.int8,
+    "f32": np.float32,
+    "f64": np.float64,
+    "f16": np.float16,
+    "i64": np.int64,
+    "i32": np.int32,
+    "i16": np.int16,
+    "i8": np.int8,
+    "i1": np.int8,
 }
 
 
@@ -53,15 +60,15 @@ def signature_of(func) -> KernelSignature:
         in_shapes=[_shape(t) for t in ft.inputs.data],
         in_dtypes=[str(t.element_type) for t in ft.inputs.data],
         out_shapes=[_shape(t) for t in ft.outputs.data],
-        out_dtypes=[str(t.element_type) for t in ft.outputs.data])
+        out_dtypes=[str(t.element_type) for t in ft.outputs.data],
+    )
 
 
 def extract_kernel(module, symbol: str, entry: str = "forward"):
     """A standalone ``builtin.module`` holding just ``symbol``, renamed to ``entry``."""
     from xdsl.dialects.builtin import ModuleOp, StringAttr
 
-    func = next((op for op in module.walk()
-                 if op.name == "func.func" and op.sym_name.data == symbol), None)
+    func = next((op for op in module.walk() if op.name == "func.func" and op.sym_name.data == symbol), None)
     if func is None:
         raise KernelBackendError(f"kernel @{symbol} not found")
     clone = func.clone()
@@ -72,17 +79,16 @@ def extract_kernel(module, symbol: str, entry: str = "forward"):
 
 def compile_host(kernel_module, workdir: str | Path):
     """Lower one kernel module to a host ``.so`` and load it (RTLD_LOCAL)."""
+    from ..xdsl_dialects._common import text as to_text
     from .abi import HostModel
     from .lower import lower_model
-    from ..xdsl_dialects._common import text as to_text
 
     workdir = Path(workdir)
     res = lower_model(to_text(kernel_module), workdir, targets=("host",))
     return HostModel.load(str(res.host_so))
 
 
-def run_random(model, sig: KernelSignature, seed: int = 0
-               ) -> tuple[list[np.ndarray], list[np.ndarray]]:
+def run_random(model, sig: KernelSignature, seed: int = 0) -> tuple[list[np.ndarray], list[np.ndarray]]:
     """Invoke the kernel on seeded random inputs; return (inputs, outputs)."""
     rng = np.random.default_rng(seed)
     inputs: list[np.ndarray] = []
@@ -94,8 +100,7 @@ def run_random(model, sig: KernelSignature, seed: int = 0
             inputs.append(rng.standard_normal(shape).astype(npdt))
         else:
             inputs.append(rng.integers(-4, 5, size=shape).astype(npdt))
-    outputs = [np.zeros(shape, _NP_DTYPE[dt])
-               for shape, dt in zip(sig.out_shapes, sig.out_dtypes)]
+    outputs = [np.zeros(shape, _NP_DTYPE[dt]) for shape, dt in zip(sig.out_shapes, sig.out_dtypes)]
     args = [(a.ctypes.data, a.shape) for a in inputs]
     args += [(o.ctypes.data, o.shape) for o in outputs]
     model(args)
@@ -110,8 +115,9 @@ class KernelCheck:
     shapes: str
 
 
-def check_matmul_kernels(outline_result, workdir: str | Path, seed: int = 0,
-                         rtol: float = 1e-4, atol: float = 1e-3) -> list[KernelCheck]:
+def check_matmul_kernels(
+    outline_result, workdir: str | Path, seed: int = 0, rtol: float = 1e-4, atol: float = 1e-3
+) -> list[KernelCheck]:
     """Compile every plain ``linalg.matmul`` kernel and gate it against ``A @ B``.
 
     Returns one :class:`KernelCheck` per matmul dispatch. The analytic reference is exact
@@ -134,6 +140,7 @@ def check_matmul_kernels(outline_result, workdir: str | Path, seed: int = 0,
         ref = a.astype(np.float32) @ b.astype(np.float32)
         max_abs = float(np.abs(y - ref).max())
         ok = bool(np.allclose(y, ref, rtol=rtol, atol=atol))
-        results.append(KernelCheck(symbol=d.symbol, ok=ok, max_abs=max_abs,
-                                   shapes=f"{sig.in_shapes[0]}x{sig.in_shapes[1]}"))
+        results.append(
+            KernelCheck(symbol=d.symbol, ok=ok, max_abs=max_abs, shapes=f"{sig.in_shapes[0]}x{sig.in_shapes[1]}")
+        )
     return results

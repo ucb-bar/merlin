@@ -19,7 +19,9 @@ NOT the CIRCT moat. The merlin+CIRCT arm additionally has the RTL-FACTS-grounded
 capacities + the live sim-skip gate); this gives the no-CIRCT arm parity with C++'s compile-time check,
 not parity with CIRCT. Shared by all xDSL arms.
 """
+
 from __future__ import annotations
+
 from pathlib import Path
 from typing import Any
 
@@ -31,13 +33,16 @@ def verify_module(module) -> list[str]:
     at grade time."""
     try:
         from xdsl.ir import Operation
+
         if isinstance(module, str):
             from xdsl.context import Context
-            from xdsl.parser import Parser
             from xdsl.dialects.builtin import Builtin
-            ctx = Context(); ctx.load_dialect(Builtin)
+            from xdsl.parser import Parser
+
+            ctx = Context()
+            ctx.load_dialect(Builtin)
             module = Parser(ctx, module).parse_module()
-        module.verify()           # raises on a malformed graph (type/operand/rank/invariant)
+        module.verify()  # raises on a malformed graph (type/operand/rank/invariant)
         return []
     except Exception as e:
         return [f"xDSL verify: {type(e).__name__}: {str(e)[:200]}"]
@@ -48,7 +53,7 @@ def legal_functs(gemmini_h: str | Path) -> dict[str, int]:
     txt = Path(gemmini_h).read_text(errors="ignore")
     out: dict[str, int] = {}
     for line in txt.splitlines():
-        parts = line.split()   # `#define  k_<NAME>  <N>` — any whitespace
+        parts = line.split()  # `#define  k_<NAME>  <N>` — any whitespace
         if len(parts) >= 3 and parts[0] == "#define" and parts[1].startswith("k_") and parts[2].isdigit():
             name = parts[1][2:]
             if name and all(c.isupper() or c.isdigit() or c == "_" for c in name):
@@ -77,8 +82,9 @@ def structural_checks(trace: dict, legal: dict[str, int] | None = None) -> list[
     return out
 
 
-def validate(module=None, cb: dict | None = None, trace: dict | None = None,
-             gemmini_h: str | Path | None = None) -> dict[str, Any]:
+def validate(
+    module=None, cb: dict | None = None, trace: dict | None = None, gemmini_h: str | Path | None = None
+) -> dict[str, Any]:
     """One-call pre-sim structural gate (the agent's compile-time-equivalent check). Returns
     {ok, findings} — run it BEFORE the sim; a non-empty findings means fix structure first."""
     findings = []
@@ -86,6 +92,7 @@ def validate(module=None, cb: dict | None = None, trace: dict | None = None,
         findings += verify_module(module)
     if cb is not None:
         from .cmdbuf import CommandBufferBuilder  # reuse the schema validator
+
         b = CommandBufferBuilder(cb.get("target", ""))
         b._cb = cb
         findings += b.validate()

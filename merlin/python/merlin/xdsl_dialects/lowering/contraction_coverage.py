@@ -26,6 +26,7 @@ output. `scores.V` has output `4x196x64` and contracts over a *second* 196, so t
 nothing and undercounts by 196x (it reported 79.1 MMAC instead of 157.4). MACs are the product of ALL
 loop extents, parallel and reduction alike, each read off an operand that carries that iteration dim.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -99,7 +100,7 @@ def classify_generic(op) -> str:
     if reduces:
         return "other-reduction"
     if not body - {"linalg.yield"}:
-        return "movement"          # a copy or broadcast: no arithmetic at all
+        return "movement"  # a copy or broadcast: no arithmetic at all
     return "elementwise"
 
 
@@ -119,7 +120,7 @@ def loop_extents(op) -> dict[int, int] | None:
             break
         shape, _ = mq.type_shape_dtype(operands[i].type)
         for j, expr in enumerate(getattr(mattr.data, "results", ())):
-            pos = getattr(expr, "position", None)     # a plain dim expr; anything else is skipped
+            pos = getattr(expr, "position", None)  # a plain dim expr; anything else is skipped
             if pos is not None and j < len(shape):
                 extents.setdefault(int(pos), int(shape[j]))
     return extents or None
@@ -146,11 +147,13 @@ def contraction_coverage(module: Any) -> CoverageReport:
         if ext is None:
             rep.unpriceable.append(rtype)
             continue
-        rep.unlowered.append(UnloweredContraction(
-            result_type=rtype,
-            loop_extents=tuple(sorted(ext.items())),
-            macs=_product(ext.values()),
-        ))
+        rep.unlowered.append(
+            UnloweredContraction(
+                result_type=rtype,
+                loop_extents=tuple(sorted(ext.items())),
+                macs=_product(ext.values()),
+            )
+        )
 
     for name in MATMUL_OPS:
         for op in mq.walk(module, name):

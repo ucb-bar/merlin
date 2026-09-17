@@ -17,6 +17,7 @@ Parsed structurally (``split``/``partition``, no regex), because a too-narrow pa
 valid-but-differently-spelled declaration, which here would mean quietly losing an instruction rather
 than failing. Anything not understood is REPORTED, never skipped.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -30,12 +31,12 @@ __all__ = ["HeaderInsn", "parse_insn_header", "table_for"]
 class HeaderInsn:
     """One custom instruction, as the target's own header declares it."""
 
-    name: str                       # the intrinsic's function name — the target's own vocabulary
-    opcode_macro: str               # the opcode symbol the .insn references
-    opcode: int | None = None       # resolved from the header's own #define, when present
+    name: str  # the intrinsic's function name — the target's own vocabulary
+    opcode_macro: str  # the opcode symbol the .insn references
+    opcode: int | None = None  # resolved from the header's own #define, when present
     funct3: int | None = None
     funct7: int | None = None
-    form: str = "r"                 # the .insn form (r, r4, i, s, ...)
+    form: str = "r"  # the .insn form (r, r4, i, s, ...)
 
     def key(self) -> tuple:
         return (self.opcode, self.funct3)
@@ -115,7 +116,7 @@ def parse_insn_header(path: "str | Path") -> tuple[list[HeaderInsn], tuple[str, 
         at = line.find(".insn")
         if at < 0:
             continue
-        rest = line[at + len(".insn"):].strip()
+        rest = line[at + len(".insn") :].strip()
         form, _, args = rest.partition(" ")
         form = form.strip().strip('"')
         # `.insn r %0, 4, 0, x0, ...` — the operand list after the form. The first token is the opcode
@@ -142,8 +143,9 @@ def parse_insn_header(path: "str | Path") -> tuple[list[HeaderInsn], tuple[str, 
         if key in seen:
             continue
         seen.add(key)
-        out.append(HeaderInsn(name=name, opcode_macro=macro, opcode=defines.get(macro),
-                              funct3=f3, funct7=f7, form=form))
+        out.append(
+            HeaderInsn(name=name, opcode_macro=macro, opcode=defines.get(macro), funct3=f3, funct7=f7, form=form)
+        )
     return out, tuple(problems)
 
 
@@ -163,8 +165,8 @@ def table_for(target: str, endpoint) -> tuple[dict, tuple[str, ...]]:
         # no intrinsics" when it means "we asked the wrong way".
         block = getattr(endpoint, "block", None)
         if not block:
-            block = ((_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {})
-        decl = ((block.get("encoding") or {}).get("intrinsics") or {})
+            block = (_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {}
+        decl = (block.get("encoding") or {}).get("intrinsics") or {}
         if not decl.get("pin") or not decl.get("path"):
             return {}, ()
         root = Path(_prov.verify(str(decl["pin"])).observed.path)

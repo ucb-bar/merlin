@@ -22,6 +22,7 @@ Two measured facts shape it:
   "the tool could not name this" from "this is the endpoint's own instruction", which is the distinction
   that probe got wrong.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -31,8 +32,7 @@ from typing import Any
 
 from merlin.kernels.decode.opu import UNKNOWN_MNEMONIC
 
-__all__ = ["DerivedIsaAudit", "DerivedIsaInsn", "audit", "decode_stream", "digest",
-           "encoding_for", "fields_of"]
+__all__ = ["DerivedIsaAudit", "DerivedIsaInsn", "audit", "decode_stream", "digest", "encoding_for", "fields_of"]
 
 
 def encoding_for(target: str) -> dict[str, Any]:
@@ -42,6 +42,7 @@ def encoding_for(target: str) -> dict[str, Any]:
     nothing, never decode against a guess.
     """
     from merlin.targetgen.rtl import mlc_bridge as _mb
+
     return _mb.isa_encoding_for(target) or {}
 
 
@@ -80,8 +81,8 @@ def fields_of(word: int, layout: Mapping[str, Any]) -> dict[str, int]:
 class DerivedIsaInsn:
     index: int
     addr: int
-    identity: str                  # the derived opcode-space name, or the disassembler's text
-    space: str = ""                # which derived opcode space the word falls in
+    identity: str  # the derived opcode-space name, or the disassembler's text
+    space: str = ""  # which derived opcode space the word falls in
     #: Roles the endpoint declares for this opcode space. Coarser than a per-instruction table -- a
     #: space groups many operations -- and that coarseness is the honest resolution of this evidence:
     #: the decoder says which space a word is in, not which operation it performs within it.
@@ -106,10 +107,14 @@ _F3_SHIFT, _F3_MASK = 12, 0x7
 _F7_SHIFT, _F7_MASK = 25, 0x7F
 
 
-def decode_stream(insns: Sequence[Any], encoding: Mapping[str, Any],
-                  spaces: Sequence[str] = (), roles_of=None,
-                  custom_table: "Mapping[tuple, str] | None" = None,
-                  cede_funct7_in: Sequence[str] = ()) -> list[DerivedIsaInsn]:
+def decode_stream(
+    insns: Sequence[Any],
+    encoding: Mapping[str, Any],
+    spaces: Sequence[str] = (),
+    roles_of=None,
+    custom_table: "Mapping[tuple, str] | None" = None,
+    cede_funct7_in: Sequence[str] = (),
+) -> list[DerivedIsaInsn]:
     """Decode a stream against a derived encoding.
 
     ``spaces`` names the opcode-table entries that belong to this endpoint (e.g. the custom space plus
@@ -124,7 +129,7 @@ def decode_stream(insns: Sequence[Any], encoding: Mapping[str, Any],
     layout = encoding.get("fields") or {}
     by_value: dict[int, str] = {}
     for name, value in (encoding.get("opcodes") or {}).items():
-        by_value.setdefault(int(value), str(name))       # first name wins; aliases are reported as one
+        by_value.setdefault(int(value), str(name))  # first name wins; aliases are reported as one
     mine = {str(s).upper().replace("-", "_") for s in spaces}
     out: list[DerivedIsaInsn] = []
     for i, insn in enumerate(insns):
@@ -148,20 +153,25 @@ def decode_stream(insns: Sequence[Any], encoding: Mapping[str, Any],
                 # other engine's gap, and the number that should drive work becomes noise.
                 identity = ""
             else:
-                finer = custom_table.get((f.get("opcode"),
-                                          (word >> _F3_SHIFT) & _F3_MASK,
-                                          (word >> _F7_SHIFT) & _F7_MASK))
+                finer = custom_table.get(
+                    (f.get("opcode"), (word >> _F3_SHIFT) & _F3_MASK, (word >> _F7_SHIFT) & _F7_MASK)
+                )
                 if finer:
                     identity = finer
-        out.append(DerivedIsaInsn(
-            index=i, addr=int(getattr(insn, "addr", 0)),
-            identity=identity or str(getattr(insn, "mnemonic", "")),
-            space=space if identity else "",
-            roles=(tuple(roles_of(identity)) if (identity and roles_of) else ()),
-            from_endpoint=bool(identity) and space.upper() in mine,
-            mnemonic=str(getattr(insn, "mnemonic", "")),
-            operands=tuple(getattr(insn, "operands", ()) or ()),
-            fields=f, hex_bits=len(_hex) * 4))
+        out.append(
+            DerivedIsaInsn(
+                index=i,
+                addr=int(getattr(insn, "addr", 0)),
+                identity=identity or str(getattr(insn, "mnemonic", "")),
+                space=space if identity else "",
+                roles=(tuple(roles_of(identity)) if (identity and roles_of) else ()),
+                from_endpoint=bool(identity) and space.upper() in mine,
+                mnemonic=str(getattr(insn, "mnemonic", "")),
+                operands=tuple(getattr(insn, "operands", ()) or ()),
+                fields=f,
+                hex_bits=len(_hex) * 4,
+            )
+        )
     return out
 
 
@@ -189,12 +199,15 @@ class DerivedIsaAudit:
         return (len(self.unaccounted) / self.total_insns) if self.total_insns else 0.0
 
     def to_dict(self) -> dict[str, Any]:
-        return {"space_counts": dict(self.space_counts), "total_insns": self.total_insns,
-                "endpoint_insns": self.endpoint_insns,
-                "named_by_disassembler": self.named_by_disassembler,
-                "unaccounted": [dict(u) for u in self.unaccounted],
-                "unaccounted_fraction": round(self.unaccounted_fraction, 4),
-                "digest": self.digest}
+        return {
+            "space_counts": dict(self.space_counts),
+            "total_insns": self.total_insns,
+            "endpoint_insns": self.endpoint_insns,
+            "named_by_disassembler": self.named_by_disassembler,
+            "unaccounted": [dict(u) for u in self.unaccounted],
+            "unaccounted_fraction": round(self.unaccounted_fraction, 4),
+            "digest": self.digest,
+        }
 
 
 def digest(decoded: Sequence[DerivedIsaInsn]) -> str:
@@ -215,7 +228,8 @@ def audit(insns: Sequence[Any], target: str, endpoint=None) -> DerivedIsaAudit:
     spaces = ()
     if endpoint is not None:
         from merlin.kernels import endpoints as _ep
-        block = ((_ep._spec().get("endpoints") or {}).get(endpoint.name) or {})
+
+        block = (_ep._spec().get("endpoints") or {}).get(endpoint.name) or {}
         spaces = tuple((block.get("encoding") or {}).get("spaces") or ())
     decoded = decode_stream(insns, encoding, spaces)
     counts: dict[str, int] = {}
@@ -224,11 +238,12 @@ def audit(insns: Sequence[Any], target: str, endpoint=None) -> DerivedIsaAudit:
         if d.space:
             counts[d.space] = counts.get(d.space, 0) + 1
         if not accountable(d):
-            unaccounted.append({"index": d.index, "addr": d.addr, "fields": dict(d.fields),
-                                "mnemonic": d.mnemonic})
+            unaccounted.append({"index": d.index, "addr": d.addr, "fields": dict(d.fields), "mnemonic": d.mnemonic})
     return DerivedIsaAudit(
-        space_counts=counts, total_insns=len(decoded),
+        space_counts=counts,
+        total_insns=len(decoded),
         endpoint_insns=sum(1 for d in decoded if d.from_endpoint),
-        named_by_disassembler=sum(1 for d in decoded
-                                  if d.mnemonic and d.mnemonic != UNKNOWN_MNEMONIC),
-        unaccounted=tuple(unaccounted), digest=digest(decoded))
+        named_by_disassembler=sum(1 for d in decoded if d.mnemonic and d.mnemonic != UNKNOWN_MNEMONIC),
+        unaccounted=tuple(unaccounted),
+        digest=digest(decoded),
+    )

@@ -102,6 +102,7 @@ would have to be rewritten too. A region CONTAINING a nested ``scf.parallel`` is
 unpriceable and left alone -- the inner one is a candidate on its own terms, but collapsing the
 outer one would decide the inner one's fate as a side effect.
 """
+
 from __future__ import annotations
 
 #: Feature-name prefix. The full name carries the threshold: ``parallel_grain_10000``.
@@ -126,9 +127,8 @@ def threshold_of(features) -> int | None:
     if not names:
         return None
     if len(names) > 1:
-        raise ValueError(f"{len(names)} parallel-grain thresholds named at once ({names}); a build "
-                         "has one grain")
-    return int(names[0][len(FEATURE_PREFIX):])
+        raise ValueError(f"{len(names)} parallel-grain thresholds named at once ({names}); a build has one grain")
+    return int(names[0][len(FEATURE_PREFIX) :])
 
 
 def ensure_registered(threshold: int) -> str:
@@ -139,25 +139,29 @@ def ensure_registered(threshold: int) -> str:
     resolve in the child.
     """
     from .impr_features import ImprFeature, known, register
+
     name = feature_name(threshold)
     if name in known():
         return name
-    register(ImprFeature(
-        name=name,
-        action_class="HEURISTIC",
-        description=(
-            f"Multicore fork/join GRAIN: rewrite every `scf.parallel` whose static cost is below "
-            f"{int(threshold)} lane-operations into a serial `scf.for` nest, between "
-            f"convert-linalg-to-parallel-loops and convert-scf-to-openmp, so no `omp.parallel` "
-            f"(and no __kmpc_fork_call) is emitted for it. Attacks the fork COUNT, not the Amdahl "
-            f"fraction: the measured whole-model int8 lowerings enter 23,344 (lstmnetvit) and 5,160 "
-            f"(deepjscc) parallel regions per inference, of which 97%/79% carry 2.6%/1.6% of the "
-            f"work. Only ever removes concurrency, so it introduces no write-sharing. Requires the "
-            f"multicore lowering (parallel_harts); with a serial pipeline there is no `scf.parallel` "
-            f"and it reports 0. On full-output-gated LSTMNetVIT W8A8 on eight K1 harts, threshold "
-            f"10,000 improved 66.280 ms to 57.184 ms (1.159x); 100,000 regressed to about 69.8 ms, "
-            f"so this remains model-searchable rather than a default."),
-    ))
+    register(
+        ImprFeature(
+            name=name,
+            action_class="HEURISTIC",
+            description=(
+                f"Multicore fork/join GRAIN: rewrite every `scf.parallel` whose static cost is below "
+                f"{int(threshold)} lane-operations into a serial `scf.for` nest, between "
+                f"convert-linalg-to-parallel-loops and convert-scf-to-openmp, so no `omp.parallel` "
+                f"(and no __kmpc_fork_call) is emitted for it. Attacks the fork COUNT, not the Amdahl "
+                f"fraction: the measured whole-model int8 lowerings enter 23,344 (lstmnetvit) and 5,160 "
+                f"(deepjscc) parallel regions per inference, of which 97%/79% carry 2.6%/1.6% of the "
+                f"work. Only ever removes concurrency, so it introduces no write-sharing. Requires the "
+                f"multicore lowering (parallel_harts); with a serial pipeline there is no `scf.parallel` "
+                f"and it reports 0. On full-output-gated LSTMNetVIT W8A8 on eight K1 harts, threshold "
+                f"10,000 improved 66.280 ms to 57.184 ms (1.159x); 100,000 regressed to about 69.8 ms, "
+                f"so this remains model-searchable rather than a default."
+            ),
+        )
+    )
     return name
 
 

@@ -27,6 +27,7 @@ Target-neutral by construction: clause names are opaque strings chosen by the se
 are opaque strings chosen by the caller. This module never interprets either, and never names a
 target, capability, instruction or clause of its own.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -93,15 +94,16 @@ def census(capability: str, sites: Iterable[RefusalSite]) -> dict[str, Any]:
                 "sites": count,
                 "share_of_refused": round(count / len(refused), 6) if refused else 0.0,
                 "example_sites": [r.site for r in refused if r.clause == clause][:5],
-                "example_detail": next((dict(r.detail) for r in refused
-                                        if r.clause == clause and r.detail), None),
+                "example_detail": next((dict(r.detail) for r in refused if r.clause == clause and r.detail), None),
             }
             for clause, count in ordered
         ],
         "first_refusal_only": True,
-        "caveat": ("a guard sequence returns on its FIRST failing clause, so these counts are of "
-                   "first refusals and say nothing about clauses never reached. Removing the top "
-                   "clause reveals the next one; it does not admit these sites."),
+        "caveat": (
+            "a guard sequence returns on its FIRST failing clause, so these counts are of "
+            "first refusals and say nothing about clauses never reached. Removing the top "
+            "clause reveals the next one; it does not admit these sites."
+        ),
     }
 
 
@@ -116,19 +118,23 @@ def unblocking_sequence(censuses: Sequence[Mapping[str, Any]]) -> dict[str, Any]
     for entry in censuses:
         clauses = entry.get("clauses") or ()
         for rank, row in enumerate(clauses):
-            steps.append({
-                "capability": entry.get("capability"),
-                "clause": row.get("clause"),
-                "sites": row.get("sites"),
-                "rank_within_capability": rank,
-                "known_blocker_only_while": [c.get("clause") for c in clauses[:rank]] or None,
-            })
+            steps.append(
+                {
+                    "capability": entry.get("capability"),
+                    "clause": row.get("clause"),
+                    "sites": row.get("sites"),
+                    "rank_within_capability": rank,
+                    "known_blocker_only_while": [c.get("clause") for c in clauses[:rank]] or None,
+                }
+            )
     steps.sort(key=lambda s: (-(s["sites"] or 0), str(s["capability"]), str(s["clause"])))
     return {
         "schema": "capability_unblocking_sequence_v1",
         "steps": steps,
-        "reading": ("each step is the deciding clause for that many sites GIVEN the clauses listed "
-                    "in `known_blocker_only_while` still stand. Clearing one re-runs the selector "
-                    "and may surface a clause that was never evaluated, so treat this as a cascade "
-                    "to walk, not a list to divide up."),
+        "reading": (
+            "each step is the deciding clause for that many sites GIVEN the clauses listed "
+            "in `known_blocker_only_while` still stand. Clearing one re-runs the selector "
+            "and may surface a clause that was never evaluated, so treat this as a cascade "
+            "to walk, not a list to divide up."
+        ),
     }

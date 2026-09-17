@@ -18,6 +18,7 @@ outputs or by a model argument — which :func:`verify_program` checks. This is 
 target-agnostic command buffer that the Python simulator and the C runtime both consume,
 and the unit a multicore scheduler partitions.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -41,14 +42,14 @@ class Buffer:
     id: str
     shape: list[int]
     dtype: str
-    kind: str                       # "arg" | "intermediate" | "const"
-    arg_index: int | None = None    # set when kind == "arg"
+    kind: str  # "arg" | "intermediate" | "const"
+    arg_index: int | None = None  # set when kind == "arg"
 
 
 @dataclass
 class Node:
-    kind: str                       # "dispatch" | "view"
-    op: str                         # symbol for dispatch, op name for view
+    kind: str  # "dispatch" | "view"
+    op: str  # symbol for dispatch, op name for view
     inputs: list[str]
     outputs: list[str]
     prov: dict[str, str] = field(default_factory=dict)
@@ -67,7 +68,7 @@ class Node:
 @dataclass
 class DispatchProgram:
     entry: str
-    args: list[int]                 # func-arg indices, in call order
+    args: list[int]  # func-arg indices, in call order
     buffers: dict[str, Buffer]
     nodes: list[Node]
     results: list[str]
@@ -156,21 +157,19 @@ def _nested_call_symbols(op) -> list[str]:
     return found
 
 
-def build_dispatch_program(outlined: OutlineResult, entry: str = "forward"
-                           ) -> DispatchProgram:
+def build_dispatch_program(outlined: OutlineResult, entry: str = "forward") -> DispatchProgram:
     """Flatten the outlined driver into a serializable dispatch program."""
     if not HAS_XDSL:
         raise OutlineError("xDSL is required to build a dispatch program")
     module = outlined.module
-    drivers = [op for op in module.walk()
-               if op.name == "func.func" and "$kernel_" not in op.sym_name.data]
+    drivers = [op for op in module.walk() if op.name == "func.func" and "$kernel_" not in op.sym_name.data]
     if not drivers:
         raise OutlineError("no driver func in outlined module")
     driver = next((d for d in drivers if d.sym_name.data == entry), drivers[0])
     block = driver.body.blocks[0]
 
     buffers: dict[str, Buffer] = {}
-    ids: dict[int, str] = {}          # id(SSAValue) -> buffer id
+    ids: dict[int, str] = {}  # id(SSAValue) -> buffer id
     args: list[int] = []
 
     def bind(value, kind: str, arg_index: int | None = None) -> str:
@@ -179,8 +178,7 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward"
             return ids[key]
         bid = f"b{len(buffers)}"
         shape, dtype = _shape_dtype(value.type)
-        buffers[bid] = Buffer(id=bid, shape=shape, dtype=dtype, kind=kind,
-                              arg_index=arg_index)
+        buffers[bid] = Buffer(id=bid, shape=shape, dtype=dtype, kind=kind, arg_index=arg_index)
         ids[key] = bid
         return bid
 
@@ -207,7 +205,8 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward"
                 raise OutlineError(
                     f"driver op {op.name!r} reads a value with no bound buffer ({value.type}). "
                     "Dropping it (the retired behavior) records a read the program never performs, "
-                    "which understates the buffer's live range for every downstream consumer.")
+                    "which understates the buffer's live range for every downstream consumer."
+                )
             out.append(bid)
         return out
 
@@ -224,12 +223,22 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward"
                     f"dispatch table exhausted at driver call #{n_calls + 1}: the driver makes more "
                     f"kernel calls than the outline result lists dispatches "
                     f"({len(outlined.dispatches)}). Pairing them positionally past this point would "
-                    "attribute a call to the wrong kernel symbol and the wrong provenance.")
+                    "attribute a call to the wrong kernel symbol and the wrong provenance."
+                )
             n_calls += 1
             in_ids = resolve(op.operands, op)
             out_ids = [bind(r, "intermediate") for r in op.results]
-            nodes.append(Node(kind="dispatch", op=d.symbol, inputs=in_ids,
-                              outputs=out_ids, prov=d.prov, regions=len(op.regions), captures=[]))
+            nodes.append(
+                Node(
+                    kind="dispatch",
+                    op=d.symbol,
+                    inputs=in_ids,
+                    outputs=out_ids,
+                    prov=d.prov,
+                    regions=len(op.regions),
+                    captures=[],
+                )
+            )
             continue
         # a driver-side glue / view op
         nested = _nested_call_symbols(op)
@@ -239,14 +248,16 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward"
                 "top-level walk that pairs driver calls with the dispatch table cannot see them, so "
                 "every later call would silently take the wrong dispatch entry (wrong symbol AND "
                 "wrong prov.region_id) while verify_program still reports a valid DAG. Hoist the "
-                "call out of the region before building a dispatch program.")
+                "call out of the region before building a dispatch program."
+            )
         captured = _region_captures(op) if op.regions else []
         kind = "const" if op.name == "arith.constant" else "intermediate"
         in_ids = resolve(list(op.operands) + captured, op)
         capture_ids = [bid for bid in resolve(captured, op)] if captured else []
         out_ids = [bind(r, kind) for r in op.results]
-        nodes.append(Node(kind="view", op=op.name, inputs=in_ids, outputs=out_ids,
-                          regions=len(op.regions), captures=capture_ids))
+        nodes.append(
+            Node(kind="view", op=op.name, inputs=in_ids, outputs=out_ids, regions=len(op.regions), captures=capture_ids)
+        )
 
     leftover = [d.symbol for d in disp_iter]
     if leftover:
@@ -255,12 +266,12 @@ def build_dispatch_program(outlined: OutlineResult, entry: str = "forward"
             f"matched to a driver call ({leftover}); the driver made {n_calls} top-level call(s) for "
             f"{len(outlined.dispatches)} dispatches. Every call after the first unmatched one already "
             "carries another kernel's symbol and provenance, and the buffer DAG stays valid, so this "
-            "is the only place the mismatch is visible.")
+            "is the only place the mismatch is visible."
+        )
 
     ret = next(op for op in block.ops if op.name == "func.return")
     results = [ids[id(o)] for o in ret.operands]
-    return DispatchProgram(entry=driver.sym_name.data, args=args, buffers=buffers,
-                           nodes=nodes, results=results)
+    return DispatchProgram(entry=driver.sym_name.data, args=args, buffers=buffers, nodes=nodes, results=results)
 
 
 def verify_program(prog: DispatchProgram) -> list[str]:
@@ -272,8 +283,7 @@ def verify_program(prog: DispatchProgram) -> list[str]:
             if bid not in prog.buffers:
                 problems.append(f"node {n} ({node.op}) reads unknown buffer {bid}")
             elif bid not in defined:
-                problems.append(
-                    f"node {n} ({node.op}) reads buffer {bid} before it is produced")
+                problems.append(f"node {n} ({node.op}) reads buffer {bid} before it is produced")
         for bid in node.outputs:
             defined.add(bid)
     for bid in prog.results:
@@ -308,8 +318,9 @@ def prune_dead_nodes(prog: DispatchProgram) -> DispatchProgram:
         live.update(node.inputs)
         live.update(node.outputs)
     buffers = {bid: b for bid, b in prog.buffers.items() if bid in live}
-    return DispatchProgram(entry=prog.entry, args=list(prog.args), buffers=buffers,
-                           nodes=nodes, results=list(prog.results))
+    return DispatchProgram(
+        entry=prog.entry, args=list(prog.args), buffers=buffers, nodes=nodes, results=list(prog.results)
+    )
 
 
 def slice_program(prog: DispatchProgram, region_ids, *, entry_suffix: str = "") -> DispatchProgram:
@@ -326,8 +337,9 @@ def slice_program(prog: DispatchProgram, region_ids, *, entry_suffix: str = "") 
     reachability), keyed on region provenance instead of program results. Raises if nothing matches.
     """
     want = set(region_ids)
-    keep: set[int] = {i for i, n in enumerate(prog.nodes)
-                      if n.kind == "dispatch" and n.prov.get("prov.region_id") in want}
+    keep: set[int] = {
+        i for i, n in enumerate(prog.nodes) if n.kind == "dispatch" and n.prov.get("prov.region_id") in want
+    }
     if not keep:
         raise ValueError(f"slice_program: no dispatch nodes match region_ids {sorted(want)}")
 
@@ -371,35 +383,33 @@ def slice_program(prog: DispatchProgram, region_ids, *, entry_suffix: str = "") 
 
     def _clone(bid: str, *, kind: str | None = None, arg_index: int | None = None) -> None:
         s = prog.buffers[bid]
-        buffers[bid] = Buffer(id=s.id, shape=list(s.shape), dtype=s.dtype,
-                              kind=kind or s.kind, arg_index=arg_index)
+        buffers[bid] = Buffer(id=s.id, shape=list(s.shape), dtype=s.dtype, kind=kind or s.kind, arg_index=arg_index)
 
     args: list[int] = []
     for bid in dict.fromkeys(b for n in kept for b in n.inputs):
         if bid in produced:
             continue
         if prog.buffers[bid].kind == "const":
-            _clone(bid)                                  # consts are emitted with the slice
+            _clone(bid)  # consts are emitted with the slice
         else:
             _clone(bid, kind="arg", arg_index=len(args))  # boundary input -> a fresh slice arg
             args.append(buffers[bid].arg_index)
     for bid in produced:
         _clone(bid)
-    for bid in results:                                  # ensure every result buffer is present
+    for bid in results:  # ensure every result buffer is present
         if bid not in buffers:
             _clone(bid)
 
-    sliced = DispatchProgram(entry=prog.entry + entry_suffix, args=args,
-                             buffers=buffers, nodes=kept, results=results)
+    sliced = DispatchProgram(entry=prog.entry + entry_suffix, args=args, buffers=buffers, nodes=kept, results=results)
     problems = verify_program(sliced)
     if problems:
         raise ValueError(f"slice_program produced an invalid DAG: {problems}")
     return sliced
 
 
-def lower_model_to_dispatch_program(module, forward: str | None = None,
-                                    prune: bool = True
-                                    ) -> tuple[OutlineResult, DispatchProgram]:
+def lower_model_to_dispatch_program(
+    module, forward: str | None = None, prune: bool = True
+) -> tuple[OutlineResult, DispatchProgram]:
     """Convenience: outline then flatten, verifying the resulting program."""
     outlined = outline_dispatches(module, forward=forward)
     prog = build_dispatch_program(outlined, entry=forward or "forward")

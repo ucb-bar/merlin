@@ -15,9 +15,12 @@ The relocated modules keep their sibling ``from .muon import ...`` relative impo
 submodules of this package); their PARENT imports were rewritten absolute (``merlin.runtime.*`` /
 ``merlin.targetgen.*`` / ``merlin.llvmlower.*``) so they resolve out-of-tree.
 """
+
 from __future__ import annotations
 
 import importlib
+
+from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register
 
 # Import ``muon`` — runs its module-level ``register(...)`` and re-exports its public API onto the package
 # so ``get_backend("muon").available`` / ``.compile_kernel_forkfree`` / ``.run_elf`` / ``.MuonUnavailable``
@@ -25,8 +28,6 @@ import importlib
 # the MLIR->LLVM + RTL-derived transcode toolchain); REGISTRATION stays free of that dependency.
 from . import muon  # noqa: F401
 from .muon import *  # noqa: F401,F403
-
-from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register
 
 # Re-register under the PACKAGE name (muon.py already registered under its own submodule name when imported
 # above; registration is last-wins per name), so get_backend("muon") re-resolves THIS package — which
@@ -38,10 +39,19 @@ register(BackendInfo("muon", TargetClass.GPU, BackendKind.KERNEL, __name__))
 #: MLIR->LLVM toolchain). Callers that reach them trigger the load on first access — exactly when they
 #: already need the toolchain anyway.
 _LAZY_SUBMODULES = (
-    "muon_codegen", "muon_codegen_mlir", "muon_bsp", "muon_link", "muon_harness",
-    "muon_oracles", "muon_introspect", "gen_muon_digest", "muon_capsule_runner",
-    "muon_mx_codegen", "muon_result_page",
-    "muon_kernel_selection", "muon_mx_abi",
+    "muon_codegen",
+    "muon_codegen_mlir",
+    "muon_bsp",
+    "muon_link",
+    "muon_harness",
+    "muon_oracles",
+    "muon_introspect",
+    "gen_muon_digest",
+    "muon_capsule_runner",
+    "muon_mx_codegen",
+    "muon_result_page",
+    "muon_kernel_selection",
+    "muon_mx_abi",
 )
 
 

@@ -12,6 +12,7 @@ The runtime splits cleanly into two kinds of configuration:
 Dispatch is by the RTL build tool (``sim_via``, a descriptor fact), mirroring how the oracle adapters are
 chosen — so this holds no target-name literal and extends to another build tool by adding a reader.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,6 +28,7 @@ def rtl_sim_config(target: str) -> str | None:
     None when the target declares none or its manifest cannot be read."""
     try:
         from .target_experiment import load_capability_manifest
+
         return (load_capability_manifest(target).contract.get("runtime") or {}).get("rtl_sim_config")
     except Exception:  # noqa: BLE001 — manifest unavailable ⇒ no config; caller falls back
         return None
@@ -40,7 +42,9 @@ def _chipyard_dram_base(target: str) -> int | None:
     cfg = rtl_sim_config(target)
     if not cfg:
         return None
-    from merlin.common.paths import env as _env, ext_path as _ext_path
+    from merlin.common.paths import env as _env
+    from merlin.common.paths import ext_path as _ext_path
+
     cy = _env("MERLIN_CHIPYARD") or _ext_path("chipyard")
     if not cy:
         return None
@@ -63,7 +67,7 @@ def _chipyard_dram_base(target: str) -> int | None:
 # The bare-metal DRAM base used when the RTL memory map cannot be read (build absent). It is the RISC-V
 # platform reset/DRAM base every Rocket/Chipyard-class SoC and spike/fesvr use — a documented default, not
 # a per-target guess; the derived value from the RTL build always wins when available.
-DEFAULT_PLATFORM_DRAM_BASE = 0x80000000  # derived-ok: RISC-V platform DRAM base; platform_dram_base() prefers the RTL-derived value
+DEFAULT_PLATFORM_DRAM_BASE = 0x80000000  # derived-ok: RISC-V platform DRAM base; platform_dram_base() prefers the RTL-derived value  # fmt: skip
 
 
 def platform_dram_base(target: str, sim_via: str | None) -> int:
@@ -72,7 +76,8 @@ def platform_dram_base(target: str, sim_via: str | None) -> int:
     ``memmap.json`` ``memory@`` region. Falls back to :data:`DEFAULT_PLATFORM_DRAM_BASE` only when the
     build/memmap is unavailable. Keyed on the sim ENGINE's ``has_memmap`` capability, not its NAME. No
     per-target address is baked here."""
-    from .capsule_runner import sim_oracle_caps            # function-local: avoid an import cycle
+    from .capsule_runner import sim_oracle_caps  # function-local: avoid an import cycle
+
     caps = sim_oracle_caps(sim_via)
     derived = _chipyard_dram_base(target) if (caps is not None and caps.has_memmap) else None
     return derived if derived is not None else DEFAULT_PLATFORM_DRAM_BASE
@@ -85,12 +90,14 @@ def compiler_smoke(sim_via: str | None) -> tuple[bool, str]:
     clang lesson: ``available()`` passed because the binaries were present, then the compile step failed).
     Only for a compile-based sim (its ``_SimOracle.is_compile_based`` capability); other oracles return
     n/a. Keyed on the capability, not the engine NAME."""
-    from .capsule_runner import sim_oracle_caps            # function-local: avoid an import cycle
+    from .capsule_runner import sim_oracle_caps  # function-local: avoid an import cycle
+
     caps = sim_oracle_caps(sim_via)
     if caps is None or not caps.is_compile_based:
         return True, "n/a (no compile-based oracle for this sim)"
     try:
         from merlin.llvmlower import toolchain as _tc
+
         clang = _tc.clang()
     except Exception as e:  # noqa: BLE001
         return False, f"clang toolchain unresolved: {e}"
@@ -102,8 +109,12 @@ def compiler_smoke(sim_via: str | None) -> tuple[bool, str]:
         obj = Path(td) / "smoke.o"
         ll.write_text("define i32 @f() {\nentry:\n  ret i32 0\n}\n", encoding="utf-8")
         try:
-            r = subprocess.run([str(clang), "--target=riscv64-unknown-elf", "-march=rv64gc",
-                                "-c", str(ll), "-o", str(obj)], capture_output=True, text=True, timeout=60)
+            r = subprocess.run(
+                [str(clang), "--target=riscv64-unknown-elf", "-march=rv64gc", "-c", str(ll), "-o", str(obj)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
         except FileNotFoundError:
             return False, f"oracle clang missing/not executable: {clang}"
         except Exception as e:  # noqa: BLE001
@@ -124,7 +135,7 @@ def _rebase_ld(text: str, base: int) -> str | None:
     j = text.find(";", i)
     if j < 0:
         return None
-    return text[:i] + f". = {hex(base)};" + text[j + 1:]
+    return text[:i] + f". = {hex(base)};" + text[j + 1 :]
 
 
 def derived_link_script(base: int, template_ld: Path, out_dir: Path) -> Path:

@@ -39,32 +39,57 @@ exists for PT2E Q/DQ graphs; an LM needs a stated tolerance plus top-1 against
 ``golden_w8a8.independent.npy``, never ``golden.npy`` -- grading W8A8 against a weight-only-int8
 reference is what once read as a codegen defect at cos 0.484).
 """
+
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 import hashlib
 import json
 import math
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["ArgRef", "PackedTensor", "PackPlan", "SessionState", "session_states_from_contract",
-           "ROLES", "parse_arg_index", "read_only_prefix",
-           "element_bytes", "physical_nbytes", "plan", "row_pitch_from_manifest",
-           "padded_tensor_bytes", "prepack_bytes", "write_const_blob", "WeightSource",
-           "PREPACK_PERMUTATIONS",
-           "ELEMENT_BYTES", "DEFAULT_ALIGNMENT"]
+__all__ = [
+    "ArgRef",
+    "PackedTensor",
+    "PackPlan",
+    "SessionState",
+    "session_states_from_contract",
+    "ROLES",
+    "parse_arg_index",
+    "read_only_prefix",
+    "element_bytes",
+    "physical_nbytes",
+    "plan",
+    "row_pitch_from_manifest",
+    "padded_tensor_bytes",
+    "prepack_bytes",
+    "write_const_blob",
+    "WeightSource",
+    "PREPACK_PERMUTATIONS",
+    "ELEMENT_BYTES",
+    "DEFAULT_ALIGNMENT",
+]
 
 #: Bytes per element, by the command buffer's own dtype spelling. ``bf16`` is moved as a raw 2-byte
 #: word rather than converted: numpy has no bfloat16 and the safetensors payload already carries the
 #: encoding, so a pass-through is lossless where a conversion would not be. ``i1`` is one byte,
 #: matching the compiler's generic one-byte ``i1`` storage sizing.
 ELEMENT_BYTES: Mapping[str, int] = {
-    "i1": 1, "i8": 1, "u8": 1,
-    "i16": 2, "u16": 2, "f16": 2, "bf16": 2,
-    "i32": 4, "u32": 4, "f32": 4,
-    "i64": 8, "u64": 8, "f64": 8,
+    "i1": 1,
+    "i8": 1,
+    "u8": 1,
+    "i16": 2,
+    "u16": 2,
+    "f16": 2,
+    "bf16": 2,
+    "i32": 4,
+    "u32": 4,
+    "f32": 4,
+    "i64": 8,
+    "u64": 8,
+    "f64": 8,
 }
 
 #: Byte alignment between tensors in the blob. A property of the DMA, not of the mesh, and separate
@@ -101,25 +126,33 @@ class PackedTensor:
 
     tensor: str
     index: int
-    storage: str                 # "const" | "mutable"
+    storage: str  # "const" | "mutable"
     offset: int
     logical_bytes: int
     physical_bytes: int
     dtype: str
     shape: tuple[int, ...]
-    sizing: str                  # "declared_storage_encoding" | "row_pitch"
-    weight: str = ""             # the state-dict key this comes from, for a const tensor
+    sizing: str  # "declared_storage_encoding" | "row_pitch"
+    weight: str = ""  # the state-dict key this comes from, for a const tensor
     #: ``argument`` -- the ABI passes a pointer to this. ``seed`` -- it holds a carried state's
     #: INITIAL bytes in read-only memory and nothing points at it; the harness copies it into the
     #: mutable working copy before the session runs, and again after the warm invocation.
     role: str = "argument"
 
     def to_dict(self) -> dict[str, Any]:
-        return {"tensor": self.tensor, "index": self.index, "storage": self.storage,
-                "offset": self.offset, "logical_bytes": self.logical_bytes,
-                "physical_bytes": self.physical_bytes, "dtype": self.dtype,
-                "shape": list(self.shape), "sizing": self.sizing, "weight": self.weight,
-                "role": self.role}
+        return {
+            "tensor": self.tensor,
+            "index": self.index,
+            "storage": self.storage,
+            "offset": self.offset,
+            "logical_bytes": self.logical_bytes,
+            "physical_bytes": self.physical_bytes,
+            "dtype": self.dtype,
+            "shape": list(self.shape),
+            "sizing": self.sizing,
+            "weight": self.weight,
+            "role": self.role,
+        }
 
 
 @dataclass
@@ -154,16 +187,22 @@ class PackPlan:
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"schema": "merlin_bundle_pack_plan_v1",
-                "const_bytes": self.const_bytes, "mutable_bytes": self.mutable_bytes,
-                "row_pitch_elements": self.row_pitch_elements, "alignment": self.alignment,
-                "absent_indices": list(self.absent_indices),
-                "abi_order": list(self.abi_order), "carried": [dict(c) for c in self.carried],
-                "output_bindings": list(self.output_bindings),
-                "n_const": len(self.const), "n_mutable": len(self.mutable),
-                "const": [t.to_dict() for t in self.const],
-                "mutable": [t.to_dict() for t in self.mutable],
-                "notes": list(self.notes)}
+        return {
+            "schema": "merlin_bundle_pack_plan_v1",
+            "const_bytes": self.const_bytes,
+            "mutable_bytes": self.mutable_bytes,
+            "row_pitch_elements": self.row_pitch_elements,
+            "alignment": self.alignment,
+            "absent_indices": list(self.absent_indices),
+            "abi_order": list(self.abi_order),
+            "carried": [dict(c) for c in self.carried],
+            "output_bindings": list(self.output_bindings),
+            "n_const": len(self.const),
+            "n_mutable": len(self.mutable),
+            "const": [t.to_dict() for t in self.const],
+            "mutable": [t.to_dict() for t in self.mutable],
+            "notes": list(self.notes),
+        }
 
     @property
     def arguments(self) -> tuple[PackedTensor, ...]:
@@ -178,11 +217,11 @@ class PackPlan:
         if missing:
             raise BundlePackError(
                 f"the ABI declares argument(s) {missing[:8]} that this plan lays out no pointer "
-                f"for; a short pointer list shifts every later argument")
+                f"for; a short pointer list shifts every later argument"
+            )
         return tuple(by_name[name] for name in self.abi_order)
 
-    def projected_image_bytes(self, *, additional_bytes: int = 0,
-                              const_is_far: bool = False) -> int:
+    def projected_image_bytes(self, *, additional_bytes: int = 0, const_is_far: bool = False) -> int:
         """Virtual bytes a linked image of this plan would span, before it is linked.
 
         WHY BEFORE. Under a PC-relative code model an image larger than the model's reach does not
@@ -212,8 +251,9 @@ class PackPlan:
         return reachable + int(self.mutable_bytes) + int(additional_bytes)
 
     def digest(self) -> str:
-        return hashlib.sha256(json.dumps(self.to_dict(), sort_keys=True,
-                                         separators=(",", ":")).encode("utf-8")).hexdigest()
+        return hashlib.sha256(
+            json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
 
 
 def parse_arg_index(name: Any, *, prefix: str = "arg") -> int | None:
@@ -224,14 +264,13 @@ def parse_arg_index(name: Any, *, prefix: str = "arg") -> int | None:
     """
     if not isinstance(name, str) or not name.startswith(prefix):
         return None
-    tail = name[len(prefix):]
+    tail = name[len(prefix) :]
     if not tail.isdigit():
         return None
     return int(tail)
 
 
-def read_only_prefix(kernel_abi: Mapping[str, Any]) -> tuple[tuple[ArgRef, ...],
-                                                             tuple[ArgRef, ...]]:
+def read_only_prefix(kernel_abi: Mapping[str, Any]) -> tuple[tuple[ArgRef, ...], tuple[ArgRef, ...]]:
     """``(read, write)`` argument refs, in declared order, with indices PARSED from the names.
 
     The ABI's own order is preserved rather than sorted: it is the order the harness passes pointers
@@ -265,14 +304,16 @@ def read_only_prefix(kernel_abi: Mapping[str, Any]) -> tuple[tuple[ArgRef, ...],
             raise BundlePackError(
                 f"kernel ABI argument {tensor!r} declares access {access!r}; only 'read', 'write' "
                 f"and 'readwrite' decide which blob a tensor belongs in, and guessing would put a "
-                f"weight in the mutable arena or an output in read-only memory")
+                f"weight in the mutable arena or an output in read-only memory"
+            )
         index = parse_arg_index(tensor)
         ref = ArgRef(tensor=tensor, index=-1 if index is None else index, access=access)
         if access == "read":
             if seen_write:
                 raise BundlePackError(
                     f"read argument {tensor!r} appears after a write argument; the const blob is the "
-                    f"read-only PREFIX of the ABI, so an interleaved order has no such prefix")
+                    f"read-only PREFIX of the ABI, so an interleaved order has no such prefix"
+                )
             read.append(ref)
         else:
             seen_write = True
@@ -306,8 +347,7 @@ class SessionState:
     output_index: int
 
     def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "input_arg": self.input_arg,
-                "output_index": self.output_index}
+        return {"name": self.name, "input_arg": self.input_arg, "output_index": self.output_index}
 
 
 def session_states_from_contract(contract: Mapping[str, Any]) -> tuple[SessionState, ...]:
@@ -330,19 +370,27 @@ def session_states_from_contract(contract: Mapping[str, Any]) -> tuple[SessionSt
                 raise BundlePackError(
                     f"session contract states[{position}] declares no integer {required!r}; a "
                     f"carried state whose endpoints are unknown cannot be placed, and placing its "
-                    f"input in read-only memory is a write fault at step 1")
-        states.append(SessionState(name=str(row.get("name") or f"state{position}"),
-                                   input_arg=int(row["input_arg"]),
-                                   output_index=int(row["output_index"])))
+                    f"input in read-only memory is a write fault at step 1"
+                )
+        states.append(
+            SessionState(
+                name=str(row.get("name") or f"state{position}"),
+                input_arg=int(row["input_arg"]),
+                output_index=int(row["output_index"]),
+            )
+        )
     seen_in: dict[int, str] = {}
     seen_out: dict[int, str] = {}
     for state in states:
-        for key, table, label in ((state.input_arg, seen_in, "input_arg"),
-                                  (state.output_index, seen_out, "output_index")):
+        for key, table, label in (
+            (state.input_arg, seen_in, "input_arg"),
+            (state.output_index, seen_out, "output_index"),
+        ):
             if key in table:
                 raise BundlePackError(
                     f"session states {table[key]!r} and {state.name!r} both claim {label} {key}; "
-                    f"two states sharing one endpoint would each overwrite the other's carry")
+                    f"two states sharing one endpoint would each overwrite the other's carry"
+                )
             table[key] = state.name
     return tuple(states)
 
@@ -358,7 +406,8 @@ def element_bytes(dtype: Any) -> int:
     if key not in ELEMENT_BYTES:
         raise BundlePackError(
             f"dtype {key!r} has no declared element size; add it to ELEMENT_BYTES with its width "
-            f"rather than letting a default decide how many bytes a tensor occupies")
+            f"rather than letting a default decide how many bytes a tensor occupies"
+        )
     return ELEMENT_BYTES[key]
 
 
@@ -397,14 +446,19 @@ def row_pitch_from_manifest(manifest: Mapping[str, Any]) -> int:
         raise BundlePackError(
             "the capability manifest states no capabilities.mesh.cols, so the row pitch cannot be "
             "derived; it is the systolic width and a guessed value mis-sizes every tensor in the "
-            "blob without failing")
+            "blob without failing"
+        )
     return int(cols)
 
 
-def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
-         weight_manifest: Mapping[str, Any] | None = None,
-         session_states: Sequence[SessionState] = (),
-         alignment: int = DEFAULT_ALIGNMENT) -> PackPlan:
+def plan(
+    command_buffer: Mapping[str, Any],
+    *,
+    row_pitch_elements: int,
+    weight_manifest: Mapping[str, Any] | None = None,
+    session_states: Sequence[SessionState] = (),
+    alignment: int = DEFAULT_ALIGNMENT,
+) -> PackPlan:
     """Lay out the const and mutable blobs for one emitted program.
 
     ``weight_manifest`` maps a stringified argument index to that argument's capture metadata (the
@@ -446,8 +500,7 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
                 # describe the program -- so say that, rather than blaming the contract -- but the
                 # seed has no argument to be packed from, and an unseeded carry is a buffer read
                 # before it is written.
-                in_place = (write[state.output_index]
-                            if 0 <= state.output_index < len(write) else None)
+                in_place = write[state.output_index] if 0 <= state.output_index < len(write) else None
                 if in_place is not None and in_place.access == "readwrite":
                     # AN IN-PLACE CARRY. The emitter dropped this state's input argument and folded
                     # the carry into its output, which it declares `readwrite`: one buffer is both
@@ -467,31 +520,34 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
                         raise BundlePackError(
                             f"session state {state.name!r} carries {in_place.tensor!r} in place but "
                             f"that tensor is absent from the tensor table, so its seed cannot be "
-                            f"sized")
+                            f"sized"
+                        )
                     seed_name = f"__seed_{state.name}"
                     if seed_name in tensors:
                         raise BundlePackError(
-                            f"the tensor table already contains {seed_name!r}; the synthesised seed "
-                            f"would shadow it")
+                            f"the tensor table already contains {seed_name!r}; the synthesised seed would shadow it"
+                        )
                     tensors = {**tensors, seed_name: dict(dst_t)}
-                    in_place_seeds.append((ArgRef(tensor=seed_name, index=state.input_arg,
-                                                  access="read"), state, in_place))
+                    in_place_seeds.append(
+                        (ArgRef(tensor=seed_name, index=state.input_arg, access="read"), state, in_place)
+                    )
                     continue
                 raise BundlePackError(
                     f"session state {state.name!r} declares input_arg {state.input_arg}, which is "
                     f"not a read argument of this kernel ABI; the contract does not describe this "
-                    f"program and applying it would move some other tensor into mutable memory")
+                    f"program and applying it would move some other tensor into mutable memory"
+                )
             if not 0 <= state.output_index < len(write):
                 raise BundlePackError(
                     f"session state {state.name!r} declares output_index {state.output_index} but "
                     f"the ABI has {len(write)} write argument(s); an out-of-range carry would read "
-                    f"the destination from whichever tensor happened to be there")
+                    f"the destination from whichever tensor happened to be there"
+                )
             destination = write[state.output_index]
             src_t = tensors.get(source.tensor)
             dst_t = tensors.get(destination.tensor)
             if not isinstance(src_t, Mapping) or not isinstance(dst_t, Mapping):
-                raise BundlePackError(
-                    f"session state {state.name!r} names tensors absent from the tensor table")
+                raise BundlePackError(f"session state {state.name!r} names tensors absent from the tensor table")
             src_dtype, dst_dtype = str(src_t.get("dtype") or ""), str(dst_t.get("dtype") or "")
             src_shape = tuple(int(v) for v in (src_t.get("shape") or ()))
             dst_shape = tuple(int(v) for v in (dst_t.get("shape") or ()))
@@ -500,25 +556,32 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
                     f"session state {state.name!r} carries {destination.tensor} "
                     f"({dst_dtype} {list(dst_shape)}) back into {source.tensor} "
                     f"({src_dtype} {list(src_shape)}); a carry between different layouts copies "
-                    f"the right byte count into the wrong elements, which no size check can see")
+                    f"the right byte count into the wrong elements, which no size check can see"
+                )
             carried_by_tensor[source.tensor] = {
-                "state": state.name, "input_arg": state.input_arg,
-                "output_index": state.output_index, "seed_tensor": source.tensor,
-                "output_tensor": destination.tensor, "dtype": src_dtype,
-                "shape": list(src_shape)}
+                "state": state.name,
+                "input_arg": state.input_arg,
+                "output_index": state.output_index,
+                "seed_tensor": source.tensor,
+                "output_tensor": destination.tensor,
+                "dtype": src_dtype,
+                "shape": list(src_shape),
+            }
 
     params = command_buffer.get("params") if isinstance(command_buffer.get("params"), Mapping) else {}
     encodings = params.get("storage_encodings")
     encodings = encodings if isinstance(encodings, Mapping) else {}
 
-    out = PackPlan(row_pitch_elements=int(row_pitch_elements), alignment=int(alignment),
-                   command_buffer=command_buffer)
+    out = PackPlan(row_pitch_elements=int(row_pitch_elements), alignment=int(alignment), command_buffer=command_buffer)
 
     declared = params.get("global_program_plan")
     bindings = (declared or {}).get("entry_bindings") if isinstance(declared, Mapping) else None
     if isinstance(bindings, Sequence) and not isinstance(bindings, (str, bytes)):
-        planned = {i for i in (parse_arg_index(b if isinstance(b, str) else (b or {}).get("tensor"))
-                               for b in bindings) if i is not None}
+        planned = {
+            i
+            for i in (parse_arg_index(b if isinstance(b, str) else (b or {}).get("tensor")) for b in bindings)
+            if i is not None
+        }
         present = {ref.index for ref in (*read, *write) if ref.index >= 0}
         absent = tuple(sorted(planned - present))
         out.absent_indices = absent
@@ -526,7 +589,8 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
             out.notes.append(
                 f"argument index/indices {list(absent)} are declared by the program plan and ABSENT "
                 f"from the kernel ABI; they are NOT packed and every later tensor keeps its own "
-                f"parsed index, because closing the gap would mis-address each of them")
+                f"parsed index, because closing the gap would mis-address each of them"
+            )
 
     if weight_manifest is not None:
         keys = {int(k) for k in weight_manifest if str(k).isdigit()}
@@ -536,11 +600,13 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
         if missing:
             raise BundlePackError(
                 f"the weight manifest has no entry for read argument index/indices {missing[:8]}; "
-                f"packing them would need bytes nobody captured")
+                f"packing them would need bytes nobody captured"
+            )
         if extra:
             out.notes.append(
                 f"the weight manifest carries {len(extra)} entry/entries the ABI never reads "
-                f"({extra[:8]}); they are not packed")
+                f"({extra[:8]}); they are not packed"
+            )
 
     carried_working: list[ArgRef] = [ref for ref in read if ref.tensor in carried_by_tensor]
     # A synthesised in-place seed is a CONST row that nothing points at; its working copy is the
@@ -554,14 +620,17 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
             tensor = tensors.get(ref.tensor)
             if not isinstance(tensor, Mapping):
                 raise BundlePackError(
-                    f"kernel ABI argument {ref.tensor!r} has no entry in the tensor table, so its "
-                    f"size is unknown")
+                    f"kernel ABI argument {ref.tensor!r} has no entry in the tensor table, so its size is unknown"
+                )
             shape = tuple(int(v) for v in (tensor.get("shape") or ()))
             dtype = str(tensor.get("dtype") or "")
             logical = math.prod(shape) * element_bytes(dtype) if shape else element_bytes(dtype)
             encoded = encodings.get(ref.tensor) if isinstance(encodings, Mapping) else None
-            if isinstance(encoded, Mapping) and isinstance(encoded.get("storage_elements"), int) \
-                    and encoded["storage_elements"] > 0:
+            if (
+                isinstance(encoded, Mapping)
+                and isinstance(encoded.get("storage_elements"), int)
+                and encoded["storage_elements"] > 0
+            ):
                 physical = int(encoded["storage_elements"]) * element_bytes(dtype)
                 sizing = "declared_storage_encoding"
             else:
@@ -570,16 +639,28 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
             entry = (weight_manifest.get(str(ref.index)) or {}) if weight_manifest else {}
             # A carried state's const row is the SEED -- nothing points at it; its working copy
             # lives in the mutable blob and takes the ABI pointer.
-            role = ("seed" if (group == "const"
-                               and (ref.tensor in carried_by_tensor or ref.tensor in seed_names))
-                    else "argument")
-            rows.append(PackedTensor(
-                tensor=ref.tensor, index=ref.index, storage=group, offset=cursor,
-                logical_bytes=logical, physical_bytes=physical, dtype=dtype, shape=shape,
-                sizing=sizing,
-                weight=next((str(entry[f]) for f in WEIGHT_KEY_FIELDS
-                             if isinstance(entry.get(f), str) and entry[f]), ""),
-                role=role))
+            role = (
+                "seed"
+                if (group == "const" and (ref.tensor in carried_by_tensor or ref.tensor in seed_names))
+                else "argument"
+            )
+            rows.append(
+                PackedTensor(
+                    tensor=ref.tensor,
+                    index=ref.index,
+                    storage=group,
+                    offset=cursor,
+                    logical_bytes=logical,
+                    physical_bytes=physical,
+                    dtype=dtype,
+                    shape=shape,
+                    sizing=sizing,
+                    weight=next(
+                        (str(entry[f]) for f in WEIGHT_KEY_FIELDS if isinstance(entry.get(f), str) and entry[f]), ""
+                    ),
+                    role=role,
+                )
+            )
             cursor = _align(cursor + physical, alignment)
         if group == "const":
             out.const, out.const_bytes = rows, cursor
@@ -596,7 +677,8 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
             raise BundlePackError(
                 f"the program plan declares output(s) {missing[:8]} that this plan lays out as no "
                 f"write argument; grading one of them would read whichever tensor is at that "
-                f"offset instead")
+                f"offset instead"
+            )
         out.output_bindings = named
     if carried_by_tensor or in_place_seeds:
         seeds = {t.tensor: t for t in out.const if t.role == "seed"}
@@ -604,11 +686,15 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
         produced = {t.tensor: t for t in out.mutable if t.role == "argument"}
         rows_out = []
         for name, row in carried_by_tensor.items():
-            rows_out.append({**row,
-                             "seed_offset": seeds[name].offset,
-                             "working_offset": working[name].offset,
-                             "output_offset": produced[row["output_tensor"]].offset,
-                             "bytes": working[name].physical_bytes})
+            rows_out.append(
+                {
+                    **row,
+                    "seed_offset": seeds[name].offset,
+                    "working_offset": working[name].offset,
+                    "output_offset": produced[row["output_tensor"]].offset,
+                    "bytes": working[name].physical_bytes,
+                }
+            )
         for seed_ref, state, destination in in_place_seeds:
             # IN PLACE: the working copy and the output are ONE buffer, so working_offset and
             # output_offset are deliberately the same address. A reader comparing them is how the
@@ -618,35 +704,47 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
             if live is None:
                 raise BundlePackError(
                     f"session state {state.name!r} carries {destination.tensor!r} in place but that "
-                    f"argument is not laid out as a mutable output")
-            rows_out.append({
-                "state": state.name, "input_arg": state.input_arg,
-                "output_index": state.output_index, "seed_tensor": seed_ref.tensor,
-                "output_tensor": destination.tensor, "dtype": live.dtype,
-                "shape": list(live.shape), "in_place": True,
-                "seed_offset": seeds[seed_ref.tensor].offset,
-                "working_offset": live.offset, "output_offset": live.offset,
-                "bytes": live.physical_bytes})
+                    f"argument is not laid out as a mutable output"
+                )
+            rows_out.append(
+                {
+                    "state": state.name,
+                    "input_arg": state.input_arg,
+                    "output_index": state.output_index,
+                    "seed_tensor": seed_ref.tensor,
+                    "output_tensor": destination.tensor,
+                    "dtype": live.dtype,
+                    "shape": list(live.shape),
+                    "in_place": True,
+                    "seed_offset": seeds[seed_ref.tensor].offset,
+                    "working_offset": live.offset,
+                    "output_offset": live.offset,
+                    "bytes": live.physical_bytes,
+                }
+            )
         out.carried = tuple(sorted(rows_out, key=lambda r: r["input_arg"]))
         out.notes.append(
             f"{len(out.carried)} carried session state(s) moved OUT of the read-only blob: their "
             f"ABI pointers target mutable working copies and the const blob keeps a seed of each, "
             f"because the session writes the state back every step and the warm invocation of a "
-            f"warm-then-measure profile would otherwise leave the measured one a different program")
+            f"warm-then-measure profile would otherwise leave the measured one a different program"
+        )
         if in_place_seeds:
             out.notes.append(
                 f"{len(in_place_seeds)} of those carries is/are IN PLACE: the emitter dropped the "
                 f"state's input argument and folded the carry into a 'readwrite' output, so one "
                 f"buffer is both ends and its seed is a synthesised const row nothing points at. "
-                f"working_offset == output_offset for those rows, by construction")
+                f"working_offset == output_offset for those rows, by construction"
+            )
 
     by_rule: dict[str, int] = {}
     for row in (*out.const, *out.mutable):
         by_rule[row.sizing] = by_rule.get(row.sizing, 0) + 1
     out.notes.append(
-        "sizing rule counts: " + ", ".join(f"{k}={v}" for k, v in sorted(by_rule.items()))
-        + ("; params.storage_encodings is absent for this model, so the pitch formula decided"
-           if not encodings else ""))
+        "sizing rule counts: "
+        + ", ".join(f"{k}={v}" for k, v in sorted(by_rule.items()))
+        + ("; params.storage_encodings is absent for this model, so the pitch formula decided" if not encodings else "")
+    )
     return out
 
 
@@ -670,8 +768,8 @@ WeightSource = "Callable[[str], bytes]"
 #: a reshape is what produced a blob whose 216 other tensors were byte-identical and whose dense
 #: weight was transposed -- correct arithmetic on the wrong bytes, for one layer out of 54.
 PREPACK_PERMUTATIONS: Mapping[tuple[str, str], tuple[int, ...] | None] = {
-    ("OIHW", "CoK_dim_padded"): None,          # row-major flatten of I,H,W into K: same sequence
-    ("NK", "KN_dim_padded"): (1, 0),           # transpose
+    ("OIHW", "CoK_dim_padded"): None,  # row-major flatten of I,H,W into K: same sequence
+    ("NK", "KN_dim_padded"): (1, 0),  # transpose
 }
 
 
@@ -696,7 +794,8 @@ def prepack_bytes(raw: bytes, recipe: Mapping[str, Any], *, dtype: str) -> bytes
             f"the buffer declares a weight prepack {source_layout!r} -> {packed_layout!r} that this "
             f"packer does not describe (it knows {sorted(PREPACK_PERMUTATIONS)}); refusing rather "
             f"than assuming a reshape, because an element reordering assumed away is invisible "
-            f"whenever the element count matches -- which for a permutation it always does")
+            f"whenever the element count matches -- which for a permutation it always does"
+        )
     permutation = PREPACK_PERMUTATIONS[key]
     if permutation is None:
         return raw
@@ -704,7 +803,8 @@ def prepack_bytes(raw: bytes, recipe: Mapping[str, Any], *, dtype: str) -> bytes
     if len(source_shape) != len(permutation):
         raise BundlePackError(
             f"prepack {key} permutes {len(permutation)} axes but the recipe declares a "
-            f"{len(source_shape)}-D source shape {source_shape}")
+            f"{len(source_shape)}-D source shape {source_shape}"
+        )
     width = element_bytes(dtype)
     expected = 1
     for extent in source_shape:
@@ -712,7 +812,8 @@ def prepack_bytes(raw: bytes, recipe: Mapping[str, Any], *, dtype: str) -> bytes
     if len(raw) != expected * width:
         raise BundlePackError(
             f"prepack {key} needs {expected * width} source byte(s) for shape {source_shape} "
-            f"({dtype}) and got {len(raw)}")
+            f"({dtype}) and got {len(raw)}"
+        )
     view = _np.frombuffer(raw, dtype=_np.uint8).reshape(*source_shape, width)
     moved = view.transpose(*permutation, len(source_shape))
     return _np.ascontiguousarray(moved).tobytes()
@@ -739,7 +840,8 @@ def padded_tensor_bytes(raw: bytes, tensor: PackedTensor, *, row_pitch_elements:
         raise BundlePackError(
             f"{tensor.tensor!r} ({tensor.dtype}, shape {list(tensor.shape)}) needs {expected} "
             f"byte(s) and the source supplied {len(raw)}; a short read would pack the next tensor's "
-            f"bytes into this one's tail and a long one would silently truncate")
+            f"bytes into this one's tail and a long one would silently truncate"
+        )
     if not tensor.shape:
         return raw.ljust(tensor.physical_bytes, b"\x00")
     cols = int(tensor.shape[-1])
@@ -751,22 +853,28 @@ def padded_tensor_bytes(raw: bytes, tensor: PackedTensor, *, row_pitch_elements:
         row_src, row_dst = cols * width, pitch * width
         buf = bytearray(rows * row_dst)
         for r in range(rows):
-            buf[r * row_dst:r * row_dst + row_src] = raw[r * row_src:(r + 1) * row_src]
+            buf[r * row_dst : r * row_dst + row_src] = raw[r * row_src : (r + 1) * row_src]
         out = bytes(buf)
     if len(out) > tensor.physical_bytes:
         raise BundlePackError(
             f"{tensor.tensor!r} lays out to {len(out)} byte(s) but the plan reserved "
             f"{tensor.physical_bytes}; the layout and the writer disagree, which would shift every "
-            f"later tensor in the blob")
+            f"later tensor in the blob"
+        )
     # The reserved footprint can exceed the pitched layout when the plan sized this tensor from a
     # declared storage encoding rather than from the pitch. Zero-filled to the reservation so the
     # NEXT tensor still lands on the offset the plan promised.
     return out.ljust(tensor.physical_bytes, b"\x00")
 
 
-def write_const_blob(plan: PackPlan, source, out_path: Any, *,
-                     weight_manifest: Mapping[str, Any] | None = None,
-                     prepack_recipes: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
+def write_const_blob(
+    plan: PackPlan,
+    source,
+    out_path: Any,
+    *,
+    weight_manifest: Mapping[str, Any] | None = None,
+    prepack_recipes: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
     """Write the constant blob this plan describes, and return a receipt for what went into it.
 
     ``source`` is called with the weight KEY the manifest names for each argument (falling back to
@@ -792,27 +900,29 @@ def write_const_blob(plan: PackPlan, source, out_path: Any, *,
     with target.open("wb") as stream:
         for tensor in plan.const:
             entry = manifest.get(str(tensor.index)) or {}
-            key = next((str(entry[f]) for f in WEIGHT_KEY_FIELDS
-                        if isinstance(entry.get(f), str) and entry[f]), tensor.tensor)
+            key = next(
+                (str(entry[f]) for f in WEIGHT_KEY_FIELDS if isinstance(entry.get(f), str) and entry[f]), tensor.tensor
+            )
             try:
                 raw = source(key)
             except KeyError as exc:
                 raise BundlePackError(
                     f"the source has no bytes for {key!r} (argument {tensor.index}, tensor "
                     f"{tensor.tensor!r}); a missing weight cannot be packed as zeros because a zero "
-                    f"weight is a real number the device would happily compute with") from exc
+                    f"weight is a real number the device would happily compute with"
+                ) from exc
             if raw is None:
                 raise BundlePackError(f"the source returned no bytes for {key!r}")
             staged = bytes(raw)
             recipe = recipes.get(tensor.tensor)
             if recipe is not None:
                 staged = prepack_bytes(staged, recipe, dtype=tensor.dtype)
-            body = padded_tensor_bytes(staged, tensor,
-                                       row_pitch_elements=plan.row_pitch_elements)
+            body = padded_tensor_bytes(staged, tensor, row_pitch_elements=plan.row_pitch_elements)
             if tensor.offset < cursor:
                 raise BundlePackError(
                     f"{tensor.tensor!r} is planned at offset {tensor.offset} but {cursor} bytes are "
-                    f"already written; the plan's offsets are not monotonic")
+                    f"already written; the plan's offsets are not monotonic"
+                )
             if tensor.offset > cursor:
                 # Inter-tensor alignment padding, written explicitly for the same reason the row pad
                 # is: an uninitialised gap is indistinguishable from a deliberate one.
@@ -823,11 +933,18 @@ def write_const_blob(plan: PackPlan, source, out_path: Any, *,
             stream.write(body)
             digest.update(body)
             cursor += len(body)
-            written.append({"tensor": tensor.tensor, "index": tensor.index, "weight": key,
-                            "offset": tensor.offset, "bytes": len(body), "dtype": tensor.dtype,
-                            "sizing": tensor.sizing,
-                            "prepack": (f"{recipe.get('source_layout')}->"
-                                        f"{recipe.get('packed_layout')}") if recipe else None})
+            written.append(
+                {
+                    "tensor": tensor.tensor,
+                    "index": tensor.index,
+                    "weight": key,
+                    "offset": tensor.offset,
+                    "bytes": len(body),
+                    "dtype": tensor.dtype,
+                    "sizing": tensor.sizing,
+                    "prepack": (f"{recipe.get('source_layout')}->{recipe.get('packed_layout')}") if recipe else None,
+                }
+            )
         if cursor < plan.const_bytes:
             tail = b"\x00" * (plan.const_bytes - cursor)
             stream.write(tail)
@@ -837,8 +954,16 @@ def write_const_blob(plan: PackPlan, source, out_path: Any, *,
         raise BundlePackError(
             f"wrote {cursor} byte(s) for a plan that reserved {plan.const_bytes}; the harness was "
             f"rendered against the plan, so a size disagreement means the device reads the wrong "
-            f"offsets")
-    return {"schema": "merlin_const_blob_receipt_v1", "path": str(target),
-            "bytes": cursor, "sha256": digest.hexdigest(),
-            "n_tensors": len(written), "row_pitch_elements": plan.row_pitch_elements,
-            "alignment": plan.alignment, "plan_digest": plan.digest(), "tensors": written}
+            f"offsets"
+        )
+    return {
+        "schema": "merlin_const_blob_receipt_v1",
+        "path": str(target),
+        "bytes": cursor,
+        "sha256": digest.hexdigest(),
+        "n_tensors": len(written),
+        "row_pitch_elements": plan.row_pitch_elements,
+        "alignment": plan.alignment,
+        "plan_digest": plan.digest(),
+        "tensors": written,
+    }

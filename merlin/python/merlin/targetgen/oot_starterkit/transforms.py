@@ -9,7 +9,9 @@ agent still maps the resulting matmul to ITS target's instructions (the target-s
                       conv becomes a 2D matmul. Pure shape/layout algebra; no target opcodes.
   * tile_to_dim(...) — split an MxK x KxN matmul into DIMxDIM tiles (the standard systolic tiling).
 """
+
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -17,14 +19,20 @@ from typing import Any
 @dataclass
 class Im2colPlan:
     """Shapes + recipe to turn a conv into a 2D matmul (im2col matrix @ packed weights)."""
-    im2col_shape: tuple[int, int]          # [out_h*out_w, kh*kw*cin]
-    weight_2d_shape: tuple[int, int]       # [kh*kw*cin, cout]
-    out_shape: tuple[int, int, int, int]   # [n, out_h, out_w, cout]
+
+    im2col_shape: tuple[int, int]  # [out_h*out_w, kh*kw*cin]
+    weight_2d_shape: tuple[int, int]  # [kh*kw*cin, cout]
+    out_shape: tuple[int, int, int, int]  # [n, out_h, out_w, cout]
     recipe: dict[str, Any] = field(default_factory=dict)
 
 
-def im2col(ifm_nhwc: tuple[int, int, int, int], weight_khwc: tuple[int, int, int, int],
-           stride=(1, 1), padding=(0, 0, 0, 0), dilation=(1, 1)) -> Im2colPlan:
+def im2col(
+    ifm_nhwc: tuple[int, int, int, int],
+    weight_khwc: tuple[int, int, int, int],
+    stride=(1, 1),
+    padding=(0, 0, 0, 0),
+    dilation=(1, 1),
+) -> Im2colPlan:
     """Generic conv->matmul reduction (NHWC input, weight [kh,kw,cin,cout]). Returns the matmul shapes +
     a recipe (the same recipe schema the contract's `params.im2col_recipes` expects). No target specifics.
     """
@@ -42,13 +50,26 @@ def im2col(ifm_nhwc: tuple[int, int, int, int], weight_khwc: tuple[int, int, int
         im2col_shape=(out_h * out_w, k),
         weight_2d_shape=(k, cout),
         out_shape=(n, out_h, out_w, cout),
-        recipe={"kh": kh, "kw": kw, "ci": cin, "stride": list(stride), "padding": list(padding),
-                "dilation": list(dilation), "layout": "nhwc"})
+        recipe={
+            "kh": kh,
+            "kw": kw,
+            "ci": cin,
+            "stride": list(stride),
+            "padding": list(padding),
+            "dilation": list(dilation),
+            "layout": "nhwc",
+        },
+    )
 
 
 @dataclass
 class Tile:
-    m0: int; n0: int; k0: int; m1: int; n1: int; k1: int   # tile bounds [m0:m1, n0:n1, k0:k1]
+    m0: int
+    n0: int
+    k0: int
+    m1: int
+    n1: int
+    k1: int  # tile bounds [m0:m1, n0:n1, k0:k1]
 
 
 def tile_to_dim(m: int, n: int, k: int, dim: int) -> list[Tile]:

@@ -7,6 +7,7 @@ COMMAND-BUFFER tensor-resident target (declared by its contract features — the
 is the family default) realizes the concrete command-stream adapter; everything else gets a
 review-flagged skeleton. Selection is keyed on the contract family, never a target name.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -56,8 +57,7 @@ def _is_command_buffer_resident(tc: dict[str, Any]) -> bool:
     """A contract that implements the Merlin command-buffer tensor-resident runtime (packs a resident
     weight, commits an accumulator, driven by a command buffer). Detected from the contract, not a name."""
     feats = set(tc.get("features") or [])
-    return "command_buffer" in feats and bool(
-        feats & {"resident_packed_tensor", "accumulator_commit"})
+    return "command_buffer" in feats and bool(feats & {"resident_packed_tensor", "accumulator_commit"})
 
 
 def _conservative(evidence: Evidence) -> dict[str, Any]:

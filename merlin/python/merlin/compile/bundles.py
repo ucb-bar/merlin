@@ -4,6 +4,7 @@
 model is captured with, and ``ir_scalar_dtype`` reads the element type the captured ``model.mlir``
 actually carries -- which, not the bundle's name, decides the scalar datapath.
 """
+
 from __future__ import annotations
 
 import sys
@@ -20,6 +21,7 @@ def _bundle_dir(workload: str, dtype: str):
     arm (which already goes through ``resolve``) compiled the real model.
     """
     from ..baselines.bundle import resolve
+
     return resolve(workload, dtype).root
 
 
@@ -45,8 +47,7 @@ def ir_scalar_dtype(bundle: "Path") -> str | None:
         return None
     text = mlir.read_text(encoding="utf-8", errors="replace")
     # spelling in the IR -> the --dtype token that selects its datapath, narrowest datapath first
-    present = [tok for tok in _IR_ELEMENT_ORDER
-               if text.count(f"x{_IR_ELEMENT_SPELLING[tok]}>")]
+    present = [tok for tok in _IR_ELEMENT_ORDER if text.count(f"x{_IR_ELEMENT_SPELLING[tok]}>")]
     return present[0] if present else None
 
 
@@ -62,8 +63,9 @@ def _capture_python(m2m_dir: Path, workload: str) -> Path:
     if toml.is_file():
         try:
             import tomllib
+
             cfg = tomllib.loads(toml.read_text())
-        except Exception:                                          # noqa: BLE001
+        except Exception:  # noqa: BLE001
             cfg = {}
         venv = cfg.get("venv")
         if venv:
@@ -74,6 +76,7 @@ def _capture_python(m2m_dir: Path, workload: str) -> Path:
                 return cand / "bin" / "python"
     fallback = m2m_dir / ".venv" / "bin" / "python"
     return fallback if fallback.is_file() else Path(sys.executable)
+
 
 #: MLIR tensor element-type spelling for each ``--dtype`` token, used to read a bundle's ACTUAL IR dtype
 #: back off ``model.mlir`` (:func:`ir_scalar_dtype`). Keys must stay a subset of ``_DTYPE_STRATEGY``.

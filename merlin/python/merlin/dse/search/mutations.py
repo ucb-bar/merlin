@@ -4,10 +4,11 @@ Deterministic edits on a strategy's effect-pass set (add / remove / toggle a pas
 turn changes the exposed interface features and behavior. LLMs would plug in here as additional
 operators — they are operators, never the search method itself.
 """
+
 from __future__ import annotations
 
-from merlin.dse.strategy import _EFFECT_ORDER, effect_passes, strategy_from_passes
 from merlin.dse.search.candidate import make_candidate
+from merlin.dse.strategy import _EFFECT_ORDER, effect_passes, strategy_from_passes
 
 # The toggleable effect passes (lowering passes are structural and not mutated).
 TOGGLEABLE = [p for p in _EFFECT_ORDER]

@@ -11,6 +11,7 @@ Both sides are reduced to the SAME `RvvFingerprint`:
 `compare_fingerprints` returns per-decision match flags + a `divergences` list of human strings
 (e.g. "fma_form: expert vf, we emit none (vfmul+vfadd, no fusion)") + a scalar `structural_match`.
 """
+
 from __future__ import annotations
 
 import math
@@ -19,13 +20,23 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
-from .features.rvv_intrinsics import (_E_LMUL, _FMA, _REDUCE, _REQUANT, _VSETVL_LOOP,
-                                      _VSETVLMAX, _WIDENING, _accumulator_dtype, _fma_form,
-                                      _lmul_class, _reduction_form, _vl_strategy)
+from .features.rvv_intrinsics import (
+    _E_LMUL,
+    _FMA,
+    _REDUCE,
+    _REQUANT,
+    _VSETVL_LOOP,
+    _VSETVLMAX,
+    _WIDENING,
+    _accumulator_dtype,
+    _fma_form,
+    _lmul_class,
+    _reduction_form,
+    _vl_strategy,
+)
 
 # Decision keys compared on BOTH sides (register_block omitted: not recoverable from asm).
-DECISION_KEYS = ("lmul_class", "fma_form", "int_widening", "reduction_form",
-                 "vl_strategy", "requant_epilogue")
+DECISION_KEYS = ("lmul_class", "fma_form", "int_widening", "reduction_form", "vl_strategy", "requant_epilogue")
 
 # objdump asm mnemonic, e.g. "vfmacc.vv" / "vsetivli" / "vle32.v".
 _ASM_MNEMONIC = re.compile(r"^v[a-z0-9]+(?:\.[a-z0-9]+)*$")
@@ -37,9 +48,9 @@ def _canon_op(tok: str) -> str:
     """Canonical op token shared by C intrinsics and asm: '__riscv_vfmacc_vf_f32m4' -> 'vfmacc',
     'vfmacc.vv' -> 'vfmacc', 'vle32.v' -> 'vle32', 'vsetivli'/'vsetvli'/'vsetvlmax' -> 'vsetvl'."""
     t = tok.replace("__riscv_", "")
-    t = t.split(".")[0].split("_")[0]            # drop .vv/.vf or _vf_f32m4 suffixes
+    t = t.split(".")[0].split("_")[0]  # drop .vv/.vf or _vf_f32m4 suffixes
     if t.startswith("vset"):
-        return "vsetvl"                          # vsetvli/vsetivli/vsetvlmax all unify
+        return "vsetvl"  # vsetvli/vsetivli/vsetvlmax all unify
     return t
 
 
@@ -64,7 +75,7 @@ def _c_histogram(text: str) -> dict[str, int]:
 
 def _decisions_from_asm(objdump: str) -> dict[str, Any]:
     """Derive the RVV decision vector from objdump asm (the generated side)."""
-    lmuls = _ASM_VSET.findall(objdump)           # [(sew, lmul), ...]
+    lmuls = _ASM_VSET.findall(objdump)  # [(sew, lmul), ...]
     if lmuls:
         sews = [int(s) for s, _ in lmuls]
         main = max(sews)
@@ -73,7 +84,7 @@ def _decisions_from_asm(objdump: str) -> dict[str, Any]:
     else:
         lmul = "na"
     has_fma = bool(re.search(r"\bvf?macc\.(vf|vv)", objdump))
-    fma = (re.search(r"\bvf?macc\.(vf|vv)", objdump).group(1) if has_fma else None)
+    fma = re.search(r"\bvf?macc\.(vf|vv)", objdump).group(1) if has_fma else None
     # vsetvli (register VL) => polymorphic loop; vsetivli (immediate) => fixed; vsetvlmax => fixed.
     if re.search(r"\bvsetvli\b", objdump):
         vl = "vsetvl_loop"
@@ -88,8 +99,7 @@ def _decisions_from_asm(objdump: str) -> dict[str, Any]:
         "lmul_class": lmul,
         "fma_form": fma,
         "int_widening": bool(re.search(r"\bvwmacc", objdump)),
-        "reduction_form": (("vfred" if red.group(0).startswith("vfred") else "vred")
-                           + red.group(1)) if red else "none",
+        "reduction_form": (("vfred" if red.group(0).startswith("vfred") else "vred") + red.group(1)) if red else "none",
         "vl_strategy": vl,
         "requant_epilogue": bool(re.search(r"\bv(?:f)?ncvt|\bvnclip|\bvse8\b", objdump)),
     }
@@ -108,20 +118,20 @@ def _decisions_from_c(text: str, dtype: str = "unknown") -> dict[str, Any]:
 
 @dataclass
 class RvvFingerprint:
-    key: dict[str, str]                          # {op, dtype, shape_regime}
+    key: dict[str, str]  # {op, dtype, shape_regime}
     decisions: dict[str, Any]
     histogram: dict[str, int]
-    source: str                                  # "curated:<src>" | "generated:<run_id>"
+    source: str  # "curated:<src>" | "generated:<run_id>"
 
     @classmethod
     def from_curated(cls, raw_text: str, key: dict, src: str) -> "RvvFingerprint":
-        return cls(key, _decisions_from_c(raw_text, key.get("dtype", "unknown")),
-                   _c_histogram(raw_text), f"curated:{src}")
+        return cls(
+            key, _decisions_from_c(raw_text, key.get("dtype", "unknown")), _c_histogram(raw_text), f"curated:{src}"
+        )
 
     @classmethod
     def from_objdump(cls, objdump: str, key: dict, run_id: str) -> "RvvFingerprint":
-        return cls(key, _decisions_from_asm(objdump), _asm_histogram(objdump),
-                   f"generated:{run_id}")
+        return cls(key, _decisions_from_asm(objdump), _asm_histogram(objdump), f"generated:{run_id}")
 
 
 def _cosine(a: dict[str, int], b: dict[str, int]) -> float:
@@ -144,7 +154,7 @@ def compare_fingerprints(curated: RvvFingerprint, generated: RvvFingerprint) -> 
     divergences: list[str] = []
     for k in DECISION_KEYS:
         cv, gv = curated.decisions.get(k), generated.decisions.get(k)
-        match = (cv == gv)
+        match = cv == gv
         flags[k] = match
         if not match:
             divergences.append(f"{k}: expert={cv!r} vs ours={gv!r}")

@@ -21,8 +21,8 @@ The zero-threshold point is now measured too: current LSTMNetVIT W8A8, exact sam
 general default: hundreds of small regions make its one-thread behavior poor and a semaphore-based
 persistent pool regresses the eight-thread result to 195.36 ms. It is a model-selected candidate.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 FEATURE_PREFIX = "parallelize_residual_loops_"
 
@@ -39,10 +39,11 @@ def threshold_of(features) -> int | None:
     if not names:
         return None
     if len(names) != 1:
-        raise ValueError(f"{len(names)} residual-loop thresholds named at once ({names}); "
-                         "a build has one residual policy")
+        raise ValueError(
+            f"{len(names)} residual-loop thresholds named at once ({names}); a build has one residual policy"
+        )
     try:
-        value = int(names[0][len(FEATURE_PREFIX):])
+        value = int(names[0][len(FEATURE_PREFIX) :])
     except ValueError as exc:
         raise ValueError(f"invalid residual-loop feature {names[0]!r}") from exc
     if value < 0:
@@ -58,16 +59,21 @@ def ensure_registered(threshold: int) -> str:
     name = feature_name(value)
     if name not in known():
         implied = frozenset() if value == 0 else frozenset({ensure_grain(value)})
-        register(ImprFeature(
-            name=name,
-            action_class="HEURISTIC",
-            description=(
-                "Lower residual linalg operations through dependence-aware parallel loops and "
-                + ("preserve every parallel region (the explicit zero-threshold point). "
-                   if value == 0 else
-                   f"serialize regions cheaper than {value} lane-operations before OpenMP. The "
-                   "paired grain is implied by this feature. ")
-                + "Default off and model-selected."),
-            implies=implied,
-        ))
+        register(
+            ImprFeature(
+                name=name,
+                action_class="HEURISTIC",
+                description=(
+                    "Lower residual linalg operations through dependence-aware parallel loops and "
+                    + (
+                        "preserve every parallel region (the explicit zero-threshold point). "
+                        if value == 0
+                        else f"serialize regions cheaper than {value} lane-operations before OpenMP. The "
+                        "paired grain is implied by this feature. "
+                    )
+                    + "Default off and model-selected."
+                ),
+                implies=implied,
+            )
+        )
     return name

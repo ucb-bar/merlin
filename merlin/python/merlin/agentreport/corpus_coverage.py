@@ -37,6 +37,7 @@ grading design exists to provide.
 Target-agnostic by construction: the roster, the per-capsule bars and who owns which capsule name
 all arrive as arguments. Nothing here knows a device.
 """
+
 from __future__ import annotations
 
 import json
@@ -66,8 +67,7 @@ PASSED_AT_BAR = "passed_at_bar"
 PASSED_ABOVE_BAR = "passed_above_bar"
 #: Passed something, but the capsule declares no readable bar, so "certified" is unjudgeable.
 BAR_UNKNOWN = "bar_unknown"
-DEPTHS = (NEVER_GRADED, GRADED_NEVER_PASSED, PASSED_BELOW_BAR, PASSED_AT_BAR,
-          PASSED_ABOVE_BAR, BAR_UNKNOWN)
+DEPTHS = (NEVER_GRADED, GRADED_NEVER_PASSED, PASSED_BELOW_BAR, PASSED_AT_BAR, PASSED_ABOVE_BAR, BAR_UNKNOWN)
 
 
 def tier_rank(label: str) -> int:
@@ -138,22 +138,29 @@ def observations(run_dir: Path) -> tuple[tuple[Observation, ...], str]:
             if not name:
                 continue
             tiers = row.get("tiers")
-            rows.append(Observation(
-                capsule=str(name),
-                label=str(row.get("label") or ""),
-                status=str(row.get("status") or ""),
-                tiers=dict(tiers) if isinstance(tiers, dict) else {},
-                failure_plane=str(row.get("failure_plane") or ""),
-                failure_category=str(row.get("failure_category") or "")))
+            rows.append(
+                Observation(
+                    capsule=str(name),
+                    label=str(row.get("label") or ""),
+                    status=str(row.get("status") or ""),
+                    tiers=dict(tiers) if isinstance(tiers, dict) else {},
+                    failure_plane=str(row.get("failure_plane") or ""),
+                    failure_category=str(row.get("failure_category") or ""),
+                )
+            )
     if not rows:
-        why = (f"{run_dir.name} has {unreadable} unreadable verdict file(s)" if unreadable
-               else f"{run_dir.name} recorded no per-capsule rows in {files} verdict file(s)")
+        why = (
+            f"{run_dir.name} has {unreadable} unreadable verdict file(s)"
+            if unreadable
+            else f"{run_dir.name} recorded no per-capsule rows in {files} verdict file(s)"
+        )
         return (), why
     return tuple(rows), ""
 
 
-def read_roster(profile_dir: Path, target: str, *,
-                lanes: Mapping[str, str] | None = None) -> tuple[dict[str, str], str]:
+def read_roster(
+    profile_dir: Path, target: str, *, lanes: Mapping[str, str] | None = None
+) -> tuple[dict[str, str], str]:
     """``{capsule name: lane}`` for one target, plus a reason when nothing could be read.
 
     The roster is the DECLARED corpus, which is why it is the denominator: it states what the
@@ -173,7 +180,7 @@ def read_roster(profile_dir: Path, target: str, *,
             doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except (OSError, ValueError):
             continue
-        for entry in (doc.get("capsules") or []):
+        for entry in doc.get("capsules") or []:
             if isinstance(entry, dict) and entry.get("name"):
                 # First lane to declare a name owns it: a hidden re-declaration of a public
                 # capsule must not silently reclassify the public one.
@@ -279,15 +286,25 @@ class CapsuleCoverage:
         return PASSED_BELOW_BAR
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "lane": self.lane, "placement": self.placement,
-                "owner": self.owner, "bar": self.bar, "bar_source": self.bar_source,
-                "grades": self.grades, "passes": self.passes,
-                "ever_passed": self.ever_passed, "best_tier": self.best_tier,
-                "tiers_passed": sorted(self.tiers_passed), "depth": self.depth,
-                "planes": dict(self.planes.most_common()),
-                "categories": dict(self.categories.most_common()),
-                "arms": sorted(self.arms), "n_runs": len(self.runs),
-                "unreadable_tiers": sorted(self.unreadable_tiers)}
+        return {
+            "name": self.name,
+            "lane": self.lane,
+            "placement": self.placement,
+            "owner": self.owner,
+            "bar": self.bar,
+            "bar_source": self.bar_source,
+            "grades": self.grades,
+            "passes": self.passes,
+            "ever_passed": self.ever_passed,
+            "best_tier": self.best_tier,
+            "tiers_passed": sorted(self.tiers_passed),
+            "depth": self.depth,
+            "planes": dict(self.planes.most_common()),
+            "categories": dict(self.categories.most_common()),
+            "arms": sorted(self.arms),
+            "n_runs": len(self.runs),
+            "unreadable_tiers": sorted(self.unreadable_tiers),
+        }
 
 
 @dataclass
@@ -344,8 +361,7 @@ class TargetCoverage:
 
     def passed_without_overall(self) -> list[str]:
         """Capsules that passed a tier but never passed overall -- evidence, not a verdict."""
-        return sorted(c.name for c in self.capsules.values()
-                      if c.best_tier_rank >= 0 and not c.ever_passed)
+        return sorted(c.name for c in self.capsules.values() if c.best_tier_rank >= 0 and not c.ever_passed)
 
     def to_dict(self) -> dict:
         return {
@@ -360,27 +376,26 @@ class TargetCoverage:
             "uncertified_planes": dict(self.uncertified_planes().most_common()),
             "passed_without_overall": self.passed_without_overall(),
             "off_roster": {
-                "owned": sorted(c.name for c in self.off_roster.values()
-                                if c.placement == OFF_ROSTER_OWNED),
-                "unowned": sorted(c.name for c in self.off_roster.values()
-                                  if c.placement == OFF_ROSTER_UNOWNED),
-                "owners": {c.name: c.owner for c in sorted(self.off_roster.values(),
-                                                           key=lambda x: x.name) if c.owner},
-                "grades": {c.name: c.grades for c in sorted(self.off_roster.values(),
-                                                            key=lambda x: x.name)},
+                "owned": sorted(c.name for c in self.off_roster.values() if c.placement == OFF_ROSTER_OWNED),
+                "unowned": sorted(c.name for c in self.off_roster.values() if c.placement == OFF_ROSTER_UNOWNED),
+                "owners": {c.name: c.owner for c in sorted(self.off_roster.values(), key=lambda x: x.name) if c.owner},
+                "grades": {c.name: c.grades for c in sorted(self.off_roster.values(), key=lambda x: x.name)},
             },
-            "capsules": [c.to_dict() for c in sorted(self.capsules.values(),
-                                                     key=lambda c: c.name)],
+            "capsules": [c.to_dict() for c in sorted(self.capsules.values(), key=lambda c: c.name)],
             "availability": self.availability.to_dict(),
         }
 
 
-def build(target: str, *, roster: Mapping[str, str],
-          runs: Iterable[tuple[str, str, Path]],
-          required_tiers: Mapping[str, str] | None = None,
-          default_bar: str = "",
-          owners: Mapping[str, str] | None = None,
-          roster_reason: str = "") -> TargetCoverage:
+def build(
+    target: str,
+    *,
+    roster: Mapping[str, str],
+    runs: Iterable[tuple[str, str, Path]],
+    required_tiers: Mapping[str, str] | None = None,
+    default_bar: str = "",
+    owners: Mapping[str, str] | None = None,
+    roster_reason: str = "",
+) -> TargetCoverage:
     """Accumulate corpus coverage for one target.
 
     ``runs`` is ``(run_id, arm, path)`` -- the arm arrives already resolved, because an arm IS its
@@ -401,20 +416,29 @@ def build(target: str, *, roster: Mapping[str, str],
         if not bar:
             bar, source = default_bar, ("profile_default" if default_bar else "")
             fallback += 1
-        cov.capsules[name] = CapsuleCoverage(name=name, lane=lane, placement=ON_ROSTER,
-                                             bar=bar, bar_source=source)
-    cov.availability.set("roster", measured("capsule_profiles") if roster
-                         else unavailable(roster_reason or f"no roster for {target!r}"))
+        cov.capsules[name] = CapsuleCoverage(name=name, lane=lane, placement=ON_ROSTER, bar=bar, bar_source=source)
+    cov.availability.set(
+        "roster", measured("capsule_profiles") if roster else unavailable(roster_reason or f"no roster for {target!r}")
+    )
     if not roster:
         cov.availability.set("bar", unavailable("no roster, so no capsule has a bar"))
     elif fallback and default_bar:
-        cov.availability.set("bar", derived(
-            f"{fallback} of {len(roster)} roster capsule(s) declare no required_oracle_tiers and "
-            f"fall back to the profile's {default_bar}", source="capsule_yaml+profile"))
+        cov.availability.set(
+            "bar",
+            derived(
+                f"{fallback} of {len(roster)} roster capsule(s) declare no required_oracle_tiers and "
+                f"fall back to the profile's {default_bar}",
+                source="capsule_yaml+profile",
+            ),
+        )
     elif fallback:
-        cov.availability.set("bar", unavailable(
-            f"{fallback} of {len(roster)} roster capsule(s) declare no required_oracle_tiers and "
-            f"the profile declares no default, so their certification cannot be judged"))
+        cov.availability.set(
+            "bar",
+            unavailable(
+                f"{fallback} of {len(roster)} roster capsule(s) declare no required_oracle_tiers and "
+                f"the profile declares no default, so their certification cannot be judged"
+            ),
+        )
     else:
         cov.availability.set("bar", measured("capsule_yaml"))
 
@@ -433,9 +457,12 @@ def build(target: str, *, roster: Mapping[str, str],
                 if rec is None:
                     owner = owners.get(obs.capsule, "")
                     rec = CapsuleCoverage(
-                        name=obs.capsule, owner=owner,
-                        bar=required_tiers.get(obs.capsule, ""), bar_source="capsule",
-                        placement=OFF_ROSTER_OWNED if owner else OFF_ROSTER_UNOWNED)
+                        name=obs.capsule,
+                        owner=owner,
+                        bar=required_tiers.get(obs.capsule, ""),
+                        bar_source="capsule",
+                        placement=OFF_ROSTER_OWNED if owner else OFF_ROSTER_UNOWNED,
+                    )
                     cov.off_roster[obs.capsule] = rec
             rec.grades += 1
             rec.arms.add(arm)
@@ -459,13 +486,22 @@ def build(target: str, *, roster: Mapping[str, str],
     if not cov.n_runs:
         cov.availability.set("grades", unavailable(f"no run was offered for {target!r}"))
     elif not graded:
-        cov.availability.set("grades", unavailable(
-            f"none of {cov.n_runs} run(s) recorded a per-capsule row for a roster capsule"
-            + (f"; e.g. {no_rows[0]}" if no_rows else "")))
+        cov.availability.set(
+            "grades",
+            unavailable(
+                f"none of {cov.n_runs} run(s) recorded a per-capsule row for a roster capsule"
+                + (f"; e.g. {no_rows[0]}" if no_rows else "")
+            ),
+        )
     elif cov.n_runs_without_rows:
-        cov.availability.set("grades", derived(
-            f"{cov.n_runs_without_rows} of {cov.n_runs} run(s) contributed no per-capsule row"
-            + (f"; e.g. {no_rows[0]}" if no_rows else ""), source="qa_history_verdicts"))
+        cov.availability.set(
+            "grades",
+            derived(
+                f"{cov.n_runs_without_rows} of {cov.n_runs} run(s) contributed no per-capsule row"
+                + (f"; e.g. {no_rows[0]}" if no_rows else ""),
+                source="qa_history_verdicts",
+            ),
+        )
     else:
         cov.availability.set("grades", measured("qa_history_verdicts"))
 
@@ -476,9 +512,13 @@ def build(target: str, *, roster: Mapping[str, str],
     hidden = [n for n, lane in roster.items() if lane == "hidden"]
     hidden_graded = [n for n in hidden if cov.capsules[n].grades]
     if hidden and not hidden_graded:
-        cov.availability.set("hidden_lane", unavailable(
-            f"{len(hidden)} hidden capsule(s) are declared but the verdict history labels every "
-            f"row public, so their coverage is not readable here"))
+        cov.availability.set(
+            "hidden_lane",
+            unavailable(
+                f"{len(hidden)} hidden capsule(s) are declared but the verdict history labels every "
+                f"row public, so their coverage is not readable here"
+            ),
+        )
     elif hidden:
         cov.availability.set("hidden_lane", measured("qa_history_verdicts"))
 

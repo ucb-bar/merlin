@@ -1,4 +1,5 @@
 """Render docs/validation_report.md for a generated target."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -33,9 +34,7 @@ def render_validation_report(
         for p in schema_problems:
             lines.append(f"- {p}")
         lines.append("")
-    any_review = any(
-        isinstance(o, dict) and o.get("requires_human_review") for o in plans.values()
-    )
+    any_review = any(isinstance(o, dict) and o.get("requires_human_review") for o in plans.values())
     if any_review:
         lines.append("## Note")
         lines.append("")

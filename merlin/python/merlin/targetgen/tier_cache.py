@@ -99,18 +99,31 @@ Two stores are read, narrowest first:
 Disable with ``MERLIN_TIER_CERT_CACHE=0``; point it elsewhere by setting that variable to a directory.
 Name a promotion ledger with ``MERLIN_TIER_CERT_LEDGER`` (os.pathsep-separated paths).
 """
+
 from __future__ import annotations
 
+import datetime as _dt
 import hashlib
 import json
 import os
-import datetime as _dt
 from pathlib import Path
 
-__all__ = ["EXECUTION_IDENTITY_VERSION", "RECORD_VERSION", "ARTIFACTS_OF_THE_EARNING_RUN",
-           "cache_root", "ledger_paths",
-           "execution_identity", "execution_identity_reason", "grading_path", "instrument_digest",
-           "lookup", "record", "carried_block", "reuse_block", "disabled"]
+__all__ = [
+    "EXECUTION_IDENTITY_VERSION",
+    "RECORD_VERSION",
+    "ARTIFACTS_OF_THE_EARNING_RUN",
+    "cache_root",
+    "ledger_paths",
+    "execution_identity",
+    "execution_identity_reason",
+    "grading_path",
+    "instrument_digest",
+    "lookup",
+    "record",
+    "carried_block",
+    "reuse_block",
+    "disabled",
+]
 
 #: Version of the payload :func:`execution_identity` hashes. Bumping it invalidates every stored record,
 #: which is the correct effect of changing what "the same program on the same device" means.
@@ -158,8 +171,9 @@ def cache_root() -> "Path | None":
             d.mkdir(parents=True, exist_ok=True)
             return d
         from merlin.common.artifacts import cache_dir
+
         return cache_dir("tier-certs")
-    except OSError:                      # an unwritable store is a cache that cannot be used, not a fault
+    except OSError:  # an unwritable store is a cache that cannot be used, not a fault
         return None
 
 
@@ -183,6 +197,7 @@ def ledger_paths() -> tuple:
 # WHICH BYTES ON WHICH DEVICE
 # ---------------------------------------------------------------------------------------------
 
+
 def _valid_pin(name, value) -> bool:
     """Whether one ``toolchain_shas`` entry identifies a revision precisely enough to key on.
 
@@ -190,9 +205,13 @@ def _valid_pin(name, value) -> bool:
     revision nobody could establish -- and a certificate must never be attributed to a device whose
     identity was a guess.
     """
-    return (isinstance(name, str) and bool(name)
-            and isinstance(value, str) and len(value) in (40, 64)
-            and all(c in "0123456789abcdef" for c in value))
+    return (
+        isinstance(name, str)
+        and bool(name)
+        and isinstance(value, str)
+        and len(value) in (40, 64)
+        and all(c in "0123456789abcdef" for c in value)
+    )
 
 
 def execution_identity(*, target, executables, toolchain_shas) -> "str | None":
@@ -237,14 +256,18 @@ def _identity(*, target, executables, toolchain_shas) -> "tuple[str | None, str]
             if isinstance(key, str) and key.lower() == "merlin":
                 continue
             if not _valid_pin(key, value):
-                return None, (f"hardware pin {key!r} does not identify a revision precisely enough "
-                              f"to key a certificate on ({value!r}); a certificate must never be "
-                              f"attributed to a device whose identity was a guess")
+                return None, (
+                    f"hardware pin {key!r} does not identify a revision precisely enough "
+                    f"to key a certificate on ({value!r}); a certificate must never be "
+                    f"attributed to a device whose identity was a guess"
+                )
             hardware[key] = value
         if not hardware:
-            return None, (f"target {target!r} declares no hardware pin that resolves to a revision, so "
-                          f"a verdict cannot be attributed to a device -- declare one in "
-                          f"merlin/contract/hardware_pins.yaml (see Pin.targets)")
+            return None, (
+                f"target {target!r} declares no hardware pin that resolves to a revision, so "
+                f"a verdict cannot be attributed to a device -- declare one in "
+                f"merlin/contract/hardware_pins.yaml (see Pin.targets)"
+            )
         digests = {}
         for item in executables or ():
             path = Path(item)
@@ -252,8 +275,10 @@ def _identity(*, target, executables, toolchain_shas) -> "tuple[str | None, str]
                 continue
             digests[path.name] = hashlib.sha256(path.read_bytes()).hexdigest()
         if not digests:
-            return None, ("no executable produced by this run was found, so there are no bytes to "
-                          "identify; the first tier the ladder executes is what builds one")
+            return None, (
+                "no executable produced by this run was found, so there are no bytes to "
+                "identify; the first tier the ladder executes is what builds one"
+            )
         payload = {
             "version": EXECUTION_IDENTITY_VERSION,
             "target": target,
@@ -261,7 +286,7 @@ def _identity(*, target, executables, toolchain_shas) -> "tuple[str | None, str]
             "executables": digests,
         }
         return _digest_of(payload), ""
-    except OSError as exc:               # unreadable artifact: no identity, so the tier re-runs
+    except OSError as exc:  # unreadable artifact: no identity, so the tier re-runs
         return None, f"an artifact could not be read: {exc}"
 
 
@@ -303,6 +328,7 @@ def grading_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
     not have to edit this module.
     """
     from merlin.common.paths import repo_root
+
     root = Path(repo_root())
     files = []
     for rel in _GRADING_MODULES:
@@ -313,9 +339,10 @@ def grading_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
     if target:
         try:
             from merlin.runtime.backends import base as _backends
+
             mod = _backends.get_backend(str(target))
             home = Path(getattr(mod, "__file__", "") or "").parent
-        except Exception:                # noqa: BLE001 -- no resolvable backend: no instrument identity
+        except Exception:  # noqa: BLE001 -- no resolvable backend: no instrument identity
             return None
         if not home.is_dir():
             return None
@@ -341,8 +368,9 @@ def _engine_token(target: "str | None", tier: str, rtl_tier: bool) -> "str | Non
         return None
     try:
         from .capsule_runner import describe_l3_engine
+
         sel = describe_l3_engine(str(target))
-    except Exception:                    # noqa: BLE001 -- unresolvable selection: fail closed
+    except Exception:  # noqa: BLE001 -- unresolvable selection: fail closed
         return None
     if not isinstance(sel, dict) or not sel.get("available"):
         return None
@@ -366,12 +394,15 @@ def instrument_digest(target: "str | None", tier: str, *, rtl_tier: bool) -> "st
     engine = _engine_token(target, tier, rtl_tier)
     if files and engine is not None:
         from merlin.common.provenance import source_digest
-        value = _digest_of({
-            "version": RECORD_VERSION,
-            "grading_path": source_digest([str(p) for p in files]),
-            "engine": engine,
-            "tier": str(tier),
-        })
+
+        value = _digest_of(
+            {
+                "version": RECORD_VERSION,
+                "grading_path": source_digest([str(p) for p in files]),
+                "engine": engine,
+                "tier": str(tier),
+            }
+        )
     _INSTRUMENT_MEMO[key] = value
     return value
 
@@ -380,9 +411,15 @@ def instrument_digest(target: "str | None", tier: str, *, rtl_tier: bool) -> "st
 # THE STORE
 # ---------------------------------------------------------------------------------------------
 
+
 def _key_fields(capsule: str, tier: str, identity: str, instrument: str) -> dict:
-    return {"version": RECORD_VERSION, "capsule": str(capsule), "tier": str(tier),
-            "execution_identity": str(identity), "instrument": str(instrument)}
+    return {
+        "version": RECORD_VERSION,
+        "capsule": str(capsule),
+        "tier": str(tier),
+        "execution_identity": str(identity),
+        "instrument": str(instrument),
+    }
 
 
 def _record_path(root: Path, capsule: str, tier: str, identity: str, instrument: str) -> Path:
@@ -392,8 +429,7 @@ def _record_path(root: Path, capsule: str, tier: str, identity: str, instrument:
     return root / (_digest_of(_key_fields(capsule, tier, identity, instrument)) + ".json")
 
 
-def lookup(capsule: str, tier: str, identity, instrument, *,
-           root: "Path | None" = None, ledgers=()) -> "dict | None":
+def lookup(capsule: str, tier: str, identity, instrument, *, root: "Path | None" = None, ledgers=()) -> "dict | None":
     """The record that certifies EXACTLY these bytes on EXACTLY this instrument, or ``None``.
 
     Everything is re-verified against the stored record's own copy of the key, so a record reached by a
@@ -401,20 +437,20 @@ def lookup(capsule: str, tier: str, identity, instrument, *,
     rather than a hit for the wrong capsule. Only ``pass`` is returned; see the module docstring.
     """
     from .oracle_schedule import valid_execution_digest
+
     if not valid_execution_digest(identity) or not valid_execution_digest(instrument):
         return None
     want = _key_fields(capsule, tier, identity, instrument)
     root = root if root is not None else cache_root()
     if root is not None:
         try:
-            raw = json.loads((_record_path(root, capsule, tier, identity, instrument)
-                              ).read_text(encoding="utf-8"))
-        except (OSError, ValueError):    # absent, unreadable or corrupt: re-run
+            raw = json.loads((_record_path(root, capsule, tier, identity, instrument)).read_text(encoding="utf-8"))
+        except (OSError, ValueError):  # absent, unreadable or corrupt: re-run
             raw = None
         if isinstance(raw, dict) and all(raw.get(k) == v for k, v in want.items()):
             if raw.get("status") == _CARRYABLE and isinstance(raw.get("tier_result"), dict):
                 return dict(raw)
-    for led in (tuple(ledgers) or ledger_paths()):
+    for led in tuple(ledgers) or ledger_paths():
         hit = _from_ledger(led, capsule, tier, identity, instrument)
         if hit is not None:
             return hit
@@ -434,7 +470,7 @@ def _from_ledger(path, capsule: str, tier: str, identity: str, instrument: str) 
     """
     try:
         state = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):        # absent or corrupt ledger: re-run
+    except (OSError, ValueError):  # absent or corrupt ledger: re-run
         return None
     if not isinstance(state, dict):
         return None
@@ -442,6 +478,7 @@ def _from_ledger(path, capsule: str, tier: str, identity: str, instrument: str) 
     if not isinstance(per, dict):
         return None
     from .oracle_schedule import CERT_LEDGER
+
     led = per.get(CERT_LEDGER)
     slots = led.get(str(tier)) if isinstance(led, dict) else None
     entry = slots.get(str(identity)) if isinstance(slots, dict) else None
@@ -452,13 +489,29 @@ def _from_ledger(path, capsule: str, tier: str, identity: str, instrument: str) 
     if entry.get("instrument") != instrument:
         return None
     out = _key_fields(capsule, tier, identity, instrument)
-    out.update({"status": _CARRYABLE, "tier_result": {}, "source": "promotion ledger",
-                "source_path": str(path), "recorded_at": entry.get("recorded_at")})
+    out.update(
+        {
+            "status": _CARRYABLE,
+            "tier_result": {},
+            "source": "promotion ledger",
+            "source_path": str(path),
+            "recorded_at": entry.get("recorded_at"),
+        }
+    )
     return out
 
 
-def record(capsule: str, tier: str, identity, instrument, *, status: str, tier_result: dict,
-           root: "Path | None" = None, run_id: "str | None" = None) -> "Path | None":
+def record(
+    capsule: str,
+    tier: str,
+    identity,
+    instrument,
+    *,
+    status: str,
+    tier_result: dict,
+    root: "Path | None" = None,
+    run_id: "str | None" = None,
+) -> "Path | None":
     """Store one EXECUTED tier verdict against the bytes and the instrument that produced it.
 
     Returns the file written, or ``None`` when nothing was stored (cache off, no identity, no
@@ -466,6 +519,7 @@ def record(capsule: str, tier: str, identity, instrument, *, status: str, tier_r
     can fail a grade is worse than no cache.
     """
     from .oracle_schedule import valid_execution_digest
+
     if status != _CARRYABLE or not isinstance(tier_result, dict):
         return None
     if not valid_execution_digest(identity) or not valid_execution_digest(instrument):
@@ -474,18 +528,20 @@ def record(capsule: str, tier: str, identity, instrument, *, status: str, tier_r
     if root is None:
         return None
     payload = _key_fields(capsule, tier, identity, instrument)
-    payload.update({
-        "status": status,
-        "recorded_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
-        "run_id": run_id,
-        "tier_result": {k: v for k, v in tier_result.items() if k not in _NOT_MEASURED_NOW},
-    })
+    payload.update(
+        {
+            "status": status,
+            "recorded_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+            "run_id": run_id,
+            "tier_result": {k: v for k, v in tier_result.items() if k not in _NOT_MEASURED_NOW},
+        }
+    )
     dest = _record_path(root, capsule, tier, identity, instrument)
     try:
         root.mkdir(parents=True, exist_ok=True)
         tmp = dest.with_name(f".{dest.name}.{os.getpid()}.tmp")
         tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        os.replace(tmp, dest)             # atomic: a concurrent reader sees old or new, never partial
+        os.replace(tmp, dest)  # atomic: a concurrent reader sees old or new, never partial
     except OSError:
         return None
     return dest
@@ -494,6 +550,7 @@ def record(capsule: str, tier: str, identity, instrument, *, status: str, tier_r
 # ---------------------------------------------------------------------------------------------
 # SAYING SO
 # ---------------------------------------------------------------------------------------------
+
 
 def carried_block(hit: dict) -> dict:
     """The provenance a carried tier record must carry, so nobody reads it as freshly measured."""
@@ -504,10 +561,12 @@ def carried_block(hit: dict) -> dict:
         "earned_at": hit.get("recorded_at"),
         "earned_by_run": hit.get("run_id"),
         "source": hit.get("source") or "tier certificate cache",
-        "note": ("this tier was NOT executed in this run: the same program was certified at this tier "
-                 "on this instrument, and that verdict is carried. cycles are a property of the "
-                 "program and the device and are carried with it; wall-clock timing is not carried, "
-                 "because no time was spent measuring now"),
+        "note": (
+            "this tier was NOT executed in this run: the same program was certified at this tier "
+            "on this instrument, and that verdict is carried. cycles are a property of the "
+            "program and the device and are carried with it; wall-clock timing is not carried, "
+            "because no time was spent measuring now"
+        ),
     }
 
 
@@ -528,13 +587,17 @@ def reuse_block(tiers) -> dict:
         rec = tiers[tier]
         block = rec.get("carried") if isinstance(rec, dict) else getattr(rec, "carried", None)
         (carried if isinstance(block, dict) and block.get("carried") else executed).append(tier)
-        why = (rec.get("cache_unavailable") if isinstance(rec, dict)
-               else getattr(rec, "cache_unavailable", "")) or ""
+        why = (rec.get("cache_unavailable") if isinstance(rec, dict) else getattr(rec, "cache_unavailable", "")) or ""
         if why:
             refusals[tier] = why
-    block = {"executed": executed, "carried": carried,
-             "note": ("carried tiers were not executed in this run; their verdict was earned earlier by "
-                      "the same executable on the same instrument (merlin.targetgen.tier_cache)")}
+    block = {
+        "executed": executed,
+        "carried": carried,
+        "note": (
+            "carried tiers were not executed in this run; their verdict was earned earlier by "
+            "the same executable on the same instrument (merlin.targetgen.tier_cache)"
+        ),
+    }
     if refusals:
         block["unavailable"] = {str(k): str(v) for k, v in refusals.items()}
     return block

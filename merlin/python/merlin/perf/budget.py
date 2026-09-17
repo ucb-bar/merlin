@@ -28,6 +28,7 @@ uncalibrated case as a named state rather than letting a caller assume it away.
 Nothing here knows a target. The target is a parameter, the tier names come from the caller's own
 adapter map, and every price is read from evidence the caller supplies.
 """
+
 from __future__ import annotations
 
 import json
@@ -37,8 +38,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from merlin.common.paths import artifacts_dir
-from .decompose import UNKNOWN, Unavailable, _Unknown, is_unknown
 from merlin.targetgen import tier_policy
+
+from .decompose import UNKNOWN, Unavailable, _Unknown, is_unknown
 
 #: How a price was arrived at. Mirrors :class:`merlin.perf.oracle_cost.Provenance` deliberately --
 #: the two vocabularies must not drift, because a price is only as good as its construction.
@@ -91,27 +93,42 @@ class Channel:
         def _s(v: object) -> object:
             return "UNKNOWN" if is_unknown(v) else v
 
-        return {"name": self.name, "seconds_per_item": self.seconds_per_item,
-                "dollars_per_item": self.dollars_per_item,
-                "items_per_datapoint": self.items_per_datapoint,
-                "seconds_per_datapoint": _s(self.seconds_per_datapoint),
-                "dollars_per_datapoint": _s(self.dollars_per_datapoint),
-                "n": self.n, "provenance": self.provenance, "evidence": self.evidence,
-                "notes": list(self.notes)}
+        return {
+            "name": self.name,
+            "seconds_per_item": self.seconds_per_item,
+            "dollars_per_item": self.dollars_per_item,
+            "items_per_datapoint": self.items_per_datapoint,
+            "seconds_per_datapoint": _s(self.seconds_per_datapoint),
+            "dollars_per_datapoint": _s(self.dollars_per_datapoint),
+            "n": self.n,
+            "provenance": self.provenance,
+            "evidence": self.evidence,
+            "notes": list(self.notes),
+        }
 
 
 def unpriced_channel(name: str, *, missing: str, items_per_datapoint: float = 1.0) -> Channel:
     """A channel nobody has measured. Kept in the comparison so its absence is visible."""
-    return Channel(name=name, seconds_per_item=None, dollars_per_item=None,
-                   items_per_datapoint=items_per_datapoint, n=0, provenance=UNPRICED,
-                   evidence=f"no price: {missing}")
+    return Channel(
+        name=name,
+        seconds_per_item=None,
+        dollars_per_item=None,
+        items_per_datapoint=items_per_datapoint,
+        n=0,
+        provenance=UNPRICED,
+        evidence=f"no price: {missing}",
+    )
 
 
-def channel_from_samples(name: str, *, seconds: Sequence[float] = (),
-                         dollars: Sequence[float] = (),
-                         items_per_datapoint: float = 1.0,
-                         evidence: str = "",
-                         notes: Sequence[str] = ()) -> Channel:
+def channel_from_samples(
+    name: str,
+    *,
+    seconds: Sequence[float] = (),
+    dollars: Sequence[float] = (),
+    items_per_datapoint: float = 1.0,
+    evidence: str = "",
+    notes: Sequence[str] = (),
+) -> Channel:
     """Price a channel from observed per-item samples. Median, because these distributions are
     long-tailed: the runs this was measured on span 900-65,401 s and $0.51-$103.17, and a mean over
     that is a number no single item ever cost.
@@ -122,22 +139,37 @@ def channel_from_samples(name: str, *, seconds: Sequence[float] = (),
     secs = [float(s) for s in seconds if s is not None and float(s) >= 0]
     bucks = [float(d) for d in dollars if d is not None and float(d) >= 0]
     if not secs:
-        return Channel(name=name, seconds_per_item=None,
-                       dollars_per_item=statistics.median(bucks) if bucks else None,
-                       items_per_datapoint=items_per_datapoint, n=len(bucks),
-                       provenance=UNPRICED,
-                       evidence=evidence or "no wall-clock samples supplied",
-                       notes=tuple(notes))
-    return Channel(name=name, seconds_per_item=statistics.median(secs),
-                   dollars_per_item=statistics.median(bucks) if bucks else None,
-                   items_per_datapoint=items_per_datapoint, n=len(secs), provenance=MEASURED,
-                   evidence=evidence or f"median of {len(secs)} observed item(s)",
-                   notes=tuple(notes))
+        return Channel(
+            name=name,
+            seconds_per_item=None,
+            dollars_per_item=statistics.median(bucks) if bucks else None,
+            items_per_datapoint=items_per_datapoint,
+            n=len(bucks),
+            provenance=UNPRICED,
+            evidence=evidence or "no wall-clock samples supplied",
+            notes=tuple(notes),
+        )
+    return Channel(
+        name=name,
+        seconds_per_item=statistics.median(secs),
+        dollars_per_item=statistics.median(bucks) if bucks else None,
+        items_per_datapoint=items_per_datapoint,
+        n=len(secs),
+        provenance=MEASURED,
+        evidence=evidence or f"median of {len(secs)} observed item(s)",
+        notes=tuple(notes),
+    )
 
 
-def channel_from_cost_law(law, *, cycles: int, words: int, name: str | None = None,
-                          items_per_datapoint: float = 1.0,
-                          dollars_per_item: float | None = None) -> Channel:
+def channel_from_cost_law(
+    law,
+    *,
+    cycles: int,
+    words: int,
+    name: str | None = None,
+    items_per_datapoint: float = 1.0,
+    dollars_per_item: float | None = None,
+) -> Channel:
     """Price an oracle channel by *projecting* a fitted :class:`~merlin.perf.oracle_cost.CostLaw`.
 
     The law's own honesty flags are carried through rather than flattened: a projection that excludes
@@ -154,8 +186,9 @@ def channel_from_cost_law(law, *, cycles: int, words: int, name: str | None = No
         provenance = PROJECTED
     beyond = {a: f for a, f in est.extrapolation.items() if f > 1.0}
     if beyond:
-        notes.append("EXTRAPOLATED beyond the measured domain: "
-                     + ", ".join(f"{a} x{f:.3g}" for a, f in sorted(beyond.items())))
+        notes.append(
+            "EXTRAPOLATED beyond the measured domain: " + ", ".join(f"{a} x{f:.3g}" for a, f in sorted(beyond.items()))
+        )
         provenance = PROJECTED
     if est.assumed:
         notes.append(f"assumed term(s): {'+'.join(sorted(set(est.assumed)))}")
@@ -166,9 +199,11 @@ def channel_from_cost_law(law, *, cycles: int, words: int, name: str | None = No
         items_per_datapoint=items_per_datapoint,
         n=int(getattr(law, "n_samples", 0) or 0),
         provenance=provenance,
-        evidence=(f"projected from a fitted cost law at concurrency={est.concurrency} for "
-                  f"{cycles} cycles / {words} words"),
-        notes=tuple(notes))
+        evidence=(
+            f"projected from a fitted cost law at concurrency={est.concurrency} for {cycles} cycles / {words} words"
+        ),
+        notes=tuple(notes),
+    )
 
 
 def scarce_unit(channels: Sequence[Channel]) -> "Channel | Unavailable":
@@ -179,18 +214,21 @@ def scarce_unit(channels: Sequence[Channel]) -> "Channel | Unavailable":
     ruled out as the expensive one. Ties break on name so the choice is deterministic.
     """
     if not channels:
-        return Unavailable("the scarce budget unit", ("at least two priced channels of spend",),
-                           "no channels supplied")
+        return Unavailable("the scarce budget unit", ("at least two priced channels of spend",), "no channels supplied")
     unpriced = sorted(c.name for c in channels if not c.priced)
     if unpriced:
         return Unavailable(
             "the scarce budget unit",
             tuple(f"a measured per-item price for the {n!r} channel" for n in unpriced),
             f"{len(unpriced)} of {len(channels)} channel(s) unpriced ({', '.join(unpriced)}); an "
-            "unpriced channel cannot be ruled out as the expensive one")
+            "unpriced channel cannot be ruled out as the expensive one",
+        )
     if len(channels) < 2:
-        return Unavailable("the scarce budget unit", ("a second priced channel to compare against",),
-                           f"only {channels[0].name!r} was priced; scarcity is a comparison")
+        return Unavailable(
+            "the scarce budget unit",
+            ("a second priced channel to compare against",),
+            f"only {channels[0].name!r} was priced; scarcity is a comparison",
+        )
     return max(channels, key=lambda c: (float(c.seconds_per_datapoint), c.name))
 
 
@@ -218,11 +256,12 @@ class UnitReport:
         return out
 
     def to_dict(self) -> dict:
-        return {"unit": self.unit.to_dict() if self.established else str(self.unit),
-                "established": self.established,
-                "channels": [c.to_dict() for c in self.channels],
-                "share_of_datapoint": {k: ("UNKNOWN" if is_unknown(v) else v)
-                                       for k, v in self.ratios.items()}}
+        return {
+            "unit": self.unit.to_dict() if self.established else str(self.unit),
+            "established": self.established,
+            "channels": [c.to_dict() for c in self.channels],
+            "share_of_datapoint": {k: ("UNKNOWN" if is_unknown(v) else v) for k, v in self.ratios.items()},
+        }
 
 
 def unit_report(channels: Sequence[Channel]) -> UnitReport:
@@ -257,8 +296,9 @@ class Budget:
     #: One entry per charge: ``(items, seconds, dollars, label)``.
     ledger: list[tuple[float, float, float, str]] = field(default_factory=list)
 
-    def charge(self, *, items: float = 1.0, seconds: float | None = None,
-               dollars: float | None = None, label: str = "") -> None:
+    def charge(
+        self, *, items: float = 1.0, seconds: float | None = None, dollars: float | None = None, label: str = ""
+    ) -> None:
         """Charge one unit of work. Seconds and dollars default to the unit's measured price."""
         items = max(0.0, float(items))
         if seconds is None:
@@ -281,7 +321,7 @@ class Budget:
         """Which cap bound, or ``None`` while budget remains. Checked in a fixed order so the
         message is deterministic when two caps bind on the same charge."""
         if self.limit_items is not None and self.spent_items >= self.limit_items:
-            return (f"{self.spent_items:g} of {self.limit_items:g} {self.unit.name} item(s) spent")
+            return f"{self.spent_items:g} of {self.limit_items:g} {self.unit.name} item(s) spent"
         if self.limit_seconds is not None and self.spent_seconds >= self.limit_seconds:
             return f"{self.spent_seconds:.0f}s of {self.limit_seconds:.0f}s spent"
         if self.limit_dollars is not None and self.spent_dollars >= self.limit_dollars:
@@ -305,32 +345,40 @@ class Budget:
         """
         why = self.exhausted_reason
         if why is not None:
-            return False, (f"budget exhausted ({why}); NOT a verdict on this candidate -- it did "
-                           f"not run")
+            return False, (f"budget exhausted ({why}); NOT a verdict on this candidate -- it did not run")
         if self.limit_items is not None and self.spent_items + items > self.limit_items:
-            return False, (f"the next charge of {items:g} {self.unit.name} item(s) would exceed the "
-                           f"{self.limit_items:g}-item budget ({self.spent_items:g} already spent)")
+            return False, (
+                f"the next charge of {items:g} {self.unit.name} item(s) would exceed the "
+                f"{self.limit_items:g}-item budget ({self.spent_items:g} already spent)"
+            )
         s = self.unit.seconds_per_item
-        if self.limit_seconds is not None and s is not None and \
-                self.spent_seconds + s * items > self.limit_seconds:
-            return False, (f"the next charge would exceed the {self.limit_seconds:.0f}s budget "
-                           f"({self.spent_seconds:.0f}s already spent)")
+        if self.limit_seconds is not None and s is not None and self.spent_seconds + s * items > self.limit_seconds:
+            return False, (
+                f"the next charge would exceed the {self.limit_seconds:.0f}s budget "
+                f"({self.spent_seconds:.0f}s already spent)"
+            )
         d = self.unit.dollars_per_item
-        if self.limit_dollars is not None and d is not None and \
-                self.spent_dollars + d * items > self.limit_dollars:
-            return False, (f"the next charge would exceed the ${self.limit_dollars:.2f} budget "
-                           f"(${self.spent_dollars:.2f} already spent)")
+        if self.limit_dollars is not None and d is not None and self.spent_dollars + d * items > self.limit_dollars:
+            return False, (
+                f"the next charge would exceed the ${self.limit_dollars:.2f} budget "
+                f"(${self.spent_dollars:.2f} already spent)"
+            )
         return True, None
 
     def to_dict(self) -> dict:
-        return {"unit": self.unit.to_dict(), "limit_items": self.limit_items,
-                "limit_seconds": self.limit_seconds, "limit_dollars": self.limit_dollars,
-                "spent_items": self.spent_items, "spent_seconds": self.spent_seconds,
-                "spent_dollars": self.spent_dollars, "exhausted": self.exhausted,
-                "exhausted_reason": self.exhausted_reason,
-                "remaining_items": ("UNKNOWN" if is_unknown(self.remaining_items)
-                                    else self.remaining_items),
-                "charges": len(self.ledger)}
+        return {
+            "unit": self.unit.to_dict(),
+            "limit_items": self.limit_items,
+            "limit_seconds": self.limit_seconds,
+            "limit_dollars": self.limit_dollars,
+            "spent_items": self.spent_items,
+            "spent_seconds": self.spent_seconds,
+            "spent_dollars": self.spent_dollars,
+            "exhausted": self.exhausted,
+            "exhausted_reason": self.exhausted_reason,
+            "remaining_items": ("UNKNOWN" if is_unknown(self.remaining_items) else self.remaining_items),
+            "charges": len(self.ledger),
+        }
 
 
 def budget_from_channels(channels: Sequence[Channel], **limits) -> "Budget | Unavailable":
@@ -352,6 +400,7 @@ def budget_from_channels(channels: Sequence[Channel], **limits) -> "Budget | Una
 
 
 # --- tier-cost persistence -------------------------------------------------------------------------
+
 
 def tier_cost_path(target: str) -> Path:
     """Where a target's learned per-tier oracle prices live.
@@ -384,10 +433,20 @@ def save_tier_costs(target: str, tiers: Iterable[str]) -> Path:
         seen = tier_policy.observed_cost(target, tier)
         if seen is not None:
             on_disk[tier] = float(seen)
-    path.write_text(json.dumps(
-        {"schema": 1, "median_seconds": dict(sorted(on_disk.items())),
-         "note": "medians only; tier_policy exposes no raw sample list, so a reload is worth one "
-                 "observation per tier"}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "median_seconds": dict(sorted(on_disk.items())),
+                "note": "medians only; tier_policy exposes no raw sample list, so a reload is worth one "
+                "observation per tier",
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return path
 
 
@@ -430,9 +489,14 @@ class Calibration:
     note: str = ""
 
     def to_dict(self) -> dict:
-        return {"target": self.target, "calibrated": self.calibrated, "priced": list(self.priced),
-                "unpriced": list(self.unpriced),
-                "loaded_from_disk": list(self.loaded_from_disk), "note": self.note}
+        return {
+            "target": self.target,
+            "calibrated": self.calibrated,
+            "priced": list(self.priced),
+            "unpriced": list(self.unpriced),
+            "loaded_from_disk": list(self.loaded_from_disk),
+            "note": self.note,
+        }
 
 
 def calibration(target: str, tiers: Iterable[str], *, load: bool = True) -> Calibration:
@@ -442,14 +506,22 @@ def calibration(target: str, tiers: Iterable[str], *, load: bool = True) -> Cali
     priced = [t for t in wanted if tier_policy.observed_cost(target, t) is not None]
     unpriced = [t for t in wanted if t not in set(priced)]
     if unpriced:
-        note = (f"{len(unpriced)} tier(s) have no price on this target: {', '.join(unpriced)}. "
-                "Ordering will try them FIRST (tier_policy.tier_order sorts unmeasured tiers ahead "
-                "of measured ones so the ladder always learns), and any budget denominated in a "
-                "tier price is missing theirs.")
+        note = (
+            f"{len(unpriced)} tier(s) have no price on this target: {', '.join(unpriced)}. "
+            "Ordering will try them FIRST (tier_policy.tier_order sorts unmeasured tiers ahead "
+            "of measured ones so the ladder always learns), and any budget denominated in a "
+            "tier price is missing theirs."
+        )
     else:
         note = f"every requested tier of {target!r} has a price"
-    return Calibration(target=target, calibrated=not unpriced, priced=tuple(priced),
-                       unpriced=tuple(unpriced), loaded_from_disk=primed, note=note)
+    return Calibration(
+        target=target,
+        calibrated=not unpriced,
+        priced=tuple(priced),
+        unpriced=tuple(unpriced),
+        loaded_from_disk=primed,
+        note=note,
+    )
 
 
 def tier_costs(target: str, tiers: Iterable[str]) -> dict[str, float]:
@@ -463,8 +535,9 @@ def tier_costs(target: str, tiers: Iterable[str]) -> dict[str, float]:
     return out
 
 
-def channels_from_tiers(target: str, tiers: Iterable[str], *,
-                        items_per_datapoint: Mapping[str, float] | None = None) -> list[Channel]:
+def channels_from_tiers(
+    target: str, tiers: Iterable[str], *, items_per_datapoint: Mapping[str, float] | None = None
+) -> list[Channel]:
     """One :class:`Channel` per oracle tier, priced from what the tier actually cost on ``target``.
 
     A tier nobody has run yields an UNPRICED channel, which is what blocks :func:`scarce_unit` --
@@ -477,10 +550,21 @@ def channels_from_tiers(target: str, tiers: Iterable[str], *,
         seen = tier_policy.observed_cost(target, tier)
         k = float(per.get(tier, 1.0))
         if seen is None:
-            out.append(unpriced_channel(tier, missing=f"tier {tier!r} has never been timed on this "
-                                                      f"target", items_per_datapoint=k))
+            out.append(
+                unpriced_channel(
+                    tier, missing=f"tier {tier!r} has never been timed on this target", items_per_datapoint=k
+                )
+            )
         else:
-            out.append(Channel(name=tier, seconds_per_item=float(seen), dollars_per_item=None,
-                               items_per_datapoint=k, n=1, provenance=MEASURED,
-                               evidence=f"median observed wall clock for tier {tier!r}"))
+            out.append(
+                Channel(
+                    name=tier,
+                    seconds_per_item=float(seen),
+                    dollars_per_item=None,
+                    items_per_datapoint=k,
+                    n=1,
+                    provenance=MEASURED,
+                    evidence=f"median observed wall clock for tier {tier!r}",
+                )
+            )
     return out

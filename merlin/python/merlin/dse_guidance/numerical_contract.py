@@ -14,14 +14,14 @@ layout are **absent from the capture**, a hidden DSE axis.
 It emits **structural** numerical candidates with measurement plans — never a speedup, an
 accuracy number, or a gap_closure. Lowering precision is a candidate to *measure*, not a claim.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
 from merlin.dse_guidance.design_envelope import E_DERIVED, E_IR, E_NA
 
-_LOWBIT = {"int8_weight_only": "int8", "float8_weight_only_e4m3": "fp8",
-           "int4_weight_only": "int4"}
+_LOWBIT = {"int8_weight_only": "int8", "float8_weight_only_e4m3": "fp8", "int4_weight_only": "int4"}
 
 
 @dataclass
@@ -33,21 +33,21 @@ class NumericalCandidate:
     required_hw_support: str
     could_be_wrong_if: list[str]
     legality: str = "structural"
-    benefit: str = "unquantified"          # never a speedup
+    benefit: str = "unquantified"  # never a speedup
     quantification_blocked_by: str = "missing accuracy sweep + low-bit kernel calibration"
 
 
 @dataclass
 class NumericalContract:
     workload: str
-    declared_quantization: str             # prov.quantization or "none"
-    weight_storage_dtype: str              # int8 / fp8 / int4 / <compute dtype>
-    compute_dtype: str                     # dominant matmul operand dtype (f32 / bf16 / i8)
+    declared_quantization: str  # prov.quantization or "none"
+    weight_storage_dtype: str  # int8 / fp8 / int4 / <compute dtype>
+    compute_dtype: str  # dominant matmul operand dtype (f32 / bf16 / i8)
     n_matmuls: int
     dequantize_ops: int
     requant_ops: int
     low_bit_storage: bool
-    low_bit_compute_lost: bool             # low-bit stored but compute is wide
+    low_bit_compute_lost: bool  # low-bit stored but compute is wide
     packed_layout_visible: bool
     lost_structure: list[str] = field(default_factory=list)
     severity: str = "low"
@@ -75,8 +75,14 @@ def _read_text(capture_dir: str) -> str:
 def extract_numerical_facts(capture_dir: str) -> dict:
     text = _read_text(capture_dir)
     if not text:
-        return {"declared_quantization": "none", "n_matmuls": 0, "compute_dtype": "?",
-                "dequantize_ops": 0, "quantize_ops": 0, "requant_ops": 0}
+        return {
+            "declared_quantization": "none",
+            "n_matmuls": 0,
+            "compute_dtype": "?",
+            "dequantize_ops": 0,
+            "quantize_ops": 0,
+            "requant_ops": 0,
+        }
     from merlin.common import mlir_query
 
     module = mlir_query.parse(text)
@@ -130,8 +136,7 @@ def per_region_dtype(records, attribution) -> list[dict]:
     for region in attribution.regions:
         if region.attribution_status != "attributed":
             continue
-        dtypes = [by_index[i].dtype for i in region.matmul_indices
-                  if i in by_index and by_index[i].dtype]
+        dtypes = [by_index[i].dtype for i in region.matmul_indices if i in by_index and by_index[i].dtype]
         if not dtypes:
             continue
         dominant = max(set(dtypes), key=dtypes.count)
@@ -143,14 +148,21 @@ def _accumulator_dtype(storage: str, compute: str) -> tuple[str, str]:
     """Inferred accumulator dtype + evidence. i32 for integer low-bit storage (derived), else the
     compute dtype as observed (recovered_from_ir)."""
     if storage.lower() in _LOWBIT_STORAGE:
-        return "i32", E_DERIVED          # integer low-bit matmuls accumulate in i32 (inferred)
+        return "i32", E_DERIVED  # integer low-bit matmuls accumulate in i32 (inferred)
     return compute, E_IR
 
 
-def audit(capture_dir: str, *, workload: str = "?", workload_class: str | None = None,
-          repeated_head_weight_bytes: int | None = None,
-          has_epilogue: bool = False, expected_contract: str | None = None,
-          records=None, attribution=None) -> NumericalContract:
+def audit(
+    capture_dir: str,
+    *,
+    workload: str = "?",
+    workload_class: str | None = None,
+    repeated_head_weight_bytes: int | None = None,
+    has_epilogue: bool = False,
+    expected_contract: str | None = None,
+    records=None,
+    attribution=None,
+) -> NumericalContract:
     """Audit one capture's numerical contract; attach structural candidates (no quantitative claims).
 
     When ``records`` (from :func:`attribution.extract_matmuls`) and ``attribution`` are supplied, a
@@ -180,121 +192,154 @@ def audit(capture_dir: str, *, workload: str = "?", workload_class: str | None =
 
     acc_dtype, acc_evidence = _accumulator_dtype(storage, compute)
     contract = NumericalContract(
-        workload=workload, declared_quantization=quant, weight_storage_dtype=storage,
-        compute_dtype=compute, n_matmuls=f["n_matmuls"], dequantize_ops=f["dequantize_ops"],
-        requant_ops=f["requant_ops"], low_bit_storage=low_bit_storage,
-        low_bit_compute_lost=low_bit_compute_lost, packed_layout_visible=packed_layout_visible,
-        lost_structure=lost, severity=severity, expected_contract=expected_contract,
+        workload=workload,
+        declared_quantization=quant,
+        weight_storage_dtype=storage,
+        compute_dtype=compute,
+        n_matmuls=f["n_matmuls"],
+        dequantize_ops=f["dequantize_ops"],
+        requant_ops=f["requant_ops"],
+        low_bit_storage=low_bit_storage,
+        low_bit_compute_lost=low_bit_compute_lost,
+        packed_layout_visible=packed_layout_visible,
+        lost_structure=lost,
+        severity=severity,
+        expected_contract=expected_contract,
         mismatch=mismatch,
         per_region_dtype=per_region_dtype(records, attribution),
-        accumulator_dtype=acc_dtype, accumulator_dtype_evidence=acc_evidence,
+        accumulator_dtype=acc_dtype,
+        accumulator_dtype_evidence=acc_evidence,
     )
-    contract.candidates = _candidates(contract, repeated_head_weight_bytes, has_epilogue,
-                                      workload_class)
+    contract.candidates = _candidates(contract, repeated_head_weight_bytes, has_epilogue, workload_class)
     return contract
 
 
-def _candidates(c: NumericalContract, wbytes: int | None, has_epilogue: bool,
-                workload_class: str | None) -> list[NumericalCandidate]:
+def _candidates(
+    c: NumericalContract, wbytes: int | None, has_epilogue: bool, workload_class: str | None
+) -> list[NumericalCandidate]:
     out: list[NumericalCandidate] = []
 
     # resident_packed_lowbit_weights: always relevant when there are reused head weights.
     ev = {"weight_storage_dtype": c.weight_storage_dtype, "compute_dtype": c.compute_dtype}
     if wbytes:
         ev["repeated_head_weight_bytes"] = wbytes
-        ev["candidate_formats"] = ["fp8_w8a8", "int8_w8a8", "int4_weight_only",
-                                   "int4_weight_fp8_activation"]
-    out.append(NumericalCandidate(
-        axis="resident_packed_lowbit_weights", evidence=ev,
-        required_accuracy_measurements=["per-format accuracy vs fp32 (cos/argmax) sweep"],
-        required_performance_measurements=["low-bit weight bytes", "dequant/pack cost",
-                                           "resident capacity at each format"],
-        required_hw_support="resident packed low-bit weight store + matching matmul datapath",
-        could_be_wrong_if=["accuracy below the task gate at the chosen format",
-                           "packed weights exceed resident capacity",
-                           "dequant/pack cost outweighs the bandwidth saved"],
-        quantification_blocked_by="missing accuracy sweep + low-bit kernel calibration + "
-                                  "resident-capacity model"))
+        ev["candidate_formats"] = ["fp8_w8a8", "int8_w8a8", "int4_weight_only", "int4_weight_fp8_activation"]
+    out.append(
+        NumericalCandidate(
+            axis="resident_packed_lowbit_weights",
+            evidence=ev,
+            required_accuracy_measurements=["per-format accuracy vs fp32 (cos/argmax) sweep"],
+            required_performance_measurements=[
+                "low-bit weight bytes",
+                "dequant/pack cost",
+                "resident capacity at each format",
+            ],
+            required_hw_support="resident packed low-bit weight store + matching matmul datapath",
+            could_be_wrong_if=[
+                "accuracy below the task gate at the chosen format",
+                "packed weights exceed resident capacity",
+                "dequant/pack cost outweighs the bandwidth saved",
+            ],
+            quantification_blocked_by="missing accuracy sweep + low-bit kernel calibration + resident-capacity model",
+        )
+    )
 
     # native_lowbit_compute: only when the capture proves low-bit storage but wide compute.
     if c.low_bit_compute_lost:
-        out.append(NumericalCandidate(
-            axis="native_lowbit_compute",
-            evidence={"declared_quantization": c.declared_quantization,
-                      "compute_dtype": c.compute_dtype, "dequantize_ops": c.dequantize_ops,
-                      "note": "weights stored low-bit but matmul runs wide -> compute lost"},
-            required_accuracy_measurements=["W8A8/W4A8 accuracy vs fp32 gate"],
-            required_performance_measurements=["low-bit matmul cycles vs wide",
-                                               "requant overhead per op"],
-            required_hw_support="i8xi8->i32 (or fp8) matmul datapath + requant unit",
-            could_be_wrong_if=["activation quant breaks accuracy",
-                               "scalar core has no low-bit lane advantage"],
-            quantification_blocked_by="missing low-bit-compute accuracy + kernel calibration"))
+        out.append(
+            NumericalCandidate(
+                axis="native_lowbit_compute",
+                evidence={
+                    "declared_quantization": c.declared_quantization,
+                    "compute_dtype": c.compute_dtype,
+                    "dequantize_ops": c.dequantize_ops,
+                    "note": "weights stored low-bit but matmul runs wide -> compute lost",
+                },
+                required_accuracy_measurements=["W8A8/W4A8 accuracy vs fp32 gate"],
+                required_performance_measurements=["low-bit matmul cycles vs wide", "requant overhead per op"],
+                required_hw_support="i8xi8->i32 (or fp8) matmul datapath + requant unit",
+                could_be_wrong_if=["activation quant breaks accuracy", "scalar core has no low-bit lane advantage"],
+                quantification_blocked_by="missing low-bit-compute accuracy + kernel calibration",
+            )
+        )
 
     # fused_dequant_matmul: when dequant runs as separate ops before the matmul.
     if c.dequantize_ops > 0:
-        out.append(NumericalCandidate(
-            axis="fused_dequant_matmul",
-            evidence={"dequantize_ops": c.dequantize_ops},
-            required_accuracy_measurements=["bit-exactness of fused vs separate dequant"],
-            required_performance_measurements=["dequant materialization bytes",
-                                               "extra dispatch count"],
-            required_hw_support="dequant fused into the weight load / matmul prologue",
-            could_be_wrong_if=["dequant is already hoisted", "fusion changes numerics"],
-            quantification_blocked_by="missing measured dequant traffic / dispatch overhead"))
+        out.append(
+            NumericalCandidate(
+                axis="fused_dequant_matmul",
+                evidence={"dequantize_ops": c.dequantize_ops},
+                required_accuracy_measurements=["bit-exactness of fused vs separate dequant"],
+                required_performance_measurements=["dequant materialization bytes", "extra dispatch count"],
+                required_hw_support="dequant fused into the weight load / matmul prologue",
+                could_be_wrong_if=["dequant is already hoisted", "fusion changes numerics"],
+                quantification_blocked_by="missing measured dequant traffic / dispatch overhead",
+            )
+        )
 
     # fused_requant_epilogue: when an epilogue keeps an accumulator live.
     if has_epilogue or c.requant_ops > 0:
-        out.append(NumericalCandidate(
-            axis="fused_requant_epilogue",
-            evidence={"requant_ops": c.requant_ops, "has_epilogue": has_epilogue},
-            required_accuracy_measurements=["fused requant/activation bit-exactness"],
-            required_performance_measurements=["i32 intermediate bytes",
-                                               "epilogue dispatch count"],
-            required_hw_support="in-hardware accumulator commit + fused requant/activation",
-            could_be_wrong_if=["epilogue already fused", "accumulator does not fit"],
-            quantification_blocked_by="missing intermediate-materialization measurement"))
+        out.append(
+            NumericalCandidate(
+                axis="fused_requant_epilogue",
+                evidence={"requant_ops": c.requant_ops, "has_epilogue": has_epilogue},
+                required_accuracy_measurements=["fused requant/activation bit-exactness"],
+                required_performance_measurements=["i32 intermediate bytes", "epilogue dispatch count"],
+                required_hw_support="in-hardware accumulator commit + fused requant/activation",
+                could_be_wrong_if=["epilogue already fused", "accumulator does not fit"],
+                quantification_blocked_by="missing intermediate-materialization measurement",
+            )
+        )
 
     # quantized_KV_cache: only for autoregressive / decode workloads.
     if workload_class and ("autoregress" in workload_class or "decode" in workload_class):
-        out.append(NumericalCandidate(
-            axis="quantized_KV_cache",
-            evidence={"workload_class": workload_class},
-            required_accuracy_measurements=["KV-quant accuracy vs fp16 KV"],
-            required_performance_measurements=["KV bytes per step", "KV growth over decode"],
-            required_hw_support="quantized resident KV-cache object",
-            could_be_wrong_if=["short sequences make KV negligible",
-                               "KV-quant degrades long-context accuracy"],
-            quantification_blocked_by="missing KV-size profile + KV-quant accuracy sweep"))
+        out.append(
+            NumericalCandidate(
+                axis="quantized_KV_cache",
+                evidence={"workload_class": workload_class},
+                required_accuracy_measurements=["KV-quant accuracy vs fp16 KV"],
+                required_performance_measurements=["KV bytes per step", "KV growth over decode"],
+                required_hw_support="quantized resident KV-cache object",
+                could_be_wrong_if=["short sequences make KV negligible", "KV-quant degrades long-context accuracy"],
+                quantification_blocked_by="missing KV-size profile + KV-quant accuracy sweep",
+            )
+        )
     return out
 
 
 def fidelity_report_md(contracts: list[NumericalContract]) -> str:
     """Cross-capture numerical-contract report (structural; no speedup/accuracy claims)."""
     L = ["# Numerical-contract fidelity\n"]
-    L.append("> Does the capture preserve the numerical contract — what is stored, computed, "
-             "accumulated, dequantized, and requantized, in which precision? These are structural "
-             "observations from real captures; lowering precision is a candidate to **measure**, "
-             "never a claimed speedup or accuracy.\n")
-    L.append("| capture | declared quant | storage | compute | dequant ops | packed layout | "
-             "lost | severity |")
+    L.append(
+        "> Does the capture preserve the numerical contract — what is stored, computed, "
+        "accumulated, dequantized, and requantized, in which precision? These are structural "
+        "observations from real captures; lowering precision is a candidate to **measure**, "
+        "never a claimed speedup or accuracy.\n"
+    )
+    L.append("| capture | declared quant | storage | compute | dequant ops | packed layout | lost | severity |")
     L.append("|---------|----------------|---------|---------|-------------|---------------|------|----------|")
     for c in contracts:
-        L.append(f"| {c.workload} | {c.declared_quantization} | {c.weight_storage_dtype} | "
-                 f"{c.compute_dtype} | {c.dequantize_ops} | "
-                 f"{'visible' if c.packed_layout_visible else 'LOST'} | "
-                 f"{', '.join(c.lost_structure) or '—'} | {c.severity} |")
+        L.append(
+            f"| {c.workload} | {c.declared_quantization} | {c.weight_storage_dtype} | "
+            f"{c.compute_dtype} | {c.dequantize_ops} | "
+            f"{'visible' if c.packed_layout_visible else 'LOST'} | "
+            f"{', '.join(c.lost_structure) or '—'} | {c.severity} |"
+        )
     L.append("")
     lost = [c for c in contracts if c.low_bit_compute_lost]
     if lost:
-        L.append(f"**Finding:** {len(lost)}/{len(contracts)} captures store weights low-bit but run "
-                 "**wide (f32) matmuls** — native low-bit compute and the packed layout are absent "
-                 "from the capture. The hidden DSE axes (`native_lowbit_compute`, "
-                 "`resident_packed_lowbit_weights`, `fused_dequant_matmul`) are structural "
-                 "candidates; ranking is blocked on accuracy sweeps + low-bit kernel calibration.\n")
+        L.append(
+            f"**Finding:** {len(lost)}/{len(contracts)} captures store weights low-bit but run "
+            "**wide (f32) matmuls** — native low-bit compute and the packed layout are absent "
+            "from the capture. The hidden DSE axes (`native_lowbit_compute`, "
+            "`resident_packed_lowbit_weights`, `fused_dequant_matmul`) are structural "
+            "candidates; ranking is blocked on accuracy sweeps + low-bit kernel calibration.\n"
+        )
     L.append("## Evidence labels\n")
-    L.append("`recovered_from_ir` (dtypes, op counts, quantization) · `assumed_reference` "
-             "(expected contract, if supplied) · candidates `uncalibrated` until measured.\n")
+    L.append(
+        "`recovered_from_ir` (dtypes, op counts, quantization) · `assumed_reference` "
+        "(expected contract, if supplied) · candidates `uncalibrated` until measured.\n"
+    )
     return "\n".join(L)
 
 
@@ -313,27 +358,30 @@ def to_yaml_obj(c: NumericalContract) -> dict:
             },
             "per_region_dtype": c.per_region_dtype,
             "honesty": {
-                "accumulator_dtype": {"value": c.accumulator_dtype,
-                                      "evidence": c.accumulator_dtype_evidence},
-                "scale_metadata": {"value": c.scale_metadata,
-                                   "evidence": c.scale_metadata_evidence},
-                "sparsity_metadata": {"value": c.sparsity_metadata,
-                                      "evidence": c.sparsity_metadata_evidence},
+                "accumulator_dtype": {"value": c.accumulator_dtype, "evidence": c.accumulator_dtype_evidence},
+                "scale_metadata": {"value": c.scale_metadata, "evidence": c.scale_metadata_evidence},
+                "sparsity_metadata": {"value": c.sparsity_metadata, "evidence": c.sparsity_metadata_evidence},
                 "note": "scale/zero-point/group-size and sparsity metadata are not present in a flat "
-                        "dequantized capture; they are marked unavailable, never invented.",
+                "dequantized capture; they are marked unavailable, never invented.",
             },
             "expected_contract": c.expected_contract,
             "mismatch": c.mismatch,
             "lost_structure": c.lost_structure,
             "severity": c.severity,
             "candidates": [
-                {"axis": k.axis, "evidence": k.evidence,
-                 "required_accuracy_measurements": k.required_accuracy_measurements,
-                 "required_performance_measurements": k.required_performance_measurements,
-                 "required_hw_support": k.required_hw_support,
-                 "could_be_wrong_if": k.could_be_wrong_if,
-                 "current_status": {"legality": k.legality, "benefit": k.benefit,
-                                    "quantification_blocked_by": k.quantification_blocked_by}}
+                {
+                    "axis": k.axis,
+                    "evidence": k.evidence,
+                    "required_accuracy_measurements": k.required_accuracy_measurements,
+                    "required_performance_measurements": k.required_performance_measurements,
+                    "required_hw_support": k.required_hw_support,
+                    "could_be_wrong_if": k.could_be_wrong_if,
+                    "current_status": {
+                        "legality": k.legality,
+                        "benefit": k.benefit,
+                        "quantification_blocked_by": k.quantification_blocked_by,
+                    },
+                }
                 for k in c.candidates
             ],
         }
@@ -378,4 +426,5 @@ def torchao_integration_plan_md() -> str:
         "## What is NOT claimed\n"
         "No speedup, no cycle/area/energy, no accuracy for any `unavailable` format, and no broad "
         "dtype sweep is run by this tool. This plan only states which formats to measure, in what "
-        "order, and which abstraction each would unblock.\n")
+        "order, and which abstraction each would unblock.\n"
+    )

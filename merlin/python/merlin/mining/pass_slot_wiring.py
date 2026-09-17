@@ -19,6 +19,7 @@ both shared and loaded, so a wall or a digest recorded on a different day is not
 check here either compares two runs of this call, or compares against a digest computed from the bytes
 actually read.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -49,6 +50,7 @@ def checkout_pythonpath(existing: str | None = None) -> str:
     compilers. Both arms must start from the checkout under test.
     """
     from ..common.paths import merlin_dir
+
     parts = [str(merlin_dir() / "python")]
     if existing:
         parts.append(existing)
@@ -71,7 +73,7 @@ def _mirror_except(real: Path, dst: Path, chain: list[str], source: str) -> None
     head = chain[0]
     for entry in real.iterdir():
         if entry.name == head:
-            continue                     # replaced, or descended into
+            continue  # replaced, or descended into
         (dst / entry.name).symlink_to(entry)
     if len(chain) == 1:
         (dst / head).write_text(source, encoding="utf-8")
@@ -93,6 +95,7 @@ def module_for_action(action) -> str:
     instead of collapsing both into None.
     """
     from ..kernels import action_catalog as ac
+
     seam = getattr(action, "target_seam", "") or ""
     mod = ac.seam_module(seam)
     if mod is not None:
@@ -100,9 +103,13 @@ def module_for_action(action) -> str:
     why = ac.seam_needs_new_module(seam)
     raise SeamNotActionable(
         f"seam {seam!r} names no module the pass slot can overlay. "
-        + (f"Declared reason: {why}" if why
-           else "No reason is declared either, which is a catalog bug -- see "
-                "test_action_catalog.test_every_blocked_route_says_WHERE_the_fix_goes."))
+        + (
+            f"Declared reason: {why}"
+            if why
+            else "No reason is declared either, which is a catalog bug -- see "
+            "test_action_catalog.test_every_blocked_route_says_WHERE_the_fix_goes."
+        )
+    )
 
 
 @contextmanager
@@ -119,12 +126,14 @@ def overlay_for(proposal: PassProposal, *, package_root: Path | None = None):
     The working tree is never written. This is not tidiness -- other sessions are building from it.
     """
     from ..common.paths import merlin_dir
+
     root = Path(package_root) if package_root is not None else merlin_dir() / "python"
     rel = module_to_relpath(proposal.module)
     if not (root / rel).is_file():
         raise FileNotFoundError(
-            f"{proposal.module} does not exist at {root/rel}; the slot replaces an EXISTING pass, so "
-            f"a proposal naming a new module has to add it to the checkout under review instead")
+            f"{proposal.module} does not exist at {root / rel}; the slot replaces an EXISTING pass, so "
+            f"a proposal naming a new module has to add it to the checkout under review instead"
+        )
     tmp = Path(tempfile.mkdtemp(prefix="merlin_passslot_", dir=os.environ.get("TMPDIR") or None))
     try:
         _mirror_except(root, tmp, list(rel.parts), proposal.source)
@@ -132,8 +141,7 @@ def overlay_for(proposal: PassProposal, *, package_root: Path | None = None):
         # overlay first, then THIS checkout, then whatever the caller had. The overlay mirrors the
         # checkout, so the second entry is belt-and-braces -- but the base must never be the venv's
         # `.pth`, which may name a different tree entirely.
-        env["PYTHONPATH"] = os.pathsep.join(
-            [str(tmp), checkout_pythonpath(os.environ.get("PYTHONPATH"))])
+        env["PYTHONPATH"] = os.pathsep.join([str(tmp), checkout_pythonpath(os.environ.get("PYTHONPATH"))])
         env["MERLIN_PASS_SLOT_OVERLAY"] = str(tmp)
         yield env
     finally:
@@ -147,6 +155,7 @@ def emitted_digest_of(run_dir: Path) -> str | None:
     text, so register-allocation noise and symbol offsets cannot mask a no-op as a change.
     """
     from .beam import _emitted_digest
+
     return _emitted_digest(Path(run_dir))
 
 
@@ -162,16 +171,24 @@ def lift_run_cca(run_dir: Path, *, op: str):
     from ..kernels import cca
     from ..kernels.decode import rvv
     from .beam import _undef_syms
+
     run_dir = Path(run_dir)
     objd = run_dir / "generated" / "objdump.txt"
     if not objd.is_file():
         return None
-    return cca.lift_asm(rvv.decode_text(objd.read_text()), op=op, source="ours",
-                        undefined_symbols=_undef_syms(run_dir))
+    return cca.lift_asm(rvv.decode_text(objd.read_text()), op=op, source="ours", undefined_symbols=_undef_syms(run_dir))
 
 
-def _certify(env: dict[str, str] | None, *, package_dir: Path, model_dir: Path, runs_root: Path,
-             run_id: str, targets: tuple[str, ...], timeout: int) -> dict[str, Any]:
+def _certify(
+    env: dict[str, str] | None,
+    *,
+    package_dir: Path,
+    model_dir: Path,
+    runs_root: Path,
+    run_id: str,
+    targets: tuple[str, ...],
+    timeout: int,
+) -> dict[str, Any]:
     """Run ``certify_rvv`` in a CHILD process, so an overlaid module is actually imported fresh.
 
     In-process would not work: the parent has already imported the module the proposal replaces, and
@@ -179,6 +196,7 @@ def _certify(env: dict[str, str] | None, *, package_dir: Path, model_dir: Path, 
     crashes the compiler is a recorded refusal rather than the end of the slot.
     """
     import json
+
     script = (
         "import json,sys\n"
         "from pathlib import Path\n"
@@ -188,10 +206,18 @@ def _certify(env: dict[str, str] | None, *, package_dir: Path, model_dir: Path, 
         "              run_id=a['run_id'], targets=tuple(a['targets']), timeout=a['timeout'])\n"
         "print('__MERLIN_RESULT__'+json.dumps({'status':r.get('status'),\n"
         "      'correctness':r.get('correctness'),'measurement':r.get('measurement'),\n"
-        "      'failure':r.get('failure')}, default=str))\n")
-    arg = json.dumps({"package_dir": str(package_dir), "model_dir": str(model_dir),
-                      "runs_root": str(runs_root), "run_id": run_id,
-                      "targets": list(targets), "timeout": timeout})
+        "      'failure':r.get('failure')}, default=str))\n"
+    )
+    arg = json.dumps(
+        {
+            "package_dir": str(package_dir),
+            "model_dir": str(model_dir),
+            "runs_root": str(runs_root),
+            "run_id": run_id,
+            "targets": list(targets),
+            "timeout": timeout,
+        }
+    )
     # env=None means "the control arm, no overlay" -- but it must still import THIS checkout, or the
     # frozen-baseline comparison is between two different compilers. See checkout_pythonpath.
     env = dict(env) if env is not None else dict(os.environ)
@@ -201,14 +227,20 @@ def _certify(env: dict[str, str] | None, *, package_dir: Path, model_dir: Path, 
     # -X importtime so we can tell whether the module under test was ACTUALLY imported. Without that
     # the numeric checks can pass vacuously: a package with empty features never imports a
     # feature-gated pass, so a module whose body is `raise` builds clean and the gate credits it.
-    proc = subprocess.run([sys.executable, "-X", "importtime", "-c", script, arg], env=env,
-                          capture_output=True, text=True, timeout=timeout + 120)
-    out = {"status": "error",
-           "failure": f"certify produced no result (rc={proc.returncode}): "
-                      f"{(proc.stderr or '')[-600:]}"}
+    proc = subprocess.run(
+        [sys.executable, "-X", "importtime", "-c", script, arg],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=timeout + 120,
+    )
+    out = {
+        "status": "error",
+        "failure": f"certify produced no result (rc={proc.returncode}): {(proc.stderr or '')[-600:]}",
+    }
     for line in reversed((proc.stdout or "").splitlines()):
         if line.startswith("__MERLIN_RESULT__"):
-            out = json.loads(line[len("__MERLIN_RESULT__"):])
+            out = json.loads(line[len("__MERLIN_RESULT__") :])
             break
     out["_imported"] = sorted(imported_modules(proc.stderr or ""))
     return out
@@ -243,9 +275,15 @@ def _cos_of(rec: dict) -> float | None:
 
 
 def production_gate_checks(
-    *, frozen_pkg: Path, work_pkg: Path, model_dir: Path, runs_root: Path,
-    heldout_model_dirs: tuple[Path, ...] = (), op: str = "matmul",
-    targets: tuple[str, ...] = ("spike",), timeout: int = 3600,
+    *,
+    frozen_pkg: Path,
+    work_pkg: Path,
+    model_dir: Path,
+    runs_root: Path,
+    heldout_model_dirs: tuple[Path, ...] = (),
+    op: str = "matmul",
+    targets: tuple[str, ...] = ("spike",),
+    timeout: int = 3600,
     certify: Callable[..., dict] | None = None,
 ) -> dict[str, Callable]:
     """Build the four real gate checks as ``gate(**checks)`` keyword arguments.
@@ -265,8 +303,15 @@ def production_gate_checks(
     state: dict[str, Any] = {}
 
     def _run(env, pkg: Path, mdir: Path, tag: str) -> dict:
-        rec = cert(env, package_dir=Path(pkg), model_dir=Path(mdir), runs_root=runs_root,
-                   run_id=tag, targets=targets, timeout=timeout)
+        rec = cert(
+            env,
+            package_dir=Path(pkg),
+            model_dir=Path(mdir),
+            runs_root=runs_root,
+            run_id=tag,
+            targets=targets,
+            timeout=timeout,
+        )
         rec["_run_dir"] = str(runs_root / tag)
         return rec
 
@@ -281,10 +326,14 @@ def production_gate_checks(
         with overlay_for(proposal) as env:
             cand = _run(env, frozen_pkg, model_dir, "gate_frozen_overlay")
         a, b = emitted_digest_of(base["_run_dir"]), emitted_digest_of(cand["_run_dir"])
-        state["frozen"] = {"control_digest": a, "overlay_digest": b,
-                           "control_status": base.get("status"), "overlay_status": cand.get("status")}
+        state["frozen"] = {
+            "control_digest": a,
+            "overlay_digest": b,
+            "control_status": base.get("status"),
+            "overlay_status": cand.get("status"),
+        }
         if a is None or b is None:
-            return False              # no emitted code to compare -> cannot assert the invariant
+            return False  # no emitted code to compare -> cannot assert the invariant
         return a == b
 
     def bit_exact_ok(proposal: PassProposal) -> tuple[bool, str]:
@@ -307,7 +356,8 @@ def production_gate_checks(
             return False, (
                 f"{proposal.module} was never imported by this build, so the numeric check did not "
                 f"exercise the proposal. work_pkg={Path(work_pkg).name} must enable the feature that "
-                f"routes through this pass.")
+                f"routes through this pass."
+            )
         return True, f"cos={_cos_of(rec)}"
 
     def inert_ok(proposal: PassProposal) -> tuple[bool, str]:
@@ -326,11 +376,14 @@ def production_gate_checks(
         a, b = emitted_digest_of(ctrl["_run_dir"]), emitted_digest_of(cand["_run_dir"])
         state["inert"] = {"control_digest": a, "candidate_digest": b}
         if a is None or b is None:
-            return False, ("no emitted code to compare, so a change could not be established "
-                           f"(control={a}, candidate={b})")
+            return False, (
+                f"no emitted code to compare, so a change could not be established (control={a}, candidate={b})"
+            )
         if a == b:
-            return False, (f"byte-identical to the unpatched build (digest {a}); the pass was "
-                           f"imported but its matching never fired, so nothing downstream of it ran")
+            return False, (
+                f"byte-identical to the unpatched build (digest {a}); the pass was "
+                f"imported but its matching never fired, so nothing downstream of it ran"
+            )
         return True, f"emitted code changed ({a} -> {b})"
 
     def lift_cca(proposal: PassProposal):
@@ -365,11 +418,15 @@ def production_gate_checks(
         state["heldout"] = {"n": len(heldout_model_dirs), "failed": bad}
         return (not bad), ("all held-out captures passed" if not bad else f"failed on {bad}")
 
-    checks = {"frozen_baseline_ok": frozen_baseline_ok, "bit_exact_ok": bit_exact_ok,
-              "inert_ok": inert_ok, "lift_cca": lift_cca}
+    checks = {
+        "frozen_baseline_ok": frozen_baseline_ok,
+        "bit_exact_ok": bit_exact_ok,
+        "inert_ok": inert_ok,
+        "lift_cca": lift_cca,
+    }
     if heldout_model_dirs:
         checks["heldout_ok"] = heldout_ok
-    checks["_state"] = state       # the caller records this; not consumed by gate()
+    checks["_state"] = state  # the caller records this; not consumed by gate()
     return checks
 
 
@@ -383,12 +440,22 @@ def digest_source(source: str) -> str:
     return hashlib.sha256(source.encode("utf-8")).hexdigest()[:16]
 
 
-def make_pass_slot_fn(*, frozen_pkg: Path, model_dir: Path, runs_root: Path,
-                      targets_root: Path, op: str = "matmul", max_turns: int = 2,
-                      targets: tuple[str, ...] = ("spike",), timeout: int = 3600,
-                      heldout_model_dirs: tuple[Path, ...] = (), model: str = "opus",
-                      agent_timeout: int = 2400, certify: Callable[..., dict] | None = None,
-                      propose_fn: Callable | None = None) -> Callable:
+def make_pass_slot_fn(
+    *,
+    frozen_pkg: Path,
+    model_dir: Path,
+    runs_root: Path,
+    targets_root: Path,
+    op: str = "matmul",
+    max_turns: int = 2,
+    targets: tuple[str, ...] = ("spike",),
+    timeout: int = 3600,
+    heldout_model_dirs: tuple[Path, ...] = (),
+    model: str = "opus",
+    agent_timeout: int = 2400,
+    certify: Callable[..., dict] | None = None,
+    propose_fn: Callable | None = None,
+) -> Callable:
     """A ``pass_slot_fn(action, parent_run_id=...)`` for :func:`mining.beam.run_beam`.
 
     This is the join that closes the loop. The beam already walks the ladder: the CCA lifts the loss,
@@ -413,9 +480,12 @@ def make_pass_slot_fn(*, frozen_pkg: Path, model_dir: Path, runs_root: Path,
 
     def _slot(action, *, parent_run_id: str | None = None) -> dict[str, Any]:
         seam = getattr(action, "target_seam", "") or ""
-        rec: dict[str, Any] = {"seam": seam, "axis": getattr(action, "divergence_axis", None),
-                               "action_class": getattr(action, "action_class", None),
-                               "parent_run_id": parent_run_id}
+        rec: dict[str, Any] = {
+            "seam": seam,
+            "axis": getattr(action, "divergence_axis", None),
+            "action_class": getattr(action, "action_class", None),
+            "parent_run_id": parent_run_id,
+        }
         try:
             module = module_for_action(action)
         except SeamNotActionable as e:
@@ -423,9 +493,11 @@ def make_pass_slot_fn(*, frozen_pkg: Path, model_dir: Path, runs_root: Path,
             return rec
         work_pkg = Path(targets_root) / str(parent_run_id) if parent_run_id else Path(frozen_pkg)
         if not work_pkg.is_dir():
-            rec.update(actionable=False,
-                       reason=f"the fork package {work_pkg} that produced this residual is not on "
-                              f"disk, so there is nothing to gate the proposal against")
+            rec.update(
+                actionable=False,
+                reason=f"the fork package {work_pkg} that produced this residual is not on "
+                f"disk, so there is nothing to gate the proposal against",
+            )
             return rec
         src_path = merlin_dir() / "python" / module_to_relpath(module)
         ws = Path(runs_root) / f"pass_slot_{parent_run_id or 'seed'}_{module.replace('.', '_')}"
@@ -433,22 +505,38 @@ def make_pass_slot_fn(*, frozen_pkg: Path, model_dir: Path, runs_root: Path,
         attempts: list = []
         if propose is None:
             propose, attempts = pass_agent.proposer_for(
-                action, current_source=src_path.read_text(), workspace=ws,
-                model=model, timeout=agent_timeout)
+                action, current_source=src_path.read_text(), workspace=ws, model=model, timeout=agent_timeout
+            )
         checks = production_gate_checks(
-            frozen_pkg=Path(frozen_pkg), work_pkg=work_pkg, model_dir=Path(model_dir),
-            runs_root=ws / "gate", heldout_model_dirs=heldout_model_dirs, op=op,
-            targets=targets, timeout=timeout, certify=certify)
-        turns = iterate_pass_slot(action, propose=propose, max_turns=max_turns,
-                                  **gate_kwargs(checks))
+            frozen_pkg=Path(frozen_pkg),
+            work_pkg=work_pkg,
+            model_dir=Path(model_dir),
+            runs_root=ws / "gate",
+            heldout_model_dirs=heldout_model_dirs,
+            op=op,
+            targets=targets,
+            timeout=timeout,
+            certify=certify,
+        )
+        turns = iterate_pass_slot(action, propose=propose, max_turns=max_turns, **gate_kwargs(checks))
         rec.update(
-            actionable=True, module=module, work_pkg=str(work_pkg), workspace=str(ws),
-            turns=[{"accepted": v.accepted, "stage": v.stage, "reason": v.reason,
+            actionable=True,
+            module=module,
+            work_pkg=str(work_pkg),
+            workspace=str(ws),
+            turns=[
+                {
+                    "accepted": v.accepted,
+                    "stage": v.stage,
+                    "reason": v.reason,
                     "residual": list(v.residual),
-                    "source_digest": (digest_source(p.source) if p else None)}
-                   for p, v in turns],
+                    "source_digest": (digest_source(p.source) if p else None),
+                }
+                for p, v in turns
+            ],
             accepted=any(v.accepted for _p, v in turns),
-            agent=[a.to_dict() for a in attempts])
+            agent=[a.to_dict() for a in attempts],
+        )
         return rec
 
     return _slot

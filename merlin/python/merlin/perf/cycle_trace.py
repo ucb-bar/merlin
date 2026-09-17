@@ -36,6 +36,7 @@ The declaration is a small JSON document beside the engine's wrapper (:data:`DEC
 it lives with the harness whose ports it describes rather than in library code that must not know any
 target's unit names. Nothing in this module names a target, a unit, a kind or a column.
 """
+
 from __future__ import annotations
 
 import csv
@@ -47,8 +48,12 @@ from typing import Any
 from merlin.perf import observations as _OBS
 
 __all__ = [
-    "DECLARATION_NAME", "DECLARATION_SCHEMA", "block_from_rows", "block_from_trace",
-    "load_declaration", "read_rows",
+    "DECLARATION_NAME",
+    "DECLARATION_SCHEMA",
+    "block_from_rows",
+    "block_from_trace",
+    "load_declaration",
+    "read_rows",
 ]
 
 #: The producer's column declaration, read from beside the engine wrapper it describes.
@@ -131,7 +136,7 @@ def block_from_rows(rows: "Sequence[Mapping[str, str]]", declaration: Mapping) -
 
     # Bind each DECLARED column to its unit and kind. A declared column the trace does not carry is
     # unmeasured -- reported, never treated as a unit that was idle all run.
-    bound: list[tuple[str, str, str]] = []          # (column, unit, kind)
+    bound: list[tuple[str, str, str]] = []  # (column, unit, kind)
     missing: list[str] = []
     for column, spec in units.items():
         col = str(column)
@@ -182,10 +187,13 @@ def block_from_rows(rows: "Sequence[Mapping[str, str]]", declaration: Mapping) -
     for unit in sorted(busy):
         entry: dict[str, Any] = {
             "quantity": f"{_OBS.BUSY_PREFIX}{unit}{_OBS.IN_PROGRAM_SUFFIX}",
-            "value": busy[unit], "unit": "cycles", "concurrent": True,
+            "value": busy[unit],
+            "unit": "cycles",
+            "concurrent": True,
             "note": "cycles this unit's activity port was high while the program ran; CONTENDED "
-                    "(other units may be busy in the same cycle), counted off the engine's own "
-                    "per-cycle trace"}
+            "(other units may be busy in the same cycle), counted off the engine's own "
+            "per-cycle trace",
+        }
         if kind_by_unit.get(unit):
             entry["kind"] = kind_by_unit[unit]
         obs.append(entry)
@@ -198,23 +206,44 @@ def block_from_rows(rows: "Sequence[Mapping[str, str]]", declaration: Mapping) -
     # the note carries which case this run is.
     _idle_note = "cycles in which no DECLARED unit's port was high"
     if unmeasured:
-        _idle_note += (f"; an UPPER BOUND, not an exact figure -- {len(unmeasured)} unit(s) were not "
-                       "read (see unmeasured_units) and any cycle in which only those were busy is "
-                       "counted here. Not comparable with an instrument that reads more units")
-    obs.append({"quantity": _OBS.IDLE_QUANTITY, "value": idle, "unit": "cycles", "concurrent": False,
-                "note": _idle_note})
-    obs.append({"quantity": _OBS.OVERLAP_OBSERVED, "value": overlap_any, "unit": "cycles",
-                "concurrent": True,
-                "note": "cycles with two or more declared units busy together -- a JOINT count, not "
-                        "derivable from the per-unit numbers above"})
-    obs.append({"quantity": _OBS.OVERLAP_ACROSS_KINDS, "value": overlap_kinds, "unit": "cycles",
-                "concurrent": True,
-                "note": "cycles with two or more DISTINCT declared kinds busy together; two units of "
-                        "one kind running together is not cross-kind overlap"})
-    obs.append({"quantity": _OBS.SAMPLED_QUANTITY, "value": sampled, "unit": "cycles",
-                "concurrent": False,
-                "note": "rows in the engine's per-cycle trace; the buckets reconcile against this, "
-                        "which need not equal the run's reported cycle count"})
+        _idle_note += (
+            f"; an UPPER BOUND, not an exact figure -- {len(unmeasured)} unit(s) were not "
+            "read (see unmeasured_units) and any cycle in which only those were busy is "
+            "counted here. Not comparable with an instrument that reads more units"
+        )
+    obs.append(
+        {"quantity": _OBS.IDLE_QUANTITY, "value": idle, "unit": "cycles", "concurrent": False, "note": _idle_note}
+    )
+    obs.append(
+        {
+            "quantity": _OBS.OVERLAP_OBSERVED,
+            "value": overlap_any,
+            "unit": "cycles",
+            "concurrent": True,
+            "note": "cycles with two or more declared units busy together -- a JOINT count, not "
+            "derivable from the per-unit numbers above",
+        }
+    )
+    obs.append(
+        {
+            "quantity": _OBS.OVERLAP_ACROSS_KINDS,
+            "value": overlap_kinds,
+            "unit": "cycles",
+            "concurrent": True,
+            "note": "cycles with two or more DISTINCT declared kinds busy together; two units of "
+            "one kind running together is not cross-kind overlap",
+        }
+    )
+    obs.append(
+        {
+            "quantity": _OBS.SAMPLED_QUANTITY,
+            "value": sampled,
+            "unit": "cycles",
+            "concurrent": False,
+            "note": "rows in the engine's per-cycle trace; the buckets reconcile against this, "
+            "which need not equal the run's reported cycle count",
+        }
+    )
 
     notes = [str(declaration.get("unmeasured_note") or "").strip()]
     if missing:

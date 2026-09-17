@@ -10,18 +10,17 @@ operation is one semantic facet of that generic record.  ISA presence establishe
 operation is declared, so its initial status is ``unknown``; behavioral observations may refine it
 to ``supported`` or ``unsupported`` while preserving both sources of evidence.
 """
+
 from __future__ import annotations
 
 import copy
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-
 _STATUSES = frozenset({"unknown", "supported", "unsupported"})
 
 
-def operation_contract_for_target(
-        target: str, manifest: Mapping[str, Any]) -> dict[str, Any]:
+def operation_contract_for_target(target: str, manifest: Mapping[str, Any]) -> dict[str, Any]:
     """Derive the common operation registry for ``target`` and its capability manifest.
 
     This is the public seam for preflight and prompt consumers that start from a loaded target
@@ -35,8 +34,7 @@ def operation_contract_for_target(
     plan = dialect_plan_from_manifest(dict(manifest))
     return merge_operation_contracts(
         derive_dialect_operation_contract(plan),
-        derive_isa_operation_contract(
-            taxonomy_for_target(str(target)), dialect=str(plan["dialect_name"])),
+        derive_isa_operation_contract(taxonomy_for_target(str(target)), dialect=str(plan["dialect_name"])),
         manifest.get("operation_capabilities") or {},
     )
 
@@ -62,8 +60,7 @@ def _identity(value: Any) -> tuple[str, str, str]:
     return domain, dialect, operation
 
 
-def derive_isa_operation_contract(
-        taxonomy: Mapping[str, Any], *, dialect: str) -> dict[str, Any]:
+def derive_isa_operation_contract(taxonomy: Mapping[str, Any], *, dialect: str) -> dict[str, Any]:
     """Adapt a discovered ISA taxonomy to the generic operation-capability contract.
 
     No mnemonic or target table is consulted.  Every operation comes from ``by_mnemonic``; semantic
@@ -88,7 +85,9 @@ def derive_isa_operation_contract(
             if not address_space:
                 raise ValueError(f"{mnemonic}: scalar-memory address_space is missing")
             semantics = {
-                "kind": "memory", "scope": "scalar", "direction": direction,
+                "kind": "memory",
+                "scope": "scalar",
+                "direction": direction,
                 "address_space": address_space,
             }
             width = scalar_memory.get("width_bytes")
@@ -98,10 +97,8 @@ def derive_isa_operation_contract(
                 semantics["width_bytes"] = width
             address_unit = scalar_memory.get("address_unit_bytes")
             if address_unit is not None:
-                if isinstance(address_unit, bool) or not isinstance(address_unit, int) \
-                        or address_unit <= 0:
-                    raise ValueError(
-                        f"{mnemonic}: scalar-memory address_unit_bytes must be positive")
+                if isinstance(address_unit, bool) or not isinstance(address_unit, int) or address_unit <= 0:
+                    raise ValueError(f"{mnemonic}: scalar-memory address_unit_bytes must be positive")
                 semantics["address_unit_bytes"] = address_unit
             addressing = scalar_memory.get("addressing")
             if isinstance(addressing, Mapping) and addressing:
@@ -112,15 +109,17 @@ def derive_isa_operation_contract(
             # A role is already a target-agnostic semantic classification derived from typed operands.
             # Preserve it without translating it into a guessed effect.
             semantics = {"kind": str(entry.get("role") or "unknown")}
-        operations.append({
-            "domain": "instruction",
-            "dialect": dialect,
-            "operation": str(mnemonic),
-            "effects": effects,
-            "semantics": semantics,
-            "status": "unknown",
-            "evidence": [{"kind": "isa_definition", "detail": detail}],
-        })
+        operations.append(
+            {
+                "domain": "instruction",
+                "dialect": dialect,
+                "operation": str(mnemonic),
+                "effects": effects,
+                "semantics": semantics,
+                "status": "unknown",
+                "evidence": [{"kind": "isa_definition", "detail": detail}],
+            }
+        )
     return {"version": 1, "operations": operations}
 
 
@@ -145,13 +144,17 @@ def derive_dialect_operation_contract(plan: Mapping[str, Any]) -> dict[str, Any]
         effects = raw.get("effects") or ()
         if not isinstance(effects, (list, tuple)) or any(not isinstance(item, str) for item in effects):
             raise ValueError(f"dialect operation {name!r} effects must be a string sequence")
-        operations.append({
-            "domain": "dialect", "dialect": dialect, "operation": name,
-            "effects": list(effects),
-            "semantics": copy.deepcopy(dict(semantics or {"kind": "compute"})),
-            "status": "unknown",
-            "evidence": [{"kind": "dialect_plan", "detail": "derived from compute_units.ops"}],
-        })
+        operations.append(
+            {
+                "domain": "dialect",
+                "dialect": dialect,
+                "operation": name,
+                "effects": list(effects),
+                "semantics": copy.deepcopy(dict(semantics or {"kind": "compute"})),
+                "status": "unknown",
+                "evidence": [{"kind": "dialect_plan", "detail": "derived from compute_units.ops"}],
+            }
+        )
     return {"version": 1, "operations": operations}
 
 
@@ -201,7 +204,8 @@ def merge_operation_contracts(*contracts: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def merge_operation_observations(
-        declared: Mapping[str, Any], observations: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    declared: Mapping[str, Any], observations: Iterable[Mapping[str, Any]]
+) -> dict[str, Any]:
     """Return a capability contract refined by measured operation observations.
 
     Observations must identify an already-declared operation.  This fail-closed join prevents a typo
@@ -237,8 +241,11 @@ def _addressing_text(addressing: Any, address_unit_bytes: Any = None) -> str:
         scaled = ""
         if isinstance(scale, int) and not isinstance(scale, bool) and scale > 1:
             scaled = f" × {scale} address units"
-            if isinstance(address_unit_bytes, int) and not isinstance(address_unit_bytes, bool) \
-                    and address_unit_bytes > 0:
+            if (
+                isinstance(address_unit_bytes, int)
+                and not isinstance(address_unit_bytes, bool)
+                and address_unit_bytes > 0
+            ):
                 scaled += f" ({scale * address_unit_bytes} bytes)"
         return f"base + {signed}{width}immediate{scaled}"
     return str(addressing.get("mode") or "declared addressing").replace("_", " ")
@@ -249,9 +256,13 @@ def _memory_prompt_block(contract: Mapping[str, Any], *, scope: str | None) -> s
     operations = capability.get("operations") if isinstance(capability, Mapping) else None
     if not isinstance(operations, list):
         return ""
-    memory = [op for op in operations if isinstance(op, Mapping)
-              and (op.get("semantics") or {}).get("kind") == "memory"
-              and (scope is None or (op.get("semantics") or {}).get("scope") == scope)]
+    memory = [
+        op
+        for op in operations
+        if isinstance(op, Mapping)
+        and (op.get("semantics") or {}).get("kind") == "memory"
+        and (scope is None or (op.get("semantics") or {}).get("scope") == scope)
+    ]
     if not memory:
         return ""
     lines = ["## Memory operation contract (derived, behaviorally refinable)"]
@@ -263,23 +274,32 @@ def _memory_prompt_block(contract: Mapping[str, Any], *, scope: str | None) -> s
         if status not in _STATUSES:
             status = "unknown"
         has_unsupported |= status == "unsupported"
-        state = "UNSUPPORTED" if status == "unsupported" else (
-            "verified supported" if status == "supported" else "declared, unverified")
+        state = (
+            "UNSUPPORTED"
+            if status == "unsupported"
+            else ("verified supported" if status == "supported" else "declared, unverified")
+        )
         width = sem.get("width_bytes")
         width_text = f", {width} byte" + ("s" if width != 1 else "") if width else ""
         address_unit = sem.get("address_unit_bytes")
-        unit_text = (f", address unit: {address_unit} byte"
-                     + ("s" if address_unit != 1 else "")) if address_unit else ""
+        unit_text = (
+            (f", address unit: {address_unit} byte" + ("s" if address_unit != 1 else "")) if address_unit else ""
+        )
         lines.append(
             f"- `{dialect}.{operation}`: {sem.get('direction', 'memory')} "
             f"{sem.get('address_space', 'memory')}{width_text}{unit_text}, "
-            f"{_addressing_text(sem.get('addressing'), address_unit)} — **{state}**")
+            f"{_addressing_text(sem.get('addressing'), address_unit)} — **{state}**"
+        )
     if has_unsupported:
-        lines.append("The backend must not emit operations marked **UNSUPPORTED**; choose a declared "
-                     "supported path or decline the affected lowering explicitly.")
+        lines.append(
+            "The backend must not emit operations marked **UNSUPPORTED**; choose a declared "
+            "supported path or decline the affected lowering explicitly."
+        )
     else:
-        lines.append("Treat unverified operations as hypotheses until the behavioral preflight confirms "
-                     "them; do not infer support merely because an opcode decodes.")
+        lines.append(
+            "Treat unverified operations as hypotheses until the behavioral preflight confirms "
+            "them; do not infer support merely because an opcode decodes."
+        )
     return "\n".join(lines) + "\n\n"
 
 

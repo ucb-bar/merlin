@@ -22,12 +22,14 @@ actually dominates wall clock fully parallel.
 Use it around *any* in-process MLIR work that could run concurrently::
 
     from ...common.ir_lock import IR_LOCK
+
     with IR_LOCK:
         prepared, features = prepare_for_lowering(...)
         res = lower_model_file(prepared, ...)
 
 It is an ``RLock`` so a nested helper that also takes it does not deadlock.
 """
+
 from __future__ import annotations
 
 import threading

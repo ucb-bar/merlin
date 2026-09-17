@@ -21,6 +21,7 @@ read off the output operand's shape (the output map of a contraction is a projec
 the parallel dims), and the reduction extents off the input dims the output map does not cover. That
 keeps the reader target-agnostic and independent of the dtype the rewrite chose.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -49,6 +50,7 @@ def _shaped(value) -> "tuple[list[int], str] | None":
     accumulator, which is what decides whether a reduction overflows.
     """
     from ..common.mlir_query import type_shape_dtype
+
     try:
         shape, dtype = type_shape_dtype(value.type)
     except Exception:  # noqa: BLE001 — a non-shaped operand is simply not a contraction operand
@@ -66,6 +68,7 @@ def _shape_of(value) -> "list[int] | None":
 def _iterator_types(op) -> "list[str] | None":
     """``["parallel", ..., "reduction"]`` for a ``linalg.generic``, or None when unreadable."""
     from ..common.mlir_query import _attr_tables
+
     for table in _attr_tables(op):
         it = table.get("iterator_types")
         if it is None:
@@ -88,6 +91,7 @@ def indexing_maps(op) -> "list[list[Any]] | None":
     which is NOT the same as "no maps" — callers must fail closed on it rather than proceed.
     """
     from ..common.mlir_query import _attr_tables
+
     maps = getattr(op, "indexing_maps", None)
     if maps is None:
         for table in _attr_tables(op):
@@ -108,6 +112,7 @@ def indexing_maps(op) -> "list[list[Any]] | None":
 def _dim_position(expr) -> "int | None":
     """The iteration dim an affine map RESULT names, or None when the result is not a bare dim."""
     from xdsl.ir.affine import AffineDimExpr
+
     return int(expr.position) if isinstance(expr, AffineDimExpr) else None
 
 
@@ -172,14 +177,17 @@ def _generic_contraction(op) -> "ContractionShape | None":
     maps = indexing_maps(op)
     if maps is None or len(maps) < 3:
         return None
-    red = n_par                                   # the reduction dim's position (it is the last one)
+    red = n_par  # the reduction dim's position (it is the last one)
     if not maps[0] or _dim_position(maps[0][-1]) != red:
         return None
     if all(_dim_position(r) != red for r in maps[1]):
         return None
-    return ContractionShape(op=op_class, parallel=tuple(int(d) for d in out),
-                            reduction=(int(a[-1]),),
-                            dtypes=(a_dtype, ins[1][1], out_dtype))
+    return ContractionShape(
+        op=op_class,
+        parallel=tuple(int(d) for d in out),
+        reduction=(int(a[-1]),),
+        dtypes=(a_dtype, ins[1][1], out_dtype),
+    )
 
 
 def _named_contraction(op, name: str) -> "ContractionShape | None":
@@ -195,8 +203,7 @@ def _named_contraction(op, name: str) -> "ContractionShape | None":
     # the dtype triple stays SHORT rather than repeating the LHS, so a consumer sees "not observed"
     # instead of a fabricated weight dtype.
     dtypes = (a_dtype, ins[1][1], out_dtype) if len(ins) > 1 else ()
-    return ContractionShape(op=name, parallel=tuple(int(d) for d in out),
-                            reduction=(int(a[-1]),), dtypes=dtypes)
+    return ContractionShape(op=name, parallel=tuple(int(d) for d in out), reduction=(int(a[-1]),), dtypes=dtypes)
 
 
 def observe_contractions(src: "str | Path | Any") -> "list[tuple[Any, ContractionShape]]":
@@ -211,8 +218,9 @@ def observe_contractions(src: "str | Path | Any") -> "list[tuple[Any, Contractio
     fails must degrade to "I observed nothing", which makes the caller fall back to the shape-blind
     realization instead of failing a build over an unreadable capture."""
     from ..common import mlir_query as mq
+
     try:
-        module = mq.parse(src)   # accepts an already-parsed module, MLIR text, or a path
+        module = mq.parse(src)  # accepts an already-parsed module, MLIR text, or a path
     except Exception:  # noqa: BLE001
         return []
     found: list[tuple[Any, ContractionShape]] = []

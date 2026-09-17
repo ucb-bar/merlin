@@ -46,6 +46,7 @@ The regimes are not adjectives. Each one changes what the compiler is even allow
     a fitting regime: an unmeasurable capacity reported as satisfied is exactly how the abort above
     reached the simulator with nothing recorded.
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -97,8 +98,9 @@ def operand_store(target: str, *, dtype: str | None = None):
     """
     try:
         from merlin.targetgen import address_space as AS
+
         space = AS.derive_address_space(target)
-    except Exception:                                          # noqa: BLE001 — unresolvable target
+    except Exception:  # noqa: BLE001 — unresolvable target
         return None, None
     resolved = AS.operand_store(space, dtype=dtype)
     if resolved.store is None:
@@ -114,7 +116,7 @@ def _dominant_dtype(capsule_doc: dict) -> str | None:
     rather than averaging over it -- summing rows measured against two different row sizes is adding
     two different units.
     """
-    for t in (capsule_doc.get("inputs") or []):
+    for t in capsule_doc.get("inputs") or []:
         if t.get("dtype"):
             return str(t["dtype"])
     return None
@@ -129,7 +131,7 @@ def _store_for(target: str, dtype: str | None):
 def _rows(store, shape, dtype) -> int | None:
     try:
         return store.working_set_rows(shape, dtype)
-    except Exception:                                          # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -157,7 +159,7 @@ def capsule_regime(capsule_dir: str | Path, target: str, *, store=None, capacity
         return {"regime": UNKNOWN, "why": f"{target!r} declares no operand-store capacity we can derive"}
 
     rows, unsized = 0, []
-    for t in (doc.get("inputs") or []):
+    for t in doc.get("inputs") or []:
         shape = [int(x) for x in (t.get("shape") or []) if str(x).lstrip("-").isdigit()]
         if not shape:
             unsized.append(t.get("name") or "?")
@@ -172,8 +174,12 @@ def capsule_regime(capsule_dir: str | Path, target: str, *, store=None, capacity
     # Every declared input is live at once for a capsule (the harness materialises them all before the
     # program runs), so peak-live and total coincide here and `fits_on_reuse` cannot arise from a
     # capsule's inputs alone. Said out loud rather than left as an accident of the arithmetic.
-    out = {"regime": classify(rows, rows, capacity), "rows": rows, "capacity_rows": int(capacity),
-           "fraction_of_capacity": round(rows / float(capacity), 6)}
+    out = {
+        "regime": classify(rows, rows, capacity),
+        "rows": rows,
+        "capacity_rows": int(capacity),
+        "fraction_of_capacity": round(rows / float(capacity), 6),
+    }
     if unsized:
         out["unsized_inputs"] = sorted(unsized)
     return out
@@ -207,11 +213,16 @@ def corpus_regimes(corpus_roots, target: str, *, labels=None, exclude=None) -> d
             if got.get("capacity_rows") and capacity is None:
                 capacity = got["capacity_rows"]
             if got.get("rows", 0) > largest["rows"]:
-                largest = {"name": name, "rows": got["rows"],
-                           "fraction_of_capacity": got.get("fraction_of_capacity", 0.0)}
-    return {"by_regime": {k: sorted(v) for k, v in sorted(by.items())},
-            "capacity_rows": int(capacity) if capacity else None,
-            "largest_working_set": largest}
+                largest = {
+                    "name": name,
+                    "rows": got["rows"],
+                    "fraction_of_capacity": got.get("fraction_of_capacity", 0.0),
+                }
+    return {
+        "by_regime": {k: sorted(v) for k, v in sorted(by.items())},
+        "capacity_rows": int(capacity) if capacity else None,
+        "largest_working_set": largest,
+    }
 
 
 def _operand_shapes(module):
@@ -234,7 +245,7 @@ def _operand_shapes(module):
                 continue
             try:
                 shapes.append(list(ty.get_shape()))
-            except Exception:                                  # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 continue
         if shapes:
             out.append((mc._short_op(op.name), shapes, mc._elem_dtype(op)))
@@ -262,13 +273,17 @@ def required_regimes(captures: dict, target: str) -> dict:
     counts: dict[str, int] = {}
     unreadable: dict[str, str] = {}
     if store is None:
-        return {"by_regime": {}, "region_counts": {}, "captures_unreadable": {},
-                "why": f"{target!r} declares no operand-store capacity we can derive, so no regime is "
-                       f"required of the corpus -- that is 'we do not know', never 'nothing is required'"}
+        return {
+            "by_regime": {},
+            "region_counts": {},
+            "captures_unreadable": {},
+            "why": f"{target!r} declares no operand-store capacity we can derive, so no regime is "
+            f"required of the corpus -- that is 'we do not know', never 'nothing is required'",
+        }
     for label, path in sorted((captures or {}).items()):
         try:
             module = mc.load_module(path)
-        except Exception as e:                                 # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
             unreadable[label] = f"{type(e).__name__}: {str(e)[-160:]}"
             continue
         for _op, shapes, dtype in _operand_shapes(module):
@@ -290,10 +305,12 @@ def required_regimes(captures: dict, target: str) -> dict:
             counts[reg] = counts.get(reg, 0) + 1
             if label not in by.setdefault(reg, []):
                 by[reg].append(label)
-    return {"by_regime": {k: sorted(v) for k, v in sorted(by.items())},
-            "region_counts": dict(sorted(counts.items())),
-            "capacity_rows": int(capacity) if capacity else None,
-            "captures_unreadable": unreadable}
+    return {
+        "by_regime": {k: sorted(v) for k, v in sorted(by.items())},
+        "region_counts": dict(sorted(counts.items())),
+        "capacity_rows": int(capacity) if capacity else None,
+        "captures_unreadable": unreadable,
+    }
 
 
 def uncovered_regimes(required: dict, corpus: dict) -> dict:
@@ -308,9 +325,11 @@ def uncovered_regimes(required: dict, corpus: dict) -> dict:
         "corpus_regimes": sorted(have),
         "capacity_rows": corpus.get("capacity_rows"),
         "largest_working_set": corpus.get("largest_working_set"),
-        "note": ("a regime real models occupy that no capsule reaches means the corpus cannot detect a "
-                 "memory-mapping failure of that kind; on an interlocked target the schedule is correct "
-                 "whatever it chooses, so nothing else will report it either"),
+        "note": (
+            "a regime real models occupy that no capsule reaches means the corpus cannot detect a "
+            "memory-mapping failure of that kind; on an interlocked target the schedule is correct "
+            "whatever it chooses, so nothing else will report it either"
+        ),
     }
 
 
@@ -320,8 +339,9 @@ def uncovered_regimes(required: dict, corpus: dict) -> dict:
 _REGIME_MULTS = (1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512)
 
 
-def extents_for_regime(target: str, regime: str, *, tile_dim: int, dtype: str | None = None,
-                       store=None, capacity=None) -> dict | None:
+def extents_for_regime(
+    target: str, regime: str, *, tile_dim: int, dtype: str | None = None, store=None, capacity=None
+) -> dict | None:
     """Tile-relative ``{M, K, N}`` that put a matmul capsule's declared inputs in ``regime``.
 
     Found by SEARCHING with the very functions the coverage gate measures with -- :func:`classify` over
@@ -361,10 +381,15 @@ def extents_for_regime(target: str, regime: str, *, tile_dim: int, dtype: str | 
             cands.append((int(a_rows) + int(w_rows), m_mult, e_mult))
     for total, m_mult, e_mult in sorted(cands):
         if classify(total, total, capacity) == regime:
-            tok = lambda k: f"{k}*tile" if k != 1 else "tile"      # noqa: E731 -- local spelling helper
-            return {"M": tok(m_mult), "K": tok(e_mult), "N": tok(e_mult),
-                    "rows": total, "capacity_rows": int(capacity),
-                    "fraction_of_capacity": round(total / float(capacity), 6)}
+            tok = lambda k: f"{k}*tile" if k != 1 else "tile"  # noqa: E731 -- local spelling helper
+            return {
+                "M": tok(m_mult),
+                "K": tok(e_mult),
+                "N": tok(e_mult),
+                "rows": total,
+                "capacity_rows": int(capacity),
+                "fraction_of_capacity": round(total / float(capacity), 6),
+            }
     return None
 
 
@@ -377,8 +402,9 @@ def required_regime_extents(target: str, regimes, *, tile_dim: int, dtype: str |
     store, capacity = operand_store(target, dtype=dtype)
     out: dict = {}
     for regime in regimes:
-        out[str(regime)] = extents_for_regime(target, str(regime), tile_dim=tile_dim, dtype=dtype,
-                                              store=store, capacity=capacity)
+        out[str(regime)] = extents_for_regime(
+            target, str(regime), tile_dim=tile_dim, dtype=dtype, store=store, capacity=capacity
+        )
     return out
 
 
@@ -416,9 +442,19 @@ def deep_k_rows(store, k: int, *, m_extent: int, n_extent: int, dtype: str | Non
     return int(a_rows) + int(w_rows)
 
 
-def reduction_depth_regimes(target: str, regimes=None, *, tile_dim: int, dtype: str | None = None,
-                            m_tiles: int = 1, n_tiles: int = 1, points_per_regime: int = 2,
-                            spills_max_fraction: float = 2.0, store=None, capacity=None) -> dict:
+def reduction_depth_regimes(
+    target: str,
+    regimes=None,
+    *,
+    tile_dim: int,
+    dtype: str | None = None,
+    m_tiles: int = 1,
+    n_tiles: int = 1,
+    points_per_regime: int = 2,
+    spills_max_fraction: float = 2.0,
+    store=None,
+    capacity=None,
+) -> dict:
     """Reduction depths that put a deep-K contraction in each requested regime — several per band.
 
     :func:`extents_for_regime` answers "give me ONE capsule in this regime", which is what a conformance
@@ -440,11 +476,19 @@ def reduction_depth_regimes(target: str, regimes=None, *, tile_dim: int, dtype: 
         store, capacity = operand_store(target, dtype=dtype)
     wanted = [str(r) for r in (regimes if regimes is not None else ORDER)]
     tile = int(tile_dim or 0)
-    out: dict = {"capacity_rows": int(capacity) if capacity else None, "tile_dim": tile or None,
-                 "m_tiles": int(m_tiles), "n_tiles": int(n_tiles), "by_regime": {}}
+    out: dict = {
+        "capacity_rows": int(capacity) if capacity else None,
+        "tile_dim": tile or None,
+        "m_tiles": int(m_tiles),
+        "n_tiles": int(n_tiles),
+        "by_regime": {},
+    }
     if store is None or not capacity or tile < 1:
-        why = (f"{target!r} declares no operand-store capacity we can derive"
-               if store is None or not capacity else "no tile edge was supplied")
+        why = (
+            f"{target!r} declares no operand-store capacity we can derive"
+            if store is None or not capacity
+            else "no tile edge was supplied"
+        )
         out["by_regime"] = {r: {"points": [], "unreachable": why} for r in wanted}
         return out
 
@@ -469,17 +513,22 @@ def reduction_depth_regimes(target: str, regimes=None, *, tile_dim: int, dtype: 
     while True:
         rows = rows_at(mult_max)
         if rows is None:
-            out["by_regime"] = {r: {"points": [], "unreachable":
-                                    "the operand store cannot size this contraction's operands"}
-                                for r in wanted}
+            out["by_regime"] = {
+                r: {"points": [], "unreachable": "the operand store cannot size this contraction's operands"}
+                for r in wanted
+            }
             return out
         if rows >= ceiling_rows:
             break
         guard += 1
-        if guard > 64:                                  # 2**64 tiles is not a shape; fail closed
-            out["by_regime"] = {r: {"points": [], "unreachable":
-                                    f"no tile multiple within the search reached "
-                                    f"{spills_max_fraction}x capacity"} for r in wanted}
+        if guard > 64:  # 2**64 tiles is not a shape; fail closed
+            out["by_regime"] = {
+                r: {
+                    "points": [],
+                    "unreachable": f"no tile multiple within the search reached {spills_max_fraction}x capacity",
+                }
+                for r in wanted
+            }
             return out
         mult_max *= 2
 
@@ -488,9 +537,14 @@ def reduction_depth_regimes(target: str, regimes=None, *, tile_dim: int, dtype: 
     # wrong band, and a wrong band is exactly the failure this module exists to make visible.
     lo_rows, hi_rows = rows_at(1), rows_at(mult_max)
     if lo_rows is None or hi_rows is None or hi_rows < lo_rows:
-        out["by_regime"] = {r: {"points": [], "unreachable":
-                                "operand residency is not monotone in the reduction depth on this "
-                                "store, so a band cannot be bracketed"} for r in wanted}
+        out["by_regime"] = {
+            r: {
+                "points": [],
+                "unreachable": "operand residency is not monotone in the reduction depth on this "
+                "store, so a band cannot be bracketed",
+            }
+            for r in wanted
+        }
         return out
 
     def first_mult_at_least(rank: int) -> "int | None":
@@ -512,8 +566,11 @@ def reduction_depth_regimes(target: str, regimes=None, *, tile_dim: int, dtype: 
 
     for regime in wanted:
         if regime not in _ROWS_MONOTONE_ORDER:
-            reason = (UNREACHABLE_ON_ALL_LIVE_INPUTS if regime == FITS_ON_REUSE
-                      else f"{regime!r} is not a residency band a deep-K contraction can occupy")
+            reason = (
+                UNREACHABLE_ON_ALL_LIVE_INPUTS
+                if regime == FITS_ON_REUSE
+                else f"{regime!r} is not a residency band a deep-K contraction can occupy"
+            )
             out["by_regime"][regime] = {"points": [], "unreachable": reason}
             continue
         rank = _ROWS_MONOTONE_ORDER.index(regime)
@@ -521,9 +578,11 @@ def reduction_depth_regimes(target: str, regimes=None, *, tile_dim: int, dtype: 
         nxt = first_mult_at_least(rank + 1) if rank + 1 < len(_ROWS_MONOTONE_ORDER) else None
         band_hi = mult_max if nxt is None else nxt - 1
         if band_lo is None or band_hi < band_lo or (rank_at(band_lo) != rank):
-            out["by_regime"][regime] = {"points": [], "unreachable":
-                                        f"no tile multiple in [1, {mult_max}] (up to "
-                                        f"{spills_max_fraction}x capacity) lands in {regime!r}"}
+            out["by_regime"][regime] = {
+                "points": [],
+                "unreachable": f"no tile multiple in [1, {mult_max}] (up to "
+                f"{spills_max_fraction}x capacity) lands in {regime!r}",
+            }
             continue
         span = band_hi - band_lo
         want = max(1, int(points_per_regime))
@@ -532,28 +591,40 @@ def reduction_depth_regimes(target: str, regimes=None, *, tile_dim: int, dtype: 
         else:
             # Evenly spread across the band, endpoints included: clustering at an edge is the defect
             # this function exists to fix, and the widest separation is what a two-parameter fit wants.
-            mults = sorted({band_lo + (span * i) // max(1, want - 1) for i in range(want)}) \
-                if want > 1 else [band_lo + span // 2]
+            mults = (
+                sorted({band_lo + (span * i) // max(1, want - 1) for i in range(want)})
+                if want > 1
+                else [band_lo + span // 2]
+            )
         points, dropped = [], []
         for mult in mults:
             rows = rows_at(mult)
             got = classify(rows, rows, capacity) if rows is not None else UNKNOWN
-            if got != regime:                            # verified, not trusted
+            if got != regime:  # verified, not trusted
                 dropped.append({"K": tile * mult, "classified_as": got})
                 continue
-            points.append({"K": tile * mult, "K_tiles": mult, "M": m_extent, "N": n_extent,
-                           "rows": int(rows), "capacity_rows": int(capacity),
-                           "fraction_of_capacity": round(rows / float(capacity), 6)})
-        record = {"points": points, "unreachable": None,
-                  "band_tile_multiples": [band_lo, band_hi]}
+            points.append(
+                {
+                    "K": tile * mult,
+                    "K_tiles": mult,
+                    "M": m_extent,
+                    "N": n_extent,
+                    "rows": int(rows),
+                    "capacity_rows": int(capacity),
+                    "fraction_of_capacity": round(rows / float(capacity), 6),
+                }
+            )
+        record = {"points": points, "unreachable": None, "band_tile_multiples": [band_lo, band_hi]}
         if dropped:
             record["rejected_points"] = dropped
         if not points:
-            record["unreachable"] = (f"every candidate in the {regime!r} band re-classified elsewhere "
-                                     f"when checked: {dropped}")
+            record["unreachable"] = (
+                f"every candidate in the {regime!r} band re-classified elsewhere when checked: {dropped}"
+            )
         elif len(points) < want:
             record["short_of_requested"] = (
                 f"{len(points)} of {want} requested points: the band spans tile multiples "
-                f"[{band_lo}, {band_hi}], which offers no more distinct depths")
+                f"[{band_lo}, {band_hi}], which offers no more distinct depths"
+            )
         out["by_regime"][regime] = record
     return out

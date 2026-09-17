@@ -12,10 +12,11 @@ Explicit buffer slots model ownership from producer start through consumer compl
 buffer recurrence is evaluated by max-plus matrix powering, never by replaying full-size tiles.
 Omitting buffers selects an explicitly labeled unlimited-buffer idealization, not a capacity proof.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
+from dataclasses import dataclass
 from typing import Any
 
 from merlin.xdsl_dialects.lowering.global_plan import CycleInterval
@@ -39,9 +40,10 @@ class PipelineStage:
             raise ValueError("a pipeline stage must name its id, resource, and kind")
         if not self.cycles_per_item.resolved:
             raise ValueError(f"pipeline stage {self.id!r} has unresolved cycles")
-        if not all(math.isfinite(value) for value in
-                   (self.cycles_per_item.lo, self.cycles_per_item.hi,
-                    self.moved_bytes_per_item)):
+        if not all(
+            math.isfinite(value)
+            for value in (self.cycles_per_item.lo, self.cycles_per_item.hi, self.moved_bytes_per_item)
+        ):
             raise ValueError("pipeline costs and movement must be finite")
         if self.moved_bytes_per_item < 0 or self.commands_per_item < 0:
             raise ValueError("pipeline movement and command counts must be non-negative")
@@ -68,16 +70,19 @@ class PipelineBuffer:
         if isinstance(self.slots, bool) or not isinstance(self.slots, int) or self.slots < 1:
             raise ValueError("pipeline buffer slots must be a positive integer")
         if self.bytes_per_slot is not None and (
-                isinstance(self.bytes_per_slot, bool) or
-                not isinstance(self.bytes_per_slot, int) or self.bytes_per_slot < 0):
+            isinstance(self.bytes_per_slot, bool) or not isinstance(self.bytes_per_slot, int) or self.bytes_per_slot < 0
+        ):
             raise ValueError("buffer footprint must be non-negative integer bytes or unknown")
 
     def to_dict(self) -> dict[str, Any]:
-        return {"producer": self.producer, "consumer": self.consumer, "slots": self.slots,
-                "bytes_per_slot": self.bytes_per_slot,
-                "allocation_bytes": (None if self.bytes_per_slot is None else
-                                     self.slots * self.bytes_per_slot),
-                "provenance": self.provenance}
+        return {
+            "producer": self.producer,
+            "consumer": self.consumer,
+            "slots": self.slots,
+            "bytes_per_slot": self.bytes_per_slot,
+            "allocation_bytes": (None if self.bytes_per_slot is None else self.slots * self.bytes_per_slot),
+            "provenance": self.provenance,
+        }
 
 
 @dataclass(frozen=True)
@@ -113,8 +118,11 @@ class PipelineProjection:
             "fill_cycles": self.fill_cycles,
             "initiation_interval": self.initiation_interval,
             "cycle_basis": "model_estimate",
-            "buffering": ("unlimited_buffer_idealization" if self.buffers is None else
-                          "independent_slots_held_until_consumer_completion"),
+            "buffering": (
+                "unlimited_buffer_idealization"
+                if self.buffers is None
+                else "independent_slots_held_until_consumer_completion"
+            ),
             "buffers": None if self.buffers is None else [b.to_dict() for b in self.buffers],
             "scope": "stationary stage-cost model; full-size cache/queue equivalence unproven",
         }
@@ -130,8 +138,7 @@ def _total(durations: list[float], repetitions: int) -> float:
     return sum(durations) + (repetitions - 1) * max(durations)
 
 
-def _buffered_total(durations: list[float], repetitions: int, slots: list[int],
-                    max_states: int) -> float:
+def _buffered_total(durations: list[float], repetitions: int, slots: list[int], max_states: int) -> float:
     """Power the max-plus completion recurrence in O(states**3 * log(repetitions)).
 
     C[i,j] = p[j] + max(C[i,j-1], C[i-1,j], C[i-slots[j],j+1]).
@@ -145,11 +152,13 @@ def _buffered_total(durations: list[float], repetitions: int, slots: list[int],
     widths = [1, *(min(value, repetitions) for value in slots)]
     size = sum(widths)
     if size > max_states:
-        raise ValueError(f"finite-buffer recurrence needs {size} states, exceeds cap {max_states}; "
-                         "refuse rather than discard buffer constraints")
+        raise ValueError(
+            f"finite-buffer recurrence needs {size} states, exceeds cap {max_states}; "
+            "refuse rather than discard buffer constraints"
+        )
     offsets: list[int] = []
     for width in widths:
-        offsets.append(sum(widths[:len(offsets)]))
+        offsets.append(sum(widths[: len(offsets)]))
     absent = float("-inf")
     matrix = [[absent] * size for _ in range(size)]
     for j, duration in enumerate(durations):
@@ -169,8 +178,7 @@ def _buffered_total(durations: list[float], repetitions: int, slots: list[int],
     power = repetitions
     while power:
         if power & 1:
-            state = [max(weight + value for weight, value in zip(row, state))
-                     for row in matrix]
+            state = [max(weight + value for weight, value in zip(row, state)) for row in matrix]
         power >>= 1
         if power:
             squared = [[absent] * size for _ in range(size)]
@@ -185,16 +193,14 @@ def _buffered_total(durations: list[float], repetitions: int, slots: list[int],
     return state[offsets[-1]]
 
 
-def _intervals(durations: list[float], stage_index: int,
-               repetitions: int) -> list[tuple[float, float]]:
+def _intervals(durations: list[float], stage_index: int, repetitions: int) -> list[tuple[float, float]]:
     """Exact service intervals for one stage in a deterministic tandem queue."""
-    prefix = durations[:stage_index + 1]
+    prefix = durations[: stage_index + 1]
     duration = durations[stage_index]
     prefix_sum = sum(prefix)
     prefix_bottleneck = max(prefix)
     return [
-        (prefix_sum + item * prefix_bottleneck - duration,
-         prefix_sum + item * prefix_bottleneck)
+        (prefix_sum + item * prefix_bottleneck - duration, prefix_sum + item * prefix_bottleneck)
         for item in range(repetitions)
     ]
 
@@ -224,9 +230,13 @@ def _intersection(a: list[tuple[float, float]], b: list[tuple[float, float]]) ->
     return total
 
 
-def project_pipeline(stages: tuple[PipelineStage, ...], repetitions: int, *,
-                     policy: PipelineProjectionPolicy | None = None,
-                     buffers: tuple[PipelineBuffer, ...] | None = None) -> PipelineProjection:
+def project_pipeline(
+    stages: tuple[PipelineStage, ...],
+    repetitions: int,
+    *,
+    policy: PipelineProjectionPolicy | None = None,
+    buffers: tuple[PipelineBuffer, ...] | None = None,
+) -> PipelineProjection:
     """Project a stationary model from short-witness stage costs and static repetitions.
 
     For service times ``p[j]`` in a deterministic tandem line, completion of item ``i`` at stage
@@ -245,7 +255,8 @@ def project_pipeline(stages: tuple[PipelineStage, ...], repetitions: int, *,
     if len(resources) != len(set(resources)):
         raise ValueError(
             "linear pipeline projection requires distinct stage resources; shared-resource "
-            "arbitration needs an explicit target event schedule")
+            "arbitration needs an explicit target event schedule"
+        )
 
     pol = policy or PipelineProjectionPolicy()
     if buffers is not None:
@@ -259,27 +270,31 @@ def project_pipeline(stages: tuple[PipelineStage, ...], repetitions: int, *,
         slots = [buffer.slots for buffer in buffers]
         lo = _buffered_total(lo_durations, repetitions, slots, pol.max_recurrence_states)
         hi = _buffered_total(hi_durations, repetitions, slots, pol.max_recurrence_states)
-    busy = tuple(sorted(
-        (stage.resource, float(stage.cycles_per_item.hi) * repetitions) for stage in stages))
+    busy = tuple(sorted((stage.resource, float(stage.cycles_per_item.hi) * repetitions) for stage in stages))
     floor = max((cycles * repetitions for cycles in lo_durations), default=0.0)
-    compute_resources = tuple(sorted(
-        stage.resource for stage in stages if stage.kind == "compute"))
-    movement_resources = tuple(sorted(
-        stage.resource for stage in stages if stage.kind in ("movement", "encoding")))
+    compute_resources = tuple(sorted(stage.resource for stage in stages if stage.kind == "compute"))
+    movement_resources = tuple(sorted(stage.resource for stage in stages if stage.kind in ("movement", "encoding")))
     missing: list[str] = []
     overlap: float | None
     available: float | None
     movement_active: float | None = None
     if buffers is not None and repetitions:
         overlap = available = None
-        missing.append("finite-slot wall-clock overlap is UNKNOWN; completion and resource busy "
-                       "time use the bounded recurrence, without expanding full-model events")
+        missing.append(
+            "finite-slot wall-clock overlap is UNKNOWN; completion and resource busy "
+            "time use the bounded recurrence, without expanding full-model events"
+        )
     elif repetitions * len(stages) <= pol.max_overlap_intervals:
         compute_intervals: list[tuple[float, float]] = []
         movement_intervals: list[tuple[float, float]] = []
         for index, stage in enumerate(stages):
-            target = (compute_intervals if stage.kind == "compute" else movement_intervals
-                      if stage.kind in ("movement", "encoding") else None)
+            target = (
+                compute_intervals
+                if stage.kind == "compute"
+                else movement_intervals
+                if stage.kind in ("movement", "encoding")
+                else None
+            )
             if target is not None:
                 target.extend(_intervals(hi_durations, index, repetitions))
         compute_union, movement_union = _union(compute_intervals), _union(movement_intervals)
@@ -291,11 +306,14 @@ def project_pipeline(stages: tuple[PipelineStage, ...], repetitions: int, *,
         overlap = available = None
         missing.append(
             f"exact compute/movement intersection exceeds the diagnostic interval cap "
-            f"{pol.max_overlap_intervals}; latency and per-resource occupancy remain exact")
+            f"{pol.max_overlap_intervals}; latency and per-resource occupancy remain exact"
+        )
 
-    provenance = tuple(dict.fromkeys(
-        item for stage in stages
-        for item in (stage.provenance, *stage.cycles_per_item.provenance) if item))
+    provenance = tuple(
+        dict.fromkeys(
+            item for stage in stages for item in (stage.provenance, *stage.cycles_per_item.provenance) if item
+        )
+    )
     if buffers is not None:
         provenance = tuple(dict.fromkeys((*provenance, *(b.provenance for b in buffers))))
     occupancy = OccupancySummary(
@@ -308,17 +326,21 @@ def project_pipeline(stages: tuple[PipelineStage, ...], repetitions: int, *,
         overlap_available_cycles=available,
         idle_cycles=0.0 if hi > 0 else 0.0,
         critical_path_cycles=hi,
-        movement_bytes=sum(stage.moved_bytes_per_item for stage in stages
-                           if stage.kind in ("movement", "encoding")) * repetitions,
-        movement_commands=sum(stage.commands_per_item for stage in stages
-                              if stage.kind in ("movement", "encoding")) * repetitions,
+        movement_bytes=sum(stage.moved_bytes_per_item for stage in stages if stage.kind in ("movement", "encoding"))
+        * repetitions,
+        movement_commands=sum(stage.commands_per_item for stage in stages if stage.kind in ("movement", "encoding"))
+        * repetitions,
         encoding_transitions=sum(stage.encoding_transition for stage in stages) * repetitions,
         provenance=provenance,
         missing=tuple(missing),
     )
     interval = CycleInterval(lo, hi, provenance=provenance)
     return PipelineProjection(
-        repetitions, interval, Bound(floor, provenance=provenance), occupancy,
+        repetitions,
+        interval,
+        Bound(floor, provenance=provenance),
+        occupancy,
         fill_cycles=sum(hi_durations) if repetitions else 0.0,
         initiation_interval=(max(hi_durations, default=0.0) if buffers is None else None),
-        buffers=buffers)
+        buffers=buffers,
+    )

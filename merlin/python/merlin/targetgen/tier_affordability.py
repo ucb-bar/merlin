@@ -23,10 +23,26 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-__all__ = ["AFFORDABLE", "TOO_EXPENSIVE", "UNKNOWN", "EXTRAPOLATION_MARGIN", "MIN_SAMPLES",
-           "ENGINE_UNATTRIBUTED", "CycleCostFit", "Affordability", "Sample", "IntakeCensus",
-           "fits_for", "fit_for", "measured_cycles", "affordability", "reset_cache",
-           "intake_census", "normalize_engine", "engine_attribution"]
+__all__ = [
+    "AFFORDABLE",
+    "TOO_EXPENSIVE",
+    "UNKNOWN",
+    "EXTRAPOLATION_MARGIN",
+    "MIN_SAMPLES",
+    "ENGINE_UNATTRIBUTED",
+    "CycleCostFit",
+    "Affordability",
+    "Sample",
+    "IntakeCensus",
+    "fits_for",
+    "fit_for",
+    "measured_cycles",
+    "affordability",
+    "reset_cache",
+    "intake_census",
+    "normalize_engine",
+    "engine_attribution",
+]
 
 #: How far past the largest measured cycle count a prediction is still honest, as a multiple. A fit is
 #: a local linearisation of a simulator's behaviour, not a law; beyond this the answer is "unknown".
@@ -90,8 +106,13 @@ class IntakeCensus:
         return "; ".join(missing) or "no usable (cycles, seconds) pair"
 
     def to_dict(self) -> dict:
-        return {"records": self.records, "no_seconds": self.no_seconds,
-                "no_cycles": self.no_cycles, "usable": self.usable, "starved": self.starved}
+        return {
+            "records": self.records,
+            "no_seconds": self.no_seconds,
+            "no_cycles": self.no_cycles,
+            "usable": self.usable,
+            "starved": self.starved,
+        }
 
 
 @dataclass(frozen=True)
@@ -162,21 +183,30 @@ class CycleCostFit:
         if not functional_cycles or functional_cycles <= 0:
             return None, "no functional cycle count to scale from"
         if not self.functional_ratio:
-            return None, ("no capsule has run at BOTH the screen and cert tiers on this engine, so the "
-                          "functional-to-cycle-accurate cycle ratio is unmeasured and cannot be assumed")
-        return (int(functional_cycles * self.functional_ratio),
-                f"functional {functional_cycles} cycles x measured ratio "
-                f"{self.functional_ratio:.2f} (n={self.n_ratio_samples})")
+            return None, (
+                "no capsule has run at BOTH the screen and cert tiers on this engine, so the "
+                "functional-to-cycle-accurate cycle ratio is unmeasured and cannot be assumed"
+            )
+        return (
+            int(functional_cycles * self.functional_ratio),
+            f"functional {functional_cycles} cycles x measured ratio "
+            f"{self.functional_ratio:.2f} (n={self.n_ratio_samples})",
+        )
 
     def to_dict(self) -> dict:
-        return {"target": self.target, "tier": self.tier, "engine": self.engine,
-                "intercept_s": round(self.intercept_s, 3),
-                "per_cycle_s": round(self.per_cycle_s, 6), "r2": round(self.r2, 4),
-                "n_samples": self.n_samples,
-                "measured_range_cycles": [self.cycles_min, self.cycles_max],
-                "functional_to_cycle_accurate_ratio": (round(self.functional_ratio, 3)
-                                                       if self.functional_ratio else None),
-                "n_ratio_samples": self.n_ratio_samples, "n_sources": len(self.sources)}
+        return {
+            "target": self.target,
+            "tier": self.tier,
+            "engine": self.engine,
+            "intercept_s": round(self.intercept_s, 3),
+            "per_cycle_s": round(self.per_cycle_s, 6),
+            "r2": round(self.r2, 4),
+            "n_samples": self.n_samples,
+            "measured_range_cycles": [self.cycles_min, self.cycles_max],
+            "functional_to_cycle_accurate_ratio": (round(self.functional_ratio, 3) if self.functional_ratio else None),
+            "n_ratio_samples": self.n_ratio_samples,
+            "n_sources": len(self.sources),
+        }
 
 
 @dataclass(frozen=True)
@@ -203,16 +233,20 @@ class Affordability:
         return self.verdict in (AFFORDABLE, TOO_EXPENSIVE)
 
     def to_dict(self) -> dict:
-        return {"verdict": self.verdict, "reason": self.reason,
-                "budget_s": self.budget_s,
-                "predicted_s": round(self.predicted_s, 1) if self.predicted_s else None,
-                "cycles": self.cycles, "cycles_basis": self.cycles_basis,
-                "fit": self.fit.to_dict() if self.fit else None,
-                "cheaper_engines": [{"engine": e, "predicted_s": round(s, 1)}
-                                    for e, s in self.alternatives]}
+        return {
+            "verdict": self.verdict,
+            "reason": self.reason,
+            "budget_s": self.budget_s,
+            "predicted_s": round(self.predicted_s, 1) if self.predicted_s else None,
+            "cycles": self.cycles,
+            "cycles_basis": self.cycles_basis,
+            "fit": self.fit.to_dict() if self.fit else None,
+            "cheaper_engines": [{"engine": e, "predicted_s": round(s, 1)} for e, s in self.alternatives],
+        }
 
 
 # --- reading the measurements ---------------------------------------------------------------------
+
 
 def _split_tokens(value: str) -> set[str]:
     """``value`` broken into lowercase tokens on its delimiters. Structural, no pattern matching."""
@@ -238,7 +272,7 @@ def _engine_vocabulary() -> "tuple[tuple[str, ...], frozenset[str]]":
         from .capsule_runner import _TIER_SIM
 
         not_an_engine |= {str(k).lower() for k in _TIER_SIM}
-    except Exception:                              # noqa: BLE001 - an unimportable map is no vocabulary
+    except Exception:  # noqa: BLE001 - an unimportable map is no vocabulary
         pass
     return ENGINE_PRIORITY, frozenset(not_an_engine)
 
@@ -320,6 +354,7 @@ def _result_roots(target: str, roots: Iterable[Path] | None) -> list[Path]:
     if roots is not None:
         return [Path(r) for r in roots]
     from merlin.common.paths import artifacts_dir, runs_dir
+
     return [artifacts_dir() / "capsule-bench" / str(target), runs_dir() / str(target)]
 
 
@@ -343,7 +378,7 @@ def _scan(target: str, roots: Iterable[Path] | None = None) -> tuple[list[Sample
             try:
                 doc = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-                continue                       # unreadable is not a measurement
+                continue  # unreadable is not a measurement
             if not isinstance(doc, dict):
                 continue
             name = doc.get("capsule")
@@ -376,10 +411,17 @@ def _scan(target: str, roots: Iterable[Path] | None = None) -> tuple[list[Sample
                     no_cyc += 1
                 if not (ok_s and ok_c):
                     continue
-                out.append(Sample(capsule=str(name), tier=str(tier_name),
-                                  engine=_engine_key(rec), seconds=float(seconds),
-                                  cycles=int(cycles), functional_cycles=functional,
-                                  source=str(path)))
+                out.append(
+                    Sample(
+                        capsule=str(name),
+                        tier=str(tier_name),
+                        engine=_engine_key(rec),
+                        seconds=float(seconds),
+                        cycles=int(cycles),
+                        functional_cycles=functional,
+                        source=str(path),
+                    )
+                )
     return out, IntakeCensus(records=seen, no_seconds=no_secs, no_cycles=no_cyc, usable=len(out))
 
 
@@ -397,7 +439,7 @@ def _ordinary_least_squares(xs: list[int], ys: list[float]) -> "tuple[float, flo
     mean_y = sum(ys) / n
     denom = sum((x - mean_x) ** 2 for x in xs)
     if denom <= 0:
-        return None                            # a line through one x tells you nothing
+        return None  # a line through one x tells you nothing
     slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys)) / denom
     intercept = mean_y - slope * mean_x
     ss_tot = sum((y - mean_y) ** 2 for y in ys)
@@ -424,8 +466,9 @@ def _cache_key(target: str, roots) -> tuple:
     return (str(target), tuple(sorted(str(r) for r in roots)) if roots is not None else None)
 
 
-def _build(target: str, roots) -> tuple[dict[tuple[str, str], CycleCostFit],
-                                        dict[tuple[str, str, str], int], IntakeCensus]:
+def _build(
+    target: str, roots
+) -> tuple[dict[tuple[str, str], CycleCostFit], dict[tuple[str, str, str], int], IntakeCensus]:
     """Fit every ``(tier, engine)`` bucket, index each capsule's largest measured cycle count, and
     carry the intake census so a refusal can name what the records lacked."""
     buckets: dict[tuple[str, str], list[Sample]] = {}
@@ -445,23 +488,32 @@ def _build(target: str, roots) -> tuple[dict[tuple[str, str], CycleCostFit],
         xs = [s.cycles for s in bucket_samples]
         ys = [s.seconds for s in bucket_samples]
         if len(xs) < MIN_SAMPLES or len(set(xs)) < 2:
-            continue                           # too little to fit; the caller gets UNKNOWN
+            continue  # too little to fit; the caller gets UNKNOWN
         line = _ordinary_least_squares(xs, ys)
         if line is None:
             continue
         intercept, slope, r2 = line
         ratios = [s.cycles / s.functional_cycles for s in bucket_samples if s.functional_cycles]
         fits[(tier, engine)] = CycleCostFit(
-            target=str(target), tier=tier, engine=engine, intercept_s=intercept,
-            per_cycle_s=slope, r2=r2, n_samples=len(xs), cycles_min=min(xs), cycles_max=max(xs),
+            target=str(target),
+            tier=tier,
+            engine=engine,
+            intercept_s=intercept,
+            per_cycle_s=slope,
+            r2=r2,
+            n_samples=len(xs),
+            cycles_min=min(xs),
+            cycles_max=max(xs),
             functional_ratio=statistics.median(ratios) if ratios else None,
             n_ratio_samples=len(ratios),
-            sources=tuple(sorted({s.source for s in bucket_samples})))
+            sources=tuple(sorted({s.source for s in bucket_samples})),
+        )
     return fits, cycles, census
 
 
-def fits_for(target: str, *, roots=None, tier: str | None = None,
-             engine: str | None = None) -> dict[tuple[str, str], CycleCostFit]:
+def fits_for(
+    target: str, *, roots=None, tier: str | None = None, engine: str | None = None
+) -> dict[tuple[str, str], CycleCostFit]:
     """``(tier, engine) -> CycleCostFit`` for every bucket with a measured basis.
 
     An EMPTY mapping is a real answer and the caller must honour it: a target with no certification
@@ -502,14 +554,13 @@ def intake_census(target: str, *, roots=None) -> IntakeCensus:
     with _LOCK:
         cached = _CENSUS_CACHE.get(key)
     if cached is None:
-        fits_for(target, roots=roots)          # populates every cache for this key
+        fits_for(target, roots=roots)  # populates every cache for this key
         with _LOCK:
             cached = _CENSUS_CACHE.get(key)
     return cached or IntakeCensus()
 
 
-def fit_for(target: str, tier: str, *, engine: str | None = None,
-            roots=None) -> "CycleCostFit | None":
+def fit_for(target: str, tier: str, *, engine: str | None = None, roots=None) -> "CycleCostFit | None":
     """The single most EXPENSIVE measured fit for ``tier``, or ``None`` when nothing was measured.
 
     The most expensive rather than the cheapest, because this answers "may this capsule be allowed to
@@ -522,14 +573,15 @@ def fit_for(target: str, tier: str, *, engine: str | None = None,
     return max(fits.values(), key=lambda f: (f.per_cycle_s, f.intercept_s, f.engine))
 
 
-def measured_cycles(target: str, capsule: str, tier: str, *, engine: str | None = None,
-                    roots=None) -> "tuple[int | None, str | None]":
+def measured_cycles(
+    target: str, capsule: str, tier: str, *, engine: str | None = None, roots=None
+) -> "tuple[int | None, str | None]":
     """``(cycles, engine_key)``: the largest cycle count ``capsule`` has measured at ``tier``.
 
     The strongest cycle basis there is -- this capsule's own history on this tier -- and it is free,
     because the runs that produced it are already on disk.
     """
-    fits_for(target, roots=roots)               # populate the cycles index alongside the fits
+    fits_for(target, roots=roots)  # populate the cycles index alongside the fits
     with _LOCK:
         index = dict(_CYCLES_CACHE.get(_cache_key(target, roots)) or {})
     want = str(engine).strip().lower() if engine else None
@@ -554,9 +606,18 @@ def measured_functional_cycles(target: str, capsule: str, *, roots=None) -> "int
 
 # --- the decision ---------------------------------------------------------------------------------
 
-def affordability(target: str, tier: str, *, budget_s: float | None, capsule: str | None = None,
-                  cycles: int | None = None, functional_cycles: int | None = None,
-                  engine: str | None = None, roots=None) -> Affordability:
+
+def affordability(
+    target: str,
+    tier: str,
+    *,
+    budget_s: float | None,
+    capsule: str | None = None,
+    cycles: int | None = None,
+    functional_cycles: int | None = None,
+    engine: str | None = None,
+    roots=None,
+) -> Affordability:
     """Can ``tier`` be afforded for this capsule inside ``budget_s``?
 
     Cycle basis, strongest first, and the one used is NAMED in the result:
@@ -570,8 +631,11 @@ def affordability(target: str, tier: str, *, budget_s: float | None, capsule: st
     ``TOO_EXPENSIVE``. So is the absence of a fit, and so is a cycle count outside the fitted range.
     """
     if budget_s is None or budget_s <= 0:
-        return Affordability(UNKNOWN, "no certification budget was declared, so affordability is not "
-                                      "a question this can answer", budget_s=budget_s)
+        return Affordability(
+            UNKNOWN,
+            "no certification budget was declared, so affordability is not a question this can answer",
+            budget_s=budget_s,
+        )
     fit = fit_for(target, tier, engine=engine, roots=roots)
     if fit is None:
         every = fits_for(target, roots=roots)
@@ -583,19 +647,24 @@ def affordability(target: str, tier: str, *, budget_s: float | None, capsule: st
                 # The distinction this branch exists to make: the disk is NOT empty. Saying it is
                 # sends a reader hunting for runs that already ran, and blames the target for a gap
                 # in what the runner wrote down.
-                basis_note = (f"; this target HAS {census.records} cycle-accurate record(s) on disk "
-                              f"but none is usable for a fit ({census.shortfall()}), so the blocker "
-                              f"is the recorded fields, not a missing run")
+                basis_note = (
+                    f"; this target HAS {census.records} cycle-accurate record(s) on disk "
+                    f"but none is usable for a fit ({census.shortfall()}), so the blocker "
+                    f"is the recorded fields, not a missing run"
+                )
             else:
                 basis_note = "; this target has no cycle-accurate run on disk to fit"
         return Affordability(
             UNKNOWN,
-            (f"no measured certification cost for tier {tier} on this target"
-             + (f" for engine {engine!r}" if engine else "")
-             + basis_note
-             + f". A fit needs at least {MIN_SAMPLES} samples at two distinct cycle counts; UNKNOWN is "
-               "reported rather than assuming the tier is affordable."),
-            budget_s=budget_s)
+            (
+                f"no measured certification cost for tier {tier} on this target"
+                + (f" for engine {engine!r}" if engine else "")
+                + basis_note
+                + f". A fit needs at least {MIN_SAMPLES} samples at two distinct cycle counts; UNKNOWN is "
+                "reported rather than assuming the tier is affordable."
+            ),
+            budget_s=budget_s,
+        )
 
     basis: str | None = None
     if cycles and cycles > 0:
@@ -611,35 +680,60 @@ def affordability(target: str, tier: str, *, budget_s: float | None, capsule: st
                 fc = measured_functional_cycles(target, capsule, roots=roots)
             cycles, basis = fit.scale_functional(fc)
             if not cycles:
-                return Affordability(UNKNOWN,
-                                     f"cannot establish a cycle count for this capsule at {tier}: "
-                                     f"{basis}. UNKNOWN rather than a guess -- an unpriced capsule is "
-                                     f"neither affordable nor capped.",
-                                     budget_s=budget_s, fit=fit)
+                return Affordability(
+                    UNKNOWN,
+                    f"cannot establish a cycle count for this capsule at {tier}: "
+                    f"{basis}. UNKNOWN rather than a guess -- an unpriced capsule is "
+                    f"neither affordable nor capped.",
+                    budget_s=budget_s,
+                    fit=fit,
+                )
 
     predicted = fit.predict(cycles)
     if predicted is None:
         return Affordability(
             UNKNOWN,
-            (f"{cycles} cycles is beyond the measured range for {tier}/{fit.engine} "
-             f"({fit.cycles_min}..{fit.cycles_max} cycles, x{EXTRAPOLATION_MARGIN:g} extrapolation "
-             f"margin), so the cost is UNKNOWN rather than extrapolated"),
-            budget_s=budget_s, cycles=cycles, cycles_basis=basis, fit=fit)
+            (
+                f"{cycles} cycles is beyond the measured range for {tier}/{fit.engine} "
+                f"({fit.cycles_min}..{fit.cycles_max} cycles, x{EXTRAPOLATION_MARGIN:g} extrapolation "
+                f"margin), so the cost is UNKNOWN rather than extrapolated"
+            ),
+            budget_s=budget_s,
+            cycles=cycles,
+            cycles_basis=basis,
+            fit=fit,
+        )
 
     others = sorted(
-        ((f.engine, p) for (t, _e), f in fits_for(target, roots=roots, tier=tier).items()
-         if t == str(tier) and (p := f.predict(cycles)) is not None and f.engine != fit.engine),
-        key=lambda pair: pair[1])
+        (
+            (f.engine, p)
+            for (t, _e), f in fits_for(target, roots=roots, tier=tier).items()
+            if t == str(tier) and (p := f.predict(cycles)) is not None and f.engine != fit.engine
+        ),
+        key=lambda pair: pair[1],
+    )
     verdict = AFFORDABLE if predicted <= budget_s else TOO_EXPENSIVE
     if verdict == AFFORDABLE:
-        reason = (f"predicted {predicted:.0f}s at {tier}/{fit.engine} is within the declared "
-                  f"{budget_s:.0f}s budget ({basis}; fit {fit.intercept_s:.0f}s + "
-                  f"{fit.per_cycle_s:.5f}s/cycle, r2={fit.r2:.2f}, n={fit.n_samples})")
+        reason = (
+            f"predicted {predicted:.0f}s at {tier}/{fit.engine} is within the declared "
+            f"{budget_s:.0f}s budget ({basis}; fit {fit.intercept_s:.0f}s + "
+            f"{fit.per_cycle_s:.5f}s/cycle, r2={fit.r2:.2f}, n={fit.n_samples})"
+        )
     else:
         cheaper = ", ".join(f"{e}: {p:.0f}s" for e, p in others if p <= budget_s)
-        reason = (f"predicted {predicted:.0f}s at {tier}/{fit.engine} exceeds the declared "
-                  f"{budget_s:.0f}s budget ({basis}; fit {fit.intercept_s:.0f}s + "
-                  f"{fit.per_cycle_s:.5f}s/cycle, r2={fit.r2:.2f}, n={fit.n_samples})"
-                  + (f"; would fit on {cheaper}" if cheaper else ""))
-    return Affordability(verdict, reason, budget_s=budget_s, predicted_s=predicted, cycles=cycles,
-                         cycles_basis=basis, fit=fit, alternatives=tuple(others))
+        reason = (
+            f"predicted {predicted:.0f}s at {tier}/{fit.engine} exceeds the declared "
+            f"{budget_s:.0f}s budget ({basis}; fit {fit.intercept_s:.0f}s + "
+            f"{fit.per_cycle_s:.5f}s/cycle, r2={fit.r2:.2f}, n={fit.n_samples})"
+            + (f"; would fit on {cheaper}" if cheaper else "")
+        )
+    return Affordability(
+        verdict,
+        reason,
+        budget_s=budget_s,
+        predicted_s=predicted,
+        cycles=cycles,
+        cycles_basis=basis,
+        fit=fit,
+        alternatives=tuple(others),
+    )

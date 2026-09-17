@@ -26,6 +26,7 @@ to be trusted -- and REFUSES when the two disagree, because a concurrency readin
 you drop the unreliable spans was measuring the flush. On the two runs checked the two agree to
 within 0.3% (2206 s vs 2201 s; 1239 s vs 1236 s), so the overlap those runs show is real.
 """
+
 from __future__ import annotations
 
 import json
@@ -134,6 +135,7 @@ class SpanSet:
 #: heredoc can carry an entire program and none of that is attribution.
 DETAIL_CHARS = 4000
 
+
 def _stamp(value) -> float | None:
     if not isinstance(value, str) or not value:
         return None
@@ -191,8 +193,8 @@ def _from_transcript(paths: Sequence[Path]) -> tuple[list[Span], int, int, int, 
             if t is None:
                 content_blocks = (evt.get("message") or {}).get("content")
                 if isinstance(content_blocks, list) and any(
-                        isinstance(b, dict) and b.get("type") in ("tool_use", "tool_result")
-                        for b in content_blocks):
+                    isinstance(b, dict) and b.get("type") in ("tool_use", "tool_result") for b in content_blocks
+                ):
                     unstamped += 1
                 continue
             if t0 is None:
@@ -212,8 +214,7 @@ def _from_transcript(paths: Sequence[Path]) -> tuple[list[Span], int, int, int, 
                     # tool a generic shell call actually ran, and dropping it makes every
                     # `Bash` span indistinguishable from every other.
                     payload = block.get("input") if isinstance(block.get("input"), dict) else {}
-                    detail = str(payload.get("command") or payload.get("file_path")
-                                 or payload.get("pattern") or "")
+                    detail = str(payload.get("command") or payload.get("file_path") or payload.get("pattern") or "")
                     open_calls[cid] = (rel, str(block.get("name") or ""), detail)
                 elif block.get("type") == "tool_result":
                     cid = str(block.get("tool_use_id") or "")
@@ -250,8 +251,7 @@ def _from_raw_items(paths: Sequence[Path]) -> tuple[list[Span], int]:
             if not iid:
                 continue
             if inner.get("type") == ITEM_STARTED:
-                open_items[iid] = (rel, str(item.get("type") or ""),
-                                   str(item.get("command") or "")[:DETAIL_CHARS])
+                open_items[iid] = (rel, str(item.get("type") or ""), str(item.get("command") or "")[:DETAIL_CHARS])
             elif inner.get("type") == ITEM_COMPLETED:
                 started = open_items.pop(iid, None)
                 if started is not None:
@@ -296,26 +296,39 @@ def read_spans(run_dir: Path) -> SpanSet:
         out.spans, out.source = raw_spans, SOURCE_RAW_ITEMS
         out.n_pairs, out.n_unterminated = len(raw_spans), raw_unterminated
         out.wall_s = max(s.end_s for s in raw_spans)
-        why = (f"the merged transcript carried {idless} tool_use block(s) with no id, so the "
-               f"tool_use -> tool_result join was impossible; spans recovered from the driver's own "
-               f"item.started/item.completed stream instead") if idless else (
-               "no span was recoverable from the merged transcript; spans recovered from the "
-               "driver's item.started/item.completed stream")
+        why = (
+            (
+                f"the merged transcript carried {idless} tool_use block(s) with no id, so the "
+                f"tool_use -> tool_result join was impossible; spans recovered from the driver's own "
+                f"item.started/item.completed stream instead"
+            )
+            if idless
+            else (
+                "no span was recoverable from the merged transcript; spans recovered from the "
+                "driver's item.started/item.completed stream"
+            )
+        )
         out.availability.set("spans", derived(why, source=SOURCE_RAW_ITEMS))
         return out
 
     if not transcripts and not raws:
         why = f"no transcript and no driver event stream under {run_dir.name}"
     elif unstamped and not idless:
-        why = (f"{unstamped} tool event(s) are joinable but carry no time field at all — this "
-               f"driver's transcripts record what happened and not when, so no reader can place "
-               f"them on a clock. Fixing it means stamping events on arrival at capture time")
+        why = (
+            f"{unstamped} tool event(s) are joinable but carry no time field at all — this "
+            f"driver's transcripts record what happened and not when, so no reader can place "
+            f"them on a clock. Fixing it means stamping events on arrival at capture time"
+        )
     elif idless:
-        why = (f"the merged transcript's {idless} tool_use block(s) carry no id and no driver event "
-               f"stream is present, so no tool call can be placed on a clock")
+        why = (
+            f"the merged transcript's {idless} tool_use block(s) carry no id and no driver event "
+            f"stream is present, so no tool call can be placed on a clock"
+        )
     else:
-        why = (f"{len(transcripts)} transcript(s) and {len(raws)} event stream(s) read, but no "
-               f"tool call carried a usable pair of arrival stamps")
+        why = (
+            f"{len(transcripts)} transcript(s) and {len(raws)} event stream(s) read, but no "
+            f"tool call carried a usable pair of arrival stamps"
+        )
     out.availability.set("spans", unavailable(why))
     return out
 
@@ -330,7 +343,7 @@ def _tied_end_spans(spans: Sequence[Span]) -> list[Span]:
         while j + 1 < len(live) and live[j + 1].end_s - live[i].end_s <= _END_TIE_WINDOW_S:
             j += 1
         if j - i + 1 >= _END_TIE_LIMIT:
-            flagged.extend(live[i:j + 1])
+            flagged.extend(live[i : j + 1])
         i = j + 1
     return flagged
 
@@ -378,16 +391,21 @@ def concurrency(spanset: SpanSet) -> Concurrency:
     distinguishes "these tool calls genuinely overlapped" from "the reader batched them"."""
     out = Concurrency()
     if not spanset.ok:
-        out.availability.set("concurrency", unavailable(
-            spanset.availability.get("spans").reason or "no spans to sweep"))
+        out.availability.set(
+            "concurrency", unavailable(spanset.availability.get("spans").reason or "no spans to sweep")
+        )
         return out
     if not spanset.durations_measurable:
-        out.availability.set("concurrency", unavailable(
-            f"all {len(spanset.spans)} span(s) have zero length: this driver reports a tool only "
-            f"once it has completed, so the call and its result share one stamp and no duration "
-            f"exists. Whether these calls overlapped is not answerable from this stream — reporting "
-            f"'no overlap' would state a result the data does not contain.",
-            source=spanset.source))
+        out.availability.set(
+            "concurrency",
+            unavailable(
+                f"all {len(spanset.spans)} span(s) have zero length: this driver reports a tool only "
+                f"once it has completed, so the call and its result share one stamp and no duration "
+                f"exists. Whether these calls overlapped is not answerable from this stream — reporting "
+                f"'no overlap' would state a result the data does not contain.",
+                source=spanset.source,
+            ),
+        )
         return out
 
     overlap, peak, wall = _sweep(spanset.spans)
@@ -402,21 +420,31 @@ def concurrency(spanset: SpanSet) -> Concurrency:
         share_surviving = untied_overlap / overlap
         if share_surviving < _TIED_SURVIVAL_FLOOR:
             # The overlap WAS the flush. Nothing recoverable.
-            out.availability.set("concurrency", unavailable(
-                f"{len(tied)} span(s) share an end stamp within {_END_TIE_WINDOW_S * 1000:.0f} ms and "
-                f"carry essentially all of the overlap: {overlap:.1f}s falls to {untied_overlap:.1f}s "
-                f"without them. An end stamp records when the harness READ a completion, so a pile of "
-                f"them is one flush, not simultaneous work.", source=spanset.source))
+            out.availability.set(
+                "concurrency",
+                unavailable(
+                    f"{len(tied)} span(s) share an end stamp within {_END_TIE_WINDOW_S * 1000:.0f} ms and "
+                    f"carry essentially all of the overlap: {overlap:.1f}s falls to {untied_overlap:.1f}s "
+                    f"without them. An end stamp records when the harness READ a completion, so a pile of "
+                    f"them is one flush, not simultaneous work.",
+                    source=spanset.source,
+                ),
+            )
             return out
         if share_surviving < 1.0 - _CONCURRENCY_TOLERANCE:
             # Most of the overlap is real. Report the uncontaminated figure rather than discarding a
             # run over a minority of suspect spans -- and say which figure this is.
             out.overlap_s, out.max_concurrent = untied_overlap, untied_peak
             out.overlap_share = untied_overlap / wall if wall > 0 else 0.0
-            out.availability.set("concurrency", derived(
-                f"{len(tied)} span(s) sharing an end stamp were excluded as a flush; the overlap "
-                f"reported is the {share_surviving:.0%} that survives without them "
-                f"({untied_overlap:.1f}s of {overlap:.1f}s)", source=spanset.source))
+            out.availability.set(
+                "concurrency",
+                derived(
+                    f"{len(tied)} span(s) sharing an end stamp were excluded as a flush; the overlap "
+                    f"reported is the {share_surviving:.0%} that survives without them "
+                    f"({untied_overlap:.1f}s of {overlap:.1f}s)",
+                    source=spanset.source,
+                ),
+            )
             return out
     out.overlap_s, out.max_concurrent, out.wall_s = overlap, peak, wall
     out.overlap_s_trusted, out.max_concurrent_trusted = t_overlap, t_peak
@@ -430,30 +458,43 @@ def concurrency(spanset: SpanSet) -> Concurrency:
     # run that demonstrably ran its tools one at a time.
     if t_overlap <= 0.0 and wall > 0 and overlap / wall < _NEGLIGIBLE_OVERLAP_SHARE:
         out.overlap_s, out.overlap_share, out.max_concurrent = 0.0, 0.0, out.max_concurrent_trusted
-        out.availability.set("concurrency", derived(
-            f"no overlap survives the flush check: the {overlap:.2f}s the raw sweep found is "
-            f"{overlap / wall:.3%} of a {wall / 3600:.1f}h run and comes entirely from spans shorter "
-            f"than {FLUSH_FLOOR_S * 1000:.0f} ms, so this run ran its tools serially",
-            source=spanset.source))
+        out.availability.set(
+            "concurrency",
+            derived(
+                f"no overlap survives the flush check: the {overlap:.2f}s the raw sweep found is "
+                f"{overlap / wall:.3%} of a {wall / 3600:.1f}h run and comes entirely from spans shorter "
+                f"than {FLUSH_FLOOR_S * 1000:.0f} ms, so this run ran its tools serially",
+                source=spanset.source,
+            ),
+        )
         return out
 
     drift = abs(overlap - t_overlap) / max(overlap, t_overlap, 1e-9)
     if drift > _CONCURRENCY_TOLERANCE:
-        out.availability.set("concurrency", unavailable(
-            f"the overlap reading depends on spans too short to trust: {overlap:.1f}s over all "
-            f"spans vs {t_overlap:.1f}s over spans longer than {FLUSH_FLOOR_S*1000:.0f} ms "
-            f"({drift:.0%} apart). A start and a finish read in one flush cannot be told from a "
-            f"tool call that took no time, so this run's concurrency is not measurable.",
-            source=spanset.source))
+        out.availability.set(
+            "concurrency",
+            unavailable(
+                f"the overlap reading depends on spans too short to trust: {overlap:.1f}s over all "
+                f"spans vs {t_overlap:.1f}s over spans longer than {FLUSH_FLOOR_S * 1000:.0f} ms "
+                f"({drift:.0%} apart). A start and a finish read in one flush cannot be told from a "
+                f"tool call that took no time, so this run's concurrency is not measurable.",
+                source=spanset.source,
+            ),
+        )
         return out
     # A transcript-sourced sweep is a direct measurement. A raw-stream one is DERIVED: it survived
     # the flush check, which is what makes it publishable, but it is reconstructed rather than read.
     if spanset.source == SOURCE_TRANSCRIPT:
         out.availability.set("concurrency", measured(spanset.source))
     else:
-        out.availability.set("concurrency", derived(
-            f"overlap is stable when flush-suspect spans are dropped ({overlap:.1f}s vs "
-            f"{t_overlap:.1f}s, {drift:.1%} apart)", source=spanset.source))
+        out.availability.set(
+            "concurrency",
+            derived(
+                f"overlap is stable when flush-suspect spans are dropped ({overlap:.1f}s vs "
+                f"{t_overlap:.1f}s, {drift:.1%} apart)",
+                source=spanset.source,
+            ),
+        )
     return out
 
 

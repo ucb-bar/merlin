@@ -14,6 +14,7 @@ The authority is ``torch.Tag.core``, which torch stamps on the overloads that su
 
 Prints one JSON object on stdout: ``{"torch": version, "n_core": int, "ops": [...]}``.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,7 +33,7 @@ def core_opset() -> dict:
             continue
         try:
             names = list(overloads())
-        except Exception:                          # noqa: BLE001 -- a packet with no overloads is not an op
+        except Exception:  # noqa: BLE001 -- a packet with no overloads is not an op
             continue
         for overload in names:
             op = getattr(packet, overload, None)
@@ -47,17 +48,23 @@ def core_opset() -> dict:
     decomposed = set()
     try:
         from torch._decomp import core_aten_decompositions
+
         decomposed = {str(k) for k in core_aten_decompositions()}
-    except Exception:                              # noqa: BLE001 -- absent table is not an empty one
+    except Exception:  # noqa: BLE001 -- absent table is not an empty one
         decomposed = set()
-    return {"torch": torch.__version__, "n_core": len(ops), "ops": sorted(ops),
-            "n_decomposed": len(decomposed), "decomposed": sorted(decomposed)}
+    return {
+        "torch": torch.__version__,
+        "n_core": len(ops),
+        "ops": sorted(ops),
+        "n_decomposed": len(decomposed),
+        "decomposed": sorted(decomposed),
+    }
 
 
 def main(argv=None) -> int:
     try:
         print(json.dumps(core_opset()))
-    except Exception as exc:                       # noqa: BLE001 -- report, never a partial opset
+    except Exception as exc:  # noqa: BLE001 -- report, never a partial opset
         print(json.dumps({"error": f"{type(exc).__name__}: {exc}"}), file=sys.stderr)
         return 1
     return 0

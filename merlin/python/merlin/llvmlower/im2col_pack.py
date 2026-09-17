@@ -102,6 +102,7 @@ NOT MEASURED ON HARDWARE. The layout change is verified on the emitted code (the
 advance in the linked ELF's K loops) and the numerics are verified by output digest; no wall-clock
 claim is made here.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -138,9 +139,11 @@ class PackReport:
         self.refusals[reason] = self.refusals.get(reason, 0) + 1
 
     def to_dict(self) -> dict[str, Any]:
-        return {"packed": self.packed,
-                "entries": [[k, mr, nr] for k, mr, nr in self.entries],
-                "refusals": dict(sorted(self.refusals.items()))}
+        return {
+            "packed": self.packed,
+            "entries": [[k, mr, nr] for k, mr, nr in self.entries],
+            "refusals": dict(sorted(self.refusals.items())),
+        }
 
 
 # --------------------------------------------------------------------------------------------------
@@ -214,8 +217,11 @@ def _is_copy_body(op) -> bool:
 
 
 def _identity(map_, rank: int) -> bool:
-    return (map_.num_dims == rank and len(map_.results) == rank
-            and all(_dim_pos(r) == i for i, r in enumerate(map_.results)))
+    return (
+        map_.num_dims == rank
+        and len(map_.results) == rank
+        and all(_dim_pos(r) == i for i, r in enumerate(map_.results))
+    )
 
 
 def _reassoc(groups: "list[list[int]]"):
@@ -293,7 +299,7 @@ def _match_im2col(op, report: PackReport) -> "_Match | None":
 
     gshape = _static_shape(col6)
     if gshape is None or len(gshape) != 6:
-        report.refuse("refused_not_im2col")           # grouped im2col is rank 7 and lands here
+        report.refuse("refused_not_im2col")  # grouped im2col is rank 7 and lands here
         return None
     if len(gather.inputs) != 1 or len(gather.outputs) != 1:
         report.refuse("refused_not_im2col")
@@ -339,10 +345,25 @@ def _match_im2col(op, report: PackReport) -> "_Match | None":
     if ashape[1] != k or cshape != [ashape[0], m]:
         report.refuse("refused_not_im2col")
         return None
-    return _Match(contraction=op, gather=gather, collapse=collapse, expand=expand,
-                  n=n, oh=oh, ow=ow, channels=channels, kh=kh, kw=kw,
-                  sh=hterm[0], dh=hterm[1], sw=wterm[0], dw=wterm[1],
-                  f=ashape[0], k=k, m=m)
+    return _Match(
+        contraction=op,
+        gather=gather,
+        collapse=collapse,
+        expand=expand,
+        n=n,
+        oh=oh,
+        ow=ow,
+        channels=channels,
+        kh=kh,
+        kw=kw,
+        sh=hterm[0],
+        dh=hterm[1],
+        sw=wterm[0],
+        dw=wterm[1],
+        f=ashape[0],
+        k=k,
+        m=m,
+    )
 
 
 # --------------------------------------------------------------------------------------------------
@@ -364,9 +385,7 @@ def _matmul_maps():
     from xdsl.ir.affine import AffineExpr, AffineMap
 
     d = AffineExpr.dimension
-    return [AffineMap(3, 0, (d(0), d(2))),
-            AffineMap(3, 0, (d(2), d(1))),
-            AffineMap(3, 0, (d(0), d(1)))]
+    return [AffineMap(3, 0, (d(0), d(2))), AffineMap(3, 0, (d(2), d(1))), AffineMap(3, 0, (d(0), d(1)))]
 
 
 def _dyn_slice_props(rank: int, dyn_dim: int, sizes: "list[int]"):
@@ -378,19 +397,21 @@ def _dyn_slice_props(rank: int, dyn_dim: int, sizes: "list[int]"):
     # MLIR's ShapedType::kDynamic sentinel, taken from the xDSL op that names it rather than written
     # out as a literal here (one spelling of the constant, in the library that has to agree with MLIR).
     offsets[dyn_dim] = ExpandShapeOp.DYNAMIC_INDEX
-    return {"static_offsets": DenseArrayBase.from_list(i64, offsets),
-            "static_sizes": DenseArrayBase.from_list(i64, sizes),
-            "static_strides": DenseArrayBase.from_list(i64, [1] * rank)}
+    return {
+        "static_offsets": DenseArrayBase.from_list(i64, offsets),
+        "static_sizes": DenseArrayBase.from_list(i64, sizes),
+        "static_strides": DenseArrayBase.from_list(i64, [1] * rank),
+    }
 
 
 def _rewrite_one(mt: _Match, nr: int, *, parallel_panels: bool = False) -> None:
     """Replace the matched chain in place with the panel-packed one."""
     from xdsl.dialects.arith import ConstantOp
     from xdsl.dialects.builtin import AffineMapAttr, IndexType, IntegerAttr, TensorType, i64
-    from xdsl.dialects.linalg.ops import (GenericOp, IteratorType, IteratorTypeAttr, YieldOp)
-    from xdsl.dialects.scf import ForOp, YieldOp as ScfYieldOp
-    from xdsl.dialects.tensor import (CollapseShapeOp, EmptyOp, ExpandShapeOp, ExtractSliceOp,
-                                      InsertSliceOp)
+    from xdsl.dialects.linalg.ops import GenericOp, IteratorType, IteratorTypeAttr, YieldOp
+    from xdsl.dialects.scf import ForOp
+    from xdsl.dialects.scf import YieldOp as ScfYieldOp
+    from xdsl.dialects.tensor import CollapseShapeOp, EmptyOp, ExpandShapeOp, ExtractSliceOp, InsertSliceOp
     from xdsl.ir import Block, Region
     from xdsl.ir.affine import AffineExpr, AffineMap
     from xdsl.rewriter import InsertPoint, Rewriter
@@ -409,17 +430,24 @@ def _rewrite_one(mt: _Match, nr: int, *, parallel_panels: bool = False) -> None:
     g_empty = EmptyOp([], packed_col_t)
     gblk = Block(arg_types=[col_elem, col_elem])
     gblk.add_op(YieldOp(gblk.args[0]))
-    in_map = AffineMap(7, 0, (
-        d(0),                                              # n
-        d(3),                                              # c
-        d(1) * mt.sh + d(4) * mt.dh,                        # oh*sh + kh*dh
-        d(2) * (mt.sw * nr) + d(6) * mt.sw + d(5) * mt.dw,  # (owo*NR + owi)*sw + kw*dw
-    ))
+    in_map = AffineMap(
+        7,
+        0,
+        (
+            d(0),  # n
+            d(3),  # c
+            d(1) * mt.sh + d(4) * mt.dh,  # oh*sh + kh*dh
+            d(2) * (mt.sw * nr) + d(6) * mt.sw + d(5) * mt.dw,  # (owo*NR + owi)*sw + kw*dw
+        ),
+    )
     new_gather = GenericOp(
-        inputs=[mt.gather.inputs[0]], outputs=[g_empty.results[0]], body=Region(gblk),
-        indexing_maps=[AffineMapAttr(in_map),
-                       AffineMapAttr(AffineMap(7, 0, tuple(d(i) for i in range(7))))],
-        iterator_types=[par] * 7, result_types=[packed_col_t])
+        inputs=[mt.gather.inputs[0]],
+        outputs=[g_empty.results[0]],
+        body=Region(gblk),
+        indexing_maps=[AffineMapAttr(in_map), AffineMapAttr(AffineMap(7, 0, tuple(d(i) for i in range(7))))],
+        iterator_types=[par] * 7,
+        result_types=[packed_col_t],
+    )
     for key, val in mt.gather.attributes.items():
         new_gather.attributes[key] = val
     new_gather.attributes[PANEL_ATTR] = IntegerAttr(nr, i64)
@@ -428,7 +456,8 @@ def _rewrite_one(mt: _Match, nr: int, *, parallel_panels: bool = False) -> None:
     packed_col = CollapseShapeOp(
         operands=[new_gather.results[0]],
         result_types=[TensorType(col_elem, [mo, mt.k, nr])],
-        properties={"reassociation": _reassoc([[0, 1, 2], [3, 4, 5], [6]])})
+        properties={"reassociation": _reassoc([[0, 1, 2], [3, 4, 5], [6]])},
+    )
 
     Rewriter.insert_op([g_empty, new_gather, packed_col], InsertPoint.before(mt.gather))
 
@@ -437,8 +466,7 @@ def _rewrite_one(mt: _Match, nr: int, *, parallel_panels: bool = False) -> None:
     # zero init is reused rather than re-derived (a contraction reading an unfilled accumulator is a
     # defect this repo has already shipped once).
     acc_t = TensorType(acc_elem, [mt.f, mo, nr])
-    acc = ExpandShapeOp(mt.contraction.outputs[0], [], _reassoc([[0], [1, 2]]),
-                        [mt.f, mo, nr], acc_t)
+    acc = ExpandShapeOp(mt.contraction.outputs[0], [], _reassoc([[0], [1, 2]]), [mt.f, mo, nr], acc_t)
     lb = ConstantOp(IntegerAttr(0, idx), idx)
     ub = ConstantOp(IntegerAttr(mo, idx), idx)
     step = ConstantOp(IntegerAttr(1, idx), idx)
@@ -448,23 +476,31 @@ def _rewrite_one(mt: _Match, nr: int, *, parallel_panels: bool = False) -> None:
     panel_t = TensorType(col_elem, [mt.k, nr])
     tile_t = TensorType(acc_elem, [mt.f, nr])
     panel = ExtractSliceOp.build(
-        operands=[packed_col.results[0], [ivar], [], []], result_types=[panel_t],
-        properties=_dyn_slice_props(3, 0, [1, mt.k, nr]))
+        operands=[packed_col.results[0], [ivar], [], []],
+        result_types=[panel_t],
+        properties=_dyn_slice_props(3, 0, [1, mt.k, nr]),
+    )
     tile = ExtractSliceOp.build(
-        operands=[carried, [ivar], [], []], result_types=[tile_t],
-        properties=_dyn_slice_props(3, 1, [mt.f, 1, nr]))
+        operands=[carried, [ivar], [], []], result_types=[tile_t], properties=_dyn_slice_props(3, 1, [mt.f, 1, nr])
+    )
     inner = GenericOp(
-        inputs=[mt.contraction.inputs[0], panel.results[0]], outputs=[tile.results[0]],
+        inputs=[mt.contraction.inputs[0], panel.results[0]],
+        outputs=[tile.results[0]],
         body=mt.contraction.body.clone(),
         indexing_maps=[AffineMapAttr(mp) for mp in _matmul_maps()],
-        iterator_types=[par, par, red], result_types=[tile_t])
+        iterator_types=[par, par, red],
+        result_types=[tile_t],
+    )
     for key, val in mt.contraction.attributes.items():
         inner.attributes[key] = val
     inner.attributes[PANEL_ATTR] = IntegerAttr(nr, i64)
     put = InsertSliceOp.build(
-        operands=[inner.results[0], carried, [ivar], [], []], result_types=[acc_t],
-        properties=_dyn_slice_props(3, 1, [mt.f, 1, nr]))
+        operands=[inner.results[0], carried, [ivar], [], []],
+        result_types=[acc_t],
+        properties=_dyn_slice_props(3, 1, [mt.f, 1, nr]),
+    )
     from .panel_parallel import marker_ops
+
     markers = marker_ops(parallel_panels, mo)
     body.add_ops([*markers, panel, tile, inner, put, ScfYieldOp(put.results[0])])
     loop = ForOp(lb.results[0], ub.results[0], step.results[0], [acc.results[0]], Region(body))
@@ -472,7 +508,8 @@ def _rewrite_one(mt: _Match, nr: int, *, parallel_panels: bool = False) -> None:
     out = CollapseShapeOp(
         operands=[loop.results[0]],
         result_types=[TensorType(acc_elem, [mt.f, mt.m])],
-        properties={"reassociation": _reassoc([[0], [1, 2]])})
+        properties={"reassociation": _reassoc([[0], [1, 2]])},
+    )
     Rewriter.insert_op([acc, lb, ub, step, loop, out], InsertPoint.before(mt.contraction))
 
     mt.contraction.results[0].replace_all_uses_with(out.results[0])
@@ -502,17 +539,24 @@ def _spatial_panel_gather(mt: _Match, panel_count: int, width: int, first_ow: in
     empty = EmptyOp([], gather_t)
     block = Block(arg_types=[col_elem, col_elem])
     block.add_op(YieldOp(block.args[0]))
-    in_map = AffineMap(7, 0, (
-        d(0),
-        d(3),
-        d(1) * mt.sh + d(4) * mt.dh,
-        (first_ow + d(2) * width + d(6)) * mt.sw + d(5) * mt.dw,
-    ))
+    in_map = AffineMap(
+        7,
+        0,
+        (
+            d(0),
+            d(3),
+            d(1) * mt.sh + d(4) * mt.dh,
+            (first_ow + d(2) * width + d(6)) * mt.sw + d(5) * mt.dw,
+        ),
+    )
     gather = GenericOp(
-        inputs=[mt.gather.inputs[0]], outputs=[empty.results[0]], body=Region(block),
-        indexing_maps=[AffineMapAttr(in_map),
-                       AffineMapAttr(AffineMap(7, 0, tuple(d(i) for i in range(7))))],
-        iterator_types=[par] * 7, result_types=[gather_t])
+        inputs=[mt.gather.inputs[0]],
+        outputs=[empty.results[0]],
+        body=Region(block),
+        indexing_maps=[AffineMapAttr(in_map), AffineMapAttr(AffineMap(7, 0, tuple(d(i) for i in range(7))))],
+        iterator_types=[par] * 7,
+        result_types=[gather_t],
+    )
     for key, val in mt.gather.attributes.items():
         gather.attributes[key] = val
     gather.attributes[PANEL_ATTR] = IntegerAttr(width, i64)
@@ -520,23 +564,33 @@ def _spatial_panel_gather(mt: _Match, panel_count: int, width: int, first_ow: in
     collapsed = CollapseShapeOp(
         operands=[gather.results[0]],
         result_types=[TensorType(col_elem, [panels, mt.k, width])],
-        properties={"reassociation": _reassoc([[0, 1, 2], [3, 4, 5], [6]])})
+        properties={"reassociation": _reassoc([[0, 1, 2], [3, 4, 5], [6]])},
+    )
     return [empty, gather, collapsed], collapsed.results[0]
 
 
-def _spatial_panel_loop(mt: _Match, packed, initial_acc, *, panels: int,
-                        panels_per_row: int, width: int, first_ow: int,
-                        parallel_panels: bool):
+def _spatial_panel_loop(
+    mt: _Match,
+    packed,
+    initial_acc,
+    *,
+    panels: int,
+    panels_per_row: int,
+    width: int,
+    first_ow: int,
+    parallel_panels: bool,
+):
     """Contract packed panels into their unpadded positions in the original ``[F, M]`` result.
 
     The quotient/remainder is evaluated once per panel, never in the K loop or the gather element
     loop.  Consequently a non-divisible output width retains the full-width kernel for its complete
     panels and uses one narrower kernel only for each row's remainder.
     """
-    from xdsl.dialects.arith import (AddiOp, ConstantOp, DivUIOp, MuliOp, RemUIOp)
+    from xdsl.dialects.arith import AddiOp, ConstantOp, DivUIOp, MuliOp, RemUIOp
     from xdsl.dialects.builtin import AffineMapAttr, IndexType, IntegerAttr, TensorType, i64
     from xdsl.dialects.linalg.ops import GenericOp, IteratorType, IteratorTypeAttr
-    from xdsl.dialects.scf import ForOp, YieldOp as ScfYieldOp
+    from xdsl.dialects.scf import ForOp
+    from xdsl.dialects.scf import YieldOp as ScfYieldOp
     from xdsl.dialects.tensor import ExtractSliceOp, InsertSliceOp
     from xdsl.ir import Block, Region
 
@@ -581,23 +635,29 @@ def _spatial_panel_loop(mt: _Match, packed, initial_acc, *, panels: int,
     panel_t = TensorType(col_elem, [mt.k, width])
     tile_t = TensorType(acc_elem, [mt.f, width])
     panel = ExtractSliceOp.build(
-        operands=[packed, [ivar], [], []], result_types=[panel_t],
-        properties=_dyn_slice_props(3, 0, [1, mt.k, width]))
+        operands=[packed, [ivar], [], []], result_types=[panel_t], properties=_dyn_slice_props(3, 0, [1, mt.k, width])
+    )
     tile = ExtractSliceOp.build(
-        operands=[carried, [offset], [], []], result_types=[tile_t],
-        properties=_dyn_slice_props(2, 1, [mt.f, width]))
+        operands=[carried, [offset], [], []], result_types=[tile_t], properties=_dyn_slice_props(2, 1, [mt.f, width])
+    )
     inner = GenericOp(
-        inputs=[mt.contraction.inputs[0], panel.results[0]], outputs=[tile.results[0]],
+        inputs=[mt.contraction.inputs[0], panel.results[0]],
+        outputs=[tile.results[0]],
         body=mt.contraction.body.clone(),
         indexing_maps=[AffineMapAttr(mp) for mp in _matmul_maps()],
-        iterator_types=[par, par, red], result_types=[tile_t])
+        iterator_types=[par, par, red],
+        result_types=[tile_t],
+    )
     for key, val in mt.contraction.attributes.items():
         inner.attributes[key] = val
     inner.attributes[PANEL_ATTR] = IntegerAttr(width, i64)
     put = InsertSliceOp.build(
-        operands=[inner.results[0], carried, [offset], [], []], result_types=[acc_t],
-        properties=_dyn_slice_props(2, 1, [mt.f, width]))
+        operands=[inner.results[0], carried, [offset], [], []],
+        result_types=[acc_t],
+        properties=_dyn_slice_props(2, 1, [mt.f, width]),
+    )
     from .panel_parallel import marker_ops
+
     markers = marker_ops(parallel_panels, panels)
     body.add_ops([*offset_ops, *markers, panel, tile, inner, put, ScfYieldOp(put.results[0])])
     loop = ForOp(lb.results[0], ub.results[0], step.results[0], [initial_acc], Region(body))
@@ -628,12 +688,26 @@ def _rewrite_one_with_tail(mt: _Match, nr: int, *, parallel_panels: bool = False
     if full:
         assert full_value is not None
         loop_ops, acc = _spatial_panel_loop(
-            mt, full_value, acc, panels=mt.n * mt.oh * full, panels_per_row=full,
-            width=nr, first_ow=0, parallel_panels=parallel_panels)
+            mt,
+            full_value,
+            acc,
+            panels=mt.n * mt.oh * full,
+            panels_per_row=full,
+            width=nr,
+            first_ow=0,
+            parallel_panels=parallel_panels,
+        )
         Rewriter.insert_op(loop_ops, InsertPoint.before(mt.contraction))
     tail_loop_ops, acc = _spatial_panel_loop(
-        mt, tail_value, acc, panels=mt.n * mt.oh, panels_per_row=1,
-        width=tail, first_ow=full * nr, parallel_panels=parallel_panels)
+        mt,
+        tail_value,
+        acc,
+        panels=mt.n * mt.oh,
+        panels_per_row=1,
+        width=tail,
+        first_ow=full * nr,
+        parallel_panels=parallel_panels,
+    )
     Rewriter.insert_op(tail_loop_ops, InsertPoint.before(mt.contraction))
 
     mt.contraction.results[0].replace_all_uses_with(acc)
@@ -642,8 +716,7 @@ def _rewrite_one_with_tail(mt: _Match, nr: int, *, parallel_panels: bool = False
     return tail
 
 
-def rewrite_module(module, table: "dict[str, tuple[int, int]]", *,
-                   parallel_panels: bool = False) -> PackReport:
+def rewrite_module(module, table: "dict[str, tuple[int, int]]", *, parallel_panels: bool = False) -> PackReport:
     """Pack every eligible im2col contraction in ``module`` (mutated in place).
 
     ``table`` is the per-op block table already derived for THIS model
@@ -688,10 +761,10 @@ def rewrite_module(module, table: "dict[str, tuple[int, int]]", *,
         if tail:
             # The remainder is a separate ordinary matmul at its true width.  Recording it is what
             # makes the caller's second block-table/tagging pass prove that this arm is schedulable.
-            report.entries.append((shape_key("linalg.matmul", (mt.f, tail), (mt.k,)),
-                                   mr, tail))
+            report.entries.append((shape_key("linalg.matmul", (mt.f, tail), (mt.k,)), mr, tail))
     if parallel_panels and report.packed:
         from .panel_parallel import ensure_marker_declaration
+
         ensure_marker_declaration(module)
     return report
 
@@ -708,9 +781,13 @@ def _accumulator_is_filled(op) -> bool:
     return isinstance(op.outputs[0].owner, FillOp)
 
 
-def rewrite_prepared_file(prepared: "str | Path", table: "dict[str, tuple[int, int]]",
-                          work: "str | Path | None" = None, *,
-                          parallel_panels: bool = False) -> "tuple[Path, PackReport]":
+def rewrite_prepared_file(
+    prepared: "str | Path",
+    table: "dict[str, tuple[int, int]]",
+    work: "str | Path | None" = None,
+    *,
+    parallel_panels: bool = False,
+) -> "tuple[Path, PackReport]":
     """Pack ``prepared`` and write ``model.bpacked.mlir``; returns ``(path, report)``.
 
     Runs in merlin's own interpreter over xDSL -- the same library that BUILT these ops in
@@ -726,8 +803,7 @@ def rewrite_prepared_file(prepared: "str | Path", table: "dict[str, tuple[int, i
     report = rewrite_module(module, table, parallel_panels=parallel_panels)
     if not report.packed:
         return prepared, report
-    out = Path(work) / "model.bpacked.mlir" if work is not None else \
-        prepared.with_name("model.bpacked.mlir")
+    out = Path(work) / "model.bpacked.mlir" if work is not None else prepared.with_name("model.bpacked.mlir")
     out.write_text(str(module), encoding="utf-8")
     return out, report
 
@@ -753,22 +829,25 @@ def ensure_registered() -> str:
     # lowering -- so implying it would re-materialize the consumed sentinel after preparation and trip
     # `_perop_sentinel_unresolved`. The requirement is enforced where it can actually be checked, in
     # `zephyr_model.prepare_for_lowering`, which refuses the combination outright.
-    register(ImprFeature(
-        name=FEATURE,
-        action_class="PASS",
-        description=(
-            "Emit the im2col column matrix panel-packed as [M/NR][K][NR] instead of [K][M], and "
-            "contract each panel with an ordinary [F,NR]xK matmul inside a panel loop. Non-divisible "
-            "output rows retain full NR panels and use one ordinary narrow matmul for the remainder, "
-            "inserting both directly into [F,M] without padding/copying the whole result. Today the "
-            "column matrix is [K][M] and K is the "
-            "innermost loop, so the B-operand pointer advances by M bytes per K step: measured on the "
-            "LINKED ELF (deepjscc int8, five K loops) the advances are exactly M bytes, so each 64-byte "
-            "line delivers NR=16 used bytes -- 4.0x cache-line amplification on the streamed operand. "
-            "Packing makes that walk contiguous, which is what a packed-panel GEMM does. NR is read "
-            "from the per-op block table (VLEN- and dtype-derived), never chosen here. A REQUEST "
-            "consumed by runtime.backends.zephyr_model.prepare_for_lowering; with it absent the block "
-            "table, the tags, the schedule and the emitted .ll are byte-identical. NOT MEASURED ON "
-            "HARDWARE -- emitted-code and output-digest evidence only."),
-    ))
+    register(
+        ImprFeature(
+            name=FEATURE,
+            action_class="PASS",
+            description=(
+                "Emit the im2col column matrix panel-packed as [M/NR][K][NR] instead of [K][M], and "
+                "contract each panel with an ordinary [F,NR]xK matmul inside a panel loop. Non-divisible "
+                "output rows retain full NR panels and use one ordinary narrow matmul for the remainder, "
+                "inserting both directly into [F,M] without padding/copying the whole result. Today the "
+                "column matrix is [K][M] and K is the "
+                "innermost loop, so the B-operand pointer advances by M bytes per K step: measured on the "
+                "LINKED ELF (deepjscc int8, five K loops) the advances are exactly M bytes, so each 64-byte "
+                "line delivers NR=16 used bytes -- 4.0x cache-line amplification on the streamed operand. "
+                "Packing makes that walk contiguous, which is what a packed-panel GEMM does. NR is read "
+                "from the per-op block table (VLEN- and dtype-derived), never chosen here. A REQUEST "
+                "consumed by runtime.backends.zephyr_model.prepare_for_lowering; with it absent the block "
+                "table, the tags, the schedule and the emitted .ll are byte-identical. NOT MEASURED ON "
+                "HARDWARE -- emitted-code and output-digest evidence only."
+            ),
+        )
+    )
     return FEATURE

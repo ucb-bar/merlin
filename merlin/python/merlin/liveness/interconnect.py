@@ -17,6 +17,7 @@ It is a *screening* model: conservative, transaction-level (not cycle-accurate),
 it cannot derive (``UNKNOWN`` findings). Every capacity/address bound is DERIVED from the target's facts,
 never a per-target literal.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -99,33 +100,48 @@ def simulate(
         max_top = max(max_top, top)
         live.update(range(base, top))
     if _uninterpretable:
-        findings.append(Finding(
-            "scratchpad-address-uninterpretable", Severity.UNKNOWN,
-            f"{_uninterpretable} MVIN destination(s) carry high bits above the {cap}-row scratchpad and "
-            "the address control-bit mask is not derivable — cannot tell an accumulator destination "
-            "from an out-of-range row, so the resident footprint is not bounded here",
-            derived_from=facts.provenance))
+        findings.append(
+            Finding(
+                "scratchpad-address-uninterpretable",
+                Severity.UNKNOWN,
+                f"{_uninterpretable} MVIN destination(s) carry high bits above the {cap}-row scratchpad and "
+                "the address control-bit mask is not derivable — cannot tell an accumulator destination "
+                "from an out-of-range row, so the resident footprint is not bounded here",
+                derived_from=facts.provenance,
+            )
+        )
     peaks["scratchpad_rows_touched"] = len(live)
     peaks["scratchpad_max_row"] = max_top
     peaks["scratchpad_rows_capacity"] = cap
     if cap is None:
-        findings.append(Finding(
-            "scratchpad-capacity", Severity.UNKNOWN,
-            "scratchpad row capacity not derivable — cannot bound the resident footprint",
-            derived_from=facts.provenance))
+        findings.append(
+            Finding(
+                "scratchpad-capacity",
+                Severity.UNKNOWN,
+                "scratchpad row capacity not derivable — cannot bound the resident footprint",
+                derived_from=facts.provenance,
+            )
+        )
     elif max_top > cap:
-        bad = [i["index"] for i in ins
-               if i.get("class") == "MVIN"
-               and isinstance((i.get("decoded") or {}).get("spad_addr"), int)
-               and (i["decoded"]["spad_addr"] + _rows(i["decoded"])) > cap][:8]
-        findings.append(Finding(
-            "scratchpad-overflow", Severity.STALL,
-            f"resident scratchpad footprint reaches row {max_top} but the target has only {cap} rows "
-            f"— loads alias/wrap or stall behind a full DMA on silicon",
-            where=f"MVIN #{bad[0]}" if bad else None,
-            derived_from=facts.provenance,
-            evidence={"max_row": max_top, "capacity_rows": cap, "instruction_indices": bad},
-            fix_hint="tile K/N smaller or evict resident tiles; the functional oracle hides this (magic memory)"))
+        bad = [
+            i["index"]
+            for i in ins
+            if i.get("class") == "MVIN"
+            and isinstance((i.get("decoded") or {}).get("spad_addr"), int)
+            and (i["decoded"]["spad_addr"] + _rows(i["decoded"])) > cap
+        ][:8]
+        findings.append(
+            Finding(
+                "scratchpad-overflow",
+                Severity.STALL,
+                f"resident scratchpad footprint reaches row {max_top} but the target has only {cap} rows "
+                f"— loads alias/wrap or stall behind a full DMA on silicon",
+                where=f"MVIN #{bad[0]}" if bad else None,
+                derived_from=facts.provenance,
+                evidence={"max_row": max_top, "capacity_rows": cap, "instruction_indices": bad},
+                fix_hint="tile K/N smaller or evict resident tiles; the functional oracle hides this (magic memory)",
+            )
+        )
 
     # ---- 1b. accumulator footprint (mask derived control bits off the acc-row address) --------------
     acc_cap = facts.accumulator_rows
@@ -144,25 +160,32 @@ def simulate(
     if acc_addrs:
         if acc_cap is None or mask is None:
             peaks["accumulator_rows_capacity"] = acc_cap
-            findings.append(Finding(
-                "accumulator-capacity", Severity.UNKNOWN,
-                "accumulator row capacity or the address control-bit mask is not derivable — cannot bound "
-                "the accumulator footprint",
-                derived_from=facts.provenance))
+            findings.append(
+                Finding(
+                    "accumulator-capacity",
+                    Severity.UNKNOWN,
+                    "accumulator row capacity or the address control-bit mask is not derivable — cannot bound "
+                    "the accumulator footprint",
+                    derived_from=facts.provenance,
+                )
+            )
         else:
             acc_rows = [a & ~mask for a in acc_addrs]
             max_acc = max(acc_rows)
             peaks["accumulator_max_row"] = max_acc
             peaks["accumulator_rows_capacity"] = acc_cap
             if max_acc >= acc_cap:
-                findings.append(Finding(
-                    "accumulator-overflow", Severity.STALL,
-                    f"accumulator row {max_acc} (control bits masked) reaches/exceeds the {acc_cap}-row "
-                    f"accumulator — output tiles alias/wrap on silicon",
-                    derived_from=facts.provenance,
-                    evidence={"max_acc_row": max_acc, "capacity_rows": acc_cap,
-                              "ctrl_mask": f"{mask:#x}"},
-                    fix_hint="commit/evict accumulator tiles sooner or tile N smaller"))
+                findings.append(
+                    Finding(
+                        "accumulator-overflow",
+                        Severity.STALL,
+                        f"accumulator row {max_acc} (control bits masked) reaches/exceeds the {acc_cap}-row "
+                        f"accumulator — output tiles alias/wrap on silicon",
+                        derived_from=facts.provenance,
+                        evidence={"max_acc_row": max_acc, "capacity_rows": acc_cap, "ctrl_mask": f"{mask:#x}"},
+                        fix_hint="commit/evict accumulator tiles sooner or tile N smaller",
+                    )
+                )
 
     # ---- 2. DRAM address-map legality of every movement transaction ---------------------------------
     base = facts.dram_base
@@ -179,29 +202,44 @@ def simulate(
             addr = dram.get("raw")
             if address_model == "pointer_args":
                 n_const += 1
-                findings.append(Finding(
-                    "dram-provenance", Severity.FAULT,
-                    f"{i.get('class')} #{i.get('index')} bakes a literal DRAM address ({addr}); the harness "
-                    f"passes each operand as a pointer argument, so a baked literal cannot match the buffer "
-                    f"the runtime allocated",
-                    where=f"#{i.get('index')}", derived_from="harness address_model=pointer_args",
-                    fix_hint="derive the DRAM address from the matching kernel argument (ptrtoint of the arg)"))
+                findings.append(
+                    Finding(
+                        "dram-provenance",
+                        Severity.FAULT,
+                        f"{i.get('class')} #{i.get('index')} bakes a literal DRAM address ({addr}); the harness "
+                        f"passes each operand as a pointer argument, so a baked literal cannot match the buffer "
+                        f"the runtime allocated",
+                        where=f"#{i.get('index')}",
+                        derived_from="harness address_model=pointer_args",
+                        fix_hint="derive the DRAM address from the matching kernel argument (ptrtoint of the arg)",
+                    )
+                )
             elif isinstance(addr, int) and isinstance(base, int):
                 if addr < base or (hi is not None and addr >= hi):
                     n_unmapped += 1
-                    findings.append(Finding(
-                        "dram-unmapped", Severity.FAULT,
-                        f"{i.get('class')} #{i.get('index')} targets DRAM address {addr:#x} outside the "
-                        f"mapped window [{base:#x}..{('%#x' % hi) if hi else '?'}) — faults on silicon",
-                        where=f"#{i.get('index')}", derived_from="dram_facts memory-map green card",
-                        evidence={"addr": addr, "dram_base": base, "dram_hi": hi}))
+                    findings.append(
+                        Finding(
+                            "dram-unmapped",
+                            Severity.FAULT,
+                            f"{i.get('class')} #{i.get('index')} targets DRAM address {addr:#x} outside the "
+                            f"mapped window [{base:#x}..{('%#x' % hi) if hi else '?'}) — faults on silicon",
+                            where=f"#{i.get('index')}",
+                            derived_from="dram_facts memory-map green card",
+                            evidence={"addr": addr, "dram_base": base, "dram_hi": hi},
+                        )
+                    )
         elif kind == "unknown":
             n_unknown += 1
-            findings.append(Finding(
-                "dram-provenance-unknown", Severity.UNKNOWN,
-                f"{i.get('class')} #{i.get('index')} has an unresolved DRAM operand (decoder could not "
-                f"derive its provenance) — cannot verify it is mapped",
-                where=f"#{i.get('index')}", derived_from="rocc_decode operand resolution"))
+            findings.append(
+                Finding(
+                    "dram-provenance-unknown",
+                    Severity.UNKNOWN,
+                    f"{i.get('class')} #{i.get('index')} has an unresolved DRAM operand (decoder could not "
+                    f"derive its provenance) — cannot verify it is mapped",
+                    where=f"#{i.get('index')}",
+                    derived_from="rocc_decode operand resolution",
+                )
+            )
         # kind == "argbase": arg-relative → mapped by construction (runtime allocates the buffer).
     peaks["dram_movements"] = sum(1 for c in classes if c in _MOVEMENT)
     peaks["dram_unmapped"] = n_unmapped
@@ -213,30 +251,45 @@ def simulate(
         # a target whose green card ships `start ~ end` and was simply never asked (a tooling gap this
         # repo owns) and for a target that ships no memory map at all (a target-data gap only new facts
         # can close). The caller's derivation knows which; carry its sentence verbatim.
-        findings.append(Finding(
-            "dram-window-unknown", Severity.UNKNOWN,
-            (f"DRAM window upper bound not derivable: {dram_window_why} — enforced the lower bound + "
-             f"provenance only; upper bound unchecked")
-            if dram_window_why else
-            "DRAM window size not supplied — enforced the lower bound + provenance only; upper bound unchecked",
-            derived_from=f"dram_facts.dram_window_for: {dram_window_why}" if dram_window_why
-            else "dram_facts (base only)"))
+        findings.append(
+            Finding(
+                "dram-window-unknown",
+                Severity.UNKNOWN,
+                (
+                    f"DRAM window upper bound not derivable: {dram_window_why} — enforced the lower bound + "
+                    f"provenance only; upper bound unchecked"
+                )
+                if dram_window_why
+                else "DRAM window size not supplied — enforced the lower bound + provenance only; upper bound unchecked",
+                derived_from=f"dram_facts.dram_window_for: {dram_window_why}"
+                if dram_window_why
+                else "dram_facts (base only)",
+            )
+        )
 
     # ---- 3. visibility / drain: the stream must quiesce so final stores are visible at halt ---------
     has_store = "MVOUT" in classes
     if has_store and ins:
         # find the last non-drain, non-config movement/compute and confirm a FENCE follows it.
-        last_work = max((k for k, c in enumerate(classes)
-                         if c in (_MOVEMENT | {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"})), default=None)
-        drains_after = any(classes[k] in _DRAIN for k in range(last_work + 1, len(classes))) if last_work is not None else False
+        last_work = max(
+            (k for k, c in enumerate(classes) if c in (_MOVEMENT | {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"})),
+            default=None,
+        )
+        drains_after = (
+            any(classes[k] in _DRAIN for k in range(last_work + 1, len(classes))) if last_work is not None else False
+        )
         if not drains_after:
-            findings.append(Finding(
-                "visibility-no-drain", Severity.WARN,
-                "the stream does not close with a FENCE after its last store/compute — final results are "
-                "not guaranteed visible at program halt on silicon (advisory: a host-assisted harness may "
-                "drain externally; on a hostless substrate this is a real visibility hazard)",
-                derived_from="ordering invariant (quiesce-before-halt)",
-                fix_hint="emit a closing FENCE to drain outstanding movement before halt"))
+            findings.append(
+                Finding(
+                    "visibility-no-drain",
+                    Severity.WARN,
+                    "the stream does not close with a FENCE after its last store/compute — final results are "
+                    "not guaranteed visible at program halt on silicon (advisory: a host-assisted harness may "
+                    "drain externally; on a hostless substrate this is a real visibility hazard)",
+                    derived_from="ordering invariant (quiesce-before-halt)",
+                    fix_hint="emit a closing FENCE to drain outstanding movement before halt",
+                )
+            )
     peaks["closes_with_fence"] = bool(classes and classes[-1] in _DRAIN)
 
     return findings, peaks

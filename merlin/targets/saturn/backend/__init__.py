@@ -11,9 +11,12 @@ The three modules keep their sibling ``from .saturn_vec_codegen import ...`` rel
 submodules of this package); their PARENT imports were rewritten absolute (``merlin.runtime.*`` /
 ``merlin.llvmlower.*``) so they resolve out-of-tree.
 """
+
 from __future__ import annotations
 
 import importlib
+
+from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register
 
 # Import ``saturn_vec`` — re-exports its public API onto the package so ``sv.available`` /
 # ``sv.run_command_buffer`` / ``sv.compile_command_buffer`` / ``sv.parse_output`` / ``sv.SaturnVecError``
@@ -21,8 +24,6 @@ import importlib
 # (whose lowering path needs the MLIR→LLVM toolchain); so REGISTRATION stays free of that dependency.
 from . import saturn_vec  # noqa: F401
 from .saturn_vec import *  # noqa: F401,F403
-
-from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register
 
 # ``saturn_vec.py`` no longer self-registers (it relied on the core base.py seed, now deleted); this is
 # the sole registration. Register under the PACKAGE name so get_backend("saturn_vec") resolves THIS

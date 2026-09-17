@@ -8,6 +8,7 @@ Joined on the CCA key so the report shows how close our codegen is to the expert
 Honest by construction (not_run discipline): if no ceiling was measured for a key, attainment is
 ``None`` with reason "ceiling_not_measured" — never a fabricated number.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,7 +31,7 @@ class Attainment:
     key: str
     ceiling_cycles: int | None
     our_cycles: int | None
-    attainment: float | None        # ceiling/ours; None if either side missing
+    attainment: float | None  # ceiling/ours; None if either side missing
     reason: str = ""
 
 
@@ -46,8 +47,7 @@ def _load_ceilings(ceiling_jsonl: Path) -> dict[str, int]:
             r = json.loads(line)
         except json.JSONDecodeError:
             continue
-        k = cca_key(r.get("op", "?"), r.get("dtype", "?"),
-                    (r.get("M"), r.get("N"), r.get("K")), r.get("target", "?"))
+        k = cca_key(r.get("op", "?"), r.get("dtype", "?"), (r.get("M"), r.get("N"), r.get("K")), r.get("target", "?"))
         if r.get("cycles") is not None:
             out[k] = int(r["cycles"])
     return out
@@ -78,6 +78,7 @@ def _our_cycles(runs_root: Path) -> dict[str, int]:
                     if f is not None:
                         return f
             return None
+
         wl = find(r, "workload") or rd.parent.name
         # workload bundle name encodes op + shape, e.g. matmul_f32_64x64x64
         parts = str(wl).split("_")

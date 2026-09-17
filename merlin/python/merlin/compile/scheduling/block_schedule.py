@@ -33,6 +33,7 @@ to offer -- when two regions overlap, one order can be correct (the overwrite la
 read) while another silently computes on the wrong bytes, and an in-order executor cannot see the
 difference.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -61,6 +62,7 @@ OPPOSITE_END = "opposite_end"
 BANK_ALIGNED = "bank_aligned"
 CONTIGUOUS = "contiguous"
 PLACEMENTS = (OPPOSITE_END, BANK_ALIGNED, CONTIGUOUS)
+
 
 class BlockScheduleError(ValueError):
     """A schedule the target's derived facts, the program, or the knobs do not admit."""
@@ -101,39 +103,47 @@ class Geometry:
         if space.array_rows is None or space.array_cols is None:
             raise BlockScheduleError(
                 f"{space.target!r}: no array geometry in its facts, so there is no block edge to "
-                f"schedule in (unknowns: {list(space.unknown_quantities())})")
+                f"schedule in (unknowns: {list(space.unknown_quantities())})"
+            )
         if space.array_rows != space.array_cols:
             raise BlockScheduleError(
                 f"{space.target!r}: a {space.array_rows}x{space.array_cols} array is not square; this "
-                "pass schedules one square block edge and will not choose an edge for you")
+                "pass schedules one square block edge and will not choose an edge for you"
+            )
         from merlin.targetgen.address_space import accumulator_store, operand_store
+
         resolved = {"operand": operand_store(space), "accumulator": accumulator_store(space)}
         for role, resolution in resolved.items():
             if resolution.store is None:
-                raise BlockScheduleError(
-                    f"{space.target!r}: no {role} store to schedule into: {resolution.reason}")
+                raise BlockScheduleError(f"{space.target!r}: no {role} store to schedule into: {resolution.reason}")
             if resolution.store.total_rows is None:
                 raise BlockScheduleError(
                     f"{space.target!r}: the row count of its {role} store "
                     f"{resolution.store.name!r} is UNKNOWN "
-                    f"({[u.reason for u in space.unknowns if u.store == resolution.store.name]})")
+                    f"({[u.reason for u in space.unknowns if u.store == resolution.store.name]})"
+                )
         operand, accumulator = resolved["operand"].store, resolved["accumulator"].store
         if operand.row_elems is not None and operand.row_elems != space.array_rows:
             raise BlockScheduleError(
                 f"{space.target!r}: its operand row spans {operand.row_elems} elements but its array "
-                f"edge is {space.array_rows}; a block cannot be one row wide and another edge tall")
-        return cls(block=space.array_rows,
-                   operand_rows=operand.total_rows,
-                   operand_bank_rows=operand.depth,
-                   accumulator_rows=accumulator.total_rows,
-                   separate_accumulator_space=bool(space.separate_accumulator_space),
-                   sources={"facts": space.sources.get("facts", "derive_address_space"),
-                            "block": f"arrays[{space.array_name!r}] edge",
-                            "operand_rows": (f"{operand.name}.total_rows (operand store, "
-                                             f"{resolved['operand'].basis})"),
-                            "operand_bank_rows": f"{operand.name}.depth",
-                            "accumulator_rows": (f"{accumulator.name}.total_rows (accumulator store, "
-                                                 f"{resolved['accumulator'].basis})")})
+                f"edge is {space.array_rows}; a block cannot be one row wide and another edge tall"
+            )
+        return cls(
+            block=space.array_rows,
+            operand_rows=operand.total_rows,
+            operand_bank_rows=operand.depth,
+            accumulator_rows=accumulator.total_rows,
+            separate_accumulator_space=bool(space.separate_accumulator_space),
+            sources={
+                "facts": space.sources.get("facts", "derive_address_space"),
+                "block": f"arrays[{space.array_name!r}] edge",
+                "operand_rows": (f"{operand.name}.total_rows (operand store, {resolved['operand'].basis})"),
+                "operand_bank_rows": f"{operand.name}.depth",
+                "accumulator_rows": (
+                    f"{accumulator.name}.total_rows (accumulator store, {resolved['accumulator'].basis})"
+                ),
+            },
+        )
 
 
 @dataclass(frozen=True)
@@ -163,16 +173,13 @@ class Knobs:
 
     def validate(self) -> None:
         if tuple(self.operand_order) not in ((LHS, WEIGHT), (WEIGHT, LHS)):
-            raise BlockScheduleError(f"operand_order must order exactly {ROLES}, got "
-                                     f"{tuple(self.operand_order)!r}")
+            raise BlockScheduleError(f"operand_order must order exactly {ROLES}, got {tuple(self.operand_order)!r}")
         if self.load_grouping not in GROUPINGS:
-            raise BlockScheduleError(f"load_grouping must be one of {GROUPINGS}, got "
-                                     f"{self.load_grouping!r}")
+            raise BlockScheduleError(f"load_grouping must be one of {GROUPINGS}, got {self.load_grouping!r}")
         if self.placement not in PLACEMENTS:
             raise BlockScheduleError(f"placement must be one of {PLACEMENTS}, got {self.placement!r}")
         if self.lookahead_steps is not None and self.lookahead_steps < 0:
-            raise BlockScheduleError(f"lookahead_steps must be None or >= 0, got "
-                                     f"{self.lookahead_steps!r}")
+            raise BlockScheduleError(f"lookahead_steps must be None or >= 0, got {self.lookahead_steps!r}")
 
 
 @dataclass(frozen=True)
@@ -251,15 +258,16 @@ class BlockSchedule:
     contraction: Contraction
     geometry: Geometry
     knobs: Knobs
-    regions: dict[str, tuple[int, int]]      # role -> (first row, row count)
+    regions: dict[str, tuple[int, int]]  # role -> (first row, row count)
     notes: tuple[str, ...] = ()
 
     def count(self, kind: type) -> int:
         return sum(1 for op in self.ops if isinstance(op, kind))
 
 
-def _regions(rows_needed: dict[str, int], geometry: Geometry,
-             knobs: Knobs) -> tuple[dict[str, tuple[int, int]], list[str]]:
+def _regions(
+    rows_needed: dict[str, int], geometry: Geometry, knobs: Knobs
+) -> tuple[dict[str, tuple[int, int]], list[str]]:
     """``(role -> (base row, rows), notes)`` for the placement policy. The streamed operand starts at
     row 0; the resident operand's base is the policy's whole content."""
     notes: list[str] = []
@@ -267,16 +275,21 @@ def _regions(rows_needed: dict[str, int], geometry: Geometry,
     if lhs_rows > geometry.operand_rows or weight_rows > geometry.operand_rows:
         raise BlockScheduleError(
             f"one operand alone needs {max(lhs_rows, weight_rows)} rows of a {geometry.operand_rows}-row "
-            "store: this contraction has to be tiled before it can be scheduled")
+            "store: this contraction has to be tiled before it can be scheduled"
+        )
     if knobs.placement == OPPOSITE_END:
         base = geometry.operand_rows - weight_rows
     else:
         if knobs.placement == BANK_ALIGNED and not geometry.operand_bank_rows:
             raise BlockScheduleError(
                 "placement 'bank_aligned' needs the store's per-bank row count, which this target's "
-                "facts do not give (operand_bank_rows is unknown)")
-        wanted = (lhs_rows if knobs.placement == CONTIGUOUS
-                  else _ceil_div(lhs_rows, geometry.operand_bank_rows) * geometry.operand_bank_rows)
+                "facts do not give (operand_bank_rows is unknown)"
+            )
+        wanted = (
+            lhs_rows
+            if knobs.placement == CONTIGUOUS
+            else _ceil_div(lhs_rows, geometry.operand_bank_rows) * geometry.operand_bank_rows
+        )
         # A policy that does not fit degrades to the end of the store rather than failing: the two
         # regions then overlap, which is legal exactly when every overwrite lands after the
         # overlapping block's last read -- and check_residency, not this function, decides that.
@@ -284,16 +297,21 @@ def _regions(rows_needed: dict[str, int], geometry: Geometry,
             base = wanted
         else:
             base = geometry.operand_rows - weight_rows
-            notes.append(f"placement {knobs.placement!r} wanted row {wanted} but {wanted} + "
-                         f"{weight_rows} rows exceeds the {geometry.operand_rows}-row store; fell back "
-                         "to the store's end")
+            notes.append(
+                f"placement {knobs.placement!r} wanted row {wanted} but {wanted} + "
+                f"{weight_rows} rows exceeds the {geometry.operand_rows}-row store; fell back "
+                "to the store's end"
+            )
     if base + weight_rows > geometry.operand_rows or base < 0:
-        raise BlockScheduleError(f"the resident operand's region [{base}, {base + weight_rows}) leaves "
-                                 f"the {geometry.operand_rows}-row store")
+        raise BlockScheduleError(
+            f"the resident operand's region [{base}, {base + weight_rows}) leaves the {geometry.operand_rows}-row store"
+        )
     if base < lhs_rows:
-        notes.append(f"the two operand regions OVERLAP by {lhs_rows - base} rows; the schedule is only "
-                     "correct where every overwrite lands after the overlapping block's last read, "
-                     "which check_residency verifies")
+        notes.append(
+            f"the two operand regions OVERLAP by {lhs_rows - base} rows; the schedule is only "
+            "correct where every overwrite lands after the overlapping block's last read, "
+            "which check_residency verifies"
+        )
     return {LHS: (0, lhs_rows), WEIGHT: (base, weight_rows)}, notes
 
 
@@ -315,35 +333,37 @@ def check_residency(schedule: BlockSchedule) -> None:
                 raise BlockScheduleError(
                     f"{what} reads on-chip row {row + offset} expecting block {identity}, but it holds "
                     f"{have if have is not None else 'nothing loaded'}: the schedule overwrites a block "
-                    "that is still live (or never loads it)")
+                    "that is still live (or never loads it)"
+                )
 
     for op in schedule.ops:
         if isinstance(op, Load):
             if op.row < 0 or op.row + op.rows > geometry.operand_rows:
                 raise BlockScheduleError(
                     f"a {op.role} load addresses rows [{op.row}, {op.row + op.rows}) of a "
-                    f"{geometry.operand_rows}-row store")
+                    f"{geometry.operand_rows}-row store"
+                )
             for offset in range(op.rows):
                 resident[op.row + offset] = (op.role, op.block)
         elif isinstance(op, Preload):
             if op.accumulator_row < 0 or op.accumulator_row + op.rows > geometry.accumulator_rows:
                 raise BlockScheduleError(
                     f"a preload addresses accumulator rows [{op.accumulator_row}, "
-                    f"{op.accumulator_row + op.rows}) of {geometry.accumulator_rows}")
+                    f"{op.accumulator_row + op.rows}) of {geometry.accumulator_rows}"
+                )
             if op.weight_row is not None:
-                _expect(op.weight_row, op.weight_rows or op.rows, (WEIGHT, op.weight_block),
-                        "a preload")
+                _expect(op.weight_row, op.weight_rows or op.rows, (WEIGHT, op.weight_block), "a preload")
         elif isinstance(op, Compute):
             _expect(op.input_row, op.rows, (LHS, op.input_block), "a compute")
         elif isinstance(op, Store):
             if op.accumulator_row + op.rows > geometry.accumulator_rows:
                 raise BlockScheduleError(
                     f"a store reads accumulator rows [{op.accumulator_row}, "
-                    f"{op.accumulator_row + op.rows}) of {geometry.accumulator_rows}")
+                    f"{op.accumulator_row + op.rows}) of {geometry.accumulator_rows}"
+                )
 
 
-def schedule_contraction(contraction: Contraction, geometry: Geometry,
-                         knobs: Knobs | None = None) -> BlockSchedule:
+def schedule_contraction(contraction: Contraction, geometry: Geometry, knobs: Knobs | None = None) -> BlockSchedule:
     """Schedule ``contraction`` on ``geometry`` under ``knobs``, or refuse.
 
     The nest is reduction-major (step, then resident-operand block, then streamed-operand block), which
@@ -358,37 +378,59 @@ def schedule_contraction(contraction: Contraction, geometry: Geometry,
     i_blocks = _ceil_div(contraction.m, d)
     j_blocks = _ceil_div(contraction.n, d)
     k_blocks = _ceil_div(contraction.k, d)
-    regions, notes = _regions({LHS: i_blocks * k_blocks * d, WEIGHT: k_blocks * j_blocks * d},
-                              geometry, knobs)
+    regions, notes = _regions({LHS: i_blocks * k_blocks * d, WEIGHT: k_blocks * j_blocks * d}, geometry, knobs)
     lhs_base, weight_base = regions[LHS][0], regions[WEIGHT][0]
 
     def _lhs_load(mi: int, kk: int) -> Load:
-        return Load(LHS, (mi, kk), mi * d, kk * d,
-                    min(d, contraction.m - mi * d), min(d, contraction.k - kk * d),
-                    lhs_base + (mi * k_blocks + kk) * d, kk)
+        return Load(
+            LHS,
+            (mi, kk),
+            mi * d,
+            kk * d,
+            min(d, contraction.m - mi * d),
+            min(d, contraction.k - kk * d),
+            lhs_base + (mi * k_blocks + kk) * d,
+            kk,
+        )
 
     def _weight_load(kk: int, nj: int) -> Load:
-        return Load(WEIGHT, (kk, nj), kk * d, nj * d,
-                    min(d, contraction.k - kk * d), min(d, contraction.n - nj * d),
-                    weight_base + (kk * j_blocks + nj) * d, kk)
+        return Load(
+            WEIGHT,
+            (kk, nj),
+            kk * d,
+            nj * d,
+            min(d, contraction.k - kk * d),
+            min(d, contraction.n - nj * d),
+            weight_base + (kk * j_blocks + nj) * d,
+            kk,
+        )
 
     # Per (step, resident block) the loads that become due, and the computes that read them. A streamed
     # block is due once per (mi, kk) when load_on_index_change, else once per (mi, kk, nj).
     groups: list[tuple[int, int, list[Load], list[Op]]] = []
     for kk in range(k_blocks):
         for nj in range(j_blocks):
-            due_lhs = [_lhs_load(mi, kk) for mi in range(i_blocks)
-                       if nj == 0 or not knobs.load_on_index_change]
+            due_lhs = [_lhs_load(mi, kk) for mi in range(i_blocks) if nj == 0 or not knobs.load_on_index_change]
             body: list[Op] = []
             for mi in range(i_blocks):
                 rows, cols = min(d, contraction.m - mi * d), min(d, contraction.n - nj * d)
                 acc_row = (mi * j_blocks + nj) * d
-                body.append(Preload(weight_base + (kk * j_blocks + nj) * d if mi == 0 else None,
-                                    (kk, nj) if mi == 0 else None,
-                                    acc_row, kk > 0, rows, cols,
-                                    min(d, contraction.k - kk * d) if mi == 0 else None))
-                body.append(Compute(lhs_base + (mi * k_blocks + kk) * d, (mi, kk), rows,
-                                    min(d, contraction.k - kk * d), mi == 0))
+                body.append(
+                    Preload(
+                        weight_base + (kk * j_blocks + nj) * d if mi == 0 else None,
+                        (kk, nj) if mi == 0 else None,
+                        acc_row,
+                        kk > 0,
+                        rows,
+                        cols,
+                        min(d, contraction.k - kk * d) if mi == 0 else None,
+                    )
+                )
+                body.append(
+                    Compute(
+                        lhs_base + (mi * k_blocks + kk) * d, (mi, kk), rows, min(d, contraction.k - kk * d), mi == 0
+                    )
+                )
                 if kk == k_blocks - 1:
                     body.append(Store(mi * d, nj * d, rows, cols, acc_row))
             # Nest order inside a group: the resident block's load sits at the outer position, the
@@ -411,8 +453,7 @@ def _ordered(loads: list[Load], knobs: Knobs) -> list[Load]:
     return ordered
 
 
-def _emit(groups: list[tuple[int, int, list[Load], list[Op]]], k_blocks: int,
-          knobs: Knobs) -> list[Op]:
+def _emit(groups: list[tuple[int, int, list[Load], list[Op]]], k_blocks: int, knobs: Knobs) -> list[Op]:
     """Place each group's loads relative to the computes, per ``lookahead_steps``.
 
     At depth 0 the emission group is one (step, resident block) pair and a load sits in its nest
@@ -465,9 +506,9 @@ def _emit(groups: list[tuple[int, int, list[Load], list[Op]]], k_blocks: int,
     return ops
 
 
-def schedule_interface_program(tensors: dict[str, Any], commands: list[dict[str, Any]],
-                               geometry: Geometry,
-                               knobs: Knobs | None = None) -> list[BlockSchedule]:
+def schedule_interface_program(
+    tensors: dict[str, Any], commands: list[dict[str, Any]], geometry: Geometry, knobs: Knobs | None = None
+) -> list[BlockSchedule]:
     """Schedule every resident matmul an interface program commits, in program order.
 
     ``tensors`` maps a name to that tensor's spec (anything with ``shape``, or a mapping carrying
@@ -499,17 +540,20 @@ def schedule_interface_program(tensors: dict[str, Any], commands: list[dict[str,
             if unsupported:
                 raise BlockScheduleError(
                     f"epilogue {unsupported} changes which accumulator block a store drains; this pass "
-                    "schedules block moves only and will not guess that mapping")
+                    "schedules block moves only and will not guess that mapping"
+                )
             m, k = _shape(tensors, lhs_name)
             wk, n = _shape(tensors, weight_name)
             if wk != k:
-                raise BlockScheduleError(f"contraction mismatch: {lhs_name} is {m}x{k}, "
-                                         f"{weight_name} is {wk}x{n}")
-            schedules.append(schedule_contraction(
-                Contraction(m, k, n, lhs_name, weight_name, operands["dst"]), geometry, knobs))
+                raise BlockScheduleError(f"contraction mismatch: {lhs_name} is {m}x{k}, {weight_name} is {wk}x{n}")
+            schedules.append(
+                schedule_contraction(Contraction(m, k, n, lhs_name, weight_name, operands["dst"]), geometry, knobs)
+            )
         elif opcode != "EVICT":
-            raise BlockScheduleError(f"{opcode!r} is not a resident matmul; this pass schedules those "
-                                     "only, and refuses rather than dropping the command")
+            raise BlockScheduleError(
+                f"{opcode!r} is not a resident matmul; this pass schedules those "
+                "only, and refuses rather than dropping the command"
+            )
     return schedules
 
 

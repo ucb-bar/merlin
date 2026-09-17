@@ -5,6 +5,7 @@ seed contract. Any target that ships a curated committed contract (file existenc
 that contract. Everything else -> a conservative skeleton seeded from detected concepts, flagged for
 review. No hardware-name branch anywhere.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -114,7 +115,7 @@ def synthesize_target_contract(evidence: Evidence, target_name: str) -> dict[str
     conservative skeleton seeded from detected concepts. No hardware-name branch."""
     if target_name == _families.DEFAULT_EXAMPLE_TARGET:
         return _example_default()
-    curated = _curated(target_name)          # committed reference contract (saturn, …); by file, not name
+    curated = _curated(target_name)  # committed reference contract (saturn, …); by file, not name
     if curated is not None:
         return curated
     return _conservative(evidence)

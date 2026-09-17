@@ -10,6 +10,7 @@ overlapped they agreed byte for byte; the hazard was the naming, so each operati
 compared as data must be spelled one way. ``allow_upper=True`` exists for the two readers that accepted
 either case; nothing else should need it.
 """
+
 from __future__ import annotations
 
 import hashlib

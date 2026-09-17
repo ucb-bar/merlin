@@ -22,6 +22,7 @@ A performance stage records three things the functional runs do not:
 ``kind == "file_change"`` rows are instantaneous events, not spans (99% land under 10 ms), so they
 are counted and excluded from any duration or occupancy figure.
 """
+
 from __future__ import annotations
 
 import json
@@ -112,14 +113,21 @@ def read_tool_spans(stage_dir: Path) -> tuple[SpanSet, int]:
         # arrival stamps are when an event reached the reader, not when the tool ran, and a
         # plausible span built from the wrong clock is exactly the kind of number this package
         # exists to refuse.
-        raw = sorted((stage_dir / "agent").glob("events.*.raw.jsonl")) \
-            if (stage_dir / "agent").is_dir() else []
-        out.availability.set("spans", unavailable(
-            f"{stage_dir.name} has no agent/tools.jsonl row carrying a start and end offset"
-            + (f" ({points} point event(s) were present but occupy no time)" if points else "")
-            + (f"; {len(raw)} raw driver event stream(s) are present but carry arrival stamps, "
-               f"not tool spans, and finalize_agent_telemetry (which writes the spans) is called "
-               f"only from the phase-1 stage" if raw else "")))
+        raw = sorted((stage_dir / "agent").glob("events.*.raw.jsonl")) if (stage_dir / "agent").is_dir() else []
+        out.availability.set(
+            "spans",
+            unavailable(
+                f"{stage_dir.name} has no agent/tools.jsonl row carrying a start and end offset"
+                + (f" ({points} point event(s) were present but occupy no time)" if points else "")
+                + (
+                    f"; {len(raw)} raw driver event stream(s) are present but carry arrival stamps, "
+                    f"not tool spans, and finalize_agent_telemetry (which writes the spans) is called "
+                    f"only from the phase-1 stage"
+                    if raw
+                    else ""
+                )
+            ),
+        )
     return out, points
 
 
@@ -136,26 +144,31 @@ def read_receipts(stage_dir: Path) -> list[BrokerCall]:
     directories = [stage_dir / name for name in CONTROL_DIRS]
     if not any(d.is_dir() for d in directories):
         return calls
-    for receipts in sorted(r for d in directories if d.is_dir()
-                           for r in d.glob("round_*/receipts.jsonl")):
+    for receipts in sorted(r for d in directories if d.is_dir() for r in d.glob("round_*/receipts.jsonl")):
         for row in _rows(receipts):
             action = str(row.get("action") or "")
             if not action:
                 continue
             rc = row.get("returncode")
-            calls.append(BrokerCall(
-                action=action,
-                elapsed_s=float(row.get("elapsed_s") or 0.0),
-                returncode=int(rc) if isinstance(rc, int) else None,
-                state=str(row.get("state") or ""),
-                index=int(row.get("index")) if isinstance(row.get("index"), int) else -1))
+            calls.append(
+                BrokerCall(
+                    action=action,
+                    elapsed_s=float(row.get("elapsed_s") or 0.0),
+                    returncode=int(rc) if isinstance(rc, int) else None,
+                    state=str(row.get("state") or ""),
+                    index=int(row.get("index")) if isinstance(row.get("index"), int) else -1,
+                )
+            )
     return calls
 
 
 def read_broker_actions(stage_dir: Path) -> list[str]:
     """The tool surface this run declared. Derived per run, so it is read and never assumed."""
-    for context in sorted((stage_dir / "agent_workspaces").glob("round_*/STAGE_CONTEXT.json")) \
-            if (stage_dir / "agent_workspaces").is_dir() else []:
+    for context in (
+        sorted((stage_dir / "agent_workspaces").glob("round_*/STAGE_CONTEXT.json"))
+        if (stage_dir / "agent_workspaces").is_dir()
+        else []
+    ):
         try:
             doc = json.loads(context.read_text(encoding="utf-8", errors="ignore"))
         except (ValueError, OSError):
@@ -182,16 +195,24 @@ def read_phase2(stage_dir: Path) -> Phase2Facts:
     if facts.broker_calls:
         facts.availability.set("broker_calls", measured("receipts.jsonl"))
     else:
-        facts.availability.set("broker_calls", unavailable(
-            f"{stage_dir.name} recorded no control/round_*/receipts.jsonl, so how the brokered half "
-            f"of this run spent its time is unrecoverable"))
+        facts.availability.set(
+            "broker_calls",
+            unavailable(
+                f"{stage_dir.name} recorded no control/round_*/receipts.jsonl, so how the brokered half "
+                f"of this run spent its time is unrecoverable"
+            ),
+        )
 
     facts.broker_actions = read_broker_actions(stage_dir)
     if facts.broker_actions:
         facts.availability.set("broker_actions", measured("STAGE_CONTEXT"))
     else:
-        facts.availability.set("broker_actions", unavailable(
-            f"{stage_dir.name} recorded no STAGE_CONTEXT.json with a broker_actions list, so the "
-            f"tool surface it exposed cannot be stated. It must not be inferred from another run: "
-            f"the action set is derived per run from the candidate's own manifest."))
+        facts.availability.set(
+            "broker_actions",
+            unavailable(
+                f"{stage_dir.name} recorded no STAGE_CONTEXT.json with a broker_actions list, so the "
+                f"tool surface it exposed cannot be stated. It must not be inferred from another run: "
+                f"the action set is derived per run from the candidate's own manifest."
+            ),
+        )
     return facts

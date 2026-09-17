@@ -17,17 +17,17 @@ every layer. Each object is renamed to the symbol the shim declares for that sig
 Nothing here knows which target it is building for. The package, the kernel name and the extents are
 all arguments.
 """
+
 from __future__ import annotations
 
 import shutil
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
 from pathlib import Path
+from typing import Any
 
-__all__ = ["DeviceBuild", "DeviceRouting", "build_device_objects", "kernel_symbol",
-           "routing_for_placement"]
+__all__ = ["DeviceBuild", "DeviceRouting", "build_device_objects", "kernel_symbol", "routing_for_placement"]
 
 
 @dataclass(frozen=True)
@@ -82,21 +82,28 @@ def routing_for_placement(placement, device: str, package_dir: str | Path) -> "D
     if not on_dev:
         raise ValueError(f"this placement puts no work on {device!r}; there is nothing to build")
     operands = {getattr(p.demand, "in_fmt", None) for p in on_dev}
-    weights = {getattr(p.demand, "weight_fmt", None) or getattr(p.demand, "in_fmt", None)
-               for p in on_dev}
+    weights = {getattr(p.demand, "weight_fmt", None) or getattr(p.demand, "in_fmt", None) for p in on_dev}
     accums = {p.acc for p in on_dev}
     if len(operands) != 1 or len(weights) != 1 or len(accums) != 1:
         raise ValueError(
             f"{device!r} placements disagree about the datapath (operands={sorted(map(str, operands))}, "
             f"accumulate={sorted(map(str, accums))}); one image carries one device datapath, so the "
-            f"placement has to be split before it can be built")
+            f"placement has to be split before it can be built"
+        )
     operand, weight, accum = operands.pop(), weights.pop(), accums.pop()
     if not operand:
-        raise ValueError(f"{device!r} placements carry no operand format; the kernel precision is "
-                         f"underivable and assuming one emits the wrong datapath")
+        raise ValueError(
+            f"{device!r} placements carry no operand format; the kernel precision is "
+            f"underivable and assuming one emits the wrong datapath"
+        )
     accum = accum or _accum_from_facts(device, operand, weight)
-    return DeviceRouting(device=device, package_dir=package_dir, operand_dtype=str(operand),
-                         accum_dtype=str(accum), select=device_selector(placement))
+    return DeviceRouting(
+        device=device,
+        package_dir=package_dir,
+        operand_dtype=str(operand),
+        accum_dtype=str(accum),
+        select=device_selector(placement),
+    )
 
 
 def _accum_from_facts(device: str, operand: str, weight: str) -> str:
@@ -109,13 +116,13 @@ def _accum_from_facts(device: str, operand: str, weight: str) -> str:
     from merlin.system.offload import device_dtype_triples
     from merlin.targetgen.routing import _fmt_ok  # noqa: PLC2701 -- one format-equality predicate
 
-    found = {a for i, w, a in device_dtype_triples(device)
-             if _fmt_ok(operand, (i,)) and _fmt_ok(weight, (w,))}
+    found = {a for i, w, a in device_dtype_triples(device) if _fmt_ok(operand, (i,)) and _fmt_ok(weight, (w,))}
     if len(found) != 1:
         raise ValueError(
             f"{device!r} declares {len(found)} accumulate format(s) for {operand} x {weight} "
             f"({sorted(found) or 'none'}); the unit matched no accumulate rule either, so the kernel "
-            f"precision is underivable and assuming one emits the wrong datapath")
+            f"precision is underivable and assuming one emits the wrong datapath"
+        )
     return found.pop()
 
 
@@ -150,7 +157,7 @@ class DeviceBuild:
         out = Path(path)
         out.parent.mkdir(parents=True, exist_ok=True)
         if out.exists():
-            out.unlink()                     # ar appends; a stale member would shadow a rebuilt one
+            out.unlink()  # ar appends; a stale member would shadow a rebuilt one
         r = _run([ar, "rcs", str(out), *[str(o) for o in self.objects]], timeout=300)
         return out if r.returncode == 0 and out.exists() else None
 
@@ -205,9 +212,10 @@ def boundary_buildable(device: str) -> str | None:
     try:
         from merlin.system.derive import link_for
         from merlin.targetgen.target_experiment import load_capability_manifest
+
         endpoint = getattr(load_capability_manifest(device), "endpoint_kind", None)
         link = link_for(device, endpoint)
-    except Exception:            # noqa: BLE001 -- an unresolvable device is caught by the package load
+    except Exception:  # noqa: BLE001 -- an unresolvable device is caught by the package load
         return None
     # DELEGATED TO `_SEAM_EMITTERS` ONLY BECAUSE A SEAM HAS NOW BEEN EMITTED. This line was held back on
     # purpose while nothing had built one: turning it on flips the composition axis from UNDETERMINABLE
@@ -227,11 +235,14 @@ def boundary_buildable(device: str) -> str | None:
     emitter = _SEAM_EMITTERS.get(link.command_transport)
     if emitter is not None:
         from importlib import import_module
+
         return import_module(emitter).seam_emittable(device)
     if link.command_transport not in BUILDABLE_TRANSPORTS:
-        return (f"{device!r} is reached by {link.command_transport!r}; this path compiles a device "
-                f"whose artifact is LLVM-dialect MLIR, and that transport's package emits "
-                f"{link.emitted_artifact or 'another artifact'} instead")
+        return (
+            f"{device!r} is reached by {link.command_transport!r}; this path compiles a device "
+            f"whose artifact is LLVM-dialect MLIR, and that transport's package emits "
+            f"{link.emitted_artifact or 'another artifact'} instead"
+        )
     return None
 
 
@@ -247,17 +258,23 @@ def objects_buildable(device: str) -> str | None:
     try:
         from merlin.system.derive import link_for
         from merlin.targetgen.target_experiment import load_capability_manifest
+
         endpoint = getattr(load_capability_manifest(device), "endpoint_kind", None)
         link = link_for(device, endpoint)
-    except Exception:            # noqa: BLE001 -- an unresolvable device is caught by the package load
+    except Exception:  # noqa: BLE001 -- an unresolvable device is caught by the package load
         return None
     if link.command_transport not in BUILDABLE_TRANSPORTS:
-        return (f"{device!r} is reached by {link.command_transport!r}; this path compiles a device "
-                f"whose artifact is LLVM-dialect MLIR, and that transport's package emits "
-                f"{link.emitted_artifact or 'another artifact'} instead"
-                + (f". Its boundary IS emittable -- as a DRAM address contract, by "
-                   f"{_SEAM_EMITTERS[link.command_transport]} -- just not as an object"
-                   if link.command_transport in _SEAM_EMITTERS else ""))
+        return (
+            f"{device!r} is reached by {link.command_transport!r}; this path compiles a device "
+            f"whose artifact is LLVM-dialect MLIR, and that transport's package emits "
+            f"{link.emitted_artifact or 'another artifact'} instead"
+            + (
+                f". Its boundary IS emittable -- as a DRAM address contract, by "
+                f"{_SEAM_EMITTERS[link.command_transport]} -- just not as an object"
+                if link.command_transport in _SEAM_EMITTERS
+                else ""
+            )
+        )
     return None
 
 
@@ -274,17 +291,19 @@ def _run(argv: Sequence[str], *, timeout: int) -> subprocess.CompletedProcess:
     return subprocess.run([str(a) for a in argv], capture_output=True, text=True, timeout=timeout)
 
 
-def build_device_objects(device: str,
-                         signatures: Mapping[str, Sequence[int]],
-                         dtypes: Mapping[str, Sequence[str]],
-                         *,
-                         package_dir: str | Path,
-                         workdir: str | Path,
-                         operand_dtype: str,
-                         accum_dtype: str,
-                         codegen_target: str = "riscv",
-                         cflags: "Sequence[str] | None" = None,
-                         timeout: int = 900) -> DeviceBuild:
+def build_device_objects(
+    device: str,
+    signatures: Mapping[str, Sequence[int]],
+    dtypes: Mapping[str, Sequence[str]],
+    *,
+    package_dir: str | Path,
+    workdir: str | Path,
+    operand_dtype: str,
+    accum_dtype: str,
+    codegen_target: str = "riscv",
+    cflags: "Sequence[str] | None" = None,
+    timeout: int = 900,
+) -> DeviceBuild:
     """One kernel object per signature plus the shim object, ready to archive.
 
     ``signatures`` / ``dtypes`` come from the offload rewrite. ``operand_dtype`` / ``accum_dtype`` are
@@ -326,10 +345,11 @@ def build_device_objects(device: str,
         return DeviceBuild(device=device, skipped=(("all", "no readable kernel_abi"),))
     try:
         pkg = load_package(str(package_dir))
-    except Exception as exc:                     # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         return DeviceBuild(device=device, skipped=(("all", f"package unusable: {exc}"),))
 
     from merlin.compile_cli import _mesh_tile_binding
+
     binding = _mesh_tile_binding(device, operand_dtype, accum_dtype)
 
     objs: list[Path] = []
@@ -348,13 +368,19 @@ def build_device_objects(device: str,
         want = kernel_symbol(abi.symbol, index)
         stem = work / f"{sym}"
 
-        entry = {"name": sym, "op": "matmul", "kind": "op",
-                 "source_role": "mesh_tile_synthesized",
-                 "source_reference": f"offloaded layer {m}x{k}x{n} for {device}",
-                 "M": m, "K": k, "N": n}
+        entry = {
+            "name": sym,
+            "op": "matmul",
+            "kind": "op",
+            "source_role": "mesh_tile_synthesized",
+            "source_reference": f"offloaded layer {m}x{k}x{n} for {device}",
+            "M": m,
+            "K": k,
+            "N": n,
+        }
         try:
             _capsule, iface = CS.build(entry, binding)
-        except Exception as exc:                 # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             skipped.append((sym, f"interface capsule: {exc}"))
             continue
         ifc = stem.with_suffix(".iface.mlir")
@@ -394,23 +420,27 @@ def build_device_objects(device: str,
     if not kernels:
         return DeviceBuild(device=device, skipped=tuple(skipped))
 
-    unit = emit_translation_unit(device, {s: signatures[s] for s in kernels},
-                                 {s: dtypes.get(s, ()) for s in kernels},
-                                 kernel_symbol_for=kernels.get)
+    unit = emit_translation_unit(
+        device,
+        {s: signatures[s] for s in kernels},
+        {s: dtypes.get(s, ()) for s in kernels},
+        kernel_symbol_for=kernels.get,
+    )
     if not unit.symbols:
-        return DeviceBuild(device=device, objects=tuple(objs), kernels=kernels,
-                           skipped=tuple([*skipped, *unit.skipped]))
+        return DeviceBuild(
+            device=device, objects=tuple(objs), kernels=kernels, skipped=tuple([*skipped, *unit.skipped])
+        )
     shim_c = work / "device_shim.c"
     shim_c.write_text(unit.text, encoding="utf-8")
     shim_o = work / "device_shim.o"
     s = _run([clang(), *_flags(codegen_target, cflags), "-c", str(shim_c), "-o", str(shim_o)], timeout=timeout)
     if s.returncode != 0:
         skipped.append(("shim", f"clang: {(s.stderr or '').strip()[:300]}"))
-        return DeviceBuild(device=device, objects=tuple(objs), kernels=kernels,
-                           skipped=tuple(skipped))
+        return DeviceBuild(device=device, objects=tuple(objs), kernels=kernels, skipped=tuple(skipped))
 
-    return DeviceBuild(device=device, objects=(*objs, shim_o), shim_object=shim_o,
-                       kernels=kernels, skipped=tuple(skipped))
+    return DeviceBuild(
+        device=device, objects=(*objs, shim_o), shim_object=shim_o, kernels=kernels, skipped=tuple(skipped)
+    )
 
 
 def _flags(codegen_target: str, cflags: "Sequence[str] | None" = None) -> list[str]:

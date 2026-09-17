@@ -8,6 +8,7 @@ the host ctypes runner and the generated C table for spike/Zephyr.
 Layout: safetensors = 8-byte LE header length + JSON header + payload. The blob IS
 the payload (single mmap/copy), so weights are not embedded into C arrays.
 """
+
 from __future__ import annotations
 
 import json
@@ -15,8 +16,7 @@ import struct
 from dataclasses import dataclass
 from pathlib import Path
 
-DTYPE_BYTES = {"I8": 1, "U8": 1, "I32": 4, "I64": 8, "F16": 2, "BF16": 2, "F32": 4,
-               "F64": 8}
+DTYPE_BYTES = {"I8": 1, "U8": 1, "I32": 4, "I64": 8, "F16": 2, "BF16": 2, "F32": 4, "F64": 8}
 
 
 @dataclass
@@ -25,7 +25,7 @@ class WeightEntry:
     name: str
     dtype: str
     shape: list[int]
-    offset: int                 # offset into the blob (safetensors payload)
+    offset: int  # offset into the blob (safetensors payload)
     nbytes: int
 
 
@@ -37,8 +37,9 @@ def load_safetensors_header(path: str | Path) -> tuple[dict, int]:
     return header, 8 + n
 
 
-def pack(manifest_path: str | Path, safetensors_path: str | Path,
-         out_blob: str | Path | None = None) -> list[WeightEntry]:
+def pack(
+    manifest_path: str | Path, safetensors_path: str | Path, out_blob: str | Path | None = None
+) -> list[WeightEntry]:
     """Build the arg table; optionally write the payload blob to ``out_blob``."""
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     header, payload_off = load_safetensors_header(safetensors_path)
@@ -55,9 +56,16 @@ def pack(manifest_path: str | Path, safetensors_path: str | Path,
             continue
         h = header[name]
         begin, end = h["data_offsets"]
-        entries.append(WeightEntry(
-            arg_index=int(arg_idx_s), name=name, dtype=h["dtype"],
-            shape=list(h["shape"]), offset=begin, nbytes=end - begin))
+        entries.append(
+            WeightEntry(
+                arg_index=int(arg_idx_s),
+                name=name,
+                dtype=h["dtype"],
+                shape=list(h["shape"]),
+                offset=begin,
+                nbytes=end - begin,
+            )
+        )
     entries.sort(key=lambda e: e.arg_index)
 
     if out_blob is not None:
@@ -66,8 +74,7 @@ def pack(manifest_path: str | Path, safetensors_path: str | Path,
     return entries
 
 
-def missing_buffers(manifest_path: str | Path,
-                    safetensors_path: str | Path) -> list[tuple[int, str]]:
+def missing_buffers(manifest_path: str | Path, safetensors_path: str | Path) -> list[tuple[int, str]]:
     """(arg_index, name) of param/buffer args absent from the safetensors payload.
 
     These are non-persistent buffers (rotary inv_freq etc.); the runtime supplies

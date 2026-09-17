@@ -29,6 +29,7 @@ choice matters: a wrong answer is discovered late and gets cited, while a slow a
 counters this exports (``merlin_opu_calls`` / ``merlin_opu_fallbacks``) and grades correctly meanwhile. A
 fallback that fires is a bug in the routing decision, and the counter is how it gets found.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -39,9 +40,18 @@ from typing import Any
 
 from ..kernels.opu_kernel import KernelSpec, emit_microkernel
 
-__all__ = ["CONTRACT_PATH", "DEFAULT_SCRATCH_BYTES", "OpuBuild", "ShimUnit", "UnitContract",
-           "build_object", "derive_encodings", "emit_translation_unit", "load_contract",
-           "scratch_bytes_for"]
+__all__ = [
+    "CONTRACT_PATH",
+    "DEFAULT_SCRATCH_BYTES",
+    "OpuBuild",
+    "ShimUnit",
+    "UnitContract",
+    "build_object",
+    "derive_encodings",
+    "emit_translation_unit",
+    "load_contract",
+    "scratch_bytes_for",
+]
 
 #: Where a unit's derivation entry points are declared. Tracked and reviewed, so which sources the
 #: compiler reads is a diff someone sees rather than a literal buried in a call.
@@ -94,13 +104,15 @@ def scratch_bytes_for(signatures: Mapping[str, Sequence[int]]) -> int:
     return max(int(s[-3]) * int(s[-1]) for s in signatures.values())
 
 
-def emit_translation_unit(encodings: Mapping[str, Any],
-                          signatures: Mapping[str, tuple[int, int, int]],
-                          *,
-                          spec: KernelSpec | None = None,
-                          alignment_bytes: int,
-                          derivation_ok: bool = True,
-                          scratch_bytes: int | None = None) -> ShimUnit:
+def emit_translation_unit(
+    encodings: Mapping[str, Any],
+    signatures: Mapping[str, tuple[int, int, int]],
+    *,
+    spec: KernelSpec | None = None,
+    alignment_bytes: int,
+    derivation_ok: bool = True,
+    scratch_bytes: int | None = None,
+) -> ShimUnit:
     """The whole C translation unit: the certified microkernel plus one entry per signature.
 
     ``signatures`` is :attr:`passes_opu.OpuRewrite.signatures` — ``{symbol: (m, n, k)}``.
@@ -114,17 +126,27 @@ def emit_translation_unit(encodings: Mapping[str, Any],
     transcription of it. ``derivation_ok`` is forwarded, so an unresolved encoding refuses here too.
     """
     if int(alignment_bytes) < 1:
-        raise ValueError(f"alignment_bytes={alignment_bytes} is not a byte alignment; it is derived from "
-                         "the datapath width and a wrong value returns bad data rather than failing")
+        raise ValueError(
+            f"alignment_bytes={alignment_bytes} is not a byte alignment; it is derived from "
+            "the datapath width and a wrong value returns bad data rather than failing"
+        )
     spec = spec or KernelSpec(accumulate="OPMACC", broadcast="OPMVINBCAST", readout="OPMVOUT")
     kernel = emit_microkernel(encodings, spec, derivation_ok=derivation_ok)
     need = int(scratch_bytes if scratch_bytes is not None else scratch_bytes_for(signatures))
 
     entries = "\n".join(_entry(sym, sig, spec.func_name) for sym, sig in sorted(signatures.items()))
-    return ShimUnit(_UNIT.format(kernel=kernel, align=int(alignment_bytes), scratch=need,
-                                 func=spec.func_name, entries=entries,
-                                 n_sigs=len(signatures)),
-                    scratch_bytes=need, symbols=tuple(sorted(signatures)))
+    return ShimUnit(
+        _UNIT.format(
+            kernel=kernel,
+            align=int(alignment_bytes),
+            scratch=need,
+            func=spec.func_name,
+            entries=entries,
+            n_sigs=len(signatures),
+        ),
+        scratch_bytes=need,
+        symbols=tuple(sorted(signatures)),
+    )
 
 
 def _entry(symbol: str, sig: Sequence[int], kernel_func: str) -> str:
@@ -492,11 +514,13 @@ class UnitContract:
         where the hardware was present.
         """
         from ..common.paths import env as _env
+
         root = _env(self.root_env)
         if not root:
             raise FileNotFoundError(
                 f"${self.root_env} is unset, so the sources for {self.unit!r} cannot be located and its "
-                "instruction encodings cannot be derived; refusing to emit a kernel from guessed words")
+                "instruction encodings cannot be derived; refusing to emit a kernel from guessed words"
+            )
         return Path(root) / self.path if self.path else Path(root)
 
     def source(self, name: str) -> Path:
@@ -508,6 +532,7 @@ class UnitContract:
     def root(self) -> Path:
         """The integrating SoC's root, which is where its own configs live."""
         from ..common.paths import env as _env
+
         got = _env(self.root_env)
         if not got:
             raise FileNotFoundError(f"${self.root_env} is unset, so {self.unit!r} cannot be located")
@@ -527,15 +552,17 @@ class UnitContract:
         return [p for p in out if p.is_file()]
 
     def mixin_scala(self) -> list[Path]:
-        return [p for p in (self.checkout() / str(m)
-                            for m in self.configs.get("mixin_scala", ())) if p.is_file()]
+        return [p for p in (self.checkout() / str(m) for m in self.configs.get("mixin_scala", ())) if p.is_file()]
 
     def geometry(self, config: str) -> tuple[int, int]:
         """``(tile_edge, operand_alignment_bytes)`` for a named configuration, derived from its own Scala."""
         from ..kernels import opu_cert
+
         cfgs, mixins = self.config_scala(), self.mixin_scala()
-        return (opu_cert.tile_edge_for_config(config, config_scala=cfgs, mixin_scala=mixins),
-                opu_cert.operand_alignment_for_config(config, config_scala=cfgs, mixin_scala=mixins))
+        return (
+            opu_cert.tile_edge_for_config(config, config_scala=cfgs, mixin_scala=mixins),
+            opu_cert.operand_alignment_for_config(config, config_scala=cfgs, mixin_scala=mixins),
+        )
 
     def spec(self, **overrides) -> KernelSpec:
         """The kernel spec for this unit, with the instruction roles taken from the contract."""
@@ -548,20 +575,26 @@ def load_contract(unit: str, *, path: "str | Path | None" = None) -> UnitContrac
     import yaml
 
     from ..common.paths import repo_root
+
     p = Path(path) if path is not None else Path(repo_root()) / CONTRACT_PATH
     payload = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     units = payload.get("units") or {}
     if unit not in units:
         raise KeyError(f"{p} declares no matrix unit {unit!r}; declared: {sorted(units)}")
     block = units[unit]
-    missing = [k for k in ("pin", "root_env", "sources", "declarations", "configs", "kernel_roles")
-               if k not in block]
+    missing = [k for k in ("pin", "root_env", "sources", "declarations", "configs", "kernel_roles") if k not in block]
     if missing:
         raise ValueError(f"{p}: unit {unit!r} is missing {missing}")
-    return UnitContract(unit=unit, pin=str(block["pin"]), root_env=str(block["root_env"]),
-                        path=str(block.get("path", "")), sources=dict(block["sources"]),
-                        declarations=dict(block["declarations"]), configs=dict(block["configs"]),
-                        kernel_roles=dict(block["kernel_roles"]))
+    return UnitContract(
+        unit=unit,
+        pin=str(block["pin"]),
+        root_env=str(block["root_env"]),
+        path=str(block.get("path", "")),
+        sources=dict(block["sources"]),
+        declarations=dict(block["declarations"]),
+        configs=dict(block["configs"]),
+        kernel_roles=dict(block["kernel_roles"]),
+    )
 
 
 def derive_encodings(contract: UnitContract):
@@ -575,16 +608,19 @@ def derive_encodings(contract: UnitContract):
     from ..targetgen.rtl import opu_isa
 
     d = contract.declarations
-    derived = opu_isa.derive(consts=contract.source("consts"),
-                             instructions=contract.source("instructions"),
-                             params=contract.source("params"),
-                             funct6_enum=str(d["funct6_enum"]),
-                             consts_container=str(d["consts_container"]),
-                             insn_seq=str(d["insn_seq"]),
-                             opcode_name=str(d["opcode_name"]),
-                             form_funct3={str(k): str(v) for k, v in d["form_funct3"].items()})
-    return opu_isa.crosscheck(derived, contract.source("crosscheck_header"),
-                              pairs={str(k): str(v) for k, v in d["crosscheck_pairs"].items()})
+    derived = opu_isa.derive(
+        consts=contract.source("consts"),
+        instructions=contract.source("instructions"),
+        params=contract.source("params"),
+        funct6_enum=str(d["funct6_enum"]),
+        consts_container=str(d["consts_container"]),
+        insn_seq=str(d["insn_seq"]),
+        opcode_name=str(d["opcode_name"]),
+        form_funct3={str(k): str(v) for k, v in d["form_funct3"].items()},
+    )
+    return opu_isa.crosscheck(
+        derived, contract.source("crosscheck_header"), pairs={str(k): str(v) for k, v in d["crosscheck_pairs"].items()}
+    )
 
 
 @dataclass(frozen=True)
@@ -610,20 +646,33 @@ class OpuBuild:
     gaps: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {"object": str(self.object_path), "source": str(self.source_path),
-                "signatures": {k: list(v) for k, v in self.signatures.items()},
-                "alignment_bytes": self.alignment_bytes, "scratch_bytes": self.scratch_bytes,
-                "tile_edge": self.tile_edge, "scalar_tile": self.scalar_tile,
-                "parallel_tiles": self.parallel_tiles,
-                "provenance": self.provenance, "gaps": list(self.gaps)}
+        return {
+            "object": str(self.object_path),
+            "source": str(self.source_path),
+            "signatures": {k: list(v) for k, v in self.signatures.items()},
+            "alignment_bytes": self.alignment_bytes,
+            "scratch_bytes": self.scratch_bytes,
+            "tile_edge": self.tile_edge,
+            "scalar_tile": self.scalar_tile,
+            "parallel_tiles": self.parallel_tiles,
+            "provenance": self.provenance,
+            "gaps": list(self.gaps),
+        }
 
 
-def build_object(signatures: Mapping[str, tuple[int, int, int]], work: "str | Path", *,
-                 unit: str, config: str, cc: "str | Path", cflags: Sequence[str],
-                 scalar_tile: bool = False,
-                 parallel_tiles: bool = False,
-                 scratch_bytes: int | None = None,
-                 contract_path: "str | Path | None" = None) -> OpuBuild:
+def build_object(
+    signatures: Mapping[str, tuple[int, int, int]],
+    work: "str | Path",
+    *,
+    unit: str,
+    config: str,
+    cc: "str | Path",
+    cflags: Sequence[str],
+    scalar_tile: bool = False,
+    parallel_tiles: bool = False,
+    scratch_bytes: int | None = None,
+    contract_path: "str | Path | None" = None,
+) -> OpuBuild:
     """Derive the unit's facts, emit the translation unit, compile it, and record what it came from.
 
     ``unit`` names a block in :data:`CONTRACT_PATH` and is REQUIRED rather than defaulted: a default would
@@ -652,6 +701,7 @@ def build_object(signatures: Mapping[str, tuple[int, int, int]], work: "str | Pa
 
     # What revision is this a result about? Verified, never enforced by moving someone's checkout.
     from ..common import provenance as PROV
+
     gaps: list[str] = []
     # `reads` is exactly the contract's declared sources plus the config declarations, so an uncommitted
     # edit to one of THOSE is drift while a stray build log elsewhere in the tree is a note. Passing the
@@ -659,17 +709,27 @@ def build_object(signatures: Mapping[str, tuple[int, int, int]], work: "str | Pa
     # this build instead of about the checkout in general.
     # Only the paths inside the PINNED checkout are checked against the pin: `host_config_scala` lives in
     # the integrating SoC's repo, which this pin does not describe and cannot speak for.
-    reads = [*contract.sources.values(),
-             *(str(c) for c in contract.configs.get("config_scala", ())),
-             *(str(m) for m in contract.configs.get("mixin_scala", ()))]
+    reads = [
+        *contract.sources.values(),
+        *(str(c) for c in contract.configs.get("config_scala", ())),
+        *(str(m) for m in contract.configs.get("mixin_scala", ())),
+    ]
     verification = PROV.verify(contract.pin, checkout=contract.checkout(), reads=reads)
     if not verification.ok:
-        gaps.append(f"pin {contract.pin} drifted: "
-                    + "; ".join([*verification.drift,
-                                 *([f"missing {list(verification.missing_paths)}"]
-                                   if verification.missing_paths else []),
-                                 *([f"forbidden present {list(verification.forbidden_present)}"]
-                                   if verification.forbidden_present else [])]))
+        gaps.append(
+            f"pin {contract.pin} drifted: "
+            + "; ".join(
+                [
+                    *verification.drift,
+                    *([f"missing {list(verification.missing_paths)}"] if verification.missing_paths else []),
+                    *(
+                        [f"forbidden present {list(verification.forbidden_present)}"]
+                        if verification.forbidden_present
+                        else []
+                    ),
+                ]
+            )
+        )
 
     derived = derive_encodings(contract)
     if not derived.ok:
@@ -677,13 +737,19 @@ def build_object(signatures: Mapping[str, tuple[int, int, int]], work: "str | Pa
             f"the encoding derivation for {unit!r} did not agree with its cross-check source "
             f"({[c for c in derived.crosschecks if not c.get('agrees')]}); refusing to build an object "
             "from an unresolved encoding, because a wrong field emits a neighbouring instruction rather "
-            "than failing to assemble")
+            "than failing to assemble"
+        )
 
     tile_edge, alignment = contract.geometry(config)
 
-    unit_src = emit_translation_unit(derived.encodings, signatures, spec=contract.spec(),
-                                     alignment_bytes=alignment, derivation_ok=derived.ok,
-                                     scratch_bytes=scratch_bytes)
+    unit_src = emit_translation_unit(
+        derived.encodings,
+        signatures,
+        spec=contract.spec(),
+        alignment_bytes=alignment,
+        derivation_ok=derived.ok,
+        scratch_bytes=scratch_bytes,
+    )
     src = work / "merlin_opu_shim.c"
     src.write_text(str(unit_src), encoding="utf-8")
 
@@ -697,14 +763,22 @@ def build_object(signatures: Mapping[str, tuple[int, int, int]], work: "str | Pa
     got = subprocess.run(cmd, capture_output=True, text=True)
     obj = work / "merlin_opu_shim.o"
     if got.returncode != 0 or not obj.is_file():
-        raise RuntimeError(f"the emitted matrix-unit shim did not compile:\ncmd: {' '.join(cmd)}\n"
-                           f"{got.stderr[-3000:]}")
+        raise RuntimeError(f"the emitted matrix-unit shim did not compile:\ncmd: {' '.join(cmd)}\n{got.stderr[-3000:]}")
 
-    prov = PROV.record(pins={contract.pin: verification},
-                       sources=[contract.source(k) for k in sorted(contract.sources)],
-                       artifacts={"shim_object": obj, "shim_source": src})
-    return OpuBuild(object_path=obj, source_path=src,
-                    signatures={k: tuple(int(x) for x in v) for k, v in signatures.items()},
-                    alignment_bytes=alignment, scratch_bytes=unit_src.scratch_bytes,
-                    tile_edge=tile_edge, scalar_tile=scalar_tile, parallel_tiles=parallel_tiles,
-                    provenance=prov, gaps=tuple(gaps))
+    prov = PROV.record(
+        pins={contract.pin: verification},
+        sources=[contract.source(k) for k in sorted(contract.sources)],
+        artifacts={"shim_object": obj, "shim_source": src},
+    )
+    return OpuBuild(
+        object_path=obj,
+        source_path=src,
+        signatures={k: tuple(int(x) for x in v) for k, v in signatures.items()},
+        alignment_bytes=alignment,
+        scratch_bytes=unit_src.scratch_bytes,
+        tile_edge=tile_edge,
+        scalar_tile=scalar_tile,
+        parallel_tiles=parallel_tiles,
+        provenance=prov,
+        gaps=tuple(gaps),
+    )

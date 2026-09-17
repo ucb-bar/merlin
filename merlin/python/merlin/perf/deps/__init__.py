@@ -8,6 +8,7 @@ called ``liveness``, which is also the module's name, and binding the function o
 ``from merlin.perf.deps import liveness`` mean two different things depending on import order. Import
 them from :mod:`merlin.perf.deps.liveness` directly.
 """
+
 from .liveness import Access, Effects, Instruction, LivenessReport, Pressure, ValueRange
 
 __all__ = ["Access", "Effects", "Instruction", "LivenessReport", "Pressure", "ValueRange"]

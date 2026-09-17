@@ -15,6 +15,7 @@ Which ``kernel.source`` spellings name which framework is not held here: it belo
 registry (``merlin/contract/corpora.yaml``, read through :mod:`merlin.targetgen.corpora`), so a source
 alias and the corpus location it selects cannot drift apart.
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -26,10 +27,12 @@ from ...common.yaml import load_yaml
 _DIR = Path(__file__).resolve().parent
 _FEATURE_DIR = _DIR / "feature_extraction"
 
+
 def _framework_stem(framework: str | None) -> str:
     """Contract file stem for a source/framework spelling: the framework a registered corpus alias names,
     else the spelling itself (lower-cased)."""
     from ...targetgen.corpora import kernel_corpus_for_source
+
     name = (framework or "").lower()
     return kernel_corpus_for_source(name) or name
 

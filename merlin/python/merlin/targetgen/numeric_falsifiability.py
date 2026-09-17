@@ -15,12 +15,14 @@ corpus accepted an all-zeros answer on the same grounds.
 Target-agnostic: the candidates are derived from the capsule's OWN golden and compared under its OWN
 declared policy. Nothing here knows a target, a dtype palette, or an op.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+
 
 def degenerate_answers(expected: np.ndarray) -> dict[str, np.ndarray]:
     """The constant answers to test this golden against, keyed by name.
@@ -34,9 +36,11 @@ def degenerate_answers(expected: np.ndarray) -> dict[str, np.ndarray]:
     if expected.size == 0:
         return {}
     mid = 0.5 * (float(expected.max()) + float(expected.min()))
-    return {"zeros": np.zeros_like(expected),
-            "mean": np.full_like(expected, expected.mean()),
-            "midrange": np.full_like(expected, mid)}
+    return {
+        "zeros": np.zeros_like(expected),
+        "mean": np.full_like(expected, expected.mean()),
+        "midrange": np.full_like(expected, mid),
+    }
 
 
 def _accepts(observed: np.ndarray, expected: np.ndarray, atol: float, rtol: float) -> bool:
@@ -57,7 +61,7 @@ def audit_capsule(capsule: dict, capsule_dir: str | Path | None = None) -> list[
         return []
     try:
         golden = capsule_golden.golden(capsule, capsule_dir)
-    except Exception:                                    # noqa: BLE001 - a golden we cannot read is not a verdict
+    except Exception:  # noqa: BLE001 - a golden we cannot read is not a verdict
         return []
     atol, rtol = float(policy.get("atol", 0.0)), float(policy.get("rtol", 0.0))
     found: list[dict[str, Any]] = []
@@ -74,9 +78,16 @@ def audit_capsule(capsule: dict, capsule_dir: str | Path | None = None) -> list[
             continue
         for answer, cand in degenerate_answers(exp).items():
             if _accepts(cand, exp, atol, rtol):
-                found.append({"output": name, "answer": answer, "atol": atol, "rtol": rtol,
-                              "spread": float(exp.max() - exp.min()),
-                              "range": [float(exp.min()), float(exp.max())]})
+                found.append(
+                    {
+                        "output": name,
+                        "answer": answer,
+                        "atol": atol,
+                        "rtol": rtol,
+                        "spread": float(exp.max() - exp.min()),
+                        "range": [float(exp.min()), float(exp.max())],
+                    }
+                )
     return found
 
 
@@ -123,7 +134,7 @@ def falsifiable_policy(policy: dict, outputs, *, name: str = "?") -> tuple[dict,
         try:
             exp = np.asarray(values, dtype=np.float64)
         except (ValueError, TypeError):
-            continue                               # ragged golden: a ceiling is undefined, not zero
+            continue  # ragged golden: a ceiling is undefined, not zero
         if exp.dtype == object or exp.size == 0:
             continue
         ceilings.append(max_falsifiable_atol(exp, rtol))
@@ -131,8 +142,12 @@ def falsifiable_policy(policy: dict, outputs, *, name: str = "?") -> tuple[dict,
     if not ceilings:
         return pol, {"status": "not_measured", "why": "no golden output could be sized"}
     ceiling, scale = min(ceilings), max(scales)
-    prov = {"status": "ok", "declared_atol": float(atol), "ceiling_atol": ceiling,
-            "basis": "the largest atol under which the best constant answer still fails this golden"}
+    prov = {
+        "status": "ok",
+        "declared_atol": float(atol),
+        "ceiling_atol": ceiling,
+        "basis": "the largest atol under which the best constant answer still fails this golden",
+    }
     if float(atol) < ceiling:
         prov["falsifiable"] = True
         return pol, prov
@@ -142,9 +157,17 @@ def falsifiable_policy(policy: dict, outputs, *, name: str = "?") -> tuple[dict,
             f"{name}: no absolute tolerance is both falsifiable and derivable here — the declared "
             f"atol {atol} and the relative tolerance at this golden's scale ({rtol} * {scale} = "
             f"{derived}) both reach the falsifiability ceiling {ceiling}. The golden has too little "
-            f"spread to grade; change the capsule's shape or stimulus rather than its tolerance")
+            f"spread to grade; change the capsule's shape or stimulus rather than its tolerance"
+        )
     pol["atol"] = derived
-    prov.update(falsifiable=True, applied_atol=derived, golden_scale=scale, rtol=rtol,
-                why=("the declared absolute tolerance reached the falsifiability ceiling, so the "
-                     "profile's own relative tolerance was applied at the golden's scale instead"))
+    prov.update(
+        falsifiable=True,
+        applied_atol=derived,
+        golden_scale=scale,
+        rtol=rtol,
+        why=(
+            "the declared absolute tolerance reached the falsifiability ceiling, so the "
+            "profile's own relative tolerance was applied at the golden's scale instead"
+        ),
+    )
     return pol, prov

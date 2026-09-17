@@ -5,21 +5,35 @@ metrics/trace schemas. Targets provide adapters. This package is the reference s
 backend that executes a command buffer with real integer arithmetic and produces real metrics,
 a trace, committed outputs, and an independent reference recomputation for correctness.
 """
+
 from __future__ import annotations
 
 from importlib import import_module
 
 _EXPORTS = {
-    "Tensor": "tensor", "Metrics": "metrics", "COMMON_METRIC_NAMES": "metrics",
-    "load_command_buffer": "commandbuffer", "validate_command_buffer": "commandbuffer",
-    "materialize_inputs": "commandbuffer", "simulate": "simulator",
-    "SimulationError": "simulator", "reference_outputs": "reference", "outputs_match": "reference",
+    "Tensor": "tensor",
+    "Metrics": "metrics",
+    "COMMON_METRIC_NAMES": "metrics",
+    "load_command_buffer": "commandbuffer",
+    "validate_command_buffer": "commandbuffer",
+    "materialize_inputs": "commandbuffer",
+    "simulate": "simulator",
+    "SimulationError": "simulator",
+    "reference_outputs": "reference",
+    "outputs_match": "reference",
 }
 
 __all__ = [
-    "Tensor", "Metrics", "COMMON_METRIC_NAMES",
-    "load_command_buffer", "validate_command_buffer", "materialize_inputs",
-    "simulate", "SimulationError", "reference_outputs", "outputs_match",
+    "Tensor",
+    "Metrics",
+    "COMMON_METRIC_NAMES",
+    "load_command_buffer",
+    "validate_command_buffer",
+    "materialize_inputs",
+    "simulate",
+    "SimulationError",
+    "reference_outputs",
+    "outputs_match",
 ]
 
 

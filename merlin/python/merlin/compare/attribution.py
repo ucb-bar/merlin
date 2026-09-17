@@ -13,6 +13,7 @@ cycle fractions — there are no K1 perf counters here. The ``.vf``-vs-``.vv`` d
 contraction/accumulator-residency form) is exactly the openvla/rdt2 gap driver the manual breakdown
 identified; this module surfaces it automatically.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -28,10 +29,11 @@ from .spec import Config, Workload
 @dataclass
 class Attribution:
     """One ours-vs-expert attribution for a (workload, ours_config, expert_config)."""
+
     workload: str
     ours_config: str
     expert_config: str
-    measured: dict[str, Any]          # ours/expert walls, ratio, pct-of-expert, ours_faster
+    measured: dict[str, Any]  # ours/expert walls, ratio, pct-of-expert, ours_faster
     divergences: list[Divergence] = field(default_factory=list)
     actions: list[CompilerAction] = field(default_factory=list)
     unrouted: list[Divergence] = field(default_factory=list)
@@ -59,7 +61,7 @@ def _measured_pair(ours_m: Measurement, exp_m: Measurement) -> dict | None:
 def attribute(
     spec,
     measurements: dict[tuple[str, str], Measurement],
-    ccas: dict[str, Any],          # {config_name: CCA|None} for the representative shape
+    ccas: dict[str, Any],  # {config_name: CCA|None} for the representative shape
     *,
     workload_ccas: dict[tuple[str, str], Any] | None = None,
 ) -> list[Attribution]:
@@ -94,40 +96,51 @@ def attribute(
                 actions: list[CompilerAction] = []
                 unrouted: list[Divergence] = []
                 if ours_cca is None or exp_cca is None:
-                    notes.append(
-                        "no CCA on one side (baseline/scalar or undecoded); measured-only attribution")
+                    notes.append("no CCA on one side (baseline/scalar or undecoded); measured-only attribution")
                 else:
                     ev = [f"{ec.name}:{exp_cca.provenance.get('decode_kernel', ec.name)}"]
                     divs = compare(exp_cca, ours_cca, evidence=ev)
                     # cite the .vf-vs-.vv counts when present (the kernel_breakdown.md evidence).
-                    vf = (exp_cca.provenance.get("fma_loop_vfmacc_vf"),
-                          ours_cca.provenance.get("fma_loop_vfmacc_vf"))
-                    vv = (exp_cca.provenance.get("fma_loop_vfmacc_vf"),
-                          ours_cca.provenance.get("fma_loop_vfmacc_vv"))
-                    if (ours_cca.provenance.get("fma_loop_vfmacc_vv") and
-                            not ours_cca.provenance.get("fma_loop_vfmacc_vf") and
-                            exp_cca.provenance.get("fma_loop_vfmacc_vf")):
+                    vf = (exp_cca.provenance.get("fma_loop_vfmacc_vf"), ours_cca.provenance.get("fma_loop_vfmacc_vf"))
+                    vv = (exp_cca.provenance.get("fma_loop_vfmacc_vf"), ours_cca.provenance.get("fma_loop_vfmacc_vv"))
+                    if (
+                        ours_cca.provenance.get("fma_loop_vfmacc_vv")
+                        and not ours_cca.provenance.get("fma_loop_vfmacc_vf")
+                        and exp_cca.provenance.get("fma_loop_vfmacc_vf")
+                    ):
                         notes.append(
                             "vfmacc form: expert emits .vf (broadcast A scalar; "
                             f"vf={exp_cca.provenance.get('fma_loop_vfmacc_vf')}, vv=0); "
                             f"ours emits .vv (vf=0, vv={ours_cca.provenance.get('fma_loop_vfmacc_vv')}) "
-                            "-> the per-K broadcast-ladder gap driver (kernel_breakdown.md).")
+                            "-> the per-K broadcast-ladder gap driver (kernel_breakdown.md)."
+                        )
                     actions, unrouted = build_catalog(divs)
                 if not meas["ours_faster"]:
                     notes.append(
                         f"ours trails {ec.name}: {meas['pct_of_expert']}% of expert speed "
-                        f"(ratio {meas['ratio_ours_over_expert']:.2f}x of expert wall).")
+                        f"(ratio {meas['ratio_ours_over_expert']:.2f}x of expert wall)."
+                    )
                 else:
                     notes.append(
                         f"ours BEATS {ec.name}: {meas['ratio_ours_over_expert']:.2f}x its wall "
-                        f"({round(1.0/meas['ratio_ours_over_expert'],2)}x faster).")
+                        f"({round(1.0 / meas['ratio_ours_over_expert'], 2)}x faster)."
+                    )
                 notes.append(
                     "static CCA decode gives the RANKING of structural factors, not exact cycle "
-                    "fractions (no K1 perf counters).")
-                out.append(Attribution(
-                    workload=wl.name, ours_config=oc.name, expert_config=ec.name,
-                    measured=meas, divergences=divs, actions=actions,
-                    unrouted=unrouted, notes=notes))
+                    "fractions (no K1 perf counters)."
+                )
+                out.append(
+                    Attribution(
+                        workload=wl.name,
+                        ours_config=oc.name,
+                        expert_config=ec.name,
+                        measured=meas,
+                        divergences=divs,
+                        actions=actions,
+                        unrouted=unrouted,
+                        notes=notes,
+                    )
+                )
     return out
 
 
@@ -145,19 +158,21 @@ def gap_driver_axes(attrs: list[Attribution]) -> set[str]:
 # the SAME model-layer provenance key (region_id / fqn). Joining on it lets us line up
 # attention.3-vs-attention.3 across the two compilers instead of collapsing to one whole-model number.
 
+
 @dataclass
 class RegionAlignment:
     """One model layer compared across two compilers, matched by shared provenance."""
-    key: str                          # the join key (region_id, else fqn, else region name)
+
+    key: str  # the join key (region_id, else fqn, else region name)
     fqn: str
     role: str
-    label: str                        # region label / bucket (from the profile name)
+    label: str  # region label / bucket (from the profile name)
     ours_wall_ns: int | None
     expert_wall_ns: int | None
-    wall_ratio: float | None          # ours/expert; <1 means Merlin is faster on THIS region
-    ours_cos: float | None            # per-region equivalence (None = not scored, honest)
+    wall_ratio: float | None  # ours/expert; <1 means Merlin is faster on THIS region
+    ours_cos: float | None  # per-region equivalence (None = not scored, honest)
     expert_cos: float | None
-    presence: str                     # "both" | "ours_only" | "expert_only"
+    presence: str  # "both" | "ours_only" | "expert_only"
     note: str = ""
 
 
@@ -165,8 +180,9 @@ def _region_key(r) -> str:
     return getattr(r, "region_id", "") or getattr(r, "fqn", "") or getattr(r, "name", "")
 
 
-def align_regions(ours_regions, expert_regions, *, ours_name: str = "merlin",
-                  expert_name: str = "executorch") -> list[RegionAlignment]:
+def align_regions(
+    ours_regions, expert_regions, *, ours_name: str = "merlin", expert_name: str = "executorch"
+) -> list[RegionAlignment]:
     """Align two per-region profile lists (e.g. a Merlin ``BaselineResult.regions`` and an ExecuTorch
     one) by their shared ``region_id``/``fqn`` provenance. Emits one row per model layer, with the
     per-region wall ratio and per-region equivalence — and, crucially, flags a layer present on only
@@ -182,13 +198,27 @@ def align_regions(ours_regions, expert_regions, *, ours_name: str = "merlin",
         ew = getattr(e, "wall_ns", None) if e else None
         ratio = (ow / ew) if (ow and ew) else None
         presence = "both" if (o and e) else (f"{ours_name}_only" if o else f"{expert_name}_only")
-        note = "" if presence == "both" else (
-            f"region present only in {ours_name if o else expert_name} "
-            "(delegation/vectorization heterogeneity — not comparable as a single whole-model number)")
-        rows.append(RegionAlignment(
-            key=k, fqn=getattr(base, "fqn", ""), role=getattr(base, "role", ""),
-            label=getattr(base, "name", ""), ours_wall_ns=ow, expert_wall_ns=ew, wall_ratio=ratio,
-            ours_cos=getattr(o, "cos", None) if o else None,
-            expert_cos=getattr(e, "cos", None) if e else None,
-            presence=presence, note=note))
+        note = (
+            ""
+            if presence == "both"
+            else (
+                f"region present only in {ours_name if o else expert_name} "
+                "(delegation/vectorization heterogeneity — not comparable as a single whole-model number)"
+            )
+        )
+        rows.append(
+            RegionAlignment(
+                key=k,
+                fqn=getattr(base, "fqn", ""),
+                role=getattr(base, "role", ""),
+                label=getattr(base, "name", ""),
+                ours_wall_ns=ow,
+                expert_wall_ns=ew,
+                wall_ratio=ratio,
+                ours_cos=getattr(o, "cos", None) if o else None,
+                expert_cos=getattr(e, "cos", None) if e else None,
+                presence=presence,
+                note=note,
+            )
+        )
     return rows

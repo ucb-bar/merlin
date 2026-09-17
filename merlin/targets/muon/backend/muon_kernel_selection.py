@@ -10,6 +10,7 @@ families marked experimental by the contract can never be selected.  The returne
 decision for every declared family so whole-corpus qualification can count coverage rather than
 mistaking a silent omission for support.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -45,8 +46,7 @@ class KernelRequest:
         shape: dict[str, int] = {}
         for name, extent in raw_shape.items():
             if isinstance(extent, bool) or not isinstance(extent, int) or extent <= 0:
-                raise KernelSelectionContractError(
-                    f"kernel request dimension {name!r} must be a positive integer")
+                raise KernelSelectionContractError(f"kernel request dimension {name!r} must be a positive integer")
             shape[str(name)] = extent
         return cls(op=op, dtype=dtype, shape=shape)
 
@@ -120,8 +120,7 @@ def _family_sets(contract: Mapping[str, Any]) -> tuple[set[str], dict[str, str]]
         experimental[str(item["path"])] = str(item["reason"])
     overlap = qualified & experimental.keys()
     if overlap:
-        raise KernelSelectionContractError(
-            f"families cannot be both qualified and experimental: {sorted(overlap)}")
+        raise KernelSelectionContractError(f"families cannot be both qualified and experimental: {sorted(overlap)}")
     return qualified, experimental
 
 
@@ -139,8 +138,7 @@ def _rules(contract: Mapping[str, Any]) -> list[Mapping[str, Any]]:
         family = str(rule["family"])
         names.append(family)
         if family not in known:
-            raise KernelSelectionContractError(
-                f"compiler selection rule names undeclared family {family!r}")
+            raise KernelSelectionContractError(f"compiler selection rule names undeclared family {family!r}")
         if not isinstance(rule.get("semantic_ops"), list) or not rule["semantic_ops"]:
             raise KernelSelectionContractError(f"{family}: semantic_ops must be a non-empty list")
         if not isinstance(rule.get("dtypes"), list) or not rule["dtypes"]:
@@ -166,15 +164,13 @@ def _constraint_reasons(shape: Mapping[str, int], constraints: Mapping[str, Any]
             reasons.append(f"shape dimension {dimension} is unknown")
             continue
         if isinstance(raw_constraint, bool):
-            raise KernelSelectionContractError(
-                f"shape constraint for {dimension!r} must not be boolean")
+            raise KernelSelectionContractError(f"shape constraint for {dimension!r} must not be boolean")
         constraint = raw_constraint if isinstance(raw_constraint, Mapping) else {"eq": raw_constraint}
         value = shape[dimension]
         allowed = {"eq", "min", "max", "multiple_of"}
         unknown = set(constraint) - allowed
         if unknown:
-            raise KernelSelectionContractError(
-                f"shape constraint for {dimension!r} has unknown keys {sorted(unknown)}")
+            raise KernelSelectionContractError(f"shape constraint for {dimension!r} has unknown keys {sorted(unknown)}")
         if "eq" in constraint and value != int(constraint["eq"]):
             reasons.append(f"shape {dimension}={value}, requires {int(constraint['eq'])}")
         if "min" in constraint and value < int(constraint["min"]):
@@ -184,8 +180,7 @@ def _constraint_reasons(shape: Mapping[str, int], constraints: Mapping[str, Any]
         if "multiple_of" in constraint:
             divisor = int(constraint["multiple_of"])
             if divisor <= 0:
-                raise KernelSelectionContractError(
-                    f"shape constraint {dimension}.multiple_of must be positive")
+                raise KernelSelectionContractError(f"shape constraint {dimension}.multiple_of must be positive")
             if value % divisor:
                 reasons.append(f"shape {dimension}={value}, requires a multiple of {divisor}")
     return reasons
@@ -201,10 +196,7 @@ def validate_selection_contract(contract: Mapping[str, Any]) -> dict[str, Any]:
         "experimental_families": len(experimental),
         "compiler_rules": len(rules),
         "qualified": sorted(qualified),
-        "experimental": [
-            {"family": family, "reason": experimental[family]}
-            for family in sorted(experimental)
-        ],
+        "experimental": [{"family": family, "reason": experimental[family]} for family in sorted(experimental)],
         "missing_rules": [],
         "selection_is_numeric_qualification": False,
     }
@@ -227,10 +219,14 @@ def select_kernel_family(
         family = str(rule["family"])
         priority = int(rule.get("priority", 0))
         if family in experimental:
-            provisional.append(FamilyDecision(
-                family, "disabled", priority,
-                (f"experimental family is fail-closed: {experimental[family]}",),
-            ))
+            provisional.append(
+                FamilyDecision(
+                    family,
+                    "disabled",
+                    priority,
+                    (f"experimental family is fail-closed: {experimental[family]}",),
+                )
+            )
             continue
         reasons: list[str] = []
         semantic_ops = {str(item) for item in rule["semantic_ops"]}
@@ -257,15 +253,23 @@ def select_kernel_family(
     decisions: list[FamilyDecision] = []
     for decision in provisional:
         if decision.family == selected:
-            decisions.append(FamilyDecision(
-                decision.family, "selected", decision.priority,
-                ("highest-priority eligible strategy",),
-            ))
+            decisions.append(
+                FamilyDecision(
+                    decision.family,
+                    "selected",
+                    decision.priority,
+                    ("highest-priority eligible strategy",),
+                )
+            )
         elif decision.status == "eligible":
-            decisions.append(FamilyDecision(
-                decision.family, "eligible_not_selected", decision.priority,
-                (f"lower priority than selected family {selected}",),
-            ))
+            decisions.append(
+                FamilyDecision(
+                    decision.family,
+                    "eligible_not_selected",
+                    decision.priority,
+                    (f"lower priority than selected family {selected}",),
+                )
+            )
         else:
             decisions.append(decision)
     assert not selected or selected in qualified
@@ -294,11 +298,7 @@ def derive_hardware_capabilities(target_contract: Mapping[str, Any]) -> Hardware
     shared memory.  In particular, math operations such as exp/tanh and mesh readback are *not*
     inferred from a target family or name.
     """
-    features = {
-        str(item).strip()
-        for item in target_contract.get("features", ())
-        if str(item).strip()
-    }
+    features = {str(item).strip() for item in target_contract.get("features", ()) if str(item).strip()}
     for unit in target_contract.get("compute_units", ()):
         if not isinstance(unit, Mapping):
             continue
@@ -330,21 +330,25 @@ def request_from_command_buffer(cb: Mapping[str, Any]) -> KernelRequest:
     # An E4M3 spelling alone does not imply microscaling.  Admit this route only when the semantic
     # buffer also carries explicit scale operands; the native ABI extractor then validates their
     # relationships, layout, and the complete single-GEMM command shape.
-    has_scale = any(isinstance(spec, Mapping)
-                    and str(spec.get("role") or "").lower() == "scale"
-                    for spec in tensors.values())
-    has_matmul = any(isinstance(command, Mapping)
-                     and str(command.get("opcode") or "").upper() in {"MATMUL", "MATMUL_RESIDENT"}
-                     for command in commands)
+    has_scale = any(
+        isinstance(spec, Mapping) and str(spec.get("role") or "").lower() == "scale" for spec in tensors.values()
+    )
+    has_matmul = any(
+        isinstance(command, Mapping) and str(command.get("opcode") or "").upper() in {"MATMUL", "MATMUL_RESIDENT"}
+        for command in commands
+    )
     if has_scale and has_matmul:
         from .muon_mx_abi import NativeMxAbiError, semantic_request
+
         try:
             return KernelRequest.from_mapping(semantic_request(cb))
         except NativeMxAbiError as exc:
             raise KernelSelectionContractError(f"invalid native MX GEMM: {exc}") from exc
-    if (len(commands) == 2 and all(isinstance(command, Mapping) for command in commands)
-            and all(str(command.get("opcode") or "").upper() == "RMSNORM"
-                    for command in commands)):
+    if (
+        len(commands) == 2
+        and all(isinstance(command, Mapping) for command in commands)
+        and all(str(command.get("opcode") or "").upper() == "RMSNORM" for command in commands)
+    ):
         first_ops, second_ops = commands[0].get("operands"), commands[1].get("operands")
         if not isinstance(first_ops, Mapping) or not isinstance(second_ops, Mapping):
             raise KernelSelectionContractError("chained RMSNORM operands are not mappings")
@@ -354,28 +358,31 @@ def request_from_command_buffer(cb: Mapping[str, Any]) -> KernelRequest:
             raise KernelSelectionContractError("two RMSNORM commands do not form a chain")
         if not all(isinstance(name, str) and name in tensors for name in (src, gamma1, gamma2, dst)):
             raise KernelSelectionContractError("four-norm operands are absent from the tensor ABI")
-        src_spec, gamma1_spec, gamma2_spec, dst_spec = (
-            tensors[src], tensors[gamma1], tensors[gamma2], tensors[dst])
-        if not all(isinstance(spec, Mapping)
-                   for spec in (src_spec, gamma1_spec, gamma2_spec, dst_spec)):
+        src_spec, gamma1_spec, gamma2_spec, dst_spec = (tensors[src], tensors[gamma1], tensors[gamma2], tensors[dst])
+        if not all(isinstance(spec, Mapping) for spec in (src_spec, gamma1_spec, gamma2_spec, dst_spec)):
             raise KernelSelectionContractError("four-norm tensor specifications are not mappings")
         src_shape = src_spec.get("shape")
-        if (not isinstance(src_shape, list) or len(src_shape) != 2
-                or gamma1_spec.get("shape") not in ([src_shape[1]], [1, src_shape[1]])
-                or gamma2_spec.get("shape") not in ([src_shape[1]], [1, src_shape[1]])
-                or dst_spec.get("shape") != src_shape):
+        if (
+            not isinstance(src_shape, list)
+            or len(src_shape) != 2
+            or gamma1_spec.get("shape") not in ([src_shape[1]], [1, src_shape[1]])
+            or gamma2_spec.get("shape") not in ([src_shape[1]], [1, src_shape[1]])
+            or dst_spec.get("shape") != src_shape
+        ):
             raise KernelSelectionContractError("RMSNORM chain has incompatible tensor shapes")
         raw_dtype = str(dst_spec.get("dtype") or src_spec.get("dtype") or "").lower()
         dtype = _DTYPE_NAMES.get(raw_dtype)
         if dtype is None:
             raise KernelSelectionContractError(f"unsupported command-buffer dtype {raw_dtype!r}")
-        return KernelRequest.from_mapping({
-            "op": "decoder_four_norm", "dtype": dtype,
-            "shape": {"rows": src_shape[0], "cols": src_shape[1]},
-        })
+        return KernelRequest.from_mapping(
+            {
+                "op": "decoder_four_norm",
+                "dtype": dtype,
+                "shape": {"rows": src_shape[0], "cols": src_shape[1]},
+            }
+        )
     if len(commands) != 1 or not isinstance(commands[0], Mapping):
-        raise KernelSelectionContractError(
-            "semantic family extraction currently requires one command")
+        raise KernelSelectionContractError("semantic family extraction currently requires one command")
     command = commands[0]
     operands = command.get("operands")
     attrs = command.get("attributes") or {}
@@ -383,36 +390,41 @@ def request_from_command_buffer(cb: Mapping[str, Any]) -> KernelRequest:
     if opcode == "LAYERNORM" and isinstance(operands, Mapping):
         src, gamma = operands.get("src"), operands.get("gamma")
         beta, dst = operands.get("beta"), operands.get("dst")
-        if not all(isinstance(name, str) and name in tensors
-                   for name in (src, gamma, beta, dst)):
+        if not all(isinstance(name, str) and name in tensors for name in (src, gamma, beta, dst)):
             raise KernelSelectionContractError("layernorm operands are absent from the tensor ABI")
         src_spec, gamma_spec = tensors[src], tensors[gamma]
         beta_spec, dst_spec = tensors[beta], tensors[dst]
-        if not all(isinstance(spec, Mapping)
-                   for spec in (src_spec, gamma_spec, beta_spec, dst_spec)):
+        if not all(isinstance(spec, Mapping) for spec in (src_spec, gamma_spec, beta_spec, dst_spec)):
             raise KernelSelectionContractError("layernorm tensor specifications are not mappings")
         src_shape = src_spec.get("shape")
-        if (not isinstance(src_shape, list) or len(src_shape) != 2
-                or gamma_spec.get("shape") != [src_shape[1]]
-                or beta_spec.get("shape") != [src_shape[1]]
-                or dst_spec.get("shape") != src_shape):
-            raise KernelSelectionContractError(
-                "LAYERNORM is not a 2-D row normalization with matching affine vectors")
+        if (
+            not isinstance(src_shape, list)
+            or len(src_shape) != 2
+            or gamma_spec.get("shape") != [src_shape[1]]
+            or beta_spec.get("shape") != [src_shape[1]]
+            or dst_spec.get("shape") != src_shape
+        ):
+            raise KernelSelectionContractError("LAYERNORM is not a 2-D row normalization with matching affine vectors")
         raw_dtype = str(dst_spec.get("dtype") or src_spec.get("dtype") or "").lower()
         dtype = _DTYPE_NAMES.get(raw_dtype)
         if dtype is None:
             raise KernelSelectionContractError(f"unsupported command-buffer dtype {raw_dtype!r}")
-        return KernelRequest.from_mapping({
-            "op": "layernorm",
-            "dtype": dtype,
-            "shape": {"rows": src_shape[0], "cols": src_shape[1]},
-        })
-    if (str(command.get("opcode") or "").upper() != "VECTOR_MAP"
-            or not isinstance(operands, Mapping)
-            or not isinstance(attrs, Mapping)
-            or attrs.get("combine", "add") != "add"):
+        return KernelRequest.from_mapping(
+            {
+                "op": "layernorm",
+                "dtype": dtype,
+                "shape": {"rows": src_shape[0], "cols": src_shape[1]},
+            }
+        )
+    if (
+        str(command.get("opcode") or "").upper() != "VECTOR_MAP"
+        or not isinstance(operands, Mapping)
+        or not isinstance(attrs, Mapping)
+        or attrs.get("combine", "add") != "add"
+    ):
         raise KernelSelectionContractError(
-            "semantic family extraction currently supports LAYERNORM or row-broadcast VECTOR_MAP(add)")
+            "semantic family extraction currently supports LAYERNORM or row-broadcast VECTOR_MAP(add)"
+        )
     lhs, rhs, dst = operands.get("lhs"), operands.get("rhs"), operands.get("dst")
     if not all(isinstance(name, str) and name in tensors for name in (lhs, rhs, dst)):
         raise KernelSelectionContractError("bias-add operands are absent from the tensor ABI")
@@ -422,19 +434,19 @@ def request_from_command_buffer(cb: Mapping[str, Any]) -> KernelRequest:
     lhs_shape = lhs_spec.get("shape")
     rhs_shape = rhs_spec.get("shape")
     dst_shape = dst_spec.get("shape")
-    if (not isinstance(lhs_shape, list) or len(lhs_shape) != 2
-            or rhs_shape != [lhs_shape[1]] or dst_shape != lhs_shape):
-        raise KernelSelectionContractError(
-            "VECTOR_MAP(add) is not a 2-D row-broadcast bias add")
+    if not isinstance(lhs_shape, list) or len(lhs_shape) != 2 or rhs_shape != [lhs_shape[1]] or dst_shape != lhs_shape:
+        raise KernelSelectionContractError("VECTOR_MAP(add) is not a 2-D row-broadcast bias add")
     raw_dtype = str(dst_spec.get("dtype") or lhs_spec.get("dtype") or "").lower()
     dtype = _DTYPE_NAMES.get(raw_dtype)
     if dtype is None:
         raise KernelSelectionContractError(f"unsupported command-buffer dtype {raw_dtype!r}")
-    return KernelRequest.from_mapping({
-        "op": "bias_add",
-        "dtype": dtype,
-        "shape": {"rows": lhs_shape[0], "cols": lhs_shape[1]},
-    })
+    return KernelRequest.from_mapping(
+        {
+            "op": "bias_add",
+            "dtype": dtype,
+            "shape": {"rows": lhs_shape[0], "cols": lhs_shape[1]},
+        }
+    )
 
 
 def select_command_buffer_family(

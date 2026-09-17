@@ -54,6 +54,7 @@ companions, so their structure does not separate them either. Every target's ``c
 is matmul-only, so an op-derived rung could only ever answer 2. Promoting the audit to a decision
 needs a new extractor (loop-bound register counting out of the RTL decoder), not a new rung here.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -110,8 +111,8 @@ class FamilyEvidence:
     """One rung's verdict on one family, with the literal observation that produced it."""
 
     family: str
-    status: str                              # supported | unsupported | unknown
-    source: str                              # isa_role | isa_class | rtl_facts | unit_intent
+    status: str  # supported | unsupported | unknown
+    source: str  # isa_role | isa_class | rtl_facts | unit_intent
     evidence: str
     dtypes: tuple[str, ...] = ()
     ranks: tuple[int, ...] = ()
@@ -125,7 +126,7 @@ class DerivedCapabilities:
 
     supported: dict[str, FamilyEvidence] = field(default_factory=dict)
     unknown: dict[str, FamilyEvidence] = field(default_factory=dict)
-    unmapped: list[str] = field(default_factory=list)   # observed classes/roles no rung could place
+    unmapped: list[str] = field(default_factory=list)  # observed classes/roles no rung could place
 
     def families(self) -> list[str]:
         return sorted(self.supported)
@@ -133,9 +134,15 @@ class DerivedCapabilities:
     def to_dict(self) -> dict[str, Any]:
         return {
             "semantic_capabilities_derived": [
-                {"family": e.family, "dtypes": list(e.dtypes), "ranks": list(e.ranks),
-                 "composed_with": list(e.composed_with), "source": e.source,
-                 "evidence": e.evidence, "unit": e.unit}
+                {
+                    "family": e.family,
+                    "dtypes": list(e.dtypes),
+                    "ranks": list(e.ranks),
+                    "composed_with": list(e.composed_with),
+                    "source": e.source,
+                    "evidence": e.evidence,
+                    "unit": e.unit,
+                }
                 for e in (self.supported[f] for f in sorted(self.supported))
             ],
             "semantic_capabilities_unknown": [
@@ -162,13 +169,18 @@ def _record(out: DerivedCapabilities, ev: FamilyEvidence) -> None:
     # composed_with INTERSECTS: if any rung saw the family standalone, it is standalone.
     merged_comp = tuple(c for c in prev.composed_with if c in ev.composed_with)
     out.supported[ev.family] = FamilyEvidence(
-        family=prev.family, status="supported", source=prev.source,
-        evidence=prev.evidence, dtypes=merged_dtypes,
+        family=prev.family,
+        status="supported",
+        source=prev.source,
+        evidence=prev.evidence,
+        dtypes=merged_dtypes,
         # ranks UNION like dtypes. `prev.ranks or ev.ranks` kept only the first rung's ranks, so a
         # later rung that evidenced a DIFFERENT rank had it silently dropped -- an axis lost inside the
         # deriver, in the same direction (narrower than the evidence) as the gap this module documents.
         ranks=tuple(sorted({*prev.ranks, *ev.ranks})),
-        composed_with=merged_comp, unit=prev.unit or ev.unit)
+        composed_with=merged_comp,
+        unit=prev.unit or ev.unit,
+    )
 
 
 def _unit_dtypes(unit: dict) -> tuple[str, ...]:
@@ -198,9 +210,17 @@ def _from_isa_roles(taxonomy: dict, out: DerivedCapabilities, dtypes: tuple[str,
                 out.unmapped.append(f"isa_role:{role}({len(classes)})")
             continue
         fam, comp = mapped
-        _record(out, FamilyEvidence(family=fam, status="supported", source="isa_role",
-                                    evidence=f"ISA role {role!r} -> {classes[:3]}",
-                                    dtypes=dtypes, composed_with=comp))
+        _record(
+            out,
+            FamilyEvidence(
+                family=fam,
+                status="supported",
+                source="isa_role",
+                evidence=f"ISA role {role!r} -> {classes[:3]}",
+                dtypes=dtypes,
+                composed_with=comp,
+            ),
+        )
     return any(_ROLE_FAMILY.get(r, ("", ()))[0] in _CENSUS_IS_CONCLUSIVE_FOR for r in by_role)
 
 
@@ -223,9 +243,9 @@ def _from_isa_roles(taxonomy: dict, out: DerivedCapabilities, dtypes: tuple[str,
 class EngineEvidence:
     """One rung's verdict that a target has a given engine, with the literal observation."""
 
-    engine: str                     # a CCA facet name (see merlin.kernels.engines.ENGINE_FACET)
-    source: str                     # which rung: isa_role | rtl_facts
-    evidence: str                   # the literal thing observed
+    engine: str  # a CCA facet name (see merlin.kernels.engines.ENGINE_FACET)
+    source: str  # which rung: isa_role | rtl_facts
+    evidence: str  # the literal thing observed
 
 
 #: What each rung is CAPABLE of observing, independent of what it found on any particular target.
@@ -283,8 +303,7 @@ class DerivedEngines:
             ],
             "engines_rungs_ran": list(self.rungs),
             "engines_observable": sorted(self.observable()),
-            "engines_suspect": [{"engine": e, "observation": o}
-                                for e, o in sorted(self.suspect.items())],
+            "engines_suspect": [{"engine": e, "observation": o} for e, o in sorted(self.suspect.items())],
         }
 
 
@@ -316,8 +335,9 @@ def _engine(out: DerivedEngines, ev: EngineEvidence) -> None:
     out.evidenced.setdefault(ev.engine, ev)
 
 
-def derive_engines(target: str, contract: dict, facts: dict | None = None, *,
-                   taxonomy: dict | None = None) -> DerivedEngines:
+def derive_engines(
+    target: str, contract: dict, facts: dict | None = None, *, taxonomy: dict | None = None
+) -> DerivedEngines:
     """Which compute engines this target's OWN evidence reaches. Never raises on missing evidence.
 
     Two rungs, strongest first, mirroring the family ladder:
@@ -336,11 +356,13 @@ def derive_engines(target: str, contract: dict, facts: dict | None = None, *,
     if taxonomy is None:
         try:
             from merlin.targetgen import isa_taxonomy as _it
+
             taxonomy = _it.taxonomy_for_target(target)
         except Exception:  # noqa: BLE001 — no self-hosted ISA (a RoCC target); the other rung still runs
             taxonomy = None
     if taxonomy:
         from merlin.targetgen import isa_taxonomy as _it
+
         by_role = _it._classes_by_role(taxonomy or {})
         # A census that found ONLY scalar classes has read the ISA without covering compute, so it is
         # silent about engines rather than negative about them -- the same distinction
@@ -352,8 +374,12 @@ def derive_engines(target: str, contract: dict, facts: dict | None = None, *,
             for role, classes in sorted(by_role.items()):
                 eng = _ROLE_ENGINE.get(role)
                 if eng and classes:
-                    _engine(out, EngineEvidence(engine=eng, source="isa_role",
-                                                evidence=f"ISA role {role!r} -> {list(classes)[:3]}"))
+                    _engine(
+                        out,
+                        EngineEvidence(
+                            engine=eng, source="isa_role", evidence=f"ISA role {role!r} -> {list(classes)[:3]}"
+                        ),
+                    )
 
     body = (facts or {}).get("facts") or {}
     arrays = [a for a in (body.get("arrays") or ()) if isinstance(a, dict)]
@@ -365,8 +391,7 @@ def derive_engines(target: str, contract: dict, facts: dict | None = None, *,
     if good:
         rungs.append("rtl_facts")
         for a in good:
-            _engine(out, EngineEvidence(engine="spatial", source="rtl_facts",
-                                        evidence=_array_observation(a)))
+            _engine(out, EngineEvidence(engine="spatial", source="rtl_facts", evidence=_array_observation(a)))
     for a in arrays:
         if not a.get("corroborated"):
             # Recorded, never promoted, and pointedly NOT counted as a rung that ran: an uncorroborated
@@ -391,38 +416,57 @@ def reconcile_engines(declared: "set[str] | frozenset[str]", derived: DerivedEng
     ev = set(derived.evidenced)
     observable = derived.observable()
     for engine in sorted(set(derived.suspect) - ev):
-        drift.append(f"suspect_evidence {engine}: a rung produced {derived.suspect[engine]}, which "
-                     f"carries no corroboration that it is a compute grid -- this is a finding about "
-                     f"OUR extractor, not about the contract, and neither confirms nor refutes the "
-                     f"declaration")
+        drift.append(
+            f"suspect_evidence {engine}: a rung produced {derived.suspect[engine]}, which "
+            f"carries no corroboration that it is a compute grid -- this is a finding about "
+            f"OUR extractor, not about the contract, and neither confirms nor refutes the "
+            f"declaration"
+        )
     for engine in sorted(ev - set(declared)):
         e = derived.evidenced[engine]
-        drift.append(f"undeclared_engine {engine}: evidenced by {e.source} ({e.evidence}) but the "
-                     f"contract's compute_units declare no unit of that kind")
+        drift.append(
+            f"undeclared_engine {engine}: evidenced by {e.source} ({e.evidence}) but the "
+            f"contract's compute_units declare no unit of that kind"
+        )
     for engine in sorted(set(declared) - ev):
         if engine in observable:
-            drift.append(f"unevidenced_engine {engine}: declared, and a rung that CAN see this engine "
-                         f"class ran ({', '.join(derived.rungs)}) without finding it -- the "
-                         f"declaration over-reaches, or the evidence for it is missing")
+            drift.append(
+                f"unevidenced_engine {engine}: declared, and a rung that CAN see this engine "
+                f"class ran ({', '.join(derived.rungs)}) without finding it -- the "
+                f"declaration over-reaches, or the evidence for it is missing"
+            )
         else:
-            why = (f"the rung(s) that ran ({', '.join(derived.rungs)}) cannot observe this engine class"
-                   if derived.rungs else "no rung was available to check it")
-            drift.append(f"unchecked_engine {engine}: declared, and {why} -- this is a gap in OUR "
-                         f"instruments, not a finding about the hardware, and must not be actioned "
-                         f"as one")
+            why = (
+                f"the rung(s) that ran ({', '.join(derived.rungs)}) cannot observe this engine class"
+                if derived.rungs
+                else "no rung was available to check it"
+            )
+            drift.append(
+                f"unchecked_engine {engine}: declared, and {why} -- this is a gap in OUR "
+                f"instruments, not a finding about the hardware, and must not be actioned "
+                f"as one"
+            )
     return drift
 
 
 def _from_isa_classes(contract: dict, out: DerivedCapabilities, dtypes: tuple[str, ...]) -> None:
     """Rung 2 — the shared ``encoding.semantic_class`` vocabulary."""
     classes = (contract.get("encoding") or {}).get("semantic_class") or {}
-    for name in (classes.values() if isinstance(classes, dict) else classes):
+    for name in classes.values() if isinstance(classes, dict) else classes:
         fam = _sf.from_isa_class(str(name))
         if fam is None:
             out.unmapped.append(f"isa_class:{name}")
             continue
-        _record(out, FamilyEvidence(family=fam, status="supported", source="isa_class",
-                                    evidence=f"declared semantic_class {name!r}", dtypes=dtypes))
+        _record(
+            out,
+            FamilyEvidence(
+                family=fam,
+                status="supported",
+                source="isa_class",
+                evidence=f"declared semantic_class {name!r}",
+                dtypes=dtypes,
+            ),
+        )
 
 
 def _from_rtl_facts(facts: dict, out: DerivedCapabilities) -> None:
@@ -436,16 +480,31 @@ def _from_rtl_facts(facts: dict, out: DerivedCapabilities) -> None:
             break
     for arr in body.get("arrays") or ():
         if isinstance(arr, dict) and arr.get("rows") and arr.get("cols"):
-            _record(out, FamilyEvidence(
-                family="contraction", status="supported", source="rtl_facts",
-                evidence=f"RTL array {arr.get('name')!r} {arr['rows']}x{arr['cols']}",
-                dtypes=dtypes, ranks=(2,)))
+            _record(
+                out,
+                FamilyEvidence(
+                    family="contraction",
+                    status="supported",
+                    source="rtl_facts",
+                    evidence=f"RTL array {arr.get('name')!r} {arr['rows']}x{arr['cols']}",
+                    dtypes=dtypes,
+                    ranks=(2,),
+                ),
+            )
             break
     for iface in body.get("interfaces") or ():
         nm = str((iface or {}).get("name", "")) if isinstance(iface, dict) else ""
         if nm and "dma" in nm.split("_"):
-            _record(out, FamilyEvidence(family="movement", status="supported", source="rtl_facts",
-                                        evidence=f"RTL interface {nm!r}", dtypes=dtypes))
+            _record(
+                out,
+                FamilyEvidence(
+                    family="movement",
+                    status="supported",
+                    source="rtl_facts",
+                    evidence=f"RTL interface {nm!r}",
+                    dtypes=dtypes,
+                ),
+            )
 
 
 def _from_lowering(target: str, out: DerivedCapabilities) -> None:
@@ -473,11 +532,12 @@ def _from_lowering(target: str, out: DerivedCapabilities) -> None:
     to fire on.
     """
     if "contraction" not in out.supported:
-        return                                   # no contraction at all: a batched one is not a claim
+        return  # no contraction at all: a batched one is not a claim
     try:
         from merlin.llvmlower.device_shim import tile_edge_for
+
         edge = tile_edge_for(target)
-    except Exception:                            # noqa: BLE001 — no shim path for this target
+    except Exception:  # noqa: BLE001 — no shim path for this target
         return
     if not edge:
         # The shim declines to emit ANY entry without a derivable tile edge (it will not guess whether
@@ -488,9 +548,12 @@ def _from_lowering(target: str, out: DerivedCapabilities) -> None:
         prev,
         ranks=tuple(sorted({*prev.ranks, 2, 3})),
         source=f"{prev.source},lowering",
-        evidence=(f"{prev.evidence}; device_shim emits a 3-D entry for a (B,M,N,K) signature at tile "
-                  f"edge {int(edge)} -- a batch is a loop over the same kernel, so rank 3 needs "
-                  f"nothing the rank-2 entry does not"))
+        evidence=(
+            f"{prev.evidence}; device_shim emits a 3-D entry for a (B,M,N,K) signature at tile "
+            f"edge {int(edge)} -- a batch is a loop over the same kernel, so rank 3 needs "
+            f"nothing the rank-2 entry does not"
+        ),
+    )
 
 
 def _from_unit_intent(contract: dict, out: DerivedCapabilities) -> None:
@@ -511,21 +574,38 @@ def _from_unit_intent(contract: dict, out: DerivedCapabilities) -> None:
             if fam is None:
                 out.unmapped.append(f"unit_op:{op}")
                 continue
-            _record(out, FamilyEvidence(family=fam, status="supported", source="unit_intent",
-                                        evidence=f"unit {name!r} declares op {op!r}",
-                                        dtypes=dtypes, unit=name))
+            _record(
+                out,
+                FamilyEvidence(
+                    family=fam,
+                    status="supported",
+                    source="unit_intent",
+                    evidence=f"unit {name!r} declares op {op!r}",
+                    dtypes=dtypes,
+                    unit=name,
+                ),
+            )
         requant = (unit.get("requant") or {}).get("ref") if isinstance(unit.get("requant"), dict) else None
         scaling = unit.get("scaling")
         if (requant and str(requant).lower() != "none") or (scaling and str(scaling).lower() != "none"):
-            _record(out, FamilyEvidence(
-                family="elementwise_map", status="supported", source="unit_intent",
-                evidence=f"unit {name!r} declares a readout epilogue (scaling={scaling!r}, "
-                         f"requant={requant!r}) -- fused only",
-                dtypes=dtypes, composed_with=("contraction",), unit=name))
+            _record(
+                out,
+                FamilyEvidence(
+                    family="elementwise_map",
+                    status="supported",
+                    source="unit_intent",
+                    evidence=f"unit {name!r} declares a readout epilogue (scaling={scaling!r}, "
+                    f"requant={requant!r}) -- fused only",
+                    dtypes=dtypes,
+                    composed_with=("contraction",),
+                    unit=name,
+                ),
+            )
 
 
-def derive(target: str, contract: dict, facts: dict | None = None, *,
-           taxonomy: dict | None = None) -> DerivedCapabilities:
+def derive(
+    target: str, contract: dict, facts: dict | None = None, *, taxonomy: dict | None = None
+) -> DerivedCapabilities:
     """Run the evidence ladder for one target. Never raises on missing evidence — a rung that cannot
     run simply contributes nothing, and every family no rung decided is reported ``unknown``."""
     out = DerivedCapabilities()
@@ -536,6 +616,7 @@ def derive(target: str, contract: dict, facts: dict | None = None, *,
     if taxonomy is None:
         try:
             from merlin.targetgen import isa_taxonomy as _it
+
             taxonomy = _it.taxonomy_for_target(target)
         except Exception:  # noqa: BLE001 — no self-hosted ISA (a RoCC target); other rungs still run
             taxonomy = None
@@ -554,9 +635,15 @@ def derive(target: str, contract: dict, facts: dict | None = None, *,
         if conclusive and fam in ("contraction",):
             out.unknown.pop(fam, None)
             continue
-        out.unknown.setdefault(fam, FamilyEvidence(
-            family=fam, status="unknown", source="isa_role,isa_class,rtl_facts,unit_intent",
-            evidence="no evidence source could decide this family for this target"))
+        out.unknown.setdefault(
+            fam,
+            FamilyEvidence(
+                family=fam,
+                status="unknown",
+                source="isa_role,isa_class,rtl_facts,unit_intent",
+                evidence="no evidence source could decide this family for this target",
+            ),
+        )
     return out
 
 
@@ -565,8 +652,7 @@ def derive(target: str, contract: dict, facts: dict | None = None, *,
 #: Drift kinds, worst first. ``missing_declaration`` flatters ARR (hardware hidden from the
 #: denominator); ``overbroad_declaration`` deflates it (work demanded that the hardware cannot do
 #: standalone). Both are errors because both make the number mean something other than it says.
-DRIFT_KINDS = ("missing_declaration", "overbroad_declaration", "unsupported_declaration",
-               "undetermined_declaration")
+DRIFT_KINDS = ("missing_declaration", "overbroad_declaration", "unsupported_declaration", "undetermined_declaration")
 
 
 #: The shape AXES a capability declares, and which direction an error in each one moves ARR. Within a
@@ -599,7 +685,7 @@ def _axis_findings(fam: str, dec, ev: FamilyEvidence) -> list[dict]:
       REVIEW OBLIGATION the module docstring names, now written down where a report can print it
       instead of living in one reviewer's memory.
     """
-    from merlin.targetgen import eligibility as _el   # lazy: eligibility must stay importable alone
+    from merlin.targetgen import eligibility as _el  # lazy: eligibility must stay importable alone
 
     out: list[dict] = []
     for axis in _SHAPE_AXES:
@@ -616,7 +702,7 @@ def _axis_findings(fam: str, dec, ev: FamilyEvidence) -> list[dict]:
             # `must_accelerate_violations` and `acceleration_precision`, not here.
             continue
         if not declared_vals and not evidenced:
-            continue                       # nothing claimed and nothing seen: the axis is unconstrained
+            continue  # nothing claimed and nothing seen: the axis is unconstrained
         if axis == "dtypes":
             # Compare through the FORMAT REGISTRY, not as strings. The deriver reads the RTL datapath's
             # spelling (`i8`) and the contract carries the capability vocabulary's (`int8`); the same
@@ -629,19 +715,32 @@ def _axis_findings(fam: str, dec, ev: FamilyEvidence) -> list[dict]:
             missing = set(evidenced) - set(declared_vals)
             unconfirmed = set(declared_vals) - set(evidenced)
         if missing:
-            out.append({"kind": "missing_axis", "family": fam, "axis": axis, "source": ev.source,
-                        "evidence": ev.evidence,
-                        "detail": f"evidence shows {axis} {sorted(missing)} that the contract does not "
-                                  f"declare (declared: {sorted(declared_vals)}); every region of that "
-                                  f"shape scores ineligible and leaves the ARR denominator, which "
-                                  f"RAISES recall"})
+            out.append(
+                {
+                    "kind": "missing_axis",
+                    "family": fam,
+                    "axis": axis,
+                    "source": ev.source,
+                    "evidence": ev.evidence,
+                    "detail": f"evidence shows {axis} {sorted(missing)} that the contract does not "
+                    f"declare (declared: {sorted(declared_vals)}); every region of that "
+                    f"shape scores ineligible and leaves the ARR denominator, which "
+                    f"RAISES recall",
+                }
+            )
         if unconfirmed:
-            out.append({"kind": "unaudited_axis", "family": fam, "axis": axis,
-                        "source": ev.source if evidenced else "none",
-                        "evidence": ev.evidence if evidenced else "no rung reported this axis",
-                        "detail": f"contract declares {axis} {sorted(unconfirmed)} that no rung could "
-                                  f"confirm; the ladder decides families, not shape axes, so this "
-                                  f"stands on human review rather than on evidence"})
+            out.append(
+                {
+                    "kind": "unaudited_axis",
+                    "family": fam,
+                    "axis": axis,
+                    "source": ev.source if evidenced else "none",
+                    "evidence": ev.evidence if evidenced else "no rung reported this axis",
+                    "detail": f"contract declares {axis} {sorted(unconfirmed)} that no rung could "
+                    f"confirm; the ladder decides families, not shape axes, so this "
+                    f"stands on human review rather than on evidence",
+                }
+            )
     return out
 
 
@@ -657,25 +756,43 @@ def reconcile(declared: dict, derived: DerivedCapabilities) -> list[dict]:
     for fam, ev in sorted(derived.supported.items()):
         dec = declared.get(fam)
         if dec is None:
-            out.append({"kind": "missing_declaration", "family": fam, "source": ev.source,
-                        "evidence": ev.evidence,
-                        "detail": "evidence shows this family but the contract does not declare it; "
-                                  "it is excluded from the ARR denominator"})
+            out.append(
+                {
+                    "kind": "missing_declaration",
+                    "family": fam,
+                    "source": ev.source,
+                    "evidence": ev.evidence,
+                    "detail": "evidence shows this family but the contract does not declare it; "
+                    "it is excluded from the ARR denominator",
+                }
+            )
             continue
         if ev.composed_with and not getattr(dec, "composed_with", ()):
-            out.append({"kind": "overbroad_declaration", "family": fam, "source": ev.source,
-                        "evidence": ev.evidence,
-                        "detail": f"evidence shows this family only fused with "
-                                  f"{list(ev.composed_with)}, but it is declared standalone; every "
-                                  f"standalone region becomes an unclearable false_fallback"})
+            out.append(
+                {
+                    "kind": "overbroad_declaration",
+                    "family": fam,
+                    "source": ev.source,
+                    "evidence": ev.evidence,
+                    "detail": f"evidence shows this family only fused with "
+                    f"{list(ev.composed_with)}, but it is declared standalone; every "
+                    f"standalone region becomes an unclearable false_fallback",
+                }
+            )
         out.extend(_axis_findings(fam, dec, ev))
     for fam in sorted(declared):
         if fam in derived.supported:
             continue
         ev = derived.unknown.get(fam)
         kind = "undetermined_declaration" if ev else "unsupported_declaration"
-        out.append({"kind": kind, "family": fam, "source": (ev.source if ev else "none"),
-                    "evidence": (ev.evidence if ev else "no rung reported this family"),
-                    "detail": "declared but not evidenced" + (
-                        "; no source could decide it, so it stands unaudited" if ev else "")})
+        out.append(
+            {
+                "kind": kind,
+                "family": fam,
+                "source": (ev.source if ev else "none"),
+                "evidence": (ev.evidence if ev else "no rung reported this family"),
+                "detail": "declared but not evidenced"
+                + ("; no source could decide it, so it stands unaudited" if ev else ""),
+            }
+        )
     return out

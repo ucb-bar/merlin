@@ -19,6 +19,7 @@ The audit also reports what it could not account for. A word the disassembler de
 derived table does not claim is neither "ours" nor "fine" — it is recorded in ``unaccounted`` so a
 mis-encoded instruction surfaces instead of being silently counted as absent.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -63,12 +64,12 @@ class Decoded:
 
     index: int
     addr: int
-    identity: str                  # the derived mnemonic, or the disassembler's own text
+    identity: str  # the derived mnemonic, or the disassembler's own text
     from_extension: bool
     #: Roles the endpoint declares for this identity. Without them the stream is decoded but carries
     #: no MEANING, and a CCA lifted from it compares equal to everything.
     roles: tuple[str, ...] = ()
-    mnemonic: str = ""             # what the disassembler called it
+    mnemonic: str = ""  # what the disassembler called it
     operands: tuple[str, ...] = ()
     fields: dict[str, int] = field(default_factory=dict)
 
@@ -88,8 +89,7 @@ def _word_of(hexcode: str) -> int | None:
         return None
 
 
-def decode_stream(insns: Sequence[Any], encodings: Mapping[str, Any],
-                  roles_of=None) -> list[Decoded]:
+def decode_stream(insns: Sequence[Any], encodings: Mapping[str, Any], roles_of=None) -> list[Decoded]:
     """Name every instruction in a disassembly stream, using ``encodings`` for the unnameable ones.
 
     ``insns`` are :class:`kernels.decode.objdump.RawInsn`; ``encodings`` maps a name to anything
@@ -97,20 +97,24 @@ def decode_stream(insns: Sequence[Any], encodings: Mapping[str, Any],
     Matching is on the three integers, so a spelling difference between the RTL's vocabulary and a
     header's cannot cause a miss, and a value is never compared as a string.
     """
-    table = {(int(e.opcode), int(e.funct3), int(e.funct6)): name
-             for name, e in encodings.items()}
+    table = {(int(e.opcode), int(e.funct3), int(e.funct6)): name for name, e in encodings.items()}
     out: list[Decoded] = []
     for i, insn in enumerate(insns):
         word = _word_of(getattr(insn, "hexcode", ""))
         f = fields_of(word) if word is not None else {}
         name = table.get((f.get("opcode"), f.get("funct3"), f.get("funct6"))) if f else None
-        out.append(Decoded(index=i, addr=int(getattr(insn, "addr", 0)),
-                           identity=name or str(getattr(insn, "mnemonic", "")),
-                           from_extension=name is not None,
-                           roles=(tuple(roles_of(name)) if (name and roles_of) else ()),
-                           mnemonic=str(getattr(insn, "mnemonic", "")),
-                           operands=tuple(getattr(insn, "operands", ()) or ()),
-                           fields=f))
+        out.append(
+            Decoded(
+                index=i,
+                addr=int(getattr(insn, "addr", 0)),
+                identity=name or str(getattr(insn, "mnemonic", "")),
+                from_extension=name is not None,
+                roles=(tuple(roles_of(name)) if (name and roles_of) else ()),
+                mnemonic=str(getattr(insn, "mnemonic", "")),
+                operands=tuple(getattr(insn, "operands", ()) or ()),
+                fields=f,
+            )
+        )
     return out
 
 
@@ -135,13 +139,17 @@ class Audit:
         return self.extension_insns
 
     def to_dict(self) -> dict[str, Any]:
-        return {"counts": dict(self.counts), "total_insns": self.total_insns,
-                "emitted_extension_ops": self.emitted_extension_ops,
-                "unaccounted": [dict(u) for u in self.unaccounted],
-                "vector_config_insns": self.vector_config_insns,
-                "configured_before_each": dict(self.configured_before_each),
-                "unconfigured": list(self.unconfigured), "digest": self.digest,
-                "notes": list(self.notes)}
+        return {
+            "counts": dict(self.counts),
+            "total_insns": self.total_insns,
+            "emitted_extension_ops": self.emitted_extension_ops,
+            "unaccounted": [dict(u) for u in self.unaccounted],
+            "vector_config_insns": self.vector_config_insns,
+            "configured_before_each": dict(self.configured_before_each),
+            "unconfigured": list(self.unconfigured),
+            "digest": self.digest,
+            "notes": list(self.notes),
+        }
 
 
 def digest(decoded: Sequence[Decoded]) -> str:
@@ -162,8 +170,7 @@ def digest(decoded: Sequence[Decoded]) -> str:
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()[:16]
 
 
-def audit(insns: Sequence[Any], encodings: Mapping[str, Any], *,
-          config_mnemonic_prefix: str = "vset") -> Audit:
+def audit(insns: Sequence[Any], encodings: Mapping[str, Any], *, config_mnemonic_prefix: str = "vset") -> Audit:
     """Audit one disassembly stream against a derived encoding table.
 
     Reports a count for EVERY name in ``encodings``, including the ones that are zero: a readout with no
@@ -206,27 +213,40 @@ def audit(insns: Sequence[Any], encodings: Mapping[str, Any], *,
 
     notes: list[str] = []
     if unaccounted:
-        notes.append(f"{len(unaccounted)} word(s) the disassembler could not name and the derived "
-                     "table does not claim — inspect before trusting any count here")
+        notes.append(
+            f"{len(unaccounted)} word(s) the disassembler could not name and the derived "
+            "table does not claim — inspect before trusting any count here"
+        )
     if unconfigured:
-        notes.append(f"{len(unconfigured)} extension instruction(s) with no vector-configuration "
-                     "instruction since the previous one: the operand length in effect was inherited")
+        notes.append(
+            f"{len(unconfigured)} extension instruction(s) with no vector-configuration "
+            "instruction since the previous one: the operand length in effect was inherited"
+        )
     if not any(counts.values()):
         notes.append("no extension instruction was emitted at all")
 
-    return Audit(counts=counts, total_insns=len(decoded),
-                 extension_insns=sum(counts.values()), unaccounted=tuple(unaccounted),
-                 vector_config_insns=n_config, configured_before_each=configured,
-                 unconfigured=tuple(unconfigured), digest=digest(decoded), notes=tuple(notes))
+    return Audit(
+        counts=counts,
+        total_insns=len(decoded),
+        extension_insns=sum(counts.values()),
+        unaccounted=tuple(unaccounted),
+        vector_config_insns=n_config,
+        configured_before_each=configured,
+        unconfigured=tuple(unconfigured),
+        digest=digest(decoded),
+        notes=tuple(notes),
+    )
 
 
 def audit_object(obj_path, encodings: Mapping[str, Any], *, triple: str = "riscv64") -> Audit:
     """Audit a compiled object file."""
     from .objdump import tokenize
+
     return audit(tokenize(obj_path, triple=triple), encodings)
 
 
 def audit_text(text: str, encodings: Mapping[str, Any]) -> Audit:
     """Audit already-disassembled text, so a saved objdump can be re-audited with no toolchain."""
     from .objdump import tokenize_text
+
     return audit(tokenize_text(text), encodings)

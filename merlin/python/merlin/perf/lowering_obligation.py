@@ -44,6 +44,7 @@ deleting its declaration is not an obligation. And a member that declares an obl
 module does not implement is ``UNENFORCEABLE``, never ``SATISFIED``: a contract nothing can evaluate
 must not read as one that was met.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -51,8 +52,17 @@ from typing import Any
 
 from ..runtime.commandbuffer import harness_derived_tensors, operand_flow
 
-__all__ = ["OBLIGATION_ID", "DECLARATION_KEY", "SATISFIED", "VIOLATED", "NOT_APPLICABLE",
-           "UNENFORCEABLE", "declared_obligation", "is_performance_member", "assess"]
+__all__ = [
+    "OBLIGATION_ID",
+    "DECLARATION_KEY",
+    "SATISFIED",
+    "VIOLATED",
+    "NOT_APPLICABLE",
+    "UNENFORCEABLE",
+    "declared_obligation",
+    "is_performance_member",
+    "assess",
+]
 
 #: The one obligation this module implements. A capsule may name it explicitly; a performance member
 #: that names nothing is held to it anyway (see the module docstring).
@@ -101,28 +111,46 @@ def assess(capsule: Any, command_buffer: Any) -> dict[str, Any]:
     """
     name = str((capsule or {}).get("name") or "<unnamed>") if isinstance(capsule, Mapping) else "<unnamed>"
     if not is_performance_member(capsule):
-        return _row(NOT_APPLICABLE, capsule=name,
-                    detail=("this capsule declares no performance block, so no cycle count is "
-                            "attributed to its emitted program and it owes no lowering obligation"))
+        return _row(
+            NOT_APPLICABLE,
+            capsule=name,
+            detail=(
+                "this capsule declares no performance block, so no cycle count is "
+                "attributed to its emitted program and it owes no lowering obligation"
+            ),
+        )
 
     declaration = declared_obligation(capsule)
     if declaration is not None:
         declared_id = declaration.get("id")
         if declared_id != OBLIGATION_ID:
-            return _row(UNENFORCEABLE, capsule=name, declared_id=declared_id,
-                        detail=(f"capsule {name!r} declares lowering obligation {declared_id!r}, "
-                                f"which no procedure in this build can evaluate. The only obligation "
-                                f"implemented is {OBLIGATION_ID!r}. An obligation nothing can decide "
-                                f"is refused, never assumed satisfied"))
+            return _row(
+                UNENFORCEABLE,
+                capsule=name,
+                declared_id=declared_id,
+                detail=(
+                    f"capsule {name!r} declares lowering obligation {declared_id!r}, "
+                    f"which no procedure in this build can evaluate. The only obligation "
+                    f"implemented is {OBLIGATION_ID!r}. An obligation nothing can decide "
+                    f"is refused, never assumed satisfied"
+                ),
+            )
 
     if not isinstance(command_buffer, Mapping):
-        return _row(UNENFORCEABLE, capsule=name,
-                    detail=(f"capsule {name!r} is a performance member and no command buffer was "
-                            f"supplied, so nothing could be read about what its program emits"))
+        return _row(
+            UNENFORCEABLE,
+            capsule=name,
+            detail=(
+                f"capsule {name!r} is a performance member and no command buffer was "
+                f"supplied, so nothing could be read about what its program emits"
+            ),
+        )
     if command_buffer.get("declined"):
-        return _row(NOT_APPLICABLE, capsule=name,
-                    detail=(f"the backend DECLINED to compile {name!r}; there is no emitted program "
-                            f"to hold to an obligation"))
+        return _row(
+            NOT_APPLICABLE,
+            capsule=name,
+            detail=(f"the backend DECLINED to compile {name!r}; there is no emitted program to hold to an obligation"),
+        )
 
     derived = harness_derived_tensors(command_buffer)
     written, referenced = operand_flow(command_buffer)
@@ -131,19 +159,29 @@ def assess(capsule: Any, command_buffer: Any) -> dict[str, Any]:
     offenders = sorted(n for n in derived if n in referenced and n not in written)
     if offenders:
         where = ", ".join(f"{n!r} (declared by params.{derived[n]})" for n in offenders[:6])
-        return _row(VIOLATED, capsule=name, operands=offenders,
-                    recipe_keys=sorted({derived[n] for n in offenders}),
-                    detail=(
-                        f"performance member {name!r} contracts over operand(s) the HARNESS built for "
-                        f"it: {where}. No command in the emitted program produces them, so the "
-                        f"transformation that would -- for a windowed operation, the window gather -- "
-                        f"appears nowhere in the program whose cycles are being measured, and no "
-                        f"compiler change to it can move that number. Emit it: either the "
-                        f"whole-operation opcode, whose datapath does the windowing, or an explicit "
-                        f"gather command that PRODUCES the matrix the contraction then reads. The "
-                        f"stimulus is unchanged either way -- the same tensor, materialized once, from "
-                        f"a command every engine executes"))
-    return _row(SATISFIED, capsule=name,
-                harness_derived=sorted(derived),
-                detail=(f"every operand {name!r}'s program consumes is either a declared leaf input or "
-                        f"produced by one of its own commands"))
+        return _row(
+            VIOLATED,
+            capsule=name,
+            operands=offenders,
+            recipe_keys=sorted({derived[n] for n in offenders}),
+            detail=(
+                f"performance member {name!r} contracts over operand(s) the HARNESS built for "
+                f"it: {where}. No command in the emitted program produces them, so the "
+                f"transformation that would -- for a windowed operation, the window gather -- "
+                f"appears nowhere in the program whose cycles are being measured, and no "
+                f"compiler change to it can move that number. Emit it: either the "
+                f"whole-operation opcode, whose datapath does the windowing, or an explicit "
+                f"gather command that PRODUCES the matrix the contraction then reads. The "
+                f"stimulus is unchanged either way -- the same tensor, materialized once, from "
+                f"a command every engine executes"
+            ),
+        )
+    return _row(
+        SATISFIED,
+        capsule=name,
+        harness_derived=sorted(derived),
+        detail=(
+            f"every operand {name!r}'s program consumes is either a declared leaf input or "
+            f"produced by one of its own commands"
+        ),
+    )

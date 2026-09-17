@@ -24,6 +24,7 @@ embedding, layout, comparison, hashing, console framing -- so that a failure on 
 attributable to the datapath instead of to the harness. It also must contain none of the unit's
 instructions, which is checked, so it cannot be mistaken for a device run.
 """
+
 from __future__ import annotations
 
 import json
@@ -38,10 +39,25 @@ import numpy as np
 from . import opu_corpus
 from .opu_kernel import KernelSpec, emit_microkernel, emit_reference_c
 
-__all__ = ["CaseResult", "CertReport", "IMAGE_MAIN", "REPORT_VERSION", "build_image", "certify",
-           "emit_image_c", "expected_digests", "fnv1a64", "logical_tile_edge",
-           "operand_alignment_for_config", "parse_console", "provenance_stamp", "solve_unit_rate",
-           "tile_edge_for_config", "UnitRate", "verdict"]
+__all__ = [
+    "CaseResult",
+    "CertReport",
+    "IMAGE_MAIN",
+    "REPORT_VERSION",
+    "build_image",
+    "certify",
+    "emit_image_c",
+    "expected_digests",
+    "fnv1a64",
+    "logical_tile_edge",
+    "operand_alignment_for_config",
+    "parse_console",
+    "provenance_stamp",
+    "solve_unit_rate",
+    "tile_edge_for_config",
+    "UnitRate",
+    "verdict",
+]
 
 #: Bumped when the report's shape changes, so an old artifact is never read as a new one.
 REPORT_VERSION = 1
@@ -103,9 +119,9 @@ def _joined_text(paths: "str | Path | Sequence[str | Path]") -> str:
     return "\n".join(Path(p).read_text(encoding="utf-8") for p in paths)
 
 
-def operand_alignment_for_config(config: str, *,
-                                 config_scala: "str | Path | Sequence[str | Path]",
-                                 mixin_scala: Sequence["str | Path"]) -> int:
+def operand_alignment_for_config(
+    config: str, *, config_scala: "str | Path | Sequence[str | Path]", mixin_scala: Sequence["str | Path"]
+) -> int:
     """Byte alignment the unit's operand panels require, derived from the datapath width.
 
     The vector load moves ``dLen`` bits per beat, so a panel that does not start on a ``dLen / 8`` byte
@@ -122,6 +138,7 @@ def operand_alignment_for_config(config: str, *,
     cfg_text = _joined_text(config_scala)
     mixin_text = "\n".join(Path(p).read_text(encoding="utf-8") for p in mixin_scala)
     from ..targetgen.rtl import opu_isa
+
     params = opu_isa.vector_unit_params(cfg_text, config, mixin_text=mixin_text)
     for key in ("dLen", "dlen", "DLen"):
         if key in params:
@@ -129,13 +146,17 @@ def operand_alignment_for_config(config: str, *,
     raise ValueError(
         f"could not derive a datapath width for {config!r} from {config_scala} (bound: {params}); "
         "refusing to guess an operand alignment, because an under-aligned panel returns wrong data "
-        "rather than failing")
+        "rather than failing"
+    )
 
 
-def tile_edge_for_config(config: str, *,
-                         config_scala: "str | Path | Sequence[str | Path]",
-                         mixin_scala: Sequence["str | Path"],
-                         sew_bits: int = _OPERAND_SEW_BITS) -> int:
+def tile_edge_for_config(
+    config: str,
+    *,
+    config_scala: "str | Path | Sequence[str | Path]",
+    mixin_scala: Sequence["str | Path"],
+    sew_bits: int = _OPERAND_SEW_BITS,
+) -> int:
     """The tile edge for a named hardware config, read from that config's own declaration.
 
     Raises when the vector length cannot be grounded. That is deliberate: a defaulted vector length gives
@@ -145,13 +166,15 @@ def tile_edge_for_config(config: str, *,
     cfg_text = _joined_text(config_scala)
     mixin_text = "\n".join(Path(p).read_text(encoding="utf-8") for p in mixin_scala)
     from ..targetgen.rtl import opu_isa
+
     params = opu_isa.vector_unit_params(cfg_text, config, mixin_text=mixin_text)
     for key in ("vLen", "vlen", "VLen"):
         if key in params:
             return logical_tile_edge(int(params[key]), sew_bits=sew_bits)
     raise ValueError(
         f"could not derive a vector length for {config!r} from {config_scala} (bound: {params}); "
-        "refusing to guess one, because the tile edge decides which corpus cases are in reach")
+        "refusing to guess one, because the tile edge decides which corpus cases are in reach"
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -183,8 +206,12 @@ def expected_digests(cases: Sequence[opu_corpus.Case]) -> dict[str, dict[str, An
             elements = int(ref.size)
         out[case.name] = {
             "digest": fnv1a64(payload),
-            "m": int(case.m), "n": int(case.n), "k": int(case.k),
-            "bias": bool(case.bias), "requant": bool(case.requant), "elements": elements,
+            "m": int(case.m),
+            "n": int(case.n),
+            "k": int(case.k),
+            "bias": bool(case.bias),
+            "requant": bool(case.requant),
+            "elements": elements,
         }
     return out
 
@@ -194,24 +221,27 @@ def expected_digests(cases: Sequence[opu_corpus.Case]) -> dict[str, dict[str, An
 # ---------------------------------------------------------------------------------------------
 
 
-def _c_array(name: str, values: np.ndarray, ctype: str, per_line: int = 24,
-             align: int | None = None) -> str:
+def _c_array(name: str, values: np.ndarray, ctype: str, per_line: int = 24, align: int | None = None) -> str:
     flat = np.asarray(values).reshape(-1)
     body = []
     for start in range(0, flat.size, per_line):
-        body.append("  " + ", ".join(str(int(v)) for v in flat[start:start + per_line]) + ",")
+        body.append("  " + ", ".join(str(int(v)) for v in flat[start : start + per_line]) + ",")
     attr = f" __attribute__((aligned({int(align)})))" if align else ""
-    return (f"static const {ctype} {name}[{flat.size}]{attr} = {{\n"
-            + "\n".join(body) + "\n};\n")
+    return f"static const {ctype} {name}[{flat.size}]{attr} = {{\n" + "\n".join(body) + "\n};\n"
 
 
 def _ident(name: str) -> str:
     return "".join(ch if (ch.isalnum() or ch == "_") else "_" for ch in name)
 
 
-def emit_image_c(cases: Sequence[opu_corpus.Case], *, kernel_func: str = "opu_gemm_i8",
-                 ref_func: str = "opu_gemm_i8_ref", operand_align: int | None = None,
-                 provenance_stamp: str | None = None) -> str:
+def emit_image_c(
+    cases: Sequence[opu_corpus.Case],
+    *,
+    kernel_func: str = "opu_gemm_i8",
+    ref_func: str = "opu_gemm_i8_ref",
+    operand_align: int | None = None,
+    provenance_stamp: str | None = None,
+) -> str:
     """The C source of the corpus image: operands as data, both implementations called, results framed.
 
     The operands are embedded rather than generated on the device because the corpus draws them from
@@ -220,8 +250,9 @@ def emit_image_c(cases: Sequence[opu_corpus.Case], *, kernel_func: str = "opu_ge
     generators that are supposed to agree.
     """
     if not cases:
-        raise ValueError("refusing to emit an image with no cases; an image that runs nothing "
-                         "reports DONE and would read as a pass")
+        raise ValueError(
+            "refusing to emit an image with no cases; an image that runs nothing reports DONE and would read as a pass"
+        )
     blocks, table = [], []
     max_out = 0
     # Bound from the corpus rather than repeated here: the C epilogue and the numpy one must use the
@@ -239,12 +270,13 @@ def emit_image_c(cases: Sequence[opu_corpus.Case], *, kernel_func: str = "opu_ge
         mult = case.multiplier()
         mult_expr = "0"
         if mult is not None:
-            blocks.append(_c_array(f"mult_{tag}", mult.astype(np.int32), "int32_t",
-                                   align=operand_align))
+            blocks.append(_c_array(f"mult_{tag}", mult.astype(np.int32), "int32_t", align=operand_align))
             mult_expr = f"mult_{tag}"
         max_out = max(max_out, int(case.m) * int(case.n))
-        table.append(f'  {{ "{case.name}", at_{tag}, b_{tag}, {bias_expr}, {mult_expr}, '
-                     f'{int(case.m)}, {int(case.n)}, {int(case.k)} }},')
+        table.append(
+            f'  {{ "{case.name}", at_{tag}, b_{tag}, {bias_expr}, {mult_expr}, '
+            f"{int(case.m)}, {int(case.n)}, {int(case.k)} }},"
+        )
 
     return f"""\
 /* GENERATED by merlin.kernels.opu_cert — do not edit.
@@ -499,11 +531,20 @@ def provenance_stamp(provenance: Mapping[str, Any]) -> str:
 _HARNESS_FILES = ("crt.S", "htif.c", "libc_min.c")
 
 
-def build_image(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec: KernelSpec,
-                workdir: "str | Path", *, derivation_ok: bool = True, scalar_tile: int | None = None,
-                screen_only: bool = False, operand_align: int | None = None,
-                dump_mismatches: int = 0, provenance_stamp: str | None = None,
-                extra_cflags: Sequence[str] = ()) -> Path:
+def build_image(
+    cases: Sequence[opu_corpus.Case],
+    encodings: Mapping[str, Any],
+    spec: KernelSpec,
+    workdir: "str | Path",
+    *,
+    derivation_ok: bool = True,
+    scalar_tile: int | None = None,
+    screen_only: bool = False,
+    operand_align: int | None = None,
+    dump_mismatches: int = 0,
+    provenance_stamp: str | None = None,
+    extra_cflags: Sequence[str] = (),
+) -> Path:
     """Compile the corpus image and return the ELF.
 
     ``scalar_tile`` selects the pre-flight build: the unit is replaced by a scalar stand-in and the tile
@@ -515,12 +556,14 @@ def build_image(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], 
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
     kernel_c = work / "opu_kernel_gen.c"
-    kernel_c.write_text(emit_microkernel(encodings, spec, derivation_ok=derivation_ok)
-                        + "\n" + emit_reference_c(), encoding="utf-8")
+    kernel_c.write_text(
+        emit_microkernel(encodings, spec, derivation_ok=derivation_ok) + "\n" + emit_reference_c(), encoding="utf-8"
+    )
     main_c = work / IMAGE_MAIN
-    main_c.write_text(emit_image_c(cases, kernel_func=spec.func_name,
-                                   operand_align=operand_align,
-                                   provenance_stamp=provenance_stamp), encoding="utf-8")
+    main_c.write_text(
+        emit_image_c(cases, kernel_func=spec.func_name, operand_align=operand_align, provenance_stamp=provenance_stamp),
+        encoding="utf-8",
+    )
 
     harness = spike_backend.harness_dir()
     stem = "opu_corpus_scalar" if scalar_tile is not None else "opu_corpus"
@@ -538,20 +581,29 @@ def build_image(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], 
         # rather than assumed -- a test requires the built image to contain no `vlenb` read and no vector
         # register spill, so the day this image gains vectorised C the test fails instead of the numbers
         # quietly becoming wrong.
-        "-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany",
+        "-march=rv64gcv",
+        "-mabi=lp64d",
+        "-mcmodel=medany",
         # -fno-tree-vectorize keeps the in-image reference a genuinely independent scalar implementation
         # rather than a second vectorised one, which is the whole point of having it.
-        "-O2", "-fno-tree-vectorize", "-ffreestanding", "-nostdlib", "-nostartfiles",
-        "-I", str(harness),
-        "-T", str(harness / "link.ld"),
+        "-O2",
+        "-fno-tree-vectorize",
+        "-ffreestanding",
+        "-nostdlib",
+        "-nostartfiles",
+        "-I",
+        str(harness),
+        "-T",
+        str(harness / "link.ld"),
         *(str(harness / f) for f in _HARNESS_FILES),
-        str(kernel_c), str(main_c),
-        *(["-DOPU_SCALAR_TILE", f"-DOPU_TILE_EDGE={int(scalar_tile)}"] if scalar_tile is not None
-          else []),
+        str(kernel_c),
+        str(main_c),
+        *(["-DOPU_SCALAR_TILE", f"-DOPU_TILE_EDGE={int(scalar_tile)}"] if scalar_tile is not None else []),
         *(["-DOPU_SCREEN_ONLY"] if screen_only else []),
         *([f"-DOPU_DUMP_MISMATCHES={int(dump_mismatches)}"] if dump_mismatches > 0 else []),
         *extra_cflags,
-        "-o", str(elf),
+        "-o",
+        str(elf),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -592,8 +644,11 @@ def parse_console(text: str) -> dict[str, Any]:
             _, name, m, n, k, mismatches, first_bad, digest = parts
             try:
                 cases[name] = {
-                    "m": int(m), "n": int(n), "k": int(k),
-                    "mismatches": int(mismatches), "first_bad": int(first_bad),
+                    "m": int(m),
+                    "n": int(n),
+                    "k": int(k),
+                    "mismatches": int(mismatches),
+                    "first_bad": int(first_bad),
                     "digest": int(digest, 16),
                 }
             except ValueError:
@@ -611,8 +666,7 @@ def parse_console(text: str) -> dict[str, Any]:
             stamp = line.split(None, 1)[1].strip()
         elif line == _DONE_LINE:
             done = True
-    return {"tile": tile, "done": done, "cases": cases, "cycles": cycles, "stamp": stamp,
-            "malformed": tuple(malformed)}
+    return {"tile": tile, "done": done, "cases": cases, "cycles": cycles, "stamp": stamp, "malformed": tuple(malformed)}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -629,8 +683,8 @@ class CaseResult:
     n: int
     k: int
     ran: bool
-    in_image_agrees: bool          # device kernel == in-image scalar reference
-    digest_agrees: bool            # device kernel == numpy, carried by hash
+    in_image_agrees: bool  # device kernel == in-image scalar reference
+    digest_agrees: bool  # device kernel == numpy, carried by hash
     mismatches: int = 0
     first_bad: int = -1
     #: False when the image skipped its own reference (a screening build). A case whose in-image
@@ -646,8 +700,7 @@ class CaseResult:
 
     @property
     def certified(self) -> bool:
-        return (self.ran and self.in_image_checked and self.in_image_agrees
-                and self.digest_agrees)
+        return self.ran and self.in_image_checked and self.in_image_agrees and self.digest_agrees
 
     @property
     def macs(self) -> int:
@@ -687,8 +740,7 @@ class CertReport:
 
     @property
     def certified(self) -> bool:
-        return (not self.gaps and bool(self.results)
-                and all(r.certified for r in self.results))
+        return not self.gaps and bool(self.results) and all(r.certified for r in self.results)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -704,13 +756,25 @@ class CertReport:
             "n_certified": sum(1 for r in self.results if r.certified),
             "n_cases": len(self.results),
             "results": [
-                {"name": r.name, "m": r.m, "n": r.n, "k": r.k, "ran": r.ran,
-                 "in_image_agrees": r.in_image_agrees, "digest_agrees": r.digest_agrees,
-                 "mismatches": r.mismatches, "first_bad": r.first_bad,
-                 "in_image_checked": r.in_image_checked,
-                 "cycles": r.cycles, "macs": r.macs, "macs_per_cycle": r.macs_per_cycle,
-                 "certified": r.certified, "note": r.note}
-                for r in self.results],
+                {
+                    "name": r.name,
+                    "m": r.m,
+                    "n": r.n,
+                    "k": r.k,
+                    "ran": r.ran,
+                    "in_image_agrees": r.in_image_agrees,
+                    "digest_agrees": r.digest_agrees,
+                    "mismatches": r.mismatches,
+                    "first_bad": r.first_bad,
+                    "in_image_checked": r.in_image_checked,
+                    "cycles": r.cycles,
+                    "macs": r.macs,
+                    "macs_per_cycle": r.macs_per_cycle,
+                    "certified": r.certified,
+                    "note": r.note,
+                }
+                for r in self.results
+            ],
             "deferred": [{"name": n, "reason": why} for n, why in self.deferred],
         }
 
@@ -759,11 +823,14 @@ class UnitRate:
     gaps: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {"tile_edge": self.tile_edge, "macs_per_cycle": self.macs_per_cycle,
-                "tile_overhead_cycles_per_pair": self.tile_overhead_cycles_per_pair,
-                "per_shape": dict(self.per_shape),
-                "excluded": [{"shape": s, "why": w} for s, w in self.excluded],
-                "gaps": list(self.gaps)}
+        return {
+            "tile_edge": self.tile_edge,
+            "macs_per_cycle": self.macs_per_cycle,
+            "tile_overhead_cycles_per_pair": self.tile_overhead_cycles_per_pair,
+            "per_shape": dict(self.per_shape),
+            "excluded": [{"shape": s, "why": w} for s, w in self.excluded],
+            "gaps": list(self.gaps),
+        }
 
     def cost_model(self, unit: str, **kwargs: Any):
         """A :class:`targetgen.routing.MeasuredCost` carrying these measurements for ``unit``.
@@ -779,10 +846,10 @@ class UnitRate:
         from ..targetgen import routing
 
         rates = {} if self.macs_per_cycle is None else {unit: float(self.macs_per_cycle)}
-        over = ({} if self.tile_overhead_cycles_per_pair is None
-                else {unit: float(self.tile_overhead_cycles_per_pair)})
-        return routing.MeasuredCost(macs_per_cycle=rates, tile_edge={unit: int(self.tile_edge)},
-                                    tile_overhead_cycles=over, **kwargs)
+        over = {} if self.tile_overhead_cycles_per_pair is None else {unit: float(self.tile_overhead_cycles_per_pair)}
+        return routing.MeasuredCost(
+            macs_per_cycle=rates, tile_edge={unit: int(self.tile_edge)}, tile_overhead_cycles=over, **kwargs
+        )
 
 
 def solve_unit_rate(results: Sequence[CaseResult], *, tile_edge: int) -> UnitRate:
@@ -794,8 +861,12 @@ def solve_unit_rate(results: Sequence[CaseResult], *, tile_edge: int) -> UnitRat
     """
     tile = int(tile_edge)
     if tile <= 0:
-        return UnitRate(tile_edge=tile, macs_per_cycle=None, tile_overhead_cycles_per_pair=None,
-                        gaps=(f"tile_edge={tile_edge} is not a tile geometry",))
+        return UnitRate(
+            tile_edge=tile,
+            macs_per_cycle=None,
+            tile_overhead_cycles_per_pair=None,
+            gaps=(f"tile_edge={tile_edge} is not a tile geometry",),
+        )
 
     groups: dict[tuple[int, int], dict[int, int]] = {}
     for r in results:
@@ -820,42 +891,73 @@ def solve_unit_rate(results: Sequence[CaseResult], *, tile_edge: int) -> UnitRat
         # when the shape fills it. Dividing by `a` then gives MACs per cycle at that occupancy.
         live = min(m, tile) * min(n, tile)
         rate = (live / a) if a > 0 else None
-        fills = (m >= tile and n >= tile)
-        entry = {"m": m, "n": n, "k_points": ks, "tile_pairs": pairs,
-                 "cycles_per_k_step_per_pair": a, "fixed_cycles_per_pair": b,
-                 "macs_per_cycle": rate, "fills_tile": fills}
+        fills = m >= tile and n >= tile
+        entry = {
+            "m": m,
+            "n": n,
+            "k_points": ks,
+            "tile_pairs": pairs,
+            "cycles_per_k_step_per_pair": a,
+            "fixed_cycles_per_pair": b,
+            "macs_per_cycle": rate,
+            "fills_tile": fills,
+        }
         per_shape[name] = entry
         if rate is None:
             excluded.append((name, "non-positive slope: the two depths do not separate"))
         elif not fills:
-            excluded.append((name, f"does not fill a {tile}x{tile} tile in both extents "
-                                   f"(m={m}, n={n}); measures occupancy, not rate"))
+            excluded.append(
+                (
+                    name,
+                    f"does not fill a {tile}x{tile} tile in both extents (m={m}, n={n}); measures occupancy, not rate",
+                )
+            )
         else:
             rates.append(rate)
             overheads.append(b)
             entry["in_blend"] = True
 
     if not rates:
-        return UnitRate(tile_edge=tile, macs_per_cycle=None, tile_overhead_cycles_per_pair=None,
-                        per_shape=per_shape, excluded=tuple(excluded),
-                        gaps=("no certified full-tile shape has two reduction depths, so the unit's rate "
-                              "and its per-tile-pair overhead cannot be separated",))
-    return UnitRate(tile_edge=tile,
-                    macs_per_cycle=sum(rates) / len(rates),
-                    tile_overhead_cycles_per_pair=sum(overheads) / len(overheads),
-                    per_shape=per_shape, excluded=tuple(excluded))
+        return UnitRate(
+            tile_edge=tile,
+            macs_per_cycle=None,
+            tile_overhead_cycles_per_pair=None,
+            per_shape=per_shape,
+            excluded=tuple(excluded),
+            gaps=(
+                "no certified full-tile shape has two reduction depths, so the unit's rate "
+                "and its per-tile-pair overhead cannot be separated",
+            ),
+        )
+    return UnitRate(
+        tile_edge=tile,
+        macs_per_cycle=sum(rates) / len(rates),
+        tile_overhead_cycles_per_pair=sum(overheads) / len(overheads),
+        per_shape=per_shape,
+        excluded=tuple(excluded),
+    )
 
 
 def _ceil_div(a: int, b: int) -> int:
     return -(-int(a) // int(b))
 
 
-def certify(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec: KernelSpec,
-            workdir: "str | Path", *, config: str, tile_edge: int, run,
-            deferred: Sequence[tuple[opu_corpus.Case, str]] = (), derivation_ok: bool = True,
-            scalar_tile: int | None = None, screen_only: bool = False,
-            operand_align: int | None = None,
-            provenance: Mapping[str, Any] | None = None) -> CertReport:
+def certify(
+    cases: Sequence[opu_corpus.Case],
+    encodings: Mapping[str, Any],
+    spec: KernelSpec,
+    workdir: "str | Path",
+    *,
+    config: str,
+    tile_edge: int,
+    run,
+    deferred: Sequence[tuple[opu_corpus.Case, str]] = (),
+    derivation_ok: bool = True,
+    scalar_tile: int | None = None,
+    screen_only: bool = False,
+    operand_align: int | None = None,
+    provenance: Mapping[str, Any] | None = None,
+) -> CertReport:
     """Build the image, check it actually uses the unit, run it, and judge the console.
 
     ``run`` is a callable taking the ELF path and returning console text, so the substrate is the
@@ -867,40 +969,72 @@ def certify(cases: Sequence[opu_corpus.Case], encodings: Mapping[str, Any], spec
     the most comfortable way for this whole exercise to be wrong.
     """
     stamp = provenance_stamp(provenance) if provenance else None
-    elf = build_image(cases, encodings, spec, workdir, derivation_ok=derivation_ok,
-                      scalar_tile=scalar_tile, screen_only=screen_only,
-                      operand_align=operand_align, provenance_stamp=stamp)
+    elf = build_image(
+        cases,
+        encodings,
+        spec,
+        workdir,
+        derivation_ok=derivation_ok,
+        scalar_tile=scalar_tile,
+        screen_only=screen_only,
+        operand_align=operand_align,
+        provenance_stamp=stamp,
+    )
     from .decode import opu as opu_audit
+
     audit = opu_audit.audit_object(elf, encodings)
     wanted = (spec.accumulate, spec.broadcast, spec.readout)
     counts = {name: int(audit.counts.get(name, 0)) for name in wanted}
     uses_unit = all(counts[name] > 0 for name in (spec.accumulate, spec.readout))
 
-    report = verdict(run(elf), cases, config=config, tile_edge=tile_edge, deferred=deferred,
-                     uses_unit=uses_unit, unit_counts=counts, provenance=provenance,
-                     expected_stamp=stamp)
+    report = verdict(
+        run(elf),
+        cases,
+        config=config,
+        tile_edge=tile_edge,
+        deferred=deferred,
+        uses_unit=uses_unit,
+        unit_counts=counts,
+        provenance=provenance,
+        expected_stamp=stamp,
+    )
     if scalar_tile is not None:
         # The pre-flight must NOT use the unit; if it does, the stand-in was not selected and this run
         # says nothing about the tiling loop it was built to exercise.
-        extra = () if not uses_unit else (
-            "the scalar pre-flight image contains the unit's instructions, so OPU_SCALAR_TILE did not "
-            "take effect and this run is not the host-checkable build it claims to be",)
-        report = CertReport(config=report.config, tile_edge=report.tile_edge, results=report.results,
-                            deferred=report.deferred, uses_unit=uses_unit,
-                            unit_instruction_counts=counts,
-                            tile_edge_reported=report.tile_edge_reported,
-                            provenance=report.provenance,
-                            gaps=tuple(g for g in report.gaps
-                                       if not g.startswith("the image contains none")) + extra)
+        extra = (
+            ()
+            if not uses_unit
+            else (
+                "the scalar pre-flight image contains the unit's instructions, so OPU_SCALAR_TILE did not "
+                "take effect and this run is not the host-checkable build it claims to be",
+            )
+        )
+        report = CertReport(
+            config=report.config,
+            tile_edge=report.tile_edge,
+            results=report.results,
+            deferred=report.deferred,
+            uses_unit=uses_unit,
+            unit_instruction_counts=counts,
+            tile_edge_reported=report.tile_edge_reported,
+            provenance=report.provenance,
+            gaps=tuple(g for g in report.gaps if not g.startswith("the image contains none")) + extra,
+        )
     return report
 
 
-def verdict(console: str, cases: Sequence[opu_corpus.Case], *, config: str, tile_edge: int,
-            deferred: Sequence[tuple[opu_corpus.Case, str]] = (),
-            uses_unit: bool | None = None,
-            unit_counts: Mapping[str, int] | None = None,
-            provenance: Mapping[str, Any] | None = None,
-            expected_stamp: str | None = None) -> CertReport:
+def verdict(
+    console: str,
+    cases: Sequence[opu_corpus.Case],
+    *,
+    config: str,
+    tile_edge: int,
+    deferred: Sequence[tuple[opu_corpus.Case, str]] = (),
+    uses_unit: bool | None = None,
+    unit_counts: Mapping[str, int] | None = None,
+    provenance: Mapping[str, Any] | None = None,
+    expected_stamp: str | None = None,
+) -> CertReport:
     """Judge a console against host-derived truth. Absent and malformed cases are gaps, not passes."""
     parsed = parse_console(console)
     expected = expected_digests(cases)
@@ -908,34 +1042,43 @@ def verdict(console: str, cases: Sequence[opu_corpus.Case], *, config: str, tile
     if not parsed["done"]:
         gaps.append("the image did not report DONE, so the run did not complete")
     if parsed["malformed"]:
-        gaps.append(f"{len(parsed['malformed'])} unparseable console line(s): "
-                    f"{list(parsed['malformed'])[:3]}")
+        gaps.append(f"{len(parsed['malformed'])} unparseable console line(s): {list(parsed['malformed'])[:3]}")
     reported = parsed["tile"]
     if reported is not None and int(reported) != int(tile_edge):
-        gaps.append(f"the hardware reported a tile edge of {reported} but the corpus was selected for "
-                    f"{tile_edge}; the run did not test the shapes this report names")
+        gaps.append(
+            f"the hardware reported a tile edge of {reported} but the corpus was selected for "
+            f"{tile_edge}; the run did not test the shapes this report names"
+        )
     if uses_unit is False:
-        gaps.append("the image contains none of the unit's instructions, so whatever it computed, it "
-                    "did not use the unit")
+        gaps.append(
+            "the image contains none of the unit's instructions, so whatever it computed, it did not use the unit"
+        )
     if expected_stamp is not None:
         got_stamp = parsed.get("stamp")
         if got_stamp is None:
-            gaps.append("the image reported no provenance stamp, so the result cannot be attributed to a "
-                        "hardware revision")
+            gaps.append(
+                "the image reported no provenance stamp, so the result cannot be attributed to a hardware revision"
+            )
         elif got_stamp != expected_stamp:
-            gaps.append(f"the image reported provenance {got_stamp!r} but this build expects "
-                        f"{expected_stamp!r}; a stale binary ran")
+            gaps.append(
+                f"the image reported provenance {got_stamp!r} but this build expects "
+                f"{expected_stamp!r}; a stale binary ran"
+            )
     prov = dict(provenance or {})
     for name, entry in (prov.get("hardware_pins") or {}).items():
         # Material drift only. A dirty tree elsewhere in the checkout is recorded but not a gap, because
         # `source_digest` already pins the bytes that were actually read; a wrong revision or missing
         # hardware is a different matter and cannot be reconciled after the fact.
         if entry.get("missing_paths"):
-            gaps.append(f"pin {name!r} is missing {entry['missing_paths']}: this checkout does not "
-                        "contain the hardware this result claims to be about")
+            gaps.append(
+                f"pin {name!r} is missing {entry['missing_paths']}: this checkout does not "
+                "contain the hardware this result claims to be about"
+            )
         if entry.get("forbidden_present"):
-            gaps.append(f"pin {name!r} declares {entry['forbidden_present']} absent but they are "
-                        "present, so this is not the revision it claims to be")
+            gaps.append(
+                f"pin {name!r} declares {entry['forbidden_present']} absent but they are "
+                "present, so this is not the revision it claims to be"
+            )
         for d in entry.get("drift", ()):
             if d.startswith("commit is") or d.startswith("no checkout"):
                 gaps.append(f"pin {name!r}: {d}")
@@ -945,32 +1088,56 @@ def verdict(console: str, cases: Sequence[opu_corpus.Case], *, config: str, tile
         exp = expected[case.name]
         got = parsed["cases"].get(case.name)
         if got is None:
-            results.append(CaseResult(name=case.name, m=int(case.m), n=int(case.n), k=int(case.k),
-                                      ran=False, in_image_agrees=False, digest_agrees=False,
-                                      note="no CASE line for this case in the console"))
+            results.append(
+                CaseResult(
+                    name=case.name,
+                    m=int(case.m),
+                    n=int(case.n),
+                    k=int(case.k),
+                    ran=False,
+                    in_image_agrees=False,
+                    digest_agrees=False,
+                    note="no CASE line for this case in the console",
+                )
+            )
             continue
         shape_ok = (got["m"], got["n"], got["k"]) == (exp["m"], exp["n"], exp["k"])
         notes = []
         if not shape_ok:
-            notes.append(f"the image ran m={got['m']} n={got['n']} k={got['k']}, not the shape this "
-                         "case names")
+            notes.append(f"the image ran m={got['m']} n={got['n']} k={got['k']}, not the shape this case names")
         checked = int(got["mismatches"]) >= 0
         if not checked:
-            notes.append("the image skipped its own reference (screening build), so nothing in it "
-                         "cross-checked the device result; this case is screened, not certified")
-        results.append(CaseResult(
-            name=case.name, m=int(case.m), n=int(case.n), k=int(case.k), ran=True,
-            in_image_agrees=(checked and int(got["mismatches"]) == 0),
-            digest_agrees=(got["digest"] == exp["digest"] and shape_ok),
-            mismatches=int(got["mismatches"]), first_bad=int(got["first_bad"]),
-            in_image_checked=checked,
-            # -1 when the image reported none, which an older build will not. Absent, not zero: a zero
-            # cycle count would compute an infinite throughput.
-            cycles=int(parsed.get("cycles", {}).get(case.name, -1)),
-            note="; ".join(notes)))
+            notes.append(
+                "the image skipped its own reference (screening build), so nothing in it "
+                "cross-checked the device result; this case is screened, not certified"
+            )
+        results.append(
+            CaseResult(
+                name=case.name,
+                m=int(case.m),
+                n=int(case.n),
+                k=int(case.k),
+                ran=True,
+                in_image_agrees=(checked and int(got["mismatches"]) == 0),
+                digest_agrees=(got["digest"] == exp["digest"] and shape_ok),
+                mismatches=int(got["mismatches"]),
+                first_bad=int(got["first_bad"]),
+                in_image_checked=checked,
+                # -1 when the image reported none, which an older build will not. Absent, not zero: a zero
+                # cycle count would compute an infinite throughput.
+                cycles=int(parsed.get("cycles", {}).get(case.name, -1)),
+                note="; ".join(notes),
+            )
+        )
 
-    return CertReport(config=config, tile_edge=int(tile_edge), results=tuple(results),
-                      deferred=tuple((c.name, why) for c, why in deferred),
-                      uses_unit=uses_unit, unit_instruction_counts=dict(unit_counts or {}),
-                      tile_edge_reported=None if reported is None else int(reported),
-                      provenance=prov, gaps=tuple(gaps))
+    return CertReport(
+        config=config,
+        tile_edge=int(tile_edge),
+        results=tuple(results),
+        deferred=tuple((c.name, why) for c, why in deferred),
+        uses_unit=uses_unit,
+        unit_instruction_counts=dict(unit_counts or {}),
+        tile_edge_reported=None if reported is None else int(reported),
+        provenance=prov,
+        gaps=tuple(gaps),
+    )

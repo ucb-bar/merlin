@@ -5,10 +5,10 @@ generalization.  That ordering was measured to absorb dequantization into contra
 the K1 path.  Here the consumer must already be an all-parallel ``linalg.generic`` and the only
 change is affine-map composition: a materialized broadcast becomes a projected operand access.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
-
 
 FEATURE = "fold_broadcast_into_generic"
 
@@ -153,9 +153,7 @@ def run_source() -> str:
     """Standalone driver used by tests; it executes the exact runner rewrite."""
     return (
         "import sys\n"
-        "from torch_mlir import ir\n"
-        + RUNNER_PRELUDE
-        + "src_path, out_path = sys.argv[1], sys.argv[2]\n"
+        "from torch_mlir import ir\n" + RUNNER_PRELUDE + "src_path, out_path = sys.argv[1], sys.argv[2]\n"
         "ctx = ir.Context()\n"
         "with open(src_path) as f:\n"
         "    module = ir.Module.parse(f.read(), ctx)\n"
@@ -170,6 +168,7 @@ def run_source() -> str:
 
 def _feature():
     from .impr_features import ImprFeature
+
     return ImprFeature(
         name=FEATURE,
         action_class="PASS",
@@ -190,6 +189,7 @@ def _feature():
 
 def ensure_registered() -> str:
     from .impr_features import known, register
+
     if FEATURE not in known():
         register(_feature())
     return FEATURE
@@ -204,7 +204,7 @@ def _exact_nonnegative_int_reports(stdout: str, prefix: str) -> list[int]:
     for line in stdout.splitlines():
         if not line.startswith(prefix):
             continue
-        value = line[len(prefix):]
+        value = line[len(prefix) :]
         if value and value.isdecimal():
             values.append(int(value))
     return values
@@ -221,10 +221,10 @@ def require_report(stdout: str, work: str | Path) -> int:
     if len(matches) != 1:
         raise ValueError(
             "fold_broadcast_into_generic was requested but the lowering runner did not report "
-            f"exactly once (reports={matches})")
+            f"exactly once (reports={matches})"
+        )
     if matches[0] < 1:
-        raise ValueError(
-            "fold_broadcast_into_generic was requested but folded zero broadcasts")
+        raise ValueError("fold_broadcast_into_generic was requested but folded zero broadcasts")
     path = Path(work) / "broadcast_fold_report.txt"
     path.write_text(f"folded={matches[0]}\n", encoding="utf-8")
     return matches[0]

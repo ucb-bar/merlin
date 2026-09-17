@@ -11,6 +11,7 @@ per solver scope. Handed to z3 verbatim the query still answers ``sat``, but the
 EMPTY — the reset has already discarded it, so the counterexample silently disappears. It is
 stripped here, and :func:`solve` refuses to report ``sat`` without a model.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -35,6 +36,7 @@ class Verdict:
     ``sat``     refuted, with a counterexample in ``model``
     ``unknown`` the solver gave up (timeout / incompleteness) — NOT a pass
     """
+
     status: str
     model: str | None = None
     smt2: str = field(default="", repr=False)
@@ -72,8 +74,7 @@ def to_smtlib(module) -> str:
     if tool is None:
         raise SmtUnavailable("mlir-translate not found; cannot export SMT-LIB")
     text = module_text(module)
-    r = subprocess.run([tool, "--export-smtlib"], input=text,
-                       capture_output=True, text=True)
+    r = subprocess.run([tool, "--export-smtlib"], input=text, capture_output=True, text=True)
     if r.returncode != 0:
         raise SmtUnavailable(f"mlir-translate --export-smtlib failed:\n{r.stderr}\n--- input ---\n{text}")
     return r.stdout

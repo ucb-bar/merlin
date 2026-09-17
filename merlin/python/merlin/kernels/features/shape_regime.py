@@ -6,12 +6,12 @@ extractor derives the regime vocabulary from a kernel's parsed shape when a full
 shape (M, N, K) is available, and is honestly ``["unknown"]`` otherwise (XNNPACK/OpenBLAS
 filenames carry only register-tile MRxNR, not problem shapes).
 """
+
 from __future__ import annotations
 
 from merlin.kernels.types import NormalizedKernel
 
-_DTYPE_BYTES = {"i8": 1, "u8": 1, "i32": 4, "f16": 2, "bf16": 2, "f32": 4, "f64": 8,
-                "c32": 8, "c64": 16}
+_DTYPE_BYTES = {"i8": 1, "u8": 1, "i32": 4, "f16": 2, "bf16": 2, "f32": 4, "f64": 8, "c32": 8, "c64": 16}
 # Same residency budget the Stage-D capacity sweep uses (128 KiB scratchpad-class store).
 RESIDENT_BUDGET_BYTES = 131072
 # Arithmetic-intensity cutover (flops/byte) between memory- and compute-bound regimes.
@@ -45,10 +45,12 @@ def extract_shape_regime(nk: NormalizedKernel, fired: dict) -> dict:
     regime.append("memory_bound" if ai < _AI_CUTOVER else "compute_bound")
     regime.append("capacity_fit" if rhs_bytes <= RESIDENT_BUDGET_BYTES else "capacity_overflow")
 
-    return {"shape_regime": {
-        "regime": regime,
-        "working_set_bytes": working_set,
-        "rhs_size_bytes": rhs_bytes,
-        "arithmetic_intensity": round(ai, 2),
-        "k_divisible_16": K % 16 == 0,
-    }}
+    return {
+        "shape_regime": {
+            "regime": regime,
+            "working_set_bytes": working_set,
+            "rhs_size_bytes": rhs_bytes,
+            "arithmetic_intensity": round(ai, 2),
+            "k_divisible_16": K % 16 == 0,
+        }
+    }

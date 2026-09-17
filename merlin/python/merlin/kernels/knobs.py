@@ -20,6 +20,7 @@ until the beam is cut over to CCA divergences (WS-D). NB: the `fma_form` "work-i
 historical — fused vfmacc is now a certified `impr_features:fused_vfmacc_contraction` PASS
 (see action_catalog), so that gap is CLOSED; the note is kept only to document the original routing.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -28,11 +29,11 @@ from typing import Any, Callable
 
 @dataclass
 class ForkProposal:
-    overrides: dict[str, Any]          # knob overrides applied to the parent (empty for deferred)
-    lever: str                          # knob | lowering_pattern | llvm_requirement | feature | work_item
-    targets: str                        # which divergence/decision this addresses
-    evidence: list[str]                 # mined policy / kernel ids justifying it
-    forkable: bool                      # True => beam can mint+certify; False => recorded work-item
+    overrides: dict[str, Any]  # knob overrides applied to the parent (empty for deferred)
+    lever: str  # knob | lowering_pattern | llvm_requirement | feature | work_item
+    targets: str  # which divergence/decision this addresses
+    evidence: list[str]  # mined policy / kernel ids justifying it
+    forkable: bool  # True => beam can mint+certify; False => recorded work-item
     note: str = ""
     # the typed CompilerAction this proposal came from (CCA-native proposer only; None for the legacy
     # motif router). Carries intended_facet so the beam can AUDIT the minted fork (did the emitted asm
@@ -56,34 +57,58 @@ def _wider_n_overrides(knobs: dict, factor: int) -> dict:
 # decision key -> list of (lever, forkable, override-builder | None, evidence-policy, note)
 _ROUTES: dict[str, list[dict]] = {
     "lmul_class": [
-        {"lever": "knob", "forkable": True, "policy": "lmul_grouping_policy",
-         "build": lambda k: _wider_n_overrides(k, 2),
-         "note": "widen N tile/vector x2 to push vector grouping toward higher LMUL"},
-        {"lever": "knob", "forkable": True, "policy": "lmul_grouping_policy",
-         "build": lambda k: _wider_n_overrides(k, 4),
-         "note": "widen N tile/vector x4"},
+        {
+            "lever": "knob",
+            "forkable": True,
+            "policy": "lmul_grouping_policy",
+            "build": lambda k: _wider_n_overrides(k, 2),
+            "note": "widen N tile/vector x2 to push vector grouping toward higher LMUL",
+        },
+        {
+            "lever": "knob",
+            "forkable": True,
+            "policy": "lmul_grouping_policy",
+            "build": lambda k: _wider_n_overrides(k, 4),
+            "note": "widen N tile/vector x4",
+        },
     ],
     "fma_form": [
-        {"lever": "knob", "forkable": True, "policy": "fma_broadcast_policy",
-         "build": lambda k: {"contraction_strategy": "outerproduct"},
-         "note": "try outerproduct contraction lowering (NOTE: proven no-op; kept so the beam "
-                 "records it as explored/pruned)"},
-        {"lever": "llvm_requirement", "forkable": False, "policy": "fma_broadcast_policy",
-         "build": None,
-         "note": "RECOVER FUSED vfmacc: inject fast-math `contract` at MLIR emission so clang fuses "
-                 "fmul+fadd -> fmuladd -> vfmacc. Not a schedule knob today (needs a lowering "
-                 "feature: set fastmath on arith ops / a contract pass). Work-item."},
+        {
+            "lever": "knob",
+            "forkable": True,
+            "policy": "fma_broadcast_policy",
+            "build": lambda k: {"contraction_strategy": "outerproduct"},
+            "note": "try outerproduct contraction lowering (NOTE: proven no-op; kept so the beam "
+            "records it as explored/pruned)",
+        },
+        {
+            "lever": "llvm_requirement",
+            "forkable": False,
+            "policy": "fma_broadcast_policy",
+            "build": None,
+            "note": "RECOVER FUSED vfmacc: inject fast-math `contract` at MLIR emission so clang fuses "
+            "fmul+fadd -> fmuladd -> vfmacc. Not a schedule knob today (needs a lowering "
+            "feature: set fastmath on arith ops / a contract pass). Work-item.",
+        },
     ],
     "vl_strategy": [
-        {"lever": "llvm_requirement", "forkable": False, "policy": "vl_tail_policy",
-         "build": None,
-         "note": "expert uses vsetvl-loop (VL-polymorphic); we emit vsetivli (fixed immediate). "
-                 "Needs a scalable-vector / VL-loop lowering path. Work-item."},
+        {
+            "lever": "llvm_requirement",
+            "forkable": False,
+            "policy": "vl_tail_policy",
+            "build": None,
+            "note": "expert uses vsetvl-loop (VL-polymorphic); we emit vsetivli (fixed immediate). "
+            "Needs a scalable-vector / VL-loop lowering path. Work-item.",
+        },
     ],
     "int_widening": [
-        {"lever": "knob", "forkable": True, "policy": "int8_widening_policy",
-         "build": lambda k: {"dtype_strategy": "int8_w8a8"},
-         "note": "route i8 matmul through the vwmacc integer datapath (passes_quant_int)"},
+        {
+            "lever": "knob",
+            "forkable": True,
+            "policy": "int8_widening_policy",
+            "build": lambda k: {"dtype_strategy": "int8_w8a8"},
+            "note": "route i8 matmul through the vwmacc integer datapath (passes_quant_int)",
+        },
     ],
 }
 
@@ -97,9 +122,16 @@ def propose_forks(divergences: list[str], knobs: dict[str, Any]) -> list[ForkPro
     for key in keys:
         for route in _ROUTES.get(key, []):
             overrides = route["build"](knobs) if route["build"] else {}
-            out.append(ForkProposal(
-                overrides=overrides, lever=route["lever"], targets=key,
-                evidence=[route["policy"]], forkable=route["forkable"], note=route["note"]))
+            out.append(
+                ForkProposal(
+                    overrides=overrides,
+                    lever=route["lever"],
+                    targets=key,
+                    evidence=[route["policy"]],
+                    forkable=route["forkable"],
+                    note=route["note"],
+                )
+            )
     return out
 
 
@@ -140,7 +172,7 @@ def propose_forks(divergences: list[str], knobs: dict[str, Any]) -> list[ForkPro
 # check that could not run reported success and burned a 101-minute round.
 
 from collections.abc import Mapping, Sequence  # noqa: E402 -- the typed layer's imports, kept beside it
-from itertools import permutations             # noqa: E402
+from itertools import permutations  # noqa: E402
 
 #: The four surfaces, weakest scope first. A change is on-surface or it is refused; there is no fifth.
 TILE = "tile"
@@ -175,8 +207,8 @@ UNDETERMINABLE = "undeterminable"
 #: target. They are restated at all only because ``cca.py`` declares them in PROSE comments
 #: (``# k_major | m_major | n_major``) with nothing machine-readable behind them; see the module
 #: report. If those vocabularies ever become data on the facet, these three constants delete.
-_OPERAND_MAJOR_VALUES: tuple[str, ...] = ("k_major", "m_major", "n_major")   # cca.LayoutFacet.operand_major
-_RESIDENT_VALUES: tuple[str, ...] = ("a", "b", "both", "none")              # cca.MemoryFacet.onchip_resident
+_OPERAND_MAJOR_VALUES: tuple[str, ...] = ("k_major", "m_major", "n_major")  # cca.LayoutFacet.operand_major
+_RESIDENT_VALUES: tuple[str, ...] = ("a", "b", "both", "none")  # cca.MemoryFacet.onchip_resident
 _BOOL_VALUES: tuple[bool, ...] = (False, True)
 
 #: The issuing side of an endpoint, when the target's contract does not declare it as a compute unit.
@@ -274,8 +306,10 @@ class Knob:
         if self.surface not in SURFACES:
             raise ValueError(f"knob {self.name!r}: surface {self.surface!r} not in {list(SURFACES)}")
         if self.default is None and not self.why_no_default and self.domain.kind != UNKNOWN_DOMAIN:
-            raise ValueError(f"knob {self.name!r}: no default and no reason given — a missing default "
-                             f"must be an explicit admission, never an omission")
+            raise ValueError(
+                f"knob {self.name!r}: no default and no reason given — a missing default "
+                f"must be an explicit admission, never an omission"
+            )
 
     @property
     def determinable(self) -> bool:
@@ -285,8 +319,13 @@ class Knob:
         return self.domain.admits(value)
 
     def to_dict(self) -> dict:
-        out = {"name": self.name, "surface": self.surface, "controls": self.controls,
-               "domain": self.domain.to_dict(), "default": self.default}
+        out = {
+            "name": self.name,
+            "surface": self.surface,
+            "controls": self.controls,
+            "domain": self.domain.to_dict(),
+            "default": self.default,
+        }
         if self.why_no_default:
             out["why_no_default"] = self.why_no_default
         return out
@@ -326,13 +365,16 @@ class KnobInventory:
         return k.surface if k else None
 
     def to_dict(self) -> dict:
-        return {"target": self.target,
-                "knobs": [k.to_dict() for k in self.knobs],
-                "unknown_knobs": [k.name for k in self.unknowns],
-                "notes": dict(self.notes)}
+        return {
+            "target": self.target,
+            "knobs": [k.to_dict() for k in self.knobs],
+            "unknown_knobs": [k.name for k in self.unknowns],
+            "notes": dict(self.notes),
+        }
 
 
 # ---- derivation -------------------------------------------------------------------------------
+
 
 def _address_space(target: str):
     """``(AddressSpace | None, reason)``. Never raises: an unreadable artifact is a reported UNKNOWN,
@@ -340,8 +382,9 @@ def _address_space(target: str):
     describe the knobs it COULD derive."""
     try:
         from merlin.targetgen import address_space as _as
+
         return _as.derive_address_space(target), ""
-    except Exception as e:                       # noqa: BLE001 -- no artifact / no toolchain / bad shape
+    except Exception as e:  # noqa: BLE001 -- no artifact / no toolchain / bad shape
         return None, f"{type(e).__name__}: {str(e)[:160]}"
 
 
@@ -356,8 +399,9 @@ def _units(target: str):
     try:
         from merlin.targetgen import target_registry as _tr
         from merlin.targetgen.compute_units import compute_units
+
         return tuple(compute_units(_tr.load_contract(target) or {})), ""
-    except Exception as e:                       # noqa: BLE001 -- undeclared / malformed contract
+    except Exception as e:  # noqa: BLE001 -- undeclared / malformed contract
         return (), f"{type(e).__name__}: {str(e)[:160]}"
 
 
@@ -372,13 +416,14 @@ def _endpoint_roles(target: str) -> tuple[frozenset[str], str]:
     """
     try:
         from merlin.kernels import endpoints as _ep
+
         seen: set[str] = set()
         for e in _ep.endpoints_for(target):
             seen.update(getattr(e, "roles", {}) or {})
         if not seen:
             return frozenset(), "the target's endpoints license no roles we could read"
         return frozenset(seen), ""
-    except Exception as e:                       # noqa: BLE001 -- no endpoint spec for this target
+    except Exception as e:  # noqa: BLE001 -- no endpoint spec for this target
         return frozenset(), f"{type(e).__name__}: {str(e)[:160]}"
 
 
@@ -394,11 +439,13 @@ def _accumulator_store(space):
     test this used to apply would name an accumulator where the address space itself is undecided.
     """
     from merlin.targetgen.address_space import accumulator_store
+
     return accumulator_store(space).store
 
 
-def _tile_knobs(target: str, space, reason: str, store, capacity, roles: frozenset[str],
-                role_reason: str, working_set) -> list[Knob]:
+def _tile_knobs(
+    target: str, space, reason: str, store, capacity, roles: frozenset[str], role_reason: str, working_set
+) -> list[Knob]:
     """TILE: tile shape, loop order, staging/prefetch depth, residency."""
     out: list[Knob] = []
     rows = getattr(space, "array_rows", None) if space is not None else None
@@ -413,34 +460,54 @@ def _tile_knobs(target: str, space, reason: str, store, capacity, roles: frozens
     for axis, extent in (("rows", rows), ("cols", cols)):
         if isinstance(extent, int) and extent > 0:
             dom = bounded_range(1, extent, source=f"{geom_src}.{axis}")
-            out.append(Knob(f"tile.extent_{axis}", TILE, dom,
-                            controls=f"tile extent along the array's {axis} edge",
-                            default=extent))
+            out.append(
+                Knob(
+                    f"tile.extent_{axis}",
+                    TILE,
+                    dom,
+                    controls=f"tile extent along the array's {axis} edge",
+                    default=extent,
+                )
+            )
         else:
-            out.append(Knob(f"tile.extent_{axis}", TILE,
-                            unknown_domain(reason or f"these facts declare no array {axis} extent",
-                                           source=geom_src),
-                            controls=f"tile extent along the array's {axis} edge"))
+            out.append(
+                Knob(
+                    f"tile.extent_{axis}",
+                    TILE,
+                    unknown_domain(reason or f"these facts declare no array {axis} extent", source=geom_src),
+                    controls=f"tile extent along the array's {axis} edge",
+                )
+            )
 
     # --- reduction extent. Bounded by the OPERAND STORE, not by the array: the reduction axis is
     # streamed through the store, and the measured abort was exactly a schedule that addressed more
     # rows than the store has (16384 requested against 16384 present).
     if capacity:
-        out.append(Knob("tile.reduction_rows", TILE,
-                        bounded_range(1, int(capacity),
-                                      source=f"targetgen.memory_regime.operand_store({target!r})"
-                                             f".total_rows"),
-                        controls="rows of the operand store one tile's reduction slice may occupy",
-                        default=None,
-                        why_no_default="the point the compiler starts at is a schedule fact, not a "
-                                       "target fact; defaulting to the capacity is the shape that "
-                                       "aborted in a range check, and defaulting to 1 would claim a "
-                                       "residency choice nobody made"))
+        out.append(
+            Knob(
+                "tile.reduction_rows",
+                TILE,
+                bounded_range(1, int(capacity), source=f"targetgen.memory_regime.operand_store({target!r}).total_rows"),
+                controls="rows of the operand store one tile's reduction slice may occupy",
+                default=None,
+                why_no_default="the point the compiler starts at is a schedule fact, not a "
+                "target fact; defaulting to the capacity is the shape that "
+                "aborted in a range check, and defaulting to 1 would claim a "
+                "residency choice nobody made",
+            )
+        )
     else:
-        out.append(Knob("tile.reduction_rows", TILE,
-                        unknown_domain(f"{target!r} declares no operand-store capacity we can derive",
-                                       source="targetgen.memory_regime.operand_store"),
-                        controls="rows of the operand store one tile's reduction slice may occupy"))
+        out.append(
+            Knob(
+                "tile.reduction_rows",
+                TILE,
+                unknown_domain(
+                    f"{target!r} declares no operand-store capacity we can derive",
+                    source="targetgen.memory_regime.operand_store",
+                ),
+                controls="rows of the operand store one tile's reduction slice may occupy",
+            )
+        )
 
     # --- loop order. The axis SET is derived, not listed: the array contributes one axis per declared
     # extent, and a reduction axis exists iff the endpoint licenses an ``accumulate`` role (a device
@@ -451,16 +518,28 @@ def _tile_knobs(target: str, space, reason: str, store, capacity, roles: frozens
         axes.append("reduction")
     if len(axes) >= 2:
         orders = tuple(tuple(p) for p in permutations(axes))
-        out.append(Knob("tile.loop_order", TILE,
-                        value_set(orders, source=f"{geom_src} extents + endpoint roles "
-                                                 f"(reduction axis iff an 'accumulate' role exists)"),
-                        controls="permutation of the tile loop nest's axes",
-                        default=orders[0]))
+        out.append(
+            Knob(
+                "tile.loop_order",
+                TILE,
+                value_set(
+                    orders,
+                    source=f"{geom_src} extents + endpoint roles (reduction axis iff an 'accumulate' role exists)",
+                ),
+                controls="permutation of the tile loop nest's axes",
+                default=orders[0],
+            )
+        )
     else:
-        why = (reason or role_reason
-               or "fewer than two axes are derivable (no array extents, and no accumulate role)")
-        out.append(Knob("tile.loop_order", TILE, unknown_domain(why, source=geom_src),
-                        controls="permutation of the tile loop nest's axes"))
+        why = reason or role_reason or "fewer than two axes are derivable (no array extents, and no accumulate role)"
+        out.append(
+            Knob(
+                "tile.loop_order",
+                TILE,
+                unknown_domain(why, source=geom_src),
+                controls="permutation of the tile loop nest's axes",
+            )
+        )
 
     # --- staging / prefetch depth. Two independent bounds, and the tighter wins:
     #   * the store's BANK count — depth N alternates N banks, and a device with one bank cannot stage;
@@ -474,21 +553,40 @@ def _tile_knobs(target: str, space, reason: str, store, capacity, roles: frozens
             if fit_hi is not None:
                 hi = min(hi, fit_hi)
                 src += f" ∧ memory_regime.classify -> {regime}"
-        out.append(Knob("tile.stage_depth", TILE, bounded_range(1, hi, source=src),
-                        controls="how many tiles are staged/prefetched ahead of the one computing",
-                        default=1))
+        out.append(
+            Knob(
+                "tile.stage_depth",
+                TILE,
+                bounded_range(1, hi, source=src),
+                controls="how many tiles are staged/prefetched ahead of the one computing",
+                default=1,
+            )
+        )
     else:
-        out.append(Knob("tile.stage_depth", TILE,
-                        unknown_domain(reason or "no operand store with a derivable bank count, so "
-                                                 "nothing bounds how many tiles can be in flight",
-                                       source="targetgen.memory_regime.operand_store"),
-                        controls="how many tiles are staged/prefetched ahead of the one computing"))
+        out.append(
+            Knob(
+                "tile.stage_depth",
+                TILE,
+                unknown_domain(
+                    reason
+                    or "no operand store with a derivable bank count, so "
+                    "nothing bounds how many tiles can be in flight",
+                    source="targetgen.memory_regime.operand_store",
+                ),
+                controls="how many tiles are staged/prefetched ahead of the one computing",
+            )
+        )
 
     # --- residency. A schema vocabulary, not a device fact (see _RESIDENT_VALUES).
-    out.append(Knob("tile.operand_resident", TILE,
-                    value_set(_RESIDENT_VALUES, source="cca.MemoryFacet.onchip_resident vocabulary"),
-                    controls="which operand stays in the on-chip store across the reduction",
-                    default="none"))
+    out.append(
+        Knob(
+            "tile.operand_resident",
+            TILE,
+            value_set(_RESIDENT_VALUES, source="cca.MemoryFacet.onchip_resident vocabulary"),
+            controls="which operand stays in the on-chip store across the reduction",
+            default="none",
+        )
+    )
     return out
 
 
@@ -503,6 +601,7 @@ def _staging_bound_from_regime(working_set, capacity) -> tuple[str, int | None]:
     nobody measured.
     """
     from merlin.targetgen import memory_regime as _mr
+
     if isinstance(working_set, (tuple, list)) and len(working_set) == 2:
         live, total = working_set
     else:
@@ -525,60 +624,90 @@ def _layer_knobs(target: str, capacity: int | None, working_set) -> list[Knob]:
     out: list[Knob] = []
     if capacity:
         cap_src = f"targetgen.memory_regime.operand_store({target!r}).total_rows"
-        out.append(Knob("layer.operand_residency_rows", LAYER,
-                        bounded_range(1, int(capacity), source=cap_src),
-                        controls="rows a layer's operands may hold across the whole layer",
-                        default=None,
-                        why_no_default="how much a layer keeps resident is a schedule choice; the "
-                                       "target bounds it and does not pick it"))
+        out.append(
+            Knob(
+                "layer.operand_residency_rows",
+                LAYER,
+                bounded_range(1, int(capacity), source=cap_src),
+                controls="rows a layer's operands may hold across the whole layer",
+                default=None,
+                why_no_default="how much a layer keeps resident is a schedule choice; the "
+                "target bounds it and does not pick it",
+            )
+        )
         if working_set is not None:
             live = working_set[0] if isinstance(working_set, (tuple, list)) else working_set
             if live:
-                out.append(Knob("layer.fusion_depth", LAYER,
-                                bounded_range(1, max(1, int(capacity) // int(live)),
-                                              source=f"{cap_src} / the supplied live working set"),
-                                controls="consecutive ops fused without a round trip through memory",
-                                default=1))
+                out.append(
+                    Knob(
+                        "layer.fusion_depth",
+                        LAYER,
+                        bounded_range(
+                            1, max(1, int(capacity) // int(live)), source=f"{cap_src} / the supplied live working set"
+                        ),
+                        controls="consecutive ops fused without a round trip through memory",
+                        default=1,
+                    )
+                )
                 out.append(_prepack_knob())
                 out.append(_operand_major_knob())
                 return out
     else:
-        out.append(Knob("layer.operand_residency_rows", LAYER,
-                        unknown_domain(f"{target!r} declares no operand-store capacity we can derive",
-                                       source="targetgen.memory_regime.operand_store"),
-                        controls="rows a layer's operands may hold across the whole layer"))
+        out.append(
+            Knob(
+                "layer.operand_residency_rows",
+                LAYER,
+                unknown_domain(
+                    f"{target!r} declares no operand-store capacity we can derive",
+                    source="targetgen.memory_regime.operand_store",
+                ),
+                controls="rows a layer's operands may hold across the whole layer",
+            )
+        )
     # Fusion depth without a working set: genuinely undeterminable, and said so rather than bounded by
     # something convenient. How many ops can be fused is a property of the op GRAPH's intermediates;
     # no facts artifact carries it, and a bound invented from capacity alone would license a fusion the
     # intermediates do not fit.
-    out.append(Knob("layer.fusion_depth", LAYER,
-                    unknown_domain("fusion depth is a property of the op graph's intermediates, not of "
-                                   "the target; pass working_set= (the layer's live rows) to bound it",
-                                   source="requires a program, not a facts artifact"),
-                    controls="consecutive ops fused without a round trip through memory"))
+    out.append(
+        Knob(
+            "layer.fusion_depth",
+            LAYER,
+            unknown_domain(
+                "fusion depth is a property of the op graph's intermediates, not of "
+                "the target; pass working_set= (the layer's live rows) to bound it",
+                source="requires a program, not a facts artifact",
+            ),
+            controls="consecutive ops fused without a round trip through memory",
+        )
+    )
     out.append(_prepack_knob())
     out.append(_operand_major_knob())
     return out
 
 
 def _prepack_knob() -> Knob:
-    return Knob("layer.prepack", LAYER,
-                value_set(_BOOL_VALUES, source="cca.LayoutFacet.prepack_required vocabulary"),
-                controls="operand panel packed offline rather than gathered per tile",
-                default=False)
+    return Knob(
+        "layer.prepack",
+        LAYER,
+        value_set(_BOOL_VALUES, source="cca.LayoutFacet.prepack_required vocabulary"),
+        controls="operand panel packed offline rather than gathered per tile",
+        default=False,
+    )
 
 
 def _operand_major_knob() -> Knob:
-    return Knob("layer.operand_major", LAYER,
-                value_set(_OPERAND_MAJOR_VALUES, source="cca.LayoutFacet.operand_major vocabulary"),
-                controls="which axis the operand panel is laid out along",
-                default=None,
-                why_no_default="the layout the compiler starts from is the model's, not the target's; "
-                               "naming one here would assert a packing nobody derived")
+    return Knob(
+        "layer.operand_major",
+        LAYER,
+        value_set(_OPERAND_MAJOR_VALUES, source="cca.LayoutFacet.operand_major vocabulary"),
+        controls="which axis the operand panel is laid out along",
+        default=None,
+        why_no_default="the layout the compiler starts from is the model's, not the target's; "
+        "naming one here would assert a packing nobody derived",
+    )
 
 
-def _placement_knobs(target: str, units, unit_reason: str, roles: frozenset[str],
-                     role_reason: str) -> list[Knob]:
+def _placement_knobs(target: str, units, unit_reason: str, roles: frozenset[str], role_reason: str) -> list[Knob]:
     """INTER-OP / PLACEMENT: A->A, A->H, H->A, dispatch grouping, pipelining."""
     out: list[Knob] = []
     unit_src = f"targetgen.compute_units.compute_units(contract({target!r}))"
@@ -587,30 +716,63 @@ def _placement_knobs(target: str, units, unit_reason: str, roles: frozenset[str]
     if units:
         issuer = getattr(scalar, "name", None) or _ISSUER_SITE
         sites = tuple([issuer] + [u.name for u in engines])
-        out.append(Knob("placement.site", PLACEMENT,
-                        value_set(sites, source=f"{unit_src} + the issuing side of its endpoint"),
-                        controls="which engine (or the issuer) an op is placed on",
-                        default=issuer))
+        out.append(
+            Knob(
+                "placement.site",
+                PLACEMENT,
+                value_set(sites, source=f"{unit_src} + the issuing side of its endpoint"),
+                controls="which engine (or the issuer) an op is placed on",
+                default=issuer,
+            )
+        )
         # Every ordered pair, INCLUDING the self-pairs: an A->A hand-off (one engine feeding the next
         # op on the same engine without a round trip) is a real placement choice and dropping the
         # diagonal would make it unexpressible.
         pairs = tuple((a, b) for a in sites for b in sites)
-        out.append(Knob("placement.transfer", PLACEMENT,
-                        value_set(pairs, source=f"ordered pairs of the derived sites ({unit_src})"),
-                        controls="the boundary a value crosses between two ops (A->A, A->H, H->A)",
-                        default=(issuer, issuer)))
-        out.append(Knob("global.partition_count", GLOBAL,
-                        bounded_range(1, max(1, len(engines)), source=unit_src),
-                        controls="how many engines the model is partitioned across",
-                        default=1))
+        out.append(
+            Knob(
+                "placement.transfer",
+                PLACEMENT,
+                value_set(pairs, source=f"ordered pairs of the derived sites ({unit_src})"),
+                controls="the boundary a value crosses between two ops (A->A, A->H, H->A)",
+                default=(issuer, issuer),
+            )
+        )
+        out.append(
+            Knob(
+                "global.partition_count",
+                GLOBAL,
+                bounded_range(1, max(1, len(engines)), source=unit_src),
+                controls="how many engines the model is partitioned across",
+                default=1,
+            )
+        )
     else:
         why = unit_reason or f"{target!r} declares no compute units, so no placement site is derivable"
-        out.append(Knob("placement.site", PLACEMENT, unknown_domain(why, source=unit_src),
-                        controls="which engine (or the issuer) an op is placed on"))
-        out.append(Knob("placement.transfer", PLACEMENT, unknown_domain(why, source=unit_src),
-                        controls="the boundary a value crosses between two ops (A->A, A->H, H->A)"))
-        out.append(Knob("global.partition_count", GLOBAL, unknown_domain(why, source=unit_src),
-                        controls="how many engines the model is partitioned across"))
+        out.append(
+            Knob(
+                "placement.site",
+                PLACEMENT,
+                unknown_domain(why, source=unit_src),
+                controls="which engine (or the issuer) an op is placed on",
+            )
+        )
+        out.append(
+            Knob(
+                "placement.transfer",
+                PLACEMENT,
+                unknown_domain(why, source=unit_src),
+                controls="the boundary a value crosses between two ops (A->A, A->H, H->A)",
+            )
+        )
+        out.append(
+            Knob(
+                "global.partition_count",
+                GLOBAL,
+                unknown_domain(why, source=unit_src),
+                controls="how many engines the model is partitioned across",
+            )
+        )
 
     # --- loop offload + dispatch grouping. Both keyed on ROLES the target's own ISA licenses, so a
     # device without a hardware-loop sequencer gets a one-value domain (the lever exists in the
@@ -618,42 +780,71 @@ def _placement_knobs(target: str, units, unit_reason: str, roles: frozenset[str]
     role_src = f"kernels.endpoints.endpoints_for({target!r}) role census"
     if roles:
         can_offload = "loop_descriptor" in roles
-        out.append(Knob("placement.loop_offload", PLACEMENT,
-                        value_set(_BOOL_VALUES if can_offload else (False,),
-                                  source=f"{role_src}: 'loop_descriptor' "
-                                         f"{'licensed' if can_offload else 'not licensed'}"),
-                        controls="hand a whole loop nest to the endpoint's own sequencer",
-                        default=False))
+        out.append(
+            Knob(
+                "placement.loop_offload",
+                PLACEMENT,
+                value_set(
+                    _BOOL_VALUES if can_offload else (False,),
+                    source=f"{role_src}: 'loop_descriptor' {'licensed' if can_offload else 'not licensed'}",
+                ),
+                controls="hand a whole loop nest to the endpoint's own sequencer",
+                default=False,
+            )
+        )
         if can_offload:
             # The group extent is then set by the offloaded NEST, and no facts artifact bounds it.
             # Reporting a bound we cannot derive is exactly the failure this layer refuses.
-            out.append(Knob("placement.dispatch_group", PLACEMENT,
-                            unknown_domain("this target licenses a loop_descriptor role, so the group "
-                                           "extent is whatever nest is offloaded; nothing in its facts "
-                                           "bounds it", source=role_src),
-                            controls="tiles handed over per issued command group"))
+            out.append(
+                Knob(
+                    "placement.dispatch_group",
+                    PLACEMENT,
+                    unknown_domain(
+                        "this target licenses a loop_descriptor role, so the group "
+                        "extent is whatever nest is offloaded; nothing in its facts "
+                        "bounds it",
+                        source=role_src,
+                    ),
+                    controls="tiles handed over per issued command group",
+                )
+            )
         else:
-            out.append(Knob("placement.dispatch_group", PLACEMENT,
-                            value_set((1,), source=f"{role_src}: no loop_descriptor role, so one tile "
-                                                   f"per issued command"),
-                            controls="tiles handed over per issued command group",
-                            default=1))
+            out.append(
+                Knob(
+                    "placement.dispatch_group",
+                    PLACEMENT,
+                    value_set((1,), source=f"{role_src}: no loop_descriptor role, so one tile per issued command"),
+                    controls="tiles handed over per issued command group",
+                    default=1,
+                )
+            )
         can_dma = "dma" in roles
-        out.append(Knob("placement.pipeline_movement", PLACEMENT,
-                        value_set(_BOOL_VALUES if can_dma else (False,),
-                                  source=f"{role_src}: 'dma' "
-                                         f"{'licensed' if can_dma else 'not licensed'}"),
-                        controls="issue bulk movement so it overlaps the compute it feeds",
-                        default=False))
+        out.append(
+            Knob(
+                "placement.pipeline_movement",
+                PLACEMENT,
+                value_set(
+                    _BOOL_VALUES if can_dma else (False,),
+                    source=f"{role_src}: 'dma' {'licensed' if can_dma else 'not licensed'}",
+                ),
+                controls="issue bulk movement so it overlaps the compute it feeds",
+                default=False,
+            )
+        )
     else:
-        for name, controls in (("placement.loop_offload",
-                                "hand a whole loop nest to the endpoint's own sequencer"),
-                               ("placement.dispatch_group",
-                                "tiles handed over per issued command group"),
-                               ("placement.pipeline_movement",
-                                "issue bulk movement so it overlaps the compute it feeds")):
-            out.append(Knob(name, PLACEMENT, unknown_domain(role_reason or "no endpoint role census",
-                                                           source=role_src), controls=controls))
+        for name, controls in (
+            ("placement.loop_offload", "hand a whole loop nest to the endpoint's own sequencer"),
+            ("placement.dispatch_group", "tiles handed over per issued command group"),
+            ("placement.pipeline_movement", "issue bulk movement so it overlaps the compute it feeds"),
+        ):
+            out.append(
+                Knob(
+                    name,
+                    PLACEMENT,
+                    unknown_domain(role_reason or "no endpoint role census", source=role_src),
+                    controls=controls,
+                )
+            )
     return out
 
 
@@ -674,21 +865,33 @@ def _global_knobs(target: str, units, unit_reason: str, space, reason: str) -> l
             if d not in dtypes:
                 dtypes.append(d)
     if dtypes:
-        out.append(Knob("global.element_format", GLOBAL,
-                        value_set(tuple(dtypes), source=f"{unit_src} declared dtypes (union)"),
-                        controls="element encoding the model is quantized to",
-                        # A single declared format is not a choice — it is the only thing the silicon
-                        # accepts — so it is also the default. With several, which one the compiler
-                        # starts at is a schedule fact and we decline to invent it.
-                        default=dtypes[0] if len(dtypes) == 1 else None,
-                        why_no_default=("" if len(dtypes) == 1 else
-                                        "this target accepts several formats; which one the compiler "
-                                        "starts at is a schedule fact, not a target fact")))
+        out.append(
+            Knob(
+                "global.element_format",
+                GLOBAL,
+                value_set(tuple(dtypes), source=f"{unit_src} declared dtypes (union)"),
+                controls="element encoding the model is quantized to",
+                # A single declared format is not a choice — it is the only thing the silicon
+                # accepts — so it is also the default. With several, which one the compiler
+                # starts at is a schedule fact and we decline to invent it.
+                default=dtypes[0] if len(dtypes) == 1 else None,
+                why_no_default=(
+                    ""
+                    if len(dtypes) == 1
+                    else "this target accepts several formats; which one the compiler "
+                    "starts at is a schedule fact, not a target fact"
+                ),
+            )
+        )
     else:
-        out.append(Knob("global.element_format", GLOBAL,
-                        unknown_domain(unit_reason or f"{target!r} declares no unit dtypes",
-                                       source=unit_src),
-                        controls="element encoding the model is quantized to"))
+        out.append(
+            Knob(
+                "global.element_format",
+                GLOBAL,
+                unknown_domain(unit_reason or f"{target!r} declares no unit dtypes", source=unit_src),
+                controls="element encoding the model is quantized to",
+            )
+        )
 
     # --- accumulate format. Two derivations, contract first: a unit's own accumulate rules say what it
     # accumulates in. Falling back to the WIDEST-row store's element dtype covers a target that
@@ -706,21 +909,33 @@ def _global_knobs(target: str, units, unit_reason: str, space, reason: str) -> l
         elem = getattr(acc_store, "element_dtype", None) if acc_store is not None else None
         if elem:
             accs = [elem]
-            acc_src = (f"targetgen.address_space.derive_address_space({target!r}): the widest-row "
-                       f"store's element dtype")
+            acc_src = f"targetgen.address_space.derive_address_space({target!r}): the widest-row store's element dtype"
     if accs:
-        out.append(Knob("global.accumulate_format", GLOBAL, value_set(tuple(accs), source=acc_src),
-                        controls="width the reduction accumulates in",
-                        default=accs[0] if len(accs) == 1 else None,
-                        why_no_default=("" if len(accs) == 1 else
-                                        "several accumulate widths are declared; the starting one is "
-                                        "a schedule fact")))
+        out.append(
+            Knob(
+                "global.accumulate_format",
+                GLOBAL,
+                value_set(tuple(accs), source=acc_src),
+                controls="width the reduction accumulates in",
+                default=accs[0] if len(accs) == 1 else None,
+                why_no_default=(
+                    ""
+                    if len(accs) == 1
+                    else "several accumulate widths are declared; the starting one is a schedule fact"
+                ),
+            )
+        )
     else:
-        out.append(Knob("global.accumulate_format", GLOBAL,
-                        unknown_domain(unit_reason or reason
-                                       or "no accumulate rule and no separate accumulator store",
-                                       source=acc_src),
-                        controls="width the reduction accumulates in"))
+        out.append(
+            Knob(
+                "global.accumulate_format",
+                GLOBAL,
+                unknown_domain(
+                    unit_reason or reason or "no accumulate rule and no separate accumulator store", source=acc_src
+                ),
+                controls="width the reduction accumulates in",
+            )
+        )
 
     # --- scale kind. The encoding half that is NOT the element width, and the half a per-channel or
     # block-scaled format lives or dies on.
@@ -730,24 +945,40 @@ def _global_knobs(target: str, units, unit_reason: str, space, reason: str) -> l
         if s and s not in scales:
             scales.append(s)
     if scales:
-        out.append(Knob("global.scale_kind", GLOBAL,
-                        value_set(tuple(scales), source=f"{unit_src} declared scaling"),
-                        controls="how the quantization scale is carried (per-channel, block, none)",
-                        default=scales[0] if len(scales) == 1 else None,
-                        why_no_default=("" if len(scales) == 1 else
-                                        "units declare different scale kinds; the starting one is a "
-                                        "schedule fact")))
+        out.append(
+            Knob(
+                "global.scale_kind",
+                GLOBAL,
+                value_set(tuple(scales), source=f"{unit_src} declared scaling"),
+                controls="how the quantization scale is carried (per-channel, block, none)",
+                default=scales[0] if len(scales) == 1 else None,
+                why_no_default=(
+                    ""
+                    if len(scales) == 1
+                    else "units declare different scale kinds; the starting one is a schedule fact"
+                ),
+            )
+        )
     else:
-        out.append(Knob("global.scale_kind", GLOBAL,
-                        unknown_domain(unit_reason or f"{target!r} declares no scaling on any unit",
-                                       source=unit_src),
-                        controls="how the quantization scale is carried"))
+        out.append(
+            Knob(
+                "global.scale_kind",
+                GLOBAL,
+                unknown_domain(unit_reason or f"{target!r} declares no scaling on any unit", source=unit_src),
+                controls="how the quantization scale is carried",
+            )
+        )
 
-    out.append(Knob("global.layout_propagation", GLOBAL,
-                    value_set(_BOOL_VALUES, source="cca.LayoutFacet.transpose_materialized vocabulary"),
-                    controls="propagate a layout choice through the graph instead of materializing a "
-                             "transpose at each consumer",
-                    default=False))
+    out.append(
+        Knob(
+            "global.layout_propagation",
+            GLOBAL,
+            value_set(_BOOL_VALUES, source="cca.LayoutFacet.transpose_materialized vocabulary"),
+            controls="propagate a layout choice through the graph instead of materializing a "
+            "transpose at each consumer",
+            default=False,
+        )
+    )
     return out
 
 
@@ -767,7 +998,7 @@ def derive_knobs(target: str, *, working_set=None) -> KnobInventory:
     roles, role_reason = _endpoint_roles(target)
     try:
         store, capacity = _mr.operand_store(target)
-    except Exception as e:                       # noqa: BLE001 -- unresolvable target
+    except Exception as e:  # noqa: BLE001 -- unresolvable target
         store, capacity, reason = None, None, reason or f"{type(e).__name__}: {str(e)[:160]}"
 
     knobs: list[Knob] = []
@@ -792,12 +1023,15 @@ def derive_knobs(target: str, *, working_set=None) -> KnobInventory:
     if role_reason:
         notes["endpoint_roles"] = role_reason
     if working_set is None:
-        notes["working_set"] = ("not supplied: the two program-scoped bounds (staging regime, fusion "
-                                "depth) are reported UNKNOWN rather than guessed")
+        notes["working_set"] = (
+            "not supplied: the two program-scoped bounds (staging regime, fusion "
+            "depth) are reported UNKNOWN rather than guessed"
+        )
     return KnobInventory(target=target, knobs=tuple(knobs), notes=notes)
 
 
 # ---- enforcement: is a proposed change ON a declared surface? ----------------------------------
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -848,16 +1082,19 @@ class Verdict:
 
     def reason(self) -> str:
         """One line per non-allowed key, naming the key and what was outside. Empty when ALLOWED."""
-        parts = [f"{f.key}={f.value!r}: {f.state} — {f.outside}"
-                 for f in self.findings if f.state != ALLOWED]
+        parts = [f"{f.key}={f.value!r}: {f.state} — {f.outside}" for f in self.findings if f.state != ALLOWED]
         return "; ".join(parts)
 
     def surfaces_touched(self) -> tuple[str, ...]:
         return tuple(sorted({f.surface for f in self.findings if f.surface}))
 
     def to_dict(self) -> dict:
-        return {"state": self.state, "target": self.target, "reason": self.reason(),
-                "findings": [f.to_dict() for f in self.findings]}
+        return {
+            "state": self.state,
+            "target": self.target,
+            "reason": self.reason(),
+            "findings": [f.to_dict() for f in self.findings],
+        }
 
 
 def check_mutation(proposed: Mapping[str, Any], inventory: KnobInventory) -> Verdict:
@@ -881,24 +1118,47 @@ def check_mutation(proposed: Mapping[str, Any], inventory: KnobInventory) -> Ver
     for key, value in dict(proposed).items():
         knob = inventory.get(key)
         if knob is None:
-            findings.append(Finding(
-                key=key, value=value, state=REFUSED,
-                outside=(f"no declared CCA surface exposes {key!r}; the declared surfaces are "
-                         f"{list(SURFACES)} and their knobs are {list(inventory.names())}")))
+            findings.append(
+                Finding(
+                    key=key,
+                    value=value,
+                    state=REFUSED,
+                    outside=(
+                        f"no declared CCA surface exposes {key!r}; the declared surfaces are "
+                        f"{list(SURFACES)} and their knobs are {list(inventory.names())}"
+                    ),
+                )
+            )
             continue
         admits = knob.admits(value)
         if admits is None:
-            findings.append(Finding(
-                key=key, value=value, state=UNDETERMINABLE, surface=knob.surface,
-                outside=(f"{key!r} is on surface {knob.surface!r} but its domain could not be derived "
-                         f"for {inventory.target!r}: {knob.domain.why_unknown}")))
+            findings.append(
+                Finding(
+                    key=key,
+                    value=value,
+                    state=UNDETERMINABLE,
+                    surface=knob.surface,
+                    outside=(
+                        f"{key!r} is on surface {knob.surface!r} but its domain could not be derived "
+                        f"for {inventory.target!r}: {knob.domain.why_unknown}"
+                    ),
+                )
+            )
         elif admits:
             findings.append(Finding(key=key, value=value, state=ALLOWED, surface=knob.surface))
         else:
-            findings.append(Finding(
-                key=key, value=value, state=REFUSED, surface=knob.surface,
-                outside=(f"{value!r} is outside the derived domain {knob.domain.describe()} of "
-                         f"{key!r} (source: {knob.domain.source})")))
+            findings.append(
+                Finding(
+                    key=key,
+                    value=value,
+                    state=REFUSED,
+                    surface=knob.surface,
+                    outside=(
+                        f"{value!r} is outside the derived domain {knob.domain.describe()} of "
+                        f"{key!r} (source: {knob.domain.source})"
+                    ),
+                )
+            )
     if any(f.state == REFUSED for f in findings):
         state = REFUSED
     elif any(f.state == UNDETERMINABLE for f in findings):
@@ -909,6 +1169,7 @@ def check_mutation(proposed: Mapping[str, Any], inventory: KnobInventory) -> Ver
 
 
 # ---- attribution: which knob is a measured change actually due to? -----------------------------
+
 
 @dataclass
 class Attribution:
@@ -938,11 +1199,18 @@ class Attribution:
         return self.metric_after - self.metric_before
 
     def to_dict(self) -> dict:
-        return {"knob": self.knob, "surface": self.surface,
-                "before": repr(self.before), "after": repr(self.after),
-                "status": self.status, "metric": self.metric,
-                "metric_before": self.metric_before, "metric_after": self.metric_after,
-                "delta": self.delta, "note": self.note}
+        return {
+            "knob": self.knob,
+            "surface": self.surface,
+            "before": repr(self.before),
+            "after": repr(self.after),
+            "status": self.status,
+            "metric": self.metric,
+            "metric_before": self.metric_before,
+            "metric_after": self.metric_after,
+            "delta": self.delta,
+            "note": self.note,
+        }
 
 
 class AttributionLedger:
@@ -965,8 +1233,9 @@ class AttributionLedger:
         self.entries: list[Attribution] = []
         self.rejected: list[Verdict] = []
 
-    def record(self, proposed: Mapping[str, Any], *, before: Mapping[str, Any] | None = None,
-               note: str = "") -> Verdict:
+    def record(
+        self, proposed: Mapping[str, Any], *, before: Mapping[str, Any] | None = None, note: str = ""
+    ) -> Verdict:
         """Check ``proposed`` and, if ALLOWED, open one unmeasured entry per knob it moves."""
         verdict = check_mutation(proposed, self.inventory)
         if not verdict.allowed:
@@ -975,10 +1244,15 @@ class AttributionLedger:
         prior = dict(before or {})
         for key, value in dict(proposed).items():
             knob = self.inventory.get(key)
-            self.entries.append(Attribution(
-                knob=key, surface=knob.surface if knob else "",
-                before=prior.get(key, knob.default if knob else None),
-                after=value, note=note))
+            self.entries.append(
+                Attribution(
+                    knob=key,
+                    surface=knob.surface if knob else "",
+                    before=prior.get(key, knob.default if knob else None),
+                    after=value,
+                    note=note,
+                )
+            )
         return verdict
 
     def observe(self, knob: str, *, metric: str, metric_before: float, metric_after: float) -> bool:
@@ -1003,12 +1277,13 @@ class AttributionLedger:
         unmeasured=7 is not a surface that cost nothing; it is seven changes nobody has run yet, and
         the caller must be able to tell those apart before deciding a tile is worth 3%.
         """
-        out: dict[str, dict] = {s: {"measured_delta": 0.0, "n_measured": 0, "n_unmeasured": 0,
-                                    "knobs": []} for s in SURFACES}
+        out: dict[str, dict] = {
+            s: {"measured_delta": 0.0, "n_measured": 0, "n_unmeasured": 0, "knobs": []} for s in SURFACES
+        }
         for e in self.entries:
-            bucket = out.setdefault(e.surface or "unattributed",
-                                    {"measured_delta": 0.0, "n_measured": 0, "n_unmeasured": 0,
-                                     "knobs": []})
+            bucket = out.setdefault(
+                e.surface or "unattributed", {"measured_delta": 0.0, "n_measured": 0, "n_unmeasured": 0, "knobs": []}
+            )
             if e.knob not in bucket["knobs"]:
                 bucket["knobs"].append(e.knob)
             if e.status == "measured" and e.delta is not None:
@@ -1017,17 +1292,24 @@ class AttributionLedger:
             else:
                 bucket["n_unmeasured"] += 1
         total_measured = sum(b["n_measured"] for b in out.values())
-        return {"by_surface": out,
-                "n_entries": len(self.entries),
-                "n_measured": total_measured,
-                "n_rejected": len(self.rejected),
-                "status": ("measured" if total_measured else "unmeasured"),
-                "why": ("" if total_measured else
-                        "no entry has been observed: attributing a score change to a knob requires "
-                        "compiling and running both sides, which this layer records but does not do")}
+        return {
+            "by_surface": out,
+            "n_entries": len(self.entries),
+            "n_measured": total_measured,
+            "n_rejected": len(self.rejected),
+            "status": ("measured" if total_measured else "unmeasured"),
+            "why": (
+                ""
+                if total_measured
+                else "no entry has been observed: attributing a score change to a knob requires "
+                "compiling and running both sides, which this layer records but does not do"
+            ),
+        }
 
     def to_dict(self) -> dict:
-        return {"target": self.inventory.target,
-                "entries": [e.to_dict() for e in self.entries],
-                "rejected": [v.to_dict() for v in self.rejected],
-                "summary": self.by_surface()}
+        return {
+            "target": self.inventory.target,
+            "entries": [e.to_dict() for e in self.entries],
+            "rejected": [v.to_dict() for v in self.rejected],
+            "summary": self.by_surface(),
+        }

@@ -4,6 +4,7 @@ Conservative and deterministic: we list Markdown/reStructuredText/plain-text fil
 manifest's source directories and read short summaries. We do not parse or "understand"
 their content here -- that is the human-reviewed synthesis step's concern.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

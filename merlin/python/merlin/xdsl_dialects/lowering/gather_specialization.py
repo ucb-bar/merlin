@@ -32,6 +32,7 @@ Everything here is structural (xDSL ops and SSA uses). Nothing is matched agains
 the index tensor in the model this was built for is `%658`, and a textual search for that also matches
 `%6580`.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -44,13 +45,13 @@ from ...common import mlir_query as mq
 class GatherSpecialization:
     """One table that can be reduced to the rows a fixed input actually names."""
 
-    table_arg: int              # func-arg index of the gathered table
+    table_arg: int  # func-arg index of the gathered table
     table_shape: list[int]
     table_dtype: str
-    index_arg: int              # func-arg index of the input whose VALUES index the table
+    index_arg: int  # func-arg index of the input whose VALUES index the table
     index_shape: list[int]
-    row_dim: int                # which table dimension the value indexes
-    generic_index: int          # position of the owning linalg.generic, for reporting
+    row_dim: int  # which table dimension the value indexes
+    generic_index: int  # position of the owning linalg.generic, for reporting
 
     @property
     def rows(self) -> int:
@@ -130,7 +131,7 @@ def find_gather_specializations(
             # Exactly one index must be a value read out of the generic's input; the rest must be
             # the loop's own induction (`linalg.index`), i.e. the full extent of that dimension is
             # swept and no row is partially read.
-            value_dims: list[tuple[int, int]] = []   # (table dim, generic operand index)
+            value_dims: list[tuple[int, int]] = []  # (table dim, generic operand index)
             swept: list[int] = []
             unknown: list[str] = []
             for dim, idx in enumerate(indices):
@@ -149,19 +150,28 @@ def find_gather_specializations(
                     unknown.append(f"dim {dim}: produced by {pname}")
 
             if unknown:
-                rejected.append(GatherRejection(
-                    table_arg, f"table arg {table_arg}: unhandled index provenance — "
-                               + "; ".join(unknown)))
+                rejected.append(
+                    GatherRejection(
+                        table_arg, f"table arg {table_arg}: unhandled index provenance — " + "; ".join(unknown)
+                    )
+                )
                 continue
             if len(value_dims) != 1:
-                rejected.append(GatherRejection(
-                    table_arg, f"table arg {table_arg}: {len(value_dims)} value-indexed dimensions "
-                               "(exactly 1 is handled)"))
+                rejected.append(
+                    GatherRejection(
+                        table_arg,
+                        f"table arg {table_arg}: {len(value_dims)} value-indexed dimensions (exactly 1 is handled)",
+                    )
+                )
                 continue
             if len(swept) != len(indices) - 1:
-                rejected.append(GatherRejection(
-                    table_arg, f"table arg {table_arg}: {len(swept)} swept dimensions for "
-                               f"{len(indices)} indices — some extent is not fully read"))
+                rejected.append(
+                    GatherRejection(
+                        table_arg,
+                        f"table arg {table_arg}: {len(swept)} swept dimensions for "
+                        f"{len(indices)} indices — some extent is not fully read",
+                    )
+                )
                 continue
 
             row_dim, body_arg = value_dims[0]
@@ -170,47 +180,65 @@ def find_gather_specializations(
             # this is the tensor the index VALUES come from.
             g_operands = list(generic.operands)
             if body_arg >= len(g_operands):
-                rejected.append(GatherRejection(
-                    table_arg, f"table arg {table_arg}: body arg {body_arg} has no matching operand"))
+                rejected.append(
+                    GatherRejection(table_arg, f"table arg {table_arg}: body arg {body_arg} has no matching operand")
+                )
                 continue
             index_tensor = g_operands[body_arg]
             index_arg = _block_arg_index(index_tensor, fn_block)
             if index_arg is None:
-                rejected.append(GatherRejection(
-                    table_arg, f"table arg {table_arg}: indices come from a computed tensor, not a "
-                               "bundle input, so they are not fixed by the bundle"))
+                rejected.append(
+                    GatherRejection(
+                        table_arg,
+                        f"table arg {table_arg}: indices come from a computed tensor, not a "
+                        "bundle input, so they are not fixed by the bundle",
+                    )
+                )
                 continue
 
             # THE SOUNDNESS CONDITION. Specializing renumbers the stored index values, so the gather
             # must be the only thing that reads them.
             n_uses = len(list(index_tensor.uses))
             if n_uses != 1:
-                rejected.append(GatherRejection(
-                    table_arg, f"table arg {table_arg}: index arg {index_arg} has {n_uses} consumers; "
-                               "renumbering its values would corrupt the others"))
+                rejected.append(
+                    GatherRejection(
+                        table_arg,
+                        f"table arg {table_arg}: index arg {index_arg} has {n_uses} consumers; "
+                        "renumbering its values would corrupt the others",
+                    )
+                )
                 continue
 
             # Likewise the table itself: another reader would see a table that no longer has the
             # rows it expects.
             t_uses = len(list(table.uses))
             if t_uses != 1:
-                rejected.append(GatherRejection(
-                    table_arg, f"table arg {table_arg}: table has {t_uses} consumers; slicing it "
-                               "would break the others"))
+                rejected.append(
+                    GatherRejection(
+                        table_arg,
+                        f"table arg {table_arg}: table has {t_uses} consumers; slicing it would break the others",
+                    )
+                )
                 continue
 
             t_shape, t_dtype = mq.type_shape_dtype(table.type)
             i_shape, _ = mq.type_shape_dtype(index_tensor.type)
-            found.append(GatherSpecialization(
-                table_arg=table_arg, table_shape=list(t_shape), table_dtype=t_dtype,
-                index_arg=index_arg, index_shape=list(i_shape), row_dim=row_dim,
-                generic_index=g_i))
+            found.append(
+                GatherSpecialization(
+                    table_arg=table_arg,
+                    table_shape=list(t_shape),
+                    table_dtype=t_dtype,
+                    index_arg=index_arg,
+                    index_shape=list(i_shape),
+                    row_dim=row_dim,
+                    generic_index=g_i,
+                )
+            )
 
     return found, rejected
 
 
-def kept_rows(spec: GatherSpecialization, index_values: Iterable[int]
-              ) -> tuple[list[int], list[int]]:
+def kept_rows(spec: GatherSpecialization, index_values: Iterable[int]) -> tuple[list[int], list[int]]:
     """Rows to keep, and the renumbered index values that address them.
 
     ``kept[k]`` is an original row of the table and every original value ``v`` becomes the position
@@ -224,8 +252,7 @@ def kept_rows(spec: GatherSpecialization, index_values: Iterable[int]
     rows = spec.rows
     bad = [v for v in values if v < 0 or v >= rows]
     if bad:
-        raise ValueError(
-            f"index values out of range for a {rows}-row table: {sorted(set(bad))[:8]}")
+        raise ValueError(f"index values out of range for a {rows}-row table: {sorted(set(bad))[:8]}")
     kept = sorted(set(values))
     position = {v: i for i, v in enumerate(kept)}
     return kept, [position[v] for v in values]

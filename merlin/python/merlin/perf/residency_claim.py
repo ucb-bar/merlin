@@ -52,6 +52,7 @@ at all, and a cross-band disagreement it then reports is uninterpretable -- that
 Nothing here names a target, a store, a band or an axis. Band labels arrive as data on the members and
 are ordered by their own measured depths.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -62,10 +63,21 @@ from typing import Any
 from merlin.perf import fill_transient as _ft
 
 __all__ = [
-    "BAND_AFFINE_CONTRADICTED", "BAND_CONTROL_DID_NOT_FIRE", "BAND_OVERLAP_UNDETERMINABLE",
-    "BAND_REPLICATES_DISAGREE", "BAND_REPLICATE_DISPERSION_UNKNOWN", "BAND_TOO_FEW_DEPTHS",
-    "BAND_TRANSIENT", "BAND_USABLE", "ESTABLISHED", "INERT", "Member", "REFUSED", "REFUTED",
-    "ResidencyEvidenceError", "residency_verdict",
+    "BAND_AFFINE_CONTRADICTED",
+    "BAND_CONTROL_DID_NOT_FIRE",
+    "BAND_OVERLAP_UNDETERMINABLE",
+    "BAND_REPLICATES_DISAGREE",
+    "BAND_REPLICATE_DISPERSION_UNKNOWN",
+    "BAND_TOO_FEW_DEPTHS",
+    "BAND_TRANSIENT",
+    "BAND_USABLE",
+    "ESTABLISHED",
+    "INERT",
+    "Member",
+    "REFUSED",
+    "REFUTED",
+    "ResidencyEvidenceError",
+    "residency_verdict",
 ]
 
 #: The band priced a settled machine, its replicates agreed, and its own two sub-range rates agreed.
@@ -123,19 +135,18 @@ class Member:
             if not isinstance(value, str) or not value.strip():
                 raise ResidencyEvidenceError(f"a residency member must state a non-empty {name}")
         if isinstance(self.axis, bool) or not isinstance(self.axis, int) or self.axis <= 0:
-            raise ResidencyEvidenceError(
-                f"member {self.label!r} axis must be a positive integer, got {self.axis!r}")
+            raise ResidencyEvidenceError(f"member {self.label!r} axis must be a positive integer, got {self.axis!r}")
         cycles = tuple(self.replicate_cycles)
         if not cycles:
             raise ResidencyEvidenceError(f"member {self.label!r} carries no replicate cycle counts")
         for value in cycles:
             if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-                raise ResidencyEvidenceError(
-                    f"member {self.label!r} has a non-positive-integer cycle count {value!r}")
+                raise ResidencyEvidenceError(f"member {self.label!r} has a non-positive-integer cycle count {value!r}")
         if (self.realised_overlap is None) != (self.available_overlap is None):
             raise ResidencyEvidenceError(
                 f"member {self.label!r} states one half of an overlap reading; realised and "
-                "available are absent together or present together")
+                "available are absent together or present together"
+            )
 
     @property
     def cycles(self) -> int | None:
@@ -151,20 +162,28 @@ class Member:
         return max(self.replicate_cycles) - min(self.replicate_cycles)
 
     def to_point(self) -> _ft.Point:
-        return _ft.Point(label=self.label, axis=self.axis, cycles=int(self.cycles or 0),
-                         realised_overlap=self.realised_overlap,
-                         available_overlap=self.available_overlap,
-                         overlap_detail=self.overlap_detail)
+        return _ft.Point(
+            label=self.label,
+            axis=self.axis,
+            cycles=int(self.cycles or 0),
+            realised_overlap=self.realised_overlap,
+            available_overlap=self.available_overlap,
+            overlap_detail=self.overlap_detail,
+        )
 
     def to_dict(self) -> dict[str, Any]:
-        return {"label": self.label, "band": self.band, "axis": self.axis,
-                "replicate_cycles": list(self.replicate_cycles),
-                "replicates": len(self.replicate_cycles),
-                "agreed_cycles": self.cycles,
-                "replicate_dispersion_cycles": self.dispersion,
-                "realised_overlap_cycles": self.realised_overlap,
-                "available_overlap_cycles": self.available_overlap,
-                "overlap_detail": self.overlap_detail}
+        return {
+            "label": self.label,
+            "band": self.band,
+            "axis": self.axis,
+            "replicate_cycles": list(self.replicate_cycles),
+            "replicates": len(self.replicate_cycles),
+            "agreed_cycles": self.cycles,
+            "replicate_dispersion_cycles": self.dispersion,
+            "realised_overlap_cycles": self.realised_overlap,
+            "available_overlap_cycles": self.available_overlap,
+            "overlap_detail": self.overlap_detail,
+        }
 
 
 def _rational(value: Fraction) -> dict[str, int | float]:
@@ -213,7 +232,7 @@ def _split(ordered: Sequence[Member]) -> tuple[list[Member], list[Member]]:
     mid = n // 2
     if n % 2 == 0:
         return list(ordered[:mid]), list(ordered[mid:])
-    return list(ordered[:mid + 1]), list(ordered[mid:])
+    return list(ordered[: mid + 1]), list(ordered[mid:])
 
 
 def _band_record(band: str, members: Sequence[Member]) -> dict[str, Any]:
@@ -232,8 +251,10 @@ def _band_record(band: str, members: Sequence[Member]) -> dict[str, Any]:
 
     if len({member.axis for member in ordered}) != len(ordered):
         record["status"] = BAND_TOO_FEW_DEPTHS
-        record["reason"] = (f"band {band!r} repeats a depth; two members at one depth are one point, "
-                            "and a rate is not determined by one point")
+        record["reason"] = (
+            f"band {band!r} repeats a depth; two members at one depth are one point, "
+            "and a rate is not determined by one point"
+        )
         return record
 
     unknown = [m.label for m in ordered if m.dispersion is None]
@@ -242,7 +263,8 @@ def _band_record(band: str, members: Sequence[Member]) -> dict[str, Any]:
         record["reason"] = (
             f"member(s) {unknown} carry fewer than two replicates, so the replicate dispersion is "
             "UNDETERMINABLE rather than zero; the noise band this family compares rates within is "
-            "measured from that dispersion and cannot be assumed")
+            "measured from that dispersion and cannot be assumed"
+        )
         return record
 
     disagreeing = [m.label for m in ordered if m.cycles is None]
@@ -250,7 +272,8 @@ def _band_record(band: str, members: Sequence[Member]) -> dict[str, Any]:
         record["status"] = BAND_REPLICATES_DISAGREE
         record["reason"] = (
             f"member(s) {disagreeing} report more than one distinct cycle count across replicates; "
-            "averaging them would invent a point the replicate control existed to make unnecessary")
+            "averaging them would invent a point the replicate control existed to make unnecessary"
+        )
         return record
 
     record["measured_noise_band_cycles"] = max(int(m.dispersion or 0) for m in ordered)
@@ -261,27 +284,30 @@ def _band_record(band: str, members: Sequence[Member]) -> dict[str, Any]:
         record["status"] = BAND_TOO_FEW_DEPTHS
         record["reason"] = (
             f"band {band!r} has {len(ordered)} depth(s); a rate needs two and its declared negative "
-            "control needs two disjoint depth ranges inside the band, so three is the minimum")
+            "control needs two disjoint depth ranges inside the band, so three is the minimum"
+        )
         return record
 
     transient = _ft.transient_verdict([member.to_point() for member in ordered])
     record["transient"] = transient
     if transient["state"] == _ft.UNDETERMINABLE:
         record["status"] = BAND_OVERLAP_UNDETERMINABLE
-        record["reason"] = (f"band {band!r} has no usable overlap trend: {transient['why']}")
+        record["reason"] = f"band {band!r} has no usable overlap trend: {transient['why']}"
         return record
     if transient["state"] == _ft.IN_FILL_TRANSIENT:
         record["status"] = BAND_TRANSIENT
         record["reason"] = (
             f"band {band!r} lies inside the machine's overlap fill transient: {transient['why']}. "
             "A rate fitted here prices how far the engines had filled, not the residency regime, so "
-            "no rate is quoted for this band")
+            "no rate is quoted for this band"
+        )
         return record
     if transient["affine_form_contradicted"]:
         record["status"] = BAND_AFFINE_CONTRADICTED
         record["reason"] = (
             f"band {band!r} has a strictly falling marginal cost, which contradicts one constant "
-            "rate outright: " + str(transient["affine_contradiction_detail"]))
+            "rate outright: " + str(transient["affine_contradiction_detail"])
+        )
         return record
 
     pairs = [(member.axis, int(member.cycles or 0)) for member in ordered]
@@ -295,10 +321,16 @@ def _band_record(band: str, members: Sequence[Member]) -> dict[str, Any]:
     fired = _agree(lower_rate, upper_rate)
     record["negative_control"] = {
         "control": "two_disjoint_depth_ranges_inside_one_regime",
-        "lower_range": {"members": [m.label for m in lower],
-                        "depths": [m.axis for m in lower], "rate": _rational(lower_rate)},
-        "upper_range": {"members": [m.label for m in upper],
-                        "depths": [m.axis for m in upper], "rate": _rational(upper_rate)},
+        "lower_range": {
+            "members": [m.label for m in lower],
+            "depths": [m.axis for m in lower],
+            "rate": _rational(lower_rate),
+        },
+        "upper_range": {
+            "members": [m.label for m in upper],
+            "depths": [m.axis for m in upper],
+            "rate": _rational(upper_rate),
+        },
         "rate_difference": _rational(upper_rate - lower_rate),
         "noise_band_cycles_per_axis_unit": 0.0,
         "agree": fired,
@@ -306,10 +338,11 @@ def _band_record(band: str, members: Sequence[Member]) -> dict[str, Any]:
         "reason": (
             "the two disjoint depth ranges inside one residency regime fit the same rate exactly, so "
             "this instrument can demonstrate agreement and a cross-band disagreement means something"
-            if fired else
-            "the two disjoint depth ranges inside one residency regime fit DIFFERENT rates, so this "
+            if fired
+            else "the two disjoint depth ranges inside one residency regime fit DIFFERENT rates, so this "
             "band has no single rate to compare across a boundary and the instrument has not shown "
-            "it can report agreement"),
+            "it can report agreement"
+        ),
     }
     if not fired:
         record["status"] = BAND_CONTROL_DID_NOT_FIRE
@@ -342,8 +375,7 @@ def residency_verdict(members: Sequence[Member]) -> dict[str, Any]:
 
     usable = [band for band in bands if band["status"] == BAND_USABLE]
     refused_for_transient = [band["band"] for band in bands if band["status"] == BAND_TRANSIENT]
-    control_eligible = [band for band in bands
-                        if band["status"] in (BAND_USABLE, BAND_CONTROL_DID_NOT_FIRE)]
+    control_eligible = [band for band in bands if band["status"] in (BAND_USABLE, BAND_CONTROL_DID_NOT_FIRE)]
 
     result: dict[str, Any] = {
         "observation": "per_regime_fitted_rate_and_intercept",
@@ -351,16 +383,20 @@ def residency_verdict(members: Sequence[Member]) -> dict[str, Any]:
         "noise_band": {
             "kind": "measured_replicate_dispersion",
             "declared_constant": None,
-            "cycles": max([int(band.get("measured_noise_band_cycles") or 0) for band in bands],
-                          default=None),
-            "how": ("read off the evidence: every member's replicates must be identical, which makes "
-                    "the dispersion zero BY MEASUREMENT, so two rates agree only when they are "
-                    "exactly equal as rationals. No constant is declared and none can be moved"),
+            "cycles": max([int(band.get("measured_noise_band_cycles") or 0) for band in bands], default=None),
+            "how": (
+                "read off the evidence: every member's replicates must be identical, which makes "
+                "the dispersion zero BY MEASUREMENT, so two rates agree only when they are "
+                "exactly equal as rationals. No constant is declared and none can be moved"
+            ),
         },
         "bands": bands,
         "usable_bands": [band["band"] for band in usable],
-        "refused_bands": [{"band": band["band"], "status": band["status"], "reason": band["reason"]}
-                          for band in bands if band["status"] != BAND_USABLE],
+        "refused_bands": [
+            {"band": band["band"], "status": band["status"], "reason": band["reason"]}
+            for band in bands
+            if band["status"] != BAND_USABLE
+        ],
         "bands_refused_for_transient_reasons": refused_for_transient,
         "boundaries": [],
         "status": REFUSED,
@@ -374,31 +410,34 @@ def residency_verdict(members: Sequence[Member]) -> dict[str, Any]:
                 "every band that priced a settled machine failed its own negative control: two "
                 "disjoint depth ranges inside ONE residency regime already fit different rates, so "
                 "this instrument has not shown it can report agreement and a cross-band difference "
-                "would be uninterpretable")
+                "would be uninterpretable"
+            )
             return result
         result["reason"] = (
             f"{len(usable)} band(s) can carry a rate; a residency differential needs two, one on "
             "each side of a boundary. Refused band(s): "
-            + "; ".join(f"{band['band']}={band['status']}" for band in bands
-                        if band["status"] != BAND_USABLE))
+            + "; ".join(f"{band['band']}={band['status']}" for band in bands if band["status"] != BAND_USABLE)
+        )
         return result
 
     boundaries: list[dict[str, Any]] = []
     for index, lower in enumerate(usable):
-        for upper in usable[index + 1:]:
+        for upper in usable[index + 1 :]:
             lower_rate = Fraction(int(lower["rate"]["numerator"]), int(lower["rate"]["denominator"]))
             upper_rate = Fraction(int(upper["rate"]["numerator"]), int(upper["rate"]["denominator"]))
             agree = _agree(lower_rate, upper_rate)
-            boundaries.append({
-                "lower_band": lower["band"],
-                "upper_band": upper["band"],
-                "lower_rate": dict(lower["rate"]),
-                "upper_rate": dict(upper["rate"]),
-                "rate_difference": _rational(upper_rate - lower_rate),
-                "noise_band_cycles_per_axis_unit": 0.0,
-                "agree": agree,
-                "falsifier_fired": agree,
-            })
+            boundaries.append(
+                {
+                    "lower_band": lower["band"],
+                    "upper_band": upper["band"],
+                    "lower_rate": dict(lower["rate"]),
+                    "upper_rate": dict(upper["rate"]),
+                    "rate_difference": _rational(upper_rate - lower_rate),
+                    "noise_band_cycles_per_axis_unit": 0.0,
+                    "agree": agree,
+                    "falsifier_fired": agree,
+                }
+            )
     result["boundaries"] = boundaries
 
     fired = [row for row in boundaries if row["falsifier_fired"]]
@@ -408,11 +447,13 @@ def residency_verdict(members: Sequence[Member]) -> dict[str, Any]:
             "the falsifier fired on a real comparison: the rates fitted on either side of "
             + ", ".join(f"{row['lower_band']}|{row['upper_band']}" for row in fired)
             + " agree within the measured noise band, so crossing that residency boundary does not "
-              "change the per-unit cost this evidence can see")
+            "change the per-unit cost this evidence can see"
+        )
         return result
     result["status"] = ESTABLISHED
     result["reason"] = (
         "every comparable residency boundary changes the fitted rate by more than the measured noise "
         "band, and the negative control fired inside each band, so the instrument was capable of "
-        "reporting the agreement it did not report")
+        "reporting the agreement it did not report"
+    )
     return result

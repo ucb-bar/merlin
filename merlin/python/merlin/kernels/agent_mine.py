@@ -13,18 +13,18 @@ when ANTHROPIC_API_KEY is set, else returns None so the harness degrades to dete
 The prompt is a versioned artifact: merlin/prompts/rvv_mining_v{V}.md. The library prepares prompts
 + post-processes findings; it never reads raw files for the agent — only the dossier.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 from typing import Any, Callable
 
-from ..common.agent_output import parse_json
+from merlin.common.paths import prompts_dir
 
+from ..common.agent_output import parse_json
 from .cluster import cluster_dossiers
 from .dossier import KernelDossier
-
-from merlin.common.paths import prompts_dir
 
 _PROMPT_DIR = prompts_dir()
 
@@ -36,11 +36,16 @@ def prompt_path(version: int = 1) -> Path:
 def build_prompt(d: KernelDossier, *, version: int = 1, code_max: int = 2500) -> str:
     tmpl = prompt_path(version).read_text(encoding="utf-8")
     code = _read_code(d)[:code_max]
-    return tmpl.format(source=d.source, op=d.op, dtype=d.dtype,
-                       decisions=json.dumps(d.decisions), struct=json.dumps(d.struct),
-                       motifs=json.dumps(d.motifs),
-                       framework_contract=json.dumps(d.framework_contract.get("operand_prepack", {})),
-                       code=code)
+    return tmpl.format(
+        source=d.source,
+        op=d.op,
+        dtype=d.dtype,
+        decisions=json.dumps(d.decisions),
+        struct=json.dumps(d.struct),
+        motifs=json.dumps(d.motifs),
+        framework_contract=json.dumps(d.framework_contract.get("operand_prepack", {})),
+        code=code,
+    )
 
 
 def _read_code(d: KernelDossier) -> str:
@@ -58,12 +63,18 @@ def parse_findings(text: str | None) -> dict[str, Any]:
 
 def _default_llm(prompt: str) -> str | None:
     from ..common.llm import complete
+
     return complete(prompt, max_tokens=600)
 
 
-def mine(dossiers: list[KernelDossier], *, mode: str = "representative",
-         llm_fn: Callable[[str], "str | None"] | None = None, version: int = 1,
-         max_calls: int | None = None) -> dict[str, Any]:
+def mine(
+    dossiers: list[KernelDossier],
+    *,
+    mode: str = "representative",
+    llm_fn: Callable[[str], "str | None"] | None = None,
+    version: int = 1,
+    max_calls: int | None = None,
+) -> dict[str, Any]:
     """Run agent mining in ``mode``. Returns {mode, n_calls, n_kernels_covered, findings}. Each
     finding: {path|signature, n_members, finding(parsed), raw}. Never raises on an LLM miss
     (records finding={})."""
@@ -81,15 +92,27 @@ def mine(dossiers: list[KernelDossier], *, mode: str = "representative",
     findings = []
     for rep, members in targets:
         raw = llm_fn(build_prompt(rep, version=version))
-        findings.append({"path": rep.path, "signature": list(rep.signature()),
-                         "n_members": len(members), "finding": parse_findings(raw),
-                         "raw": raw})
-    return {"mode": mode, "version": version, "n_calls": len(findings),
-            "n_kernels_covered": sum(f["n_members"] for f in findings), "findings": findings}
+        findings.append(
+            {
+                "path": rep.path,
+                "signature": list(rep.signature()),
+                "n_members": len(members),
+                "finding": parse_findings(raw),
+                "raw": raw,
+            }
+        )
+    return {
+        "mode": mode,
+        "version": version,
+        "n_calls": len(findings),
+        "n_kernels_covered": sum(f["n_members"] for f in findings),
+        "findings": findings,
+    }
 
 
-def compare_modes(dossiers: list[KernelDossier], *, llm_fn: Callable | None = None,
-                  version: int = 1, max_calls: int | None = None) -> dict[str, Any]:
+def compare_modes(
+    dossiers: list[KernelDossier], *, llm_fn: Callable | None = None, version: int = 1, max_calls: int | None = None
+) -> dict[str, Any]:
     """Run BOTH modes and report which mines better: call counts, coverage, and (when both ran on
     overlapping kernels) agreement on `is_exemplary`/`compiler_levers`. The experiment the user
     asked for instead of assuming representative is best."""
@@ -109,5 +132,6 @@ def compare_modes(dossiers: list[KernelDossier], *, llm_fn: Callable | None = No
         "call_ratio": round(per["n_calls"] / max(1, rep["n_calls"]), 2),
         "exemplary_agreement": (round(agree / total, 3) if total else None),
         "agreement_n": total,
-        "rep_findings": rep["findings"], "per_findings": per["findings"],
+        "rep_findings": rep["findings"],
+        "per_findings": per["findings"],
     }

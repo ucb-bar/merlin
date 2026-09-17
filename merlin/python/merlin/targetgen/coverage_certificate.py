@@ -27,6 +27,7 @@ therefore lets the certificate price what the demands could not see and report i
 charging the whole unmatched mass to its own denominator. Every recall here is therefore a bracket, and
 quoting only the upper half of one is the error this block exists to stop.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen import eligibility as _el
@@ -72,23 +73,28 @@ def denominator_completeness(linalg_mlir: str | None) -> dict | None:
         from merlin.common import mlir_query as _mq
         from merlin.common.ir_lock import IR_LOCK
         from merlin.xdsl_dialects.lowering.contraction_coverage import contraction_coverage
-        with IR_LOCK:                     # xDSL's parser is not thread-safe; see common.ir_lock
+
+        with IR_LOCK:  # xDSL's parser is not thread-safe; see common.ir_lock
             rep = contraction_coverage(_mq.parse(linalg_mlir))
-    except Exception as exc:              # noqa: BLE001 — advisory, but the gap must stay visible
-        return {"error": f"{type(exc).__name__}: {exc}",
-                "note": "denominator completeness UNKNOWN — the module could not be priced, so the "
-                        "recall below is an upper bound with no stated floor"}
+    except Exception as exc:  # noqa: BLE001 — advisory, but the gap must stay visible
+        return {
+            "error": f"{type(exc).__name__}: {exc}",
+            "note": "denominator completeness UNKNOWN — the module could not be priced, so the "
+            "recall below is an upper bound with no stated floor",
+        }
 
     caveats: list[str] = []
     if rep.unlowered:
         caveats.append(
             f"{len(rep.unlowered)} contraction(s) worth {rep.unlowered_macs} MAC "
             f"({rep.unlowered_share:.1%} of all contraction MACs) stayed linalg.generic, so they never "
-            f"became routing demands and appear in NEITHER side of the recall above")
+            f"became routing demands and appear in NEITHER side of the recall above"
+        )
     if rep.unpriceable:
         caveats.append(
             f"{len(rep.unpriceable)} contraction(s) could not be priced (no derivable loop extents), so "
-            f"even the lower bound below is optimistic — they are counted as ops, never as work")
+            f"even the lower bound below is optimistic — they are counted as ops, never as work"
+        )
     return {
         "matched_contraction_macs": rep.lowered_macs,
         "unmatched_contraction_macs": rep.unlowered_macs,
@@ -96,9 +102,10 @@ def denominator_completeness(linalg_mlir: str | None) -> dict | None:
         "n_unmatched_contractions": len(rep.unlowered),
         "n_unpriceable_contractions": len(rep.unpriceable),
         "unpriceable_result_types": list(rep.unpriceable),
-        "unmatched": [{"result_type": u.result_type,
-                       "loop_extents": {str(d): e for d, e in u.loop_extents},
-                       "macs": u.macs} for u in rep.unlowered],
+        "unmatched": [
+            {"result_type": u.result_type, "loop_extents": {str(d): e for d, e in u.loop_extents}, "macs": u.macs}
+            for u in rep.unlowered
+        ],
         "generic_labels": dict(rep.labels),
         "caveats": caveats,
     }
@@ -120,24 +127,38 @@ def executed_false_fallbacks(execution: dict | None) -> dict:
     routed = ex.get("mesh_route_symbols")
     ledger = ex.get("dispatch_ledger")
     if not isinstance(routed, (list, tuple)) or not isinstance(ledger, list):
-        return {"status": "not_measured",
-                "detail": "the run recorded no route symbols or no dispatch ledger, so which assigned "
-                          "kernel executed where was never observed"}
-    on_accel = {str(e.get("symbol")) for e in ledger
-                if isinstance(e, dict) and e.get("status") == "pass" and e.get("lane") == "on_mesh"}
+        return {
+            "status": "not_measured",
+            "detail": "the run recorded no route symbols or no dispatch ledger, so which assigned "
+            "kernel executed where was never observed",
+        }
+    on_accel = {
+        str(e.get("symbol"))
+        for e in ledger
+        if isinstance(e, dict) and e.get("status") == "pass" and e.get("lane") == "on_mesh"
+    }
     assigned = [str(x) for x in routed]
     fell_back = sorted(sym for sym in assigned if sym not in on_accel)
-    return {"status": "measured", "n_routed": len(assigned),
-            "n_executed_on_accelerator": len([s for s in assigned if s in on_accel]),
-            "n_false_fallback": len(fell_back),
-            # Named, not just counted: "4 kernels fell back" gives a reader nothing to act on.
-            "false_fallback_symbols": fell_back[:64],
-            "detail": "kernels the router assigned to the accelerator that no completed call placed "
-                      "there; joined on the kernel symbol, which both records carry"}
+    return {
+        "status": "measured",
+        "n_routed": len(assigned),
+        "n_executed_on_accelerator": len([s for s in assigned if s in on_accel]),
+        "n_false_fallback": len(fell_back),
+        # Named, not just counted: "4 kernels fell back" gives a reader nothing to act on.
+        "false_fallback_symbols": fell_back[:64],
+        "detail": "kernels the router assigned to the accelerator that no completed call placed "
+        "there; joined on the kernel symbol, which both records carry",
+    }
 
 
-def build(plan: dict, cap_map: dict, *, target: str | None = None,
-          linalg_mlir: str | None = None, execution: dict | None = None) -> dict:
+def build(
+    plan: dict,
+    cap_map: dict,
+    *,
+    target: str | None = None,
+    linalg_mlir: str | None = None,
+    execution: dict | None = None,
+) -> dict:
     """Build the coverage certificate from a ``route_plan`` result and a capability map.
 
     ``plan`` is the dict returned by :func:`merlin.targetgen.routing.route_plan_on` / ``route_plan``
@@ -163,25 +184,28 @@ def build(plan: dict, cap_map: dict, *, target: str | None = None,
 
     for r in plan.get("results", []):
         d = r.demand
-        desc = _el.RegionDescriptor(source=d.site or d.op, op=d.op, in_dtype=d.in_fmt,
-                                    weight_dtype=d.weight_fmt, m=d.m, k=d.k, n=d.n)
+        desc = _el.RegionDescriptor(
+            source=d.site or d.op, op=d.op, in_dtype=d.in_fmt, weight_dtype=d.weight_fmt, m=d.m, k=d.k, n=d.n
+        )
         verdict = _el.is_eligible(desc, cap_map)
         family = verdict.family or _sf.from_op(d.op)
         decision = dec.get(id(r), "cpu_fallback")
         accelerated = decision == "accelerator"
         flops = _flops(d, family)
 
-        regions.append({
-            "source": d.site or d.op,
-            "op": d.op,
-            "semantic_family": family,
-            "target_eligible": verdict.eligible,
-            "eligibility_reason": verdict.reason,
-            "decision": decision,
-            "unit": r.unit,
-            "gap": r.gap,
-            "estimated_work_flops": flops,
-        })
+        regions.append(
+            {
+                "source": d.site or d.op,
+                "op": d.op,
+                "semantic_family": family,
+                "target_eligible": verdict.eligible,
+                "eligibility_reason": verdict.reason,
+                "decision": decision,
+                "unit": r.unit,
+                "gap": r.gap,
+                "estimated_work_flops": flops,
+            }
+        )
 
         if verdict.eligible:
             n_eligible += 1
@@ -194,8 +218,7 @@ def build(plan: dict, cap_map: dict, *, target: str | None = None,
             if not verdict.eligible:
                 accelerated_ineligible += 1
 
-    false_fallback = sum(1 for reg in regions
-                         if reg["target_eligible"] and reg["decision"] != "accelerator")
+    false_fallback = sum(1 for reg in regions if reg["target_eligible"] and reg["decision"] != "accelerator")
 
     # Work the matcher never turned into a demand. A MAC is a multiply AND an add, so it is 2 flops on
     # the same scale `_flops` uses -- mixing the two units would understate the correction by half.
@@ -208,17 +231,24 @@ def build(plan: dict, cap_map: dict, *, target: str | None = None,
     # never been told about it.
     xcheck = None
     if execution:
+
         def _n(v):
             return None if v is None or isinstance(v, str) else int(v)
+
         routed, ran = _n(execution.get("matmul_layers_routed")), _n(execution.get("matmul_layers_on_mesh"))
         fell = _n(execution.get("matmul_layers_host_fallback"))
-        xcheck = {"matmul_layers_routed": routed, "matmul_layers_on_mesh": ran,
-                  "matmul_layers_host_fallback": fell,
-                  # None, never True: "nobody could tell" is not "they agree".
-                  "agrees": None if (routed is None or ran is None) else (routed == ran),
-                  "why": ("the plan assigned `routed` contraction layers to the accelerator and `on_mesh` "
-                          "of them executed there; when these differ, the recalls in this certificate "
-                          "describe an intent the run did not carry out")}
+        xcheck = {
+            "matmul_layers_routed": routed,
+            "matmul_layers_on_mesh": ran,
+            "matmul_layers_host_fallback": fell,
+            # None, never True: "nobody could tell" is not "they agree".
+            "agrees": None if (routed is None or ran is None) else (routed == ran),
+            "why": (
+                "the plan assigned `routed` contraction layers to the accelerator and `on_mesh` "
+                "of them executed there; when these differ, the recalls in this certificate "
+                "describe an intent the run did not carry out"
+            ),
+        }
 
     # The execution-evidenced half of the same question, reported BESIDE the plan-derived recalls rather
     # than replacing them: the recalls are per-region and this is per-kernel-symbol, so they are not the
@@ -255,22 +285,21 @@ def build(plan: dict, cap_map: dict, *, target: str | None = None,
             # single most-cited figure was also the single least-bracketed one. Charging every unmatched
             # contraction to the denominator is deliberately the unflattering assumption: each is counted
             # as eligible and unaccelerated.
-            "acceleratable_region_recall_lower_bound":
-                _ratio(n_eligible_accelerated, n_eligible + unmatched_regions),
+            "acceleratable_region_recall_lower_bound": _ratio(n_eligible_accelerated, n_eligible + unmatched_regions),
             # The same recall with every unmatched contraction charged to the denominator: the floor
             # under the number above, on the assumption (deliberately the unflattering one) that all of
             # that work was eligible and none of it was accelerated. True recall lies between the two;
             # they coincide exactly when the matcher missed nothing.
-            "acceleratable_flop_recall_lower_bound":
-                _ratio(accelerated_eligible_flops, eligible_flops + unmatched_flops),
+            "acceleratable_flop_recall_lower_bound": _ratio(
+                accelerated_eligible_flops, eligible_flops + unmatched_flops
+            ),
             "acceleration_precision": _ratio(n_accelerated - accelerated_ineligible, n_accelerated),
         },
         "regions": regions,
     }
 
 
-def for_target(plan: dict, target: str, *, linalg_mlir: str | None = None,
-               execution: dict | None = None) -> dict:
+def for_target(plan: dict, target: str, *, linalg_mlir: str | None = None, execution: dict | None = None) -> dict:
     """Convenience: load the target's declared capability map and build the certificate."""
     cap_map = _el.capability_map_for_target(target)
     return build(plan, cap_map, target=target, linalg_mlir=linalg_mlir, execution=execution)

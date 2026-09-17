@@ -11,6 +11,7 @@ LLM-digestible form to compare compiler-CCA vs expert-CCA.
 Everything here is DETERMINISTIC — assembled by reading the compiler's own pass catalog + pipeline + the
 decoded stream. No LLM composes a trace; an LLM may later read ``to_markdown()`` to reason about it.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -39,8 +40,9 @@ _STAGE_PHASE = {
 @dataclass(frozen=True)
 class GraphRegion:
     """A region of the flattened exported graph (from the model2MLIR MLIR + ``prov.*`` attributes)."""
+
     region_id: str
-    op: str                              # the FINE op (aten-level: matmul / addmm / softmax / ...)
+    op: str  # the FINE op (aten-level: matmul / addmm / softmax / ...)
     family: str | None = None
     module: str | None = None
     shape: dict[str, int] | None = None
@@ -55,29 +57,32 @@ class GraphRegion:
 @dataclass(frozen=True)
 class TransformStep:
     """One transformation applied during lowering — a compiler pass or a transform-schedule step."""
+
     name: str
-    plane: str              # "dialect" | "llvm" | "transform_schedule"
-    stage: str              # the pipeline stage (normalize/outline/vectorize/bufferize/llvm/...)
+    plane: str  # "dialect" | "llvm" | "transform_schedule"
+    stage: str  # the pipeline stage (normalize/outline/vectorize/bufferize/llvm/...)
     summary: str = ""
-    entry: str | None = None        # dotted path of the implementing callable = the edit point
-    phase: str | None = None        # the compilation phase (kernels.regions.PHASES) this step belongs to
+    entry: str | None = None  # dotted path of the implementing callable = the edit point
+    phase: str | None = None  # the compilation phase (kernels.regions.PHASES) this step belongs to
     modifiable_by: str | None = None  # the seam/feature that can change it
 
 
 @dataclass(frozen=True)
 class AsmRegion:
     """A region of emitted asm (a decoded ``InsnStream`` span) that a CCA facet is lifted from."""
+
     label: str
-    span: tuple[int, int] | None = None   # (lo, hi) loop address span, or None for straight-line
+    span: tuple[int, int] | None = None  # (lo, hi) loop address span, or None for straight-line
     facts: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class LoweringTrace:
     """graph → [transform steps] → asm for one kernel/region. Serializes to an LLM-digestible view."""
+
     kernel: str
     target: str
-    source: str                                  # "ours" | an expert kernel id
+    source: str  # "ours" | an expert kernel id
     graph: GraphRegion | None = None
     steps: list[TransformStep] = field(default_factory=list)
     asm: AsmRegion | None = None
@@ -85,7 +90,9 @@ class LoweringTrace:
 
     def to_dict(self) -> dict:
         return {
-            "kernel": self.kernel, "target": self.target, "source": self.source,
+            "kernel": self.kernel,
+            "target": self.target,
+            "source": self.source,
             "graph": asdict(self.graph) if self.graph else None,
             "steps": [asdict(s) for s in self.steps],
             "asm": asdict(self.asm) if self.asm else None,
@@ -108,12 +115,12 @@ class LoweringTrace:
         out.append("")
         if self.asm:
             a = self.asm
-            out += [f"**Asm region** `{a.label}` span={a.span}",
-                    *(f"   - {k}: {v}" for k, v in a.facts.items())]
+            out += [f"**Asm region** `{a.label}` span={a.span}", *(f"   - {k}: {v}" for k, v in a.facts.items())]
         return "\n".join(out)
 
 
 # ---- deterministic assembly of the compiler pipeline as ordered TransformSteps ------
+
 
 def _split_pass_list(pipeline_str: str) -> list[str]:
     """Split a comma-joined MLIR pass-list into individual pass strings, respecting ``{...}`` option
@@ -157,13 +164,18 @@ def _transform_schedule_steps(schedule_text: str) -> list[TransformStep]:
     steps: list[TransformStep] = []
     for line in schedule_text.splitlines():
         s = line.strip()
-        for prefix in ("transform.structured.", "transform.apply_patterns.vector.",
-                       "transform.apply_patterns.linalg."):
+        for prefix in ("transform.structured.", "transform.apply_patterns.vector.", "transform.apply_patterns.linalg."):
             if s.startswith(prefix) or (prefix in s and "= transform.structured." in s):
                 op = s.split(prefix, 1)[1].split()[0].split("(")[0] if prefix in s else s
-                steps.append(TransformStep(
-                    name=op, plane="transform_schedule", stage="transform_schedule",
-                    summary=s[:120], phase=_STAGE_PHASE["transform_schedule"]))
+                steps.append(
+                    TransformStep(
+                        name=op,
+                        plane="transform_schedule",
+                        stage="transform_schedule",
+                        summary=s[:120],
+                        phase=_STAGE_PHASE["transform_schedule"],
+                    )
+                )
                 break
     return steps
 
@@ -172,8 +184,18 @@ def _catalog_steps() -> list[TransformStep]:
     """The Merlin-authored dialect passes from ``passes.CATALOG`` as TransformSteps (static metadata —
     no xDSL runtime needed; CATALOG is a plain tuple of PassInfo)."""
     from ..xdsl_dialects.lowering.passes import CATALOG
-    return [TransformStep(name=p.name, plane="dialect", stage=p.stage, summary=p.summary,
-                          entry=p.entry, phase=_STAGE_PHASE.get(p.stage)) for p in CATALOG]
+
+    return [
+        TransformStep(
+            name=p.name,
+            plane="dialect",
+            stage=p.stage,
+            summary=p.summary,
+            entry=p.entry,
+            phase=_STAGE_PHASE.get(p.stage),
+        )
+        for p in CATALOG
+    ]
 
 
 def _llvm_steps() -> list[TransformStep]:
@@ -181,12 +203,16 @@ def _llvm_steps() -> list[TransformStep]:
     Calls build_rvv_pipeline with a placeholder schedule path (it only embeds the path in a
     transform-interpreter pass string) and splits the comma-joined pass list, respecting {options}."""
     from ..llvmlower import pipeline as P
+
     raw = P.build_rvv_pipeline("<schedule.mlir>")
     steps = []
     for name in _split_pass_list(raw):
         stage = _pass_stage(name)
-        steps.append(TransformStep(name=name.split("{", 1)[0], plane="llvm", stage=stage,
-                                   summary=name, phase=_STAGE_PHASE.get(stage)))
+        steps.append(
+            TransformStep(
+                name=name.split("{", 1)[0], plane="llvm", stage=stage, summary=name, phase=_STAGE_PHASE.get(stage)
+            )
+        )
     return steps
 
 
@@ -198,10 +224,12 @@ def pipeline_steps(target: str = "rvv") -> list[TransformStep]:
     if target != "rvv":
         raise ValueError(f"pipeline_steps: only 'rvv' instantiated today, got {target!r}")
     from ..llvmlower import pipeline as P
+
     return _catalog_steps() + _transform_schedule_steps(P.RVV_TRANSFORM_SCHEDULE) + _llvm_steps()
 
 
 # ---- linkage: graph region <- prov ; asm region <- decoded InsnStream --------------
+
 
 def graph_region_from_record(rec, recognized_op: str | None = None) -> GraphRegion:
     """A GraphRegion from a ``frontends.linalg_mlir.MatmulRecord`` (its ``prov.*`` + m/n/k/kind).
@@ -217,7 +245,8 @@ def graph_region_from_record(rec, recognized_op: str | None = None) -> GraphRegi
         module=prov.get("prov.module"),
         shape=shape or None,
         provenance=prov,
-        recognized_op=recognized_op)
+        recognized_op=recognized_op,
+    )
 
 
 def op_agree(graph_region: GraphRegion, asm_cca) -> "object":
@@ -226,8 +255,13 @@ def op_agree(graph_region: GraphRegion, asm_cca) -> "object":
     inconsistent with the graph — the trace is then quarantined (the op flowed unverified before).
     Returns a ``cca.AgreementReport``."""
     from .cca import CCA, ComputeFacet, cca_agree
-    g = CCA(op=graph_region.op, backend=list(getattr(asm_cca, "backend", []) or []),
-            compute=ComputeFacet(op=graph_region.op), provenance={"level": "graph"})
+
+    g = CCA(
+        op=graph_region.op,
+        backend=list(getattr(asm_cca, "backend", []) or []),
+        compute=ComputeFacet(op=graph_region.op),
+        provenance={"level": "graph"},
+    )
     return cca_agree(g, asm_cca)
 
 
@@ -238,6 +272,7 @@ def asm_region_from_stream(stream, *, op: str, source: str = "asm", label: str =
     from dataclasses import asdict as _asdict
 
     from .cca import lift_asm
+
     c = lift_asm(stream, op=op, source=source)
     facts: dict[str, Any] = {}
     for facet in (c.compute, c.vector):
@@ -246,8 +281,16 @@ def asm_region_from_stream(stream, *, op: str, source: str = "asm", label: str =
     return AsmRegion(label=label, span=stream.innermost_loop(), facts=facts)
 
 
-def asm_region_from_roles(decoded, endpoint, *, op: str, source: str = "asm", label: str = "kernel",
-                          geometry: dict | None = None, loop_spans=None) -> AsmRegion:
+def asm_region_from_roles(
+    decoded,
+    endpoint,
+    *,
+    op: str,
+    source: str = "asm",
+    label: str = "kernel",
+    geometry: dict | None = None,
+    loop_spans=None,
+) -> AsmRegion:
     """An AsmRegion from a ROLE-tagged stream — the non-RVV sibling of :func:`asm_region_from_stream`.
 
     That function reuses ``cca.lift_asm``, which is the RVV lifter: it reads a vtype history and counts
@@ -259,8 +302,8 @@ def asm_region_from_roles(decoded, endpoint, *, op: str, source: str = "asm", la
     from dataclasses import asdict as _asdict
 
     from .cca import lift_asm_roles
-    c = lift_asm_roles(decoded, endpoint, op=op, source=source, geometry=geometry,
-                       loop_spans=loop_spans)
+
+    c = lift_asm_roles(decoded, endpoint, op=op, source=source, geometry=geometry, loop_spans=loop_spans)
     facts: dict[str, Any] = {}
     for facet in (c.compute, c.spatial, c.simt, c.vector, c.dispatch):
         if facet is not None:
@@ -301,15 +344,23 @@ def expert_steps_from_contract(framework: str) -> list[TransformStep]:
     labeled ``plane="framework"`` — these are the contract's declared caller-side transformations
     (packing/accumulator/epilogue/layout), not a trace of the framework's internal IR."""
     from .framework_contracts import load_contract
+
     contract = load_contract(framework)
     steps: list[TransformStep] = []
     for key, name, stage, phase in _CONTRACT_STEP_SPECS:
         section = contract.get(key)
         if not section:
             continue
-        steps.append(TransformStep(
-            name=name, plane="framework", stage=stage, summary=_contract_summary(section),
-            entry=f"kernels/framework_contracts/{framework}.yaml:{key}", phase=phase))
+        steps.append(
+            TransformStep(
+                name=name,
+                plane="framework",
+                stage=stage,
+                summary=_contract_summary(section),
+                entry=f"kernels/framework_contracts/{framework}.yaml:{key}",
+                phase=phase,
+            )
+        )
     return steps
 
 
@@ -318,10 +369,14 @@ def build_expert_trace(framework: str, stream, *, op: str, kernel_id: str) -> Lo
     to the asm region we decode. ``graph=None`` by design (we don't have the expert's flattened graph;
     experts are matched at the contract + asm level)."""
     return LoweringTrace(
-        kernel=kernel_id, target="rvv", source=framework, graph=None,
+        kernel=kernel_id,
+        target="rvv",
+        source=framework,
+        graph=None,
         steps=expert_steps_from_contract(framework),
         asm=asm_region_from_stream(stream, op=op, source=framework, label=kernel_id),
-        provenance={"level": "contract+asm", "framework": framework})
+        provenance={"level": "contract+asm", "framework": framework},
+    )
 
 
 #: The stages an expert BUILD passes through, in order. These are the real steps of somebody else's
@@ -381,19 +436,36 @@ def expert_build_steps(build_cmd, *, tool: str = "", version: str = "") -> list[
         detail = what
         if name == "llvm-pipeline" and decisions:
             detail = f"{what}; decided by " + ", ".join(f"{f} ({m})" for f, m in decisions)
-        steps.append(TransformStep(
-            name=name, plane="expert-build", stage=name, summary=detail,
-            entry=entry, phase=phase,
-            modifiable_by=None,           # deliberate: we cannot edit their compiler
-        ))
+        steps.append(
+            TransformStep(
+                name=name,
+                plane="expert-build",
+                stage=name,
+                summary=detail,
+                entry=entry,
+                phase=phase,
+                modifiable_by=None,  # deliberate: we cannot edit their compiler
+            )
+        )
     return steps
 
 
-def expert_trace(source: str, stream, *, op: str, kernel_id: str, target: str,
-                 build_cmd=None, tool: str = "", version: str = "",
-                 obj: "str | Path | None" = None,
-                 hand_written: bool = False, endpoint=None,
-                 geometry: dict | None = None, loop_spans=None) -> LoweringTrace:
+def expert_trace(
+    source: str,
+    stream,
+    *,
+    op: str,
+    kernel_id: str,
+    target: str,
+    build_cmd=None,
+    tool: str = "",
+    version: str = "",
+    obj: "str | Path | None" = None,
+    hand_written: bool = False,
+    endpoint=None,
+    geometry: dict | None = None,
+    loop_spans=None,
+) -> LoweringTrace:
     """A LoweringTrace for an expert kernel, from its BUILD rather than from a declared contract.
 
     ``build_expert_trace`` reads the framework contract, i.e. what the expert framework SAYS it does.
@@ -409,8 +481,10 @@ def expert_trace(source: str, stream, *, op: str, kernel_id: str, target: str,
     steps: list[TransformStep] = []
     prov: dict[str, Any] = {"level": "build+asm", "source": source, "target": target}
     if hand_written:
-        prov["no_lowering"] = ("hand-written assembly: there is no compiler lowering to reconstruct on "
-                               "the expert side, which is a property of this endpoint rather than a gap")
+        prov["no_lowering"] = (
+            "hand-written assembly: there is no compiler lowering to reconstruct on "
+            "the expert side, which is a property of this endpoint rather than a gap"
+        )
     else:
         steps = expert_build_steps(build_cmd, tool=tool, version=version)
         prov["build_cmd"] = [str(a) for a in (build_cmd or ())]
@@ -419,20 +493,24 @@ def expert_trace(source: str, stream, *, op: str, kernel_id: str, target: str,
         prov["object"] = str(obj)
         try:
             from merlin.common import provenance as _p
+
             prov["source_digest"] = _p.source_digest([obj])
         except Exception:  # noqa: BLE001 — a digest we cannot take is recorded absent, never faked
             prov["source_digest"] = None
     # `endpoint` selects the lifter: an accelerator command stream through the role lifter, an RVV
     # InsnStream through the vector one. Passing an accelerator stream to the RVV lifter yields an empty
     # facet rather than an error, so the choice has to be explicit.
-    region = (asm_region_from_roles(stream, endpoint, op=op, source=source, label=kernel_id,
-                                    geometry=geometry, loop_spans=loop_spans)
-              if endpoint is not None
-              else asm_region_from_stream(stream, op=op, source=source, label=kernel_id))
+    region = (
+        asm_region_from_roles(
+            stream, endpoint, op=op, source=source, label=kernel_id, geometry=geometry, loop_spans=loop_spans
+        )
+        if endpoint is not None
+        else asm_region_from_stream(stream, op=op, source=source, label=kernel_id)
+    )
     prov["lifter"] = "roles" if endpoint is not None else "rvv"
     return LoweringTrace(
-        kernel=kernel_id, target=target, source=source, graph=None, steps=steps,
-        asm=region, provenance=prov)
+        kernel=kernel_id, target=target, source=source, graph=None, steps=steps, asm=region, provenance=prov
+    )
 
 
 def traces_agree(ours: LoweringTrace, theirs: LoweringTrace) -> dict:
@@ -455,8 +533,9 @@ def traces_agree(ours: LoweringTrace, theirs: LoweringTrace) -> dict:
     }
 
 
-def build_our_trace(stream, *, op: str | None = None, record=None, recognized_op: str | None = None,
-                    target: str = "rvv") -> LoweringTrace:
+def build_our_trace(
+    stream, *, op: str | None = None, record=None, recognized_op: str | None = None, target: str = "rvv"
+) -> LoweringTrace:
     """A LoweringTrace for OUR compiler's output: the flattened-graph region (from a MatmulRecord, if
     given) → our pipeline transformation steps → the emitted asm region. The full graph→steps→asm thread.
 
@@ -471,14 +550,15 @@ def build_our_trace(stream, *, op: str | None = None, record=None, recognized_op
     prov: dict[str, Any] = {"level": "graph+pipeline+asm"}
     if graph is not None:
         from .cca import lift_asm
+
         report = op_agree(graph, lift_asm(stream, op=asm_op, source="ours"))
         prov["op_agreement"] = {"agree": report.agree, "disagreements": report.disagreements}
         prov["quarantined"] = not report.agree
         if graph.recognized_op:
             prov["recognized_op"] = graph.recognized_op
     return LoweringTrace(
-        kernel=asm_op, target=target, source="ours", graph=graph,
-        steps=pipeline_steps(target), asm=asm, provenance=prov)
+        kernel=asm_op, target=target, source="ours", graph=graph, steps=pipeline_steps(target), asm=asm, provenance=prov
+    )
 
 
 def emit_trace(trace: LoweringTrace, *, version: int = 1):
@@ -488,11 +568,10 @@ def emit_trace(trace: LoweringTrace, *, version: int = 1):
     import yaml
 
     from ..common.artifacts import new_product
-    p = new_product("lowering-trace", version=version, target=trace.target,
-                    notes=f"{trace.source}:{trace.kernel}")
+
+    p = new_product("lowering-trace", version=version, target=trace.target, notes=f"{trace.source}:{trace.kernel}")
     stem = f"trace_{trace.source}_{trace.kernel}".replace("/", "_")
-    p.add_artifact(f"{stem}.yaml").write_text(yaml.safe_dump(trace.to_dict(), sort_keys=False),
-                                              encoding="utf-8")
+    p.add_artifact(f"{stem}.yaml").write_text(yaml.safe_dump(trace.to_dict(), sort_keys=False), encoding="utf-8")
     p.add_artifact(f"{stem}.md").write_text(trace.to_markdown(), encoding="utf-8")
     p.write_manifest()
     return p.path

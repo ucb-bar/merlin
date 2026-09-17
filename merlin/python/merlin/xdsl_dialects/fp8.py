@@ -15,6 +15,7 @@ xDSL's own builtin floats (bare ``f8E4M3FN`` / ``f8E5M2``, no ``!`` prefix) so p
 modules round-trip textually. Byte packing is intentionally left unimplemented: the contract
 surface only names these types (shapes/dtypes), it never materializes fp8 buffers here.
 """
+
 from __future__ import annotations
 
 from ._common import HAS_XDSL
@@ -61,11 +62,13 @@ if HAS_XDSL:
     @irdl_attr_definition
     class Float8E4M3FNType(_Fp8Type):
         """!f8E4M3FN — 8-bit float, 4 exponent / 3 mantissa bits, finite-only (no inf)."""
+
         name = "f8E4M3FN"
 
     @irdl_attr_definition
     class Float8E5M2Type(_Fp8Type):
         """!f8E5M2 — 8-bit float, 5 exponent / 2 mantissa bits."""
+
         name = "f8E5M2"
 
     # Instances keyed by their MLIR bare spelling, for the parser hook.
@@ -152,7 +155,6 @@ if HAS_XDSL:
     register_fp8_float_constraints()
 
 else:  # pragma: no cover - exercised only when xDSL is absent
-
     _FP8_BY_NAME = {}
 
     def register_fp8_types() -> None:

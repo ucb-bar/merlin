@@ -144,6 +144,7 @@ would cost the consumer its vectorization. Left undone rather than done badly.
 Default OFF, so with ``features == frozenset()`` the emitted IR is byte-identical to the frozen
 baseline (asserted on the .ll bytes: ``e041fdb3...``, 427,790 bytes, pre- and post-change).
 """
+
 from __future__ import annotations
 
 #: Feature name, as it appears in a package's ``compiler_features``.
@@ -348,21 +349,24 @@ def ensure_registered() -> str:
     returns False -- an unregistered feature is not an error anyone sees, it is a feature that is
     silently never proposed.
     """
-    from .impr_features import ImprFeature, _REGISTRY, register
+    from .impr_features import _REGISTRY, ImprFeature, register
 
     if FEATURE in _REGISTRY:
         return FEATURE
     from .selfcopy import FEATURE as _SELF_COPY_FEATURE
 
-    register(ImprFeature(
-        name=FEATURE,
-        action_class="PASS",
-        description=(
-            "Decompose tensor.concat into a tensor.insert_slice chain and run "
-            "eliminate-empty-tensors before bufferization, so each operand's producer writes "
-            "straight into the concatenated buffer instead of into a private one that is then "
-            "copied. Implies erase_self_copy, which deletes the self-copy the in-place "
-            "insert_slice bufferizes to -- without it the rewrite measures WORSE than baseline."),
-        implies=frozenset({_SELF_COPY_FEATURE}),
-    ))
+    register(
+        ImprFeature(
+            name=FEATURE,
+            action_class="PASS",
+            description=(
+                "Decompose tensor.concat into a tensor.insert_slice chain and run "
+                "eliminate-empty-tensors before bufferization, so each operand's producer writes "
+                "straight into the concatenated buffer instead of into a private one that is then "
+                "copied. Implies erase_self_copy, which deletes the self-copy the in-place "
+                "insert_slice bufferizes to -- without it the rewrite measures WORSE than baseline."
+            ),
+            implies=frozenset({_SELF_COPY_FEATURE}),
+        )
+    )
     return FEATURE

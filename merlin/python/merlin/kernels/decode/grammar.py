@@ -15,6 +15,7 @@ FORM in the suffix (``.vv`` / ``.vf`` / ``.vx`` / ``.vs``) while the operation i
 read separately and reported, since "the scalar operand is broadcast rather than rebuilt per step" is a
 real decision and it lives entirely in that suffix.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -38,7 +39,7 @@ class GrammarInsn:
     from_endpoint: bool = False
     mnemonic: str = ""
     operands: tuple[str, ...] = ()
-    form: str = ""                    # the operand-form suffix, when the mnemonic carries one
+    form: str = ""  # the operand-form suffix, when the mnemonic carries one
     fields: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -64,11 +65,19 @@ def decode_stream(raws, endpoint) -> list[GrammarInsn]:
         mnemonic = str(getattr(raw, "mnemonic", "") or "")
         stem, form = _stem_and_form(mnemonic)
         roles = tuple(by_stem.get(stem, ()))
-        out.append(GrammarInsn(
-            index=i, addr=int(getattr(raw, "addr", 0) or 0),
-            identity=stem or mnemonic, roles=roles, from_endpoint=bool(roles),
-            mnemonic=mnemonic, operands=tuple(getattr(raw, "operands", ()) or ()),
-            form=form, fields={"stem": stem, "form": form}))
+        out.append(
+            GrammarInsn(
+                index=i,
+                addr=int(getattr(raw, "addr", 0) or 0),
+                identity=stem or mnemonic,
+                roles=roles,
+                from_endpoint=bool(roles),
+                mnemonic=mnemonic,
+                operands=tuple(getattr(raw, "operands", ()) or ()),
+                form=form,
+                fields={"stem": stem, "form": form},
+            )
+        )
     return out
 
 

@@ -30,6 +30,7 @@ two skinny cases dominate tile efficiency, so they are decided first; square-ish
 projection are the residual dense shapes; ``odd_tail_heavy`` / ``small_dispatch_fragment`` are the
 irregularity classes assigned only when no dense class matched.
 """
+
 from __future__ import annotations
 
 import math
@@ -54,8 +55,7 @@ ODD_TAIL = "odd_tail_heavy"
 SMALL_FRAG = "small_dispatch_fragment"
 UNKNOWN = "unknown"
 
-GEOMETRY_CLASSES = (GEMV, TALL_SKINNY, WIDE_SKINNY, SQUAREISH, PROJECTION,
-                    ODD_TAIL, SMALL_FRAG, UNKNOWN)
+GEOMETRY_CLASSES = (GEMV, TALL_SKINNY, WIDE_SKINNY, SQUAREISH, PROJECTION, ODD_TAIL, SMALL_FRAG, UNKNOWN)
 
 # --- semantic roles (from prov.fqn) ---
 SEM_QKV = "attention_qkv_projection"
@@ -69,13 +69,46 @@ SEM_UNKNOWN = "unknown"
 # (an exact "lm" leaf or an explicit "lm_head" token) so a model whose *whole* tree is rooted at
 # "lm." (e.g. tiny_llama: "lm.model.layers.0.self_attn.q_proj") is not mislabeled as a head.
 _SEM_RULES: list[tuple[tuple[str, ...], str]] = [
-    (("q_proj", "k_proj", "v_proj", "qkv", "wqkv",
-      "attn.q", "attn.k", "attn.v", "cross_attn.q", "cross_attn.k", "cross_attn.v",
-      "cross_attn.kv", "kv_proj"), SEM_QKV),
-    (("o_proj", "out_proj", "attn.proj", "attn.o", "cross_attn.proj", "attention.output",
-      ".wo"), SEM_ATTN_OUT),
-    (("mlp", "ffn", "fc1", "fc2", "fc3", "gate_proj", "up_proj", "down_proj",
-      "mlp.g", "mlp.u", "mlp.dn", "feed_forward", "w1", "w2", "w3", "projector"), SEM_MLP),
+    (
+        (
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "qkv",
+            "wqkv",
+            "attn.q",
+            "attn.k",
+            "attn.v",
+            "cross_attn.q",
+            "cross_attn.k",
+            "cross_attn.v",
+            "cross_attn.kv",
+            "kv_proj",
+        ),
+        SEM_QKV,
+    ),
+    (("o_proj", "out_proj", "attn.proj", "attn.o", "cross_attn.proj", "attention.output", ".wo"), SEM_ATTN_OUT),
+    (
+        (
+            "mlp",
+            "ffn",
+            "fc1",
+            "fc2",
+            "fc3",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+            "mlp.g",
+            "mlp.u",
+            "mlp.dn",
+            "feed_forward",
+            "w1",
+            "w2",
+            "w3",
+            "projector",
+        ),
+        SEM_MLP,
+    ),
     (("embed", "t_embedder", "freq_embedder", "patch_embed"), SEM_EMBED),
 ]
 

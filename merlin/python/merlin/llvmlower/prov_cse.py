@@ -59,6 +59,7 @@ build that stripped nothing is visible rather than silent.
 
 Default OFF: without it the prepared module is byte-identical, so the frozen baseline is unchanged.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -124,8 +125,8 @@ def rewrite_prepared_file(prepared: "Any", work: "Any" = None) -> Path:
     script.write_text(
         "import sys\n"
         "from torch_mlir import ir\n"
-        + _REWRITE_SRC.replace("PROV_PREFIX", PROV_PREFIX) +
-        "\nsrc, dst = sys.argv[1], sys.argv[2]\n"
+        + _REWRITE_SRC.replace("PROV_PREFIX", PROV_PREFIX)
+        + "\nsrc, dst = sys.argv[1], sys.argv[2]\n"
         "ctx = ir.Context()\n"
         "ctx.allow_unregistered_dialects = True\n"
         "mod = ir.Module.parse(open(src).read(), ctx)\n"
@@ -133,23 +134,26 @@ def rewrite_prepared_file(prepared: "Any", work: "Any" = None) -> Path:
         "    ops, attrs = strip_prov(mod)\n"
         "open(dst, 'w').write(str(mod.operation))\n"
         "print('OK cse_through_provenance stripped', attrs, 'attributes from', ops, 'ops')\n",
-        encoding="utf-8")
-    proc = subprocess.run([str(m2m_python()), str(script), str(prepared), str(out)],
-                          capture_output=True, text=True, timeout=3600)
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [str(m2m_python()), str(script), str(prepared), str(out)], capture_output=True, text=True, timeout=3600
+    )
     if proc.returncode != 0 or not out.is_file():
-        raise RuntimeError(
-            f"{FEATURE}: provenance strip failed:\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
+        raise RuntimeError(f"{FEATURE}: provenance strip failed:\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
     print(proc.stdout.strip())
     if " stripped 0 attributes" in proc.stdout:
         raise RuntimeError(
             f"{FEATURE} was requested but the prepared module carries no {PROV_PREFIX}* attributes, "
             f"so nothing was hiding duplicates from cse and the feature cannot do what it claims. "
-            f"Refusing to report it as applied.")
+            f"Refusing to report it as applied."
+        )
     return out
 
 
 def _feature():
     from .impr_features import ImprFeature
+
     return ImprFeature(
         name=FEATURE,
         action_class="PASS",
@@ -181,6 +185,7 @@ def ensure_registered() -> str:
     """Register the feature if it is not already. Idempotent, so importing from several entry points
     is safe. Returns the feature name."""
     from .impr_features import known, register
+
     if FEATURE not in known():
         register(_feature())
     return FEATURE

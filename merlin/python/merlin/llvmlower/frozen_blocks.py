@@ -15,6 +15,7 @@ This module names each frozen point's caps AND its per-op-class realization, so 
 two separate questions: "what upper bound did this point intend" and "does the block it actually
 emits lower for these shapes". Nothing here decides anything; the resolver does.
 """
+
 from __future__ import annotations
 
 from . import impr_features as _impr
@@ -24,9 +25,11 @@ from . import impr_features as _impr
 #: registration that uses them.
 _FROZEN: dict[str, dict] = {
     _impr.WHOLEMODEL_VF_NAME: {
-        "caps": {"MR": _impr.WHOLEMODEL_VF_CAPS[0],
-                 "NR": _impr.WHOLEMODEL_VF_CAPS[1],
-                 "KC": _impr.WHOLEMODEL_VF_CAPS[2]},
+        "caps": {
+            "MR": _impr.WHOLEMODEL_VF_CAPS[0],
+            "NR": _impr.WHOLEMODEL_VF_CAPS[1],
+            "KC": _impr.WHOLEMODEL_VF_CAPS[2],
+        },
         # The schedule tiles matmul [MR_mm, NR] and batch_matmul [1, MR, NR_bmm]; the block each
         # op class sees is therefore (M tile, N tile) below.
         "blocks": {

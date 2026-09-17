@@ -20,6 +20,7 @@ Paths to sibling checkouts are resolved from the environment (``MERLIN_CHIPYARD`
 than hardcoded, so a record made on one machine states where its facts came from without embedding
 one developer's filesystem in the library.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -64,8 +65,7 @@ def content_sha(obj: Any) -> str:
 def _git(root: Path, *args: str) -> str | None:
     """One ``git`` query in ``root``, or None when it fails for any reason."""
     try:
-        out = subprocess.run(("git", "-C", str(root), *args), capture_output=True, text=True,
-                             timeout=30)
+        out = subprocess.run(("git", "-C", str(root), *args), capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError):
         return None
     if out.returncode != 0:
@@ -81,6 +81,7 @@ def git_provenance(root: str | Path) -> dict[str, Any]:
     it later.
     """
     from ..common import provenance as PROV
+
     return PROV.scoped_observation(f"git_provenance:{Path(root)}", lambda: _git_provenance_now(root))
 
 
@@ -115,7 +116,7 @@ def _submodule_pins(root: Path) -> dict[str, str]:
         if len(parts) < 2:
             continue
         sha = parts[0]
-        if sha and not sha[0].isalnum():      # strip the +/-/U state marker
+        if sha and not sha[0].isalnum():  # strip the +/-/U state marker
             sha = sha[1:]
         pins[parts[1]] = sha
     return pins
@@ -153,13 +154,13 @@ def toolchain_provenance() -> dict[str, Any]:
     rec: dict[str, Any] = {"python": sys.version.split()[0]}
     try:
         from ..llvmlower import toolchain as tc
-    except Exception as exc:                                          # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         rec["clang"] = {"available": False, "reason": f"{type(exc).__name__}: {exc}"}
         return rec
     for label, getter in (("clang", tc.clang), ("mlir_translate", tc.mlir_translate)):
         try:
             path = getter()
-        except Exception as exc:                                      # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             rec[label] = {"available": False, "reason": f"{type(exc).__name__}: {exc}"}
             continue
         if not Path(path).is_file():
@@ -196,8 +197,13 @@ def simulator_provenance(paths: Mapping[str, str | Path]) -> dict[str, Any]:
             continue
         st = p.stat()
         stamp = {"name": p.name, "bytes": st.st_size, "mtime": int(st.st_mtime)}
-        out[label] = {"available": True, "path": str(p), **stamp,
-                      "sha": content_sha(stamp), "sha_covers": "name+size+mtime, not file contents"}
+        out[label] = {
+            "available": True,
+            "path": str(p),
+            **stamp,
+            "sha": content_sha(stamp),
+            "sha_covers": "name+size+mtime, not file contents",
+        }
     return out
 
 
@@ -212,11 +218,11 @@ def parent_provenance(target: str, *, dtype_strategy: str | None = None) -> dict
     """
     try:
         from . import publish
-    except Exception as exc:                                          # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         return {"available": False, "reason": f"{type(exc).__name__}: {exc}"}
     try:
         sel = publish.select_champion(target, dtype_strategy=dtype_strategy)
-    except Exception as exc:                                          # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         return {"available": False, "reason": f"no champion for {target!r}: {exc}"}
     if sel is None:
         return {"available": False, "reason": f"no champion for {target!r}"}
@@ -253,11 +259,15 @@ def _env_root(var: str, subpath: str | None) -> str | None:
     return str(Path(root) / subpath) if subpath else root
 
 
-def record(target: str, *, dtype_strategy: str | None = None,
-           rtl_sources: Mapping[str, str | Path] | None = None,
-           simulators: Mapping[str, str | Path] | None = None,
-           env_rtl_sources: Sequence[tuple[str, str, str | None]] = (),
-           notes: str = "") -> dict[str, Any]:
+def record(
+    target: str,
+    *,
+    dtype_strategy: str | None = None,
+    rtl_sources: Mapping[str, str | Path] | None = None,
+    simulators: Mapping[str, str | Path] | None = None,
+    env_rtl_sources: Sequence[tuple[str, str, str | None]] = (),
+    notes: str = "",
+) -> dict[str, Any]:
     """The whole provenance record for one evolution run, with its own content hash.
 
     ``env_rtl_sources`` is a convenience for the common case: ``(label, ENV_VAR, subpath)`` triples
@@ -302,9 +312,10 @@ def declared_pins(target: str | None) -> tuple[str, ...]:
     names: list[str] = []
     try:
         from .target_registry import resolve
+
         contract = resolve(target).load_contract() or {}
         names.extend(str(n) for n in (contract.get(PINS_CONTRACT_KEY) or ()))
-    except Exception:                       # noqa: BLE001 -- an unresolvable target contract states nothing
+    except Exception:  # noqa: BLE001 -- an unresolvable target contract states nothing
         pass
     # THE REGISTRY IS THE DURABLE HALF. A target contract is the natural place to declare a dependency,
     # but only one target's contract is a tracked source file -- the others are GENERATED under `out/`,
@@ -314,10 +325,11 @@ def declared_pins(target: str | None) -> tuple[str, ...]:
     # registry is tracked and reviewed, so a pin naming its targets there cannot be regenerated away.
     try:
         from merlin.common.provenance import load_pins
+
         for name, pin in load_pins().items():
             if target in pin.targets and name not in names:
                 names.append(str(name))
-    except Exception:                       # noqa: BLE001 -- an unreadable registry adds nothing
+    except Exception:  # noqa: BLE001 -- an unreadable registry adds nothing
         pass
     return tuple(names)
 
@@ -344,7 +356,7 @@ def toolchain_shas(target: str | None = None) -> dict[str, str]:
     for name in declared_pins(target):
         try:
             shas[name] = PROV.verify(name).observed.commit or PROV.UNKNOWN
-        except Exception:                   # noqa: BLE001 -- unknown/unreadable pin is UNKNOWN, not absent
+        except Exception:  # noqa: BLE001 -- unknown/unreadable pin is UNKNOWN, not absent
             shas[name] = PROV.UNKNOWN
     return shas
 
@@ -366,6 +378,6 @@ def toolchain_citations(target: str | None = None) -> dict[str, str]:
     for name in declared_pins(target):
         try:
             out[name] = PROV.citation(name)
-        except Exception:                   # noqa: BLE001 -- unknown/unreadable pin is UNKNOWN, not absent
+        except Exception:  # noqa: BLE001 -- unknown/unreadable pin is UNKNOWN, not absent
             out[name] = PROV.UNKNOWN
     return out

@@ -35,6 +35,7 @@ two arguments naming one tensor, an aliased byte range, a non-2-D weight) is REF
 stock: a lever that silently declines is indistinguishable from one that did nothing, and would be
 measured as if it had been applied.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -93,16 +94,14 @@ def plan(src: Path | str, func_name: str = "forward") -> PrepackPlan:
         report = weight_layout_report(mq.parse((src / "model.mlir").read_text()), func_name)
 
     man = json.loads((src / "weights.safetensors.manifest.json").read_text())
-    weight_args = {int(k) for k, entry in man.items()
-                   if k.isdigit() and "weight" in entry}
+    weight_args = {int(k) for k, entry in man.items() if k.isdigit() and "weight" in entry}
     # `weight_layout_report` deliberately knows only IR structure, so it also reports transposed
     # runtime inputs.  At the bundle seam we can distinguish them: only manifest-declared weights
     # are candidates for an offline storage rewrite.  A non-weight transpose stays in the graph; it
     # is not a soundness failure for the weights that *can* be hoisted.
     eligible = [r for r in report.hoistable if r.arg in weight_args]
     problems: list[str] = [
-        problem for problem in report.unpriceable
-        if any(problem.startswith(f"arg {arg}:") for arg in weight_args)
+        problem for problem in report.unpriceable if any(problem.startswith(f"arg {arg}:") for arg in weight_args)
     ]
     want: dict[str, int] = {}
     for r in eligible:
@@ -111,10 +110,13 @@ def plan(src: Path | str, func_name: str = "forward") -> PrepackPlan:
         want[entry["weight"]] = r.arg
     if want:
         problems.extend(hoist_safety_problems(src, man, want, {r.arg for r in eligible}))
-    return PrepackPlan(bundle=src.name, hoistable=len(eligible),
-                       blocked=len(report.blocked) + len(report.hoistable) - len(eligible),
-                       bytes_per_inference=sum(r.bytes_moved for r in eligible),
-                       problems=tuple(problems))
+    return PrepackPlan(
+        bundle=src.name,
+        hoistable=len(eligible),
+        blocked=len(report.blocked) + len(report.hoistable) - len(eligible),
+        bytes_per_inference=sum(r.bytes_moved for r in eligible),
+        problems=tuple(problems),
+    )
 
 
 def cache_key(src: Path | str) -> str:
@@ -130,8 +132,9 @@ def cache_key(src: Path | str) -> str:
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
-def prepacked_bundle(src: Path | str, *, cache_root: Path | str | None = None,
-                     func_name: str = "forward") -> tuple[Path, dict]:
+def prepacked_bundle(
+    src: Path | str, *, cache_root: Path | str | None = None, func_name: str = "forward"
+) -> tuple[Path, dict]:
     """`(bundle_dir, effect)` for a bundle storing `src`'s weights in their consumers' layout.
 
     NEVER mutates `src`: the recapture tree is shared by every other session and every other
@@ -149,19 +152,18 @@ def prepacked_bundle(src: Path | str, *, cache_root: Path | str | None = None,
         recs = [r for r in read_rewrites(dst) if r.name == "hoist_weight_transposes"]
         if recs:
             return dst, {"cached": True, **recs[-1].effect}
-        shutil.rmtree(dst)                      # a directory without its record is not a result
+        shutil.rmtree(dst)  # a directory without its record is not a result
 
     p = plan(src, func_name)
     if not p.ok:
-        raise PrepackRefused(
-            f"{src.name}: {'; '.join(p.problems) if p.problems else 'no hoistable weight transposes'}")
+        raise PrepackRefused(f"{src.name}: {'; '.join(p.problems) if p.problems else 'no hoistable weight transposes'}")
 
     tmp = root / f".tmp-{src.name}-{os.getpid()}-{cache_key(src)}"
     if tmp.exists():
         shutil.rmtree(tmp)
     try:
         rec = hoist_weight_transposes(src, tmp, func_name)
-    except RewriteRefused as exc:               # the checks agree with `plan`; surface it as a refusal
+    except RewriteRefused as exc:  # the checks agree with `plan`; surface it as a refusal
         shutil.rmtree(tmp, ignore_errors=True)
         raise PrepackRefused(str(exc)) from exc
     except Exception:
@@ -169,7 +171,7 @@ def prepacked_bundle(src: Path | str, *, cache_root: Path | str | None = None,
         raise
     try:
         os.replace(tmp, dst)
-    except OSError:                             # another build published first -- use theirs
+    except OSError:  # another build published first -- use theirs
         shutil.rmtree(tmp, ignore_errors=True)
         if not dst.is_dir():
             raise
@@ -178,8 +180,8 @@ def prepacked_bundle(src: Path | str, *, cache_root: Path | str | None = None,
     # directory. Re-point it at the published one: provenance naming a path that no longer exists is
     # the same defect as provenance naming the source blob, one step further along.
     from ..baselines.bundle_rewrite import retarget_weights_file
-    text, retargeted = retarget_weights_file((dst / "model.mlir").read_text(),
-                                             dst / "weights.safetensors")
+
+    text, retargeted = retarget_weights_file((dst / "model.mlir").read_text(), dst / "weights.safetensors")
     if retargeted:
         (dst / "model.mlir").write_text(text)
     return dst, {"cached": False, **rec.effect}
@@ -187,17 +189,18 @@ def prepacked_bundle(src: Path | str, *, cache_root: Path | str | None = None,
 
 def _default_cache_root() -> Path:
     from ..common.artifacts import cache_dir
+
     return cache_dir("weight_prepack")
 
 
-def prepare_build_bundle(src: Path | str, work: Path | str,
-                         features: frozenset[str] | None) -> Path:
+def prepare_build_bundle(src: Path | str, work: Path | str, features: frozenset[str] | None) -> Path:
     """Select ONE bundle for both lowering and runtime ABI generation.
 
     Backends call this before reading model.mlir or selecting default inputs. No feature means no
     parsing, copying or receipt. The receipt records the deletion, not a predicted speedup.
     """
     from .impr_features import normalize
+
     ensure_registered()
     src = Path(src).resolve()
     if FEATURE not in normalize(features or ()):
@@ -205,16 +208,27 @@ def prepare_build_bundle(src: Path | str, work: Path | str,
     destination, effect = prepacked_bundle(src)
     work = Path(work)
     work.mkdir(parents=True, exist_ok=True)
-    (work / "bundle_preparation.json").write_text(json.dumps({
-        "schema": "merlin.bundle-preparation.v1", "feature": FEATURE,
-        "source_bundle": str(src), "prepared_bundle": str(destination), "effect": effect,
-        "consumers": ["model_lowering", "runtime_abi_and_weights"],
-    }, sort_keys=True, indent=2) + "\n")
+    (work / "bundle_preparation.json").write_text(
+        json.dumps(
+            {
+                "schema": "merlin.bundle-preparation.v1",
+                "feature": FEATURE,
+                "source_bundle": str(src),
+                "prepared_bundle": str(destination),
+                "effect": effect,
+                "consumers": ["model_lowering", "runtime_abi_and_weights"],
+            },
+            sort_keys=True,
+            indent=2,
+        )
+        + "\n"
+    )
     return destination
 
 
 def _feature():
     from .impr_features import ImprFeature
+
     return ImprFeature(
         name=FEATURE,
         action_class="PASS",
@@ -244,6 +258,7 @@ def ensure_registered() -> str:
     rejects an unregistered name, and `wholemodel_proposer._composes` swallows that rejection as
     "does not compose", which would make the lever silently unproposable rather than reported."""
     from .impr_features import known, register
+
     if FEATURE not in known():
         register(_feature())
     return FEATURE

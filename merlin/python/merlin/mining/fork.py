@@ -3,6 +3,7 @@ replace a parent. Each tuning step mints a new package dir named
 ``<target>_tuned_v{version}_d{depth}_{timestamp}`` with a manifest recording its parent and the
 evidence that justified it, so the whole beam-search tree is inspectable and reproducible.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,8 +17,16 @@ def mint_run_id(target: str, version: int, depth: int, timestamp: str) -> str:
     return f"{target}_tuned_v{version}_d{depth}_{timestamp}"
 
 
-def write_fork(out_root: str | Path, target: str, run_id: str, *, schedule_text: str,
-               knobs: dict[str, Any], lineage: dict[str, Any], status: str = "proposed") -> Path:
+def write_fork(
+    out_root: str | Path,
+    target: str,
+    run_id: str,
+    *,
+    schedule_text: str,
+    knobs: dict[str, Any],
+    lineage: dict[str, Any],
+    status: str = "proposed",
+) -> Path:
     """Write a fork package dir (schedule.mlir + knobs.yaml + manifest.yaml with lineage).
 
     ``lineage`` carries parent_run_id, version, depth, source_evidence, lever. Never overwrites a
@@ -32,10 +41,12 @@ def write_fork(out_root: str | Path, target: str, run_id: str, *, schedule_text:
         "run_id": run_id,
         "family": "vector_schedule",
         "schedule_format": "transform_dialect_mlir",
-        "status": status,                     # proposed -> spike_verified -> cycle_confirmed
-        "authoring": {"mode": "deterministic_generated_from_spec",
-                      "generated_by_agent": bool(lineage.get("generated_by_agent", False)),
-                      "author": lineage.get("author", "mining.from_strategy")},
+        "status": status,  # proposed -> spike_verified -> cycle_confirmed
+        "authoring": {
+            "mode": "deterministic_generated_from_spec",
+            "generated_by_agent": bool(lineage.get("generated_by_agent", False)),
+            "author": lineage.get("author", "mining.from_strategy"),
+        },
         "lineage": lineage,
         "outputs": {"schedule": "schedule.mlir", "knobs": "knobs.yaml"},
     }

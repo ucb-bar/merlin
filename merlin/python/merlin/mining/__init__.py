@@ -10,8 +10,9 @@ schedule-package, not a resident-accelerator dialect — so there is no ``dialec
 ``SPEC_OPS`` / command-buffer here. The plug-back-in seam is the existing
 ``lower_to_llvm_ir(transform_schedule=...)`` parameter, threaded through ``build_app``.
 """
+
 from __future__ import annotations
 
-from .registry import RvvPackage, load_rvv_package, default_run
+from .registry import RvvPackage, default_run, load_rvv_package
 
 __all__ = ["RvvPackage", "load_rvv_package", "default_run"]

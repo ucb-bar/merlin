@@ -84,8 +84,7 @@ class Signature:
 
     def key(self) -> str:
         """A stable string, used for deterministic ordering and as a dict key."""
-        return "|".join((self.op_class, self.family, self.role,
-                         ",".join(self.dtypes), str(self.rank), self.regime))
+        return "|".join((self.op_class, self.family, self.role, ",".join(self.dtypes), str(self.rank), self.regime))
 
 
 @dataclass
@@ -94,13 +93,13 @@ class Group:
 
     signature: Signature
     row_indices: tuple[int, ...]
-    cost: float                      # share of the model, in [0, 1]
-    cost_source: str                 # 'measured_ticks' | 'work_share' | 'none'
+    cost: float  # share of the model, in [0, 1]
+    cost_source: str  # 'measured_ticks' | 'work_share' | 'none'
     weight_is_lower_bound: bool
     eligible: bool
     undetermined: bool
     reason: str
-    shapes: tuple[tuple[int, ...], ...] = ()   # the config ladder is built from these
+    shapes: tuple[tuple[int, ...], ...] = ()  # the config ladder is built from these
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -118,6 +117,7 @@ class TaskBasis:
 
     def write_certificate(self, path) -> None:
         from pathlib import Path
+
         Path(path).write_text(json.dumps(self.certificate, indent=2, sort_keys=True))
 
 
@@ -191,11 +191,15 @@ def _group_cost(census: Any, rows: Sequence[Any]) -> tuple[float, str, bool]:
     return work / float(total), "work_share", incomplete
 
 
-def derive_basis(census: Any, cap_map: Mapping[str, Any], *,
-                 cover_target: float = DEFAULT_COVER_TARGET,
-                 regime_boundaries: Sequence[int] = (),
-                 census_enumerates: Sequence[str] = (),
-                 family_floor: bool = True) -> TaskBasis:
+def derive_basis(
+    census: Any,
+    cap_map: Mapping[str, Any],
+    *,
+    cover_target: float = DEFAULT_COVER_TARGET,
+    regime_boundaries: Sequence[int] = (),
+    census_enumerates: Sequence[str] = (),
+    family_floor: bool = True,
+) -> TaskBasis:
     """Group, weigh, filter and cover -- deterministically.
 
     ``cap_map`` is the target's capability map (``eligibility.capability_map_for_target``). It decides
@@ -219,23 +223,26 @@ def derive_basis(census: Any, cap_map: Mapping[str, Any], *,
         buckets.setdefault(sig.key(), []).append(row)
         sigs.setdefault(sig.key(), sig)
 
-    caps = dict(cap_map)          # converted once; is_eligible takes a plain dict
+    caps = dict(cap_map)  # converted once; is_eligible takes a plain dict
     groups: list[Group] = []
     for key, rows in buckets.items():
         cost, source, lower = _group_cost(census, rows)
         # One verdict per group: the signature already fixes family and dtypes, which is what
         # eligibility keys on, so the first row speaks for the group.
         verdict = EL.is_eligible(_descriptor(rows[0]), caps)
-        groups.append(Group(
-            signature=sigs[key],
-            row_indices=tuple(int(getattr(r, "index", i)) for i, r in enumerate(rows)),
-            cost=cost, cost_source=source, weight_is_lower_bound=lower,
-            eligible=bool(verdict.eligible) and not verdict.undetermined,
-            undetermined=bool(verdict.undetermined),
-            reason=verdict.reason,
-            shapes=tuple(sorted({tuple(r.parallel or ()) + tuple(r.reduction or ())
-                                 for r in rows})),
-        ))
+        groups.append(
+            Group(
+                signature=sigs[key],
+                row_indices=tuple(int(getattr(r, "index", i)) for i, r in enumerate(rows)),
+                cost=cost,
+                cost_source=source,
+                weight_is_lower_bound=lower,
+                eligible=bool(verdict.eligible) and not verdict.undetermined,
+                undetermined=bool(verdict.undetermined),
+                reason=verdict.reason,
+                shapes=tuple(sorted({tuple(r.parallel or ()) + tuple(r.reduction or ()) for r in rows})),
+            )
+        )
 
     # Undetermined leaves BOTH sides of the ratio.
     eligible = [g for g in groups if g.eligible]
@@ -284,9 +291,9 @@ def derive_basis(census: Any, cap_map: Mapping[str, Any], *,
         "cover_target": cover_target,
         "cover_fraction": (covered / denominator) if denominator > 0 else None,
         "denominator": denominator,
-        "denominator_source": ("measured_ticks"
-                               if any(g.cost_source == "measured_ticks" for g in eligible)
-                               else "work_share"),
+        "denominator_source": (
+            "measured_ticks" if any(g.cost_source == "measured_ticks" for g in eligible) else "work_share"
+        ),
         # True when ANY chosen group's weight is a lower bound: the cover fraction is then itself a
         # bound, and must not be quoted as an exact percentage.
         "cover_fraction_is_bounded": any(g.weight_is_lower_bound for g in chosen_sorted),
@@ -304,13 +311,15 @@ def derive_basis(census: Any, cap_map: Mapping[str, Any], *,
         "family_floor_added": floor_added,
         "excluded_undetermined": [
             {"signature": g.signature.key(), "cost": g.cost, "reason": g.reason}
-            for g in sorted(undetermined, key=lambda g: g.signature.key())],
+            for g in sorted(undetermined, key=lambda g: g.signature.key())
+        ],
         "excluded_ineligible": [
             {"signature": g.signature.key(), "cost": g.cost, "reason": g.reason}
-            for g in sorted(ineligible, key=lambda g: g.signature.key())],
+            for g in sorted(ineligible, key=lambda g: g.signature.key())
+        ],
         "eligible_not_chosen": [
-            {"signature": g.signature.key(), "cost": g.cost}
-            for g in ordered if g not in chosen_sorted],
+            {"signature": g.signature.key(), "cost": g.cost} for g in ordered if g not in chosen_sorted
+        ],
         "regime_boundaries": list(regime_boundaries),
         "regime_source": "target_facts" if regime_boundaries else "log2_volume_fallback",
     }

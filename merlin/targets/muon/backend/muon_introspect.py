@@ -53,6 +53,7 @@ get must say so; that is strictly better than a wrong number nobody can trace.
 
 This module is target-gen for Muon ONLY; it imports nothing Gemmini-specific and never runs the agent.
 """
+
 from __future__ import annotations
 
 import json
@@ -83,8 +84,8 @@ MOD_SHARED_MEM = "RadianceSharedMem"
 SIG_TMASK = "tmask"
 SIG_PERWARP = "perWarp"
 SIG_WARPID = "warpId"
-SIG_REGS_BUNDLE = "regs"      # the trace bundle's register-read record
-SIG_REG_ADDR = "address"      # inside it: the architectural register index
+SIG_REGS_BUNDLE = "regs"  # the trace bundle's register-read record
+SIG_REG_ADDR = "address"  # inside it: the architectural register index
 
 #: The Muon compiler's live-register policy, from the Radiance toolchain doc. NOT a hardware fact and
 #: never reported as one — see the ``compiler_limit_source`` label in :func:`build_facts`.
@@ -103,18 +104,20 @@ def chipyard_root() -> Path | None:
     There is deliberately NO default path — a placeholder that cannot exist on any machine is not a
     fallback, it is a way to make "absent" look like "configured"."""
     from merlin.common.paths import env
+
     d = env("MERLIN_CHIPYARD")
     return Path(d).expanduser() if d else None
 
 
-def config_path() -> Path | None:  # fact-source-ok: accessor for the CROSS-CHECK only; the geometry above it comes from the elaboration
+def config_path() -> Path | None:  # fact-source-ok: accessor for the CROSS-CHECK only; the geometry above it comes from the elaboration  # fmt: skip
     """The cyclotron perf-model config, or None when unset.
 
     NOT a fact source (see the module docstring): a Rust cycle model's own config is not the hardware.
     It is read only to CROSS-CHECK geometry already derived from the RTL, and its reading is recorded
     beside the derived one when the two disagree."""
     from merlin.common.paths import env
-    d = env("MERLIN_MUON_CONFIG")  # fact-source-ok: cross-check only — the value never reaches a fact; see _cross_check(), which annotates but never supplies
+
+    d = env("MERLIN_MUON_CONFIG")  # fact-source-ok: cross-check only — the value never reaches a fact; see _cross_check(), which annotates but never supplies  # fmt: skip
     return Path(d).expanduser() if d else None
 
 
@@ -140,7 +143,7 @@ def _uint_width(text: str, key: str) -> int | None:
     i = text.find(marker)
     if i < 0:
         return None
-    width, sep, _ = text[i + len(marker):].partition(">")
+    width, sep, _ = text[i + len(marker) :].partition(">")
     return int(width) if sep and width.isdigit() else None
 
 
@@ -153,7 +156,7 @@ def _bundle_span(text: str, key: str, start: int = 0) -> tuple[int, int] | None:
     i = text.find(marker, start)
     if i < 0:
         return None
-    j = i + len(marker) - 1          # index of the opening '{'
+    j = i + len(marker) - 1  # index of the opening '{'
     depth = 0
     while j < len(text):
         if text[j] == "{":
@@ -174,7 +177,7 @@ def _bundle_body(text: str, key: str) -> str | None:
     up ``imem.req.bits.address : UInt<32>`` and published a 4-billion-entry register file. Scoping the
     lookup to the enclosing bundle is what makes the reading mean what it says."""
     span = _bundle_span(text, key)
-    return text[span[0]:span[1]] if span else None
+    return text[span[0] : span[1]] if span else None
 
 
 def _bundle_cardinality(text: str, key: str, start: int = 0) -> int | None:
@@ -182,7 +185,7 @@ def _bundle_cardinality(text: str, key: str, start: int = 0) -> int | None:
     span = _bundle_span(text, key, start)
     if span is None:
         return None
-    rest = text[span[1] + 1:]
+    rest = text[span[1] + 1 :]
     if not rest.startswith("["):
         return None
     n, sep, _ = rest[1:].partition("]")
@@ -288,8 +291,11 @@ def _shared_memory_bytes(hier: dict | None, mems: dict[str, dict[str, str]]) -> 
     131072 bytes — the same number, now falsifiable: change the RTL and this moves."""
     sm = _subtree(hier, MOD_SHARED_MEM)
     if sm is None:
-        return {"bytes_per_cluster": None, "state": ABSENT,
-                "evidence": f"no {MOD_SHARED_MEM} instance in the elaborated hierarchy"}
+        return {
+            "bytes_per_cluster": None,
+            "state": ABSENT,
+            "evidence": f"no {MOD_SHARED_MEM} instance in the elaborated hierarchy",
+        }
     counts = _instance_counts(sm)
     total = 0
     parts: list[str] = []
@@ -303,20 +309,24 @@ def _shared_memory_bytes(hier: dict | None, mems: dict[str, dict[str, str]]) -> 
     if not parts:
         # The module is there but no macro under it appears in *.mems.conf: present input, no sound
         # reading. That is UNDETERMINABLE, not zero — a zero here would read as "no shared memory".
-        return {"bytes_per_cluster": None, "state": UNDETERMINABLE,
-                "evidence": f"{MOD_SHARED_MEM} present but none of its leaf modules "
-                            f"{sorted(k for k in counts if k)} appear in *.mems.conf"}
-    return {"bytes_per_cluster": total, "state": DERIVED,
-            "evidence": f"RTL SRAM macros under {MOD_SHARED_MEM}: " + " + ".join(parts)
-                        + f" = {total} B/cluster"}
+        return {
+            "bytes_per_cluster": None,
+            "state": UNDETERMINABLE,
+            "evidence": f"{MOD_SHARED_MEM} present but none of its leaf modules "
+            f"{sorted(k for k in counts if k)} appear in *.mems.conf",
+        }
+    return {
+        "bytes_per_cluster": total,
+        "state": DERIVED,
+        "evidence": f"RTL SRAM macros under {MOD_SHARED_MEM}: " + " + ".join(parts) + f" = {total} B/cluster",
+    }
 
 
 # ----------------------------------------------------------------------------- device-tree readings
 def _dt_json(gs: Path) -> dict | None:
     """The elaborated device-tree JSON (``<config>.json``)."""
     try:
-        return json.loads((gs / f"chipyard.harness.TestHarness.{VCS_CONFIG}.json")
-                          .read_text(encoding="utf-8"))
+        return json.loads((gs / f"chipyard.harness.TestHarness.{VCS_CONFIG}.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
 
@@ -347,15 +357,20 @@ def _clock_hz(dt: dict | None) -> dict[str, Any]:
 
     walk(dt, "")
     if not found:
-        return {"clock_hz": None, "state": ABSENT,
-                "evidence": "device tree declares no fixed-clock node"}
+        return {"clock_hz": None, "state": ABSENT, "evidence": "device tree declares no fixed-clock node"}
     distinct = sorted(set(found.values()))
     if len(distinct) != 1:
-        return {"clock_hz": None, "state": UNDETERMINABLE,
-                "evidence": f"fixed-clock nodes disagree: {found} — no single design clock"}
-    return {"clock_hz": distinct[0], "state": DERIVED,
-            "evidence": f"device tree: {len(found)} fixed-clock node(s) all at {distinct[0]} Hz "
-                        f"({', '.join(sorted(found))})"}
+        return {
+            "clock_hz": None,
+            "state": UNDETERMINABLE,
+            "evidence": f"fixed-clock nodes disagree: {found} — no single design clock",
+        }
+    return {
+        "clock_hz": distinct[0],
+        "state": DERIVED,
+        "evidence": f"device tree: {len(found)} fixed-clock node(s) all at {distinct[0]} Hz "
+        f"({', '.join(sorted(found))})",
+    }
 
 
 def _address_map(gs: Path) -> dict[str, Any] | None:
@@ -381,14 +396,21 @@ def _address_map(gs: Path) -> dict[str, Any] | None:
             size = (e.get("size") or [None])[0]
             if base is None or size is None or not names:
                 continue
-            regions.append({
-                "name": str(names[0]), "base": int(base), "size": int(size),
-                "r": bool((e.get("r") or [False])[0]), "w": bool((e.get("w") or [False])[0]),
-            })
+            regions.append(
+                {
+                    "name": str(names[0]),
+                    "base": int(base),
+                    "size": int(size),
+                    "r": bool((e.get("r") or [False])[0]),
+                    "w": bool((e.get("w") or [False])[0]),
+                }
+            )
         if regions:
-            return {"regions": sorted(regions, key=lambda r: r["base"]),
-                    "config": gs.name.rpartition(".")[2],
-                    "evidence": f"elaborated address map {p.name}: {len(regions)} region(s)"}
+            return {
+                "regions": sorted(regions, key=lambda r: r["base"]),
+                "config": gs.name.rpartition(".")[2],
+                "evidence": f"elaborated address map {p.name}: {len(regions)} region(s)",
+            }
     return None
 
 
@@ -429,13 +451,18 @@ def _console_device(gs: Path, amap: dict[str, Any] | None) -> dict[str, Any] | N
             except ValueError:
                 continue
             size = None
-            for r in ((amap or {}).get("regions") or []):
+            for r in (amap or {}).get("regions") or []:
                 if r["base"] == base:
                     size = r["size"]
                     break
-            return {"node": node, "device": name.strip(), "base": base, "size": size,
-                    "label": label,
-                    "evidence": f"{p.name}: chosen/stdout-path -> &{label} -> {node}"}
+            return {
+                "node": node,
+                "device": name.strip(),
+                "base": base,
+                "size": size,
+                "label": label,
+                "evidence": f"{p.name}: chosen/stdout-path -> &{label} -> {node}",
+            }
     return None
 
 
@@ -446,25 +473,38 @@ def _perf_model_geometry() -> dict[str, Any]:
     Returned separately from the facts so no consumer can mistake it for a hardware reading. When it
     agrees with the RTL that is a useful confirmation; when it disagrees (it does: ``num_cores = 2``
     against one elaborated ``MuonCore``) the disagreement is the finding."""
-    p = config_path()  # fact-source-ok: this function returns a cross_check record, never a fact
+    p = config_path()  # fact-source-ok: this function returns a cross_check record, never a fact  # fmt: skip
     if p is None:
-        return {"state": ABSENT, "values": {}, "path": None,
-                "evidence": "MERLIN_MUON_CONFIG unset — no perf-model cross-check "  # fact-source-ok: naming the unset var in a diagnostic, not reading it
-                            "available"}
+        return {
+            "state": ABSENT,
+            "values": {},
+            "path": None,
+            "evidence": "MERLIN_MUON_CONFIG unset — no perf-model cross-check "  # fact-source-ok: naming the unset var in a diagnostic, not reading it  # fmt: skip
+            "available",
+        }
     text = _read(p)
     if not text:
-        return {"state": ABSENT, "values": {}, "path": str(p),
-                "evidence": f"perf-model config unreadable at {p}"}
+        return {"state": ABSENT, "values": {}, "path": str(p), "evidence": f"perf-model config unreadable at {p}"}
     import tomllib
+
     try:
         table = tomllib.loads(text).get("muon", {})
     except tomllib.TOMLDecodeError as e:
-        return {"state": UNDETERMINABLE, "values": {}, "path": str(p),
-                "evidence": f"perf-model config at {p} is not valid TOML: {e}"}
-    vals = {k: int(table[k]) for k in ("num_lanes", "num_warps", "num_cores", "num_regs")
-            if isinstance(table.get(k), int)}
-    return {"state": DERIVED if vals else UNDETERMINABLE, "values": vals, "path": str(p),
-            "evidence": f"cyclotron perf model config {p.name} [muon]: {vals or 'no geometry keys'}"}
+        return {
+            "state": UNDETERMINABLE,
+            "values": {},
+            "path": str(p),
+            "evidence": f"perf-model config at {p} is not valid TOML: {e}",
+        }
+    vals = {
+        k: int(table[k]) for k in ("num_lanes", "num_warps", "num_cores", "num_regs") if isinstance(table.get(k), int)
+    }
+    return {
+        "state": DERIVED if vals else UNDETERMINABLE,
+        "values": vals,
+        "path": str(p),
+        "evidence": f"cyclotron perf model config {p.name} [muon]: {vals or 'no geometry keys'}",
+    }
 
 
 def _cross_check(fact: dict[str, Any], key: str, xchk: dict[str, Any]) -> None:
@@ -477,7 +517,9 @@ def _cross_check(fact: dict[str, Any], key: str, xchk: dict[str, Any]) -> None:
         return
     got = fact.get("value")
     fact["cross_check"] = {
-        "source": "cyclotron perf model config (NOT RTL)", "key": key, "value": declared,
+        "source": "cyclotron perf model config (NOT RTL)",
+        "key": key,
+        "value": declared,
         "agrees": (got == declared) if got is not None else None,
     }
 
@@ -518,11 +560,14 @@ def _isa_block() -> dict[str, Any]:
     that, and :func:`merlin.targetgen.rtl.mlc_bridge.simt_facts` already returns ``{}`` on a missing
     ``encoding_bits`` so the manifest deriver falls back to the family default honestly.
     """
-    intrinsics = {"smem": ["store_shared", "load32_shared", "load16_shared", "store64_shared"],
-                  "sync": ["mu_barrier", "mu_fence_smem", "mu_fence"],
-                  "simt": ["vx_thread_id", "vx_warp_id", "vx_core_id", "vx_split", "vx_join", "vx_tmc"]}
+    intrinsics = {
+        "smem": ["store_shared", "load32_shared", "load16_shared", "store64_shared"],
+        "sync": ["mu_barrier", "mu_fence_smem", "mu_fence"],
+        "simt": ["vx_thread_id", "vx_warp_id", "vx_core_id", "vx_split", "vx_join", "vx_tmc"],
+    }
     try:
         from merlin.targetgen.rtl import mlc_bridge
+
         fact = mlc_bridge.isa_encoding_for(TARGET)
     except Exception:  # noqa: BLE001 — mlc/cache absent
         fact = None
@@ -538,69 +583,76 @@ def _isa_block() -> dict[str, Any]:
             "intrinsics": intrinsics,
             "state": DERIVED,
             "evidence": "DERIVED from mlc isa_encoding fact (muon_isa.json): RTL-decoder field layout + "
-                        "opcode table + address-space macros; intrinsic names from lib/include/*intrinsics.h",
+            "opcode table + address-space macros; intrinsic names from lib/include/*intrinsics.h",
         }
     return {
-        "encoding_bits": None, "max_src_operands": None, "max_dst_operands": None,
-        "predicated_execution": None, "instruction_classes": [], "address_spaces": {},
+        "encoding_bits": None,
+        "max_src_operands": None,
+        "max_dst_operands": None,
+        "predicated_execution": None,
+        "instruction_classes": [],
+        "address_spaces": {},
         "intrinsics": intrinsics,
         "state": ABSENT,
         "evidence": "isa_encoding fact not derived (mlc/CIRCT absent — set MERLIN_MLC_DIR): encoding "
-                    "UNKNOWN. No ISA-doc substitute: the doc's 4-src reading contradicts the RTL's 3.",
+        "UNKNOWN. No ISA-doc substitute: the doc's 4-src reading contradicts the RTL's 3.",
     }
 
 
 # ------------------------------------------------------------------------------------------ assembly
-def _geometry(gs: Path | None, hier: dict | None, core_io: str | None,
-              xchk: dict[str, Any]) -> dict[str, dict[str, Any]]:
+def _geometry(
+    gs: Path | None, hier: dict | None, core_io: str | None, xchk: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
     """lanes / warps / cores, each DERIVED from the elaboration or explicitly unknown."""
     if gs is None:
-        why = ("no elaboration to read: MERLIN_CHIPYARD is unset, or its "
-               f"sims/vcs/generated-src/…{VCS_CONFIG} tree is not present")
+        why = (
+            "no elaboration to read: MERLIN_CHIPYARD is unset, or its "
+            f"sims/vcs/generated-src/…{VCS_CONFIG} tree is not present"
+        )
         out = {k: _fact(None, ABSENT, why) for k in ("lanes_per_warp", "warps_per_core", "cores")}
-        for key, name in (("lanes_per_warp", "num_lanes"), ("warps_per_core", "num_warps"),
-                          ("cores", "num_cores")):
-            _cross_check(out[key], name, xchk)   # the model's reading is still worth recording
+        for key, name in (("lanes_per_warp", "num_lanes"), ("warps_per_core", "num_warps"), ("cores", "num_cores")):
+            _cross_check(out[key], name, xchk)  # the model's reading is still worth recording
         return out
     if core_io is None:
-        why = (f"no {MOD_CORE} 'output io' bundle in the elaborated FIRRTL under {_where(gs)} — "
-               "geometry UNKNOWN")
+        why = f"no {MOD_CORE} 'output io' bundle in the elaborated FIRRTL under {_where(gs)} — geometry UNKNOWN"
         lanes = _fact(None, ABSENT, why)
         warps = _fact(None, ABSENT, why)
     else:
         # lanes: the thread mask has exactly one bit per lane, so its FIRRTL width IS the lane count.
         w = _uint_width(core_io, SIG_TMASK)
-        lanes = (_fact(w, DERIVED, f"{MOD_CORE} io trace bits {SIG_TMASK} : UInt<{w}> — one mask bit "
-                                   f"per lane")
-                 if w else _fact(None, UNDETERMINABLE,
-                                 f"{MOD_CORE} io bundle carries no '{SIG_TMASK} : UInt<..>' field"))
+        lanes = (
+            _fact(w, DERIVED, f"{MOD_CORE} io trace bits {SIG_TMASK} : UInt<{w}> — one mask bit per lane")
+            if w
+            else _fact(None, UNDETERMINABLE, f"{MOD_CORE} io bundle carries no '{SIG_TMASK} : UInt<..>' field")
+        )
         # warps: the per-warp perf-counter bundle is instantiated once per warp.
         n = _bundle_cardinality(core_io, SIG_PERWARP)
         if n:
-            warps = _fact(n, DERIVED,
-                          f"{MOD_CORE} io perf {SIG_PERWARP} : {{...}}[{n}] — one counter set per warp")
+            warps = _fact(n, DERIVED, f"{MOD_CORE} io perf {SIG_PERWARP} : {{...}}[{n}] — one counter set per warp")
             bits = _uint_width(core_io, SIG_WARPID)
             if bits is not None:
                 # An independent RTL reading of the same fact: the warp index field must address them
                 # all. Recorded as a bound, not as the value — a width of 3 admits <= 8 warps.
                 warps["rtl_cross_check"] = {
-                    "signal": f"{SIG_WARPID} : UInt<{bits}>", "max_warps": 1 << bits,
-                    "consistent": n <= (1 << bits)}
+                    "signal": f"{SIG_WARPID} : UInt<{bits}>",
+                    "max_warps": 1 << bits,
+                    "consistent": n <= (1 << bits),
+                }
         else:
-            warps = _fact(None, UNDETERMINABLE,
-                          f"{MOD_CORE} io bundle carries no '{SIG_PERWARP} : {{...}}[N]' vector")
+            warps = _fact(None, UNDETERMINABLE, f"{MOD_CORE} io bundle carries no '{SIG_PERWARP} : {{...}}[N]' vector")
     counts = _instance_counts(hier)
     if hier is None:
-        cores = _fact(None, ABSENT,
-                      f"no top_module_hierarchy.json under {_where(gs)} — core count UNKNOWN")
+        cores = _fact(None, ABSENT, f"no top_module_hierarchy.json under {_where(gs)} — core count UNKNOWN")
     elif MOD_CORE in counts:
-        cores = _fact(counts[MOD_CORE], DERIVED,
-                      f"elaborated instance tree: {counts[MOD_CORE]} x {MOD_CORE} "
-                      f"({counts.get(MOD_TILE, 0)} x {MOD_TILE}, {counts.get(MOD_CLUSTER, 0)} x "
-                      f"{MOD_CLUSTER})")
+        cores = _fact(
+            counts[MOD_CORE],
+            DERIVED,
+            f"elaborated instance tree: {counts[MOD_CORE]} x {MOD_CORE} "
+            f"({counts.get(MOD_TILE, 0)} x {MOD_TILE}, {counts.get(MOD_CLUSTER, 0)} x "
+            f"{MOD_CLUSTER})",
+        )
     else:
-        cores = _fact(None, UNDETERMINABLE,
-                      f"elaborated hierarchy contains no {MOD_CORE} instance")
+        cores = _fact(None, UNDETERMINABLE, f"elaborated hierarchy contains no {MOD_CORE} instance")
     _cross_check(lanes, "num_lanes", xchk)
     _cross_check(warps, "num_warps", xchk)
     _cross_check(cores, "num_cores", xchk)
@@ -615,8 +667,7 @@ def _flatten(spec: dict[str, dict[str, Any]]) -> dict[str, Any]:
     directly, and an unknown must arrive there as ``None`` (which their ``isinstance(..., int)`` guards
     already reject) rather than as a shape they cannot read."""
     out: dict[str, Any] = {k: v["value"] for k, v in spec.items()}
-    out["provenance"] = {k: {kk: vv for kk, vv in v.items() if kk != "value"}
-                         for k, v in spec.items()}
+    out["provenance"] = {k: {kk: vv for kk, vv in v.items() if kk != "value"} for k, v in spec.items()}
     return out
 
 
@@ -633,8 +684,7 @@ def build_facts() -> dict[str, Any]:
     xchk = _perf_model_geometry()
 
     geo = _geometry(gs if rtl_present else None, hier, scan["core_io"], xchk)
-    lanes, warps, cores = (geo["lanes_per_warp"]["value"], geo["warps_per_core"]["value"],
-                           geo["cores"]["value"])
+    lanes, warps, cores = (geo["lanes_per_warp"]["value"], geo["warps_per_core"]["value"], geo["cores"]["value"])
     simt = _flatten(geo)
     simt["threads_per_core"] = lanes * warps if (lanes and warps) else None
     # The block-level state the bundle adapter reads (mlc_bridge._simt_field). Aggregated from the
@@ -658,41 +708,54 @@ def build_facts() -> dict[str, Any]:
         "compiler_limit": COMPILER_REG_LIMIT,
         "compiler_limit_source": "Radiance muon.md toolchain doc — a COMPILER policy, not an RTL fact",
         "state": DERIVED if regs_bits else (ABSENT if scan["core_io"] is None else UNDETERMINABLE),
-        "evidence": (f"{MOD_CORE} io trace {SIG_REGS_BUNDLE} {SIG_REG_ADDR} : UInt<{regs_bits}> -> "
-                     f"{1 << regs_bits} architectural registers"
-                     if regs_bits else
-                     f"no '{SIG_REG_ADDR} : UInt<..>' in the {MOD_CORE} {SIG_REGS_BUNDLE} bundle — "
-                     f"register file size UNKNOWN"),
+        "evidence": (
+            f"{MOD_CORE} io trace {SIG_REGS_BUNDLE} {SIG_REG_ADDR} : UInt<{regs_bits}> -> "
+            f"{1 << regs_bits} architectural registers"
+            if regs_bits
+            else f"no '{SIG_REG_ADDR} : UInt<..>' in the {MOD_CORE} {SIG_REGS_BUNDLE} bundle — "
+            f"register file size UNKNOWN"
+        ),
     }
     declared_regs = xchk.get("values", {}).get("num_regs")
     if declared_regs is not None:
-        registers["cross_check"] = {"source": "cyclotron perf model config (NOT RTL)",
-                                    "key": "num_regs", "value": declared_regs,
-                                    "agrees": (registers["arch_max"] == declared_regs
-                                               if registers["arch_max"] is not None else None)}
+        registers["cross_check"] = {
+            "source": "cyclotron perf model config (NOT RTL)",
+            "key": "num_regs",
+            "value": declared_regs,
+            "agrees": (registers["arch_max"] == declared_regs if registers["arch_max"] is not None else None),
+        }
 
-    smem = _shared_memory_bytes(hier, mems) if rtl_present else {
-        "bytes_per_cluster": None, "state": ABSENT,
-        "evidence": "no elaboration on this machine — shared-memory capacity UNKNOWN"}
+    smem = (
+        _shared_memory_bytes(hier, mems)
+        if rtl_present
+        else {
+            "bytes_per_cluster": None,
+            "state": ABSENT,
+            "evidence": "no elaboration on this machine — shared-memory capacity UNKNOWN",
+        }
+    )
     smem["rtl_bank_evidence"] = scan["smem_line"] or "no 'smem mem : UInt<..>' line in the FIRRTL"
 
     clk = _clock_hz(dt)
     clock_hz = clk["clock_hz"]
     peak_flops_cycle = (cores * lanes * 2) if (cores and lanes) else None
     fp: dict[str, Any] = {
-        "dtype": "f32", "flop_per_fma": 2,
+        "dtype": "f32",
+        "flop_per_fma": 2,
         "peak_flops_per_cycle": peak_flops_cycle,
         "clock_hz": clock_hz,
-        "peak_gflops": (peak_flops_cycle * clock_hz / 1e9)
-                       if (peak_flops_cycle and clock_hz) else None,
-        "state": DERIVED if (peak_flops_cycle and clock_hz) else (
-            clk["state"] if peak_flops_cycle else geo["cores"]["state"]),
+        "peak_gflops": (peak_flops_cycle * clock_hz / 1e9) if (peak_flops_cycle and clock_hz) else None,
+        "state": DERIVED
+        if (peak_flops_cycle and clock_hz)
+        else (clk["state"] if peak_flops_cycle else geo["cores"]["state"]),
         "clock_evidence": clk["evidence"],
-        "evidence": (f"{cores} cores x {lanes} lanes x 2 flop/FMA = {peak_flops_cycle} flop/cycle "
-                     f"@ {clock_hz / 1e6:g} MHz = {peak_flops_cycle * clock_hz / 1e9:g} GFLOP/s"
-                     if (peak_flops_cycle and clock_hz) else
-                     "peak UNKNOWN: it is the product of derived geometry and the derived clock, and "
-                     f"at least one is not derived (cores={cores}, lanes={lanes}, clock_hz={clock_hz})"),
+        "evidence": (
+            f"{cores} cores x {lanes} lanes x 2 flop/FMA = {peak_flops_cycle} flop/cycle "
+            f"@ {clock_hz / 1e6:g} MHz = {peak_flops_cycle * clock_hz / 1e9:g} GFLOP/s"
+            if (peak_flops_cycle and clock_hz)
+            else "peak UNKNOWN: it is the product of derived geometry and the derived clock, and "
+            f"at least one is not derived (cores={cores}, lanes={lanes}, clock_hz={clock_hz})"
+        ),
     }
 
     facts = {
@@ -700,9 +763,11 @@ def build_facts() -> dict[str, Any]:
         "generator": {
             "name": "merlin.targets.muon.backend.muon_introspect",
             "version": "muon-introspect-v2",
-            "method": (f"{VCS_CONFIG} elaborated FIRRTL type widths + module-instance hierarchy + "
-                       "SRAM macro list + device tree (CIRCT/firtool output only); cyclotron perf-model "
-                       "config used as a CROSS-CHECK, never as a fact source"),
+            "method": (
+                f"{VCS_CONFIG} elaborated FIRRTL type widths + module-instance hierarchy + "
+                "SRAM macro list + device tree (CIRCT/firtool output only); cyclotron perf-model "
+                "config used as a CROSS-CHECK, never as a fact source"
+            ),
         },
         "inputs": {
             "rtl_generated_src": str(gs) if gs else None,
@@ -720,17 +785,24 @@ def build_facts() -> dict[str, Any]:
             # storing to the Vortex IO_COUT_ADDR aperture -- an address this SoC maps no device at, so
             # every OUT/DONE byte was dropped and every RTL grade came back completion-only.
             # UNKNOWN (null) when the elaboration output is absent: fail closed, never guess an address.
-            "address_map": amap or {"regions": None, "state": ABSENT,
-                                    "evidence": f"no *.memmap.json under {_where(gs)} — "
-                                                f"address map UNKNOWN"},
-            "console": console or {"base": None, "state": ABSENT,
-                                   "evidence": f"no *.dts stdout-path under {_where(gs)} — "
-                                               f"console UNKNOWN"},
+            "address_map": amap
+            or {
+                "regions": None,
+                "state": ABSENT,
+                "evidence": f"no *.memmap.json under {_where(gs)} — address map UNKNOWN",
+            },
+            "console": console
+            or {
+                "base": None,
+                "state": ABSENT,
+                "evidence": f"no *.dts stdout-path under {_where(gs)} — console UNKNOWN",
+            },
             "fp_datapath": fp,
             "isa": _isa_block(),
         },
-        "rtl_hierarchy_counts": {m: _instance_counts(hier).get(m, 0)
-                                 for m in (MOD_CORE, MOD_TILE, MOD_CLUSTER, MOD_SHARED_MEM)},
+        "rtl_hierarchy_counts": {
+            m: _instance_counts(hier).get(m, 0) for m in (MOD_CORE, MOD_TILE, MOD_CLUSTER, MOD_SHARED_MEM)
+        },
     }
     return facts
 
@@ -739,17 +811,22 @@ def default_facts_path() -> Path:
     # muon has no hand-curated merlin/targets/muon; the resolver routes it to artifacts/targets/muon
     # (or $MERLIN_RTL_FACTS). Muon uses a distinct filename (muon_facts.json) next to the pin.
     from merlin.targetgen.rtl.facts import rtl_facts_path
+
     return rtl_facts_path(TARGET).with_name("muon_facts.json")
 
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
+
     ap = argparse.ArgumentParser(description="extract Muon RTL facts -> muon_facts.json")
     ap.add_argument("--out", default=None)
-    ap.add_argument("--allow-downgrade", action="store_true",
-                    help="permit a regeneration that HOLLOWS OUT facts the existing artifact carries. "
-                         "Only for a genuine hardware change that really lost them — a hollowed fact is "
-                         "otherwise the signature of a missing extractor (see MERLIN_MLC_DIR).")
+    ap.add_argument(
+        "--allow-downgrade",
+        action="store_true",
+        help="permit a regeneration that HOLLOWS OUT facts the existing artifact carries. "
+        "Only for a genuine hardware change that really lost them — a hollowed fact is "
+        "otherwise the signature of a missing extractor (see MERLIN_MLC_DIR).",
+    )
     a = ap.parse_args(argv)
     facts = build_facts()
     out = Path(a.out) if a.out else default_facts_path()
@@ -757,6 +834,7 @@ def main(argv: list[str] | None = None) -> int:
     # way out, and this is the path a person runs by hand (ensure_facts' _warn_if_degraded does not cover
     # it). Refuse the downgrade here rather than leave it to be caught by eye.
     from merlin.targetgen.rtl.facts import FactsDowngrade, write_facts_guarded
+
     try:
         write_facts_guarded(out, facts, allow_downgrade=a.allow_downgrade)
     except FactsDowngrade as e:
@@ -769,15 +847,18 @@ def main(argv: list[str] | None = None) -> int:
         return "UNKNOWN" if v is None else f"{v:g}" if isinstance(v, float) else str(v)
 
     print(f"wrote {out}")
-    print(f"  simt: {_n(s['cores'])} cores x {_n(s['warps_per_core'])} warps x "
-          f"{_n(s['lanes_per_warp'])} lanes; peak {_n(fp['peak_gflops'])} GFLOP/s; "
-          f"rtl_present={facts['inputs']['rtl_present']}")
-    disagree = [f"{k}={v['cross_check']['value']} (RTL {v.get('value')})"
-                for k, v in facts["facts"]["simt"]["provenance"].items()
-                if isinstance(v, dict) and v.get("cross_check", {}).get("agrees") is False]
+    print(
+        f"  simt: {_n(s['cores'])} cores x {_n(s['warps_per_core'])} warps x "
+        f"{_n(s['lanes_per_warp'])} lanes; peak {_n(fp['peak_gflops'])} GFLOP/s; "
+        f"rtl_present={facts['inputs']['rtl_present']}"
+    )
+    disagree = [
+        f"{k}={v['cross_check']['value']} (RTL {v.get('value')})"
+        for k, v in facts["facts"]["simt"]["provenance"].items()
+        if isinstance(v, dict) and v.get("cross_check", {}).get("agrees") is False
+    ]
     if disagree:
-        print(f"  CROSS-CHECK DISAGREES with the cyclotron perf model: {', '.join(disagree)}",
-              file=sys.stderr)
+        print(f"  CROSS-CHECK DISAGREES with the cyclotron perf model: {', '.join(disagree)}", file=sys.stderr)
     return 0
 
 

@@ -6,6 +6,7 @@ hours-long Verilator/FireSim sweeps), so a sweep can be killed and resumed. ``re
 an injection seam (tests pass a fake to exercise the cartesian/ledger/resume logic without a
 simulator).
 """
+
 from __future__ import annotations
 
 import json
@@ -27,10 +28,17 @@ def _load_ledger(ledger_path: Path) -> dict[str, dict]:
     return done
 
 
-def run_sweep(rungs: list[str], simulators: list[str], *, runs_root: str | Path,
-              ledger_path: str | Path, backends: list[str] | None = None, force: bool = False,
-              result_fn: Callable[..., dict] | None = None,
-              timeout: int = 600) -> list[dict[str, Any]]:
+def run_sweep(
+    rungs: list[str],
+    simulators: list[str],
+    *,
+    runs_root: str | Path,
+    ledger_path: str | Path,
+    backends: list[str] | None = None,
+    force: bool = False,
+    result_fn: Callable[..., dict] | None = None,
+    timeout: int = 600,
+) -> list[dict[str, Any]]:
     """Run (or resume) the (rung x simulator x codegen_backend) sweep; one row per cell.
 
     ``backends`` is the codegen selector (NOT the oracle): subset of
@@ -51,12 +59,20 @@ def run_sweep(rungs: list[str], simulators: list[str], *, runs_root: str | Path,
                     rows.append({**prior, "skipped": True})
                     continue
                 result = result_fn(rung, sim, backend) if result_fn is not None else None
-                summ = record_gemmini_run(rung, sim, runs_root=runs_root, codegen_backend=backend,
-                                          result=result, timeout=timeout)
-                rec = {"run_id": run_id, "rung": rung, "simulator": sim, "codegen_backend": backend,
-                       "correct": bool(summ["correct"]), "oracle": summ["oracle"],
-                       "cycle_accurate": summ.get("cycle_accurate"),
-                       "cycles": summ["metrics"].get("cycles"), "run_path": summ["run_path"]}
+                summ = record_gemmini_run(
+                    rung, sim, runs_root=runs_root, codegen_backend=backend, result=result, timeout=timeout
+                )
+                rec = {
+                    "run_id": run_id,
+                    "rung": rung,
+                    "simulator": sim,
+                    "codegen_backend": backend,
+                    "correct": bool(summ["correct"]),
+                    "oracle": summ["oracle"],
+                    "cycle_accurate": summ.get("cycle_accurate"),
+                    "cycles": summ["metrics"].get("cycles"),
+                    "run_path": summ["run_path"],
+                }
                 with ledger_path.open("a", encoding="utf-8") as f:
                     f.write(json.dumps(rec) + "\n")
                 done[run_id] = rec
@@ -71,9 +87,11 @@ def summarize(rows: list[dict]) -> str:
     lines = ["| " + " | ".join(cols) + " |", "| " + " | ".join(["---"] * len(cols)) + " |"]
     for r in rows:
         o = r.get("oracle", {})
-        lines.append(f"| {r['rung']} | {r.get('codegen_backend','?')} | {o.get('kind','?')} | "
-                     f"{o.get('derived_from_rtl','?')} | {r['correct']} | "
-                     f"{r.get('cycles','?')} | {r.get('skipped', False)} |")
+        lines.append(
+            f"| {r['rung']} | {r.get('codegen_backend', '?')} | {o.get('kind', '?')} | "
+            f"{o.get('derived_from_rtl', '?')} | {r['correct']} | "
+            f"{r.get('cycles', '?')} | {r.get('skipped', False)} |"
+        )
     return "\n".join(lines)
 
 
@@ -83,9 +101,19 @@ def summarize_from_manifests(runs_root: str | Path) -> str:
     Acceptance test: the table is reproducible from the ledger alone, NO hand-authored YAML.
     Reads each runs/.../run_manifest.yaml + artifact_manifest.json."""
     import yaml
+
     runs_root = Path(runs_root)
-    cols = ("rung", "backend", "oracle.kind", "derived_from_rtl", "cycle_accurate",
-            "correct", "cycles", "run_id", "artifacts")
+    cols = (
+        "rung",
+        "backend",
+        "oracle.kind",
+        "derived_from_rtl",
+        "cycle_accurate",
+        "correct",
+        "cycles",
+        "run_id",
+        "artifacts",
+    )
     lines = ["| " + " | ".join(cols) + " |", "| " + " | ".join(["---"] * len(cols)) + " |"]
     rows = []
     for man in sorted(runs_root.rglob("run_manifest.yaml")):
@@ -97,10 +125,19 @@ def summarize_from_manifests(runs_root: str | Path) -> str:
         if art_path.exists():
             for a in json.loads(art_path.read_text()).get("artifacts", []):
                 arts.append(f"{a.get('kind')}:{a.get('origin')}")
-        rows.append((m.get("benchmark"), m.get("codegen_backend"), oracle.get("kind"),
-                     oracle.get("derived_from_rtl"), meta.get("cycle_accurate"),
-                     m.get("status") == "pass", meta.get("cycles"), m.get("run_id"),
-                     ", ".join(arts)))
+        rows.append(
+            (
+                m.get("benchmark"),
+                m.get("codegen_backend"),
+                oracle.get("kind"),
+                oracle.get("derived_from_rtl"),
+                meta.get("cycle_accurate"),
+                m.get("status") == "pass",
+                meta.get("cycles"),
+                m.get("run_id"),
+                ", ".join(arts),
+            )
+        )
     for r in sorted(rows, key=lambda x: (str(x[1]), str(x[2]), str(x[0]))):
         lines.append("| " + " | ".join(str(c) for c in r) + " |")
     return "\n".join(lines)
@@ -108,6 +145,7 @@ def summarize_from_manifests(runs_root: str | Path) -> str:
 
 def main() -> int:
     import argparse
+
     ap = argparse.ArgumentParser(description="Gemmini conformance sweep (resumable).")
     ap.add_argument("--rungs", default="C0,Q0")
     ap.add_argument("--simulators", default="spike")
@@ -115,16 +153,21 @@ def main() -> int:
     ap.add_argument("--runs-root", default="out/runs/gemmini_cert")
     ap.add_argument("--ledger", default="out/runs/gemmini_cert/ledger.jsonl")
     ap.add_argument("--force", action="store_true")
-    ap.add_argument("--summary-only", action="store_true",
-                    help="render the table from existing manifests; run nothing")
+    ap.add_argument("--summary-only", action="store_true", help="render the table from existing manifests; run nothing")
     ap.add_argument("--timeout", type=int, default=600)
     args = ap.parse_args()
     if args.summary_only:
         print(summarize_from_manifests(args.runs_root))
         return 0
-    rows = run_sweep(args.rungs.split(","), args.simulators.split(","),
-                     runs_root=args.runs_root, ledger_path=args.ledger,
-                     backends=args.backends.split(","), force=args.force, timeout=args.timeout)
+    rows = run_sweep(
+        args.rungs.split(","),
+        args.simulators.split(","),
+        runs_root=args.runs_root,
+        ledger_path=args.ledger,
+        backends=args.backends.split(","),
+        force=args.force,
+        timeout=args.timeout,
+    )
     print(summarize_from_manifests(args.runs_root))
     return 0 if all(r["correct"] for r in rows) else 1
 

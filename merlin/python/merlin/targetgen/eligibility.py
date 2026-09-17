@@ -16,6 +16,7 @@ the whole point (see :mod:`merlin.targetgen.compute_units.SemanticCapability`).
 Fail-closed: a region whose family cannot be recognized is reported **ineligible with a reason**, never
 silently assumed eligible.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -111,8 +112,10 @@ def empty_declaration_is_narrowing(axis: str) -> bool:
     try:
         return _EMPTY_IS_NARROWING[axis]
     except KeyError:
-        raise KeyError(f"no declared empty-set semantics for shape axis {axis!r}; add it beside the "
-                       f"check in is_eligible that implements it") from None
+        raise KeyError(
+            f"no declared empty-set semantics for shape axis {axis!r}; add it beside the "
+            f"check in is_eligible that implements it"
+        ) from None
 
 
 def _dtype_ok(want: str | None, allowed: tuple[str, ...]) -> bool:
@@ -145,9 +148,13 @@ def _family_support(family: str, cap_map: dict[str, SemanticCapability]):
     return None, None
 
 
-def is_eligible(region: RegionDescriptor, cap_map: dict[str, SemanticCapability],
-                *, undetermined: "frozenset[str] | tuple[str, ...] | None" = None,
-                providers: "dict[str, tuple[tuple[str, str], ...]] | None" = None) -> EligibilityVerdict:
+def is_eligible(
+    region: RegionDescriptor,
+    cap_map: dict[str, SemanticCapability],
+    *,
+    undetermined: "frozenset[str] | tuple[str, ...] | None" = None,
+    providers: "dict[str, tuple[tuple[str, str], ...]] | None" = None,
+) -> EligibilityVerdict:
     """Can the hardware described by ``cap_map`` execute ``region``? Pure declarative check.
 
     ``providers`` is :func:`compute_units.semantic_engine_map` for the same units. It supplies the
@@ -166,49 +173,56 @@ def is_eligible(region: RegionDescriptor, cap_map: dict[str, SemanticCapability]
     caps, how = _family_support(family, cap_map)
     if how is None:
         if undetermined and family in undetermined:
-            return EligibilityVerdict(False, family,
-                                      f"UNDETERMINED: no evidence source could decide family "
-                                      f"{family!r} for this target", undetermined=True)
-        return EligibilityVerdict(False, family,
-                                  f"target declares no capability for family {family!r}")
+            return EligibilityVerdict(
+                False,
+                family,
+                f"UNDETERMINED: no evidence source could decide family {family!r} for this target",
+                undetermined=True,
+            )
+        return EligibilityVerdict(False, family, f"target declares no capability for family {family!r}")
     for c in caps:
         if not _dtype_ok(region.in_dtype, c.dtypes):
-            return EligibilityVerdict(False, family,
-                                      f"input dtype {region.in_dtype!r} not in {c.family} formats "
-                                      f"{list(c.dtypes)}")
+            return EligibilityVerdict(
+                False, family, f"input dtype {region.in_dtype!r} not in {c.family} formats {list(c.dtypes)}"
+            )
         if region.weight_dtype is not None and not _dtype_ok(region.weight_dtype, c.dtypes):
-            return EligibilityVerdict(False, family,
-                                      f"weight dtype {region.weight_dtype!r} not supported by "
-                                      f"{c.family}")
+            return EligibilityVerdict(
+                False, family, f"weight dtype {region.weight_dtype!r} not supported by {c.family}"
+            )
         if c.ranks and region.rank is not None and region.rank not in c.ranks:
-            return EligibilityVerdict(False, family,
-                                      f"rank {region.rank} not in {c.family} legal ranks "
-                                      f"{list(c.ranks)}")
+            return EligibilityVerdict(
+                False, family, f"rank {region.rank} not in {c.family} legal ranks {list(c.ranks)}"
+            )
         if region.batch > 1 and not c.batch:
-            return EligibilityVerdict(False, family,
-                                      f"batched region (batch={region.batch}) but {c.family} declares "
-                                      f"batch=false")
+            return EligibilityVerdict(
+                False, family, f"batched region (batch={region.batch}) but {c.family} declares batch=false"
+            )
         if c.layouts and region.layout is not None and region.layout not in c.layouts:
-            return EligibilityVerdict(False, family,
-                                      f"layout {region.layout!r} not in {c.family} legal layouts "
-                                      f"{list(c.layouts)}")
+            return EligibilityVerdict(
+                False, family, f"layout {region.layout!r} not in {c.family} legal layouts {list(c.layouts)}"
+            )
         if c.engines and region.engine is not None and region.engine not in c.engines:
-            return EligibilityVerdict(False, family,
-                                      f"engine {region.engine!r} does not provide {c.family} on this "
-                                      f"target; declared on {list(c.engines)}")
+            return EligibilityVerdict(
+                False,
+                family,
+                f"engine {region.engine!r} does not provide {c.family} on this target; declared on {list(c.engines)}",
+            )
         # A capability available only FUSED cannot execute the region standalone. ``how == "direct"``
         # means the region asked for this family on its own; reached via ``primitives`` it is already
         # part of the composite that licenses it, which is exactly the fused form.
         if c.composed_with and how == "direct" and family == c.family:
-            return EligibilityVerdict(False, family,
-                                      f"{c.family} is available only fused with "
-                                      f"{list(c.composed_with)} on this target, not standalone")
+            return EligibilityVerdict(
+                False,
+                family,
+                f"{c.family} is available only fused with {list(c.composed_with)} on this target, not standalone",
+            )
     engines = tuple(dict.fromkeys(e for c in caps for e in c.engines))
     units = tuple(dict.fromkeys(n for c in caps for n, _ in (providers or {}).get(c.family, ())))
     return EligibilityVerdict(True, family, f"eligible ({how})", engines=engines, units=units)
 
 
 # --- convenience: build the capability map from a contract / named target ---------------------------
+
 
 def capability_map_from_contract(contract: dict) -> dict[str, SemanticCapability]:
     """Fold a contract's ``compute_units`` into the ``family -> SemanticCapability`` denominator map."""

@@ -120,6 +120,7 @@ only literals are 1/2 and 1, which are properties of round-half-to-even itself. 
 establish -- a non-integral bound, a one-sided clamp, a bound outside the destination type, a value
 used more than once, `fptoui` instead of `fptosi` -- is REFUSED and COUNTED, never approximated.
 """
+
 from __future__ import annotations
 
 #: Feature name. Registered on demand (see :func:`ensure_registered`) rather than at import, for the
@@ -131,6 +132,7 @@ FEATURE = "fuse_quantize_round_convert"
 #: ``FEATURE`` intentionally does not imply this: the broad schedule can perturb contraction
 #: lowering, while the exact rewrite by itself still removes LLVM's scalar libm barrier.
 VEC_FEATURE = "fuse_quantize_round_convert_vec"
+
 
 #: Largest magnitude a clamp bound may have for the inline round to be exact. At or above 2^23 an f32
 #: has no fractional bits left, so `c - trunc(c)` stops being exact and `t` stops being representable
@@ -147,6 +149,7 @@ def _integral_limit(float_type) -> float:
 
 def _float_width(t) -> int | None:
     from xdsl.dialects.builtin import Float16Type, Float32Type, Float64Type
+
     if isinstance(t, Float16Type):
         return 16
     if isinstance(t, Float32Type):
@@ -159,6 +162,7 @@ def _float_width(t) -> int | None:
 def _const_float(value) -> float | None:
     """The f32/f64 constant ``value`` holds, or None if it is not a float `arith.constant`."""
     from xdsl.dialects.builtin import FloatAttr
+
     owner = getattr(value, "owner", None)
     if owner is None or getattr(owner, "name", None) != "arith.constant":
         return None
@@ -187,8 +191,7 @@ def _guarded_scale_value(value):
     index = getattr(value, "index", None)
     region = getattr(block, "parent", None)
     consumer = getattr(region, "parent", None)
-    if (index is None or getattr(consumer, "name", None) != "linalg.generic"
-            or index >= len(consumer.inputs)):
+    if index is None or getattr(consumer, "name", None) != "linalg.generic" or index >= len(consumer.inputs):
         return None
     producer = getattr(consumer.inputs[index], "owner", None)
     if getattr(producer, "name", None) != "linalg.generic" or not producer.body.blocks:
@@ -210,8 +213,7 @@ def _is_zero_guarded_scale(value) -> bool:
     fallback = _const_float(when_zero)
     false_owner = getattr(otherwise, "owner", None)
     cmp = getattr(cond, "owner", None)
-    if (fallback is None or fallback != fallback or fallback <= 0.0
-            or getattr(cmp, "name", None) != "arith.cmpf"):
+    if fallback is None or fallback != fallback or fallback <= 0.0 or getattr(cmp, "name", None) != "arith.cmpf":
         return False
     # Most constructors select the raw division. i-GELU retains its pre-existing positive epsilon
     # floor for tiny nonzero rows and selects one only at exactly zero. Accept that exact spelling
@@ -237,8 +239,7 @@ def _is_zero_guarded_scale(value) -> bool:
     if denom is None or denom != denom or denom == 0.0:
         return False
     lhs, rhs = cmp.operands
-    return ((lhs is numerator and _const_float(rhs) == 0.0)
-            or (rhs is numerator and _const_float(lhs) == 0.0))
+    return (lhs is numerator and _const_float(rhs) == 0.0) or (rhs is numerator and _const_float(lhs) == 0.0)
 
 
 def _dynamic_scale_of_quant_input(value):
@@ -315,8 +316,9 @@ def _match_chain(fptosi_op):
             divisor_value = _dynamic_scale_of_quant_input(rounded)
             if divisor_value is not None:
                 divisor = _const_float(divisor_value)
-                if ((divisor is None or divisor != divisor or divisor == 0.0)
-                        and not _is_zero_guarded_scale(divisor_value)):
+                if (divisor is None or divisor != divisor or divisor == 0.0) and not _is_zero_guarded_scale(
+                    divisor_value
+                ):
                     return "round_divisor_may_be_zero"
             if lo == float("-inf") or hi == float("inf"):
                 # A one-sided clamp leaves the rounded value unbounded on the other side, so the
@@ -361,6 +363,7 @@ def fuse_round_clamp_convert(module, report_out: "dict | None" = None) -> int:
     """
     from xdsl.dialects import arith
     from xdsl.dialects.builtin import FloatAttr, IntegerAttr, IntegerType
+
     from .passes_xdsl import carry_provenance
 
     report: dict = {} if report_out is None else report_out
@@ -393,8 +396,7 @@ def fuse_round_clamp_convert(module, report_out: "dict | None" = None) -> int:
         cur = v
         for name, bound, _src in reversed(clamps):
             cst = emit(arith.ConstantOp(FloatAttr(bound, ftype)))
-            cur = emit(arith.MinimumfOp(cur, cst) if name == "arith.minimumf"
-                       else arith.MaximumfOp(cur, cst))
+            cur = emit(arith.MinimumfOp(cur, cst) if name == "arith.minimumf" else arith.MaximumfOp(cur, cst))
         c = cur
         # 2. Round half-to-even inside [lo, hi], in the destination integer type (Lemma 2).
         t = emit(arith.FPToSIOp(c, it))
@@ -431,41 +433,48 @@ def fuse_round_clamp_convert(module, report_out: "dict | None" = None) -> int:
 def ensure_registered() -> str:
     """Register the isolated rewrite and explicit vectorized composition. Idempotent."""
     from . import impr_features as F
+
     if FEATURE in F.known() and VEC_FEATURE in F.known():
         return FEATURE
     if FEATURE not in F.known():
-        F.register(F.ImprFeature(
-            name=FEATURE,
-            action_class="PASS",
-            description=(
-                "Fuse the int8 quantize chain `math.roundeven -> clamp -> arith.fptosi` into a "
-                "rounding-mode-INDEPENDENT inline round, removing the scalar `roundevenf` libm "
-                "barrier while leaving the transform schedule unchanged. EXACT, not approximate: "
-                "the clamp commutes with round-half-to-even because every bound is integral "
-                "(refused otherwise), which bounds the argument; and `fptosi`'s "
-                "truncate-toward-zero is then a no-op on an already-integral value inside the "
-                "destination type. The inline round uses trunc/convert-back/compare rather than "
-                "the rounding-mode-dependent magic-constant trick. REFUSES and COUNTS a "
-                "non-integral bound, a one-sided clamp, a bound outside the destination integer "
-                "type, an unguarded dynamic or zero divisor, a shared intermediate and `fptoui`. "
-                "It follows an activation scale through one linalg producer edge only when that "
-                "producer yields a proved-positive symmetric scale. This isolated "
-                "point intentionally does "
-                "NOT imply `vectorize_non_contraction_generics`: that broad schedule changed "
-                "TinyLlama's packed MR4/NR32 kernel from `lb + vwmacc.vx` to a broadcast-heavy "
-                "`vwmacc.vv` form. LLVM autovectorization remains free to claim the pure-arithmetic "
-                "loops without perturbing the contraction schedule. Orthogonal to "
-                "`quantize_before_gather`, which changes the scale computation. NO SPEED CLAIM; "
-                "default-off and baseline byte-identical."),
-        ))
+        F.register(
+            F.ImprFeature(
+                name=FEATURE,
+                action_class="PASS",
+                description=(
+                    "Fuse the int8 quantize chain `math.roundeven -> clamp -> arith.fptosi` into a "
+                    "rounding-mode-INDEPENDENT inline round, removing the scalar `roundevenf` libm "
+                    "barrier while leaving the transform schedule unchanged. EXACT, not approximate: "
+                    "the clamp commutes with round-half-to-even because every bound is integral "
+                    "(refused otherwise), which bounds the argument; and `fptosi`'s "
+                    "truncate-toward-zero is then a no-op on an already-integral value inside the "
+                    "destination type. The inline round uses trunc/convert-back/compare rather than "
+                    "the rounding-mode-dependent magic-constant trick. REFUSES and COUNTS a "
+                    "non-integral bound, a one-sided clamp, a bound outside the destination integer "
+                    "type, an unguarded dynamic or zero divisor, a shared intermediate and `fptoui`. "
+                    "It follows an activation scale through one linalg producer edge only when that "
+                    "producer yields a proved-positive symmetric scale. This isolated "
+                    "point intentionally does "
+                    "NOT imply `vectorize_non_contraction_generics`: that broad schedule changed "
+                    "TinyLlama's packed MR4/NR32 kernel from `lb + vwmacc.vx` to a broadcast-heavy "
+                    "`vwmacc.vv` form. LLVM autovectorization remains free to claim the pure-arithmetic "
+                    "loops without perturbing the contraction schedule. Orthogonal to "
+                    "`quantize_before_gather`, which changes the scale computation. NO SPEED CLAIM; "
+                    "default-off and baseline byte-identical."
+                ),
+            )
+        )
     if VEC_FEATURE not in F.known():
-        F.register(F.ImprFeature(
-            name=VEC_FEATURE,
-            action_class="PASS",
-            description=(
-                "Explicit composition of `fuse_quantize_round_convert` with "
-                "`vectorize_non_contraction_generics`. Use only when a post-codegen contraction "
-                "census proves the broader schedule preserved the selected kernel."),
-            implies=frozenset({FEATURE, F.VEC_NONCONTRACTION_NAME}),
-        ))
+        F.register(
+            F.ImprFeature(
+                name=VEC_FEATURE,
+                action_class="PASS",
+                description=(
+                    "Explicit composition of `fuse_quantize_round_convert` with "
+                    "`vectorize_non_contraction_generics`. Use only when a post-codegen contraction "
+                    "census proves the broader schedule preserved the selected kernel."
+                ),
+                implies=frozenset({FEATURE, F.VEC_NONCONTRACTION_NAME}),
+            )
+        )
     return FEATURE

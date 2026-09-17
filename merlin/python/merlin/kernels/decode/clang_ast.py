@@ -10,6 +10,7 @@ Header-dependent: needs the framework's ``riscv_vector.h`` include path (from it
 ``framework_contract``). When clang/headers are unavailable the extractor degrades gracefully
 (returns an empty result) — the asm path does not depend on it.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,8 +23,8 @@ from ...llvmlower import toolchain
 
 @dataclass
 class IntrinsicCall:
-    name: str                      # "__riscv_vfmacc_vf_f32m4"
-    ret_type: str                  # resolved type, e.g. "vfloat32m4_t"
+    name: str  # "__riscv_vfmacc_vf_f32m4"
+    ret_type: str  # resolved type, e.g. "vfloat32m4_t"
     sew: int | None = None
     lmul: float | None = None
 
@@ -31,13 +32,14 @@ class IntrinsicCall:
 @dataclass
 class SourceFacts:
     intrinsics: list[IntrinsicCall] = field(default_factory=list)
-    ok: bool = False               # False if clang/headers unavailable or parse failed
+    ok: bool = False  # False if clang/headers unavailable or parse failed
 
     def has(self, *needles: str) -> int:
         return sum(1 for c in self.intrinsics if any(n in c.name for n in needles))
 
     def dominant_vtype(self) -> tuple[int | None, float | None]:
         from collections import Counter
+
         seen = Counter((c.sew, c.lmul) for c in self.intrinsics if c.sew)
         return seen.most_common(1)[0][0] if seen else (None, None)
 
@@ -48,7 +50,7 @@ def _vtype_from_typename(t: str) -> tuple[int | None, float | None]:
     s = t.strip().rstrip("_t")
     for pre in ("vfloat", "vint", "vuint", "vbool"):
         if s.startswith(pre):
-            s = s[len(pre):]
+            s = s[len(pre) :]
             break
     else:
         return None, None
@@ -65,14 +67,20 @@ def _vtype_from_typename(t: str) -> tuple[int | None, float | None]:
     return sew, lmul
 
 
-def dump_ast(c_path: str | Path, include_dirs: list[str] | None = None,
-             march: str = "rv64gcv") -> dict | None:
+def dump_ast(c_path: str | Path, include_dirs: list[str] | None = None, march: str = "rv64gcv") -> dict | None:
     """clang -ast-dump=json for a kernel TU, or None if clang/headers unavailable."""
     clang = toolchain.clang()
     if not Path(clang).is_file():
         return None
-    cmd = [str(clang), "-Xclang", "-ast-dump=json", "-fsyntax-only",
-           f"--target=riscv64-unknown-elf", f"-march={march}", "-mabi=lp64d"]
+    cmd = [
+        str(clang),
+        "-Xclang",
+        "-ast-dump=json",
+        "-fsyntax-only",
+        f"--target=riscv64-unknown-elf",
+        f"-march={march}",
+        "-mabi=lp64d",
+    ]
     for d in include_dirs or []:
         cmd += ["-I", d]
     cmd.append(str(c_path))

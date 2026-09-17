@@ -29,6 +29,7 @@ computes the declared workload", not as "the pass preserved its input".
 
 Extents are concrete, taken from the IR's own types, so every query is quantifier-free (QF_BV).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -41,6 +42,7 @@ from .smt_semantics import Encoder, UnsupportedSemantics, encode_interface
 @dataclass(frozen=True)
 class RefinementResult:
     """A verdict together with the shape it is about — a verdict without its shape is not citable."""
+
     verdict: Verdict
     m: int
     k: int
@@ -57,12 +59,10 @@ class RefinementResult:
         return self.verdict.verified
 
     def __str__(self) -> str:
-        return (f"{self.status:7s} m={self.m} k={self.k} n={self.n} "
-                f"reuse={self.reuse} outputs={self.n_outputs}")
+        return f"{self.status:7s} m={self.m} k={self.k} n={self.n} reuse={self.reuse} outputs={self.n_outputs}"
 
 
-def validate_interface_module(module, *, acc_width: int = 32,
-                              timeout_ms: int = 60_000) -> Verdict:
+def validate_interface_module(module, *, acc_width: int = 32, timeout_ms: int = 60_000) -> Verdict:
     """Check every ``interface.commit`` against the workload's declared contraction."""
     if not HAS_XDSL:
         raise UnsupportedSemantics("xDSL is not installed")
@@ -88,8 +88,7 @@ def validate_interface_module(module, *, acc_width: int = 32,
         weight = got.inputs[-1]
         activations = got.inputs[:-1]
         if len(activations) < len(got.outputs):
-            raise UnsupportedSemantics(
-                f"{len(got.outputs)} commits but only {len(activations)} activation arguments")
+            raise UnsupportedSemantics(f"{len(got.outputs)} commits but only {len(activations)} activation arguments")
 
         diffs = []
         for i, name in enumerate(sorted(got.outputs)):
@@ -105,8 +104,7 @@ def validate_interface_module(module, *, acc_width: int = 32,
     return check_module(mod, timeout_ms=timeout_ms)
 
 
-def validate_pass(source_module, interface_module, *, acc_width: int = 32,
-                  timeout_ms: int = 60_000) -> Verdict:
+def validate_pass(source_module, interface_module, *, acc_width: int = 32, timeout_ms: int = 60_000) -> Verdict:
     """Does the emitted ``interface`` program compute the same function as its ``linalg`` SOURCE?
 
     This is source-to-target translation validation, and it is a strictly stronger statement than
@@ -164,7 +162,8 @@ def validate_pass(source_module, interface_module, *, acc_width: int = 32,
         if len(spec_names) != len(got_names):
             raise UnsupportedSemantics(
                 f"the source module returns {len(spec_names)} value(s) but the interface program "
-                f"commits {len(got_names)}; they are not the same program")
+                f"commits {len(got_names)}; they are not the same program"
+            )
 
         diffs = []
         for s_name, g_name in zip(spec_names, got_names):
@@ -179,8 +178,7 @@ def validate_pass(source_module, interface_module, *, acc_width: int = 32,
     return check_module(mod, timeout_ms=timeout_ms)
 
 
-def validate_compilation(interface_module, cb: dict, *, acc_width: int = 32,
-                         timeout_ms: int = 60_000) -> Verdict:
+def validate_compilation(interface_module, cb: dict, *, acc_width: int = 32, timeout_ms: int = 60_000) -> Verdict:
     """Does the emitted COMMAND BUFFER compute what the ``interface`` program specified?
 
     This is the check that covers a compiler we did not write. ``interface`` is the input a backend
@@ -247,14 +245,16 @@ def _bind_outputs(spec_outputs: dict, got: dict, cb: dict) -> list:
     if len(declared) != len(spec_names):
         raise UnsupportedSemantics(
             f"the interface program commits {len(spec_names)} output(s) {spec_names} but the command "
-            f"buffer declares {len(declared)} ({declared}); they are not the same program")
+            f"buffer declares {len(declared)} ({declared}); they are not the same program"
+        )
     out = []
     for spec_name, cb_name in zip(spec_names, declared):
         a, b = spec_outputs[spec_name], got[cb_name]
         if (a.rows, a.cols) != (b.rows, b.cols):
             raise UnsupportedSemantics(
                 f"output {spec_name!r} is {(a.rows, a.cols)} in the interface program but "
-                f"{cb_name!r} is {(b.rows, b.cols)} in the command buffer")
+                f"{cb_name!r} is {(b.rows, b.cols)} in the command buffer"
+            )
         out.append((a, b))
     return out
 
@@ -280,21 +280,23 @@ def _bind_leaves(spec_inputs: list, cb: dict) -> dict:
     if len(ordered) != len(spec_inputs):
         raise UnsupportedSemantics(
             f"the interface program has {len(spec_inputs)} leaf inputs but the command buffer "
-            f"declares {len(ordered)} ({ordered}); they are not the same program")
+            f"declares {len(ordered)} ({ordered}); they are not the same program"
+        )
     bound = {}
     for name, tensor in zip(ordered, spec_inputs):
         spec_shape = (tensor.rows, tensor.cols)
         cb_shape = tuple(tensors[name].get("shape") or ())
         if cb_shape != spec_shape:
             raise UnsupportedSemantics(
-                f"leaf {name!r} is {cb_shape} in the command buffer but {spec_shape} in the "
-                f"interface program")
+                f"leaf {name!r} is {cb_shape} in the command buffer but {spec_shape} in the interface program"
+            )
         bound[name] = tensor
     return bound
 
 
-def validate_workload(*, m: int = 2, k: int = 2, n: int = 2, reuse: int = 2,
-                      timeout_ms: int = 60_000) -> RefinementResult:
+def validate_workload(
+    *, m: int = 2, k: int = 2, n: int = 2, reuse: int = 2, timeout_ms: int = 60_000
+) -> RefinementResult:
     """Lower the reference workload at one concrete shape and validate the interface it produced.
 
     This exercises the real ``merlin-materialize-interface`` pass: the module under test is whatever
@@ -331,10 +333,16 @@ def _record(verdict, **shape) -> None:
             requirement_class=VALIDATED_CLASS,
             method="smt",
             verdict=P.solver_verdict(verdict.status),
-            evidence={"shape": shape, "solver_status": verdict.status,
-                      "counterexample": bool(getattr(verdict, "model_values", None))},
-            provenance={"source": "merlin.verify.refine.validate_workload",
-                        "relation": "every commit equals the declared contraction, all inputs"})
+            evidence={
+                "shape": shape,
+                "solver_status": verdict.status,
+                "counterexample": bool(getattr(verdict, "model_values", None)),
+            },
+            provenance={
+                "source": "merlin.verify.refine.validate_workload",
+                "relation": "every commit equals the declared contraction, all inputs",
+            },
+        )
     except Exception:
         # Recording must never gate a verification run; a missing log is a REPORTED state upstream.
         pass
@@ -358,8 +366,7 @@ class OutputContractViolation(Exception):
     """
 
 
-def validate_equivalence(spec_cb: dict, agent_cb: dict, *, acc_width: int = 32,
-                         timeout_ms: int = 60_000) -> Verdict:
+def validate_equivalence(spec_cb: dict, agent_cb: dict, *, acc_width: int = 32, timeout_ms: int = 60_000) -> Verdict:
     """Do two command buffers denote the same function, for every input at this shape?
 
     The reason this exists beside :func:`validate_compilation` is a parser gap, not a new idea. A
@@ -373,9 +380,10 @@ def validate_equivalence(spec_cb: dict, agent_cb: dict, *, acc_width: int = 32,
     Example, over an archived capsule-bench submission::
 
         from merlin.targetgen.contract.interface_emit import parse_interface_mlir
-        spec  = parse_interface_mlir((unit / "generated/input.interface.mlir").read_text())
+
+        spec = parse_interface_mlir((unit / "generated/input.interface.mlir").read_text())
         agent = json.loads((unit / "generated/command_buffer.json").read_text())
-        validate_equivalence(spec, agent).status      # 'unsat' | 'sat' | 'unknown'
+        validate_equivalence(spec, agent).status  # 'unsat' | 'sat' | 'unknown'
 
     **This is weaker than :func:`validate_compilation`, and the difference must not be blurred.**
     There, the spec side goes through ``encode_interface`` and the target side through
@@ -411,8 +419,7 @@ def validate_equivalence(spec_cb: dict, agent_cb: dict, *, acc_width: int = 32,
         # the program's inputs. The submission is then encoded over those same symbols.
         spec_out, leaves = encode_command_buffer(enc, spec_cb, acc_width=acc_width)
         if not spec_out:
-            raise UnsupportedSemantics(
-                "the interface program commits no outputs; there is nothing to validate against")
+            raise UnsupportedSemantics("the interface program commits no outputs; there is nothing to validate against")
         agent_out, _ = encode_command_buffer(enc, agent_cb, shared=leaves, acc_width=acc_width)
 
         # Bind outputs BY NAME. Order-binding was the defect described on OutputContractViolation:
@@ -424,12 +431,14 @@ def validate_equivalence(spec_cb: dict, agent_cb: dict, *, acc_width: int = 32,
                 f"the interface program declares output(s) {missing} which the submitted buffer "
                 f"never commits; it commits {agent_names}. The buffer may compute the right values, "
                 f"but it does not deliver them under the declared name, so no consumer can read "
-                f"them.")
+                f"them."
+            )
         extra = [n for n in agent_names if n not in spec_out]
         if extra:
             raise OutputContractViolation(
                 f"the submitted buffer commits {extra}, which the interface program never declared "
-                f"(it declares {spec_names})")
+                f"(it declares {spec_names})"
+            )
 
         diffs = []
         for s_name in spec_names:
@@ -438,7 +447,8 @@ def validate_equivalence(spec_cb: dict, agent_cb: dict, *, acc_width: int = 32,
             if (a.rows, a.cols) != (b.rows, b.cols):
                 raise UnsupportedSemantics(
                     f"output {s_name!r} is {(a.rows, a.cols)} in the interface program but "
-                    f"{a_name!r} is {(b.rows, b.cols)} in the submitted buffer")
+                    f"{a_name!r} is {(b.rows, b.cols)} in the submitted buffer"
+                )
             diffs.append(enc.any_differs(a, b))
         term = diffs[0]
         for d in diffs[1:]:

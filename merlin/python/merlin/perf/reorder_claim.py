@@ -37,6 +37,7 @@ saving" read alike and only the second is a result. `established` says the evide
 separation_regime`` -- fires on ``established and not saving``, which is a verdict against the claim
 rather than an absence of one.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -79,12 +80,13 @@ class ReorderVerdict:
 
 
 def _as_instructions(items: Sequence[tuple[str, dict]]) -> list[Instruction]:
-    return [Instruction(index=i, mnemonic=m, operands=dict(o), branch_target=None, section="text")
-            for i, (m, o) in enumerate(items)]
+    return [
+        Instruction(index=i, mnemonic=m, operands=dict(o), branch_target=None, section="text")
+        for i, (m, o) in enumerate(items)
+    ]
 
 
-def permutation_of(baseline: Sequence[tuple[str, dict]],
-                   reordered: Sequence[tuple[str, dict]]) -> list[int]:
+def permutation_of(baseline: Sequence[tuple[str, dict]], reordered: Sequence[tuple[str, dict]]) -> list[int]:
     """Indices into ``baseline`` in the order ``reordered`` issues them.
 
     Matched on (mnemonic, operands) and STABLY -- the first unclaimed identical instruction wins -- so
@@ -95,7 +97,8 @@ def permutation_of(baseline: Sequence[tuple[str, dict]],
     if len(baseline) != len(reordered):
         raise ReorderClaimError(
             f"the two programs have {len(baseline)} and {len(reordered)} instructions; a reordering "
-            f"cannot change the count, so these are not two orders of one program")
+            f"cannot change the count, so these are not two orders of one program"
+        )
     a = Counter((m, tuple(sorted(o.items()))) for m, o in baseline)
     b = Counter((m, tuple(sorted(o.items()))) for m, o in reordered)
     if a != b:
@@ -104,7 +107,8 @@ def permutation_of(baseline: Sequence[tuple[str, dict]],
         raise ReorderClaimError(
             f"the instruction multisets differ (only in baseline: {only_a}; only in reordered: "
             f"{only_b}); the claim cancels the multiset, so a difference here would be measuring the "
-            f"instruction rather than the order")
+            f"instruction rather than the order"
+        )
     remaining: dict[tuple, list[int]] = {}
     for i, (m, o) in enumerate(baseline):
         remaining.setdefault((m, tuple(sorted(o.items()))), []).append(i)
@@ -114,13 +118,16 @@ def permutation_of(baseline: Sequence[tuple[str, dict]],
     return order
 
 
-def compare_orderings(baseline: Sequence[tuple[str, dict]],
-                      reordered: Sequence[tuple[str, dict]], *,
-                      issue: DG.IssueModel,
-                      stall_mnemonic: str,
-                      roles: Mapping[str, str] | None = None,
-                      directions: Any = None,
-                      separations: Mapping[str, float] | None = None) -> ReorderVerdict:
+def compare_orderings(
+    baseline: Sequence[tuple[str, dict]],
+    reordered: Sequence[tuple[str, dict]],
+    *,
+    issue: DG.IssueModel,
+    stall_mnemonic: str,
+    roles: Mapping[str, str] | None = None,
+    directions: Any = None,
+    separations: Mapping[str, float] | None = None,
+) -> ReorderVerdict:
     """Measure ``reordered`` against ``baseline`` as two orders of ONE dependence graph."""
     from merlin.perf.deps.liveness import effects_of
 
@@ -128,32 +135,35 @@ def compare_orderings(baseline: Sequence[tuple[str, dict]],
     instrs = _as_instructions(baseline)
 
     if directions is None:
-        eff = [Effects(defs=(), uses=(), unresolved=("<no measured direction model>",),
-                       observed=False) for _ in instrs]
+        eff = [Effects(defs=(), uses=(), unresolved=("<no measured direction model>",), observed=False) for _ in instrs]
     else:
         eff = [effects_of(i, directions) for i in instrs]
     probed = sum(1 for e in eff if e.observed)
 
-    dag = DG.build_dag(instrs, eff, issue=issue, stall_mnemonic=stall_mnemonic, roles=roles,
-                       resolved_separations=separations)
+    dag = DG.build_dag(
+        instrs, eff, issue=issue, stall_mnemonic=stall_mnemonic, roles=roles, resolved_separations=separations
+    )
     demands = DG.demands_of(dag)
     base_cycles = DG.makespan(dag, list(range(len(instrs))))
     reorder_cycles = DG.makespan(dag, order)
     a = DG.to_composed(base_cycles, dag)
     b = DG.to_composed(reorder_cycles, dag)
-    cmp = DF.compare(a, b, demands_a=demands, demands_b=demands,
-                     label_a="not_hoisted", label_b="hoisted")
+    cmp = DF.compare(a, b, demands_a=demands, demands_b=demands, label_a="not_hoisted", label_b="hoisted")
 
     missing: list[str] = []
     if not probed:
         # THE LEGALITY QUESTION, and it comes first: with no dependence edges every permutation looks
         # legal, so a cycle delta here would be a delta between two programs one of which may not
         # compute the same thing.
-        missing.append("operand_direction_model: no instruction was probed, so no dependence edge "
-                       "exists and the reorder's LEGALITY is not established")
+        missing.append(
+            "operand_direction_model: no instruction was probed, so no dependence edge "
+            "exists and the reorder's LEGALITY is not established"
+        )
     if not separations:
-        missing.append("resolved_separations: no structural role carries a priced completion latency, "
-                       "so there is nothing for overlapping two transfers to save")
+        missing.append(
+            "resolved_separations: no structural role carries a priced completion latency, "
+            "so there is nothing for overlapping two transfers to save"
+        )
 
     established = not missing
     return ReorderVerdict(
@@ -162,20 +172,34 @@ def compare_orderings(baseline: Sequence[tuple[str, dict]],
         # was not modelled. PC's falsifier fires on `saving is False` with `established` -- "hoisting
         # does not improve any declared separation regime" -- which is a verdict, not a null result.
         saving=(reorder_cycles < base_cycles) if established else None,
-        baseline_cycles=base_cycles, reordered_cycles=reorder_cycles,
+        baseline_cycles=base_cycles,
+        reordered_cycles=reorder_cycles,
         delta=reorder_cycles - base_cycles,
         reason=cmp.reason if established else "; ".join(missing),
-        missing=tuple(missing), unresolved=tuple(a.unresolved),
-        instructions_probed=probed, instructions_total=len(instrs),
+        missing=tuple(missing),
+        unresolved=tuple(a.unresolved),
+        instructions_probed=probed,
+        instructions_total=len(instrs),
         detail={"comparison_reason": cmp.reason, "demands": dict(demands)},
     )
 
 
-def hoist_verdict(plan_baseline, plan_hoisted, *, issue: DG.IssueModel,
-                  roles: Mapping[str, str] | None = None, directions: Any = None,
-                  separations: Mapping[str, float] | None = None) -> ReorderVerdict:
+def hoist_verdict(
+    plan_baseline,
+    plan_hoisted,
+    *,
+    issue: DG.IssueModel,
+    roles: Mapping[str, str] | None = None,
+    directions: Any = None,
+    separations: Mapping[str, float] | None = None,
+) -> ReorderVerdict:
     """:func:`compare_orderings` for the two plans ``plan_matmul`` emits with and without the hoist."""
     return compare_orderings(
-        plan_baseline.instructions, plan_hoisted.instructions, issue=issue,
-        stall_mnemonic=plan_baseline.ops.stall, roles=roles, directions=directions,
-        separations=separations)
+        plan_baseline.instructions,
+        plan_hoisted.instructions,
+        issue=issue,
+        stall_mnemonic=plan_baseline.ops.stall,
+        roles=roles,
+        directions=directions,
+        separations=separations,
+    )

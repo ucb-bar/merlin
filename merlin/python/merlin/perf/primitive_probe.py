@@ -4,6 +4,7 @@ The compiler's complete short kernel remains the source of instructions. This di
 its first initialized overwrite primitive from initialization/readback so a host wrapper can time
 that mechanism alone. It neither changes the candidate compiler nor edits a benchmark evaluator.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,10 +27,14 @@ class PrimitiveProbeProgram:
     timed_instruction_indices: tuple[int, ...] = ()
 
 
-def extract_primitive_program(module: Any, *, target: str,
-                              symbol_prefix: str = "merlin_primitive",
-                              include_operand_movement: bool = False,
-                              include_trailing_operand_movement: bool = False) -> PrimitiveProbeProgram:
+def extract_primitive_program(
+    module: Any,
+    *,
+    target: str,
+    symbol_prefix: str = "merlin_primitive",
+    include_operand_movement: bool = False,
+    include_trailing_operand_movement: bool = False,
+) -> PrimitiveProbeProgram:
     """Split the first initialized compute pair from a single-output-tile short kernel.
 
     The prefix initializes on-chip operands, followed by an explicit completion barrier. The body
@@ -44,6 +49,7 @@ def extract_primitive_program(module: Any, *, target: str,
     from xdsl.dialects import llvm
     from xdsl.dialects.builtin import ModuleOp
     from xdsl.ir import Block, Region
+
     from merlin.targetgen.rocc import decode
 
     functions = [op for op in module.body.block.ops if op.name == "llvm.func"]
@@ -83,29 +89,31 @@ def extract_primitive_program(module: Any, *, target: str,
     if include_trailing_operand_movement:
         if not include_operand_movement:
             raise ValueError("trailing movement requires a fixed-work movement/compute body")
-        trailing = [index for index in range(end + 1, readout_index)
-                    if "spad_addr" in rows[index].get("decoded", {})]
+        trailing = [index for index in range(end + 1, readout_index) if "spad_addr" in rows[index].get("decoded", {})]
         if trailing:
             timed_end = trailing[-1]
-        if any("spad_addr" not in rows[index].get("decoded", {})
-               and not (rows[index].get("class") in config_classes
-                        and rows[index].get("decoded", {}).get("subtype") == "LD")
-               for index in range(end + 1, timed_end + 1)):
+        if any(
+            "spad_addr" not in rows[index].get("decoded", {})
+            and not (
+                rows[index].get("class") in config_classes and rows[index].get("decoded", {}).get("subtype") == "LD"
+            )
+            for index in range(end + 1, timed_end + 1)
+        ):
             raise ValueError("fixed-work trailing window contains another compute or unsupported effect")
-    completions = [index for index in range(readout_index + 1, len(rows))
-                   if rows[index]["class"] == "FENCE"]
+    completions = [index for index in range(readout_index + 1, len(rows)) if rows[index]["class"] == "FENCE"]
     if not completions:
         raise ValueError("short source has no decoded post-readback completion operation")
     completion_index = completions[-1]
     completion = asm[completion_index]
-    if (completion.has_side_effects is None
-            or "~{memory}" not in completion.constraints.data.split(",")):
+    if completion.has_side_effects is None or "~{memory}" not in completion.constraints.data.split(","):
         raise ValueError("source completion lacks side-effect and host-memory ordering semantics")
     # Only the final store configuration is needed. Keep its exact encoded payload rather than
     # inventing a new dtype, stride, scaling or address interpretation.
-    store_configs = [i for i in range(end + 1, readout_index)
-                     if rows[i]["class"] in config_classes
-                     and rows[i].get("decoded", {}).get("subtype") == "ST"]
+    store_configs = [
+        i
+        for i in range(end + 1, readout_index)
+        if rows[i]["class"] in config_classes and rows[i].get("decoded", {}).get("subtype") == "ST"
+    ]
     if not store_configs:
         raise ValueError("output readback configuration is not explicit in the short kernel")
     readback_ops = [asm[store_configs[-1]], asm[readout_index]]
@@ -137,22 +145,46 @@ def extract_primitive_program(module: Any, *, target: str,
         # operands, side effects and memory clobbers. Shared code must not invent a host ISA.
         copy(completion)
         body.add_op(llvm.ReturnOp())
-        return llvm.FuncOp(symbol, llvm.LLVMFunctionType([value.type for value in block.args]),
-                           linkage=llvm.LinkageAttr("external"), body=Region([body]))
+        return llvm.FuncOp(
+            symbol,
+            llvm.LLVMFunctionType([value.type for value in block.args]),
+            linkage=llvm.LinkageAttr("external"),
+            body=Region([body]),
+        )
 
     setup, body, readback = (f"{symbol_prefix}_{suffix}" for suffix in ("setup", "body", "readback"))
-    result = ModuleOp([make(setup, operations[:source_start]),
-                       make(body, asm[timed_start:timed_end + 1]), make(readback, readback_ops)])
+    result = ModuleOp(
+        [
+            make(setup, operations[:source_start]),
+            make(body, asm[timed_start : timed_end + 1]),
+            make(readback, readback_ops),
+        ]
+    )
     result.verify()
-    return PrimitiveProbeProgram(result, setup, body, readback, len(block.args),
-                                 primitive["domain_digest"], (start, end), completion_index,
-                                 include_operand_movement, tuple(range(timed_start, timed_end + 1)))
+    return PrimitiveProbeProgram(
+        result,
+        setup,
+        body,
+        readback,
+        len(block.args),
+        primitive["domain_digest"],
+        (start, end),
+        completion_index,
+        include_operand_movement,
+        tuple(range(timed_start, timed_end + 1)),
+    )
 
 
-def render_primitive_host_wrapper(program: PrimitiveProbeProgram, *,
-                                   declarations: str, argument_expressions: Sequence[str],
-                                   cycle_reader: str, verify_call: str,
-                                   before_measurement: str = "", after_measurement: str = "") -> str:
+def render_primitive_host_wrapper(
+    program: PrimitiveProbeProgram,
+    *,
+    declarations: str,
+    argument_expressions: Sequence[str],
+    cycle_reader: str,
+    verify_call: str,
+    before_measurement: str = "",
+    after_measurement: str = "",
+) -> str:
     """Render a diagnostic C main: setup, warm body, measured body, readback and correctness.
 
     ``declarations`` supplies the host adapter's target timer include and initialized buffers.

@@ -4,6 +4,7 @@ Element widths come from the format registry (``_dtype_bits``); store sizes come
 facts (``_operand_store_bytes``, ``_accumulator_capacity_elems``); ``capacity_fit`` is the obligation a
 mesh layer is checked against and ``_capacity_fit_tile`` the blocking that discharges it.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,11 +23,12 @@ def _dtype_bits(tok: str | None) -> int:
     t = str(tok)
     try:
         from ..runtime.fp8_formats import storage_bits
+
         return storage_bits(t)
     except Exception:  # noqa: BLE001 — not a registered float format: try the integer spelling
         pass
     tail = ""
-    for ch in reversed(t):                    # trailing digit run, structurally (no regex)
+    for ch in reversed(t):  # trailing digit run, structurally (no regex)
         if not ch.isdigit():
             break
         tail = ch + tail
@@ -61,6 +63,7 @@ def _operand_store_bytes(target: str) -> int | None:
        widths, so the answers are the same there and no longer depend on a spelling.
     """
     from ..targetgen.rtl import mlc_bridge as _mb
+
     try:
         caps = _mb.discovered_capacities(target)
         if caps and caps.get("operand_bytes"):
@@ -69,17 +72,20 @@ def _operand_store_bytes(target: str) -> int | None:
         pass
     try:
         from ..targetgen.corpora import experiment_for
+
         prefix = getattr(experiment_for(target), "operand_store", None)
         if prefix:
             banks = _mb.discovered_memories(target) or []
-            total = sum(int(b["depth"]) * int(b["row_bytes"]) for b in banks
-                        if str(b.get("name", "")).startswith(prefix))
+            total = sum(
+                int(b["depth"]) * int(b["row_bytes"]) for b in banks if str(b.get("name", "")).startswith(prefix)
+            )
             if total:
                 return total
     except Exception:  # noqa: BLE001 — no descriptor / no discovery → fall through to facts
         pass
     try:
         from ..targetgen import address_space as _as
+
         resolved = _as.operand_store(_as.derive_address_space(target))
     except Exception:  # noqa: BLE001 — no facts bundle → capacity unknown, caller falls back
         return None
@@ -113,6 +119,7 @@ def _accumulator_capacity_elems(target: str, accum_dtype: str | None) -> int | N
     failed for want of a measurement, not for a wrong answer.
     """
     from ..targetgen.rtl import mlc_bridge as _mb
+
     try:
         caps = _mb.discovered_capacities(target) or {}
     except Exception:  # noqa: BLE001 -- mlc unavailable => undecidable, never assumed
@@ -139,18 +146,20 @@ def declared_primitive_tile(package: str | Path | None) -> tuple[int, int, int] 
         return None
     try:
         import yaml as _yaml
+
         man = Path(package) / "manifest.yaml"
         if not man.is_file():
             return None
-        t = ((_yaml.safe_load(man.read_text(encoding="utf-8")) or {}).get("primitive_tile") or {})
+        t = (_yaml.safe_load(man.read_text(encoding="utf-8")) or {}).get("primitive_tile") or {}
         m, k, n = int(t.get("m") or 0), int(t.get("k") or 0), int(t.get("n") or 0)
         return (m, k, n) if m > 0 and k > 0 and n > 0 else None
     except Exception:  # noqa: BLE001 -- an unreadable/absent declaration is simply no declaration
         return None
 
 
-def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int,
-                       acc_elems: int | None = None) -> tuple[int, int, int, int]:
+def _capacity_fit_tile(
+    M: int, K: int, N: int, D: int, cap_elems: int, acc_elems: int | None = None
+) -> tuple[int, int, int, int]:
     """Shrink a matmul (M,K,N) to the largest D-aligned tile that fits on chip, and return
     (mt,kt,nt,n_tiles) where n_tiles is how many such tiles cover the layer.
 
@@ -164,6 +173,7 @@ def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int,
     only dimension left to give. That is why M is no longer unconditionally whole -- but only when an
     accumulator bound is known AND the output actually exceeds it, so a caller that passes no
     ``acc_elems`` gets exactly the previous extents. Pure arithmetic, target-agnostic."""
+
     def _half(x):
         return max(D, (x // 2 // D) * D or D)
 
@@ -184,7 +194,7 @@ def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int,
             elif nt > D:
                 nt = _half(nt)
             else:
-                break                       # already a single tile edge: nothing left to give
+                break  # already a single tile edge: nothing left to give
         elif kt > D or nt > D:
             if nt >= kt and nt > D:
                 nt = _half(nt)
@@ -195,12 +205,14 @@ def _capacity_fit_tile(M: int, K: int, N: int, D: int, cap_elems: int,
         else:
             break
     import math
+
     n_tiles = math.ceil(M / mt) * math.ceil(K / kt) * math.ceil(N / nt)
     return mt, kt, nt, n_tiles
 
 
-def capacity_fit(target: str, m: int, k: int, n: int, operand_dtype: str | None,
-                 tile_dim: int, accum_dtype: str | None = None) -> dict:
+def capacity_fit(
+    target: str, m: int, k: int, n: int, operand_dtype: str | None, tile_dim: int, accum_dtype: str | None = None
+) -> dict:
     """Evaluate the ``capacity_fit`` CONTRACT OBLIGATION for one contraction on ``target``.
 
     ``capacity_fit`` is not a heuristic of ours — it is a predicate the interface contract already
@@ -232,7 +244,7 @@ def capacity_fit(target: str, m: int, k: int, n: int, operand_dtype: str | None,
     None when the target declares no capacity (unknown, never assumed true).
     """
     cap = _operand_store_capacity_elems(target, operand_dtype)
-    need = int(k) * int(n) + int(m) * int(k)      # weight tile + activation tile, both resident
+    need = int(k) * int(n) + int(m) * int(k)  # weight tile + activation tile, both resident
     # The OUTPUT must also be resident, in the accumulator -- a separate and much smaller store. It is
     # reported and conjoined separately because it fails on different layers: the output grows as M*N
     # while the operands grow as K*(M+N), so a wide-output layer overruns the accumulator while its
@@ -245,12 +257,17 @@ def capacity_fit(target: str, m: int, k: int, n: int, operand_dtype: str | None,
     # obligation undecidable -- never "holds". Reporting True because the one term we could evaluate
     # passed would claim an obligation nobody checked.
     _terms = (op_holds, acc_holds)
-    holds = (False if False in _terms else None if None in _terms else True)
-    return {"obligation": "capacity_fit",
-            "holds": holds,
-            "required_elems": need, "capacity_elems": cap,
-            "output_elems": out_need, "accumulator_capacity_elems": acc,
-            "operands_hold": op_holds, "output_holds": acc_holds,
-            "tile_dim": int(tile_dim or 0),
-            "assumes": "operands resident (a streaming lowering needs far less and always fits) "
-                       "and the output tile resident in the accumulator"}
+    holds = False if False in _terms else None if None in _terms else True
+    return {
+        "obligation": "capacity_fit",
+        "holds": holds,
+        "required_elems": need,
+        "capacity_elems": cap,
+        "output_elems": out_need,
+        "accumulator_capacity_elems": acc,
+        "operands_hold": op_holds,
+        "output_holds": acc_holds,
+        "tile_dim": int(tile_dim or 0),
+        "assumes": "operands resident (a streaming lowering needs far less and always fits) "
+        "and the output tile resident in the accumulator",
+    }

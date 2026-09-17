@@ -5,13 +5,13 @@ Linux's measured host-memory state into an explicit, caller-selected admission
 decision.  Experiment drivers choose the limits; keeping that policy outside
 the module avoids baking one machine's capacity into reusable compiler code.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 from time import time
 from typing import Mapping
-
 
 _REQUIRED_FIELDS = ("MemTotal", "MemAvailable", "SwapTotal", "SwapFree")
 
@@ -63,8 +63,7 @@ def parse_proc_meminfo(text: str, *, observed_at_unix_s: float | None = None) ->
     missing = tuple(name for name in _REQUIRED_FIELDS if name not in fields)
     if missing:
         raise ValueError(f"missing /proc/meminfo fields: {', '.join(missing)}")
-    if (fields["MemAvailable"] > fields["MemTotal"]
-            or fields["SwapFree"] > fields["SwapTotal"]):
+    if fields["MemAvailable"] > fields["MemTotal"] or fields["SwapFree"] > fields["SwapTotal"]:
         raise ValueError("inconsistent /proc/meminfo counters")
     return HostMemorySample(
         observed_at_unix_s=time() if observed_at_unix_s is None else observed_at_unix_s,
@@ -86,8 +85,11 @@ class HostResourcePolicy:
     consecutive_violations_to_stop: int = 2
 
     def __post_init__(self) -> None:
-        values = (self.minimum_memory_available_bytes, self.maximum_swap_used_bytes,
-                  self.consecutive_violations_to_stop)
+        values = (
+            self.minimum_memory_available_bytes,
+            self.maximum_swap_used_bytes,
+            self.consecutive_violations_to_stop,
+        )
         if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
             raise TypeError("host resource limits must be integers")
         if min(self.minimum_memory_available_bytes, self.maximum_swap_used_bytes) < 0:
@@ -123,8 +125,11 @@ class HostResourceTripwire:
         reasons = violations(sample, self.policy)
         self.consecutive_violations = self.consecutive_violations + 1 if reasons else 0
         return {
-            "status": ("stop" if reasons and self.consecutive_violations
-                       >= self.policy.consecutive_violations_to_stop else "continue"),
+            "status": (
+                "stop"
+                if reasons and self.consecutive_violations >= self.policy.consecutive_violations_to_stop
+                else "continue"
+            ),
             "reasons": list(reasons),
             "consecutive_violations": self.consecutive_violations,
             "sample": sample.record(),

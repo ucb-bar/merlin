@@ -15,6 +15,7 @@ can contribute formats without editing this tree.
 
 This module is dependency-light (stdlib + the shared YAML/schema helpers) and side-effect free.
 """
+
 from __future__ import annotations
 
 import os
@@ -33,9 +34,7 @@ _ENV_OVERLAY = "MERLIN_QUANT_FORMATS"
 #: Allowed ``kind`` values. ``float_ieee``/``fp_ocp`` elements carry an exp/mantissa split;
 #: ``mx_block``/``nvfp4`` are block-scaled floats whose *element* also carries exp/mantissa;
 #: ``int_affine``/``packed_sub_byte`` are integers (optionally sub-byte packed).
-KINDS: frozenset[str] = frozenset(
-    {"float_ieee", "int_affine", "fp_ocp", "packed_sub_byte", "mx_block", "nvfp4"}
-)
+KINDS: frozenset[str] = frozenset({"float_ieee", "int_affine", "fp_ocp", "packed_sub_byte", "mx_block", "nvfp4"})
 
 #: Kinds whose *element* is a float with an explicit exponent/mantissa split.
 _FLOAT_ELEMENT_KINDS: frozenset[str] = frozenset({"float_ieee", "fp_ocp", "mx_block", "nvfp4"})
@@ -266,7 +265,7 @@ def machine_bits(token: str) -> int | None:
     """
     for prefix in ("float", "uint", "int", "f", "u", "i"):
         if token.startswith(prefix):
-            suffix = token[len(prefix):]
+            suffix = token[len(prefix) :]
             if suffix.isdigit():
                 return int(suffix)
     return None
@@ -281,7 +280,7 @@ def storage_bits(dtype: str) -> int:
     """
     key = str(dtype)
     if key.startswith("torch."):
-        key = key[len("torch."):]
+        key = key[len("torch.") :]
     if has(key):
         fmt = get(key)
         return int(fmt.pack_bits or fmt.element_bits)
@@ -290,7 +289,8 @@ def storage_bits(dtype: str) -> int:
         raise KeyError(
             f"capsule_dram: cannot size dtype {dtype!r} — it is neither a format registered in "
             f"merlin/schemas/quant_formats.registry.yaml ({names()}) nor a machine width; "
-            f"register the format rather than assuming a width")
+            f"register the format rather than assuming a width"
+        )
     return bits
 
 

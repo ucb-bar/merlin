@@ -17,6 +17,7 @@ change and how to validate it, but how to tell from the EMITTED code whether the
 happened. Without it, "did the fork do what it promised" is a judgement call, and the loop credits
 actions that compiled and changed nothing.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -98,17 +99,20 @@ class OptimizationSurface:
 #: Which CCA facet belongs to which scope. Derived from the facet's own meaning rather than declared
 #: per seam: `coverage` is a whole-model claim, `dispatch`/`communication`/`layout` describe a launch
 #: and its traffic, and everything else describes one region's inner loop.
-_FACET_SCOPE = {"coverage": "program", "dispatch": "dispatch",
-                "communication": "dispatch", "layout": "dispatch"}
+_FACET_SCOPE = {"coverage": "program", "dispatch": "dispatch", "communication": "dispatch", "layout": "dispatch"}
 
 
 #: Fallback scope by compiler PHASE, for a seam that governs no CCA axis. Without it those seams
 #: defaulted to "kernel", so a dispatch-phase seam with no axes read as an inner-loop seam -- the
 #: default quietly asserting the narrowest answer where the truth was "not derivable from axes".
 _PHASE_SCOPE = {
-    "frontend": "program", "global": "program",
-    "dispatch": "dispatch", "runtime": "dispatch",
-    "kernel-codegen": "kernel", "memory": "kernel", "emission": "kernel",
+    "frontend": "program",
+    "global": "program",
+    "dispatch": "dispatch",
+    "runtime": "dispatch",
+    "kernel-codegen": "kernel",
+    "memory": "kernel",
+    "emission": "kernel",
 }
 
 
@@ -168,9 +172,10 @@ def build(target: str) -> OptimizationSurface:
                 inspect_emitted=(
                     "re-lift the emitted CCA and compare "
                     f"{sorted(best.intended_facet)} (kernels.action_catalog.achieved_residual)"
-                    if best and best.intended_facet else
-                    "no machine-checkable promise: this seam's effect on the emitted code is not "
-                    "expressible as a CCA axis, so an audit here is prose"),
+                    if best and best.intended_facet
+                    else "no machine-checkable promise: this seam's effect on the emitted code is not "
+                    "expressible as a CCA axis, so an audit here is prose"
+                ),
             )
             entries.append(entry)
             if not axes:
@@ -182,7 +187,12 @@ def build(target: str) -> OptimizationSurface:
     if unreachable:
         notes.append(
             f"{len(unreachable)} axis/axes route for {target} but no region declares them, so an "
-            f"action on them names a seam nobody can point at")
-    return OptimizationSurface(target=target, entries=tuple(entries),
-                               ungoverned=tuple(sorted(ungoverned)),
-                               unreachable_axes=unreachable, notes=tuple(notes))
+            f"action on them names a seam nobody can point at"
+        )
+    return OptimizationSurface(
+        target=target,
+        entries=tuple(entries),
+        ungoverned=tuple(sorted(ungoverned)),
+        unreachable_axes=unreachable,
+        notes=tuple(notes),
+    )

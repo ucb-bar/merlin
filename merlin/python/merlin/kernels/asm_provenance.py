@@ -21,6 +21,7 @@ OTHER side: their steps are stamped unmodifiable because we cannot edit their co
 attribution to a seam, and the difference is stated because a reader who assumed the former would
 believe the tool can localize a codegen bug, which it cannot.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -32,15 +33,25 @@ __all__ = ["RoleProvenance", "provenance_of_role", "provenance_table", "unowned_
 #: live registry: an axis named here that the contract does not classify is a hard error rather than a
 #: silently dead row (see :func:`check_axes_exist`).
 ROLE_AXES: dict[str, tuple[str, ...]] = {
-    "accumulate": ("compute.contraction_form", "compute.accumulator_resident",
-                   "spatial.accumulator_resident", "compute.widening"),
+    "accumulate": (
+        "compute.contraction_form",
+        "compute.accumulator_resident",
+        "spatial.accumulator_resident",
+        "compute.widening",
+    ),
     "operand_load": ("memory.access_pattern", "layout.operand_major", "memory.onchip_resident"),
     "weight_load": ("spatial.dataflow", "layout.prepack_required"),
     "broadcast": ("memory.a_broadcast_vf", "compute.register_block"),
     "readout": ("compute.accumulator_resident", "compute.epilogue"),
     "commit": ("compute.epilogue", "memory.capacity_fit"),
-    "config": ("vector.lmul", "vector.sew", "vector.vl_strategy", "vector.tail",
-               "dispatch.config_fraction", "dispatch.descriptor_reuse"),
+    "config": (
+        "vector.lmul",
+        "vector.sew",
+        "vector.vl_strategy",
+        "vector.tail",
+        "dispatch.config_fraction",
+        "dispatch.descriptor_reuse",
+    ),
     "loop_descriptor": ("dispatch.loop_offloaded", "dispatch.n_dispatches"),
     "sync": ("simt.barriers_in_loop", "dispatch.dma_overlap"),
     "dma": ("memory.dma_pattern", "dispatch.dma_overlap", "dispatch.double_buffered_banks"),
@@ -75,10 +86,14 @@ class RoleProvenance:
         return any(forkable for _s, _f, forkable in self.edit_points)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"role": self.role, "axes": list(self.axes), "regions": list(self.regions),
-                "edit_points": [{"seam": s, "file": f, "forkable_now": k}
-                                for s, f, k in self.edit_points],
-                "actionable": self.actionable, "notes": list(self.notes)}
+        return {
+            "role": self.role,
+            "axes": list(self.axes),
+            "regions": list(self.regions),
+            "edit_points": [{"seam": s, "file": f, "forkable_now": k} for s, f, k in self.edit_points],
+            "actionable": self.actionable,
+            "notes": list(self.notes),
+        }
 
 
 def provenance_of_role(role: str) -> RoleProvenance:
@@ -105,24 +120,31 @@ def provenance_of_role(role: str) -> RoleProvenance:
                 eps.append(row)
     notes: list[str] = []
     if axes and not regs:
-        notes.append(f"role {role!r} feeds {list(axes)} and NO region governs any of them: an "
-                     f"instruction of this role cannot be traced to an owner")
+        notes.append(
+            f"role {role!r} feeds {list(axes)} and NO region governs any of them: an "
+            f"instruction of this role cannot be traced to an owner"
+        )
     if regs and not any(k for _s, _f, k in eps):
-        notes.append(f"every edit point governing {role!r} is a stated GAP: the axis is owned but "
-                     f"nothing can be forked today, so a divergence here is a finding, not a task")
-    return RoleProvenance(role=role, axes=tuple(axes), regions=tuple(sorted(regs)),
-                          edit_points=tuple(eps), notes=tuple(notes))
+        notes.append(
+            f"every edit point governing {role!r} is a stated GAP: the axis is owned but "
+            f"nothing can be forked today, so a divergence here is a finding, not a task"
+        )
+    return RoleProvenance(
+        role=role, axes=tuple(axes), regions=tuple(sorted(regs)), edit_points=tuple(eps), notes=tuple(notes)
+    )
 
 
 def provenance_table() -> dict[str, dict]:
     """The whole chain, for every role in the vocabulary."""
     from merlin.kernels import roles as _roles
+
     return {r: provenance_of_role(r).to_dict() for r in sorted(_roles.ROLES)}
 
 
 def unowned_roles() -> tuple[str, ...]:
     """Roles no compiler region governs — instructions we can read but cannot attribute to an owner."""
     from merlin.kernels import roles as _roles
+
     return tuple(r for r in sorted(_roles.ROLES) if not provenance_of_role(r).regions)
 
 
@@ -133,12 +155,15 @@ def check_axes_exist() -> list[str]:
     resolve to nothing downstream, which looks like provenance and is not.
     """
     from merlin.kernels.cca_contract import FIELD_REGISTRY
+
     problems = []
     for role, axes in sorted(ROLE_AXES.items()):
         for axis in axes:
             if axis not in FIELD_REGISTRY:
-                problems.append(f"role {role!r} names axis {axis!r}, which the CCA contract does not "
-                                f"classify — a dead row that reads as coverage")
+                problems.append(
+                    f"role {role!r} names axis {axis!r}, which the CCA contract does not "
+                    f"classify — a dead row that reads as coverage"
+                )
     return problems
 
 
@@ -156,18 +181,24 @@ class Opportunity:
     """One candidate optimization, with the observation that justifies it and the seam that does it."""
 
     axis: str
-    observation: str                 # the measured shape in the assembly
-    change: str                      # what to try
+    observation: str  # the measured shape in the assembly
+    change: str  # what to try
     seam: str = ""
     forkable_now: bool = False
     #: forkable | seam_is_a_gap | metric_not_a_lever | ungoverned — see :func:`_seam_for`.
     status: str = "ungoverned"
-    confidence: str = "medium"       # how directly the assembly supports it
+    confidence: str = "medium"  # how directly the assembly supports it
 
     def to_dict(self) -> dict[str, Any]:
-        return {"axis": self.axis, "observation": self.observation, "change": self.change,
-                "seam": self.seam, "forkable_now": self.forkable_now, "status": self.status,
-                "confidence": self.confidence}
+        return {
+            "axis": self.axis,
+            "observation": self.observation,
+            "change": self.change,
+            "seam": self.seam,
+            "forkable_now": self.forkable_now,
+            "status": self.status,
+            "confidence": self.confidence,
+        }
 
 
 def _seam_for(axis: str) -> tuple[str, bool, str]:
@@ -199,8 +230,7 @@ def _seam_for(axis: str) -> tuple[str, bool, str]:
 _CONTRACTION_FAMILIES = frozenset({"contraction", "attention"})
 
 
-def opportunities(hist: dict, *, engine: str = "", total: int = 0,
-                  family: str | None = None) -> list[Opportunity]:
+def opportunities(hist: dict, *, engine: str = "", total: int = 0, family: str | None = None) -> list[Opportunity]:
     """Candidate optimizations implied by one stream's role histogram.
 
     Every rule below is a SHAPE in the assembly, not a heuristic about what is usually good: a stream
@@ -215,66 +245,98 @@ def opportunities(hist: dict, *, engine: str = "", total: int = 0,
 
     def _add(axis, observation, change, confidence="medium"):
         seam, forkable, status = _seam_for(axis)
-        out.append(Opportunity(axis=axis, observation=observation, change=change, seam=seam,
-                               forkable_now=forkable, status=status, confidence=confidence))
+        out.append(
+            Opportunity(
+                axis=axis,
+                observation=observation,
+                change=change,
+                seam=seam,
+                forkable_now=forkable,
+                status=status,
+                confidence=confidence,
+            )
+        )
 
     if acc == 0 and mul_like > 0 and family in _CONTRACTION_FAMILIES:
-        _add("compute.contraction_form",
-             f"a {family} region with {mul_like} elementwise op(s) and ZERO multiply-accumulate: the "
-             f"arithmetic is a multiply followed by an add, not a fused MAC",
-             "select the fused multiply-accumulate form so each step advances the partial sum in one "
-             "instruction instead of two", confidence="high")
+        _add(
+            "compute.contraction_form",
+            f"a {family} region with {mul_like} elementwise op(s) and ZERO multiply-accumulate: the "
+            f"arithmetic is a multiply followed by an add, not a fused MAC",
+            "select the fused multiply-accumulate form so each step advances the partial sum in one "
+            "instruction instead of two",
+            confidence="high",
+        )
     elif acc == 0 and mul_like > 0 and family is None and engine != "vector":
         # No family given, so this MIGHT be an unfused contraction or might be an activation kernel
         # doing exactly what it should. Reported at low confidence with the ambiguity named, never as
         # a recommendation -- proposing a contraction rewrite for an activation is worse than silence.
-        _add("compute.contraction_form",
-             f"{mul_like} elementwise op(s) and ZERO multiply-accumulate, and the region's family is "
-             f"UNKNOWN: this is either an unfused contraction or an elementwise kernel behaving "
-             f"correctly, and a role histogram cannot tell them apart",
-             "establish the region's semantic family, then re-ask — if it contracts, fuse the "
-             "multiply-add", confidence="low")
+        _add(
+            "compute.contraction_form",
+            f"{mul_like} elementwise op(s) and ZERO multiply-accumulate, and the region's family is "
+            f"UNKNOWN: this is either an unfused contraction or an elementwise kernel behaving "
+            f"correctly, and a role histogram cannot tell them apart",
+            "establish the region's semantic family, then re-ask — if it contracts, fuse the multiply-add",
+            confidence="low",
+        )
     offloaded = g("loop_descriptor", 0) > 0
     if acc and not g("readout", 0) and not offloaded:
-        _add("compute.accumulator_resident",
-             f"{acc} accumulate(s) and NO readout: the accumulator is never drained in this stream",
-             "check the epilogue actually extracts the result — an accumulate-without-extraction is "
-             "the documented way a kernel audits clean while computing nothing usable",
-             confidence="high")
+        _add(
+            "compute.accumulator_resident",
+            f"{acc} accumulate(s) and NO readout: the accumulator is never drained in this stream",
+            "check the epilogue actually extracts the result — an accumulate-without-extraction is "
+            "the documented way a kernel audits clean while computing nothing usable",
+            confidence="high",
+        )
     if shuffle and acc and shuffle > 2 * acc:
-        _add("compute.register_block",
-             f"{shuffle} operand shuffle(s) (broadcast+move) against {acc} accumulate(s): the stream "
-             f"spends more instructions moving operands than multiplying them",
-             "raise the register block so one loaded panel feeds several accumulators, instead of "
-             "rebuilding the operand vector per step", confidence="high")
+        _add(
+            "compute.register_block",
+            f"{shuffle} operand shuffle(s) (broadcast+move) against {acc} accumulate(s): the stream "
+            f"spends more instructions moving operands than multiplying them",
+            "raise the register block so one loaded panel feeds several accumulators, instead of "
+            "rebuilding the operand vector per step",
+            confidence="high",
+        )
     if shuffle and acc == 0 and shuffle > 8:
         # Cites the metric as the OBSERVATION and names the lever as the change. a_broadcast_vf is
         # classified METRIC: it diagnoses the shape, it is not a dial anyone can turn.
-        _add("compute.register_block",
-             f"{shuffle} operand shuffle(s) and no accumulate at all (memory.a_broadcast_vf shape): "
-             f"this stream is a data ladder rebuilding operands rather than computing",
-             "broadcast the scalar operand into the MAC and block the register tile so one loaded "
-             "panel feeds several accumulators", confidence="medium")
+        _add(
+            "compute.register_block",
+            f"{shuffle} operand shuffle(s) and no accumulate at all (memory.a_broadcast_vf shape): "
+            f"this stream is a data ladder rebuilding operands rather than computing",
+            "broadcast the scalar operand into the MAC and block the register tile so one loaded "
+            "panel feeds several accumulators",
+            confidence="medium",
+        )
     cfg = g("config", 0)
     if cfg and acc and cfg > acc:
-        _add("dispatch.descriptor_reuse",
-             f"{cfg} configuration instruction(s) against {acc} accumulate(s): endpoint state is being "
-             f"re-set more often than it is used",
-             "hoist the configuration out of the loop so the state is set once and inherited",
-             confidence="high")
+        _add(
+            "dispatch.descriptor_reuse",
+            f"{cfg} configuration instruction(s) against {acc} accumulate(s): endpoint state is being "
+            f"re-set more often than it is used",
+            "hoist the configuration out of the loop so the state is set once and inherited",
+            confidence="high",
+        )
     if engine == "spatial" and acc and not offloaded:
-        _add("dispatch.loop_offloaded",
-             f"{acc} accumulate(s) issued command-by-command with no loop descriptor",
-             "hand the loop nest to the endpoint's own sequencer instead of issuing every step",
-             confidence="medium")
+        _add(
+            "dispatch.loop_offloaded",
+            f"{acc} accumulate(s) issued command-by-command with no loop descriptor",
+            "hand the loop nest to the endpoint's own sequencer instead of issuing every step",
+            confidence="medium",
+        )
     if engine == "simt" and g("sync", 0) and acc:
-        _add("simt.barriers_in_loop",
-             f"{g('sync', 0)} barrier/fence(s) alongside {acc} accumulate(s)",
-             "hoist barriers out of the reduction loop — one inside says the engine cannot hold its "
-             "state across the reduction", confidence="medium")
+        _add(
+            "simt.barriers_in_loop",
+            f"{g('sync', 0)} barrier/fence(s) alongside {acc} accumulate(s)",
+            "hoist barriers out of the reduction loop — one inside says the engine cannot hold its "
+            "state across the reduction",
+            confidence="medium",
+        )
     if total and g("control", 0) > total * 0.25:
-        _add("envelope.calls_in_loop",
-             f"{g('control', 0)} of {total} instructions are control flow ({g('control', 0)/total:.0%})",
-             "the envelope dominates: check for a per-tile runtime call or an unfused loop nest — "
-             "measured elsewhere, a per-tile copy was ~77% of everything retired", confidence="medium")
+        _add(
+            "envelope.calls_in_loop",
+            f"{g('control', 0)} of {total} instructions are control flow ({g('control', 0) / total:.0%})",
+            "the envelope dominates: check for a per-tile runtime call or an unfused loop nest — "
+            "measured elsewhere, a per-tile copy was ~77% of everything retired",
+            confidence="medium",
+        )
     return out

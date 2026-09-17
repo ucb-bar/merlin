@@ -31,17 +31,27 @@ real enough to emit from, which is the precondition for any downstream pass chan
 contraction is added first, so a tie leaves the workload on the vector path. That direction is deliberate:
 the vector path is the control, and a coin-flip should not move work onto a unit whose advantage is unproven.
 """
+
 from __future__ import annotations
 
 import time
 from collections.abc import Callable, Mapping, Sequence
-from pathlib import Path
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
-__all__ = ["ContractionChoice", "MATRIX", "VECTOR", "build_contraction_egraph", "egraph_selector",
-           "extract_contraction_choice", "contraction_to_call_pattern", "for_rewrite", "measured_cost_of",
-           "saturate_contraction"]
+__all__ = [
+    "ContractionChoice",
+    "MATRIX",
+    "VECTOR",
+    "build_contraction_egraph",
+    "egraph_selector",
+    "extract_contraction_choice",
+    "contraction_to_call_pattern",
+    "for_rewrite",
+    "measured_cost_of",
+    "saturate_contraction",
+]
 
 #: The two alternatives, named so a caller never compares against a spelling.
 VECTOR = "vector"
@@ -70,11 +80,17 @@ class ContractionChoice:
         return self.build_seconds + self.extract_seconds
 
     def to_dict(self) -> dict[str, Any]:
-        return {"chosen": self.chosen, "costs": dict(self.costs),
-                "m": self.m, "n": self.n, "k": self.k,
-                "build_seconds": round(self.build_seconds, 6),
-                "extract_seconds": round(self.extract_seconds, 6),
-                "total_seconds": round(self.total_seconds, 6), "gap": self.gap}
+        return {
+            "chosen": self.chosen,
+            "costs": dict(self.costs),
+            "m": self.m,
+            "n": self.n,
+            "k": self.k,
+            "build_seconds": round(self.build_seconds, 6),
+            "extract_seconds": round(self.extract_seconds, 6),
+            "total_seconds": round(self.total_seconds, 6),
+            "gap": self.gap,
+        }
 
 
 def _context():
@@ -88,8 +104,7 @@ def _context():
     from xdsl.dialects import arith, builtin, equivalence, func, linalg, tensor
 
     ctx = Context(allow_unregistered=True)
-    for dialect in (builtin.Builtin, equivalence.Equivalence, func.Func, linalg.Linalg,
-                    arith.Arith, tensor.Tensor):
+    for dialect in (builtin.Builtin, equivalence.Equivalence, func.Func, linalg.Linalg, arith.Arith, tensor.Tensor):
         ctx.load_dialect(dialect)
     return ctx
 
@@ -107,15 +122,18 @@ def build_contraction_egraph(op, *, symbol: str, costs: Mapping[str, int]):
     the eqsat passes require every operand of an alternative to be defined inside the graph, and a clone
     still referring to the original module's values is not.
     """
-    from xdsl.dialects import equivalence as E, func
+    from xdsl.dialects import equivalence as E
+    from xdsl.dialects import func
     from xdsl.dialects.builtin import IntAttr, ModuleOp
     from xdsl.ir import Block, Region
 
     operands = list(op.operands)
     if len(operands) != 3 or len(op.results) != 1:
-        raise ValueError(f"expected a 3-operand, 1-result contraction, got {len(operands)} and "
-                         f"{len(op.results)}; an e-class over a differently-shaped op would extract to "
-                         "something the compile path cannot emit")
+        raise ValueError(
+            f"expected a 3-operand, 1-result contraction, got {len(operands)} and "
+            f"{len(op.results)}; an e-class over a differently-shaped op would extract to "
+            "something the compile path cannot emit"
+        )
 
     started = time.perf_counter()
     arg_types = [o.type for o in operands]
@@ -146,8 +164,7 @@ def build_contraction_egraph(op, *, symbol: str, costs: Mapping[str, int]):
     return ModuleOp([fn, decl]), time.perf_counter() - started
 
 
-def extract_contraction_choice(op, *, symbol: str, costs: Mapping[str, int],
-                               shape=None) -> ContractionChoice:
+def extract_contraction_choice(op, *, symbol: str, costs: Mapping[str, int], shape=None) -> ContractionChoice:
     """Build the e-graph for ``op`` and report which implementation survived extraction.
 
     The winner is READ BACK from the extracted IR — whether a ``func.call`` or a ``linalg.generic`` remains
@@ -170,9 +187,17 @@ def extract_contraction_choice(op, *, symbol: str, costs: Mapping[str, int],
     ranked = {key: int(costs[key]) for key in (VECTOR, MATRIX) if key in costs}
     if not ranked:
         return ContractionChoice(
-            chosen=None, costs=ranked, m=m, n=n, k=k, build_seconds=build_s,
-            gap=("neither alternative carries a cost, so extraction has nothing to minimise; the caller "
-                 "must fall back rather than route on no information"))
+            chosen=None,
+            costs=ranked,
+            m=m,
+            n=n,
+            k=k,
+            build_seconds=build_s,
+            gap=(
+                "neither alternative carries a cost, so extraction has nothing to minimise; the caller "
+                "must fall back rather than route on no information"
+            ),
+        )
 
     ctx = _context()
     started = time.perf_counter()
@@ -182,8 +207,7 @@ def extract_contraction_choice(op, *, symbol: str, costs: Mapping[str, int],
 
     survivors = {op_.name for op_ in module.walk()}
     has_call = any(isinstance(o, _func.CallOp) for o in module.walk())
-    has_generic = any(isinstance(o, _GenericOp) or o.name == "linalg.generic"
-                      for o in module.walk())
+    has_generic = any(isinstance(o, _GenericOp) or o.name == "linalg.generic" for o in module.walk())
     chosen: str | None
     if has_call and not has_generic:
         chosen = MATRIX
@@ -193,15 +217,28 @@ def extract_contraction_choice(op, *, symbol: str, costs: Mapping[str, int],
         # Both or neither survived: extraction did not resolve the class, and guessing which the caller
         # meant would silently commit to one.
         chosen = None
-    gap = None if chosen else (f"extraction left {'both' if has_call and has_generic else 'neither'} "
-                               f"alternative in the IR (ops: {sorted(survivors)})")
-    return ContractionChoice(chosen=chosen, costs=ranked, m=m, n=n, k=k,
-                             build_seconds=build_s, extract_seconds=extract_s, gap=gap)
+    gap = (
+        None
+        if chosen
+        else (
+            f"extraction left {'both' if has_call and has_generic else 'neither'} "
+            f"alternative in the IR (ops: {sorted(survivors)})"
+        )
+    )
+    return ContractionChoice(
+        chosen=chosen, costs=ranked, m=m, n=n, k=k, build_seconds=build_s, extract_seconds=extract_s, gap=gap
+    )
 
 
-def measured_cost_of(cost_model, *, vector_unit: str, matrix_unit: str,
-                     op: str = "matmul", in_fmt: str = "int8", weight_fmt: str = "int8"
-                     ) -> Callable[[Any, str], "int | None"]:
+def measured_cost_of(
+    cost_model,
+    *,
+    vector_unit: str,
+    matrix_unit: str,
+    op: str = "matmul",
+    in_fmt: str = "int8",
+    weight_fmt: str = "int8",
+) -> Callable[[Any, str], "int | None"]:
     """A ``cost_of`` backed by :class:`routing.MeasuredCost`, which is the cost model that means something.
 
     The crude alternative — MACs for the vector unit, tile occupancy for the matrix unit, with a rate picked
@@ -219,25 +256,33 @@ def measured_cost_of(cost_model, *, vector_unit: str, matrix_unit: str,
     from . import routing as _routing
 
     def cost_of(shape, which: str) -> "int | None":
-        demand = _routing.OpDemand(op=op, in_fmt=in_fmt, weight_fmt=weight_fmt, site="egraph",
-                                   m=int(shape.parallel[0]), n=int(shape.parallel[1]),
-                                   k=int(shape.reduction[0]))
+        demand = _routing.OpDemand(
+            op=op,
+            in_fmt=in_fmt,
+            weight_fmt=weight_fmt,
+            site="egraph",
+            m=int(shape.parallel[0]),
+            n=int(shape.parallel[1]),
+            k=int(shape.reduction[0]),
+        )
         unit = vector_unit if which == VECTOR else matrix_unit
         kind = "vector" if which == VECTOR else "matrix"
-        got = cost_model(demand, _routing.Candidate(unit=unit, kind=kind, acc="int32",
-                                                    exposure="derived"))
+        got = cost_model(demand, _routing.Candidate(unit=unit, kind=kind, acc="int32", exposure="derived"))
         if got is None:
             return None
         from .persistent_equivalence import COST_SCALE
+
         return int(round(float(got) * COST_SCALE))
 
     return cost_of
 
 
-def egraph_selector(cost_of: Callable[[Any, str], "int | None"], *,
-                    symbol: str = "merlin_opu_gemm_i8",
-                    record: "list[ContractionChoice] | None" = None
-                    ) -> Callable[[Any, Any], bool]:
+def egraph_selector(
+    cost_of: Callable[[Any, str], "int | None"],
+    *,
+    symbol: str = "merlin_opu_gemm_i8",
+    record: "list[ContractionChoice] | None" = None,
+) -> Callable[[Any, Any], bool]:
     """A ``select`` callable for the rewrite, backed by extraction from an e-graph.
 
     ``cost_of(shape, which)`` returns the scaled integer cost of implementing ``shape`` on ``which``
@@ -252,6 +297,7 @@ def egraph_selector(cost_of: Callable[[Any, str], "int | None"], *,
     ``record`` collects every :class:`ContractionChoice`, which is how a report can state what the decision
     cost in compile time instead of leaving it unmeasured.
     """
+
     def select(op, shape) -> bool:
         costs = {}
         for which in (VECTOR, MATRIX):
@@ -266,8 +312,9 @@ def egraph_selector(cost_of: Callable[[Any, str], "int | None"], *,
     return select
 
 
-def for_rewrite(op_shape_select: Callable[[Any, Any], bool],
-                candidates: Sequence[tuple[Any, Any]]) -> Callable[[Any], bool]:
+def for_rewrite(
+    op_shape_select: Callable[[Any, Any], bool], candidates: Sequence[tuple[Any, Any]]
+) -> Callable[[Any], bool]:
     """Adapt a ``(op, shape)`` decision into the shape-only ``select`` the rewrite takes.
 
     The rewrite deliberately passes only the shape, so that it cannot be handed a decision procedure that
@@ -360,16 +407,19 @@ def _resolve_mlir_opt() -> str:
     got = os.environ.get(_MLIR_OPT_ENV)
     if not got or not shutil.which(got):
         from ..llvmlower import toolchain
+
         candidate = Path(toolchain.clang()).with_name("mlir-opt") if toolchain.available() else None
         if candidate is not None and candidate.is_file():
             got = str(candidate)
     if not got or not shutil.which(got):
         raise FileNotFoundError(
             f"saturation needs mlir-opt (the PDL to PDL-interp conversion shells out to it). Set "
-            f"${_MLIR_OPT_ENV} to one, or make the pinned toolchain available")
+            f"${_MLIR_OPT_ENV} to one, or make the pinned toolchain available"
+        )
     os.environ[_MLIR_OPT_ENV] = got
 
     from xdsl.transforms import mlir_opt as _mlir_opt
+
     _mlir_opt.DEFAULT_MLIR_OPT_EXECUTABLE = got
     field = _mlir_opt.MLIROptPass.__dataclass_fields__.get("executable")
     if field is not None:
@@ -378,7 +428,8 @@ def _resolve_mlir_opt() -> str:
     if not shutil.which(probe.executable):
         raise FileNotFoundError(
             f"the eqsat PDL pass still resolves mlir-opt to {probe.executable!r}, which is not runnable; "
-            f"set ${_MLIR_OPT_ENV} before importing xdsl")
+            f"set ${_MLIR_OPT_ENV} before importing xdsl"
+        )
     return got
 
 
@@ -392,7 +443,8 @@ def saturate_contraction(op, *, symbol: str, max_iterations: int = 4):
     ``n_alternatives`` is read from the e-class in the produced IR, so "the graph grew" is a measurement of
     the output rather than an assumption about what the pass does.
     """
-    from xdsl.dialects import equivalence as E, func
+    from xdsl.dialects import equivalence as E
+    from xdsl.dialects import func
     from xdsl.dialects.builtin import ModuleOp
     from xdsl.ir import Block, Region
     from xdsl.parser import Parser
@@ -400,10 +452,10 @@ def saturate_contraction(op, *, symbol: str, max_iterations: int = 4):
     # BEFORE importing the pass: it captures its mlir-opt at import time.
     _resolve_mlir_opt()
     from xdsl.transforms import apply_eqsat_pdl
+
     operands = list(op.operands)
     if len(operands) != 3 or len(op.results) != 1:
-        raise ValueError(f"expected a 3-operand, 1-result contraction, got {len(operands)} and "
-                         f"{len(op.results)}")
+        raise ValueError(f"expected a 3-operand, 1-result contraction, got {len(operands)} and {len(op.results)}")
 
     started = time.perf_counter()
     arg_types = [o.type for o in operands]
@@ -428,6 +480,7 @@ def saturate_contraction(op, *, symbol: str, max_iterations: int = 4):
     # `xdsl-opt` loads every dialect it knows, which is why the same pipeline works there and not here.
     ctx = _context()
     from xdsl.dialects import eqsat_pdl_interp, pdl, pdl_interp
+
     for dialect in (pdl.PDL, pdl_interp.PDLInterp, eqsat_pdl_interp.EqSatPDLInterp):
         ctx.load_dialect(dialect)
     pattern = Parser(ctx, contraction_to_call_pattern(symbol)).parse_module()

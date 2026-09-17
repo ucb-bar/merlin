@@ -18,6 +18,7 @@ target that accelerates only some ops must still be able to compile the rest.
 Nothing here is target-specific: coverage is read from the resolved target's dialect plan, so a
 newly generated target routes correctly with no edit.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -34,9 +35,13 @@ STAGED_MATERIALIZABLE: frozenset[str] = frozenset({"matmul", "elementwise"})
 
 # Payload op classes, keyed by the linalg op that expresses them, matching what the contract and
 # interface stages actually look for (`input_workload.find_matmuls` / `find_elementwise`).
-_MATMUL_OPS: frozenset[str] = frozenset({
-    "linalg.matmul", "linalg.quantized_matmul", "linalg.batch_matmul",
-})
+_MATMUL_OPS: frozenset[str] = frozenset(
+    {
+        "linalg.matmul",
+        "linalg.quantized_matmul",
+        "linalg.batch_matmul",
+    }
+)
 
 
 class RoutingError(RuntimeError):
@@ -47,15 +52,20 @@ class RoutingError(RuntimeError):
 class Route:
     """Which path was chosen, and the evidence for it."""
 
-    kind: str                                  # "staged" | "llvm"
+    kind: str  # "staged" | "llvm"
     reason: str
-    payload: tuple[str, ...] = ()              # op classes found in the module
-    covered: tuple[str, ...] = ()              # op classes the target's plan declares
-    materializable: tuple[str, ...] = ()       # covered AND buildable by the interface layer
+    payload: tuple[str, ...] = ()  # op classes found in the module
+    covered: tuple[str, ...] = ()  # op classes the target's plan declares
+    materializable: tuple[str, ...] = ()  # covered AND buildable by the interface layer
 
     def as_dict(self) -> dict[str, Any]:
-        return {"kind": self.kind, "reason": self.reason, "payload": list(self.payload),
-                "covered": list(self.covered), "materializable": list(self.materializable)}
+        return {
+            "kind": self.kind,
+            "reason": self.reason,
+            "payload": list(self.payload),
+            "covered": list(self.covered),
+            "materializable": list(self.materializable),
+        }
 
 
 @dataclass
@@ -64,8 +74,8 @@ class CoreCompileResult:
 
     route: Route
     target: str
-    staged: Any | None = None                  # xdsl_dialects.lowering.LoweringResult
-    llvm: Any | None = None                    # llvmlower.lower.LowerResult
+    staged: Any | None = None  # xdsl_dialects.lowering.LoweringResult
+    llvm: Any | None = None  # llvmlower.lower.LowerResult
     notes: list[str] = field(default_factory=list)
 
 
@@ -136,8 +146,9 @@ def plan_interface_ops(plan: dict[str, Any] | None) -> tuple[str, ...]:
     return tuple(sorted(out))
 
 
-def _resolve_plan(target: str | None, target_package: Any | None,
-                  dialect_plan: dict[str, Any] | None) -> tuple[str, dict[str, Any] | None]:
+def _resolve_plan(
+    target: str | None, target_package: Any | None, dialect_plan: dict[str, Any] | None
+) -> tuple[str, dict[str, Any] | None]:
     """(target name, dialect plan) from whichever of the three inputs was supplied."""
     if dialect_plan is not None and target is not None:
         return target, dialect_plan
@@ -148,6 +159,7 @@ def _resolve_plan(target: str | None, target_package: Any | None,
     if dialect_plan is not None:
         return target, dialect_plan
     from merlin.targetgen.target_registry import resolve
+
     try:
         info = resolve(target)
     except Exception as exc:  # noqa: BLE001 — an unresolvable target is a routing failure
@@ -165,11 +177,13 @@ def _resolve_plan(target: str | None, target_package: Any | None,
             f"({type(exc).__name__}: {exc}). Routing cannot tell 'this target accelerates nothing' "
             f"from 'the plan is somewhere else', and guessing would silently compile the payload as "
             f"generic computation. Pass target_package= (merlin.targetgen.registry.load_target) or "
-            f"an explicit dialect_plan=.") from exc
+            f"an explicit dialect_plan=."
+        ) from exc
 
 
-def choose_route(module, *, target: str | None = None, target_package: Any | None = None,
-                 dialect_plan: dict[str, Any] | None = None) -> Route:
+def choose_route(
+    module, *, target: str | None = None, target_package: Any | None = None, dialect_plan: dict[str, Any] | None = None
+) -> Route:
     """Decide the path WITHOUT compiling — the inspectable half of :func:`compile_core_mlir`."""
     name, plan = _resolve_plan(target, target_package, dialect_plan)
     payload = payload_classes(module)
@@ -181,42 +195,62 @@ def choose_route(module, *, target: str | None = None, target_package: Any | Non
     unstaged = [p for p in payload if p not in materializable]
     if unstaged:
         return Route(
-            kind="llvm", payload=payload, covered=covered, materializable=materializable,
-            reason=(f"target {name!r} cannot materialize {', '.join(unstaged)} through the staged "
-                    f"pipeline (declared coverage: {list(covered) or 'none'}; interface-buildable: "
-                    f"{list(materializable) or 'none'}) — compiling as generic computation"))
+            kind="llvm",
+            payload=payload,
+            covered=covered,
+            materializable=materializable,
+            reason=(
+                f"target {name!r} cannot materialize {', '.join(unstaged)} through the staged "
+                f"pipeline (declared coverage: {list(covered) or 'none'}; interface-buildable: "
+                f"{list(materializable) or 'none'}) — compiling as generic computation"
+            ),
+        )
     return Route(
-        kind="staged", payload=payload, covered=covered, materializable=materializable,
-        reason=f"target {name!r} materializes {', '.join(payload)} through its own dialect")
+        kind="staged",
+        payload=payload,
+        covered=covered,
+        materializable=materializable,
+        reason=f"target {name!r} materializes {', '.join(payload)} through its own dialect",
+    )
 
 
-def compile_core_mlir(module, *, target: str | None = None, target_package: Any | None = None,
-                      dialect_plan: dict[str, Any] | None = None,
-                      target_contract: dict[str, Any] | None = None,
-                      backend: str | None = None,
-                      workdir: str | Path | None = None,
-                      **llvm_kwargs: Any) -> CoreCompileResult:
+def compile_core_mlir(
+    module,
+    *,
+    target: str | None = None,
+    target_package: Any | None = None,
+    dialect_plan: dict[str, Any] | None = None,
+    target_contract: dict[str, Any] | None = None,
+    backend: str | None = None,
+    workdir: str | Path | None = None,
+    **llvm_kwargs: Any,
+) -> CoreCompileResult:
     """Compile a generic-MLIR module for ``target`` down whichever path can carry it.
 
     ``workdir`` is required only for the LLVM path (it emits files). Keyword arguments are forwarded
     to :func:`llvmlower.lower.lower_model` when that path is chosen.
     """
-    route = choose_route(module, target=target, target_package=target_package,
-                         dialect_plan=dialect_plan)
+    route = choose_route(module, target=target, target_package=target_package, dialect_plan=dialect_plan)
     name = target_package.name if target_package is not None else target
     assert name is not None  # _resolve_plan already rejected the both-None case
 
     if route.kind == "staged":
         from merlin.xdsl_dialects.lowering import lower_module
-        res = lower_module(module, target=name, target_contract=target_contract,
-                           dialect_plan=dialect_plan, backend=backend,
-                           target_package=target_package)
+
+        res = lower_module(
+            module,
+            target=name,
+            target_contract=target_contract,
+            dialect_plan=dialect_plan,
+            backend=backend,
+            target_package=target_package,
+        )
         return CoreCompileResult(route=route, target=name, staged=res)
 
     if workdir is None:
-        raise RoutingError(
-            f"{route.reason}. The LLVM path writes artifacts, so compile_core_mlir needs workdir=")
+        raise RoutingError(f"{route.reason}. The LLVM path writes artifacts, so compile_core_mlir needs workdir=")
     from merlin.llvmlower.lower import lower_model
     from merlin.xdsl_dialects._common import text
+
     res = lower_model(text(module), workdir, **llvm_kwargs)
     return CoreCompileResult(route=route, target=name, llvm=res)

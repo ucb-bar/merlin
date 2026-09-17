@@ -6,6 +6,7 @@ from the code (register blocking on RVV; compute-per-weight-load on Gemmini). Th
 ``rhs_reuse_count`` makes ``packed_rhs_policy``'s ``rhs_reuse_count >= 2`` condition applicable
 to the very kernels it was mined from — not merely asserted.
 """
+
 from __future__ import annotations
 
 from merlin.kernels.framework_contracts import load_feature_contract

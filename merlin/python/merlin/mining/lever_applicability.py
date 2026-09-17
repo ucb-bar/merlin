@@ -16,6 +16,7 @@ The check is deliberately STRUCTURAL and target-agnostic: it reads the op names 
 own schedule text and counts those ops in the prepared module. It knows nothing about which ops
 matter, so it keeps working when a new lever or a new dialect appears.
 """
+
 from __future__ import annotations
 
 _MATCH_TOKEN = "transform.structured.match"
@@ -35,9 +36,15 @@ def _match_handles(schedule_text: str) -> dict[str, tuple[str, ...]]:
         close_at = line.find(_OPS_CLOSE, open_at)
         if close_at < 0:
             continue
-        names = tuple(sorted({t.strip().strip('"').strip()
-                              for t in line[open_at + len(_OPS_OPEN):close_at].split(",")
-                              if t.strip().strip('"').strip()}))
+        names = tuple(
+            sorted(
+                {
+                    t.strip().strip('"').strip()
+                    for t in line[open_at + len(_OPS_OPEN) : close_at].split(",")
+                    if t.strip().strip('"').strip()
+                }
+            )
+        )
         if handle and names:
             out[handle] = names
     return out
@@ -109,15 +116,25 @@ def applicability(schedule_text: str, op_counts: dict[str, int]) -> dict:
     """
     needs = matched_op_names(schedule_text)
     if not needs:
-        return {"status": "unknown", "needs": (), "present": {},
-                "reason": "schedule does not match by op name; applicability not decidable here"}
+        return {
+            "status": "unknown",
+            "needs": (),
+            "present": {},
+            "reason": "schedule does not match by op name; applicability not decidable here",
+        }
     present = {n: int(op_counts.get(n, 0)) for n in needs}
     if any(v > 0 for v in present.values()):
         return {"status": "applicable", "needs": needs, "present": present, "reason": ""}
-    return {"status": "inapplicable", "needs": needs, "present": present,
-            "reason": (f"the module contains none of {list(needs)}, so every "
-                       f"transform.structured.match on them yields an empty handle and the lever "
-                       f"is a no-op; it would still build, gate clean and report as applied")}
+    return {
+        "status": "inapplicable",
+        "needs": needs,
+        "present": present,
+        "reason": (
+            f"the module contains none of {list(needs)}, so every "
+            f"transform.structured.match on them yields an empty handle and the lever "
+            f"is a no-op; it would still build, gate clean and report as applied"
+        ),
+    }
 
 
 def inapplicable_features(features, op_counts: dict[str, int]) -> dict[str, dict]:
@@ -139,7 +156,7 @@ def inapplicable_features(features, op_counts: dict[str, int]) -> dict[str, dict
             continue
         try:
             text = edit("")
-        except Exception:                        # a schedule we cannot render, we cannot judge
+        except Exception:  # a schedule we cannot render, we cannot judge
             continue
         verdict = applicability(text, op_counts)
         if verdict["status"] == "inapplicable":

@@ -14,6 +14,7 @@ CLI::
     python -m merlin.targetgen.lit_suite --target <t> --write
     python -m merlin.targetgen.lit_suite --all
 """
+
 from __future__ import annotations
 
 import argparse
@@ -73,8 +74,7 @@ def render_test(compiled: Compiled, shape: tuple[int, int, int]) -> str:
     ]
     for i, c in enumerate(compiled.checks):
         prefix = f"OB{i}"
-        head.append(f"// RUN: %merlin-opt %s -p merlin-materialize-interface | "
-                    f"%filecheck %s --check-prefix={prefix}")
+        head.append(f"// RUN: %merlin-opt %s -p merlin-materialize-interface | %filecheck %s --check-prefix={prefix}")
     head.append("")
     for i, c in enumerate(compiled.checks):
         prefix = f"OB{i}"
@@ -100,7 +100,8 @@ def emit(target: str, *, write: bool = False) -> dict[str, Any]:
     coverage["test_emitted"] = bool(body)
     if not body:
         coverage["test_omitted_reason"] = (
-            "no obligation could be expressed structurally for this target; see omission_reasons")
+            "no obligation could be expressed structurally for this target; see omission_reasons"
+        )
 
     if write:
         from merlin.common.artifacts import artifacts_dir
@@ -133,7 +134,8 @@ def _install_lit_cfg(root: Path) -> None:
         return
     root.mkdir(parents=True, exist_ok=True)
     text = src.read_text(encoding="utf-8").replace(
-        'config.name = "merlin-pass-tests"', 'config.name = "merlin-derived-pass-tests"')
+        'config.name = "merlin-pass-tests"', 'config.name = "merlin-derived-pass-tests"'
+    )
     (root / "lit.cfg.py").write_text(text, encoding="utf-8")
 
 
@@ -165,20 +167,27 @@ def record_verdicts(target: str, compiled, *, lit_passed: bool | None) -> None:
             verdict = "verified" if lit_passed else "refuted"
         try:
             P.record_verification(
-                CHECKED_PASS, requirement_class=CHECKED_CLASS, method="filecheck",
-                verdict=verdict, target=target,
-                evidence={"obligation": check.obligation, "grounded_by": check.grounded_by,
-                          "derived": check.derived},
-                provenance={"source": "merlin.targetgen.lit_suite"})
+                CHECKED_PASS,
+                requirement_class=CHECKED_CLASS,
+                method="filecheck",
+                verdict=verdict,
+                target=target,
+                evidence={"obligation": check.obligation, "grounded_by": check.grounded_by, "derived": check.derived},
+                provenance={"source": "merlin.targetgen.lit_suite"},
+            )
         except Exception:
             pass
     for omission in compiled.omissions:
         try:
             P.record_verification(
-                CHECKED_PASS, requirement_class=CHECKED_CLASS, method="filecheck",
-                verdict="abstracted", target=target,
+                CHECKED_PASS,
+                requirement_class=CHECKED_CLASS,
+                method="filecheck",
+                verdict="abstracted",
+                target=target,
                 evidence={"obligation": omission.obligation, "reason": omission.reason},
-                provenance={"source": "merlin.targetgen.lit_suite"})
+                provenance={"source": "merlin.targetgen.lit_suite"},
+            )
         except Exception:
             pass
 
@@ -242,9 +251,13 @@ def record_core_verdicts(*, lit_passed: bool | None) -> dict[str, str]:
             out[name] = verdict
             try:
                 P.record_verification(
-                    name, requirement_class=info.obligation, method="filecheck", verdict=verdict,
+                    name,
+                    requirement_class=info.obligation,
+                    method="filecheck",
+                    verdict=verdict,
                     evidence={"check_file": path.name, "suite": "core"},
-                    provenance={"source": "merlin.targetgen.lit_suite.record_core_verdicts"})
+                    provenance={"source": "merlin.targetgen.lit_suite.record_core_verdicts"},
+                )
             except Exception:
                 pass
     return out
@@ -308,8 +321,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--all", action="store_true", help="every target with a capsule store")
     ap.add_argument("--write", action="store_true")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--run", action="store_true",
-                    help="run the emitted suite through llvm-lit and record the verdicts")
+    ap.add_argument("--run", action="store_true", help="run the emitted suite through llvm-lit and record the verdicts")
     args = ap.parse_args(argv)
 
     if args.all:
@@ -334,12 +346,16 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"{'target':16s} {'declared':>8} {'emitted':>8} {'omitted':>8}  test")
         for r in records:
-            print(f"{r['target']:16s} {r['obligations_declared']:>8} {r['emitted']:>8} "
-                  f"{r['omitted']:>8}  {'yes' if r['test_emitted'] else 'no'}")
+            print(
+                f"{r['target']:16s} {r['obligations_declared']:>8} {r['emitted']:>8} "
+                f"{r['omitted']:>8}  {'yes' if r['test_emitted'] else 'no'}"
+            )
         total_d = sum(r["obligations_declared"] for r in records)
         total_e = sum(r["emitted"] for r in records)
-        print(f"\n{total_e} of {total_d} declared obligations are now checked "
-              f"({total_d - total_e} omitted with recorded reasons).")
+        print(
+            f"\n{total_e} of {total_d} declared obligations are now checked "
+            f"({total_d - total_e} omitted with recorded reasons)."
+        )
     return 0
 
 

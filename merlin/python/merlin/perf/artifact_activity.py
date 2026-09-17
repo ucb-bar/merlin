@@ -10,6 +10,7 @@ compute, loop-descriptor and synchronization instructions and can expose a visib
 shape.  It cannot infer dynamic occupancy, cache contention, or elapsed cycles from static code; those
 remain UNKNOWN until a reduced warm profile supplies counters.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -21,10 +22,16 @@ from merlin.kernels.cca import CCA, CommunicationFacet, ComputeFacet, DispatchFa
 from merlin.kernels.decode.rocc import funct_table_for
 from merlin.kernels.endpoints import endpoints_for
 
-
-_MOVEMENT_ROLES = frozenset({
-    "operand_load", "weight_load", "move", "readout", "commit", "dma",
-})
+_MOVEMENT_ROLES = frozenset(
+    {
+        "operand_load",
+        "weight_load",
+        "move",
+        "readout",
+        "commit",
+        "dma",
+    }
+)
 _COMPUTE_ROLES = frozenset({"accumulate", "elementwise"})
 
 
@@ -66,17 +73,15 @@ def _dma_overlap(stream: Sequence[TaggedInstruction]) -> tuple[bool | None, int 
         wait = next((index for index in waits if index > issue), None)
         if wait is None:
             continue
-        gaps.append(sum(
-            1 for row in stream
-            if issue < row.index < wait and not set(row.roles).intersection({"dma", "sync"})
-        ))
+        gaps.append(
+            sum(1 for row in stream if issue < row.index < wait and not set(row.roles).intersection({"dma", "sync"}))
+        )
     if not gaps:
         return None, None
     return any(gap > 0 for gap in gaps), max(gaps)
 
 
-def analyze_artifact_activity(trace: Mapping[str, Any], *, target: str,
-                              op: str = "model") -> dict[str, Any]:
+def analyze_artifact_activity(trace: Mapping[str, Any], *, target: str, op: str = "model") -> dict[str, Any]:
     """Summarize a decoded lowered artifact using only target-derived semantic roles.
 
     ``trace`` is the output of :func:`merlin.targetgen.rocc.decode.decode_text`.  A custom
@@ -92,8 +97,10 @@ def analyze_artifact_activity(trace: Mapping[str, Any], *, target: str,
             "schema": "emitted_artifact_activity_v1",
             "status": "UNKNOWN",
             "target": target,
-            "reason": ("the lowered artifact contains no decoded instructions; absence is not zero "
-                       "movement or a complete encoding"),
+            "reason": (
+                "the lowered artifact contains no decoded instructions; absence is not zero "
+                "movement or a complete encoding"
+            ),
             "instruction_count": 0,
             "endpoint_instruction_count": None,
             "class_histogram": {},
@@ -145,9 +152,9 @@ def analyze_artifact_activity(trace: Mapping[str, Any], *, target: str,
         class_histogram[instruction_class] = class_histogram.get(instruction_class, 0) + 1
         funct = raw.get("funct")
         identity = names.get(funct, "") if isinstance(funct, int) and not isinstance(funct, bool) else ""
-        roles = tuple(sorted({
-            role for endpoint in endpoints for role in endpoint.roles_of(identity)
-        })) if identity else ()
+        roles = (
+            tuple(sorted({role for endpoint in endpoints for role in endpoint.roles_of(identity)})) if identity else ()
+        )
 
         # A CPU/architectural fence is outside an endpoint's funct table, but the decoder identified
         # it exactly.  Carry it into the shared semantic vocabulary so program synchronization is not
@@ -215,12 +222,8 @@ def analyze_artifact_activity(trace: Mapping[str, Any], *, target: str,
     engines = {endpoint.engine for endpoint in endpoints if endpoint.engine}
     if len(engines) == 1:
         engine = next(iter(engines))
-    opportunities = asm_provenance.opportunities(
-        role_counts, engine=engine, total=len(tagged), family=None)
-    role_owners = {
-        role: asm_provenance.provenance_of_role(role).to_dict()
-        for role in sorted(role_counts)
-    }
+    opportunities = asm_provenance.opportunities(role_counts, engine=engine, total=len(tagged), family=None)
+    role_owners = {role: asm_provenance.provenance_of_role(role).to_dict() for role in sorted(role_counts)}
 
     return {
         "schema": "emitted_artifact_activity_v1",

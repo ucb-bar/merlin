@@ -29,6 +29,7 @@ have to be edited for the next target's spelling, and the edit is what gets forg
 this module cannot interpret is still RECORDED, so a downstream requirement can ask for coverage of it
 without this module having to understand it.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -191,8 +192,13 @@ def chains(module, *, max_length: int = 8) -> tuple[Chain, ...]:
             from merlin.targetgen.model_coverage import _short_op
 
             names = tuple(_short_op(mq.op_name(ops[k])) for k in run)
-            out.append(Chain(ops=names, indices=tuple(run),
-                             families=tuple(_family_of(ops[k], names[j]) for j, k in enumerate(run))))
+            out.append(
+                Chain(
+                    ops=names,
+                    indices=tuple(run),
+                    families=tuple(_family_of(ops[k], names[j]) for j, k in enumerate(run)),
+                )
+            )
     _LAST_WALK["truncated"] = truncated
     return tuple(out)
 

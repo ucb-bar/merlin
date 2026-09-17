@@ -50,8 +50,9 @@ def declared_outputs(cb: Mapping[str, Any]) -> list[str]:
     tensors = cb.get("tensors")
     if not isinstance(tensors, Mapping):
         return []
-    return sorted(name for name, spec in tensors.items()
-                  if isinstance(spec, Mapping) and spec.get("role") in OUTPUT_ROLES)
+    return sorted(
+        name for name, spec in tensors.items() if isinstance(spec, Mapping) and spec.get("role") in OUTPUT_ROLES
+    )
 
 
 def unwritten_outputs(cb: Mapping[str, Any]) -> list[str]:
@@ -75,7 +76,7 @@ def output_reachability_findings(cb: Mapping[str, Any]) -> list[str]:
     """
     outs = declared_outputs(cb)
     if not outs:
-        return []                       # nothing declared -- a different check's business
+        return []  # nothing declared -- a different check's business
     missing = unwritten_outputs(cb)
     if not missing:
         return []
@@ -83,15 +84,19 @@ def output_reachability_findings(cb: Mapping[str, Any]) -> list[str]:
     # Mention the indeterminate operands: if the buffer writes through a key this module does not
     # recognize as a destination, say so rather than asserting the output is unwritten.
     unknown: set[str] = set()
-    for c in (cb.get("commands") or []):
+    for c in cb.get("commands") or []:
         if isinstance(c, Mapping):
             _, u = _dests(c)
             unknown |= u
     hint = ""
     if unknown & set(missing):
-        hint = (f" NOTE: {sorted(unknown & set(missing))} appear as operands under key(s) this check "
-                f"does not classify as a destination, so the write may exist through a route it cannot "
-                f"see -- treat this as indeterminate, not proven missing.")
-    return [f"declared output(s) {', '.join(missing)} are never named as a destination by any command, "
-            f"so nothing in this buffer writes them; the numeric tiers would compare the output buffer's "
-            f"untouched fill and their mismatch counts would not respond to the kernel." + hint]
+        hint = (
+            f" NOTE: {sorted(unknown & set(missing))} appear as operands under key(s) this check "
+            f"does not classify as a destination, so the write may exist through a route it cannot "
+            f"see -- treat this as indeterminate, not proven missing."
+        )
+    return [
+        f"declared output(s) {', '.join(missing)} are never named as a destination by any command, "
+        f"so nothing in this buffer writes them; the numeric tiers would compare the output buffer's "
+        f"untouched fill and their mismatch counts would not respond to the kernel." + hint
+    ]

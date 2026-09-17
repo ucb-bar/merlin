@@ -66,6 +66,7 @@ without a trace, the capsule cover stays UNKNOWN, and no number crosses between 
 :data:`INSTRUMENTS_NOT_COMPARABLE`. This module already refuses to compare its own two axes for a
 weaker version of the same reason (:data:`KIND_AXIS_NOTE`); an instrument boundary is the stronger one.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -73,14 +74,40 @@ from dataclasses import dataclass, field
 from typing import ClassVar
 
 __all__ = [
-    "CALIBRATED", "COMPOSITION_TOLERANCE", "COUNTER_INSTRUMENT", "Cell", "CounterReading",
-    "DEFAULT_PORT_LOW", "ENGINE_PAIR_AXIS", "EngineInventory",
-    "EngineObservability", "IDLE_DECLARED", "IDLE_DERIVED", "IDLE_UNESTABLISHED",
-    "IdleCalibration", "INSTRUMENTS_NOT_COMPARABLE", "KIND_AXIS_NOTE", "MEASURED",
-    "MEMORY_REGIME_AXIS", "MechanismTrace", "POINTS_PER_CELL", "SCHEMA_VERSION", "TRACE_INSTRUMENT",
-    "UNCALIBRATABLE", "UNCOVERED", "UNKNOWN", "audit",
-    "busy_vectors", "calibrate", "calibrate_idle", "counter_calibration", "engine_inventory",
-    "measured", "required_cells", "select_calibration_set", "unknown",
+    "CALIBRATED",
+    "COMPOSITION_TOLERANCE",
+    "COUNTER_INSTRUMENT",
+    "Cell",
+    "CounterReading",
+    "DEFAULT_PORT_LOW",
+    "ENGINE_PAIR_AXIS",
+    "EngineInventory",
+    "EngineObservability",
+    "IDLE_DECLARED",
+    "IDLE_DERIVED",
+    "IDLE_UNESTABLISHED",
+    "IdleCalibration",
+    "INSTRUMENTS_NOT_COMPARABLE",
+    "KIND_AXIS_NOTE",
+    "MEASURED",
+    "MEMORY_REGIME_AXIS",
+    "MechanismTrace",
+    "POINTS_PER_CELL",
+    "SCHEMA_VERSION",
+    "TRACE_INSTRUMENT",
+    "UNCALIBRATABLE",
+    "UNCOVERED",
+    "UNKNOWN",
+    "audit",
+    "busy_vectors",
+    "calibrate",
+    "calibrate_idle",
+    "counter_calibration",
+    "engine_inventory",
+    "measured",
+    "required_cells",
+    "select_calibration_set",
+    "unknown",
 ]
 
 #: Bumped to 2 when the second instrument arrived: a v2 record carries ``counter_calibration``,
@@ -192,9 +219,14 @@ class IdleCalibration:
         return self.idle_value is not None
 
     def to_dict(self) -> dict:
-        return {"idle_value": self.idle_value, "basis": self.basis,
-                "paired_with": list(self.paired_with), "paired_columns": list(self.paired_columns),
-                "checked_traces": self.checked_traces, "detail": self.detail}
+        return {
+            "idle_value": self.idle_value,
+            "basis": self.basis,
+            "paired_with": list(self.paired_with),
+            "paired_columns": list(self.paired_columns),
+            "checked_traces": self.checked_traces,
+            "detail": self.detail,
+        }
 
 
 #: The bases an idle encoding may rest on, weakest last. ``DECLARED`` is an INPUT, not a measurement,
@@ -206,8 +238,7 @@ IDLE_DECLARED = "declared_by_producer"
 IDLE_UNESTABLISHED = "unestablished"
 
 
-def calibrate_idle(traces: Sequence[MechanismTrace], *,
-                   declared_idle_value: str | None = None) -> IdleCalibration:
+def calibrate_idle(traces: Sequence[MechanismTrace], *, declared_idle_value: str | None = None) -> IdleCalibration:
     """Derive the state columns' idle encoding over the WHOLE corpus, or refuse.
 
     Delegates to :func:`~merlin.perf.occupancy.calibrate_state_idle`, which pins the encoding by the
@@ -228,28 +259,39 @@ def calibrate_idle(traces: Sequence[MechanismTrace], *,
     ports = sorted({c for t in traces for c in t.port_columns})
     got = calibrate_state_idle(raw, states, ports)
     if got.get("idle_value") is not None:
-        return IdleCalibration(idle_value=str(got["idle_value"]), basis=IDLE_DERIVED,
-                               paired_with=tuple(got.get("paired_with") or ()),
-                               paired_columns=tuple(got.get("paired_columns") or ()),
-                               checked_traces=int(got.get("checked_traces") or 0),
-                               detail=str(got.get("detail") or ""))
+        return IdleCalibration(
+            idle_value=str(got["idle_value"]),
+            basis=IDLE_DERIVED,
+            paired_with=tuple(got.get("paired_with") or ()),
+            paired_columns=tuple(got.get("paired_columns") or ()),
+            checked_traces=int(got.get("checked_traces") or 0),
+            detail=str(got.get("detail") or ""),
+        )
     if declared_idle_value is not None:
         return IdleCalibration(
-            idle_value=str(declared_idle_value), basis=IDLE_DECLARED,
+            idle_value=str(declared_idle_value),
+            basis=IDLE_DECLARED,
             checked_traces=int(got.get("checked_traces") or 0),
-            detail=(f"{got.get('detail') or 'nothing pinned the encoding'}; falling back to the value "
-                    "the producer declares for these registers. DECLARED, not derived -- and "
-                    "unverifiable until a workload exercises a busy port"))
-    return IdleCalibration(idle_value=None, basis=IDLE_UNESTABLISHED,
-                           checked_traces=int(got.get("checked_traces") or 0),
-                           detail=(f"{got.get('detail') or 'nothing pinned the encoding'}; every "
-                                   "unpaired state column therefore stays OUT of the occupancy "
-                                   "vector and is reported unread, rather than assumed idle -- which "
-                                   "is the reading that flatters the result"))
+            detail=(
+                f"{got.get('detail') or 'nothing pinned the encoding'}; falling back to the value "
+                "the producer declares for these registers. DECLARED, not derived -- and "
+                "unverifiable until a workload exercises a busy port"
+            ),
+        )
+    return IdleCalibration(
+        idle_value=None,
+        basis=IDLE_UNESTABLISHED,
+        checked_traces=int(got.get("checked_traces") or 0),
+        detail=(
+            f"{got.get('detail') or 'nothing pinned the encoding'}; every "
+            "unpaired state column therefore stays OUT of the occupancy "
+            "vector and is reported unread, rather than assumed idle -- which "
+            "is the reading that flatters the result"
+        ),
+    )
 
 
-def busy_vectors(trace: MechanismTrace, idle: IdleCalibration
-                 ) -> tuple[dict[str, list[bool]], dict[str, str]]:
+def busy_vectors(trace: MechanismTrace, idle: IdleCalibration) -> tuple[dict[str, list[bool]], dict[str, str]]:
     """``(hot, unreadable)`` -- the per-cycle busy vector, and the columns that could not be reduced.
 
     A port column reduces against its own declared low value. A state column reduces only once the
@@ -270,14 +312,15 @@ def busy_vectors(trace: MechanismTrace, idle: IdleCalibration
             hot[col] = [str(v) not in trace.port_low for v in vals]
         elif col in states:
             if not idle.established:
-                unreadable[col] = ("a state register with no calibrated idle encoding: "
-                                   f"{idle.detail}")
+                unreadable[col] = f"a state register with no calibrated idle encoding: {idle.detail}"
                 continue
             hot[col] = [str(v) != idle.idle_value for v in vals]
         else:
-            unreadable[col] = ("the producer declared this column neither a busy port nor a state "
-                               "register, so what value means busy is unstated; a column whose "
-                               "meaning cannot be established stays out of the joint counts")
+            unreadable[col] = (
+                "the producer declared this column neither a busy port nor a state "
+                "register, so what value means busy is unstated; a column whose "
+                "meaning cannot be established stays out of the joint counts"
+            )
     return hot, unreadable
 
 
@@ -297,9 +340,15 @@ class EngineObservability:
     basis: str = ""
 
     def to_dict(self) -> dict:
-        return {"engine": self.engine, "kind": self.kind, "contains": list(self.contains),
-                "observable": self.observable, "columns": list(self.columns), "why": self.why,
-                "basis": self.basis}
+        return {
+            "engine": self.engine,
+            "kind": self.kind,
+            "contains": list(self.contains),
+            "observable": self.observable,
+            "columns": list(self.columns),
+            "why": self.why,
+            "basis": self.basis,
+        }
 
 
 @dataclass(frozen=True)
@@ -332,8 +381,7 @@ class EngineInventory:
             "declared": {e: o.to_dict() for e, o in sorted(self.declared.items())},
             "n_declared": len(self.declared),
             "observable": list(self.observable_engines),
-            "unobservable": {e: o.why for e, o in sorted(self.declared.items())
-                             if not o.observable},
+            "unobservable": {e: o.why for e, o in sorted(self.declared.items()) if not o.observable},
             "detected_registers": list(self.detected),
             "n_detected": len(self.detected),
             "detected_basis": self.detected_basis,
@@ -344,8 +392,9 @@ class EngineInventory:
         }
 
 
-def engine_inventory(contract: Mapping, traces: Sequence[MechanismTrace], idle: IdleCalibration, *,
-                     fsm_registers: Sequence = ()) -> EngineInventory:
+def engine_inventory(
+    contract: Mapping, traces: Sequence[MechanismTrace], idle: IdleCalibration, *, fsm_registers: Sequence = ()
+) -> EngineInventory:
     """Which engines exist, which the corpus can actually see, and which are UNKNOWN.
 
     Three separate reasons an engine ends up unobservable, kept apart because they call for different
@@ -396,44 +445,67 @@ def engine_inventory(contract: Mapping, traces: Sequence[MechanismTrace], idle: 
     for name, spec in sorted(engines.items()):
         cols = tuple(sorted(readable_by_engine.get(name, ())))
         if cols:
-            why = (f"{len(cols)} trace column(s) bound to it reduce to a busy vector "
-                   f"(idle basis: {idle.basis})")
+            why = f"{len(cols)} trace column(s) bound to it reduce to a busy vector (idle basis: {idle.basis})"
             observable = True
         elif name in unreadable_by_engine:
             observable = False
-            why = ("bound only to column(s) no instrument could reduce to busy: "
-                   + "; ".join(f"{c}: {r}" for c, r in sorted(unreadable_by_engine[name].items())))
+            why = "bound only to column(s) no instrument could reduce to busy: " + "; ".join(
+                f"{c}: {r}" for c, r in sorted(unreadable_by_engine[name].items())
+            )
         else:
             observable = False
-            why = ("no trace column is bound to this engine, so nothing observed it. UNKNOWN, not "
-                   "idle: an engine no instrument read contributes no busy cycles, which inflates "
-                   "the idle figure and makes its overlap unobservable by construction")
+            why = (
+                "no trace column is bound to this engine, so nothing observed it. UNKNOWN, not "
+                "idle: an engine no instrument read contributes no busy cycles, which inflates "
+                "the idle figure and makes its overlap unobservable by construction"
+            )
         declared[name] = EngineObservability(
-            engine=name, kind=str(spec.get("kind") or ""),
-            contains=tuple(spec.get("contains") or ()), observable=observable,
-            columns=cols, why=why, basis=str(spec.get("basis") or ""))
+            engine=name,
+            kind=str(spec.get("kind") or ""),
+            contains=tuple(spec.get("contains") or ()),
+            observable=observable,
+            columns=cols,
+            why=why,
+            basis=str(spec.get("basis") or ""),
+        )
 
-    detected = tuple({"module": r.module, "register": r.register, "qualified": r.qualified,
-                      "states": r.states, "exported": r.exported} for r in fsm_registers)
+    detected = tuple(
+        {
+            "module": r.module,
+            "register": r.register,
+            "qualified": r.qualified,
+            "states": r.states,
+            "exported": r.exported,
+        }
+        for r in fsm_registers
+    )
     if detected:
-        basis = (f"{len(detected)} control-state register(s) the synthesis extraction DETECTED, "
-                 f"{sum(1 for d in detected if d['exported'])} of which it exported a transition "
-                 "table for. The inventory is the detected set: an export answers whether "
-                 "re-encoding would pay off, not whether the controller is observable")
+        basis = (
+            f"{len(detected)} control-state register(s) the synthesis extraction DETECTED, "
+            f"{sum(1 for d in detected if d['exported'])} of which it exported a transition "
+            "table for. The inventory is the detected set: an export answers whether "
+            "re-encoding would pay off, not whether the controller is observable"
+        )
     else:
-        basis = ("no synthesis FSM extraction was found. That is a statement about the extraction, "
-                 "NOT about the design -- this target's engine set beyond its declaration is UNKNOWN")
+        basis = (
+            "no synthesis FSM extraction was found. That is a statement about the extraction, "
+            "NOT about the design -- this target's engine set beyond its declaration is UNKNOWN"
+        )
     # A detected register counts as REACHED when some column already bound to a declared engine is
     # plausibly that register. The match is the register's own structural one (leaf plus a containing
     # instance), because a synthesis export names the module CLASS while a trace names the INSTANCE
     # path; comparing the two strings directly reports every controller as unreached.
     bound_columns = {c for o in declared.values() for c in o.columns}
-    undeclared = tuple(r.qualified for r in fsm_registers
-                       if not any(r.matches_signal(c) for c in bound_columns))
-    return EngineInventory(declared=declared, detected=detected, detected_basis=basis,
-                           detected_undeclared=undeclared,
-                           unattributed_columns=tuple(sorted(unattributed)),
-                           binding_error=binding_error, derivation=derivation)
+    undeclared = tuple(r.qualified for r in fsm_registers if not any(r.matches_signal(c) for c in bound_columns))
+    return EngineInventory(
+        declared=declared,
+        detected=detected,
+        detected_basis=basis,
+        detected_undeclared=undeclared,
+        unattributed_columns=tuple(sorted(unattributed)),
+        binding_error=binding_error,
+        derivation=derivation,
+    )
 
 
 @dataclass(frozen=True)
@@ -451,9 +523,16 @@ class Cell:
     detail: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
-        return {"axis": self.axis, "key": self.key, "state": self.state, "why": self.why,
-                "capsules": list(self.capsules), "n_candidates": len(self.candidates),
-                "candidates": list(self.candidates), **({"detail": self.detail} if self.detail else {})}
+        return {
+            "axis": self.axis,
+            "key": self.key,
+            "state": self.state,
+            "why": self.why,
+            "capsules": list(self.capsules),
+            "n_candidates": len(self.candidates),
+            "candidates": list(self.candidates),
+            **({"detail": self.detail} if self.detail else {}),
+        }
 
 
 def required_cells(inventory: EngineInventory, corpus_regimes: Mapping) -> list[Cell]:
@@ -478,59 +557,106 @@ def required_cells(inventory: EngineInventory, corpus_regimes: Mapping) -> list[
     cells: list[Cell] = []
     names = sorted(inventory.declared)
     for i, a in enumerate(names):
-        for b in names[i + 1:]:
+        for b in names[i + 1 :]:
             oa, ob = inventory.declared[a], inventory.declared[b]
             key = f"{a}|{b}"
             blocked = [o for o in (oa, ob) if not o.observable]
             if blocked:
-                cells.append(Cell(
-                    ENGINE_PAIR_AXIS, key, UNCALIBRATABLE,
-                    why=("; ".join(f"{o.engine} is not observable: {o.why}" for o in blocked)
-                         + ". No capsule can calibrate an overlap term for this pair, because the "
-                           "instrument cannot see one of its halves -- and a zero read off a vector "
-                           "missing an engine is not a measurement of serialisation")))
+                cells.append(
+                    Cell(
+                        ENGINE_PAIR_AXIS,
+                        key,
+                        UNCALIBRATABLE,
+                        why=(
+                            "; ".join(f"{o.engine} is not observable: {o.why}" for o in blocked)
+                            + ". No capsule can calibrate an overlap term for this pair, because the "
+                            "instrument cannot see one of its halves -- and a zero read off a vector "
+                            "missing an engine is not a measurement of serialisation"
+                        ),
+                    )
+                )
             else:
-                cells.append(Cell(ENGINE_PAIR_AXIS, key, UNCOVERED,
-                                  why="both halves are observable; awaiting a capsule that makes "
-                                      "both live in one run"))
+                cells.append(
+                    Cell(
+                        ENGINE_PAIR_AXIS,
+                        key,
+                        UNCOVERED,
+                        why="both halves are observable; awaiting a capsule that makes both live in one run",
+                    )
+                )
     if len(names) < 2:
-        cells.append(Cell(
-            ENGINE_PAIR_AXIS, "<no pair>", UNCALIBRATABLE,
-            why=(f"the target declares {len(names)} engine(s), so there is no pair to overlap. Any "
-                 "overlap term in a model of this target is unidentifiable from the declaration "
-                 "alone -- which is a fact about the declaration, since a control-FSM inventory may "
-                 "well show engines the contract does not name"),
-            detail={"declared": names, "detected_undeclared": list(inventory.detected_undeclared)}))
+        cells.append(
+            Cell(
+                ENGINE_PAIR_AXIS,
+                "<no pair>",
+                UNCALIBRATABLE,
+                why=(
+                    f"the target declares {len(names)} engine(s), so there is no pair to overlap. Any "
+                    "overlap term in a model of this target is unidentifiable from the declaration "
+                    "alone -- which is a fact about the declaration, since a control-FSM inventory may "
+                    "well show engines the contract does not name"
+                ),
+                detail={"declared": names, "detected_undeclared": list(inventory.detected_undeclared)},
+            )
+        )
 
     by_regime = dict((corpus_regimes or {}).get("by_regime") or {})
     capacity = (corpus_regimes or {}).get("capacity_rows")
     if not capacity:
-        cells.append(Cell(
-            MEMORY_REGIME_AXIS, MR.UNKNOWN, UNCALIBRATABLE,
-            why=("the target declares no operand-store capacity we can derive, so no capsule's "
-                 "regime can be established and a coefficient's domain of validity is unknown. "
-                 "Never folded into a fitting regime")))
+        cells.append(
+            Cell(
+                MEMORY_REGIME_AXIS,
+                MR.UNKNOWN,
+                UNCALIBRATABLE,
+                why=(
+                    "the target declares no operand-store capacity we can derive, so no capsule's "
+                    "regime can be established and a coefficient's domain of validity is unknown. "
+                    "Never folded into a fitting regime"
+                ),
+            )
+        )
         return cells
     for regime in MR.ORDER:
         members = sorted(by_regime.get(regime) or ())
         if members:
-            cells.append(Cell(MEMORY_REGIME_AXIS, regime, UNCOVERED,
-                              why=f"{len(members)} capsule(s) in the corpus occupy this regime",
-                              candidates=tuple(members)))
+            cells.append(
+                Cell(
+                    MEMORY_REGIME_AXIS,
+                    regime,
+                    UNCOVERED,
+                    why=f"{len(members)} capsule(s) in the corpus occupy this regime",
+                    candidates=tuple(members),
+                )
+            )
         else:
-            cells.append(Cell(
-                MEMORY_REGIME_AXIS, regime, UNCALIBRATABLE,
-                why=("no capsule in the corpus occupies this regime, so nothing here can fit a "
-                     "coefficient in it. A coefficient fitted in the regimes that ARE present does "
-                     "not transfer to this one, and the model must report UNKNOWN there rather than "
-                     "extending its fit")))
+            cells.append(
+                Cell(
+                    MEMORY_REGIME_AXIS,
+                    regime,
+                    UNCALIBRATABLE,
+                    why=(
+                        "no capsule in the corpus occupies this regime, so nothing here can fit a "
+                        "coefficient in it. A coefficient fitted in the regimes that ARE present does "
+                        "not transfer to this one, and the model must report UNKNOWN there rather than "
+                        "extending its fit"
+                    ),
+                )
+            )
     unsized = sorted(by_regime.get(MR.UNKNOWN) or ())
     if unsized:
-        cells.append(Cell(
-            MEMORY_REGIME_AXIS, MR.UNKNOWN, UNCALIBRATABLE,
-            why=(f"{len(unsized)} capsule(s) declare no shape we could size, so which regime they "
-                 "occupy is unknown; they are excluded from every regime cell rather than counted in "
-                 "the weakest one"), candidates=tuple(unsized)))
+        cells.append(
+            Cell(
+                MEMORY_REGIME_AXIS,
+                MR.UNKNOWN,
+                UNCALIBRATABLE,
+                why=(
+                    f"{len(unsized)} capsule(s) declare no shape we could size, so which regime they "
+                    "occupy is unknown; they are excluded from every regime cell rather than counted in "
+                    "the weakest one"
+                ),
+                candidates=tuple(unsized),
+            )
+        )
     return cells
 
 
@@ -544,7 +670,8 @@ KIND_AXIS_NOTE = (
     "the corpus operator resolves on the resource-KIND axis (composition_operator groups by kind); "
     "the per-capsule eta resolves on the DECLARED ENGINE axis. Where two declared engines share a "
     "kind the kind axis collapses them into one group and the operator is unavailable by "
-    "construction. These are two instruments, not two readings, and must not be compared")
+    "construction. These are two instruments, not two readings, and must not be compared"
+)
 
 
 #: The eta thresholds a composition operator is classified against. Declared once so the trace seam and
@@ -571,7 +698,8 @@ INSTRUMENTS_NOT_COMPARABLE = (
     "a counter reading is an AGGREGATE from the target's own combination counters and a trace reading "
     "is a per-cycle vector over the engines the CONTRACT declares. They are two instruments over two "
     "engine axes, not two readings of one quantity: they are reported side by side and never merged, "
-    "averaged, cross-checked as agreement, or substituted for one another")
+    "averaged, cross-checked as agreement, or substituted for one another"
+)
 
 
 @dataclass(frozen=True)
@@ -638,11 +766,14 @@ class CounterReading:
 POINTS_PER_CELL = 2
 
 
-def select_calibration_set(cells: Sequence[Cell], *,
-                           readings: Mapping[str, Mapping] | None = None,
-                           regime_by_capsule: Mapping[str, Mapping] | None = None,
-                           traces: Sequence[MechanismTrace] = (),
-                           points_per_cell: int = POINTS_PER_CELL) -> list[Cell]:
+def select_calibration_set(
+    cells: Sequence[Cell],
+    *,
+    readings: Mapping[str, Mapping] | None = None,
+    regime_by_capsule: Mapping[str, Mapping] | None = None,
+    traces: Sequence[MechanismTrace] = (),
+    points_per_cell: int = POINTS_PER_CELL,
+) -> list[Cell]:
     """Fill each cell with the cheapest capsules that actually instantiate it.
 
     Two different selection rules, because the two axes are cheap in different ways:
@@ -668,17 +799,31 @@ def select_calibration_set(cells: Sequence[Cell], *,
             continue
         if cell.axis == ENGINE_PAIR_AXIS:
             a, b = cell.key.split("|", 1)
-            live = [name for name, r in sorted(readings.items())
-                    if a in (r.get("live_engines") or ()) and b in (r.get("live_engines") or ())]
+            live = [
+                name
+                for name, r in sorted(readings.items())
+                if a in (r.get("live_engines") or ()) and b in (r.get("live_engines") or ())
+            ]
             live.sort(key=lambda n: (cycles.get(n, 1 << 62), n))
-            picked = tuple(live[:max(1, points_per_cell)])
-            why = (f"{len(live)} run(s) show both halves live; taking the {len(picked)} with the "
-                   "fewest sampled cycles, since cycle-accurate cost here tracks output size"
-                   if picked else
-                   "no supplied run makes both halves live in the same vector, so this pair's "
-                   "overlap term is UNCOVERED -- a hole in the corpus, not a machine that serialises")
-            out.append(Cell(cell.axis, cell.key, CALIBRATED if picked else UNCOVERED, why,
-                            capsules=picked, candidates=tuple(live), detail=cell.detail))
+            picked = tuple(live[: max(1, points_per_cell)])
+            why = (
+                f"{len(live)} run(s) show both halves live; taking the {len(picked)} with the "
+                "fewest sampled cycles, since cycle-accurate cost here tracks output size"
+                if picked
+                else "no supplied run makes both halves live in the same vector, so this pair's "
+                "overlap term is UNCOVERED -- a hole in the corpus, not a machine that serialises"
+            )
+            out.append(
+                Cell(
+                    cell.axis,
+                    cell.key,
+                    CALIBRATED if picked else UNCOVERED,
+                    why,
+                    capsules=picked,
+                    candidates=tuple(live),
+                    detail=cell.detail,
+                )
+            )
             continue
         members = list(cell.candidates)
         sized = [(m, (regime_by_capsule.get(m) or {}).get("rows")) for m in members]
@@ -698,18 +843,40 @@ def select_calibration_set(cells: Sequence[Cell], *,
             idx = sorted({round(i * (n - 1) / (k - 1)) for i in range(k)})
             picked = tuple(known[i][0] for i in idx)
         if not picked:
-            out.append(Cell(cell.axis, cell.key, UNCOVERED,
-                            why=("the corpus lists capsule(s) in this regime but none of them could "
-                                 "be sized, so none is established to occupy it"),
-                            candidates=tuple(members), detail=cell.detail))
+            out.append(
+                Cell(
+                    cell.axis,
+                    cell.key,
+                    UNCOVERED,
+                    why=(
+                        "the corpus lists capsule(s) in this regime but none of them could "
+                        "be sized, so none is established to occupy it"
+                    ),
+                    candidates=tuple(members),
+                    detail=cell.detail,
+                )
+            )
             continue
-        extrap = (" only ONE point is available, so a coefficient fitted here cannot separate a rate "
-                  "from a fixed intercept and is an EXTRAPOLATION in this regime."
-                  if len(picked) < 2 else "")
-        out.append(Cell(cell.axis, cell.key, CALIBRATED,
-                        why=(f"{len(picked)} point(s) at the extremes of the regime's working-set "
-                             f"range ({[r for _m, r in known if _m in picked]} rows)." + extrap),
-                        capsules=picked, candidates=tuple(members), detail=cell.detail))
+        extrap = (
+            " only ONE point is available, so a coefficient fitted here cannot separate a rate "
+            "from a fixed intercept and is an EXTRAPOLATION in this regime."
+            if len(picked) < 2
+            else ""
+        )
+        out.append(
+            Cell(
+                cell.axis,
+                cell.key,
+                CALIBRATED,
+                why=(
+                    f"{len(picked)} point(s) at the extremes of the regime's working-set "
+                    f"range ({[r for _m, r in known if _m in picked]} rows)." + extrap
+                ),
+                capsules=picked,
+                candidates=tuple(members),
+                detail=cell.detail,
+            )
+        )
     return out
 
 
@@ -717,13 +884,18 @@ def _regime_of(capsule: str, regime_by_capsule: Mapping[str, Mapping] | None) ->
     """The regime a capsule occupies, or an UNKNOWN naming why it could not be established."""
     got = (regime_by_capsule or {}).get(capsule)
     if not got:
-        return unknown(f"no memory regime was established for {capsule!r}; a coefficient fitted on "
-                       "this run has no known domain of validity")
+        return unknown(
+            f"no memory regime was established for {capsule!r}; a coefficient fitted on "
+            "this run has no known domain of validity"
+        )
     from merlin.targetgen import memory_regime as MR
+
     if got.get("regime") in (None, MR.UNKNOWN):
         return unknown(f"the regime of {capsule!r} is unknown: {got.get('why') or 'no reason given'}")
-    return measured(dict(got), detail="derived from the capsule's own declared inputs against the "
-                                      "target's derived operand-store capacity")
+    return measured(
+        dict(got),
+        detail="derived from the capsule's own declared inputs against the target's derived operand-store capacity",
+    )
 
 
 def _reading(trace: MechanismTrace, inventory: EngineInventory, idle: IdleCalibration) -> dict:
@@ -740,73 +912,105 @@ def _reading(trace: MechanismTrace, inventory: EngineInventory, idle: IdleCalibr
 
     hot, unreadable = busy_vectors(trace, idle)
     engines = {e: {"kind": o.kind, "contains": o.contains} for e, o in inventory.declared.items()}
-    out: dict = {"capsule": trace.capsule, "sampled_cycles": trace.sampled_cycles,
-                 "work": trace.work, "idle_basis": idle.basis,
-                 "unreadable_columns": dict(sorted(unreadable.items())),
-                 "instrument_unmeasured_units": list(trace.unmeasured_units),
-                 "completion_observable": trace.completion_observable,
-                 "provenance": trace.provenance}
+    out: dict = {
+        "capsule": trace.capsule,
+        "sampled_cycles": trace.sampled_cycles,
+        "work": trace.work,
+        "idle_basis": idle.basis,
+        "unreadable_columns": dict(sorted(unreadable.items())),
+        "instrument_unmeasured_units": list(trace.unmeasured_units),
+        "completion_observable": trace.completion_observable,
+        "provenance": trace.provenance,
+    }
     try:
         unit_of, unbound = unit_bindings(sorted(hot), trace.binding, engines)
     except ValueError as exc:
-        out["eta"] = unknown(f"the trace binds a column to an engine the contract does not declare: "
-                             f"{exc}. The trace and the contract disagree about what the device is, "
-                             "so every engine-axis reading over this vector is void")
+        out["eta"] = unknown(
+            f"the trace binds a column to an engine the contract does not declare: "
+            f"{exc}. The trace and the contract disagree about what the device is, "
+            "so every engine-axis reading over this vector is void"
+        )
         out["busy_cycles"] = unknown("no engine-axis attribution exists for this vector")
-        out["overlap"] = {"realised_cycles": unknown("eta refused"),
-                          "available_cycles": unknown("eta refused"),
-                          "unrealised_cycles": unknown("eta refused")}
+        out["overlap"] = {
+            "realised_cycles": unknown("eta refused"),
+            "available_cycles": unknown("eta refused"),
+            "unrealised_cycles": unknown("eta refused"),
+        }
         out["overlap_observable"] = None
         out["live_engines"] = ()
         return out
 
     kinds = {c: engines[e]["kind"] for c, e in unit_of.items() if e in engines}
     jc = joint_counts(hot, kinds, unit_of)
-    obs = eta_from_occupancy(trace.capsule, hot, unit_of=unit_of, kinds=kinds, work=trace.work,
-                             unmeasured=trace.unmeasured_units)
+    obs = eta_from_occupancy(
+        trace.capsule, hot, unit_of=unit_of, kinds=kinds, work=trace.work, unmeasured=trace.unmeasured_units
+    )
 
-    eng_hot = {e: [any(hot[c][i] for c in jc["joint_columns"] if unit_of.get(c) == e)
-                   for i in range(jc["sampled_cycles"])]
-               for e in sorted({unit_of[c] for c in jc["joint_columns"] if c in unit_of})}
+    eng_hot = {
+        e: [any(hot[c][i] for c in jc["joint_columns"] if unit_of.get(c) == e) for i in range(jc["sampled_cycles"])]
+        for e in sorted({unit_of[c] for c in jc["joint_columns"] if c in unit_of})
+    }
     busy = {e: sum(v) for e, v in eng_hot.items()}
     # Live at ENGINE level, the same rule joint_counts applies to columns and for the same reason: an
     # engine busy on every sampled cycle is constant, and nothing was observed of it either way.
-    live = tuple(e for e, n in busy.items() if 0 < n < jc["sampled_cycles"]) or \
-        tuple(e for e, n in busy.items() if n > 0)
+    live = tuple(e for e, n in busy.items() if 0 < n < jc["sampled_cycles"]) or tuple(
+        e for e, n in busy.items() if n > 0
+    )
 
     out["axis"] = ENGINE_AXIS
-    out["eta"] = (measured(obs.eta, detail=obs.detail) if obs.eta is not None
-                  else unknown(obs.detail or "the vector supports no eta reading"))
+    out["eta"] = (
+        measured(obs.eta, detail=obs.detail)
+        if obs.eta is not None
+        else unknown(obs.detail or "the vector supports no eta reading")
+    )
     out["overlap_observable"] = bool(jc["overlap_observable"])
     out["live_engines"] = live
-    out["busy_cycles"] = (measured(dict(sorted(busy.items())),
-                                   detail="per DECLARED engine, after sub-signal subsumption")
-                          if busy else unknown("no column reduced to a busy vector"))
+    out["busy_cycles"] = (
+        measured(dict(sorted(busy.items())), detail="per DECLARED engine, after sub-signal subsumption")
+        if busy
+        else unknown("no column reduced to a busy vector")
+    )
     if obs.measured:
         unreal = obs.available_cycles - obs.realised_cycles
         out["overlap"] = {
-            "realised_cycles": measured(obs.realised_cycles,
-                                        detail="cycles with >=2 declared engines busy together"),
-            "available_cycles": measured(obs.available_cycles,
-                                         detail="the second-largest per-engine busy count -- the "
-                                                "ceiling on any single pair, and the denominator "
-                                                "headroom/composition_operator use"),
+            "realised_cycles": measured(obs.realised_cycles, detail="cycles with >=2 declared engines busy together"),
+            "available_cycles": measured(
+                obs.available_cycles,
+                detail="the second-largest per-engine busy count -- the "
+                "ceiling on any single pair, and the denominator "
+                "headroom/composition_operator use",
+            ),
             # Not clipped at zero. With three or more engines overlapping in disjoint pairs the
             # numerator counts all pairs while the denominator is the top pair's ceiling, so eta can
             # exceed 1 and this can go negative. That is a true statement about the vector (more than
             # one pair overlapped) and is reported as such.
-            "unrealised_cycles": measured(unreal, detail=("negative when eta > 1, i.e. when >=3 "
-                                                          "engines overlapped in disjoint pairs")),
+            "unrealised_cycles": measured(
+                unreal, detail=("negative when eta > 1, i.e. when >=3 engines overlapped in disjoint pairs")
+            ),
         }
     else:
         why = obs.detail or "the vector supports no overlap reading"
-        out["overlap"] = {"realised_cycles": unknown(why), "available_cycles": unknown(why),
-                          "unrealised_cycles": unknown(why)}
-    out["joint"] = {k: jc[k] for k in ("sampled_cycles", "joint_columns", "subsumed_columns",
-                                       "overlap_observable", "live_columns", "idle_cycles",
-                                       "overlap_any", "overlap_across_kinds",
-                                       "overlap_across_kinds_is_lower_bound", "undeclared_columns",
-                                       "unbound_columns")}
+        out["overlap"] = {
+            "realised_cycles": unknown(why),
+            "available_cycles": unknown(why),
+            "unrealised_cycles": unknown(why),
+        }
+    out["joint"] = {
+        k: jc[k]
+        for k in (
+            "sampled_cycles",
+            "joint_columns",
+            "subsumed_columns",
+            "overlap_observable",
+            "live_columns",
+            "idle_cycles",
+            "overlap_any",
+            "overlap_across_kinds",
+            "overlap_across_kinds_is_lower_bound",
+            "undeclared_columns",
+            "unbound_columns",
+        )
+    }
     out["unbound_columns_with_work"] = sorted(c for c in unbound if any(hot.get(c, ())))
     return out
 
@@ -840,44 +1044,66 @@ def _composition(readings: Mapping[str, Mapping], inventory: EngineInventory) ->
 
     tol = COMPOSITION_TOLERANCE
     kinds_declared = sorted({o.kind for o in inventory.declared.values()})
-    unreadable = {name for name, r in readings.items()
-                  if (r.get("overlap") or {}).get("realised_cycles", {}).get("state") != MEASURED
-                  or (r.get("busy_cycles") or {}).get("state") != MEASURED}
-    out: dict = {"n_runs": len(readings), "runs_without_a_reading": sorted(unreadable),
-                 "declared_kinds": kinds_declared, "kind_axis_note": KIND_AXIS_NOTE}
+    unreadable = {
+        name
+        for name, r in readings.items()
+        if (r.get("overlap") or {}).get("realised_cycles", {}).get("state") != MEASURED
+        or (r.get("busy_cycles") or {}).get("state") != MEASURED
+    }
+    out: dict = {
+        "n_runs": len(readings),
+        "runs_without_a_reading": sorted(unreadable),
+        "declared_kinds": kinds_declared,
+        "kind_axis_note": KIND_AXIS_NOTE,
+    }
 
     if not readings or unreadable:
-        why = (("no per-cycle trace was supplied, so nothing constrains the operator"
-                if not readings else
-                f"run(s) {sorted(unreadable)} yielded no overlap reading; UNKNOWN propagates -- one "
-                "unmeasured run leaves the corpus operator unestablished rather than partially "
-                "derived, since dropping it reweights the corpus towards whatever was measurable"))
+        why = (
+            "no per-cycle trace was supplied, so nothing constrains the operator"
+            if not readings
+            else f"run(s) {sorted(unreadable)} yielded no overlap reading; UNKNOWN propagates -- one "
+            "unmeasured run leaves the corpus operator unestablished rather than partially "
+            "derived, since dropping it reweights the corpus towards whatever was measurable"
+        )
         out["kind_axis"] = {"operator": unknown(why), "eta": unknown(why)}
-        out["engine_axis"] = {"operator": unknown(why), "eta": unknown(why),
-                              "realised_cycles": unknown(why), "available_cycles": unknown(why)}
+        out["engine_axis"] = {
+            "operator": unknown(why),
+            "eta": unknown(why),
+            "realised_cycles": unknown(why),
+            "available_cycles": unknown(why),
+        }
         return out
 
     realised = sum(int(r["overlap"]["realised_cycles"]["value"]) for r in readings.values())
     available = sum(int(r["overlap"]["available_cycles"]["value"]) for r in readings.values())
     if available == 0:
-        why = ("no supplied run has any overlappable time (every run's second-busiest engine is busy "
-               "0 cycles), so the operator is 0/0 -- undefined, not SUM")
-        out["engine_axis"] = {"operator": unknown(why), "eta": unknown(why),
-                             "realised_cycles": measured(realised), "available_cycles": measured(0)}
+        why = (
+            "no supplied run has any overlappable time (every run's second-busiest engine is busy "
+            "0 cycles), so the operator is 0/0 -- undefined, not SUM"
+        )
+        out["engine_axis"] = {
+            "operator": unknown(why),
+            "eta": unknown(why),
+            "realised_cycles": measured(realised),
+            "available_cycles": measured(0),
+        }
     else:
         eta = realised / available
-        op = (Composition.SUM if eta <= tol
-              else Composition.MAX if eta >= 1.0 - tol else Composition.PARTIAL)
+        op = Composition.SUM if eta <= tol else Composition.MAX if eta >= 1.0 - tol else Composition.PARTIAL
         out["engine_axis"] = {
-            "operator": measured(op.value, detail=f"over {len(readings)} calibration run(s), "
-                                                  f"tolerance {tol}"),
+            "operator": measured(op.value, detail=f"over {len(readings)} calibration run(s), tolerance {tol}"),
             # Not clipped. With >=3 engines overlapping in disjoint pairs the numerator counts all
             # pairs while the denominator is the top pair's ceiling, so eta can exceed 1. That is a
             # true statement about the vector and MAX is the right classification of it.
-            "eta": measured(eta, detail="realised / available overlap on the DECLARED ENGINE axis; "
-                                        "may exceed 1 with >=3 engines overlapping in disjoint pairs "
-                                        "and is reported, not clipped"),
-            "realised_cycles": measured(realised), "available_cycles": measured(available)}
+            "eta": measured(
+                eta,
+                detail="realised / available overlap on the DECLARED ENGINE axis; "
+                "may exceed 1 with >=3 engines overlapping in disjoint pairs "
+                "and is reported, not clipped",
+            ),
+            "realised_cycles": measured(realised),
+            "available_cycles": measured(available),
+        }
 
     sources: list[ActivitySource] = []
     overlaps: dict[str, int] = {}
@@ -885,16 +1111,23 @@ def _composition(readings: Mapping[str, Mapping], inventory: EngineInventory) ->
         # Every declared compute unit is an arithmetic engine by construction -- that is what the
         # contract's compute-unit list IS -- so its ResourceKind is COMPUTE. The collapse this causes
         # is the point of reporting both axes.
-        resources = tuple(Resource(name=e, kind=ResourceKind.COMPUTE, busy_cycles=int(n))
-                          for e, n in sorted(r["busy_cycles"]["value"].items()))
+        resources = tuple(
+            Resource(name=e, kind=ResourceKind.COMPUTE, busy_cycles=int(n))
+            for e, n in sorted(r["busy_cycles"]["value"].items())
+        )
         if not resources:
             continue
-        sources.append(ActivitySource(
-            workload=name, total_cycles=int(r.get("sampled_cycles") or 0), resources=resources,
-            partitioned=False,      # a per-cycle JOINT vector is not a partition; asserting it is
-                                    # what licenses an overlap reading at all
-            completion_observable=r.get("completion_observable"),
-            provenance=str(r.get("provenance") or "")))
+        sources.append(
+            ActivitySource(
+                workload=name,
+                total_cycles=int(r.get("sampled_cycles") or 0),
+                resources=resources,
+                partitioned=False,  # a per-cycle JOINT vector is not a partition; asserting it is
+                # what licenses an overlap reading at all
+                completion_observable=r.get("completion_observable"),
+                provenance=str(r.get("provenance") or ""),
+            )
+        )
         overlaps[name] = int(r["overlap"]["realised_cycles"]["value"])
     got = composition_operator(sources, observed_overlap_cycles=overlaps) if sources else None
     if got is None:
@@ -907,7 +1140,8 @@ def _composition(readings: Mapping[str, Mapping], inventory: EngineInventory) ->
         op, eta = got
         out["kind_axis"] = {
             "operator": measured(op.value, detail=f"over {len(sources)} calibration run(s)"),
-            "eta": measured(eta, detail="realised / available overlap on the resource-KIND axis")}
+            "eta": measured(eta, detail="realised / available overlap on the resource-KIND axis"),
+        }
     return out
 
 
@@ -937,16 +1171,23 @@ def counter_calibration(readings: Sequence[CounterReading]) -> dict:
     from merlin.perf.hw_counters import PROVED_FROM_ARTIFACT as HC_PROVED
     from merlin.perf.hw_counters import eta_from_counters, observations_from_counters
 
-    out: dict = {"instrument": COUNTER_INSTRUMENT, "n_runs": len(readings),
-                 "not_comparable_with_traces": INSTRUMENTS_NOT_COMPARABLE,
-                 "engine_axis_source": ("factored out of the target's OWN shipped counter header, "
-                                        "not read from the capability contract"),
-                 "runs": []}
+    out: dict = {
+        "instrument": COUNTER_INSTRUMENT,
+        "n_runs": len(readings),
+        "not_comparable_with_traces": INSTRUMENTS_NOT_COMPARABLE,
+        "engine_axis_source": (
+            "factored out of the target's OWN shipped counter header, not read from the capability contract"
+        ),
+        "runs": [],
+    }
     if not readings:
-        why = ("no counter reading was supplied, so the target's own combination counters constrain "
-               "nothing here")
-        out["engine_axis"] = {"operator": unknown(why), "eta": unknown(why),
-                              "realised_cycles": unknown(why), "available_cycles": unknown(why)}
+        why = "no counter reading was supplied, so the target's own combination counters constrain nothing here"
+        out["engine_axis"] = {
+            "operator": unknown(why),
+            "eta": unknown(why),
+            "realised_cycles": unknown(why),
+            "available_cycles": unknown(why),
+        }
         out["kind_axis"] = {"operator": unknown(why), "eta": unknown(why)}
         out["engines"] = []
         out["runs_without_a_reading"] = []
@@ -968,27 +1209,43 @@ def counter_calibration(readings: Sequence[CounterReading]) -> dict:
         absent = [k for k in CounterReading.PROOF_KEYS if not proof.get(k)]
         if not absent:
             got = eta_from_counters(
-                dict(r.values), r.counters, hw_text=str(proof["hw_text"]),
-                codes=proof["codes"], module=str(proof["module"]),
+                dict(r.values),
+                r.counters,
+                hw_text=str(proof["hw_text"]),
+                codes=proof["codes"],
+                module=str(proof["module"]),
                 counter_module=str(proof["counter_module"]),
-                exclusivity=HC_PROVED, measurement_cycles=r.total_cycles,
-                source=r.provenance or COUNTER_INSTRUMENT)
+                exclusivity=HC_PROVED,
+                measurement_cycles=r.total_cycles,
+                source=r.provenance or COUNTER_INSTRUMENT,
+            )
         elif r.exclusivity_declared_by_producer:
             got = eta_from_counters(
-                dict(r.values), r.counters, exclusivity=HC_DECLARED,
+                dict(r.values),
+                r.counters,
+                exclusivity=HC_DECLARED,
                 measurement_cycles=r.total_cycles,
-                source=r.provenance or COUNTER_INSTRUMENT)
+                source=r.provenance or COUNTER_INSTRUMENT,
+            )
         else:
-            got = {"state": "unknown", "eta": None,
-                   "why": ("the producer supplied no elaborated-artifact input(s) "
-                           f"{absent} and did not declare counter exclusivity, so nothing "
-                           "establishes that these counters partition busy time -- and an eta read "
-                           "off counters that do not would over-report both the per-engine totals "
-                           "and the realised overlap")}
+            got = {
+                "state": "unknown",
+                "eta": None,
+                "why": (
+                    "the producer supplied no elaborated-artifact input(s) "
+                    f"{absent} and did not declare counter exclusivity, so nothing "
+                    "establishes that these counters partition busy time -- and an eta read "
+                    "off counters that do not would over-report both the per-engine totals "
+                    "and the realised overlap"
+                ),
+            }
         obs = observations_from_counters(
-            dict(r.values), r.counters, total_cycles=r.total_cycles,
+            dict(r.values),
+            r.counters,
+            total_cycles=r.total_cycles,
             source=r.provenance or COUNTER_INSTRUMENT,
-            kind_of=dict(r.kind_of) if r.kind_of else None)
+            kind_of=dict(r.kind_of) if r.kind_of else None,
+        )
         entry: dict = {
             "workload": r.workload,
             "counters": r.counters.to_dict() if hasattr(r.counters, "to_dict") else {},
@@ -1002,19 +1259,22 @@ def counter_calibration(readings: Sequence[CounterReading]) -> dict:
             entry["busy_cycles"] = measured(
                 {k: int(v) for k, v in sorted(got["busy_cycles"].items())},
                 detail="per COUNTER-DERIVED engine: the single counter plus every combination "
-                       "containing it, which is exact because the increment conditions partition "
-                       "busy time")
+                "containing it, which is exact because the increment conditions partition "
+                "busy time",
+            )
             entry["realised_cycles"] = measured(
                 int(got["realised_cycles"]),
                 detail="cycles the hardware itself counted with >=2 engines busy together -- "
-                       "measured, not inferred from buckets")
+                "measured, not inferred from buckets",
+            )
             entry["available_cycles"] = measured(
                 int(got["available_cycles"]),
                 detail="min(total - busiest, total // 2); equals the second-largest per-engine total "
-                       "for two engines, which is the falsifier's denominator")
-            entry["eta"] = measured(float(got["eta"]),
-                                    detail="realised / available overlap on the counter-derived "
-                                           "engine axis")
+                "for two engines, which is the falsifier's denominator",
+            )
+            entry["eta"] = measured(
+                float(got["eta"]), detail="realised / available overlap on the counter-derived engine axis"
+            )
             entry["counter_set_complete"] = bool(got.get("complete"))
             # WHICH RUNG this eta stands on. Reported per run rather than once per record, because a
             # corpus may mix a target with an elaborated artifact and one without, and a reader
@@ -1032,18 +1292,26 @@ def counter_calibration(readings: Sequence[CounterReading]) -> dict:
 
     unreadable = sorted(w for w, e in per_run.items() if e["eta"]["state"] != MEASURED)
     if mixed:
-        why = ("the supplied runs were counted over DIFFERENT engine sets, so their totals are not "
-               "over one axis and summing them would build a corpus figure out of two instruments")
+        why = (
+            "the supplied runs were counted over DIFFERENT engine sets, so their totals are not "
+            "over one axis and summing them would build a corpus figure out of two instruments"
+        )
     elif unreadable:
-        why = (f"run(s) {unreadable} yielded no counter reading; UNKNOWN propagates -- one unmeasured "
-               "run leaves the corpus operator unestablished rather than partially derived, since "
-               "dropping it reweights the corpus towards whatever was measurable")
+        why = (
+            f"run(s) {unreadable} yielded no counter reading; UNKNOWN propagates -- one unmeasured "
+            "run leaves the corpus operator unestablished rather than partially derived, since "
+            "dropping it reweights the corpus towards whatever was measurable"
+        )
     else:
         why = ""
 
     if why:
-        out["engine_axis"] = {"operator": unknown(why), "eta": unknown(why),
-                              "realised_cycles": unknown(why), "available_cycles": unknown(why)}
+        out["engine_axis"] = {
+            "operator": unknown(why),
+            "eta": unknown(why),
+            "realised_cycles": unknown(why),
+            "available_cycles": unknown(why),
+        }
         out["kind_axis"] = {"operator": unknown(why), "eta": unknown(why)}
         out["runs_without_a_reading"] = unreadable
         return out
@@ -1052,20 +1320,35 @@ def counter_calibration(readings: Sequence[CounterReading]) -> dict:
     realised = sum(int(e["realised_cycles"]["value"]) for e in per_run.values())
     available = sum(int(e["available_cycles"]["value"]) for e in per_run.values())
     if available == 0:
-        zero = ("no supplied run has any overlappable time (every run's second-busiest engine is busy "
-                "0 cycles), so the operator is 0/0 -- undefined, not SUM")
-        out["engine_axis"] = {"operator": unknown(zero), "eta": unknown(zero),
-                              "realised_cycles": measured(realised), "available_cycles": measured(0)}
+        zero = (
+            "no supplied run has any overlappable time (every run's second-busiest engine is busy "
+            "0 cycles), so the operator is 0/0 -- undefined, not SUM"
+        )
+        out["engine_axis"] = {
+            "operator": unknown(zero),
+            "eta": unknown(zero),
+            "realised_cycles": measured(realised),
+            "available_cycles": measured(0),
+        }
     else:
         eta = realised / available
-        op = (Composition.SUM if eta <= COMPOSITION_TOLERANCE
-              else Composition.MAX if eta >= 1.0 - COMPOSITION_TOLERANCE else Composition.PARTIAL)
+        op = (
+            Composition.SUM
+            if eta <= COMPOSITION_TOLERANCE
+            else Composition.MAX
+            if eta >= 1.0 - COMPOSITION_TOLERANCE
+            else Composition.PARTIAL
+        )
         out["engine_axis"] = {
-            "operator": measured(op.value, detail=f"over {len(per_run)} counter-bracketed run(s), "
-                                                  f"tolerance {COMPOSITION_TOLERANCE}"),
-            "eta": measured(eta, detail="realised / available overlap summed over the corpus, on the "
-                                        "COUNTER-DERIVED engine axis"),
-            "realised_cycles": measured(realised), "available_cycles": measured(available)}
+            "operator": measured(
+                op.value, detail=f"over {len(per_run)} counter-bracketed run(s), tolerance {COMPOSITION_TOLERANCE}"
+            ),
+            "eta": measured(
+                eta, detail="realised / available overlap summed over the corpus, on the COUNTER-DERIVED engine axis"
+            ),
+            "realised_cycles": measured(realised),
+            "available_cycles": measured(available),
+        }
 
     # The KIND axis needs each counter engine's resource kind, and a kind is NOT derivable from a
     # counter's spelling -- reading "LD" as movement is the overfit the cardinal rule forbids. So it is
@@ -1076,24 +1359,33 @@ def counter_calibration(readings: Sequence[CounterReading]) -> dict:
             declared_kinds[str(engine)] = str(kind)
     missing_kinds = sorted(e for e in out["engines"] if e not in declared_kinds)
     if missing_kinds:
-        why_k = (f"no resource kind is declared for counter engine(s) {missing_kinds}. A kind cannot "
-                 "be derived from a counter's name, and the capability contract does not declare "
-                 "these engines, so the kind axis refuses rather than inventing a grouping")
+        why_k = (
+            f"no resource kind is declared for counter engine(s) {missing_kinds}. A kind cannot "
+            "be derived from a counter's name, and the capability contract does not declare "
+            "these engines, so the kind axis refuses rather than inventing a grouping"
+        )
         out["kind_axis"] = {"operator": unknown(why_k), "eta": unknown(why_k)}
         out["declared_kinds"] = dict(sorted(declared_kinds.items()))
         return out
 
     sources, overlaps = [], {}
     for workload, e in sorted(per_run.items()):
-        resources = tuple(Resource(name=n, kind=ResourceKind(declared_kinds[n]), busy_cycles=int(v))
-                          for n, v in sorted(e["busy_cycles"]["value"].items()))
-        sources.append(ActivitySource(
-            workload=workload, total_cycles=int(e.get("total_cycles") or 0), resources=resources,
-            # A combination-counter set does NOT partition the timeline once each single is summed
-            # with the combinations containing it -- which is what licenses the overlap reading.
-            partitioned=False,
-            completion_observable=e.get("completion_observable"),
-            provenance=str(e.get("provenance") or COUNTER_INSTRUMENT)))
+        resources = tuple(
+            Resource(name=n, kind=ResourceKind(declared_kinds[n]), busy_cycles=int(v))
+            for n, v in sorted(e["busy_cycles"]["value"].items())
+        )
+        sources.append(
+            ActivitySource(
+                workload=workload,
+                total_cycles=int(e.get("total_cycles") or 0),
+                resources=resources,
+                # A combination-counter set does NOT partition the timeline once each single is summed
+                # with the combinations containing it -- which is what licenses the overlap reading.
+                partitioned=False,
+                completion_observable=e.get("completion_observable"),
+                provenance=str(e.get("provenance") or COUNTER_INSTRUMENT),
+            )
+        )
         overlaps[workload] = int(e["realised_cycles"]["value"])
     got = composition_operator(sources, observed_overlap_cycles=overlaps)
     if isinstance(got, Unavailable):
@@ -1103,7 +1395,8 @@ def counter_calibration(readings: Sequence[CounterReading]) -> dict:
         op, eta = got
         out["kind_axis"] = {
             "operator": measured(op.value, detail=f"over {len(sources)} counter-bracketed run(s)"),
-            "eta": measured(eta, detail="realised / available overlap on the resource-KIND axis")}
+            "eta": measured(eta, detail="realised / available overlap on the resource-KIND axis"),
+        }
     out["declared_kinds"] = dict(sorted(declared_kinds.items()))
     return out
 
@@ -1116,35 +1409,47 @@ def _measurement_basis(n_traces: int, n_counter_runs: int) -> str:
     was NOT supplied as well as what was, so no reader has to infer the absence from a missing field.
     """
     if n_traces and n_counter_runs:
-        return (f"{n_traces} per-cycle trace(s) through the MechanismTrace seam AND {n_counter_runs} "
-                f"aggregate hardware-counter run(s) through the CounterReading seam. Two instruments, "
-                f"reported separately: {INSTRUMENTS_NOT_COMPARABLE}")
+        return (
+            f"{n_traces} per-cycle trace(s) through the MechanismTrace seam AND {n_counter_runs} "
+            f"aggregate hardware-counter run(s) through the CounterReading seam. Two instruments, "
+            f"reported separately: {INSTRUMENTS_NOT_COMPARABLE}"
+        )
     if n_traces:
-        return (f"{n_traces} per-cycle trace(s) supplied through the MechanismTrace seam. No hardware "
-                "combination counters were supplied, so counter_calibration is UNKNOWN throughout")
+        return (
+            f"{n_traces} per-cycle trace(s) supplied through the MechanismTrace seam. No hardware "
+            "combination counters were supplied, so counter_calibration is UNKNOWN throughout"
+        )
     if n_counter_runs:
-        return (f"{n_counter_runs} aggregate hardware-counter run(s) through the CounterReading seam. "
-                "NO per-cycle trace was supplied, so the trace-side composition, every per-capsule "
-                "eta and the whole capsule cover stay UNKNOWN and ran_against_traces is False. The "
-                "counter block below is a real measurement of the composition operator on the "
-                "COUNTER-DERIVED engine axis, and it is not a per-cycle trace: "
-                f"{INSTRUMENTS_NOT_COMPARABLE}")
-    return ("NO per-cycle trace and NO hardware counter reading were supplied. The engine inventory "
-            "and the regime cover below are derived and real; every eta, overlap split and per-engine "
-            "busy count is UNKNOWN and no mechanism is calibrated. This record is a PLAN, not a "
-            "calibration")
+        return (
+            f"{n_counter_runs} aggregate hardware-counter run(s) through the CounterReading seam. "
+            "NO per-cycle trace was supplied, so the trace-side composition, every per-capsule "
+            "eta and the whole capsule cover stay UNKNOWN and ran_against_traces is False. The "
+            "counter block below is a real measurement of the composition operator on the "
+            "COUNTER-DERIVED engine axis, and it is not a per-cycle trace: "
+            f"{INSTRUMENTS_NOT_COMPARABLE}"
+        )
+    return (
+        "NO per-cycle trace and NO hardware counter reading were supplied. The engine inventory "
+        "and the regime cover below are derived and real; every eta, overlap split and per-engine "
+        "busy count is UNKNOWN and no mechanism is calibrated. This record is a PLAN, not a "
+        "calibration"
+    )
 
 
-def calibrate(*, target: str, contract: Mapping,
-              traces: Sequence[MechanismTrace] = (),
-              counter_readings: Sequence[CounterReading] = (),
-              corpus_regimes: Mapping | None = None,
-              regime_by_capsule: Mapping[str, Mapping] | None = None,
-              fsm_registers: Sequence = (),
-              declared_idle_value: str | None = None,
-              points_per_cell: int = POINTS_PER_CELL,
-              provenance: Mapping | None = None,
-              notes: str = "") -> dict:
+def calibrate(
+    *,
+    target: str,
+    contract: Mapping,
+    traces: Sequence[MechanismTrace] = (),
+    counter_readings: Sequence[CounterReading] = (),
+    corpus_regimes: Mapping | None = None,
+    regime_by_capsule: Mapping[str, Mapping] | None = None,
+    fsm_registers: Sequence = (),
+    declared_idle_value: str | None = None,
+    points_per_cell: int = POINTS_PER_CELL,
+    provenance: Mapping | None = None,
+    notes: str = "",
+) -> dict:
     """Measure the mechanisms an analytical model needs, and report what nothing could measure.
 
     ``traces`` may be empty. That is the PLAN mode and it is a real answer: the engine inventory and
@@ -1167,17 +1472,20 @@ def calibrate(*, target: str, contract: Mapping,
     readings = {t.capsule: _reading(t, inventory, idle) for t in traces}
 
     cells = required_cells(inventory, corpus_regimes or {})
-    filled = select_calibration_set(cells, readings=readings, regime_by_capsule=regime_by_capsule,
-                                   traces=traces, points_per_cell=points_per_cell)
+    filled = select_calibration_set(
+        cells, readings=readings, regime_by_capsule=regime_by_capsule, traces=traces, points_per_cell=points_per_cell
+    )
     selected = sorted({c for cell in filled for c in cell.capsules})
 
-    fitted = sorted({cell.key for cell in filled
-                     if cell.axis == MEMORY_REGIME_AXIS and cell.state == CALIBRATED})
-    not_fitted = sorted({cell.key for cell in filled
-                         if cell.axis == MEMORY_REGIME_AXIS and cell.state != CALIBRATED})
-    measured_regimes = sorted({(readings[c].get("regime") or {}).get("value", {}).get("regime")
-                               for c in readings
-                               if (readings[c].get("regime") or {}).get("state") == MEASURED})
+    fitted = sorted({cell.key for cell in filled if cell.axis == MEMORY_REGIME_AXIS and cell.state == CALIBRATED})
+    not_fitted = sorted({cell.key for cell in filled if cell.axis == MEMORY_REGIME_AXIS and cell.state != CALIBRATED})
+    measured_regimes = sorted(
+        {
+            (readings[c].get("regime") or {}).get("value", {}).get("regime")
+            for c in readings
+            if (readings[c].get("regime") or {}).get("state") == MEASURED
+        }
+    )
 
     record = {
         "schema_version": SCHEMA_VERSION,
@@ -1189,8 +1497,7 @@ def calibrate(*, target: str, contract: Mapping,
         "engine_inventory": inventory.to_dict(),
         "memory_regimes": {
             "capacity_rows": (corpus_regimes or {}).get("capacity_rows"),
-            "by_regime": {k: sorted(v) for k, v in
-                          sorted(((corpus_regimes or {}).get("by_regime") or {}).items())},
+            "by_regime": {k: sorted(v) for k, v in sorted(((corpus_regimes or {}).get("by_regime") or {}).items())},
             "largest_working_set": (corpus_regimes or {}).get("largest_working_set"),
             "regime_order_weakest_first": list(MR.ORDER),
         },
@@ -1205,19 +1512,20 @@ def calibrate(*, target: str, contract: Mapping,
             "uncalibratable": {c.key: c.why for c in filled if c.state == UNCALIBRATABLE},
             "uncovered": {c.key: c.why for c in filled if c.state == UNCOVERED},
         },
-        "capsules": [dict(readings[c], regime=_regime_of(c, regime_by_capsule))
-                     for c in sorted(readings)],
+        "capsules": [dict(readings[c], regime=_regime_of(c, regime_by_capsule)) for c in sorted(readings)],
         "composition": _composition(readings, inventory),
         "coefficient_domain": {
             "regimes_with_points": fitted,
             "regimes_without_points": not_fitted,
             "regimes_measured_on_traces": [r for r in measured_regimes if r],
-            "transfer_warning": ("a coefficient is fitted in the regimes listed under "
-                                 "regimes_with_points and nowhere else. A model asked to score work "
-                                 "in a regime not listed there must report UNKNOWN rather than "
-                                 "extend the fit: measured on the interlocked target here, the "
-                                 "corpus is 46/48 fits_double while 90.1% of contraction regions "
-                                 "across 20 real captures land in spills"),
+            "transfer_warning": (
+                "a coefficient is fitted in the regimes listed under "
+                "regimes_with_points and nowhere else. A model asked to score work "
+                "in a regime not listed there must report UNKNOWN rather than "
+                "extend the fit: measured on the interlocked target here, the "
+                "corpus is 46/48 fits_double while 90.1% of contraction regions "
+                "across 20 real captures land in spills"
+            ),
         },
         "counter_calibration": counter_calibration(counter_readings),
         "ran_against_traces": bool(traces),
@@ -1251,12 +1559,16 @@ def audit(record: Mapping) -> dict:
             state = node.get("state")
             if state == UNKNOWN:
                 if node.get("value") is not None:
-                    problems.append(f"{path}: state=unknown but carries a value "
-                                    f"{node.get('value')!r} -- an unmeasurable thing reported as "
-                                    "measured")
+                    problems.append(
+                        f"{path}: state=unknown but carries a value "
+                        f"{node.get('value')!r} -- an unmeasurable thing reported as "
+                        "measured"
+                    )
                 if not node.get("why"):
-                    problems.append(f"{path}: state=unknown with no reason; a refusal without its "
-                                    "reason is indistinguishable from a measured zero")
+                    problems.append(
+                        f"{path}: state=unknown with no reason; a refusal without its "
+                        "reason is indistinguishable from a measured zero"
+                    )
             elif state == MEASURED and node.get("value") is None:
                 problems.append(f"{path}: state=measured with value None")
             for k, v in node.items():

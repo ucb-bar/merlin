@@ -17,6 +17,7 @@ Every facet value is a ``StringAttr`` (uniform, robust round-trip); the dataclas
 serializer (``kernels.cca_mlir``) coerces types per field. Adding a facet = adding one optional
 property here + one line in the serializer's field map — generalizable, no per-target special-casing.
 """
+
 from __future__ import annotations
 
 from ._common import HAS_XDSL
@@ -27,9 +28,17 @@ TYPES: list[str] = []
 
 # The facet fields each op carries (also the serializer's contract). Kept here so the dialect and the
 # serializer share ONE source of truth for the field set.
-COMPUTE_FIELDS = ("contraction_form", "accumulator_dtype", "widening", "reduction_form",
-                  "register_block_mr", "epilogue", "accumulator_resident", "nr_is_vsetvlmax",
-                  "activation_vectorization")
+COMPUTE_FIELDS = (
+    "contraction_form",
+    "accumulator_dtype",
+    "widening",
+    "reduction_form",
+    "register_block_mr",
+    "epilogue",
+    "accumulator_resident",
+    "nr_is_vsetvlmax",
+    "activation_vectorization",
+)
 VECTOR_FIELDS = ("sew", "lmul", "vl_strategy", "tail")
 MEMORY_FIELDS = ("access_pattern", "panel_reuse", "a_broadcast_vf")
 
@@ -42,6 +51,7 @@ if HAS_XDSL:
     @irdl_op_definition
     class ComputeOp(IRDLOperation):
         """cca.compute — the target-agnostic compute facet (one optional StringAttr per field)."""
+
         name = "cca.compute"
         contraction_form = opt_prop_def(StringAttr)
         accumulator_dtype = opt_prop_def(StringAttr)
@@ -56,6 +66,7 @@ if HAS_XDSL:
     @irdl_op_definition
     class VectorOp(IRDLOperation):
         """cca.vector — the RVV/SIMD vector facet."""
+
         name = "cca.vector"
         sew = opt_prop_def(StringAttr)
         lmul = opt_prop_def(StringAttr)
@@ -65,6 +76,7 @@ if HAS_XDSL:
     @irdl_op_definition
     class MemoryOp(IRDLOperation):
         """cca.memory — the data-movement / packing facet (the #1 expert GEMM lever)."""
+
         name = "cca.memory"
         access_pattern = opt_prop_def(StringAttr)
         panel_reuse = opt_prop_def(StringAttr)
@@ -73,6 +85,7 @@ if HAS_XDSL:
     @irdl_op_definition
     class KernelOp(IRDLOperation):
         """cca.kernel — a captured CCA: identity props + a region holding the facet ops."""
+
         name = "cca.kernel"
         op = opt_prop_def(StringAttr)
         backend = opt_prop_def(StringAttr)

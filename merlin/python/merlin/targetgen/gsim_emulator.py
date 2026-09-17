@@ -36,6 +36,7 @@ not certify on unattributable bytes.
 Nothing here knows a target name, a simulator flag, or an RTL fact: the target is a parameter, the
 directory is derived from it, and the digests come from the bytes on disk.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -44,6 +45,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
 from merlin.common import jsonio as _mjson
 
 #: The canonical file names inside ``<build>/rtl_engines/<target>/gsim/``. Fixed names, not a glob: picking "the
@@ -93,6 +95,7 @@ def _env(name: str) -> str:
     environment still WINS — ``.env`` is the fallback, exactly as `paths.env` defines it.
     """
     from merlin.common.paths import env as _paths_env
+
     return (_paths_env(name) or "").strip()
 
 
@@ -111,6 +114,7 @@ def engine_home(target: str, engine: str = "gsim") -> Path:
     target groups together and the inner file names are identical across targets.
     """
     from merlin.common.paths import build_dir
+
     return build_dir() / "rtl_engines" / str(target) / str(engine)
 
 
@@ -183,15 +187,16 @@ class Resolution:
     ``refused`` distinguishes the two ways ``ok`` can be False, and they are not the same finding: an
     ABSENT emulator is work not done yet, a REFUSED one is bytes that exist and may not be trusted.
     """
+
     target: str
     path: Path
-    source: str                       # "env:<VAR>" | "derived"
+    source: str  # "env:<VAR>" | "derived"
     ok: bool
     reason: str
     refused: bool = False
-    receipt: dict[str, Any] | None = None      # the citable lineage block, when a receipt bound it
-    receipt_status: str = "absent"             # absent | bound | invalid | adopted
-    digest: str | None = None                  # sha256 of the bytes actually resolved
+    receipt: dict[str, Any] | None = None  # the citable lineage block, when a receipt bound it
+    receipt_status: str = "absent"  # absent | bound | invalid | adopted
+    digest: str | None = None  # sha256 of the bytes actually resolved
     #: Which shape answered: "binary" (a self-contained emulator driven with an ELF) or "wrapper"
     #: (an ``<engine>_run.py`` driven with assembled words). A caller INVOKES the two differently, so
     #: the shape has to survive resolution rather than be re-guessed from the path.
@@ -200,6 +205,7 @@ class Resolution:
 
 def _digest(path: Path) -> str:
     from merlin.common import provenance
+
     return provenance.file_digest(path)
 
 
@@ -235,8 +241,12 @@ def _canonical_sha(value: Any) -> str:
 
 def _strict_receipt_error(doc: dict[str, Any]) -> str | None:
     """Validate every byte/transcript commitment introduced by the v3 receipt."""
-    artifacts, tools, inputs, commands = (doc.get("artifacts"), doc.get("tools"),
-                                          doc.get("inputs"), doc.get("commands"))
+    artifacts, tools, inputs, commands = (
+        doc.get("artifacts"),
+        doc.get("tools"),
+        doc.get("inputs"),
+        doc.get("commands"),
+    )
     if not isinstance(artifacts, dict) or set(artifacts) != {"firrtl", "model_manifest", "binary"}:
         return "v3 receipt lacks exact FIRRTL/model/binary artifact pins"
     if not isinstance(tools, dict) or set(tools) != {"gsim_emitter", "cxx_wrapper", "cxx_compiler"}:
@@ -274,9 +284,14 @@ def _strict_receipt_error(doc: dict[str, Any]) -> str | None:
         if not isinstance(row, dict):
             return f"v3 receipt command {index} is malformed"
         stage, cwd, argv = row.get("stage"), row.get("cwd"), row.get("argv")
-        if not isinstance(stage, str) or not isinstance(cwd, str) or not Path(cwd).is_absolute() \
-                or not isinstance(argv, list) or not argv \
-                or not all(isinstance(arg, str) for arg in argv):
+        if (
+            not isinstance(stage, str)
+            or not isinstance(cwd, str)
+            or not Path(cwd).is_absolute()
+            or not isinstance(argv, list)
+            or not argv
+            or not all(isinstance(arg, str) for arg in argv)
+        ):
             return f"v3 receipt command {index} lacks stage/cwd/exact argv"
         stages.append(stage)
     if "emit" not in stages or "compile" not in stages or stages[-1] != "link":
@@ -292,9 +307,11 @@ def _strict_receipt_error(doc: dict[str, Any]) -> str | None:
         if provenance.get("elaboration_performed") is not True or "elaborate" not in stages:
             return "v3 elaborated-in-build provenance contradicts its transcript"
     elif boundary == FIRRTL_BOUNDARY_ADOPTED:
-        if provenance.get("elaboration_performed") is not False \
-                or provenance.get("warning") != ADOPTED_FIRRTL_WARNING \
-                or "elaborate" in stages:
+        if (
+            provenance.get("elaboration_performed") is not False
+            or provenance.get("warning") != ADOPTED_FIRRTL_WARNING
+            or "elaborate" in stages
+        ):
             return "v3 adopted-preexisting provenance contradicts its transcript"
     else:
         return "v3 receipt has an unknown FIRRTL provenance boundary"
@@ -310,8 +327,7 @@ def _strict_receipt_error(doc: dict[str, Any]) -> str | None:
     return None
 
 
-def _validate_receipt(target: str, binary: Path, digest: str,
-                      receipt: Path) -> tuple[str, str, dict[str, Any] | None]:
+def _validate_receipt(target: str, binary: Path, digest: str, receipt: Path) -> tuple[str, str, dict[str, Any] | None]:
     """(status, reason_fragment, citable_block) for the receipt beside ``binary``.
 
     The one check that decides trust is the BINDING: does this receipt describe THESE bytes? Everything
@@ -320,29 +336,46 @@ def _validate_receipt(target: str, binary: Path, digest: str,
     reads, to anyone who opens it, as though it did.
     """
     if not receipt.is_file():
-        return "absent", (f"no build receipt beside it ({receipt.name}) — provenance UNRECORDED: these "
-                          f"bytes are not attributed to any RTL revision"), None
+        return (
+            "absent",
+            (
+                f"no build receipt beside it ({receipt.name}) — provenance UNRECORDED: these "
+                f"bytes are not attributed to any RTL revision"
+            ),
+            None,
+        )
     try:
         doc = json.loads(receipt.read_text(encoding="utf-8"))
-    except Exception as exc:                    # noqa: BLE001 — an unreadable receipt is not a pass
+    except Exception as exc:  # noqa: BLE001 — an unreadable receipt is not a pass
         return "invalid", f"build receipt {receipt.name} is unreadable ({type(exc).__name__}: {exc})", None
     if not isinstance(doc, dict):
         return "invalid", f"build receipt {receipt.name} is not a receipt document", None
     schema = str(doc.get("schema_version") or "")
     if not schema.startswith(RECEIPT_SCHEMA_PREFIX):
-        return "invalid", (f"build receipt {receipt.name} declares schema {schema!r}, not a "
-                           f"{RECEIPT_SCHEMA_PREFIX}* GSIM model-build receipt"), None
+        return (
+            "invalid",
+            (
+                f"build receipt {receipt.name} declares schema {schema!r}, not a "
+                f"{RECEIPT_SCHEMA_PREFIX}* GSIM model-build receipt"
+            ),
+            None,
+        )
     status = str(doc.get("status") or "")
     if status != "complete":
         return "invalid", f"build receipt {receipt.name} status is {status!r}, not 'complete'", None
-    declared = str(doc.get("binary_sha256")
-                   or ((doc.get("artifacts") or {}).get("binary") or {}).get("sha256") or "")
+    declared = str(doc.get("binary_sha256") or ((doc.get("artifacts") or {}).get("binary") or {}).get("sha256") or "")
     if not declared:
         return "invalid", f"build receipt {receipt.name} declares no binary digest", None
     if declared != digest:
-        return "invalid", (f"build receipt {receipt.name} binds {declared[:12]} but {binary.name} is "
-                           f"{digest[:12]} — the receipt describes a DIFFERENT binary, so its RTL and "
-                           f"tool identity say nothing about these bytes"), None
+        return (
+            "invalid",
+            (
+                f"build receipt {receipt.name} binds {declared[:12]} but {binary.name} is "
+                f"{digest[:12]} — the receipt describes a DIFFERENT binary, so its RTL and "
+                f"tool identity say nothing about these bytes"
+            ),
+            None,
+        )
     if schema == STRICT_RECEIPT_SCHEMA:
         strict_error = _strict_receipt_error(doc)
         if strict_error is not None:
@@ -376,13 +409,28 @@ def _resolve_wrapper(target: str, engine: str = "gsim") -> Resolution | None:
         block = None
 
     if status != "bound" and _env(REQUIRE_RECEIPT_ENV).lower() in _TRUTHY:
-        return Resolution(target, path, "derived", False,
-                          f"GSIM wrapper ({engine}) at {path} REFUSED: {note} and "
-                          f"{REQUIRE_RECEIPT_ENV} is set",
-                          refused=True, receipt_status=status, digest=digest, flavour="wrapper")
-    return Resolution(target, path, "derived", True,
-                      f"GSIM wrapper ({engine}) {path} (derived, {digest[:12]}); {note}",
-                      receipt=block, receipt_status=status, digest=digest, flavour="wrapper")
+        return Resolution(
+            target,
+            path,
+            "derived",
+            False,
+            f"GSIM wrapper ({engine}) at {path} REFUSED: {note} and {REQUIRE_RECEIPT_ENV} is set",
+            refused=True,
+            receipt_status=status,
+            digest=digest,
+            flavour="wrapper",
+        )
+    return Resolution(
+        target,
+        path,
+        "derived",
+        True,
+        f"GSIM wrapper ({engine}) {path} (derived, {digest[:12]}); {note}",
+        receipt=block,
+        receipt_status=status,
+        digest=digest,
+        flavour="wrapper",
+    )
 
 
 def _adoption_status(home: Path, path: Path, digest: str) -> tuple[str, str]:
@@ -393,20 +441,25 @@ def _adoption_status(home: Path, path: Path, digest: str) -> tuple[str, str]:
     gone — the precise failure the registry exists to prevent.
     """
     record = home / ADOPTION_NAME
-    absent = ("absent", f"no build receipt beside it ({RECEIPT_NAME}) — provenance UNRECORDED: these "
-                        f"bytes are not attributed to any RTL revision")
+    absent = (
+        "absent",
+        f"no build receipt beside it ({RECEIPT_NAME}) — provenance UNRECORDED: these "
+        f"bytes are not attributed to any RTL revision",
+    )
     if not record.is_file():
         return absent
     try:
         doc = json.loads(record.read_text(encoding="utf-8"))
-    except Exception:                           # noqa: BLE001 — an unreadable record is simply no record
+    except Exception:  # noqa: BLE001 — an unreadable record is simply no record
         return absent
     entry = ((doc.get("files") or {}) if isinstance(doc, dict) else {}).get(path.name)
     declared = str(entry.get("sha256")) if isinstance(entry, dict) else ""
     if declared != digest:
         return absent
-    return "adopted", (f"no build receipt ({RECEIPT_NAME}), but the adoption record {ADOPTION_NAME} "
-                       f"covers these exact bytes — lineage ADOPTED, not built-and-bound")
+    return "adopted", (
+        f"no build receipt ({RECEIPT_NAME}), but the adoption record {ADOPTION_NAME} "
+        f"covers these exact bytes — lineage ADOPTED, not built-and-bound"
+    )
 
 
 def resolve(target: str, *, env_var: str | None = None) -> Resolution:
@@ -428,31 +481,57 @@ def resolve(target: str, *, env_var: str | None = None) -> Resolution:
             if wrapped is not None:
                 return wrapped
         where = f"{source} -> {path}" if source != "derived" else str(path)
-        return Resolution(target, path, source, False,
-                          f"no GSIM emulator at {where} (build one and install it as "
-                          f"{gsim_home(target) / BINARY_NAME}, or a "
-                          f"{wrapper_name('gsim')} wrapper in the same home)")
+        return Resolution(
+            target,
+            path,
+            source,
+            False,
+            f"no GSIM emulator at {where} (build one and install it as "
+            f"{gsim_home(target) / BINARY_NAME}, or a "
+            f"{wrapper_name('gsim')} wrapper in the same home)",
+        )
     # Existence is not enough: an artifact copied without its mode bit, or the emitted .cpp rather than
     # the built model, both exist. A cert tier reported available and then failing to exec is worse than
     # one reported absent.
     if not os.access(path, os.X_OK):
-        return Resolution(target, path, source, False,
-                          f"GSIM emulator at {path} is not executable (copied without its mode bit?)")
+        return Resolution(
+            target, path, source, False, f"GSIM emulator at {path} is not executable (copied without its mode bit?)"
+        )
 
     digest = _digest(path)
-    status, note, block = _validate_receipt(target, path, digest,
-                                            path.parent / RECEIPT_NAME)
+    status, note, block = _validate_receipt(target, path, digest, path.parent / RECEIPT_NAME)
     if status == "invalid":
-        return Resolution(target, path, source, False,
-                          f"GSIM emulator at {path} REFUSED: {note}",
-                          refused=True, receipt_status=status, digest=digest)
+        return Resolution(
+            target,
+            path,
+            source,
+            False,
+            f"GSIM emulator at {path} REFUSED: {note}",
+            refused=True,
+            receipt_status=status,
+            digest=digest,
+        )
     if status == "absent" and _env(REQUIRE_RECEIPT_ENV).lower() in _TRUTHY:
-        return Resolution(target, path, source, False,
-                          f"GSIM emulator at {path} REFUSED: {note} and {REQUIRE_RECEIPT_ENV} is set",
-                          refused=True, receipt_status=status, digest=digest)
-    return Resolution(target, path, source, True,
-                      f"GSIM emulator {path} ({source}, {digest[:12]}); {note}",
-                      receipt=block, receipt_status=status, digest=digest)
+        return Resolution(
+            target,
+            path,
+            source,
+            False,
+            f"GSIM emulator at {path} REFUSED: {note} and {REQUIRE_RECEIPT_ENV} is set",
+            refused=True,
+            receipt_status=status,
+            digest=digest,
+        )
+    return Resolution(
+        target,
+        path,
+        source,
+        True,
+        f"GSIM emulator {path} ({source}, {digest[:12]}); {note}",
+        receipt=block,
+        receipt_status=status,
+        digest=digest,
+    )
 
 
 def probe(target: str, *, env_var: str | None = None) -> tuple[bool, str]:
@@ -469,13 +548,29 @@ def citation(target: str, *, env_var: str | None = None) -> dict[str, Any]:
     any artifact.
     """
     r = resolve(target, env_var=env_var)
-    return {"target": r.target, "engine": "gsim", "path": str(r.path), "source": r.source,
-            "available": r.ok, "refused": r.refused, "reason": r.reason, "flavour": r.flavour,
-            "binary_sha256": r.digest, "receipt_status": r.receipt_status, "receipt": r.receipt}
+    return {
+        "target": r.target,
+        "engine": "gsim",
+        "path": str(r.path),
+        "source": r.source,
+        "available": r.ok,
+        "refused": r.refused,
+        "reason": r.reason,
+        "flavour": r.flavour,
+        "binary_sha256": r.digest,
+        "receipt_status": r.receipt_status,
+        "receipt": r.receipt,
+    }
 
 
-def install(target: str, binary: "str | Path", *, receipt: "str | Path | None" = None,
-            note: str = "", extra: "dict[str, Any] | None" = None) -> Resolution:
+def install(
+    target: str,
+    binary: "str | Path",
+    *,
+    receipt: "str | Path | None" = None,
+    note: str = "",
+    extra: "dict[str, Any] | None" = None,
+) -> Resolution:
     """Adopt ``binary`` as ``target``'s canonical GSIM emulator under the derived home.
 
     COPIES rather than links or moves: the sources are typically scratch build trees that other sessions
@@ -525,13 +620,18 @@ def install(target: str, binary: "str | Path", *, receipt: "str | Path | None" =
     }
     if extra:
         record.update(extra)
-    (home / ADOPTION_NAME).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n",
-                                      encoding="utf-8")
+    (home / ADOPTION_NAME).write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return resolve(target)
 
 
-def record_adoption(target: str, engine: str = "gsim", *, sources: "dict[str, str] | None" = None,
-                    note: str = "", extra: "dict[str, Any] | None" = None) -> Path:
+def record_adoption(
+    target: str,
+    engine: str = "gsim",
+    *,
+    sources: "dict[str, str] | None" = None,
+    note: str = "",
+    extra: "dict[str, Any] | None" = None,
+) -> Path:
     """Write the adoption record for an engine home whose files were installed by other means.
 
     :func:`install` covers the self-contained-binary flavour. An engine that ships a DIRECTORY (a

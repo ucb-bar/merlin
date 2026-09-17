@@ -7,11 +7,13 @@ Tensor naming is deterministic: the pack source is ``W``, other tensor args are
 command buffer's resource table (leaf tensor shapes/dtypes) rides on
 ``command_buffer.create`` so the terminal emit stage is a pure function of this module.
 """
+
 from __future__ import annotations
+
+from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 from .._common import HAS_XDSL
 from .interface_lowering import LoweringError
-from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 # Target op -> Merlin-owned abstract opcode (the command buffer is Merlin's; every
 # target encodes onto the same opcode set — that is what keeps metrics comparable). Only the ONE
@@ -30,8 +32,15 @@ TARGET_OPCODES = {
 # package (merlin.targetgen.registry); it is merged in via the ``opcodes`` arg of
 # lower_to_runtime rather than hardcoded here.
 
-METRICS_TO_CAPTURE = ["cycles", "bytes_moved", "command_count", "pack_count",
-                      "resident_hits", "evictions", "accumulator_commits"]
+METRICS_TO_CAPTURE = [
+    "cycles",
+    "bytes_moved",
+    "command_count",
+    "pack_count",
+    "resident_hits",
+    "evictions",
+    "accumulator_commits",
+]
 
 
 def _dtype_str(t) -> str:
@@ -51,8 +60,9 @@ def _shape_str(t) -> str:
     return "x".join(str(d) for d in t.get_shape()) + ":" + _dtype_str(t)
 
 
-def lower_to_runtime(module, target: str = DEFAULT_EXAMPLE_TARGET, backend: str = "simulator",
-                     opcodes: dict | None = None):
+def lower_to_runtime(
+    module, target: str = DEFAULT_EXAMPLE_TARGET, backend: str = "simulator", opcodes: dict | None = None
+):
     """Rebuild the target module as runtime command-buffer IR.
 
     ``opcodes`` (target-op name -> command-buffer opcode) is merged over the built-in map so an
@@ -63,14 +73,14 @@ def lower_to_runtime(module, target: str = DEFAULT_EXAMPLE_TARGET, backend: str 
     # built-in (toynpu) + every discovered reference dialect's map (e.g. saturn, keyed by full op name so
     # cross-target merges never collide) + the explicit ``opcodes`` a generated package supplies.
     from .target_lowering import plugin_opcodes
+
     opcode_map = {**TARGET_OPCODES}
     for _m in plugin_opcodes().values():
         opcode_map.update(_m)
     opcode_map.update(opcodes or {})
-    from xdsl.ir import Block, Region
-    from xdsl.dialects.builtin import (ArrayAttr, DictionaryAttr, FunctionType,
-                                       ModuleOp, StringAttr, TensorType)
+    from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, FunctionType, ModuleOp, StringAttr, TensorType
     from xdsl.dialects.func import FuncOp, ReturnOp
+    from xdsl.ir import Block, Region
 
     from .. import runtime as r
 
@@ -123,7 +133,7 @@ def lower_to_runtime(module, target: str = DEFAULT_EXAMPLE_TARGET, backend: str 
     # result reaches here through the return, so this covers both the matmul and the vector engine.
     ret_ops = [o for o in src_block.ops if o.name == "func.return"]
     output_names: list[str] = []
-    for operand in (ret_ops[0].operands if ret_ops else []):
+    for operand in ret_ops[0].operands if ret_ops else []:
         nm = names.get(operand)
         if nm is None:
             raise LoweringError("return operand has no runtime name")
@@ -131,16 +141,20 @@ def lower_to_runtime(module, target: str = DEFAULT_EXAMPLE_TARGET, backend: str 
         output_names.append(nm)
 
     blk = Block()
-    dev = r.DeviceGetOp(result_types=[r.DeviceType()], properties={
-        "device": StringAttr("%s0" % target),
-        "backend": r.BackendAttr(r.Backend(backend))})
-    cb = r.CommandBufferCreateOp(operands=[dev.dev], result_types=[r.CommandBufferType()],
-                                 properties={
-        "target": StringAttr(target),
-        "mode": r.SubmitModeAttr(r.SubmitMode.BATCHED),
-        "tensors": DictionaryAttr({k: StringAttr(v) for k, v in sorted(tensors.items())}),
-        "outputs": ArrayAttr([StringAttr(n) for n in output_names]),
-    })
+    dev = r.DeviceGetOp(
+        result_types=[r.DeviceType()],
+        properties={"device": StringAttr("%s0" % target), "backend": r.BackendAttr(r.Backend(backend))},
+    )
+    cb = r.CommandBufferCreateOp(
+        operands=[dev.dev],
+        result_types=[r.CommandBufferType()],
+        properties={
+            "target": StringAttr(target),
+            "mode": r.SubmitModeAttr(r.SubmitMode.BATCHED),
+            "tensors": DictionaryAttr({k: StringAttr(v) for k, v in sorted(tensors.items())}),
+            "outputs": ArrayAttr([StringAttr(n) for n in output_names]),
+        },
+    )
     ops = [dev, cb]
 
     for op in src_block.ops:
@@ -151,7 +165,7 @@ def lower_to_runtime(module, target: str = DEFAULT_EXAMPLE_TARGET, backend: str 
             # A generated target's pack op may not declare the optional dequant-scale operand/axis
             # (only the factory-built resident packs do) — getattr keeps this total for both.
             scale = getattr(op, "scale", None)
-            if scale is not None:                        # int8 weight-only dequant pack
+            if scale is not None:  # int8 weight-only dequant pack
                 args["scale"] = names[scale]
                 dq_axis = getattr(op, "dequant_axis", None)
                 if dq_axis is not None:
@@ -193,18 +207,29 @@ def lower_to_runtime(module, target: str = DEFAULT_EXAMPLE_TARGET, backend: str 
             continue
         else:
             raise LoweringError("no runtime encoding for %s" % op.name)
-        ops.append(r.CommandBufferAppendOp(operands=[cb.cb], properties={
-            "opcode": StringAttr(opcode),
-            "args": DictionaryAttr({k: StringAttr(v) for k, v in args.items()}),
-            "attrs": DictionaryAttr(attrs),
-            "queue": r.QueueKindAttr(r.QueueKind.COMPUTE)}))
+        ops.append(
+            r.CommandBufferAppendOp(
+                operands=[cb.cb],
+                properties={
+                    "opcode": StringAttr(opcode),
+                    "args": DictionaryAttr({k: StringAttr(v) for k, v in args.items()}),
+                    "attrs": DictionaryAttr(attrs),
+                    "queue": r.QueueKindAttr(r.QueueKind.COMPUTE),
+                },
+            )
+        )
 
-    sub = r.SubmitOp(operands=[dev.dev, cb.cb], result_types=[r.EventType()],
-                     properties={"mode": r.SubmitModeAttr(r.SubmitMode.BLOCKING)})
+    sub = r.SubmitOp(
+        operands=[dev.dev, cb.cb],
+        result_types=[r.EventType()],
+        properties={"mode": r.SubmitModeAttr(r.SubmitMode.BLOCKING)},
+    )
     wait = r.WaitOp(operands=[sub.event])
-    met = r.MetricsReadOp(operands=[dev.dev], result_types=[r.MetricsType()],
-                          properties={"metrics": ArrayAttr(
-                              [StringAttr(m) for m in METRICS_TO_CAPTURE])})
+    met = r.MetricsReadOp(
+        operands=[dev.dev],
+        result_types=[r.MetricsType()],
+        properties={"metrics": ArrayAttr([StringAttr(m) for m in METRICS_TO_CAPTURE])},
+    )
     ops += [sub, wait, met, ReturnOp()]
     blk.add_ops(ops)
     new_fn = FuncOp(fn.sym_name.data, FunctionType.from_lists([], []), Region([blk]))

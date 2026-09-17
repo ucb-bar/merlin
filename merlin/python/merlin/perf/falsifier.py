@@ -50,15 +50,27 @@ than one pair overlapped) and is reported, not clipped.
 Nothing here names a target, a unit, an engine or a kind: the engine set is the producer's
 declaration and arrives as a parameter.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 __all__ = [
-    "ABDecision", "ACCEPT", "DID_NOT_RISE", "ENGINE_AXIS", "EtaObservation", "EtaVerdict",
-    "KIND_AXIS", "REJECT", "ROSE", "UNDETERMINABLE", "ab_decision", "compare_eta",
-    "eta_from_occupancy", "eta_from_timing_block",
+    "ABDecision",
+    "ACCEPT",
+    "DID_NOT_RISE",
+    "ENGINE_AXIS",
+    "EtaObservation",
+    "EtaVerdict",
+    "KIND_AXIS",
+    "REJECT",
+    "ROSE",
+    "UNDETERMINABLE",
+    "ab_decision",
+    "compare_eta",
+    "eta_from_occupancy",
+    "eta_from_timing_block",
 ]
 
 #: The three -- and only three -- answers to "did eta rise". ``DID_NOT_RISE`` covers equal and fell
@@ -139,23 +151,41 @@ class EtaObservation:
         return self.realised_cycles / self.available_cycles
 
     def to_dict(self) -> dict:
-        return {"label": self.label, "axis": self.axis, "eta": self.eta,
-                "realised_cycles": self.realised_cycles,
-                "available_cycles": self.available_cycles,
-                "engines": list(self.engines), "busy": dict(self.busy),
-                "sampled_cycles": self.sampled_cycles, "work": self.work,
-                "unmeasured_units": list(self.unmeasured), "detail": self.detail}
+        return {
+            "label": self.label,
+            "axis": self.axis,
+            "eta": self.eta,
+            "realised_cycles": self.realised_cycles,
+            "available_cycles": self.available_cycles,
+            "engines": list(self.engines),
+            "busy": dict(self.busy),
+            "sampled_cycles": self.sampled_cycles,
+            "work": self.work,
+            "unmeasured_units": list(self.unmeasured),
+            "detail": self.detail,
+        }
 
 
-def _refusal(label: str, detail: str, *, engines=(), busy=None, cycles=0, axis=ENGINE_AXIS,
-             work=None, unmeasured=()) -> EtaObservation:
-    return EtaObservation(label=label, realised_cycles=None, available_cycles=None,
-                          engines=tuple(engines), busy=dict(busy or {}), sampled_cycles=cycles,
-                          axis=axis, work=work, detail=detail, unmeasured=tuple(unmeasured))
+def _refusal(
+    label: str, detail: str, *, engines=(), busy=None, cycles=0, axis=ENGINE_AXIS, work=None, unmeasured=()
+) -> EtaObservation:
+    return EtaObservation(
+        label=label,
+        realised_cycles=None,
+        available_cycles=None,
+        engines=tuple(engines),
+        busy=dict(busy or {}),
+        sampled_cycles=cycles,
+        axis=axis,
+        work=work,
+        detail=detail,
+        unmeasured=tuple(unmeasured),
+    )
 
 
-def _observation(label: str, busy: Mapping[str, int], realised: int, *, cycles: int, axis: str,
-                 work: str | None, detail: str) -> EtaObservation:
+def _observation(
+    label: str, busy: Mapping[str, int], realised: int, *, cycles: int, axis: str, work: str | None, detail: str
+) -> EtaObservation:
     """Assemble a reading from per-group busy counts and a realised overlap count.
 
     ``available`` is the second-largest busy count. That is the largest ceiling any single pair has,
@@ -165,19 +195,40 @@ def _observation(label: str, busy: Mapping[str, int], realised: int, *, cycles: 
     vals = sorted(busy.values(), reverse=True)
     available = vals[1] if len(vals) > 1 else 0
     if available == 0:
-        return _refusal(label, ("no pair of groups has any overlappable time (the second-busiest "
-                                "group is busy 0 cycles), so eta is 0/0 -- undefined, not zero"),
-                        engines=sorted(busy), busy=busy, cycles=cycles, axis=axis, work=work)
-    return EtaObservation(label=label, realised_cycles=int(realised), available_cycles=int(available),
-                          engines=tuple(sorted(busy)), busy=dict(busy), sampled_cycles=cycles,
-                          axis=axis, work=work, detail=detail)
+        return _refusal(
+            label,
+            (
+                "no pair of groups has any overlappable time (the second-busiest "
+                "group is busy 0 cycles), so eta is 0/0 -- undefined, not zero"
+            ),
+            engines=sorted(busy),
+            busy=busy,
+            cycles=cycles,
+            axis=axis,
+            work=work,
+        )
+    return EtaObservation(
+        label=label,
+        realised_cycles=int(realised),
+        available_cycles=int(available),
+        engines=tuple(sorted(busy)),
+        busy=dict(busy),
+        sampled_cycles=cycles,
+        axis=axis,
+        work=work,
+        detail=detail,
+    )
 
 
-def eta_from_occupancy(label: str, hot: Mapping[str, Sequence[bool]], *,
-                       unit_of: Mapping[str, str],
-                       kinds: Mapping[str, str] | None = None,
-                       work: str | None = None,
-                       unmeasured: Sequence[str] = ()) -> EtaObservation:
+def eta_from_occupancy(
+    label: str,
+    hot: Mapping[str, Sequence[bool]],
+    *,
+    unit_of: Mapping[str, str],
+    kinds: Mapping[str, str] | None = None,
+    work: str | None = None,
+    unmeasured: Sequence[str] = (),
+) -> EtaObservation:
     """eta over a per-cycle joint occupancy vector, on the target's DECLARED engine axis.
 
     ``hot`` is ``{column: [busy per cycle]}`` and ``unit_of`` is the producer's column -> engine
@@ -198,18 +249,32 @@ def eta_from_occupancy(label: str, hot: Mapping[str, Sequence[bool]], *,
     cols = list(jc["joint_columns"])
     unbound = sorted(c for c in cols if c not in unit_of and any(hot[c]))
     if unbound:
-        return _refusal(label, (f"column(s) {unbound} carry busy cycles but are bound to no declared "
-                                "engine; which engines ran together cannot be established from this "
-                                "vector"), cycles=cycles, work=work, unmeasured=unmeasured)
+        return _refusal(
+            label,
+            (
+                f"column(s) {unbound} carry busy cycles but are bound to no declared "
+                "engine; which engines ran together cannot be established from this "
+                "vector"
+            ),
+            cycles=cycles,
+            work=work,
+            unmeasured=unmeasured,
+        )
     if unmeasured:
-        return _refusal(label, (f"the instrument states it did not read unit(s) {sorted(unmeasured)}; "
-                                "an unread unit is UNKNOWN, never idle, and restoring its cycles can "
-                                "move realised overlap in either direction"),
-                        cycles=cycles, work=work, unmeasured=unmeasured)
+        return _refusal(
+            label,
+            (
+                f"the instrument states it did not read unit(s) {sorted(unmeasured)}; "
+                "an unread unit is UNKNOWN, never idle, and restoring its cycles can "
+                "move realised overlap in either direction"
+            ),
+            cycles=cycles,
+            work=work,
+            unmeasured=unmeasured,
+        )
 
     engines = sorted({unit_of[c] for c in cols if c in unit_of})
-    eng_hot = {e: [any(hot[c][i] for c in cols if unit_of.get(c) == e) for i in range(cycles)]
-               for e in engines}
+    eng_hot = {e: [any(hot[c][i] for c in cols if unit_of.get(c) == e) for i in range(cycles)] for e in engines}
     busy = {e: sum(v) for e, v in eng_hot.items()}
 
     # Two separate observability gates, and both are needed. joint_counts answers "could ANY two
@@ -219,19 +284,44 @@ def eta_from_occupancy(label: str, hot: Mapping[str, Sequence[bool]], *,
     # measured mistake one level up.
     live = _live(busy, cycles)
     if not jc["overlap_observable"]:
-        return _refusal(label, ("fewer than two live columns: this vector reports zero overlap "
-                                "arithmetically and could not have reported anything else"),
-                        engines=engines, busy=busy, cycles=cycles, work=work)
+        return _refusal(
+            label,
+            (
+                "fewer than two live columns: this vector reports zero overlap "
+                "arithmetically and could not have reported anything else"
+            ),
+            engines=engines,
+            busy=busy,
+            cycles=cycles,
+            work=work,
+        )
     if len(live) < 2:
-        return _refusal(label, (f"only {len(live)} declared engine(s) are live ({sorted(live)}); the "
-                                "columns that do vary belong to one engine, so no engine pair could "
-                                "have been seen running together"),
-                        engines=engines, busy=busy, cycles=cycles, work=work)
+        return _refusal(
+            label,
+            (
+                f"only {len(live)} declared engine(s) are live ({sorted(live)}); the "
+                "columns that do vary belong to one engine, so no engine pair could "
+                "have been seen running together"
+            ),
+            engines=engines,
+            busy=busy,
+            cycles=cycles,
+            work=work,
+        )
 
     realised = sum(1 for i in range(cycles) if sum(1 for e in engines if eng_hot[e][i]) >= 2)
-    return _observation(label, busy, realised, cycles=cycles, axis=ENGINE_AXIS, work=work,
-                        detail=(f"joint occupancy over {len(engines)} declared engine(s), "
-                                f"{len(jc['subsumed_columns'])} column(s) folded as sub-signals"))
+    return _observation(
+        label,
+        busy,
+        realised,
+        cycles=cycles,
+        axis=ENGINE_AXIS,
+        work=work,
+        detail=(
+            f"joint occupancy over {len(engines)} declared engine(s), "
+            f"{len(jc['subsumed_columns'])} column(s) folded as sub-signals"
+        ),
+    )
 
 
 def eta_from_timing_block(label: str, tier_record, *, work: str | None = None) -> EtaObservation:
@@ -251,36 +341,68 @@ def eta_from_timing_block(label: str, tier_record, *, work: str | None = None) -
 
     block = block_from_tier_record(tier_record)
     if block is None or not block.usable:
-        return _refusal(label, ("the tier record carries no usable timing block, so nothing was "
-                                "measured about overlap here"), axis=KIND_AXIS, work=work)
+        return _refusal(
+            label,
+            ("the tier record carries no usable timing block, so nothing was measured about overlap here"),
+            axis=KIND_AXIS,
+            work=work,
+        )
     if block.unmeasured_units:
-        return _refusal(label, (f"the instrument states it did not read unit(s) "
-                                f"{sorted(block.unmeasured_units)}; an unread unit is UNKNOWN, never "
-                                "idle"), axis=KIND_AXIS, work=work,
-                        unmeasured=block.unmeasured_units)
+        return _refusal(
+            label,
+            (
+                f"the instrument states it did not read unit(s) "
+                f"{sorted(block.unmeasured_units)}; an unread unit is UNKNOWN, never "
+                "idle"
+            ),
+            axis=KIND_AXIS,
+            work=work,
+            unmeasured=block.unmeasured_units,
+        )
     if block.alias_collisions is None or block.alias_collisions > 0:
         # A limit found in our own harness is evidence about the harness -- but an address that
         # collided inside a wrapping window means these cycles are not about the program submitted,
         # and an unstated count means nobody can tell. Both refuse; neither is a zero.
         n = "an unstated number of" if block.alias_collisions is None else str(block.alias_collisions)
-        return _refusal(label, (f"{n} access(es) may have collided inside the wrapping memory "
-                                "window, so this run's cycles are not established to be about the "
-                                "program that was submitted"), axis=KIND_AXIS, work=work)
+        return _refusal(
+            label,
+            (
+                f"{n} access(es) may have collided inside the wrapping memory "
+                "window, so this run's cycles are not established to be about the "
+                "program that was submitted"
+            ),
+            axis=KIND_AXIS,
+            work=work,
+        )
 
     realised = block.overlap_cycles()
     if realised is None:
-        return _refusal(label, ("the block licenses no overlap reading (it asserts a partitioned "
-                                "bucket set, or carries no joint-occupancy entry); a partition "
-                                "charges every cycle to one owner and reports zero overlap whether "
-                                "or not the hardware overlaps"), axis=KIND_AXIS, work=work)
+        return _refusal(
+            label,
+            (
+                "the block licenses no overlap reading (it asserts a partitioned "
+                "bucket set, or carries no joint-occupancy entry); a partition "
+                "charges every cycle to one owner and reports zero overlap whether "
+                "or not the hardware overlaps"
+            ),
+            axis=KIND_AXIS,
+            work=work,
+        )
 
     busy_by_unit = block.busy_by_unit()
     declared = block.kinds()
     missing = sorted(set(busy_by_unit) - set(declared))
     if missing:
-        return _refusal(label, (f"the producer stated no kind for unit(s) {missing}; a role read out "
-                                "of a unit's NAME is not a derivation, so the kind axis cannot be "
-                                "resolved"), axis=KIND_AXIS, work=work)
+        return _refusal(
+            label,
+            (
+                f"the producer stated no kind for unit(s) {missing}; a role read out "
+                "of a unit's NAME is not a derivation, so the kind axis cannot be "
+                "resolved"
+            ),
+            axis=KIND_AXIS,
+            work=work,
+        )
     cycles = block.quantity(SAMPLED_QUANTITY) or 0
     busy: dict[str, int] = {}
     for unit, n in busy_by_unit.items():
@@ -288,14 +410,31 @@ def eta_from_timing_block(label: str, tier_record, *, work: str | None = None) -
 
     live = _live(busy, int(cycles))
     if len(live) < 2:
-        return _refusal(label, (f"only {len(live)} resource kind(s) are live ({sorted(live)}); this "
-                                "reading reports zero overlap arithmetically and could not have "
-                                "reported anything else"),
-                        engines=sorted(busy), busy=busy, cycles=int(cycles), axis=KIND_AXIS,
-                        work=work)
-    return _observation(label, busy, int(realised), cycles=int(cycles), axis=KIND_AXIS, work=work,
-                        detail=(f"across-kinds joint occupancy over {len(busy)} resource kind(s), "
-                                "as licensed by the producer's non-partitioned assertion"))
+        return _refusal(
+            label,
+            (
+                f"only {len(live)} resource kind(s) are live ({sorted(live)}); this "
+                "reading reports zero overlap arithmetically and could not have "
+                "reported anything else"
+            ),
+            engines=sorted(busy),
+            busy=busy,
+            cycles=int(cycles),
+            axis=KIND_AXIS,
+            work=work,
+        )
+    return _observation(
+        label,
+        busy,
+        int(realised),
+        cycles=int(cycles),
+        axis=KIND_AXIS,
+        work=work,
+        detail=(
+            f"across-kinds joint occupancy over {len(busy)} resource kind(s), "
+            "as licensed by the producer's non-partitioned assertion"
+        ),
+    )
 
 
 @dataclass(frozen=True)
@@ -324,18 +463,24 @@ class EtaVerdict:
             return f"undeterminable: {self.reason}"
         a, b = self.base.eta, self.candidate.eta
         moved = "rose" if self.state == ROSE else ("fell" if self.fell else "did not move")
-        return (f"eta {moved} from {a:.4f} to {b:.4f} "
-                f"({self.candidate.realised_cycles}/{self.candidate.available_cycles} vs "
-                f"{self.base.realised_cycles}/{self.base.available_cycles} cycles)")
+        return (
+            f"eta {moved} from {a:.4f} to {b:.4f} "
+            f"({self.candidate.realised_cycles}/{self.candidate.available_cycles} vs "
+            f"{self.base.realised_cycles}/{self.base.available_cycles} cycles)"
+        )
 
     def to_dict(self) -> dict:
-        return {"state": self.state, "delta": self.delta, "reason": self.reason,
-                "fell": self.fell, "base": self.base.to_dict(),
-                "candidate": self.candidate.to_dict()}
+        return {
+            "state": self.state,
+            "delta": self.delta,
+            "reason": self.reason,
+            "fell": self.fell,
+            "base": self.base.to_dict(),
+            "candidate": self.candidate.to_dict(),
+        }
 
 
-def compare_eta(base: EtaObservation, candidate: EtaObservation, *,
-                tolerance: float = 0.0) -> EtaVerdict:
+def compare_eta(base: EtaObservation, candidate: EtaObservation, *, tolerance: float = 0.0) -> EtaVerdict:
     """Rank two schedules of the SAME work by realised overlap. Three states, never two.
 
     ``tolerance`` is the margin by which eta must rise to count. It defaults to 0.0 because eta is a
@@ -354,37 +499,68 @@ def compare_eta(base: EtaObservation, candidate: EtaObservation, *,
     """
     for side, obs in (("base", base), ("candidate", candidate)):
         if obs.eta is None:
-            return EtaVerdict(UNDETERMINABLE, base, candidate, None,
-                              f"the {side} run ({obs.label}) has no eta: {obs.detail}")
+            return EtaVerdict(
+                UNDETERMINABLE, base, candidate, None, f"the {side} run ({obs.label}) has no eta: {obs.detail}"
+            )
     if base.axis != candidate.axis:
-        return EtaVerdict(UNDETERMINABLE, base, candidate, None,
-                          (f"the runs resolved concurrency on different axes ({base.axis} vs "
-                           f"{candidate.axis}); they are two instruments, not two readings"))
+        return EtaVerdict(
+            UNDETERMINABLE,
+            base,
+            candidate,
+            None,
+            (
+                f"the runs resolved concurrency on different axes ({base.axis} vs "
+                f"{candidate.axis}); they are two instruments, not two readings"
+            ),
+        )
     if set(base.engines) != set(candidate.engines):
         only_b = sorted(set(base.engines) - set(candidate.engines))
         only_c = sorted(set(candidate.engines) - set(base.engines))
-        return EtaVerdict(UNDETERMINABLE, base, candidate, None,
-                          (f"the runs resolve different groups (only in base: {only_b}; only in "
-                           f"candidate: {only_c}); a group absent from one vector is unmeasured "
-                           "there, not zero, and scoring it zero reports moving work off an engine "
-                           "as speeding it up"))
+        return EtaVerdict(
+            UNDETERMINABLE,
+            base,
+            candidate,
+            None,
+            (
+                f"the runs resolve different groups (only in base: {only_b}; only in "
+                f"candidate: {only_c}); a group absent from one vector is unmeasured "
+                "there, not zero, and scoring it zero reports moving work off an engine "
+                "as speeding it up"
+            ),
+        )
     if base.work is not None and candidate.work is not None and base.work != candidate.work:
-        return EtaVerdict(UNDETERMINABLE, base, candidate, None,
-                          (f"the runs state different work ({base.work!r} vs {candidate.work!r}); "
-                           "eta is a ratio, so doing less work can raise it without any schedule "
-                           "being better"))
+        return EtaVerdict(
+            UNDETERMINABLE,
+            base,
+            candidate,
+            None,
+            (
+                f"the runs state different work ({base.work!r} vs {candidate.work!r}); "
+                "eta is a ratio, so doing less work can raise it without any schedule "
+                "being better"
+            ),
+        )
 
     delta = candidate.eta - base.eta
     if delta > tolerance:
-        return EtaVerdict(ROSE, base, candidate, delta,
-                          (f"realised overlap rose by {delta:.4f} of the available overlap "
-                           f"(tolerance {tolerance})"))
+        return EtaVerdict(
+            ROSE,
+            base,
+            candidate,
+            delta,
+            (f"realised overlap rose by {delta:.4f} of the available overlap (tolerance {tolerance})"),
+        )
     unstated = base.work is None or candidate.work is None
-    note = ("" if not unstated else
-            "; neither run stated a work fingerprint, so identical work is the caller's assertion")
-    return EtaVerdict(DID_NOT_RISE, base, candidate, delta,
-                      (f"realised overlap did not rise ({delta:+.4f} of the available overlap, "
-                       f"tolerance {tolerance}){note}"))
+    note = (
+        "" if not unstated else "; neither run stated a work fingerprint, so identical work is the caller's assertion"
+    )
+    return EtaVerdict(
+        DID_NOT_RISE,
+        base,
+        candidate,
+        delta,
+        (f"realised overlap did not rise ({delta:+.4f} of the available overlap, tolerance {tolerance}){note}"),
+    )
 
 
 @dataclass(frozen=True)
@@ -404,14 +580,23 @@ class ABDecision:
         return self.state == ACCEPT
 
     def to_dict(self) -> dict:
-        return {"state": self.state, "reason": self.reason, "bit_exact": self.bit_exact,
-                "invariants_held": self.invariants_held, "eta": self.eta.to_dict()}
+        return {
+            "state": self.state,
+            "reason": self.reason,
+            "bit_exact": self.bit_exact,
+            "invariants_held": self.invariants_held,
+            "eta": self.eta.to_dict(),
+        }
 
 
-def ab_decision(base: EtaObservation, candidate: EtaObservation, *,
-                bit_exact: bool | None,
-                invariants_held: bool | None = None,
-                tolerance: float = 0.0) -> ABDecision:
+def ab_decision(
+    base: EtaObservation,
+    candidate: EtaObservation,
+    *,
+    bit_exact: bool | None,
+    invariants_held: bool | None = None,
+    tolerance: float = 0.0,
+) -> ABDecision:
     """The pass condition for a performance A/B: correctness is necessary, eta is what decides.
 
     This is the whole point of the module. On an interlocked machine ``bit_exact`` is True for every
@@ -434,25 +619,50 @@ def ab_decision(base: EtaObservation, candidate: EtaObservation, *,
     common = dict(eta=verdict, bit_exact=bit_exact, invariants_held=invariants_held)
 
     if bit_exact is False:
-        return ABDecision(REJECT, reason=("the candidate did not reproduce the baseline's answer; a "
-                                          "schedule that changes the result is not a schedule of the "
-                                          "same program"), **common)
+        return ABDecision(
+            REJECT,
+            reason=(
+                "the candidate did not reproduce the baseline's answer; a "
+                "schedule that changes the result is not a schedule of the "
+                "same program"
+            ),
+            **common,
+        )
     if invariants_held is False:
-        return ABDecision(REJECT, reason=("the candidate weakened a Phase-F functional invariant; the "
-                                          "performance phase may not spend correctness it forked"),
-                          **common)
+        return ABDecision(
+            REJECT,
+            reason=(
+                "the candidate weakened a Phase-F functional invariant; the "
+                "performance phase may not spend correctness it forked"
+            ),
+            **common,
+        )
     if bit_exact is None:
-        return ABDecision(UNDETERMINABLE, reason=("whether the candidate reproduced the baseline's "
-                                                  "answer was not established"), **common)
+        return ABDecision(
+            UNDETERMINABLE,
+            reason=("whether the candidate reproduced the baseline's answer was not established"),
+            **common,
+        )
     if invariants_held is None:
-        return ABDecision(UNDETERMINABLE, reason=("the Phase-F invariants were not checked against "
-                                                  "this candidate, so nothing establishes that the "
-                                                  "forked compiler is still functionally complete"),
-                          **common)
+        return ABDecision(
+            UNDETERMINABLE,
+            reason=(
+                "the Phase-F invariants were not checked against "
+                "this candidate, so nothing establishes that the "
+                "forked compiler is still functionally complete"
+            ),
+            **common,
+        )
     if verdict.state == UNDETERMINABLE:
         return ABDecision(UNDETERMINABLE, reason=f"eta is undeterminable: {verdict.reason}", **common)
     if verdict.state == DID_NOT_RISE:
-        return ABDecision(REJECT, reason=(f"{verdict.claim()}; the reordering is correct by "
-                                          "construction on an interlocked machine, so preserving the "
-                                          "answer is not evidence that it bought anything"), **common)
+        return ABDecision(
+            REJECT,
+            reason=(
+                f"{verdict.claim()}; the reordering is correct by "
+                "construction on an interlocked machine, so preserving the "
+                "answer is not evidence that it bought anything"
+            ),
+            **common,
+        )
     return ABDecision(ACCEPT, reason=verdict.claim(), **common)

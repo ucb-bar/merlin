@@ -9,6 +9,7 @@ keep cross-workstream artifacts honest without over-engineering a type system.
 This module is the single dependency every kernel-mining emitter relies on, so it stays
 dependency-light (stdlib + PyYAML) and side-effect free.
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -26,6 +27,7 @@ def schemas_dir() -> Path:
     bundled into an installed wheel (``merlin/_data/schemas``).
     """
     from merlin.common.paths import schemas_dir as _schemas_dir
+
     return _schemas_dir()
 
 

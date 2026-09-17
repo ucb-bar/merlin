@@ -6,6 +6,7 @@ path) to implement a promoted interface candidate. This is *input to* TargetGen'
 A requirement exists only because an interface candidate cleared the promotion gate;
 ``status`` stays ``proposed`` until Stage-F target-lowering validation.
 """
+
 from __future__ import annotations
 
 from typing import Iterable
@@ -15,10 +16,8 @@ from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 # Verifier conditions each known interface needs a target dialect to enforce.
 VERIFIERS: dict[str, list[str]] = {
-    "resident_packed_tensor": ["capacity_constraint", "lifetime_constraint",
-                               "layout_constraint"],
-    "accumulator_commit": ["no_intervening_materialization", "output_dtype_known",
-                           "epilogue_adjacency"],
+    "resident_packed_tensor": ["capacity_constraint", "lifetime_constraint", "layout_constraint"],
+    "accumulator_commit": ["no_intervening_materialization", "output_dtype_known", "epilogue_adjacency"],
     "async_pipeline": ["double_buffer_capacity", "completion_before_use"],
 }
 
@@ -34,8 +33,11 @@ def emit_dialect_requirement(
     validate: bool = True,
 ) -> dict:
     """Build a schema-shaped L6 dialect requirement for one interface candidate."""
-    verifiers = (list(required_verifiers) if required_verifiers is not None
-                 else VERIFIERS.get(source_abstraction, ["op_specific_review_needed"]))
+    verifiers = (
+        list(required_verifiers)
+        if required_verifiers is not None
+        else VERIFIERS.get(source_abstraction, ["op_specific_review_needed"])
+    )
     req = {
         "source_abstraction": source_abstraction,
         "target": target,

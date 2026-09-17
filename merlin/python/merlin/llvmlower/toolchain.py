@@ -1,8 +1,10 @@
 """Toolchain resolution for the whole-model path (all env-overridable)."""
+
 from __future__ import annotations
 
 import os
 from pathlib import Path
+
 from merlin.common.paths import ext_path, repo_root
 
 
@@ -12,6 +14,7 @@ def _env(key: str, default: str | None = None) -> str | None:
     toolchain resolve automatically — parity with how the ``aet`` sibling checkout is picked up —
     without exporting vars per shell or committing a personal path."""
     from merlin.common.paths import _dotenv
+
     return os.environ.get(key) or _dotenv().get(key) or default
 
 

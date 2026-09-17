@@ -14,6 +14,7 @@ empty signature set.
 untouched. A pass that decided for itself would duplicate the placement decision, and then the two
 would disagree -- which is exactly the state this work exists to end.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,9 +23,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["DeviceRewrite", "SIDECAR_NAME", "emit_device_program", "load_sidecar",
-           "lower_device_submits", "rewrite_contractions_to_device", "rewrite_prepared_file",
-           "symbol_stem"]
+__all__ = [
+    "DeviceRewrite",
+    "SIDECAR_NAME",
+    "emit_device_program",
+    "load_sidecar",
+    "lower_device_submits",
+    "rewrite_contractions_to_device",
+    "rewrite_prepared_file",
+    "symbol_stem",
+]
 
 #: Where the rewrite records what it minted, beside the prepared module. One file per device, so two
 #: devices in one system do not overwrite each other's signature set.
@@ -59,13 +67,26 @@ class DeviceRewrite:
 
     def write_sidecar(self, directory: str | Path) -> Path:
         path = Path(directory) / SIDECAR_NAME
-        path.write_text(json.dumps({
-            "device": self.device,
-            "signatures": {s: list(k) for s, k in self.signatures.items()},
-            "routed": [{"symbol": r.symbol, "parallel": list(r.parallel),
-                        "reduction": list(r.reduction), "dtypes": list(r.dtypes), "fqn": r.fqn}
-                       for r in self.routed],
-        }, indent=1), encoding="utf-8")
+        path.write_text(
+            json.dumps(
+                {
+                    "device": self.device,
+                    "signatures": {s: list(k) for s, k in self.signatures.items()},
+                    "routed": [
+                        {
+                            "symbol": r.symbol,
+                            "parallel": list(r.parallel),
+                            "reduction": list(r.reduction),
+                            "dtypes": list(r.dtypes),
+                            "fqn": r.fqn,
+                        }
+                        for r in self.routed
+                    ],
+                },
+                indent=1,
+            ),
+            encoding="utf-8",
+        )
         return path
 
 
@@ -97,8 +118,12 @@ def _mlir_type(token: str):
     t = str(token)
     if t.startswith("i") and t[1:].isdigit():
         return _b.IntegerType(int(t[1:]))
-    named = {"f16": getattr(_b, "Float16Type", None), "f32": getattr(_b, "Float32Type", None),
-             "f64": getattr(_b, "Float64Type", None), "bf16": getattr(_b, "BFloat16Type", None)}
+    named = {
+        "f16": getattr(_b, "Float16Type", None),
+        "f32": getattr(_b, "Float32Type", None),
+        "f64": getattr(_b, "Float64Type", None),
+        "bf16": getattr(_b, "BFloat16Type", None),
+    }
     ctor = named.get(t)
     return ctor() if ctor else None
 
@@ -115,9 +140,7 @@ def _signature_types(key: tuple[int, ...], dtypes: tuple[str, str, str]):
     lhs_t, rhs_t, out_t = (_mlir_type(d) for d in dtypes)
     if not (lhs_t and rhs_t and out_t):
         return None
-    return (TensorType(lhs_t, [*batch, m, k]),
-            TensorType(rhs_t, [*batch, k, n]),
-            TensorType(out_t, [*batch, m, n]))
+    return (TensorType(lhs_t, [*batch, m, k]), TensorType(rhs_t, [*batch, k, n]), TensorType(out_t, [*batch, m, n]))
 
 
 def _signature_key(shape) -> tuple[int, ...]:
@@ -146,8 +169,7 @@ def emit_device_program(module, device: str, *, select=None) -> list:
     from merlin.xdsl_dialects import runtime as r
     from merlin.xdsl_dialects._common import HAS_XDSL
 
-    chosen = [(op, sh) for op, sh in offloadable_contractions(module, device)
-              if select is None or select(sh)]
+    chosen = [(op, sh) for op, sh in offloadable_contractions(module, device) if select is None or select(sh)]
     if not chosen or not HAS_XDSL:
         return chosen
 
@@ -156,19 +178,30 @@ def emit_device_program(module, device: str, *, select=None) -> list:
         return chosen
     block = fn.regions[0].blocks[0]
 
-    dev = r.DeviceGetOp(result_types=[r.DeviceType()], properties={
-        "device": StringAttr(str(device)), "backend": r.BackendAttr(r.Backend.BAREMETAL)})
-    cb = r.CommandBufferCreateOp(operands=[dev.dev], result_types=[r.CommandBufferType()],
-                                 properties={"target": StringAttr(str(device))})
+    dev = r.DeviceGetOp(
+        result_types=[r.DeviceType()],
+        properties={"device": StringAttr(str(device)), "backend": r.BackendAttr(r.Backend.BAREMETAL)},
+    )
+    cb = r.CommandBufferCreateOp(
+        operands=[dev.dev], result_types=[r.CommandBufferType()], properties={"target": StringAttr(str(device))}
+    )
     block.insert_op_before(dev, block.first_op)
     block.insert_op_after(cb, dev)
     prev = cb
     for _op, shape in chosen:
-        ap = r.CommandBufferAppendOp(operands=[cb.cb], properties={
-            "opcode": StringAttr("MATMUL"),
-            "args": DictionaryAttr({"m": StringAttr(str(shape.parallel[-2])),
-                                    "n": StringAttr(str(shape.parallel[-1])),
-                                    "k": StringAttr(str(shape.reduction[0]))})})
+        ap = r.CommandBufferAppendOp(
+            operands=[cb.cb],
+            properties={
+                "opcode": StringAttr("MATMUL"),
+                "args": DictionaryAttr(
+                    {
+                        "m": StringAttr(str(shape.parallel[-2])),
+                        "n": StringAttr(str(shape.parallel[-1])),
+                        "k": StringAttr(str(shape.reduction[0])),
+                    }
+                ),
+            },
+        )
         block.insert_op_after(ap, prev)
         prev = ap
     sub = r.SubmitOp(operands=[dev.dev, cb.cb], result_types=[r.EventType()])
@@ -203,9 +236,9 @@ def lower_device_submits(module, device: str, *, transport: str | None) -> int:
     return len(doomed)
 
 
-def rewrite_contractions_to_device(module, device: str, *,
-                                   select: Callable[[Any], bool] | None = None,
-                                   sidecar_dir: str | Path | None = None) -> DeviceRewrite:
+def rewrite_contractions_to_device(
+    module, device: str, *, select: Callable[[Any], bool] | None = None, sidecar_dir: str | Path | None = None
+) -> DeviceRewrite:
     """Replace each SELECTED contraction with a call to ``device``'s kernel. Mutates ``module``.
 
     Legality is asked of the device (:mod:`merlin.system.offload`); profitability is ``select``'s.
@@ -219,23 +252,23 @@ def rewrite_contractions_to_device(module, device: str, *,
     from merlin.system.offload import device_dtype_triples, offloadable_contractions
 
     if select is None:
-        return DeviceRewrite(device=device,
-                             skipped=(("all", "no selector supplied, so nothing is routed"),))
+        return DeviceRewrite(device=device, skipped=(("all", "no selector supplied, so nothing is routed"),))
 
     triples = device_dtype_triples(device)
     if not triples:
-        return DeviceRewrite(device=device,
-                             skipped=(("all", f"{device!r} declares no derivable datapath"),))
+        return DeviceRewrite(device=device, skipped=(("all", f"{device!r} declares no derivable datapath"),))
 
     # THROUGH THE RUNTIME DIALECT. The offload is recorded as runtime ops first and realized second,
     # so the decision is expressed once and device-independently and the TRANSPORT decides how it is
     # carried out. They cannot survive into the printed text -- upstream mlir-opt does not know this
     # dialect -- so both stages happen here, before anything is printed.
     from merlin.system.derive import link_for
+
     try:
         from merlin.targetgen.target_experiment import load_capability_manifest
+
         _endpoint = getattr(load_capability_manifest(device), "endpoint_kind", None)
-    except Exception:            # noqa: BLE001
+    except Exception:  # noqa: BLE001
         _endpoint = None
     _transport = link_for(device, _endpoint).command_transport
 
@@ -244,9 +277,9 @@ def rewrite_contractions_to_device(module, device: str, *,
     lower_device_submits(module, device, transport=_transport)
     skipped: list[tuple[str, str]] = []
     if not chosen:
-        return DeviceRewrite(device=device,
-                             skipped=(("all", f"{len(candidates)} offloadable contraction(s), "
-                                              f"none selected"),))
+        return DeviceRewrite(
+            device=device, skipped=(("all", f"{len(candidates)} offloadable contraction(s), none selected"),)
+        )
 
     stem = symbol_stem(device)
     symbols: dict[tuple[int, ...], str] = {}
@@ -259,14 +292,13 @@ def rewrite_contractions_to_device(module, device: str, *,
         if sym is None:
             sym = f"{stem}_{len(symbols)}"
             symbols[key] = sym
-            sig_dtypes[sym] = tuple(shape.dtypes)          # type: ignore[assignment]
+            sig_dtypes[sym] = tuple(shape.dtypes)  # type: ignore[assignment]
 
         operands = list(op.operands)
         if len(operands) != 3 or len(op.results) != 1:
             # Not the (lhs, rhs, out-init) shape this callee promises. Emitting a call with the wrong
             # arity would fail far from here, so decline it with the arity that was actually seen.
-            skipped.append((sym, f"expected 3 operands and 1 result, got {len(operands)} "
-                                 f"and {len(op.results)}"))
+            skipped.append((sym, f"expected 3 operands and 1 result, got {len(operands)} and {len(op.results)}"))
             continue
 
         call = func.CallOp(sym, operands, [op.results[0].type])
@@ -276,10 +308,15 @@ def rewrite_contractions_to_device(module, device: str, *,
         op.erase()
 
         prov = getattr(op, "attributes", {}).get("prov.fqn") if hasattr(op, "attributes") else None
-        routed.append(Routed(symbol=sym, parallel=tuple(shape.parallel),
-                             reduction=tuple(shape.reduction),
-                             dtypes=tuple(shape.dtypes),                # type: ignore[arg-type]
-                             fqn=prov.data if isinstance(prov, StringAttr) else ""))
+        routed.append(
+            Routed(
+                symbol=sym,
+                parallel=tuple(shape.parallel),
+                reduction=tuple(shape.reduction),
+                dtypes=tuple(shape.dtypes),  # type: ignore[arg-type]
+                fqn=prov.data if isinstance(prov, StringAttr) else "",
+            )
+        )
 
     body: Block = module.body.block
     minted: dict[str, tuple[int, ...]] = {}
@@ -293,20 +330,26 @@ def rewrite_contractions_to_device(module, device: str, *,
         # is a PROPERTY on FuncOp, not a discardable attribute, so it goes through the constructor.
         read = DictionaryAttr({"bufferization.access": StringAttr("read")})
         write = DictionaryAttr({"bufferization.access": StringAttr("write")})
-        body.add_op(func.FuncOp(sym, ((types[0], types[1], types[2]), (types[2],)), Region(),
-                                visibility="private",
-                                arg_attrs=ArrayAttr([read, read, write])))
+        body.add_op(
+            func.FuncOp(
+                sym,
+                ((types[0], types[1], types[2]), (types[2],)),
+                Region(),
+                visibility="private",
+                arg_attrs=ArrayAttr([read, read, write]),
+            )
+        )
         minted[sym] = key
 
-    out = DeviceRewrite(device=device, routed=tuple(routed), signatures=minted,
-                        skipped=tuple(skipped))
+    out = DeviceRewrite(device=device, routed=tuple(routed), signatures=minted, skipped=tuple(skipped))
     if sidecar_dir is not None:
         out.write_sidecar(sidecar_dir)
     return out
 
 
-def rewrite_prepared_file(prepared: str | Path, work: str | Path, device: str, *,
-                          select: Callable[[Any], bool] | None) -> DeviceRewrite:
+def rewrite_prepared_file(
+    prepared: str | Path, work: str | Path, device: str, *, select: Callable[[Any], bool] | None
+) -> DeviceRewrite:
     """Rewrite a prepared module ON DISK in place and record what it minted.
 
     This is the seam a whole-model build uses: read the module the preparation passes produced, move
@@ -337,7 +380,8 @@ def rewrite_prepared_file(prepared: str | Path, work: str | Path, device: str, *
             raise RuntimeError(
                 f"declarations {list(missing)} carry no bufferization.access attributes, so "
                 "one-shot-bufferize would copy the weight operand of every contraction routed to "
-                "them; refusing to write the module")
+                "them; refusing to write the module"
+            )
         prepared.write_text(text, encoding="utf-8")
     work.mkdir(parents=True, exist_ok=True)
     rewrite.write_sidecar(work)

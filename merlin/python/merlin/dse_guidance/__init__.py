@@ -11,4 +11,5 @@ Every emitted number carries an evidence tag (see :mod:`merlin.dse_guidance.evid
 important number is reported without a source. Measured/trace evidence is ingested from the
 ``aet`` harness (see :mod:`merlin.dse_guidance.aet_ingest`), never hand-coded as constants.
 """
+
 from __future__ import annotations

@@ -5,6 +5,7 @@ and cflags into ``build_app(rvv_schedule=..., cflags_override=...)`` — WITHOUT
 ``pipeline.RVV_TRANSFORM_SCHEDULE`` / ``RVV_CFLAGS`` module defaults. ``apply_rvv_package(hand_v0)``
 is therefore byte-identical to today's ``build_app(backend="rvv")`` (asserted by test_rvv_package).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -47,15 +48,14 @@ def _harts_split_shapes(shapes, harts: int) -> list:
             out.append(s)
             continue
         n = int(par[-1])
-        tile = -(-n // harts)                      # ceil: the largest tile any hart gets
-        rem = n - tile * (harts - 1)               # the last hart's tile (may be <= 0 = idle)
+        tile = -(-n // harts)  # ceil: the largest tile any hart gets
+        rem = n - tile * (harts - 1)  # the last hart's tile (may be <= 0 = idle)
         for extent in {tile, rem} if rem > 0 else {tile}:
             out.append(_SplitShape(s.op, [*par[:-1], extent], getattr(s, "reduction", ())))
     return out
 
 
-def shape_adapted_features(pkg: "RvvPackage", model_dir: str | Path,
-                           *, harts: int = 1) -> list[str]:
+def shape_adapted_features(pkg: "RvvPackage", model_dir: str | Path, *, harts: int = 1) -> list[str]:
     """``pkg``'s compiler features re-resolved against the CONTRACTIONS ``model_dir`` actually has.
 
     This is the seam where a package and a workload first meet, so it is where a register block
@@ -80,6 +80,7 @@ def shape_adapted_features(pkg: "RvvPackage", model_dir: str | Path,
     tile, not the model's N — see :func:`_harts_split_shapes`."""
     from ..kernels.shapes import contraction_shapes
     from .registry import _resolve_features
+
     shapes = contraction_shapes(Path(model_dir) / "model.mlir")
     if not shapes:
         return list(pkg.compiler_features)
@@ -143,20 +144,26 @@ def blocking_risks(pkg: "RvvPackage", model_dir: str | Path) -> list[str]:
     from .from_strategy import _rvv_blocking_lowers
 
     if any(is_frozen_block(f) for f in pkg.compiler_features):
-        return []                       # the resolver handles this one
+        return []  # the resolver handles this one
     blocks = _schedule_pinned_blocks(pkg.schedule_text)
     if not blocks:
         return []
     shapes = contraction_shapes(Path(model_dir) / "model.mlir")
     out: list[str] = []
     for op, (mt, nt) in blocks.items():
-        bad = [(m, n) for s in shapes if s.op == op and len(s.parallel) >= 2
-               for m, n in [(s.parallel[-2], s.parallel[-1])]
-               if not _rvv_blocking_lowers(mt, nt, m, n)]
+        bad = [
+            (m, n)
+            for s in shapes
+            if s.op == op and len(s.parallel) >= 2
+            for m, n in [(s.parallel[-2], s.parallel[-1])]
+            if not _rvv_blocking_lowers(mt, nt, m, n)
+        ]
         if bad:
             uniq = sorted(set(bad))[:4]
-            out.append(f"{op} block [{mt}, {nt}] masks a parallel dim of {len(bad)} contraction(s) "
-                       f"(e.g. extents {uniq}) — that fails to lower on int8 and costs ~34x on fp32")
+            out.append(
+                f"{op} block [{mt}, {nt}] masks a parallel dim of {len(bad)} contraction(s) "
+                f"(e.g. extents {uniq}) — that fails to lower on int8 and costs ~34x on fp32"
+            )
     return out
 
 
@@ -185,8 +192,7 @@ def _adapt_frozen_points(feats: list[str], shapes, *, target: str) -> list[str]:
         chosen: dict[str, tuple[int, int] | None] = {}
         changed = False
         for op, block in frozen.items():
-            ext = [(s.parallel[-2], s.parallel[-1]) for s in shapes
-                   if s.op == op and len(s.parallel) >= 2]
+            ext = [(s.parallel[-2], s.parallel[-1]) for s in shapes if s.op == op and len(s.parallel) >= 2]
             if not ext or all(_rvv_blocking_lowers(block[0], block[1], m, n) for m, n in ext):
                 chosen[op] = block
                 continue
@@ -202,20 +208,28 @@ def _adapt_frozen_points(feats: list[str], shapes, *, target: str) -> list[str]:
             out.append(name)
             continue
         from ..llvmlower.impr_features import ensure_v3_perop_microkernel
+
         mm, bmm = chosen["linalg.matmul"], chosen["linalg.batch_matmul"]
-        if mm is None and bmm is None:      # nothing vectorizable -> keep the pinned point as-is
+        if mm is None and bmm is None:  # nothing vectorizable -> keep the pinned point as-is
             out.append(name)
             continue
-        out.append(ensure_v3_perop_microkernel(
-            *(mm or (None, None)), *(bmm or (None, None)), int(caps["KC"])))
+        out.append(ensure_v3_perop_microkernel(*(mm or (None, None)), *(bmm or (None, None)), int(caps["KC"])))
     seen: set[str] = set()
     return [f for f in out if not (f in seen or seen.add(f))]
 
 
-def apply_rvv_package(pkg: "RvvPackage | str | Path", model_dir: str | Path, work: str | Path,
-                      *, board: str = "spike_riscv64", harts: int = 2, arena_mb: int = 64,
-                      int8_compute: bool | None = None, shape_adapt: bool = False,
-                      **kw: Any) -> dict:
+def apply_rvv_package(
+    pkg: "RvvPackage | str | Path",
+    model_dir: str | Path,
+    work: str | Path,
+    *,
+    board: str = "spike_riscv64",
+    harts: int = 2,
+    arena_mb: int = 64,
+    int8_compute: bool | None = None,
+    shape_adapt: bool = False,
+    **kw: Any,
+) -> dict:
     """Build the Zephyr image for ``model_dir`` using THIS package's codegen knobs.
 
     The package owns the RVV-specific cflags; ``_CFLAGS_COMMON`` is appended here. ``dtype_strategy``
@@ -234,9 +248,15 @@ def apply_rvv_package(pkg: "RvvPackage | str | Path", model_dir: str | Path, wor
         int8_compute = pkg.is_int8
     feats = shape_adapted_features(pkg, model_dir) if shape_adapt else list(pkg.compiler_features)
     return zm.build_app(
-        model_dir, work, board=board, backend="rvv",
+        model_dir,
+        work,
+        board=board,
+        backend="rvv",
         rvv_schedule=pkg.schedule_text,
         cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
-        int8_compute=int8_compute, arena_mb=arena_mb, cpus=max(harts, 1),
+        int8_compute=int8_compute,
+        arena_mb=arena_mb,
+        cpus=max(harts, 1),
         features=frozenset(feats) or None,
-        **kw)
+        **kw,
+    )

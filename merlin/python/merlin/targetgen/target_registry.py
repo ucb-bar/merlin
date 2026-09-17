@@ -12,6 +12,7 @@ Two kinds of target:
   base paths; the parametric dialect (from the plan) is built by
   ``merlin.xdsl_dialects.targets.factory``.
 """
+
 from __future__ import annotations
 
 import os
@@ -22,6 +23,7 @@ from typing import Any
 import yaml
 
 from merlin.common.paths import build_dir, targets_dir
+
 from .rtl.facts import dialect_plan_path, rtl_facts_path, target_base, target_contract_path
 
 # ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -51,6 +53,7 @@ def generated_target_home() -> Path:
     auto-discovered — the zero-env default for a just-generated target."""
     return build_dir() / "generated"
 
+
 # Generic runtime backend for a target whose contract declares no default (no name -> backend map).
 _GENERIC_BACKEND = "simulator"
 
@@ -60,13 +63,13 @@ class TargetInfo:
     """Resolved identity + locations for one target."""
 
     name: str
-    kind: str                 # "reference" | "generated" | "external"
+    kind: str  # "reference" | "generated" | "external"
     base: Path
     contract_path: Path
     dialect_plan_path: Path
-    facts_path: Path          # rtl facts pin (may not exist for non-RTL targets)
+    facts_path: Path  # rtl facts pin (may not exist for non-RTL targets)
     backend: str
-    external_root: Path | None = None   # OOT package root, when kind == "external"
+    external_root: Path | None = None  # OOT package root, when kind == "external"
 
     def load_contract(self) -> dict[str, Any]:
         if not self.contract_path.is_file():
@@ -76,7 +79,8 @@ class TargetInfo:
             raise TargetContractMissing(
                 f"{self.name!r}: no capability contract at {self.contract_path}. Either the target's "
                 f"package has not been generated, or the name asked for is a DIRECTORY name whose "
-                f"descriptor declares a different `target:` (see `declared_target_for`)")
+                f"descriptor declares a different `target:` (see `declared_target_for`)"
+            )
         return yaml.safe_load(self.contract_path.read_text(encoding="utf-8"))
 
     def load_dialect_plan(self) -> dict[str, Any]:
@@ -165,12 +169,15 @@ def external_targets() -> dict[str, Path]:
 def _resolve_external(name: str, root: Path) -> TargetInfo:
     contracts = root / "contracts"
     return TargetInfo(
-        name=name, kind="external", base=root,
+        name=name,
+        kind="external",
+        base=root,
         contract_path=contracts / "target_contract.yaml",
         dialect_plan_path=contracts / "dialect_plan.yaml",
         facts_path=contracts / "rtl_facts" / "facts.json",
         backend=_backend_from_contract(contracts / "target_contract.yaml"),
-        external_root=root)
+        external_root=root,
+    )
 
 
 class TargetContractMissing(FileNotFoundError):
@@ -192,8 +199,15 @@ def declared_target_for(directory_name: str) -> str | None:
     """
     from merlin.common.paths import repo_root
 
-    desc = (repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets"
-            / str(directory_name) / "target_experiment.yaml")
+    desc = (
+        repo_root()
+        / "merlin"
+        / "experiments"
+        / "capsule_bench"
+        / "targets"
+        / str(directory_name)
+        / "target_experiment.yaml"
+    )
     if not desc.is_file():
         return None
     try:
@@ -224,9 +238,14 @@ def resolve(name: str) -> TargetInfo:
     # 2. curated in-tree reference
     if (targets_dir() / name).is_dir():
         return TargetInfo(
-            name=name, kind="reference", base=target_base(name),
-            contract_path=target_contract_path(name), dialect_plan_path=dialect_plan_path(name),
-            facts_path=rtl_facts_path(name), backend=backend_for(name))
+            name=name,
+            kind="reference",
+            base=target_base(name),
+            contract_path=target_contract_path(name),
+            dialect_plan_path=dialect_plan_path(name),
+            facts_path=rtl_facts_path(name),
+            backend=backend_for(name),
+        )
     # 3. freshly-generated OOT home
     gen = _discover([generated_target_home()])
     if name in gen:
@@ -234,7 +253,8 @@ def resolve(name: str) -> TargetInfo:
     # 3b. opt-in native fetch of the published <target>-mlir repo into the generated home, then
     # re-discover. Off by default (no surprise network calls); set MERLIN_TARGET_AUTOFETCH=1 to enable.
     if os.environ.get("MERLIN_TARGET_AUTOFETCH", "").strip() not in ("", "0", "false", "False"):
-        from .oot_fetch import fetch, FetchError  # lazy: oot_fetch imports from this module
+        from .oot_fetch import FetchError, fetch  # lazy: oot_fetch imports from this module
+
         try:
             fetch(name, champion=os.environ.get("MERLIN_TARGET_CHAMPION") or None)
         except FetchError:
@@ -260,9 +280,14 @@ def resolve(name: str) -> TargetInfo:
         if declared and target_contract_path(declared).is_file():
             return resolve(declared)
     return TargetInfo(
-        name=name, kind="generated", base=target_base(name),
-        contract_path=target_contract_path(name), dialect_plan_path=dialect_plan_path(name),
-        facts_path=rtl_facts_path(name), backend=backend_for(name))
+        name=name,
+        kind="generated",
+        base=target_base(name),
+        contract_path=target_contract_path(name),
+        dialect_plan_path=dialect_plan_path(name),
+        facts_path=rtl_facts_path(name),
+        backend=backend_for(name),
+    )
 
 
 def _materialize_discovered(name: str) -> None:
@@ -272,6 +297,7 @@ def _materialize_discovered(name: str) -> None:
     mismatch, not a discovered generator) writes nothing — never a partial or fabricated contract."""
     try:
         from . import capability_manifests as cm
+
         if name not in cm.discovered_targets():
             return
         cm.write_oot_target(name, target_base(name))
@@ -284,8 +310,7 @@ def list_targets() -> list[str]:
     root = targets_dir()
     if not root.is_dir():
         return []
-    return sorted(p.name for p in root.iterdir()
-                  if (p / "contracts" / "target_contract.yaml").is_file())
+    return sorted(p.name for p in root.iterdir() if (p / "contracts" / "target_contract.yaml").is_file())
 
 
 def all_targets() -> list[str]:

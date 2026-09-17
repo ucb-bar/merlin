@@ -4,6 +4,7 @@ The "+CIRCT" token-saving advantage: the agent reads ONE RTL-grounded digest (ge
 budget, shared-memory capacity, FP peak, legal SIMT instruction classes + intrinsics) instead of
 crawling Radiance Scala. Every line traces to an ``evidence`` string in muon_facts.json.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,8 +15,7 @@ from . import muon_introspect as MI
 
 def render(facts: dict) -> str:
     f = facts["facts"]
-    simt, regs, smem, fp, isa = (f["simt"], f["registers"], f["shared_memory"],
-                                 f["fp_datapath"], f["isa"])
+    simt, regs, smem, fp, isa = (f["simt"], f["registers"], f["shared_memory"], f["fp_datapath"], f["isa"])
     lines = [
         "# MUON_DIGEST — RadianceMuonConfig hardware facts (RTL-grounded)",
         "",
@@ -39,25 +39,24 @@ def render(facts: dict) -> str:
         "",
         "## FP datapath & peak (the utilization denominator)",
         f"- fp32 FMA, **{fp['peak_flops_per_cycle']} flop/cycle** "
-        f"({simt['cores']}×{simt['lanes_per_warp']}×2) @ {fp['clock_hz']/1e6:g} MHz = "
+        f"({simt['cores']}×{simt['lanes_per_warp']}×2) @ {fp['clock_hz'] / 1e6:g} MHz = "
         f"**{fp['peak_gflops']:g} GFLOP/s** peak.",
         f"  - Report achieved GFLOP/s = flops/(cycles/{int(fp['clock_hz'])}) as a % of this.",
         "",
         "## Legal SIMT instruction classes (decode/trace target)",
-        f"- {', '.join('`'+c+'`' for c in isa['instruction_classes'])}",
+        f"- {', '.join('`' + c + '`' for c in isa['instruction_classes'])}",
         f"- {isa['encoding_bits']}-bit encoding, up to {isa['max_src_operands']} src / "
         f"{isa['max_dst_operands']} dst, predicated execution.",
         "",
         "## Intrinsics surface (what your kernel emits)",
-        f"- shared mem: {', '.join('`'+i+'`' for i in isa['intrinsics']['smem'])}",
-        f"- sync: {', '.join('`'+i+'`' for i in isa['intrinsics']['sync'])}",
-        f"- SIMT: {', '.join('`'+i+'`' for i in isa['intrinsics']['simt'])}",
+        f"- shared mem: {', '.join('`' + i + '`' for i in isa['intrinsics']['smem'])}",
+        f"- sync: {', '.join('`' + i + '`' for i in isa['intrinsics']['sync'])}",
+        f"- SIMT: {', '.join('`' + i + '`' for i in isa['intrinsics']['simt'])}",
         "",
         "## Sequencing rules the advisory checker enforces (derived from these facts)",
         f"- shared-memory footprint per cluster ≤ {smem['bytes_per_cluster'] // 1024} KiB",
         f"- live registers/thread ≤ {regs['compiler_limit']} (occupancy)",
-        f"- threadblock ≤ {simt['threads_per_core']} threads; barrier-before-smem-reuse; "
-        "split/join nesting balanced.",
+        f"- threadblock ≤ {simt['threads_per_core']} threads; barrier-before-smem-reuse; split/join nesting balanced.",
         "",
     ]
     return "\n".join(lines)
@@ -65,6 +64,7 @@ def render(facts: dict) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
+
     ap = argparse.ArgumentParser(description="render MUON_DIGEST.md from muon_facts.json")
     ap.add_argument("--facts", default=None)
     ap.add_argument("--out", default=None)

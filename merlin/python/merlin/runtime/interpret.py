@@ -10,6 +10,7 @@ upstream regions' outputs, from ``region_goldens.npz``) as the slice's ``arg`` b
 sub-DAG, and read the section's outputs (validated against the region's output golden). Whole-model
 and single-section runs are the same call — the slice is just a smaller program.
 """
+
 from __future__ import annotations
 
 from typing import Any, Callable
@@ -34,8 +35,7 @@ def run_dispatch_program(
     env: dict[str, Any] = dict(consts or {})
     env.update(inputs)
 
-    missing = [b.id for b in prog.buffers.values()
-               if b.kind == "arg" and b.id not in env]
+    missing = [b.id for b in prog.buffers.values() if b.kind == "arg" and b.id not in env]
     if missing:
         raise KeyError(f"run_dispatch_program: no input bound for arg buffer(s) {missing}")
 
@@ -46,12 +46,10 @@ def run_dispatch_program(
         elif eval_view is not None:
             outs = eval_view(node.op, in_vals, node)
         else:
-            raise NotImplementedError(
-                f"run_dispatch_program: view op {node.op!r} but no eval_view was provided")
+            raise NotImplementedError(f"run_dispatch_program: view op {node.op!r} but no eval_view was provided")
         outs = list(outs) if isinstance(outs, (list, tuple)) else [outs]
         if len(outs) != len(node.outputs):
-            raise ValueError(
-                f"{node.op}: produced {len(outs)} value(s) for {len(node.outputs)} output buffer(s)")
+            raise ValueError(f"{node.op}: produced {len(outs)} value(s) for {len(node.outputs)} output buffer(s)")
         for bid, val in zip(node.outputs, outs):
             env[bid] = val
 

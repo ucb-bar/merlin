@@ -24,17 +24,24 @@ is the whole point: assuming they are zero would reintroduce the author's model 
 door, and would silently validate a pass that dropped a *non-zero* zero point — the exact defect the
 op exists to express. A zero point that is not a resolvable integer constant is an ABSTENTION.
 """
+
 from __future__ import annotations
 
 from typing import Any
 
-from .smt_semantics import (Encoded, Encoder, Tensor, UnsupportedSemantics, _elem_width, _shape)
+from .smt_semantics import Encoded, Encoder, Tensor, UnsupportedSemantics, _elem_width, _shape
 
 #: Ops with a value semantics here. Listed so a reader can see the encoded surface at a glance; the
 #: walk below is still the authority, and anything absent raises rather than falling through.
-ENCODABLE_OPS = frozenset({
-    "linalg.quantized_matmul", "linalg.matmul", "tensor.empty", "arith.constant", "func.return",
-})
+ENCODABLE_OPS = frozenset(
+    {
+        "linalg.quantized_matmul",
+        "linalg.matmul",
+        "tensor.empty",
+        "arith.constant",
+        "func.return",
+    }
+)
 
 
 def _const_int(op) -> int:
@@ -49,8 +56,7 @@ def _const_int(op) -> int:
     value = getattr(attr, "value", None)
     data = getattr(value, "data", None)
     if not isinstance(data, int) or isinstance(data, bool):
-        raise UnsupportedSemantics(
-            f"arith.constant carries {attr!r}, which has no integer bitvector reading here")
+        raise UnsupportedSemantics(f"arith.constant carries {attr!r}, which has no integer bitvector reading here")
     return data
 
 
@@ -79,13 +85,11 @@ def _sub_const(enc: Encoder, term, value: int, width: int):
     exactly what ``arith.subi`` on an ``i<width>`` does.
     """
     if not -(2 ** (width - 1)) <= value < 2 ** (width - 1):
-        raise UnsupportedSemantics(
-            f"zero point {value} is not a signed {width}-bit value")
+        raise UnsupportedSemantics(f"zero point {value} is not a signed {width}-bit value")
     return enc.smt.BVAddOp(term, enc.const((-value) & ((1 << width) - 1), width)).results[0]
 
 
-def _contract(enc: Encoder, lhs: Tensor, rhs: Tensor, zp_lhs: int, zp_rhs: int,
-              acc_width: int) -> Tensor:
+def _contract(enc: Encoder, lhs: Tensor, rhs: Tensor, zp_lhs: int, zp_rhs: int, acc_width: int) -> Tensor:
     """``out[m][n] = sum_k (lhs[m][k] - zp_lhs) * (rhs[k][n] - zp_rhs)``.
 
     Two paths, because the cheap one is only *exact* when the zero points vanish.
@@ -100,17 +104,20 @@ def _contract(enc: Encoder, lhs: Tensor, rhs: Tensor, zp_lhs: int, zp_rhs: int,
       expensive; the shape has to be correspondingly smaller for a refutation to land.
     """
     if lhs.cols != rhs.rows:
-        raise UnsupportedSemantics(
-            f"contraction extent mismatch: {lhs.rows}x{lhs.cols} @ {rhs.rows}x{rhs.cols}")
+        raise UnsupportedSemantics(f"contraction extent mismatch: {lhs.rows}x{lhs.cols} @ {rhs.rows}x{rhs.cols}")
     if zp_lhs == 0 and zp_rhs == 0:
         return enc.matmul(lhs, rhs, acc_width=acc_width)
 
-    lhs_w = {(m, k): _sub_const(enc, enc.sign_extend(lhs.at(m, k), lhs.width, acc_width),
-                                zp_lhs, acc_width)
-             for m in range(lhs.rows) for k in range(lhs.cols)}
-    rhs_w = {(k, n): _sub_const(enc, enc.sign_extend(rhs.at(k, n), rhs.width, acc_width),
-                                zp_rhs, acc_width)
-             for k in range(rhs.rows) for n in range(rhs.cols)}
+    lhs_w = {
+        (m, k): _sub_const(enc, enc.sign_extend(lhs.at(m, k), lhs.width, acc_width), zp_lhs, acc_width)
+        for m in range(lhs.rows)
+        for k in range(lhs.cols)
+    }
+    rhs_w = {
+        (k, n): _sub_const(enc, enc.sign_extend(rhs.at(k, n), rhs.width, acc_width), zp_rhs, acc_width)
+        for k in range(rhs.rows)
+        for n in range(rhs.cols)
+    }
     out: dict[tuple[int, int], Any] = {}
     for m in range(lhs.rows):
         for n in range(rhs.cols):
@@ -127,12 +134,12 @@ def _add_init(enc: Encoder, acc: Tensor, init) -> Tensor:
     if isinstance(init, _Uninitialized):
         return acc
     if (init.rows, init.cols) != (acc.rows, acc.cols):
-        raise UnsupportedSemantics(
-            f"init is {init.rows}x{init.cols} but the contraction is {acc.rows}x{acc.cols}")
+        raise UnsupportedSemantics(f"init is {init.rows}x{init.cols} but the contraction is {acc.rows}x{acc.cols}")
     if init.width != acc.width:
         raise UnsupportedSemantics(
             f"init is {init.width} bits but the accumulator is {acc.width}; refusing to widen an "
-            f"initialised accumulator implicitly")
+            f"initialised accumulator implicitly"
+        )
     out = {k: enc.smt.BVAddOp(v, init.at(*k)).results[0] for k, v in acc.elems.items()}
     return Tensor(acc.rows, acc.cols, acc.width, out)
 
@@ -183,15 +190,16 @@ def encode_linalg(enc: Encoder, module, *, acc_width: int = 32) -> Encoded:
                 f"the {which} zero point of a quantized contraction is not a resolvable integer "
                 f"constant (it is produced by "
                 f"{getattr(getattr(value, 'owner', None), 'name', 'a block argument')!r}); "
-                f"abstaining rather than assuming it is zero")
+                f"abstaining rather than assuming it is zero"
+            )
         return consts[value]
 
     def _tensor(value, which: str) -> Tensor:
         t = env.get(value)
         if isinstance(t, _Uninitialized):
             raise UnsupportedSemantics(
-                f"the {which} operand of a contraction is an uninitialised tensor.empty; it has no "
-                f"value to contract")
+                f"the {which} operand of a contraction is an uninitialised tensor.empty; it has no value to contract"
+            )
         if t is None:
             raise UnsupportedSemantics(f"the {which} operand of a contraction is undefined here")
         return t
@@ -208,33 +216,37 @@ def encode_linalg(enc: Encoder, module, *, acc_width: int = 32) -> Encoded:
             if res_width != acc_width:
                 raise UnsupportedSemantics(
                     f"{name} returns an i{res_width} tensor but the accumulator is i{acc_width}; "
-                    f"refusing rather than silently re-widening the contraction")
+                    f"refusing rather than silently re-widening the contraction"
+                )
             if name == "linalg.quantized_matmul":
                 if len(op.operands) != 5:
                     raise UnsupportedSemantics(
                         f"linalg.quantized_matmul with {len(op.operands)} operands; expected "
-                        f"lhs, rhs, zp_lhs, zp_rhs, init")
+                        f"lhs, rhs, zp_lhs, zp_rhs, init"
+                    )
                 zp_lhs = _zero_point(op.operands[2], "lhs")
                 zp_rhs = _zero_point(op.operands[3], "rhs")
                 init = env.get(op.operands[4])
             else:
                 if len(op.operands) != 3:
                     raise UnsupportedSemantics(
-                        f"linalg.matmul with {len(op.operands)} operands; expected lhs, rhs, init")
+                        f"linalg.matmul with {len(op.operands)} operands; expected lhs, rhs, init"
+                    )
                 zp_lhs = zp_rhs = 0
                 init = env.get(op.operands[2])
             if init is None:
                 raise UnsupportedSemantics(f"{name} init operand is undefined here")
-            acc = _contract(enc, _tensor(op.operands[0], "lhs"), _tensor(op.operands[1], "rhs"),
-                            zp_lhs, zp_rhs, acc_width)
+            acc = _contract(
+                enc, _tensor(op.operands[0], "lhs"), _tensor(op.operands[1], "rhs"), zp_lhs, zp_rhs, acc_width
+            )
             env[op.results[0]] = _add_init(enc, acc, init)
         elif name == "func.return":
             for i, value in enumerate(op.operands):
                 outputs[f"ret{i}"] = _tensor(value, f"return operand {i}")
         else:
             raise UnsupportedSemantics(
-                f"no semantics for {name!r} in a linalg source module "
-                f"(encodable: {sorted(ENCODABLE_OPS)})")
+                f"no semantics for {name!r} in a linalg source module (encodable: {sorted(ENCODABLE_OPS)})"
+            )
 
     if not outputs:
         raise UnsupportedSemantics("the source module returns no tensors; nothing to validate")

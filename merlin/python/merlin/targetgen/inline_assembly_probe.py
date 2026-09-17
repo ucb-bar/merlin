@@ -5,6 +5,7 @@ parse target-neutral byte-memory annotations, require the assembled words to con
 instruction operations, execute them, and compare captured memory.  Concrete syntax, toolchains, and
 simulators remain in target-owned hooks; there are no target or mnemonic branches here.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -129,16 +130,17 @@ def run_capability_probe(*, te, probe, workdir, timeout: int = 600) -> dict[str,
     operations = list(probe.requirements.get("operations") or ())
     if any(operation.get("domain") != "instruction" for operation in operations):
         raise ValueError("inline assembly adapter accepts instruction-domain operations only")
-    coverage = operation_coverage(
-        te.target, words, [str(operation["operation"]) for operation in operations])
+    coverage = operation_coverage(te.target, words, [str(operation["operation"]) for operation in operations])
     if coverage["missing"] or coverage["n_illegal"]:
-        detail = (f"fixture instruction coverage failed: missing={coverage['missing']}, "
-                  f"undecodable={coverage['n_illegal']}")
+        detail = (
+            f"fixture instruction coverage failed: missing={coverage['missing']}, undecodable={coverage['n_illegal']}"
+        )
         return {
             "reason": detail,
-            "observations": [{**operation, "status": "unsupported",
-                              "evidence": {"kind": "preflight_static", "detail": detail}}
-                             for operation in operations],
+            "observations": [
+                {**operation, "status": "unsupported", "evidence": {"kind": "preflight_static", "detail": detail}}
+                for operation in operations
+            ],
             "instruction_coverage": coverage,
         }
     Path(workdir).mkdir(parents=True, exist_ok=True)
@@ -164,17 +166,21 @@ def run_capability_probe(*, te, probe, workdir, timeout: int = 600) -> dict[str,
         got = _captured(memory, address)
         if got != wanted:
             problems.append(
-                f"memory mismatch at {address:#x}: got={None if got is None else got.hex()} "
-                f"expected={wanted.hex()}")
+                f"memory mismatch at {address:#x}: got={None if got is None else got.hex()} expected={wanted.hex()}"
+            )
     status = "unsupported" if problems else "supported"
     checked = ", ".join(f"{address:#x} ({len(value)} bytes)" for address, value in expected)
-    detail = "; ".join(problems) if problems else (
-        f"halted in {int(result.get('cycles') or 0)} cycles; matched memory at {checked}")
+    detail = (
+        "; ".join(problems)
+        if problems
+        else (f"halted in {int(result.get('cycles') or 0)} cycles; matched memory at {checked}")
+    )
     return {
         "reason": detail,
-        "observations": [{**operation, "status": status,
-                          "evidence": {"kind": "rtl_preflight", "detail": detail}}
-                         for operation in operations],
+        "observations": [
+            {**operation, "status": status, "evidence": {"kind": "rtl_preflight", "detail": detail}}
+            for operation in operations
+        ],
         "instruction_coverage": coverage,
         "run": {key: result.get(key) for key in ("cycles", "reads", "writes", "halted")},
     }

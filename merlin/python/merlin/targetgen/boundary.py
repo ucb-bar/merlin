@@ -33,6 +33,7 @@ host *memory* is not a host *computation* and counting it as one would label eve
 and make the axis say nothing. A capsule in that grammar is therefore ``A`` or ``A->A``, decided by how
 many dispatches it issues — which is exactly the residency property such a capsule exists to prove.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -66,7 +67,7 @@ class BoundaryProfile:
     """One capsule's composition shape, with the evidence that produced it."""
 
     kind: str = UNKNOWN
-    grammar: str = ""                    # "merlin_iface" | "linalg" | ""
+    grammar: str = ""  # "merlin_iface" | "linalg" | ""
     n_accel_regions: int = 0
     n_host_regions: int = 0
     n_unresolved: int = 0
@@ -81,11 +82,18 @@ class BoundaryProfile:
     contains: tuple = ()
 
     def to_dict(self) -> dict:
-        return {"boundary": self.kind, "contains": sorted(self.contains), "grammar": self.grammar,
-                "n_accel_regions": self.n_accel_regions, "n_host_regions": self.n_host_regions,
-                "n_unresolved": self.n_unresolved, "n_unbuildable": self.n_unbuildable,
-                "accel_segments": self.accel_segments,
-                "host_segments": self.host_segments, "detail": self.detail}
+        return {
+            "boundary": self.kind,
+            "contains": sorted(self.contains),
+            "grammar": self.grammar,
+            "n_accel_regions": self.n_accel_regions,
+            "n_host_regions": self.n_host_regions,
+            "n_unresolved": self.n_unresolved,
+            "n_unbuildable": self.n_unbuildable,
+            "accel_segments": self.accel_segments,
+            "host_segments": self.host_segments,
+            "detail": self.detail,
+        }
 
 
 def segments(seq) -> list[tuple[str, int]]:
@@ -148,7 +156,7 @@ def patterns_in_sequence(seq) -> set[str]:
     if not n_a:
         return {HOST_ONLY}
     if n_h:
-        found.add(HOST_ONLY)                       # the model does carry host-lane-only stretches
+        found.add(HOST_ONLY)  # the model does carry host-lane-only stretches
     if n_a >= 2 and n_h >= 2:
         found.add(ROUTING)
     if n_a >= 2:
@@ -205,7 +213,6 @@ def iface_mnemonics(text: str) -> list[str]:
     return out
 
 
-
 def grammar_mnemonics() -> frozenset[str]:
     """The op mnemonics the frozen grammar defines, read from the PARSER'S OWN tables.
 
@@ -223,6 +230,7 @@ def undefined_mnemonics(text: str) -> list[str]:
     """Mnemonics a module uses that the frozen grammar does not define, sorted and de-duplicated."""
     known = grammar_mnemonics()
     return sorted({m for m in iface_mnemonics(text) if m not in known})
+
 
 def _whole_op_opcodes() -> frozenset[str]:
     """Opcodes that are a WHOLE op — they produce their output tensor themselves, with no separate
@@ -286,8 +294,9 @@ def _unbuildable_seam(target: str) -> str | None:
     """
     try:
         from merlin.llvmlower.device_build import boundary_buildable
+
         return boundary_buildable(target)
-    except Exception:                                          # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -302,36 +311,46 @@ def profile_iface_text(text: str) -> BoundaryProfile:
 
     try:
         doc = IE.parse_interface_mlir(text)
-    except Exception as e:                                     # noqa: BLE001
-        return BoundaryProfile(grammar="merlin_iface",
-                               detail=f"unparseable: {type(e).__name__}: {e}")
+    except Exception as e:  # noqa: BLE001
+        return BoundaryProfile(grammar="merlin_iface", detail=f"unparseable: {type(e).__name__}: {e}")
     commands = list(doc.get("commands") or ())
     undefined = undefined_mnemonics(text)
     if undefined:
         # THE PARSER DROPPED SOMETHING, so any shape derived from what it returned is a shape derived
         # from an incomplete program. UNKNOWN with the reason, never a confident label: a movement
         # capsule whose only op vanished would otherwise report as a clean single dispatch.
-        return BoundaryProfile(grammar="merlin_iface",
-                               n_accel_regions=len(commands),
-                               detail=f"the frozen interface grammar does not define {undefined}; the "
-                                      f"canonical parser returned {len(commands)} command(s) and "
-                                      f"reported no error, so the program is only partly readable")
+        return BoundaryProfile(
+            grammar="merlin_iface",
+            n_accel_regions=len(commands),
+            detail=f"the frozen interface grammar does not define {undefined}; the "
+            f"canonical parser returned {len(commands)} command(s) and "
+            f"reported no error, so the program is only partly readable",
+        )
     n = _accel_dispatches(commands)
     if not n:
         # Commands but no commit: a configuration- or movement-only program. It is accelerator work
         # with no dispatch boundary, not host work -- and not UNKNOWN either, because we read it fine.
         if not commands:
             return BoundaryProfile(grammar="merlin_iface", detail="module declares no accelerator op")
-        return BoundaryProfile(kind=A, grammar="merlin_iface", contains=(A,),
-                               n_accel_regions=len(commands), accel_segments=1,
-                               detail="accelerator commands that produce no host-visible tensor "
-                                      "(configuration or residency only): one accelerator region, no "
-                                      "dispatch seam")
-    return BoundaryProfile(kind=A_A if n >= 2 else A, grammar="merlin_iface",
-                           contains=((A, A_A) if n >= 2 else (A,)),
-                           n_accel_regions=n, accel_segments=1,
-                           detail=f"{n} accelerator dispatch(es); the merlin_iface grammar carries no "
-                                  f"host computation, so no host seam can exist in it")
+        return BoundaryProfile(
+            kind=A,
+            grammar="merlin_iface",
+            contains=(A,),
+            n_accel_regions=len(commands),
+            accel_segments=1,
+            detail="accelerator commands that produce no host-visible tensor "
+            "(configuration or residency only): one accelerator region, no "
+            "dispatch seam",
+        )
+    return BoundaryProfile(
+        kind=A_A if n >= 2 else A,
+        grammar="merlin_iface",
+        contains=((A, A_A) if n >= 2 else (A,)),
+        n_accel_regions=n,
+        accel_segments=1,
+        detail=f"{n} accelerator dispatch(es); the merlin_iface grammar carries no "
+        f"host computation, so no host seam can exist in it",
+    )
 
 
 def profile_path(path: str | Path, target: str) -> BoundaryProfile:
@@ -343,17 +362,19 @@ def profile_path(path: str | Path, target: str) -> BoundaryProfile:
         return BoundaryProfile(detail=f"unreadable: {type(e).__name__}: {e}")
 
     from merlin.targetgen.contract import linalg_iface as LI
+
     try:
         is_linalg = LI.is_linalg_on_tensors(text)
-    except Exception as e:                                     # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         return BoundaryProfile(detail=f"grammar undecidable: {type(e).__name__}: {e}")
     if not is_linalg:
         return profile_iface_text(text)
 
     from merlin.targetgen.model_coverage import load_module
+
     try:
         module = load_module(p)
-    except Exception as e:                                     # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         return BoundaryProfile(grammar="linalg", detail=f"unparseable: {type(e).__name__}: {e}")
     seq, unresolved = _sequence_from_linalg(module, target)
     # AN ELIGIBLE REGION IS NOT A CROSSING WE CAN EMIT. Eligibility says the capability manifest admits
@@ -380,21 +401,27 @@ def profile_path(path: str | Path, target: str) -> BoundaryProfile:
     # derives is still refused by that same predicate, and its capsules are still UNKNOWN.
     if unbuildable:
         return BoundaryProfile(
-            kind=UNKNOWN, grammar="linalg", n_unresolved=unresolved, n_unbuildable=n_eligible,
+            kind=UNKNOWN,
+            grammar="linalg",
+            n_unresolved=unresolved,
+            n_unbuildable=n_eligible,
             n_host_regions=sum(1 for x in seq if x == HOST),
             detail=f"{n_eligible} of {len(seq)} linalg region(s) are accelerator-eligible, but "
-                   f"{unbuildable} -- so whether this program crosses the seam is undeterminable, "
-                   f"not proven")
+            f"{unbuildable} -- so whether this program crosses the seam is undeterminable, "
+            f"not proven",
+        )
     segs = segments(seq)
     return BoundaryProfile(
-        kind=classify_sequence(seq), contains=tuple(sorted(patterns_in_sequence(seq))),
+        kind=classify_sequence(seq),
+        contains=tuple(sorted(patterns_in_sequence(seq))),
         grammar="linalg",
         n_accel_regions=sum(1 for s in seq if s == ACCEL),
         n_host_regions=sum(1 for s in seq if s == HOST),
         n_unresolved=unresolved,
         accel_segments=sum(1 for k, _ in segs if k == ACCEL),
         host_segments=sum(1 for k, _ in segs if k == HOST),
-        detail=f"{len(seq)} linalg region(s); eligibility from the target's capability map")
+        detail=f"{len(seq)} linalg region(s); eligibility from the target's capability map",
+    )
 
 
 def capsule_interface(capsule_dir: str | Path) -> Path | None:
@@ -427,6 +454,7 @@ def profile_capsule(capsule_dir: str | Path, target: str) -> BoundaryProfile:
 # ---------------------------------------------------------------------------------------------------
 # the two sides of the gate
 # ---------------------------------------------------------------------------------------------------
+
 
 def corpus_boundaries(corpus_roots, target: str, *, labels=None, exclude=None) -> dict:
     """``kind -> [capsule names]`` for a corpus, plus the ones that could not be read.
@@ -467,9 +495,11 @@ def corpus_boundaries(corpus_roots, target: str, *, labels=None, exclude=None) -
             # exercising it. That is the same under-crediting as scoring a fused capsule for one family.
             for kind in sorted(prof.contains or {prof.kind}):
                 by_kind.setdefault(kind, []).append(name)
-    return {"by_kind": {k: sorted(v) for k, v in sorted(by_kind.items())},
-            "primary": {k: sorted(v) for k, v in sorted(primary.items())},
-            "unreadable": unread}
+    return {
+        "by_kind": {k: sorted(v) for k, v in sorted(by_kind.items())},
+        "primary": {k: sorted(v) for k, v in sorted(primary.items())},
+        "unreadable": unread,
+    }
 
 
 def required_boundaries(captures: dict, target: str) -> dict:
@@ -487,15 +517,18 @@ def required_boundaries(captures: dict, target: str) -> dict:
     for label, path in sorted((captures or {}).items()):
         try:
             module = load_module(path)
-        except Exception as e:                                 # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
             unreadable[label] = f"{type(e).__name__}: {str(e)[-160:]}"
             continue
         seq, _ = _sequence_from_linalg(module, target)
         whole_model[label] = classify_sequence(seq)
         for kind in sorted(patterns_in_sequence(seq)):
             by_kind.setdefault(kind, []).append(label)
-    return {"by_kind": {k: sorted(v) for k, v in sorted(by_kind.items())},
-            "whole_model_shape": whole_model, "captures_unreadable": unreadable}
+    return {
+        "by_kind": {k: sorted(v) for k, v in sorted(by_kind.items())},
+        "whole_model_shape": whole_model,
+        "captures_unreadable": unreadable,
+    }
 
 
 def host_lane_coverage(spec_doc: dict, corpus_roots, *, labels=None, exclude=None) -> dict:
@@ -529,9 +562,11 @@ def host_lane_coverage(spec_doc: dict, corpus_roots, *, labels=None, exclude=Non
 
     req = ((spec_doc or {}).get("host_lane") or {}).get("required")
     if req is None:
-        return {"status": "not_measured",
-                "detail": "this spec carries no host_lane axis; regenerate it with --write to derive "
-                          "the negative lane at family x dtype resolution"}
+        return {
+            "status": "not_measured",
+            "detail": "this spec carries no host_lane axis; regenerate it with --write to derive "
+            "the negative lane at family x dtype resolution",
+        }
     target = str((spec_doc or {}).get("target") or "")
     want = {(str(p_["family"]), str(p_["dtype"])) for p_ in req}
     labels = set(labels or {"public"})
@@ -554,8 +589,11 @@ def host_lane_coverage(spec_doc: dict, corpus_roots, *, labels=None, exclude=Non
             if name in exclude:
                 continue
             fam = str((cap.get("semantic") or {}).get("semantic_family") or "")
-            dts = {str(t.get("dtype")) for t in (cap.get("inputs") or [])
-                   if t.get("dtype") and t.get("role") in ("input", "weight")}
+            dts = {
+                str(t.get("dtype"))
+                for t in (cap.get("inputs") or [])
+                if t.get("dtype") and t.get("role") in ("input", "weight")
+            }
             pairs = {(fam, d) for d in dts} & want
             if not pairs:
                 continue
@@ -584,14 +622,15 @@ def host_lane_coverage(spec_doc: dict, corpus_roots, *, labels=None, exclude=Non
         "covered_by": {k: sorted(v) for k, v in sorted(covered.items())},
         "covered_only_incidentally": sorted(set(incidental) - proven),
         "incidental": {k: sorted(v) for k, v in sorted(incidental.items())},
-        "entry_tensor_only": sorted(k for k, v in entry_tensor.items()
-                                    if k not in proven and k not in incidental),
+        "entry_tensor_only": sorted(k for k, v in entry_tensor.items() if k not in proven and k not in incidental),
         "entry_tensor_witnesses": {k: sorted(v) for k, v in sorted(entry_tensor.items())},
         "unreadable_capsules": unread,
-        "note": ("a (family, dtype) pair the hardware does not admit, shown landing on the host lane by "
-                 "a capsule whose OWN family and dtype are that pair and whose whole program is host "
-                 "work -- not by one that merely contains a host stretch, and not by a whole-model "
-                 "capsule whose i64 token-id entry tensor was read as an operand"),
+        "note": (
+            "a (family, dtype) pair the hardware does not admit, shown landing on the host lane by "
+            "a capsule whose OWN family and dtype are that pair and whose whole program is host "
+            "work -- not by one that merely contains a host stretch, and not by a whole-model "
+            "capsule whose i64 token-id entry tensor was read as an operand"
+        ),
     }
 
 
@@ -607,9 +646,11 @@ def uncovered_boundaries(required: dict, corpus: dict) -> dict:
         "corpus_kinds": sorted(have),
         "extra_kinds": sorted(have - set(want)),
         "covered_only_incidentally": sorted(
-            k for k in set(want) & have
-            if k not in ((corpus or {}).get("primary") or {})),
+            k for k in set(want) & have if k not in ((corpus or {}).get("primary") or {})
+        ),
         "unreadable_capsules": dict((corpus or {}).get("unreadable") or {}),
-        "note": ("a required composition shape with no capsule means the corpus proves families but not "
-                 "composition; the pass-rate cannot express it because every capsule that exists passes"),
+        "note": (
+            "a required composition shape with no capsule means the corpus proves families but not "
+            "composition; the pass-rate cannot express it because every capsule that exists passes"
+        ),
     }

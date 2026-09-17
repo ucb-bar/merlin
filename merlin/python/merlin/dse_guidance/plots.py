@@ -4,6 +4,7 @@ Follows the headless pattern used elsewhere in the repo (``dse/experiment.py``):
 ``matplotlib.use("Agg")``, save to disk. CSV/Markdown reports are always written regardless;
 plots are a convenience, never a dependency.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,8 +22,10 @@ _FAMILY_COLOR = {
 def _mpl():
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+
         return plt
     except Exception:
         return None
@@ -39,11 +42,17 @@ def axis_triage_plot(triage_result: dict, path: Path) -> bool:
     fig, ax = plt.subplots(figsize=(7, 5))
     for r in rows:
         fam = r["family"]
-        ax.scatter(r["gap_closure"], r["cost_tier"],
-                   s=80 + 320 * float(r["confidence"]),
-                   color=_FAMILY_COLOR.get(fam, "#777777"), alpha=0.7, edgecolors="k")
-        ax.annotate(r["axis"], (r["gap_closure"], r["cost_tier"]), fontsize=7,
-                    xytext=(4, 4), textcoords="offset points")
+        ax.scatter(
+            r["gap_closure"],
+            r["cost_tier"],
+            s=80 + 320 * float(r["confidence"]),
+            color=_FAMILY_COLOR.get(fam, "#777777"),
+            alpha=0.7,
+            edgecolors="k",
+        )
+        ax.annotate(
+            r["axis"], (r["gap_closure"], r["cost_tier"]), fontsize=7, xytext=(4, 4), textcoords="offset points"
+        )
     ax.axvline(0.5, color="gray", ls=":", lw=0.8)
     ax.axhline(3, color="gray", ls=":", lw=0.8)
     ax.set_xlabel("gap_closure (fraction of target gap closed)")
@@ -51,8 +60,7 @@ def axis_triage_plot(triage_result: dict, path: Path) -> bool:
     ax.set_xlim(-0.05, 1.05)
     ax.set_ylim(0.5, 5.5)
     ax.invert_yaxis()
-    ax.set_title(f"DSE axis triage — {triage_result['workload']} "
-                 f"({triage_result['representation']})")
+    ax.set_title(f"DSE axis triage — {triage_result['workload']} ({triage_result['representation']})")
     fig.tight_layout()
     fig.savefig(path, dpi=120)
     plt.close(fig)

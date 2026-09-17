@@ -5,6 +5,7 @@ Callbacks and their source pins must be chosen by the trusted host policy, never
 loaded from candidate code or a candidate-supplied recipe. Serialized receipts are
 audit output, not bearer permissions accepted from an untrusted caller.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -13,9 +14,10 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from .linalg_mlir import parse_mlir_text
-from merlin.xdsl_dialects._common import text as module_text
 from merlin.common import digest as _mdigest
+from merlin.xdsl_dialects._common import text as module_text
+
+from .linalg_mlir import parse_mlir_text
 
 
 @dataclass(frozen=True)
@@ -34,31 +36,38 @@ class ArgumentIdentityBridge:
     source_pins: tuple[tuple[str, str], ...]
 
     def to_evidence(self) -> dict:
-        return {"schema": "entry_argument_identity_bridge_v1",
-                "source_sha256": self.source_sha256,
-                "normalized_sha256": self.normalized_sha256, "entry": self.entry,
-                "argument_types": list(self.argument_types),
-                "argument_index_map": list(range(len(self.argument_types))),
-                "stages": [{"callable": name, "reparse_before": parse} for name, parse in self.stages],
-                "source_pins": dict(self.source_pins),
-                "scope": "entry argument identity/order/type only; not normalization numerical equivalence"}
+        return {
+            "schema": "entry_argument_identity_bridge_v1",
+            "source_sha256": self.source_sha256,
+            "normalized_sha256": self.normalized_sha256,
+            "entry": self.entry,
+            "argument_types": list(self.argument_types),
+            "argument_index_map": list(range(len(self.argument_types))),
+            "stages": [{"callable": name, "reparse_before": parse} for name, parse in self.stages],
+            "source_pins": dict(self.source_pins),
+            "scope": "entry argument identity/order/type only; not normalization numerical equivalence",
+        }
 
 
 _sha = _mdigest.sha256_text
 
 
 def _arguments(module, entry: str):
-    functions = [op for op in module.body.block.ops
-                 if op.name == "func.func" and op.sym_name.data == entry]
+    functions = [op for op in module.body.block.ops if op.name == "func.func" and op.sym_name.data == entry]
     if len(functions) != 1 or len(functions[0].body.blocks) != 1:
         raise ValueError("argument identity requires one single-block source entry")
     return tuple(functions[0].body.block.args)
 
 
-def replay_argument_identity(*, raw_text: str, source_sha256: str,
-                            normalized_sha256: str, entry: str,
-                            stages: Sequence[ArgumentIdentityStage],
-                            source_pins: Mapping[Path, str]) -> ArgumentIdentityBridge:
+def replay_argument_identity(
+    *,
+    raw_text: str,
+    source_sha256: str,
+    normalized_sha256: str,
+    entry: str,
+    stages: Sequence[ArgumentIdentityStage],
+    source_pins: Mapping[Path, str],
+) -> ArgumentIdentityBridge:
     """Replay host-selected passes and reject replacement, permutation or retyping.
 
     Explicit print/parse boundaries preserve ordered typed arguments by syntax;
@@ -99,12 +108,21 @@ def replay_argument_identity(*, raw_text: str, source_sha256: str,
         before = _arguments(module, entry)
         stage.apply(module)
         after = _arguments(module, entry)
-        if (len(before) != len(after) or any(left is not right for left, right in zip(before, after))
-                or tuple(str(arg.type) for arg in after) != types):
+        if (
+            len(before) != len(after)
+            or any(left is not right for left, right in zip(before, after))
+            or tuple(str(arg.type) for arg in after) != types
+        ):
             raise ValueError("normalization changed entry argument identity, order or type")
     normalized = module_text(module)
     if _sha(normalized) != normalized_sha256:
         raise ValueError("normalization replay does not reproduce the exact compiled source")
     verify_pins()
-    return ArgumentIdentityBridge(source_sha256, normalized_sha256, entry, types,
-                                  tuple(names), tuple(sorted((str(path), digest) for path, digest in pins.items())))
+    return ArgumentIdentityBridge(
+        source_sha256,
+        normalized_sha256,
+        entry,
+        types,
+        tuple(names),
+        tuple(sorted((str(path), digest) for path, digest in pins.items())),
+    )

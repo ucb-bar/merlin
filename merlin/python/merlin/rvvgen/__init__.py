@@ -15,6 +15,7 @@ of any module-level state — and this package's neighbours hold registries (rou
 a duplicate would register everything twice and each half would see only its own. The finder below
 resolves the new module and installs it under the old name, so both names are the same object.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -40,7 +41,7 @@ class _AliasLoader:
         return self._module
 
     def exec_module(self, module):
-        return None                                    # already executed under its real name
+        return None  # already executed under its real name
 
 
 class _AliasFinder(MetaPathFinder):
@@ -49,11 +50,11 @@ class _AliasFinder(MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         if not fullname.startswith(_OLD + "."):
             return None
-        new_name = _NEW + fullname[len(_OLD):]
+        new_name = _NEW + fullname[len(_OLD) :]
         try:
             module = sys.modules.get(new_name) or importlib.import_module(new_name)
         except ImportError:
-            return None                                # genuinely absent: let the error be the truth
+            return None  # genuinely absent: let the error be the truth
         return importlib.util.spec_from_loader(fullname, _AliasLoader(module))
 
 

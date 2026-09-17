@@ -99,6 +99,7 @@ WHAT IT REFUSES TO DO (fail closed, every refusal named and counted)
 NO SPEED CLAIM. This module reports line-touch arithmetic, instruction counts and output digests as
 EVIDENCE (:func:`line_touch_model`). The verdict needs the board.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -129,13 +130,21 @@ PLAN_FILE = "weight_panel_plan.json"
 
 #: safetensors dtype spelling -> numpy. Shared spelling with ``baselines.bundle_rewrite``; an unknown
 #: dtype is a REFUSAL, never a guess, because guessing reinterprets the weight's bytes.
-_NP = {"I8": "int8", "U8": "uint8", "I16": "int16", "I32": "int32", "I64": "int64",
-       "F16": "float16", "F32": "float32", "F64": "float64", "BF16": "uint16"}
+_NP = {
+    "I8": "int8",
+    "U8": "uint8",
+    "I16": "int16",
+    "I32": "int32",
+    "I64": "int64",
+    "F16": "float16",
+    "F32": "float32",
+    "F64": "float64",
+    "BF16": "uint16",
+}
 
 #: MLIR element-type spelling -> bytes. Only what a weight argument can carry; an unknown spelling
 #: yields None and the caller refuses rather than pricing the traffic at a guessed width.
-_ELEM_BYTES = {"i8": 1, "u8": 1, "i16": 2, "f16": 2, "bf16": 2,
-               "i32": 4, "f32": 4, "i64": 8, "f64": 8}
+_ELEM_BYTES = {"i8": 1, "u8": 1, "i16": 2, "f16": 2, "bf16": 2, "i32": 4, "f32": 4, "i64": 8, "f64": 8}
 
 
 class PanelPackRefused(RuntimeError):
@@ -158,7 +167,7 @@ class LayoutStep:
     the packed bundle's body are derived from the same record rather than restated.
     """
 
-    kind: str                       # "transpose" | "collapse" | "expand"
+    kind: str  # "transpose" | "collapse" | "expand"
     #: transpose: the permutation. collapse/expand: the reassociation groups, flattened per group.
     perm: tuple[int, ...] = ()
     groups: tuple[tuple[int, ...], ...] = ()
@@ -166,15 +175,23 @@ class LayoutStep:
     out_shape: tuple[int, ...] = ()
 
     def to_json(self) -> dict[str, Any]:
-        return {"kind": self.kind, "perm": list(self.perm),
-                "groups": [list(g) for g in self.groups],
-                "in_shape": list(self.in_shape), "out_shape": list(self.out_shape)}
+        return {
+            "kind": self.kind,
+            "perm": list(self.perm),
+            "groups": [list(g) for g in self.groups],
+            "in_shape": list(self.in_shape),
+            "out_shape": list(self.out_shape),
+        }
 
     @staticmethod
     def from_json(d: dict[str, Any]) -> "LayoutStep":
-        return LayoutStep(kind=d["kind"], perm=tuple(d["perm"]),
-                          groups=tuple(tuple(g) for g in d["groups"]),
-                          in_shape=tuple(d["in_shape"]), out_shape=tuple(d["out_shape"]))
+        return LayoutStep(
+            kind=d["kind"],
+            perm=tuple(d["perm"]),
+            groups=tuple(tuple(g) for g in d["groups"]),
+            in_shape=tuple(d["in_shape"]),
+            out_shape=tuple(d["out_shape"]),
+        )
 
 
 def replay(arr, steps: "tuple[LayoutStep, ...]"):
@@ -189,7 +206,8 @@ def replay(arr, steps: "tuple[LayoutStep, ...]"):
     for st in steps:
         if tuple(arr.shape) != st.in_shape:
             raise PanelPackRefused(
-                f"layout replay: step {st.kind} expected shape {st.in_shape}, got {tuple(arr.shape)}")
+                f"layout replay: step {st.kind} expected shape {st.in_shape}, got {tuple(arr.shape)}"
+            )
         if st.kind == "transpose":
             arr = np.transpose(arr, st.perm)
         elif st.kind in ("collapse", "expand"):
@@ -208,14 +226,11 @@ def invert(steps: "tuple[LayoutStep, ...]") -> "tuple[LayoutStep, ...]":
             inv = [0] * len(st.perm)
             for i, p in enumerate(st.perm):
                 inv[p] = i
-            out.append(LayoutStep("transpose", perm=tuple(inv),
-                                  in_shape=st.out_shape, out_shape=st.in_shape))
+            out.append(LayoutStep("transpose", perm=tuple(inv), in_shape=st.out_shape, out_shape=st.in_shape))
         elif st.kind == "collapse":
-            out.append(LayoutStep("expand", groups=st.groups,
-                                  in_shape=st.out_shape, out_shape=st.in_shape))
+            out.append(LayoutStep("expand", groups=st.groups, in_shape=st.out_shape, out_shape=st.in_shape))
         elif st.kind == "expand":
-            out.append(LayoutStep("collapse", groups=st.groups,
-                                  in_shape=st.out_shape, out_shape=st.in_shape))
+            out.append(LayoutStep("collapse", groups=st.groups, in_shape=st.out_shape, out_shape=st.in_shape))
         else:
             raise PanelPackRefused(f"cannot invert layout step {st.kind!r}")
     return tuple(out)
@@ -252,22 +267,37 @@ class PackedArg:
     @property
     def elem_bytes(self) -> int:
         b = _ELEM_BYTES.get(self.elem)
-        if b is None:                            # never priced at a guessed width
+        if b is None:  # never priced at a guessed width
             raise PanelPackRefused(f"arg {self.arg}: unknown element width for {self.elem!r}")
         return b
 
     def to_json(self) -> dict[str, Any]:
-        return {"arg": self.arg, "orig_shape": list(self.orig_shape), "elem": self.elem,
-                "steps": [s.to_json() for s in self.steps],
-                "m": self.m, "k": self.k, "n": self.n, "mr": self.mr, "nr": self.nr,
-                "packed_shape": list(self.packed_shape)}
+        return {
+            "arg": self.arg,
+            "orig_shape": list(self.orig_shape),
+            "elem": self.elem,
+            "steps": [s.to_json() for s in self.steps],
+            "m": self.m,
+            "k": self.k,
+            "n": self.n,
+            "mr": self.mr,
+            "nr": self.nr,
+            "packed_shape": list(self.packed_shape),
+        }
 
     @staticmethod
     def from_json(d: dict[str, Any]) -> "PackedArg":
-        return PackedArg(arg=int(d["arg"]), orig_shape=tuple(d["orig_shape"]), elem=d["elem"],
-                         steps=tuple(LayoutStep.from_json(s) for s in d["steps"]),
-                         m=int(d["m"]), k=int(d["k"]), n=int(d["n"]),
-                         mr=int(d["mr"]), nr=int(d["nr"]))
+        return PackedArg(
+            arg=int(d["arg"]),
+            orig_shape=tuple(d["orig_shape"]),
+            elem=d["elem"],
+            steps=tuple(LayoutStep.from_json(s) for s in d["steps"]),
+            m=int(d["m"]),
+            k=int(d["k"]),
+            n=int(d["n"]),
+            mr=int(d["mr"]),
+            nr=int(d["nr"]),
+        )
 
 
 @dataclass
@@ -289,11 +319,13 @@ class PanelReport:
         self.refusals[reason] = self.refusals.get(reason, 0) + 1
 
     def to_json(self) -> dict[str, Any]:
-        return {"packed": self.packed,
-                "dead_ops_erased": self.dead_ops_erased,
-                "args": [a.to_json() for a in self.args],
-                "entries": [[k, mr, nr] for k, mr, nr in self.entries],
-                "refusals": dict(sorted(self.refusals.items()))}
+        return {
+            "packed": self.packed,
+            "dead_ops_erased": self.dead_ops_erased,
+            "args": [a.to_json() for a in self.args],
+            "entries": [[k, mr, nr] for k, mr, nr in self.entries],
+            "refusals": dict(sorted(self.refusals.items())),
+        }
 
 
 # --------------------------------------------------------------------------------------------------
@@ -337,7 +369,7 @@ def _trace_to_argument(value, block_args, live) -> "tuple[int, tuple[LayoutStep,
     by_value = {a: i for i, a in enumerate(block_args)}
     steps: list[LayoutStep] = []
     cur = value
-    for _ in range(16):                          # a layout chain deeper than this is not one
+    for _ in range(16):  # a layout chain deeper than this is not one
         if cur in by_value:
             return by_value[cur], tuple(reversed(steps))
         owner = cur.owner
@@ -354,12 +386,10 @@ def _trace_to_argument(value, block_args, live) -> "tuple[int, tuple[LayoutStep,
             return "refused_dynamic_shape"
         if isinstance(owner, TransposeOp):
             perm = tuple(int(p) for p in owner.permutation.get_values())
-            steps.append(LayoutStep("transpose", perm=perm,
-                                    in_shape=in_shape, out_shape=out_shape))
+            steps.append(LayoutStep("transpose", perm=perm, in_shape=in_shape, out_shape=out_shape))
         else:
             kind = "collapse" if isinstance(owner, CollapseShapeOp) else "expand"
-            steps.append(LayoutStep(kind, groups=_reassoc_groups(owner),
-                                    in_shape=in_shape, out_shape=out_shape))
+            steps.append(LayoutStep(kind, groups=_reassoc_groups(owner), in_shape=in_shape, out_shape=out_shape))
         cur = src
     return "refused_b_not_from_argument"
 
@@ -416,8 +446,9 @@ def _reassoc(groups):
     return ArrayAttr([ArrayAttr([IntegerAttr(j, i64) for j in g]) for g in groups])
 
 
-def _rewrite_one(contraction, argval, steps, m: int, n: int, k: int, nr: int, live,
-                 *, parallel_panels: bool = False) -> int:
+def _rewrite_one(
+    contraction, argval, steps, m: int, n: int, k: int, nr: int, live, *, parallel_panels: bool = False
+) -> int:
     """Replace `contraction` with the panel loop over the (now packed) argument, in place.
 
     The shape is ``im2col_pack._rewrite_one``'s, deliberately: the body is a PLAIN ``[M, NR] x K``
@@ -465,30 +496,38 @@ def _rewrite_one(contraction, argval, steps, m: int, n: int, k: int, nr: int, li
     panel_t = TensorType(b_elem, [k, nr])
     tile_t = TensorType(acc_elem, [m, nr])
     panel = ExtractSliceOp.build(
-        operands=[argval, [ivar], [], []], result_types=[panel_t],
-        properties=_dyn_slice_props(3, 0, [1, k, nr]))
+        operands=[argval, [ivar], [], []], result_types=[panel_t], properties=_dyn_slice_props(3, 0, [1, k, nr])
+    )
     tile = ExtractSliceOp.build(
-        operands=[carried, [ivar], [], []], result_types=[tile_t],
-        properties=_dyn_slice_props(3, 1, [m, 1, nr]))
+        operands=[carried, [ivar], [], []], result_types=[tile_t], properties=_dyn_slice_props(3, 1, [m, 1, nr])
+    )
     inner = GenericOp(
-        inputs=[contraction.inputs[0], panel.results[0]], outputs=[tile.results[0]],
+        inputs=[contraction.inputs[0], panel.results[0]],
+        outputs=[tile.results[0]],
         body=contraction.body.clone(),
         indexing_maps=[AffineMapAttr(mp) for mp in _matmul_maps()],
-        iterator_types=[par, par, red], result_types=[tile_t])
+        iterator_types=[par, par, red],
+        result_types=[tile_t],
+    )
     for key, val in contraction.attributes.items():
         inner.attributes[key] = val
     inner.attributes[PANEL_ATTR] = IntegerAttr(nr, i64)
     put = InsertSliceOp.build(
-        operands=[inner.results[0], carried, [ivar], [], []], result_types=[acc_t],
-        properties=_dyn_slice_props(3, 1, [m, 1, nr]))
+        operands=[inner.results[0], carried, [ivar], [], []],
+        result_types=[acc_t],
+        properties=_dyn_slice_props(3, 1, [m, 1, nr]),
+    )
     from .panel_parallel import marker_ops
+
     markers = marker_ops(parallel_panels, no)
     body.add_ops([*markers, panel, tile, inner, put, ScfYieldOp(put.results[0])])
     loop = ForOp(lb.results[0], ub.results[0], step.results[0], [acc.results[0]], Region(body))
 
     out = CollapseShapeOp(
-        operands=[loop.results[0]], result_types=[TensorType(acc_elem, [m, n])],
-        properties={"reassociation": _reassoc([[0], [1, 2]])})
+        operands=[loop.results[0]],
+        result_types=[TensorType(acc_elem, [m, n])],
+        properties={"reassociation": _reassoc([[0], [1, 2]])},
+    )
     Rewriter.insert_op([acc, lb, ub, step, loop, out], InsertPoint.before(contraction))
 
     contraction.results[0].replace_all_uses_with(out.results[0])
@@ -511,7 +550,7 @@ def _live_ops(fn) -> set:
     from xdsl.ir import BlockArgument
 
     live: set[int] = set()
-    work = [op for op in fn.walk() if not op.results]        # terminators, `func.return` among them
+    work = [op for op in fn.walk() if not op.results]  # terminators, `func.return` among them
     while work:
         op = work.pop()
         if id(op) in live:
@@ -593,10 +632,11 @@ def _erase_cone(cone: list) -> int:
             cone.remove(op)
             erased += 1
             changed = True
-    if cone:                                     # fail closed: a chain we cannot erase must not be
-        raise PanelPackRefused(                   # left reading a retyped argument
+    if cone:  # fail closed: a chain we cannot erase must not be
+        raise PanelPackRefused(  # left reading a retyped argument
             f"{len(cone)} op(s) downstream of the packed argument could not be erased "
-            f"({[type(o).__name__ for o in cone[:4]]}); refusing to retype an argument they read")
+            f"({[type(o).__name__ for o in cone[:4]]}); refusing to retype an argument they read"
+        )
     return erased
 
 
@@ -632,7 +672,7 @@ def storage_gate(bundle: "str | Path | None"):
         man = json.loads((bundle / "weights.safetensors.manifest.json").read_text())
         header, _ = _read_header(bundle / "weights.safetensors")
     except (OSError, ValueError):
-        return lambda arg, shape: None           # no bundle to check against; `pack_problems` still will
+        return lambda arg, shape: None  # no bundle to check against; `pack_problems` still will
 
     def gate(arg: int, shape) -> "str | None":
         entry = man.get(str(arg))
@@ -650,9 +690,14 @@ def storage_gate(bundle: "str | Path | None"):
     return gate
 
 
-def rewrite_module(module, table: "dict[str, tuple[int, int]]",
-                   func_name: str = "forward", bundle: "str | Path | None" = None,
-                   *, parallel_panels: bool = False) -> PanelReport:
+def rewrite_module(
+    module,
+    table: "dict[str, tuple[int, int]]",
+    func_name: str = "forward",
+    bundle: "str | Path | None" = None,
+    *,
+    parallel_panels: bool = False,
+) -> PanelReport:
     """Panel-pack every eligible weight in `module` (mutated in place).
 
     `table` is the per-op block table already derived for THIS model
@@ -742,15 +787,14 @@ def rewrite_module(module, table: "dict[str, tuple[int, int]]",
     rewriter = Rewriter()
     if parallel_panels and kept:
         from .panel_parallel import ensure_marker_declaration
+
         ensure_marker_declaration(module)
     for op, arg, steps, m, n, k, mr, nr in kept:
         argval = block_args[arg]
         orig_shape = _static_shape(argval)
         elem = _elem_token(argval)
-        report.dead_ops_erased += _rewrite_one(
-            op, argval, steps, m, n, k, nr, live, parallel_panels=parallel_panels)
-        packed = PackedArg(arg=arg, orig_shape=orig_shape, elem=elem, steps=steps,
-                           m=m, k=k, n=n, mr=mr, nr=nr)
+        report.dead_ops_erased += _rewrite_one(op, argval, steps, m, n, k, nr, live, parallel_panels=parallel_panels)
+        packed = PackedArg(arg=arg, orig_shape=orig_shape, elem=elem, steps=steps, m=m, k=k, n=n, mr=mr, nr=nr)
         fn.replace_argument_type(arg, _packed_type(elem, packed.packed_shape), rewriter)
         report.args.append(packed)
         report.packed += 1
@@ -769,10 +813,14 @@ def _packed_type(elem: str, shape):
     return TensorType(ty, list(shape))
 
 
-def rewrite_prepared_file(prepared: "str | Path", table: "dict[str, tuple[int, int]]",
-                          work: "str | Path | None" = None,
-                          bundle: "str | Path | None" = None, *,
-                          parallel_panels: bool = False) -> "tuple[Path, PanelReport]":
+def rewrite_prepared_file(
+    prepared: "str | Path",
+    table: "dict[str, tuple[int, int]]",
+    work: "str | Path | None" = None,
+    bundle: "str | Path | None" = None,
+    *,
+    parallel_panels: bool = False,
+) -> "tuple[Path, PanelReport]":
     """Pack `prepared` and write ``model.wpacked.mlir``; returns ``(path, report)``.
 
     Nothing is written when nothing was packed, so a run where every candidate was refused keeps the
@@ -785,8 +833,7 @@ def rewrite_prepared_file(prepared: "str | Path", table: "dict[str, tuple[int, i
     report = rewrite_module(module, table, bundle=bundle, parallel_panels=parallel_panels)
     if not report.packed:
         return prepared, report
-    out = Path(work) / "model.wpacked.mlir" if work is not None else \
-        prepared.with_name("model.wpacked.mlir")
+    out = Path(work) / "model.wpacked.mlir" if work is not None else prepared.with_name("model.wpacked.mlir")
     out.write_text(str(module), encoding="utf-8")
     return out, report
 
@@ -801,8 +848,12 @@ def write_plan(work: "str | Path", report: PanelReport, prepared: "str | Path") 
     :func:`abi_bundle`; named in :data:`PLAN_FILE` because the two must agree and a silent
     disagreement is exactly the failure this module exists to prevent."""
     p = Path(work) / PLAN_FILE
-    p.write_text(json.dumps({"feature": FEATURE, "version": PACK_VERSION,
-                             "prepared": str(prepared), **report.to_json()}, indent=2) + "\n")
+    p.write_text(
+        json.dumps(
+            {"feature": FEATURE, "version": PACK_VERSION, "prepared": str(prepared), **report.to_json()}, indent=2
+        )
+        + "\n"
+    )
     return p
 
 
@@ -855,18 +906,25 @@ def pack_problems(src: "str | Path", args: "list[PackedArg]") -> list[str]:
                 f"arg {a.arg}: weight {name!r} has no bytes in weights.safetensors "
                 f"({'manifest marks it stub=true' if stub else 'dangling manifest entry'}); its "
                 "panels cannot be stored, and packing only the manifest shape would describe a "
-                "permutation nobody performed")
+                "permutation nobody performed"
+            )
             continue
         if _NP.get(spec.get("dtype")) is None:
-            problems.append(f"arg {a.arg}: weight {name!r} has safetensors dtype "
-                            f"{spec.get('dtype')!r}, which has no numpy spelling here")
+            problems.append(
+                f"arg {a.arg}: weight {name!r} has safetensors dtype "
+                f"{spec.get('dtype')!r}, which has no numpy spelling here"
+            )
         if tuple(int(d) for d in spec.get("shape", ())) != tuple(a.orig_shape):
-            problems.append(f"arg {a.arg}: weight {name!r} is stored {spec.get('shape')} but the IR "
-                            f"argument is {list(a.orig_shape)}; refusing to pack bytes whose shape "
-                            "the module and the blob do not agree on")
+            problems.append(
+                f"arg {a.arg}: weight {name!r} is stored {spec.get('shape')} but the IR "
+                f"argument is {list(a.orig_shape)}; refusing to pack bytes whose shape "
+                "the module and the blob do not agree on"
+            )
         if name in names:
-            problems.append(f"weight {name!r} is named by BOTH arg {names[name]} and arg {a.arg}; "
-                            "packing it for one packs it for the other underneath")
+            problems.append(
+                f"weight {name!r} is named by BOTH arg {names[name]} and arg {a.arg}; "
+                "packing it for one packs it for the other underneath"
+            )
         names[name] = a.arg
 
     # ASSERTED, not assumed. `mining/section_build` dedups weights by NAME, so two arguments CAN
@@ -878,15 +936,19 @@ def pack_problems(src: "str | Path", args: "list[PackedArg]") -> list[str]:
         mine = ranges.get(name)
         if mine is None:
             continue
-        for other in packed_names[i + 1:]:
+        for other in packed_names[i + 1 :]:
             theirs = ranges.get(other)
             if theirs is not None and theirs[0] < mine[1] and mine[0] < theirs[1]:
-                problems.append(f"packed weights {name!r} and {other!r} share bytes "
-                                f"[{max(mine[0], theirs[0])}, {min(mine[1], theirs[1])})")
+                problems.append(
+                    f"packed weights {name!r} and {other!r} share bytes "
+                    f"[{max(mine[0], theirs[0])}, {min(mine[1], theirs[1])})"
+                )
         for other, theirs in ranges.items():
             if other != name and other not in names and theirs[0] < mine[1] and mine[0] < theirs[1]:
-                problems.append(f"packed weight {name!r} shares bytes with UNPACKED {other!r}; "
-                                "packing it would rewrite that tensor's data underneath it")
+                problems.append(
+                    f"packed weight {name!r} shares bytes with UNPACKED {other!r}; "
+                    "packing it would rewrite that tensor's data underneath it"
+                )
     return problems
 
 
@@ -903,15 +965,14 @@ def pack_bytes(arr, a: PackedArg):
     if tuple(b.shape) != (a.k, a.n):
         raise PanelPackRefused(
             f"arg {a.arg}: the layout chain yields {tuple(b.shape)}, not the ({a.k}, {a.n}) B operand "
-            "the IR rewrite was derived from")
-    packed = np.ascontiguousarray(np.ascontiguousarray(b).reshape(a.k, a.panels, a.nr)
-                                  .transpose(1, 0, 2))
+            "the IR rewrite was derived from"
+        )
+    packed = np.ascontiguousarray(np.ascontiguousarray(b).reshape(a.k, a.panels, a.nr).transpose(1, 0, 2))
     # the assertions that make a silent layout error impossible: shape, size, and a spot-check that
     # unpacking gives back exactly the operand the contraction used to read
     assert packed.shape == a.packed_shape, a.arg
     assert packed.nbytes == arr.nbytes, a.arg
-    assert np.array_equal(packed.transpose(1, 0, 2).reshape(a.k, a.n), b), \
-        f"arg {a.arg}: panel pack round-trip failed"
+    assert np.array_equal(packed.transpose(1, 0, 2).reshape(a.k, a.n), b), f"arg {a.arg}: panel pack round-trip failed"
     return packed
 
 
@@ -933,14 +994,13 @@ def _pack_safetensors(src: Path, dst: Path, by_name: "dict[str, PackedArg]") -> 
             shape = list(spec["shape"])
             if name in by_name:
                 shape = list(by_name[name].packed_shape)
-            new_header[name] = {"dtype": spec["dtype"], "shape": shape,
-                                "data_offsets": [off, off + (e - s)]}
+            new_header[name] = {"dtype": spec["dtype"], "shape": shape, "data_offsets": [off, off + (e - s)]}
             order.append((name, s, e, spec))
             off += e - s
         if meta is not None:
             new_header["__metadata__"] = meta
         blob = json.dumps(new_header, separators=(",", ":")).encode()
-        blob += b" " * ((-len(blob)) % 8)         # safetensors wants 8-byte aligned data
+        blob += b" " * ((-len(blob)) % 8)  # safetensors wants 8-byte aligned data
 
         done = 0
         with open(dst / "weights.safetensors", "wb") as out:
@@ -977,16 +1037,17 @@ def _step_text(st: LayoutStep, src: str, dst: str, empty: str, elem: str) -> lis
     in_t, out_t = _type_str(st.in_shape, elem), _type_str(st.out_shape, elem)
     if st.kind == "transpose":
         perm = "[" + ", ".join(str(int(p)) for p in st.perm) + "]"
-        return [f"    {empty} = tensor.empty() : {out_t}",
-                f"    {dst} = linalg.transpose ins({src}:{in_t}) outs({empty}:{out_t}) "
-                f"permutation = {perm}"]
+        return [
+            f"    {empty} = tensor.empty() : {out_t}",
+            f"    {dst} = linalg.transpose ins({src}:{in_t}) outs({empty}:{out_t}) permutation = {perm}",
+        ]
     if st.kind == "collapse":
-        return [f"    {dst} = tensor.collapse_shape {src} {_groups_str(st.groups)} : "
-                f"{in_t} into {out_t}"]
+        return [f"    {dst} = tensor.collapse_shape {src} {_groups_str(st.groups)} : {in_t} into {out_t}"]
     if st.kind == "expand":
         sizes = "[" + ", ".join(str(int(d)) for d in st.out_shape) + "]"
-        return [f"    {dst} = tensor.expand_shape {src} {_groups_str(st.groups)} "
-                f"output_shape {sizes} : {in_t} into {out_t}"]
+        return [
+            f"    {dst} = tensor.expand_shape {src} {_groups_str(st.groups)} output_shape {sizes} : {in_t} into {out_t}"
+        ]
     raise PanelPackRefused(f"cannot emit layout step {st.kind!r}")
 
 
@@ -999,10 +1060,10 @@ def unpack_steps(a: PackedArg) -> "tuple[LayoutStep, ...]":
     signature with a body that no longer type-checks.
     """
     no, k, nr = a.packed_shape
-    return (LayoutStep("transpose", perm=(1, 0, 2),
-                       in_shape=(no, k, nr), out_shape=(k, no, nr)),
-            LayoutStep("collapse", groups=((0,), (1, 2)),
-                       in_shape=(k, no, nr), out_shape=(k, a.n))) + invert(a.steps)
+    return (
+        LayoutStep("transpose", perm=(1, 0, 2), in_shape=(no, k, nr), out_shape=(k, no, nr)),
+        LayoutStep("collapse", groups=((0,), (1, 2)), in_shape=(k, no, nr), out_shape=(k, a.n)),
+    ) + invert(a.steps)
 
 
 def rewrite_bundle_mlir(text: str, args: "list[PackedArg]") -> tuple[str, int]:
@@ -1037,7 +1098,8 @@ def rewrite_bundle_mlir(text: str, args: "list[PackedArg]") -> tuple[str, int]:
             raise PanelPackRefused(
                 f"arg {arg} is packed in the prepared IR but the bundle signature does not declare it "
                 f"as {_type_str(a.orig_shape, a.elem)}; refusing to retype an argument the two "
-                "modules do not agree about")
+                "modules do not agree about"
+            )
         sig = sig.replace(old, new, 1)
         retyped += 1
         cur = f"%{arg}"
@@ -1048,8 +1110,8 @@ def rewrite_bundle_mlir(text: str, args: "list[PackedArg]") -> tuple[str, int]:
         subst[f"%{arg}"] = cur
     lines[sig_i] = sig
 
-    out = lines[:sig_i + 1] + inserted
-    for line in lines[sig_i + 1:]:
+    out = lines[: sig_i + 1] + inserted
+    for line in lines[sig_i + 1 :]:
         for old, new in subst.items():
             line = _replace_ssa(line, old, new)
         out.append(line)
@@ -1069,8 +1131,9 @@ def _cache_key(src: Path, args: "list[PackedArg]") -> str:
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
-def packed_bundle(src: "str | Path", args: "list[PackedArg]", *,
-                  cache_root: "str | Path | None" = None) -> "tuple[Path, dict]":
+def packed_bundle(
+    src: "str | Path", args: "list[PackedArg]", *, cache_root: "str | Path | None" = None
+) -> "tuple[Path, dict]":
     """`(bundle_dir, effect)` for a bundle storing `args`' weights as NR-wide panels.
 
     NEVER mutates `src`: the recapture tree is shared by every other session and every other
@@ -1078,8 +1141,14 @@ def packed_bundle(src: "str | Path", args: "list[PackedArg]", *,
     rename, so two concurrent builds cannot observe a half-written bundle (the loser reuses the
     winner's).
     """
-    from ..baselines.bundle_rewrite import (REWRITES_FILE, RewriteRecord, _carry_sidecars,
-                                            read_rewrites, record_rewrite, retarget_weights_file)
+    from ..baselines.bundle_rewrite import (
+        REWRITES_FILE,
+        RewriteRecord,
+        _carry_sidecars,
+        read_rewrites,
+        record_rewrite,
+        retarget_weights_file,
+    )
 
     src = Path(src).resolve()
     if not args:
@@ -1091,12 +1160,11 @@ def packed_bundle(src: "str | Path", args: "list[PackedArg]", *,
         recs = [r for r in read_rewrites(dst) if r.name == "pack_weight_panels"]
         if recs:
             return dst, {"cached": True, **recs[-1].effect}
-        shutil.rmtree(dst)                       # a directory without its record is not a result
+        shutil.rmtree(dst)  # a directory without its record is not a result
 
     problems = pack_problems(src, args)
     if problems:
-        raise PanelPackRefused(f"cannot store the weight panels of {src.name}: "
-                               + "; ".join(problems))
+        raise PanelPackRefused(f"cannot store the weight panels of {src.name}: " + "; ".join(problems))
 
     man = json.loads((src / "weights.safetensors.manifest.json").read_text())
     by_name = {man[str(a.arg)]["weight"]: a for a in args}
@@ -1106,10 +1174,11 @@ def packed_bundle(src: "str | Path", args: "list[PackedArg]", *,
     tmp.mkdir(parents=True)
     try:
         done = _pack_safetensors(src, tmp, by_name)
-        if done != len(by_name):                 # a silent undercount is the failure, not the count
+        if done != len(by_name):  # a silent undercount is the failure, not the count
             raise PanelPackRefused(
                 f"{src.name}: packed {done} of {len(by_name)} weights; refusing to write a bundle "
-                "whose manifest claims a layout its bytes do not have")
+                "whose manifest claims a layout its bytes do not have"
+            )
         for a in args:
             man[str(a.arg)]["shape"] = list(a.packed_shape)
         (tmp / "weights.safetensors.manifest.json").write_text(json.dumps(man, indent=2))
@@ -1117,29 +1186,36 @@ def packed_bundle(src: "str | Path", args: "list[PackedArg]", *,
         text, retyped = rewrite_bundle_mlir((src / "model.mlir").read_text(), args)
         text, retargeted = retarget_weights_file(text, (dst / "weights.safetensors").resolve())
         (tmp / "model.mlir").write_text(text)
-        skipped = _carry_sidecars(src, tmp, {"model.mlir", "weights.safetensors",
-                                             "weights.safetensors.manifest.json", REWRITES_FILE})
-        if (src / REWRITES_FILE).is_file():      # carry the chain forward, do not start a new one
+        skipped = _carry_sidecars(
+            src, tmp, {"model.mlir", "weights.safetensors", "weights.safetensors.manifest.json", REWRITES_FILE}
+        )
+        if (src / REWRITES_FILE).is_file():  # carry the chain forward, do not start a new one
             shutil.copy2(src / REWRITES_FILE, tmp / REWRITES_FILE)
         rec = RewriteRecord(
             name="pack_weight_panels",
             source_bundle=src.name,
-            soundness=("each packed argument's only reader is the contraction whose B operand it "
-                       "feeds, through a chain of layout-only ops; the pack is a permutation of that "
-                       "argument's elements, replayed on the stored bytes from the SAME recorded "
-                       "chain the IR rewrite used, and asserted per weight to unpack back to the "
-                       "operand the contraction used to read"),
-            effect={"weights_packed": done, "args_retyped": retyped,
-                    "panel_widths": sorted({a.nr for a in args}),
-                    "args": [a.to_json() for a in args],
-                    "weights_file_retargeted": retargeted,
-                    "sidecars_not_carried": skipped},
+            soundness=(
+                "each packed argument's only reader is the contraction whose B operand it "
+                "feeds, through a chain of layout-only ops; the pack is a permutation of that "
+                "argument's elements, replayed on the stored bytes from the SAME recorded "
+                "chain the IR rewrite used, and asserted per weight to unpack back to the "
+                "operand the contraction used to read"
+            ),
+            effect={
+                "weights_packed": done,
+                "args_retyped": retyped,
+                "panel_widths": sorted({a.nr for a in args}),
+                "args": [a.to_json() for a in args],
+                "weights_file_retargeted": retargeted,
+                "sidecars_not_carried": skipped,
+            },
             caveats=[
                 "the @forward body of THIS bundle reconstructs each argument's original value and is "
                 "kept only so the module still type-checks; the build that produced it lowers the "
                 "PREPARED module, in which the pack is already applied. Preparing this bundle from "
                 "scratch would re-materialize the unpack at run time.",
-            ] + ([f"stale, NOT carried over from the source bundle: {skipped}"] if skipped else []),
+            ]
+            + ([f"stale, NOT carried over from the source bundle: {skipped}"] if skipped else []),
         )
         record_rewrite(tmp, rec)
     except Exception:
@@ -1147,7 +1223,7 @@ def packed_bundle(src: "str | Path", args: "list[PackedArg]", *,
         raise
     try:
         os.replace(tmp, dst)
-    except OSError:                              # another build published first -- use theirs
+    except OSError:  # another build published first -- use theirs
         shutil.rmtree(tmp, ignore_errors=True)
         if not dst.is_dir():
             raise
@@ -1177,18 +1253,21 @@ def assert_abi_agrees(bundle_dir: "str | Path", prepared: "str | Path") -> int:
     b = parse_forward_signature(Path(prepared))
     if len(a) != len(b):
         raise PanelPackRefused(
-            f"ABI skew: the bundle declares {len(a)} @forward arguments, the prepared module {len(b)}")
+            f"ABI skew: the bundle declares {len(a)} @forward arguments, the prepared module {len(b)}"
+        )
     bad = [(i, x, y) for i, (x, y) in enumerate(zip(a, b)) if list(x[0]) != list(y[0]) or x[1] != y[1]]
     if bad:
         raise PanelPackRefused(
             "ABI skew between the packed bundle and the prepared module at "
-            f"{len(bad)} argument(s): " + "; ".join(
-                f"arg {i}: bundle {x[0]}{x[1]} vs prepared {y[0]}{y[1]}" for i, x, y in bad[:4]))
+            f"{len(bad)} argument(s): "
+            + "; ".join(f"arg {i}: bundle {x[0]}{x[1]} vs prepared {y[0]}{y[1]}" for i, x, y in bad[:4])
+        )
     return len(a)
 
 
-def abi_bundle(model_dir: "str | Path", work: "str | Path", prepared: "str | Path",
-               *, cache_root: "str | Path | None" = None) -> "tuple[Path, dict | None]":
+def abi_bundle(
+    model_dir: "str | Path", work: "str | Path", prepared: "str | Path", *, cache_root: "str | Path | None" = None
+) -> "tuple[Path, dict | None]":
     """The bundle ``c_runtime.generate`` must be handed for THIS build, and why.
 
     Returns `(model_dir, None)` unchanged when the preparation step packed nothing -- so a caller can
@@ -1244,21 +1323,41 @@ def line_touch_model(args: "list[PackedArg]", *, line_bytes: int) -> dict[str, A
         before = m_tiles * a.panels * a.k * per_step
         after = m_tiles * a.panels * -(-(a.k * a.nr * eb) // line_bytes)
         used = m_tiles * a.k * a.n * eb
-        rows.append({"arg": a.arg, "m": a.m, "n": a.n, "k": a.k, "mr": a.mr, "nr": a.nr,
-                     "elem_bytes": eb, "m_tiles": m_tiles,
-                     "compulsory_bytes": a.k * a.n * eb, "used_bytes": used,
-                     "line_touches_before": before, "touched_bytes_before": before * line_bytes,
-                     "line_touches_after": after, "touched_bytes_after": after * line_bytes})
-    tot = {k: sum(r[k] for r in rows) for k in
-           ("compulsory_bytes", "used_bytes", "line_touches_before", "touched_bytes_before",
-            "line_touches_after", "touched_bytes_after")}
+        rows.append(
+            {
+                "arg": a.arg,
+                "m": a.m,
+                "n": a.n,
+                "k": a.k,
+                "mr": a.mr,
+                "nr": a.nr,
+                "elem_bytes": eb,
+                "m_tiles": m_tiles,
+                "compulsory_bytes": a.k * a.n * eb,
+                "used_bytes": used,
+                "line_touches_before": before,
+                "touched_bytes_before": before * line_bytes,
+                "line_touches_after": after,
+                "touched_bytes_after": after * line_bytes,
+            }
+        )
+    tot = {
+        k: sum(r[k] for r in rows)
+        for k in (
+            "compulsory_bytes",
+            "used_bytes",
+            "line_touches_before",
+            "touched_bytes_before",
+            "line_touches_after",
+            "touched_bytes_after",
+        )
+    }
     tot["line_bytes"] = line_bytes
     tot["weights"] = len(rows)
     for tag in ("before", "after"):
         t = tot[f"touched_bytes_{tag}"]
         tot[f"useful_fraction_{tag}"] = (tot["used_bytes"] / t) if t else None
-        tot[f"amplification_vs_compulsory_{tag}"] = (t / tot["compulsory_bytes"]
-                                                     if tot["compulsory_bytes"] else None)
+        tot[f"amplification_vs_compulsory_{tag}"] = t / tot["compulsory_bytes"] if tot["compulsory_bytes"] else None
     return {"per_weight": rows, "total": tot}
 
 
@@ -1329,14 +1428,13 @@ def guard_planned_pack(model_dir: "str | Path", out_dir: "str | Path") -> None:
         return
     man_path = Path(model_dir) / "weights.safetensors.manifest.json"
     if not man_path.is_file():
-        raise PanelPackRefused(
-            f"{FEATURE}: this build packed {len(args)} weight(s) but {model_dir} has no manifest")
+        raise PanelPackRefused(f"{FEATURE}: this build packed {len(args)} weight(s) but {model_dir} has no manifest")
     man = json.loads(man_path.read_text())
-    bad = [a.arg for a in args
-           if [int(d) for d in man.get(str(a.arg), {}).get("shape", ())] != list(a.packed_shape)]
+    bad = [a.arg for a in args if [int(d) for d in man.get(str(a.arg), {}).get("shape", ())] != list(a.packed_shape)]
     if bad:
         raise PanelPackRefused(
             f"{FEATURE}: this build panel-packed {len(args)} weight argument(s), but the bundle it is "
             f"about to build the ABI table from ({model_dir}) still stores {len(bad)} of them "
             f"unpacked (args {bad[:6]}). Route the bundle through `weight_panel.abi_bundle` -- the "
-            "compiled object would index a packed weight against unpacked bytes.")
+            "compiled object would index a packed weight against unpacked bytes."
+        )

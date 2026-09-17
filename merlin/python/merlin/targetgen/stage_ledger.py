@@ -34,17 +34,16 @@ from typing import Any, Mapping
 from merlin.common.provenance import UNKNOWN, file_digest
 
 # What a per-capsule or per-submission fingerprint set can say about one round versus the previous one.
-NEW = "new"                # first round this artifact existed
-CHANGED = "changed"        # bytes differ from the previous round
-UNCHANGED = "unchanged"    # bytes identical to the previous round
-ABSENT = "absent"          # existed before, does not now (emission stopped producing it)
+NEW = "new"  # first round this artifact existed
+CHANGED = "changed"  # bytes differ from the previous round
+UNCHANGED = "unchanged"  # bytes identical to the previous round
+ABSENT = "absent"  # existed before, does not now (emission stopped producing it)
 
 # Statuses that are NOT the agent attempting this capsule and getting it wrong, so a frozen artifact
 # under one of them is not actionable. A whole-model capsule deferred by its op-pass gate never emitted;
 # naming it "failing and frozen" would point at work the agent cannot do yet. Anything NOT listed here
 # counts as an attempt -- fail closed, so a status added later is surfaced rather than silently dropped.
-NOT_AN_ATTEMPT = frozenset({"pass", "gated", "skipped", "incomplete",
-                            "not_gradeable_no_oracle", None})
+NOT_AN_ATTEMPT = frozenset({"pass", "gated", "skipped", "incomplete", "not_gradeable_no_oracle", None})
 
 # The diagnosis for a round, derived from (submission moved?) x (emitted artifacts moved?).
 NO_SUBMISSION_CHANGE = "no_submission_change"
@@ -104,8 +103,12 @@ def _moved(verdicts: Mapping[str, str]) -> bool:
     return any(v in (CHANGED, NEW, ABSENT) for v in verdicts.values())
 
 
-def build(*, submission_dir: "str | Path", emitted_roots: Mapping[str, "str | Path"],
-          previous: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def build(
+    *,
+    submission_dir: "str | Path",
+    emitted_roots: Mapping[str, "str | Path"],
+    previous: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """The ledger for one round.
 
     ``submission_dir`` is the exact tree that was graded (not the live workspace -- the graded copy, so
@@ -148,17 +151,20 @@ def build(*, submission_dir: "str | Path", emitted_roots: Mapping[str, "str | Pa
         "emit_moved": any_emit_moved,
         "diagnosis": diagnosis,
         "n_unreadable": sum(1 for v in sub_now.values() if v == UNKNOWN)
-                        + sum(1 for c in caps.values() for v in c["files"].values() if v == UNKNOWN),
-        "note": ("Diagnostic only -- never gates a run. 'emit_insensitive_to_edit' means the graded "
-                 "submission changed while every emitted artifact stayed byte-identical: the edit did "
-                 "not reach emission, so no numeric verdict could have moved."),
+        + sum(1 for c in caps.values() for v in c["files"].values() if v == UNKNOWN),
+        "note": (
+            "Diagnostic only -- never gates a run. 'emit_insensitive_to_edit' means the graded "
+            "submission changed while every emitted artifact stayed byte-identical: the edit did "
+            "not reach emission, so no numeric verdict could have moved."
+        ),
     }
 
 
 def capsules_that_did_not_move(ledger: Mapping[str, Any]) -> list[str]:
     """Capsules whose emitted artifacts are byte-identical to the previous round."""
-    return sorted(name for name, c in (ledger.get("capsules") or {}).items()
-                  if c.get("verdicts") and not _moved(c["verdicts"]))
+    return sorted(
+        name for name, c in (ledger.get("capsules") or {}).items() if c.get("verdicts") and not _moved(c["verdicts"])
+    )
 
 
 def failing_and_frozen(ledger: Mapping[str, Any], verdict: Mapping[str, Any]) -> list[str]:
@@ -175,8 +181,11 @@ def failing_and_frozen(ledger: Mapping[str, Any], verdict: Mapping[str, Any]) ->
     frozen = set(capsules_that_did_not_move(ledger))
     if not frozen:
         return []
-    failing = {c.get("capsule") for c in (verdict.get("per_capsule") or [])
-               if c.get("capsule") and c.get("status") not in NOT_AN_ATTEMPT}
+    failing = {
+        c.get("capsule")
+        for c in (verdict.get("per_capsule") or [])
+        if c.get("capsule") and c.get("status") not in NOT_AN_ATTEMPT
+    }
     return sorted(frozen & failing)
 
 
@@ -197,9 +206,12 @@ def summarize(ledger: Mapping[str, Any]) -> str:
     caps = ledger.get("capsules") or {}
     still = capsules_that_did_not_move(ledger)
     frac = frozen_fraction(ledger)
-    parts = [f"diagnosis={ledger.get('diagnosis')}",
-             f"submission_moved={ledger.get('submission_moved')}",
-             f"capsules={len(caps)}", f"unmoved={len(still)}"]
+    parts = [
+        f"diagnosis={ledger.get('diagnosis')}",
+        f"submission_moved={ledger.get('submission_moved')}",
+        f"capsules={len(caps)}",
+        f"unmoved={len(still)}",
+    ]
     if frac is not None:
         parts.append(f"frozen={frac:.0%}")
     if ledger.get("n_unreadable"):

@@ -23,6 +23,7 @@ them has a failure mode if it is wrong rather than a performance cost:
 * ``fpu_sharing`` — ``y`` mis-routes V-illegal-instruction traps into the FP path, which retries
   forever: a silent hang. Kept ``False`` unless a board is known to need otherwise.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -59,9 +60,9 @@ LOADER_PYUARTSI = "pyuartsi"
 class Board:
     """Everything the generated app needs to know about a target."""
 
-    name: str                     # this descriptor's identity (appears in filenames, manifests)
-    dram_bytes: int               # usable DRAM at `dram_base` (the REAL chip's, not the DTS default)
-    harts: int                    # harts the SoC has
+    name: str  # this descriptor's identity (appears in filenames, manifests)
+    dram_bytes: int  # usable DRAM at `dram_base` (the REAL chip's, not the DTS default)
+    harts: int  # harts the SoC has
     #: How many of those harts can execute VECTOR code, when that differs from `harts`. A
     #: heterogeneous SoC is normal -- a chip may bring up three cores and attach a vector unit to only
     #: two of them -- and the difference is invisible in every place you would look for it: the device
@@ -79,10 +80,10 @@ class Board:
     #: hart, traps, and never reaches the barrier. Nothing readable states the mapping (the device tree
     #: lists identical cpu@N nodes), so it is a fact someone has to tell us. None = the count's default.
     vector_hart_ids: tuple[int, ...] | None = None
-    vlen: int | None = None       # hardware vector length in bits; None = unknown, assume the V minimum
+    vlen: int | None = None  # hardware vector length in bits; None = unknown, assume the V minimum
     console: str = CONSOLE_HTIF
     dram_base: int = 0x80000000  # derived-ok: per-board dataclass default; each board declares its own
-    ram_label: str = "ram0"       # DT label the `&<label> { reg = ... }` overlay targets
+    ram_label: str = "ram0"  # DT label the `&<label> { reg = ... }` overlay targets
     fpu_sharing: bool = False
     #: Set CONFIG_RISCV_ISA_EXT_V in the Zephyr config? Not "does the board have vectors" — our
     #: model.o always carries `v` from its own -march. This is only about whether ZEPHYR's kernel is
@@ -227,8 +228,7 @@ def _byte_size(value: Any, where: str) -> int:
         unit = unit.strip()
         if number.isdigit() and unit in _SIZE_UNITS:
             return int(number) * _SIZE_UNITS[unit]
-    raise BoardRegistryError(f"{where}: {value!r} is not a byte size (an integer, or "
-                             f"'<n> {'|'.join(_SIZE_UNITS)}')")
+    raise BoardRegistryError(f"{where}: {value!r} is not a byte size (an integer, or '<n> {'|'.join(_SIZE_UNITS)}')")
 
 
 def _coerce(key: str, value: Any, ftype: str, where: str) -> Any:
@@ -261,8 +261,7 @@ def _coerce(key: str, value: Any, ftype: str, where: str) -> Any:
             raise BoardRegistryError(f"{where}: {value!r} is not one of {list(allowed)}")
         return value
     if base.startswith("tuple"):
-        if not isinstance(value, list) or not all(
-                isinstance(v, int) and not isinstance(v, bool) for v in value):
+        if not isinstance(value, list) or not all(isinstance(v, int) and not isinstance(v, bool) for v in value):
             raise BoardRegistryError(f"{where}: {value!r} is not a list of integers")
         return tuple(value)
     raise BoardRegistryError(f"{where}: Board field type {ftype!r} has no registry spelling")
@@ -282,14 +281,14 @@ def load_boards(path: str | Path | None = None) -> dict[str, Board]:
 
     p = Path(path) if path is not None else data_path(*BOARDS_FILE)
     if not p.is_file():
-        raise BoardRegistryError(f"no board registry at {p}; boards are declared in "
-                                 f"merlin/{'/'.join(BOARDS_FILE)}")
+        raise BoardRegistryError(f"no board registry at {p}; boards are declared in merlin/{'/'.join(BOARDS_FILE)}")
     raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     if not isinstance(raw, dict) or not isinstance(raw.get("boards"), dict):
         raise BoardRegistryError(f"{p}: expected a mapping with a `boards:` mapping of name -> facts")
     if raw.get("schema_version") != _SCHEMA_VERSION:
-        raise BoardRegistryError(f"{p}: schema_version {raw.get('schema_version')!r}, this loader reads "
-                                 f"{_SCHEMA_VERSION}")
+        raise BoardRegistryError(
+            f"{p}: schema_version {raw.get('schema_version')!r}, this loader reads {_SCHEMA_VERSION}"
+        )
     fields = {f.name: f for f in dataclasses.fields(Board)}
     out: dict[str, Board] = {}
     for name, entry in raw["boards"].items():
@@ -301,10 +300,16 @@ def load_boards(path: str | Path | None = None) -> dict[str, Board]:
             raise BoardRegistryError(f"{where}: unknown field(s) {unknown}; a Board has {sorted(fields)}")
         if entry.get("name", name) != name:
             raise BoardRegistryError(f"{where}: `name: {entry['name']}` disagrees with its key")
-        kwargs = {key: _coerce(key, value, str(fields[key].type), f"{where}, field {key!r}")
-                  for key, value in entry.items() if key != "name"}
-        required = [f.name for f in fields.values() if f.name != "name"
-                    and f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING]
+        kwargs = {
+            key: _coerce(key, value, str(fields[key].type), f"{where}, field {key!r}")
+            for key, value in entry.items()
+            if key != "name"
+        }
+        required = [
+            f.name
+            for f in fields.values()
+            if f.name != "name" and f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING
+        ]
         missing = [key for key in required if key not in kwargs]
         if missing:
             raise BoardRegistryError(f"{where}: missing required fact(s) {missing}")
@@ -326,9 +331,14 @@ def board(name: str, **overrides) -> Board:
     """
     base = BOARDS.get(name)
     if base is None:
-        base = Board(name=name, dram_bytes=256 * 1024 * 1024, harts=2,
-                     notes="not in BOARDS — conservative defaults; state the real facts explicitly")
+        base = Board(
+            name=name,
+            dram_bytes=256 * 1024 * 1024,
+            harts=2,
+            notes="not in BOARDS — conservative defaults; state the real facts explicitly",
+        )
     if not overrides:
         return base
     from dataclasses import replace
+
     return replace(base, **overrides)

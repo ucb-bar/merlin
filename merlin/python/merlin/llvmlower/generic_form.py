@@ -29,6 +29,7 @@ FAIL CLOSED. Every failure here raises :class:`GenericFormError`. A caller must 
 un-normalizable module as an empty one: the gates that read these modules exist because a check
 that silently could not run reported success.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -60,8 +61,7 @@ _PRINT_GENERIC_SRC = (
 GENERIC_SUFFIX = ".generic.mlir"
 
 
-def to_generic_form(mlir_path: "str | Path", work: "str | Path | None" = None,
-                    timeout: int = 3600) -> Path:
+def to_generic_form(mlir_path: "str | Path", work: "str | Path | None" = None, timeout: int = 3600) -> Path:
     """Re-print ``mlir_path`` in generic form; return the path of the re-printed file.
 
     Raises :class:`GenericFormError` if the m2m interpreter is unavailable or the re-print fails.
@@ -77,14 +77,15 @@ def to_generic_form(mlir_path: "str | Path", work: "str | Path | None" = None,
         raise GenericFormError(
             f"cannot re-print {src} in generic form: no MLIR-capable interpreter at {interp} "
             "(set MERLIN_M2M_VENV / MERLIN_M2M_DIR). Refusing rather than reading a module "
-            "nothing could parse.")
+            "nothing could parse."
+        )
     script = out_dir / "_print_generic.py"
     script.write_text(_PRINT_GENERIC_SRC, encoding="utf-8")
-    proc = subprocess.run([str(interp), str(script), str(src), str(out)],
-                          capture_output=True, text=True, timeout=timeout)
+    proc = subprocess.run(
+        [str(interp), str(script), str(src), str(out)], capture_output=True, text=True, timeout=timeout
+    )
     if proc.returncode != 0 or not out.is_file():
-        raise GenericFormError(
-            f"generic-form re-print of {src} failed:\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
+        raise GenericFormError(f"generic-form re-print of {src} failed:\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
     return out
 
 
@@ -95,8 +96,9 @@ def parse_mlir_file_any_form(mlir_path: "str | Path", work: "str | Path | None" 
     parses takes exactly the path it took before this function existed -- byte-identical behaviour
     and no extra subprocess for every module that never had the problem.
     """
-    from ..frontends.linalg_mlir import parse_mlir_file
     from xdsl.utils.exceptions import ParseError
+
+    from ..frontends.linalg_mlir import parse_mlir_file
 
     try:
         return parse_mlir_file(mlir_path)
@@ -107,5 +109,6 @@ def parse_mlir_file_any_form(mlir_path: "str | Path", work: "str | Path | None" 
             raise GenericFormError(
                 f"{mlir_path} is printed in MLIR custom form that xDSL cannot read "
                 f"({str(first).splitlines()[0] if str(first) else first}) and it could not be "
-                f"re-printed in generic form: {exc}") from first
+                f"re-printed in generic form: {exc}"
+            ) from first
         return parse_mlir_file(generic)

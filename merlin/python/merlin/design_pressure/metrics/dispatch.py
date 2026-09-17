@@ -4,6 +4,7 @@ Estimates how many command dispatches the region issues and how much useful work
 carries. A batch-1 action loop split into many tiny dependent dispatches is launch-overhead
 dominated — the pressure that motivates command batching / persistent regions (M2 contracts).
 """
+
 from __future__ import annotations
 
 from merlin.design_pressure import region as R

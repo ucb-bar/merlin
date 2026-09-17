@@ -3,6 +3,7 @@
 ``_reference_on_datapath`` computes a tile the way the declared accumulator does, and
 ``_accum_rel_tolerance`` bounds how far a float accumulator may legitimately drift from it.
 """
+
 from __future__ import annotations
 
 
@@ -22,6 +23,7 @@ def _accum_rel_tolerance(accum_dtype: str, k: int) -> float | None:
     tolerance, because both defaults are wrong in one direction (too tight condemns a good mesh, too loose
     passes a broken one)."""
     from ..common import quant_formats as QF
+
     try:
         f = QF.get(accum_dtype)
     except KeyError:
@@ -68,29 +70,31 @@ def _reference_on_datapath(A, W, binding):
     import numpy as np
 
     from ..common import quant_formats as QF
+
     try:
         f = QF.get(binding.accum_dtype)
     except KeyError:
         return None
     if getattr(binding, "subnormal_operand_flush", False):
         from ..runtime import fp8_formats as FF
+
         try:
             min_normal, _max_finite = FF.normal_range(binding.operand_dtype)
-        except KeyError:                                 # operand format unresolvable: fail closed
+        except KeyError:  # operand format unresolvable: fail closed
             return None
         A = np.where(np.abs(A) < min_normal, np.float32(0.0), A).astype(np.float32)
         W = np.where(np.abs(W) < min_normal, np.float32(0.0), W).astype(np.float32)
     if f.kind == "int_affine":
         return None
     mant, exp = int(f.mant_bits or 0), int(f.exp_bits or 0)
-    if mant == 10 and exp == 5:                      # IEEE half
-        rnd = lambda x: x.astype("<f2").astype(np.float32)          # noqa: E731
-    elif mant == 7 and exp == 8:                     # bfloat16: top half of the f32 word, RNE
+    if mant == 10 and exp == 5:  # IEEE half
+        rnd = lambda x: x.astype("<f2").astype(np.float32)  # noqa: E731
+    elif mant == 7 and exp == 8:  # bfloat16: top half of the f32 word, RNE
+
         def rnd(x):
             u = np.asarray(x, dtype=np.float32).view(np.uint32).astype(np.uint64)
-            return (((u + 0x7FFF + ((u >> 16) & 1)) >> 16).astype(np.uint32) << 16
-                    ).astype(np.uint32).view(np.float32)
-    elif mant == 23 and exp == 8:                    # f32: the product already is the reference
+            return (((u + 0x7FFF + ((u >> 16) & 1)) >> 16).astype(np.uint32) << 16).astype(np.uint32).view(np.float32)
+    elif mant == 23 and exp == 8:  # f32: the product already is the reference
         return None
     else:
         return None

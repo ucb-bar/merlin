@@ -10,6 +10,7 @@ No composition operator is defaulted in this module.  In particular, region and 
 not summed by the core: whether engines serialize or overlap is a property the adapter must derive
 and express through :meth:`TargetPlanningAdapter.evaluate` and ``lower_bound``.
 """
+
 from __future__ import annotations
 
 import heapq
@@ -63,8 +64,12 @@ class Bound:
         return cls(None, missing=tuple(str(item) for item in missing if str(item).strip()))
 
     def to_dict(self) -> dict[str, Any]:
-        return {"cycles": self.cycles, "resolved": self.resolved,
-                "provenance": list(self.provenance), "missing": list(self.missing)}
+        return {
+            "cycles": self.cycles,
+            "resolved": self.resolved,
+            "provenance": list(self.provenance),
+            "missing": list(self.missing),
+        }
 
 
 @dataclass(frozen=True)
@@ -98,8 +103,14 @@ class OccupancySummary:
                 raise ValueError("occupancy resource roles must not contain duplicates")
         if any(value < 0 for _, value in self.busy_cycles):
             raise ValueError("resource busy cycles cannot be negative")
-        for name in ("overlap_cycles", "overlap_available_cycles", "idle_cycles",
-                     "critical_path_cycles", "movement_bytes", "movement_elapsed_cycles"):
+        for name in (
+            "overlap_cycles",
+            "overlap_available_cycles",
+            "idle_cycles",
+            "critical_path_cycles",
+            "movement_bytes",
+            "movement_elapsed_cycles",
+        ):
             value = getattr(self, name)
             if value is not None and value < 0:
                 raise ValueError(f"{name} cannot be negative")
@@ -115,8 +126,11 @@ class OccupancySummary:
         # A declared engine absent from the instrument is not an idle engine.
         # Preserve the declared denominator and expose the missing observation.
         absent = sorted(set(self.compute_resources + self.movement_resources) - self.busy.keys())
-        object.__setattr__(self, "missing", tuple(dict.fromkeys(
-            (*self.missing, *(f"busy cycles for declared resource {name}" for name in absent)))))
+        object.__setattr__(
+            self,
+            "missing",
+            tuple(dict.fromkeys((*self.missing, *(f"busy cycles for declared resource {name}" for name in absent)))),
+        )
 
     @property
     def busy(self) -> dict[str, float]:
@@ -191,23 +205,35 @@ class TargetPlanningAdapter(Protocol):
 
     def region_alternatives(self, program: DispatchProgram) -> Sequence[RegionAlternative]: ...
 
-    def boundary_representation(self, program: DispatchProgram, buffer: str,
-                                direction: str) -> ValueRepresentation: ...
+    def boundary_representation(self, program: DispatchProgram, buffer: str, direction: str) -> ValueRepresentation: ...
 
-    def transition(self, program: DispatchProgram, *, buffer: str,
-                   producer: RegionAlternative | None, consumer: RegionAlternative | None,
-                   source: ValueRepresentation,
-                   destination: ValueRepresentation) -> TransitionAlternative | None: ...
+    def transition(
+        self,
+        program: DispatchProgram,
+        *,
+        buffer: str,
+        producer: RegionAlternative | None,
+        consumer: RegionAlternative | None,
+        source: ValueRepresentation,
+        destination: ValueRepresentation,
+    ) -> TransitionAlternative | None: ...
 
-    def evaluate(self, program: DispatchProgram, selected: Sequence[RegionAlternative],
-                 transitions: Sequence[TransitionAlternative]) -> PlanEvaluation: ...
+    def evaluate(
+        self,
+        program: DispatchProgram,
+        selected: Sequence[RegionAlternative],
+        transitions: Sequence[TransitionAlternative],
+    ) -> PlanEvaluation: ...
 
-    def lower_bound(self, program: DispatchProgram, selected: Sequence[RegionAlternative],
-                    uncovered_nodes: frozenset[int],
-                    alternatives: Sequence[RegionAlternative]) -> Bound: ...
+    def lower_bound(
+        self,
+        program: DispatchProgram,
+        selected: Sequence[RegionAlternative],
+        uncovered_nodes: frozenset[int],
+        alternatives: Sequence[RegionAlternative],
+    ) -> Bound: ...
 
-    def physical_floor(self, program: DispatchProgram,
-                       alternatives: Sequence[RegionAlternative]) -> Bound: ...
+    def physical_floor(self, program: DispatchProgram, alternatives: Sequence[RegionAlternative]) -> Bound: ...
 
 
 @dataclass(frozen=True)
@@ -246,8 +272,7 @@ class GlobalPlanResult:
         # Candidate-specific refusals (for example an implementation that lacks a required encoding
         # transition) are useful coverage evidence but do not invalidate another complete plan.  The
         # two roofline bounds are the global completeness gate.
-        return (self.plan is not None and self.legal_floor.resolved
-                and self.physical_floor.resolved)
+        return self.plan is not None and self.legal_floor.resolved and self.physical_floor.resolved
 
     @property
     def attainment(self) -> float | None:
@@ -293,8 +318,8 @@ def _node_owners(selected: Sequence[RegionAlternative]) -> dict[int, RegionAlter
 
 
 def _representations_and_transitions(
-        program: DispatchProgram, selected: Sequence[RegionAlternative],
-        adapter: TargetPlanningAdapter) -> tuple[TransitionAlternative, ...]:
+    program: DispatchProgram, selected: Sequence[RegionAlternative], adapter: TargetPlanningAdapter
+) -> tuple[TransitionAlternative, ...]:
     owners = _node_owners(selected)
     producer_node: dict[str, int] = {}
     for index, node in enumerate(program.nodes):
@@ -304,8 +329,7 @@ def _representations_and_transitions(
     transitions: list[TransitionAlternative] = []
     seen: set[tuple[str, str | None, str | None]] = set()
 
-    def connect(buffer: str, producer: RegionAlternative | None,
-                consumer: RegionAlternative | None) -> None:
+    def connect(buffer: str, producer: RegionAlternative | None, consumer: RegionAlternative | None) -> None:
         key = (buffer, producer.id if producer else None, consumer.id if consumer else None)
         if key in seen:
             return
@@ -316,25 +340,23 @@ def _representations_and_transitions(
             source = producer.output_representation(buffer)
             if source is None:
                 raise PlanRefusal(
-                    f"alternative {producer.id!r} does not declare the representation of boundary "
-                    f"output {buffer!r}")
+                    f"alternative {producer.id!r} does not declare the representation of boundary output {buffer!r}"
+                )
         if consumer is None:
             destination = adapter.boundary_representation(program, buffer, "output")
         else:
             destination = consumer.input_representation(buffer)
             if destination is None:
                 raise PlanRefusal(
-                    f"alternative {consumer.id!r} does not declare the representation of boundary "
-                    f"input {buffer!r}")
+                    f"alternative {consumer.id!r} does not declare the representation of boundary input {buffer!r}"
+                )
         if source == destination:
             return
         transition = adapter.transition(
-            program, buffer=buffer, producer=producer, consumer=consumer,
-            source=source, destination=destination)
+            program, buffer=buffer, producer=producer, consumer=consumer, source=source, destination=destination
+        )
         if transition is None:
-            raise PlanRefusal(
-                f"no transition establishes {buffer!r}: {source.to_dict()} -> "
-                f"{destination.to_dict()}")
+            raise PlanRefusal(f"no transition establishes {buffer!r}: {source.to_dict()} -> {destination.to_dict()}")
         if transition.source != source or transition.destination != destination:
             raise PlanRefusal(f"transition {transition.id!r} does not connect the requested encodings")
         transitions.append(transition)
@@ -357,8 +379,9 @@ def _representations_and_transitions(
     return tuple(transitions)
 
 
-def _complete_plan(program: DispatchProgram, selected: Sequence[RegionAlternative],
-                   adapter: TargetPlanningAdapter) -> tuple[GlobalPlan, PlanEvaluation]:
+def _complete_plan(
+    program: DispatchProgram, selected: Sequence[RegionAlternative], adapter: TargetPlanningAdapter
+) -> tuple[GlobalPlan, PlanEvaluation]:
     transitions = _representations_and_transitions(program, selected, adapter)
     evaluation = adapter.evaluate(program, selected, transitions)
     plan = GlobalPlan(
@@ -381,8 +404,9 @@ class _State:
     selected: tuple[RegionAlternative, ...] = field(compare=False)
 
 
-def optimize_program(program: DispatchProgram, adapter: TargetPlanningAdapter, *,
-                     policy: GlobalPlanPolicy | None = None) -> GlobalPlanResult:
+def optimize_program(
+    program: DispatchProgram, adapter: TargetPlanningAdapter, *, policy: GlobalPlanPolicy | None = None
+) -> GlobalPlanResult:
     """Choose and evaluate a compatible whole-program plan under a bounded static search."""
 
     pol = policy or GlobalPlanPolicy()
@@ -391,16 +415,16 @@ def optimize_program(program: DispatchProgram, adapter: TargetPlanningAdapter, *
     if dag_problems:
         problem = "invalid DispatchProgram: " + "; ".join(dag_problems)
         missing = Bound.unknown(problem)
-        return GlobalPlanResult(None, missing, missing, missing, None, 0, 0, 0.0,
-                                False, True, (problem,))
+        return GlobalPlanResult(None, missing, missing, missing, None, 0, 0, 0.0, False, True, (problem,))
 
     try:
         alternatives = tuple(adapter.region_alternatives(program))
     except Exception as exc:  # adapter boundary: retain the target's refusal as evidence
         problem = f"alternative enumeration failed: {type(exc).__name__}: {exc}"
         missing = Bound.unknown(problem)
-        return GlobalPlanResult(None, missing, missing, missing, None, 0, 0,
-                                time.monotonic() - started, False, True, (problem,))
+        return GlobalPlanResult(
+            None, missing, missing, missing, None, 0, 0, time.monotonic() - started, False, True, (problem,)
+        )
 
     refusals: list[str] = []
     n_nodes = len(program.nodes)
@@ -409,8 +433,8 @@ def optimize_program(program: DispatchProgram, adapter: TargetPlanningAdapter, *
     for alternative in alternatives:
         if not alternative.cycles.resolved:
             refusals.append(
-                f"alternative {alternative.id!r} needs calibration before cycle ranking: "
-                f"{alternative.cycles.missing}")
+                f"alternative {alternative.id!r} needs calibration before cycle ranking: {alternative.cycles.missing}"
+            )
         if alternative.id in ids:
             refusals.append(f"duplicate alternative id {alternative.id!r}")
         ids.add(alternative.id)
@@ -426,17 +450,20 @@ def optimize_program(program: DispatchProgram, adapter: TargetPlanningAdapter, *
     except Exception as exc:
         problem = f"physical-floor derivation failed: {type(exc).__name__}: {exc}"
         missing = Bound.unknown(problem)
-        return GlobalPlanResult(None, missing, missing, missing, None, 0, 0,
-                                time.monotonic() - started, False, True, (problem,))
+        return GlobalPlanResult(
+            None, missing, missing, missing, None, 0, 0, time.monotonic() - started, False, True, (problem,)
+        )
     if not isinstance(physical, Bound):
         problem = "physical-floor derivation did not return a Bound"
         missing = Bound.unknown(problem)
-        return GlobalPlanResult(None, missing, missing, missing, None, 0, 0,
-                                time.monotonic() - started, False, True, (problem,))
+        return GlobalPlanResult(
+            None, missing, missing, missing, None, 0, 0, time.monotonic() - started, False, True, (problem,)
+        )
     if refusals:
         missing = Bound.unknown(*refusals)
-        return GlobalPlanResult(None, physical, missing, missing, None, 0, 0,
-                                time.monotonic() - started, False, True, tuple(refusals))
+        return GlobalPlanResult(
+            None, physical, missing, missing, None, 0, 0, time.monotonic() - started, False, True, tuple(refusals)
+        )
 
     all_nodes = frozenset(range(n_nodes))
     try:
@@ -444,13 +471,15 @@ def optimize_program(program: DispatchProgram, adapter: TargetPlanningAdapter, *
     except Exception as exc:
         problem = f"legal lower-bound derivation failed: {type(exc).__name__}: {exc}"
         missing = Bound.unknown(problem)
-        return GlobalPlanResult(None, physical, missing, missing, None, 0, 0,
-                                time.monotonic() - started, False, True, (problem,))
+        return GlobalPlanResult(
+            None, physical, missing, missing, None, 0, 0, time.monotonic() - started, False, True, (problem,)
+        )
     if not isinstance(root_bound, Bound):
         problem = "legal lower-bound derivation did not return a Bound"
         missing = Bound.unknown(problem)
-        return GlobalPlanResult(None, physical, missing, missing, None, 0, 0,
-                                time.monotonic() - started, False, True, (problem,))
+        return GlobalPlanResult(
+            None, physical, missing, missing, None, 0, 0, time.monotonic() - started, False, True, (problem,)
+        )
     if not root_bound.resolved:
         refusals.extend(root_bound.missing)
         # Non-negativity is an admissible search bound, but it is deliberately not published as the
@@ -498,12 +527,11 @@ def optimize_program(program: DispatchProgram, adapter: TargetPlanningAdapter, *
                 bound = adapter.lower_bound(program, selected, uncovered, alternatives)
             except Exception as exc:
                 refusals.append(
-                    f"branch lower-bound derivation failed for {alternative.id!r}: "
-                    f"{type(exc).__name__}: {exc}")
+                    f"branch lower-bound derivation failed for {alternative.id!r}: {type(exc).__name__}: {exc}"
+                )
                 continue
             if not isinstance(bound, Bound):
-                refusals.append(
-                    f"branch lower-bound derivation for {alternative.id!r} did not return a Bound")
+                refusals.append(f"branch lower-bound derivation for {alternative.id!r} did not return a Bound")
                 continue
             if not bound.resolved:
                 refusals.extend(bound.missing)
@@ -526,10 +554,24 @@ def optimize_program(program: DispatchProgram, adapter: TargetPlanningAdapter, *
         reason = "no complete compatible plan"
         refusals.append(reason)
         legal = Bound.unknown(reason, *tuple(dict.fromkeys(refusals)))
-        solver = Bound(pending_lower, provenance=("adapter lower bound over unexplored states",)) \
-            if math.isfinite(pending_lower) else Bound.unknown(reason)
-        return GlobalPlanResult(None, physical, legal, solver, None, expanded, complete, elapsed,
-                                timed_out, exhausted, tuple(dict.fromkeys(refusals)))
+        solver = (
+            Bound(pending_lower, provenance=("adapter lower bound over unexplored states",))
+            if math.isfinite(pending_lower)
+            else Bound.unknown(reason)
+        )
+        return GlobalPlanResult(
+            None,
+            physical,
+            legal,
+            solver,
+            None,
+            expanded,
+            complete,
+            elapsed,
+            timed_out,
+            exhausted,
+            tuple(dict.fromkeys(refusals)),
+        )
 
     # The best compatible implementation is no faster than the smallest admissible bound among the
     # incumbent and every unexplored state.  When the adapter bound was unresolved, legal attainment
@@ -542,12 +584,24 @@ def optimize_program(program: DispatchProgram, adapter: TargetPlanningAdapter, *
     else:
         legal = Bound.unknown(*root_bound.missing)
     if physical.resolved and float(physical.cycles) > best_hi + 1e-9:
-        problem = (f"selected plan upper bound {best_hi:g} is below the physical floor "
-                   f"{float(physical.cycles):g}; cost evidence is unsound")
+        problem = (
+            f"selected plan upper bound {best_hi:g} is below the physical floor "
+            f"{float(physical.cycles):g}; cost evidence is unsound"
+        )
         refusals.append(problem)
         legal = Bound.unknown(problem)
     gap = max(0.0, (best_hi - solver_lower) / best_hi) if best_hi > 0 else 0.0
-    return GlobalPlanResult(best, physical, legal, solver, gap, expanded, complete, elapsed,
-                            timed_out, exhausted, tuple(dict.fromkeys(refusals)),
-                            occupancy=(best_evaluation.occupancy
-                                       if best_evaluation is not None else None))
+    return GlobalPlanResult(
+        best,
+        physical,
+        legal,
+        solver,
+        gap,
+        expanded,
+        complete,
+        elapsed,
+        timed_out,
+        exhausted,
+        tuple(dict.fromkeys(refusals)),
+        occupancy=(best_evaluation.occupancy if best_evaluation is not None else None),
+    )

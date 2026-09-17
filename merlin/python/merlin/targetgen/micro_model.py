@@ -40,6 +40,7 @@ So the inventory is DERIVED, from the same three sources the coverage requiremen
 What this module does NOT do is write the model. It states what the model must contain and why, so that
 the authored network can be checked against a requirement instead of being trusted.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -61,9 +62,9 @@ class LayerRequirement:
 
     family: str
     dtype: str | None
-    side: str                          # ACCELERATOR | HOST
-    op: str | None = None              # the spelling real captures use for this family
-    op_frequency: int = 0              # how many regions across all captures carried that spelling
+    side: str  # ACCELERATOR | HOST
+    op: str | None = None  # the spelling real captures use for this family
+    op_frequency: int = 0  # how many regions across all captures carried that spelling
     admitted_by: tuple[str, ...] = ()  # compute units declaring it (accelerator side)
     observed_in: tuple[str, ...] = ()  # captures containing the family (host side)
     why: str = ""
@@ -90,8 +91,8 @@ class MicroModelSpec:
     """What a target's minimal whole-model capsule must contain."""
 
     target: str = ""
-    layers: list = field(default_factory=list)          # [LayerRequirement], in composition order
-    extent: int | None = None                           # the working extent, in elements
+    layers: list = field(default_factory=list)  # [LayerRequirement], in composition order
+    extent: int | None = None  # the working extent, in elements
     tile_edge: int | None = None
     unmapped_families: dict = field(default_factory=dict)
     notes: list = field(default_factory=list)
@@ -135,7 +136,7 @@ def observed_spellings(captures: dict) -> dict:
     for _label, path in sorted((captures or {}).items()):
         try:
             regions = mc.regions_from_module(mc.load_module(path))
-        except Exception:                                  # noqa: BLE001 — unreadable capture
+        except Exception:  # noqa: BLE001 — unreadable capture
             continue
         for region in regions:
             fam = region.resolved_family()
@@ -194,11 +195,13 @@ def spec(target: str, captures: dict, *, extent_tiles: int = _DEFAULT_EXTENT_TIL
     else:
         out.notes.append(
             "the target declares no tile edge, so extents cannot be sized against its own geometry; "
-            "the model must state its extents explicitly and they are NOT minimal by derivation")
+            "the model must state its extents explicitly and they are NOT minimal by derivation"
+        )
     if not bnd.tile_edge_is_hardware_fact and bnd.tile_edge:
         out.notes.append(
             f"extents are sized against tile edge {bnd.tile_edge}, which is a SOFTWARE tiling default "
-            f"for this target rather than a hardware boundary")
+            f"for this target rather than a hardware boundary"
+        )
 
     admitted = CF.admitted(target)
     units = CF.admitting_units(target)
@@ -211,7 +214,7 @@ def spec(target: str, captures: dict, *, extent_tiles: int = _DEFAULT_EXTENT_TIL
     for label, path in sorted((captures or {}).items()):
         try:
             hist = CF.observed(path, target)
-        except Exception:                                  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             continue
         for fam, n in hist.items():
             observed_counts[fam] = observed_counts.get(fam, 0) + int(n)
@@ -234,29 +237,45 @@ def spec(target: str, captures: dict, *, extent_tiles: int = _DEFAULT_EXTENT_TIL
             out.unmapped_families[fam] = (
                 "admitted by the hardware but no readable capture names an op for it, so the model "
                 "cannot be composed from evidence here; state the layer explicitly or accept that this "
-                "capability goes unexercised end to end")
+                "capability goes unexercised end to end"
+            )
         for dt in dtypes:
-            accelerator.append(LayerRequirement(
-                family=fam, dtype=CF.capsule_dtype(dt), side=ACCELERATOR, op=op, op_frequency=freq,
-                admitted_by=units.get((fam, CF.capsule_dtype(dt)), ()),
-                why="the capability manifest declares the hardware computes this family at this dtype; "
-                    "a whole-model capsule that never reaches it leaves the claim untested"))
+            accelerator.append(
+                LayerRequirement(
+                    family=fam,
+                    dtype=CF.capsule_dtype(dt),
+                    side=ACCELERATOR,
+                    op=op,
+                    op_frequency=freq,
+                    admitted_by=units.get((fam, CF.capsule_dtype(dt)), ()),
+                    why="the capability manifest declares the hardware computes this family at this dtype; "
+                    "a whole-model capsule that never reaches it leaves the claim untested",
+                )
+            )
 
     host: list = []
     for fam in sorted(f for f in observed_counts if f not in admitted):
         op, freq = _spelling(fam)
-        host.append(LayerRequirement(
-            family=fam, dtype=None, side=HOST, op=op, op_frequency=freq,
-            observed_in=tuple(sorted(observed_in.get(fam, ()))),
-            why=f"real captures contain {observed_counts[fam]} region(s) of this family and the target "
+        host.append(
+            LayerRequirement(
+                family=fam,
+                dtype=None,
+                side=HOST,
+                op=op,
+                op_frequency=freq,
+                observed_in=tuple(sorted(observed_in.get(fam, ()))),
+                why=f"real captures contain {observed_counts[fam]} region(s) of this family and the target "
                 f"declares no capability for it, so it MUST run on the host lane; placing it between "
-                f"accelerator layers is what makes the seam exist"))
+                f"accelerator layers is what makes the seam exist",
+            )
+        )
 
     out.layers = interleave(accelerator, host)
     if not host:
         out.notes.append(
             "this target admits every family the captures contain, so the model has no host island and "
-            "no seam to prove; that is a fact about the target, not a gap in the model")
+            "no seam to prove; that is a fact about the target, not a gap in the model"
+        )
     return out
 
 
@@ -306,9 +325,11 @@ _STATEMENT: dict[str, tuple[str | None, str]] = {
     # failed the falsifiability gate ("the golden has too little spread to grade") -- a capsule whose
     # tolerance band cannot separate a right answer from a wrong one. Every real attention block is
     # residual for exactly this reason, so this is the faithful spelling as well as the gradeable one.
-    "attention_full": ("self.qkv{i} = nn.Parameter(torch.randn(3, E, E) * 0.05)",
-                       "x = x + torch.nn.functional.scaled_dot_product_attention("
-                       "x @ self.qkv{i}[0], x @ self.qkv{i}[1], x @ self.qkv{i}[2])"),
+    "attention_full": (
+        "self.qkv{i} = nn.Parameter(torch.randn(3, E, E) * 0.05)",
+        "x = x + torch.nn.functional.scaled_dot_product_attention("
+        "x @ self.qkv{i}[0], x @ self.qkv{i}[1], x @ self.qkv{i}[2])",
+    ),
 }
 
 
@@ -326,7 +347,8 @@ def statement_for(family: str) -> tuple[str, tuple[str | None, str]]:
     if op is None or op not in _STATEMENT:
         raise UnwritableLayer(
             f"no emittable statement for family {family!r}; add one to micro_model._STATEMENT or "
-            f"establish that the inventory should not contain it -- do not drop the layer")
+            f"establish that the inventory should not contain it -- do not drop the layer"
+        )
     return op, _STATEMENT[op]
 
 
@@ -346,7 +368,8 @@ def emit_pytorch(spec) -> str:
     if extent <= 0:
         raise UnwritableLayer(
             "the spec carries no extent, so there is no derived width to emit; a default here would be "
-            "a geometry this repo does not have")
+            "a geometry this repo does not have"
+        )
     layers = list(getattr(spec, "layers", ()) or ())
     if not layers:
         raise UnwritableLayer("the spec carries no layers; there is no model to write")
@@ -365,8 +388,7 @@ def emit_pytorch(spec) -> str:
         '"""DERIVED micro model -- regenerate with merlin.targetgen.micro_model.emit_pytorch.\n'
         "\n"
         f"Composition: {spec.composition()}\n"
-        "Layer inventory, in composition order:\n"
-        + "\n".join(notes) + "\n"
+        "Layer inventory, in composition order:\n" + "\n".join(notes) + "\n"
         "\n"
         "Every layer is here because the target's capability manifest admits its family (accelerator) or\n"
         "because a real capture contains a family the manifest does not admit (host). The order is the\n"
@@ -384,8 +406,7 @@ def emit_pytorch(spec) -> str:
         "        super().__init__()\n"
         f"{body_init}\n"
         "\n"
-        "    def forward(self, x):\n"
-        + "\n".join(fwd) + "\n"
+        "    def forward(self, x):\n" + "\n".join(fwd) + "\n"
         "        return x\n"
         "\n"
         "\n"

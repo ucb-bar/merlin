@@ -14,6 +14,7 @@ closed (the mlc arc command-buffer adapter grades the wrong artifact for a SIMT 
 fallback). This is a LEAF module (no submodule search), so it reaches the relocated muon package only via
 the registry (``get_backend("muon")``).
 """
+
 from __future__ import annotations
 
 from merlin.targetgen.capsule_runner import register_sim_oracle
@@ -25,6 +26,7 @@ def _cyclotron_adapters(target: str) -> dict:
     kernel. The muon adapters fail closed (MuonUnavailable) when the MERLIN_MUON_* toolchain env is
     unset, so an unwired target degrades honestly, never mis-grades."""
     from merlin.runtime.backends.base import get_backend
+
     return get_backend("muon").muon_oracles.default_adapters(target)
 
 
@@ -33,13 +35,16 @@ def _cyclotron_available(target: str) -> tuple[bool, str]:
     artifact for a SIMT kernel, so it is NOT a valid fallback (that was a false-green). Fail closed."""
     try:
         from merlin.runtime.backends.base import get_backend
+
         if get_backend("muon").available("cyclotron"):
             return True, f"{target!r}: cyclotron SIMT oracle available"
     except Exception:  # noqa: BLE001 — an unimportable backend is honestly unavailable
         pass
-    return False, (f"{target!r}: cyclotron SIMT oracle unavailable (set the MERLIN_MUON_* env); the mlc "
-                   "arc command-buffer adapter grades the wrong artifact for a SIMT target and is not "
-                   "a valid fallback")
+    return False, (
+        f"{target!r}: cyclotron SIMT oracle unavailable (set the MERLIN_MUON_* env); the mlc "
+        "arc command-buffer adapter grades the wrong artifact for a SIMT target and is not "
+        "a valid fallback"
+    )
 
 
 # Register the bespoke cyclotron oracle (exclusive: replaces the arc/program default for a self-hosted
@@ -53,9 +58,14 @@ def _cyclotron_l3_selection(target: str) -> dict:
     which simulator its cert ran on.
     """
     from merlin.runtime.backends.base import get_backend
+
     return get_backend("muon").muon_oracles.l3_selection(target)
 
 
-register_sim_oracle("cyclotron", adapters=_cyclotron_adapters,
-                    available=_cyclotron_available, exclusive=True,
-                    l3_selection=_cyclotron_l3_selection)
+register_sim_oracle(
+    "cyclotron",
+    adapters=_cyclotron_adapters,
+    available=_cyclotron_available,
+    exclusive=True,
+    l3_selection=_cyclotron_l3_selection,
+)

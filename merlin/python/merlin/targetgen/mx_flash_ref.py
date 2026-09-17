@@ -26,6 +26,7 @@ TARGET-AGNOSTIC: the subject here is the MX *format* (a datapath fact the derive
 never a target name. The caller supplies the validated ``mx_ref`` module (the derived reference), so this
 code depends on no particular accelerator and bakes in no opcode/encoding constant.
 """
+
 from __future__ import annotations
 
 
@@ -55,7 +56,7 @@ def e4m3_code_table(mx) -> dict:
     table: dict[float, int] = {}
     for c in range(256):
         v = mx.fp8_e4m3_decode(c)
-        if v == v and abs(v) != float("inf"):            # finite; keep the FIRST (lowest) code per value
+        if v == v and abs(v) != float("inf"):  # finite; keep the FIRST (lowest) code per value
             table.setdefault(float(v), c)
     return table
 
@@ -82,10 +83,10 @@ def flash_attention_fp8(mx, S_scores, V, SB_v, *, M, Skv, Dv, att_scale, softcap
     import numpy as np
 
     def bf16(x):
-        return mx.bf16_round(float(x))                    # f32 -> bf16 RNE, returns float
+        return mx.bf16_round(float(x))  # f32 -> bf16 RNE, returns float
 
     def bf16_bits(x):
-        return mx.f32_to_bf16_rne(float(x))               # f32 -> 16-bit bf16 pattern
+        return mx.f32_to_bf16_rne(float(x))  # f32 -> 16-bit bf16 pattern
 
     S = np.asarray(S_scores, dtype=np.float64).reshape(M, Skv)
     scale = bf16(att_scale)
@@ -98,7 +99,8 @@ def flash_attention_fp8(mx, S_scores, V, SB_v, *, M, Skv, Dv, att_scale, softcap
             f"MX flash reference needs the key length to be a whole multiple of the {mx.GROUP}-element "
             f"block-scale group; got Skv={Skv} ({Skv % mx.GROUP} key(s) in a partial final group). One "
             f"E8M0 scale is emitted per whole group, so the probability scales would cover only "
-            f"{mx.GROUP * (Skv // mx.GROUP)} of {Skv} keys and the tail would contribute zero.")
+            f"{mx.GROUP * (Skv // mx.GROUP)} of {Skv} keys and the tail would contribute zero."
+        )
     NBLK = Skv // mx.GROUP
     P_codes = np.zeros((M, Skv), np.uint8)
     P_dec = np.zeros((M, Skv), np.float64)
@@ -114,8 +116,8 @@ def flash_attention_fp8(mx, S_scores, V, SB_v, *, M, Skv, Dv, att_scale, softcap
         capv = bf16(cap)
 
         def _softcap(s):
-            p = bf16(np.exp(np.float32(bf16(s * two_over_cap))))     # e^{2y}, bf16
-            pf = np.float32(p)                                       # tanh=(p-1)/(p+1), fp32
+            p = bf16(np.exp(np.float32(bf16(s * two_over_cap))))  # e^{2y}, bf16
+            pf = np.float32(p)  # tanh=(p-1)/(p+1), fp32
             tf = np.float32((pf - np.float32(1)) / (pf + np.float32(1)))
             return bf16(np.float32(np.float32(capv) * tf))
 
@@ -131,7 +133,7 @@ def flash_attention_fp8(mx, S_scores, V, SB_v, *, M, Skv, Dv, att_scale, softcap
         # lane owns words {j*NT+lane}; word w = elements (2w, 2w+1); lloc_lane = ((0+a)+b) over its
         # words (bf16 each step); then the balanced 16-leaf pairing.
         NT = 16
-        WPL = Skv // (2 * NT)                             # words-per-lane-pair = Skv/32
+        WPL = Skv // (2 * NT)  # words-per-lane-pair = Skv/32
         leaves = []
         for lane in range(NT):
             lloc = 0.0
@@ -147,11 +149,11 @@ def flash_attention_fp8(mx, S_scores, V, SB_v, *, M, Skv, Dv, att_scale, softcap
         #   se = bf16_floor_log2(blockmax) = exp_field(bf16(blockmax)) - 127; E8M0 code = se+127;
         #   elems = bf16_to_e4m3_scaled(u, se) (truncating)
         for b in range(NBLK):
-            blk = u[b * 32:(b + 1) * 32]
+            blk = u[b * 32 : (b + 1) * 32]
             bmax_bits = bf16_bits(float(np.max(blk)))
             se = ((bmax_bits >> 7) & 0xFF) - 127
             SA_p[b, m] = (se + 127) & 0xFF
-            blk_scale = 2.0 ** se                        # E8M0 block scale = 2**(code-127), code=se+127
+            blk_scale = 2.0**se  # E8M0 block scale = 2**(code-127), code=se+127
             for j in range(32):
                 code = bf16_to_e4m3_scaled(bf16_bits(float(blk[j])), se)
                 P_codes[m, b * 32 + j] = code
@@ -161,11 +163,9 @@ def flash_attention_fp8(mx, S_scores, V, SB_v, *, M, Skv, Dv, att_scale, softcap
     # PV MX matmul (bf16 hardware accumulate) over the UNNORMALIZED e4m3 P codes.
     table = e4m3_code_table(mx)
     Varr = np.asarray(V, dtype=np.float64).reshape(Skv, Dv)
-    V_codes = np.array([[table[float(np.float32(Varr[i, j]))] for j in range(Dv)]
-                        for i in range(Skv)], dtype=np.uint8)
+    V_codes = np.array([[table[float(np.float32(Varr[i, j]))] for j in range(Dv)] for i in range(Skv)], dtype=np.uint8)
     SBv = np.asarray(SB_v, dtype=np.uint8)
-    Cbits = np.asarray(mx.mx_matmul(P_codes.reshape(-1), V_codes.reshape(-1),
-                                    SA_p, SBv, M, Dv, Skv, fmt=mx.FMT_FP8))
+    Cbits = np.asarray(mx.mx_matmul(P_codes.reshape(-1), V_codes.reshape(-1), SA_p, SBv, M, Dv, Skv, fmt=mx.FMT_FP8))
     O_un = np.array([[float(mx.bf16_to_f32(int(Cbits[m, j]))) for j in range(Dv)] for m in range(M)])
 
     # finalize: O = O_unnorm * bf16(1 / bf16(l))
@@ -175,7 +175,13 @@ def flash_attention_fp8(mx, S_scores, V, SB_v, *, M, Skv, Dv, att_scale, softcap
         for j in range(Dv):
             O[m, j] = bf16(float(O_un[m, j]) * inv_l)
 
-    pv_art = {"A_bytes": P_codes.reshape(-1).tolist(), "A_shape": [M, Skv],
-              "B_bytes": V_codes.reshape(-1).tolist(), "B_shape": [Skv, Dv], "G": 0,
-              "lutA": None, "lutB": None}
+    pv_art = {
+        "A_bytes": P_codes.reshape(-1).tolist(),
+        "A_shape": [M, Skv],
+        "B_bytes": V_codes.reshape(-1).tolist(),
+        "B_shape": [Skv, Dv],
+        "G": 0,
+        "lutA": None,
+        "lutB": None,
+    }
     return O, P_codes, SA_p, l, P_dec, pv_art

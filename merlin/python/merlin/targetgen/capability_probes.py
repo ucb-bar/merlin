@@ -12,6 +12,7 @@ By construction every probe is drawn from the declared capability, so every prob
 self-consistency property the tests assert. The compiler-under-test is then scored on how many of these
 derived probes it actually lowers (that is the recall the fuzzer and the grader measure).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -45,6 +46,7 @@ def tile_edge(target: str | None = None) -> int:
     try:
         from merlin.targetgen.corpus_spec import _tile_dim
         from merlin.targetgen.target_experiment import load_capability_manifest
+
         return int(_tile_dim(target, load_capability_manifest(target).contract or {}))
     except Exception:  # noqa: BLE001 — underivable geometry -> the software-tiling default, never a guess
         return _FALLBACK_TILE
@@ -80,7 +82,7 @@ def shape_corners(tile: int) -> list[tuple[str, tuple[int, int, int], int]]:
 @dataclass(frozen=True)
 class Probe:
     name: str
-    axis: str                 # the generalization axis this probe exercises (shape/dtype/layout)
+    axis: str  # the generalization axis this probe exercises (shape/dtype/layout)
     descriptor: RegionDescriptor
 
 
@@ -107,34 +109,66 @@ def probes_for_family(fam: str, cap: SemanticCapability, *, tile: int | None = N
     # shape corners on the lead dtype
     for corner, (m, k, n), rank in shape_corners(tile):
         if not contractionish and corner in ("prime", "skinny_col"):
-            continue                                  # unary families: a couple of corners suffice
+            continue  # unary families: a couple of corners suffice
         if not contractionish and corner in ("k_2tiles", "n_2tiles"):
-            continue                                  # a unary family has no K/N to tile over
+            continue  # a unary family has no K/N to tile over
         if rank == 3 and not cap.batch:
-            continue                                  # skip batched when the unit declares batch=false
+            continue  # skip batched when the unit declares batch=false
         axis = "shape" if corner != "batched" else "shape"
-        d = RegionDescriptor(source=f"{fam}/{corner}", family=fam, in_dtype=lead,
-                             weight_dtype=(lead if contractionish else None),
-                             m=m, k=(k if contractionish else None),
-                             n=(n if contractionish else None), rank=rank, batch=(2 if rank == 3 else 1))
+        d = RegionDescriptor(
+            source=f"{fam}/{corner}",
+            family=fam,
+            in_dtype=lead,
+            weight_dtype=(lead if contractionish else None),
+            m=m,
+            k=(k if contractionish else None),
+            n=(n if contractionish else None),
+            rank=rank,
+            batch=(2 if rank == 3 else 1),
+        )
         probes.append(Probe(name=f"{fam}.{corner}", axis=axis, descriptor=d))
 
     # one probe per additional declared dtype (dtype-generalization axis)
     m, k, n = _primary_shape(fam, tile)
     for dt in dtypes[1:]:
-        d = RegionDescriptor(source=f"{fam}/dtype:{dt}", family=fam, in_dtype=dt,
-                             weight_dtype=(dt if contractionish else None), m=m, k=k, n=n, rank=2)
+        d = RegionDescriptor(
+            source=f"{fam}/dtype:{dt}",
+            family=fam,
+            in_dtype=dt,
+            weight_dtype=(dt if contractionish else None),
+            m=m,
+            k=k,
+            n=n,
+            rank=2,
+        )
         probes.append(Probe(name=f"{fam}.dtype_{dt}", axis="dtype", descriptor=d))
 
     # transpose + declared layout variants (layout-generalization axis)
     if cap.transpose and contractionish:
-        d = RegionDescriptor(source=f"{fam}/transpose", family=fam, in_dtype=lead, weight_dtype=lead,
-                             m=m, k=k, n=n, rank=2, layout="transposed")
+        d = RegionDescriptor(
+            source=f"{fam}/transpose",
+            family=fam,
+            in_dtype=lead,
+            weight_dtype=lead,
+            m=m,
+            k=k,
+            n=n,
+            rank=2,
+            layout="transposed",
+        )
         probes.append(Probe(name=f"{fam}.transpose", axis="layout", descriptor=d))
     for lay in cap.layouts:
-        d = RegionDescriptor(source=f"{fam}/layout:{lay}", family=fam, in_dtype=lead,
-                             weight_dtype=(lead if contractionish else None), m=m, k=k, n=n,
-                             rank=2, layout=lay)
+        d = RegionDescriptor(
+            source=f"{fam}/layout:{lay}",
+            family=fam,
+            in_dtype=lead,
+            weight_dtype=(lead if contractionish else None),
+            m=m,
+            k=k,
+            n=n,
+            rank=2,
+            layout=lay,
+        )
         probes.append(Probe(name=f"{fam}.layout_{lay}", axis="layout", descriptor=d))
     return probes
 

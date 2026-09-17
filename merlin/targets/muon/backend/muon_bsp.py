@@ -8,6 +8,7 @@ SIMT backend can reach it as a sibling (``get_backend("muon").muon_bsp`` / ``fro
 without re-homing the generic code under a target-named directory. The muon-owned occupancy SYMBOL is
 ``merlin...muon.OCCUPANCY_SYMBOL`` and is passed by the backend at call time.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen.fixed_format.boot import *  # noqa: F401,F403

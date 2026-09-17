@@ -25,6 +25,7 @@ the mapping is a DERIVATION with a stated rule, not a tuning knob:
 Voyager's own scheduling choices (double-buffering the L2, its runtime tolerance) are left at its
 defaults: they are the compiler under test, not facts about the hardware.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -53,16 +54,18 @@ class DerivedConfig:
 
 def _need(value: Any, what: str, target: str) -> Any:
     if value is None:
-        raise VoyagerConfigError(f"{target}: {what} is not derivable from the target's facts; "
-                                 "refusing to hand Voyager a guessed machine")
+        raise VoyagerConfigError(
+            f"{target}: {what} is not derivable from the target's facts; refusing to hand Voyager a guessed machine"
+        )
     return value
 
 
 WEIGHT_RESIDENCY = ("scratchpad", "pe_block")
 
 
-def accelerator_config_for(target: str, *, facts: dict[str, Any] | None = None,
-                           weight_residency: str = "scratchpad") -> DerivedConfig:
+def accelerator_config_for(
+    target: str, *, facts: dict[str, Any] | None = None, weight_residency: str = "scratchpad"
+) -> DerivedConfig:
     """Derive Voyager's ``AcceleratorConfig`` for ``target`` from its address space.
 
     ``facts`` overrides the facts artifact (for tests); otherwise it is read through
@@ -78,12 +81,12 @@ def accelerator_config_for(target: str, *, facts: dict[str, Any] | None = None,
     space = derive_address_space(target, facts=facts)
     rows = _need(getattr(space, "array_rows", None), "the array row count", target)
     cols = _need(getattr(space, "array_cols", None), "the array column count", target)
+
     def store(name: str):
         try:
             found = space.store(name)
         except (KeyError, LookupError, ValueError) as exc:
-            raise VoyagerConfigError(f"{target}: no {name!r} store in the derived address space "
-                                     f"({exc})") from exc
+            raise VoyagerConfigError(f"{target}: no {name!r} store in the derived address space ({exc})") from exc
         if found is None:
             raise VoyagerConfigError(f"{target}: no {name!r} store in the derived address space")
         return found
@@ -95,27 +98,25 @@ def accelerator_config_for(target: str, *, facts: dict[str, Any] | None = None,
         "num_banks": int(_need(spad.banks, "scratchpad bank count", target)),
         "bank_width": int(_need(spad.row_bytes, "scratchpad row width", target)),
         "input_buffer_size": int(_need(spad.total_rows, "scratchpad row count", target)),
-        "weight_buffer_size": (int(spad.total_rows) if weight_residency == "scratchpad"
-                               else int(rows)),
+        "weight_buffer_size": (int(spad.total_rows) if weight_residency == "scratchpad" else int(rows)),
         "accum_buffer_size": int(_need(acc.total_rows, "accumulator row count", target)),
     }
     sources = {
-        "pe_array_size": f"address space array {getattr(space, 'array_name', None)!r} "
-                         f"({rows}x{cols})",
+        "pe_array_size": f"address space array {getattr(space, 'array_name', None)!r} ({rows}x{cols})",
         "scratchpad_size": f"store 'scratchpad'.nbytes ({spad.sources.get('bytes_depth', '?')})",
         "num_banks": "store 'scratchpad'.banks = total_rows / per-bank depth",
         "bank_width": f"store 'scratchpad'.row_bytes ({spad.sources.get('row_bytes', '?')})",
         "input_buffer_size": "store 'scratchpad'.total_rows: activations stream from the scratchpad",
-        "weight_buffer_size": ("store 'scratchpad'.total_rows: weights are preloaded from the "
-                               "scratchpad (weight_residency=scratchpad)"
-                               if weight_residency == "scratchpad" else
-                               "array rows: only the PE-resident block counts as L1 "
-                               "(weight_residency=pe_block, sensitivity variant)"),
+        "weight_buffer_size": (
+            "store 'scratchpad'.total_rows: weights are preloaded from the scratchpad (weight_residency=scratchpad)"
+            if weight_residency == "scratchpad"
+            else "array rows: only the PE-resident block counts as L1 (weight_residency=pe_block, sensitivity variant)"
+        ),
         "accum_buffer_size": "store 'accumulator'.total_rows: one row = one array edge of partials",
     }
     not_modelled = {
         "dram_bandwidth": "Voyager default (64 GB/s): the target's DMA width is not in its derived "
-                          "address space, so Voyager's DRAM term prices a machine we did not state",
+        "address space, so Voyager's DRAM term prices a machine we did not state",
         "dram_access_latency": "Voyager default (100 ns)",
         "double_buffered_l2": "Voyager default (True): a scheduling choice of the compiler under test",
     }
@@ -133,5 +134,9 @@ def geometry_for(target: str, *, facts: dict[str, Any] | None = None):
     rows, cols = f["pe_array_size"]
     if rows != cols:
         raise VoyagerConfigError(f"{target}: a {rows}x{cols} array has no single block edge")
-    return Geometry(dim=int(rows), spad_rows=int(f["input_buffer_size"]),
-                    spad_row_bytes=int(f["bank_width"]), acc_rows=int(f["accum_buffer_size"]))
+    return Geometry(
+        dim=int(rows),
+        spad_rows=int(f["input_buffer_size"]),
+        spad_row_bytes=int(f["bank_width"]),
+        acc_rows=int(f["accum_buffer_size"]),
+    )

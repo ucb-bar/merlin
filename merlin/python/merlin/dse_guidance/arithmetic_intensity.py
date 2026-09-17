@@ -27,16 +27,28 @@ from merlin.dse_guidance import real_config as RC
 _PREFIX_ROLES = {"prefix_once", "backbone_once"}
 _REPEATED_ROLES = {"repeated_head", "decode_lm"}
 
-_AI_COLS = ["workload", "K", "dtype", "prefix_params", "repeated_params",
-            "macs_per_replan", "weight_bytes_resident", "weight_bytes_nonresident",
-            "ai_resident_mac_per_byte", "ai_nonresident_mac_per_byte", "residency_gain",
-            "ridge_balance_compute_bound_below", "regime_note", "evidence"]
+_AI_COLS = [
+    "workload",
+    "K",
+    "dtype",
+    "prefix_params",
+    "repeated_params",
+    "macs_per_replan",
+    "weight_bytes_resident",
+    "weight_bytes_nonresident",
+    "ai_resident_mac_per_byte",
+    "ai_nonresident_mac_per_byte",
+    "residency_gain",
+    "ridge_balance_compute_bound_below",
+    "regime_note",
+    "evidence",
+]
 
 
 def _split_params(g) -> tuple[int, int]:
     """(prefix params loaded once, repeated-head params run per step)."""
     prefix = sum(s.layer_params() * s.n_layers for s in g.stacks if s.role in _PREFIX_ROLES)
-    prefix += g.embed_params()                       # embedding/lm_head load once
+    prefix += g.embed_params()  # embedding/lm_head load once
     repeated = sum(s.layer_params() * s.n_layers for s in g.stacks if s.role in _REPEATED_ROLES)
     return prefix, repeated
 
@@ -46,33 +58,42 @@ def ai_rows(dtype: str = "bf16") -> list[dict]:
     rows = []
     for w, g in sorted(RC.REAL_GEOMETRY.items()):
         prefix, repeated = _split_params(g)
-        if repeated == 0:                            # no repeated head -> skip (not a loop workload)
+        if repeated == 0:  # no repeated head -> skip (not a loop workload)
             continue
         K = g.K
-        macs = prefix + repeated * K                 # MACs per replan (1 MAC per weight per token)
-        wb_res = (prefix + repeated) * db            # each weight loaded ONCE
-        wb_non = (prefix + repeated * K) * db        # repeated weights reloaded every step
+        macs = prefix + repeated * K  # MACs per replan (1 MAC per weight per token)
+        wb_res = (prefix + repeated) * db  # each weight loaded ONCE
+        wb_non = (prefix + repeated * K) * db  # repeated weights reloaded every step
         ai_res = macs / wb_res
-        ai_non = macs / wb_non                        # == 1/db by construction (floor)
+        ai_non = macs / wb_non  # == 1/db by construction (floor)
         gain = ai_res / ai_non
-        rows.append({
-            "workload": w, "K": K, "dtype": dtype,
-            "prefix_params": prefix, "repeated_params": repeated,
-            "macs_per_replan": macs,
-            "weight_bytes_resident": wb_res, "weight_bytes_nonresident": wb_non,
-            "ai_resident_mac_per_byte": round(ai_res, 4),
-            "ai_nonresident_mac_per_byte": round(ai_non, 4),
-            "residency_gain": round(gain, 3),
-            # a machine with compute:bandwidth balance below this (MACs/byte) is COMPUTE-bound on the
-            # resident workload; above it, memory-bound. No chip assumed — compare any balance B.
-            "ridge_balance_compute_bound_below": round(ai_res, 4),
-            "regime_note": (f"resident: compute-bound for machine balance < {ai_res:.2f} MAC/byte; "
-                            f"residency raises AI {gain:.2f}x over reload-every-step"),
-            "evidence": "recovered_from_model_config (hardware-independent; no peak/bandwidth assumed)",
-        })
+        rows.append(
+            {
+                "workload": w,
+                "K": K,
+                "dtype": dtype,
+                "prefix_params": prefix,
+                "repeated_params": repeated,
+                "macs_per_replan": macs,
+                "weight_bytes_resident": wb_res,
+                "weight_bytes_nonresident": wb_non,
+                "ai_resident_mac_per_byte": round(ai_res, 4),
+                "ai_nonresident_mac_per_byte": round(ai_non, 4),
+                "residency_gain": round(gain, 3),
+                # a machine with compute:bandwidth balance below this (MACs/byte) is COMPUTE-bound on the
+                # resident workload; above it, memory-bound. No chip assumed — compare any balance B.
+                "ridge_balance_compute_bound_below": round(ai_res, 4),
+                "regime_note": (
+                    f"resident: compute-bound for machine balance < {ai_res:.2f} MAC/byte; "
+                    f"residency raises AI {gain:.2f}x over reload-every-step"
+                ),
+                "evidence": "recovered_from_model_config (hardware-independent; no peak/bandwidth assumed)",
+            }
+        )
     return rows
 
 
 def ai_csv(dtype: str = "bf16") -> str:
     from merlin.dse_guidance.corpus import _csv
+
     return _csv(ai_rows(dtype), _AI_COLS)

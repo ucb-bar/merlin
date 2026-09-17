@@ -16,6 +16,7 @@ units (see :func:`merlin.targetgen.isa_disasm.coverage`).
 Target-agnostic by construction: the vocabulary, the roles and the decode all come from the target's own
 :class:`~merlin.targetgen.isa_model.IsaModel`. Nothing here names a target, an op or a unit.
 """
+
 from __future__ import annotations
 
 import struct
@@ -51,8 +52,7 @@ def universe(model: IsaModel, *, roles: Iterable[str] | None = None) -> set[str]
     """Every derived mnemonic -- the DENOMINATOR. ``roles`` narrows it, but the default is everything the
     target's ISA defines, so a hole cannot be filtered out of the number by choosing a scope."""
     keep = set(roles) if roles is not None else None
-    return {mnem for mnem, ent in model.by_mnemonic.items()
-            if keep is None or ent.get("role") in keep}
+    return {mnem for mnem, ent in model.by_mnemonic.items() if keep is None or ent.get("role") in keep}
 
 
 def exercised(model: IsaModel, kernels: Mapping[str, str | Path]) -> dict[str, set[str]]:
@@ -87,8 +87,7 @@ def corpus_coverage(model: IsaModel, kernels: Mapping[str, str | Path]) -> dict:
     by_class: dict[str, dict] = {}
     for mnem in sorted(uni):
         cls = str(model.by_mnemonic[mnem].get("class") or mnem)
-        d = by_class.setdefault(cls, {"role": model.by_mnemonic[mnem].get("role"),
-                                      "covered": [], "uncovered": []})
+        d = by_class.setdefault(cls, {"role": model.by_mnemonic[mnem].get("role"), "covered": [], "uncovered": []})
         (d["covered"] if mnem in seen else d["uncovered"]).append(mnem)
     for d in by_class.values():
         n = len(d["covered"]) + len(d["uncovered"])
@@ -118,8 +117,12 @@ def render_markdown(cov: dict) -> str:
     """The report as a table with EXPLICIT uncovered rows -- nothing is implied covered."""
     ratio = cov.get("ratio")
     pct = "n/a" if ratio is None else f"{100 * ratio:.0f}%"
-    lines = [f"# ISA corpus coverage — {cov['target']}", "",
-             f"**{cov['n_covered']} / {cov['n_universe']} derived instructions exercised ({pct}).**", ""]
+    lines = [
+        f"# ISA corpus coverage — {cov['target']}",
+        "",
+        f"**{cov['n_covered']} / {cov['n_universe']} derived instructions exercised ({pct}).**",
+        "",
+    ]
     if cov["uncovered_by_role"]:
         lines += ["## Never exercised by any capsule", "", "| role | instructions |", "|---|---|"]
         for role, mnems in sorted(cov["uncovered_by_role"].items()):
@@ -132,7 +135,11 @@ def render_markdown(cov: dict) -> str:
         lines.append("")
     if cov["ambiguous_decodes"]:
         groups = sorted({tuple(g) for gs in cov["ambiguous_decodes"].values() for g in gs})
-        lines += ["## Ambiguous decodes (coverage here is not evidence)", "",
-                  f"{len(cov['ambiguous_decodes'])} capsule(s) contain words matching more than one "
-                  f"signature: " + "; ".join("/".join(g) for g in groups), ""]
+        lines += [
+            "## Ambiguous decodes (coverage here is not evidence)",
+            "",
+            f"{len(cov['ambiguous_decodes'])} capsule(s) contain words matching more than one "
+            f"signature: " + "; ".join("/".join(g) for g in groups),
+            "",
+        ]
     return "\n".join(lines)

@@ -14,6 +14,7 @@ Severity follows the workload class: flow/diffusion (Class A) and autoregressive
 lose their inner loop and are high-risk; a regression/parallel head (Class B) has no inner loop to
 lose and is lower-risk.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -94,19 +95,17 @@ def assess(topo: VlaRuntimeTopology, capture_facts=None, loop_recovery=None) -> 
             if tag in missing:
                 missing.remove(tag)
         recovered.append(f"K_loop(recovered K={loop_recovery.K}, source=IR)")
-        recovered.append(
-            f"repeated_region({loop_recovery.repeated_region_op_count} ops, structural)")
+        recovered.append(f"repeated_region({loop_recovery.repeated_region_op_count} ops, structural)")
         roles = [c.role for c in loop_recovery.carried_state]
         if any(r in ("latent", "kv_cache", "token_buffer") for r in roles):
             recovered.append(
-                f"loop_carried_state({loop_recovery.n_iter_args} iter_args: "
-                f"{','.join(sorted(set(roles)))})")
+                f"loop_carried_state({loop_recovery.n_iter_args} iter_args: {','.join(sorted(set(roles)))})"
+            )
         if "kv_cache" in roles:
             for tag in ("kv_cache_growth", "prefix_kv_reuse"):
                 if tag in missing:
                     missing.remove(tag)
-            recovered.append(
-                f"kv_cache_state(recovered, {loop_recovery.kv_cache_bytes} bytes)")
+            recovered.append(f"kv_cache_state(recovered, {loop_recovery.kv_cache_bytes} bytes)")
 
     hidden: list[str] = []
     for m in missing:
@@ -124,16 +123,23 @@ def assess(topo: VlaRuntimeTopology, capture_facts=None, loop_recovery=None) -> 
         reasons.append(
             f"the capture hides the K={topo.K}-step action-head loop, which is exactly the "
             "signal needed to evaluate resident weights, command batching, and autonomous-loop "
-            "interfaces")
+            "interfaces"
+        )
     if "prefix_kv_reuse" in missing:
-        reasons.append("prefix/KV produced once by the backbone and reused across the head is "
-                       "flattened to a single use, hiding the resident-prefix/KV axis")
+        reasons.append(
+            "prefix/KV produced once by the backbone and reused across the head is "
+            "flattened to a single use, hiding the resident-prefix/KV axis"
+        )
     if "replan_deadline" in missing:
-        reasons.append("the real-time replan deadline is not represented, so backbone/head "
-                       "partition and async overlap cannot be reasoned about from the capture")
+        reasons.append(
+            "the real-time replan deadline is not represented, so backbone/head "
+            "partition and async overlap cannot be reasoned about from the capture"
+        )
     if not parsed and capture_facts is not None:
-        reasons.append("the capture did not parse with stock xDSL, so even op-level structure "
-                       "is unavailable (head/backbone attribution impossible)")
+        reasons.append(
+            "the capture did not parse with stock xDSL, so even op-level structure "
+            "is unavailable (head/backbone attribution impossible)"
+        )
     if lr_present:
         severity = "low"
         reasons.append(
@@ -141,10 +147,10 @@ def assess(topo: VlaRuntimeTopology, capture_facts=None, loop_recovery=None) -> 
             f"({', '.join(sorted({c.role for c in loop_recovery.carried_state}))}) and the "
             f"{loop_recovery.repeated_region_op_count}-op repeated region are recovered directly "
             "from scf.for in the IR — the K-loop / KV-state / region-role caveats are closed "
-            "for this capture (no assumed-K, no fqn heuristic)")
+            "for this capture (no assumed-K, no fqn heuristic)"
+        )
     if not missing and not lr_present:
-        reasons.append("no multi-rate structure is implied by this workload; the flat capture is "
-                       "an adequate DSE unit")
+        reasons.append("no multi-rate structure is implied by this workload; the flat capture is an adequate DSE unit")
 
     return CaptureFidelity(
         workload=topo.workload,
@@ -183,16 +189,15 @@ def markdown(f: CaptureFidelity) -> str:
     L.append(f"- capture unit: `{f.capture_unit}`")
     L.append(f"- DSE risk severity: **{f.severity}**\n")
     L.append("> Merlin can tell when a capture is not a faithful DSE unit.\n")
-    L.append("**Preserved by the flat capture:** "
-             + (", ".join(f.preserved_structure) if f.preserved_structure
-                else "_nothing usable (capture did not parse)_"))
+    L.append(
+        "**Preserved by the flat capture:** "
+        + (", ".join(f.preserved_structure) if f.preserved_structure else "_nothing usable (capture did not parse)_")
+    )
     L.append("")
     if f.recovered_structure:
-        L.append("**Recovered from IR (loop-preserving capture):** "
-                 + ", ".join(f.recovered_structure))
+        L.append("**Recovered from IR (loop-preserving capture):** " + ", ".join(f.recovered_structure))
         L.append("")
-    L.append("**Lost to flattening:** "
-             + (", ".join(f.missing_structure) if f.missing_structure else "_none_"))
+    L.append("**Lost to flattening:** " + (", ".join(f.missing_structure) if f.missing_structure else "_none_"))
     L.append("")
     if f.hidden_axes:
         L.append("**DSE axes hidden by this loss:** " + ", ".join(f.hidden_axes))

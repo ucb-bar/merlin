@@ -18,6 +18,7 @@ module CANNOT supply is the element count when a stream lists one instruction wh
 issues several; that needs the operand's shape, and where the shape is absent the answer is UNKNOWN
 rather than a per-listed-op guess that silently under-counts.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -50,8 +51,10 @@ class VectorTerm:
     def claim(self) -> str:
         if self.complete:
             return f"{self.cycles} vector cycles over {self.instructions} instructions"
-        return (f"AT LEAST {self.cycles} vector cycles; {len(self.unmapped)} instruction(s) have no "
-                f"op class in the compiled model and are unpriced")
+        return (
+            f"AT LEAST {self.cycles} vector cycles; {len(self.unmapped)} instruction(s) have no "
+            f"op class in the compiled model and are unpriced"
+        )
 
 
 def op_class_for(mnemonic: str, known: "Iterable[str]") -> str | None:
@@ -80,18 +83,22 @@ def op_class_for(mnemonic: str, known: "Iterable[str]") -> str | None:
 
 def _model(target: str, *, base: Any = None):
     from merlin.targetgen.rtl import mlc_bridge
+
     root = base if base is not None else mlc_bridge.mlc_dir()
     if root is None:
         raise VectorModelUnavailable(
             "the machine-model checkout is not resolvable, so the vector schedule cannot be compiled; "
-            "this is UNAVAILABLE, not a vector engine that costs nothing")
+            "this is UNAVAILABLE, not a vector engine that costs nothing"
+        )
     with mlc_bridge._mlc_cwd():
         from mlc.passes.compile_vpu_cycles import discover_vpu_facts, predict_op_cycles
+
         return discover_vpu_facts(target, base=root), predict_op_cycles
 
 
-def vector_term(target: str, instructions: "Iterable[Mapping[str, Any] | tuple]", *,
-                unit: str = "Vector", base: Any = None) -> VectorTerm:
+def vector_term(
+    target: str, instructions: "Iterable[Mapping[str, Any] | tuple]", *, unit: str = "Vector", base: Any = None
+) -> VectorTerm:
     """Compile the vector cycle term for a workload's instruction stream.
 
     ``instructions`` are either mappings carrying a unit and a mnemonic, or ``(unit, mnemonic, ...)``
@@ -116,8 +123,14 @@ def vector_term(target: str, instructions: "Iterable[Mapping[str, Any] | tuple]"
             continue
         total += int(predict(cls, facts))
         counted += 1
-    return VectorTerm(cycles=total, instructions=counted, unmapped=tuple(unmapped),
-                      complete=not unmapped,
-                      provenance=(f"mlc.passes.compile_vpu_cycles over {counted} instruction(s); "
-                                  f"lanes={facts.lanes}, reduce_stages={facts.reduce_stages} "
-                                  "(structural, none fitted)"))
+    return VectorTerm(
+        cycles=total,
+        instructions=counted,
+        unmapped=tuple(unmapped),
+        complete=not unmapped,
+        provenance=(
+            f"mlc.passes.compile_vpu_cycles over {counted} instruction(s); "
+            f"lanes={facts.lanes}, reduce_stages={facts.reduce_stages} "
+            "(structural, none fitted)"
+        ),
+    )

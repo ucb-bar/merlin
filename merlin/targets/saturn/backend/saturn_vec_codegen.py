@@ -5,6 +5,7 @@ opcodes) and lives in its generic home :mod:`merlin.runtime.backends.rvv_vec_cod
 re-exports it under the saturn backend's own namespace so the relocated backend can reach it as a
 sibling without duplicating the generic code under a target-named directory.
 """
+
 from __future__ import annotations
 
 from merlin.runtime.backends.rvv_vec_codegen import *  # noqa: F401,F403

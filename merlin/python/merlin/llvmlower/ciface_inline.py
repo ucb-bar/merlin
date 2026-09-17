@@ -11,11 +11,11 @@ have a matching ``_mlir_ciface_<name>`` wrapper and exceed the declared flattene
 Inlining removes the artificial wrapper-to-implementation call while preserving both public
 symbols and all runtime-visible argument semantics.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from string import ascii_letters, digits
-
 
 DEFAULT_MAX_FLATTENED_ARGUMENTS = 256
 
@@ -37,7 +37,7 @@ def _define_name(line: str) -> tuple[str, int] | None:
     """
     if not line.startswith("define"):
         return None
-    if not line[len("define"):][:1].isspace():
+    if not line[len("define") :][:1].isspace():
         return None
     at = line.find("@")
     while at != -1:
@@ -45,7 +45,7 @@ def _define_name(line: str) -> tuple[str, int] | None:
         while end < len(line) and line[end] in _NAME_CHARS:
             end += 1
         name = line[start:end]
-        if name and name[0] in _NAME_HEAD and line[end:end + 1] == "(":
+        if name and name[0] in _NAME_HEAD and line[end : end + 1] == "(":
             return name, start
         at = line.find("@", at + 1)
     return None
@@ -61,7 +61,7 @@ def _ends_with_value_name(part: str) -> bool:
     at = text.rfind("%")
     if at == -1 or at == len(text) - 1:
         return False
-    return all(character in _NAME_CHARS for character in text[at + 1:])
+    return all(character in _NAME_CHARS for character in text[at + 1 :])
 
 
 def _has_attribute(attributes: str, wanted: str) -> bool:

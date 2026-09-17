@@ -1,6 +1,6 @@
 """Tag statically odd batch-matmul tails for feature-scoped transform padding."""
-from __future__ import annotations
 
+from __future__ import annotations
 
 FEATURE = "accumulator_resident_wholemodel_vf_bmmpad"
 TAG = "merlin.bmm_pad_tail"
@@ -10,7 +10,7 @@ FULL_TAG = "merlin.bmm_full_tile"
 # This source executes in the model2MLIR environment, where torch-mlir owns the
 # MLIR Python objects.  Keep the selector structural: provenance is useful for
 # reporting but is not required for admitting a contraction.
-RUNNER_PRELUDE = r'''
+RUNNER_PRELUDE = r"""
 def _tag_odd_batch_matmul_tails(module, ctx, mr=4, nr=8):
     from torch_mlir import ir as _btir
 
@@ -74,4 +74,4 @@ def _tag_odd_batch_matmul_tails(module, ctx, mr=4, nr=8):
             op.attributes['merlin.bmm_full_tile'] = _btir.UnitAttr.get()
     print('OK bmm_tail_pad tagged', len(tails), 'full', len(full))
     return len(tails), len(full)
-'''
+"""

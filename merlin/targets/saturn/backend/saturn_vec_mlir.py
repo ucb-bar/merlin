@@ -6,6 +6,7 @@ The emitter is target-agnostic (it lowers the VECTOR_MAP / VREDUCE command-buffe
 namespace so the relocated backend can reach it as a sibling without duplicating the generic code
 under a target-named directory.
 """
+
 from __future__ import annotations
 
 from merlin.runtime.backends.rvv_vec_mlir import *  # noqa: F401,F403

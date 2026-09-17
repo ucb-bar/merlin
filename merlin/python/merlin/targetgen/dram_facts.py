@@ -17,6 +17,7 @@ When the end is not in the card, the size is ``None`` — UNKNOWN, with ``proven
 gap it is — never a plausible default, because a fabricated window would manufacture "unmapped address"
 faults for exactly the programs the real window contains.
 """
+
 from __future__ import annotations
 
 import os
@@ -47,6 +48,7 @@ def _descriptor_for(target: str) -> Path | None:
         try:
             if p.is_file():
                 from .target_experiment import load_target_experiment
+
                 if load_target_experiment(p).target == target:
                     return p
         except Exception:  # noqa: BLE001 — a malformed env pointer must not mask the standard location
@@ -112,15 +114,17 @@ def _dram_base_from_memory_map(md_text: str) -> int | None:
 #: The three real shapes a target's DRAM window derivation can take. A *target-data* gap (the card
 #: ships no upper bound, or the target ships no memory map at all) must read differently from a
 #: *tooling* gap (the caller never asked) — otherwise "unknown" says nothing about who can fix it.
-_WHY_NO_CARD = ("target ships no memory-map card (no .md ISA reference among its declared "
-                "isa_headers) — DRAM window not derivable")
-_WHY_NO_DRAM_ROW = ("the target's memory-map card declares no DRAM region row — DRAM window not "
-                    "derivable")
+_WHY_NO_CARD = (
+    "target ships no memory-map card (no .md ISA reference among its declared isa_headers) — DRAM window not derivable"
+)
+_WHY_NO_DRAM_ROW = "the target's memory-map card declares no DRAM region row — DRAM window not derivable"
 
 
 def _why_start_only(start: int) -> str:
-    return (f"memory-map green card DRAM row {start:#x} declares no upper bound (a single address "
-            f"token) — DRAM window size not derivable")
+    return (
+        f"memory-map green card DRAM row {start:#x} declares no upper bound (a single address "
+        f"token) — DRAM window size not derivable"
+    )
 
 
 def _why_window(start: int, end: int) -> str:
@@ -128,8 +132,10 @@ def _why_window(start: int, end: int) -> str:
 
 
 def _why_bad_span(start: int, end: int) -> str:
-    return (f"memory-map green card DRAM row {start:#x} ~ {end:#x} spans no bytes (end <= start) — "
-            f"unusable, DRAM window size not derivable")
+    return (
+        f"memory-map green card DRAM row {start:#x} ~ {end:#x} spans no bytes (end <= start) — "
+        f"unusable, DRAM window size not derivable"
+    )
 
 
 def dram_window_for(target: str) -> tuple[int, int | None, str]:
@@ -152,6 +158,7 @@ def dram_window_for(target: str) -> tuple[int, int | None, str]:
         desc = _descriptor_for(target)
         if desc is not None:
             from .target_experiment import load_target_experiment
+
             te = load_target_experiment(desc)
             saw_card = False
             for h in te.isa_headers:

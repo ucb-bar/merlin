@@ -42,6 +42,7 @@ Two UNKNOWN singletons exist in this package (:mod:`merlin.perf.term` and
 becomes a term's VALUE uses :data:`merlin.perf.term.UNKNOWN`; :class:`~merlin.perf.decompose.
 Unavailable` is used only for whole analyses that could not run.
 """
+
 from __future__ import annotations
 
 import json
@@ -69,8 +70,9 @@ _KIND_DECLARED = "assumed"
 _KIND_ANALYTICAL = "analytical"
 
 
-def _validity(elaboration: Elaboration, regime: str, *, expected_error: str = "",
-              weak_regime: str = "", escalate_when: str = "") -> Validity:
+def _validity(
+    elaboration: Elaboration, regime: str, *, expected_error: str = "", weak_regime: str = "", escalate_when: str = ""
+) -> Validity:
     """A validity domain that NAMES the elaboration the value belongs to.
 
     A structural number is a property of the design that was read. Two elaborations of the same
@@ -78,10 +80,13 @@ def _validity(elaboration: Elaboration, regime: str, *, expected_error: str = ""
     numbers, so a term whose domain does not name its elaboration is claimed everywhere and
     reproducible nowhere.
     """
-    return Validity(validated_regime=f"{regime}; {elaboration.describe()}",
-                    expected_error=expected_error, weak_regime=weak_regime,
-                    escalate_when=escalate_when or ("a different RTL elaboration of this target "
-                                                    "(re-derive; do not carry this value across)"))
+    return Validity(
+        validated_regime=f"{regime}; {elaboration.describe()}",
+        expected_error=expected_error,
+        weak_regime=weak_regime,
+        escalate_when=escalate_when
+        or ("a different RTL elaboration of this target (re-derive; do not carry this value across)"),
+    )
 
 
 @dataclass(frozen=True)
@@ -102,15 +107,20 @@ class ResourceTerms:
         try:
             return self.terms[quantity]
         except KeyError:
-            raise KeyError(f"resource {self.name!r} has no term {quantity!r}; it carries "
-                           f"{sorted(self.terms)}") from None
+            raise KeyError(
+                f"resource {self.name!r} has no term {quantity!r}; it carries {sorted(self.terms)}"
+            ) from None
 
     def unknown(self) -> tuple[str, ...]:
         return tuple(sorted(q for q, t in self.terms.items() if t.is_unknown))
 
     def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "kind": self.kind.value, "evidence": self.evidence,
-                "terms": {q: t.to_dict() for q, t in sorted(self.terms.items())}}
+        return {
+            "name": self.name,
+            "kind": self.kind.value,
+            "evidence": self.evidence,
+            "terms": {q: t.to_dict() for q, t in sorted(self.terms.items())},
+        }
 
 
 @dataclass(frozen=True)
@@ -126,8 +136,7 @@ class PerformanceContract:
         for r in self.resources:
             if r.name == name:
                 return r
-        raise KeyError(f"{self.target}: no resource {name!r}; the contract carries "
-                       f"{[r.name for r in self.resources]}")
+        raise KeyError(f"{self.target}: no resource {name!r}; the contract carries {[r.name for r in self.resources]}")
 
     def resources_of(self, kind: ResourceKind) -> tuple[ResourceTerms, ...]:
         return tuple(r for r in self.resources if r.kind is kind)
@@ -145,8 +154,7 @@ class PerformanceContract:
             "target": self.target,
             "profile": self.profile.to_dict(),
             "resources": [r.to_dict() for r in self.resources],
-            "gaps": [{"what": g.what, "missing": list(g.missing), "detail": g.detail}
-                     for g in self.gaps],
+            "gaps": [{"what": g.what, "missing": list(g.missing), "detail": g.detail} for g in self.gaps],
             "unknown_terms": self.unknown_terms(),
         }
 
@@ -180,8 +188,7 @@ def _bind_arrays(profile: TargetProfile) -> list[tuple[dict[str, Any], dict[str,
     return [(u, arrays[i] if i < len(arrays) else None) for i, u in enumerate(units)]
 
 
-def _peak_term(unit: dict[str, Any], array: dict[str, Any] | None,
-               elaboration: Elaboration) -> PerformanceTerm:
+def _peak_term(unit: dict[str, Any], array: dict[str, Any] | None, elaboration: Elaboration) -> PerformanceTerm:
     """Peak MACs per cycle for one compute unit, from the discovered array's own geometry.
 
     This is a STRUCTURAL BOUND at full occupancy and nothing more. Its validity says so, and its
@@ -192,12 +199,13 @@ def _peak_term(unit: dict[str, Any], array: dict[str, Any] | None,
     name = "peak_macs_per_cycle"
     if array is None or array.get("rows") is None or array.get("cols") is None:
         return PerformanceTerm.unknown(
-            name, "mac/cycle",
-            Provenance(_KIND_STRUCTURAL, (f"facts.arrays (no array bound to unit "
-                                          f"{unit.get('name')!r})",)),
+            name,
+            "mac/cycle",
+            Provenance(_KIND_STRUCTURAL, (f"facts.arrays (no array bound to unit {unit.get('name')!r})",)),
             _validity(elaboration, "no geometry was discovered for this unit"),
             "no discovered array grounds this unit's geometry, and a peak invented from a declared "
-            "op list would be a fabricated hardware claim")
+            "op list would be a fabricated hardware claim",
+        )
     rows, cols = int(array["rows"]), int(array["cols"])
     # An element is not obliged to hold exactly one multiplier. Where the extractor discovered the
     # element's MAC idiom, use its multiplier count; where it did not, this counts ELEMENTS and the
@@ -205,26 +213,37 @@ def _peak_term(unit: dict[str, Any], array: dict[str, Any] | None,
     idiom = array.get("mac_idiom") or {}
     muls = idiom.get("muls") if isinstance(idiom, Mapping) else None
     per_element = int(muls) if isinstance(muls, int) and not isinstance(muls, bool) else 1
-    idiom_note = (f"x{per_element} multiplier(s) per element (facts mac_idiom)" if muls is not None
-                  else "counting ELEMENTS: no mac_idiom states the multipliers per element")
+    idiom_note = (
+        f"x{per_element} multiplier(s) per element (facts mac_idiom)"
+        if muls is not None
+        else "counting ELEMENTS: no mac_idiom states the multipliers per element"
+    )
     peak = rows * cols * per_element
     return PerformanceTerm(
-        name=name, value=peak, unit="mac/cycle",
-        provenance=Provenance(_KIND_STRUCTURAL,
-                              (f"facts.arrays[{array.get('name')}]: {rows}x{cols} "
-                               f"{array.get('element')} elements in {array.get('container')}, "
-                               f"{idiom_note}",)),
-        validity=_validity(elaboration,
-                           f"full occupancy: all {rows * cols} elements retiring {per_element} "
-                           f"MAC(s) each, every cycle",
-                           expected_error="an upper bound, not an expectation",
-                           weak_regime="any tile smaller than the array, where the fill intercept "
-                                       "dominates and this rate mispredicts"),
-        bounds=Bounds(lower=0, upper=peak))
+        name=name,
+        value=peak,
+        unit="mac/cycle",
+        provenance=Provenance(
+            _KIND_STRUCTURAL,
+            (
+                f"facts.arrays[{array.get('name')}]: {rows}x{cols} "
+                f"{array.get('element')} elements in {array.get('container')}, "
+                f"{idiom_note}",
+            ),
+        ),
+        validity=_validity(
+            elaboration,
+            f"full occupancy: all {rows * cols} elements retiring {per_element} MAC(s) each, every cycle",
+            expected_error="an upper bound, not an expectation",
+            weak_regime="any tile smaller than the array, where the fill intercept dominates and this rate mispredicts",
+        ),
+        bounds=Bounds(lower=0, upper=peak),
+    )
 
 
-def _depth_term(name: str, module: str | None, profile: TargetProfile, elaboration: Elaboration,
-                *, regime: str, unknown_hint: str) -> PerformanceTerm:
+def _depth_term(
+    name: str, module: str | None, profile: TargetProfile, elaboration: Elaboration, *, regime: str, unknown_hint: str
+) -> PerformanceTerm:
     """A pipeline-depth term for one RTL module. ``0`` is preserved as a real value.
 
     The walk's refusal is carried through verbatim as the unknown reason: it already says WHY (the
@@ -232,26 +251,33 @@ def _depth_term(name: str, module: str | None, profile: TargetProfile, elaborati
     what tells a reader this needs a measurement rather than a better walk.
     """
     depth, evidence = profile.timing.depth(module)
-    prov = Provenance(_KIND_STRUCTURAL,
-                      (f"facts.timing[{module}].pipeline_depth" if module
-                       else "facts.timing (no module named)",))
+    prov = Provenance(
+        _KIND_STRUCTURAL, (f"facts.timing[{module}].pipeline_depth" if module else "facts.timing (no module named)",)
+    )
     if depth is None:
         return PerformanceTerm.unknown(
-            name, "cycles", prov,
+            name,
+            "cycles",
+            prov,
             _validity(elaboration, f"the RTL timing walk over module {module!r}"),
-            f"{evidence}. {unknown_hint}")
+            f"{evidence}. {unknown_hint}",
+        )
     return PerformanceTerm(
-        name=name, value=depth, unit="cycles", provenance=prov,
-        validity=_validity(elaboration, f"{regime}; {evidence}",
-                           expected_error="exact for this elaboration: a register on the path IS a "
-                                          "pipeline stage",
-                           weak_regime="any cost that is a function of state or operands rather "
-                                       "than of wiring depth"),
-        bounds=Bounds(lower=0))
+        name=name,
+        value=depth,
+        unit="cycles",
+        provenance=prov,
+        validity=_validity(
+            elaboration,
+            f"{regime}; {evidence}",
+            expected_error="exact for this elaboration: a register on the path IS a pipeline stage",
+            weak_regime="any cost that is a function of state or operands rather than of wiring depth",
+        ),
+        bounds=Bounds(lower=0),
+    )
 
 
-def _fill_term(container: str | None, profile: TargetProfile,
-               elaboration: Elaboration) -> PerformanceTerm:
+def _fill_term(container: str | None, profile: TargetProfile, elaboration: Elaboration) -> PerformanceTerm:
     """The FILL: cycles from the first operand entering the datapath to the first result leaving.
 
     This is deliberately NOT the container module's depth, even when that depth resolved. The array
@@ -269,23 +295,32 @@ def _fill_term(container: str | None, profile: TargetProfile,
     depth, evidence = profile.timing.depth(container)
     lower = depth if depth is not None else UNKNOWN
     if depth is None:
-        reason = (f"{evidence}. Nothing establishes the depth of the datapath the operands "
-                  "traverse, so the fill is not derivable and must be measured (>=2 tile sizes "
-                  "separate the fill intercept from the per-tile rate)")
+        reason = (
+            f"{evidence}. Nothing establishes the depth of the datapath the operands "
+            "traverse, so the fill is not derivable and must be measured (>=2 tile sizes "
+            "separate the fill intercept from the per-tile rate)"
+        )
     else:
-        reason = (f"the array's container {container!r} resolves to {depth} cycles, but nothing "
-                  "establishes that the container IS the whole datapath: a module that skews the "
-                  "inputs and drains the outputs adds depth on top of the element grid. "
-                  f"{depth} is therefore a LOWER BOUND on the fill (recorded as such), not the "
-                  "fill. Measuring one small tile settles it")
+        reason = (
+            f"the array's container {container!r} resolves to {depth} cycles, but nothing "
+            "establishes that the container IS the whole datapath: a module that skews the "
+            "inputs and drains the outputs adds depth on top of the element grid. "
+            f"{depth} is therefore a LOWER BOUND on the fill (recorded as such), not the "
+            "fill. Measuring one small tile settles it"
+        )
     return PerformanceTerm.unknown(
-        "pipeline_fill_cycles", "cycles",
-        Provenance(_KIND_STRUCTURAL, (f"facts.timing[{container}].pipeline_depth" if container
-                                      else "facts.timing (no container named)",)),
-        _validity(elaboration,
-                  "the cycles between the first operand entering the datapath and the first "
-                  "result leaving it"),
-        reason, bounds=Bounds(lower=lower))
+        "pipeline_fill_cycles",
+        "cycles",
+        Provenance(
+            _KIND_STRUCTURAL,
+            (f"facts.timing[{container}].pipeline_depth" if container else "facts.timing (no container named)",),
+        ),
+        _validity(
+            elaboration, "the cycles between the first operand entering the datapath and the first result leaving it"
+        ),
+        reason,
+        bounds=Bounds(lower=lower),
+    )
 
 
 def _compute_resources(profile: TargetProfile) -> list[ResourceTerms]:
@@ -298,33 +333,52 @@ def _compute_resources(profile: TargetProfile) -> list[ResourceTerms]:
         terms = {
             "peak_macs_per_cycle": _peak_term(unit, array, elaboration),
             "container_depth_cycles": _depth_term(
-                "container_depth_cycles", container, profile, elaboration,
-                regime=f"the feed-forward depth of {container!r}, the module the array fact names "
-                       "as its container",
+                "container_depth_cycles",
+                container,
+                profile,
+                elaboration,
+                regime=f"the feed-forward depth of {container!r}, the module the array fact names as its container",
                 unknown_hint="This module's depth is NOT structurally derivable and must come from "
-                             "the sequencer's own limits or from a measurement; a depth of 0 "
-                             "assumed here would understate every small tile."),
+                "the sequencer's own limits or from a measurement; a depth of 0 "
+                "assumed here would understate every small tile.",
+            ),
             "pipeline_fill_cycles": _fill_term(container, profile, elaboration),
             "element_latency_cycles": _depth_term(
-                "element_latency_cycles", element, profile, elaboration,
+                "element_latency_cycles",
+                element,
+                profile,
+                elaboration,
                 regime="one array element's feed-forward depth (0 means combinational: a real "
-                       "answer, not a missing one)",
-                unknown_hint="The element's latency is sequenced, so it is not a wiring depth."),
+                "answer, not a missing one)",
+                unknown_hint="The element's latency is sequenced, so it is not a wiring depth.",
+            ),
             "initiation_interval_cycles": PerformanceTerm.unknown(
-                "initiation_interval_cycles", "cycles",
+                "initiation_interval_cycles",
+                "cycles",
                 Provenance(_KIND_ANALYTICAL, ("facts.timing (feed-forward depth walk)",)),
                 _validity(elaboration, "no source in the contract states an initiation interval"),
                 "the structural walk derives COMPLETION latency (registers on a path), which is a "
                 "different number from the interval between successive issues; conflating them is "
                 "how a vendor latency table makes a correctly-scheduled program look under-delayed. "
-                "Needs a two-point measurement (>=2 points per fitted parameter)"),
+                "Needs a two-point measurement (>=2 points per fitted parameter)",
+            ),
         }
-        out.append(ResourceTerms(
-            name=uname, kind=ResourceKind.COMPUTE, terms=terms,
-            evidence=(f"declared compute unit {uname!r} (kind {unit.get('kind')!r})"
-                      + (f" bound to discovered array {array.get('name')!r} "
-                         f"[{array.get('container')}/{array.get('element')}]" if array else
-                         "; no discovered array"))))
+        out.append(
+            ResourceTerms(
+                name=uname,
+                kind=ResourceKind.COMPUTE,
+                terms=terms,
+                evidence=(
+                    f"declared compute unit {uname!r} (kind {unit.get('kind')!r})"
+                    + (
+                        f" bound to discovered array {array.get('name')!r} "
+                        f"[{array.get('container')}/{array.get('element')}]"
+                        if array
+                        else "; no discovered array"
+                    )
+                ),
+            )
+        )
     return out
 
 
@@ -342,7 +396,7 @@ def _declared_capacities(profile: TargetProfile) -> dict[str, tuple[int, str]]:
     out: dict[str, tuple[int, str]] = {}
     suffix = "_bytes"
     mm = profile.sources.residual.get("memory_model") or {}
-    for key, value in (mm.items() if isinstance(mm, Mapping) else ()):
+    for key, value in mm.items() if isinstance(mm, Mapping) else ():
         if str(key).endswith(suffix) and isinstance(value, int) and not isinstance(value, bool):
             out[str(key)[: -len(suffix)]] = (int(value), f"residual.memory_model.{key}")
     caps = profile.sources.residual.get("capabilities") or {}
@@ -361,8 +415,11 @@ def capacity_terms(profile: TargetProfile) -> list[ResourceTerms]:
     which is a finding, and is actionable, in a way that a quietly-preferred value is not.
     """
     elaboration = profile.elaboration
-    grounded = {str(m["name"]): (int(m["bytes"]), m) for m in profile.sources.memories()
-                if m.get("name") and isinstance(m.get("bytes"), int)}
+    grounded = {
+        str(m["name"]): (int(m["bytes"]), m)
+        for m in profile.sources.memories()
+        if m.get("name") and isinstance(m.get("bytes"), int)
+    }
     declared = _declared_capacities(profile)
     out: list[ResourceTerms] = []
     for name in sorted(set(grounded) | set(declared)):
@@ -370,53 +427,70 @@ def capacity_terms(profile: TargetProfile) -> list[ResourceTerms]:
         d = declared.get(name)
         if g is not None and d is not None and g[0] != d[0]:
             term = PerformanceTerm.unknown(
-                "capacity_bytes", "bytes",
+                "capacity_bytes",
+                "bytes",
                 Provenance(_KIND_STRUCTURAL, (f"facts.memories[{name}].bytes", d[1])),
                 _validity(elaboration, f"two sources state {name}'s capacity"),
                 f"the sources DISAGREE: the RTL facts say {g[0]} bytes and {d[1]} says {d[0]} "
                 f"bytes. Neither is preferred here -- a capacity chosen between disagreeing "
-                f"sources is unreproducible, and the disagreement itself is the finding")
+                f"sources is unreproducible, and the disagreement itself is the finding",
+            )
             ev = f"memory {name!r}: facts {g[0]} B vs declaration {d[0]} B -- unresolved"
         elif g is not None:
             mem = g[1]
             term = PerformanceTerm(
-                name="capacity_bytes", value=g[0], unit="bytes",
-                provenance=Provenance(_KIND_STRUCTURAL,
-                                      (f"facts.memories[{name}]: {g[0]} bytes, depth "
-                                       f"{mem.get('depth')}, via {mem.get('source')}",)),
+                name="capacity_bytes",
+                value=g[0],
+                unit="bytes",
+                provenance=Provenance(
+                    _KIND_STRUCTURAL,
+                    (f"facts.memories[{name}]: {g[0]} bytes, depth {mem.get('depth')}, via {mem.get('source')}",),
+                ),
                 validity=_validity(elaboration, f"the {name} discovered in this elaboration"),
-                bounds=Bounds(lower=0))
+                bounds=Bounds(lower=0),
+            )
             ev = f"memory {name!r} discovered in the RTL facts"
         elif d is not None:
             term = PerformanceTerm(
-                name="capacity_bytes", value=d[0], unit="bytes",
+                name="capacity_bytes",
+                value=d[0],
+                unit="bytes",
                 provenance=Provenance(_KIND_DECLARED, (d[1],)),
-                validity=_validity(elaboration,
-                                   f"{name}'s capacity as DECLARED by {d[1]}; no RTL fact "
-                                   "corroborates it",
-                                   weak_regime="a declaration is intent, not evidence: it may "
-                                               "describe a different elaboration than the one this "
-                                               "contract's structural terms came from"),
-                bounds=Bounds(lower=0))
+                validity=_validity(
+                    elaboration,
+                    f"{name}'s capacity as DECLARED by {d[1]}; no RTL fact corroborates it",
+                    weak_regime="a declaration is intent, not evidence: it may "
+                    "describe a different elaboration than the one this "
+                    "contract's structural terms came from",
+                ),
+                bounds=Bounds(lower=0),
+            )
             ev = f"memory {name!r} declared in the residual, not grounded"
-        else:                                       # unreachable: name came from one of the two
+        else:  # unreachable: name came from one of the two
             continue
-        out.append(ResourceTerms(name=name, kind=ResourceKind.OTHER,
-                                 terms={"capacity_bytes": term}, evidence=ev))
+        out.append(ResourceTerms(name=name, kind=ResourceKind.OTHER, terms={"capacity_bytes": term}, evidence=ev))
     if not out:
         # No memory is named by either source. The trait still says whether the machine HAS a managed
         # store; the capacity is what is missing, and it is recorded as such rather than omitted.
         trait = profile.trait("managed_scratchpad")
-        out.append(ResourceTerms(
-            name="operand_store", kind=ResourceKind.OTHER,
-            terms={"capacity_bytes": PerformanceTerm.unknown(
-                "capacity_bytes", "bytes",
-                Provenance(_KIND_ANALYTICAL, ("facts.memories (empty)", "residual.memory_model")),
-                _validity(elaboration, "no source states an operand-store capacity"),
-                f"no memory capacity is grounded or declared for this target "
-                f"(managed_scratchpad={trait.satisfied!r}: {trait.evidence}). A capacity guessed "
-                f"from a shipped model config would be residual-tier at most and is never a fact")},
-            evidence="no memory is named by either source"))
+        out.append(
+            ResourceTerms(
+                name="operand_store",
+                kind=ResourceKind.OTHER,
+                terms={
+                    "capacity_bytes": PerformanceTerm.unknown(
+                        "capacity_bytes",
+                        "bytes",
+                        Provenance(_KIND_ANALYTICAL, ("facts.memories (empty)", "residual.memory_model")),
+                        _validity(elaboration, "no source states an operand-store capacity"),
+                        f"no memory capacity is grounded or declared for this target "
+                        f"(managed_scratchpad={trait.satisfied!r}: {trait.evidence}). A capacity guessed "
+                        f"from a shipped model config would be residual-tier at most and is never a fact",
+                    )
+                },
+                evidence="no memory is named by either source",
+            )
+        )
     return out
 
 
@@ -438,24 +512,30 @@ def _movement_resource(profile: TargetProfile) -> ResourceTerms | None:
         return None
     elaboration = profile.elaboration
     return ResourceTerms(
-        name="data_movement", kind=ResourceKind.MOVEMENT,
+        name="data_movement",
+        kind=ResourceKind.MOVEMENT,
         terms={
             "peak_bytes_per_cycle": PerformanceTerm.unknown(
-                "peak_bytes_per_cycle", "bytes/cycle",
+                "peak_bytes_per_cycle",
+                "bytes/cycle",
                 Provenance(_KIND_STRUCTURAL, ("facts.interfaces (movement engine)",)),
                 _validity(elaboration, "the movement engine named by the facts interfaces"),
                 "no fact states this engine's beat width or its issue rate; the structural walk "
                 "derives feed-forward depth, and a sequenced engine has none. Needs a measurement "
-                "at >=2 transfer sizes to separate the rate from the fixed per-transfer cost"),
+                "at >=2 transfer sizes to separate the rate from the fixed per-transfer cost",
+            ),
             "base_latency_cycles": PerformanceTerm.unknown(
-                "base_latency_cycles", "cycles",
+                "base_latency_cycles",
+                "cycles",
                 Provenance(_KIND_STRUCTURAL, ("facts.timing (sequenced units refuse)",)),
                 _validity(elaboration, "the movement engine named by the facts interfaces"),
                 "the movement engine is sequenced: its latency is a function of state and byte "
                 "count, so no wiring depth is its latency. This is the term to buy first where "
-                "movement dominates the cycle count"),
+                "movement dominates the cycle count",
+            ),
         },
-        evidence=f"movement engine evidenced by {trait.evidence}")
+        evidence=f"movement engine evidenced by {trait.evidence}",
+    )
 
 
 def _fixed_resource(profile: TargetProfile) -> ResourceTerms:
@@ -466,15 +546,21 @@ def _fixed_resource(profile: TargetProfile) -> ResourceTerms:
     """
     elaboration = profile.elaboration
     return ResourceTerms(
-        name="fixed", kind=ResourceKind.FIXED,
-        terms={"startup_cycles": PerformanceTerm.unknown(
-            "startup_cycles", "cycles",
-            Provenance(_KIND_ANALYTICAL, ("no static source states a startup cost",)),
-            _validity(elaboration, "the run's fixed cost before any rate applies"),
-            "reset, program load and the first issue are not properties of the wiring, so no static "
-            "fact carries them. They are separable by an isolation experiment (a program whose "
-            "first instruction is the halt) and never by fitting a rate")},
-        evidence="the intercept every rate-only model omits")
+        name="fixed",
+        kind=ResourceKind.FIXED,
+        terms={
+            "startup_cycles": PerformanceTerm.unknown(
+                "startup_cycles",
+                "cycles",
+                Provenance(_KIND_ANALYTICAL, ("no static source states a startup cost",)),
+                _validity(elaboration, "the run's fixed cost before any rate applies"),
+                "reset, program load and the first issue are not properties of the wiring, so no static "
+                "fact carries them. They are separable by an isolation experiment (a program whose "
+                "first instruction is the halt) and never by fitting a rate",
+            )
+        },
+        evidence="the intercept every rate-only model omits",
+    )
 
 
 # --------------------------------------------------------------------------------------------
@@ -482,17 +568,24 @@ def _fixed_resource(profile: TargetProfile) -> ResourceTerms:
 # --------------------------------------------------------------------------------------------
 
 
-def derive_contract(target: str, *, profile: TargetProfile | None = None,
-                    facts: Mapping[str, Any] | None = None,
-                    residual: Mapping[str, Any] | None = None,
-                    allow_extraction: bool = False) -> PerformanceContract:
+def derive_contract(
+    target: str,
+    *,
+    profile: TargetProfile | None = None,
+    facts: Mapping[str, Any] | None = None,
+    residual: Mapping[str, Any] | None = None,
+    allow_extraction: bool = False,
+) -> PerformanceContract:
     """Derive ``target``'s performance contract from its profile.
 
     One code path for every target. Which resources appear, and which of their terms carry a value,
     is decided entirely by what that target's own sources evidence.
     """
-    prof = profile if profile is not None else derive_profile(
-        target, facts=facts, residual=residual, allow_extraction=allow_extraction)
+    prof = (
+        profile
+        if profile is not None
+        else derive_profile(target, facts=facts, residual=residual, allow_extraction=allow_extraction)
+    )
 
     resources: list[ResourceTerms] = list(_compute_resources(prof))
     movement = _movement_resource(prof)
@@ -504,36 +597,54 @@ def derive_contract(target: str, *, profile: TargetProfile | None = None,
     gaps: list[Unavailable] = []
     if movement is None:
         dma = prof.trait("explicit_dma")
-        gaps.append(Unavailable(
-            "a data-movement resource", tuple(dma.missing),
-            detail=("no movement engine is evidenced, so this contract prices none. That is NOT a "
+        gaps.append(
+            Unavailable(
+                "a data-movement resource",
+                tuple(dma.missing),
+                detail=(
+                    "no movement engine is evidenced, so this contract prices none. That is NOT a "
                     "claim that the target does not move data -- where it does, the missing "
                     "resource is likely the dominant one, and its absence here is a hole in the "
-                    "evidence rather than in the machine")))
+                    "evidence rather than in the machine"
+                ),
+            )
+        )
     completion = prof.trait("explicit_completion")
     ports = prof.trait("independent_engine_ports")
     if completion.satisfied is not True or ports.satisfied is not True:
-        gaps.append(Unavailable(
-            "the composition operator (how these resources' times compose into a runtime)",
-            tuple(dict.fromkeys((*completion.missing, *ports.missing))),
-            detail=("it is NEVER defaulted to max: textbook roofline assumes perfect overlap, and a "
+        gaps.append(
+            Unavailable(
+                "the composition operator (how these resources' times compose into a runtime)",
+                tuple(dict.fromkeys((*completion.missing, *ports.missing))),
+                detail=(
+                    "it is NEVER defaulted to max: textbook roofline assumes perfect overlap, and a "
                     "target that takes turns sums instead, so deriving max where the truth is sum "
                     "understates runtime in the flattering direction. "
                     "merlin.perf.headroom.composition_operator answers it from an activity source "
-                    "with an independent overlap observation")))
+                    "with an independent overlap observation"
+                ),
+            )
+        )
     if not prof.elaboration.evidenced:
-        gaps.append(Unavailable(
-            "an evidenced elaboration for every term",
-            ("a digest for the dialect the extractor actually read",),
-            detail=prof.elaboration.note or "the facts artifact records no digest for its input"))
+        gaps.append(
+            Unavailable(
+                "an evidenced elaboration for every term",
+                ("a digest for the dialect the extractor actually read",),
+                detail=prof.elaboration.note or "the facts artifact records no digest for its input",
+            )
+        )
     if prof.timing.status != "present":
-        gaps.append(Unavailable(
-            "structural pipeline depths",
-            ("a facts artifact carrying a timing block",),
-            detail=(f"the timing fact class is {prof.timing.status} for this target. UNCACHED is "
-                    "not the same as absent: the fact class exists and a re-extraction answers it")))
-    return PerformanceContract(target=target, profile=prof, resources=tuple(resources),
-                               gaps=tuple(gaps))
+        gaps.append(
+            Unavailable(
+                "structural pipeline depths",
+                ("a facts artifact carrying a timing block",),
+                detail=(
+                    f"the timing fact class is {prof.timing.status} for this target. UNCACHED is "
+                    "not the same as absent: the fact class exists and a re-extraction answers it"
+                ),
+            )
+        )
+    return PerformanceContract(target=target, profile=prof, resources=tuple(resources), gaps=tuple(gaps))
 
 
 def contract_table(contracts: Sequence[PerformanceContract]) -> str:

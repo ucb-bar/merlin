@@ -29,6 +29,7 @@ falls back to a plain copy, which is the escape hatch if a filesystem ever repor
 honor. Every entry point degrades to a copy rather than failing, so the store is an optimization and
 never a dependency.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -109,20 +110,19 @@ def object_for(root: Path, source: Path) -> Path | None:
                 obj.unlink(missing_ok=True)
             obj.parent.mkdir(parents=True, exist_ok=True)
             # Stage under a name no other writer can hold, so nothing can link a half-written file.
-            handle, staged = tempfile.mkstemp(dir=obj.parent, prefix=f"{obj.name}.",
-                                              suffix=".pending")
+            handle, staged = tempfile.mkstemp(dir=obj.parent, prefix=f"{obj.name}.", suffix=".pending")
             os.close(handle)
             pending = Path(staged)
             try:
                 shutil.copyfile(source, pending, follow_symlinks=True)
                 pending.chmod(mode)
-                os.link(pending, obj)       # atomic create-if-absent
+                os.link(pending, obj)  # atomic create-if-absent
             except FileExistsError:
-                continue                    # another writer won; the loop re-validates ITS object
+                continue  # another writer won; the loop re-validates ITS object
             finally:
-                pending.unlink(missing_ok=True)   # the bytes live on via obj once the link is made
+                pending.unlink(missing_ok=True)  # the bytes live on via obj once the link is made
             return obj
-        return None                         # lost the race four times: copy rather than spin
+        return None  # lost the race four times: copy rather than spin
     except OSError:
         return None
 
@@ -153,8 +153,9 @@ def place_tree(source: Path, dst: Path, root: Path | None) -> None:
     an unbounded walk. A dangling link raises, and so does a non-regular file, because silently
     omitting either would make the frozen tree smaller than what was declared.
     """
+
     def walk(current: Path, out: Path, ancestry: tuple[tuple[int, int], ...]) -> None:
-        stat = current.stat()               # follows links; a dangling one raises
+        stat = current.stat()  # follows links; a dangling one raises
         key = (stat.st_dev, stat.st_ino)
         # A cycle is a directory that contains ITSELF, which is what makes the walk unbounded. Two
         # distinct links to one shared directory are not that -- a tree may legitimately declare the
@@ -164,7 +165,7 @@ def place_tree(source: Path, dst: Path, root: Path | None) -> None:
         out.mkdir(parents=True, exist_ok=True)
         for entry in sorted(current.iterdir()):
             target = out / entry.name
-            if entry.is_dir():              # follows links, as a dereferencing copy would
+            if entry.is_dir():  # follows links, as a dereferencing copy would
                 walk(entry, target, ancestry + (key,))
             elif entry.is_file():
                 place_file(entry, target, root)
@@ -173,7 +174,8 @@ def place_tree(source: Path, dst: Path, root: Path | None) -> None:
                 # tree smaller than what was declared is the failure to avoid, so say so and stop.
                 raise RuntimeError(
                     f"refusing to freeze {entry}: not a regular file or directory "
-                    f"(a dangling symlink, or a device/socket/fifo)")
+                    f"(a dangling symlink, or a device/socket/fifo)"
+                )
         shutil.copystat(current, out)
 
     walk(source, dst, ())
@@ -247,12 +249,11 @@ def adopt(path: Path, root: Path | None) -> int:
     except OSError:
         return 0
     if (held.st_dev, held.st_ino) == (before.st_dev, before.st_ino):
-        return 0                            # already the store's inode: this name is the saving
+        return 0  # already the store's inode: this name is the saving
     try:
-        handle, staged = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.",
-                                          suffix=".adopt")
+        handle, staged = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".adopt")
     except OSError:
-        return 0                            # no write permission on the directory; leave it alone
+        return 0  # no write permission on the directory; leave it alone
     os.close(handle)
     link = Path(staged)
     try:

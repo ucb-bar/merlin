@@ -16,6 +16,7 @@ Design contract:
   * **target-agnostic** — the target/suite/method/model/run_id all arrive as arguments from the run's
     own metadata (never hardcoded here).
 """
+
 from __future__ import annotations
 
 import os
@@ -131,8 +132,14 @@ def emit_to_aet(
             notional, cost, cost_is_estimate = cost, 0.0, False
 
         logger = EvalRunLogger.start(
-            project=project, suite=suite, target=target, method=method, seed=seed,
-            run_id=run_id, run_path=run_dir, tracking_mode="local",
+            project=project,
+            suite=suite,
+            target=target,
+            method=method,
+            seed=seed,
+            run_id=run_id,
+            run_path=run_dir,
+            tracking_mode="local",
         )
         logger.log_token_usage(
             input_tokens=raw_input,
@@ -180,10 +187,12 @@ def emit_to_aet(
         cost_note = " (per-turn ESTIMATE; transcript truncated, no result event)" if cost_is_estimate else ""
         if notional is not None:
             cost_note = f" ({billing_mode}: ${notional:.4f} notional, not billed)"
-        _warn(f"recorded run {run_id} → {run_dir}/logs "
-              f"(cost=${cost:.4f}{cost_note}, "
-              f"turns={max(int(result.num_turns or 0), observed_turns)}, "
-              f"tools={result.tool_call_count})")
+        _warn(
+            f"recorded run {run_id} → {run_dir}/logs "
+            f"(cost=${cost:.4f}{cost_note}, "
+            f"turns={max(int(result.num_turns or 0), observed_turns)}, "
+            f"tools={result.tool_call_count})"
+        )
         return True
     except Exception as e:
         _warn(f"failed to record run {run_id} into aet: {e}")

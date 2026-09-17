@@ -15,6 +15,7 @@ and unprincipled. This module replaces it two ways:
 
 No ``re`` here by construction — this is part of the de-regex sweep.
 """
+
 from __future__ import annotations
 
 import json
@@ -38,7 +39,7 @@ def strip_code_fence(text: str) -> str:
     nl = s.find("\n")
     if nl == -1:
         return s
-    body = s[nl + 1:]
+    body = s[nl + 1 :]
     end = body.rfind("```")
     return (body[:end] if end != -1 else body).strip()
 
@@ -75,7 +76,7 @@ def locate_json(s: str) -> str | None:
         elif ch in "}]":
             depth -= 1
             if depth == 0:
-                return s[start:j + 1]
+                return s[start : j + 1]
     return None
 
 
@@ -86,6 +87,7 @@ def parse_json(text: str | None, *, default: Any = _RAISE, schema: dict | None =
     balanced JSON structure and parse that. With ``schema`` and ``jsonschema`` installed, the value
     is validated. On any failure return ``default`` when one was given (tolerant), otherwise raise
     :class:`StructuredOutputError`."""
+
     def _fail(msg: str):
         if default is _RAISE:
             raise StructuredOutputError(msg)
@@ -158,13 +160,11 @@ def _schema_errors(value: Any, schema: dict) -> list[str]:
     except Exception:
         return []
     validator = jsonschema.Draft202012Validator(schema)
-    return [f"{'/'.join(str(p) for p in e.path) or '<root>'}: {e.message}"
-            for e in validator.iter_errors(value)]
+    return [f"{'/'.join(str(p) for p in e.path) or '<root>'}: {e.message}" for e in validator.iter_errors(value)]
 
 
 def _instruction(schema: dict | None) -> str:
-    base = ("Respond with ONLY a single JSON value and nothing else — no prose, no explanation, "
-            "no markdown code fences.")
+    base = "Respond with ONLY a single JSON value and nothing else — no prose, no explanation, no markdown code fences."
     if schema is not None:
         return base + " It MUST conform to this JSON Schema:\n" + json.dumps(schema, indent=2)
     return base
@@ -173,8 +173,9 @@ def _instruction(schema: dict | None) -> str:
 Runner = Callable[[str], "str | None"]  # prompt -> reply text (None when the agent is unavailable)
 
 
-def structured_agent_call(runner: Runner, prompt: str, schema: dict | None = None, *,
-                          retries: int = 1, instruction: str | None = None) -> Any:
+def structured_agent_call(
+    runner: Runner, prompt: str, schema: dict | None = None, *, retries: int = 1, instruction: str | None = None
+) -> Any:
     """Run ``runner(prompt)`` demanding a JSON reply matching ``schema``; parse, validate, retry.
 
     The turn is constrained (the schema/instruction is appended to ``prompt``) instead of the reply
@@ -185,8 +186,11 @@ def structured_agent_call(runner: Runner, prompt: str, schema: dict | None = Non
     instr = instruction if instruction is not None else _instruction(schema)
     last_err = "no attempt made"
     for attempt in range(retries + 1):
-        suffix = instr if attempt == 0 else (
-            f"{instr}\n\nYour previous reply was rejected: {last_err}. Reply with JSON only.")
+        suffix = (
+            instr
+            if attempt == 0
+            else (f"{instr}\n\nYour previous reply was rejected: {last_err}. Reply with JSON only.")
+        )
         reply = runner(f"{prompt}\n\n{suffix}")
         if not reply:
             raise StructuredOutputError("agent returned no text (unavailable?)")

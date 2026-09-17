@@ -23,13 +23,15 @@ document it did not verify is worse than no cache: it converts a stale answer in
 PURGEABLE. This is a cache under ``out/artifacts/cache/``, never a product: every entry is exactly
 reproducible by running the two engines again, and deleting it costs time and no evidence.
 """
+
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
-import hashlib
-import json
+
 from merlin.common import jsonio as _mjson
 
 __all__ = ["capture_key", "lookup", "store", "store_root", "census"]
@@ -41,6 +43,7 @@ _PIN_NAMES = ("gsim_binary", "gsim_firrtl", "gsim_model", "verilator_binary", "v
 def store_root(target: str) -> Path:
     """``out/artifacts/cache/gsim_captures/<target>/`` -- created on demand."""
     from merlin.common.artifacts import cache_dir
+
     root = cache_dir("gsim_captures") / str(target)
     root.mkdir(parents=True, exist_ok=True)
     return root
@@ -60,9 +63,13 @@ def _canonical(value: object) -> bytes:
     return _mjson.canonical_json(value, trailing_newline=True)
 
 
-def capture_key(elf_sha256: str, pins: Mapping[str, Any], *,
-                workload_sha256: str | None = None,
-                semantic_reference: Mapping[str, Any] | None = None) -> str | None:
+def capture_key(
+    elf_sha256: str,
+    pins: Mapping[str, Any],
+    *,
+    workload_sha256: str | None = None,
+    semantic_reference: Mapping[str, Any] | None = None,
+) -> str | None:
     """The store key, or ``None`` when the inputs do not fully determine a capture.
 
     Refuses rather than keying on a partial pin set: an entry filed under an incomplete key would be
@@ -73,9 +80,9 @@ def capture_key(elf_sha256: str, pins: Mapping[str, Any], *,
     shas = _pin_shas(pins)
     if set(shas) != set(_PIN_NAMES):
         return None
-    if ((workload_sha256 is None) != (semantic_reference is None)
-            or (workload_sha256 is not None
-                and (not isinstance(workload_sha256, str) or len(workload_sha256) != 64))):
+    if (workload_sha256 is None) != (semantic_reference is None) or (
+        workload_sha256 is not None and (not isinstance(workload_sha256, str) or len(workload_sha256) != 64)
+    ):
         return None
     digest = hashlib.sha256()
     digest.update(elf_sha256.encode())
@@ -94,17 +101,24 @@ def capture_key(elf_sha256: str, pins: Mapping[str, Any], *,
     return digest.hexdigest()
 
 
-def _answers(document: Any, *, elf_sha256: str, pins: Mapping[str, Any],
-             workload_sha256: str | None = None,
-             semantic_reference: Mapping[str, Any] | None = None) -> bool:
+def _answers(
+    document: Any,
+    *,
+    elf_sha256: str,
+    pins: Mapping[str, Any],
+    workload_sha256: str | None = None,
+    semantic_reference: Mapping[str, Any] | None = None,
+) -> bool:
     """Does this stored document answer the question being asked?"""
     if not isinstance(document, Mapping):
         return False
     if document.get("elf_sha256") != elf_sha256:
         return False
     want = _pin_shas(pins)
-    for side, binary, firrtl in (("reference", "verilator_binary", "verilator_firrtl"),
-                                 ("candidate", "gsim_binary", "gsim_firrtl")):
+    for side, binary, firrtl in (
+        ("reference", "verilator_binary", "verilator_firrtl"),
+        ("candidate", "gsim_binary", "gsim_firrtl"),
+    ):
         arm = document.get(side)
         if not isinstance(arm, Mapping):
             return False
@@ -113,8 +127,7 @@ def _answers(document: Any, *, elf_sha256: str, pins: Mapping[str, Any],
         if arm.get("firrtl_sha256") != want.get(firrtl):
             return False
     candidate = document.get("candidate")
-    if (not isinstance(candidate, Mapping)
-            or candidate.get("model_sha256") != want.get("gsim_model")):
+    if not isinstance(candidate, Mapping) or candidate.get("model_sha256") != want.get("gsim_model"):
         return False
     if workload_sha256 is not None and document.get("workload_sha256") != workload_sha256:
         return False
@@ -123,12 +136,16 @@ def _answers(document: Any, *, elf_sha256: str, pins: Mapping[str, Any],
     return True
 
 
-def lookup(target: str, *, elf_sha256: str, pins: Mapping[str, Any],
-           workload_sha256: str | None = None,
-           semantic_reference: Mapping[str, Any] | None = None) -> dict[str, Any] | None:
+def lookup(
+    target: str,
+    *,
+    elf_sha256: str,
+    pins: Mapping[str, Any],
+    workload_sha256: str | None = None,
+    semantic_reference: Mapping[str, Any] | None = None,
+) -> dict[str, Any] | None:
     """A stored capture for these exact bytes and engines, or ``None``."""
-    key = capture_key(elf_sha256, pins, workload_sha256=workload_sha256,
-                      semantic_reference=semantic_reference)
+    key = capture_key(elf_sha256, pins, workload_sha256=workload_sha256, semantic_reference=semantic_reference)
     if key is None:
         return None
     root = store_root(target)
@@ -147,9 +164,13 @@ def lookup(target: str, *, elf_sha256: str, pins: Mapping[str, Any],
             document = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if not _answers(document, elf_sha256=elf_sha256, pins=pins,
-                        workload_sha256=workload_sha256,
-                        semantic_reference=semantic_reference):
+        if not _answers(
+            document,
+            elf_sha256=elf_sha256,
+            pins=pins,
+            workload_sha256=workload_sha256,
+            semantic_reference=semantic_reference,
+        ):
             continue
         if path != paths[0]:
             store(target, elf_sha256=elf_sha256, pins=pins, document=document)
@@ -157,8 +178,7 @@ def lookup(target: str, *, elf_sha256: str, pins: Mapping[str, Any],
     return None
 
 
-def store(target: str, *, elf_sha256: str, pins: Mapping[str, Any],
-          document: Mapping[str, Any]) -> Path | None:
+def store(target: str, *, elf_sha256: str, pins: Mapping[str, Any], document: Mapping[str, Any]) -> Path | None:
     """File a capture. Returns the path, or ``None`` when it was not storable.
 
     A document that does not answer for the inputs it is filed under is REFUSED rather than written:
@@ -166,16 +186,19 @@ def store(target: str, *, elf_sha256: str, pins: Mapping[str, Any],
     """
     workload_sha256 = document.get("workload_sha256")
     semantic_reference = document.get("semantic_reference")
-    key = capture_key(elf_sha256, pins, workload_sha256=workload_sha256,
-                      semantic_reference=semantic_reference)
+    key = capture_key(elf_sha256, pins, workload_sha256=workload_sha256, semantic_reference=semantic_reference)
     if key is None or not _answers(
-            document, elf_sha256=elf_sha256, pins=pins,
-            workload_sha256=workload_sha256, semantic_reference=semantic_reference):
+        document,
+        elf_sha256=elf_sha256,
+        pins=pins,
+        workload_sha256=workload_sha256,
+        semantic_reference=semantic_reference,
+    ):
         return None
     path = store_root(target) / f"{key}.json"
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(document, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(path)                      # atomic: a reader never sees a half-written capture
+    tmp.replace(path)  # atomic: a reader never sees a half-written capture
     return path
 
 

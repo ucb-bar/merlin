@@ -5,6 +5,7 @@ target adapter extracts these facts from both emitted programs. Matching signatu
 for calibration; this module cannot certify the truth of an adapter's extraction. Unknown facts
 and stale artifact identities refuse admission. Timing never executes the full graph here.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -13,28 +14,30 @@ import math
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Mapping, Sequence
 
+from merlin.common import jsonio as _mjson
 from merlin.xdsl_dialects.lowering.global_plan import CycleInterval, ValueRepresentation
 
 from .activity_schedule import ActivityEvent, schedule_activity
 from .execution_policy import (
-    ITERATION_MAX_SECONDS, SimulationAdmission, SimulationBudget, WarmComputeReceipt, WarmProfileContract,
-    admit_reduced_witness, require_probe_execution,
+    ITERATION_MAX_SECONDS,
+    SimulationAdmission,
+    SimulationBudget,
+    WarmComputeReceipt,
+    WarmProfileContract,
+    admit_reduced_witness,
+    require_probe_execution,
 )
-from merlin.common import jsonio as _mjson
-
 
 _digest = _mjson.canonical_sha256
 
 
 def _sha(value: str, name: str) -> None:
-    if (not isinstance(value, str) or len(value) != 64
-            or any(c not in "0123456789abcdef" for c in value)):
+    if not isinstance(value, str) or len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
         raise ValueError(f"{name} must be a SHA-256 digest of current evidence bytes")
 
 
 def _known(value: Any) -> None:
-    if value is None or (isinstance(value, str) and
-                         (not value.strip() or value.lower() in {"unknown", "unresolved"})):
+    if value is None or (isinstance(value, str) and (not value.strip() or value.lower() in {"unknown", "unresolved"})):
         raise ValueError("mechanism equivalence contains UNKNOWN evidence")
     if isinstance(value, Mapping):
         for key, item in value.items():
@@ -72,8 +75,15 @@ class MechanismSignature:
 
     def __post_init__(self) -> None:
         facts = json.loads(self.canonical_json)
-        required = {"representations", "events", "capacity_regime", "tile_shape",
-                    "edge_cases", "repetition_semantics", "instruction_semantics"}
+        required = {
+            "representations",
+            "events",
+            "capacity_regime",
+            "tile_shape",
+            "edge_cases",
+            "repetition_semantics",
+            "instruction_semantics",
+        }
         if not isinstance(facts, dict) or set(facts) != required:
             raise ValueError("incomplete mechanism signature")
         _known(facts)
@@ -91,14 +101,24 @@ class MechanismSignature:
             group = event["serial_group"]
             if not isinstance(group, list) or len(group) > 1:
                 raise ValueError("serial group must be empty or name one physical contention group")
-            events.append(ActivityEvent(
-                str(index), event["resource"], event["kind"], 0,
-                tuple(str(dep) for dep in event["depends_on"]), group[0] if group else "",
-                event["movement_bytes"], event["movement_commands"], event["encoding_transition"]))
+            events.append(
+                ActivityEvent(
+                    str(index),
+                    event["resource"],
+                    event["kind"],
+                    0,
+                    tuple(str(dep) for dep in event["depends_on"]),
+                    group[0] if group else "",
+                    event["movement_bytes"],
+                    event["movement_commands"],
+                    event["encoding_transition"],
+                )
+            )
         schedule_activity(events)
         # Canonicalize even when reconstructed from an on-disk host receipt.
-        object.__setattr__(self, "canonical_json", json.dumps(
-            facts, sort_keys=True, separators=(",", ":"), allow_nan=False))
+        object.__setattr__(
+            self, "canonical_json", json.dumps(facts, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        )
 
     @property
     def digest(self) -> str:
@@ -112,13 +132,16 @@ class MechanismSignature:
         return cls(json.dumps(dict(data), allow_nan=False))
 
 
-def derive_mechanism_signature(*, representations: Sequence[ValueRepresentation],
-                               events: Sequence[ActivityEvent],
-                               capacity_regime: Mapping[str, str],
-                               tile_shape: Sequence[int], edge_cases: Sequence[str],
-                               repetition_semantics: str,
-                               instruction_semantics: Sequence[Mapping[str, Any]],
-                               ) -> MechanismSignature:
+def derive_mechanism_signature(
+    *,
+    representations: Sequence[ValueRepresentation],
+    events: Sequence[ActivityEvent],
+    capacity_regime: Mapping[str, str],
+    tile_shape: Sequence[int],
+    edge_cases: Sequence[str],
+    repetition_semantics: str,
+    instruction_semantics: Sequence[Mapping[str, Any]],
+) -> MechanismSignature:
     """Lift a repeated emitted motif, retaining dependency and physical contention structure.
 
     Event durations are excluded: those are the unknown being calibrated. Physical resource and
@@ -135,16 +158,22 @@ def derive_mechanism_signature(*, representations: Sequence[ValueRepresentation]
     positions = {event.id: index for index, event in enumerate(events)}
     body = {
         "representations": [rep.to_dict() for rep in representations],
-        "events": [{
-            "resource": event.resource, "kind": event.kind,
-            "depends_on": sorted(positions[dep] for dep in event.depends_on),
-            "serial_group": [event.serial_group] if event.serial_group else [],
-            "movement_bytes": event.movement_bytes,
-            "movement_commands": event.movement_commands,
-            "encoding_transition": event.encoding_transition,
-        } for event in events],
-        "capacity_regime": dict(capacity_regime), "tile_shape": list(tile_shape),
-        "edge_cases": sorted(set(edge_cases)), "repetition_semantics": repetition_semantics,
+        "events": [
+            {
+                "resource": event.resource,
+                "kind": event.kind,
+                "depends_on": sorted(positions[dep] for dep in event.depends_on),
+                "serial_group": [event.serial_group] if event.serial_group else [],
+                "movement_bytes": event.movement_bytes,
+                "movement_commands": event.movement_commands,
+                "encoding_transition": event.encoding_transition,
+            }
+            for event in events
+        ],
+        "capacity_regime": dict(capacity_regime),
+        "tile_shape": list(tile_shape),
+        "edge_cases": sorted(set(edge_cases)),
+        "repetition_semantics": repetition_semantics,
         "instruction_semantics": [dict(item) for item in instruction_semantics],
     }
     return MechanismSignature.from_dict(body)
@@ -165,15 +194,23 @@ class MechanismEvidence:
         _known(self.extraction_provenance)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"binding": self.binding.to_dict(), "signature": self.signature.to_dict(),
-                "artifact_digest": self.artifact_digest, "repetitions": self.repetitions,
-                "extraction_provenance": self.extraction_provenance}
+        return {
+            "binding": self.binding.to_dict(),
+            "signature": self.signature.to_dict(),
+            "artifact_digest": self.artifact_digest,
+            "repetitions": self.repetitions,
+            "extraction_provenance": self.extraction_provenance,
+        }
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> MechanismEvidence:
-        return cls(ProbeBinding.from_dict(data["binding"]),
-                   MechanismSignature.from_dict(data["signature"]), data["artifact_digest"],
-                   data["repetitions"], data["extraction_provenance"])
+        return cls(
+            ProbeBinding.from_dict(data["binding"]),
+            MechanismSignature.from_dict(data["signature"]),
+            data["artifact_digest"],
+            data["repetitions"],
+            data["extraction_provenance"],
+        )
 
 
 @dataclass(frozen=True)
@@ -183,12 +220,16 @@ class ProbeExtraction:
     inventory: Mapping[str, Any]
 
 
-def extract_mechanism_evidence(*, artifact: bytes, command_buffer: Mapping[str, Any],
-                               binding: ProbeBinding, repetitions: int,
-                               artifact_analyzer: Callable[[bytes], Mapping[str, Any]],
-                               motif_extractor: Callable[
-                                   [bytes, Mapping[str, Any]], MechanismSignature] | None = None,
-                               extraction_provenance: str) -> ProbeExtraction:
+def extract_mechanism_evidence(
+    *,
+    artifact: bytes,
+    command_buffer: Mapping[str, Any],
+    binding: ProbeBinding,
+    repetitions: int,
+    artifact_analyzer: Callable[[bytes], Mapping[str, Any]],
+    motif_extractor: Callable[[bytes, Mapping[str, Any]], MechanismSignature] | None = None,
+    extraction_provenance: str,
+) -> ProbeExtraction:
     """Join emitted-byte analysis with declarations, then require a host-owned motif extractor.
 
     ``artifact_analyzer`` is the target's decoder/activity analyzer, selected by the host. Neither
@@ -202,8 +243,7 @@ def extract_mechanism_evidence(*, artifact: bytes, command_buffer: Mapping[str, 
 
     declared = representation_activity(command_buffer)
     activity = dict(artifact_analyzer(artifact))
-    inventory = {"declared": declared, "issued": activity,
-                 "artifact_digest": hashlib.sha256(artifact).hexdigest()}
+    inventory = {"declared": declared, "issued": activity, "artifact_digest": hashlib.sha256(artifact).hexdigest()}
     missing = []
     if not artifact:
         missing.append("emitted artifact is empty")
@@ -215,29 +255,35 @@ def extract_mechanism_evidence(*, artifact: bytes, command_buffer: Mapping[str, 
     if encoding.get("status") not in {"resolved", "complete"}:
         missing.append("instruction encoding resolution is incomplete")
     if motif_extractor is None:
-        missing.extend((
-            "host extraction of physical dtype/layout/encoding/quantization per motif operand",
-            "host extraction of resource topology, dependencies, and serial contention groups",
-            "host extraction of live capacity regime including simultaneous neighboring activity",
-            "host extraction of tile shape, repetition semantics, alignment/tail/halo cases",
-        ))
+        missing.extend(
+            (
+                "host extraction of physical dtype/layout/encoding/quantization per motif operand",
+                "host extraction of resource topology, dependencies, and serial contention groups",
+                "host extraction of live capacity regime including simultaneous neighboring activity",
+                "host extraction of tile shape, repetition semantics, alignment/tail/halo cases",
+            )
+        )
     if missing:
         return ProbeExtraction(None, tuple(missing), inventory)
     signature = motif_extractor(artifact, command_buffer)
     if not isinstance(signature, MechanismSignature):
         raise TypeError("host motif extractor must produce a validated MechanismSignature")
-    evidence = MechanismEvidence(binding, signature, inventory["artifact_digest"], repetitions,
-                                 extraction_provenance)
+    evidence = MechanismEvidence(binding, signature, inventory["artifact_digest"], repetitions, extraction_provenance)
     return ProbeExtraction(evidence, (), inventory)
 
 
-def require_probe_admission(*, current_binding: ProbeBinding, model: MechanismEvidence,
-                            probe: MechanismEvidence, descriptor: Mapping[str, Any],
-                            budget: SimulationBudget, estimated_cycles: int,
-                            measured_cycles_per_second: float | None,
-                            startup_seconds: float = 0.0,
-                            contract: WarmProfileContract = WarmProfileContract(),
-                            ) -> SimulationAdmission:
+def require_probe_admission(
+    *,
+    current_binding: ProbeBinding,
+    model: MechanismEvidence,
+    probe: MechanismEvidence,
+    descriptor: Mapping[str, Any],
+    budget: SimulationBudget,
+    estimated_cycles: int,
+    measured_cycles_per_second: float | None,
+    startup_seconds: float = 0.0,
+    contract: WarmProfileContract = WarmProfileContract(),
+) -> SimulationAdmission:
     require_probe_execution(descriptor)
     if contract.warmup_runs != 1 or contract.measured_runs != 1:
         raise ValueError("probe calibration requires exactly one warm and one measured invocation")
@@ -258,7 +304,9 @@ def require_probe_admission(*, current_binding: ProbeBinding, model: MechanismEv
     return admit_reduced_witness(
         estimated_cycles=2 * estimated_cycles,
         measured_cycles_per_second=measured_cycles_per_second,
-        startup_seconds=startup_seconds, budget=budget)
+        startup_seconds=startup_seconds,
+        budget=budget,
+    )
 
 
 @dataclass(frozen=True)
@@ -303,33 +351,46 @@ class HostTimingAuthority:
             raise ValueError("timing authority requires typed measurement identity")
         for name in ("target_digest", "mechanism_digest", "validation_record_sha256", "reference_evidence_sha256"):
             _sha(getattr(self, name), name)
-        if (len(self.repetition_domain) != 2 or
-                any(type(n) is not int or n <= 0 for n in self.repetition_domain) or
-                self.repetition_domain[0] > self.repetition_domain[1]):
+        if (
+            len(self.repetition_domain) != 2
+            or any(type(n) is not int or n <= 0 for n in self.repetition_domain)
+            or self.repetition_domain[0] > self.repetition_domain[1]
+        ):
             raise ValueError("timing authority repetition domain is invalid")
-        if (isinstance(self.systematic_error_cycles, bool) or
-                not math.isfinite(self.systematic_error_cycles) or self.systematic_error_cycles <= 0):
+        if (
+            isinstance(self.systematic_error_cycles, bool)
+            or not math.isfinite(self.systematic_error_cycles)
+            or self.systematic_error_cycles <= 0
+        ):
             raise ValueError("timing authority needs an explicit positive systematic error bound")
         if not self.provenance.strip():
             raise ValueError("timing authority requires host validation provenance")
 
     def to_evidence(self) -> dict[str, Any]:
-        return {"schema": "host_probe_timing_authority_v1",
+        return {
+            "schema": "host_probe_timing_authority_v1",
             "measurement_identity": asdict(self.measurement_identity),
-            "target_digest": self.target_digest, "mechanism_digest": self.mechanism_digest,
+            "target_digest": self.target_digest,
+            "mechanism_digest": self.mechanism_digest,
             "validation_record_sha256": self.validation_record_sha256,
             "reference_evidence_sha256": self.reference_evidence_sha256,
             "repetition_domain": list(self.repetition_domain),
-            "systematic_error_cycles": self.systematic_error_cycles, "provenance": self.provenance}
+            "systematic_error_cycles": self.systematic_error_cycles,
+            "provenance": self.provenance,
+        }
 
     @property
     def digest(self) -> str:
         return _digest(self.to_evidence())
 
 
-def authorize_probe_timing(*, validation_record: Mapping[str, Any], reference_evidence: bytes,
-                           host_validator: Callable[[Mapping[str, Any], bytes], None],
-                           provenance: str) -> HostTimingAuthority:
+def authorize_probe_timing(
+    *,
+    validation_record: Mapping[str, Any],
+    reference_evidence: bytes,
+    host_validator: Callable[[Mapping[str, Any], bytes], None],
+    provenance: str,
+) -> HostTimingAuthority:
     """Host-only trust boundary; never call on candidate requests or use a permissive validator.
 
     The supplied host validator must check independent reference evidence, applicability to this
@@ -353,9 +414,17 @@ def authorize_probe_timing(*, validation_record: Mapping[str, Any], reference_ev
     # Pass a detached document: the checker cannot mutate the bytes later minted as authority.
     if host_validator(json.loads(record_bytes), reference_evidence) is not None:
         raise ValueError("host timing validator must raise on failure and return None on success")
-    return HostTimingAuthority(identity, record["target_digest"], record["mechanism_digest"],
-        hashlib.sha256(record_bytes).hexdigest(), reference_sha, tuple(record["repetition_domain"]),
-        record["systematic_error_cycles"], provenance, _HOST_TIMING_VALIDATED)
+    return HostTimingAuthority(
+        identity,
+        record["target_digest"],
+        record["mechanism_digest"],
+        hashlib.sha256(record_bytes).hexdigest(),
+        reference_sha,
+        tuple(record["repetition_domain"]),
+        record["systematic_error_cycles"],
+        provenance,
+        _HOST_TIMING_VALIDATED,
+    )
 
 
 @dataclass(frozen=True)
@@ -374,19 +443,19 @@ class ProbeObservation:
     observed_timing_identity: TimingMeasurementIdentity | None = None
 
     def __post_init__(self) -> None:
-        if (self.receipt.contract.warmup_runs != 1 or self.receipt.contract.measured_runs != 1):
+        if self.receipt.contract.warmup_runs != 1 or self.receipt.contract.measured_runs != 1:
             raise ValueError("calibration receipt must contain the exact warm 1 + measured 1 contract")
         if self.receipt_artifact_digest != self.evidence.artifact_digest:
             raise ValueError("measurement receipt does not bind the actual probe artifact")
         if not math.isfinite(self.elapsed_seconds) or not 0 < self.elapsed_seconds <= ITERATION_MAX_SECONDS:
             raise ValueError("complete probe execution must fit the 600-second iteration bound")
-        if (not math.isfinite(self.counter_uncertainty_cycles)
-                or self.counter_uncertainty_cycles <= 0):
+        if not math.isfinite(self.counter_uncertainty_cycles) or self.counter_uncertainty_cycles <= 0:
             raise ValueError("positive counter/model uncertainty must be supplied, not assumed exact")
         if self.timing_authority is not None and (
-                type(self.timing_authority) is not HostTimingAuthority or
-                type(self.observed_timing_identity) is not TimingMeasurementIdentity or
-                self.observed_timing_identity != self.timing_authority.measurement_identity):
+            type(self.timing_authority) is not HostTimingAuthority
+            or type(self.observed_timing_identity) is not TimingMeasurementIdentity
+            or self.observed_timing_identity != self.timing_authority.measurement_identity
+        ):
             raise ValueError("timing authority does not match actual host-observed engine/config/counter identity")
 
 
@@ -401,25 +470,41 @@ class ProbeCalibration:
     provenance: tuple[str, ...]
     timing_authority: HostTimingAuthority
 
-    def interval(self, *, binding: ProbeBinding, signature: MechanismSignature,
-                 repetitions: int, current_timing_authority: HostTimingAuthority | None = None) -> CycleInterval:
-        if (type(current_timing_authority) is not HostTimingAuthority or
-                current_timing_authority != self.timing_authority):
+    def interval(
+        self,
+        *,
+        binding: ProbeBinding,
+        signature: MechanismSignature,
+        repetitions: int,
+        current_timing_authority: HostTimingAuthority | None = None,
+    ) -> CycleInterval:
+        if (
+            type(current_timing_authority) is not HostTimingAuthority
+            or current_timing_authority != self.timing_authority
+        ):
             return CycleInterval.unknown("target-cycle timing authority is absent or changed")
         if binding != self.binding or signature != self.signature:
             return CycleInterval.unknown("calibration identity or mechanism domain changed")
-        if (isinstance(repetitions, bool) or not isinstance(repetitions, int)
-                or not self.repetition_domain[0] <= repetitions <= self.repetition_domain[1]):
+        if (
+            isinstance(repetitions, bool)
+            or not isinstance(repetitions, int)
+            or not self.repetition_domain[0] <= repetitions <= self.repetition_domain[1]
+        ):
             return CycleInterval.unknown(
-                "repetition count outside calibrated domain; a stationary pipeline proof is required")
+                "repetition count outside calibrated domain; a stationary pipeline proof is required"
+            )
         center = self.fixed_cycles + repetitions * self.cycles_per_repetition
-        return CycleInterval(max(0.0, center - self.error_cycles), center + self.error_cycles,
-                             provenance=self.provenance)
+        return CycleInterval(
+            max(0.0, center - self.error_cycles), center + self.error_cycles, provenance=self.provenance
+        )
 
 
-def fit_probe_calibration(observations: Sequence[ProbeObservation], *,
-                          current_binding: ProbeBinding,
-                          current_timing_authority: HostTimingAuthority | None = None) -> ProbeCalibration:
+def fit_probe_calibration(
+    observations: Sequence[ProbeObservation],
+    *,
+    current_binding: ProbeBinding,
+    current_timing_authority: HostTimingAuthority | None = None,
+) -> ProbeCalibration:
     """Fit fixed + repetition costs with two independent points per parameter.
 
     The residual envelope is an empirical interval, not a hardware cycle guarantee. It is valid
@@ -448,23 +533,31 @@ def fit_probe_calibration(observations: Sequence[ProbeObservation], *,
     if authority.target_digest != current_binding.target_digest or authority.mechanism_digest != first.signature.digest:
         raise ValueError("stale timing authority target or mechanism binding")
     for row in observations:
-        if (type(row.timing_authority) is not HostTimingAuthority or row.timing_authority != authority
-                or row.observed_timing_identity != authority.measurement_identity):
+        if (
+            type(row.timing_authority) is not HostTimingAuthority
+            or row.timing_authority != authority
+            or row.observed_timing_identity != authority.measurement_identity
+        ):
             raise ValueError("mixed, stale or missing observation timing authority")
         if not authority.repetition_domain[0] <= row.evidence.repetitions <= authority.repetition_domain[1]:
             raise ValueError("observation is outside timing authority validity domain")
     ys = [float(row.receipt.total_compute_cycles) for row in observations]
     xbar, ybar = sum(xs) / len(xs), sum(ys) / len(ys)
-    rate = sum((x - xbar) * (y - ybar) for x, y in zip(xs, ys)) / sum(
-        (x - xbar) ** 2 for x in xs)
+    rate = sum((x - xbar) * (y - ybar) for x, y in zip(xs, ys)) / sum((x - xbar) ** 2 for x in xs)
     fixed = ybar - rate * xbar
     if fixed < 0 or rate < 0:
         raise ValueError("measurements do not support nonnegative fixed + repetition costs")
-    error = max(abs(y - (fixed + rate * x)) + row.counter_uncertainty_cycles + authority.systematic_error_cycles
-                for row, x, y in zip(observations, xs, ys))
-    provenance = tuple(f"empirical calibration: {row.receipt.provenance}; "
-                       f"artifact={row.evidence.artifact_digest}; "
-                       f"timing_authority={authority.digest}; "
-                       f"signature={row.evidence.signature.digest}" for row in observations)
-    return ProbeCalibration(current_binding, first.signature, fixed, rate, error,
-                            (min(xs), max(xs)), provenance, authority)
+    error = max(
+        abs(y - (fixed + rate * x)) + row.counter_uncertainty_cycles + authority.systematic_error_cycles
+        for row, x, y in zip(observations, xs, ys)
+    )
+    provenance = tuple(
+        f"empirical calibration: {row.receipt.provenance}; "
+        f"artifact={row.evidence.artifact_digest}; "
+        f"timing_authority={authority.digest}; "
+        f"signature={row.evidence.signature.digest}"
+        for row in observations
+    )
+    return ProbeCalibration(
+        current_binding, first.signature, fixed, rate, error, (min(xs), max(xs)), provenance, authority
+    )

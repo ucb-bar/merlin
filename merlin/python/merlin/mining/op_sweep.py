@@ -14,6 +14,7 @@ datatype/op is a new cell + a registered lever (the register-resident emitter, a
 an fp16 ``vfwmacc`` variant in ``impr_features``/``action_catalog``) — NOT a hand-written pass per op. The
 beam SELECTS the lever; this driver just orchestrates the matrix.
 """
+
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
@@ -26,13 +27,13 @@ from typing import Any, Callable
 class OpCell:
     """One (op, dtype) target in the sweep matrix."""
 
-    op: str                       # "matmul" | "conv" | "gelu" | "sigmoid" | ...
-    dtype: str                    # "f32" | "int8" | "fp16"
-    shape_regime: str             # e.g. "square_128"
-    workload_dir: str | Path      # the bundle the beam certifies (model.mlir + inputs + golden)
-    expert_objdump: str | Path    # decoded XNNPACK kernel objdump -> the expert CCA (the target shape)
-    expert_wall_ns: float | None = None   # XNNPACK's measured K1 wall for this kernel (the scoreboard)
-    seed_pkg: str | Path | None = None     # fork-from (default: the fast tracked config)
+    op: str  # "matmul" | "conv" | "gelu" | "sigmoid" | ...
+    dtype: str  # "f32" | "int8" | "fp16"
+    shape_regime: str  # e.g. "square_128"
+    workload_dir: str | Path  # the bundle the beam certifies (model.mlir + inputs + golden)
+    expert_objdump: str | Path  # decoded XNNPACK kernel objdump -> the expert CCA (the target shape)
+    expert_wall_ns: float | None = None  # XNNPACK's measured K1 wall for this kernel (the scoreboard)
+    seed_pkg: str | Path | None = None  # fork-from (default: the fast tracked config)
 
     @property
     def key(self) -> str:
@@ -43,9 +44,9 @@ class OpCell:
 class CellResult:
     cell_key: str
     best_run_id: str | None
-    attainment_vs_expert: float | None    # >=1.0 = matched/beat XNNPACK
+    attainment_vs_expert: float | None  # >=1.0 = matched/beat XNNPACK
     speedup_vs_seed: float | None
-    scalar_ok: bool                       # True = emitted RVV (not scalar); False = scalar FAIL
+    scalar_ok: bool  # True = emitted RVV (not scalar); False = scalar FAIL
     gate_ok: bool
     parent_run_dir: str | None
     note: str = ""
@@ -58,10 +59,11 @@ def is_scalar_kernel(objdump_text: str) -> bool:
     setup) alongside a vectorized compute kernel, so ``scalar_fallback_symbols`` (per-symbol) would
     false-positive — coverage==0 means NO vector compute anywhere, the true scalar-fallback case."""
     from ..baselines.rvv_audit import classify_disasm
+
     rep = classify_disasm(objdump_text, source="op_sweep")
     cov = rep.coverage_overall
     if cov is None:
-        return False            # no compute-bearing symbol found -> can't call it scalar (honest)
+        return False  # no compute-bearing symbol found -> can't call it scalar (honest)
     return cov == 0.0
 
 
@@ -70,18 +72,29 @@ def _default_seed(repo_root: Path) -> str:
     return str(fast if fast.is_dir() else repo_root / "out/artifacts/targets/rvv/hand_v0")
 
 
-def run_cell(cell: OpCell, *, width: int = 3, depth: int = 2, top_k: int = 2,
-             beam_fn: Callable | None = None) -> CellResult:
+def run_cell(
+    cell: OpCell, *, width: int = 3, depth: int = 2, top_k: int = 2, beam_fn: Callable | None = None
+) -> CellResult:
     """Run the beam for ONE cell, targeting XNNPACK's wall, and scalar-gate the winner."""
     from ..common.paths import repo_root
     from .beam_cli import DEFAULT_TARGETS, run_instrumented_beam
+
     beam_fn = beam_fn or run_instrumented_beam
 
     seed = str(cell.seed_pkg or _default_seed(repo_root()))
-    res = beam_fn(seed_pkg=seed, model_dir=str(cell.workload_dir),
-                  expert_objdump=str(cell.expert_objdump), op=cell.op, dtype=cell.dtype,
-                  shape_regime=cell.shape_regime, targets=DEFAULT_TARGETS, width=width, depth=depth,
-                  top_k=top_k, expert_wall_ns=cell.expert_wall_ns)
+    res = beam_fn(
+        seed_pkg=seed,
+        model_dir=str(cell.workload_dir),
+        expert_objdump=str(cell.expert_objdump),
+        op=cell.op,
+        dtype=cell.dtype,
+        shape_regime=cell.shape_regime,
+        targets=DEFAULT_TARGETS,
+        width=width,
+        depth=depth,
+        top_k=top_k,
+        expert_wall_ns=cell.expert_wall_ns,
+    )
     best = res.get("best") or {}
     # scalar gate on the winner's emitted objdump (never credit a scalar kernel).
     scalar_ok = True
@@ -96,15 +109,26 @@ def run_cell(cell: OpCell, *, width: int = 3, depth: int = 2, top_k: int = 2,
             if scalar:
                 note = "SCALAR FAIL — winner emitted no RVV in its kernel (must close before perf credit)"
     return CellResult(
-        cell_key=cell.key, best_run_id=best.get("run_id"),
+        cell_key=cell.key,
+        best_run_id=best.get("run_id"),
         attainment_vs_expert=best.get("attainment_vs_expert"),
         speedup_vs_seed=best.get("speedup"),
-        scalar_ok=scalar_ok, gate_ok=bool(best.get("gate_ok")),
-        parent_run_dir=parent, note=note)
+        scalar_ok=scalar_ok,
+        gate_ok=bool(best.get("gate_ok")),
+        parent_run_dir=parent,
+        note=note,
+    )
 
 
-def run_op_sweep(cells: list[OpCell], *, width: int = 3, depth: int = 2, top_k: int = 2,
-                 max_workers: int | None = None, beam_fn: Callable | None = None) -> list[CellResult]:
+def run_op_sweep(
+    cells: list[OpCell],
+    *,
+    width: int = 3,
+    depth: int = 2,
+    top_k: int = 2,
+    max_workers: int | None = None,
+    beam_fn: Callable | None = None,
+) -> list[CellResult]:
     """Run the whole op × datatype matrix. Cells fan out concurrently (proposal/build overlap); the K1
     board itself is serialized by ``k1.board_lock`` inside each certify, so parallel cells never corrupt
     a board run. A cell that raises is captured as a failed CellResult (the sweep never aborts)."""
@@ -114,9 +138,16 @@ def run_op_sweep(cells: list[OpCell], *, width: int = 3, depth: int = 2, top_k: 
         try:
             results[i] = run_cell(cell, width=width, depth=depth, top_k=top_k, beam_fn=beam_fn)
         except Exception as e:  # one cell's failure must not kill the matrix
-            results[i] = CellResult(cell_key=cell.key, best_run_id=None, attainment_vs_expert=None,
-                                    speedup_vs_seed=None, scalar_ok=False, gate_ok=False,
-                                    parent_run_dir=None, note=f"error: {type(e).__name__}: {e}")
+            results[i] = CellResult(
+                cell_key=cell.key,
+                best_run_id=None,
+                attainment_vs_expert=None,
+                speedup_vs_seed=None,
+                scalar_ok=False,
+                gate_ok=False,
+                parent_run_dir=None,
+                note=f"error: {type(e).__name__}: {e}",
+            )
 
     if not cells:
         return []
@@ -135,6 +166,7 @@ _XNN_GEMM_TICKS = {("f32", 128): 9424, ("f32", 256): 72222, ("int8", 64): 1552, 
 def _ticks_to_ns(ticks: int | None) -> float | None:
     """K1 rdtime ticks -> nanoseconds (the unit the beam's k1_wall_ns uses)."""
     from .k1 import K1_TIMEBASE_HZ
+
     return None if ticks is None else round(ticks * 1e9 / K1_TIMEBASE_HZ)
 
 
@@ -145,6 +177,7 @@ def default_gemm_cells(shapes_f32=(128, 256), shapes_int8=(64, 128)) -> list[OpC
     already have levers for; bf16/fp16 + more ops extend it (a cell + a lever, not hand-code)."""
     from ..common.paths import repo_root
     from .workloads import gen_matmul_f32
+
     root = repo_root()
     expert = root / "merlin/tests/data/cca_asm/xnnpack_f32_gemm_rvv.objdump"
     wl_root = root / "out/artifacts/cache/op_sweep_workloads"
@@ -158,31 +191,49 @@ def default_gemm_cells(shapes_f32=(128, 256), shapes_int8=(64, 128)) -> list[OpC
     seed_int8 = root / "out/artifacts/targets/rvv/impr_tuned_microkernel_v3_int8"
     cells: list[OpCell] = []
     for S in shapes_f32:
-        cells.append(OpCell(op="matmul", dtype="f32", shape_regime=f"square_{S}",
-                            workload_dir=gen_matmul_f32(wl_root, M=S, N=S, K=S), expert_objdump=expert,
-                            expert_wall_ns=_ticks_to_ns(_XNN_GEMM_TICKS.get(("f32", S))), seed_pkg=str(seed_f32)))
+        cells.append(
+            OpCell(
+                op="matmul",
+                dtype="f32",
+                shape_regime=f"square_{S}",
+                workload_dir=gen_matmul_f32(wl_root, M=S, N=S, K=S),
+                expert_objdump=expert,
+                expert_wall_ns=_ticks_to_ns(_XNN_GEMM_TICKS.get(("f32", S))),
+                seed_pkg=str(seed_f32),
+            )
+        )
     for S in shapes_int8:
-        cells.append(OpCell(op="matmul", dtype="int8", shape_regime=f"square_{S}",
-                            workload_dir=gen_matmul_f32(wl_root, M=S, N=S, K=S), expert_objdump=expert,
-                            expert_wall_ns=_ticks_to_ns(_XNN_GEMM_TICKS.get(("int8", S))), seed_pkg=str(seed_int8)))
+        cells.append(
+            OpCell(
+                op="matmul",
+                dtype="int8",
+                shape_regime=f"square_{S}",
+                workload_dir=gen_matmul_f32(wl_root, M=S, N=S, K=S),
+                expert_objdump=expert,
+                expert_wall_ns=_ticks_to_ns(_XNN_GEMM_TICKS.get(("int8", S))),
+                seed_pkg=str(seed_int8),
+            )
+        )
     return cells
 
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
-    ap = argparse.ArgumentParser(prog="merlin-rvv-opt",
-                                 description="Automated op x datatype optimization sweep vs XNNPACK on K1.")
+
+    ap = argparse.ArgumentParser(
+        prog="merlin-rvv-opt", description="Automated op x datatype optimization sweep vs XNNPACK on K1."
+    )
     ap.add_argument("--width", type=int, default=3)
     ap.add_argument("--depth", type=int, default=2)
     ap.add_argument("--top-k", type=int, default=2)
-    ap.add_argument("--max-workers", type=int, default=1,
-                    help="cell concurrency (default 1: the K1 board is serialized either way)")
+    ap.add_argument(
+        "--max-workers", type=int, default=1, help="cell concurrency (default 1: the K1 board is serialized either way)"
+    )
     args = ap.parse_args(argv)
 
     cells = default_gemm_cells()
     print(f"=== merlin-rvv-opt: {len(cells)} cells (f32+int8 GEMM) vs XNNPACK on K1 ===")
-    results = run_op_sweep(cells, width=args.width, depth=args.depth, top_k=args.top_k,
-                           max_workers=args.max_workers)
+    results = run_op_sweep(cells, width=args.width, depth=args.depth, top_k=args.top_k, max_workers=args.max_workers)
     print(f"\n{'cell':28s} {'attain_vs_xnn':>14s} {'scalar_ok':>10s} {'gate_ok':>8s}  note")
     print("-" * 78)
     for r in sorted(results, key=lambda r: r.cell_key):

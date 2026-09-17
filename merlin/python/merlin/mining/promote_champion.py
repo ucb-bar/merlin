@@ -25,6 +25,7 @@ run>`` + the measured metrics, and publishes through the REAL gate (``gate=True`
 bypass and no false ``spike_verified`` claim for a fork the board (not spike) measured. Everything
 here is additive and reuses :mod:`merlin.targetgen.publish` verbatim.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,8 +56,8 @@ class BeamChampion:
     """The best node of a beam run + the located fork package it points at."""
 
     run_dir: Path
-    beam_run_id: str            # the beam run folder name (provenance: certified_by_run)
-    run_id: str                 # the fork package run_id (== package dir name)
+    beam_run_id: str  # the beam run folder name (provenance: certified_by_run)
+    run_id: str  # the fork package run_id (== package dir name)
     node: dict[str, Any]
     tree: dict[str, Any]
     package_dir: Path
@@ -161,8 +162,7 @@ class Verdict:
     reasons: list[str] = field(default_factory=list)
 
 
-def verify_champion(champ: BeamChampion, *, require_board: bool = True,
-                    require_margin: bool = True) -> Verdict:
+def verify_champion(champ: BeamChampion, *, require_board: bool = True, require_margin: bool = True) -> Verdict:
     """Fail-closed gate for a beam champion. NEVER stamp an unverified/inert/noise fork.
 
     Requires: ``gate_ok`` (numerics), a real board-measured ``k1_wall_ns`` + ``speedup`` > 1,
@@ -183,8 +183,10 @@ def verify_champion(champ: BeamChampion, *, require_board: bool = True,
         reasons.append(f"best node speedup {champ.speedup} is not a win (<= 1.0)")
     if champ.noise_margin is not None and champ.speedup is not None:
         if (champ.speedup - 1.0) <= champ.noise_margin:
-            reasons.append(f"speedup margin {champ.speedup - 1.0:.4f} is within the noise floor "
-                           f"{champ.noise_margin} (not above noise)")
+            reasons.append(
+                f"speedup margin {champ.speedup - 1.0:.4f} is within the noise floor "
+                f"{champ.noise_margin} (not above noise)"
+            )
     return Verdict(ok=not reasons, reasons=reasons)
 
 
@@ -218,9 +220,15 @@ def _clear_other_champions(target_dir: Path, keep: Path) -> None:
             write_yaml(man_path, man)
 
 
-def stamp_champion(champ: BeamChampion, *, status: str = K1_VERIFIED_STATUS,
-                   certified_by: str = "k1_board", require_board: bool = True,
-                   require_margin: bool = True, force: bool = False) -> StampResult:
+def stamp_champion(
+    champ: BeamChampion,
+    *,
+    status: str = K1_VERIFIED_STATUS,
+    certified_by: str = "k1_board",
+    require_board: bool = True,
+    require_margin: bool = True,
+    force: bool = False,
+) -> StampResult:
     """Verify (fail-closed) then stamp the fork ``manifest.yaml`` in place so it is publishable.
 
     Adds a top-level ``status`` (default the honest ``k1_verified``), ``version`` and ``package_id``
@@ -233,8 +241,9 @@ def stamp_champion(champ: BeamChampion, *, status: str = K1_VERIFIED_STATUS,
     if not verdict.ok and not force:
         raise PromoteError("champion failed fail-closed verification: " + "; ".join(verdict.reasons))
     if not verdict.ok:
-        sys.stderr.write("WARNING: --force stamping a champion that FAILED verification: "
-                         + "; ".join(verdict.reasons) + "\n")
+        sys.stderr.write(
+            "WARNING: --force stamping a champion that FAILED verification: " + "; ".join(verdict.reasons) + "\n"
+        )
 
     man_path = champ.package_dir / "manifest.yaml"
     man = load_yaml(man_path)
@@ -255,24 +264,26 @@ def stamp_champion(champ: BeamChampion, *, status: str = K1_VERIFIED_STATUS,
     man["package_id"] = package_id
 
     publication = man.get("publication") if isinstance(man.get("publication"), dict) else {}
-    publication.update({
-        "champion": True,
-        "certification": "pass",
-        "certified_by": certified_by,
-        "certified_by_run": cert_run,
-        "promoted_at": utc_stamp(),
-        "promoted_by": "merlin.mining.promote_champion",
-        "fingerprint": fingerprint,
-        "measured": {
-            "k1_wall_ns": champ.k1_wall_ns,
-            "speedup": champ.speedup,
-            "attainment_vs_expert": champ.attainment_vs_expert,
-            "expert_wall_ns": champ.tree.get("expert_wall_ns"),
-            "noise_margin": champ.noise_margin,
-            "beam_run_id": champ.beam_run_id,
-            "verified_by": "promote_champion.verify_champion",
-        },
-    })
+    publication.update(
+        {
+            "champion": True,
+            "certification": "pass",
+            "certified_by": certified_by,
+            "certified_by_run": cert_run,
+            "promoted_at": utc_stamp(),
+            "promoted_by": "merlin.mining.promote_champion",
+            "fingerprint": fingerprint,
+            "measured": {
+                "k1_wall_ns": champ.k1_wall_ns,
+                "speedup": champ.speedup,
+                "attainment_vs_expert": champ.attainment_vs_expert,
+                "expert_wall_ns": champ.tree.get("expert_wall_ns"),
+                "noise_margin": champ.noise_margin,
+                "beam_run_id": champ.beam_run_id,
+                "verified_by": "promote_champion.verify_champion",
+            },
+        }
+    )
     man["publication"] = publication
     write_yaml(man_path, man)
 
@@ -294,10 +305,18 @@ def stamp_champion(champ: BeamChampion, *, status: str = K1_VERIFIED_STATUS,
 # --------------------------------------------------------------------------- drive the publish
 
 
-def promote_and_publish(run_dir: str | Path, *, target: str = "rvv", execute: bool = False,
-                        remote: str | None = None, verify_build: bool = True,
-                        status: str = K1_VERIFIED_STATUS, require_board: bool = True,
-                        require_margin: bool = True, force: bool = False):
+def promote_and_publish(
+    run_dir: str | Path,
+    *,
+    target: str = "rvv",
+    execute: bool = False,
+    remote: str | None = None,
+    verify_build: bool = True,
+    status: str = K1_VERIFIED_STATUS,
+    require_board: bool = True,
+    require_margin: bool = True,
+    force: bool = False,
+):
     """End-to-end: read the beam champion, stamp it, and drive ``publish.publish`` for it.
 
     Publishes through the REAL gate (``gate=True``): ``publish._check_gate`` now accepts
@@ -309,13 +328,14 @@ def promote_and_publish(run_dir: str | Path, *, target: str = "rvv", execute: bo
     record. Returns (StampResult, PublishResult).
     """
     champ = read_beam_champion(run_dir, target=target)
-    stamp = stamp_champion(champ, status=status, require_board=require_board,
-                           require_margin=require_margin, force=force)
+    stamp = stamp_champion(
+        champ, status=status, require_board=require_board, require_margin=require_margin, force=force
+    )
     result = pub.publish(
         champ.target,
         dry_run=not execute,
         remote=remote,
-        gate=True,                         # real gate now accepts k1_verified (see module docstring)
+        gate=True,  # real gate now accepts k1_verified (see module docstring)
         verify_build=verify_build,
         package_id=stamp.package_id,
         artifacts_root=str(stamp.artifacts_root),
@@ -326,8 +346,7 @@ def promote_and_publish(run_dir: str | Path, *, target: str = "rvv", execute: bo
 # --------------------------------------------------------------------------- payload round-trip note
 
 
-def write_payload_manifest(payload_dir: str | Path, *, package_id: str,
-                           target: str = "rvv") -> Path:
+def write_payload_manifest(payload_dir: str | Path, *, package_id: str, target: str = "rvv") -> Path:
     """Opt-in fix for the round-trip nuance: write a minimal ``manifest.yaml`` into a published
     ``payload/`` so ``mining.registry.load_rvv_package(payload_dir)`` can read it back.
 
@@ -344,8 +363,11 @@ def write_payload_manifest(payload_dir: str | Path, *, package_id: str,
         "family": "vector_schedule",
         "schedule_format": "transform_dialect_mlir",
         "status": K1_VERIFIED_STATUS,
-        "authoring": {"mode": "deterministic_generated_from_spec",
-                      "generated_by_agent": False, "author": "merlin.mining.promote_champion"},
+        "authoring": {
+            "mode": "deterministic_generated_from_spec",
+            "generated_by_agent": False,
+            "author": "merlin.mining.promote_champion",
+        },
         "outputs": {"schedule": "schedule.mlir", "knobs": "knobs.yaml"},
     }
     out = payload_dir / "manifest.yaml"
@@ -369,30 +391,39 @@ def _print_stamp(stamp: StampResult) -> None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="merlin-rvv-promote-champion",
-        description="Certify + stamp a beam-verified RVV champion and (optionally) publish it.")
+        description="Certify + stamp a beam-verified RVV champion and (optionally) publish it.",
+    )
     ap.add_argument("--run", required=True, help="beam run dir containing beam_tree.yaml")
     # REQUIRED, not defaulted. A default of one target silently mislabels every run for another
     # one -- the mined artifacts are written under <target>/ and the CCA is compared against that
     # target's expert corpus, so a mislabelled run compares the wrong things and says nothing about it.
-    ap.add_argument("--target", required=True,
-                    help="the target whose expert corpus is mined and whose endpoint is lifted")
-    ap.add_argument("--status", default=K1_VERIFIED_STATUS,
-                    help="honest recorded status (default k1_verified; do NOT use spike_verified "
-                         "unless spike actually verified the fork)")
+    ap.add_argument(
+        "--target", required=True, help="the target whose expert corpus is mined and whose endpoint is lifted"
+    )
+    ap.add_argument(
+        "--status",
+        default=K1_VERIFIED_STATUS,
+        help="honest recorded status (default k1_verified; do NOT use spike_verified "
+        "unless spike actually verified the fork)",
+    )
     ap.add_argument("--publish", action="store_true", help="also drive merlin.targetgen.publish")
-    ap.add_argument("--execute", action="store_true",
-                    help="with --publish: really clone/commit/push (else dry-run)")
+    ap.add_argument("--execute", action="store_true", help="with --publish: really clone/commit/push (else dry-run)")
     ap.add_argument("--remote", help="override the publish remote (file:// bare remote only here)")
     ap.add_argument("--no-verify-build", action="store_true")
-    ap.add_argument("--force", action="store_true",
-                    help="stamp even if fail-closed verification fails (LOUD warning)")
+    ap.add_argument("--force", action="store_true", help="stamp even if fail-closed verification fails (LOUD warning)")
     args = ap.parse_args(argv)
 
     try:
         if args.publish:
             stamp, result = promote_and_publish(
-                args.run, target=args.target, execute=args.execute, remote=args.remote,
-                verify_build=not args.no_verify_build, status=args.status, force=args.force)
+                args.run,
+                target=args.target,
+                execute=args.execute,
+                remote=args.remote,
+                verify_build=not args.no_verify_build,
+                status=args.status,
+                force=args.force,
+            )
             _print_stamp(stamp)
             print("--- publish ---")
             print(f"  remote     : {result.remote}")

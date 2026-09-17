@@ -12,6 +12,7 @@ runtime (`merlin.runtime`, which does actual integer tensor math), recomputes an
 reference, checks correctness, and writes simulator_output / reference_output / metrics / trace
 JSON. ToyNPU is a Merlin runtime *adapter*, not its own runtime.
 """
+
 from __future__ import annotations
 
 import json
@@ -161,17 +162,18 @@ def _example_command_buffer(target: str, reuse: int = 4) -> dict[str, Any]:
         "bias": {"shape": [6], "dtype": "i32", "role": "bias"},
     }
     commands: list[dict[str, Any]] = [
-        {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"},
-         "attributes": {"layout": "packed_rhs"}},
+        {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {"layout": "packed_rhs"}},
     ]
     for i in range(reuse):
         tensors[f"A{i}"] = {"shape": [5, 8], "dtype": "i8", "role": "input"}
-        commands.append({"opcode": "MATMUL_RESIDENT",
-                         "operands": {"lhs": f"A{i}", "rhs": "W_res", "dst": f"acc{i}"}})
-        commands.append({"opcode": "COMMIT",
-                         "operands": {"src": f"acc{i}", "dst": f"Y{i}", "bias": "bias"},
-                         "attributes": {"epilogue": ["bias_add", "requant", "relu"],
-                                        "requant_shift": 4, "output_dtype": "i8"}})
+        commands.append({"opcode": "MATMUL_RESIDENT", "operands": {"lhs": f"A{i}", "rhs": "W_res", "dst": f"acc{i}"}})
+        commands.append(
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": f"acc{i}", "dst": f"Y{i}", "bias": "bias"},
+                "attributes": {"epilogue": ["bias_add", "requant", "relu"], "requant_shift": 4, "output_dtype": "i8"},
+            }
+        )
     commands.append({"opcode": "EVICT", "operands": {"handle": "W_res"}})
     return {
         "abi_version": "0.1",
@@ -181,8 +183,15 @@ def _example_command_buffer(target: str, reuse: int = 4) -> dict[str, Any]:
         "commands": commands,
         "params": {"requant_shift": 4},
         "resources": {"handles": ["W_res"] + [f"acc{i}" for i in range(reuse)]},
-        "metrics_requested": ["cycles", "bytes_moved", "command_count", "pack_count",
-                              "resident_hits", "evictions", "accumulator_commits"],
+        "metrics_requested": [
+            "cycles",
+            "bytes_moved",
+            "command_count",
+            "pack_count",
+            "resident_hits",
+            "evictions",
+            "accumulator_commits",
+        ],
     }
 
 
@@ -204,13 +213,13 @@ def generate(runtime_adapter_plan: dict[str, Any]) -> list[Artifact]:
     metrics_mapping = runtime_adapter_plan.get("metrics", {"maps_to_common": {}, "target_specific": []})
     example = _example_command_buffer(target)
     return [
-        Artifact("runtime/adapter/adapter.py",
-                 _ADAPTER_PY.format(target=target, TGT=tgt_upper)),
-        yaml_artifact("runtime/adapter/command_encoding.yaml", command_encoding,
-                      header="Generated command encoding."),
-        yaml_artifact("runtime/adapter/metrics_mapping.yaml", metrics_mapping,
-                      header="Raw-counter -> common-metric mapping."),
+        Artifact("runtime/adapter/adapter.py", _ADAPTER_PY.format(target=target, TGT=tgt_upper)),
+        yaml_artifact("runtime/adapter/command_encoding.yaml", command_encoding, header="Generated command encoding."),
+        yaml_artifact(
+            "runtime/adapter/metrics_mapping.yaml", metrics_mapping, header="Raw-counter -> common-metric mapping."
+        ),
         Artifact("runtime/simulator/semantics.py", _SEMANTICS_PY.format(target=target)),
-        Artifact("runtime/command_buffer/example_repeated_rhs.json",
-                 json.dumps(example, indent=2, sort_keys=True) + "\n"),
+        Artifact(
+            "runtime/command_buffer/example_repeated_rhs.json", json.dumps(example, indent=2, sort_keys=True) + "\n"
+        ),
     ]

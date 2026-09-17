@@ -32,6 +32,7 @@ Three rules keep the arithmetic honest:
   reported at this tier, reports ``incomplete`` and says which member is missing. Silently summing the
   parts that did report would understate the parts and manufacture a fusion win.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -39,18 +40,28 @@ from dataclasses import dataclass, field
 from typing import Any
 
 __all__ = [
-    "FUSED", "PART", "SUBMISSION", "OTHER_PROGRAM", "UNATTRIBUTED",
-    "Member", "GroupComparand", "attribute", "declared_groups", "toolchain_by_tier",
-    "cycles_provenance", "fusion_comparands", "render",
+    "FUSED",
+    "PART",
+    "SUBMISSION",
+    "OTHER_PROGRAM",
+    "UNATTRIBUTED",
+    "Member",
+    "GroupComparand",
+    "attribute",
+    "declared_groups",
+    "toolchain_by_tier",
+    "cycles_provenance",
+    "fusion_comparands",
+    "render",
 ]
 
 #: The two roles a member of a comparison group may take.
 FUSED, PART = "fused", "part"
 
 #: What produced a cycle count.
-SUBMISSION = "submission"          # the program under grade
-OTHER_PROGRAM = "other_program"    # a named program that is NOT the submission (a harness fixture)
-UNATTRIBUTED = "UNATTRIBUTED"      # the adapter reported no program at all -- NOT the submission
+SUBMISSION = "submission"  # the program under grade
+OTHER_PROGRAM = "other_program"  # a named program that is NOT the submission (a harness fixture)
+UNATTRIBUTED = "UNATTRIBUTED"  # the adapter reported no program at all -- NOT the submission
 
 
 def attribute(toolchain: Any, *, submission: str | None) -> str:
@@ -67,8 +78,7 @@ def attribute(toolchain: Any, *, submission: str | None) -> str:
     return OTHER_PROGRAM
 
 
-def toolchain_by_tier(tiers: Mapping[str, Any] | None, *,
-                      ladder: Sequence[str] = ()) -> dict[str, str | None]:
+def toolchain_by_tier(tiers: Mapping[str, Any] | None, *, ladder: Sequence[str] = ()) -> dict[str, str | None]:
     """The program each tier says it graded, keyed by tier -- the companion of ``cycles_by_tier``.
 
     Same shape rules as that function: a tier record in the bare-string form (``"pass"``) carries no
@@ -89,8 +99,9 @@ def toolchain_by_tier(tiers: Mapping[str, Any] | None, *,
     return ordered
 
 
-def cycles_provenance(tiers: Mapping[str, Any] | None, *, submission: str | None,
-                      ladder: Sequence[str] = ()) -> dict[str, dict]:
+def cycles_provenance(
+    tiers: Mapping[str, Any] | None, *, submission: str | None, ladder: Sequence[str] = ()
+) -> dict[str, dict]:
     """``{tier: {cycles, toolchain, graded_program}}`` for one capsule.
 
     This is the block that sits ALONGSIDE ``cycles_diagnostic``: the counts keep their existing shape
@@ -100,9 +111,11 @@ def cycles_provenance(tiers: Mapping[str, Any] | None, *, submission: str | None
     out: dict[str, dict] = {}
     for tier, tc in toolchain_by_tier(tiers, ladder=ladder).items():
         record = (tiers or {}).get(tier)
-        out[tier] = {"cycles": record.get("cycles") if isinstance(record, Mapping) else None,
-                     "toolchain": tc,
-                     "graded_program": attribute(tc, submission=submission)}
+        out[tier] = {
+            "cycles": record.get("cycles") if isinstance(record, Mapping) else None,
+            "toolchain": tc,
+            "graded_program": attribute(tc, submission=submission),
+        }
     return out
 
 
@@ -117,8 +130,13 @@ class Member:
     graded_program: str = UNATTRIBUTED
 
     def as_dict(self) -> dict:
-        return {"capsule": self.capsule, "role": self.role, "cycles": self.cycles,
-                "toolchain": self.toolchain, "graded_program": self.graded_program}
+        return {
+            "capsule": self.capsule,
+            "role": self.role,
+            "cycles": self.cycles,
+            "toolchain": self.toolchain,
+            "graded_program": self.graded_program,
+        }
 
 
 @dataclass(frozen=True)
@@ -129,7 +147,7 @@ class GroupComparand:
     tier: str | None
     fused: Member | None
     parts: tuple[Member, ...] = ()
-    status: str = "incomplete"          # resolved | incomplete
+    status: str = "incomplete"  # resolved | incomplete
     reason: str = ""
     #: True only when every contributing count was produced by the SAME program AND that program is
     #: the submission under grade. A False here does not invalidate the arithmetic; it forbids quoting.
@@ -156,12 +174,19 @@ class GroupComparand:
         return None if not s or d is None else d / s
 
     def as_dict(self) -> dict:
-        return {"group": self.group, "tier": self.tier, "status": self.status, "reason": self.reason,
-                "citable": self.citable,
-                "fused": self.fused.as_dict() if self.fused else None,
-                "parts": [p.as_dict() for p in self.parts],
-                "fused_cycles": self.fused_cycles, "sum_of_parts": self.sum_of_parts,
-                "saving_cycles": self.saving_cycles, "saving_fraction": self.saving_fraction}
+        return {
+            "group": self.group,
+            "tier": self.tier,
+            "status": self.status,
+            "reason": self.reason,
+            "citable": self.citable,
+            "fused": self.fused.as_dict() if self.fused else None,
+            "parts": [p.as_dict() for p in self.parts],
+            "fused_cycles": self.fused_cycles,
+            "sum_of_parts": self.sum_of_parts,
+            "saving_cycles": self.saving_cycles,
+            "saving_fraction": self.saving_fraction,
+        }
 
 
 def declared_groups(capsules: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, list[str]]]:
@@ -191,11 +216,14 @@ def declared_groups(capsules: Sequence[Mapping[str, Any]]) -> dict[str, dict[str
     return out
 
 
-def fusion_comparands(capsules: Sequence[Mapping[str, Any]],
-                      cycles_diagnostic: Mapping[str, Mapping[str, Any]], *,
-                      provenance: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
-                      submission: str | None = None,
-                      ladder: Sequence[str] = ()) -> dict[str, dict]:
+def fusion_comparands(
+    capsules: Sequence[Mapping[str, Any]],
+    cycles_diagnostic: Mapping[str, Mapping[str, Any]],
+    *,
+    provenance: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
+    submission: str | None = None,
+    ladder: Sequence[str] = (),
+) -> dict[str, dict]:
     """The comparand for every declared group, keyed by group name.
 
     ``cycles_diagnostic`` is the grade's own block: ``{capsule: {tier: cycles}}``. ``provenance``, when
@@ -211,23 +239,43 @@ def fusion_comparands(capsules: Sequence[Mapping[str, Any]],
         unspecified = roles.get("unspecified") or []
         if not fused_names:
             out[group] = GroupComparand(
-                group, None, None, (), "incomplete",
-                (f"no member declares role {FUSED!r}"
-                 + (f"; {len(unspecified)} member(s) declare the group as a bare name with no role, so "
-                    f"which one is the fused implementation is not stated" if unspecified else ""))
+                group,
+                None,
+                None,
+                (),
+                "incomplete",
+                (
+                    f"no member declares role {FUSED!r}"
+                    + (
+                        f"; {len(unspecified)} member(s) declare the group as a bare name with no role, so "
+                        f"which one is the fused implementation is not stated"
+                        if unspecified
+                        else ""
+                    )
+                ),
             ).as_dict()
             continue
         if len(fused_names) > 1:
             out[group] = GroupComparand(
-                group, None, None, (), "incomplete",
+                group,
+                None,
+                None,
+                (),
+                "incomplete",
                 f"{len(fused_names)} members declare role {FUSED!r} ({', '.join(fused_names)}); a group "
-                f"compares ONE fused implementation against the parts it replaces").as_dict()
+                f"compares ONE fused implementation against the parts it replaces",
+            ).as_dict()
             continue
         if not part_names:
             out[group] = GroupComparand(
-                group, None, None, (), "incomplete",
+                group,
+                None,
+                None,
+                (),
+                "incomplete",
                 f"{fused_names[0]} declares role {FUSED!r} but the group has no member with role "
-                f"{PART!r}, so there is nothing to compare it against").as_dict()
+                f"{PART!r}, so there is nothing to compare it against",
+            ).as_dict()
             continue
 
         fused_name = fused_names[0]
@@ -236,26 +284,39 @@ def fusion_comparands(capsules: Sequence[Mapping[str, Any]],
         common = set(per_capsule[fused_name])
         for n in part_names:
             common &= set(per_capsule[n])
-        common = {t for t in common if all(per_capsule[n].get(t) is not None
-                                           for n in per_capsule)}
+        common = {t for t in common if all(per_capsule[n].get(t) is not None for n in per_capsule)}
         if not common:
             missing = [n for n in per_capsule if not per_capsule[n]]
             out[group] = GroupComparand(
-                group, None, None, (), "incomplete",
-                (f"no tier reported a cycle count for every member"
-                 + (f"; nothing was reported at all for {', '.join(sorted(missing))}" if missing else
-                    f"; members reported at "
-                    + "; ".join(f"{n}@{sorted(per_capsule[n])}" for n in sorted(per_capsule))))
+                group,
+                None,
+                None,
+                (),
+                "incomplete",
+                (
+                    f"no tier reported a cycle count for every member"
+                    + (
+                        f"; nothing was reported at all for {', '.join(sorted(missing))}"
+                        if missing
+                        else f"; members reported at "
+                        + "; ".join(f"{n}@{sorted(per_capsule[n])}" for n in sorted(per_capsule))
+                    )
+                ),
             ).as_dict()
             continue
         ordered = [t for t in ladder if t in common] or sorted(common)
-        tier = ordered[-1]      # the deepest tier both reported at: the most authoritative comparison
+        tier = ordered[-1]  # the deepest tier both reported at: the most authoritative comparison
 
         def member(nm: str, role: str) -> Member:
             prov = ((provenance or {}).get(nm) or {}).get(tier) or {}
             tc = prov.get("toolchain")
-            return Member(nm, role, int(per_capsule[nm][tier]), str(tc) if tc else None,
-                          prov.get("graded_program") or attribute(tc, submission=submission))
+            return Member(
+                nm,
+                role,
+                int(per_capsule[nm][tier]),
+                str(tc) if tc else None,
+                prov.get("graded_program") or attribute(tc, submission=submission),
+            )
 
         fused = member(fused_name, FUSED)
         parts = tuple(member(n, PART) for n in part_names)
@@ -263,9 +324,11 @@ def fusion_comparands(capsules: Sequence[Mapping[str, Any]],
         citable = programs == {SUBMISSION}
         reason = f"every member reported at {tier}; comparison is cycles(fused) vs sum(cycles(parts))"
         if not citable:
-            reason += ("; NOT citable: " + ", ".join(
+            reason += "; NOT citable: " + ", ".join(
                 f"{m.capsule} was graded by {m.toolchain or 'an unnamed program'} ({m.graded_program})"
-                for m in (fused, *parts) if m.graded_program != SUBMISSION))
+                for m in (fused, *parts)
+                if m.graded_program != SUBMISSION
+            )
         out[group] = GroupComparand(group, tier, fused, parts, "resolved", reason, citable).as_dict()
     return out
 
@@ -281,8 +344,10 @@ def render(comparands: Mapping[str, Mapping[str, Any]]) -> str:
         lines.append(
             f"{group}@{c['tier']}: fused {c['fused_cycles']} vs parts {c['sum_of_parts']} "
             f"(saving {c['saving_cycles']}"
-            + (f", {frac * 100:.1f}%" if frac is not None else "") + ")"
-            + ("" if c.get("citable") else "  [NOT CITABLE]"))
+            + (f", {frac * 100:.1f}%" if frac is not None else "")
+            + ")"
+            + ("" if c.get("citable") else "  [NOT CITABLE]")
+        )
         if not c.get("citable"):
             lines.append(f"    {c.get('reason')}")
     return "\n".join(lines)

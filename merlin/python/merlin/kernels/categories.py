@@ -9,12 +9,12 @@ divergences becomes a ranked "these categories are open" view.
 Distinct from ``regions`` (WHERE in the compiler an axis lives) and ``action_catalog`` (the concrete
 lever/seam for an axis): a category is WHAT KIND of optimization it is. Deterministic; no LLM.
 """
+
 from __future__ import annotations
 
 # The improvement categories the search chooses among. runtime-sync has no lever axis yet (runtime
 # hooks aren't captured as a CCA facet) — kept for completeness so the search can still ask about it.
-CATEGORIES = ("tiling-dataflow", "fusion-layout", "register-residency", "instruction-selection",
-              "runtime-sync")
+CATEGORIES = ("tiling-dataflow", "fusion-layout", "register-residency", "instruction-selection", "runtime-sync")
 
 # CCA facet axis -> improvement category (every RVV lever axis is categorized; see check_categories).
 _AXIS_CATEGORY = {
@@ -22,7 +22,7 @@ _AXIS_CATEGORY = {
     "compute.nr_is_vsetvlmax": "tiling-dataflow",
     "compute.reduction_form": "tiling-dataflow",
     "compute.epilogue": "fusion-layout",
-    "memory.access_pattern": "fusion-layout",   # packed unit-stride layout — the data-movement lever
+    "memory.access_pattern": "fusion-layout",  # packed unit-stride layout — the data-movement lever
     # The envelope axes are data-movement too: a redundant tile-epilogue copy IS layout traffic.
     "envelope.runtime_calls": "fusion-layout",
     "envelope.calls_in_loop": "fusion-layout",

@@ -49,6 +49,7 @@ equals ``W[n, k]`` on the source, and the map change encodes precisely that. It 
 default-off compiler feature (``fuse_transpose_b``) so the frozen ``hand_v0`` control keeps a
 byte-identical lowering; it is gated on the board with a per-element check, not just cos.
 """
+
 from __future__ import annotations
 
 FEATURE = "fuse_transpose_b"

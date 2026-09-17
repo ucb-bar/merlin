@@ -13,6 +13,7 @@ Rungs (all integer -> bit-exact certifiable):
   VEC2  s = sum(x * w)            (elementwise mul -> reduction; a contraction expressed in
                                    the VECTOR family, not as matmul — the real family test)
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -21,37 +22,59 @@ N = 64
 
 
 def _cb(tensors: dict, commands: list) -> dict[str, Any]:
-    return {"abi_version": "0.1", "target": "saturn_vec", "backend": "spike",
-            "tensors": tensors, "commands": commands}
+    return {"abi_version": "0.1", "target": "saturn_vec", "backend": "spike", "tensors": tensors, "commands": commands}
 
 
 def vec0(n: int = N) -> dict:
     return _cb(
-        {"x": {"shape": [n], "dtype": "i32", "role": "input"},
-         "b": {"shape": [n], "dtype": "i32", "role": "input"},
-         "y": {"shape": [n], "dtype": "i32", "role": "output"}},
-        [{"opcode": "VECTOR_MAP", "operands": {"lhs": "x", "rhs": "b", "dst": "y"},
-          "attributes": {"combine": "add", "activation": []}}])
+        {
+            "x": {"shape": [n], "dtype": "i32", "role": "input"},
+            "b": {"shape": [n], "dtype": "i32", "role": "input"},
+            "y": {"shape": [n], "dtype": "i32", "role": "output"},
+        },
+        [
+            {
+                "opcode": "VECTOR_MAP",
+                "operands": {"lhs": "x", "rhs": "b", "dst": "y"},
+                "attributes": {"combine": "add", "activation": []},
+            }
+        ],
+    )
 
 
 def vec1(n: int = N) -> dict:
     return _cb(
-        {"x": {"shape": [n], "dtype": "i32", "role": "input"},
-         "b": {"shape": [n], "dtype": "i32", "role": "input"},
-         "y": {"shape": [n], "dtype": "i32", "role": "output"}},
-        [{"opcode": "VECTOR_MAP", "operands": {"lhs": "x", "rhs": "b", "dst": "y"},
-          "attributes": {"combine": "add", "activation": ["relu"]}}])
+        {
+            "x": {"shape": [n], "dtype": "i32", "role": "input"},
+            "b": {"shape": [n], "dtype": "i32", "role": "input"},
+            "y": {"shape": [n], "dtype": "i32", "role": "output"},
+        },
+        [
+            {
+                "opcode": "VECTOR_MAP",
+                "operands": {"lhs": "x", "rhs": "b", "dst": "y"},
+                "attributes": {"combine": "add", "activation": ["relu"]},
+            }
+        ],
+    )
 
 
 def vec2(n: int = N) -> dict:
     return _cb(
-        {"x": {"shape": [n], "dtype": "i32", "role": "input"},
-         "w": {"shape": [n], "dtype": "i32", "role": "input"},
-         "s": {"shape": [1], "dtype": "i32", "role": "output"}},
-        [{"opcode": "VECTOR_MAP", "operands": {"lhs": "x", "rhs": "w", "dst": "t"},
-          "attributes": {"combine": "mul", "activation": []}},
-         {"opcode": "VREDUCE", "operands": {"src": "t", "dst": "s"},
-          "attributes": {"op": "sum"}}])
+        {
+            "x": {"shape": [n], "dtype": "i32", "role": "input"},
+            "w": {"shape": [n], "dtype": "i32", "role": "input"},
+            "s": {"shape": [1], "dtype": "i32", "role": "output"},
+        },
+        [
+            {
+                "opcode": "VECTOR_MAP",
+                "operands": {"lhs": "x", "rhs": "w", "dst": "t"},
+                "attributes": {"combine": "mul", "activation": []},
+            },
+            {"opcode": "VREDUCE", "operands": {"src": "t", "dst": "s"}, "attributes": {"op": "sum"}},
+        ],
+    )
 
 
 RUNGS = {

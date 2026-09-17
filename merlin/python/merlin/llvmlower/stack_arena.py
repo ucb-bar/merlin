@@ -52,17 +52,16 @@ program asks for.
 NOTHING HERE NAMES A TARGET. The entry symbol and the frame budget are the target's own declaration
 (``harness_build_recipe(target).require_kernel_stack_frame()``), threaded in by the caller.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
-from .arena_bind import (ArenaBindError, _blocks_of, _cyclic_blocks, _reachable,
-                         _split_function)
 from ..xdsl_dialects.lowering.arena_plan import ARENA_ALIGN, _align_up
+from .arena_bind import ArenaBindError, _blocks_of, _cyclic_blocks, _reachable, _split_function
 
-__all__ = ["bind_stack_arena", "StackArenaError", "StackArenaReport", "STACK_ARENA_SYMBOL",
-           "element_bytes_of"]
+__all__ = ["bind_stack_arena", "StackArenaError", "StackArenaReport", "STACK_ARENA_SYMBOL", "element_bytes_of"]
 
 #: The symbol the stack arena is emitted under. Internal linkage and zero-initialized, so it lands
 #: in ``.bss`` and costs image size only on a loader that materializes ``.bss``. Deliberately
@@ -74,8 +73,17 @@ STACK_ARENA_SYMBOL = "merlin_stack_arena"
 #: unlisted type is REFUSED rather than guessed: a wrong width reserves the wrong number of bytes,
 #: which is the one error that produces plausible output instead of a crash.
 _LLVM_TYPE_BYTES: dict[str, int] = {
-    "i1": 1, "i8": 1, "i16": 2, "i32": 4, "i64": 8, "i128": 16,
-    "half": 2, "bfloat": 2, "float": 4, "double": 8, "fp128": 16,
+    "i1": 1,
+    "i8": 1,
+    "i16": 2,
+    "i32": 4,
+    "i64": 8,
+    "i128": 16,
+    "half": 2,
+    "bfloat": 2,
+    "float": 4,
+    "double": 8,
+    "fp128": 16,
     "ptr": 8,
 }
 
@@ -91,7 +99,8 @@ def element_bytes_of(llvm_type: str) -> int:
         raise StackArenaError(
             f"alloca element type {llvm_type.strip()!r} is not one this pass can size "
             f"(it knows {sorted(_LLVM_TYPE_BYTES)}); reserving a guessed width would under- or "
-            f"over-allocate silently")
+            f"over-allocate silently"
+        )
     return width
 
 
@@ -99,9 +108,9 @@ def element_bytes_of(llvm_type: str) -> int:
 class _Slot:
     """One ``alloca`` site considered for the arena."""
 
-    name: str            # SSA name, e.g. "%1234"
-    line: int            # index into the function's line list
-    block: int           # block index
+    name: str  # SSA name, e.g. "%1234"
+    line: int  # index into the function's line list
+    block: int  # block index
     elem_type: str
     count: int
     align: int
@@ -125,24 +134,33 @@ class StackArenaReport:
     remaining_stack_bytes: int = 0
     refusals: list[dict[str, Any]] = field(default_factory=list)
     #: Stated, not implied: the arena is one shared object per module.
-    reentrancy: str = ("the entrypoint is NOT reentrant after this transform -- two concurrent or "
-                       "nested activations share the arena. The whole-model harness invokes the "
-                       "kernel sequentially on one core, which is the condition under which this "
-                       "is admissible")
+    reentrancy: str = (
+        "the entrypoint is NOT reentrant after this transform -- two concurrent or "
+        "nested activations share the arena. The whole-model harness invokes the "
+        "kernel sequentially on one core, which is the condition under which this "
+        "is admissible"
+    )
 
     def to_dict(self) -> dict[str, Any]:
-        return {"schema": "merlin_stack_arena_bind_v1", "entry_symbol": self.entry_symbol,
-                "symbol": self.symbol, "moved_bytes": self.moved_bytes,
-                "arena_bytes": self.arena_bytes, "n_bound": self.n_bound,
-                "n_refused": self.n_refused,
-                "remaining_stack_bytes": self.remaining_stack_bytes,
-                "shares_bytes": False,
-                "why_no_sharing": ("an alloca has no free, so no two live ranges are provably "
-                                   "disjoint; and on the measured model the largest single "
-                                   "allocation alone exceeds the whole frame budget, so no "
-                                   "colouring would make it fit"),
-                "reentrancy": self.reentrancy,
-                "refusals": [dict(r) for r in self.refusals]}
+        return {
+            "schema": "merlin_stack_arena_bind_v1",
+            "entry_symbol": self.entry_symbol,
+            "symbol": self.symbol,
+            "moved_bytes": self.moved_bytes,
+            "arena_bytes": self.arena_bytes,
+            "n_bound": self.n_bound,
+            "n_refused": self.n_refused,
+            "remaining_stack_bytes": self.remaining_stack_bytes,
+            "shares_bytes": False,
+            "why_no_sharing": (
+                "an alloca has no free, so no two live ranges are provably "
+                "disjoint; and on the measured model the largest single "
+                "allocation alone exceeds the whole frame budget, so no "
+                "colouring would make it fit"
+            ),
+            "reentrancy": self.reentrancy,
+            "refusals": [dict(r) for r in self.refusals],
+        }
 
 
 def _parse_alloca(inst: str) -> tuple[str, str, int, int] | None:
@@ -179,13 +197,14 @@ def _parse_alloca(inst: str) -> tuple[str, str, int, int] | None:
         else:
             # The element-count operand: `<ty> <NumElements>`.
             if not tail.strip().isdigit():
-                return None            # a dynamic count has no static size
+                return None  # a dynamic count has no static size
             count = int(tail.strip())
     return name, elem_type, count, align
 
 
-def bind_stack_arena(ll_text: str, *, entry_symbol: str,
-                     symbol: str = STACK_ARENA_SYMBOL) -> tuple[str, StackArenaReport]:
+def bind_stack_arena(
+    ll_text: str, *, entry_symbol: str, symbol: str = STACK_ARENA_SYMBOL
+) -> tuple[str, StackArenaReport]:
     """Rewrite ``@entry_symbol``'s provable static allocas into one arena. ``(ll, report)``.
 
     With nothing bindable the text is returned UNCHANGED -- byte-identical, not merely equivalent --
@@ -205,11 +224,12 @@ def bind_stack_arena(ll_text: str, *, entry_symbol: str,
 
     # A static arena is one object per module, so a self-call would let an inner activation
     # overwrite an outer one's temporaries.
-    body = "\n".join(lines[start + 1:end])
+    body = "\n".join(lines[start + 1 : end])
     if f"@{entry_symbol}(" in body:
         raise StackArenaError(
             f"@{entry_symbol} contains a call to itself; a static arena is shared by every "
-            f"activation, so a recursive entrypoint would scribble on its own caller's temporaries")
+            f"activation, so a recursive entrypoint would scribble on its own caller's temporaries"
+        )
 
     try:
         blocks = _blocks_of(lines, start, end)
@@ -224,7 +244,8 @@ def bind_stack_arena(ll_text: str, *, entry_symbol: str,
                 raise StackArenaError(
                     f"block {block.label} branches to {label}, which is not a block of "
                     f"@{entry_symbol}; a CFG with a missing edge yields a cycle set that is wrong "
-                    f"in the permissive direction")
+                    f"in the permissive direction"
+                )
             resolved.append(by_label[label])
         succs.append(resolved)
     cyclic = _cyclic_blocks(succs)
@@ -239,37 +260,61 @@ def bind_stack_arena(ll_text: str, *, entry_symbol: str,
             parsed = _parse_alloca(inst)
             if parsed is None:
                 report.n_refused += 1
-                report.refusals.append({"line": line_index, "reason": (
-                    "the alloca's element count, alignment or address space could not be read as a "
-                    "static size, so no arena bytes can be reserved for it"),
-                    "instruction": inst.strip()[:200]})
+                report.refusals.append(
+                    {
+                        "line": line_index,
+                        "reason": (
+                            "the alloca's element count, alignment or address space could not be read as a "
+                            "static size, so no arena bytes can be reserved for it"
+                        ),
+                        "instruction": inst.strip()[:200],
+                    }
+                )
                 continue
             name, elem_type, count, align = parsed
             try:
                 width = element_bytes_of(elem_type)
             except StackArenaError as exc:
                 report.n_refused += 1
-                report.refusals.append({"line": line_index, "name": name,
-                                        "reason": str(exc)})
+                report.refusals.append({"line": line_index, "name": name, "reason": str(exc)})
                 continue
             size = width * count
             if index in cyclic:
                 report.n_refused += 1
                 report.remaining_stack_bytes += size
-                report.refusals.append({"line": line_index, "name": name, "bytes": size,
-                                        "reason": ("its block lies on a CFG cycle, so two dynamic "
-                                                   "instances of this one site could coexist and "
-                                                   "would alias a single arena slot")})
+                report.refusals.append(
+                    {
+                        "line": line_index,
+                        "name": name,
+                        "bytes": size,
+                        "reason": (
+                            "its block lies on a CFG cycle, so two dynamic "
+                            "instances of this one site could coexist and "
+                            "would alias a single arena slot"
+                        ),
+                    }
+                )
                 continue
             if index not in reachable:
                 report.n_refused += 1
-                report.refusals.append({"line": line_index, "name": name, "bytes": size,
-                                        "reason": ("its block is unreachable from the entry, so "
-                                                   "arena bytes reserved for it would never be "
-                                                   "written")})
+                report.refusals.append(
+                    {
+                        "line": line_index,
+                        "name": name,
+                        "bytes": size,
+                        "reason": (
+                            "its block is unreachable from the entry, so "
+                            "arena bytes reserved for it would never be "
+                            "written"
+                        ),
+                    }
+                )
                 continue
-            slots.append(_Slot(name=name, line=line_index, block=index, elem_type=elem_type,
-                               count=count, align=align, bytes=size))
+            slots.append(
+                _Slot(
+                    name=name, line=line_index, block=index, elem_type=elem_type, count=count, align=align, bytes=size
+                )
+            )
 
     if not slots:
         return ll_text, report
@@ -288,11 +333,11 @@ def bind_stack_arena(ll_text: str, *, entry_symbol: str,
         out[slot.line] = (
             f"  {slot.name} = getelementptr inbounds i8, ptr @{symbol}, "
             f"i64 {offsets[slot.name]}  ; was `alloca {slot.elem_type}, i64 {slot.count}, "
-            f"align {slot.align}` ({slot.bytes} bytes)")
+            f"align {slot.align}` ({slot.bytes} bytes)"
+        )
 
     alignment = max([ARENA_ALIGN, *(int(slot.align) for slot in slots)])
-    out.insert(start, f"@{symbol} = internal global [{arena_bytes} x i8] zeroinitializer, "
-                      f"align {alignment}")
+    out.insert(start, f"@{symbol} = internal global [{arena_bytes} x i8] zeroinitializer, align {alignment}")
 
     report.n_bound = len(slots)
     report.moved_bytes = sum(slot.bytes for slot in slots)
@@ -301,8 +346,7 @@ def bind_stack_arena(ll_text: str, *, entry_symbol: str,
     return "\n".join(out), report
 
 
-def _assert_slots_disjoint(offsets: dict[str, int], sizes: dict[str, int],
-                           arena_bytes: int) -> None:
+def _assert_slots_disjoint(offsets: dict[str, int], sizes: dict[str, int], arena_bytes: int) -> None:
     """Prove the placement this pass just computed: no two slots overlap, none runs off the end.
 
     A self-check rather than a test, because the failure it guards is silent. This pass promises no
@@ -314,9 +358,10 @@ def _assert_slots_disjoint(offsets: dict[str, int], sizes: dict[str, int],
         if offset + sizes[name] > next_offset:
             raise StackArenaError(
                 f"placement bug: {name} at {offset} spans {sizes[name]} bytes and would overlap "
-                f"{next_name} at {next_offset}; this pass promises no sharing")
+                f"{next_name} at {next_offset}; this pass promises no sharing"
+            )
     for name, offset in ordered:
         if offset + sizes[name] > arena_bytes:
             raise StackArenaError(
-                f"placement bug: {name} at {offset} spans {sizes[name]} bytes, past the "
-                f"{arena_bytes}-byte arena")
+                f"placement bug: {name} at {offset} spans {sizes[name]} bytes, past the {arena_bytes}-byte arena"
+            )

@@ -27,6 +27,7 @@ Two derivations, both of which can only be answered from the stream:
 The routes at the bottom are registered through :func:`action_catalog.register_route`, the existing plugin
 seam, so the core router stays backend-agnostic.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -35,9 +36,17 @@ from typing import Any
 
 from .cca import CCA, ComputeFacet, SpatialFacet
 
-__all__ = ["CONTRACTION_FORM", "PROFITABLE_REGIMES", "MatrixStreamFacts", "lift_matrix_unit",
-           "register_routes", "stream_facts", "tile_occupancy", "vtype_spans_tile_row",
-           "vtype_violations"]
+__all__ = [
+    "CONTRACTION_FORM",
+    "PROFITABLE_REGIMES",
+    "MatrixStreamFacts",
+    "lift_matrix_unit",
+    "register_routes",
+    "stream_facts",
+    "tile_occupancy",
+    "vtype_spans_tile_row",
+    "vtype_violations",
+]
 
 #: Shape regimes (``bench_ceiling.shape_regime`` vocabulary) where filling the tile is plausible, and so
 #: where moving a contraction onto the unit can pay. The complement — ``vector`` and ``skinny`` — is the
@@ -49,6 +58,7 @@ PROFITABLE_REGIMES: tuple[str, ...] = ("square_large", "square_medium", "rectang
 #: from a stationary-weight systolic wavefront ("systolic"), which is why it is its own token rather than
 #: being folded into the existing one.
 CONTRACTION_FORM = "outer_product"
+
 
 @dataclass(frozen=True)
 class MatrixStreamFacts:
@@ -73,17 +83,27 @@ class MatrixStreamFacts:
     notes: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        return {"accumulates": self.accumulates, "readouts": self.readouts,
-                "broadcasts": self.broadcasts, "accumulator_resident": self.accumulator_resident,
-                "reduction_is_loop": self.reduction_is_loop,
-                "readouts_per_accumulate": self.readouts_per_accumulate,
-                "matrix_registers_used": self.matrix_registers_used,
-                "notes": list(self.notes)}
+        return {
+            "accumulates": self.accumulates,
+            "readouts": self.readouts,
+            "broadcasts": self.broadcasts,
+            "accumulator_resident": self.accumulator_resident,
+            "reduction_is_loop": self.reduction_is_loop,
+            "readouts_per_accumulate": self.readouts_per_accumulate,
+            "matrix_registers_used": self.matrix_registers_used,
+            "notes": list(self.notes),
+        }
 
 
-def stream_facts(obj_path: Any, encodings: Mapping[str, Any], *, accumulate: str,
-                 readout: str, broadcast: str | None = None,
-                 triple: str = "riscv64") -> MatrixStreamFacts:
+def stream_facts(
+    obj_path: Any,
+    encodings: Mapping[str, Any],
+    *,
+    accumulate: str,
+    readout: str,
+    broadcast: str | None = None,
+    triple: str = "riscv64",
+) -> MatrixStreamFacts:
     """Read residency and loop structure from a compiled object or linked image.
 
     Identities come from ``encodings``, the derived table, so an instruction no assembler can name is
@@ -104,8 +124,10 @@ def stream_facts(obj_path: Any, encodings: Mapping[str, Any], *, accumulate: str
 
     missing = [n for n in (accumulate, readout) if n not in encodings]
     if missing:
-        raise ValueError(f"the derived encoding table has no {missing}; a lifter that silently skipped "
-                         "them would report a clean stream for a kernel it could not see")
+        raise ValueError(
+            f"the derived encoding table has no {missing}; a lifter that silently skipped "
+            "them would report a clean stream for a kernel it could not see"
+        )
 
     stream = _rvv.decode(obj_path, triple=triple)
     raws = [i.raw for i in stream.insns]
@@ -127,20 +149,23 @@ def stream_facts(obj_path: Any, encodings: Mapping[str, Any], *, accumulate: str
     if not acc:
         notes.append("no accumulate instruction in the stream: the unit was not driven at all")
     elif not stream.spans_reliable():
-        notes.append("branch displacements look unrelocated, so the reduction loop cannot be scoped; "
-                     "residency is UNKNOWN here -- read a linked image, not an unlinked object")
+        notes.append(
+            "branch displacements look unrelocated, so the reduction loop cannot be scoped; "
+            "residency is UNKNOWN here -- read a linked image, not an unlinked object"
+        )
     else:
         # The tightest back-edge span containing an accumulate is the reduction loop.
-        spans = [sp for sp in stream.loop_spans()
-                 if any(sp[0] <= a <= sp[1] for a in acc)]
+        spans = [sp for sp in stream.loop_spans() if any(sp[0] <= a <= sp[1] for a in acc)]
         if spans:
             lo, hi = min(spans, key=lambda sp: sp[1] - sp[0])
             is_loop = True
             inside = [a for a in out if lo <= a <= hi]
             resident = not inside
             if inside:
-                notes.append(f"{len(inside)} readout(s) inside the reduction loop: the accumulator is "
-                             "committed per reduction step rather than once after it")
+                notes.append(
+                    f"{len(inside)} readout(s) inside the reduction loop: the accumulator is "
+                    "committed per reduction step rather than once after it"
+                )
         else:
             is_loop = False
             if len(acc) >= 2:
@@ -148,18 +173,27 @@ def stream_facts(obj_path: Any, encodings: Mapping[str, Any], *, accumulate: str
                 inside = [a for a in out if acc[0] < a < acc[-1]]
                 resident = not inside
                 if inside:
-                    notes.append(f"{len(inside)} readout(s) between accumulates in an unrolled "
-                                 "reduction: the accumulator is committed per step")
+                    notes.append(
+                        f"{len(inside)} readout(s) between accumulates in an unrolled "
+                        "reduction: the accumulator is committed per step"
+                    )
             else:
-                notes.append("a single accumulate outside any loop is not a reduction; residency is "
-                             "left undetermined rather than reported as satisfied")
+                notes.append(
+                    "a single accumulate outside any loop is not a reduction; residency is "
+                    "left undetermined rather than reported as satisfied"
+                )
 
     per = (len(out) / len(acc)) if acc else None
-    return MatrixStreamFacts(accumulates=len(acc), readouts=len(out), broadcasts=len(bcast),
-                             accumulator_resident=resident, reduction_is_loop=is_loop,
-                             readouts_per_accumulate=per,
-                             matrix_registers_used=(len(acc_regs) if acc else None),
-                             notes=tuple(notes))
+    return MatrixStreamFacts(
+        accumulates=len(acc),
+        readouts=len(out),
+        broadcasts=len(bcast),
+        accumulator_resident=resident,
+        reduction_is_loop=is_loop,
+        readouts_per_accumulate=per,
+        matrix_registers_used=(len(acc_regs) if acc else None),
+        notes=tuple(notes),
+    )
 
 
 def vtype_spans_tile_row(sew: int, lmul: float, *, operand_bits: int) -> bool:
@@ -197,9 +231,16 @@ def _vtype_of(raw: Any) -> "tuple[int, float] | None":
     return (sew, lmul) if (sew is not None and lmul is not None) else None
 
 
-def vtype_violations(obj_path: Any, encodings: Mapping[str, Any], *, operand_bits: int,
-                     acc_bits: int | None = None, acc_carrying: Sequence[str] = (),
-                     config_prefix: str = "vset", triple: str = "riscv64") -> tuple[dict[str, Any], ...]:
+def vtype_violations(
+    obj_path: Any,
+    encodings: Mapping[str, Any],
+    *,
+    operand_bits: int,
+    acc_bits: int | None = None,
+    acc_carrying: Sequence[str] = (),
+    config_prefix: str = "vset",
+    triple: str = "riscv64",
+) -> tuple[dict[str, Any], ...]:
     """Every unit instruction issued under a vtype that does not match the data it moves.
 
     Two rules, and the second exists because the first is necessary but NOT sufficient — a kernel that
@@ -225,7 +266,7 @@ def vtype_violations(obj_path: Any, encodings: Mapping[str, Any], *, operand_bit
     raws = [i.raw for i in stream.insns]
     decoded = decode_stream(raws, encodings)
     acc_names = frozenset(acc_carrying)
-    want_lmul = (max(1, int(acc_bits) // int(operand_bits)) if acc_bits else None)
+    want_lmul = max(1, int(acc_bits) // int(operand_bits)) if acc_bits else None
     current: tuple[int, float] | None = None
     out: list[dict[str, Any]] = []
     for d in decoded:
@@ -238,21 +279,40 @@ def vtype_violations(obj_path: Any, encodings: Mapping[str, Any], *, operand_bit
         if not d.from_extension:
             continue
         if current is None:
-            out.append({"insn": d.identity, "addr": raw.addr, "sew": None, "lmul": None,
-                        "why": "no vector-configuration instruction precedes it; the length in effect "
-                               "was inherited"})
+            out.append(
+                {
+                    "insn": d.identity,
+                    "addr": raw.addr,
+                    "sew": None,
+                    "lmul": None,
+                    "why": "no vector-configuration instruction precedes it; the length in effect was inherited",
+                }
+            )
             continue
         sew, lmul = current
         if not vtype_spans_tile_row(sew, lmul, operand_bits=operand_bits):
-            out.append({"insn": d.identity, "addr": raw.addr, "sew": sew, "lmul": lmul,
-                        "why": f"e{sew}/m{lmul:g} reaches VLEN*{lmul:g}/{sew} lanes, short of a tile "
-                               f"row's VLEN/{operand_bits}"})
-        elif d.identity in acc_names and acc_bits and (sew != int(acc_bits)
-                                                       or float(lmul) < float(want_lmul)):
-            out.append({"insn": d.identity, "addr": raw.addr, "sew": sew, "lmul": lmul,
-                        "why": f"moves {acc_bits}-bit accumulator data but is issued at e{sew}/"
-                               f"m{lmul:g}; it needs e{acc_bits}/m{want_lmul} to cover a full tile row, "
-                               f"and under a narrower vtype it silently touches only part of one"})
+            out.append(
+                {
+                    "insn": d.identity,
+                    "addr": raw.addr,
+                    "sew": sew,
+                    "lmul": lmul,
+                    "why": f"e{sew}/m{lmul:g} reaches VLEN*{lmul:g}/{sew} lanes, short of a tile "
+                    f"row's VLEN/{operand_bits}",
+                }
+            )
+        elif d.identity in acc_names and acc_bits and (sew != int(acc_bits) or float(lmul) < float(want_lmul)):
+            out.append(
+                {
+                    "insn": d.identity,
+                    "addr": raw.addr,
+                    "sew": sew,
+                    "lmul": lmul,
+                    "why": f"moves {acc_bits}-bit accumulator data but is issued at e{sew}/"
+                    f"m{lmul:g}; it needs e{acc_bits}/m{want_lmul} to cover a full tile row, "
+                    f"and under a narrower vtype it silently touches only part of one",
+                }
+            )
     return tuple(out)
 
 
@@ -269,28 +329,43 @@ def tile_occupancy(m: int, n: int, tile: int) -> float:
     return (int(m) * int(n)) / float(tiles_m * tiles_n * tile * tile)
 
 
-def lift_matrix_unit(obj_path: Any, encodings: Mapping[str, Any], *, op: str, source: str,
-                     accumulate: str, readout: str, broadcast: str | None = None,
-                     tile_rows: int | None = None, tile_cols: int | None = None,
-                     accumulator_dtype: str | None = None,
-                     backend: str = "matrix") -> CCA:
+def lift_matrix_unit(
+    obj_path: Any,
+    encodings: Mapping[str, Any],
+    *,
+    op: str,
+    source: str,
+    accumulate: str,
+    readout: str,
+    broadcast: str | None = None,
+    tile_rows: int | None = None,
+    tile_cols: int | None = None,
+    accumulator_dtype: str | None = None,
+    backend: str = "matrix",
+) -> CCA:
     """A CCA for a matrix-extension region, with the spatial facet filled from the stream.
 
     ``accumulator_resident`` is set on the COMPUTE facet as well as the spatial one. It belongs on
     compute because it is the same cross-backend question the RVV lifter answers there, and a comparator
     that only found it under ``spatial`` would never diverge it against a vector expert.
     """
-    facts = stream_facts(obj_path, encodings, accumulate=accumulate, readout=readout,
-                         broadcast=broadcast)
+    facts = stream_facts(obj_path, encodings, accumulate=accumulate, readout=readout, broadcast=broadcast)
     return CCA(
-        op=op, backend=[backend],
-        compute=ComputeFacet(op=op, contraction_form=CONTRACTION_FORM,
-                             accumulator_dtype=accumulator_dtype,
-                             accumulator_resident=facts.accumulator_resident),
-        spatial=SpatialFacet(pe_rows=tile_rows, pe_cols=tile_cols, dataflow=CONTRACTION_FORM,
-                             accumulator_resident=facts.accumulator_resident),
-        provenance={"level": "asm", "source": source, "confidence": "high",
-                    "stream": facts.to_dict()},
+        op=op,
+        backend=[backend],
+        compute=ComputeFacet(
+            op=op,
+            contraction_form=CONTRACTION_FORM,
+            accumulator_dtype=accumulator_dtype,
+            accumulator_resident=facts.accumulator_resident,
+        ),
+        spatial=SpatialFacet(
+            pe_rows=tile_rows,
+            pe_cols=tile_cols,
+            dataflow=CONTRACTION_FORM,
+            accumulator_resident=facts.accumulator_resident,
+        ),
+        provenance={"level": "asm", "source": source, "confidence": "high", "stream": facts.to_dict()},
     )
 
 
@@ -308,31 +383,43 @@ def register_routes(backend: str = "matrix") -> None:
     from . import action_catalog as AC
 
     AC.ensure_backend(backend)
-    AC.register_route(backend, AC._Route(
-        axis="compute.accumulator_resident",
-        when=lambda d: bool(d.expert) and not d.ours,
-        action_class="PASS",
-        target_seam="pass:matrix-accumulator-resident-epilogue",
-        change=("keep the readout out of the reduction: extract, requantize and store the accumulator "
-                "once after the k-loop instead of once per step"),
-        forkable_now=True,
-        expected_effect=("removes one readout per reduction step; the epilogue stops round-tripping the "
-                         "accumulator and the reduction becomes bounded by the accumulate itself"),
-        intended_facet={"compute.accumulator_resident": True},
-    ))
-    AC.register_route(backend, AC._Route(
-        axis="compute.contraction_form",
-        when=lambda d: d.expert == CONTRACTION_FORM and d.ours != CONTRACTION_FORM,
-        action_class="CODEGEN",
-        target_seam="codegen:matrix-unit-microkernel",
-        change="emit the matrix-unit microkernel for this contraction instead of the vector lowering",
-        forkable_now=True,
-        expected_effect=("moves the contraction onto the matrix datapath; profitable only where the "
-                         "parallel extents fill the tile, so it is gated on the shape regime"),
-        intended_facet={"compute.contraction_form": CONTRACTION_FORM},
-        # Deliberately NOT shape-agnostic. The census found narrow contractions in quantity, and this
-        # action is the wrong answer for them: routing an M=1 contraction onto the unit is correct and
-        # slower. Naming the regimes that fill a tile is how the narrow ones ("vector", "skinny") stay
-        # out of the catalog instead of being filtered later by whoever remembers to.
-        shape_regimes=PROFITABLE_REGIMES,
-    ))
+    AC.register_route(
+        backend,
+        AC._Route(
+            axis="compute.accumulator_resident",
+            when=lambda d: bool(d.expert) and not d.ours,
+            action_class="PASS",
+            target_seam="pass:matrix-accumulator-resident-epilogue",
+            change=(
+                "keep the readout out of the reduction: extract, requantize and store the accumulator "
+                "once after the k-loop instead of once per step"
+            ),
+            forkable_now=True,
+            expected_effect=(
+                "removes one readout per reduction step; the epilogue stops round-tripping the "
+                "accumulator and the reduction becomes bounded by the accumulate itself"
+            ),
+            intended_facet={"compute.accumulator_resident": True},
+        ),
+    )
+    AC.register_route(
+        backend,
+        AC._Route(
+            axis="compute.contraction_form",
+            when=lambda d: d.expert == CONTRACTION_FORM and d.ours != CONTRACTION_FORM,
+            action_class="CODEGEN",
+            target_seam="codegen:matrix-unit-microkernel",
+            change="emit the matrix-unit microkernel for this contraction instead of the vector lowering",
+            forkable_now=True,
+            expected_effect=(
+                "moves the contraction onto the matrix datapath; profitable only where the "
+                "parallel extents fill the tile, so it is gated on the shape regime"
+            ),
+            intended_facet={"compute.contraction_form": CONTRACTION_FORM},
+            # Deliberately NOT shape-agnostic. The census found narrow contractions in quantity, and this
+            # action is the wrong answer for them: routing an M=1 contraction onto the unit is correct and
+            # slower. Naming the regimes that fill a tile is how the narrow ones ("vector", "skinny") stay
+            # out of the catalog instead of being filtered later by whoever remembers to.
+            shape_regimes=PROFITABLE_REGIMES,
+        ),
+    )

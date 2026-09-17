@@ -8,6 +8,7 @@ corpus to grade on, how the simulator runs — is the irreducible SETUP, declare
 descriptor (``target_experiment.yaml`` beside the experiment). A new accelerator drops its own descriptor
 and registers its RTL with mlc; no per-target code.
 """
+
 from __future__ import annotations
 
 import copy
@@ -71,14 +72,13 @@ class HostLane:
         if value is None:
             return None
         if not isinstance(value, dict):
-            raise ValueError(
-                f"{descriptor}: `host_lane` must be a mapping, got {type(value).__name__}")
+            raise ValueError(f"{descriptor}: `host_lane` must be a mapping, got {type(value).__name__}")
         provenance = str(value.get("provenance", "published"))
         if provenance not in cls.PROVENANCE:
-            raise ValueError(f"{descriptor}: host_lane.provenance must be one of "
-                             f"{list(cls.PROVENANCE)}, got {provenance!r}")
-        required = ["description", "repo_canonical", "package",
-                    "requires_paths", "read_only", "deny_modification"]
+            raise ValueError(
+                f"{descriptor}: host_lane.provenance must be one of {list(cls.PROVENANCE)}, got {provenance!r}"
+            )
+        required = ["description", "repo_canonical", "package", "requires_paths", "read_only", "deny_modification"]
         # A published lane must name the revision it was published at. An in-tree-minted one must not
         # be made to invent one: gemmini's int8 package records
         # `authoring.mode: deterministic_generated_from_spec` and was never checked out of the remote,
@@ -108,8 +108,7 @@ class HostLane:
             provenance=provenance,
         )
 
-    def resolve(self, *, root: Path | None = None, descriptor: Path | None = None) \
-            -> tuple[Path, dict[str, Any]]:
+    def resolve(self, *, root: Path | None = None, descriptor: Path | None = None) -> tuple[Path, dict[str, Any]]:
         """Validate, load and identify the exact package grading is allowed to use.
 
         The content digest uses the same tree-hash implementation as bundle locks.  It therefore joins
@@ -119,8 +118,7 @@ class HostLane:
         root = (root or repo_root()).resolve()
         package_rel = _safe_relative(self.package, field="package")
         read_only = tuple(_safe_relative(path, field="read_only") for path in self.read_only)
-        denied = tuple(_safe_relative(path, field="deny_modification")
-                       for path in self.deny_modification)
+        denied = tuple(_safe_relative(path, field="deny_modification") for path in self.deny_modification)
         if not read_only:
             raise ValueError("host_lane grants no read-only path; its package is not pinned")
         if not self.requires_paths:
@@ -128,11 +126,11 @@ class HostLane:
         if not any(_is_within(package_rel, grant) for grant in read_only):
             raise ValueError(
                 f"host_lane package {self.package!r} is outside every read-only grant; the agent and "
-                "grader would not share the declared compiler")
+                "grader would not share the declared compiler"
+            )
         masked_by = [str(path) for path in denied if _is_within(package_rel, path)]
         if masked_by:
-            raise ValueError(
-                f"host_lane package {self.package!r} is masked by denied path(s) {masked_by}")
+            raise ValueError(f"host_lane package {self.package!r} is masked by denied path(s) {masked_by}")
 
         package_lexical = root / package_rel
         try:
@@ -140,8 +138,7 @@ class HostLane:
         except OSError as exc:
             raise ValueError(f"host_lane package {self.package!r} is missing or unreadable") from exc
         if not _is_within(package, root) or not package.is_dir():
-            raise ValueError(
-                f"host_lane package {self.package!r} does not resolve to a directory inside {root}")
+            raise ValueError(f"host_lane package {self.package!r} does not resolve to a directory inside {root}")
 
         # A symlink would let a path that looks pinned consume bytes outside the hashed/granted tree.
         # The sandbox snapshot rejects the same shape, so grading and agent visibility stay congruent.
@@ -160,26 +157,24 @@ class HostLane:
             if not (package / rel).exists():
                 missing_required.append(rel.as_posix())
         if missing_required:
-            raise ValueError(
-                f"host_lane package {self.package!r} is missing required path(s) {missing_required}")
+            raise ValueError(f"host_lane package {self.package!r} is missing required path(s) {missing_required}")
 
         # The real loader is part of validation: presence alone is insufficient if the manifest/knobs
         # are malformed or if knobs redirect the schedule outside the package whose digest we record.
         from ..mining.registry import load_rvv_package
+
         loaded = load_rvv_package(package)
-        schedule_rel = _safe_relative(
-            str(loaded.knobs.get("schedule_file", "schedule.mlir")), field="schedule_file")
+        schedule_rel = _safe_relative(str(loaded.knobs.get("schedule_file", "schedule.mlir")), field="schedule_file")
         schedule = package / schedule_rel
         if not schedule.is_file() or schedule.is_symlink():
-            raise ValueError(
-                f"host_lane schedule {schedule_rel.as_posix()!r} is not a regular in-package file")
+            raise ValueError(f"host_lane schedule {schedule_rel.as_posix()!r} is not a regular in-package file")
         try:
             schedule.resolve(strict=True).relative_to(package)
         except (OSError, ValueError) as exc:
-            raise ValueError(
-                f"host_lane schedule {schedule_rel.as_posix()!r} escapes the pinned package") from exc
+            raise ValueError(f"host_lane schedule {schedule_rel.as_posix()!r} escapes the pinned package") from exc
 
         from merlin.benchharness import hash_tree
+
         hashed = hash_tree(package)
         digest = hashed.get("sha256")
         if not hashed.get("present") or not digest or int(hashed.get("n_files") or 0) < 1:
@@ -212,7 +207,8 @@ class HostLane:
                 f"host_lane package {self.package!r} declares dtype_strategy "
                 f"{self.dtype_strategy!r} in the descriptor but its manifest says "
                 f"{loaded.dtype_strategy!r}; the descriptor and the package disagree about which "
-                f"precision lane this is")
+                f"precision lane this is"
+            )
         return package, identity
 
 
@@ -237,8 +233,7 @@ class HostLaneMatrix:
         if value is None:
             return None
         if not isinstance(value, dict):
-            raise ValueError(
-                f"{descriptor}: `host_lane` must be a mapping, got {type(value).__name__}")
+            raise ValueError(f"{descriptor}: `host_lane` must be a mapping, got {type(value).__name__}")
         if "profiles" not in value:
             lane = HostLane.from_mapping(value, descriptor=descriptor)
             key = lane.dtype_strategy or "default"
@@ -254,8 +249,7 @@ class HostLaneMatrix:
             profiles[str(name)] = HostLane.from_mapping({**shared, **body}, descriptor=descriptor)
         default = str(value.get("default") or "")
         if default not in profiles:
-            raise ValueError(f"{descriptor}: host_lane.default must name one of "
-                             f"{sorted(profiles)}, got {default!r}")
+            raise ValueError(f"{descriptor}: host_lane.default must name one of {sorted(profiles)}, got {default!r}")
         return cls(default=default, profiles=profiles)
 
     def for_dtype(self, dtype: str | None) -> HostLane:
@@ -269,8 +263,9 @@ class HostLaneMatrix:
             return self.profiles[self.default]
         try:
             from merlin.compile_cli import _DTYPE_STRATEGY
+
             strategy = _DTYPE_STRATEGY.get(dtype)
-        except Exception:                          # noqa: BLE001 -- no mapping is not a wrong mapping
+        except Exception:  # noqa: BLE001 -- no mapping is not a wrong mapping
             strategy = None
         if strategy is None:
             return self.profiles[self.default]
@@ -278,7 +273,8 @@ class HostLaneMatrix:
             return self.profiles[strategy]
         raise ValueError(
             f"no host lane declared for dtype {dtype!r} (strategy {strategy!r}); this target declares "
-            f"{sorted(self.profiles)}. Refusing to substitute another precision's lane")
+            f"{sorted(self.profiles)}. Refusing to substitute another precision's lane"
+        )
 
 
 @dataclass(frozen=True)
@@ -307,10 +303,13 @@ class PreflightCapabilityProbe:
         requirements = value.get("requirements")
         if not isinstance(capability, str) or not capability.strip():
             raise ValueError(f"{descriptor}: {field}.capability must be a non-empty string")
-        if (not isinstance(adapter, str) or not adapter.strip() or ":" not in adapter
-                or not all(adapter.strip().partition(":")[::2])):
-            raise ValueError(
-                f"{descriptor}: {field}.adapter must be a non-empty 'module:callable' reference")
+        if (
+            not isinstance(adapter, str)
+            or not adapter.strip()
+            or ":" not in adapter
+            or not all(adapter.strip().partition(":")[::2])
+        ):
+            raise ValueError(f"{descriptor}: {field}.adapter must be a non-empty 'module:callable' reference")
         if not isinstance(fixture, dict) or not fixture:
             raise ValueError(f"{descriptor}: {field}.fixture must be a non-empty mapping")
         if not isinstance(requirements, dict):
@@ -322,34 +321,44 @@ class PreflightCapabilityProbe:
         for op_index, operation in enumerate(operations):
             if not isinstance(operation, dict):
                 raise ValueError(f"{descriptor}: {field}.requirements.operations[{op_index}] must be a mapping")
-            domain, dialect, name = (operation.get("domain"), operation.get("dialect"),
-                                     operation.get("operation"))
-            if (not isinstance(domain, str) or not domain.strip()
-                    or not isinstance(dialect, str) or not dialect.strip()
-                    or not isinstance(name, str) or not name.strip()):
+            domain, dialect, name = (operation.get("domain"), operation.get("dialect"), operation.get("operation"))
+            if (
+                not isinstance(domain, str)
+                or not domain.strip()
+                or not isinstance(dialect, str)
+                or not dialect.strip()
+                or not isinstance(name, str)
+                or not name.strip()
+            ):
                 raise ValueError(
                     f"{descriptor}: {field}.requirements.operations[{op_index}] requires non-empty "
-                    "domain, dialect, and operation")
+                    "domain, dialect, and operation"
+                )
             identities.append((domain, dialect, name))
         if len(set(identities)) != len(identities):
             raise ValueError(f"{descriptor}: {field}.requirements.operations contains duplicates")
-        return cls(capability=capability.strip(), adapter=adapter.strip(),
-                   fixture=copy.deepcopy(fixture), requirements=copy.deepcopy(requirements))
+        return cls(
+            capability=capability.strip(),
+            adapter=adapter.strip(),
+            fixture=copy.deepcopy(fixture),
+            requirements=copy.deepcopy(requirements),
+        )
 
 
 @dataclass(frozen=True)
 class TargetExperiment:
     """The declarative SETUP for one target's experiment (derivable facts are NOT here)."""
+
     target: str
-    isa_headers: tuple[str, ...]       # shared hardware-spec headers (bundle-convention path STRINGS)
-    hwbringup_set: str | None          # shared RTL/ISA/README/example set (bundle-convention path STRING)
+    isa_headers: tuple[str, ...]  # shared hardware-spec headers (bundle-convention path STRINGS)
+    hwbringup_set: str | None  # shared RTL/ISA/README/example set (bundle-convention path STRING)
     # OPTIONAL declarative setup: the curated baremetal C harness (linker/crt/headers, NO kernels) an
     # agent's compiler needs — only chipyard-sim targets have one; arc/cyclotron targets omit it. A path
     # relative to the experiment dir. Genuinely per-target setup, so declared (not derived).
     curated_harness: str | None
-    capsule_corpus: Path               # the corpus the arms author against + are graded on (resolved)
-    sim_via: str                       # how the simulator runs (e.g. "chipyard")
-    rtl_via: str                       # how RTL facts are obtained (e.g. "mlc" — DERIVED, not declared)
+    capsule_corpus: Path  # the corpus the arms author against + are graded on (resolved)
+    sim_via: str  # how the simulator runs (e.g. "chipyard")
+    rtl_via: str  # how RTL facts are obtained (e.g. "mlc" — DERIVED, not declared)
     # OPTIONAL: where the accelerator's RTL lives (a local path or a URL). When set, the descriptor
     # itself points at the RTL so onboarding can validate the pointer + wire mlc discovery at it, rather
     # than ASSUMING the RTL was separately registered with mlc. None (the default) keeps the legacy
@@ -358,7 +367,7 @@ class TargetExperiment:
     # Prior backends / reference exemplars the agent must NOT read/copy (an experiment CHOICE, so
     # declared, not derived). Names under ``artifacts/targets/<target>/``.
     prior_backends: tuple[str, ...]
-    path: Path                         # the descriptor file this came from
+    path: Path  # the descriptor file this came from
     # Digest of the exact descriptor bytes parsed into this object.  Keeping the load-time identity
     # closes a TOCTOU hole in formal cohort materialization: a descriptor edited after loading must not
     # be represented by a cohort record carrying the new file digest and the old parsed exclusions.
@@ -507,8 +516,7 @@ class TargetExperiment:
         """This target's DEFAULT host lane, for the readers that predate the matrix."""
         return None if self.host_lanes is None else self.host_lanes.profiles[self.host_lanes.default]
 
-    def resolve_host_lane(self, *, root: Path | None = None,
-                          dtype: str | None = None) -> tuple[Path, dict[str, Any]]:
+    def resolve_host_lane(self, *, root: Path | None = None, dtype: str | None = None) -> tuple[Path, dict[str, Any]]:
         """Validate and identify the host lane a capsule at ``dtype`` is graded against.
 
         ``dtype=None`` keeps the pre-matrix behaviour (the declared default), so every existing caller
@@ -577,9 +585,13 @@ class TargetExperiment:
         parent = self.capsule_corpus.parent
         out = []
         for d in sorted(parent.iterdir()) if parent.is_dir() else []:
-            if (d.is_dir() and d != self.capsule_corpus and d.name != "hidden"
-                    and not d.name.startswith(("_", "."))          # skip __pycache__/dotdirs, not corpora
-                    and next(d.glob("*/capsule.yaml"), None) is not None):  # a CATEGORY, not a nested corpus
+            if (
+                d.is_dir()
+                and d != self.capsule_corpus
+                and d.name != "hidden"
+                and not d.name.startswith(("_", "."))  # skip __pycache__/dotdirs, not corpora
+                and next(d.glob("*/capsule.yaml"), None) is not None
+            ):  # a CATEGORY, not a nested corpus
                 out.append(str(d.relative_to(repo_root())) + "/")
         return out
 
@@ -622,9 +634,11 @@ class TargetExperiment:
         parent = self.capsule_corpus.parent
         if not parent.is_dir():
             return []
-        return [d for d in sorted(parent.iterdir())
-                if d.is_dir() and d.name.startswith("_")
-                and next(d.glob("*/capsule.yaml"), None) is not None]
+        return [
+            d
+            for d in sorted(parent.iterdir())
+            if d.is_dir() and d.name.startswith("_") and next(d.glob("*/capsule.yaml"), None) is not None
+        ]
 
     def hidden_roots(self) -> list[Path]:
         """The roots the HIDDEN grade must read — empty when the target ships no hidden capsules.
@@ -643,8 +657,7 @@ class TargetExperiment:
         """Return one declared post-search cohort, failing closed on an unknown stage."""
         cohorts = self.evaluation_cohorts or {}
         if name not in cohorts:
-            raise KeyError(
-                f"unknown evaluation cohort {name!r}; declared stages: {sorted(cohorts)}")
+            raise KeyError(f"unknown evaluation cohort {name!r}; declared stages: {sorted(cohorts)}")
         return copy.deepcopy(cohorts[name])
 
     def effective_exclusions(self, source_names) -> tuple[str, ...]:
@@ -732,12 +745,14 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
     hidden_admission = grading.get("hidden_capability_admission") or {}
     search_cohort = grading.get("search_cohort") or {}
     raw_evaluation_cohorts = grading.get("evaluation_cohorts") or {}
-    for field, value in (("grading.resource_bound", resource_bound),
-                         ("grading.phase_bound", phase_bound),
-                         ("grading.expected_cohort", expected_cohort),
-                         ("grading.hidden_capability_admission", hidden_admission),
-                         ("grading.search_cohort", search_cohort),
-                         ("grading.evaluation_cohorts", raw_evaluation_cohorts)):
+    for field, value in (
+        ("grading.resource_bound", resource_bound),
+        ("grading.phase_bound", phase_bound),
+        ("grading.expected_cohort", expected_cohort),
+        ("grading.hidden_capability_admission", hidden_admission),
+        ("grading.search_cohort", search_cohort),
+        ("grading.evaluation_cohorts", raw_evaluation_cohorts),
+    ):
         if not isinstance(value, dict):
             raise ValueError(f"{p}: {field} must be a mapping")
 
@@ -762,26 +777,23 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
     evaluation_cohorts: dict[str, dict[str, Any]] = {}
     for stage, raw_stage in raw_evaluation_cohorts.items():
         field = f"grading.evaluation_cohorts.{stage}"
-        if (not isinstance(stage, str) or not stage or Path(stage).name != stage):
+        if not isinstance(stage, str) or not stage or Path(stage).name != stage:
             raise ValueError(f"{p}: evaluation-cohort name {stage!r} must be one safe name")
         if not isinstance(raw_stage, dict):
             raise ValueError(f"{p}: {field} must be a mapping")
-        include = names(raw_stage.get("include_capsules"),
-                        field=f"{field}.include_capsules")
+        include = names(raw_stage.get("include_capsules"), field=f"{field}.include_capsules")
         if not include:
             raise ValueError(f"{p}: {field}.include_capsules must not be empty")
         policy = raw_stage.get("policy")
         predecessor = raw_stage.get("after")
         tier = raw_stage.get("oracle_tier")
         engine = raw_stage.get("oracle_engine")
-        for key, value in (("policy", policy), ("after", predecessor),
-                           ("oracle_engine", engine)):
+        for key, value in (("policy", policy), ("after", predecessor), ("oracle_engine", engine)):
             if not isinstance(value, str) or not value.strip():
                 raise ValueError(f"{p}: {field}.{key} must be a non-empty string")
         if tier not in {"L0", "L1", "L2", "L3", "L4", "L5"}:
             raise ValueError(f"{p}: {field}.oracle_tier must be one of L0..L5")
-        roles = names(raw_stage.get("require_source_roles"),
-                      field=f"{field}.require_source_roles")
+        roles = names(raw_stage.get("require_source_roles"), field=f"{field}.require_source_roles")
         evaluation_cohorts[stage] = {
             **copy.deepcopy(raw_stage),
             "policy": policy.strip(),
@@ -798,8 +810,7 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
     information_sets: dict[str, dict[str, Any]] = {}
     for variant, body in raw_information_sets.items():
         field = f"information_sets.{variant}"
-        if (not isinstance(variant, str) or not variant.startswith("hwbringup_")
-                or Path(variant).name != variant):
+        if not isinstance(variant, str) or not variant.startswith("hwbringup_") or Path(variant).name != variant:
             raise ValueError(f"{p}: information-set key {variant!r} must be an hwbringup_* variant")
         if not isinstance(body, dict):
             raise ValueError(f"{p}: {field} must be a mapping")
@@ -820,9 +831,11 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
                 clean.append(copy.deepcopy(row))
             normalized[key] = clean
         pins = body.get("source_pins") or []
-        if (not isinstance(pins, list)
-                or any(not isinstance(pin, str) or not pin for pin in pins)
-                or len(set(pins)) != len(pins)):
+        if (
+            not isinstance(pins, list)
+            or any(not isinstance(pin, str) or not pin for pin in pins)
+            or len(set(pins)) != len(pins)
+        ):
             raise ValueError(f"{p}: {field}.source_pins must be a list of unique pin names")
         normalized["source_pins"] = list(pins)
         information_sets[variant] = normalized
@@ -832,11 +845,13 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         raise ValueError(f"{p}: performance must be a mapping")
     raw_global_objective = performance.get("global_objective_capsule")
     if raw_global_objective is not None:
-        if (not isinstance(raw_global_objective, str) or not raw_global_objective
-                or Path(raw_global_objective).name != raw_global_objective
-                or raw_global_objective in (".", "..")):
-            raise ValueError(
-                f"{p}: performance.global_objective_capsule must be one capsule directory name")
+        if (
+            not isinstance(raw_global_objective, str)
+            or not raw_global_objective
+            or Path(raw_global_objective).name != raw_global_objective
+            or raw_global_objective in (".", "..")
+        ):
+            raise ValueError(f"{p}: performance.global_objective_capsule must be one capsule directory name")
         performance_global_objective = raw_global_objective
     else:
         performance_global_objective = None
@@ -856,38 +871,38 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         raise ValueError(f"{p}: preflight.capability_probes contains duplicate capability names")
 
     legacy_exclude = names(grading.get("exclude_capsules"), field="grading.exclude_capsules")
-    search_include = names(search_cohort.get("include_capsules"),
-                           field="grading.search_cohort.include_capsules")
+    search_include = names(search_cohort.get("include_capsules"), field="grading.search_cohort.include_capsules")
     search_policy = search_cohort.get("policy")
     if search_include and (not isinstance(search_policy, str) or not search_policy.strip()):
         raise ValueError(f"{p}: grading.search_cohort requires a non-empty policy")
-    capability_exclude = names(grading.get("capability_exclude_capsules"),
-                               field="grading.capability_exclude_capsules")
-    resource_exclude = names(resource_bound.get("exclude_capsules"),
-                             field="grading.resource_bound.exclude_capsules")
-    required_models = names(resource_bound.get("required_admitted_models"),
-                            field="grading.resource_bound.required_admitted_models")
-    phase_exclude = names(phase_bound.get("exclude_capsules"),
-                          field="grading.phase_bound.exclude_capsules")
-    phase2_only = names(phase_bound.get("phase2_only_capsules"),
-                        field="grading.phase_bound.phase2_only_capsules")
+    capability_exclude = names(grading.get("capability_exclude_capsules"), field="grading.capability_exclude_capsules")
+    resource_exclude = names(resource_bound.get("exclude_capsules"), field="grading.resource_bound.exclude_capsules")
+    required_models = names(
+        resource_bound.get("required_admitted_models"), field="grading.resource_bound.required_admitted_models"
+    )
+    phase_exclude = names(phase_bound.get("exclude_capsules"), field="grading.phase_bound.exclude_capsules")
+    phase2_only = names(phase_bound.get("phase2_only_capsules"), field="grading.phase_bound.phase2_only_capsules")
     outside = sorted(set(phase_exclude) - set(phase2_only))
     if outside:
         raise ValueError(
             f"{p}: grading.phase_bound.exclude_capsules names {outside}, which the recorded phase-2-only "
-            "set does not contain; a row may not be dropped for failing a verdict it did not fail")
+            "set does not contain; a row may not be dropped for failing a verdict it did not fail"
+        )
     split_exclude = capability_exclude + resource_exclude + phase_exclude
     if search_include and (legacy_exclude or split_exclude):
         raise ValueError(f"{p}: grading.search_cohort cannot be combined with exclusion policies")
     if legacy_exclude and split_exclude:
-        raise ValueError(f"{p}: grading may use legacy exclude_capsules or the explicit capability/"
-                         "resource split, not both")
+        raise ValueError(
+            f"{p}: grading may use legacy exclude_capsules or the explicit capability/resource split, not both"
+        )
     # Each row leaves the denominator for exactly ONE reason. An overlap is not a harmless duplicate: it
     # would let a row be reported under whichever heading reads best, and the arithmetic below (source ==
     # admitted + the three lists) would double-count it.
-    for a_name, a, b_name, b in (("capability", capability_exclude, "resource", resource_exclude),
-                                 ("capability", capability_exclude, "phase", phase_exclude),
-                                 ("resource", resource_exclude, "phase", phase_exclude)):
+    for a_name, a, b_name, b in (
+        ("capability", capability_exclude, "resource", resource_exclude),
+        ("capability", capability_exclude, "phase", phase_exclude),
+        ("resource", resource_exclude, "phase", phase_exclude),
+    ):
         overlap = sorted(set(a) & set(b))
         if overlap:
             raise ValueError(f"{p}: {a_name} and {b_name} exclusions overlap: {overlap}")
@@ -900,12 +915,12 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
             raise ValueError(f"{p}: grading.phase_bound.phase must name the phase this run serves")
         if not phase_bound.get("policy"):
             raise ValueError(f"{p}: phase exclusions require a named policy")
-        if not isinstance(phase_budget, (int, float)) or isinstance(phase_budget, bool) \
-                or phase_budget <= 0:
+        if not isinstance(phase_budget, (int, float)) or isinstance(phase_budget, bool) or phase_budget <= 0:
             raise ValueError(
                 f"{p}: grading.phase_bound.budget_s must state the certification budget the phase "
                 "verdict was derived at -- the verdict is meaningless without it, because a member "
-                "priced out at one budget is admitted at another")
+                "priced out at one budget is admitted at another"
+            )
     if set(required_models) & set(split_exclude):
         raise ValueError(f"{p}: a required admitted model is also excluded")
 
@@ -913,20 +928,14 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
     expected_admitted = count(expected_cohort, "admitted_capsules", field="grading.expected_cohort")
     if (expected_source is None) != (expected_admitted is None):
         raise ValueError(f"{p}: grading.expected_cohort must declare both source and admitted counts")
-    if (expected_source is not None and search_include
-            and expected_admitted != len(search_include)):
+    if expected_source is not None and search_include and expected_admitted != len(search_include):
         raise ValueError(f"{p}: grading.expected_cohort admitted count must equal search_cohort size")
-    if (expected_source is not None and not search_include
-            and expected_source != expected_admitted + len(split_exclude)):
-        raise ValueError(
-            f"{p}: grading.expected_cohort arithmetic does not match the declared exclusions")
-    hidden_source = count(hidden_admission, "source_capsules",
-                          field="grading.hidden_capability_admission")
-    hidden_admitted = count(hidden_admission, "admitted_capsules",
-                            field="grading.hidden_capability_admission")
+    if expected_source is not None and not search_include and expected_source != expected_admitted + len(split_exclude):
+        raise ValueError(f"{p}: grading.expected_cohort arithmetic does not match the declared exclusions")
+    hidden_source = count(hidden_admission, "source_capsules", field="grading.hidden_capability_admission")
+    hidden_admitted = count(hidden_admission, "admitted_capsules", field="grading.hidden_capability_admission")
     if (hidden_source is None) != (hidden_admitted is None):
-        raise ValueError(
-            f"{p}: grading.hidden_capability_admission must declare both source and admitted counts")
+        raise ValueError(f"{p}: grading.hidden_capability_admission must declare both source and admitted counts")
     if hidden_source is not None and hidden_admitted > hidden_source:
         raise ValueError(f"{p}: hidden admitted count exceeds its sealed source count")
     return TargetExperiment(
@@ -962,10 +971,14 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         performance_global_objective=performance_global_objective,
         graded_phase2_only=phase2_only,
         graded_phase_exclude=phase_exclude,
-        graded_phase=(int(phase_number) if isinstance(phase_number, int)
-                      and not isinstance(phase_number, bool) else None),
-        graded_phase_budget_s=(float(phase_budget) if isinstance(phase_budget, (int, float))
-                               and not isinstance(phase_budget, bool) else None),
+        graded_phase=(
+            int(phase_number) if isinstance(phase_number, int) and not isinstance(phase_number, bool) else None
+        ),
+        graded_phase_budget_s=(
+            float(phase_budget)
+            if isinstance(phase_budget, (int, float)) and not isinstance(phase_budget, bool)
+            else None
+        ),
         graded_phase_policy=(lambda s: str(s) if s else None)(phase_bound.get("policy")),
         graded_expected_source_capsules=expected_source,
         graded_expected_admitted_capsules=expected_admitted,
@@ -993,6 +1006,7 @@ def declared_vs_resolved_contract(te: TargetExperiment) -> tuple[Path | None, Pa
     readiness gate fails on it.
     """
     from . import target_registry
+
     declared = te.declared_contract_path()
     try:
         resolved = target_registry.resolve(te.target).contract_path
@@ -1017,7 +1031,8 @@ def shared_spec_paths(te: TargetExperiment, variant: str | None = None) -> set[s
         paths.add(te.hwbringup_set)
     if variant:
         paths.update(
-            entry["path"] for entry in te.information_set(variant).get("allowed", ())
+            entry["path"]
+            for entry in te.information_set(variant).get("allowed", ())
             if isinstance(entry, dict) and entry.get("path")
         )
     return paths
@@ -1039,23 +1054,16 @@ def bundles_match_descriptor(te: TargetExperiment, manifest_paths) -> list[str]:
         if missing:
             drift.append(f"{Path(mp).parent.name}: missing shared-spec {sorted(missing)}")
         expected_denied = {
-            entry["path"] for entry in info.get("denied", ())
-            if isinstance(entry, dict) and entry.get("path")
+            entry["path"] for entry in info.get("denied", ()) if isinstance(entry, dict) and entry.get("path")
         }
         if expected_denied - denied:
-            drift.append(
-                f"{Path(mp).parent.name}: missing information-set denial "
-                f"{sorted(expected_denied - denied)}")
+            drift.append(f"{Path(mp).parent.name}: missing information-set denial {sorted(expected_denied - denied)}")
         expected_condition = info.get("condition")
         if expected_condition and doc.get("condition") != expected_condition:
-            drift.append(
-                f"{Path(mp).parent.name}: condition {doc.get('condition')!r} != "
-                f"{expected_condition!r}")
+            drift.append(f"{Path(mp).parent.name}: condition {doc.get('condition')!r} != {expected_condition!r}")
         expected_pins = list(info.get("source_pins") or ())
         if list(doc.get("source_pins") or ()) != expected_pins:
-            drift.append(
-                f"{Path(mp).parent.name}: source_pins {doc.get('source_pins')!r} != "
-                f"{expected_pins!r}")
+            drift.append(f"{Path(mp).parent.name}: source_pins {doc.get('source_pins')!r} != {expected_pins!r}")
     return drift
 
 
@@ -1085,8 +1093,13 @@ def derived_readout_bits(addr_len: int) -> dict[str, int]:
     acc_i8 = 1 << (addr_len - 1)
     acc_accum = 1 << (addr_len - 2)
     full_c_bit = 1 << (addr_len - 3)
-    return {"f1": _F32_ONE_BITS, "c_acc": acc_i8 | full_c_bit,
-            "acc_i8": acc_i8, "acc_accum": acc_accum, "full_c_bit": full_c_bit}
+    return {
+        "f1": _F32_ONE_BITS,
+        "c_acc": acc_i8 | full_c_bit,
+        "acc_i8": acc_i8,
+        "acc_accum": acc_accum,
+        "full_c_bit": full_c_bit,
+    }
 
 
 # --------------------------------------------------------------------------- capability manifest
@@ -1100,20 +1113,21 @@ class CapabilityManifest:
     op->``.insn`` encoding derivation + trace gate apply). Any default may be overridden by an optional
     ``runner``/``endpoint_kind`` block in the contract. Core generators consult this by ``kind`` so they
     never branch on a target name."""
+
     target: str
-    kind: str                      # primary compute-unit kind (systolic|simt|vector|scalar)
-    endpoint_kind: str             # inline_asm_insn (default) | upstream_target | external_backend | command_buffer
+    kind: str  # primary compute-unit kind (systolic|simt|vector|scalar)
+    endpoint_kind: str  # inline_asm_insn (default) | upstream_target | external_backend | command_buffer
     suite: str
-    dtype: str                     # run-identity dtype token (e.g. i8xi8_i32, f32)
-    fourth_output_name: str | None # None -> the runner derives it from endpoint_kind
-    tier_sim: dict                 # tier -> sim name (empty -> family/arc default)
+    dtype: str  # run-identity dtype token (e.g. i8xi8_i32, f32)
+    fourth_output_name: str | None  # None -> the runner derives it from endpoint_kind
+    tier_sim: dict  # tier -> sim name (empty -> family/arc default)
     rtl_tiers: tuple[str, ...]
     perf_fields: tuple[str, ...]
-    trace_gate: str | None         # trace-gate plugin name (e.g. "rocc_insn") or None
+    trace_gate: str | None  # trace-gate plugin name (e.g. "rocc_insn") or None
     force_match_policy: dict | None  # optional oracle output-equality override (float target -> {compare,atol})
     encoding_required: bool
-    encoding: dict                 # the ABI encoding surface RTL can't ground (readout_bits/semantic_class/...)
-    contract: dict                 # the full target_contract.yaml (for consumers that need more)
+    encoding: dict  # the ABI encoding surface RTL can't ground (readout_bits/semantic_class/...)
+    contract: dict  # the full target_contract.yaml (for consumers that need more)
 
 
 def _primary_kind(units) -> str:
@@ -1136,8 +1150,7 @@ def _derived_dtype_token(units) -> str:
     return "unknown"
 
 
-def load_capability_manifest(target: str, *,
-                             contract_path: str | Path | None = None) -> CapabilityManifest:
+def load_capability_manifest(target: str, *, contract_path: str | Path | None = None) -> CapabilityManifest:
     """Load a target's capability manifest from its committed ``target_contract.yaml`` + fill the family
     defaults. Raises if the target has no contract or no compute_units (fail-closed: no fabricated kind).
 
@@ -1146,7 +1159,8 @@ def load_capability_manifest(target: str, *,
     not "use the resolved one", it is "render no prompt at all", which is what used to happen. It is not
     a general override: when the registry does resolve a contract, callers pass nothing and any
     disagreement with the declaration is reported by :func:`declared_vs_resolved_contract`."""
-    from . import families, compute_units, target_registry   # lazy: avoid import-order cycles
+    from . import compute_units, families, target_registry  # lazy: avoid import-order cycles
+
     if contract_path is not None:
         contract = yaml.safe_load(Path(contract_path).read_text(encoding="utf-8"))
     else:
@@ -1168,7 +1182,9 @@ def load_capability_manifest(target: str, *,
     if "readout_bits" not in encoding and encoding.get("addr_len") is not None:
         encoding["readout_bits"] = derived_readout_bits(int(encoding["addr_len"]))
     return CapabilityManifest(
-        target=target, kind=kind, endpoint_kind=endpoint,
+        target=target,
+        kind=kind,
+        endpoint_kind=endpoint,
         suite=runner.get("suite") or f"{target}-capsule-bench",
         dtype=runner.get("dtype") or _derived_dtype_token(units),
         fourth_output_name=runner.get("fourth_output_name"),
@@ -1179,12 +1195,12 @@ def load_capability_manifest(target: str, *,
         # host `.insn` stream from lowered.llvm.mlir. A self-hosted-ISA (external_backend, emits kernel.S)
         # or ISA-less (command_buffer) target has no such stream, so it defaults to no trace gate (unless
         # the contract explicitly declares one). Keys on the endpoint, never a target name.
-        trace_gate=runner.get("trace_gate",
-                              prof.trace_gate if endpoint == "inline_asm_insn" else None),
+        trace_gate=runner.get("trace_gate", prof.trace_gate if endpoint == "inline_asm_insn" else None),
         # Optional oracle output-equality override (a float target declares {compare: float, atol: ...}
         # so its oracle comparison is tolerant regardless of the per-capsule numeric_policy). None ->
         # the capsule's own numeric_policy governs (integer capsules -> exact).
         force_match_policy=runner.get("force_match_policy"),
         encoding_required=prof.encoding_required,
         encoding=encoding,
-        contract=contract)
+        contract=contract,
+    )

@@ -65,6 +65,7 @@ the single-core test configuration carries one, and stopping at the first full a
 that difference invisible. They are two elaborated CONFIGURATIONS of one generator -- two machines --
 and which one a set of cycles belongs to is a question the reader has to be able to see.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
@@ -73,11 +74,22 @@ from pathlib import Path
 from typing import Any
 
 __all__ = [
-    "CORE", "LANE", "WARP", "ROLES",
-    "Elaboration", "MaskTable", "SimtGeometry",
-    "derive_from_lines", "derive_from_path", "derive_from_text",
-    "geometry_for_target", "geometry_from_dict", "parse_firrtl", "parse_hw_dialect",
-    "role_tokens", "sniff_dialect",
+    "CORE",
+    "LANE",
+    "WARP",
+    "ROLES",
+    "Elaboration",
+    "MaskTable",
+    "SimtGeometry",
+    "derive_from_lines",
+    "derive_from_path",
+    "derive_from_text",
+    "geometry_for_target",
+    "geometry_from_dict",
+    "parse_firrtl",
+    "parse_hw_dialect",
+    "role_tokens",
+    "sniff_dialect",
 ]
 
 # --------------------------------------------------------------------------------------------
@@ -370,13 +382,20 @@ class SimtGeometry:
         return per_core * self.cores
 
     def to_dict(self) -> dict[str, Any]:
-        return {"lane_width": self.lane_width, "warps_per_core": self.warps_per_core,
-                "cores": self.cores, "threads_per_core": self.threads_per_core,
-                "lane_slots_per_cycle": self.lane_slots_per_cycle,
-                "keys": dict(sorted(self.keys.items())), "ambiguous": list(self.ambiguous),
-                "unread": dict(sorted(self.unread.items())), "core_module": self.core_module,
-                "dialect": self.dialect, "source": self.source,
-                "resolved": list(self.resolved())}
+        return {
+            "lane_width": self.lane_width,
+            "warps_per_core": self.warps_per_core,
+            "cores": self.cores,
+            "threads_per_core": self.threads_per_core,
+            "lane_slots_per_cycle": self.lane_slots_per_cycle,
+            "keys": dict(sorted(self.keys.items())),
+            "ambiguous": list(self.ambiguous),
+            "unread": dict(sorted(self.unread.items())),
+            "core_module": self.core_module,
+            "dialect": self.dialect,
+            "source": self.source,
+            "resolved": list(self.resolved()),
+        }
 
 
 # --------------------------------------------------------------------------------------------
@@ -423,8 +442,10 @@ def parse_hw_dialect(lines: Iterable[str], *, source: str | None = None) -> Elab
             # A line naming more instances than distinct callees would under-count multiplicity, so say
             # so rather than quietly returning a core count that is too small.
             if raw.count(_HW_INSTANCE_OP) > len(refs) and refs:
-                el.problems.append(f"{raw.count(_HW_INSTANCE_OP)} instances but {len(refs)} distinct "
-                                   f"callee(s) on one line; multiplicity is UNKNOWN: {raw.strip()[:120]}")
+                el.problems.append(
+                    f"{raw.count(_HW_INSTANCE_OP)} instances but {len(refs)} distinct "
+                    f"callee(s) on one line; multiplicity is UNKNOWN: {raw.strip()[:120]}"
+                )
             for r in refs:
                 el.instances[current][r] = el.instances[current].get(r, 0) + 1
             continue
@@ -441,10 +462,9 @@ def parse_hw_dialect(lines: Iterable[str], *, source: str | None = None) -> Elab
         if ci == -1:
             el.problems.append(f"lane-mask value {ident!r} carries no readable result type")
             continue
-        shape = _hw_type_shape(rhs[ci + 1:])
+        shape = _hw_type_shape(rhs[ci + 1 :])
         if shape is None:
-            el.problems.append(f"lane-mask value {ident!r} has an unreadable type "
-                               f"{rhs[ci + 1:].strip()!r}")
+            el.problems.append(f"lane-mask value {ident!r} has an unreadable type {rhs[ci + 1 :].strip()!r}")
             continue
         base, idx = _split_index(ident)
         seen_masks.setdefault((current, base), {})[idx] = (shape[0], shape[1], stripped[:160])
@@ -508,8 +528,7 @@ def parse_firrtl(lines: Iterable[str], *, source: str | None = None) -> Elaborat
                 break
         shape = _fir_type_shape(rest[:cut])
         if shape is None:
-            el.problems.append(f"lane-mask register {ident!r} has an unreadable type "
-                               f"{rest[:cut].strip()!r}")
+            el.problems.append(f"lane-mask register {ident!r} has an unreadable type {rest[:cut].strip()!r}")
             continue
         base, idx = _split_index(ident)
         seen_masks.setdefault((current, base), {})[idx] = (shape[0], shape[1], stripped[:160])
@@ -519,8 +538,9 @@ def parse_firrtl(lines: Iterable[str], *, source: str | None = None) -> Elaborat
     return el
 
 
-def _fold_masks(seen: Mapping[tuple[str, str], Mapping[int | None, tuple[int, int, str]]],
-                problems: list[str]) -> tuple[list[MaskTable], list[MaskTable]]:
+def _fold_masks(
+    seen: Mapping[tuple[str, str], Mapping[int | None, tuple[int, int, str]]], problems: list[str]
+) -> tuple[list[MaskTable], list[MaskTable]]:
     """Fold the per-declaration readings into ``(warp tables, scalar masks)``, one per ``(module, base)``.
 
     Two shapes count as a table: still aggregated (one entry carrying its own depth), or lowered by
@@ -541,22 +561,28 @@ def _fold_masks(seen: Mapping[tuple[str, str], Mapping[int | None, tuple[int, in
     for (module, base), entries in sorted(seen.items()):
         widths = {w for w, _d, _e in entries.values()}
         if len(widths) != 1:
-            problems.append(f"{module}.{base}: lane-mask slots declare {sorted(widths)} different "
-                            f"widths; the lane count is UNKNOWN, not the first of them")
+            problems.append(
+                f"{module}.{base}: lane-mask slots declare {sorted(widths)} different "
+                f"widths; the lane count is UNKNOWN, not the first of them"
+            )
             continue
         width = next(iter(widths))
         idxs = sorted(i for i in entries if i is not None)
         if None in entries:
             if idxs:
-                problems.append(f"{module}.{base}: both an aggregate and indexed slots declare the "
-                                f"same lane mask; the slot count is UNKNOWN")
+                problems.append(
+                    f"{module}.{base}: both an aggregate and indexed slots declare the "
+                    f"same lane mask; the slot count is UNKNOWN"
+                )
                 continue
             depth = entries[None][1]
             evidence = entries[None][2]
         else:
             if idxs != list(range(len(idxs))):
-                problems.append(f"{module}.{base}: lane-mask slot indices {idxs} are not a contiguous "
-                                f"0..n-1 run; the slot count is UNKNOWN")
+                problems.append(
+                    f"{module}.{base}: lane-mask slot indices {idxs} are not a contiguous "
+                    f"0..n-1 run; the slot count is UNKNOWN"
+                )
                 continue
             depth = len(idxs)
             evidence = entries[idxs[0]][2]
@@ -614,11 +640,12 @@ def geometry_from_elaboration(el: Elaboration) -> SimtGeometry:
     core_modules: list[str] = []
 
     if not el.masks:
-        why = ("no per-warp lane-mask table was found; whether this design is a SIMT machine is "
-               "UNKNOWN")
+        why = "no per-warp lane-mask table was found; whether this design is a SIMT machine is UNKNOWN"
         if el.scalar_masks:
-            why += (f" (the lane-mask state that WAS found carries no slot dimension: "
-                    f"{sorted(f'{m.module}.{m.base}:{m.width}b' for m in el.scalar_masks)})")
+            why += (
+                f" (the lane-mask state that WAS found carries no slot dimension: "
+                f"{sorted(f'{m.module}.{m.base}:{m.width}b' for m in el.scalar_masks)})"
+            )
         unread[LANE] = unread[WARP] = why
     else:
         shapes = {(m.width, m.depth) for m in el.masks}
@@ -628,7 +655,8 @@ def geometry_from_elaboration(el: Elaboration) -> SimtGeometry:
             ambiguous.extend((LANE, WARP))
             unread[LANE] = unread[WARP] = (
                 f"{len(el.masks)} lane-mask table(s) declare different shapes {sorted(shapes)}; the "
-                f"lane and warp denominators are UNKNOWN, not the first of them")
+                f"lane and warp denominators are UNKNOWN, not the first of them"
+            )
         else:
             # SEVERAL MODULES DECLARING THE SAME-SHAPED TABLE ARE SEVERAL CORES, not a contradiction.
             # A pre-dedup FIRRTL circuit UNIQUIFIES a module per instance, so a two-core cluster
@@ -641,8 +669,7 @@ def geometry_from_elaboration(el: Elaboration) -> SimtGeometry:
             lane, warps = table.width, table.depth
             core_modules = sorted({m.module for m in el.masks})
             keys[LANE] = f"{table.module}.{table.base} element width ({el.dialect}): {table.evidence}"
-            keys[WARP] = (f"{table.module}.{table.base} slot count = {table.depth} "
-                          f"({el.dialect} lane-mask table depth)")
+            keys[WARP] = f"{table.module}.{table.base} slot count = {table.depth} ({el.dialect} lane-mask table depth)"
 
     if core_modules:
         # The top is where an instance path starts. FIRRTL states it (`circuit X :`); the HW dialect
@@ -654,51 +681,66 @@ def geometry_from_elaboration(el: Elaboration) -> SimtGeometry:
             if not candidates:
                 candidates = [p for p in el.public if any(el.reaches(p, m) for m in core_modules)]
         if not candidates:
-            unread[CORE] = (f"no elaborated top instantiating {core_modules} could be identified, so "
-                            f"the number of cores is UNKNOWN")
+            unread[CORE] = (
+                f"no elaborated top instantiating {core_modules} could be identified, so the number of cores is UNKNOWN"
+            )
         elif len(candidates) > 1:
             ambiguous.append(CORE)
-            unread[CORE] = (f"{len(candidates)} candidate tops {sorted(candidates)} each instantiate "
-                            f"a SIMT core; the file describes more than one design")
+            unread[CORE] = (
+                f"{len(candidates)} candidate tops {sorted(candidates)} each instantiate "
+                f"a SIMT core; the file describes more than one design"
+            )
         else:
             top = candidates[0]
             counts = {m: el.multiplicity(top, m) for m in core_modules}
             cyclic = sorted(m for m, n in counts.items() if n is None)
             if cyclic:
-                unread[CORE] = (f"the instance graph under {top!r} is cyclic at {cyclic}; an "
-                                f"instance-path count is undefined on it")
+                unread[CORE] = (
+                    f"the instance graph under {top!r} is cyclic at {cyclic}; an instance-path count is undefined on it"
+                )
             else:
                 total = sum(n for n in counts.values() if n)
                 if total <= 0:
                     unread[CORE] = f"{core_modules} is never instantiated under {top!r}"
                 else:
                     cores = total
-                    keys[CORE] = (f"{total} instance path(s) of "
-                                  f"{ {m: n for m, n in sorted(counts.items())} } under top {top!r} "
-                                  f"({el.dialect} instance graph)")
+                    keys[CORE] = (
+                        f"{total} instance path(s) of "
+                        f"{ {m: n for m, n in sorted(counts.items())} } under top {top!r} "
+                        f"({el.dialect} instance graph)"
+                    )
 
-    return SimtGeometry(lane_width=lane, warps_per_core=warps, cores=cores, keys=keys,
-                        ambiguous=tuple(dict.fromkeys(ambiguous)), unread=unread,
-                        core_module=(", ".join(core_modules) if core_modules else None),
-                        dialect=el.dialect, source=el.source)
+    return SimtGeometry(
+        lane_width=lane,
+        warps_per_core=warps,
+        cores=cores,
+        keys=keys,
+        ambiguous=tuple(dict.fromkeys(ambiguous)),
+        unread=unread,
+        core_module=(", ".join(core_modules) if core_modules else None),
+        dialect=el.dialect,
+        source=el.source,
+    )
 
 
-def derive_from_lines(lines: Iterable[str], *, dialect: str | None = None,
-                      source: str | None = None) -> SimtGeometry:
+def derive_from_lines(lines: Iterable[str], *, dialect: str | None = None, source: str | None = None) -> SimtGeometry:
     reader = {"hw": parse_hw_dialect, "firrtl": parse_firrtl}.get(dialect or "")
     if reader is None:
         raise ValueError(f"unknown CIRCT dialect {dialect!r}")
     return geometry_from_elaboration(reader(lines, source=source))
 
 
-def derive_from_text(text: str, *, dialect: str | None = None,
-                     source: str | None = None) -> SimtGeometry:
+def derive_from_text(text: str, *, dialect: str | None = None, source: str | None = None) -> SimtGeometry:
     """Derive the geometry from an in-memory elaboration (how the tests pin every refusal)."""
     d = dialect or sniff_dialect(text.splitlines())
     if d is None:
-        return SimtGeometry(source=source,
-                            unread={r: "the text declares neither a FIRRTL circuit nor a CIRCT HW "
-                                       "module, so no elaboration could be read" for r in ROLES})
+        return SimtGeometry(
+            source=source,
+            unread={
+                r: "the text declares neither a FIRRTL circuit nor a CIRCT HW module, so no elaboration could be read"
+                for r in ROLES
+            },
+        )
     return derive_from_lines(text.splitlines(), dialect=d, source=source)
 
 
@@ -713,9 +755,10 @@ def derive_from_path(path: str | Path) -> SimtGeometry:
     with p.open("r", encoding="utf-8", errors="ignore") as fh:
         dialect = sniff_dialect(fh)
     if dialect is None:
-        return SimtGeometry(source=str(p),
-                            unread={r: f"{p.name} declares neither a FIRRTL circuit nor a CIRCT HW "
-                                       f"module" for r in ROLES})
+        return SimtGeometry(
+            source=str(p),
+            unread={r: f"{p.name} declares neither a FIRRTL circuit nor a CIRCT HW module" for r in ROLES},
+        )
     with p.open("r", encoding="utf-8", errors="ignore") as fh:
         return derive_from_lines(fh, dialect=dialect, source=str(p))
 
@@ -758,7 +801,7 @@ def artifact_candidates(target: str) -> tuple[list[tuple[Path, str]], list[str]]
     def _hw(name: str, how: str) -> None:
         try:
             p = mlc_bridge.core_hw_mlir(name)
-        except Exception as e:                                 # noqa: BLE001 -- mlc unreachable
+        except Exception as e:  # noqa: BLE001 -- mlc unreachable
             why.append(f"mlc could not be asked for {name!r}'s HW dialect ({type(e).__name__})")
             return
         if p is None:
@@ -771,22 +814,21 @@ def artifact_candidates(target: str) -> tuple[list[tuple[Path, str]], list[str]]
     intro = None
     try:
         intro = mlc_bridge._resolve_simt_introspect(target)
-    except Exception as e:                                     # noqa: BLE001 -- registry unreachable
+    except Exception as e:  # noqa: BLE001 -- registry unreachable
         why.append(f"the SIMT introspect registry is unreachable ({type(e).__name__})")
     if intro is None:
         why.append(f"no SIMT RTL introspect is registered for {target!r}")
     else:
         served = str(getattr(intro, "TARGET", "") or "")
         if served and served != target:
-            _hw(served, f"CIRCT HW dialect for {served!r}, the identity whose SIMT introspect "
-                        f"serves {target!r}")
+            _hw(served, f"CIRCT HW dialect for {served!r}, the identity whose SIMT introspect serves {target!r}")
         accessor = getattr(intro, _GEN_SRC_ACCESSOR, None)
         if accessor is None:
             why.append(f"the SIMT introspect serving {target!r} exposes no {_GEN_SRC_ACCESSOR}()")
         else:
             try:
                 gen_src = Path(str(accessor()))
-            except Exception as e:                             # noqa: BLE001
+            except Exception as e:  # noqa: BLE001
                 why.append(f"{_GEN_SRC_ACCESSOR}() raised {type(e).__name__}")
                 gen_src = None
             if gen_src is not None:
@@ -798,14 +840,19 @@ def artifact_candidates(target: str) -> tuple[list[tuple[Path, str]], list[str]]
 
     seen: set[str] = set()
     uniq = [(p, how) for p, how in found if not (str(p) in seen or seen.add(str(p)))]
-    uniq.sort(key=lambda ph: next((i for i, s in enumerate(_ARTIFACT_SUFFIXES)
-                                   if ph[0].suffix == s), len(_ARTIFACT_SUFFIXES)))
+    uniq.sort(
+        key=lambda ph: next((i for i, s in enumerate(_ARTIFACT_SUFFIXES) if ph[0].suffix == s), len(_ARTIFACT_SUFFIXES))
+    )
     return uniq, why
 
 
-def geometry_for_target(target: str, *, artifact_path: str | Path | None = None,
-                        artifact_text: str | None = None,
-                        dialect: str | None = None) -> dict[str, Any]:
+def geometry_for_target(
+    target: str,
+    *,
+    artifact_path: str | Path | None = None,
+    artifact_text: str | None = None,
+    dialect: str | None = None,
+) -> dict[str, Any]:
     """Derive ``target``'s SIMT geometry from an ELABORATED CIRCT/RTL artifact. Three states.
 
     ``derived`` when an elaboration resolved at least the lane width -- the one dimension without which
@@ -819,8 +866,9 @@ def geometry_for_target(target: str, *, artifact_path: str | Path | None = None,
     was written to undo, and it would be invisible in the output.
     """
     if artifact_text is not None:
-        geom = derive_from_text(artifact_text, dialect=dialect,
-                                source=(str(artifact_path) if artifact_path else "<supplied text>"))
+        geom = derive_from_text(
+            artifact_text, dialect=dialect, source=(str(artifact_path) if artifact_path else "<supplied text>")
+        )
         return _state(geom, read=[geom.source or "<supplied text>"], unread={}, routes=[])
 
     if artifact_path is not None:
@@ -829,10 +877,14 @@ def geometry_for_target(target: str, *, artifact_path: str | Path | None = None,
     else:
         candidates, routes = artifact_candidates(target)
     if not candidates:
-        return {"status": "unavailable", "target": target, "routes_tried": routes,
-                "why": f"no elaborated CIRCT/RTL artifact could be located for {target!r}; its SIMT "
-                       f"geometry is UNKNOWN, not absent. A cycle model's config is NOT a fallback: it "
-                       f"describes the model, not the hardware"}
+        return {
+            "status": "unavailable",
+            "target": target,
+            "routes_tried": routes,
+            "why": f"no elaborated CIRCT/RTL artifact could be located for {target!r}; its SIMT "
+            f"geometry is UNKNOWN, not absent. A cycle model's config is NOT a fallback: it "
+            f"describes the model, not the hardware",
+        }
 
     readings: list[tuple[SimtGeometry, str]] = []
     read: list[str] = []
@@ -857,63 +909,94 @@ def geometry_for_target(target: str, *, artifact_path: str | Path | None = None,
     resolved = [(g, how) for g, how in readings if g.lane_width is not None]
     best, best_how = (resolved or readings or [(SimtGeometry(), "")])[0]
     envelope = _state(best, read=read, unread=unreadable, routes=routes)
-    envelope["authority"] = (f"{best.source} -- {best_how}" if best.source else None)
+    envelope["authority"] = f"{best.source} -- {best_how}" if best.source else None
     envelope["corroboration"] = [
-        {"source": g.source, "how": how, "dialect": g.dialect,
-         **{r: g.value(r) for r in ROLES}, "keys": dict(sorted(g.keys.items())),
-         "unread": dict(sorted(g.unread.items()))}
-        for g, how in readings]
+        {
+            "source": g.source,
+            "how": how,
+            "dialect": g.dialect,
+            **{r: g.value(r) for r in ROLES},
+            "keys": dict(sorted(g.keys.items())),
+            "unread": dict(sorted(g.unread.items())),
+        }
+        for g, how in readings
+    ]
     contested = {}
     for role in ROLES:
         vals = {g.value(role) for g, _ in resolved if g.value(role) is not None}
         if len(vals) > 1:
             contested[role] = sorted(
-                {(g.source or "?"): g.value(role) for g, _ in resolved}.items(),
-                key=lambda kv: str(kv[0]))
+                {(g.source or "?"): g.value(role) for g, _ in resolved}.items(), key=lambda kv: str(kv[0])
+            )
     if contested:
-        envelope["contested"] = {r: [{"source": src, "value": v} for src, v in pairs]
-                                 for r, pairs in contested.items()}
+        envelope["contested"] = {r: [{"source": src, "value": v} for src, v in pairs] for r, pairs in contested.items()}
         envelope["why_contested"] = (
             f"the elaborations on this host disagree about {sorted(contested)}: they are DIFFERENT "
             f"elaborated configurations of one generator, not one machine described twice. The value "
             f"reported is the preferred artifact's ({envelope['authority']}); every reading is listed "
-            f"under 'corroboration' so the mismatch is quoted rather than resolved out of sight")
+            f"under 'corroboration' so the mismatch is quoted rather than resolved out of sight"
+        )
     return envelope
 
 
-def _state(geom: SimtGeometry, *, read: list[str], unread: dict[str, str],
-           routes: list[str]) -> dict[str, Any]:
+def _state(geom: SimtGeometry, *, read: list[str], unread: dict[str, str], routes: list[str]) -> dict[str, Any]:
     """Wrap a derivation in the three-state envelope, keeping ABSENT and UNAVAILABLE apart."""
     if geom.lane_width is None:
         # ABSENT REQUIRES HAVING READ SOMETHING. Falling through to "this machine declares no SIMT
         # geometry" when every candidate failed to open would report our inability to look as a
         # property of the hardware.
         if not read:
-            return {"status": "unavailable", "read": read, "unreadable": unread,
-                    "routes_tried": routes, "geometry": geom.to_dict(),
-                    "why": "no candidate elaboration could be READ, so whether this target declares a "
-                           "SIMT geometry is UNKNOWN, not absent"}
-        if geom.ambiguous:
-            return {"status": "unavailable", "read": read, "unreadable": unread,
-                    "geometry": geom.to_dict(),
-                    "why": f"the elaboration answers {list(geom.ambiguous)} more than one way; two "
-                           f"answers is not an answer, and a guessed denominator would price the run "
-                           f"against a machine that was never run"}
-        return {"status": "absent", "read": read, "unreadable": unread,
+            return {
+                "status": "unavailable",
+                "read": read,
+                "unreadable": unread,
+                "routes_tried": routes,
                 "geometry": geom.to_dict(),
-                "why": "the elaboration was read and carries no per-warp lane-mask state, so it does "
-                       "not describe a SIMT machine and there is no lane denominator to occupy"}
-    return {"status": "derived", "source": geom.source, "read": read, "unreadable": unread,
+                "why": "no candidate elaboration could be READ, so whether this target declares a "
+                "SIMT geometry is UNKNOWN, not absent",
+            }
+        if geom.ambiguous:
+            return {
+                "status": "unavailable",
+                "read": read,
+                "unreadable": unread,
+                "geometry": geom.to_dict(),
+                "why": f"the elaboration answers {list(geom.ambiguous)} more than one way; two "
+                f"answers is not an answer, and a guessed denominator would price the run "
+                f"against a machine that was never run",
+            }
+        return {
+            "status": "absent",
+            "read": read,
+            "unreadable": unread,
             "geometry": geom.to_dict(),
-            "missing": [r for r in ROLES if geom.value(r) is None],
-            "note": ("lane_width is the divergence denominator; warps_per_core and cores extend it to "
-                     "the core and the cluster, and each is UNKNOWN on its own when unelaborated")}
+            "why": "the elaboration was read and carries no per-warp lane-mask state, so it does "
+            "not describe a SIMT machine and there is no lane denominator to occupy",
+        }
+    return {
+        "status": "derived",
+        "source": geom.source,
+        "read": read,
+        "unreadable": unread,
+        "geometry": geom.to_dict(),
+        "missing": [r for r in ROLES if geom.value(r) is None],
+        "note": (
+            "lane_width is the divergence denominator; warps_per_core and cores extend it to "
+            "the core and the cluster, and each is UNKNOWN on its own when unelaborated"
+        ),
+    }
 
 
 def geometry_from_dict(d: Mapping[str, Any]) -> SimtGeometry:
     """Rebuild a :class:`SimtGeometry` from its ``to_dict`` form (the envelope's ``geometry`` block)."""
-    return SimtGeometry(lane_width=d.get("lane_width"), warps_per_core=d.get("warps_per_core"),
-                        cores=d.get("cores"), keys=dict(d.get("keys") or {}),
-                        ambiguous=tuple(d.get("ambiguous") or ()),
-                        unread=dict(d.get("unread") or {}), core_module=d.get("core_module"),
-                        dialect=str(d.get("dialect") or ""), source=d.get("source"))
+    return SimtGeometry(
+        lane_width=d.get("lane_width"),
+        warps_per_core=d.get("warps_per_core"),
+        cores=d.get("cores"),
+        keys=dict(d.get("keys") or {}),
+        ambiguous=tuple(d.get("ambiguous") or ()),
+        unread=dict(d.get("unread") or {}),
+        core_module=d.get("core_module"),
+        dialect=str(d.get("dialect") or ""),
+        source=d.get("source"),
+    )

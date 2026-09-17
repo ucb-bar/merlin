@@ -15,6 +15,7 @@ The ordering of ``EVIDENCE_TYPES`` is strongest -> weakest; ``weakest_evidence``
 combine the per-component tags an axis touches (an axis is only as trustworthy as its softest
 input).
 """
+
 from __future__ import annotations
 
 # Strongest -> weakest. Index in this tuple is the strength rank (lower == stronger).

@@ -22,6 +22,7 @@ composes the gemmini-mx PE), and ``atlas`` (self-hosted-ISA NPU MXU whose mesh/e
 DERIVED from RTL facts — ``facts_source: rtl``). All are provenance-tagged prototypes flagged
 ``requires_human_review`` — NOT RTL-certified.
 """
+
 from __future__ import annotations
 
 import copy
@@ -62,8 +63,10 @@ def _residual_path(name: str) -> Path:
 def _load_residual(name: str) -> dict[str, Any]:
     p = _residual_path(name)
     if not p.is_file():
-        raise KeyError(f"no capability residual for {name!r} at {p} — drop a contracts/residual.yaml "
-                       "in the target package (merlin.targetgen.capability_manifests).")
+        raise KeyError(
+            f"no capability residual for {name!r} at {p} — drop a contracts/residual.yaml "
+            "in the target package (merlin.targetgen.capability_manifests)."
+        )
     doc = yaml.safe_load(p.read_text(encoding="utf-8"))
     if not isinstance(doc, dict):
         raise ValueError(f"{p}: residual is not a mapping")
@@ -119,13 +122,15 @@ def manifest_for(name: str) -> dict[str, Any]:
     facts_target = residual.pop("facts_target", None) or name
     facts: dict[str, Any] = {}
     if facts_source == "rtl":
-        from .rtl import facts as _facts   # lazy: pulls circt_introspect only when RTL facts are needed
+        from .rtl import facts as _facts  # lazy: pulls circt_introspect only when RTL facts are needed
+
         facts = _facts.load_facts(facts_target)  # regenerates from the RTL if the cache is cold (mlc)
     elif facts_source == "simt":
         # A SIMT self-hosted core: its facts come from the SIMT RTL introspect (a standalone instruction
         # encoding, not a host RoCC decode table), adapted to the facts body shape so the SAME deriver
         # grounds endpoint_kind from them. Empty {} when no introspect serves the target (family default).
         from .rtl import mlc_bridge as _mb
+
         facts = _mb.simt_facts(facts_target)
     elif facts_source == "spatial":
         # A spatial tensor tile (a cluster x cell accumulator grid driven by a command buffer, with no
@@ -138,6 +143,7 @@ def manifest_for(name: str) -> dict[str, Any]:
         # rather than a failure. Empty {} when mlc or the OPU artifacts are unavailable, so the deriver
         # falls back to the family default instead of a fabricated tile.
         from .rtl import spatial_introspect as _si
+
         facts = _si.build_fact_bundle(facts_target)
     return derive_manifest({"target": name}, facts, residual=residual)
 
@@ -154,26 +160,29 @@ def __getattr__(attr: str):
 def validate(manifest: dict[str, Any]) -> dict[str, Any]:
     """Schema-validate the contract and parse its compute_units (raises on any problem)."""
     _schemas.validate_or_raise(manifest, "target_contract")
-    _cu.compute_units(manifest)   # validates kinds/dtypes/scaling
+    _cu.compute_units(manifest)  # validates kinds/dtypes/scaling
     return manifest
 
 
 def write(name: str, base: Path | None = None) -> Path:
     """Write a target's derived manifest to ``<base or target_base(name)>/contracts/target_contract.yaml``."""
-    manifest = manifest_for(name)   # derive_manifest already schema-validated it
+    manifest = manifest_for(name)  # derive_manifest already schema-validated it
     root = base if base is not None else _target_base(name)
     path = root / "contracts" / "target_contract.yaml"
-    write_yaml(path, manifest, header=f"GENERATED capability manifest for {name} "
-                                       "(merlin.targetgen.capability_manifests). Provenance-tagged; "
-                                       "requires_human_review. Regenerable from contracts/residual.yaml.")
+    write_yaml(
+        path,
+        manifest,
+        header=f"GENERATED capability manifest for {name} "
+        "(merlin.targetgen.capability_manifests). Provenance-tagged; "
+        "requires_human_review. Regenerable from contracts/residual.yaml.",
+    )
     return path
 
 
 def write_all(base_root: Path | None = None) -> list[Path]:
     """Write every DISCOVERED target's manifest (:func:`discovered_targets`). ``base_root`` overrides the
     per-target base dir (each target lands under ``base_root/<name>/``)."""
-    return [write(n, base=(base_root / n) if base_root is not None else None)
-            for n in discovered_targets()]
+    return [write(n, base=(base_root / n) if base_root is not None else None) for n in discovered_targets()]
 
 
 def dialect_plan_from_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -264,8 +273,7 @@ def _datapaths_from_facts(body: dict[str, Any]) -> tuple[str | None, list[dict[s
     acc = next((d for d in dps if d.get("name") == "accumulator"), None)
     in_dtype = _fmt_name(inp["dtype"]) if inp and inp.get("dtype") else None
     acc_tok = acc.get("dtype") if acc else None
-    accumulate = ([{"in": in_dtype, "weight": in_dtype, "acc": acc_tok}]
-                  if in_dtype and acc_tok else [])
+    accumulate = [{"in": in_dtype, "weight": in_dtype, "acc": acc_tok}] if in_dtype and acc_tok else []
     return in_dtype, accumulate
 
 
@@ -283,7 +291,7 @@ def _encoding_codes_from_facts(body: dict[str, Any]) -> dict[str, Any]:
 # decode table with wider opcodes is a standalone instruction decode (a self-hosted ISA core with its own
 # opcodes/PC/IMEM), not a RoCC co-processor. This is the load-bearing, RTL-grounded distinction between a
 # host-driven ``.insn`` endpoint and a device-kernel (``external_backend``) endpoint — never hand-set.
-_ROCC_FUNCT7_MAX = 0x7f  # derived-ok: standard RoCC ABI — funct7 is a 7-bit field, max 2^7-1 (not target-specific)
+_ROCC_FUNCT7_MAX = 0x7f  # derived-ok: standard RoCC ABI — funct7 is a 7-bit field, max 2^7-1 (not target-specific)  # fmt: skip
 
 
 def _endpoint_from_facts(body: dict[str, Any]) -> str | None:
@@ -323,8 +331,7 @@ def _spatial_fields(body: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def _spatial_datapaths_from_fields(
-        fields: dict[str, Any]) -> tuple[str | None, list[str], list[dict[str, str]]]:
+def _spatial_datapaths_from_fields(fields: dict[str, Any]) -> tuple[str | None, list[str], list[dict[str, str]]]:
     """(primary input dtype, ALL storage dtypes, ``(in,weight)->acc`` matrix) from the OPU ``dtypes``
     datapath fact — the spatial analog of :func:`_datapaths_from_facts`. The OPU is MULTI-format (an int8
     MAC datapath + fp8 e4m3/e5m2 FMA datapaths), so it grounds a full dtype list, not a single dtype."""
@@ -369,6 +376,7 @@ def _kind_for_facet(facet: str) -> str | None:
     accumulators. Synthesizing either would assert a datapath nobody observed, so the honest answer is
     None and the caller declines to synthesize."""
     from merlin.kernels import engines as _eng
+
     kinds = [k for k, f in _eng.ENGINE_FACET.items() if f == facet]
     return kinds[0] if len(kinds) == 1 else None
 
@@ -407,6 +415,7 @@ def _derived_units_for_undeclared_engines(name: str, manifest: dict, facts: dict
     # census rather than defaulted.
     try:
         from . import isa_taxonomy as _it
+
         by_role = _it._classes_by_role(_it.taxonomy_for_target(name) or {})
     except Exception:  # noqa: BLE001
         by_role = {}
@@ -424,11 +433,11 @@ def _derived_units_for_undeclared_engines(name: str, manifest: dict, facts: dict
             if fam and fam not in fams:
                 fams.append(fam)
         if not fams:
-            continue                       # evidenced an engine but nothing says what it computes
+            continue  # evidenced an engine but nothing says what it computes
         dtypes = _unit_dtypes_for_synthesis(manifest)
         ops = sorted({_SYNTH_OP_FOR[f] for f in fams if f in _SYNTH_OP_FOR})
         if not ops:
-            continue                       # a family with no op token binds nothing; claim nothing
+            continue  # a family with no op token binds nothing; claim nothing
         unit = {
             "name": f"{kind}_unit",
             "kind": kind,
@@ -466,8 +475,9 @@ def _unit_dtypes_for_synthesis(manifest: dict) -> tuple[str, ...]:
     return tuple(seen)
 
 
-def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
-                    residual: dict[str, Any] | None = None) -> dict[str, Any]:
+def derive_manifest(
+    descriptor: Any, facts: dict[str, Any], *, residual: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """Derive a schema-valid capability manifest from a descriptor + CIRCT facts + a small residual.
 
     Field provenance (the three-way split this proves):
@@ -504,7 +514,7 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
         manifest["family"] = family
 
     # --- compute units: residual INTENT (name/kind/ops/scaling/requant) + FACTS (dtypes/accumulate) ---
-    spatial = _spatial_fields(body)   # OuterProductUnit fact bundle vs the systolic facts.json shape
+    spatial = _spatial_fields(body)  # OuterProductUnit fact bundle vs the systolic facts.json shape
     if spatial is not None:
         _in_dtype, _storage, accumulate = _spatial_datapaths_from_fields(spatial)
     else:
@@ -514,8 +524,7 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
     if not units:
         kind_hint = _descriptor_get(descriptor, "kind") or manifest.get("kind")
         if not kind_hint:
-            raise ValueError(f"{name}: no compute_units in residual and no descriptor/residual kind "
-                             "to synthesize one")
+            raise ValueError(f"{name}: no compute_units in residual and no descriptor/residual kind to synthesize one")
         units = [{"name": f"{kind_hint}_unit", "kind": kind_hint, "ops": ["matmul"]}]
         manifest["compute_units"] = units
     primary = units[0]
@@ -526,7 +535,8 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
     # unavailable or the target is unsupported (``compute_unit_dtypes`` returns None) — so nothing regresses.
     # The extractor is keyed by unit; its per-unit lists map positionally onto the residual's compute_units
     # (a structural correspondence, not a literal name table — the primary unit takes the primary datapath).
-    from .rtl import mlc_bridge as _mlc_bridge   # lazy: mlc access is guarded/context-managed inside
+    from .rtl import mlc_bridge as _mlc_bridge  # lazy: mlc access is guarded/context-managed inside
+
     _ext_lists = list((_mlc_bridge.compute_unit_dtypes(name) or {}).values())
     for _i, _unit in enumerate(units):
         # extractor dtypes (positional) win; the fact-bundle storage is the primary unit's fallback.
@@ -546,7 +556,7 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
         if _src_unnamed:
             _unit["unnamed_float_datapaths"] = list(dict.fromkeys(_src_unnamed))
     if accumulate and not primary.get("accumulate"):
-        primary["accumulate"] = accumulate      # the (in,weight)->acc matrix is a datapath fact
+        primary["accumulate"] = accumulate  # the (in,weight)->acc matrix is a datapath fact
 
     # primary compute-unit kind -> family generation defaults (reuse the shared registry + resolver)
     kind = _primary_kind(_cu.compute_units(manifest))
@@ -577,10 +587,15 @@ def derive_manifest(descriptor: Any, facts: dict[str, Any], *,
     # introspect, not hand-declared).
     simt_geo = body.get("simt") or {}
     if isinstance(simt_geo.get("lanes_per_warp"), int):
-        caps["simt"] = {**(caps.get("simt") or {}),
-                        **{k: simt_geo[k] for k in ("lanes_per_warp", "warps_per_core", "cores")
-                           if isinstance(simt_geo.get(k), int)}}
-    if spatial is not None:                       # OPU tile geometry (cluster x cell) + MRF bank depth
+        caps["simt"] = {
+            **(caps.get("simt") or {}),
+            **{
+                k: simt_geo[k]
+                for k in ("lanes_per_warp", "warps_per_core", "cores")
+                if isinstance(simt_geo.get(k), int)
+            },
+        }
+    if spatial is not None:  # OPU tile geometry (cluster x cell) + MRF bank depth
         caps.update(_spatial_capabilities_from_fields(spatial))
     manifest["capabilities"] = caps
 
@@ -675,24 +690,35 @@ def write_oot_target(name: str, root: Path) -> Path:
     compute units / datatypes — the first materialization of the out-of-tree target repo (e.g. the
     radiance-mlir repo will host the real dialect + lowering the plugin block references).
     """
-    manifest = manifest_for(name)   # derive_manifest already schema-validated it
+    manifest = manifest_for(name)  # derive_manifest already schema-validated it
     root = Path(root)
-    write_yaml(root / "contracts" / "target_contract.yaml", manifest,
-               header=f"GENERATED out-of-tree target manifest for {name} — plug in via MERLIN_TARGET_PATH.")
-    write_yaml(root / "contracts" / "dialect_plan.yaml", dialect_plan_from_manifest(manifest),
-               header=f"GENERATED dialect plan for {name} (derived from compute_units).")
+    write_yaml(
+        root / "contracts" / "target_contract.yaml",
+        manifest,
+        header=f"GENERATED out-of-tree target manifest for {name} — plug in via MERLIN_TARGET_PATH.",
+    )
+    write_yaml(
+        root / "contracts" / "dialect_plan.yaml",
+        dialect_plan_from_manifest(manifest),
+        header=f"GENERATED dialect plan for {name} (derived from compute_units).",
+    )
     units = _cu.compute_units(manifest)
-    lines = [f"# {name} — out-of-tree target package", "",
-             f"Generated by `merlin.targetgen.capability_manifests` (provenance: "
-             f"{manifest.get('provenance', 'n/a')}).", "",
-             "Plug in: `MERLIN_TARGET_PATH=<this dir>`; the dialect + lowering the `plugin` block names "  # target-ok: example target named in generated README prose
-             "live in the out-of-tree repo (e.g. radiance-mlir).", "",
-             "## Compute units (datatype -> unit -> op)"]
+    lines = [
+        f"# {name} — out-of-tree target package",
+        "",
+        f"Generated by `merlin.targetgen.capability_manifests` (provenance: {manifest.get('provenance', 'n/a')}).",
+        "",
+        "Plug in: `MERLIN_TARGET_PATH=<this dir>`; the dialect + lowering the `plugin` block names "  # target-ok: example target named in generated README prose  # fmt: skip
+        "live in the out-of-tree repo (e.g. radiance-mlir).",
+        "",
+        "## Compute units (datatype -> unit -> op)",
+    ]
     for u in units:
         eff = _cu.effective(u, units)
-        lines.append(f"- **{u.name}** ({u.kind}): dtypes {sorted(eff.dtypes)}; ops {sorted(eff.ops)}; "
-                     f"scaling {u.scaling}; requant {u.requant}"
-                     + (f"; contains {list(u.contains)}" if u.contains else ""))
+        lines.append(
+            f"- **{u.name}** ({u.kind}): dtypes {sorted(eff.dtypes)}; ops {sorted(eff.ops)}; "
+            f"scaling {u.scaling}; requant {u.requant}" + (f"; contains {list(u.contains)}" if u.contains else "")
+        )
     (root / "AGENT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return root
 
@@ -709,6 +735,7 @@ def materialize_generated_target(name: str, dest: Path | None = None) -> Path:
     gemmini, and any other target drop their package the same way — there is no per-target script or
     literal here.
     """
-    from .target_registry import generated_target_home   # lazy: avoid an import cycle at module load
+    from .target_registry import generated_target_home  # lazy: avoid an import cycle at module load
+
     root = Path(dest) if dest is not None else generated_target_home() / name
     return write_oot_target(name, root)

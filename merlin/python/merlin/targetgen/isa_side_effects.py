@@ -20,6 +20,7 @@ fact about the hardware, obtained from the hardware.
 
 The oracle is injected as a callable, so the analysis is testable without one.
 """
+
 from __future__ import annotations
 
 from typing import Any, Callable, Iterable
@@ -47,10 +48,9 @@ def live_injection_index(model, words: Iterable[int]) -> int | None:
     from . import isa_disasm
 
     records = isa_disasm.disassemble(model, list(words))
-    first_compute = next((r["index"] for r in records
-                          if (r.get("role") or "").startswith(_COMPUTE_ROLE_PREFIX)), None)
+    first_compute = next((r["index"] for r in records if (r.get("role") or "").startswith(_COMPUTE_ROLE_PREFIX)), None)
     if first_compute is None:
-        return None                                  # nothing consumes a register; nothing to perturb
+        return None  # nothing consumes a register; nothing to perturb
     # A register transfer BEFORE that consumer. The role vocabulary does not separate load from store
     # (both are `memory`), and taking the last memory op outright picks a store that runs after the
     # compute -- which is not a live window at all, and reported "no window" for every program.
@@ -59,8 +59,15 @@ def live_injection_index(model, words: Iterable[int]) -> int | None:
     return first_compute
 
 
-def probe_instruction(model, words: list[int], mnemonic: str, operands: dict[str, int], *,
-                      run: Callable[[list[int]], Any], settle: int | None = None) -> dict[str, Any]:
+def probe_instruction(
+    model,
+    words: list[int],
+    mnemonic: str,
+    operands: dict[str, int],
+    *,
+    run: Callable[[list[int]], Any],
+    settle: int | None = None,
+) -> dict[str, Any]:
     """Inject ``mnemonic`` into ``words`` at the live window and report whether the output moved.
 
     ``run`` takes a word list and returns the program's outputs (any comparable structure). ``settle`` is
@@ -72,8 +79,11 @@ def probe_instruction(model, words: list[int], mnemonic: str, operands: dict[str
 
     at = live_injection_index(model, words)
     if at is None:
-        return {"mnemonic": mnemonic, "verdict": "no_live_window",
-                "reason": "program has no load-then-compute window; a difference would not be attributable"}
+        return {
+            "mnemonic": mnemonic,
+            "verdict": "no_live_window",
+            "reason": "program has no load-then-compute window; a difference would not be attributable",
+        }
     injected = list(words)
     payload = [isa_asm.assemble_line(model, mnemonic, operands)]
     if settle is not None:
@@ -92,8 +102,14 @@ def probe_instruction(model, words: list[int], mnemonic: str, operands: dict[str
     }
 
 
-def audit(model, words: list[int], candidates: Iterable[tuple[str, dict[str, int]]], *,
-          run: Callable[[list[int]], Any], settle: int | None = None) -> list[dict[str, Any]]:
+def audit(
+    model,
+    words: list[int],
+    candidates: Iterable[tuple[str, dict[str, int]]],
+    *,
+    run: Callable[[list[int]], Any],
+    settle: int | None = None,
+) -> list[dict[str, Any]]:
     """Probe several instructions against one known-good program; the offenders come back first."""
     out = [probe_instruction(model, words, m, ops, run=run, settle=settle) for m, ops in candidates]
     return sorted(out, key=lambda r: not r.get("perturbs_live_state"))

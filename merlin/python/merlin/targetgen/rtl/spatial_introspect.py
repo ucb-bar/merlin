@@ -27,6 +27,7 @@ The hw.mlir + state manifest are resolved through ``mlc``'s per-target fingerpri
 ``{value, derived, source, evidence}`` — a field that cannot be grounded is reported ``derived=False``
 (value None), never guessed.
 """
+
 from __future__ import annotations
 
 import json
@@ -68,8 +69,14 @@ def _grid_from_operand_ports(names: list[str]) -> dict[str, int] | None:
     l_cells = 1 + max(int(n.split("_")[5]) for n in il)
     t_groups = 1 + max(int(n.split("_")[4]) for n in it)
     t_cells = 1 + max(int(n.split("_")[5]) for n in it)
-    return {"l_groups": l_groups, "l_cells": l_cells, "t_groups": t_groups, "t_cells": t_cells,
-            "rows": l_groups * l_cells, "cols": t_groups * t_cells}
+    return {
+        "l_groups": l_groups,
+        "l_cells": l_cells,
+        "t_groups": t_groups,
+        "t_cells": t_cells,
+        "rows": l_groups * l_cells,
+        "cols": t_groups * t_cells,
+    }
 
 
 def _mrf_depth(names: list[str]) -> int | None:
@@ -149,25 +156,29 @@ def _fp8_fma(hw_text: str) -> dict[str, int] | None:
     idx = hw_text.find(marker)
     if idx == -1:
         return None
-    tail = hw_text[idx + len(marker):]
-    tok = tail.split("(", 1)[0].strip()          # "1_e8_s24"
+    tail = hw_text[idx + len(marker) :]
+    tok = tail.split("(", 1)[0].strip()  # "1_e8_s24"
     parts = tok.split("_")
     if len(parts) < 3 or not parts[0].isdigit():
         return None
     lat = int(parts[0])
     exp = parts[1][1:] if parts[1].startswith("e") and parts[1][1:].isdigit() else None
     sig = parts[2][1:] if parts[2].startswith("s") and parts[2][1:].isdigit() else None
-    return {"latency_cycles": lat,
-            "exp_bits": int(exp) if exp else None,
-            "sig_bits": int(sig) if sig else None}
+    return {"latency_cycles": lat, "exp_bits": int(exp) if exp else None, "sig_bits": int(sig) if sig else None}
 
 
 # ----------------------------------------------------------------------------- fp8 format identity (derive-or-UNKNOWN)
 # (exp_bits, significand_bits_including_hidden) -> canonical name. This is MATH (IEEE/OCP format
 # definitions), not a per-target table — the only way to tell two same-width floats apart is the exponent
 # width, so a name is emitted ONLY when the RTL's own float tokens carry that fact.
-_FLOAT_BY_ES = {(4, 4): "fp8_e4m3", (5, 3): "fp8_e5m2", (5, 11): "fp16",
-                (8, 8): "bf16", (8, 24): "f32", (11, 53): "f64"}
+_FLOAT_BY_ES = {
+    (4, 4): "fp8_e4m3",
+    (5, 3): "fp8_e5m2",
+    (5, 11): "fp16",
+    (8, 8): "bf16",
+    (8, 24): "f32",
+    (11, 53): "f64",
+}
 
 
 def _lead_int(s: str) -> int | None:
@@ -194,12 +205,12 @@ def _fp8_format_names(hw_text: str, width: int) -> list[str]:
     for raw in hw_text.split():
         tok = raw.lstrip("@%")
         parts = tok.split("_")
-        for a, b in zip(parts, parts[1:]):                       # hardfloat e<E>_s<S>
+        for a, b in zip(parts, parts[1:]):  # hardfloat e<E>_s<S>
             if a[:1] == "e" and b[:1] == "s":
                 e, s = _lead_int(a[1:]), _lead_int(b[1:])
                 if e is not None and s is not None and e + s == width:
                     add((e, s))
-        if tok[:1] == "E" and "M" in tok:                        # design E<d>M<d>
+        if tok[:1] == "E" and "M" in tok:  # design E<d>M<d>
             ep, _, mp = tok.partition("M")
             e, m = _lead_int(ep[1:]), _lead_int(mp)
             if e is not None and m is not None and e + m + 1 == width:
@@ -210,11 +221,18 @@ def _fp8_format_names(hw_text: str, width: int) -> list[str]:
 # ----------------------------------------------------------------------------- assemble the fact bundle
 def _unavailable(target: str, reason: str) -> dict[str, Any]:
     """An honest all-unavailable bundle (mlc / the OPU artifacts absent) — never a fabricated tile."""
-    fields = {k: {"value": None, "derived": False, "source": None, "evidence": reason}
-              for k in ("tile_dim", "mrf_depth", "element_widths", "dtypes", "fma_latency",
-                        "op_categories", "accum_kind")}
-    return {"target": target, "method": "static OPU state-manifest + HW-dialect discovery (no model run)",
-            "kind": "spatial", "fields": fields, "n_derived": 0, "reason": reason}
+    fields = {
+        k: {"value": None, "derived": False, "source": None, "evidence": reason}
+        for k in ("tile_dim", "mrf_depth", "element_widths", "dtypes", "fma_latency", "op_categories", "accum_kind")
+    }
+    return {
+        "target": target,
+        "method": "static OPU state-manifest + HW-dialect discovery (no model run)",
+        "kind": "spatial",
+        "fields": fields,
+        "n_derived": 0,
+        "reason": reason,
+    }
 
 
 def build_fact_bundle(target: str) -> dict[str, Any]:
@@ -226,6 +244,7 @@ def build_fact_bundle(target: str) -> dict[str, Any]:
     (NOT ``discover_mesh_dim``); the hw.mlir cross-checks the widths and supplies the FP8 FMA latency.
     """
     from . import mlc_bridge
+
     paths = mlc_bridge.opu_artifact_paths(target)
     if not paths:
         return _unavailable(target, "mlc unavailable / target not in the OPU fingerprint map")
@@ -236,8 +255,9 @@ def build_fact_bundle(target: str) -> dict[str, Any]:
     module, states, names = _load_state_names(Path(man))
     grid = _grid_from_operand_ports(names)
     if grid is None:
-        return _unavailable(target, f"{module or target!r}: no io_op_in_l/in_t operand ports "
-                                    "(not an OuterProductUnit-shaped manifest)")
+        return _unavailable(
+            target, f"{module or target!r}: no io_op_in_l/in_t operand ports (not an OuterProductUnit-shaped manifest)"
+        )
 
     hw_text = Path(hw).read_text(errors="replace") if hw and Path(hw).is_file() else ""
     cell_w = _cell_port_widths(hw_text)
@@ -247,57 +267,85 @@ def build_fact_bundle(target: str) -> dict[str, Any]:
     cells = _cell_count(names)
     macc_lanes = sum(1 for n in names if n.startswith("io_op_macc_"))
     tile_dim = {
-        "rows": grid["rows"], "cols": grid["cols"], "dim": grid["rows"],
+        "rows": grid["rows"],
+        "cols": grid["cols"],
+        "dim": grid["rows"],
         "clusters": {"rows": grid["l_groups"], "cols": grid["t_groups"]},
         "cells_per_cluster": {"rows": grid["l_cells"], "cols": grid["t_cells"]},
-        "cells": cells, "cluster_row_lanes": macc_lanes,
+        "cells": cells,
+        "cluster_row_lanes": macc_lanes,
     }
-    tile_ev = (f"io_op_in_l groups x cells = {grid['l_groups']}x{grid['l_cells']} (rows={grid['rows']}), "
-               f"io_op_in_t = {grid['t_groups']}x{grid['t_cells']} (cols={grid['cols']}); "
-               f"{cells} accumulator cells (clusters_*/cells_*/regs_0)")
+    tile_ev = (
+        f"io_op_in_l groups x cells = {grid['l_groups']}x{grid['l_cells']} (rows={grid['rows']}), "
+        f"io_op_in_t = {grid['t_groups']}x{grid['t_cells']} (cols={grid['cols']}); "
+        f"{cells} accumulator cells (clusters_*/cells_*/regs_0)"
+    )
 
     # -- MRF depth ---------------------------------------------------------------------------------
     mrf = _mrf_depth(names)
     mrf_idx_bits = cell_w.get("mrf_idx_bits") or _first_bits(states, lambda n: n.startswith("io_op_mrf_idx_"))
-    mrf_ev = (f"{mrf} regs banks/cell (.../regs_0..regs_{(mrf or 1) - 1})"
-              + (f"; io_op_mrf_idx:i{mrf_idx_bits}" if mrf_idx_bits else ""))
+    mrf_ev = f"{mrf} regs banks/cell (.../regs_0..regs_{(mrf or 1) - 1})" + (
+        f"; io_op_mrf_idx:i{mrf_idx_bits}" if mrf_idx_bits else ""
+    )
 
     # -- element widths ----------------------------------------------------------------------------
     operand_bits = cell_w.get("operand_bits") or _first_bits(states, lambda n: n.startswith("io_op_in_l_"))
-    accum_bits = cell_w.get("accumulator_bits") or _port_bits(states, next(
-        (n for n in names if n.endswith("/regs_0")), "")) or _first_bits(states, lambda n: n.endswith("/regs_0"))
+    accum_bits = (
+        cell_w.get("accumulator_bits")
+        or _port_bits(states, next((n for n in names if n.endswith("/regs_0")), ""))
+        or _first_bits(states, lambda n: n.endswith("/regs_0"))
+    )
     widths = {"operand_bits": operand_bits, "accumulator_bits": accum_bits}
-    widths_ev = (f"@OuterProductCell io_in_l:i{operand_bits}, io_out:i{accum_bits}"
-                 if cell_w else f"manifest operand:i{operand_bits}, accumulator reg:i{accum_bits}")
+    widths_ev = (
+        f"@OuterProductCell io_in_l:i{operand_bits}, io_out:i{accum_bits}"
+        if cell_w
+        else f"manifest operand:i{operand_bits}, accumulator reg:i{accum_bits}"
+    )
 
     # -- datapaths / dtypes ------------------------------------------------------------------------
     has_fp8 = any(n.startswith("io_op_fp8_") for n in names)
     has_altfmt = any(n.startswith("io_op_altfmt_") for n in names)
-    dtypes: list[dict[str, Any]] = [{
-        "name": "int8", "operand": "i8", "accumulator": f"i{accum_bits}" if accum_bits else "i32",
-        "path": "combinational i8*i8 -> i32 MAC (io_op_fp8=0)"}]
+    dtypes: list[dict[str, Any]] = [
+        {
+            "name": "int8",
+            "operand": "i8",
+            "accumulator": f"i{accum_bits}" if accum_bits else "i32",
+            "path": "combinational i8*i8 -> i32 MAC (io_op_fp8=0)",
+        }
+    ]
     fp8_id_derived = True
     if has_fp8:
         fw = operand_bits or 8
-        fp8_names = _fp8_format_names(hw_text, fw)          # RTL-named formats at the operand width, or []
+        fp8_names = _fp8_format_names(hw_text, fw)  # RTL-named formats at the operand width, or []
         if fp8_names:
             use = fp8_names if has_altfmt else fp8_names[:1]  # altfmt makes >1 named format reachable
             for altfmt, fmt in enumerate(use):
-                dtypes.append({
-                    "name": fmt, "operand": fmt.split("_", 1)[1] if "_" in fmt else fmt,
-                    "accumulator": "f32", "altfmt": altfmt,
-                    "path": "fp8 -> fp32 widen; MulAddRecFNPipe fp32 FMA (io_op_fp8=1, "
-                            f"io_op_altfmt={altfmt})"})
+                dtypes.append(
+                    {
+                        "name": fmt,
+                        "operand": fmt.split("_", 1)[1] if "_" in fmt else fmt,
+                        "accumulator": "f32",
+                        "altfmt": altfmt,
+                        "path": f"fp8 -> fp32 widen; MulAddRecFNPipe fp32 FMA (io_op_fp8=1, io_op_altfmt={altfmt})",
+                    }
+                )
         else:
             # fail closed: an fp8 datapath exists, io_op_altfmt_ says how many sub-format modes, but the
             # RTL names no format at this width -> report the width-only identity, never a guessed pair.
             fp8_id_derived = False
-            dtypes.append({
-                "name": f"float{fw}", "operand": f"f{fw}", "accumulator": "f32",
-                "modes": 2 if has_altfmt else 1, "altfmt_selectable": has_altfmt, "identity_derived": False,
-                "path": f"fp8 -> fp32 widen; MulAddRecFNPipe fp32 FMA; io_op_altfmt selects "
-                        f"{'2 sub-formats' if has_altfmt else '1 sub-format'} whose identity is NOT named "
-                        f"in the RTL facts (UNKNOWN; not fabricating fp8_e4m3/fp8_e5m2)"})
+            dtypes.append(
+                {
+                    "name": f"float{fw}",
+                    "operand": f"f{fw}",
+                    "accumulator": "f32",
+                    "modes": 2 if has_altfmt else 1,
+                    "altfmt_selectable": has_altfmt,
+                    "identity_derived": False,
+                    "path": f"fp8 -> fp32 widen; MulAddRecFNPipe fp32 FMA; io_op_altfmt selects "
+                    f"{'2 sub-formats' if has_altfmt else '1 sub-format'} whose identity is NOT named "
+                    f"in the RTL facts (UNKNOWN; not fabricating fp8_e4m3/fp8_e5m2)",
+                }
+            )
     if not has_fp8:
         dtypes_ev = "no io_op_fp8_ ports -> int8-only tile"
     elif fp8_id_derived:
@@ -305,53 +353,86 @@ def build_fact_bundle(target: str) -> dict[str, Any]:
         dtypes_ev = f"io_op_fp8_/io_op_altfmt_ ports present -> int8 + {fp8_list} (fp32 accumulate, RTL-named)"
     else:
         w = operand_bits or 8
-        dtypes_ev = (f"io_op_fp8_ present -> int8 + a {w}-bit fp8 datapath with "
-                     f"{'2 io_op_altfmt-selected sub-formats' if has_altfmt else '1 sub-format'}, fp32 "
-                     f"accumulate; fp8 format identity NOT named in the RTL -> float{w} (UNKNOWN, not fabricated)")
+        dtypes_ev = (
+            f"io_op_fp8_ present -> int8 + a {w}-bit fp8 datapath with "
+            f"{'2 io_op_altfmt-selected sub-formats' if has_altfmt else '1 sub-format'}, fp32 "
+            f"accumulate; fp8 format identity NOT named in the RTL -> float{w} (UNKNOWN, not fabricated)"
+        )
 
     # -- FMA latency -------------------------------------------------------------------------------
-    fma_val = {"int8_mac_cycles": 0,
-               "fp8_fma_cycles": (fma or {}).get("latency_cycles") if has_fp8 else None}
+    fma_val = {"int8_mac_cycles": 0, "fp8_fma_cycles": (fma or {}).get("latency_cycles") if has_fp8 else None}
     fma_derived = (not has_fp8) or (fma is not None)
-    fma_ev = ("int8 MAC is combinational (same-cycle accumulate); "
-              + (f"fp8 FMA @MulAddRecFNPipe_l{fma['latency_cycles']} "
-                 f"(e{fma.get('exp_bits')}_s{fma.get('sig_bits')} = fp32)" if (has_fp8 and fma)
-                 else "no fp8 datapath" if not has_fp8 else "fp8 FMA module not found in hw.mlir"))
+    fma_ev = "int8 MAC is combinational (same-cycle accumulate); " + (
+        f"fp8 FMA @MulAddRecFNPipe_l{fma['latency_cycles']} (e{fma.get('exp_bits')}_s{fma.get('sig_bits')} = fp32)"
+        if (has_fp8 and fma)
+        else "no fp8 datapath"
+        if not has_fp8
+        else "fp8 FMA module not found in hw.mlir"
+    )
 
     # -- accumulator kind --------------------------------------------------------------------------
     accum_kind = {"int8": f"i{accum_bits}" if accum_bits else "i32"}
     if has_fp8:
         accum_kind["fp8"] = "f32"
-    accum_ev = (f"int8 datapath accumulates into i{accum_bits} registers"
-                + ("; fp8 datapath accumulates into fp32 (RecFN e8_s24)" if has_fp8 else ""))
+    accum_ev = f"int8 datapath accumulates into i{accum_bits} registers" + (
+        "; fp8 datapath accumulates into fp32 (RecFN e8_s24)" if has_fp8 else ""
+    )
 
     fields = {
-        "tile_dim": {"value": tile_dim, "derived": True,
-                     "source": "OPU state-manifest cell-count geometry (NOT discover_mesh_dim)",
-                     "evidence": tile_ev},
-        "mrf_depth": {"value": mrf, "derived": mrf is not None,
-                      "source": "per-cell regs_* bank count + io_op_mrf_idx width", "evidence": mrf_ev},
-        "element_widths": {"value": widths, "derived": operand_bits is not None and accum_bits is not None,
-                           "source": "@OuterProductCell HW-dialect port widths (manifest fallback)",
-                           "evidence": widths_ev},
-        "dtypes": {"value": dtypes, "derived": True,
-                   "source": "io_op_fp8/altfmt datapath-select ports", "evidence": dtypes_ev},
-        "fma_latency": {"value": fma_val, "derived": fma_derived,
-                        "source": "MulAddRecFNPipe_l<L> module name + combinational int8 MAC",
-                        "evidence": fma_ev},
-        "op_categories": {"value": _op_categories(names), "derived": bool(_op_categories(names)),
-                          "source": "io_op_<cat>_ command control-port groups",
-                          "evidence": f"io_op control ports -> {_op_categories(names)}"},
-        "accum_kind": {"value": accum_kind, "derived": accum_bits is not None,
-                       "source": "accumulator register width + fp8 RecFN format", "evidence": accum_ev},
+        "tile_dim": {
+            "value": tile_dim,
+            "derived": True,
+            "source": "OPU state-manifest cell-count geometry (NOT discover_mesh_dim)",
+            "evidence": tile_ev,
+        },
+        "mrf_depth": {
+            "value": mrf,
+            "derived": mrf is not None,
+            "source": "per-cell regs_* bank count + io_op_mrf_idx width",
+            "evidence": mrf_ev,
+        },
+        "element_widths": {
+            "value": widths,
+            "derived": operand_bits is not None and accum_bits is not None,
+            "source": "@OuterProductCell HW-dialect port widths (manifest fallback)",
+            "evidence": widths_ev,
+        },
+        "dtypes": {
+            "value": dtypes,
+            "derived": True,
+            "source": "io_op_fp8/altfmt datapath-select ports",
+            "evidence": dtypes_ev,
+        },
+        "fma_latency": {
+            "value": fma_val,
+            "derived": fma_derived,
+            "source": "MulAddRecFNPipe_l<L> module name + combinational int8 MAC",
+            "evidence": fma_ev,
+        },
+        "op_categories": {
+            "value": _op_categories(names),
+            "derived": bool(_op_categories(names)),
+            "source": "io_op_<cat>_ command control-port groups",
+            "evidence": f"io_op control ports -> {_op_categories(names)}",
+        },
+        "accum_kind": {
+            "value": accum_kind,
+            "derived": accum_bits is not None,
+            "source": "accumulator register width + fp8 RecFN format",
+            "evidence": accum_ev,
+        },
     }
     return {
         "target": target,
         "method": "static OPU state-manifest + HW-dialect discovery (no model run, no arc probe)",
         "kind": "spatial",
         "generator": {"name": "merlin.targetgen.rtl.spatial_introspect", "version": GENERATOR_VERSION},
-        "inputs": {"module": module, "state_manifest": str(man),
-                   "hw_mlir": str(hw) if hw else None, "n_states": len(names)},
+        "inputs": {
+            "module": module,
+            "state_manifest": str(man),
+            "hw_mlir": str(hw) if hw else None,
+            "n_states": len(names),
+        },
         "fields": fields,
         "n_derived": sum(1 for f in fields.values() if f["derived"]),
     }
@@ -363,24 +444,27 @@ def render_fact_bundle(target: str, bundle: dict | None = None) -> str:
     b = bundle or build_fact_bundle(target)
     f = b["fields"]
     n = b.get("n_derived", 0)
-    lines = [f"# Spatial tensor-tile facts: {b['target']} (kind={b.get('kind', 'spatial')})",
-             f"_Derived by {b['method']}. {n}/{len(f)} fields grounded; ungrounded = unavailable, "
-             f"not guessed._", ""]
+    lines = [
+        f"# Spatial tensor-tile facts: {b['target']} (kind={b.get('kind', 'spatial')})",
+        f"_Derived by {b['method']}. {n}/{len(f)} fields grounded; ungrounded = unavailable, not guessed._",
+        "",
+    ]
     td = f["tile_dim"]
     if td["derived"]:
         v = td["value"]
-        lines.append(f"- **Tile**: {v['rows']}x{v['cols']} ({v['cells']} cells) = "
-                     f"{v['clusters']['rows']}x{v['clusters']['cols']} clusters of "
-                     f"{v['cells_per_cluster']['rows']}x{v['cells_per_cluster']['cols']} cells "
-                     f"(source: {td['source']})")
+        lines.append(
+            f"- **Tile**: {v['rows']}x{v['cols']} ({v['cells']} cells) = "
+            f"{v['clusters']['rows']}x{v['clusters']['cols']} clusters of "
+            f"{v['cells_per_cluster']['rows']}x{v['cells_per_cluster']['cols']} cells "
+            f"(source: {td['source']})"
+        )
     else:
         lines.append(f"- **Tile**: unavailable ({td['evidence']})")
     if f["mrf_depth"]["derived"]:
         lines.append(f"- **MRF depth**: {f['mrf_depth']['value']} banks/cell")
     ew = f["element_widths"]["value"] if f["element_widths"]["derived"] else None
     if ew:
-        lines.append(f"- **Element widths**: operand i{ew['operand_bits']} -> "
-                     f"accumulator i{ew['accumulator_bits']}")
+        lines.append(f"- **Element widths**: operand i{ew['operand_bits']} -> accumulator i{ew['accumulator_bits']}")
     dts = f["dtypes"]["value"] if f["dtypes"]["derived"] else None
     if dts:
         lines.append(f"- **Dtypes**: {', '.join(d['name'] for d in dts)}")
@@ -388,9 +472,10 @@ def render_fact_bundle(target: str, bundle: dict | None = None) -> str:
         lines.append(f"- **Dtypes**: unavailable ({f['dtypes']['evidence']})")
     if f["fma_latency"]["derived"]:
         fv = f["fma_latency"]["value"]
-        lines.append(f"- **FMA latency**: int8 MAC {fv['int8_mac_cycles']} cyc; "
-                     f"fp8 FMA {fv['fp8_fma_cycles']} cyc")
-    lines.append(f"- **Op categories**: {f['op_categories']['value'] if f['op_categories']['derived'] else 'unavailable'}")
+        lines.append(f"- **FMA latency**: int8 MAC {fv['int8_mac_cycles']} cyc; fp8 FMA {fv['fp8_fma_cycles']} cyc")
+    lines.append(
+        f"- **Op categories**: {f['op_categories']['value'] if f['op_categories']['derived'] else 'unavailable'}"
+    )
     lines.append(f"- **Accumulator**: {f['accum_kind']['value'] if f['accum_kind']['derived'] else 'unavailable'}")
     return "\n".join(lines) + "\n"
 
@@ -403,8 +488,14 @@ def _tile_array(tile: dict, module: str | None, evidence: str | None) -> dict:
     this target have, and how big is it" must get an answer for a spatial tile too. Only keys the bundle
     actually derived are emitted (``container`` is the elaborated top module; there is no cell-module name
     in the geometry read, so none is invented)."""
-    out = {"name": "tile", "rows": tile["rows"], "cols": tile["cols"],
-           "instances": tile.get("cells"), "source": "opu_state_manifest", "evidence": evidence}
+    out = {
+        "name": "tile",
+        "rows": tile["rows"],
+        "cols": tile["cols"],
+        "instances": tile.get("cells"),
+        "source": "opu_state_manifest",
+        "evidence": evidence,
+    }
     if module:
         out["container"] = module
     for k in ("clusters", "cells_per_cluster"):
@@ -436,9 +527,11 @@ def spatial_facts(target: str) -> dict:
         rec = fields.get(name) or {}
         return rec.get("value") if rec.get("derived") else None
 
-    unknown = {name: (rec.get("evidence") or bundle.get("reason")
-                      or f"the spatial extractor did not ground {name!r}")
-               for name, rec in fields.items() if not rec.get("derived")}
+    unknown = {
+        name: (rec.get("evidence") or bundle.get("reason") or f"the spatial extractor did not ground {name!r}")
+        for name, rec in fields.items()
+        if not rec.get("derived")
+    }
 
     inputs = dict(bundle.get("inputs") or {})
     module = inputs.get("module")
@@ -457,22 +550,37 @@ def spatial_facts(target: str) -> dict:
         # only memory the state manifest exposes. Bytes are the product of three DERIVED numbers and the
         # multiplication is written into the evidence, the same way the systolic family reports
         # depth x width for its scratchpad -- never a capacity read off a document.
-        body["memories"] = [{
-            "name": "mrf", "banks_per_cell": mrf, "cells": cells, "bits_per_entry": accum_bits,
-            "bytes": cells * mrf * accum_bits // 8, "source": "opu_state_manifest",
-            "evidence": f"{cells} cells x {mrf} regs banks/cell x {accum_bits} bits/entry"}]
+        body["memories"] = [
+            {
+                "name": "mrf",
+                "banks_per_cell": mrf,
+                "cells": cells,
+                "bits_per_entry": accum_bits,
+                "bytes": cells * mrf * accum_bits // 8,
+                "source": "opu_state_manifest",
+                "evidence": f"{cells} cells x {mrf} regs banks/cell x {accum_bits} bits/entry",
+            }
+        ]
     else:
         unknown.setdefault(
             "memories",
             "the tile's on-chip capacity is the product of cells x MRF banks x accumulator width; at "
             f"least one is ungrounded (cells={cells!r}, mrf_depth={mrf!r}, accumulator_bits="
-            f"{accum_bits!r}), so no capacity is published")
+            f"{accum_bits!r}), so no capacity is published",
+        )
 
     dtypes = _val("dtypes")
     if dtypes:
-        body["datapaths"] = [{"name": d.get("name"), "dtype": d.get("operand"),
-                              "accumulator": d.get("accumulator"), "evidence": d.get("path")}
-                             for d in dtypes if isinstance(d, dict)]
+        body["datapaths"] = [
+            {
+                "name": d.get("name"),
+                "dtype": d.get("operand"),
+                "accumulator": d.get("accumulator"),
+                "evidence": d.get("path"),
+            }
+            for d in dtypes
+            if isinstance(d, dict)
+        ]
 
     cats = _val("op_categories")
     if cats:
@@ -480,28 +588,46 @@ def spatial_facts(target: str) -> dict:
         # published under the same key a RoCC target publishes its decode table under. Deliberately NOT
         # named funct_decode_table -- `facts.decode_body` keys the "this class of target has no decode"
         # refusal on that name, and spelling it here would claim an instruction decode that does not exist.
-        body["interfaces"] = [{"name": "command_buffer", "op_categories": list(cats),
-                               "evidence": (fields["op_categories"] or {}).get("evidence")}]
+        body["interfaces"] = [
+            {
+                "name": "command_buffer",
+                "op_categories": list(cats),
+                "evidence": (fields["op_categories"] or {}).get("evidence"),
+            }
+        ]
 
     lat = _val("fma_latency")
     if isinstance(lat, dict):
         ev = (fields["fma_latency"] or {}).get("evidence")
-        body["timing"] = [{"module": module, "name": name, "pipeline_depth": cyc,
-                           "source": "opu_hw_dialect", "evidence": ev}
-                          for name, cyc in sorted(lat.items()) if isinstance(cyc, int)]
+        body["timing"] = [
+            {"module": module, "name": name, "pipeline_depth": cyc, "source": "opu_hw_dialect", "evidence": ev}
+            for name, cyc in sorted(lat.items())
+            if isinstance(cyc, int)
+        ]
 
     accum_kind = _val("accum_kind")
-    spatial = {k: v for k, v in (("tile_dim", tile), ("mrf_depth", mrf),
-                                 ("element_widths", widths or None), ("accum_kind", accum_kind))
-               if v is not None}
+    spatial = {
+        k: v
+        for k, v in (
+            ("tile_dim", tile),
+            ("mrf_depth", mrf),
+            ("element_widths", widths or None),
+            ("accum_kind", accum_kind),
+        )
+        if v is not None
+    }
     if spatial:
         body["spatial"] = spatial
 
     if body:
         body["target"] = target
-        body["source"] = {"kind": "opu_state_manifest", "module": module,
-                          "state_manifest": inputs.get("state_manifest"),
-                          "hw_mlir": inputs.get("hw_mlir"), "method": bundle.get("method")}
+        body["source"] = {
+            "kind": "opu_state_manifest",
+            "module": module,
+            "state_manifest": inputs.get("state_manifest"),
+            "hw_mlir": inputs.get("hw_mlir"),
+            "method": bundle.get("method"),
+        }
 
     doc: dict[str, Any] = {
         "schema_version": "spatial-facts/v0",
@@ -524,6 +650,7 @@ def dump_fact_bundle(target: str, out_path: Path | str | None = None) -> dict[st
     # cannot see yields a well-formed bundle with the geometry hollowed out. Same ratchet as every other
     # fact-extraction family (see facts.write_facts_guarded).
     from .facts import write_facts_guarded
+
     write_facts_guarded(out, bundle)
     bundle["_path"] = str(out)
     return bundle
@@ -531,10 +658,15 @@ def dump_fact_bundle(target: str, out_path: Path | str | None = None) -> dict[st
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
+
     ap = argparse.ArgumentParser(
         description="Emit a spatial tensor-tile (OPU) DERIVED fact bundle. Prints Markdown; --json prints "
-                    "the raw provenance-tagged bundle; --dump writes the purgeable facts.json cache.")
-    ap.add_argument("target", help="the OPU target id (e.g. saturn_opu_mxv256d128 / saturn_opu_v128d64)")  # target-ok: help-text example
+        "the raw provenance-tagged bundle; --dump writes the purgeable facts.json cache."
+    )
+    ap.add_argument(
+        "target",
+        help="the OPU target id (e.g. saturn_opu_mxv256d128 / saturn_opu_v128d64)",  # target-ok: help-text example
+    )
     ap.add_argument("--json", action="store_true", help="print the raw provenance-tagged bundle as JSON")
     ap.add_argument("--dump", action="store_true", help="write the purgeable facts.json cache")
     a = ap.parse_args(argv)

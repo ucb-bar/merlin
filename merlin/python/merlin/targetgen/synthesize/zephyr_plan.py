@@ -7,6 +7,7 @@ API. Blocking mode comes first. A command-buffer tensor-resident target (the neu
 the family default) gets the concrete module (residency devicetree props + profiling/RTIO kconfig +
 sample); everything else gets a review-flagged skeleton. Keyed on the contract family, not a name.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -30,8 +31,11 @@ def _command_buffer_module(target: str, *, is_example: bool) -> dict[str, Any]:
         "devicetree": {
             "compatible": f"ucb,{dialect}",
             "properties": [
-                "reg", "interrupts", "resident-store-bytes",
-                "accumulator-entries", "command-queue-depth",
+                "reg",
+                "interrupts",
+                "resident-store-bytes",
+                "accumulator-entries",
+                "command-queue-depth",
             ],
         },
         "kconfig": {"symbols": [sym, sym + "_PROFILING", sym + "_RTIO"]},
@@ -68,8 +72,7 @@ def _conservative(evidence: Evidence) -> dict[str, Any]:
 
 def _is_command_buffer_resident(tc: dict[str, Any]) -> bool:
     feats = set(tc.get("features") or [])
-    return "command_buffer" in feats and bool(
-        feats & {"resident_packed_tensor", "accumulator_commit"})
+    return "command_buffer" in feats and bool(feats & {"resident_packed_tensor", "accumulator_commit"})
 
 
 def synthesize_zephyr_plan(evidence: Evidence, target_contract: dict[str, Any]) -> dict[str, Any]:

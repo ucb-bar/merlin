@@ -13,6 +13,7 @@ facts do not define, and refuses a CONFIG whose ``rs1`` subtype bits contradict 
 never emits a wrong instruction. Self-validating: every emitted program is fed back through
 ``rocc_decode.decode_text`` and the classes must match (else it raises).
 """
+
 from __future__ import annotations
 
 from . import decode as RD
@@ -27,7 +28,7 @@ def _class_to_funct(isa: dict) -> dict[str, int]:
     inv = {v: k for k, v in isa["FUNCT_CLASS"].items()}
     config = inv.get("CONFIG")
     if config is not None:
-        for sub in isa["CONFIG_SUBTYPE"].values():          # CONFIG_EX / CONFIG_LD / CONFIG_ST -> same func7
+        for sub in isa["CONFIG_SUBTYPE"].values():  # CONFIG_EX / CONFIG_LD / CONFIG_ST -> same func7
             inv[sub] = config
     return inv
 
@@ -40,8 +41,7 @@ def _config_subtype_bits(isa: dict, name: str) -> int | None:
     return None
 
 
-def assemble_program(target: str, listing: list[tuple[str, int, int]], *,
-                     kernel_symbol: str | None = None) -> str:
+def assemble_program(target: str, listing: list[tuple[str, int, int]], *, kernel_symbol: str | None = None) -> str:
     """Render a full LLVM-dialect MLIR module for ``listing`` (each item ``(class_name, rs1, rs2)``).
 
     ``class_name`` is a derived instruction class (e.g. ``MVIN``, ``PRELOAD``, ``COMPUTE_PRELOADED``,
@@ -55,12 +55,12 @@ def assemble_program(target: str, listing: list[tuple[str, int, int]], *,
     explicit one overrides."""
     if kernel_symbol is None:
         from ..contract.harness_abi import for_target
+
         kernel_symbol = for_target(target).entry_symbol
     isa = RD.isa_constants(target)
     opcode, func3 = isa["CUSTOM_OPCODE"], isa["FUNCT3"]
     if opcode is None:
-        raise AsmError(f"target {target!r} ships no RoCC custom opcode fact; the derived assembler "
-                       f"is unavailable")
+        raise AsmError(f"target {target!r} ships no RoCC custom opcode fact; the derived assembler is unavailable")
     cls2funct = _class_to_funct(isa)
     body: list[str] = []
     n = 0
@@ -71,20 +71,24 @@ def assemble_program(target: str, listing: list[tuple[str, int, int]], *,
             continue
         funct = cls2funct.get(name)
         if funct is None:
-            raise AsmError(f"unknown instruction class {name!r} for {target!r}; "
-                           f"legal classes: {sorted(set(cls2funct))}")
-        want = _config_subtype_bits(isa, name)              # None unless a CONFIG subtype
+            raise AsmError(
+                f"unknown instruction class {name!r} for {target!r}; legal classes: {sorted(set(cls2funct))}"
+            )
+        want = _config_subtype_bits(isa, name)  # None unless a CONFIG subtype
         if want is not None and (rs1 & 0x3) != want:
-            raise AsmError(f"{name} requires (rs1 & 0x3) == {want}; got rs1={rs1} "
-                           f"(rs1 & 0x3 == {rs1 & 0x3}). Set the low 2 bits of rs1 to select the subtype.")
+            raise AsmError(
+                f"{name} requires (rs1 & 0x3) == {want}; got rs1={rs1} "
+                f"(rs1 & 0x3 == {rs1 & 0x3}). Set the low 2 bits of rs1 to select the subtype."
+            )
         a, b = f"%c{n}", f"%c{n + 1}"
         n += 2
         body.append(f"    {a} = llvm.mlir.constant({rs1} : i64) : i64")
         body.append(f"    {b} = llvm.mlir.constant({rs2} : i64) : i64")
-        body.append(f'    llvm.inline_asm has_side_effects ".insn r {hex(opcode)}, {hex(func3)}, '
-                    f'{hex(funct)}, x0, $0, $1", "r,r" {a}, {b} : (i64, i64) -> ()')
-    mlir = (f"module {{\n  llvm.func @{kernel_symbol}() {{\n"
-            + "\n".join(body) + "\n    llvm.return\n  }\n}\n")
+        body.append(
+            f'    llvm.inline_asm has_side_effects ".insn r {hex(opcode)}, {hex(func3)}, '
+            f'{hex(funct)}, x0, $0, $1", "r,r" {a}, {b} : (i64, i64) -> ()'
+        )
+    mlir = f"module {{\n  llvm.func @{kernel_symbol}() {{\n" + "\n".join(body) + "\n    llvm.return\n  }\n}\n"
     _roundtrip_check(target, mlir, listing)
     return mlir
 

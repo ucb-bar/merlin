@@ -34,6 +34,7 @@ is never silently indistinguishable from an observed one — that distinction is
 deriving, and DeepSeek-R1-Distill-Qwen has no capture, so its column can only be declared until a
 ``model2MLIR`` loader for it exists.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -53,6 +54,7 @@ OBSERVED_VIA_PRIMITIVES = "observed_via_primitives"
 def _sf():
     """:mod:`merlin.targetgen.semantic_families`, imported lazily to keep this module import-light."""
     from merlin.targetgen import semantic_families
+
     return semantic_families
 
 
@@ -61,6 +63,7 @@ def _cs():
     the ONE definition of a dtype's numeric regime and of the shape granularity that regime imposes, so
     the requirement and the synthesizer cannot disagree about which shapes exist."""
     from merlin.targetgen import corpus_spec
+
     return corpus_spec
 
 
@@ -79,8 +82,9 @@ def capsule_dtype(token: str) -> str:
     """
     try:
         from merlin.targetgen.corpus_spec import dtype_info
+
         return dtype_info(str(token))[0]
-    except Exception:                                      # noqa: BLE001 — unmapped token, keep as-is
+    except Exception:  # noqa: BLE001 — unmapped token, keep as-is
         return str(token)
 
 
@@ -116,12 +120,12 @@ class Cell:
 class CellOrigin:
     """Why a cell is required. Separate from :class:`Cell` so the cell stays hashable and comparable."""
 
-    basis: str = OBSERVED                       # OBSERVED | OBSERVED_VIA_PRIMITIVES | DECLARED
-    observed_in: tuple[str, ...] = ()           # captures whose census contains this family
-    admitted_by: tuple[str, ...] = ()           # compute units declaring the family+dtype
-    citation: str = ""                          # required when basis == DECLARED
-    via_primitives: tuple[str, ...] = ()        # set when basis == OBSERVED_VIA_PRIMITIVES
-    n_regions: int = 0                          # how many regions across all captures carried it
+    basis: str = OBSERVED  # OBSERVED | OBSERVED_VIA_PRIMITIVES | DECLARED
+    observed_in: tuple[str, ...] = ()  # captures whose census contains this family
+    admitted_by: tuple[str, ...] = ()  # compute units declaring the family+dtype
+    citation: str = ""  # required when basis == DECLARED
+    via_primitives: tuple[str, ...] = ()  # set when basis == OBSERVED_VIA_PRIMITIVES
+    n_regions: int = 0  # how many regions across all captures carried it
 
     def to_dict(self) -> dict:
         out: dict = {"basis": self.basis}
@@ -150,7 +154,7 @@ class Boundaries:
     tile_edge: int | None = None
     tile_edge_is_hardware_fact: bool = False
     tile_edge_source: str = ""
-    block_scale_group: int | None = None        # MX E8M0 K-group, when the target has one
+    block_scale_group: int | None = None  # MX E8M0 K-group, when the target has one
     block_scale_source: str = ""
     operand_store_bytes: int | None = None
     operand_store_source: str = ""
@@ -177,14 +181,15 @@ class Boundaries:
         repeats.
         """
         out: list[dict] = []
-        for name, edge, src in (("tile_edge", self.tile_edge, self.tile_edge_source),
-                                ("block_scale_group", self.block_scale_group, self.block_scale_source)):
+        for name, edge, src in (
+            ("tile_edge", self.tile_edge, self.tile_edge_source),
+            ("block_scale_group", self.block_scale_group, self.block_scale_source),
+        ):
             if not edge or edge < 2:
                 continue
             e = int(edge)
             points = {1, e // 4, e // 2, e - 1, e, e + 1, e * 2}
-            out.append({"boundary": name, "edge": e, "source": src,
-                        "points": sorted(x for x in points if x >= 1)})
+            out.append({"boundary": name, "edge": e, "source": src, "points": sorted(x for x in points if x >= 1)})
         return out
 
     def to_dict(self) -> dict:
@@ -203,6 +208,7 @@ class Boundaries:
 # ---------------------------------------------------------------------------------------------------
 # the three derivation sources
 # ---------------------------------------------------------------------------------------------------
+
 
 def admitted(target: str) -> dict[str, tuple[str, ...]]:
     """``family -> dtypes`` the target's capability manifest DECLARES the silicon can compute.
@@ -230,8 +236,9 @@ def admitted_with_reason(target: str) -> tuple[dict[str, tuple[str, ...]], str]:
     """
     try:
         from merlin.targetgen.eligibility import capability_map_for_target
+
         cap_map = capability_map_for_target(target)
-    except Exception as exc:                               # noqa: BLE001 — unresolvable contract
+    except Exception as exc:  # noqa: BLE001 — unresolvable contract
         return {}, f"unresolvable: {type(exc).__name__}: {str(exc)[-160:]}"
     return ({fam: tuple(cap.dtypes or ()) for fam, cap in sorted(cap_map.items())}, "resolved")
 
@@ -242,12 +249,13 @@ def admitting_units(target: str) -> dict[tuple[str, str], tuple[str, ...]]:
     try:
         from merlin.targetgen import compute_units as cu
         from merlin.targetgen import target_registry as tr
+
         units = cu.compute_units(tr.load_contract(target))
-    except Exception:                                      # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return {}
     for unit in units:
         for cap in getattr(unit, "semantic_capabilities", ()) or ():
-            for dt in (getattr(cap, "dtypes", ()) or ()):
+            for dt in getattr(cap, "dtypes", ()) or ():
                 # keyed in the CAPSULE spelling, so it joins the cells built below
                 out.setdefault((cap.family, capsule_dtype(dt)), []).append(getattr(unit, "name", "?"))
     return {k: tuple(sorted(set(v))) for k, v in out.items()}
@@ -292,7 +300,7 @@ def observed_pairs(capture: str | Path, target: str) -> Counter:
             continue
         try:
             out[(str(family), capsule_dtype(str(dtype)))] += 1
-        except Exception:                          # noqa: BLE001 -- an unmappable token stays visible
+        except Exception:  # noqa: BLE001 -- an unmappable token stays visible
             out[(str(family), str(dtype))] += 1
     return out
 
@@ -323,7 +331,7 @@ def corpus_presented_pairs(corpus_roots, *, labels=None) -> "Counter":
                 continue
             if cap.get("label") not in labels:
                 continue
-            fam = ((cap.get("semantic") or {}).get("semantic_family"))
+            fam = (cap.get("semantic") or {}).get("semantic_family")
             if not fam:
                 continue
             # ⚠️ A WHOLE MODEL'S `inputs[]` IS ITS ENTRY TENSOR, NOT AN OPERAND. A language model is
@@ -340,7 +348,7 @@ def corpus_presented_pairs(corpus_roots, *, labels=None) -> "Counter":
             if declared:
                 out[(str(fam), declared)] += 1
                 continue
-            for t in (cap.get("inputs") or []):
+            for t in cap.get("inputs") or []:
                 if t.get("dtype") and t.get("role") in ("input", "weight"):
                     out[(str(fam), str(t["dtype"]))] += 1
     return out
@@ -365,7 +373,7 @@ def host_lane_cells(captures: dict, target: str, corpus_roots=None) -> dict:
         for d in dtypes or ():
             try:
                 admitted_pairs.add((str(family), capsule_dtype(str(d))))
-            except Exception:                      # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 admitted_pairs.add((str(family), str(d)))
 
     seen: Counter = Counter()
@@ -373,7 +381,7 @@ def host_lane_cells(captures: dict, target: str, corpus_roots=None) -> dict:
     for label, path in sorted((captures or {}).items()):
         try:
             seen.update(observed_pairs(path, target))
-        except Exception as e:                     # noqa: BLE001 -- reported, never skipped silently
+        except Exception as e:  # noqa: BLE001 -- reported, never skipped silently
             unreadable[label] = f"{type(e).__name__}: {str(e)[-160:]}"
 
     # THE CORPUS IS EVIDENCE TOO, and on an int8-only target it is the only source that sees the gap:
@@ -381,16 +389,26 @@ def host_lane_cells(captures: dict, target: str, corpus_roots=None) -> dict:
     # bf16 contraction capsules that the array cannot take. Those sit on the host lane by necessity and
     # nothing asserted that they must, so accelerating one -- a real type-contract miss -- cost nothing.
     from_corpus = corpus_presented_pairs(corpus_roots) if corpus_roots else Counter()
-    from_captures = set(seen)                      # recorded BEFORE the merge, so the two sources stay
-    for pair, n in from_corpus.items():            # distinguishable in what each pair says it rests on
+    from_captures = set(seen)  # recorded BEFORE the merge, so the two sources stay
+    for pair, n in from_corpus.items():  # distinguishable in what each pair says it rests on
         seen[pair] = max(int(seen.get(pair, 0)), int(n))
 
-    required = [{"family": f, "dtype": d, "n_regions": n,
-                 "evidenced_by": ("captures_and_corpus"
-                                  if (f, d) in from_corpus and (f, d) in from_captures
-                                  else "corpus" if (f, d) in from_corpus else "captures")}
-                for (f, d), n in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0]))
-                if (f, d) not in admitted_pairs]
+    required = [
+        {
+            "family": f,
+            "dtype": d,
+            "n_regions": n,
+            "evidenced_by": (
+                "captures_and_corpus"
+                if (f, d) in from_corpus and (f, d) in from_captures
+                else "corpus"
+                if (f, d) in from_corpus
+                else "captures"
+            ),
+        }
+        for (f, d), n in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0]))
+        if (f, d) not in admitted_pairs
+    ]
     return {
         "required": required,
         "admitted_pairs": sorted(f"{f}/{d}" for f, d in admitted_pairs),
@@ -400,7 +418,8 @@ def host_lane_cells(captures: dict, target: str, corpus_roots=None) -> dict:
             "The cells intersect admitted with observed and keep only what survives; this keeps what does "
             "NOT, which is precisely the work the compiler has to place on the host. Both sides come from "
             "the same two sources the cells do, read at the resolution the cells discard -- a region's "
-            "dtype decides whether the hardware may take it, so a family histogram cannot express it"),
+            "dtype decides whether the hardware may take it, so a family histogram cannot express it"
+        ),
     }
 
 
@@ -414,6 +433,7 @@ def boundaries(target: str) -> Boundaries:
     try:
         from merlin.targetgen.corpus_spec import _DEFAULT_SW_TILE, _tile_dim
         from merlin.targetgen.target_experiment import load_capability_manifest
+
         contract = load_capability_manifest(target).contract
         edge = int(_tile_dim(target, contract) or 0) or None
         b.tile_edge = edge
@@ -429,31 +449,37 @@ def boundaries(target: str) -> Boundaries:
         if not hw:
             try:
                 from merlin.targetgen.rtl.facts import load_facts
+
                 arrays = ((load_facts(target) or {}).get("facts") or {}).get("arrays") or []
                 mesh = next((a for a in arrays if a.get("rows") and a.get("cols")), None)
                 rtl_rows = int(mesh["rows"]) if mesh else None
-            except Exception:                              # noqa: BLE001 — absent facts: not a hardware fact
+            except Exception:  # noqa: BLE001 — absent facts: not a hardware fact
                 rtl_rows = None
         from_rtl = rtl_rows is not None and edge is not None and int(rtl_rows) == int(edge)
         b.tile_edge_is_hardware_fact = hw or from_rtl or (edge is not None and edge != _DEFAULT_SW_TILE)
-        b.tile_edge_source = ("capability manifest (declared mesh/tile rows)" if hw else
-                              "RTL facts arrays[].rows (the target leaves geometry to discovery rather "
-                              "than restating it in the contract)" if from_rtl else
-                              f"software-tiling default ({_DEFAULT_SW_TILE}); this target declares no "
-                              f"fixed hardware mesh, so it is NOT a hardware boundary")
-    except Exception as e:                                 # noqa: BLE001
+        b.tile_edge_source = (
+            "capability manifest (declared mesh/tile rows)"
+            if hw
+            else "RTL facts arrays[].rows (the target leaves geometry to discovery rather "
+            "than restating it in the contract)"
+            if from_rtl
+            else f"software-tiling default ({_DEFAULT_SW_TILE}); this target declares no "
+            f"fixed hardware mesh, so it is NOT a hardware boundary"
+        )
+    except Exception as e:  # noqa: BLE001
         b.tile_edge_source = f"unavailable: {type(e).__name__}"
 
     # MX block-scale K-group. Lives in the target's MX MMIO contract, not in rtl/facts -- read it from the
     # one accessor so a second hardcoded 32 does not enter the tree.
     try:
         from merlin.targetgen.rtl.mlc_bridge import mx_mmio_for
+
         mx = mx_mmio_for(target) or {}
         grp = mx.get("group")
         if grp:
             b.block_scale_group = int(grp)
             b.block_scale_source = "target contract mx_mmio.group (one E8M0 scale per K group)"
-    except Exception as e:                                 # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         b.block_scale_source = f"unavailable: {type(e).__name__}"
 
     # On-chip operand store, for capacity-fit extents. The facts artifact carries it as a MEMORIES LIST
@@ -462,22 +488,24 @@ def boundaries(target: str) -> Boundaries:
     # on the entry's name, then fall back to the contract, and record which one answered.
     try:
         from merlin.targetgen.rtl.facts import load_facts
+
         mems = ((load_facts(target) or {}).get("facts") or {}).get("memories") or []
         for m in mems:
             if isinstance(m, dict) and str(m.get("name")) == "shared_memory" and m.get("bytes"):
                 b.operand_store_bytes = int(m["bytes"])
                 b.operand_store_source = 'rtl facts memories[name="shared_memory"].bytes'
                 break
-    except Exception as e:                                 # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         b.operand_store_source = f"rtl facts unavailable: {type(e).__name__}"
     if b.operand_store_bytes is None:
         try:
             from merlin.targetgen.target_experiment import load_capability_manifest
-            mm = (load_capability_manifest(target).contract.get("memory_model") or {})
+
+            mm = load_capability_manifest(target).contract.get("memory_model") or {}
             if mm.get("shared_memory_bytes"):
                 b.operand_store_bytes = int(mm["shared_memory_bytes"])
                 b.operand_store_source = "capability manifest memory_model.shared_memory_bytes"
-        except Exception as e:                             # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
             b.operand_store_source += f"; manifest unavailable: {type(e).__name__}"
     return b
 
@@ -486,9 +514,10 @@ def boundaries(target: str) -> Boundaries:
 # the requirement
 # ---------------------------------------------------------------------------------------------------
 
-def required_cells(target: str, captures: dict[str, str | Path], *,
-                   declared: dict[str, dict] | None = None
-                   ) -> tuple[dict[Cell, CellOrigin], dict]:
+
+def required_cells(
+    target: str, captures: dict[str, str | Path], *, declared: dict[str, dict] | None = None
+) -> tuple[dict[Cell, CellOrigin], dict]:
     """``admitted INTERSECT observed`` as cells, plus a diagnostics block.
 
     ``captures`` maps a label (the model it came from) to a captured ``.mlir``. ``declared`` adds families
@@ -529,8 +558,9 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
     scale_block = None
     try:
         from merlin.targetgen.target_experiment import load_capability_manifest
+
         scale_block = _cs()._scale_block_elems(load_capability_manifest(target).contract)
-    except Exception:                                  # noqa: BLE001 — no manifest: no granularity known
+    except Exception:  # noqa: BLE001 — no manifest: no granularity known
         scale_block = None
 
     def _aligns_for(dt: str) -> tuple[str | None, ...]:
@@ -545,8 +575,8 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
     for label, path in sorted((captures or {}).items()):
         try:
             hist = observed(path, target)
-        except Exception as e:                             # noqa: BLE001 — an unreadable capture is
-            unreadable[label] = f"{type(e).__name__}: {str(e)[-160:]}"   # reported, never skipped silently
+        except Exception as e:  # noqa: BLE001 — an unreadable capture is
+            unreadable[label] = f"{type(e).__name__}: {str(e)[-160:]}"  # reported, never skipped silently
             continue
         for fam, n in hist.items():
             seen[fam] += n
@@ -564,10 +594,10 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
     for fam in sorted(set(adm) - set(seen)):
         prims = _sf().primitives_of(fam)
         if not prims or tuple(prims) == (fam,):
-            continue                                       # a primitive that is simply absent
+            continue  # a primitive that is simply absent
         if all(p in seen for p in prims):
             composite_via[fam] = tuple(prims)
-            seen[fam] = min(int(seen[p]) for p in prims)    # bounded by its scarcest primitive
+            seen[fam] = min(int(seen[p]) for p in prims)  # bounded by its scarcest primitive
             seen_in[fam] = sorted({lb for p in prims for lb in seen_in.get(p, ())})
 
     cells: dict[Cell, CellOrigin] = {}
@@ -581,7 +611,7 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
             want = tuple((declared or {}).get(fam, {}).get("dtypes") or dtypes)
             dtypes = tuple(d for d in want if d in dtypes) or dtypes
         if not dtypes:
-            continue                                       # not admitted at all: recorded in diagnostics
+            continue  # not admitted at all: recorded in diagnostics
         if is_declared:
             basis = DECLARED
         elif fam in composite_via:
@@ -601,7 +631,8 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
                     admitted_by=units.get((fam, capsule_dtype(dt)), ()),
                     citation=(declared or {}).get(fam, {}).get("citation", "") if is_declared else "",
                     via_primitives=composite_via.get(fam, ()),
-                    n_regions=int(seen.get(fam, 0)))
+                    n_regions=int(seen.get(fam, 0)),
+                )
 
     needed_not_admitted = sorted(f for f in seen if not adm.get(f))
     admitted_not_needed = sorted(f for f in adm if f not in seen and f not in (declared or {}))
@@ -628,27 +659,32 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
         diagnostics["notes"].append(
             f"this target's capability contract did not resolve ({adm_reason}), so NOTHING is admitted "
             f"and the requirement below is UNKNOWN rather than empty; generate the target's package "
-            f"before reading any coverage number for it")
+            f"before reading any coverage number for it"
+        )
     if composite_via:
         diagnostics["notes"].append(
             f"{len(composite_via)} composite family/families ({', '.join(sorted(composite_via))}) appear "
             f"in NO capture as a region of their own because the importer decomposes them; they are "
             f"required on the evidence that every primitive they decompose into is observed. Taking the "
-            f"region census literally would drop attention from a transformer corpus")
+            f"region census literally would drop attention from a transformer corpus"
+        )
     if needed_not_admitted:
         diagnostics["notes"].append(
             f"{len(needed_not_admitted)} family/families appear in a real capture but the hardware "
             f"declares no capability for them ({', '.join(needed_not_admitted)}); those are compiler "
             f"work for the scalar/vector lane, not accelerator cells, and are excluded from the "
-            f"requirement rather than silently counted as covered")
+            f"requirement rather than silently counted as covered"
+        )
     if unreadable:
         diagnostics["notes"].append(
             f"{len(unreadable)} capture(s) could not be read; the requirement below is NARROWER than the "
-            f"evidence would support and must not be read as complete")
+            f"evidence would support and must not be read as complete"
+        )
     if not bnd.tile_edge_is_hardware_fact and bnd.tile_edge:
         diagnostics["notes"].append(
             f"the alignment axis uses tile edge {bnd.tile_edge}, which is a SOFTWARE tiling default for "
-            f"this target, not a hardware boundary")
+            f"this target, not a hardware boundary"
+        )
     # THE DTYPE AXIS IS ADMITTED-ONLY, NOT OBSERVED, and that asymmetry is deliberate. The available
     # captures are single-precision (fp32), so observing dtypes would collapse the requirement onto f32
     # and drop exactly the MX/int8 paths this accelerator exists for. Requiring every admitted dtype of
@@ -658,9 +694,10 @@ def required_cells(target: str, captures: dict[str, str | Path], *,
     diagnostics["axis_basis"] = {
         "semantic_family": "observed in a real capture (or all of its primitives were)",
         "dtype": "ADMITTED ONLY — the captures are single-precision, so dtype demand is not observable "
-                 "from them; every dtype the hardware declares for an observed family is required",
-        "tile_alignment": ("both, wherever the target tiles: a unit that only ever sees whole tiles has "
-                           "never exercised its tail path"),
+        "from them; every dtype the hardware declares for an observed family is required",
+        "tile_alignment": (
+            "both, wherever the target tiles: a unit that only ever sees whole tiles has never exercised its tail path"
+        ),
     }
     return cells, diagnostics
 
@@ -685,7 +722,7 @@ def host_only_dtypes(captures: dict, families) -> dict:
     for path in captures.values():
         try:
             regions = mc.regions_from_module(mc.load_module(Path(path)))
-        except Exception:                          # noqa: BLE001 -- an unreadable capture is not evidence
+        except Exception:  # noqa: BLE001 -- an unreadable capture is not evidence
             continue
         for region in regions:
             fam = region.resolved_family()
@@ -696,7 +733,7 @@ def host_only_dtypes(captures: dict, families) -> dict:
         if counts:
             try:
                 out[fam] = capsule_dtype(counts.most_common(1)[0][0])
-            except Exception:                      # noqa: BLE001 -- an unmappable spelling is not a dtype
+            except Exception:  # noqa: BLE001 -- an unmappable spelling is not a dtype
                 continue
     return out
 
@@ -708,8 +745,7 @@ def host_only_dtypes(captures: dict, families) -> dict:
 _DEFAULT_CERT_BUDGET_S = 300.0
 
 
-def _application_axis(target: str, *, captures: dict | None = None,
-                      budget_s: float | None = None) -> dict:
+def _application_axis(target: str, *, captures: dict | None = None, budget_s: float | None = None) -> dict:
     """The shapes this target's declared APPLICATIONS contain, sized to what a cert costs.
 
     The corpus gives every synthesized capsule one of two tile-relative shapes, and real models do
@@ -734,7 +770,8 @@ def _application_axis(target: str, *, captures: dict | None = None,
             "compiler must do with them and sized to what a certification costs. A capsule at an "
             "application's real shape is worthless if nobody can afford to certify it, so each class "
             "yields a cycle-accurate capsule at an affordable size plus, when the application is "
-            "larger, an L2 capsule at the true shape that extends it -- never one without the other"),
+            "larger, an L2 capsule at the true shape that extends it -- never one without the other"
+        ),
         "cert_budget_s": budget,
         "budget_source": "declared" if budget_s else "default",
     }
@@ -756,7 +793,7 @@ def _application_axis(target: str, *, captures: dict | None = None,
         for _d in _dts or ():
             try:
                 admitted_pairs.add((str(_fam), capsule_dtype(str(_d))))
-            except Exception:                      # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 admitted_pairs.add((str(_fam), str(_d)))
 
     # A block-scaled format admitted by the target is not automatically present in a model whose
@@ -764,24 +801,25 @@ def _application_axis(target: str, *, captures: dict | None = None,
     # missing-capability record when none of the declared bundles carries the compute + scale
     # semantics. This does not widen the required cells or relabel a float contraction.
     from merlin.common import quant_formats as _qf
+
     block_scaled_formats = set()
     for family, dtype in admitted_pairs:
         if family != "contraction":
             continue
         try:
             fmt = _qf.get(dtype)
-        except Exception:                          # noqa: BLE001 -- unknown cannot prove block scaling
+        except Exception:  # noqa: BLE001 -- unknown cannot prove block scaling
             continue
         if fmt.scale.kind == "block_e8m0":
             block_scaled_formats.add(fmt.name)
-    grouped = APP.classify_captures(
-        captures, target, required_block_scaled_formats=block_scaled_formats)
+    grouped = APP.classify_captures(captures, target, required_block_scaled_formats=block_scaled_formats)
     fit = CC.fit_for(target)
     try:
         from merlin.targetgen.corpus_spec import _tile_dim  # noqa: PLC2701
         from merlin.targetgen.target_registry import load_contract
+
         tile = int(_tile_dim(target, load_contract(target)) or 0)
-    except Exception:                              # noqa: BLE001 -- no edge is a real answer
+    except Exception:  # noqa: BLE001 -- no edge is a real answer
         tile = 0
 
     required, refused = [], []
@@ -795,23 +833,35 @@ def _application_axis(target: str, *, captures: dict | None = None,
                 f"the HOST lane and not on the accelerator. It is already required by the host_lane "
                 f"axis at the same resolution ({row.get('multiplicity')} region(s), "
                 f"{row.get('work')} MACs); an accelerator capsule here would demand an offload the "
-                f"datapath cannot perform and could not pass under any correct behaviour")
+                f"datapath cannot perform and could not pass under any correct behaviour"
+            )
             continue
         evidence = APP.ClassEvidence(
             region_class=APP.RegionClass(
-                family=row["family"], dtype=row["dtype"], alignment=row["alignment"],
-                regime=row["regime"], rank=int(row["rank"]), geometry=row["geometry"]),
-            m=int(row["M"]), k=int(row["K"]), n=int(row["N"]), batch=int(row["batch"]),
-            multiplicity=int(row["multiplicity"]), work=int(row["work"]),
-            work_complete=bool(row["work_complete"]), source=str(row["source"]))
-        sized, refusal = APP.size_class(evidence, target=target, budget_s=budget,
-                                        tile=tile or None, fit=fit)
+                family=row["family"],
+                dtype=row["dtype"],
+                alignment=row["alignment"],
+                regime=row["regime"],
+                rank=int(row["rank"]),
+                geometry=row["geometry"],
+            ),
+            m=int(row["M"]),
+            k=int(row["K"]),
+            n=int(row["N"]),
+            batch=int(row["batch"]),
+            multiplicity=int(row["multiplicity"]),
+            work=int(row["work"]),
+            work_complete=bool(row["work_complete"]),
+            source=str(row["source"]),
+        )
+        sized, refusal = APP.size_class(evidence, target=target, budget_s=budget, tile=tile or None, fit=fit)
         if refusal:
             refused.append(refusal)
             continue
         required.extend(cap.to_dict() for cap in sized)
     return {
-        "required": required, "refused": refused,
+        "required": required,
+        "refused": refused,
         "declared_applications": len(captures),
         "n_classes": grouped.get("n_classes", 0),
         "n_regions": grouped.get("n_regions", 0),
@@ -830,7 +880,8 @@ _SHAPE_AXIS_BASIS = (
     "capability_probes. A (family, dtype, alignment) cell cannot express either: it says what arithmetic "
     "the corpus must contain and nothing about whether the unit was ever asked for a batched region or a "
     "transposed operand. Both are declared capabilities, so a target that claims them and is never asked "
-    "for one has an untested claim")
+    "for one has an untested claim"
+)
 
 
 def _mkn(shape) -> "tuple[int, int, int] | None":
@@ -879,12 +930,14 @@ def _materialization_ceiling(target: str) -> "int | None":
     """
     try:
         from merlin.targetgen import memory_regime as MR
+
         bnd = boundaries(target)
         dtype = None
         from merlin.targetgen.target_experiment import load_capability_manifest
-        units = (load_capability_manifest(target).contract.get("compute_units") or [{}])
+
+        units = load_capability_manifest(target).contract.get("compute_units") or [{}]
         for u in units:
-            for d in (u.get("dtypes") or ()):
+            for d in u.get("dtypes") or ():
                 dtype = capsule_dtype(str(d))
                 break
             if dtype:
@@ -894,7 +947,7 @@ def _materialization_ceiling(target: str) -> "int | None":
             return _MATERIALIZABLE_ELEMENTS_FALLBACK
         per_row = store.elems_per_row(dtype)
         return int(rows) * int(per_row) if per_row else _MATERIALIZABLE_ELEMENTS_FALLBACK
-    except Exception:                                       # noqa: BLE001 — no store: the fallback
+    except Exception:  # noqa: BLE001 — no store: the fallback
         return _MATERIALIZABLE_ELEMENTS_FALLBACK
 
 
@@ -924,7 +977,7 @@ def geometry_axis(captures: dict[str, str | Path], target: str) -> dict:
     for label, path in sorted((captures or {}).items()):
         try:
             pairs = KS.observe_contractions(path)
-        except Exception as e:                              # noqa: BLE001 — reported, never skipped
+        except Exception as e:  # noqa: BLE001 — reported, never skipped
             unreadable[label] = f"{type(e).__name__}: {str(e)[-160:]}"
             continue
         for _op, shape in pairs:
@@ -935,13 +988,24 @@ def geometry_axis(captures: dict[str, str | Path], target: str) -> dict:
             macs = m * k * n
             total_macs += macs
             klass = ST.classify_geometry(M=m, N=n, K=k)
-            row = by_class.setdefault(klass, {"class": klass, "family": "contraction",
-                                              "n_regions": 0, "macs": 0, "observed_in": set(),
-                                              "M": m, "K": k, "N": n, "rep_macs": 0})
+            row = by_class.setdefault(
+                klass,
+                {
+                    "class": klass,
+                    "family": "contraction",
+                    "n_regions": 0,
+                    "macs": 0,
+                    "observed_in": set(),
+                    "M": m,
+                    "K": k,
+                    "N": n,
+                    "rep_macs": 0,
+                },
+            )
             row["n_regions"] += 1
             row["macs"] += macs
             row["observed_in"].add(label)
-            if macs > row["rep_macs"]:                      # the representative is the heaviest shape
+            if macs > row["rep_macs"]:  # the representative is the heaviest shape
                 row["M"], row["K"], row["N"], row["rep_macs"] = m, k, n, macs
 
     # A CLASS IS A RATIO, NOT A SIZE, and that is what makes this axis affordable. The heaviest real
@@ -996,42 +1060,51 @@ def geometry_axis(captures: dict[str, str | Path], target: str) -> dict:
                 cn = max(1, int(row["N"]) // factor)
                 ck = max(1, int(row["K"]) // factor)
                 if cm < fm or ck < fk or cn < fn:
-                    break                               # past the floor: shrinking further is not a
-                if _largest(cm, ck, cn) > ceiling:      # smaller representative, it is a different
-                    continue                            # and degenerate problem
+                    break  # past the floor: shrinking further is not a
+                if _largest(cm, ck, cn) > ceiling:  # smaller representative, it is a different
+                    continue  # and degenerate problem
                 if ST.classify_geometry(M=cm, N=cn, K=ck) == klass:
                     m, n, k = cm, cn, ck
                     break
             if not m or not n:
-                required.append({
-                    "class": klass, "family": row["family"],
-                    "M": None, "K": None, "N": None,
-                    "out_elements": int(row["M"]) * int(row["N"]),
-                    "n_regions": int(row["n_regions"]),
-                    "mac_fraction": round(row["macs"] / float(total_macs), 6) if total_macs else None,
-                    "observed_in": sorted(row["observed_in"]),
-                    "unreachable": (
-                        f"the heaviest shape in this class carries a "
-                        f"{_largest(int(row['M']), int(row['K']), int(row['N']))}-element tensor, more "
-                        f"than the {ceiling} this target's operand store holds, and no common divisor "
-                        f"of its extents fits while every extent stays at or above its floor "
-                        f"(min(original, tile edge {edge})) and the shape stays in its class -- so no "
-                        f"capsule of this aspect ratio is both representative and buildable here"),
-                })
+                required.append(
+                    {
+                        "class": klass,
+                        "family": row["family"],
+                        "M": None,
+                        "K": None,
+                        "N": None,
+                        "out_elements": int(row["M"]) * int(row["N"]),
+                        "n_regions": int(row["n_regions"]),
+                        "mac_fraction": round(row["macs"] / float(total_macs), 6) if total_macs else None,
+                        "observed_in": sorted(row["observed_in"]),
+                        "unreachable": (
+                            f"the heaviest shape in this class carries a "
+                            f"{_largest(int(row['M']), int(row['K']), int(row['N']))}-element tensor, more "
+                            f"than the {ceiling} this target's operand store holds, and no common divisor "
+                            f"of its extents fits while every extent stays at or above its floor "
+                            f"(min(original, tile edge {edge})) and the shape stays in its class -- so no "
+                            f"capsule of this aspect ratio is both representative and buildable here"
+                        ),
+                    }
+                )
                 continue
-            scaled_from = {"M": int(row["M"]), "K": int(row["K"]), "N": int(row["N"]),
-                           "factor": factor}
+            scaled_from = {"M": int(row["M"]), "K": int(row["K"]), "N": int(row["N"]), "factor": factor}
         out_elems = m * n
-        required.append({
-            "class": klass,
-            "family": row["family"],
-            "M": m, "K": k, "N": n,
-            "out_elements": out_elems,
-            "n_regions": int(row["n_regions"]),
-            "mac_fraction": round(row["macs"] / float(total_macs), 6) if total_macs else None,
-            "observed_in": sorted(row["observed_in"]),
-            "scaled_from": scaled_from,
-        })
+        required.append(
+            {
+                "class": klass,
+                "family": row["family"],
+                "M": m,
+                "K": k,
+                "N": n,
+                "out_elements": out_elems,
+                "n_regions": int(row["n_regions"]),
+                "mac_fraction": round(row["macs"] / float(total_macs), 6) if total_macs else None,
+                "observed_in": sorted(row["observed_in"]),
+                "scaled_from": scaled_from,
+            }
+        )
     return {
         "required": required,
         "captures_unreadable": unreadable,
@@ -1042,7 +1115,8 @@ def geometry_axis(captures: dict[str, str | Path], target: str) -> dict:
             "present, each with the highest-MAC-mass shape in the class. A (family, dtype, alignment) "
             "cell cannot express aspect ratio at all, and aspect ratio is where a tiling compiler "
             "fails: a 448:1 tall-skinny convolution and a square projection are the same cell. EMPTY "
-            "means the captures contain no readable contraction, never that geometry does not matter"),
+            "means the captures contain no readable contraction, never that geometry does not matter"
+        ),
     }
 
 
@@ -1056,8 +1130,9 @@ def _capsule_geometry(cap: dict) -> "str | None":
     """
     from merlin.dse_guidance import shape_taxonomy as ST
 
-    shapes = [[int(x) for x in (t.get("shape") or []) if str(x).lstrip("-").isdigit()]
-              for t in (cap.get("inputs") or [])]
+    shapes = [
+        [int(x) for x in (t.get("shape") or []) if str(x).lstrip("-").isdigit()] for t in (cap.get("inputs") or [])
+    ]
     twod = [sh for sh in shapes if len(sh) == 2 and all(d > 0 for d in sh)]
     for i, a in enumerate(twod):
         for j, b in enumerate(twod):
@@ -1097,12 +1172,13 @@ def _geometry_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
         "n_covered": len(set(want) & set(have)),
         "uncovered": missing,
         "covered_by": {k: sorted(v) for k, v in sorted(have.items())},
-        "mac_fraction_uncovered": round(
-            sum(float(by_class[k].get("mac_fraction") or 0.0) for k in missing), 6),
-        "note": ("a geometry class real models present that no capsule reproduces means the corpus "
-                 "cannot tell a compiler that tiles that aspect ratio well from one that does not; "
-                 "`mac_fraction_uncovered` is the share of real contraction work sitting in classes "
-                 "nothing tests"),
+        "mac_fraction_uncovered": round(sum(float(by_class[k].get("mac_fraction") or 0.0) for k in missing), 6),
+        "note": (
+            "a geometry class real models present that no capsule reproduces means the corpus "
+            "cannot tell a compiler that tiles that aspect ratio well from one that does not; "
+            "`mac_fraction_uncovered` is the share of real contraction work sitting in classes "
+            "nothing tests"
+        ),
     }
 
 
@@ -1119,9 +1195,9 @@ def _builder_epilogue_stages() -> tuple[str, ...]:
     return _cs().BUILDER_EPILOGUE_STAGES
 
 
-
-def scope_axis(captures: "dict[str, str | Path]", target: str, *, min_occurrences: int = 4,
-               max_signatures: int = 12) -> dict:
+def scope_axis(
+    captures: "dict[str, str | Path]", target: str, *, min_occurrences: int = 4, max_signatures: int = 12
+) -> dict:
     """WHICH ADJACENCIES a target's own captures present -- the unit a phase-2 obligation is made of.
 
     Every other axis here describes ONE region: its family, its dtype, its extents, its geometry. That is
@@ -1153,15 +1229,14 @@ def scope_axis(captures: "dict[str, str | Path]", target: str, *, min_occurrence
             unreadable[str(label)] = f"{type(exc).__name__}: {exc}"
             continue
         for signature, count in (census.get("by_signature") or {}).items():
-            row = seen.setdefault(signature, {"signature": signature, "occurrences": 0,
-                                              "observed_in": []})
+            row = seen.setdefault(signature, {"signature": signature, "occurrences": 0, "observed_in": []})
             row["occurrences"] += int(count)
             if str(label) not in row["observed_in"]:
                 row["observed_in"].append(str(label))
 
     ranked = sorted(seen.values(), key=lambda r: (-r["occurrences"], r["signature"]))
     frequent = [r for r in ranked if r["occurrences"] >= int(min_occurrences)]
-    kept = frequent[:int(max_signatures)]
+    kept = frequent[: int(max_signatures)]
     for row in kept:
         row["length"] = len(row["signature"].split(" -> "))
     return {
@@ -1169,9 +1244,10 @@ def scope_axis(captures: "dict[str, str | Path]", target: str, *, min_occurrence
         "min_occurrences": int(min_occurrences),
         "max_signatures": int(max_signatures),
         "dropped_below_threshold": len(ranked) - len(frequent),
-        "dropped_over_cap": [r["signature"] for r in frequent[int(max_signatures):]],
+        "dropped_over_cap": [r["signature"] for r in frequent[int(max_signatures) :]],
         "captures_unreadable": unreadable,
     }
+
 
 def _epilogue_axis(target: str) -> dict:
     """Which epilogue stages ``target`` must be asked to fuse onto a contraction.
@@ -1195,8 +1271,9 @@ def _epilogue_axis(target: str) -> dict:
 
     try:
         from merlin.targetgen.eligibility import capability_map_for_target
+
         cap_map = capability_map_for_target(target) or {}
-    except Exception:                              # noqa: BLE001 -- unreadable manifest evidences nothing
+    except Exception:  # noqa: BLE001 -- unreadable manifest evidences nothing
         cap_map = {}
     fused_families = {f for f, c in cap_map.items() if tuple(getattr(c, "composed_with", ()) or ())}
 
@@ -1205,7 +1282,7 @@ def _epilogue_axis(target: str) -> dict:
     try:
         taxonomy = IT.taxonomy_for_target(target)
         base = set(IT.required_classes_for_op(taxonomy, op="matmul"))
-    except Exception:                              # noqa: BLE001 -- no taxonomy is not "no capability"
+    except Exception:  # noqa: BLE001 -- no taxonomy is not "no capability"
         taxonomy = None
 
     required, rejected = [], []
@@ -1215,23 +1292,30 @@ def _epilogue_axis(target: str) -> dict:
         classes: list = []
         if taxonomy is not None:
             try:
-                classes = sorted(set(IT.required_classes_for_op(
-                    taxonomy, op="matmul", epilogue=(stage,))) - base)
-            except Exception:                      # noqa: BLE001
+                classes = sorted(set(IT.required_classes_for_op(taxonomy, op="matmul", epilogue=(stage,))) - base)
+            except Exception:  # noqa: BLE001
                 classes = []
         if by_manifest or classes:
-            required.append({
-                "stage": stage, "family": family,
-                "evidenced_by": ([  "manifest_composed_with"] if by_manifest else [])
-                                + (["isa_instruction_class"] if classes else []),
-                "isa_classes": classes,
-            })
+            required.append(
+                {
+                    "stage": stage,
+                    "family": family,
+                    "evidenced_by": (["manifest_composed_with"] if by_manifest else [])
+                    + (["isa_instruction_class"] if classes else []),
+                    "isa_classes": classes,
+                }
+            )
         else:
-            rejected.append({
-                "stage": stage, "family": family,
-                "why": ("the manifest declares no family fused-only for it and this target's "
-                        "instruction taxonomy resolves no class for the role it needs"),
-            })
+            rejected.append(
+                {
+                    "stage": stage,
+                    "family": family,
+                    "why": (
+                        "the manifest declares no family fused-only for it and this target's "
+                        "instruction taxonomy resolves no class for the role it needs"
+                    ),
+                }
+            )
     return {
         "required": required,
         "rejected": rejected,
@@ -1240,7 +1324,8 @@ def _epilogue_axis(target: str) -> dict:
             "manifest declaring the stage's family fused-only OR by its own instruction taxonomy "
             "resolving a class for the role the stage needs. A (family, dtype, alignment) cell cannot "
             "express WHICH epilogue rides the contraction, so a corpus derived from cells alone tests "
-            "one stage and calls the fusion capability covered"),
+            "one stage and calls the fusion capability covered"
+        ),
     }
 
 
@@ -1250,7 +1335,7 @@ def _capsule_dtype_or(token):
         return token
     try:
         return capsule_dtype(str(token))
-    except Exception:                              # noqa: BLE001 — an unmappable token is not a dtype
+    except Exception:  # noqa: BLE001 — an unmappable token is not a dtype
         return token
 
 
@@ -1268,9 +1353,10 @@ def _shape_axis(target: str) -> dict:
     try:
         from merlin.targetgen.capability_probes import synthesize as _probes
         from merlin.targetgen.eligibility import capability_map_for_target
+
         cap_map = capability_map_for_target(target) or {}
         probes = _probes(cap_map, target=target)
-    except Exception as exc:                               # noqa: BLE001 -- unreadable is not empty
+    except Exception as exc:  # noqa: BLE001 -- unreadable is not empty
         return {
             "required": [],
             "unavailable": f"{type(exc).__name__}: {exc}",
@@ -1286,21 +1372,25 @@ def _shape_axis(target: str) -> dict:
         rank = int(getattr(d, "rank", 2) or 2)
         layout = getattr(d, "layout", None)
         if rank < 3 and not layout:
-            continue                                       # a plain 2-D region: the cells already say it
-        required.append({
-            "probe": pr.name,
-            "axis": "rank" if rank >= 3 else "layout",
-            "family": d.family,
-            # THE CAPSULE SPELLING, like every other axis in this spec. `capability_probes` reads the
-            # MANIFEST's vocabulary (`int8`) and the cells carry the capsule's (`i8`); emitting the
-            # manifest spelling here put an `int8` entry into a corpus whose admitted set is `{i8}`,
-            # so the entry read as using a dtype the requirement does not admit.
-            "dtype": _capsule_dtype_or(d.in_dtype),
-            "rank": rank,
-            "layout": layout,
-            "m": d.m, "k": d.k, "n": d.n,
-            "batch": int(getattr(d, "batch", 1) or 1),
-        })
+            continue  # a plain 2-D region: the cells already say it
+        required.append(
+            {
+                "probe": pr.name,
+                "axis": "rank" if rank >= 3 else "layout",
+                "family": d.family,
+                # THE CAPSULE SPELLING, like every other axis in this spec. `capability_probes` reads the
+                # MANIFEST's vocabulary (`int8`) and the cells carry the capsule's (`i8`); emitting the
+                # manifest spelling here put an `int8` entry into a corpus whose admitted set is `{i8}`,
+                # so the entry read as using a dtype the requirement does not admit.
+                "dtype": _capsule_dtype_or(d.in_dtype),
+                "rank": rank,
+                "layout": layout,
+                "m": d.m,
+                "k": d.k,
+                "n": d.n,
+                "batch": int(getattr(d, "batch", 1) or 1),
+            }
+        )
     return {
         "required": sorted(required, key=lambda r: (r["axis"], r["probe"])),
         "axis_basis": _SHAPE_AXIS_BASIS,
@@ -1311,7 +1401,8 @@ def _shape_axis(target: str) -> dict:
             "occupancy classes rather than two: `partial` rags one axis by one element (a nearly-full "
             "tile) and `sub_tile` leaves the tile barely occupied, which the hand-authored corpus probes "
             "45 times and the derived corpus could not express at all. That is a genuinely distinct "
-            "point, not a corner probe under another name"),
+            "point, not a corner probe under another name"
+        ),
     }
 
 
@@ -1379,15 +1470,23 @@ def _certified_depth(target: str, *, tile: int, budget_s: float | None):
     if seconds is None:
         return None, "no measured certification cost law, so one output tile cannot be priced"
     if seconds > budget:
-        return None, (f"a single {tile}x{tile} output tile already costs {seconds:.0f}s against a "
-                      f"{budget}s budget on this target, so no reduction of any depth is certifiable")
+        return None, (
+            f"a single {tile}x{tile} output tile already costs {seconds:.0f}s against a "
+            f"{budget}s budget on this target, so no reduction of any depth is certifiable"
+        )
     return {
-        "M": int(tile), "K": 2 * int(tile), "N": int(tile), "K_tiles": 2,
-        "predicted_seconds": round(seconds, 1), "budget_s": budget,
+        "M": int(tile),
+        "K": 2 * int(tile),
+        "N": int(tile),
+        "K_tiles": 2,
+        "predicted_seconds": round(seconds, 1),
+        "budget_s": budget,
         "sized_by": "multi_pass_minimum_at_one_output_tile",
         "extrapolated": bool(extrapolated),
-        "why": ("two tiles of K is the shallowest reduction that writes the accumulator twice; the "
-                "cost is the output tile, which K does not move"),
+        "why": (
+            "two tiles of K is the shallowest reduction that writes the accumulator twice; the "
+            "cost is the output tile, which K does not move"
+        ),
     }, None
 
 
@@ -1402,13 +1501,21 @@ def _declared_oracle_tiers(target: str) -> list:
         from merlin.common.paths import repo_root
         from merlin.targetgen import capsule_runner as CR
         from merlin.targetgen.target_experiment import load_target_experiment
-        desc = (repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / str(target)
-                / "target_experiment.yaml")
+
+        desc = (
+            repo_root()
+            / "merlin"
+            / "experiments"
+            / "capsule_bench"
+            / "targets"
+            / str(target)
+            / "target_experiment.yaml"
+        )
         if not desc.is_file():
             return []
         te = load_target_experiment(desc)
         return sorted(CR.oracle_adapters(target, te.sim_via) or {})
-    except Exception:                                  # noqa: BLE001 — unresolvable: report nothing
+    except Exception:  # noqa: BLE001 — unresolvable: report nothing
         return []
 
 
@@ -1438,10 +1545,12 @@ def _cert_affordability(target: str, *, budget_s: float | None) -> dict:
     from merlin.targetgen import cert_cost as CC
 
     budget = float(budget_s if budget_s else _DEFAULT_CERT_BUDGET_S)
-    why = ("the largest written output whose predicted certification fits the budget. A capsule above "
-           "it is graded at the loop tier and rests on a certified sibling -- not because it is "
-           "uninteresting, but because nobody can afford to run it cycle-accurately. Reduction depth "
-           "does NOT count against this: K moves the operands, not the result")
+    why = (
+        "the largest written output whose predicted certification fits the budget. A capsule above "
+        "it is graded at the loop tier and rests on a certified sibling -- not because it is "
+        "uninteresting, but because nobody can afford to run it cycle-accurately. Reduction depth "
+        "does NOT count against this: K moves the operands, not the result"
+    )
 
     # THIS TARGET'S OWN CERTIFICATIONS FIRST. A simulation rate is a property of the DESIGN and the
     # simulator, not of the corpus, so pricing one target's capsules with another's measurements is a
@@ -1452,7 +1561,7 @@ def _cert_affordability(target: str, *, budget_s: float | None) -> dict:
     fit = None
     try:
         fit = CC.fit_for(target)
-    except Exception:                              # noqa: BLE001 -- unreadable run history is "none"
+    except Exception:  # noqa: BLE001 -- unreadable run history is "none"
         fit = None
     if fit is not None and getattr(fit, "per_element_s", 0):
         ceiling = int((budget - float(fit.intercept_s)) / float(fit.per_element_s))
@@ -1464,17 +1573,23 @@ def _cert_affordability(target: str, *, budget_s: float | None) -> dict:
                 "law": f"seconds = {fit.intercept_s:.6g} + {fit.per_element_s:.6g} * output",
                 "calibrated_to_elements": int(fit.elements_max),
                 "extrapolated": bool(ceiling > int(fit.elements_max)),
-                "basis": (f"fitted on {fit.n_samples} cycle-accurate certification(s) of THIS target "
-                          f"(r2 {fit.r2:.3f}, {fit.elements_min}..{fit.elements_max} written elements)"),
+                "basis": (
+                    f"fitted on {fit.n_samples} cycle-accurate certification(s) of THIS target "
+                    f"(r2 {fit.r2:.3f}, {fit.elements_min}..{fit.elements_max} written elements)"
+                ),
                 "why": why,
             }
 
     coeff = getattr(CC, "MEASURED_COEFFICIENT_S", None)
     exponent = getattr(CC, "MEASURED_EXPONENT", None)
     if not coeff or not exponent:
-        return {"max_elements": None, "budget_s": budget, "metric": "written_output_elements",
-                "basis": "no measured certification history for this target and no fallback law",
-                "why": "no measured certification cost law is available in this checkout"}
+        return {
+            "max_elements": None,
+            "budget_s": budget,
+            "metric": "written_output_elements",
+            "basis": "no measured certification history for this target and no fallback law",
+            "why": "no measured certification cost law is available in this checkout",
+        }
     # Invert the power law: the output at which the predicted certification exactly spends the budget.
     ceiling = int((budget / float(coeff)) ** (1.0 / float(exponent)))
     calibrated_to = getattr(CC, "MEASURED_MAX_OUTPUT_ELEMENTS", 0)
@@ -1485,20 +1600,26 @@ def _cert_affordability(target: str, *, budget_s: float | None) -> dict:
         "law": f"seconds = {coeff} * output ** {exponent}",
         "calibrated_to_elements": calibrated_to,
         "extrapolated": True,
-        "basis": ("BORROWED: this target has certified nothing cycle-accurately, so the ceiling comes "
-                  "from the deliberate calibration ladder measured on another device. It bounds the "
-                  "budget rather than describing this device, and a capsule sized by it is sized by a "
-                  "rate nobody has measured here -- run one cert on this target to replace it"),
+        "basis": (
+            "BORROWED: this target has certified nothing cycle-accurately, so the ceiling comes "
+            "from the deliberate calibration ladder measured on another device. It bounds the "
+            "budget rather than describing this device, and a capsule sized by it is sized by a "
+            "rate nobody has measured here -- run one cert on this target to replace it"
+        ),
         "why": why,
     }
 
 
-def spec(target: str, captures: dict[str, str | Path], *,
-         declared: dict[str, dict] | None = None,
-         personas: dict[str, dict] | None = None,
-         applications: dict[str, str | Path] | None = None,
-         corpus_roots=None,
-         cert_budget_s: float | None = None) -> dict:
+def spec(
+    target: str,
+    captures: dict[str, str | Path],
+    *,
+    declared: dict[str, dict] | None = None,
+    personas: dict[str, dict] | None = None,
+    applications: dict[str, str | Path] | None = None,
+    corpus_roots=None,
+    cert_budget_s: float | None = None,
+) -> dict:
     """The full derived conformance spec, ready to serialize.
 
     Regenerable and tracked: a reviewer diffs it to see the requirement change when a target's manifest
@@ -1508,6 +1629,7 @@ def spec(target: str, captures: dict[str, str | Path], *,
     bnd = boundaries(target)
     from merlin.targetgen import boundary as BD
     from merlin.targetgen import memory_regime as MR
+
     comp = BD.required_boundaries(captures, target)
     mem = MR.required_regimes(captures, target)
     # The extents that REACH each required regime, resolved here because the search needs the target's
@@ -1518,26 +1640,27 @@ def spec(target: str, captures: dict[str, str | Path], *,
     HL = host_lane_cells(captures, target, corpus_roots=corpus_roots)
     try:
         _reduction_depth = MR.reduction_depth_regimes(
-            target, sorted((mem.get("by_regime") or {}).keys()),
-            tile_dim=bnd.tile_edge or 0, dtype=_regime_dtype)
-    except Exception as _exc:                      # noqa: BLE001 -- an underivable depth is not zero
+            target, sorted((mem.get("by_regime") or {}).keys()), tile_dim=bnd.tile_edge or 0, dtype=_regime_dtype
+        )
+    except Exception as _exc:  # noqa: BLE001 -- an underivable depth is not zero
         _reduction_depth = {"unavailable": f"{type(_exc).__name__}: {_exc}"}
     _reduction_depth["certified"], _reduction_depth["certified_refusal"] = _certified_depth(
-        target, tile=bnd.tile_edge or 0, budget_s=cert_budget_s)
+        target, tile=bnd.tile_edge or 0, budget_s=cert_budget_s
+    )
     _regime_extents = MR.required_regime_extents(
-        target, sorted((mem.get("by_regime") or {}).keys()),
-        tile_dim=bnd.tile_edge or 0, dtype=_regime_dtype)
+        target, sorted((mem.get("by_regime") or {}).keys()), tile_dim=bnd.tile_edge or 0, dtype=_regime_dtype
+    )
     return {
         "target": target,
         "generated_by": "merlin.targetgen.conformance.spec",
         "derivation": {
             "admitted": "capability manifest compute_units[].semantic_capabilities (family x dtype)",
             "observed": "model_coverage.regions_from_module over each captured model (name-first, "
-                        "provenance-tag fallback; unresolved regions not counted)",
+            "provenance-tag fallback; unresolved regions not counted)",
             "required": "admitted INTERSECT observed, x tile alignment where the target tiles",
             "cell_vocabulary": "(semantic_family, dtype, tile_alignment) — identical to "
-                               "contract.materialize.cert_capsule_cover, so the existing cover measures "
-                               "this spec without a second definition of a cell",
+            "contract.materialize.cert_capsule_cover, so the existing cover measures "
+            "this spec without a second definition of a cell",
         },
         "boundaries": bnd.to_dict(),
         "composition": {
@@ -1549,12 +1672,14 @@ def spec(target: str, captures: dict[str, str | Path], *,
                 "as a whole. A model classifies as `routing` end to end, yet it contains isolated "
                 "dispatches, adjacent accelerator pairs and host islands, and each of those is a "
                 "composition the corpus must exercise somewhere. Taking only the whole-model label would "
-                "demand `routing` and nothing else, the narrowest reading of the richest evidence"),
+                "demand `routing` and nothing else, the narrowest reading of the richest evidence"
+            ),
             "why_orthogonal": (
                 "the composition axis is NOT crossed with family/dtype/alignment. A cross product would "
                 "demand cells like `movement/i8/partial/routing` that no real model presents, "
                 "manufacturing uncovered cells nobody should build; composition is a property of how a "
-                "program is assembled, not of the arithmetic in it"),
+                "program is assembled, not of the arithmetic in it"
+            ),
         },
         # THE SHAPE-GENERALIZATION AXIS. `capability_probes` already enumerates, per family and from the
         # manifest's own declarations, the region shapes a target claims to handle -- and until now it
@@ -1580,8 +1705,7 @@ def spec(target: str, captures: dict[str, str | Path], *,
         # THE USER'S OWN APPLICATIONS. Empty unless the target declares some; when it does, this is
         # the only axis whose capsules carry a shape a real model contains rather than a tile
         # multiple, and the only one whose sizing is bounded by what a certification costs.
-        "application_shapes": _application_axis(target, captures=applications,
-                                                budget_s=cert_budget_s),
+        "application_shapes": _application_axis(target, captures=applications, budget_s=cert_budget_s),
         # WHAT A CERTIFICATION COSTS HERE, so an axis can size against it instead of assuming every
         # capsule it derives is affordable at the deepest tier.
         "cert_affordability": _cert_affordability(target, budget_s=cert_budget_s),
@@ -1629,7 +1753,8 @@ def spec(target: str, captures: dict[str, str | Path], *,
                 "store's own geometry (bytes / row width from the compute array and the datapath "
                 "element type). A corpus whose capsules all fit the store many times over cannot detect "
                 "a memory-mapping failure of any kind, and on a hardware-interlocked target nothing "
-                "else will report it either -- the schedule is correct whatever it chooses"),
+                "else will report it either -- the schedule is correct whatever it chooses"
+            ),
         },
         "host_only": {
             # THE NEGATIVE LANE. Families real captures contain that this target's manifest does NOT
@@ -1641,15 +1766,19 @@ def spec(target: str, captures: dict[str, str | Path], *,
             # The dtype each host family is actually observed in. It cannot come from the manifest -- the
             # hardware declares no capability for these -- so it comes from the captures.
             "dtypes": host_only_dtypes(captures, diag.get("families_needed_but_not_admitted") or ()),
-            "observed_in": {f: n for f, n in (diag.get("families_observed") or {}).items()
-                            if f in set(diag.get("families_needed_but_not_admitted") or ())},
+            "observed_in": {
+                f: n
+                for f, n in (diag.get("families_observed") or {}).items()
+                if f in set(diag.get("families_needed_but_not_admitted") or ())
+            },
             "basis": (
                 "families a real capture contains and this target's capability manifest does not admit. "
                 "The compiler must route them to the host lane; accelerating one is as much a defect as "
                 "failing to accelerate an admitted family. EMPTY means no negative lane is derivable "
                 "for this target -- every family its captures contain is admitted -- and never that "
                 "none is needed: a target with an empty complement simply cannot be asked this "
-                "question, which is a different fact from passing it"),
+                "question, which is a different fact from passing it"
+            ),
         },
         "diagnostics": diag,
         "personas": personas or {},
@@ -1657,15 +1786,20 @@ def spec(target: str, captures: dict[str, str | Path], *,
         # manifest what granularity this dtype's datapath imposes, and a capsule sized on the tile edge
         # alone is a shape the golden refuses (sub-byte MX) or answers with zeros. Same channel, same
         # reason, as `memory_mapping.regime_extents`.
-        "cells": [{"cell": c.key(), "family": c.family, "dtype": c.dtype,
-                   "alignment": c.alignment,
-                   "shape_quantum": _cs().shape_quantum(
-                       c.dtype, tile_dim=bnd.tile_edge,
-                       scale_block=(diag.get("scale_block_elements"))),
-                   **o.to_dict()}
-                  for c, o in sorted(cells.items(), key=lambda kv: kv[0].key())],
+        "cells": [
+            {
+                "cell": c.key(),
+                "family": c.family,
+                "dtype": c.dtype,
+                "alignment": c.alignment,
+                "shape_quantum": _cs().shape_quantum(
+                    c.dtype, tile_dim=bnd.tile_edge, scale_block=(diag.get("scale_block_elements"))
+                ),
+                **o.to_dict(),
+            }
+            for c, o in sorted(cells.items(), key=lambda kv: kv[0].key())
+        ],
     }
-
 
 
 def _conv_geometry_axis(captures: dict) -> dict:
@@ -1733,10 +1867,19 @@ def _conv_geometry_gap(required, corpus_roots, *, labels=None, exclude=None) -> 
             stride = _pair(a.get("stride") if a.get("stride") is not None else a.get("pool_stride"), 1)
             dilation = _pair(a.get("dilation"), 1)
             pad = _pair(a.get("padding") if a.get("padding") is not None else a.get("pool_padding"), 0)
-            g = ConvGeometry(kernel=kernel, stride=stride, dilation=dilation,
-                             pad_before=pad, pad_after=pad, input_dilation=(1, 1),
-                             pad_known=True, in_spatial=(), out_spatial=(),
-                             channels_in=0, dtype=str(a.get("dtype") or ""))
+            g = ConvGeometry(
+                kernel=kernel,
+                stride=stride,
+                dilation=dilation,
+                pad_before=pad,
+                pad_after=pad,
+                input_dilation=(1, 1),
+                pad_known=True,
+                in_spatial=(),
+                out_spatial=(),
+                channels_in=0,
+                dtype=str(a.get("dtype") or ""),
+            )
             have.setdefault(g.signature(), []).append(name)
 
             # A DECLARED obligation is honoured only where the derived one CANNOT express it, and the
@@ -1761,11 +1904,13 @@ def _conv_geometry_gap(required, corpus_roots, *, labels=None, exclude=None) -> 
         "uncovered": missing,
         "covered_by": {k: sorted(v) for k, v in sorted(have.items()) if k in set(want)},
         "corpus_windows": sorted(have),
-        "note": ("a required window no capsule presents means a lowering that loses the padding "
-                 "identity, mis-steps the stride, or mis-spaces the dilation is wrong only in rows "
-                 "this corpus never computes. A `padUNKNOWN` obligation is a window whose padding the "
-                 "capture applies by a route this reader cannot see -- a reflection pad, for one -- "
-                 "and it is a real obligation: its identity is NOT zero"),
+        "note": (
+            "a required window no capsule presents means a lowering that loses the padding "
+            "identity, mis-steps the stride, or mis-spaces the dilation is wrong only in rows "
+            "this corpus never computes. A `padUNKNOWN` obligation is a window whose padding the "
+            "capture applies by a route this reader cannot see -- a reflection pad, for one -- "
+            "and it is a real obligation: its identity is NOT zero"
+        ),
     }
 
 
@@ -1829,9 +1974,11 @@ def _epilogue_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
         "standalone_by": {k: sorted(v) for k, v in sorted(standalone.items())},
         "fused_only": sorted(set(fused) - set(standalone)),
         "standalone_only": sorted(set(standalone) - set(fused)),
-        "note": ("a required epilogue stage no capsule demands means a backend that cannot emit it "
-                 "fails nothing here; a stage evidenced only standalone means its lowering is tested "
-                 "and its FUSION is not"),
+        "note": (
+            "a required epilogue stage no capsule demands means a backend that cannot emit it "
+            "fails nothing here; a stage evidenced only standalone means its lowering is tested "
+            "and its FUSION is not"
+        ),
     }
 
 
@@ -1893,8 +2040,8 @@ def _scope_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
         "capsules_unreadable": unreadable,
     }
 
-def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None = None,
-              exclude=None) -> dict:
+
+def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None = None, exclude=None) -> dict:
     """Which required cells the corpus does NOT cover — the gate's question.
 
     Coverage is measured with :func:`contract.materialize.cert_capsule_cover`, the same function the cert
@@ -1912,8 +2059,10 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
         "uncovered": missing,
         "corpus_cells": sorted(have),
         "extra_cells": sorted(have - set(want)),
-        "note": ("a required cell with no capsule means the corpus cannot evidence a family/dtype/"
-                 "alignment the hardware admits and a real target-model uses"),
+        "note": (
+            "a required cell with no capsule means the corpus cannot evidence a family/dtype/"
+            "alignment the hardware admits and a real target-model uses"
+        ),
     }
     # THE COMPOSITION AXIS, measured on the same corpus and reported beside the cells rather than folded
     # into them. A spec written before this axis existed carries no `composition` block; that is reported
@@ -1921,13 +2070,14 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
     # as an axis with no gaps.
     comp_req = (spec_doc.get("composition") or {}).get("required")
     if comp_req is None:
-        out["composition"] = {"status": "not_measured",
-                              "detail": "this spec predates the composition axis; regenerate it with "
-                                        "--write to derive the requirement"}
+        out["composition"] = {
+            "status": "not_measured",
+            "detail": "this spec predates the composition axis; regenerate it with --write to derive the requirement",
+        }
     else:
         from merlin.targetgen import boundary as BD
-        corpus = BD.corpus_boundaries(corpus_roots, str(spec_doc.get("target") or ""),
-                                      labels=labels, exclude=exclude)
+
+        corpus = BD.corpus_boundaries(corpus_roots, str(spec_doc.get("target") or ""), labels=labels, exclude=exclude)
         gap = BD.uncovered_boundaries({"by_kind": comp_req}, corpus)
         gap["status"] = "ok"
         gap["covered_by"] = corpus["by_kind"]
@@ -1938,16 +2088,19 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
     # never "no geometry is required".
     geom_req = (spec_doc.get("shape_geometry") or {}).get("required")
     if geom_req is None:
-        out["shape_geometry"] = {"status": "not_measured",
-                                 "detail": "this spec predates the geometry axis; regenerate it with "
-                                           "--write to derive the requirement"}
+        out["shape_geometry"] = {
+            "status": "not_measured",
+            "detail": "this spec predates the geometry axis; regenerate it with --write to derive the requirement",
+        }
     else:
         out["shape_geometry"] = _geometry_gap(geom_req, corpus_roots, labels=labels, exclude=exclude)
 
     scope_req = (spec_doc.get("scope") or {}).get("required")
     if scope_req is None:
-        out["scope"] = {"status": "not_measured",
-                        "reason": "the spec carries no scope axis, so adjacency coverage was not asked"}
+        out["scope"] = {
+            "status": "not_measured",
+            "reason": "the spec carries no scope axis, so adjacency coverage was not asked",
+        }
     else:
         out["scope"] = _scope_gap(scope_req, corpus_roots, labels=labels, exclude=exclude)
 
@@ -1958,19 +2111,25 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
     # routing-shaped capsule and means nothing as a requirement.
     host_only = spec_doc.get("host_only")
     if host_only is None:
-        out["host_only"] = {"status": "not_measured",
-                            "detail": "this spec predates the negative-lane axis; regenerate it with "
-                                      "--write to derive the requirement"}
+        out["host_only"] = {
+            "status": "not_measured",
+            "detail": "this spec predates the negative-lane axis; regenerate it with --write to derive the requirement",
+        }
     elif not (host_only.get("families") or ()):
-        out["host_only"] = {"status": "undeterminable", "families": [],
-                            "detail": "every family this target's captures contain is admitted by its "
-                                      "manifest, so no negative lane is derivable here. NOT the same as "
-                                      "a negative lane that passed"}
+        out["host_only"] = {
+            "status": "undeterminable",
+            "families": [],
+            "detail": "every family this target's captures contain is admitted by its "
+            "manifest, so no negative lane is derivable here. NOT the same as "
+            "a negative lane that passed",
+        }
     else:
-        import yaml as _yaml
         from pathlib import Path as _P
 
+        import yaml as _yaml
+
         from merlin.targetgen import boundary as BD
+
         want_fams = set(host_only["families"])
         covered_by: dict[str, list[str]] = {}
         roots = [corpus_roots] if isinstance(corpus_roots, (str, _P)) else list(corpus_roots)
@@ -1998,9 +2157,11 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
             "n_covered": len(covered_by),
             "uncovered": sorted(want_fams - set(covered_by)),
             "covered_by": covered_by,
-            "note": ("a family the hardware does not admit, shown landing on the host lane by a capsule "
-                     "whose OWN family is that one -- not merely by a capsule that contains a host "
-                     "stretch, which every routing-shaped capsule does"),
+            "note": (
+                "a family the hardware does not admit, shown landing on the host lane by a capsule "
+                "whose OWN family is that one -- not merely by a capsule that contains a host "
+                "stretch, which every routing-shaped capsule does"
+            ),
         }
 
     # THE HOST-LANE AXIS. The cell vocabulary is `admitted INTERSECT observed`, so by construction it
@@ -2020,9 +2181,10 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
     # requant member is how the missing-lowering defect actually presented.
     epi_req = (spec_doc.get("epilogue") or {}).get("required")
     if epi_req is None:
-        out["epilogue"] = {"status": "not_measured",
-                           "detail": "this spec predates the epilogue axis; regenerate it with --write "
-                                     "to derive the requirement"}
+        out["epilogue"] = {
+            "status": "not_measured",
+            "detail": "this spec predates the epilogue axis; regenerate it with --write to derive the requirement",
+        }
     else:
         out["epilogue"] = _epilogue_gap(epi_req, corpus_roots, labels=labels, exclude=exclude)
 
@@ -2032,22 +2194,25 @@ def uncovered(spec_doc: dict, corpus_roots, *, labels=None, tile_dim: int | None
     # obligation cannot be written in two different vocabularies and read as agreeing.
     conv_req = (spec_doc.get("conv_geometry") or {}).get("required")
     if conv_req is None:
-        out["conv_geometry"] = {"status": "not_measured",
-                                "detail": "this spec predates the convolution-window axis; regenerate "
-                                          "it with --write to derive the requirement"}
+        out["conv_geometry"] = {
+            "status": "not_measured",
+            "detail": "this spec predates the convolution-window axis; regenerate "
+            "it with --write to derive the requirement",
+        }
     else:
-        out["conv_geometry"] = _conv_geometry_gap(conv_req, corpus_roots, labels=labels,
-                                                  exclude=exclude)
+        out["conv_geometry"] = _conv_geometry_gap(conv_req, corpus_roots, labels=labels, exclude=exclude)
 
     mem_req = (spec_doc.get("memory_mapping") or {}).get("required")
     if mem_req is None:
-        out["memory_mapping"] = {"status": "not_measured",
-                                 "detail": "this spec predates the memory-mapping axis; regenerate it "
-                                           "with --write to derive the requirement"}
+        out["memory_mapping"] = {
+            "status": "not_measured",
+            "detail": "this spec predates the memory-mapping axis; regenerate it "
+            "with --write to derive the requirement",
+        }
     else:
         from merlin.targetgen import memory_regime as MR
-        mem_corpus = MR.corpus_regimes(corpus_roots, str(spec_doc.get("target") or ""),
-                                       labels=labels, exclude=exclude)
+
+        mem_corpus = MR.corpus_regimes(corpus_roots, str(spec_doc.get("target") or ""), labels=labels, exclude=exclude)
         mgap = MR.uncovered_regimes({"by_regime": mem_req}, mem_corpus)
         mgap["status"] = "ok"
         mgap["covered_by"] = mem_corpus["by_regime"]

@@ -20,6 +20,7 @@ its published repo, not a merlin edit:
 * ``MERLIN_TARGET_REPO_TEMPLATE`` — a ``{target}`` template
   (default ``https://github.com/ucb-bar/{target}-mlir.git``).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,14 +29,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .target_registry import generated_target_home, _is_target_root
+from .target_registry import _is_target_root, generated_target_home
 
 # The default publish home + naming convention for target repos (the paths edge — an org + a
 # ``<target>-mlir`` suffix, parameterized by target; NOT a target-name literal). Overridable so a fork
 # or a private mirror plugs in with one env var.
 _DEFAULT_URL_TEMPLATE = "https://github.com/ucb-bar/{target}-mlir.git"
 _ENV_URL_TEMPLATE = "MERLIN_TARGET_REPO_TEMPLATE"
-_ENV_URL_PREFIX = "MERLIN_TARGET_REPO_"          # + <TARGET> for a per-target exact URL
+_ENV_URL_PREFIX = "MERLIN_TARGET_REPO_"  # + <TARGET> for a per-target exact URL
 _GIT_TIMEOUT_S = 180
 
 
@@ -56,9 +57,7 @@ def repo_url(target: str) -> str:
         return override
     template = os.environ.get(_ENV_URL_TEMPLATE, _DEFAULT_URL_TEMPLATE)
     if "{target}" not in template:
-        raise FetchError(
-            f"{_ENV_URL_TEMPLATE} must contain '{{target}}' (got {template!r})"
-        )
+        raise FetchError(f"{_ENV_URL_TEMPLATE} must contain '{{target}}' (got {template!r})")
     return template.format(target=target)
 
 
@@ -102,7 +101,7 @@ def fetch(
 
     if (dest / ".git").is_dir():
         if update:
-            _run_git(["fetch", "--depth", str(depth), "origin", *( [ref] if ref else [] )], cwd=dest)
+            _run_git(["fetch", "--depth", str(depth), "origin", *([ref] if ref else [])], cwd=dest)
             checkout = ref if ref else "FETCH_HEAD"
             _run_git(["checkout", "-q", checkout], cwd=dest)
             if ref:
@@ -117,8 +116,7 @@ def fetch(
 
     if not _is_target_root(dest):
         raise FetchError(
-            f"fetched {url} into {dest} but it is not a target package "
-            f"(missing contracts/target_contract.yaml)"
+            f"fetched {url} into {dest} but it is not a target package (missing contracts/target_contract.yaml)"
         )
     return dest
 

@@ -12,6 +12,7 @@ tightened).
 
 Named ``jsonio`` rather than ``json`` so it can never shadow the standard library.
 """
+
 from __future__ import annotations
 
 import json
@@ -21,21 +22,23 @@ from typing import Any
 from merlin.common.digest import sha256_bytes
 
 
-def canonical_json(value: Any, *, ensure_ascii: bool = True, allow_nan: bool = False,
-                   trailing_newline: bool = False) -> bytes:
+def canonical_json(
+    value: Any, *, ensure_ascii: bool = True, allow_nan: bool = False, trailing_newline: bool = False
+) -> bytes:
     """Sorted-key, separator-minimal JSON bytes of ``value`` (see the module docstring for the flags)."""
-    text = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=ensure_ascii,
-                      allow_nan=allow_nan)
+    text = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=ensure_ascii, allow_nan=allow_nan)
     if trailing_newline:
         text += "\n"
     return text.encode("utf-8")
 
 
-def canonical_sha256(value: Any, *, ensure_ascii: bool = True, allow_nan: bool = False,
-                     trailing_newline: bool = False) -> str:
+def canonical_sha256(
+    value: Any, *, ensure_ascii: bool = True, allow_nan: bool = False, trailing_newline: bool = False
+) -> str:
     """SHA-256 of :func:`canonical_json` with the same flags."""
-    return sha256_bytes(canonical_json(value, ensure_ascii=ensure_ascii, allow_nan=allow_nan,
-                                       trailing_newline=trailing_newline))
+    return sha256_bytes(
+        canonical_json(value, ensure_ascii=ensure_ascii, allow_nan=allow_nan, trailing_newline=trailing_newline)
+    )
 
 
 def write_canonical_json(path: "str | Path", value: Any) -> None:

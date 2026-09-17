@@ -5,6 +5,7 @@ Five dialects with bare namespaces: ``contract``, ``schedule``, ``interface``,
 ``get_dialect()``, and ``build_example()``; everything degrades gracefully when xDSL is
 not installed (``HAS_XDSL``). The staged lowering lives in ``lowering/``.
 """
+
 from __future__ import annotations
 
 from importlib import import_module
@@ -12,8 +13,16 @@ from importlib import import_module
 from ._common import HAS_XDSL, make_context, roundtrip, text
 
 _CORE_NAMES = ("contract", "schedule", "interface", "runtime", "dse")
-__all__ = ["HAS_XDSL", "make_context", "roundtrip", "text", "CORE_DIALECT_MODULES",
-           "get_all_dialects", "make_core_context", *_CORE_NAMES]
+__all__ = [
+    "HAS_XDSL",
+    "make_context",
+    "roundtrip",
+    "text",
+    "CORE_DIALECT_MODULES",
+    "get_all_dialects",
+    "make_core_context",
+    *_CORE_NAMES,
+]
 
 
 def __getattr__(name):

@@ -14,6 +14,7 @@ A framework that also exposes an isolated kernel driver (EXO's natural granulari
 micro-benchmark) can reuse the SAME markers so region numbers are comparable to whole-model brackets
 and to the existing ``kernels/ceiling_drivers`` measurements.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -53,20 +54,22 @@ def parse_profile(stdout: str) -> tuple[WholeModelProfile, list[RegionProfile]]:
     regions: list[RegionProfile] = []
     for line in stdout.splitlines():
         if "MERLIN_E2E" in line:
-            kv = _kv(line[line.index("MERLIN_E2E") + len("MERLIN_E2E"):])
+            kv = _kv(line[line.index("MERLIN_E2E") + len("MERLIN_E2E") :])
             e2e.rdtime_ticks = int(kv["ticks"]) if "ticks" in kv else None
             e2e.wall_ns = int(kv["wall_ns"]) if "wall_ns" in kv else None
             e2e.cycles = ticks_to_cycles(e2e.rdtime_ticks)
             continue
         if "MERLIN_REGION" in line:
-            kv = _kv(line[line.index("MERLIN_REGION") + len("MERLIN_REGION"):])
+            kv = _kv(line[line.index("MERLIN_REGION") + len("MERLIN_REGION") :])
             name = kv.get("name", "other")
             ticks = int(kv["ticks"]) if "ticks" in kv else None
-            regions.append(RegionProfile(
-                name=name,
-                rdtime_ticks=ticks,
-                cycles=ticks_to_cycles(ticks),
-                wall_ns=int(kv["wall_ns"]) if "wall_ns" in kv else None,
-                calls=int(kv["calls"]) if "calls" in kv else None,
-            ))
+            regions.append(
+                RegionProfile(
+                    name=name,
+                    rdtime_ticks=ticks,
+                    cycles=ticks_to_cycles(ticks),
+                    wall_ns=int(kv["wall_ns"]) if "wall_ns" in kv else None,
+                    calls=int(kv["calls"]) if "calls" in kv else None,
+                )
+            )
     return e2e, regions

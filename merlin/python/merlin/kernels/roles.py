@@ -19,6 +19,7 @@ multiply.
 The set is CLOSED on purpose. An open vocabulary would let each target invent its own spelling for
 "drain the accumulator", which is precisely the per-target lifter this exists to avoid.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -107,6 +108,7 @@ FROM_ISA_ROLE: dict[str, str] = {
 def from_isa_role(isa_role: str) -> str | None:
     """This vocabulary's name for a derived-IsaModel role, or None when the role drives no endpoint."""
     return FROM_ISA_ROLE.get(str(isa_role))
+
 
 #: Roles that must appear for a stream to be a COMPLETE contraction on a compute endpoint.
 #:

@@ -10,6 +10,7 @@ GGML quantization type maps onto a canonical :mod:`merlin.common.quant_formats` 
 The reader/writer implementation lands with the P1 vertical slice; the adapter is registered now so
 the frontend registry is complete and its contract is exercised.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -34,7 +35,7 @@ class GgufTargetReport:
     arch: str
     n_weights: int
     routable: int
-    gaps: dict[str, int]          # format/ggml-type -> count of weights that gap on this target
+    gaps: dict[str, int]  # format/ggml-type -> count of weights that gap on this target
     quant_histogram: dict[str, int]
     unsupported_types: list[str]  # ggml types with no canonical format at all
 
@@ -71,8 +72,9 @@ def analyze(source: Any, *, target: str) -> GgufTargetReport:
     )
 
 
-def ingest(source: Any, *, model: str, variant: str = "gguf", seq_len: int = 8,
-           out: Any = None, **_kw: Any) -> CaptureBundle:
+def ingest(
+    source: Any, *, model: str, variant: str = "gguf", seq_len: int = 8, out: Any = None, **_kw: Any
+) -> CaptureBundle:
     """Reconstruct a runnable Merlin capture bundle from a ``.gguf`` and return it.
 
     Drives ``m2m.frontends.gguf.capture_gguf_bundle`` in the model2MLIR venv (which has torch /
@@ -94,7 +96,8 @@ def ingest(source: Any, *, model: str, variant: str = "gguf", seq_len: int = 8,
     if not src.is_file():
         raise FileNotFoundError(
             f"GGUF checkpoint not found: {src}. ingest() takes a path to a .gguf file "
-            f"(GGUF has no Hub repo-id form) — check the path before re-running.")
+            f"(GGUF has no Hub repo-id form) — check the path before re-running."
+        )
 
     py = toolchain.m2m_python()
     if not Path(py).exists():

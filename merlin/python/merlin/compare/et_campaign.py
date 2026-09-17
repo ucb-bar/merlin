@@ -24,6 +24,7 @@ AROUND it that must not be re-invented per session:
 (ExecuTorch export blockers upstream, a runner that cannot load an exported program, a model that
 does not fit the board). Recording each one precisely, with its reason, is the campaign's product.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -61,9 +62,17 @@ RESIDENT_BUNDLE_FILES = ("weights.safetensors", "extra.npz")
 #: "excluded on purpose" stays distinguishable from "never looked at" — the second is what makes a
 #: fit test unable to fail, and is reported as ``unpriced_bytes`` below.
 RECOGNISED_NON_RESIDENT_FILES = (
-    "model.mlir", "golden.npy", "golden_w8a8.npy", "inputs.npz", "input_order.json",
-    "weights.safetensors.manifest.json", "session_contract.yaml", "session_inputs.npz",
-    "session_goldens.npz", "session_quality_fp32.npz", "golden_w8a8.provenance.json",
+    "model.mlir",
+    "golden.npy",
+    "golden_w8a8.npy",
+    "inputs.npz",
+    "input_order.json",
+    "weights.safetensors.manifest.json",
+    "session_contract.yaml",
+    "session_inputs.npz",
+    "session_goldens.npz",
+    "session_quality_fp32.npz",
+    "golden_w8a8.provenance.json",
 )
 
 #: Largest golden compared byte-for-byte when inheriting a provenance record across a layout-only
@@ -85,10 +94,12 @@ W8A8_GOLDEN_PROVENANCE: dict[str, dict] = {
     "small_llama_int8_consistent": {
         "independent": True,
         "source": "torchao int8_dyn_act_int8_weight over the bundle's own instance",
-        "evidence": ("generated 2026-08-22; the generator refuses to write unless every quantized "
-                     "weight tensor matches the bundle's bit-for-bit (measured 15/15), so the "
-                     "reference belongs to the weights the bundle ships and was computed by torch, "
-                     "not by our runtime"),
+        "evidence": (
+            "generated 2026-08-22; the generator refuses to write unless every quantized "
+            "weight tensor matches the bundle's bit-for-bit (measured 15/15), so the "
+            "reference belongs to the weights the bundle ships and was computed by torch, "
+            "not by our runtime"
+        ),
     },
 }
 
@@ -99,7 +110,8 @@ W8A8_PROVENANCE_SIDECAR = "golden_w8a8.provenance.json"
 _UNKNOWN_W8A8_NOTE = (
     "W8A8-tier provenance UNRECORDED for this bundle: the reference may be our own runtime's output "
     "frozen, in which case a T1 pass says the runtime agrees with itself and decides nothing about "
-    "our int8 arithmetic. Read the fp32 tier (T2) as this row's correctness evidence.")
+    "our int8 arithmetic. Read the fp32 tier (T2) as this row's correctness evidence."
+)
 
 
 # --- expectations, held separately from gates -------------------------------------------------
@@ -128,15 +140,18 @@ KNOWN_REFERENCE_BLOCKERS: dict[str, dict] = {
     # export failure that has already been fixed.
     "gemma2_2b": {
         "stage": "pt2e_calibration",
-        "reason": ("PT2E calibration corrupts dtypes through cumsum -> aten.index.Tensor; "
-                   "reproduced with an EMPTY quantizer, so it is upstream, not our configuration"),
+        "reason": (
+            "PT2E calibration corrupts dtypes through cumsum -> aten.index.Tensor; "
+            "reproduced with an EMPTY quantizer, so it is upstream, not our configuration"
+        ),
         "not_a_fallback": "",
         "observed": "2026-09",
     },
     "spectformer": {
         "stage": "executorch_runner_load",
-        "reason": ("AOT export works; the ExecuTorch runner cannot LOAD the exported program — 12 "
-                   "unregistered operators"),
+        "reason": (
+            "AOT export works; the ExecuTorch runner cannot LOAD the exported program — 12 unregistered operators"
+        ),
         "not_a_fallback": "",
         "observed": "2026-09",
     },
@@ -201,8 +216,9 @@ def program_roots(root: Path) -> list[Path]:
     return out or [root]
 
 
-def bundle_footprint(root: Path, *, budget_bytes: int = DEFAULT_BOARD_USABLE_BYTES,
-                     budget_source: str = "declared default") -> dict:
+def bundle_footprint(
+    root: Path, *, budget_bytes: int = DEFAULT_BOARD_USABLE_BYTES, budget_source: str = "declared default"
+) -> dict:
     """Price a capture bundle against the board's usable RAM.
 
     The returned ``resident_lower_bound_bytes`` counts only what is certainly resident (the embedded
@@ -237,8 +253,7 @@ def bundle_footprint(root: Path, *, budget_bytes: int = DEFAULT_BOARD_USABLE_BYT
                 priced_paths.add(p.resolve())
             else:
                 parts[name] = None
-        per_program.append({"root": r.name if r != root else ".",
-                            "parts_bytes": parts, "resident_bytes": subtotal})
+        per_program.append({"root": r.name if r != root else ".", "parts_bytes": parts, "resident_bytes": subtotal})
 
     total = max((e["resident_bytes"] for e in per_program), default=0)
     all_programs = sum(e["resident_bytes"] for e in per_program)
@@ -282,11 +297,13 @@ def bundle_footprint(root: Path, *, budget_bytes: int = DEFAULT_BOARD_USABLE_BYT
         "budget_source": budget_source,
         "headroom_bytes": headroom,
         "fits": fits,
-        "note": ("lower bound: embedded weights + lifted constants only, excluding activations and "
-                 "the runtime arena. fits=False is decisive; fits=True is necessary, not sufficient; "
-                 "fits=None means unrecognised bytes in the bundle could alone exhaust the headroom, "
-                 "so the question was not answered. For a multi-program session the bound is the "
-                 "LARGEST program, with the all-programs sum reported beside it."),
+        "note": (
+            "lower bound: embedded weights + lifted constants only, excluding activations and "
+            "the runtime arena. fits=False is decisive; fits=True is necessary, not sufficient; "
+            "fits=None means unrecognised bytes in the bundle could alone exhaust the headroom, "
+            "so the question was not answered. For a multi-program session the bound is the "
+            "LARGEST program, with the all-programs sum reported beside it."
+        ),
     }
 
 
@@ -317,7 +334,7 @@ def _forward_result_count(mlir: Path) -> int | None:
                     break
         if end is None:
             return None
-        tail = t[end + 1:].strip()
+        tail = t[end + 1 :].strip()
         if not tail.startswith("->"):
             return 0  # returns nothing
         tail = tail[2:].strip()
@@ -407,8 +424,7 @@ def _digest(path: Path) -> str | None:
         return None
 
 
-def w8a8_reference(bundle_root: Path, *, source_bundle_id: str = "",
-                   recaptures_root: Path | None = None) -> dict:
+def w8a8_reference(bundle_root: Path, *, source_bundle_id: str = "", recaptures_root: Path | None = None) -> dict:
     """What a W8A8-tier (T1) pass on this bundle decides — derived where possible, declared where not.
 
     Order: the bundle's own sidecar, then the registry, then inheritance across a LAYOUT-ONLY
@@ -417,8 +433,11 @@ def w8a8_reference(bundle_root: Path, *, source_bundle_id: str = "",
     """
     golden = bundle_root / "golden_w8a8.npy"
     if not golden.is_file():
-        return {"status": "absent", "independent": None,
-                "note": f"no golden_w8a8.npy in {bundle_root.name}; the W8A8 tier cannot be scored"}
+        return {
+            "status": "absent",
+            "independent": None,
+            "note": f"no golden_w8a8.npy in {bundle_root.name}; the W8A8 tier cannot be scored",
+        }
     side = bundle_root / W8A8_PROVENANCE_SIDECAR
     if side.is_file():
         try:
@@ -426,26 +445,38 @@ def w8a8_reference(bundle_root: Path, *, source_bundle_id: str = "",
         except (OSError, ValueError):
             rec = {}
         if isinstance(rec, dict) and "independent" in rec:
-            return {"status": "declared_by_bundle", "independent": bool(rec.get("independent")),
-                    "source": rec.get("source", ""), "evidence": rec.get("evidence", ""),
-                    "note": "" if rec.get("independent") else _UNKNOWN_W8A8_NOTE}
+            return {
+                "status": "declared_by_bundle",
+                "independent": bool(rec.get("independent")),
+                "source": rec.get("source", ""),
+                "evidence": rec.get("evidence", ""),
+                "note": "" if rec.get("independent") else _UNKNOWN_W8A8_NOTE,
+            }
     rec = W8A8_GOLDEN_PROVENANCE.get(bundle_root.name)
     if rec:
-        return {"status": "declared_by_registry", "independent": bool(rec.get("independent")),
-                "source": rec.get("source", ""), "evidence": rec.get("evidence", ""),
-                "note": "" if rec.get("independent") else _UNKNOWN_W8A8_NOTE}
+        return {
+            "status": "declared_by_registry",
+            "independent": bool(rec.get("independent")),
+            "source": rec.get("source", ""),
+            "evidence": rec.get("evidence", ""),
+            "note": "" if rec.get("independent") else _UNKNOWN_W8A8_NOTE,
+        }
     src_rec = W8A8_GOLDEN_PROVENANCE.get(source_bundle_id) if source_bundle_id else None
     if src_rec:
         root = recaptures_root or recaptures_dir()
         src_golden = root / source_bundle_id / "golden_w8a8.npy"
         d_ours, d_src = _digest(golden), _digest(src_golden)
         if d_ours is not None and d_ours == d_src:
-            return {"status": "inherited_across_layout_rewrite", "independent": bool(src_rec.get("independent")),
-                    "source": src_rec.get("source", ""), "evidence": src_rec.get("evidence", ""),
-                    "inherited_from": source_bundle_id, "golden_sha256": d_ours,
-                    "note": "" if src_rec.get("independent") else _UNKNOWN_W8A8_NOTE}
-    return {"status": "unknown", "independent": None, "source": "", "evidence": "",
-            "note": _UNKNOWN_W8A8_NOTE}
+            return {
+                "status": "inherited_across_layout_rewrite",
+                "independent": bool(src_rec.get("independent")),
+                "source": src_rec.get("source", ""),
+                "evidence": src_rec.get("evidence", ""),
+                "inherited_from": source_bundle_id,
+                "golden_sha256": d_ours,
+                "note": "" if src_rec.get("independent") else _UNKNOWN_W8A8_NOTE,
+            }
+    return {"status": "unknown", "independent": None, "source": "", "evidence": "", "note": _UNKNOWN_W8A8_NOTE}
 
 
 # --- layout-only rewrite discovery ---------------------------------------------------------------
@@ -506,25 +537,34 @@ class CellPlan:
 
     def as_dict(self) -> dict:
         return {
-            "model": self.model, "variant": self.variant,
+            "model": self.model,
+            "variant": self.variant,
             "reference_bundle_id": self.reference_bundle_id,
             "reference_bundle_root": str(self.reference_bundle_root),
             "ours_bundle_id": self.ours_bundle_id,
             "ours_bundle_root": str(self.ours_bundle_root),
             "bundle_layout_equivalence": self.layout_equivalence,
-            "goldens": self.goldens, "w8a8_reference": self.w8a8_reference,
-            "footprint": self.footprint, "golden_coverage": dict(self.golden_coverage),
+            "goldens": self.goldens,
+            "w8a8_reference": self.w8a8_reference,
+            "footprint": self.footprint,
+            "golden_coverage": dict(self.golden_coverage),
             "quantization_floor": dict(self.quantization_floor),
             "refusals": list(self.refusals),
-            "notes": list(self.notes), "runnable": self.runnable,
+            "notes": list(self.notes),
+            "runnable": self.runnable,
         }
 
 
-def plan_cell(model: str, *, variant: str = "int8", int8: bool = True,
-              budget_bytes: int = DEFAULT_BOARD_USABLE_BYTES,
-              budget_source: str = "declared default",
-              prefer_rewritten: bool = False,
-              recaptures_root: Path | None = None) -> CellPlan:
+def plan_cell(
+    model: str,
+    *,
+    variant: str = "int8",
+    int8: bool = True,
+    budget_bytes: int = DEFAULT_BOARD_USABLE_BYTES,
+    budget_source: str = "declared default",
+    prefer_rewritten: bool = False,
+    recaptures_root: Path | None = None,
+) -> CellPlan:
     """Resolve and price one cell, collecting every reason it cannot be measured.
 
     ``int8`` says whether OUR package is an int8 package, which is what makes ``golden_w8a8.npy``
@@ -545,20 +585,28 @@ def plan_cell(model: str, *, variant: str = "int8", int8: bool = True,
         if len(sibs) == 1:
             ours_root, ours_id = sibs[0]["root"], sibs[0]["bundle_id"]
             eq = sibs[0]["equivalence"]
-            notes.append(f"ours measured on the layout-only rewrite {ours_id!r} of {ref_id!r}; "
-                         "the ratio is legitimate only while BOTH sides do their weight layout once "
-                         "outside the timed window (theirs at delegate init, ours at build time)")
+            notes.append(
+                f"ours measured on the layout-only rewrite {ours_id!r} of {ref_id!r}; "
+                "the ratio is legitimate only while BOTH sides do their weight layout once "
+                "outside the timed window (theirs at delegate init, ours at build time)"
+            )
         elif len(sibs) > 1:
-            notes.append(f"--prefer-rewritten declined: {len(sibs)} layout-only derivatives of "
-                         f"{ref_id!r} ({', '.join(s['bundle_id'] for s in sibs)}); which one is "
-                         "meant is not derivable, so the unrewritten bundle is used")
+            notes.append(
+                f"--prefer-rewritten declined: {len(sibs)} layout-only derivatives of "
+                f"{ref_id!r} ({', '.join(s['bundle_id'] for s in sibs)}); which one is "
+                "meant is not derivable, so the unrewritten bundle is used"
+            )
         else:
-            notes.append(f"--prefer-rewritten had no effect: no bundle declares {ref_id!r} as the "
-                         "source of a layout-only rewrite")
+            notes.append(
+                f"--prefer-rewritten had no effect: no bundle declares {ref_id!r} as the "
+                "source of a layout-only rewrite"
+            )
 
     if not ours_root.is_dir():
-        refusals.append(f"capture bundle absent: bundle.resolve({model!r}, {variant!r}) -> "
-                        f"{ours_root} does not exist. Recapture it; do not substitute another cell.")
+        refusals.append(
+            f"capture bundle absent: bundle.resolve({model!r}, {variant!r}) -> "
+            f"{ours_root} does not exist. Recapture it; do not substitute another cell."
+        )
     # Artifact presence is asked of every PROGRAM the bundle declares, not of the root: a version-2
     # session keeps nothing at its root, so root-level stats reported "ships no model.mlir" about a
     # bundle that ships three. `CaptureBundle.require()` already walks programs; this walked the
@@ -574,18 +622,22 @@ def plan_cell(model: str, *, variant: str = "int8", int8: bool = True,
             "takes a bundle root, but the reference arm resolves its bundle from the model NAME "
             "with no program selector, so the two arms cannot be aimed at the same program. "
             "Measuring one program and labelling the row with the model name would price a fragment "
-            "as the whole. Refused rather than reported.")
+            "as the whole. Refused rather than reported."
+        )
     if ours_root.is_dir():
         if not have_mlir:
             refusals.append(f"{ours_id} ships no model.mlir: nothing to lower")
         if not have_fp32:
-            refusals.append(f"{ours_id} ships no golden.npy: our arm has no fp32 tier to gate "
-                            "against, and an ungated wall is not a measurement")
+            refusals.append(
+                f"{ours_id} ships no golden.npy: our arm has no fp32 tier to gate "
+                "against, and an ungated wall is not a measurement"
+            )
         if int8 and not have_w8a8:
             refusals.append(
                 f"{ours_id} ships no golden_w8a8.npy while our package is int8: grading W8A8 output "
                 "against the weight-only golden fails cos for a CORRECT build and reads as a codegen "
-                "defect. Recapture the W8A8 reference instead of loosening the gate.")
+                "defect. Recapture the W8A8 reference instead of loosening the gate."
+            )
 
     fp = bundle_footprint(ours_root, budget_bytes=budget_bytes, budget_source=budget_source)
     if ours_root.is_dir() and fp["fits"] is False:
@@ -594,7 +646,8 @@ def plan_cell(model: str, *, variant: str = "int8", int8: bool = True,
             f"{fp['resident_lower_bound_bytes'] / 1e9:.2f} GB resident (embedded weights + lifted "
             f"constants) against a {fp['budget_bytes'] / 1e9:.2f} GB budget ({fp['budget_source']}). "
             "Refused BEFORE the board is touched; attempting it would spend a build and a transfer "
-            "to learn what the file sizes already say.")
+            "to learn what the file sizes already say."
+        )
     elif ours_root.is_dir() and fp["fits"] is None:
         refusals.append(
             f"footprint UNKNOWN for {ours_id}: {fp['unpriced_bytes'] / 1e9:.2f} GB of the bundle is "
@@ -602,7 +655,8 @@ def plan_cell(model: str, *, variant: str = "int8", int8: bool = True,
             f"which alone exceeds the {fp['headroom_bytes'] / 1e9:.2f} GB headroom left by the "
             f"{fp['resident_lower_bound_bytes'] / 1e9:.2f} GB it could price. A fit test that has "
             "not seen most of the bundle must not answer 'fits'; teach it the layout, do not widen "
-            "the budget.")
+            "the budget."
+        )
 
     gcov = golden_coverage(ours_root) if ours_root.is_dir() else {}
     if gcov.get("cannot_fail"):
@@ -610,27 +664,30 @@ def plan_cell(model: str, *, variant: str = "int8", int8: bool = True,
             f"the fp32 gate on {ours_id} CANNOT FAIL: @forward returns "
             f"{gcov['forward_results']} results and golden.npy grades {gcov['graded_results']} of "
             f"them, and that one is constant (std 0). A pass would say nothing about the "
-            "computation. Recapture a golden covering the computed outputs; do not report the row.")
+            "computation. Recapture a golden covering the computed outputs; do not report the row."
+        )
     elif gcov.get("partial"):
         notes.append(
             f"PARTIAL GATE: {ours_id}'s @forward returns {gcov['forward_results']} results and "
             f"golden.npy grades only the first (shape {gcov['golden_shape']}). The remaining "
             f"{gcov['forward_results'] - gcov['graded_results']} are ungraded — a tier pass is "
-            "evidence about the graded output alone.")
+            "evidence about the graded output alone."
+        )
     elif gcov.get("degenerate"):
         notes.append(
             f"DEGENERATE REFERENCE: {ours_id}'s golden.npy is constant (std 0), so the fp32 tier "
-            "has no signal to discriminate on and a pass decides nothing.")
+            "has no signal to discriminate on and a pass decides nothing."
+        )
     if gcov.get("read_error"):
-        notes.append(f"golden.npy on {ours_id} could not be read ({gcov['read_error']}); its tier "
-                     "decides nothing.")
+        notes.append(f"golden.npy on {ours_id} could not be read ({gcov['read_error']}); its tier decides nothing.")
 
     qfloor = quantization_floor(ours_root) if ours_root.is_dir() else {}
     if qfloor.get("note"):
         notes.append(qfloor["note"])
 
-    w8 = w8a8_reference(ours_root, source_bundle_id=ref_id if ours_id != ref_id else "",
-                        recaptures_root=recaptures_root)
+    w8 = w8a8_reference(
+        ours_root, source_bundle_id=ref_id if ours_id != ref_id else "", recaptures_root=recaptures_root
+    )
     if w8.get("note"):
         notes.append(w8["note"])
     notes.append(_etc.gate_basis(model))
@@ -640,20 +697,34 @@ def plan_cell(model: str, *, variant: str = "int8", int8: bool = True,
         # ADVISORY only, and worded for what will actually happen: a cell with no OFFLINE refusal is
         # still attempted (so a fix upstream shows up as a cell that suddenly measures), while a cell
         # already refused offline is not, and saying otherwise would misdescribe the run.
-        tail = (" [ADVISORY: this cell is still attempted, so a fix upstream shows up as a cell "
-                "that suddenly measures]" if not refusals else
-                " [ADVISORY: not exercised this run — the cell is refused offline for the reasons "
-                "above, so this blocker is neither confirmed nor refuted here]")
-        notes.append(f"declared upstream blocker ({blocker['stage']}): {blocker['reason']}"
-                     + (f" — {blocker['not_a_fallback']}" if blocker.get("not_a_fallback") else "")
-                     + tail)
+        tail = (
+            " [ADVISORY: this cell is still attempted, so a fix upstream shows up as a cell that suddenly measures]"
+            if not refusals
+            else " [ADVISORY: not exercised this run — the cell is refused offline for the reasons "
+            "above, so this blocker is neither confirmed nor refuted here]"
+        )
+        notes.append(
+            f"declared upstream blocker ({blocker['stage']}): {blocker['reason']}"
+            + (f" — {blocker['not_a_fallback']}" if blocker.get("not_a_fallback") else "")
+            + tail
+        )
 
-    return CellPlan(model=model, variant=variant, reference_bundle_id=ref_id,
-                    reference_bundle_root=ref_root, ours_bundle_id=ours_id,
-                    ours_bundle_root=ours_root, layout_equivalence=eq,
-                    goldens={"fp32": have_fp32, "w8a8": have_w8a8, "model_mlir": have_mlir},
-                    w8a8_reference=w8, footprint=fp, golden_coverage=gcov,
-                    quantization_floor=qfloor, refusals=refusals, notes=notes)
+    return CellPlan(
+        model=model,
+        variant=variant,
+        reference_bundle_id=ref_id,
+        reference_bundle_root=ref_root,
+        ours_bundle_id=ours_id,
+        ours_bundle_root=ours_root,
+        layout_equivalence=eq,
+        goldens={"fp32": have_fp32, "w8a8": have_w8a8, "model_mlir": have_mlir},
+        w8a8_reference=w8,
+        footprint=fp,
+        golden_coverage=gcov,
+        quantization_floor=qfloor,
+        refusals=refusals,
+        notes=notes,
+    )
 
 
 def plan_campaign(models, **kwargs) -> list[CellPlan]:
@@ -687,27 +758,39 @@ def element_coverage(gate: dict) -> dict:
     complete = gate.get("comparison_complete")
     fraction = gate.get("compared_fraction")
     if complete is None and fraction is None:
-        note = ("element coverage UNKNOWN: this record carries no comparison_complete/"
-                "compared_fraction, so every ours_* score above may be a PREFIX score over the "
-                "leading output elements rather than the model's accuracy")
+        note = (
+            "element coverage UNKNOWN: this record carries no comparison_complete/"
+            "compared_fraction, so every ours_* score above may be a PREFIX score over the "
+            "leading output elements rather than the model's accuracy"
+        )
     elif complete:
         note = ""
     else:
         n_c, n_r = gate.get("n_compared"), gate.get("n_reference")
         pct = f"{float(fraction):.2%}" if isinstance(fraction, (int, float)) else "an unknown share"
-        note = (f"PREFIX SCORE: every ours_* score above covers {n_c} of {n_r} output elements "
-                f"({pct}) -- the leading elements the board harness printed, not the model's "
-                "accuracy. A tier verdict at this coverage decides only that slice.")
-    return {"ours_n_compared": gate.get("n_compared"),
-            "ours_n_reference": gate.get("n_reference"),
-            "ours_compared_fraction": fraction,
-            "ours_comparison_complete": complete,
-            "ours_coverage_note": note}
+        note = (
+            f"PREFIX SCORE: every ours_* score above covers {n_c} of {n_r} output elements "
+            f"({pct}) -- the leading elements the board harness printed, not the model's "
+            "accuracy. A tier verdict at this coverage decides only that slice."
+        )
+    return {
+        "ours_n_compared": gate.get("n_compared"),
+        "ours_n_reference": gate.get("n_reference"),
+        "ours_compared_fraction": fraction,
+        "ours_comparison_complete": complete,
+        "ours_coverage_note": note,
+    }
 
 
-def campaign_row(plan: CellPlan, record: dict | None = None, *, refusal: str = "",
-                 command: list | None = None, elapsed_s: float | None = None,
-                 arm: str = "verdict_qd8") -> dict:
+def campaign_row(
+    plan: CellPlan,
+    record: dict | None = None,
+    *,
+    refusal: str = "",
+    command: list | None = None,
+    elapsed_s: float | None = None,
+    arm: str = "verdict_qd8",
+) -> dict:
     """One ledger row: a ratio or a refusal string, plus everything that makes it checkable.
 
     ``record`` is the JSON ``k1_int8_fair_compare.py`` wrote. ``refusal`` is set instead when the
@@ -719,14 +802,14 @@ def campaign_row(plan: CellPlan, record: dict | None = None, *, refusal: str = "
     if refusal:
         verdict = {"status": "refused", "reason": refusal}
     elif not verdict:
-        verdict = {"status": "refused",
-                   "reason": f"the instrument wrote no {arm!r} block; nothing to read a ratio from"}
+        verdict = {
+            "status": "refused",
+            "reason": f"the instrument wrote no {arm!r} block; nothing to read a ratio from",
+        }
     if verdict.get("status") == "not_measured":
-        verdict = {"status": "refused", "reason": verdict.get("reason", "")
-                   or "not_measured with no reason recorded"}
+        verdict = {"status": "refused", "reason": verdict.get("reason", "") or "not_measured with no reason recorded"}
     elif verdict.get("status") == "not_comparable":
-        verdict = {"status": "refused", "reason": verdict.get("reason", "")
-                   or "not_comparable with no reason recorded"}
+        verdict = {"status": "refused", "reason": verdict.get("reason", "") or "not_comparable with no reason recorded"}
 
     ours = (record or {}).get("ours") or {}
     et = (record or {}).get(arm.replace("verdict_", "executorch_")) or {}
@@ -747,21 +830,29 @@ def campaign_row(plan: CellPlan, record: dict | None = None, *, refusal: str = "
         "resolved_reference_bundle_id": plan.reference_bundle_id,
         "bundle_layout_equivalence": verdict.get("bundle_layout_equivalence") or plan.layout_equivalence,
         # --- what each side computed --------------------------------------------------------------
-        "quant_recipe": {"ours": OURS_QUANT_RECIPE,
-                         "reference": _first(runs, "quant_recipe") or "",
-                         "reference_requested": et.get("recipe_requested", ""),
-                         "labels": {k: v for k, v in _etc.QUANT_RECIPE_LABELS.items()}},
+        "quant_recipe": {
+            "ours": OURS_QUANT_RECIPE,
+            "reference": _first(runs, "quant_recipe") or "",
+            "reference_requested": et.get("recipe_requested", ""),
+            "labels": {k: v for k, v in _etc.QUANT_RECIPE_LABELS.items()},
+        },
         # --- how each side was timed -------------------------------------------------------------
         "protocol": {
             "ours": ours.get("protocol"),
-            "reference": {"method": "two-N slope: total(N) = cold + (N-1)*warm",
-                          "n_lo": et.get("n_lo"), "n_hi": et.get("n_hi"),
-                          "warm_ns": et.get("warm_ns"), "cold_ns": et.get("cold_ns"),
-                          "cold_over_warm": et.get("cold_over_warm")},
+            "reference": {
+                "method": "two-N slope: total(N) = cold + (N-1)*warm",
+                "n_lo": et.get("n_lo"),
+                "n_hi": et.get("n_hi"),
+                "warm_ns": et.get("warm_ns"),
+                "cold_ns": et.get("cold_ns"),
+                "cold_over_warm": et.get("cold_over_warm"),
+            },
         },
         # --- conditions the walls were taken under -----------------------------------------------
-        "board_conditions": {"ours": ours.get("board_conditions"),
-                             "reference": [r.get("board_conditions") for r in runs]},
+        "board_conditions": {
+            "ours": ours.get("board_conditions"),
+            "reference": [r.get("board_conditions") for r in runs],
+        },
         "session_drift": (record or {}).get("session_drift"),
         # --- which source bytes produced ours ------------------------------------------------------
         "source_digest": (record or {}).get("source_digest"),
@@ -778,19 +869,25 @@ def campaign_row(plan: CellPlan, record: dict | None = None, *, refusal: str = "
         "accuracy": {
             "ours_reference": OURS_ACCURACY_REFERENCE,
             "reference_reference": _first(runs, "accuracy_reference") or "",
-            "ours_fp32_cos": gate.get("fp32_cos"), "ours_fp32_rel": gate.get("fp32_rel"),
-            "ours_w8a8_cos": gate.get("w8a8_cos"), "ours_w8a8_rel": gate.get("w8a8_rel"),
-            "ours_tiers": gate.get("tiers"), "ours_tier_ok": gate.get("tier_ok"),
+            "ours_fp32_cos": gate.get("fp32_cos"),
+            "ours_fp32_rel": gate.get("fp32_rel"),
+            "ours_w8a8_cos": gate.get("w8a8_cos"),
+            "ours_w8a8_rel": gate.get("w8a8_rel"),
+            "ours_tiers": gate.get("tiers"),
+            "ours_tier_ok": gate.get("tier_ok"),
             **element_coverage(gate),
-            "reference_cos": _first(runs, "cos"), "reference_rel": _first(runs, "rel"),
+            "reference_cos": _first(runs, "cos"),
+            "reference_rel": _first(runs, "rel"),
             "comparability": (verdict.get("accuracy") or {}).get("status") or "not_evaluated",
             "comparability_reason": (verdict.get("accuracy") or {}).get("reason", ""),
         },
         # --- did the code that produced our wall actually vectorize? ---------------------------------
-        "rvv": {"compute_symbol": rvv.get("compute_symbol"),
-                "compute_symbol_coverage": rvv.get("compute_symbol_coverage"),
-                "coverage_overall": rvv.get("coverage_overall"),
-                "error": rvv.get("error")},
+        "rvv": {
+            "compute_symbol": rvv.get("compute_symbol"),
+            "compute_symbol_coverage": rvv.get("compute_symbol_coverage"),
+            "coverage_overall": rvv.get("coverage_overall"),
+            "error": rvv.get("error"),
+        },
         # --- what a W8A8 pass on this row decides ------------------------------------------------------
         "w8a8_reference": plan.w8a8_reference,
         "gate_basis": _etc.gate_basis(plan.model),
@@ -891,10 +988,12 @@ def summarize(rows) -> dict:
         "stale_expectations": sorted(stale),
         "majority_of_attempted": len(wins) * 2 > len(cells) if cells else False,
         "majority_of_measured": len(wins) * 2 > len(measured) if measured else False,
-        "criterion": ("the project claim is a WIN on a MAJORITY of a diverse set. "
-                      "majority_of_attempted is the honest reading: a majority computed over only "
-                      "the cells that produced a verdict silently shrinks the set to the cells that "
-                      "happened to work. Both are reported so neither can be quoted alone."),
+        "criterion": (
+            "the project claim is a WIN on a MAJORITY of a diverse set. "
+            "majority_of_attempted is the honest reading: a majority computed over only "
+            "the cells that produced a verdict silently shrinks the set to the cells that "
+            "happened to work. Both are reported so neither can be quoted alone."
+        ),
         "per_model": {
             r["model"]: {
                 "status": (r.get("verdict") or {}).get("status"),
@@ -905,8 +1004,7 @@ def summarize(rows) -> dict:
                 # away a reference wall that had already been paid for on the board, and the number
                 # had to be recovered by hand out of log text. Recorded is not published: there is
                 # still no ratio, and `status` still says refused.
-                "executorch_warm_ns_measured": ((r.get("protocol") or {}).get("reference") or {})
-                                               .get("warm_ns"),
+                "executorch_warm_ns_measured": ((r.get("protocol") or {}).get("reference") or {}).get("warm_ns"),
                 "speedup_vs_executorch": (r.get("verdict") or {}).get("speedup_vs_executorch"),
                 "beats_executorch": (r.get("verdict") or {}).get("beats_executorch"),
                 "reason": (r.get("verdict") or {}).get("reason", ""),
@@ -925,8 +1023,9 @@ def format_summary(summary: dict) -> str:
     """The table a human reads. Refusals are printed in full — they are the campaign's product."""
     lines = []
     lines.append("=== ours vs ExecuTorch (qd8), int8, per model ===")
-    lines.append(f"{'model':<16} {'status':<10} {'ours_ms':>10} {'et_warm_ms':>11} "
-                 f"{'speedup':>8} {'w8a8_ref':>10}  note")
+    lines.append(
+        f"{'model':<16} {'status':<10} {'ours_ms':>10} {'et_warm_ms':>11} {'speedup':>8} {'w8a8_ref':>10}  note"
+    )
     for model in sorted(summary.get("per_model", {})):
         c = summary["per_model"][model]
         ours = c.get("ours_ns")
@@ -942,18 +1041,20 @@ def format_summary(summary: dict) -> str:
         if etw is None and etw_measured:
             etw = etw_measured
             note = f"[et warm {etw_measured / 1e6:.3f} ms MEASURED, no ratio] {note}"
-        lines.append(f"{model:<16} {str(c.get('status')):<10} "
-                     f"{(ours / 1e6 if ours else float('nan')):>10.3f} "
-                     f"{(etw / 1e6 if etw else float('nan')):>11.3f} "
-                     f"{(sp if sp else float('nan')):>8.3f} {ind_s:>10}  {note}")
+        lines.append(
+            f"{model:<16} {str(c.get('status')):<10} "
+            f"{(ours / 1e6 if ours else float('nan')):>10.3f} "
+            f"{(etw / 1e6 if etw else float('nan')):>11.3f} "
+            f"{(sp if sp else float('nan')):>8.3f} {ind_s:>10}  {note}"
+        )
     lines.append("")
     lines.append(f"cells attempted : {summary.get('cells_attempted')}")
-    lines.append(f"VERDICTS produced: {summary.get('verdicts_produced')}   "
-                 f"REFUSED: {summary.get('refused')}")
-    lines.append(f"wins over ExecuTorch qd8: {summary.get('wins')} "
-                 f"{summary.get('win_models')}")
-    lines.append(f"majority of attempted: {summary.get('majority_of_attempted')}   "
-                 f"majority of measured: {summary.get('majority_of_measured')}")
+    lines.append(f"VERDICTS produced: {summary.get('verdicts_produced')}   REFUSED: {summary.get('refused')}")
+    lines.append(f"wins over ExecuTorch qd8: {summary.get('wins')} {summary.get('win_models')}")
+    lines.append(
+        f"majority of attempted: {summary.get('majority_of_attempted')}   "
+        f"majority of measured: {summary.get('majority_of_measured')}"
+    )
     lines.append(summary.get("criterion", ""))
     if summary.get("refused_models"):
         lines.append("")
@@ -962,8 +1063,10 @@ def format_summary(summary: dict) -> str:
             lines.append(f"  {m}: {summary.get('refusal_reasons', {}).get(m, '')}")
     if summary.get("stale_expectations"):
         lines.append("")
-        lines.append("--- STALE EXPECTATIONS: these were declared blocked upstream and MEASURED. "
-                     "Remove their KNOWN_REFERENCE_BLOCKERS entries. ---")
+        lines.append(
+            "--- STALE EXPECTATIONS: these were declared blocked upstream and MEASURED. "
+            "Remove their KNOWN_REFERENCE_BLOCKERS entries. ---"
+        )
         for m in summary["stale_expectations"]:
             lines.append(f"  {m}")
     return "\n".join(lines)

@@ -27,6 +27,7 @@ Because that agreement is the only thing standing between this curve and a plaus
 one, :func:`read_token_series` takes the independently recorded total as an argument and records
 whether the two agree. A counter nobody cross-checked is how this repo has been bitten before.
 """
+
 from __future__ import annotations
 
 import json
@@ -64,8 +65,8 @@ class TokenSeries:
     samples: list[TokenSample] = field(default_factory=list)
     source: str = ""
     wall_s: float = 0.0
-    n_reports: int = 0            # raw usage reports read
-    n_duplicates: int = 0         # reports superseded by a later one for the same message id
+    n_reports: int = 0  # raw usage reports read
+    n_duplicates: int = 0  # reports superseded by a later one for the same message id
     availability: Availability = field(default_factory=Availability)
 
     @property
@@ -120,7 +121,7 @@ def _raw_samples(paths: Sequence[Path]) -> list[tuple[float, str, dict]]:
             if not isinstance(usage, dict):
                 inner = obj.get("event") if isinstance(obj.get("event"), dict) else {}
                 usage = inner.get("usage")
-                key = ""          # a turn report has no message id and is never a duplicate
+                key = ""  # a turn report has no message id and is never a duplicate
             if isinstance(usage, dict) and usage:
                 out.append((t, key or f"{path.name}#{index}", usage))
     return out
@@ -131,12 +132,14 @@ def _buckets(usage: dict) -> tuple[int, int, int, int]:
 
     The two vocabularies are read side by side rather than branched on a driver name: a driver id is
     not always recorded, and a reader keyed on one would silently return zeros for the other."""
+
     def _i(*keys) -> int:
         for k in keys:
             v = usage.get(k)
             if isinstance(v, (int, float)):
                 return int(v)
         return 0
+
     cache_read = _i("cache_read_input_tokens", "cached_input_tokens")
     cache_write = _i("cache_creation_input_tokens", "cache_write_input_tokens")
     raw_input = _i("input_tokens")
@@ -160,9 +163,13 @@ def read_token_series(run_dir: Path, *, recorded_totals: dict | None = None) -> 
     if len(raw_reports) > len(reports):
         reports, source = raw_reports, "driver_turn_usage"
     if not reports:
-        series.availability.set("token_series", unavailable(
-            f"no event in {run_dir.name} carries a usage report this reader can place on a clock, so "
-            f"the run has no token curve — only the end-of-run totals"))
+        series.availability.set(
+            "token_series",
+            unavailable(
+                f"no event in {run_dir.name} carries a usage report this reader can place on a clock, so "
+                f"the run has no token curve — only the end-of-run totals"
+            ),
+        )
         return series
 
     series.n_reports = len(reports)
@@ -189,15 +196,22 @@ def read_token_series(run_dir: Path, *, recorded_totals: dict | None = None) -> 
     if series.can_rate:
         series.availability.set("token_series", measured(source))
     else:
-        series.availability.set("token_series", unavailable(
-            f"only {len(series.samples)} usage sample(s): this driver reports usage once per turn "
-            f"rather than per message, so a rate drawn through them would be an average shown as a "
-            f"trend", source=source))
+        series.availability.set(
+            "token_series",
+            unavailable(
+                f"only {len(series.samples)} usage sample(s): this driver reports usage once per turn "
+                f"rather than per message, so a rate drawn through them would be an average shown as a "
+                f"trend",
+                source=source,
+            ),
+        )
 
     if recorded_totals:
         final = series.samples[-1]
-        checks = {"output": (final.output_tokens, recorded_totals.get("output")),
-                  "cache_read": (final.cache_read_tokens, recorded_totals.get("cache_read"))}
+        checks = {
+            "output": (final.output_tokens, recorded_totals.get("output")),
+            "cache_read": (final.cache_read_tokens, recorded_totals.get("cache_read")),
+        }
         drift = []
         for name, (ours, theirs) in checks.items():
             if not isinstance(theirs, (int, float)) or theirs <= 0:
@@ -206,22 +220,29 @@ def read_token_series(run_dir: Path, *, recorded_totals: dict | None = None) -> 
             if off > _CROSS_CHECK_TOLERANCE:
                 drift.append(f"{name} {ours:,} vs {theirs:,} ({off:.1%} apart)")
         if drift:
-            series.availability.set("token_series_crosscheck", unavailable(
-                "the curve reconstructed from per-message usage disagrees with the total the harness "
-                "recorded independently: " + "; ".join(drift) + ". Trust the recorded total; this "
-                "curve's SHAPE may still be informative but its magnitude is not."))
+            series.availability.set(
+                "token_series_crosscheck",
+                unavailable(
+                    "the curve reconstructed from per-message usage disagrees with the total the harness "
+                    "recorded independently: " + "; ".join(drift) + ". Trust the recorded total; this "
+                    "curve's SHAPE may still be informative but its magnitude is not."
+                ),
+            )
         else:
             series.availability.set("token_series_crosscheck", measured("cost_time_toolcalls"))
     return series
 
 
-def rate_curve(series: TokenSeries, which: str = "output",
-               window: int = 5) -> tuple[list[float], list[float]]:
+def rate_curve(series: TokenSeries, which: str = "output", window: int = 5) -> tuple[list[float], list[float]]:
     """``(minutes, tokens-per-minute)`` — a smoothed derivative, or empty when it cannot be drawn."""
     if not series.can_rate:
         return [], []
-    key = {"output": "output_tokens", "input": "input_tokens",
-           "cache_read": "cache_read_tokens", "billed_input": "billed_input"}[which]
+    key = {
+        "output": "output_tokens",
+        "input": "input_tokens",
+        "cache_read": "cache_read_tokens",
+        "billed_input": "billed_input",
+    }[which]
     xs = [s.t_s / 60.0 for s in series.samples]
     ys = [getattr(s, key) for s in series.samples]
     rates: list[float] = []

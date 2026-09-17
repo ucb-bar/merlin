@@ -15,6 +15,7 @@ Each section-``@forward`` argument is one of:
     valid either way; only the golden CHECK needs the real boundary tensor).
 So compiling the whole model once, we build + run just the section we care about, on real hardware.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,8 +36,7 @@ _NP_DTYPE = {"f32": np.float32, "f16": np.float16, "i32": np.int32, "i8": np.int
 def _mlir_elem(t) -> str:
     """xDSL tensor element type -> the short dtype token used across the bundle."""
     s = str(t.element_type)
-    return {"f32": "f32", "f16": "f16", "bf16": "bf16", "i32": "i32", "i8": "i8", "i64": "i64"}.get(
-        s, "f32")
+    return {"f32": "f32", "f16": "f16", "bf16": "bf16", "i32": "i32", "i8": "i8", "i64": "i64"}.get(s, "f32")
 
 
 def _shape(t) -> list[int]:
@@ -49,8 +49,13 @@ def _write_safetensors(path: Path, tensors: dict[str, np.ndarray]) -> None:
     payload = bytearray()
     for name, arr in tensors.items():
         arr = np.ascontiguousarray(arr)
-        dt = {np.dtype("float32"): "F32", np.dtype("float16"): "F16", np.dtype("int32"): "I32",
-              np.dtype("int8"): "I8", np.dtype("int64"): "I64"}.get(arr.dtype, "F32")
+        dt = {
+            np.dtype("float32"): "F32",
+            np.dtype("float16"): "F16",
+            np.dtype("int32"): "I32",
+            np.dtype("int8"): "I8",
+            np.dtype("int64"): "I64",
+        }.get(arr.dtype, "F32")
         begin = len(payload)
         payload += arr.tobytes()
         header[name] = {"dtype": dt, "shape": list(arr.shape), "data_offsets": [begin, len(payload)]}
@@ -62,8 +67,9 @@ def build_section_bundle(model_dir, region_ids, out_dir, *, seed: int = 0) -> di
     """Slice the model at ``model_dir`` to ``region_ids`` and write a K1-buildable section bundle to
     ``out_dir``. Returns a summary (section fqns, boundary arg roles, output shape). Deterministic:
     activation boundary tensors are seeded (or read from region_goldens.npz when present)."""
-    from merlin.frontends.linalg_mlir import parse_mlir_file
     from xdsl.ir import BlockArgument
+
+    from merlin.frontends.linalg_mlir import parse_mlir_file
 
     from ..xdsl_dialects._common import text as _text
 
@@ -80,6 +86,7 @@ def build_section_bundle(model_dir, region_ids, out_dir, *, seed: int = 0) -> di
         region_goldens = dict(np.load(rg))
     # weight name -> ndarray, from the model safetensors (via the header reader).
     from merlin.llvmlower.weights_pack import load_safetensors_header
+
     hdr, payload_off = load_safetensors_header(model_dir / "weights.safetensors")
     blob = (model_dir / "weights.safetensors").read_bytes()[payload_off:]
 
@@ -98,19 +105,28 @@ def build_section_bundle(model_dir, region_ids, out_dir, *, seed: int = 0) -> di
         shape, elem = _shape(val.type), _mlir_elem(val.type)
         if isinstance(val, BlockArgument):
             entry = man.get(str(val.index), {})
-            if entry.get("kind") == "param":                       # a model weight
+            if entry.get("kind") == "param":  # a model weight
                 wname = entry["weight"]
                 section_weights[wname] = _weight_array(wname, shape, elem)
                 section_manifest[str(j)] = {"kind": "param", "name": None, "weight": wname}
                 roles.append(f"weight:{wname}")
                 continue
-            arr = np.ascontiguousarray(model_inputs[f"in{n_in}"])   # a model input
+            arr = np.ascontiguousarray(model_inputs[f"in{n_in}"])  # a model input
             roles.append("model_input")
-        else:                                                       # boundary activation
-            key = next((k for k in region_goldens if k.endswith("::out")
-                        and np.prod(region_goldens[k].shape) == int(np.prod(shape))), None)
-            arr = (region_goldens[key] if key is not None
-                   else rng.standard_normal(shape).astype(_NP_DTYPE.get(elem, np.float32)))
+        else:  # boundary activation
+            key = next(
+                (
+                    k
+                    for k in region_goldens
+                    if k.endswith("::out") and np.prod(region_goldens[k].shape) == int(np.prod(shape))
+                ),
+                None,
+            )
+            arr = (
+                region_goldens[key]
+                if key is not None
+                else rng.standard_normal(shape).astype(_NP_DTYPE.get(elem, np.float32))
+            )
             roles.append("boundary_activation" + ("" if key is None else f":{key}"))
         name = f"barg{j}"
         section_manifest[str(j)] = {"kind": "input", "name": name}

@@ -4,6 +4,7 @@ Structurally plausible but NON-building placeholders. The driver API centers on 
 Merlin-owned generic runtime API (`merlin_submit`/`merlin_wait`/`merlin_get_metrics`); the
 target driver implements it. Blocking mode first; interrupt/RTIO are later stages.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -43,7 +44,7 @@ def _module_kconfig(sym: str) -> str:
         "config MERLIN_RUNTIME_PROFILING\n"
         '    bool "Enable Merlin runtime profiling"\n'
         "    depends on MERLIN_RUNTIME\n\n"
-        "rsource \"drivers/accelerator/Kconfig\"\n"
+        'rsource "drivers/accelerator/Kconfig"\n'
     )
 
 
@@ -203,8 +204,8 @@ def _runtime_h() -> str:
         "#include <stdint.h>\n"
         "#include <stddef.h>\n"
         "#include <zephyr/device.h>\n"
-        '#include <merlin/command_buffer.h>\n'
-        '#include <merlin/metrics.h>\n\n'
+        "#include <merlin/command_buffer.h>\n"
+        "#include <merlin/metrics.h>\n\n"
         "struct merlin_event {\n"
         "    uint32_t id;        /* submission id, set by submit() */\n"
         "};\n\n"
@@ -296,11 +297,11 @@ def _sample_main(short: str, compatible: str) -> str:
     node = compatible.replace(",", "_").replace("-", "_")
     return (
         "/* Generated Merlin sample: pack a weight, run a resident matmul, commit, evict. */\n"
-        '#include <zephyr/kernel.h>\n'
-        '#include <zephyr/device.h>\n'
-        '#include <merlin/runtime.h>\n'
-        '#include <merlin/command_buffer.h>\n'
-        f'#include <merlin/{short}.h>\n\n'
+        "#include <zephyr/kernel.h>\n"
+        "#include <zephyr/device.h>\n"
+        "#include <merlin/runtime.h>\n"
+        "#include <merlin/command_buffer.h>\n"
+        f"#include <merlin/{short}.h>\n\n"
         f"static const struct merlin_cmd cmds[] = {{\n"
         f"    {{ {up}_OP_RES_PACK, /*src=*/0, /*dst=*/1, /*layout=*/0 }},\n"
         f"    {{ {up}_OP_MATMUL,   /*lhs=*/2, /*rhs=*/1, /*dst=*/3 }},\n"
@@ -321,7 +322,7 @@ def _sample_main(short: str, compatible: str) -> str:
         "    }\n"
         "    if (rc == 0) {\n"
         "        merlin_get_metrics(dev, &m);\n"
-        "        printk(\"cycles=%llu commands=%llu\\n\",\n"
+        '        printk("cycles=%llu commands=%llu\\n",\n'
         "               (unsigned long long)m.cycles, (unsigned long long)m.command_count);\n"
         "    }\n"
         "    return rc;\n}\n"
@@ -354,44 +355,47 @@ def generate(zephyr_plan: dict[str, Any]) -> list[Artifact]:
         Artifact("zephyr/module.yml", _module_yml(module_name)),
         Artifact("zephyr/CMakeLists.txt", _cmakelists()),
         Artifact("zephyr/Kconfig", _module_kconfig(sym)),
-        Artifact(f"zephyr/dts/bindings/accelerator/{compatible}.yaml",
-                 _binding(compatible, properties)),
+        Artifact(f"zephyr/dts/bindings/accelerator/{compatible}.yaml", _binding(compatible, properties)),
         Artifact(f"zephyr/drivers/accelerator/{short}_driver.c", _driver_c(short, compatible)),
-        Artifact("zephyr/drivers/accelerator/CMakeLists.txt",
-                 f"# Generated driver library.\nzephyr_library()\n"
-                 f"zephyr_library_sources_ifdef(CONFIG_{sym} {short}_driver.c)\n"),
+        Artifact(
+            "zephyr/drivers/accelerator/CMakeLists.txt",
+            f"# Generated driver library.\nzephyr_library()\n"
+            f"zephyr_library_sources_ifdef(CONFIG_{sym} {short}_driver.c)\n",
+        ),
         Artifact("zephyr/drivers/accelerator/Kconfig", driver_kconfig),
         Artifact("zephyr/include/merlin/runtime.h", _runtime_h()),
         Artifact("zephyr/include/merlin/command_buffer.h", _command_buffer_h()),
-        Artifact("zephyr/include/merlin/metrics.h",
-                 "/* Merlin common metrics C view (real; mirrors metrics.schema.yaml). */\n#pragma once\n"
-                 "#include <stdint.h>\n"
-                 "struct merlin_metrics {\n"
-                 "    uint64_t cycles;\n    uint64_t bytes_moved;\n"
-                 "    uint64_t command_count;\n    uint64_t pack_count;\n"
-                 "    uint64_t resident_hits;\n    uint64_t evictions;\n"
-                 "    uint64_t accumulator_commits;\n};\n"),
+        Artifact(
+            "zephyr/include/merlin/metrics.h",
+            "/* Merlin common metrics C view (real; mirrors metrics.schema.yaml). */\n#pragma once\n"
+            "#include <stdint.h>\n"
+            "struct merlin_metrics {\n"
+            "    uint64_t cycles;\n    uint64_t bytes_moved;\n"
+            "    uint64_t command_count;\n    uint64_t pack_count;\n"
+            "    uint64_t resident_hits;\n    uint64_t evictions;\n"
+            "    uint64_t accumulator_commits;\n};\n",
+        ),
         Artifact(f"zephyr/include/merlin/{short}.h", _target_regmap_h(short)),
-        Artifact(f"zephyr/samples/{sample}/CMakeLists.txt",
-                 "# Generated sample application.\n"
-                 "cmake_minimum_required(VERSION 3.20)\n"
-                 "find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})\n"
-                 f"project({sample})\n"
-                 "target_sources(app PRIVATE src/main.c)\n"),
-        Artifact(f"zephyr/samples/{sample}/prj.conf",
-                 "CONFIG_MERLIN_RUNTIME=y\n"
-                 f"CONFIG_{sym}=y\n"),
+        Artifact(
+            f"zephyr/samples/{sample}/CMakeLists.txt",
+            "# Generated sample application.\n"
+            "cmake_minimum_required(VERSION 3.20)\n"
+            "find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})\n"
+            f"project({sample})\n"
+            "target_sources(app PRIVATE src/main.c)\n",
+        ),
+        Artifact(f"zephyr/samples/{sample}/prj.conf", f"CONFIG_MERLIN_RUNTIME=y\nCONFIG_{sym}=y\n"),
         Artifact(f"zephyr/samples/{sample}/app.overlay", _overlay(short, compatible)),
         Artifact(f"zephyr/samples/{sample}/src/main.c", _sample_main(short, compatible)),
         # Real ztest for the driver.
-        Artifact(f"zephyr/tests/{short}_driver/CMakeLists.txt",
-                 "cmake_minimum_required(VERSION 3.20)\n"
-                 "find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})\n"
-                 f"project({short}_driver_test)\n"
-                 "target_sources(app PRIVATE src/main.c)\n"),
-        Artifact(f"zephyr/tests/{short}_driver/prj.conf",
-                 "CONFIG_ZTEST=y\nCONFIG_MERLIN_RUNTIME=y\n"
-                 f"CONFIG_{sym}=y\n"),
+        Artifact(
+            f"zephyr/tests/{short}_driver/CMakeLists.txt",
+            "cmake_minimum_required(VERSION 3.20)\n"
+            "find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})\n"
+            f"project({short}_driver_test)\n"
+            "target_sources(app PRIVATE src/main.c)\n",
+        ),
+        Artifact(f"zephyr/tests/{short}_driver/prj.conf", f"CONFIG_ZTEST=y\nCONFIG_MERLIN_RUNTIME=y\nCONFIG_{sym}=y\n"),
         Artifact(f"zephyr/tests/{short}_driver/{compatible}.overlay", _overlay(short, compatible)),
         Artifact(f"zephyr/tests/{short}_driver/src/main.c", _driver_test(short, compatible)),
     ]
@@ -435,12 +439,12 @@ def _driver_test(short: str, compatible: str) -> str:
         f"ZTEST({short}_driver, test_submit_and_metrics)\n"
         "{\n"
         f"    const struct device *dev = DEVICE_DT_GET_ANY({node});\n"
-        "    zassert_true(device_is_ready(dev), \"device not ready\");\n"
+        '    zassert_true(device_is_ready(dev), "device not ready");\n'
         "    struct merlin_cmd_buffer cb = { .commands = cmds, .count = ARRAY_SIZE(cmds) };\n"
         "    struct merlin_event ev;\n"
-        "    zassert_equal(merlin_submit(dev, &cb, &ev), 0, \"submit failed\");\n"
-        "    zassert_equal(merlin_wait(dev, &ev, 0), 0, \"wait failed\");\n"
+        '    zassert_equal(merlin_submit(dev, &cb, &ev), 0, "submit failed");\n'
+        '    zassert_equal(merlin_wait(dev, &ev, 0), 0, "wait failed");\n'
         "    struct merlin_metrics m;\n"
-        "    zassert_equal(merlin_get_metrics(dev, &m), 0, \"get_metrics failed\");\n"
+        '    zassert_equal(merlin_get_metrics(dev, &m), 0, "get_metrics failed");\n'
         "}\n"
     )

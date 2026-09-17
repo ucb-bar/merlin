@@ -28,6 +28,7 @@ flow): the values this module extracts — UART base ``0x10020000``, clock selec
 ``0x140000``, baud ``115200``, ``DIV`` at byte offset 24, system clock 50 MHz — are the same ones
 that appear in that binary's disassembly of ``init_test``.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -36,10 +37,19 @@ from pathlib import Path
 #: Byte sizes for the scalar types these register-map structs are built from. A field whose type is
 #: not here is an error rather than an assumed width -- guessing a size shifts every offset after it.
 TYPE_SIZES = {
-    "int8_t": 1, "uint8_t": 1, "char": 1,
-    "int16_t": 2, "uint16_t": 2, "short": 2,
-    "int32_t": 4, "uint32_t": 4, "int": 4, "unsigned": 4,
-    "int64_t": 8, "uint64_t": 8, "long": 8,
+    "int8_t": 1,
+    "uint8_t": 1,
+    "char": 1,
+    "int16_t": 2,
+    "uint16_t": 2,
+    "short": 2,
+    "int32_t": 4,
+    "uint32_t": 4,
+    "int": 4,
+    "unsigned": 4,
+    "int64_t": 8,
+    "uint64_t": 8,
+    "long": 8,
 }
 
 #: Console baud. One constant shared by the bare-metal harness and the RTOS config so the two cannot
@@ -118,7 +128,7 @@ def tokenize(expr: str) -> list[str]:
                 while j < n and expr[j].isdigit():
                     j += 1
             lit = expr[i:j]
-            while j < n and expr[j] in "uUlL":       # integer suffixes: 0x10020000U, 500000000ULL
+            while j < n and expr[j] in "uUlL":  # integer suffixes: 0x10020000U, 500000000ULL
                 j += 1
             toks.append(lit)
             i = j
@@ -130,8 +140,8 @@ def tokenize(expr: str) -> list[str]:
             toks.append(expr[i:j])
             i = j
             continue
-        if expr[i:i + 2] in _PUNCT:
-            toks.append(expr[i:i + 2])
+        if expr[i : i + 2] in _PUNCT:
+            toks.append(expr[i : i + 2])
             i += 2
             continue
         if c in _SINGLE:
@@ -164,7 +174,7 @@ class _Eval:
         self.toks, self.pos = tokenize(expr), 0
         val = self._or()
         if self.pos != len(self.toks):
-            raise SdkFactError(f"trailing tokens in {expr!r} at {self.toks[self.pos:]}")
+            raise SdkFactError(f"trailing tokens in {expr!r} at {self.toks[self.pos :]}")
         return val
 
     def _peek(self, k: int = 0) -> str | None:
@@ -290,14 +300,14 @@ def parse_defines(text: str) -> dict[str, str]:
         body = line[1:].lstrip()
         if not body.startswith("define"):
             continue
-        rest = body[len("define"):]
+        rest = body[len("define") :]
         if not rest[:1].isspace():
             continue
         rest = rest.strip()
         if not rest:
             continue
         head, _, value = rest.partition(" ")
-        if "(" in head:                      # function-like macro
+        if "(" in head:  # function-like macro
             continue
         name = head.strip()
         value = value.strip()
@@ -335,9 +345,9 @@ def _find_typedef_body(text: str, kind: str, name: str) -> str:
             elif text[i] == "}":
                 depth -= 1
             i += 1
-        tail = text[i:text.find(";", i)] if ";" in text[i:] else ""
+        tail = text[i : text.find(";", i)] if ";" in text[i:] else ""
         if tail.strip().rstrip("*").strip() == name:
-            return text[open_brace + 1:i - 1]
+            return text[open_brace + 1 : i - 1]
         at = i
 
 
@@ -400,7 +410,7 @@ def parse_struct_offsets(text: str, struct: str) -> dict[str, int]:
         if len(toks) < 2:
             raise SdkFactError(f"cannot read field declaration {decl!r} of {struct}")
         fname = toks[-1]
-        if "[" in fname:                       # arrays would need an extent; none in these maps
+        if "[" in fname:  # arrays would need an extent; none in these maps
             raise SdkFactError(f"array field {fname!r} in {struct} is not supported")
         ctype = toks[-2]
         if ctype not in TYPE_SIZES:
@@ -411,7 +421,8 @@ def parse_struct_offsets(text: str, struct: str) -> dict[str, int]:
         if fname in stated and stated[fname] != cursor:
             raise SdkFactError(
                 f"{struct}.{fname}: computed offset {hex(cursor)} disagrees with the header's own "
-                f"{hex(stated[fname])} -- the register map was misread")
+                f"{hex(stated[fname])} -- the register map was misread"
+            )
         offsets[fname] = cursor
         cursor += size
     if not offsets:
@@ -448,7 +459,7 @@ class UartConsoleFacts:
     """Everything the harness needs to speak a chip's own console, all of it derived."""
 
     uart_base: int
-    reg: dict[str, int]                 # TXDATA / RXDATA / TXCTRL / RXCTRL / DIV byte offsets
+    reg: dict[str, int]  # TXDATA / RXDATA / TXCTRL / RXCTRL / DIV byte offsets
     tx_full_bit: int
     txen_bit: int
     rxen_bit: int
@@ -459,15 +470,14 @@ class UartConsoleFacts:
     #: rather than nothing -- which reads as a corrupt program instead of a misconfigured UART.
     mtime_hz: int
     pll_base: int
-    pll: dict[str, int]                 # PLL register byte offsets
+    pll: dict[str, int]  # PLL register byte offsets
     clksel_base: int
-    clksel: dict[str, int]              # clock-selector register byte offsets
+    clksel: dict[str, int]  # clock-selector register byte offsets
     clksel_slow: int
     clksel_pll: int
     provenance: dict[str, str] = field(default_factory=dict)
 
-    def macros(self, *, baud: int = DEFAULT_BAUD, stopbits: int = 2,
-               chip_freq_hz: int | None = None) -> list[str]:
+    def macros(self, *, baud: int = DEFAULT_BAUD, stopbits: int = 2, chip_freq_hz: int | None = None) -> list[str]:
         """``-D`` flags injecting these facts into ``console_uart.c``.
 
         ``chip_freq_hz`` None means "do not touch the PLL": the image runs at the chip's reset clock
@@ -479,8 +489,17 @@ class UartConsoleFacts:
         missing = [r for r in need_reg if r not in self.reg]
         if missing:
             raise SdkFactError(f"UART register map lacks {missing}")
-        need_pll = ("PLLEN", "MDIV_RATIO", "RATIO", "FRACTION", "ZDIV0_RATIO", "ZDIV1_RATIO",
-                    "LDO_ENABLE", "POWERGOOD_VNN", "PLLFWEN_B")
+        need_pll = (
+            "PLLEN",
+            "MDIV_RATIO",
+            "RATIO",
+            "FRACTION",
+            "ZDIV0_RATIO",
+            "ZDIV1_RATIO",
+            "LDO_ENABLE",
+            "POWERGOOD_VNN",
+            "PLLFWEN_B",
+        )
         defs = [
             f"-DMERLIN_UART_BASE={hex(self.uart_base)}ULL",
             f"-DMERLIN_UART_TXDATA_OFF={self.reg['TXDATA']}",
@@ -507,14 +526,15 @@ class UartConsoleFacts:
             # is contiguous rather than assuming it: a gap would send a write to a neighbour.
             want = list(range(0, 4 * len(self.clksel), 4))
             if sorted(self.clksel.values()) != want:
-                raise SdkFactError(
-                    f"clock-selector registers are not a contiguous 32-bit array: {self.clksel}")
-            defs += [f"-DMERLIN_CHIP_FREQ_HZ={chip_freq_hz}ULL",
-                     f"-DMERLIN_PLL_BASE={hex(self.pll_base)}ULL",
-                     f"-DMERLIN_CLKSEL_BASE={hex(self.clksel_base)}ULL",
-                     f"-DMERLIN_CLKSEL_SLOW={self.clksel_slow}",
-                     f"-DMERLIN_CLKSEL_PLL={self.clksel_pll}",
-                     f"-DMERLIN_CLKSEL_N={len(self.clksel)}"]
+                raise SdkFactError(f"clock-selector registers are not a contiguous 32-bit array: {self.clksel}")
+            defs += [
+                f"-DMERLIN_CHIP_FREQ_HZ={chip_freq_hz}ULL",
+                f"-DMERLIN_PLL_BASE={hex(self.pll_base)}ULL",
+                f"-DMERLIN_CLKSEL_BASE={hex(self.clksel_base)}ULL",
+                f"-DMERLIN_CLKSEL_SLOW={self.clksel_slow}",
+                f"-DMERLIN_CLKSEL_PLL={self.clksel_pll}",
+                f"-DMERLIN_CLKSEL_N={len(self.clksel)}",
+            ]
             defs += [f"-DMERLIN_PLL_{r}_OFF={self.pll[r]}" for r in need_pll]
         return defs
 
@@ -526,8 +546,7 @@ def _read(path: Path) -> str:
         raise SdkFactError(f"cannot read {path}: {exc}") from exc
 
 
-def _find_header(sdk: Path, filename: str, *, must_contain: tuple[str, ...],
-                 prefer_under: str | None = None) -> Path:
+def _find_header(sdk: Path, filename: str, *, must_contain: tuple[str, ...], prefer_under: str | None = None) -> Path:
     """Locate a header by name, disambiguated by content rather than by an assumed path.
 
     These SDKs ship several files called ``uart.h`` (one per vendor driver); picking by path would
@@ -537,8 +556,8 @@ def _find_header(sdk: Path, filename: str, *, must_contain: tuple[str, ...],
     good = [p for p in hits if all(tok in _read(p) for tok in must_contain)]
     if not good:
         raise SdkFactError(
-            f"no {filename} under {sdk} contains all of {must_contain} "
-            f"({len(hits)} candidate(s) by name)")
+            f"no {filename} under {sdk} contains all of {must_contain} ({len(hits)} candidate(s) by name)"
+        )
     if prefer_under:
         scoped = [p for p in good if prefer_under in p.parts]
         if scoped:
@@ -561,14 +580,12 @@ def derive_uart_console(sdk_dir: str | Path, chip: str) -> UartConsoleFacts:
         raise SdkFactError(f"no chip_config.h under a '{chip}' directory in {sdk} (found {cfg_path})")
     cfg = parse_defines(_read(cfg_path))
 
-    uart_path = _find_header(sdk, "uart.h",
-                             must_contain=("UART_Type", "UART_TXDATA_FULL_POS"))
+    uart_path = _find_header(sdk, "uart.h", must_contain=("UART_Type", "UART_TXDATA_FULL_POS"))
     uart_text = _read(uart_path)
     uart_defs = parse_defines(uart_text)
 
     pll_path = _find_header(sdk, "pll.h", must_contain=("PLL_Type",))
-    rcc_path = _find_header(sdk, "hal_rcc.h", must_contain=("ClockSel_Type", "ClockSel_Opts"),
-                            prefer_under=chip)
+    rcc_path = _find_header(sdk, "hal_rcc.h", must_contain=("ClockSel_Type", "ClockSel_Opts"), prefer_under=chip)
     rcc_text = _read(rcc_path)
 
     # UART instance base. `UART0_BASE` is the console instance on these chips; it may be spelled as a
@@ -601,10 +618,12 @@ def derive_uart_console(sdk_dir: str | Path, chip: str) -> UartConsoleFacts:
         clksel=parse_struct_offsets(rcc_text, "ClockSel_Type"),
         clksel_slow=clkopts["CLKSEL_SLOW"],
         clksel_pll=clkopts["CLKSEL_PLL0"],
-        provenance={"chip_config.h": str(cfg_path.relative_to(sdk)),
-                    "uart.h": str(uart_path.relative_to(sdk)),
-                    "pll.h": str(pll_path.relative_to(sdk)),
-                    "hal_rcc.h": str(rcc_path.relative_to(sdk))},
+        provenance={
+            "chip_config.h": str(cfg_path.relative_to(sdk)),
+            "uart.h": str(uart_path.relative_to(sdk)),
+            "pll.h": str(pll_path.relative_to(sdk)),
+            "hal_rcc.h": str(rcc_path.relative_to(sdk)),
+        },
     )
 
 
@@ -620,18 +639,29 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
 
     facts = derive_uart_console(a.sdk_dir, a.chip)
-    print(json.dumps({
-        "uart_base": hex(facts.uart_base), "reg": facts.reg,
-        "tx_full_bit": facts.tx_full_bit, "txen_bit": facts.txen_bit,
-        "rxen_bit": facts.rxen_bit, "nstop_bit": facts.nstop_bit,
-        "sys_clk_hz": facts.sys_clk_hz, "pll_base": hex(facts.pll_base),
-        "clksel_base": hex(facts.clksel_base), "clksel": facts.clksel,
-        "clksel_slow": facts.clksel_slow, "clksel_pll": facts.clksel_pll,
-        "provenance": facts.provenance,
-        "macros": facts.macros(chip_freq_hz=a.chip_freq),
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "uart_base": hex(facts.uart_base),
+                "reg": facts.reg,
+                "tx_full_bit": facts.tx_full_bit,
+                "txen_bit": facts.txen_bit,
+                "rxen_bit": facts.rxen_bit,
+                "nstop_bit": facts.nstop_bit,
+                "sys_clk_hz": facts.sys_clk_hz,
+                "pll_base": hex(facts.pll_base),
+                "clksel_base": hex(facts.clksel_base),
+                "clksel": facts.clksel,
+                "clksel_slow": facts.clksel_slow,
+                "clksel_pll": facts.clksel_pll,
+                "provenance": facts.provenance,
+                "macros": facts.macros(chip_freq_hz=a.chip_freq),
+            },
+            indent=2,
+        )
+    )
     return 0
 
 
-if __name__ == "__main__":            # pragma: no cover
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

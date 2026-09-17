@@ -21,6 +21,7 @@ direction because an unreadable command is one whose work we cannot credit, and 
 would flatter the accelerator. Nothing here names a target, an opcode family, or a lane spelling:
 opcodes come from the buffer, lanes from its own placement record.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -46,8 +47,13 @@ class CommandMacs:
     refusal: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"index": self.index, "opcode": self.opcode, "macs": self.macs,
-                "basis": self.basis, "refusal": self.refusal}
+        return {
+            "index": self.index,
+            "opcode": self.opcode,
+            "macs": self.macs,
+            "basis": self.basis,
+            "refusal": self.refusal,
+        }
 
 
 @dataclass(frozen=True)
@@ -94,9 +100,9 @@ class OffloadReport:
             "contraction_offload_fraction": self.contraction_offload_fraction,
             "unit_regions": self.unit_regions,
             "host_regions": self.host_regions,
-            "regions_by_lane_family": {f"{l}/{f}": n for (l, f), n in
-                                       sorted(self.regions_by_lane_family.items(),
-                                              key=lambda kv: -kv[1])},
+            "regions_by_lane_family": {
+                f"{l}/{f}": n for (l, f), n in sorted(self.regions_by_lane_family.items(), key=lambda kv: -kv[1])
+            },
             "refusals": list(self.refusals),
         }
 
@@ -104,8 +110,7 @@ class OffloadReport:
 def _unit_lanes(by_lane: Mapping[tuple[str, str], int]) -> frozenset[str]:
     """Lanes the program's own record calls accelerator lanes. Derived from the record, never named
     here: a hardcoded spelling would make every other target read as 100% host."""
-    return frozenset(lane for (lane, _) in by_lane
-                     if "mesh" in lane or "accel" in lane or "unit" in lane)
+    return frozenset(lane for (lane, _) in by_lane if "mesh" in lane or "accel" in lane or "unit" in lane)
 
 
 def _ints(value: Any, want: int | None = None) -> tuple[int, ...] | None:
@@ -199,13 +204,16 @@ def offload_report(command_buffer: Mapping[str, Any]) -> OffloadReport:
     elif placement is not None:
         refusals.append("params.lane_placement is present but not a sequence of mappings")
 
-    return OffloadReport(tuple(rows), routed, on_unit, off_unit, by_lane,
-                         bool(refusals), tuple(refusals))
+    return OffloadReport(tuple(rows), routed, on_unit, off_unit, by_lane, bool(refusals), tuple(refusals))
 
 
-def _command_macs(opcode: str, attrs: Mapping[str, Any], operands: Mapping[str, Any],
-                  tensors: Mapping[str, Any],
-                  committed: Mapping[str, tuple[int, ...]]) -> tuple[int | None, str, str | None]:
+def _command_macs(
+    opcode: str,
+    attrs: Mapping[str, Any],
+    operands: Mapping[str, Any],
+    tensors: Mapping[str, Any],
+    committed: Mapping[str, tuple[int, ...]],
+) -> tuple[int | None, str, str | None]:
     """MACs for one accelerator command, from what the command DECLARES.
 
     Convolution: ``prod(destination extent) * Ci * Kh * Kw`` -- every output element costs one MAC
@@ -218,7 +226,7 @@ def _command_macs(opcode: str, attrs: Mapping[str, Any], operands: Mapping[str, 
     dst_name = operands.get("dst")
     dst = _shape(tensors, dst_name)
     if dst is None and isinstance(dst_name, str):
-        dst = committed.get(dst_name)      # written to an accumulator, drained by a commit
+        dst = committed.get(dst_name)  # written to an accumulator, drained by a commit
     if kernel is not None:
         out_elems = _elements(dst)
         if out_elems is None:
@@ -242,12 +250,14 @@ def format_report(report: OffloadReport, *, label: str = "") -> str:
     frac = report.contraction_offload_fraction
     frac_s = "n/a" if frac is None else f"{100.0 * frac:.1f}%"
     bound = " (LOWER bound)" if report.routed_is_lower_bound else ""
-    out = [f"== offload {label}".rstrip(),
-           f"  routed MACs           {report.routed_macs:>15,}{bound}",
-           f"  contractions on unit  {report.contractions_on_unit:>15,}",
-           f"  contractions off unit {report.contractions_off_unit:>15,}",
-           f"  contraction offload   {frac_s:>15}",
-           f"  regions on unit/host  {report.unit_regions:>7,} / {report.host_regions:,}"]
+    out = [
+        f"== offload {label}".rstrip(),
+        f"  routed MACs           {report.routed_macs:>15,}{bound}",
+        f"  contractions on unit  {report.contractions_on_unit:>15,}",
+        f"  contractions off unit {report.contractions_off_unit:>15,}",
+        f"  contraction offload   {frac_s:>15}",
+        f"  regions on unit/host  {report.unit_regions:>7,} / {report.host_regions:,}",
+    ]
     if report.regions_by_lane_family:
         out.append("  host families:")
         unit = _unit_lanes(report.regions_by_lane_family)

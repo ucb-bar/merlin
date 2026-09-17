@@ -7,10 +7,11 @@ Two feedback failures this closes, both instant and oracle-free: an INVENTED enc
 that decodes to nothing the ISA defines (``illegal``), and a wrong kernel shows up as a coverage gap
 ("matmul capsule, zero compute instructions"). No golden, no target name, no ``re``.
 """
+
 from __future__ import annotations
 
-from .isa_model import IsaModel
 from . import isa_taxonomy as IT
+from .isa_model import IsaModel
 
 
 def _matches(word: int, ent: dict) -> bool:
@@ -24,7 +25,7 @@ def _decode_operand(bits: list[int | None], word: int) -> int:
     val = 0
     for i, wb in enumerate(bits):
         if isinstance(wb, int) and wb >= 0 and (word >> wb) & 1:
-            val |= (1 << i)
+            val |= 1 << i
     return val
 
 
@@ -56,8 +57,7 @@ def _disassemble_fixed(model: IsaModel, words: list[int]) -> list[dict]:
         w = int(raw) & wmask
         opv = _sel(w, op_hi, op_lo)
         mnems = rev.get(opv)
-        operands = {name: _sel(w, hi, lo) for name, (hi, lo) in model.field_layout.items()
-                    if name != "opcode"}
+        operands = {name: _sel(w, hi, lo) for name, (hi, lo) in model.field_layout.items() if name != "opcode"}
         rec: dict = {"index": i, "word": f"0x{w:0{nib}x}", "operands": operands}
         if not mnems:
             rec.update({"illegal": True, "mnemonic": None})
@@ -105,9 +105,15 @@ def disassemble(model: IsaModel, words: list[int]) -> list[dict]:
         # naming different matrix units emitted byte-identical kernels, and both passed, because the only
         # thing separating them was invisible at class granularity; the second unit's ops were never
         # executed by any capsule in that target's corpus.
-        rec = {"index": i, "word": f"0x{w:08x}", "mnemonic": ent.get("class"),
-               "class": ent.get("class"), "isa_mnemonic": ent.get("mnemonic"),
-               "role": ent.get("role"), "operands": ops}
+        rec = {
+            "index": i,
+            "word": f"0x{w:08x}",
+            "mnemonic": ent.get("class"),
+            "class": ent.get("class"),
+            "isa_mnemonic": ent.get("mnemonic"),
+            "role": ent.get("role"),
+            "operands": ops,
+        }
         if len(hits) > 1:
             rec["ambiguous"] = [e.get("class") for e in hits]
             rec["ambiguous_mnemonics"] = [e.get("mnemonic") for e in hits]
@@ -141,17 +147,25 @@ def present_mnemonics(records: list[dict]) -> list[str]:
     return out
 
 
-def coverage(model: IsaModel, records: list[dict], *, required: list[str] | None = None,
-             op: str = "matmul", output_dtype: str | None = None,
-             epilogue: tuple[str, ...] = (), movement: bool = False) -> dict:
+def coverage(
+    model: IsaModel,
+    records: list[dict],
+    *,
+    required: list[str] | None = None,
+    op: str = "matmul",
+    output_dtype: str | None = None,
+    epilogue: tuple[str, ...] = (),
+    movement: bool = False,
+) -> dict:
     """Diff the instruction classes a kernel CONTAINS against those it should. ``required`` may be supplied
     directly (e.g. a capsule's declared ``expected.instruction_classes``); otherwise it is derived by
     semantic ROLE from the model (``op``/``output_dtype``/``epilogue``/``movement``), never a hardcoded
     list. Returns ``{required, present, missing, n_illegal}`` — ``missing`` non-empty or ``n_illegal`` > 0
     is an actionable, oracle-free failure the agent can fix before spending an oracle run."""
     if required is None:
-        required = IT.required_classes_from_roles(model.roles, op=op, output_dtype=output_dtype,
-                                                  epilogue=epilogue, movement=movement)
+        required = IT.required_classes_from_roles(
+            model.roles, op=op, output_dtype=output_dtype, epilogue=epilogue, movement=movement
+        )
     present = present_classes(records)
     present_m = present_mnemonics(records)
     # A required entry may name EITHER a semantic class or an exact ISA mnemonic, and is checked at the
@@ -161,5 +175,10 @@ def coverage(model: IsaModel, records: list[dict], *, required: list[str] | None
     satisfied = set(present) | set(present_m)
     missing = [c for c in required if c not in satisfied]
     n_illegal = sum(1 for r in records if r.get("illegal"))
-    return {"required": list(required), "present": present, "present_mnemonics": present_m,
-            "missing": missing, "n_illegal": n_illegal}
+    return {
+        "required": list(required),
+        "present": present,
+        "present_mnemonics": present_m,
+        "missing": missing,
+        "n_illegal": n_illegal,
+    }

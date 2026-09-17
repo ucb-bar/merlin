@@ -10,6 +10,7 @@ It claims no timing for any phase it cannot derive: per-iteration periods inside
 ``unavailable`` (the wall-clock split across the K steps is not recoverable from a flat capture),
 never an equal-split guess. No speedup, no cycle count.
 """
+
 from __future__ import annotations
 
 from merlin.dse_guidance import topology as TOP
@@ -24,12 +25,18 @@ CAD_CONTROL_TICK = "control_tick"
 CAD_ONCE_FORWARD = "once_per_forward"
 CAD_UNKNOWN = "unknown"
 
-CADENCES = (CAD_ONCE_INSTRUCTION, CAD_ONCE_REPLAN, CAD_K_TIMES, CAD_TOKEN_LOOP,
-            CAD_CONTROL_TICK, CAD_ONCE_FORWARD, CAD_UNKNOWN)
+CADENCES = (
+    CAD_ONCE_INSTRUCTION,
+    CAD_ONCE_REPLAN,
+    CAD_K_TIMES,
+    CAD_TOKEN_LOOP,
+    CAD_CONTROL_TICK,
+    CAD_ONCE_FORWARD,
+    CAD_UNKNOWN,
+)
 
 
-def classify_cadence(role: str | None, workload_class: str, invocations: int | None,
-                     K: int) -> str:
+def classify_cadence(role: str | None, workload_class: str, invocations: int | None, K: int) -> str:
     """Deterministic cadence for a region from its role + the workload class.
 
     A repeated head is a ``token_loop`` for an autoregressive decoder and a ``K_times_per_replan``
@@ -57,8 +64,10 @@ def rate_model(topo) -> dict:
         "K": {"value": K, "source": E_CONFIG},
         "H": {"value": H, "source": E_CONFIG},
         "control_rate_hz": {"value": rate, "source": E_CONFIG},
-        "replan_deadline_s": {"value": (round(deadline_s, 6) if deadline_s else None),
-                              "source": (E_DERIVED if deadline_s else E_NA)},
+        "replan_deadline_s": {
+            "value": (round(deadline_s, 6) if deadline_s else None),
+            "source": (E_DERIVED if deadline_s else E_NA),
+        },
         "deadline_equation": topo.deadline_equation(),
     }
 
@@ -67,10 +76,11 @@ def phase_period_s(cadence: str, topo) -> tuple[float | None, str]:
     """Period (seconds) for a cadence, with evidence. Per-K-step periods are unavailable."""
     deadline_s = (topo.replan_deadline_ms / 1000.0) if topo.replan_deadline_ms else None
     if cadence == CAD_ONCE_REPLAN:
-        return (round(deadline_s, 6) if deadline_s else None,
-                E_DERIVED if deadline_s else E_NA)
+        return (round(deadline_s, 6) if deadline_s else None, E_DERIVED if deadline_s else E_NA)
     if cadence == CAD_CONTROL_TICK:
-        return (round(1.0 / topo.control_rate_hz, 6) if topo.control_rate_hz else None,
-                E_DERIVED if topo.control_rate_hz else E_NA)
+        return (
+            round(1.0 / topo.control_rate_hz, 6) if topo.control_rate_hz else None,
+            E_DERIVED if topo.control_rate_hz else E_NA,
+        )
     # K-loop / token-loop per-iteration wall time is NOT recoverable from a flat capture.
     return (None, E_NA)

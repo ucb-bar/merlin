@@ -5,6 +5,7 @@ The parent supplies already assembled words, byte preloads, and explicit memory 
 This process is deliberately disposable: an Arc backend may need an uncancellable large-stack Python
 thread, while terminating this worker gives the grading harness a real wall-clock bound.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,16 +26,16 @@ def main() -> int:
     result = run_raw_program(
         str(request["target"]),
         words=[int(word) for word in request.get("words") or []],
-        preload=[(int(item["base"]), base64.b64decode(item["b64"]))
-                 for item in request.get("preload") or []],
+        preload=[(int(item["base"]), base64.b64decode(item["b64"])) for item in request.get("preload") or []],
         max_cycles=int(request["max_cycles"]),
     )
     observations, capability = _timing_block(result)
     captured = {}
     if result.halted:
         for read in request.get("reads") or []:
-            captured[str(read["name"])] = base64.b64encode(bytes(
-                result.slave.captured(int(read["base"]), int(read["nbytes"])))).decode()
+            captured[str(read["name"])] = base64.b64encode(
+                bytes(result.slave.captured(int(read["base"]), int(read["nbytes"])))
+            ).decode()
     payload = {
         "halted": bool(result.halted),
         "cycles": int(result.cycles),

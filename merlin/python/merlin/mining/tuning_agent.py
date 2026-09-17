@@ -17,16 +17,17 @@ Honest contract:
     falls back on whatever else it has). Non-actionable suggestions are returned as
     forkable=False ForkProposals so they are recorded as work-items, never silently lost.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 from typing import Any, Callable
 
+from merlin.common.paths import prompts_dir
+
 from ..common.agent_output import parse_json
 from ..kernels.knobs import ForkProposal
-
-from merlin.common.paths import prompts_dir
 
 _PROMPT_DIR = prompts_dir()
 
@@ -40,8 +41,14 @@ _CONTRACTION_STRATEGIES = {"outerproduct", "dot", "matmulintrinsics", "parallela
 _DTYPE_STRATEGIES = {"fp32", "int8_w8a8", "bf16_f32acc", "fp16_f32acc"}
 # The vector-lowering patterns the schedule knows how to apply (transform.apply_patterns.vector.*).
 _LOWERING_PATTERNS = {
-    "lower_contraction", "lower_masked_transfers", "lower_transpose", "lower_shape_cast",
-    "lower_outerproduct", "lower_broadcast", "lower_transfer", "lower_multi_reduction",
+    "lower_contraction",
+    "lower_masked_transfers",
+    "lower_transpose",
+    "lower_shape_cast",
+    "lower_outerproduct",
+    "lower_broadcast",
+    "lower_transfer",
+    "lower_multi_reduction",
 }
 
 
@@ -51,11 +58,11 @@ def prompt_path(version: int = 1) -> Path:
 
 def _default_llm(prompt: str) -> str | None:
     from ..common.llm import complete
+
     return complete(prompt, max_tokens=800)
 
 
-def build_prompt(divergences: list[str], knobs: dict[str, Any], *, context: Any = None,
-                 version: int = 1) -> str:
+def build_prompt(divergences: list[str], knobs: dict[str, Any], *, context: Any = None, version: int = 1) -> str:
     """Render the versioned tuning prompt from the parent knobs + S4 divergences + optional
     mined-policy / curated-fingerprint context."""
     tmpl = prompt_path(version).read_text(encoding="utf-8")
@@ -134,8 +141,7 @@ def _clamp_overrides(overrides: dict[str, Any]) -> tuple[dict[str, Any], list[st
             if value is None or value in _CONTRACTION_STRATEGIES:
                 clean[key] = value
             else:
-                notes.append(f"dropped contraction_strategy={value!r} (not in "
-                             f"{sorted(_CONTRACTION_STRATEGIES)})")
+                notes.append(f"dropped contraction_strategy={value!r} (not in {sorted(_CONTRACTION_STRATEGIES)})")
         elif key == "dtype_strategy":
             if value in _DTYPE_STRATEGIES:
                 clean[key] = value
@@ -154,9 +160,14 @@ def _clamp_overrides(overrides: dict[str, Any]) -> tuple[dict[str, Any], list[st
     return clean, notes
 
 
-def propose_forks_llm(divergences: list[str], knobs: dict[str, Any], *, context: Any = None,
-                      llm_fn: Callable[[str], "str | None"] | None = None,
-                      version: int = 1) -> list[ForkProposal]:
+def propose_forks_llm(
+    divergences: list[str],
+    knobs: dict[str, Any],
+    *,
+    context: Any = None,
+    llm_fn: Callable[[str], "str | None"] | None = None,
+    version: int = 1,
+) -> list[ForkProposal]:
     """LLM proposer, drop-in for `propose_forks(divergences, knobs)`.
 
     Builds the versioned tuning prompt from the parent ``knobs`` + S4 ``divergences`` (+ optional
@@ -181,11 +192,26 @@ def propose_forks_llm(divergences: list[str], knobs: dict[str, Any], *, context:
         if notes:
             note = (note + " | " if note else "") + "; ".join(notes)
         if clean:
-            out.append(ForkProposal(overrides=clean, lever="knob", targets=targets,
-                                    evidence=["llm_tuning_agent"], forkable=True, note=note))
+            out.append(
+                ForkProposal(
+                    overrides=clean,
+                    lever="knob",
+                    targets=targets,
+                    evidence=["llm_tuning_agent"],
+                    forkable=True,
+                    note=note,
+                )
+            )
         else:
             # nothing renderable survived clamping -> record as a non-actionable work-item.
-            out.append(ForkProposal(overrides={}, lever="llm_suggestion", targets=targets,
-                                    evidence=["llm_tuning_agent"], forkable=False,
-                                    note=note or "no renderable knob override in proposal"))
+            out.append(
+                ForkProposal(
+                    overrides={},
+                    lever="llm_suggestion",
+                    targets=targets,
+                    evidence=["llm_tuning_agent"],
+                    forkable=False,
+                    note=note or "no renderable knob override in proposal",
+                )
+            )
     return out

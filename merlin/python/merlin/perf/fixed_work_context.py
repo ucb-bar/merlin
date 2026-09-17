@@ -4,18 +4,25 @@ This narrow adapter supports compute/preload hoisting across disjoint later oper
 retains every selected load/configuration/compute from the anchor, including loads now issued after
 the first compute. It never calls a shortened first-compute prefix an equivalent benchmark.
 """
+
 from __future__ import annotations
 
-from collections import Counter, defaultdict, deque
-from copy import deepcopy
 import hashlib
 import json
+from collections import Counter, defaultdict, deque
+from copy import deepcopy
 from typing import Any, Mapping
 
 
-def project_fixed_work_context(before_artifacts: Mapping[str, Any], after_artifacts: Mapping[str, Any],
-                               anchor_context: Mapping[str, Any], *, target: str) -> tuple[dict, dict]:
+def project_fixed_work_context(
+    before_artifacts: Mapping[str, Any],
+    after_artifacts: Mapping[str, Any],
+    anchor_context: Mapping[str, Any],
+    *,
+    target: str,
+) -> tuple[dict, dict]:
     from merlin.targetgen.rocc import decode
+
     from .deps.rocc import INHERITS_DESTINATION
 
     canonical = lambda value: json.dumps(value, sort_keys=True, separators=(",", ":"))
@@ -44,26 +51,34 @@ def project_fixed_work_context(before_artifacts: Mapping[str, Any], after_artifa
     if artifacts[0] != anchor_context["artifact_sha256"] or artifacts[0] == artifacts[1]:
         raise ValueError("fixed-work anchor must bind the preceding, actually changed full-model artifact")
     before_cb, after_cb = (row["command_buffer"] for row in (before_artifacts, after_artifacts))
-    if (before_cb["kernel_abi"] != after_cb["kernel_abi"] or before_cb["tensors"] != after_cb["tensors"]):
+    if before_cb["kernel_abi"] != after_cb["kernel_abi"] or before_cb["tensors"] != after_cb["tensors"]:
         raise ValueError("fixed-work projection changed the source ABI or tensor footprint")
     owner = lambda op: getattr(getattr(op.attributes.get("merlin.global_task"), "value", None), "data", None)
 
     def identity(row, op):
         if owner(op) is None:
             raise ValueError("fixed-work source command has no compiler task ownership")
-        return canonical({"task": owner(op), **{name: row.get(name) for name in ("class", "funct", "rs1", "rs2")},
-                          "asm": op.asm_string.data, "constraints": op.constraints.data,
-                          "side_effects": op.has_side_effects is not None})
+        return canonical(
+            {
+                "task": owner(op),
+                **{name: row.get(name) for name in ("class", "funct", "rs1", "rs2")},
+                "asm": op.asm_string.data,
+                "constraints": op.constraints.data,
+                "side_effects": op.has_side_effects is not None,
+            }
+        )
 
-    keys = [[identity(row, op) for row, op in zip(trace, ops, strict=True)]
-            for trace, ops in zip(traces, operations, strict=True)]
+    keys = [
+        [identity(row, op) for row, op in zip(trace, ops, strict=True)]
+        for trace, ops in zip(traces, operations, strict=True)
+    ]
     if Counter(keys[0]) != Counter(keys[1]):
         raise ValueError("fixed-work projection changed commands, payloads, counts or task owners")
     compute_classes = set(INHERITS_DESTINATION) | set(INHERITS_DESTINATION.values())
-    for predicate in (lambda row: row["class"] in compute_classes,
-                      lambda row: row["class"] not in compute_classes):
+    for predicate in (lambda row: row["class"] in compute_classes, lambda row: row["class"] not in compute_classes):
         if [key for key, row in zip(keys[0], traces[0]) if predicate(row)] != [
-                key for key, row in zip(keys[1], traces[1]) if predicate(row)]:
+            key for key, row in zip(keys[1], traces[1]) if predicate(row)
+        ]:
             raise ValueError("fixed-work projection changed the compute or non-compute stream order")
     occurrences = defaultdict(deque)
     for index, key in enumerate(keys[0]):
@@ -101,9 +116,15 @@ def project_fixed_work_context(before_artifacts: Mapping[str, Any], after_artifa
                 continue
             load = traces[0][earlier].get("decoded", {})
             address, count = load.get("spad_addr"), load.get("rows")
-            if (later not in reads or not isinstance(address, int) or address < 0 or address & namespace
-                    or not isinstance(count, int) or count <= 0
-                    or owner(operations[0][earlier]) != owner(operations[0][later])):
+            if (
+                later not in reads
+                or not isinstance(address, int)
+                or address < 0
+                or address & namespace
+                or not isinstance(count, int)
+                or count <= 0
+                or owner(operations[0][earlier]) != owner(operations[0][later])
+            ):
                 raise ValueError("reordering is not same-task compute hoisting across an operand load")
             writes = set(range(address, address + count))
             if writes & reads[later]:
@@ -120,32 +141,59 @@ def project_fixed_work_context(before_artifacts: Mapping[str, Any], after_artifa
         raise ValueError("fixed-work anchor payload differs from the preceding emitted artifact")
     selected = sorted(position[index] for index in anchor)
     projected = deepcopy(dict(anchor_context))
-    projected.update({"artifact_sha256": artifacts[1], "instruction_indices": selected,
-                      "compute_instruction_indices": [position[index] for index in anchor[-2:]],
-                      "instruction_semantics": [{key: traces[1][index].get(key) for key in fields} for index in selected],
-                      "queued_competing_movement_indices": [position[index] for index in
-                                                             anchor_context["queued_competing_movement_indices"]],
-                      "initial_configuration_indices": {kind: position[index] for kind, index in
-                                                          anchor_context["initial_configuration_indices"].items()}})
-    projected["initial_configurations"] = {kind: traces[1][index] for kind, index in
-                                           projected["initial_configuration_indices"].items()}
-    projected["context_shape_sha256"] = sha({"instructions": projected["instruction_semantics"],
-                                             "initial_configurations": projected["initial_configurations"]})
-    projected["context_missing"] = [*projected["context_missing"],
-                                     "future compute commands omitted symmetrically in both fixed-work projections"]
-    work_contract = {"source_task_index": anchor_context["task_index"],
-                     "source_op_indices": anchor_context["source_op_indices"],
-                     "abi_sha256": sha(before_cb["kernel_abi"]), "tensor_footprint_sha256": sha(before_cb["tensors"]),
-                     "timed_command_multiset": sorted(canonical(row) for row in before_semantics),
-                     "timed_command_count": len(anchor),
-                     "competing_load_count": len(anchor_context["queued_competing_movement_indices"])}
-    proof = {"schema": "controlled_fixed_work_projection_v1", "status": "same_work_projection_verified",
-             "scope": "controlled_fixed_work_slice", "before_artifact_sha256": artifacts[0],
-             "after_artifact_sha256": artifacts[1], "after_to_before_permutation": permutation,
-             "before_timed_indices": anchor, "after_timed_indices": selected,
-             "same_task_command_multisets": True, "compute_order_preserved": True,
-             "noncompute_order_preserved": True, "disjoint_operand_row_crossings": crossings,
-             "work_contract": work_contract, "work_contract_sha256": sha(work_contract),
-             "future_computes_omitted_symmetrically": True, "global_cost_validated": False,
-             "full_model_numerical_equivalence": "NOT_ESTABLISHED"}
+    projected.update(
+        {
+            "artifact_sha256": artifacts[1],
+            "instruction_indices": selected,
+            "compute_instruction_indices": [position[index] for index in anchor[-2:]],
+            "instruction_semantics": [{key: traces[1][index].get(key) for key in fields} for index in selected],
+            "queued_competing_movement_indices": [
+                position[index] for index in anchor_context["queued_competing_movement_indices"]
+            ],
+            "initial_configuration_indices": {
+                kind: position[index] for kind, index in anchor_context["initial_configuration_indices"].items()
+            },
+        }
+    )
+    projected["initial_configurations"] = {
+        kind: traces[1][index] for kind, index in projected["initial_configuration_indices"].items()
+    }
+    projected["context_shape_sha256"] = sha(
+        {
+            "instructions": projected["instruction_semantics"],
+            "initial_configurations": projected["initial_configurations"],
+        }
+    )
+    projected["context_missing"] = [
+        *projected["context_missing"],
+        "future compute commands omitted symmetrically in both fixed-work projections",
+    ]
+    work_contract = {
+        "source_task_index": anchor_context["task_index"],
+        "source_op_indices": anchor_context["source_op_indices"],
+        "abi_sha256": sha(before_cb["kernel_abi"]),
+        "tensor_footprint_sha256": sha(before_cb["tensors"]),
+        "timed_command_multiset": sorted(canonical(row) for row in before_semantics),
+        "timed_command_count": len(anchor),
+        "competing_load_count": len(anchor_context["queued_competing_movement_indices"]),
+    }
+    proof = {
+        "schema": "controlled_fixed_work_projection_v1",
+        "status": "same_work_projection_verified",
+        "scope": "controlled_fixed_work_slice",
+        "before_artifact_sha256": artifacts[0],
+        "after_artifact_sha256": artifacts[1],
+        "after_to_before_permutation": permutation,
+        "before_timed_indices": anchor,
+        "after_timed_indices": selected,
+        "same_task_command_multisets": True,
+        "compute_order_preserved": True,
+        "noncompute_order_preserved": True,
+        "disjoint_operand_row_crossings": crossings,
+        "work_contract": work_contract,
+        "work_contract_sha256": sha(work_contract),
+        "future_computes_omitted_symmetrically": True,
+        "global_cost_validated": False,
+        "full_model_numerical_equivalence": "NOT_ESTABLISHED",
+    }
     return projected, proof

@@ -35,6 +35,7 @@ The rewrite is purely structural and value-preserving: inlining every kernel cal
 into the driver reproduces the original op set and dataflow (see
 ``test_outline.py::test_outline_is_value_preserving``).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -55,8 +56,7 @@ CLONE_INTO_KERNEL = ("arith.constant", "tensor.empty", "linalg.fill")
 
 def _is_root(op) -> bool:
     """A heavy compute op that becomes its own kernel."""
-    return op.name.startswith("linalg.") and op.name not in (
-        "linalg.fill", "linalg.yield", "linalg.index")
+    return op.name.startswith("linalg.") and op.name not in ("linalg.fill", "linalg.yield", "linalg.index")
 
 
 def _is_block_arg(value) -> bool:
@@ -71,7 +71,7 @@ class DispatchInfo:
 
     index: int
     symbol: str
-    root_op: str                       # e.g. "linalg.matmul"
+    root_op: str  # e.g. "linalg.matmul"
     n_operands: int
     result_types: list[str]
     prov: dict[str, str] = field(default_factory=dict)
@@ -133,7 +133,7 @@ def region_id_of_symbol(symbol: str) -> str | None:
     if not sep or not rid:
         return None
     if KERNEL_SYMBOL_INFIX not in core:
-        return None            # not a symbol this outliner emitted; claim nothing about it
+        return None  # not a symbol this outliner emitted; claim nothing about it
     return rid
 
 
@@ -287,9 +287,7 @@ def outline_dispatches(module, forward: str | None = None) -> OutlineResult:
             for old, new in zip(kop.results, c.results):
                 kmap[old] = new
         kblock.add_op(ReturnOp(*[kmap[r] for r in op.results]))
-        kfn = FuncOp(symbol, FunctionType.from_lists([p.type for p in params],
-                                                     result_types),
-                     Region([kblock]))
+        kfn = FuncOp(symbol, FunctionType.from_lists([p.type for p in params], result_types), Region([kblock]))
         kfn.sym_visibility = StringAttr("private")
         kernels.append(kfn)
 
@@ -299,12 +297,18 @@ def outline_dispatches(module, forward: str | None = None) -> OutlineResult:
         for old, new in zip(op.results, call.results):
             dmap[old] = new
 
-        dispatches.append(DispatchInfo(
-            index=idx, symbol=symbol, root_op=op.name, n_operands=len(params),
-            result_types=[str(t) for t in result_types], prov=prov))
+        dispatches.append(
+            DispatchInfo(
+                index=idx,
+                symbol=symbol,
+                root_op=op.name,
+                n_operands=len(params),
+                result_types=[str(t) for t in result_types],
+                prov=prov,
+            )
+        )
 
-    new_fn = FuncOp(fname, FunctionType.from_lists(
-        arg_types, list(fn.function_type.outputs.data)), Region([driver]))
+    new_fn = FuncOp(fname, FunctionType.from_lists(arg_types, list(fn.function_type.outputs.data)), Region([driver]))
     # Keep any function-level attributes (e.g. llvm.emit_c_interface) on the driver.
     for key, val in fn.attributes.items():
         if key not in ("sym_name", "function_type", "sym_visibility"):
@@ -331,8 +335,9 @@ def outline_dispatches(module, forward: str | None = None) -> OutlineResult:
             f"@{fname} calls {len(undefined)} symbol(s) this module never defines: "
             + ", ".join(f"@{sym}" for sym in undefined)
             + ". The capture left these operations to an external implementation, so there is "
-              "nothing to outline, compile or run for them -- they must be decomposed into linalg "
-              "at capture time (or defined here) before this model can execute.")
+            "nothing to outline, compile or run for them -- they must be decomposed into linalg "
+            "at capture time (or defined here) before this model can execute."
+        )
 
     out = ModuleOp([new_fn, *kernels])
     out.verify()

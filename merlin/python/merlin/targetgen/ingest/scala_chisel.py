@@ -5,6 +5,7 @@ The UCB targets (Gemmini, Saturn, Radiance) describe hardware in Scala/Chisel. W
 RTL. This deliberately conservative posture is why all non-toy synthesis is flagged
 ``requires_human_review``.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

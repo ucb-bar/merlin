@@ -13,6 +13,7 @@ Counts are per INSTRUCTION, not per distinct operator, so the number here is dir
 the ``N instructions`` the runtime reports.  Dependency-light on merlin, mirroring ``_et_export`` /
 ``_et_inspect``.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,8 +25,7 @@ import sys
 # beside merlin's own ``executorch.py``, and Python puts a script's own directory first on sys.path,
 # so ``import executorch`` would resolve to that sibling. Drop our own directory first.
 _HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path[:] = [p for p in sys.path
-               if p and os.path.abspath(p) != _HERE] or [p for p in sys.path if p]
+sys.path[:] = [p for p in sys.path if p and os.path.abspath(p) != _HERE] or [p for p in sys.path if p]
 
 
 def operator_instruction_counts(pte: str) -> dict[str, int]:
@@ -63,8 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     ns = ap.parse_args(argv)
 
     counts = operator_instruction_counts(ns.pte)
-    payload = {"pte": os.path.abspath(ns.pte), "operators": counts,
-               "n_kernel_instructions": sum(counts.values())}
+    payload = {"pte": os.path.abspath(ns.pte), "operators": counts, "n_kernel_instructions": sum(counts.values())}
     with open(ns.out, "w") as fh:
         json.dump(payload, fh, indent=2, sort_keys=True)
     return 0

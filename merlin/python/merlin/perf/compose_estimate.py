@@ -66,6 +66,7 @@ the terms that do vary anti-correlate. Disjointness is a strictly weaker questio
 asked only when the intervals do not touch, which at tile scale is almost never -- so this adds
 elimination power exactly where effect sizes are large and stays silent where that study says it must.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -77,10 +78,19 @@ from typing import Any
 #: map makes the histogram incomplete, and an incomplete histogram priced as whole understates the arm,
 #: so it refuses rather than dropping the command.
 OPCODE_EVENTS: Mapping[str, str] = {
-    "RES_PACK": "mvin2_B", "MATMUL_RESIDENT": "compute", "MATMUL": "compute",
-    "COMMIT": "mvout", "EVICT": "mvout", "FENCE": "fence", "BIAS_ADD": "compute",
-    "VECTOR_MAP": "compute", "VREDUCE": "compute", "CONV2D": "compute",
-    "MOVEMENT": "mvin_A", "ATTENTION_QK": "compute", "ATTENTION_PV": "compute",
+    "RES_PACK": "mvin2_B",
+    "MATMUL_RESIDENT": "compute",
+    "MATMUL": "compute",
+    "COMMIT": "mvout",
+    "EVICT": "mvout",
+    "FENCE": "fence",
+    "BIAS_ADD": "compute",
+    "VECTOR_MAP": "compute",
+    "VREDUCE": "compute",
+    "CONV2D": "compute",
+    "MOVEMENT": "mvin_A",
+    "ATTENTION_QK": "compute",
+    "ATTENTION_PV": "compute",
     "BATCHED_MATMUL": "compute",
 }
 
@@ -113,8 +123,14 @@ def command_events(buffer: object) -> dict[str, float] | None:
 
 #: Compute opcodes, most specific first. The class a buffer belongs to is the first of these it
 #: contains -- a declared property of the emitted program, not a fitted grouping.
-COMPUTE_CLASSES: tuple[str, ...] = ("CONV2D", "ATTENTION_QK", "ATTENTION_PV", "BATCHED_MATMUL",
-                                    "MATMUL_RESIDENT", "MATMUL")
+COMPUTE_CLASSES: tuple[str, ...] = (
+    "CONV2D",
+    "ATTENTION_QK",
+    "ATTENTION_PV",
+    "BATCHED_MATMUL",
+    "MATMUL_RESIDENT",
+    "MATMUL",
+)
 
 
 def compute_class(buffer: object) -> str | None:
@@ -133,8 +149,7 @@ def compute_class(buffer: object) -> str | None:
     """
     if not isinstance(buffer, Mapping):
         return None
-    opcodes = {str(row.get("opcode") or "") for row in (buffer.get("commands") or [])
-               if isinstance(row, Mapping)}
+    opcodes = {str(row.get("opcode") or "") for row in (buffer.get("commands") or []) if isinstance(row, Mapping)}
     for candidate in COMPUTE_CLASSES:
         if candidate in opcodes:
             return candidate
@@ -142,8 +157,11 @@ def compute_class(buffer: object) -> str | None:
 
 
 def _compute_command_count(buffer: Mapping[str, Any]) -> int:
-    return sum(1 for row in (buffer.get("commands") or [])
-               if isinstance(row, Mapping) and str(row.get("opcode") or "") in COMPUTE_CLASSES)
+    return sum(
+        1
+        for row in (buffer.get("commands") or [])
+        if isinstance(row, Mapping) and str(row.get("opcode") or "") in COMPUTE_CLASSES
+    )
 
 
 def cost_class(buffer: object) -> str | None:
@@ -217,25 +235,37 @@ def _serial_ceiling(target: str, buffer: Mapping[str, Any]) -> dict[str, Any]:
     """The per-command model's serial sum, plus its own measured error, as an upper bound."""
     events = command_events(buffer)
     if events is None:
-        return {"status": UNAVAILABLE,
-                "reason": ("the buffer declares a command outside the calibrated vocabulary, so its "
-                           "event histogram is incomplete and pricing it would understate this arm")}
+        return {
+            "status": UNAVAILABLE,
+            "reason": (
+                "the buffer declares a command outside the calibrated vocabulary, so its "
+                "event histogram is incomplete and pricing it would understate this arm"
+            ),
+        }
     artifact = cost_model_artifact(target)
     if artifact is None:
         return {"status": UNAVAILABLE, "reason": f"no calibrated cost model for target {target!r}"}
     try:
         from merlin.perf.linear_cost import LinearCostModel  # noqa: PLC0415
+
         model = LinearCostModel.load(artifact)
         cycles, spread = model.predict_with_band(events)
     except Exception as exc:  # noqa: BLE001 - an uncalibrated target screens nothing, and says so
-        return {"status": UNAVAILABLE,
-                "reason": f"the calibrated model for {target!r} did not load: {type(exc).__name__}"}
+        return {
+            "status": UNAVAILABLE,
+            "reason": f"the calibrated model for {target!r} did not load: {type(exc).__name__}",
+        }
     # The BAND IS ADDED, not subtracted. A ceiling that quoted the fit's central value would be beaten
     # by any program inside the model's own measured error, which is not a ceiling.
-    return {"status": DERIVED, "cycles": float(cycles) + float(spread), "central": float(cycles),
-            "model_band": float(spread), "events": events,
-            "basis": "per-command coefficients summed serially, plus the model's measured error",
-            "licence": "an upper bound: a serial sum credits no overlap this machine achieves"}
+    return {
+        "status": DERIVED,
+        "cycles": float(cycles) + float(spread),
+        "central": float(cycles),
+        "model_band": float(spread),
+        "events": events,
+        "basis": "per-command coefficients summed serially, plus the model's measured error",
+        "licence": "an upper bound: a serial sum credits no overlap this machine achieves",
+    }
 
 
 def _priced_macs(buffer: Mapping[str, Any]) -> tuple[int, bool, str]:
@@ -279,14 +309,18 @@ def _structural_floor(buffer: Mapping[str, Any], peak_macs_per_cycle: float | No
     # A LOWER BOUND OVER PARTIAL WORK IS STILL A LOWER BOUND. An unrecognised opcode means some
     # commands went uncounted, so the true demand is at least this -- which is the direction a floor
     # may err in. It is reported, because a floor built from half the program is much weaker.
-    return {"status": DERIVED, "cycles": macs / float(peak_macs_per_cycle), "macs": macs,
-            "counts_every_command": not partial, "macs_basis": basis,
-            "basis": "priced MAC demand over the target's derived structural peak",
-            "licence": "a floor the arm cannot beat; never an estimate of what it will cost"}
+    return {
+        "status": DERIVED,
+        "cycles": macs / float(peak_macs_per_cycle),
+        "macs": macs,
+        "counts_every_command": not partial,
+        "macs_basis": basis,
+        "basis": "priced MAC demand over the target's derived structural peak",
+        "licence": "a floor the arm cannot beat; never an estimate of what it will cost",
+    }
 
 
-def _empirical_ceiling(buffer: Mapping[str, Any],
-                       slowest_macs_per_cycle: float | None) -> dict[str, Any]:
+def _empirical_ceiling(buffer: Mapping[str, Any], slowest_macs_per_cycle: float | None) -> dict[str, Any]:
     """The same work over the slowest rate anything on this machine has been MEASURED at.
 
     The rate is a parameter, never derived here, and it must come from measured baselines. It is an
@@ -294,8 +328,7 @@ def _empirical_ceiling(buffer: Mapping[str, Any],
     why the containment rate has to be measured on held-out workloads rather than asserted.
     """
     if not slowest_macs_per_cycle or slowest_macs_per_cycle <= 0:
-        return {"status": UNAVAILABLE,
-                "reason": "no measured slowest rate was supplied, and one is not invented here"}
+        return {"status": UNAVAILABLE, "reason": "no measured slowest rate was supplied, and one is not invented here"}
     macs, partial, basis = _priced_macs(buffer)
     if not macs:
         return {"status": UNAVAILABLE, "reason": "the buffer prices no work"}
@@ -303,17 +336,27 @@ def _empirical_ceiling(buffer: Mapping[str, Any],
         # A CEILING BUILT ON PARTIAL WORK IS NOT A CEILING. The floor may err downward on uncounted
         # commands; the ceiling may not, because uncounted work makes the true cost larger while this
         # estimate stays the same. The asymmetry is the reason the two ends check different things.
-        return {"status": UNAVAILABLE,
-                "reason": ("some commands have no work-counting rule, so the priced work is a lower "
-                           "bound and dividing it by a rate cannot bound the cost from above")}
-    return {"status": DERIVED, "cycles": macs / float(slowest_macs_per_cycle), "macs": macs,
-            "slowest_macs_per_cycle": float(slowest_macs_per_cycle), "macs_basis": basis,
-            "basis": "priced MAC demand over the slowest measured rate on this machine",
-            "licence": "an EMPIRICAL ceiling: a program slower than anything measured would exceed it"}
+        return {
+            "status": UNAVAILABLE,
+            "reason": (
+                "some commands have no work-counting rule, so the priced work is a lower "
+                "bound and dividing it by a rate cannot bound the cost from above"
+            ),
+        }
+    return {
+        "status": DERIVED,
+        "cycles": macs / float(slowest_macs_per_cycle),
+        "macs": macs,
+        "slowest_macs_per_cycle": float(slowest_macs_per_cycle),
+        "macs_basis": basis,
+        "basis": "priced MAC demand over the slowest measured rate on this machine",
+        "licence": "an EMPIRICAL ceiling: a program slower than anything measured would exceed it",
+    }
 
 
-def band(buffer: object, *, target: str, peak_macs_per_cycle: float | None,
-         slowest_macs_per_cycle: float | None = None) -> dict[str, Any]:
+def band(
+    buffer: object, *, target: str, peak_macs_per_cycle: float | None, slowest_macs_per_cycle: float | None = None
+) -> dict[str, Any]:
     """The interval a program's cycle count must lie in, or a refusal naming what is missing.
 
     Both ends carry their own provenance and either may be absent. An absent end is reported as
@@ -321,29 +364,34 @@ def band(buffer: object, *, target: str, peak_macs_per_cycle: float | None,
     a weaker band, it is a false one.
     """
     if not isinstance(buffer, Mapping):
-        return {"status": UNAVAILABLE, "reason": "the command buffer is not a mapping",
-                "lower": None, "upper": None}
+        return {"status": UNAVAILABLE, "reason": "the command buffer is not a mapping", "lower": None, "upper": None}
     floor = _structural_floor(buffer, peak_macs_per_cycle)
     ceiling = _empirical_ceiling(buffer, slowest_macs_per_cycle)
     lower = floor["cycles"] if floor["status"] == DERIVED else None
     upper = ceiling["cycles"] if ceiling["status"] == DERIVED else None
-    out: dict[str, Any] = {"lower": lower, "upper": upper, "floor": floor, "ceiling": ceiling,
-                           "target": target,
-                           # Reported, never used as a bound -- see the refutation in the module
-                           # docstring. Kept so the histogram stays visible as a diagnostic.
-                           "command_histogram": command_events(buffer)}
+    out: dict[str, Any] = {
+        "lower": lower,
+        "upper": upper,
+        "floor": floor,
+        "ceiling": ceiling,
+        "target": target,
+        # Reported, never used as a bound -- see the refutation in the module
+        # docstring. Kept so the histogram stays visible as a diagnostic.
+        "command_histogram": command_events(buffer),
+    }
     if lower is None or upper is None:
         out["status"] = UNAVAILABLE
-        out["reason"] = "; ".join(
-            part["reason"] for part in (floor, ceiling) if part["status"] != DERIVED)
+        out["reason"] = "; ".join(part["reason"] for part in (floor, ceiling) if part["status"] != DERIVED)
         return out
     if upper < lower:
         # THE ONE INCONSISTENCY WORTH REFUSING OVER. A ceiling below a floor means one of the two is
         # wrong -- an uncalibrated event, a mis-derived peak -- and the interval it describes is
         # empty. Returning it would let `compare` declare two empty intervals disjoint.
         out["status"] = UNAVAILABLE
-        out["reason"] = (f"the serial ceiling {upper:.1f} is below the structural floor {lower:.1f}, "
-                         f"so one of the two bounds is wrong and the interval is empty")
+        out["reason"] = (
+            f"the serial ceiling {upper:.1f} is below the structural floor {lower:.1f}, "
+            f"so one of the two bounds is wrong and the interval is empty"
+        )
         return out
     out["status"] = DERIVED
     out["width"] = upper - lower
@@ -362,25 +410,43 @@ def compare(baseline: object, candidate: object) -> dict[str, Any]:
     if not isinstance(baseline, Mapping) or not isinstance(candidate, Mapping):
         return {"verdict": UNKNOWN, "reason": "a band is not a mapping"}
     if baseline.get("status") != DERIVED or candidate.get("status") != DERIVED:
-        return {"verdict": UNKNOWN,
-                "reason": "; ".join(str(side.get("reason") or "a band could not be derived")
-                                    for side in (baseline, candidate)
-                                    if side.get("status") != DERIVED)}
+        return {
+            "verdict": UNKNOWN,
+            "reason": "; ".join(
+                str(side.get("reason") or "a band could not be derived")
+                for side in (baseline, candidate)
+                if side.get("status") != DERIVED
+            ),
+        }
     b_lo, b_hi = float(baseline["lower"]), float(baseline["upper"])
     c_lo, c_hi = float(candidate["lower"]), float(candidate["upper"])
     if c_hi < b_lo:
-        return {"verdict": ELIMINATE, "faster": "candidate",
-                "reason": (f"the candidate's whole band [{c_lo:.1f}, {c_hi:.1f}] lies below the "
-                           f"baseline's [{b_lo:.1f}, {b_hi:.1f}]"),
-                "separation_cycles": b_lo - c_hi}
+        return {
+            "verdict": ELIMINATE,
+            "faster": "candidate",
+            "reason": (
+                f"the candidate's whole band [{c_lo:.1f}, {c_hi:.1f}] lies below the "
+                f"baseline's [{b_lo:.1f}, {b_hi:.1f}]"
+            ),
+            "separation_cycles": b_lo - c_hi,
+        }
     if b_hi < c_lo:
-        return {"verdict": ELIMINATE, "faster": "baseline",
-                "reason": (f"the candidate's whole band [{c_lo:.1f}, {c_hi:.1f}] lies above the "
-                           f"baseline's [{b_lo:.1f}, {b_hi:.1f}]"),
-                "separation_cycles": c_lo - b_hi}
-    return {"verdict": UNKNOWN,
-            "reason": (f"the bands overlap ([{b_lo:.1f}, {b_hi:.1f}] against [{c_lo:.1f}, {c_hi:.1f}]), "
-                       f"so neither program has been shown to be faster")}
+        return {
+            "verdict": ELIMINATE,
+            "faster": "baseline",
+            "reason": (
+                f"the candidate's whole band [{c_lo:.1f}, {c_hi:.1f}] lies above the "
+                f"baseline's [{b_lo:.1f}, {b_hi:.1f}]"
+            ),
+            "separation_cycles": c_lo - b_hi,
+        }
+    return {
+        "verdict": UNKNOWN,
+        "reason": (
+            f"the bands overlap ([{b_lo:.1f}, {b_hi:.1f}] against [{c_lo:.1f}, {c_hi:.1f}]), "
+            f"so neither program has been shown to be faster"
+        ),
+    }
 
 
 def contains(one_band: object, measured_cycles: float) -> bool | None:

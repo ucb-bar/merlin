@@ -3,6 +3,7 @@
 At the dispatch view each op becomes a command; dispatch counts, per-dispatch work, and
 DMA/compute overlap pressure are observable here.
 """
+
 from __future__ import annotations
 
 from merlin.design_pressure.metrics.dispatch import metric_dispatch

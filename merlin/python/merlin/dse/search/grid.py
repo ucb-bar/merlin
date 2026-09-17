@@ -4,6 +4,7 @@ Two entry points: a generic ``grid_search`` over a ``space`` dict (matching
 ``search_space.schema.yaml``), and ``grid_search_strategies`` which scores a fixed strategy set
 over the workload regions (the resident-regime scoreboard).
 """
+
 from __future__ import annotations
 
 import itertools
@@ -29,13 +30,15 @@ def grid_search_strategies(candidates, evaluator) -> list[dict]:
     for c in candidates:
         score = evaluator.evaluate(c)
         c.score = score
-        rows.append({
-            "strategy": c.artifact.get("id"),
-            "variant_class": c.artifact.get("variant_class"),
-            "features": ";".join(c.artifact.get("interface_features", [])),
-            "score": score,
-            "candidate": c,
-        })
+        rows.append(
+            {
+                "strategy": c.artifact.get("id"),
+                "variant_class": c.artifact.get("variant_class"),
+                "features": ";".join(c.artifact.get("interface_features", [])),
+                "score": score,
+                "candidate": c,
+            }
+        )
     return _sorted(rows)
 
 

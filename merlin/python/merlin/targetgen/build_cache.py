@@ -64,6 +64,7 @@ Switch off with ``MERLIN_ELF_BUILD_CACHE=0``; point it elsewhere by setting that
 directory. The store is a regenerable cache under ``out/artifacts/cache/elf-builds/`` and is safe to
 delete at any time; it self-prunes to ``MERLIN_ELF_BUILD_CACHE_ENTRIES`` (default 4000) oldest-first.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -74,10 +75,24 @@ import tempfile
 from pathlib import Path
 from typing import Any, Mapping
 
-__all__ = ["BUILD_IDENTITY_VERSION", "RECORD_VERSION", "KEY_MARKER", "DEFAULT_MAX_ENTRIES",
-           "disabled", "cache_root", "build_path", "recipe_token", "toolchain_token",
-           "build_identity", "artifact_identity", "contents", "reuse", "store",
-           "metadata_for", "forget"]
+__all__ = [
+    "BUILD_IDENTITY_VERSION",
+    "RECORD_VERSION",
+    "KEY_MARKER",
+    "DEFAULT_MAX_ENTRIES",
+    "disabled",
+    "cache_root",
+    "build_path",
+    "recipe_token",
+    "toolchain_token",
+    "build_identity",
+    "artifact_identity",
+    "contents",
+    "reuse",
+    "store",
+    "metadata_for",
+    "forget",
+]
 
 #: Version of the payload :func:`build_identity` hashes. Bumping it invalidates every stored build,
 #: which is the correct effect of changing what "the same inputs" means.
@@ -129,8 +144,9 @@ def cache_root() -> "Path | None":
             d.mkdir(parents=True, exist_ok=True)
             return d
         from merlin.common.artifacts import cache_dir
+
         return cache_dir("elf-builds")
-    except OSError:                  # an unwritable store is a cache that cannot be used, not a fault
+    except OSError:  # an unwritable store is a cache that cannot be used, not a fault
         return None
 
 
@@ -159,6 +175,7 @@ def _file_sha(path: Path) -> "str | None":
 # WHAT BUILT IT
 # ---------------------------------------------------------------------------------------------
 
+
 def build_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
     """Every file whose bytes decide what the build EMITS, or ``None`` if one cannot be located.
 
@@ -174,6 +191,7 @@ def build_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
     or sandbox access; it only identifies code that must invalidate a cached executable.
     """
     from merlin.common.paths import repo_root
+
     root = Path(repo_root())
     files: list[Path] = []
     for rel in _BUILD_MODULES:
@@ -190,9 +208,10 @@ def build_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
     if target:
         try:
             from merlin.runtime.backends import base as _backends
+
             mod = _backends.get_backend(str(target))
             home = Path(getattr(mod, "__file__", "") or "").parent
-        except Exception:            # noqa: BLE001 -- no resolvable backend: no build identity
+        except Exception:  # noqa: BLE001 -- no resolvable backend: no build identity
             return None
         if not home.is_dir():
             return None
@@ -201,6 +220,7 @@ def build_path(target: "str | None" = None) -> "tuple[Path, ...] | None":
         if declared is not None:
             try:
                 from merlin.targetgen import target_registry
+
                 info = target_registry.resolve(str(target))
                 package = Path(info.external_root or info.base).absolute()
                 module_file = Path(mod.__file__).absolute()
@@ -247,6 +267,7 @@ def toolchain_token(compiler: "str | Path") -> "str | None":
     value = None
     try:
         import subprocess
+
         exe = shutil.which(key) or key
         parts = [str(Path(exe).resolve())]
         for flag in ("--version", "-dumpmachine"):
@@ -255,7 +276,7 @@ def toolchain_token(compiler: "str | Path") -> "str | None":
                 raise OSError(f"{exe} {flag} returned {proc.returncode}")
             parts.append(proc.stdout.strip())
         value = _digest_of(parts)
-    except Exception:                # noqa: BLE001 -- unestablished toolchain: fail closed, no key
+    except Exception:  # noqa: BLE001 -- unestablished toolchain: fail closed, no key
         value = None
     _TOOLCHAIN_MEMO[key] = value
     return value
@@ -274,24 +295,25 @@ def recipe_token(recipe: Any) -> "dict | None":
         record = {
             "march": recipe.march(),
             "load_address": recipe.load_address,
-            "compile": [str(x) for x in recipe.compile_command(source=placeholder_src,
-                                                               output=placeholder_obj)],
-            "link": [str(x) for x in recipe.link_command(objects=[placeholder_obj],
-                                                         output=Path("<elf>"),
-                                                         link_script=Path("<script>.ld"))],
+            "compile": [str(x) for x in recipe.compile_command(source=placeholder_src, output=placeholder_obj)],
+            "link": [
+                str(x)
+                for x in recipe.link_command(
+                    objects=[placeholder_obj], output=Path("<elf>"), link_script=Path("<script>.ld")
+                )
+            ],
         }
         policy = getattr(recipe, "kernel_stack_frame", None)
-        record["kernel_stack_frame"] = policy.record() if callable(
-            getattr(policy, "record", None)) else None
+        record["kernel_stack_frame"] = policy.record() if callable(getattr(policy, "record", None)) else None
         sources = {}
         for src in (Path(recipe.link_script), *(Path(s) for s in recipe.support_sources)):
             sha = _file_sha(src)
-            if sha is None:              # a support source we cannot read is a build we cannot key
+            if sha is None:  # a support source we cannot read is a build we cannot key
                 return None
             sources[src.name] = sha
         record["sources"] = sources
         return record
-    except Exception:                    # noqa: BLE001 -- an unreadable recipe is not a key
+    except Exception:  # noqa: BLE001 -- an unreadable recipe is not a key
         return None
 
 
@@ -313,12 +335,14 @@ def _build_path_digest(files) -> str:
     memo_key = _digest_of(signature)
     if memo_key not in _BUILD_PATH_MEMO:
         from merlin.common.provenance import source_digest
+
         _BUILD_PATH_MEMO[memo_key] = source_digest([str(p) for p in files])
     return _BUILD_PATH_MEMO[memo_key]
 
 
-def artifact_identity(*, kind: str, target: str, inputs: "Mapping", source_files,
-                      toolchain: "str | None") -> "str | None":
+def artifact_identity(
+    *, kind: str, target: str, inputs: "Mapping", source_files, toolchain: "str | None"
+) -> "str | None":
     """Content identity for a build that does NOT go through a declared harness recipe.
 
     :func:`build_identity` covers the shared operator build path, whose inputs are a recipe and a
@@ -347,12 +371,13 @@ def artifact_identity(*, kind: str, target: str, inputs: "Mapping", source_files
             "build_path": _build_path_digest(files),
         }
         return _digest_of(payload)
-    except Exception:                    # noqa: BLE001 -- an unhashable input is not a key
+    except Exception:  # noqa: BLE001 -- an unhashable input is not a key
         return None
 
 
-def build_identity(*, target: str, lowered_mlir_text: str, cb: Mapping,
-                   inputs: "Mapping | None", recipe: Any) -> "str | None":
+def build_identity(
+    *, target: str, lowered_mlir_text: str, cb: Mapping, inputs: "Mapping | None", recipe: Any
+) -> "str | None":
     """Content identity for exactly what one compile would produce, or ``None`` to build normally.
 
     Every component must resolve. See the module docstring for what is in the key and what is
@@ -382,13 +407,14 @@ def build_identity(*, target: str, lowered_mlir_text: str, cb: Mapping,
             "build_path": _build_path_digest(files),
         }
         return _digest_of(payload)
-    except Exception:                    # noqa: BLE001 -- an unhashable input is not a key
+    except Exception:  # noqa: BLE001 -- an unhashable input is not a key
         return None
 
 
 # ---------------------------------------------------------------------------------------------
 # THE STORE
 # ---------------------------------------------------------------------------------------------
+
 
 def contents(workdir: "str | Path") -> list:
     """Every file in the build directory, as relative paths, excluding the key marker.
@@ -452,8 +478,7 @@ def reuse(workdir: "str | Path", key: "str | None", elf_name: "str | None" = Non
         # asks the record instead (below), which is the whole reason elf_name is optional.
         try:
             elf = work / elf_name
-            if elf.is_file() and marker.is_file() \
-                    and marker.read_text(encoding="utf-8").strip() == key:
+            if elf.is_file() and marker.is_file() and marker.read_text(encoding="utf-8").strip() == key:
                 return elf
         except OSError:
             pass
@@ -471,40 +496,39 @@ def reuse(workdir: "str | Path", key: "str | None", elf_name: "str | None" = Non
     if not isinstance(files, dict) or record.get("elf") not in files:
         return None
     if elf_name and record.get("elf") != elf_name:
-        return None                  # a record for a different primary output is not this build
+        return None  # a record for a different primary output is not this build
     staged = []
     for rel, meta in files.items():
         src = entry / "files" / rel
         if not src.is_file() or _file_sha(src) != (meta or {}).get("sha256"):
-            return None              # corrupt or truncated entry: rebuild rather than restore part
+            return None  # corrupt or truncated entry: rebuild rather than restore part
         staged.append((src, rel, meta))
     try:
         work.mkdir(parents=True, exist_ok=True)
         for src, rel, meta in staged:
             dst = work / rel
             if _already_there(dst, meta):
-                continue        # the emit step's own output: present by construction, and identical
+                continue  # the emit step's own output: present by construction, and identical
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
             mode = meta.get("mode")
             if isinstance(mode, int):
                 os.chmod(dst, mode)
         marker.write_text(key, encoding="utf-8")
-    except OSError:                  # a restore we could not finish must not look like a build
+    except OSError:  # a restore we could not finish must not look like a build
         try:
             (work / record["elf"]).unlink()
         except OSError:
             pass
         return None
-    try:                             # a hit is a use: keep the entry young for the pruner
+    try:  # a hit is a use: keep the entry young for the pruner
         os.utime(entry, None)
     except OSError:
         pass
     return work / record["elf"]
 
 
-def store(key: "str | None", workdir: "str | Path", elf_name: str,
-          metadata: "Mapping | None" = None) -> None:
+def store(key: "str | None", workdir: "str | Path", elf_name: str, metadata: "Mapping | None" = None) -> None:
     """Keep every file this build created or changed, under ``key``. Never raises.
 
     The entry is assembled in a temporary directory and moved into place, so a concurrent worker
@@ -545,25 +569,34 @@ def store(key: "str | None", workdir: "str | Path", elf_name: str,
             # Digested from the COPY: that is the byte sequence a restore will hand back, so if the
             # source changed under us mid-copy the record describes what was actually stored.
             st = src.stat()
-            files[rel] = {"sha256": _file_sha(dst), "mode": st.st_mode & 0o777,
-                          "size": dst.stat().st_size}
+            files[rel] = {"sha256": _file_sha(dst), "mode": st.st_mode & 0o777, "size": dst.stat().st_size}
         if elf_name not in files:
             raise OSError("the executable did not survive staging")
         # METADATA IS PART OF THE BUILD'S RESULT, not decoration. One target stamps WHICH toolchain
         # produced the graded executable, precisely so a fallback can never be silent; restoring the
         # files without that stamp would make a cached build the one case where the stamp went missing.
-        (tmp / "record.json").write_text(json.dumps(
-            {"version": RECORD_VERSION, "key": key, "elf": elf_name, "files": files,
-             "metadata": {str(k): v for k, v in dict(metadata or {}).items()}},
-            sort_keys=True, indent=1), encoding="utf-8")
+        (tmp / "record.json").write_text(
+            json.dumps(
+                {
+                    "version": RECORD_VERSION,
+                    "key": key,
+                    "elf": elf_name,
+                    "files": files,
+                    "metadata": {str(k): v for k, v in dict(metadata or {}).items()},
+                },
+                sort_keys=True,
+                indent=1,
+            ),
+            encoding="utf-8",
+        )
         try:
             os.rename(tmp, entry)
             tmp = None
-        except OSError:              # another worker stored the same build first: theirs is identical
+        except OSError:  # another worker stored the same build first: theirs is identical
             pass
         (work / KEY_MARKER).write_text(key, encoding="utf-8")
         _prune(root)
-    except Exception:                # noqa: BLE001 -- a cache that cannot write is not a build failure
+    except Exception:  # noqa: BLE001 -- a cache that cannot write is not a build failure
         pass
     finally:
         if tmp is not None:
@@ -607,8 +640,13 @@ def forget(workdir: "str | Path") -> None:
 def _prune(root: Path) -> None:
     """Keep the store bounded, oldest-first. Best-effort: a cache that cannot prune still works."""
     try:
-        entries = [d for shard in root.iterdir() if shard.is_dir()
-                   for d in shard.iterdir() if d.is_dir() and not d.name.startswith(".staging_")]
+        entries = [
+            d
+            for shard in root.iterdir()
+            if shard.is_dir()
+            for d in shard.iterdir()
+            if d.is_dir() and not d.name.startswith(".staging_")
+        ]
         excess = len(entries) - _max_entries()
         if excess <= 0:
             return

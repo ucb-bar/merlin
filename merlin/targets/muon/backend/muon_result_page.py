@@ -12,17 +12,17 @@ Addresses are never assumed here.  Muon addresses come from the linked ELF;
 the SoC address is that symbol plus the offset parsed from the fuse helper that
 performs the mapping.
 """
+
 from __future__ import annotations
 
-from pathlib import Path
 import shutil
 import struct
 import subprocess
+from pathlib import Path
 from typing import Any
 
-
-RESULT_READY = 0x4D525231   # software ABI token, "MRR1"
-RESULT_ACK = 0x4D524131     # software ABI token, "MRA1"
+RESULT_READY = 0x4D525231  # software ABI token, "MRR1"
+RESULT_ACK = 0x4D524131  # software ABI token, "MRA1"
 STATUS_SYMBOL = "merlin_result_status"
 MAILBOX_SYMBOL = "merlin_result_mailbox"
 MAILBOX_WORDS = 32
@@ -46,8 +46,7 @@ def ack_token(sequence: int) -> int:
 
 def result_specs(outputs: list[Any]) -> list[dict[str, Any]]:
     """Stable result declarations corresponding to harness output arguments."""
-    return [{"name": out.name, "elements": int(out.rows) * int(out.cols), "dtype": out.dtype}
-            for out in outputs]
+    return [{"name": out.name, "elements": int(out.rows) * int(out.cols), "dtype": out.dtype} for out in outputs]
 
 
 def symbol_layouts(elf: str | Path, names: tuple[str, ...]) -> dict[str, dict[str, int]]:
@@ -55,8 +54,7 @@ def symbol_layouts(elf: str | Path, names: tuple[str, ...]) -> dict[str, dict[st
     readelf = shutil.which("readelf")
     if readelf is None:
         raise RuntimeError("readelf is required to resolve declared result symbols")
-    text = subprocess.run([readelf, "-Ws", str(elf)], check=True, capture_output=True,
-                          text=True).stdout
+    text = subprocess.run([readelf, "-Ws", str(elf)], check=True, capture_output=True, text=True).stdout
     wanted = set(names)
     found: dict[str, dict[str, int]] = {}
     for line in text.splitlines():
@@ -86,11 +84,17 @@ def manifest_from_elf(elf: str | Path, outputs: list[Any], *, soc_offset: int) -
     mailbox_local = addresses[MAILBOX_SYMBOL]
     return {
         "schema": "merlin.muon-result-mailbox.v2",
-        "status": {"symbol": STATUS_SYMBOL, "muon_address": status_local,
-                   "soc_address": status_local + int(soc_offset)},
-        "mailbox": {"symbol": MAILBOX_SYMBOL, "muon_address": mailbox_local,
-                    "soc_address": mailbox_local + int(soc_offset),
-                    "words": MAILBOX_WORDS},
+        "status": {
+            "symbol": STATUS_SYMBOL,
+            "muon_address": status_local,
+            "soc_address": status_local + int(soc_offset),
+        },
+        "mailbox": {
+            "symbol": MAILBOX_SYMBOL,
+            "muon_address": mailbox_local,
+            "soc_address": mailbox_local + int(soc_offset),
+            "words": MAILBOX_WORDS,
+        },
         # Output declarations carry shape/type only.  Their backing buffers are
         # private to the Muon harness and are never read by another bus master.
         "outputs": [{k: spec[k] for k in ("name", "elements", "dtype")} for spec in specs],
@@ -120,7 +124,7 @@ def _f32_bits(value: float) -> int:
 def _hex_words(words: list[int], *, indent: str = "  ") -> str:
     rows = []
     for start in range(0, len(words), 8):
-        rows.append(indent + ", ".join(f"0x{x:08x}u" for x in words[start:start + 8]) + ",")
+        rows.append(indent + ", ".join(f"0x{x:08x}u" for x in words[start : start + 8]) + ",")
     return "\n".join(rows)
 
 
@@ -148,17 +152,16 @@ def render_carrier(manifest: dict[str, Any], expected: dict[str, Any], policy: d
         values = _flat(expected[name])
         count = int(spec["elements"])
         if len(values) != count:
-            raise ValueError(
-                f"expected output {name!r} has {len(values)} elements, manifest declares {count}")
+            raise ValueError(f"expected output {name!r} has {len(values)} elements, manifest declares {count}")
         total += count
         offset = total - count
         if compare in ("exact_int", "exact") and str(spec.get("dtype")) == "i32":
             words = [int(v) & 0xFFFFFFFF for v in values]
-            arrays.append(f"static const uint32_t expected_{index}[{count}] = {{\n"
-                          f"{_hex_words(words)}\n}};")
+            arrays.append(f"static const uint32_t expected_{index}[{count}] = {{\n{_hex_words(words)}\n}};")
             checks.append(
                 f"  if (index >= {offset}u && index < {offset + count}u)\n"
-                f"    return got != expected_{index}[index - {offset}u];")
+                f"    return got != expected_{index}[index - {offset}u];"
+            )
             continue
 
         # Float outputs (including exact float) are graded as an interval.  Exact
@@ -170,16 +173,15 @@ def render_carrier(manifest: dict[str, Any], expected: dict[str, Any], policy: d
             tol = 0.0 if compare in ("exact_int", "exact") else atol + rtol * abs(want)
             lower.append(_f32_bits(want - tol))
             upper.append(_f32_bits(want + tol))
-        arrays.append(f"static const uint32_t lower_{index}[{count}] = {{\n"
-                      f"{_hex_words(lower)}\n}};")
-        arrays.append(f"static const uint32_t upper_{index}[{count}] = {{\n"
-                      f"{_hex_words(upper)}\n}};")
+        arrays.append(f"static const uint32_t lower_{index}[{count}] = {{\n{_hex_words(lower)}\n}};")
+        arrays.append(f"static const uint32_t upper_{index}[{count}] = {{\n{_hex_words(upper)}\n}};")
         checks.append(
             f"  if (index >= {offset}u && index < {offset + count}u) {{\n"
             f"    uint32_t key = ordered_f32(got);\n"
             f"    uint32_t nan = ((got & 0x7f800000u) == 0x7f800000u) && (got & 0x007fffffu);\n"
             f"    return nan || key < ordered_f32(lower_{index}[index - {offset}u]) "
-            f"|| key > ordered_f32(upper_{index}[index - {offset}u]);\n  }}")
+            f"|| key > ordered_f32(upper_{index}[index - {offset}u]);\n  }}"
+        )
 
     status = int((manifest.get("status") or {})["soc_address"])
     mailbox = manifest.get("mailbox") or {}
@@ -259,8 +261,12 @@ def render_compact_carrier(manifest: dict[str, Any], *, expected_elements: int) 
     address space.  The changing READY/ACK token and exact element count keep stale, partial, malformed,
     and truncated summaries fail-closed while avoiding one coherent transaction per 32 output words.
     """
-    if not isinstance(expected_elements, int) or isinstance(expected_elements, bool) \
-            or expected_elements <= 0 or expected_elements > 0xFFFFFFFF:
+    if (
+        not isinstance(expected_elements, int)
+        or isinstance(expected_elements, bool)
+        or expected_elements <= 0
+        or expected_elements > 0xFFFFFFFF
+    ):
         raise ValueError("compact result carrier requires a positive uint32 element count")
     status = int((manifest.get("status") or {})["soc_address"])
     mailbox = manifest.get("mailbox") or {}

@@ -4,6 +4,7 @@ Generic and dependency-free: given a list of points (dicts) and the objective ke
 direction per objective (minimise or maximise), return the non-dominated subset. Used to
 compare the hardware-only and interface-aware design frontiers (latency vs area / energy).
 """
+
 from __future__ import annotations
 
 
@@ -53,8 +54,7 @@ def _same(a: dict, b: dict, objectives: list[str]) -> bool:
     return all(a[k] == b[k] for k in objectives)
 
 
-def frontier_dominates(front_a: list[dict], front_b: list[dict],
-                       objectives: list[str], modes=None) -> bool:
+def frontier_dominates(front_a: list[dict], front_b: list[dict], objectives: list[str], modes=None) -> bool:
     """True iff every point on ``front_b`` is dominated by (or equal to) some point on ``front_a``.
 
     Used to assert the interface-aware frontier dominates the hardware-only frontier.

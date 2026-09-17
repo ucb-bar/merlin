@@ -24,6 +24,7 @@ Both are reported; neither is presented as the other.
 them yields ``stuck=False`` with a reason. A detector that declares a plateau it cannot evidence would
 cut productive runs, and the first thing an operator does with a false positive is switch it off.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -60,19 +61,25 @@ class Plateau:
         """One plain statement for whoever reads it -- the agent, a log, or a run record."""
         if not self.n_grades:
             return "no grades yet, so nothing can be said about progress."
-        head = (f"{self.latest_passed}/{self.n_capsules} passing after {self.n_grades} grade(s); "
-                f"best so far {self.best_passed}.")
+        head = (
+            f"{self.latest_passed}/{self.n_capsules} passing after {self.n_grades} grade(s); "
+            f"best so far {self.best_passed}."
+        )
         if self.stalled_grades:
             head += f" No improvement for the last {self.stalled_grades} grade(s)."
         if self.never_passed:
-            head += (f" {len(self.never_passed)} capsule(s) have NEVER passed in this run"
-                     f" ({', '.join(self.never_passed[:4])}"
-                     f"{', …' if len(self.never_passed) > 4 else ''})"
-                     " — if repeated attempts have not moved them, the remaining work may not be"
-                     " reachable by more of the same approach.")
+            head += (
+                f" {len(self.never_passed)} capsule(s) have NEVER passed in this run"
+                f" ({', '.join(self.never_passed[:4])}"
+                f"{', …' if len(self.never_passed) > 4 else ''})"
+                " — if repeated attempts have not moved them, the remaining work may not be"
+                " reachable by more of the same approach."
+            )
         if self.regressed:
-            head += (f" ⚠ {len(self.regressed)} capsule(s) passed earlier and do not now"
-                     f" ({', '.join(self.regressed[:4])}) — check for a regression you introduced.")
+            head += (
+                f" ⚠ {len(self.regressed)} capsule(s) passed earlier and do not now"
+                f" ({', '.join(self.regressed[:4])}) — check for a regression you introduced."
+            )
         return head
 
 
@@ -112,7 +119,7 @@ def progress_key(grade) -> tuple:
     rows = list(rows.values()) if isinstance(rows, dict) else (rows if isinstance(rows, list) else [])
     for row in rows:
         if not isinstance(row, dict):
-            residual += _STRUCTURAL_RESIDUAL          # a status string carries no mismatch to count
+            residual += _STRUCTURAL_RESIDUAL  # a status string carries no mismatch to count
             continue
         if row.get("status") == "pass" or row.get("pass") is True:
             continue
@@ -150,22 +157,20 @@ def assess(grades, *, stall_threshold: int = 4) -> Plateau:
     ever, now = set(), _statuses(latest)
     for grade in grades:
         ever |= {name for name, passed in _statuses(grade).items() if passed}
-    out.never_passed = tuple(sorted(name for name, passed in now.items()
-                                    if not passed and name not in ever))
-    out.regressed = tuple(sorted(name for name, passed in now.items()
-                                 if not passed and name in ever))
+    out.never_passed = tuple(sorted(name for name, passed in now.items() if not passed and name not in ever))
+    out.regressed = tuple(sorted(name for name, passed in now.items() if not passed and name in ever))
 
     if len(grades) < MIN_GRADES:
-        out.reason = (f"only {len(grades)} grade(s) of history; {MIN_GRADES} are needed before a "
-                      f"plateau can be evidenced")
+        out.reason = (
+            f"only {len(grades)} grade(s) of history; {MIN_GRADES} are needed before a plateau can be evidenced"
+        )
         return out
     if not out.n_capsules:
         out.reason = "the latest grade records no capsule count, so progress cannot be measured"
         return out
     if out.stalled_grades >= max(1, stall_threshold):
         out.stuck = True
-        out.reason = (f"no improvement in pass count or residual mismatch for {out.stalled_grades} "
-                      f"consecutive grades")
+        out.reason = f"no improvement in pass count or residual mismatch for {out.stalled_grades} consecutive grades"
         return out
-    out.reason = (f"progress within the last {max(1, stall_threshold)} grade(s); not a plateau")
+    out.reason = f"progress within the last {max(1, stall_threshold)} grade(s); not a plateau"
     return out

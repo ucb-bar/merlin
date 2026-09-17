@@ -4,6 +4,7 @@ A pure function of the runtime module: reads the device/backend, the create op's
 target + resource table, and the ordered appends, and produces the dict the Python
 engine (``merlin.runtime``) executes — conforming to command_buffer.schema.yaml.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -69,8 +70,9 @@ def emit_command_buffer(module) -> dict[str, Any]:
     """
     buffers = emit_command_buffers(module)
     if len(buffers) != 1:
-        raise LoweringError(f"this module describes {len(buffers)} command buffers; "
-                            f"use emit_command_buffers() to get them all")
+        raise LoweringError(
+            f"this module describes {len(buffers)} command buffers; use emit_command_buffers() to get them all"
+        )
     return buffers[0]
 
 
@@ -88,9 +90,8 @@ def _emit_one(module, create) -> dict[str, Any]:
         if not isinstance(op, r.CommandBufferAppendOp):
             continue
         if op.cb.owner is not create:
-            continue                      # belongs to another buffer; see the docstring above
-        cmd: dict[str, Any] = {"opcode": op.opcode.data,
-                               "operands": _attr_to_py(op.args)}
+            continue  # belongs to another buffer; see the docstring above
+        cmd: dict[str, Any] = {"opcode": op.opcode.data, "operands": _attr_to_py(op.args)}
         attrs = _attr_to_py(op.attrs) if op.attrs is not None else {}
         if attrs:
             cmd["attributes"] = attrs
@@ -103,8 +104,9 @@ def _emit_one(module, create) -> dict[str, Any]:
     # Vector-family destinations are RESULTS too — a vector workload declares no create.outputs, so also
     # collect VECTOR_MAP/VREDUCE dsts by role, else such a result is mislabelled an input and silently
     # not read back. The matmul path names its result through create.outputs; union covers both engines.
-    produced = {c["operands"]["dst"] for c in commands
-                if c["opcode"] in ("VECTOR_MAP", "VREDUCE") and "dst" in c["operands"]}
+    produced = {
+        c["operands"]["dst"] for c in commands if c["opcode"] in ("VECTOR_MAP", "VREDUCE") and "dst" in c["operands"]
+    }
     outputs_set = set(output_names) | produced
     tensors: dict[str, Any] = {}
     table = create.tensors.data if create.tensors is not None else {}

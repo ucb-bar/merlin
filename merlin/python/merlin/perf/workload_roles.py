@@ -28,6 +28,7 @@ The one threshold that *is* corpus-derived, the headroom floor, is derived from 
 engine occupancy the corpus resolves rather than written as a cycle count, so it travels between
 targets with different clocks and different unit granularities.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -138,14 +139,14 @@ class RoleSplit:
         """Role counts, with CALIBRATION split by the term it calibrates."""
         out: Counter = Counter()
         for r in self.roles.values():
-            out[r.role.value if r.role is not Role.CALIBRATION
-                else f"calibration:{r.calibrates}"] += 1
+            out[r.role.value if r.role is not Role.CALIBRATION else f"calibration:{r.calibrates}"] += 1
         return out
 
     def named(self, role: Role, calibrates: str | None = None) -> list[str]:
         """Workload names with a given role (and, for CALIBRATION, a given term)."""
-        return sorted(n for n, r in self.roles.items()
-                      if r.role is role and (calibrates is None or r.calibrates == calibrates))
+        return sorted(
+            n for n, r in self.roles.items() if r.role is role and (calibrates is None or r.calibrates == calibrates)
+        )
 
     @property
     def optimize(self) -> list[str]:
@@ -163,9 +164,9 @@ def _headroom_cycles(source: ActivitySource, grouping: Mapping[str, str] | None)
     return vals[1] if len(vals) > 1 else 0
 
 
-def classify_workloads(sources: Iterable[ActivitySource], *,
-                       policy: RolePolicy | None = None,
-                       grouping: Mapping[str, str] | None = None) -> RoleSplit:
+def classify_workloads(
+    sources: Iterable[ActivitySource], *, policy: RolePolicy | None = None, grouping: Mapping[str, str] | None = None
+) -> RoleSplit:
     """Split a corpus into performance roles from its cost decomposition.
 
     Needs the whole corpus, not one workload: two of the rules are corpus-relative (the regime, and
@@ -180,27 +181,42 @@ def classify_workloads(sources: Iterable[ActivitySource], *,
     modal = corpus.modal_binding_kind()
     quanta = [r.busy_cycles for s in sources for r in s.engines if r.busy_cycles > 0]
     quantum: int | _Unknown = min(quanta) if quanta else UNKNOWN
-    floor: int | _Unknown = (
-        int(round(pol.min_headroom_quanta * quantum)) if quantum is not UNKNOWN else UNKNOWN)
+    floor: int | _Unknown = int(round(pol.min_headroom_quanta * quantum)) if quantum is not UNKNOWN else UNKNOWN
 
     roles: dict[str, WorkloadRole] = {}
     for name, dec in corpus.workloads.items():
         roles[name] = _classify_one(dec, by_name[name], pol, modal, floor, grouping)
 
-    return RoleSplit(roles=roles, unavailable=dict(corpus.unavailable), policy=pol,
-                     modal_binding_kind=modal, quantum_cycles=quantum,
-                     headroom_floor_cycles=floor)
+    return RoleSplit(
+        roles=roles,
+        unavailable=dict(corpus.unavailable),
+        policy=pol,
+        modal_binding_kind=modal,
+        quantum_cycles=quantum,
+        headroom_floor_cycles=floor,
+    )
 
 
-def _classify_one(dec: Decomposition, source: ActivitySource, pol: RolePolicy,
-                  modal: ResourceKind | _Unknown, floor: int | _Unknown,
-                  grouping: Mapping[str, str] | None) -> WorkloadRole:
+def _classify_one(
+    dec: Decomposition,
+    source: ActivitySource,
+    pol: RolePolicy,
+    modal: ResourceKind | _Unknown,
+    floor: int | _Unknown,
+    grouping: Mapping[str, str] | None,
+) -> WorkloadRole:
     total = dec.total_cycles
     hr = _headroom_cycles(source, grouping)
-    common = dict(workload=dec.workload, total_cycles=total, binding=dec.binding,
-                  binding_kind=dec.binding_kind, binding_share=dec.binding_share,
-                  fixed_share=dec.fixed_share, headroom_cycles=hr,
-                  headroom_share=hr / total if total else 0.0)
+    common = dict(
+        workload=dec.workload,
+        total_cycles=total,
+        binding=dec.binding,
+        binding_kind=dec.binding_kind,
+        binding_share=dec.binding_share,
+        fixed_share=dec.fixed_share,
+        headroom_cycles=hr,
+        headroom_share=hr / total if total else 0.0,
+    )
 
     busy, kinds, _ = resource_groups(source, grouping)
     active = [g for g, v in busy.items() if v / total > pol.isolation_max_share] if total else []
@@ -208,43 +224,62 @@ def _classify_one(dec: Decomposition, source: ActivitySource, pol: RolePolicy,
     # 1. one term, no confound.
     if len(active) == 1:
         term = kinds[active[0]].value
-        return WorkloadRole(role=Role.CALIBRATION, calibrates=term,
-                            rule=f"exactly one engine group ({active[0]}) carries work; every other "
-                                 f"is at or below {pol.isolation_max_share:.0%} of the run, so this "
-                                 f"isolates the {term} term with no confound", **common)
+        return WorkloadRole(
+            role=Role.CALIBRATION,
+            calibrates=term,
+            rule=f"exactly one engine group ({active[0]}) carries work; every other "
+            f"is at or below {pol.isolation_max_share:.0%} of the run, so this "
+            f"isolates the {term} term with no confound",
+            **common,
+        )
 
     # 2. the intercept dominates: too small for its rates to be visible.
     if dec.fixed_share >= pol.fixed_share_min:
-        return WorkloadRole(role=Role.CALIBRATION, calibrates=FIXED_TERM,
-                            rule=f"the fixed residual is {dec.fixed_share:.1%} of the run, at or "
-                                 f"above the {pol.fixed_share_min:.1%} policy threshold; startup and "
-                                 f"pipeline fill/drain dominate, so this measures the intercept",
-                            **common)
+        return WorkloadRole(
+            role=Role.CALIBRATION,
+            calibrates=FIXED_TERM,
+            rule=f"the fixed residual is {dec.fixed_share:.1%} of the run, at or "
+            f"above the {pol.fixed_share_min:.1%} policy threshold; startup and "
+            f"pipeline fill/drain dominate, so this measures the intercept",
+            **common,
+        )
 
     # 3. off-regime: binds a different kind from the rest of the corpus.
     if modal is not UNKNOWN and dec.binding_kind is not modal:
-        return WorkloadRole(role=Role.CALIBRATION, calibrates=dec.binding_kind.value,
-                            rule=f"binds on {dec.binding!r} ({dec.binding_kind.value}) while the "
-                                 f"corpus regime is {modal.value}; this is the instrument for the "
-                                 f"minority term",
-                            **common)
+        return WorkloadRole(
+            role=Role.CALIBRATION,
+            calibrates=dec.binding_kind.value,
+            rule=f"binds on {dec.binding!r} ({dec.binding_kind.value}) while the "
+            f"corpus regime is {modal.value}; this is the instrument for the "
+            f"minority term",
+            **common,
+        )
 
     # 4. in the regime, but nothing to act on.
     if floor is not UNKNOWN and hr < floor:
-        return WorkloadRole(role=Role.NO_LEVER, calibrates=None,
-                            rule=f"headroom {hr} cyc is below the corpus floor of {floor} cyc "
-                                 f"({pol.min_headroom_quanta}x the {int(floor / pol.min_headroom_quanta)}-cycle "
-                                 f"smallest resolvable engine occupancy)",
-                            **common)
+        return WorkloadRole(
+            role=Role.NO_LEVER,
+            calibrates=None,
+            rule=f"headroom {hr} cyc is below the corpus floor of {floor} cyc "
+            f"({pol.min_headroom_quanta}x the {int(floor / pol.min_headroom_quanta)}-cycle "
+            f"smallest resolvable engine occupancy)",
+            **common,
+        )
     if floor is UNKNOWN:
-        return WorkloadRole(role=Role.UNKNOWN, calibrates=None,
-                            rule="no resolvable engine occupancy in the corpus, so the headroom "
-                                 "floor is UNKNOWN and the role cannot be settled",
-                            **common)
+        return WorkloadRole(
+            role=Role.UNKNOWN,
+            calibrates=None,
+            rule="no resolvable engine occupancy in the corpus, so the headroom "
+            "floor is UNKNOWN and the role cannot be settled",
+            **common,
+        )
 
     # 5. a lever has something to act on.
-    return WorkloadRole(role=Role.OPTIMIZE, calibrates=None,
-                        rule=f"binds on {dec.binding!r} at {dec.binding_share:.1%} in the corpus "
-                             f"regime, fixed term only {dec.fixed_share:.1%}, headroom {hr} cyc "
-                             f"({hr / total:.1%}) above the {floor}-cycle floor",
-                        **common)
+    return WorkloadRole(
+        role=Role.OPTIMIZE,
+        calibrates=None,
+        rule=f"binds on {dec.binding!r} at {dec.binding_share:.1%} in the corpus "
+        f"regime, fixed term only {dec.fixed_share:.1%}, headroom {hr} cyc "
+        f"({hr / total:.1%}) above the {floor}-cycle floor",
+        **common,
+    )

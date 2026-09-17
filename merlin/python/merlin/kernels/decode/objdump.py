@@ -6,12 +6,14 @@ that happens in the per-target semantic decoders, from explicit operands). Reusa
 riscv-based target (RVV, Gemmini RoCC, scalar); a per-ISA decoder (``decode/rvv.py``,
 ``targetgen/rocc/decode.py``, …) consumes these ``RawInsn`` and lifts its own facet.
 """
+
 from __future__ import annotations
 
 import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+
 from merlin.common.paths import repo_root
 
 _REPO = repo_root()
@@ -48,22 +50,21 @@ def undefined_symbols(obj_path: str | Path) -> tuple[str, ...] | None:
     out: list[str] = []
     for line in p.stdout.splitlines():
         parts = line.split()
-        if parts:                      # "  U memrefCopy"  ->  last field is the name
+        if parts:  # "  U memrefCopy"  ->  last field is the name
             out.append(parts[-1])
     return tuple(sorted(set(out)))
 
 
 @dataclass
 class RawInsn:
-    addr: int                      # byte address within the section
-    mnemonic: str                  # e.g. "vsetivli", "vfmacc.vv", "addi"
-    operands: list[str]            # comma-split, stripped: ["zero", "0x4", "e32", "m2", "ta", "ma"]
-    hexcode: str = ""              # raw encoding word(s)
-    section: str = ""              # enclosing section/symbol if known
+    addr: int  # byte address within the section
+    mnemonic: str  # e.g. "vsetivli", "vfmacc.vv", "addi"
+    operands: list[str]  # comma-split, stripped: ["zero", "0x4", "e32", "m2", "ta", "ma"]
+    hexcode: str = ""  # raw encoding word(s)
+    section: str = ""  # enclosing section/symbol if known
 
 
-def disassemble_text(obj_path: str | Path, triple: str = "riscv64",
-                     mattr: str | None = None) -> str:
+def disassemble_text(obj_path: str | Path, triple: str = "riscv64", mattr: str | None = None) -> str:
     """Raw ``llvm-objdump -d`` text (no-aliases so the canonical mnemonics/vtype show).
 
     ⚠️ ``mattr`` is not cosmetic. Left to the tool's default, the disassembler silently falls back to a
@@ -104,7 +105,7 @@ def _parse_line(line: str, section: str) -> RawInsn | None:
     right = right.strip()
     if not right:
         return None
-    parts = right.split(None, 2)          # [hexword, mnemonic, operands?]
+    parts = right.split(None, 2)  # [hexword, mnemonic, operands?]
     if len(parts) < 2:
         return None
     hexword, mnemonic = parts[0], parts[1]
@@ -116,8 +117,7 @@ def _parse_line(line: str, section: str) -> RawInsn | None:
     operands: list[str] = []
     if len(parts) == 3:
         operands = [o.strip() for o in parts[2].split(",") if o.strip()]
-    return RawInsn(addr=addr, mnemonic=mnemonic, operands=operands, hexcode=hexword,
-                   section=section)
+    return RawInsn(addr=addr, mnemonic=mnemonic, operands=operands, hexcode=hexword, section=section)
 
 
 def _tokenize_lines(text: str) -> list[RawInsn]:
@@ -141,8 +141,7 @@ def _tokenize_lines(text: str) -> list[RawInsn]:
     return out
 
 
-def tokenize(obj_path: str | Path, triple: str = "riscv64",
-             mattr: str | None = None) -> list[RawInsn]:
+def tokenize(obj_path: str | Path, triple: str = "riscv64", mattr: str | None = None) -> list[RawInsn]:
     """Object file -> ordered list of RawInsn (instructions only)."""
     return _tokenize_lines(disassemble_text(obj_path, triple=triple, mattr=mattr))
 

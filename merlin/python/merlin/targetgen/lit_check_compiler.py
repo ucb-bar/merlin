@@ -21,6 +21,7 @@ over 383 runs, and removed; the emitted instruction stream is covered by the RTL
 instead. So this layer checks "did the compiler discharge the obligation structurally", and the
 decoded-stream layer checks "did it emit legal instructions for this ISA".
 """
+
 from __future__ import annotations
 
 import functools
@@ -38,6 +39,7 @@ _PLACE = "schedule.place"
 @dataclass
 class Check:
     """One emitted check family, with the evidence that grounds it."""
+
     obligation: str
     lines: list[str]
     grounded_by: str
@@ -48,6 +50,7 @@ class Check:
 @dataclass
 class Omission:
     """A check that was NOT emitted, and why. Reported; never silently dropped."""
+
     obligation: str
     reason: str
 
@@ -66,10 +69,16 @@ class Compiled:
             "obligations_declared": len(self.checks) + len(self.omissions),
             "emitted": len(self.checks),
             "omitted": len(self.omissions),
-            "omission_reasons": [{"obligation": o.obligation, "reason": o.reason}
-                                 for o in self.omissions],
-            "checks": [{"obligation": c.obligation, "grounded_by": c.grounded_by,
-                        "derived": c.derived, "n_lines": len(c.lines)} for c in self.checks],
+            "omission_reasons": [{"obligation": o.obligation, "reason": o.reason} for o in self.omissions],
+            "checks": [
+                {
+                    "obligation": c.obligation,
+                    "grounded_by": c.grounded_by,
+                    "derived": c.derived,
+                    "n_lines": len(c.lines),
+                }
+                for c in self.checks
+            ],
         }
 
 
@@ -110,6 +119,7 @@ def _grounded(facts: dict[str, Any], name: str):
 # --- one builder per obligation --------------------------------------------------------------------
 # Each returns a Check, or an Omission carrying the reason it could not be grounded.
 
+
 def _tile_to_mesh(target: str, facts: dict[str, Any], shape: tuple[int, int, int]):
     """Tiling to the mesh is NOT checkable on the interface plane, and the reason matters.
 
@@ -124,26 +134,31 @@ def _tile_to_mesh(target: str, facts: dict[str, Any], shape: tuple[int, int, int
     """
     dim = _grounded(facts, "mesh_dim")
     if dim in (None, 0):
-        return Omission("must_tile_to_mesh_shape",
-                        "the mesh edge is not derivable from this target's RTL facts (empty facts "
-                        "block or no extracted mesh), AND in-tree lowering does not tile; a software "
-                        "default is not a hardware boundary, so nothing is asserted")
-    return Omission("must_tile_to_mesh_shape",
-                    f"mesh edge IS derived (mesh_dim={dim}) but in-tree lowering does not tile: "
-                    "no staged pass splits K and interface.accumulate has no producer. The tiling is "
-                    "emitted by the out-of-tree backend and is checked on the decoded instruction "
-                    "stream instead")
+        return Omission(
+            "must_tile_to_mesh_shape",
+            "the mesh edge is not derivable from this target's RTL facts (empty facts "
+            "block or no extracted mesh), AND in-tree lowering does not tile; a software "
+            "default is not a hardware boundary, so nothing is asserted",
+        )
+    return Omission(
+        "must_tile_to_mesh_shape",
+        f"mesh edge IS derived (mesh_dim={dim}) but in-tree lowering does not tile: "
+        "no staged pass splits K and interface.accumulate has no producer. The tiling is "
+        "emitted by the out-of-tree backend and is checked on the decoded instruction "
+        "stream instead",
+    )
 
 
 def _commit_before_reuse(target: str, facts: dict[str, Any], shape):
     # A grammar invariant, not a hardware fact: the interface grammar admits exactly one commit per
     # committed tensor. Emitted for every target that declares the obligation, and marked underived
     # so nobody cites it as RTL evidence.
-    return Check("must_commit_accumulator_before_reuse",
-                 [f"// CHECK: {_MATMUL}", f"// CHECK: {_COMMIT}",
-                  f"// CHECK-NOT: {_COMMIT}", f"// CHECK: {_MATMUL}"],
-                 grounded_by="merlin_iface grammar (one commit per committed tensor)",
-                 derived=False)
+    return Check(
+        "must_commit_accumulator_before_reuse",
+        [f"// CHECK: {_MATMUL}", f"// CHECK: {_COMMIT}", f"// CHECK-NOT: {_COMMIT}", f"// CHECK: {_MATMUL}"],
+        grounded_by="merlin_iface grammar (one commit per committed tensor)",
+        derived=False,
+    )
 
 
 def _rhs_immutable_residency(target: str, facts: dict[str, Any], shape):
@@ -156,12 +171,18 @@ def _rhs_immutable_residency(target: str, facts: dict[str, Any], shape):
     mutation while the hand-written check in merlin/tests/data/lit/core/ caught it, i.e. the derived
     check was strictly weaker than the one it was modelled on.
     """
-    return Check("must_prove_rhs_immutable_for_residency",
-                 [f"// CHECK: {_PACK}", f"// CHECK-NOT: {_PACK}",
-                  f"// CHECK: {_MATMUL}", f"// CHECK: {_EVICT}",
-                  f"// CHECK-NOT: {_MATMUL}"],
-                 grounded_by="merlin_iface grammar (pack once, use, evict after LAST use)",
-                 derived=False)
+    return Check(
+        "must_prove_rhs_immutable_for_residency",
+        [
+            f"// CHECK: {_PACK}",
+            f"// CHECK-NOT: {_PACK}",
+            f"// CHECK: {_MATMUL}",
+            f"// CHECK: {_EVICT}",
+            f"// CHECK-NOT: {_MATMUL}",
+        ],
+        grounded_by="merlin_iface grammar (pack once, use, evict after LAST use)",
+        derived=False,
+    )
 
 
 def _block_scales(target: str, facts: dict[str, Any], shape):
@@ -172,12 +193,15 @@ def _block_scales(target: str, facts: dict[str, Any], shape):
         quantum = getattr(corpus_spec, "shape_quantum", None)
     except Exception:
         quantum = None
-    return Omission("must_supply_e8m0_block_scales",
-                    "the block-scale group size is not derivable from this target's facts "
-                    "(scale-group quantum unavailable), so no per-group scale-operand count is "
-                    "asserted" if quantum is None else
-                    "scale operands are not representable on the interface plane; this obligation "
-                    "is checked on the decoded stream instead")
+    return Omission(
+        "must_supply_e8m0_block_scales",
+        "the block-scale group size is not derivable from this target's facts "
+        "(scale-group quantum unavailable), so no per-group scale-operand count is "
+        "asserted"
+        if quantum is None
+        else "scale operands are not representable on the interface plane; this obligation "
+        "is checked on the decoded stream instead",
+    )
 
 
 def _map_to_warps(target: str, facts: dict[str, Any], shape: tuple[int, int, int]):
@@ -202,21 +226,31 @@ def _map_to_warps(target: str, facts: dict[str, Any], shape: tuple[int, int, int
                 geometry = (key, unit[key])
                 break
     if geometry is None:
-        detail = (f"unit kind(s) {sorted(kinds)} ARE declared but no lane/warp arity is"
-                  if kinds else "no compute-unit geometry is")
-        return Omission("must_map_to_warps",
-                        f"{detail} declared in the capability manifest, so there is no arity to "
-                        "assert; checking merely that a placement op exists would manufacture "
-                        "coverage, since the residency obligation already forces one")
-    return Check("must_map_to_warps",
-                 [f"// CHECK: {_PLACE}"],
-                 grounded_by=f"{geometry[0]}={geometry[1]} (capability manifest)", derived=True)
+        detail = (
+            f"unit kind(s) {sorted(kinds)} ARE declared but no lane/warp arity is"
+            if kinds
+            else "no compute-unit geometry is"
+        )
+        return Omission(
+            "must_map_to_warps",
+            f"{detail} declared in the capability manifest, so there is no arity to "
+            "assert; checking merely that a placement op exists would manufacture "
+            "coverage, since the residency obligation already forces one",
+        )
+    return Check(
+        "must_map_to_warps",
+        [f"// CHECK: {_PLACE}"],
+        grounded_by=f"{geometry[0]}={geometry[1]} (capability manifest)",
+        derived=True,
+    )
 
 
 def _scratchpad_capacity(target: str, facts: dict[str, Any], shape):
-    return Omission("must_respect_scratchpad_capacity",
-                    "a numeric bound, not a structural property: FileCheck cannot express it. "
-                    "It is checked by the RTL numeric screen (rtl_checks), not here")
+    return Omission(
+        "must_respect_scratchpad_capacity",
+        "a numeric bound, not a structural property: FileCheck cannot express it. "
+        "It is checked by the RTL numeric screen (rtl_checks), not here",
+    )
 
 
 _BUILDERS = {
@@ -234,26 +268,33 @@ def compile_checks(target: str, *, shape: tuple[int, int, int] = (16, 16, 16)) -
     out = Compiled(target=target)
     manifest = _manifest(target)
     if manifest is None:
-        out.omissions.append(Omission(
-            "<all>", "no capability manifest for this target (fails closed); nothing to derive "
-                     "obligations from"))
+        out.omissions.append(
+            Omission(
+                "<all>", "no capability manifest for this target (fails closed); nothing to derive obligations from"
+            )
+        )
         return out
     facts = _facts(target)
-    out.facts = {k: {"derived": bool(v.get("derived")), "value": v.get("value")}
-                 for k, v in facts.items() if isinstance(v, dict)}
+    out.facts = {
+        k: {"derived": bool(v.get("derived")), "value": v.get("value")} for k, v in facts.items() if isinstance(v, dict)
+    }
 
     obligations = list(manifest.get("compiler_obligations") or [])
     if not obligations:
-        out.omissions.append(Omission("<all>", "the capability manifest declares no "
-                                               "compiler_obligations"))
+        out.omissions.append(Omission("<all>", "the capability manifest declares no compiler_obligations"))
         return out
 
     for ob in obligations:
         builder = _BUILDERS.get(ob)
         if builder is None:
-            out.omissions.append(Omission(ob, "no check builder knows how to express this "
-                                              "obligation structurally; recorded rather than "
-                                              "silently skipped"))
+            out.omissions.append(
+                Omission(
+                    ob,
+                    "no check builder knows how to express this "
+                    "obligation structurally; recorded rather than "
+                    "silently skipped",
+                )
+            )
             continue
         result = builder(target, facts, shape)
         (out.checks if isinstance(result, Check) else out.omissions).append(result)

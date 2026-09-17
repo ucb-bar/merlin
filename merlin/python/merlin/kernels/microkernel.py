@@ -18,6 +18,7 @@ may realize it through ``llvmlower.custom_isa`` — a ``merlin.inline_asm`` mark
 ``llvm.inline_asm`` / ``llvm.call_intrinsic``. That keeps the capability in CODE GENERATION (we emit
 the instruction) with no llvm-project fork and no hand ukernel.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -25,8 +26,8 @@ from dataclasses import dataclass, replace
 from typing import Any, Callable
 
 #: how the vector length is chosen for the inner loop.
-VL_FIXED = "fixed"        # a compile-time vector length (e.g. RVV vsetivli) — simple, wastes tail lanes
-VL_DYNAMIC = "dynamic"    # VL-agnostic loop sizing to the hardware VL with the tail folded in
+VL_FIXED = "fixed"  # a compile-time vector length (e.g. RVV vsetivli) — simple, wastes tail lanes
+VL_DYNAMIC = "dynamic"  # VL-agnostic loop sizing to the hardware VL with the tail folded in
 VL_STRATEGIES = (VL_FIXED, VL_DYNAMIC)
 
 
@@ -102,9 +103,9 @@ class MicrokernelSpec:
 #: text — that is what caught both of these. See also docs/design/expert_gap_attribution.md.
 PRUNED_AXES: dict[str, str] = {
     "KC": "inert: the v3 schedule tiles K by 1 regardless of KC (measured flat emitted code); use "
-          "the k_block axis for genuine reduction blocking",
+    "the k_block axis for genuine reduction blocking",
     "unroll_m": "structurally wrong: MR sequential K-loops, B-reuse=1, measured ~2.4x slower than "
-                "the 2-D vector<MRxNR> register block",
+    "the 2-D vector<MRxNR> register block",
 }
 
 #: The full set of tunable micro-kernel axes (every MicrokernelSpec field that names a codegen
@@ -145,7 +146,8 @@ def resolve(target: str, spec: MicrokernelSpec) -> Any:
     if fn is None:
         raise UnsupportedAxis(
             f"target {target!r} has no micro-kernel resolver registered (have: {registered_targets()}). "
-            "Register one so the micro-kernel granularity is expressible for this target.")
+            "Register one so the micro-kernel granularity is expressible for this target."
+        )
     return fn(spec)
 
 
@@ -214,8 +216,7 @@ def masked_parallel_dims(block: "tuple[int, ...]", extents: "tuple[int, ...]") -
 
     A tile size of 0 (or 1) never masks: 0 means "do not tile this dim" and 1 always divides. The
     result is the general hazard set every target's policy reasons about."""
-    return tuple(i for i, (b, e) in enumerate(zip(block, extents))
-                 if int(b) not in (0, 1) and int(e) % int(b) != 0)
+    return tuple(i for i, (b, e) in enumerate(zip(block, extents)) if int(b) not in (0, 1) and int(e) % int(b) != 0)
 
 
 def largest_divisor_at_most(n: int, cap: int) -> int:
@@ -240,9 +241,7 @@ def largest_divisor_at_most(n: int, cap: int) -> int:
 _SHAPE_POLICIES: dict[str, Callable[[MicrokernelSpec, "tuple[ContractionShape, ...]"], Any]] = {}
 
 
-def register_shape_policy(
-        target: str,
-        fn: Callable[[MicrokernelSpec, "tuple[ContractionShape, ...]"], Any]) -> None:
+def register_shape_policy(target: str, fn: Callable[[MicrokernelSpec, "tuple[ContractionShape, ...]"], Any]) -> None:
     """Register ``target``'s SHAPE-AWARE realization of the micro-kernel space (idempotent)."""
     _SHAPE_POLICIES[target] = fn
 
@@ -251,8 +250,7 @@ def has_shape_policy(target: str) -> bool:
     return target in _SHAPE_POLICIES
 
 
-def resolve_for_shapes(target: str, spec: MicrokernelSpec,
-                       shapes: "Sequence[ContractionShape]" = ()) -> Any:
+def resolve_for_shapes(target: str, spec: MicrokernelSpec, shapes: "Sequence[ContractionShape]" = ()) -> Any:
     """Realize ``spec`` for ``target`` given the contractions it must cover.
 
     Falls back to the shape-BLIND :func:`resolve` when the caller observed no shapes or the target

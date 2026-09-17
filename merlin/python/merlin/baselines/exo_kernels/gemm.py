@@ -15,24 +15,25 @@ This is deliberately the *simplest* correct RVV GEMM — one EXO ``@instr`` per 
 register-blocking beyond the 8-wide n tile. It exists to prove the EXO→RVV→K1→audit path end to
 end; ``rvv_audit`` will report its coverage honestly.
 """
+
 from __future__ import annotations
 
-from exo import proc, DRAM
+from exo import DRAM, proc
 from exo.stdlib.scheduling import (
     divide_loop,
-    stage_mem,
-    set_memory,
-    simplify,
     reorder_loops,
     replace_all,
+    set_memory,
+    simplify,
+    stage_mem,
 )
 
 from merlin.baselines.exo_kernels.rvv256 import (
     RVV256,
+    rvv256_vfmacc_vf,
     rvv256_vld,
     rvv256_vst,
     rvv256_zero,
-    rvv256_vfmacc_vf,
 )
 
 # N is the vectorised (output-feature) axis; must be a multiple of 8. M and K are runtime sizes.

@@ -18,6 +18,7 @@ than an error, which is why nothing here is inferred from the source.
 the frontend, which is the thing this package is not allowed to contain. Runnable invocations live
 in ``examples/triton/`` and ``docs/guides/triton_kernels.md``.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,8 +30,17 @@ from typing import Any
 
 from .spec import GridSpec, KernelArg, KernelSpecError, TritonKernelSpec
 
-EMIT_STAGES = ("ttir", "core-mlir", "contract", "schedule", "interface", "target", "runtime",
-               "command-buffer", "report")
+EMIT_STAGES = (
+    "ttir",
+    "core-mlir",
+    "contract",
+    "schedule",
+    "interface",
+    "target",
+    "runtime",
+    "command-buffer",
+    "report",
+)
 DEFAULT_EMIT = ("ttir", "core-mlir", "report")
 
 
@@ -67,8 +77,7 @@ def parse_arg(text: str) -> KernelArg:
         return KernelArg(name, "scalar", rest)
     fields = rest[1:].split(":")
     if len(fields) != 3:
-        raise SystemExit(
-            f"--arg {name}: a pointer needs *DTYPE:SHAPE:EFFECT (e.g. *fp32:16x32:read), got {rest!r}")
+        raise SystemExit(f"--arg {name}: a pointer needs *DTYPE:SHAPE:EFFECT (e.g. *fp32:16x32:read), got {rest!r}")
     dtype, shape_text, effect = fields
     try:
         shape = tuple(int(d) for d in shape_text.split("x"))
@@ -90,26 +99,43 @@ def parse_binding(text: str) -> tuple[str, Any]:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="merlin-compile-kernel",
-        description="Compile a @triton.jit kernel for a Merlin target.")
+        prog="merlin-compile-kernel", description="Compile a @triton.jit kernel for a Merlin target."
+    )
     p.add_argument("kernel", help="PATH.py:KERNEL_NAME")
     p.add_argument("--target", help="target name (resolved from the registry)")
     p.add_argument("--target-package", help="path to a target package directory (out-of-tree)")
-    p.add_argument("--arg", action="append", default=[], metavar="NAME=SPEC",
-                   help="*DTYPE:SHAPE:EFFECT for a pointer, DTYPE for a scalar; repeat, in order")
-    p.add_argument("--constexpr", action="append", default=[], metavar="NAME=VALUE",
-                   help="a tl.constexpr value (BLOCK_*/GROUP_* are portable meta-parameters)")
-    p.add_argument("--assume", action="append", default=[], metavar="NAME=VALUE",
-                   help="compile-time value of a runtime scalar, e.g. a mask bound")
+    p.add_argument(
+        "--arg",
+        action="append",
+        default=[],
+        metavar="NAME=SPEC",
+        help="*DTYPE:SHAPE:EFFECT for a pointer, DTYPE for a scalar; repeat, in order",
+    )
+    p.add_argument(
+        "--constexpr",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="a tl.constexpr value (BLOCK_*/GROUP_* are portable meta-parameters)",
+    )
+    p.add_argument(
+        "--assume",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="compile-time value of a runtime scalar, e.g. a mask bound",
+    )
     p.add_argument("--grid", default="1", metavar="X[,Y[,Z]]", help="SPMD launch grid extents")
     p.add_argument("--num-warps", type=int, help="recorded as provenance; never target semantics")
     p.add_argument("--num-stages", type=int, help="recorded as provenance; never target semantics")
-    p.add_argument("--emit", default=",".join(DEFAULT_EMIT),
-                   help=f"comma-separated stages to write ({', '.join(EMIT_STAGES)}, or 'all')")
+    p.add_argument(
+        "--emit",
+        default=",".join(DEFAULT_EMIT),
+        help=f"comma-separated stages to write ({', '.join(EMIT_STAGES)}, or 'all')",
+    )
     p.add_argument("--out", help="write here instead of a versioned artifacts product dir")
     p.add_argument("--verify", action="store_true", help="verify every emitted stage module")
-    p.add_argument("--route-only", action="store_true",
-                   help="report the routing decision and stop, without compiling")
+    p.add_argument("--route-only", action="store_true", help="report the routing decision and stop, without compiling")
     return p
 
 
@@ -118,8 +144,7 @@ def make_spec(args) -> TritonKernelSpec:
         grid = GridSpec(dims=tuple(int(d) for d in args.grid.split(",")))
     except ValueError:
         raise SystemExit(f"--grid {args.grid!r} must be 1-3 comma-separated ints") from None
-    provenance = {k: v for k, v in (("num_warps", args.num_warps),
-                                    ("num_stages", args.num_stages)) if v is not None}
+    provenance = {k: v for k, v in (("num_warps", args.num_warps), ("num_stages", args.num_stages)) if v is not None}
     try:
         return TritonKernelSpec(
             function=load_kernel(args.kernel),
@@ -127,7 +152,8 @@ def make_spec(args) -> TritonKernelSpec:
             grid=grid,
             constexprs=dict(parse_binding(c) for c in args.constexpr),
             assumptions=dict(parse_binding(a) for a in args.assume),
-            provenance=provenance)
+            provenance=provenance,
+        )
     except KernelSpecError as exc:
         raise SystemExit(f"kernel spec: {exc}") from None
 
@@ -166,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     package = None
     if args.target_package:
         from merlin.targetgen.registry import load_target
+
         package = load_target(args.target_package)
     target = package.name if package is not None else args.target
 
@@ -176,8 +203,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    route = compile_core.choose_route(
-        bridged.module, target=args.target, target_package=package)
+    route = compile_core.choose_route(bridged.module, target=args.target, target_package=package)
     print(f"route: {route.kind} — {route.reason}")
     if args.route_only:
         return 0
@@ -197,29 +223,41 @@ def main(argv: list[str] | None = None) -> int:
     write("core-mlir", bridged.text)
 
     result = compile_core.compile_core_mlir(
-        bridged.module, target=args.target, target_package=package,
-        workdir=out / "llvm" if route.kind == "llvm" else None)
+        bridged.module,
+        target=args.target,
+        target_package=package,
+        workdir=out / "llvm" if route.kind == "llvm" else None,
+    )
     if result.staged is not None:
         staged = result.staged
-        for name, module in (("contract", staged.contract_module),
-                             ("schedule", staged.schedule_module),
-                             ("interface", staged.interface_module),
-                             ("target", staged.target_module),
-                             ("runtime", staged.runtime_module)):
+        for name, module in (
+            ("contract", staged.contract_module),
+            ("schedule", staged.schedule_module),
+            ("interface", staged.interface_module),
+            ("target", staged.target_module),
+            ("runtime", staged.runtime_module),
+        ):
             if args.verify:
                 module.verify()
             write(name, to_text(module))
         write("command-buffer", json.dumps(staged.command_buffer, indent=2, sort_keys=True))
 
-    write("report", json.dumps({
-        "kernel": spec.name,
-        "target": target,
-        "route": route.as_dict(),
-        "triton_version": ttir.triton_version,
-        "ttir_digest": ttir.digest,
-        "capability": bridged.report.as_dict(),
-        "provenance": dict(spec.provenance),
-    }, indent=2, sort_keys=True))
+    write(
+        "report",
+        json.dumps(
+            {
+                "kernel": spec.name,
+                "target": target,
+                "route": route.as_dict(),
+                "triton_version": ttir.triton_version,
+                "ttir_digest": ttir.digest,
+                "capability": bridged.report.as_dict(),
+                "provenance": dict(spec.provenance),
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+    )
 
     for path in written:
         print(f"wrote {path}")

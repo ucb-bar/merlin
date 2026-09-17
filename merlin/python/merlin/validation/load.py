@@ -10,6 +10,7 @@ The five plans are the synchronized outputs of TargetGen synthesis:
 
 Each maps to a schema of the same stem under ``merlin/schemas/``.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

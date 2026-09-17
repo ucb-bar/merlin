@@ -42,6 +42,7 @@ Run it::
 
     .venv/bin/python -m merlin.verify.ablation --timeout-ms 15000 --workers 6 --write
 """
+
 from __future__ import annotations
 
 import argparse
@@ -62,6 +63,7 @@ GRADE_NAME = "capsule_result.json"
 #: carry command buffers produced by the IN-TREE lowering, not by a backend under evaluation, so
 #: including them would answer a different question than the one this module asks.
 POPULATION_GLOB = "capsule-bench/**/generated/" + BUFFER_NAME
+
 
 #: The values ``Tensor.deterministic`` can produce (``lo=0, hi=3``). A counterexample outside this set
 #: is an input the dynamic stimulus cannot construct, so no amount of re-running it would find that
@@ -116,7 +118,7 @@ def encoded_size(cb: dict) -> int:
     """Sum of M*K*N over the buffer's contractions -- the cost driver for bit-blasting."""
     tensors = cb.get("tensors") or {}
     total = 0
-    for cmd in (cb.get("commands") or []):
+    for cmd in cb.get("commands") or []:
         if str(cmd.get("opcode")) not in ("MATMUL", "MATMUL_RESIDENT"):
             continue
         operands = cmd.get("operands") or {}
@@ -146,10 +148,14 @@ def units(root: Path | None = None) -> list[Path]:
 
 def _norm(commands: Any) -> list[tuple]:
     """A command list reduced to what an equivalence question depends on, in order."""
-    return [(c.get("opcode"),
-             json.dumps(c.get("operands"), sort_keys=True),
-             json.dumps(c.get("attributes"), sort_keys=True))
-            for c in (commands or [])]
+    return [
+        (
+            c.get("opcode"),
+            json.dumps(c.get("operands"), sort_keys=True),
+            json.dumps(c.get("attributes"), sort_keys=True),
+        )
+        for c in (commands or [])
+    ]
 
 
 def classify(spec_cb: dict, agent_cb: dict) -> str:
@@ -184,8 +190,7 @@ def read_unit(unit: Path) -> dict[str, Any]:
         rec["load_error_kind"] = "buffer_unreadable"
         return rec
     try:
-        rec["spec_cb"] = parse_interface_mlir(
-            (unit / "generated" / SPEC_NAME).read_text(encoding="utf-8"))
+        rec["spec_cb"] = parse_interface_mlir((unit / "generated" / SPEC_NAME).read_text(encoding="utf-8"))
     except Exception as exc:
         # The contract grammar fails closed on an op it does not define; that is a parser limit on
         # OUR side, so it is an abstention reason, not a defect in the submission.
@@ -195,9 +200,9 @@ def read_unit(unit: Path) -> dict[str, Any]:
         # the two into one "unreadable" count is what produced the misleading `output_count` bucket in
         # the first place -- one label, two causes, and the bigger one invisible.
         rec["load_error"] = f"spec unparseable: {type(exc).__name__}: {exc}"[:220]
-        rec["load_error_kind"] = ("spec_not_contract_grammar"
-                                  if type(exc).__name__ == "InterfaceGrammarError"
-                                  else "spec_unreadable")
+        rec["load_error_kind"] = (
+            "spec_not_contract_grammar" if type(exc).__name__ == "InterfaceGrammarError" else "spec_unreadable"
+        )
         return rec
     rec["shape"] = classify(rec["spec_cb"], rec["agent_cb"])
     return rec
@@ -210,8 +215,8 @@ def _grade_axes(grade: dict) -> dict[str, Any]:
     the whole-capsule outcome and is recorded beside it, but a capsule that failed to BUILD says
     nothing about whether its command buffer computes the right function.
     """
-    numeric = (grade.get("numeric") or {})
-    tiers = (grade.get("tiers") or {})
+    numeric = grade.get("numeric") or {}
+    tiers = grade.get("tiers") or {}
     return {
         "numeric_status": str(numeric.get("status") or "absent"),
         "numeric_mismatches": numeric.get("mismatch_count"),
@@ -270,42 +275,62 @@ def check_unit(unit_str: str, timeout_ms: int, wall_seconds: int = 90) -> dict[s
     t0 = time.time()
     rec = read_unit(unit)
     if "load_error" in rec:
-        return {"unit": unit_str, "capsule": unit.name, "verdict": "abstained",
-                "reason": rec["load_error"],
-                "reason_kind": rec.get("load_error_kind", "unreadable"),
-                "shape": "unknown", "seconds": round(time.time() - t0, 2)}
+        return {
+            "unit": unit_str,
+            "capsule": unit.name,
+            "verdict": "abstained",
+            "reason": rec["load_error"],
+            "reason_kind": rec.get("load_error_kind", "unreadable"),
+            "shape": "unknown",
+            "seconds": round(time.time() - t0, 2),
+        }
 
-    out = {"unit": unit_str, "capsule": unit.name, "shape": rec["shape"],
-           **_grade_axes(rec["grade"])}
+    out = {"unit": unit_str, "capsule": unit.name, "shape": rec["shape"], **_grade_axes(rec["grade"])}
     if rec["shape"] == "identical":
         # Excluded before the solver ever sees it, so the exclusion costs nothing and is auditable.
-        out.update(verdict="excluded", reason="submission is its own specification, command for "
-                                              "command; the query would be X == X",
-                   reason_kind="vacuous", seconds=round(time.time() - t0, 2))
+        out.update(
+            verdict="excluded",
+            reason="submission is its own specification, command for command; the query would be X == X",
+            reason_kind="vacuous",
+            seconds=round(time.time() - t0, 2),
+        )
         return out
     size = max(encoded_size(rec["spec_cb"]), encoded_size(rec["agent_cb"]))
     elems = max(declared_elements(rec["spec_cb"]), declared_elements(rec["agent_cb"]))
     out["encoded_macs"], out["declared_elements"] = size, elems
     if elems > MAX_ENCODED_ELEMENTS:
-        out.update(verdict="abstained", reason_kind="too_large",
-                   reason=(f"the buffer declares {elems:,} tensor elements, over the cap of "
-                           f"{MAX_ENCODED_ELEMENTS:,}; encoding is unbounded by the solver budget"),
-                   seconds=round(time.time() - t0, 2))
+        out.update(
+            verdict="abstained",
+            reason_kind="too_large",
+            reason=(
+                f"the buffer declares {elems:,} tensor elements, over the cap of "
+                f"{MAX_ENCODED_ELEMENTS:,}; encoding is unbounded by the solver budget"
+            ),
+            seconds=round(time.time() - t0, 2),
+        )
         return out
     if size > MAX_ENCODED_MACS:
-        out.update(verdict="abstained", reason_kind="too_large",
-                   reason=(f"encoding this buffer would bit-blast {size:,} MAC terms, over the "
-                           f"declared cap of {MAX_ENCODED_MACS:,}. The solver budget bounds solving, "
-                           f"not encoding, so this would consume unbounded wall time before the "
-                           f"timeout applied."),
-                   seconds=round(time.time() - t0, 2))
+        out.update(
+            verdict="abstained",
+            reason_kind="too_large",
+            reason=(
+                f"encoding this buffer would bit-blast {size:,} MAC terms, over the "
+                f"declared cap of {MAX_ENCODED_MACS:,}. The solver budget bounds solving, "
+                f"not encoding, so this would consume unbounded wall time before the "
+                f"timeout applied."
+            ),
+            seconds=round(time.time() - t0, 2),
+        )
         return out
     try:
         with _alarm(wall_seconds):
             v = validate_equivalence(rec["spec_cb"], rec["agent_cb"], timeout_ms=timeout_ms)
         verdict = {"unsat": "verified", "sat": "refuted"}.get(v.status, "abstained")
-        out.update(verdict=verdict, reason="" if verdict != "abstained" else "solver returned unknown",
-                   reason_kind="" if verdict != "abstained" else "solver_timeout")
+        out.update(
+            verdict=verdict,
+            reason="" if verdict != "abstained" else "solver returned unknown",
+            reason_kind="" if verdict != "abstained" else "solver_timeout",
+        )
         if verdict == "refuted":
             values = dict(v.model_values or {})
             out["counterexample"] = {k: values[k] for k in sorted(values)[:40]}
@@ -318,15 +343,18 @@ def check_unit(unit_str: str, timeout_ms: int, wall_seconds: int = 90) -> dict[s
         # A definite negative, so it is a refutation -- but one with no counterexample, because no
         # input is needed to see it. Bucketed separately so it is never confused with a numeric
         # divergence in the report.
-        out.update(verdict="refuted", reason=str(exc)[:300], reason_kind="output_contract",
-                   counterexample_outside_stimulus=None)
+        out.update(
+            verdict="refuted",
+            reason=str(exc)[:300],
+            reason_kind="output_contract",
+            counterexample_outside_stimulus=None,
+        )
     except _WallTimeout as exc:
         out.update(verdict="abstained", reason=str(exc), reason_kind="wall_timeout")
     except UnsupportedSemantics as exc:
         out.update(verdict="abstained", reason=str(exc)[:220], reason_kind=_reason_kind(str(exc)))
     except Exception as exc:
-        out.update(verdict="error", reason=f"{type(exc).__name__}: {exc}"[:220],
-                   reason_kind="error")
+        out.update(verdict="error", reason=f"{type(exc).__name__}: {exc}"[:220], reason_kind="error")
     out["seconds"] = round(time.time() - t0, 2)
     return out
 
@@ -354,8 +382,7 @@ def _reason_kind(reason: str) -> str:
 
 def load_pin(path: Path) -> list[str]:
     """Read a pinned population list: one unit path per line, ``#`` comments ignored."""
-    return [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines()
-            if ln.strip() and not ln.startswith("#")]
+    return [ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.startswith("#")]
 
 
 def write_pin(path: Path, pool: list[str]) -> None:
@@ -368,14 +395,26 @@ def write_pin(path: Path, pool: list[str]) -> None:
     wearing its name.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("# merlin.verify.ablation population pin\n"
-                    f"# {len(pool)} units enumerated {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n"
-                    + "\n".join(pool) + "\n", encoding="utf-8")
+    path.write_text(
+        "# merlin.verify.ablation population pin\n"
+        f"# {len(pool)} units enumerated {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n"
+        + "\n".join(pool)
+        + "\n",
+        encoding="utf-8",
+    )
 
 
-def run(*, timeout_ms: int = 15_000, workers: int = 6, limit: int | None = None,
-        seed: int = 11, root: Path | None = None, pin: Path | None = None,
-        wall_seconds: int = 90, progress: bool = True) -> dict[str, Any]:
+def run(
+    *,
+    timeout_ms: int = 15_000,
+    workers: int = 6,
+    limit: int | None = None,
+    seed: int = 11,
+    root: Path | None = None,
+    pin: Path | None = None,
+    wall_seconds: int = 90,
+    progress: bool = True,
+) -> dict[str, Any]:
     """Check every eligible submission. Returns the record the report is rendered from.
 
     ``limit`` draws a seeded shuffle-then-take rather than a prefix, so raising it EXTENDS the sample
@@ -411,10 +450,17 @@ def run(*, timeout_ms: int = 15_000, workers: int = 6, limit: int | None = None,
             try:
                 records.append(fut.result())
             except Exception as exc:  # a worker died; record it rather than losing the unit
-                records.append({"unit": futures[fut], "capsule": Path(futures[fut]).name,
-                                "verdict": "error", "shape": "unknown",
-                                "reason": f"worker died: {type(exc).__name__}: {exc}"[:200],
-                                "reason_kind": "error", "seconds": 0.0})
+                records.append(
+                    {
+                        "unit": futures[fut],
+                        "capsule": Path(futures[fut]).name,
+                        "verdict": "error",
+                        "shape": "unknown",
+                        "reason": f"worker died: {type(exc).__name__}: {exc}"[:200],
+                        "reason_kind": "error",
+                        "seconds": 0.0,
+                    }
+                )
             if progress and i % 100 == 0:
                 print(f"  {i}/{len(pool)}  ({time.time() - started:.0f}s)", file=sys.stderr)
 
@@ -446,9 +492,14 @@ def render(record: dict[str, Any]) -> str:
     add(f"question: {record['question']}")
     if record.get("population_pin"):
         add(f"population pinned from {record['population_pin']}")
-    add(f"population {record['population_total']} archived submissions"
-        + (f"; sampled {record['sampled']} (seed {record['seed']})"
-           if record.get("seed") is not None else "; all checked"))
+    add(
+        f"population {record['population_total']} archived submissions"
+        + (
+            f"; sampled {record['sampled']} (seed {record['seed']})"
+            if record.get("seed") is not None
+            else "; all checked"
+        )
+    )
     add(f"solver budget {record['timeout_ms']} ms per unit; wall {record['wall_seconds']}s")
     add(f"dynamic stimulus draws its values from {record['stimulus_values']}")
     add("")
@@ -458,10 +509,12 @@ def render(record: dict[str, Any]) -> str:
         by_shape[r.get("shape", "unknown")] = by_shape.get(r.get("shape", "unknown"), 0) + 1
     total = max(len(recs), 1)
     add("## eligibility (measured before any verdict was drawn)")
-    labels = {"identical": "IDENTICAL to its own spec -- EXCLUDED, the query would be X == X",
-              "opcodes": "different opcode sequence -- eligible",
-              "operands": "same opcodes, different operands/attrs -- eligible",
-              "unknown": "unreadable -- reported, not dropped"}
+    labels = {
+        "identical": "IDENTICAL to its own spec -- EXCLUDED, the query would be X == X",
+        "opcodes": "different opcode sequence -- eligible",
+        "operands": "same opcodes, different operands/attrs -- eligible",
+        "unknown": "unreadable -- reported, not dropped",
+    }
     for shape in ("identical", "opcodes", "operands", "unknown"):
         n = by_shape.get(shape, 0)
         add(f"  {n:6d}  {100 * n / total:5.1f}%  {labels[shape]}")
@@ -476,8 +529,9 @@ def render(record: dict[str, Any]) -> str:
     add("  " + "verdict".ljust(12) + "".join(g.ljust(width) for g in grades) + "total")
     for v in verdicts:
         row = [r for r in eligible if r.get("verdict") == v]
-        cells = "".join(str(sum(1 for r in row if str(r.get("numeric_status", "absent")) == g))
-                        .ljust(width) for g in grades)
+        cells = "".join(
+            str(sum(1 for r in row if str(r.get("numeric_status", "absent")) == g)).ljust(width) for g in grades
+        )
         add("  " + v.ljust(12) + cells + str(len(row)))
     add("")
 
@@ -500,8 +554,7 @@ def render(record: dict[str, Any]) -> str:
     add("## headline 2 -- could the existing stimulus have reached the counterexample?")
     if refuted:
         outside = [r for r in refuted if r.get("counterexample_outside_stimulus")]
-        add(f"   {len(outside)} of {len(refuted)} refutations need an input outside "
-            f"{record['stimulus_values']},")
+        add(f"   {len(outside)} of {len(refuted)} refutations need an input outside {record['stimulus_values']},")
         add("   so re-running the dynamic check on its own stimulus could not have found them.")
     else:
         add("   no refutations, so this metric has no denominator on this population")
@@ -511,8 +564,7 @@ def render(record: dict[str, Any]) -> str:
     kinds: dict[str, int] = {}
     for r in abstained:
         kinds[str(r.get("reason_kind") or "other")] = kinds.get(str(r.get("reason_kind") or "other"), 0) + 1
-    add(f"   {len(abstained)} of {len(eligible)} eligible "
-        f"({100 * len(abstained) / max(len(eligible), 1):.1f}%)")
+    add(f"   {len(abstained)} of {len(eligible)} eligible ({100 * len(abstained) / max(len(eligible), 1):.1f}%)")
     for kind, n in sorted(kinds.items(), key=lambda kv: -kv[1]):
         add(f"     {n:6d}  {kind}")
     add("")
@@ -523,8 +575,7 @@ def render(record: dict[str, Any]) -> str:
     add("   A disagreement here is worth reading closely: it means the golden and this encoder")
     add("   disagree about the same buffer, and one of them is wrong.")
     for r in blind[:12]:
-        add(f"     {r['capsule']:34s} numeric={r.get('numeric_status')} "
-            f"mismatches={r.get('numeric_mismatches')}")
+        add(f"     {r['capsule']:34s} numeric={r.get('numeric_status')} mismatches={r.get('numeric_mismatches')}")
     if len(blind) > 12:
         add(f"     ... and {len(blind) - 12} more")
     add("")
@@ -543,37 +594,58 @@ def render(record: dict[str, Any]) -> str:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--timeout-ms", type=int, default=15_000, help="solver budget per unit")
-    ap.add_argument("--workers", type=int, default=6,
-                    help="parallel workers; this is a SHARED host, keep it modest")
-    ap.add_argument("--limit", type=int, default=None,
-                    help="seeded shuffle-then-take; omit to check the whole population")
+    ap.add_argument("--workers", type=int, default=6, help="parallel workers; this is a SHARED host, keep it modest")
+    ap.add_argument(
+        "--limit", type=int, default=None, help="seeded shuffle-then-take; omit to check the whole population"
+    )
     ap.add_argument("--seed", type=int, default=11)
-    ap.add_argument("--wall-seconds", type=int, default=90,
-                    help="hard per-unit wall bound; the solver budget does not cover encoding")
+    ap.add_argument(
+        "--wall-seconds",
+        type=int,
+        default=90,
+        help="hard per-unit wall bound; the solver budget does not cover encoding",
+    )
     ap.add_argument("--root", default=None, help="run root (default: merlin.common.paths.runs_dir())")
-    ap.add_argument("--pin", default=None,
-                    help="population pin file; read if it exists, written on first use. The archive "
-                         "grows while other sessions run the bench, so an unpinned rerun is over a "
-                         "different population.")
+    ap.add_argument(
+        "--pin",
+        default=None,
+        help="population pin file; read if it exists, written on first use. The archive "
+        "grows while other sessions run the bench, so an unpinned rerun is over a "
+        "different population.",
+    )
     ap.add_argument("--json", action="store_true", help="print the record instead of the report")
     ap.add_argument("--write", action="store_true", help="write the record under out/artifacts/")
     a = ap.parse_args(argv)
 
-    rec = run(timeout_ms=a.timeout_ms, workers=a.workers, limit=a.limit, seed=a.seed,
-              root=Path(a.root) if a.root else None, pin=Path(a.pin) if a.pin else None,
-              wall_seconds=a.wall_seconds)
+    rec = run(
+        timeout_ms=a.timeout_ms,
+        workers=a.workers,
+        limit=a.limit,
+        seed=a.seed,
+        root=Path(a.root) if a.root else None,
+        pin=Path(a.pin) if a.pin else None,
+        wall_seconds=a.wall_seconds,
+    )
     print(json.dumps(rec, indent=1) if a.json else render(rec))
 
     if a.write:
         from merlin.common.artifacts import new_product
 
-        prod = new_product("verification", version=1, target="all", sources=[
-            f"{rec['population_total']} archived capsule-bench submissions under out/runs",
-            "formal: merlin.verify.refine.validate_equivalence",
-            "dynamic: capsule_result.json numeric tier",
-        ], notes=("Ablation: does proving equivalence find defects the numeric grade passed? "
-                  "Structurally identical submissions are EXCLUDED -- a query over two copies of "
-                  "one program is X == X and verifies nothing."))
+        prod = new_product(
+            "verification",
+            version=1,
+            target="all",
+            sources=[
+                f"{rec['population_total']} archived capsule-bench submissions under out/runs",
+                "formal: merlin.verify.refine.validate_equivalence",
+                "dynamic: capsule_result.json numeric tier",
+            ],
+            notes=(
+                "Ablation: does proving equivalence find defects the numeric grade passed? "
+                "Structurally identical submissions are EXCLUDED -- a query over two copies of "
+                "one program is X == X and verifies nothing."
+            ),
+        )
         prod.add_artifact("ablation.json").write_text(json.dumps(rec, indent=1), encoding="utf-8")
         prod.add_artifact("ablation.txt").write_text(render(rec), encoding="utf-8")
         prod.write_manifest()

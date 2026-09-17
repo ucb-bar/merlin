@@ -12,8 +12,11 @@ outputs. Same line as facts.json / the encoder. RTL-derived ⇒ CIRCT-arm-only.
 
 Usage: python -m merlin.targetgen.rtl.gen_numeric_facts [--facts <facts.json>] [--out numeric_facts.py]
 """
+
 from __future__ import annotations
-import argparse, json
+
+import argparse
+import json
 from pathlib import Path
 
 from .facts import facts_body, load_facts
@@ -84,9 +87,7 @@ def generate(facts: dict) -> str:
     # rule, which is the honest outcome; a baked "or 32" here silently handed every target gemmini's
     # accumulator width, the derive-vs-overfit violation this file exists to avoid.
     acc_bits = acc.get("lane_bits") or _dtype_bits(acc_dtype)
-    return _TMPL.format(input_dtype=dps.get("input", {}).get("dtype"),
-                        acc_dtype=acc_dtype,
-                        acc_bits=acc_bits)
+    return _TMPL.format(input_dtype=dps.get("input", {}).get("dtype"), acc_dtype=acc_dtype, acc_bits=acc_bits)
 
 
 def _dtype_bits(dtype: str | None) -> int | None:
@@ -116,7 +117,8 @@ def main(argv=None):
         ap.error("provide --facts <facts.json> or --target <name> to regenerate the facts from RTL")
     code = generate(facts)
     if a.out:
-        Path(a.out).write_text(code); print(f"wrote {a.out} ({len(code.splitlines())} lines)")
+        Path(a.out).write_text(code)
+        print(f"wrote {a.out} ({len(code.splitlines())} lines)")
     else:
         print(code)
     return 0

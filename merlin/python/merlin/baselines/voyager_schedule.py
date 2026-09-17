@@ -33,6 +33,7 @@ can scale) is passed in by the caller from the target's derived facts; nothing h
 constant. Dependency-free apart from the optional numpy executors (:func:`execute`,
 :func:`execute_model`), which prove a schedule's arithmetic before any simulator runs it.
 """
+
 from __future__ import annotations
 
 import itertools
@@ -44,9 +45,23 @@ from typing import Any
 
 from .voyager_ir import Box, Copy, FusedCompute, Ref, TensorOp, Trace, UnsupportedConstruct
 
-__all__ = ["AccMvin", "Compute", "Geometry", "HostOp", "Layer", "Mvin", "Mvout", "Preload",
-           "Schedule", "execute", "execute_model", "load_scalars", "lower_conv", "lower_gemm",
-           "lower_model"]
+__all__ = [
+    "AccMvin",
+    "Compute",
+    "Geometry",
+    "HostOp",
+    "Layer",
+    "Mvin",
+    "Mvout",
+    "Preload",
+    "Schedule",
+    "execute",
+    "execute_model",
+    "load_scalars",
+    "lower_conv",
+    "lower_gemm",
+    "lower_model",
+]
 
 #: Anchors a GEMM fusion may start with.
 _GEMM_ANCHORS = ("quantized_ops::linear", "aten::linear", "aten::matmul", "quantized_ops::matmul")
@@ -70,22 +85,22 @@ _INT8 = (-(1 << 7), (1 << 7) - 1)
 class Geometry:
     """The array and its stores, in the units a backend addresses them. Derived by the caller."""
 
-    dim: int                 # array edge = block edge
-    spad_rows: int           # scratchpad rows (all banks)
-    spad_row_bytes: int      # bytes per scratchpad row
-    acc_rows: int            # accumulator rows (all banks)
-    scaled_acc_loads: bool = False   # an accumulator load can multiply by a scale on the way in
+    dim: int  # array edge = block edge
+    spad_rows: int  # scratchpad rows (all banks)
+    spad_row_bytes: int  # bytes per scratchpad row
+    acc_rows: int  # accumulator rows (all banks)
+    scaled_acc_loads: bool = False  # an accumulator load can multiply by a scale on the way in
 
 
 @dataclass(frozen=True)
 class Mvin:
-    role: str                # "lhs" | "weight" | "zero" (a zero page: the halo of a padded tile)
+    role: str  # "lhs" | "weight" | "zero" (a zero page: the halo of a padded tile)
     dram_row: int
     dram_col: int
     rows: int
     cols: int
     spad_row: int
-    row_step: int = 1        # DRAM rows between consecutive block rows (a stride-s gather uses s)
+    row_step: int = 1  # DRAM rows between consecutive block rows (a stride-s gather uses s)
 
 
 @dataclass(frozen=True)
@@ -121,7 +136,7 @@ class Preload:
 class Compute:
     input_row: int
     rows: int
-    fresh_weights: bool      # the first compute after a weight change
+    fresh_weights: bool  # the first compute after a weight change
 
 
 @dataclass(frozen=True)
@@ -129,7 +144,7 @@ class Mvout:
     """Store accumulator rows. ``out_dtype`` "int8" applies the readout -- ``relu``, then ``scale``,
     then saturation; "int32" reads the raw accumulator and carries neither."""
 
-    role: str                # "out"
+    role: str  # "out"
     dram_row: int
     dram_col: int
     rows: int
@@ -164,8 +179,8 @@ class Schedule:
     """
 
     ops: list[Op]
-    shapes: dict[str, tuple[int, int]]       # role -> logical [rows, cols]
-    dram_nodes: dict[str, str]               # role -> DRAM tensor
+    shapes: dict[str, tuple[int, int]]  # role -> logical [rows, cols]
+    dram_nodes: dict[str, str]  # role -> DRAM tensor
     geometry: Geometry
     notes: list[str] = field(default_factory=list)
 
@@ -177,11 +192,11 @@ class Schedule:
 class Layer:
     """One entry of a lowered model, in program order."""
 
-    name: str                                # Voyager's layer name
-    kind: str                                # "conv" | "gemm" | "host"
+    name: str  # Voyager's layer name
+    kind: str  # "conv" | "gemm" | "host"
     program: Schedule | HostOp
-    reads: tuple[str, ...]                   # DRAM tensors read
-    writes: tuple[str, ...]                  # DRAM tensors written
+    reads: tuple[str, ...]  # DRAM tensors read
+    writes: tuple[str, ...]  # DRAM tensors written
     readout: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -236,8 +251,7 @@ def _scale_ref(call, what: str) -> str:
     kw = call.kwargs
     for extra in ("zero_point", "axes", "block_size", "input_qmap", "output_qmap", "output_code"):
         if kw.get(extra) is not None:
-            raise UnsupportedConstruct(f"{call.name}: a {what} with {extra} is not a per-tensor "
-                                       "symmetric scale")
+            raise UnsupportedConstruct(f"{call.name}: a {what} with {extra} is not a per-tensor symmetric scale")
     scale = kw.get("scale")
     if not isinstance(scale, Ref) or scale.box.shape not in ((), (1,)):
         raise UnsupportedConstruct(f"{call.name}: {what} scale is not one scalar")
@@ -248,12 +262,12 @@ def _scale_ref(call, what: str) -> str:
 class _Tail:
     """What a fused chain after its anchor asks of the readout."""
 
-    acc_scale: str | None = None             # dequantize(acc) scale node
-    residual: Ref | None = None              # on-chip residual tile
+    acc_scale: str | None = None  # dequantize(acc) scale node
+    residual: Ref | None = None  # on-chip residual tile
     residual_scale: str | None = None
-    combine: Ref | None = None               # the partial a K split adds into
+    combine: Ref | None = None  # the partial a K split adds into
     relu: bool = False
-    out_scale: str | None = None             # quantize scale node (int8 output) or None
+    out_scale: str | None = None  # quantize scale node (int8 output) or None
 
 
 def _value_kind(ref: Any, values: dict[str, str]) -> str | None:
@@ -272,7 +286,7 @@ def _parse_tail(comp: FusedCompute, standalone: bool) -> _Tail:
     calls = comp.chain if standalone else comp.chain[1:]
     if not standalone:
         values[comp.anchor.name] = "acc"
-    finished = False                         # a relu or quantize has run: no add may follow
+    finished = False  # a relu or quantize has run: no add may follow
     for call in calls:
         kw = call.kwargs
         if call.target == _DEQUANTIZE:
@@ -338,15 +352,21 @@ class _Lowerer:
     """Lower one layer. Placement keeps each tile inside the byte region Voyager allotted it; the
     output tile lives in an accumulator region chosen by split-K group (see the module doc)."""
 
-    def __init__(self, trace: Trace, geometry: Geometry, anchors: tuple[str, ...], what: str,
-                 scalars: Mapping[str, float] | None = None):
+    def __init__(
+        self,
+        trace: Trace,
+        geometry: Geometry,
+        anchors: tuple[str, ...],
+        what: str,
+        scalars: Mapping[str, float] | None = None,
+    ):
         self.trace, self.g, self.anchors, self.what = trace, geometry, anchors, what
         self.scalars = scalars
         self.ops: list[Op] = []
         self.notes: list[str] = []
-        self.roles: dict[str, str] = {}              # on-chip node -> lhs|weight|bias|residual|out|partial
-        self.dram: dict[str, Box] = {}               # role -> Voyager DRAM tensor
-        self.dram_names: dict[str, str] = {}         # role -> DRAM tensor the ops address
+        self.roles: dict[str, str] = {}  # on-chip node -> lhs|weight|bias|residual|out|partial
+        self.dram: dict[str, Box] = {}  # role -> Voyager DRAM tensor
+        self.dram_names: dict[str, str] = {}  # role -> DRAM tensor the ops address
         self.stride: dict[str, tuple[int, int]] = {}  # input node -> the stride its computes use
         self.bias_start: dict[tuple[str, int], int] = {}  # (bias node, slot) -> first channel held
         self.residual_window: dict[tuple[str, int], tuple] = {}  # (node, slot) -> (start, sizes)
@@ -355,13 +375,13 @@ class _Lowerer:
         self.regions = 0
         self.bound: dict[tuple[str, int], int] = {}  # (out node, slot) -> the region it names
         self.readouts: dict[tuple[str, int], _Readout] = {}
-        self.unstored: set[int] = set()              # regions bound but not yet stored
-        self.group: dict[str, Any] | None = None     # the split-K group being accumulated
+        self.unstored: set[int] = set()  # regions bound but not yet stored
+        self.group: dict[str, Any] | None = None  # the split-K group being accumulated
         self.groups = 0
-        self.host_before: dict[str, HostOp] = {}     # int32 buffer -> the requantization feeding it
+        self.host_before: dict[str, HostOp] = {}  # int32 buffer -> the requantization feeding it
         self.dequant_after: dict[str, tuple[float, bool, str]] = {}  # out node -> (scale, relu, dtype)
         self.readout_params: dict[str, Any] = {}
-        self.pass_mode = False                       # the output tile cannot live in the accumulator
+        self.pass_mode = False  # the output tile cannot live in the accumulator
         self.pass_count = 0
 
     def _note(self, text: str) -> None:
@@ -370,8 +390,9 @@ class _Lowerer:
 
     def _scalar(self, node: str) -> float:
         if self.scalars is None:
-            raise UnsupportedConstruct(f"scale {node} is needed but no scale values were given "
-                                       "(lower the program with lower_model)")
+            raise UnsupportedConstruct(
+                f"scale {node} is needed but no scale values were given (lower the program with lower_model)"
+            )
         try:
             return float(self.scalars[node])
         except KeyError:
@@ -382,8 +403,9 @@ class _Lowerer:
         """(first row, rows) of the scratchpad region Voyager allotted ``ref``'s slot."""
         base, rem = divmod(ref.slot_address, self.g.spad_row_bytes)
         if rem:
-            raise UnsupportedConstruct(f"{ref.box.node} slot address {ref.slot_address} is not "
-                                       f"row aligned ({self.g.spad_row_bytes} B rows)")
+            raise UnsupportedConstruct(
+                f"{ref.box.node} slot address {ref.slot_address} is not row aligned ({self.g.spad_row_bytes} B rows)"
+            )
         elements = 1
         for extent in ref.box.shape:
             elements *= extent
@@ -392,8 +414,10 @@ class _Lowerer:
     def _checked(self, ref: Ref, row: int, rows: int) -> int:
         base, allotted = self._region(ref)
         if row < base or row + rows > base + allotted or row + rows > self.g.spad_rows:
-            raise UnsupportedConstruct(f"{ref.box.node} rows {row}..{row + rows} leave the "
-                                       f"{allotted}-row region Voyager allotted at row {base}")
+            raise UnsupportedConstruct(
+                f"{ref.box.node} rows {row}..{row + rows} leave the "
+                f"{allotted}-row region Voyager allotted at row {base}"
+            )
         return row
 
     def input_row(self, ref: Ref, cb: int, h: int, w: int) -> int:
@@ -423,15 +447,15 @@ class _Lowerer:
     def bind_roles(self, computes: list[FusedCompute]) -> None:
         d = self.g.dim
         if self.g.spad_row_bytes != d:
-            raise UnsupportedConstruct(f"a {self.g.spad_row_bytes} B scratchpad row does not hold one "
-                                       f"{d}-channel row of 8-bit pixels")
+            raise UnsupportedConstruct(
+                f"a {self.g.spad_row_bytes} B scratchpad row does not hold one {d}-channel row of 8-bit pixels"
+            )
         stored = {c.src.box.node for c in self.trace.of(Copy) if c.is_store}
         for comp in computes:
             standalone = self._standalone(comp)
             anchor = comp.anchor
             if not standalone and anchor.target not in self.anchors:
-                raise UnsupportedConstruct(f"{comp.name}: anchor {anchor.target!r} is not a "
-                                           f"{self.what}")
+                raise UnsupportedConstruct(f"{comp.name}: anchor {anchor.target!r} is not a {self.what}")
             tail = _parse_tail(comp, standalone)
             if tail.residual is not None:
                 self._set_role(tail.residual.box.node, "residual")
@@ -441,8 +465,7 @@ class _Lowerer:
             self._set_role(dest.box.node, "out" if dest.box.node in stored else "partial")
             shape = _as4(dest.box.shape, dest.box.node)
             if self.tile and shape != self.tile:
-                raise UnsupportedConstruct(f"{comp.name}: output tiles {shape} and {self.tile} in one "
-                                           "layer")
+                raise UnsupportedConstruct(f"{comp.name}: output tiles {shape} and {self.tile} in one layer")
             self.tile = shape
             if dest.box.node in stored:
                 self.regions = max(self.regions, dest.box.bank_count)
@@ -451,8 +474,9 @@ class _Lowerer:
             if anchor.kwargs.get("groups", 1) != 1:
                 raise UnsupportedConstruct(f"{comp.name}: grouped convolution is not lowered")
             if tuple(anchor.kwargs.get("padding", (0, 0))) != (0, 0):
-                raise UnsupportedConstruct(f"{comp.name}: padding inside the compute is not lowered "
-                                           "(Voyager pads in the copy)")
+                raise UnsupportedConstruct(
+                    f"{comp.name}: padding inside the compute is not lowered (Voyager pads in the copy)"
+                )
             for kw, role in (("input", "lhs"), ("weight", "weight"), ("bias", "bias")):
                 ref = anchor.kwargs.get(kw)
                 if ref is None and kw == "bias":
@@ -463,8 +487,7 @@ class _Lowerer:
                     raise UnsupportedConstruct(f"{comp.name}: {kw} reads a sub-window of its buffer")
                 self._set_role(ref.box.node, role)
                 if ref.box.dtype not in ("int8", "uint8") and role != "bias":
-                    raise UnsupportedConstruct(f"{comp.name}: {kw} is {ref.box.dtype}; only 8-bit "
-                                               "operands are lowered")
+                    raise UnsupportedConstruct(f"{comp.name}: {kw} is {ref.box.dtype}; only 8-bit operands are lowered")
             stride = tuple(anchor.kwargs.get("stride", (1, 1)))
             if self.stride.setdefault(anchor.kwargs["input"].box.node, stride) != stride:
                 raise UnsupportedConstruct(f"{comp.name}: one input buffer read at two strides")
@@ -479,22 +502,25 @@ class _Lowerer:
         self.dram_names = {role: box.node for role, box in self.dram.items() if role != "residual"}
         n, oh, ow, oc = self.tile
         if n != 1 or oc % d:
-            raise UnsupportedConstruct(f"output tile {self.tile} is not one image of whole "
-                                       f"{d}-channel blocks")
+            raise UnsupportedConstruct(f"output tile {self.tile} is not one image of whole {d}-channel blocks")
         self.region_rows = oc // d * oh * ow
         fit = self.g.acc_rows // self.region_rows
         if fit == 0:
             # The tile cannot live in the accumulator whole: each compute runs in passes along its
             # outermost output loops (_compute_in_passes), or refuses there.
             self.pass_mode = True
-            self._note(f"Voyager's output tile ({self.region_rows} rows) is larger than the "
-                       f"accumulator ({self.g.acc_rows} rows): each compute runs in passes along its "
-                       "outermost output loops, each pass stored as soon as it completes (C7)")
+            self._note(
+                f"Voyager's output tile ({self.region_rows} rows) is larger than the "
+                f"accumulator ({self.g.acc_rows} rows): each compute runs in passes along its "
+                "outermost output loops, each pass stored as soon as it completes (C7)"
+            )
             return
         if fit < self.regions:
-            self._note(f"Voyager's {self.regions}-slot output buffer is deeper than the {fit} output "
-                       "tile(s) the accumulator holds: a tile's store is issued before the next tile "
-                       "first writes its region (C7)")
+            self._note(
+                f"Voyager's {self.regions}-slot output buffer is deeper than the {fit} output "
+                "tile(s) the accumulator holds: a tile's store is issued before the next tile "
+                "first writes its region (C7)"
+            )
             self.regions = fit
 
     def views(self) -> dict[str, tuple[int, int]]:
@@ -515,8 +541,10 @@ class _Lowerer:
             if len(sizes) != 1:
                 raise UnsupportedConstruct(f"{copy.name}: a {len(sizes)}-D bias tile")
             self.bias_start[(copy.dst.box.node, copy.dst.slot)] = start[0]
-            self._note("bias rows move DRAM -> accumulator at their first use: the target has no "
-                       "scratchpad -> accumulator path (C5)")
+            self._note(
+                "bias rows move DRAM -> accumulator at their first use: the target has no "
+                "scratchpad -> accumulator path (C5)"
+            )
             return
         start, sizes = _window4(copy)
         if role == "lhs":
@@ -525,8 +553,7 @@ class _Lowerer:
             self._load_weight(copy, start, sizes)
         elif role == "residual":
             self.residual_window[(copy.dst.box.node, copy.dst.slot)] = (start, sizes)
-            self._note("a residual tile moves DRAM -> accumulator, added in accumulator units before "
-                       "the readout (C5)")
+            self._note("a residual tile moves DRAM -> accumulator, added in accumulator units before the readout (C5)")
         else:
             raise UnsupportedConstruct(f"{copy.name}: a load into the {role} buffer")
 
@@ -536,8 +563,9 @@ class _Lowerer:
         tn, th, tw, tc = sizes
         _, height, width, channels = _as4(self.dram["lhs"].shape, "lhs")
         if tn != 1 or tc % d or c0 % d or c0 + tc > channels:
-            raise UnsupportedConstruct(f"{copy.name}: input tile {sizes} at {start} is not one image "
-                                       f"of whole {d}-channel blocks")
+            raise UnsupportedConstruct(
+                f"{copy.name}: input tile {sizes} at {start} is not one image of whole {d}-channel blocks"
+            )
         s = self.stride[copy.dst.box.node][1]
         if s > 1:
             self._note(f"stride-{s} input tiles are loaded phase-split along W (C4)")
@@ -557,8 +585,9 @@ class _Lowerer:
                     if run:
                         self._emit_input(copy, cb, h, run, run_valid, start, s)
 
-    def _emit_input(self, copy: Copy, cb: int, h: int, run: list[int], valid: bool,
-                    start: tuple[int, ...], s: int) -> None:
+    def _emit_input(
+        self, copy: Copy, cb: int, h: int, run: list[int], valid: bool, start: tuple[int, ...], s: int
+    ) -> None:
         d = self.g.dim
         n0, h0, w0, c0 = start
         _, height, width, _ = _as4(self.dram["lhs"].shape, "lhs")
@@ -576,15 +605,21 @@ class _Lowerer:
         tkh, tkw, tic, toc = sizes
         _, kw, ci, co = _as4(self.dram["weight"].shape, "weight")
         if tic % d or toc % d or ic0 % d or oc0 % d or ic0 + tic > ci or oc0 + toc > co:
-            raise UnsupportedConstruct(f"{copy.name}: weight tile {sizes} at {start} is not whole "
-                                       f"{d}x{d} blocks")
+            raise UnsupportedConstruct(f"{copy.name}: weight tile {sizes} at {start} is not whole {d}x{d} blocks")
         for fy in range(tkh):
             for fx in range(tkw):
                 for icb in range(tic // d):
                     for ocb in range(toc // d):
-                        self.ops.append(Mvin(
-                            "weight", ((fy0 + fy) * kw + fx0 + fx) * ci + ic0 + icb * d,
-                            oc0 + ocb * d, d, d, self.weight_row(copy.dst, fy, fx, icb, ocb)))
+                        self.ops.append(
+                            Mvin(
+                                "weight",
+                                ((fy0 + fy) * kw + fx0 + fx) * ci + ic0 + icb * d,
+                                oc0 + ocb * d,
+                                d,
+                                d,
+                                self.weight_row(copy.dst, fy, fx, icb, ocb),
+                            )
+                        )
 
     def _pixel_runs(self, start: tuple[int, ...], shape: tuple[int, ...], base: int):
         """Runs (dram row, acc row, rows) over an output-tile-shaped window: consecutive pixels that
@@ -614,8 +649,7 @@ class _Lowerer:
         key = (copy.src.box.node, copy.src.slot)
         region = self.bound.pop(key, None)
         if region is None:
-            raise UnsupportedConstruct(f"{copy.name}: stores {key[0]} slot {key[1]}, which no "
-                                       "finished compute names")
+            raise UnsupportedConstruct(f"{copy.name}: stores {key[0]} slot {key[1]}, which no finished compute names")
         readout = self.readouts.pop(key)
         self.unstored.discard(region)
         if self.group is not None and self.group["bound"] == key:
@@ -625,22 +659,33 @@ class _Lowerer:
         if tuple(sizes) != self.tile or any(s + t > e for s, t, e in zip(start, sizes, out)):
             raise UnsupportedConstruct(f"{copy.name}: a partial output tile {sizes} at {start}")
         for ocb, dram, acc, rows in self._pixel_runs(start, out, region * self.region_rows):
-            self.ops.append(Mvout("out", dram, start[3] + ocb * d, rows, d, acc, scale=readout.scale,
-                                  relu=readout.relu, out_dtype=readout.out_dtype))
+            self.ops.append(
+                Mvout(
+                    "out",
+                    dram,
+                    start[3] + ocb * d,
+                    rows,
+                    d,
+                    acc,
+                    scale=readout.scale,
+                    relu=readout.relu,
+                    out_dtype=readout.out_dtype,
+                )
+            )
 
     # computes ---------------------------------------------------------------------------------
     def _open_group(self, comp: FusedCompute) -> None:
         if self.group is not None:
             if self.group["bound"] is None:
-                raise UnsupportedConstruct(f"{comp.name} starts an output tile while the previous K "
-                                           "split never reached an output slot")
+                raise UnsupportedConstruct(
+                    f"{comp.name} starts an output tile while the previous K split never reached an output slot"
+                )
             self.group = None
         region = self.groups % self.regions
         if region in self.unstored:
             self._store_early(comp, region)
         self.groups += 1
-        self.group = {"region": region, "initialized": set(), "partial": None, "bound": None,
-                      "acc_scale": None}
+        self.group = {"region": region, "initialized": set(), "partial": None, "bound": None, "acc_scale": None}
 
     def _store_early(self, comp: FusedCompute, region: int) -> None:
         """Issue, now, the stores Voyager issues later from ``region``: the ring is shallower than
@@ -648,33 +693,33 @@ class _Lowerer:
         for key in [k for k, r in self.bound.items() if r == region]:
             for index in range(self._at + 1, len(self._events)):
                 event = self._events[index]
-                if (isinstance(event, Copy) and event.is_store
-                        and (event.src.box.node, event.src.slot) == key):
+                if isinstance(event, Copy) and event.is_store and (event.src.box.node, event.src.slot) == key:
                     self.store(event)
                     self._done.add(index)
                     break
             else:
-                raise UnsupportedConstruct(f"{comp.name}: accumulator region {region} holds "
-                                           f"{key[0]} slot {key[1]}, which is never stored")
+                raise UnsupportedConstruct(
+                    f"{comp.name}: accumulator region {region} holds {key[0]} slot {key[1]}, which is never stored"
+                )
 
     def _continue_group(self, comp: FusedCompute, partial: Ref) -> None:
         if self.group is None or self.group["partial"] != (partial.box.node, partial.slot):
-            raise UnsupportedConstruct(f"{comp.name}: adds into {partial.box.node} slot "
-                                       f"{partial.slot}, which is not the open K split")
-        self._note("K splits combine in the integer accumulator (C2); each output tile's split-K "
-                   "group renames onto the next accumulator region of the output ring")
+            raise UnsupportedConstruct(
+                f"{comp.name}: adds into {partial.box.node} slot {partial.slot}, which is not the open K split"
+            )
+        self._note(
+            "K splits combine in the integer accumulator (C2); each output tile's split-K "
+            "group renames onto the next accumulator region of the output ring"
+        )
 
     def _readout(self, comp: FusedCompute, tail: _Tail, acc_scale: str | None, out: Box) -> _Readout:
         if tail.out_scale is None:
             if out.dtype not in ("int32",):
                 if self.scalars is not None:
                     if acc_scale is None:
-                        raise UnsupportedConstruct(f"{comp.name}: a {out.dtype} output with no "
-                                                   "dequantize scale")
-                    self.dequant_after[out.node] = (_f32(self._scalar(acc_scale)), tail.relu,
-                                                    out.dtype)
-                    self._note("an unquantized output is read out as int32 and dequantized on the "
-                               "host (C6)")
+                        raise UnsupportedConstruct(f"{comp.name}: a {out.dtype} output with no dequantize scale")
+                    self.dequant_after[out.node] = (_f32(self._scalar(acc_scale)), tail.relu, out.dtype)
+                    self._note("an unquantized output is read out as int32 and dequantized on the host (C6)")
                 else:
                     self._note("the readout of a floating-point output is the caller's (C1)")
             return _Readout()
@@ -683,13 +728,15 @@ class _Lowerer:
             return _Readout()
         if acc_scale is None:
             raise UnsupportedConstruct(f"{comp.name}: quantize with no dequantize scale")
-        self._note("dequantize -> [relu] -> quantize becomes the accumulator readout: relu, one fp32 "
-                   "scale (acc scale / output scale), saturation to int8 (C1)")
-        return _Readout(_f32(self._scalar(acc_scale) / self._scalar(tail.out_scale)), tail.relu,
-                        "int8")
+        self._note(
+            "dequantize -> [relu] -> quantize becomes the accumulator readout: relu, one fp32 "
+            "scale (acc scale / output scale), saturation to int8 (C1)"
+        )
+        return _Readout(_f32(self._scalar(acc_scale) / self._scalar(tail.out_scale)), tail.relu, "int8")
 
-    def _residual_source(self, comp: FusedCompute, tail: _Tail,
-                         acc_scale: str | None) -> tuple[str, float, tuple, tuple]:
+    def _residual_source(
+        self, comp: FusedCompute, tail: _Tail, acc_scale: str | None
+    ) -> tuple[str, float, tuple, tuple]:
         """(DRAM tensor the accumulator load reads, its load scale, the residual tile's window start,
         the DRAM tensor's rank-4 shape); registers the host requantization when loads cannot scale."""
         key = (tail.residual.box.node, tail.residual.slot)
@@ -707,12 +754,18 @@ class _Lowerer:
             name, scale = source.node, ratio
         else:
             name, scale = f"{source.node}__acc_i32", 1.0
-            op = HostOp(REQUANTIZE, {"input": source.node}, {"output": name},
-                        {"scale": ratio, "rounding": "nearest_even", "dtype": "int32"})
+            op = HostOp(
+                REQUANTIZE,
+                {"input": source.node},
+                {"output": name},
+                {"scale": ratio, "rounding": "nearest_even", "dtype": "int32"},
+            )
             if self.host_before.setdefault(name, op) != op:
                 raise UnsupportedConstruct(f"{comp.name}: one residual requantized at two scales")
-            self._note("the target's accumulator loads cannot scale, so the host brings the residual "
-                       "into accumulator units first (C6)")
+            self._note(
+                "the target's accumulator loads cannot scale, so the host brings the residual "
+                "into accumulator units first (C6)"
+            )
         if self.dram_names.setdefault("residual", name) != name:
             raise UnsupportedConstruct(f"{comp.name}: two residual tensors in one layer")
         return name, scale, start, _as4(source.shape, source.node)
@@ -726,8 +779,11 @@ class _Lowerer:
             ready = {r in group["initialized"] for r in range(acc, acc + rows)}
             if len(ready) != 1:
                 raise UnsupportedConstruct(f"{comp.name}: a residual run over partly written rows")
-            self.ops.append(AccMvin("residual", dram, start[3] + ocb * d, rows, d, acc, row_step=1,
-                                    accumulate=ready.pop(), scale=scale))
+            self.ops.append(
+                AccMvin(
+                    "residual", dram, start[3] + ocb * d, rows, d, acc, row_step=1, accumulate=ready.pop(), scale=scale
+                )
+            )
             group["initialized"].update(range(acc, acc + rows))
 
     def _bind(self, comp: FusedCompute, dest: Ref, tail: _Tail, acc_scale: str | None) -> None:
@@ -750,15 +806,18 @@ class _Lowerer:
     def epilogue(self, comp: FusedCompute) -> None:
         """A standalone residual add: rename it onto the open group's accumulator region."""
         if self.pass_mode:
-            raise UnsupportedConstruct(f"{comp.name}: the output tile is larger than the accumulator "
-                                       "and a standalone epilogue cannot run in passes")
+            raise UnsupportedConstruct(
+                f"{comp.name}: the output tile is larger than the accumulator "
+                "and a standalone epilogue cannot run in passes"
+            )
         tail = _parse_tail(comp, standalone=True)
         self._continue_group(comp, tail.combine)
         acc_scale = self.group["acc_scale"]
         self._emit_residual(comp, tail, acc_scale)
         self._bind(comp, comp.destinations[0], tail, acc_scale)
-        self._note(f"{comp.name}: the standalone residual add is renamed onto the accumulator "
-                   "region its K split finished in")
+        self._note(
+            f"{comp.name}: the standalone residual add is renamed onto the accumulator region its K split finished in"
+        )
 
     def compute(self, comp: FusedCompute) -> None:
         if self._standalone(comp):
@@ -774,14 +833,22 @@ class _Lowerer:
         sh, sw = anchor.kwargs.get("stride", (1, 1))
         dh, dw = anchor.kwargs.get("dilation", (1, 1))
         if tic != tc or toc != self.tile[3] or tic % d:
-            raise UnsupportedConstruct(f"{comp.name}: input {lhs.box.shape}, weight "
-                                       f"{weight.box.shape}, output {self.tile} do not compose")
+            raise UnsupportedConstruct(
+                f"{comp.name}: input {lhs.box.shape}, weight {weight.box.shape}, output {self.tile} do not compose"
+            )
         if (toh - 1) * sh + (tkh - 1) * dh >= th or (tow - 1) * sw + (tkw - 1) * dw >= tw:
-            raise UnsupportedConstruct(f"{comp.name}: the input tile {lhs.box.shape} does not hold "
-                                       f"the {toh}x{tow} output window")
+            raise UnsupportedConstruct(
+                f"{comp.name}: the input tile {lhs.box.shape} does not hold the {toh}x{tow} output window"
+            )
         tail = _parse_tail(comp, standalone=False)
-        want = {"LOOP_OY": toh, "LOOP_OX": tow, "LOOP_FY": tkh, "LOOP_FX": tkw,
-                "LOOP_IC": tic // d, "LOOP_OC": toc // d}
+        want = {
+            "LOOP_OY": toh,
+            "LOOP_OX": tow,
+            "LOOP_FY": tkh,
+            "LOOP_FX": tkw,
+            "LOOP_IC": tic // d,
+            "LOOP_OC": toc // d,
+        }
         if self.pass_mode:
             self._compute_in_passes(comp, tail, self._nest(comp, want), (sh, sw), (dh, dw))
             return
@@ -824,8 +891,14 @@ class _Lowerer:
             key = (coord["LOOP_FY"], coord["LOOP_FX"], coord["LOOP_IC"], coord["LOOP_OC"])
             in_row = self.input_row(lhs, key[2], oy * sh + key[0] * dh, ox * sw + key[1] * dw)
             acc_row = base + key[3] * pixels + oy * tow + ox
-            if (run and run[0] == key and in_row == run[1] + run[3] and acc_row == run[2] + run[3]
-                    and run[3] < d and (acc_row in initialized) == run[4]):
+            if (
+                run
+                and run[0] == key
+                and in_row == run[1] + run[3]
+                and acc_row == run[2] + run[3]
+                and run[3] < d
+                and (acc_row in initialized) == run[4]
+            ):
                 run[3] += 1
                 continue
             if run:
@@ -841,8 +914,12 @@ class _Lowerer:
         """Voyager's nest, outermost first, checked to cover the tile exactly. A loop at several
         levels composes: the inner level's extent is the outer level's place value. The batch loop
         of a one-image tile carries nothing and is dropped."""
-        order = [(loop, bound) for level in reversed(comp.tiling) for loop, bound in reversed(level)
-                 if not (loop == "LOOP_ON" and bound == 1)]
+        order = [
+            (loop, bound)
+            for level in reversed(comp.tiling)
+            for loop, bound in reversed(level)
+            if not (loop == "LOOP_ON" and bound == 1)
+        ]
         extents = dict.fromkeys(_CONV_LOOPS, 1)
         for loop, bound in order:
             if loop not in extents:
@@ -851,8 +928,7 @@ class _Lowerer:
         if extents != want:
             raise UnsupportedConstruct(f"{comp.name}: mapping {order} does not cover {want}")
         if not order or order[-1][0] not in ("LOOP_OY", "LOOP_OX"):
-            raise UnsupportedConstruct(f"{comp.name}: innermost loop {order[-1:]} is not a pixel "
-                                       "stream")
+            raise UnsupportedConstruct(f"{comp.name}: innermost loop {order[-1:]} is not a pixel stream")
         return order
 
     def _take_store(self, comp: FusedCompute, dest: Ref) -> Copy:
@@ -860,8 +936,7 @@ class _Lowerer:
         key = (dest.box.node, dest.slot)
         for index in range(self._at + 1, len(self._events)):
             event = self._events[index]
-            if isinstance(event, Copy) and event.is_store and (event.src.box.node,
-                                                               event.src.slot) == key:
+            if isinstance(event, Copy) and event.is_store and (event.src.box.node, event.src.slot) == key:
                 self._done.add(index)
                 return event
         raise UnsupportedConstruct(f"{comp.name}: its output tile is never stored")
@@ -879,8 +954,14 @@ class _Lowerer:
         if run:
             yield tuple(run)
 
-    def _compute_in_passes(self, comp: FusedCompute, tail: _Tail, order: list[tuple[str, int]],
-                           stride: tuple[int, int], dilation: tuple[int, int]) -> None:
+    def _compute_in_passes(
+        self,
+        comp: FusedCompute,
+        tail: _Tail,
+        order: list[tuple[str, int]],
+        stride: tuple[int, int],
+        dilation: tuple[int, int],
+    ) -> None:
         """Run a compute whose output tile the accumulator cannot hold.
 
         Voyager's nest is split at its outermost OUTPUT loops: iterations that share those digits
@@ -896,14 +977,18 @@ class _Lowerer:
         sh, sw = stride
         dh, dw = dilation
         if tail.combine is not None or self.roles[dest.box.node] != "out":
-            raise UnsupportedConstruct(f"{comp.name}: the output tile is larger than the accumulator "
-                                       "and the compute is a K split, which passes cannot run")
+            raise UnsupportedConstruct(
+                f"{comp.name}: the output tile is larger than the accumulator "
+                "and the compute is a K split, which passes cannot run"
+            )
         prefix = 0
         while prefix < len(order) and order[prefix][0] in ("LOOP_OC", "LOOP_OY", "LOOP_OX"):
             prefix += 1
         if prefix == 0:
-            raise UnsupportedConstruct(f"{comp.name}: the output tile is larger than the accumulator "
-                                       f"and its outermost loop {order[0][0]} is a reduction")
+            raise UnsupportedConstruct(
+                f"{comp.name}: the output tile is larger than the accumulator "
+                f"and its outermost loop {order[0][0]} is a reduction"
+            )
         iterations: list[tuple] = []
         passes: dict[tuple, dict] = {}
         for digits in itertools.product(*(range(bound) for _, bound in order)):
@@ -925,13 +1010,13 @@ class _Lowerer:
             rows = max(rows, len(cells["ocbs"]) * len(cells["pixels"]))
         fit = self.g.acc_rows // rows
         if fit == 0:
-            raise UnsupportedConstruct(f"{comp.name}: even one pass ({rows} rows) is larger than the "
-                                       f"accumulator ({self.g.acc_rows} rows)")
+            raise UnsupportedConstruct(
+                f"{comp.name}: even one pass ({rows} rows) is larger than the accumulator ({self.g.acc_rows} rows)"
+            )
         store = self._take_store(comp, dest)
         out_start, out_sizes = _window4(store)
         out_shape = _as4(self.dram["out"].shape, "out")
-        if tuple(out_sizes) != self.tile or any(s + z > e for s, z, e in zip(out_start, out_sizes,
-                                                                             out_shape)):
+        if tuple(out_sizes) != self.tile or any(s + z > e for s, z, e in zip(out_start, out_sizes, out_shape)):
             raise UnsupportedConstruct(f"{store.name}: a partial output tile {out_sizes}")
         readout = self._readout(comp, tail, tail.acc_scale, self.dram["out"])
         params = {"scale": readout.scale, "relu": readout.relu, "out_dtype": readout.out_dtype}
@@ -961,23 +1046,40 @@ class _Lowerer:
             if residual is not None:
                 _, scale, (rn, rh, rw, rc), (_, height, width, _) = residual
                 for ocb, first in slot.items():
-                    cells_rw = [((rn * height + rh + oy) * width + rw + ox, first + local[(oy, ox)])
-                                for oy, ox in cells["pixels"]]
+                    cells_rw = [
+                        ((rn * height + rh + oy) * width + rw + ox, first + local[(oy, ox)])
+                        for oy, ox in cells["pixels"]
+                    ]
                     for dram, acc, n in self._runs(cells_rw):
                         ready = {r in initialized for r in range(acc, acc + n)}
                         if len(ready) != 1:
-                            raise UnsupportedConstruct(f"{comp.name}: a residual run over partly "
-                                                       "written rows")
-                        self.ops.append(AccMvin("residual", dram, rc + ocb * d, n, d, acc,
-                                                row_step=1, accumulate=ready.pop(), scale=scale))
+                            raise UnsupportedConstruct(f"{comp.name}: a residual run over partly written rows")
+                        self.ops.append(
+                            AccMvin(
+                                "residual",
+                                dram,
+                                rc + ocb * d,
+                                n,
+                                d,
+                                acc,
+                                row_step=1,
+                                accumulate=ready.pop(),
+                                scale=scale,
+                            )
+                        )
                         initialized.update(range(acc, acc + n))
             run = None
             for _, key, oy, ox in group:
                 in_row = self.input_row(lhs, key[2], oy * sh + key[0] * dh, ox * sw + key[1] * dw)
                 acc_row = slot[key[3]] + local[(oy, ox)]
-                if (run and run[0] == key and in_row == run[1] + run[3]
-                        and acc_row == run[2] + run[3] and run[3] < d
-                        and (acc_row in initialized) == run[4]):
+                if (
+                    run
+                    and run[0] == key
+                    and in_row == run[1] + run[3]
+                    and acc_row == run[2] + run[3]
+                    and run[3] < d
+                    and (acc_row in initialized) == run[4]
+                ):
                     run[3] += 1
                     continue
                 if run:
@@ -990,18 +1092,36 @@ class _Lowerer:
             on, oh0, ow0, oc_start = out_start
             _, height, width, _ = out_shape
             for ocb, first in slot.items():
-                cells_out = [((on * height + oh0 + oy) * width + ow0 + ox, first + local[(oy, ox)])
-                             for oy, ox in cells["pixels"]]
+                cells_out = [
+                    ((on * height + oh0 + oy) * width + ow0 + ox, first + local[(oy, ox)]) for oy, ox in cells["pixels"]
+                ]
                 for dram, acc, n in self._runs(cells_out):
-                    self.ops.append(Mvout("out", dram, oc_start + ocb * d, n, d, acc,
-                                          scale=readout.scale, relu=readout.relu,
-                                          out_dtype=readout.out_dtype))
+                    self.ops.append(
+                        Mvout(
+                            "out",
+                            dram,
+                            oc_start + ocb * d,
+                            n,
+                            d,
+                            acc,
+                            scale=readout.scale,
+                            relu=readout.relu,
+                            out_dtype=readout.out_dtype,
+                        )
+                    )
 
     def _flush(self, run: list, weight: Ref, resident: tuple | None, initialized: set[int]) -> tuple:
         key, in_row, acc_row, rows, ready = run
         fresh = resident != key
-        self.ops.append(Preload(weight_row=self.weight_row(weight, *key) if fresh else None,
-                                acc_row=acc_row, accumulate=ready, rows=rows, cols=self.g.dim))
+        self.ops.append(
+            Preload(
+                weight_row=self.weight_row(weight, *key) if fresh else None,
+                acc_row=acc_row,
+                accumulate=ready,
+                rows=rows,
+                cols=self.g.dim,
+            )
+        )
         self.ops.append(Compute(input_row=in_row, rows=rows, fresh_weights=fresh))
         initialized.update(range(acc_row, acc_row + rows))
         return key
@@ -1022,39 +1142,42 @@ class _Lowerer:
                 elif event.is_store and self.roles.get(event.src.box.node) == "out":
                     self.store(event)
                 else:
-                    raise UnsupportedConstruct(f"{event.name}: a copy between {event.src.box.level} "
-                                               f"and {event.dst.box.level} that no {self.what} "
-                                               "operand explains")
+                    raise UnsupportedConstruct(
+                        f"{event.name}: a copy between {event.src.box.level} "
+                        f"and {event.dst.box.level} that no {self.what} "
+                        "operand explains"
+                    )
             elif isinstance(event, FusedCompute):
                 self.compute(event)
             elif isinstance(event, TensorOp):
-                self._note(f"{event.call.name} ({event.call.target}) is a host op outside the "
-                           "accelerator schedule (C6)")
+                self._note(
+                    f"{event.call.name} ({event.call.target}) is a host op outside the accelerator schedule (C6)"
+                )
         if (self.group is not None and self.group["bound"] is None) or self.bound:
             raise UnsupportedConstruct("the trace ends with an output tile that is never stored")
-        self.notes.append("async_wait/commit semaphores carry no instruction: the target orders "
-                          "moves and computes by address dependence")
+        self.notes.append(
+            "async_wait/commit semaphores carry no instruction: the target orders "
+            "moves and computes by address dependence"
+        )
         names = dict(self.dram_names)
         if self.dram["out"].node in self.dequant_after:
             names["out"] = f"{self.dram['out'].node}__acc_i32"
-        return Schedule(ops=self.ops, shapes=self.views(), dram_nodes=names, geometry=self.g,
-                        notes=self.notes)
+        return Schedule(ops=self.ops, shapes=self.views(), dram_nodes=names, geometry=self.g, notes=self.notes)
 
 
-def lower_gemm(trace: Trace, geometry: Geometry,
-               scalars: Mapping[str, float] | None = None) -> Schedule:
+def lower_gemm(trace: Trace, geometry: Geometry, scalars: Mapping[str, float] | None = None) -> Schedule:
     """Lower every GEMM in ``trace`` (one layer, in program order) to a :class:`Schedule`."""
     return _Lowerer(trace, geometry, _GEMM_ANCHORS, "GEMM", scalars).run()
 
 
-def lower_conv(trace: Trace, geometry: Geometry,
-               scalars: Mapping[str, float] | None = None) -> Schedule:
+def lower_conv(trace: Trace, geometry: Geometry, scalars: Mapping[str, float] | None = None) -> Schedule:
     """Lower every NHWC convolution in ``trace`` (one layer, in program order) to a
     :class:`Schedule`."""
     return _Lowerer(trace, geometry, _CONV_ANCHORS, "conv", scalars).run()
 
 
 # --- whole programs ------------------------------------------------------------------------------
+
 
 class _TensorDirScalars(dict):
     def __init__(self, directory: Path):
@@ -1080,9 +1203,14 @@ def load_scalars(tensor_dir: str | Path) -> Mapping[str, float]:
 
 
 def _sub_trace(trace: Trace, first: int, end: int) -> Trace:
-    return Trace(inputs=trace.inputs, parameters=trace.parameters, outputs=trace.outputs,
-                 allocations=trace.allocations, events=trace.events[first:end],
-                 semaphores=trace.semaphores)
+    return Trace(
+        inputs=trace.inputs,
+        parameters=trace.parameters,
+        outputs=trace.outputs,
+        allocations=trace.allocations,
+        events=trace.events[first:end],
+        semaphores=trace.semaphores,
+    )
 
 
 def _layer_name(events: list) -> str:
@@ -1095,8 +1223,7 @@ def _layer_name(events: list) -> str:
     return "layer"
 
 
-def _host_layer(name: str, events: list, trace: Trace,
-                scalars: Mapping[str, float] | None) -> list[Layer]:
+def _host_layer(name: str, events: list, trace: Trace, scalars: Mapping[str, float] | None) -> list[Layer]:
     """A layer of host ops: one :class:`HostOp` per distinct tensor op, on whole DRAM tensors."""
     feeds: dict[str, Copy] = {}
     writes: list[str] = []
@@ -1119,8 +1246,7 @@ def _host_layer(name: str, events: list, trace: Trace,
         inputs, attrs = {}, {}
         for key, value in call.kwargs.items():
             if isinstance(value, Ref) and value.box.level == "IMMEDIATE":
-                attrs[key] = _f32(float(scalars[value.box.node])) if scalars is not None else \
-                    value.box.node
+                attrs[key] = _f32(float(scalars[value.box.node])) if scalars is not None else value.box.node
             elif isinstance(value, Ref) and value.box.on_chip:
                 copy = feeds.get(value.box.node)
                 if copy is None:
@@ -1128,7 +1254,7 @@ def _host_layer(name: str, events: list, trace: Trace,
                 inputs[key] = copy.src.box.node
                 view = tuple(copy.src.output_shape or ())
                 if view and view != tuple(copy.src.box.shape):
-                    attrs[f"{key}_view"] = view      # the shape the op reads its DRAM tensor as
+                    attrs[f"{key}_view"] = view  # the shape the op reads its DRAM tensor as
                 if copy.pad:
                     attrs[f"{key}_pad_before"] = tuple(copy.pad)
                     attrs[f"{key}_pad_value"] = copy.pad_value
@@ -1136,8 +1262,7 @@ def _host_layer(name: str, events: list, trace: Trace,
                 inputs[key] = value.box.node
             elif value is not None:
                 attrs[key] = value
-        outputs = {"output": writes[0]} if len(writes) == 1 else \
-            {f"output{i}": node for i, node in enumerate(writes)}
+        outputs = {"output": writes[0]} if len(writes) == 1 else {f"output{i}": node for i, node in enumerate(writes)}
         if not writes and call.name in trace.allocations:
             outputs = {"output": call.name}
         op = HostOp(call.target, inputs, outputs, attrs)
@@ -1145,8 +1270,7 @@ def _host_layer(name: str, events: list, trace: Trace,
     return layers
 
 
-def lower_model(trace: Trace, geometry: Geometry,
-                scalars: Mapping[str, float] | None) -> list[Layer]:
+def lower_model(trace: Trace, geometry: Geometry, scalars: Mapping[str, float] | None) -> list[Layer]:
     """Lower a whole replayed program into an ordered list of :class:`Layer` entries.
 
     Layers come from ``trace.layers`` (one Voyager top-level loop each; see ``voyager_ir``). A layer
@@ -1167,24 +1291,24 @@ def lower_model(trace: Trace, geometry: Geometry,
             continue
         anchors = {c.anchor.target for c in computes if c.anchor.target != _DEQUANTIZE}
         if anchors and anchors <= set(_CONV_ANCHORS):
-            kind, lowerer = "conv", _Lowerer(_sub_trace(trace, first, end), geometry, _CONV_ANCHORS,
-                                             "conv", scalars)
+            kind, lowerer = "conv", _Lowerer(_sub_trace(trace, first, end), geometry, _CONV_ANCHORS, "conv", scalars)
         elif anchors and anchors <= set(_GEMM_ANCHORS):
-            kind, lowerer = "gemm", _Lowerer(_sub_trace(trace, first, end), geometry, _GEMM_ANCHORS,
-                                             "GEMM", scalars)
+            kind, lowerer = "gemm", _Lowerer(_sub_trace(trace, first, end), geometry, _GEMM_ANCHORS, "GEMM", scalars)
         else:
             raise UnsupportedConstruct(f"{name}: computes anchored on {sorted(anchors)}")
         schedule = lowerer.run()
         for op in lowerer.host_before.values():
-            layers.append(Layer(name, "host", op, tuple(op.inputs.values()),
-                                tuple(op.outputs.values())))
-        reads = tuple(schedule.dram_nodes[r] for r in ("lhs", "weight", "bias", "residual")
-                      if r in schedule.dram_nodes)
+            layers.append(Layer(name, "host", op, tuple(op.inputs.values()), tuple(op.outputs.values())))
+        reads = tuple(schedule.dram_nodes[r] for r in ("lhs", "weight", "bias", "residual") if r in schedule.dram_nodes)
         readout = dict(lowerer.readout_params.get("store", {}))
         layers.append(Layer(name, kind, schedule, reads, (schedule.dram_nodes["out"],), readout))
         for node, (scale, relu, dtype) in lowerer.dequant_after.items():
-            op = HostOp(DEQUANTIZE_ACC, {"input": f"{node}__acc_i32"}, {"output": node},
-                        {"scale": scale, "relu": relu, "dtype": dtype})
+            op = HostOp(
+                DEQUANTIZE_ACC,
+                {"input": f"{node}__acc_i32"},
+                {"output": node},
+                {"scale": scale, "relu": relu, "dtype": dtype},
+            )
             layers.append(Layer(name, "host", op, (f"{node}__acc_i32",), (node,)))
         tensor_ops = [e for e in events if isinstance(e, TensorOp)]
         if tensor_ops:
@@ -1193,6 +1317,7 @@ def lower_model(trace: Trace, geometry: Geometry,
 
 
 # --- executable semantics ------------------------------------------------------------------------
+
 
 def _scale_unit(values: Any, scale: float, lo: int, hi: int) -> Any:
     """The target's scale unit: integer -> fp32 (round to nearest even), fp32 multiply (nearest
@@ -1237,39 +1362,40 @@ def execute(schedule: Schedule, lhs: Any, weight: Any, **operands: Any) -> Any:
             block = np.zeros((op.rows, d), dtype=np.int64)
             if op.role != "zero":
                 rows = op.dram_row + op.row_step * np.arange(op.rows)
-                block[:, :op.cols] = sources[op.role][rows, op.dram_col:op.dram_col + op.cols]
-            spad[op.spad_row:op.spad_row + op.rows] = block
+                block[:, : op.cols] = sources[op.role][rows, op.dram_col : op.dram_col + op.cols]
+            spad[op.spad_row : op.spad_row + op.rows] = block
         elif isinstance(op, AccMvin):
             rows = op.dram_row + op.row_step * np.arange(op.rows)
             block = np.zeros((op.rows, d), dtype=np.int64)
-            block[:, :op.cols] = sources[op.role][rows, op.dram_col:op.dram_col + op.cols]
+            block[:, : op.cols] = sources[op.role][rows, op.dram_col : op.dram_col + op.cols]
             if op.scale != 1.0:
                 block = _scale_unit(block, op.scale, *_INT32)
             span = slice(op.acc_row, op.acc_row + op.rows)
             acc[span] = acc[span] + block if op.accumulate else block
         elif isinstance(op, Preload):
             if op.weight_row is not None:
-                resident = spad[op.weight_row:op.weight_row + d].copy()
+                resident = spad[op.weight_row : op.weight_row + d].copy()
             target = op
         elif isinstance(op, Compute):
             if target is None:
                 raise UnsupportedConstruct("compute with no preceding preload")
             if target.rows != op.rows:
                 raise UnsupportedConstruct("a preload and its compute disagree on the row count")
-            product = spad[op.input_row:op.input_row + op.rows] @ resident
+            product = spad[op.input_row : op.input_row + op.rows] @ resident
             rows = slice(target.acc_row, target.acc_row + op.rows)
             acc[rows] = acc[rows] + product if target.accumulate else product
             target = None
         elif isinstance(op, Mvout):
-            values = acc[op.acc_row:op.acc_row + op.rows, :op.cols]
+            values = acc[op.acc_row : op.acc_row + op.rows, : op.cols]
             if op.out_dtype == "int8":
                 if op.relu:
                     values = np.maximum(values, 0)
                 values = _scale_unit(values, op.scale, *_INT8)
             elif op.out_dtype != "int32" or op.relu or op.scale != 1.0:
-                raise UnsupportedConstruct(f"a {op.out_dtype} readout with scale {op.scale} and "
-                                           f"relu={op.relu} is not a store the target has")
-            out[op.dram_row:op.dram_row + op.rows, op.dram_col:op.dram_col + op.cols] = values
+                raise UnsupportedConstruct(
+                    f"a {op.out_dtype} readout with scale {op.scale} and relu={op.relu} is not a store the target has"
+                )
+            out[op.dram_row : op.dram_row + op.rows, op.dram_col : op.dram_col + op.cols] = values
     return out.astype(np.int32)
 
 
@@ -1339,17 +1465,17 @@ def _host_max_pool2d(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple, o
     th, tw = (oh - 1) * sh + (kh - 1) * dh + 1, (ow - 1) * sw + (kw - 1) * dw + 1
     tile = np.full((x.shape[0], th, tw, x.shape[3]), fill, dtype=np.float32)
     rows, cols = min(th, pad[1] + x.shape[1]) - pad[1], min(tw, pad[2] + x.shape[2]) - pad[2]
-    tile[:, pad[1]:pad[1] + rows, pad[2]:pad[2] + cols] = x[:, :rows, :cols]
+    tile[:, pad[1] : pad[1] + rows, pad[2] : pad[2] + cols] = x[:, :rows, :cols]
     out = np.full((x.shape[0], oh, ow, x.shape[3]), -np.inf, dtype=np.float32)
     for fy in range(kh):
         for fx in range(kw):
-            out = np.maximum(out, tile[:, fy * dh:fy * dh + sh * (oh - 1) + 1:sh,
-                                       fx * dw:fx * dw + sw * (ow - 1) + 1:sw])
+            out = np.maximum(
+                out, tile[:, fy * dh : fy * dh + sh * (oh - 1) + 1 : sh, fx * dw : fx * dw + sw * (ow - 1) + 1 : sw]
+            )
     return _as_dtype(out.reshape(out_shape), out_dtype)
 
 
-def _host_adaptive_avg_pool2d(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple,
-                              out_dtype: str):
+def _host_adaptive_avg_pool2d(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple, out_dtype: str):
     """Voyager's ``quantized_ops::adaptive_avg_pool2d``, the NHWC twin of the aten op
     (``ops/layout.py``): per output cell, the window [floor(i*H/OH), ceil((i+1)*H/OH)), summed in
     float32 in row-major order and divided by its size in float32, then stored in the output dtype."""
@@ -1416,7 +1542,7 @@ def _host_linear(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple, out_d
     x = np.asarray(_operand(op, tensors, "input"), dtype=np.float64)
     w = np.asarray(_operand(op, tensors, "weight"), dtype=np.float64)
     total = x @ w.T
-    exact_below = float(1 << (np.finfo(np.float32).nmant + 1))   # float32 holds every integer below
+    exact_below = float(1 << (np.finfo(np.float32).nmant + 1))  # float32 holds every integer below
     if (np.abs(x) @ np.abs(w).T).max(initial=0) >= exact_below:
         raise UnsupportedConstruct("linear partial sums past float32's exact-integer range")
     if "bias" in op.inputs:
@@ -1424,8 +1550,7 @@ def _host_linear(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple, out_d
     return _as_dtype(_bf16(total.astype(np.float32)).reshape(out_shape), out_dtype)
 
 
-def host_op_reference(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple,
-                      out_dtype: str) -> Any:
+def host_op_reference(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple, out_dtype: str) -> Any:
     """The numpy reference of one host op, as the executor's value of its (single) output.
 
     ``tensors`` maps DRAM names to arrays (integers as int64, bfloat16 values as float32);
@@ -1478,15 +1603,17 @@ def execute_model(layers: list[Layer], tensors: dict[str, Any], trace: Trace) ->
     for layer in layers:
         program = layer.program
         if isinstance(program, Schedule):
-            view = {role: np.asarray(tensors[node]).reshape(program.shapes[role])
-                    for role, node in program.dram_nodes.items() if role != "out"}
+            view = {
+                role: np.asarray(tensors[node]).reshape(program.shapes[role])
+                for role, node in program.dram_nodes.items()
+                if role != "out"
+            }
             lhs, weight = view.pop("lhs"), view.pop("weight")
             out = execute(program, lhs, weight, **view)
             tensors[program.dram_nodes["out"]] = out.reshape(shape_of(program.dram_nodes["out"]))
             continue
         if len(program.outputs) != 1:
-            raise UnsupportedConstruct(f"host op {program.target} writes {len(program.outputs)} "
-                                       "tensors")
+            raise UnsupportedConstruct(f"host op {program.target} writes {len(program.outputs)} tensors")
         (out,) = program.outputs.values()
         box = trace.allocations.get(out.removesuffix("__acc_i32"))
         dtype = "int32" if out.endswith("__acc_i32") or box is None else box.dtype

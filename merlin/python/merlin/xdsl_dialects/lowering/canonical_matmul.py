@@ -1,4 +1,5 @@
 """Recognize the exact integer matrix multiply region, independently of tags."""
+
 from xdsl.ir import Operation
 from xdsl.ir.affine import AffineDimExpr
 
@@ -14,15 +15,16 @@ def is_integer_matmul(op: Operation) -> bool:
     iters = props.get("iterator_types")
     if maps is None or len(maps) != 3 or iters is None:
         return False
-    if [getattr(getattr(item, "data", None), "value", None) for item in iters] != [
-            "parallel", "parallel", "reduction"]:
+    if [getattr(getattr(item, "data", None), "value", None) for item in iters] != ["parallel", "parallel", "reduction"]:
         return False
     for attr, expected in zip(maps, ((0, 2), (2, 1), (0, 1))):
         amap = attr.data
         if amap.num_dims != 3 or amap.num_symbols or len(amap.results) != 2:
             return False
-        if not all(isinstance(expr, AffineDimExpr) and expr.position == position
-                   for expr, position in zip(amap.results, expected)):
+        if not all(
+            isinstance(expr, AffineDimExpr) and expr.position == position
+            for expr, position in zip(amap.results, expected)
+        ):
             return False
     if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
         return False
@@ -32,8 +34,7 @@ def is_integer_matmul(op: Operation) -> bool:
     operations = list(body.ops)
     if not operations or operations[-1].name != "linalg.yield":
         return False
-    if any(item.name not in {"arith.extsi", "arith.muli", "arith.addi", "linalg.yield"}
-           for item in operations):
+    if any(item.name not in {"arith.extsi", "arith.muli", "arith.addi", "linalg.yield"} for item in operations):
         return False
     value = operations[-1].operands[0]
     addition = value.owner

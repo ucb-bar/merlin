@@ -14,6 +14,7 @@ self-check state changes is a real number, but it is not the same kind of number
 off a stamped event, and a figure that renders them identically is making a claim the data does not
 support.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -53,8 +54,9 @@ class Status:
 
     @classmethod
     def from_dict(cls, d: Mapping) -> "Status":
-        return cls(kind=str(d.get("kind") or UNAVAILABLE),
-                   reason=str(d.get("reason") or ""), source=str(d.get("source") or ""))
+        return cls(
+            kind=str(d.get("kind") or UNAVAILABLE), reason=str(d.get("reason") or ""), source=str(d.get("source") or "")
+        )
 
 
 def measured(source: str = "") -> Status:

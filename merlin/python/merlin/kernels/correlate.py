@@ -19,6 +19,7 @@ instructions came from ``matmul_7`` is not knowing which pass chose their tile s
 ``kernels.asm_provenance``, which is explicit that it attributes a decision to a SEAM and cannot
 localize a codegen bug.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -94,12 +95,17 @@ def attribute(raws) -> Attribution:
             if cur_sym is not None and i > start:
                 window = list(raws)[start:i]
                 addrs = [int(getattr(w, "addr", 0)) for w in window]
-                spans.append(SymbolSpan(
-                    symbol=cur_sym, first_index=start, last_index=i,
-                    low_addr=min(addrs) if addrs else 0,
-                    high_addr=max(addrs) if addrs else 0,
-                    n_insns=len(window),
-                    region_id=region_id_of_symbol(cur_sym)))
+                spans.append(
+                    SymbolSpan(
+                        symbol=cur_sym,
+                        first_index=start,
+                        last_index=i,
+                        low_addr=min(addrs) if addrs else 0,
+                        high_addr=max(addrs) if addrs else 0,
+                        n_insns=len(window),
+                        region_id=region_id_of_symbol(cur_sym),
+                    )
+                )
             cur_sym, start = sym, i
 
     if not spans:
@@ -111,9 +117,14 @@ def attribute(raws) -> Attribution:
         # literally correct and would read as "we can attribute instructions to regions", which is
         # the claim this refuses to make.
         return Attribution(
-            spans=tuple(spans), attributable=False,
-            reason=(f"{len(spans)} symbol(s), none carrying a region id — a monolithic image "
-                    f"attributes every instruction to one symbol, which is not an attribution. "
-                    f"Build per-kernel symbols, or slice the model by region and rebuild."))
-    return Attribution(spans=tuple(spans), attributable=True,
-                       reason=f"{len(tagged)}/{len(spans)} symbol(s) carry a region id")
+            spans=tuple(spans),
+            attributable=False,
+            reason=(
+                f"{len(spans)} symbol(s), none carrying a region id — a monolithic image "
+                f"attributes every instruction to one symbol, which is not an attribution. "
+                f"Build per-kernel symbols, or slice the model by region and rebuild."
+            ),
+        )
+    return Attribution(
+        spans=tuple(spans), attributable=True, reason=f"{len(tagged)}/{len(spans)} symbol(s) carry a region id"
+    )

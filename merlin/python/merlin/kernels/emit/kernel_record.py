@@ -3,6 +3,7 @@
 Composes ingest output, extracted features, classified motifs, and collected evidence into
 one record. Optionally validates against the schema before returning.
 """
+
 from __future__ import annotations
 
 from merlin.common import schemas

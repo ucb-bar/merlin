@@ -19,6 +19,7 @@ prop.
 Parent imports are ABSOLUTE (``merlin.xdsl_dialects.*``) so the module resolves out-of-tree, loaded by
 file path under a synthetic package name.
 """
+
 from __future__ import annotations
 
 import sys
@@ -64,9 +65,18 @@ if HAS_XDSL:
     # built-in toynpu spec PLUS this one, without a saturn literal in shared lowering.
     from merlin.xdsl_dialects.lowering.target_lowering import TargetSpec, register_dialect_spec
 
-    _SPEC = TargetSpec("saturn", sys.modules.get(__name__), PackOp, MatmulOp, CommitOp, ReleaseOp,
-                       PackedTensorType, AccumulatorType,
-                       vector_map_op=VectorMapOp, vector_reduce_op=VectorReduceOp)
+    _SPEC = TargetSpec(
+        "saturn",
+        sys.modules.get(__name__),
+        PackOp,
+        MatmulOp,
+        CommitOp,
+        ReleaseOp,
+        PackedTensorType,
+        AccumulatorType,
+        vector_map_op=VectorMapOp,
+        vector_reduce_op=VectorReduceOp,
+    )
     register_dialect_spec(_SPEC, opcodes=OPCODES)
 
 else:  # pragma: no cover - exercised only when xDSL is absent

@@ -19,6 +19,7 @@ mod P, so rows differ (r1!=r2 => shifts differ), columns differ (2 coprime to P)
 (1-2)*(r-c) offset is nonzero -> ``v[r][c] != v[c][r]`` (asymmetric). ``salt`` shifts the pattern per capsule
 without breaking any property.
 """
+
 from __future__ import annotations
 
 from merlin.common import stimulus as _stimulus
@@ -57,14 +58,14 @@ def derive_palette(fmt: str, n: int, *, mag_cap: float = _MAG_CAP) -> list[float
     """``n`` DISTINCT, exactly-representable values for ``fmt``, spread across a safe magnitude window and
     including both signs and the smallest positive (subnormal) value — derived from the format's own
     representable set, never a hand-picked list. Raises if the format cannot supply ``n`` distinct values."""
-    canonical_float(fmt)                                  # fail closed on an unknown float format
+    canonical_float(fmt)  # fail closed on an unknown float format
     finite = representable_values(fmt)
     cap = mag_cap
     while True:
-        pool = sorted({v for v in finite if 0.0 < abs(v) <= cap})   # nonzero, in-window
+        pool = sorted({v for v in finite if 0.0 < abs(v) <= cap})  # nonzero, in-window
         if len(pool) >= n or cap >= max(abs(v) for v in finite):
             break
-        cap *= 2.0                                        # sparse format -> widen the window
+        cap *= 2.0  # sparse format -> widen the window
     if len(pool) < n:
         raise ValueError(f"format {fmt!r} has only {len(pool)} usable values, need {n}")
     # evenly-spaced picks across the sorted pool -> a genuine spread (subnormal..near-cap, both signs)
@@ -77,7 +78,7 @@ def _usable_pool(fmt: str, max_alphabet: int | None, mag_cap: float = _MAG_CAP) 
     optionally capped to an evenly-spread ``max_alphabet`` values — the alphabet the operand is drawn from.
     A low-bit format (fp4 has 14 nonzero values; fp6 is LUT-limited to 16 per row) legitimately supplies a
     small alphabet; that is a datapath fact, not a degeneracy."""
-    canonical_float(fmt)                                  # fail closed on an unknown float format
+    canonical_float(fmt)  # fail closed on an unknown float format
     finite = representable_values(fmt)
     cap = mag_cap
     while True:
@@ -91,8 +92,9 @@ def _usable_pool(fmt: str, max_alphabet: int | None, mag_cap: float = _MAG_CAP) 
     return pool
 
 
-def operand_values(shape: tuple[int, int], fmt: str, salt: int, *, max_alphabet: int | None = None,
-                   mag_cap: float = _MAG_CAP) -> list[float]:
+def operand_values(
+    shape: tuple[int, int], fmt: str, salt: int, *, max_alphabet: int | None = None, mag_cap: float = _MAG_CAP
+) -> list[float]:
     """Flat row-major values for a 2-D operand of ``shape`` in ``fmt``, with distinct rows, distinct
     columns, and asymmetry guaranteed (see module docstring). ``salt`` (an int derived from the tensor
     name) shifts the pattern per capsule so operands vary but the guarantees hold.
@@ -111,16 +113,15 @@ def operand_values(shape: tuple[int, int], fmt: str, salt: int, *, max_alphabet:
             s = salt % p
             return [pal[(r + 2 * c + s) % p] for r in range(rows) for c in range(cols)]
         except ValueError:
-            pass                                          # alphabet too small -> mixed construction below
+            pass  # alphabet too small -> mixed construction below
     pool = _usable_pool(fmt, max_alphabet, mag_cap)
     a = len(pool)
-    for attempt in range(256):                            # deterministic salt search over the small alphabet
+    for attempt in range(256):  # deterministic salt search over the small alphabet
         s = salt + attempt
         vals = [pool[_mix(r, c, s) % a] for r in range(rows) for c in range(cols)]
         if not rigor_findings(vals, shape):
             return vals
-    raise ValueError(f"format {fmt!r} alphabet ({a} values) too small to build a rigorous "
-                     f"{rows}x{cols} operand")
+    raise ValueError(f"format {fmt!r} alphabet ({a} values) too small to build a rigorous {rows}x{cols} operand")
 
 
 def _achievable(n: int, alphabet: int, depth: int) -> int:
@@ -152,12 +153,16 @@ def rigor_limits(values: list[float], shape: tuple[int, int]) -> list[str]:
     alphabet = len({float(v) for v in values})
     out: list[str] = []
     if _achievable(cols, alphabet, rows) < cols:
-        out.append(f"{cols} columns over a {alphabet}-value alphabet in {rows} row(s): at most "
-                   f"{_achievable(cols, alphabet, rows)} can differ, so some column swaps are invisible "
-                   f"to any stimulus over this alphabet")
+        out.append(
+            f"{cols} columns over a {alphabet}-value alphabet in {rows} row(s): at most "
+            f"{_achievable(cols, alphabet, rows)} can differ, so some column swaps are invisible "
+            f"to any stimulus over this alphabet"
+        )
     if _achievable(rows, alphabet, cols) < rows:
-        out.append(f"{rows} rows over a {alphabet}-value alphabet in {cols} column(s): at most "
-                   f"{_achievable(rows, alphabet, cols)} can differ")
+        out.append(
+            f"{rows} rows over a {alphabet}-value alphabet in {cols} column(s): at most "
+            f"{_achievable(rows, alphabet, cols)} can differ"
+        )
     return out
 
 
@@ -172,18 +177,22 @@ def rigor_findings(values: list[float], shape: tuple[int, int]) -> list[str]:
     degenerate. What it cannot reach is recorded by :func:`rigor_limits` instead of being lost.
     """
     rows, cols = shape
-    grid = [tuple(values[r * cols:(r + 1) * cols]) for r in range(rows)]
+    grid = [tuple(values[r * cols : (r + 1) * cols]) for r in range(rows)]
     alphabet = len({float(v) for v in values})
     out: list[str] = []
     want_rows = _achievable(rows, alphabet, cols)
     if len(set(grid)) < want_rows:
-        out.append(f"duplicate rows: only {len(set(grid))} distinct of an achievable {want_rows} "
-                   f"({rows} rows) (row-addressing bugs invisible)")
+        out.append(
+            f"duplicate rows: only {len(set(grid))} distinct of an achievable {want_rows} "
+            f"({rows} rows) (row-addressing bugs invisible)"
+        )
     colset = {tuple(grid[r][c] for r in range(rows)) for c in range(cols)}
     want_cols = _achievable(cols, alphabet, rows)
     if len(colset) < want_cols:
-        out.append(f"duplicate columns: only {len(colset)} distinct of an achievable {want_cols} "
-                   f"({cols} columns) (col/stride bugs invisible)")
+        out.append(
+            f"duplicate columns: only {len(colset)} distinct of an achievable {want_cols} "
+            f"({cols} columns) (col/stride bugs invisible)"
+        )
     if rows == cols and all(grid[r][c] == grid[c][r] for r in range(rows) for c in range(cols)):
         out.append("operand is symmetric (A == A^T): a transpose/layout bug produces identical output")
     if len({v for row in grid for v in row}) <= 1:
@@ -207,12 +216,12 @@ def e8m0_scale_codes(shape: tuple[int, int], salt: int, *, center: int = 127) ->
     bf16 accumulate cannot overflow. ``salt`` shifts the pattern per capsule; codes are clamped to the valid
     ``[0, 254]`` E8M0 range (255 is the NaN code)."""
     groups, lanes = shape
-    period = 2 * _E8M0_SPAN + 1                          # a `period`-value exponent alphabet
+    period = 2 * _E8M0_SPAN + 1  # a `period`-value exponent alphabet
     codes = []
     for g in range(groups):
         row = []
         for li in range(lanes):
-            off = ((li * 5 + g * 3 + salt) % period) - _E8M0_SPAN    # step 5 (coprime to 7) -> neighbours differ
+            off = ((li * 5 + g * 3 + salt) % period) - _E8M0_SPAN  # step 5 (coprime to 7) -> neighbours differ
             row.append(max(0, min(254, center + off)))
         codes.append(row)
     return codes

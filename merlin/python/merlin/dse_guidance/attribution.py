@@ -20,6 +20,7 @@ That boundary is the honest Level-1 result, and the persistent ``unknown`` is th
 Level 2 (loop-preserving capture). Nothing is fabricated: an unmapped region reports ``unknown``
 and leaves quantification blocked.
 """
+
 from __future__ import annotations
 
 import math
@@ -41,6 +42,7 @@ _CAPTURE_CACHE: dict = {}
 
 def _parse_capture(path: str):
     from pathlib import Path
+
     try:
         st = Path(path).stat()
         key = (str(Path(path).resolve()), st.st_mtime_ns, st.st_size)
@@ -60,6 +62,7 @@ def _memoize_capture(fn):
     hundreds of times. cache_clear exposed for tests."""
     import functools
     from pathlib import Path
+
     cache: dict = {}
 
     @functools.wraps(fn)
@@ -105,22 +108,65 @@ def _read_attr(op, key: str) -> str | None:
 _FQN_ROLE_KEYWORDS: list[tuple[tuple[str, ...], str]] = [
     # 1) once-per-replan backbone (vision / multimodal encoder + the vision->LM projector that
     #    runs once per replan to build the decode prefix)
-    (("vision", "backbone", "encoder", "vlm", "patch_embed", "siglip", "vit", "dino",
-      "image_encoder", "img_encoder", "projector"), "backbone_once"),
+    (
+        (
+            "vision",
+            "backbone",
+            "encoder",
+            "vlm",
+            "patch_embed",
+            "siglip",
+            "vit",
+            "dino",
+            "image_encoder",
+            "img_encoder",
+            "projector",
+        ),
+        "backbone_once",
+    ),
     # 2) prefix / KV state produced once, reused across the head
     (("kv_cache", "prefix_kv", "kv_proj"), "prefix_builder"),
     # 3) the repeated action / denoise / decode head: explicit head names, diffusion-timestep
     #    conditioning embedders, LLaMA-style decoder attention/MLP projections, and (last,
     #    generic) transformer-block bodies. Reached only after backbone/encoder is ruled out.
-    (("action_expert", "action_head", "denoise", "flow", "diffusion", "dit", "noise_pred",
-      "t_embedder", "freq_embedder", "timestep", "time_embed",
-      "decoder", "language_model", "llm", "lm_head",
-      "self_attn", "q_proj", "k_proj", "v_proj", "o_proj",
-      "gate_proj", "up_proj", "down_proj",
-      # DiT / action-head epilogue projections: final-layer adaLN modulation (rdt2/DiT) and the
-      # action-head output projections (groot proj_out_*) run every denoise step -> repeated head.
-      "final_layer", "adaln", "modulation", "proj_out",
-      "blocks", "transformer_block", "cross_attn", "ffn"), "repeated_head"),
+    (
+        (
+            "action_expert",
+            "action_head",
+            "denoise",
+            "flow",
+            "diffusion",
+            "dit",
+            "noise_pred",
+            "t_embedder",
+            "freq_embedder",
+            "timestep",
+            "time_embed",
+            "decoder",
+            "language_model",
+            "llm",
+            "lm_head",
+            "self_attn",
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+            # DiT / action-head epilogue projections: final-layer adaLN modulation (rdt2/DiT) and the
+            # action-head output projections (groot proj_out_*) run every denoise step -> repeated head.
+            "final_layer",
+            "adaln",
+            "modulation",
+            "proj_out",
+            "blocks",
+            "transformer_block",
+            "cross_attn",
+            "ffn",
+        ),
+        "repeated_head",
+    ),
 ]
 
 
@@ -141,9 +187,22 @@ def role_from_fqn(fqn: str | None) -> str | None:
     # backbone token "vlm", so the expert submodule would be misread as backbone. Resolve the
     # action expert + its per-step action/time/state projections FIRST (specific tokens only, never
     # the bare "expert" of the container) — they run every denoise step -> repeated head.
-    if any(k in low for k in ("lm_expert", "gemma_expert", "action_expert", "action_in_proj",
-                              "action_out_proj", "action_time_mlp", "time_mlp", "state_proj",
-                              "action_proj", "action_output_layer", "action_output")):
+    if any(
+        k in low
+        for k in (
+            "lm_expert",
+            "gemma_expert",
+            "action_expert",
+            "action_in_proj",
+            "action_out_proj",
+            "action_time_mlp",
+            "time_mlp",
+            "state_proj",
+            "action_proj",
+            "action_output_layer",
+            "action_output",
+        )
+    ):
         return ROLE_REPEATED_HEAD
     for keywords, role in _FQN_ROLE_KEYWORDS:
         if any(k in low for k in keywords):
@@ -155,15 +214,15 @@ def role_from_fqn(fqn: str | None) -> str | None:
 class MatmulRecord:
     index: int
     region_id: str | None
-    op: str | None             # "matmul" | "addmm" | ...
-    epilogue: bool             # addmm => matmul+bias => epilogue present
+    op: str | None  # "matmul" | "addmm" | ...
+    epilogue: bool  # addmm => matmul+bias => epilogue present
     M: int
     K: int
     N: int
     weight_bytes: int
     activation_bytes: int
     dtype: str | None
-    fqn: str | None = None     # prov.fqn (deepest module path), when the capture carries it
+    fqn: str | None = None  # prov.fqn (deepest module path), when the capture carries it
     in_loop_body: bool = False  # inside the while_loop-derived scf.for region (structural repeated head)
 
     @property
@@ -180,6 +239,7 @@ def _while_loop_fors(module) -> set:
     arith.constant tagged ``prov.op="while_loop"`` (the loop's K/0/1 constants; the tag round-trips
     through serialize/parse whereas the scf.for's own discardable attrs do not)."""
     from xdsl.dialects.builtin import StringAttr
+
     out = set()
     for f in module.walk():
         if getattr(f, "name", "") != "scf.for":
@@ -221,7 +281,7 @@ def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
         module = _parse_capture(path)
     except Exception:
         return ()
-    wl_fors = _while_loop_fors(module)               # while_loop scf.for region(s), if any
+    wl_fors = _while_loop_fors(module)  # while_loop scf.for region(s), if any
     out: list[MatmulRecord] = []
     for i, op in enumerate(o for o in module.walk() if o.name == "linalg.matmul"):
         ls, ld = mlir_m2m._shape_dtype(op.operands[0].type)
@@ -236,18 +296,22 @@ def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
         K = ls[-1]
         N = rs[-1]
         op_kind = _read_attr(op, "op")
-        out.append(MatmulRecord(
-            index=i,
-            region_id=_read_attr(op, "region_id"),
-            op=op_kind,
-            epilogue=(op_kind == "addmm"),
-            M=M, K=K, N=N,
-            weight_bytes=rs[-2] * rs[-1] * R.dtype_bytes(rd),
-            activation_bytes=(M * K + M * N) * R.dtype_bytes(ld),
-            dtype=rd,
-            fqn=_read_attr(op, "fqn"),
-            in_loop_body=_in_loop_body(op, wl_fors),
-        ))
+        out.append(
+            MatmulRecord(
+                index=i,
+                region_id=_read_attr(op, "region_id"),
+                op=op_kind,
+                epilogue=(op_kind == "addmm"),
+                M=M,
+                K=K,
+                N=N,
+                weight_bytes=rs[-2] * rs[-1] * R.dtype_bytes(rd),
+                activation_bytes=(M * K + M * N) * R.dtype_bytes(ld),
+                dtype=rd,
+                fqn=_read_attr(op, "fqn"),
+                in_loop_body=_in_loop_body(op, wl_fors),
+            )
+        )
     return tuple(out)
 
 
@@ -255,26 +319,37 @@ def extract_matmuls(capture_dir: str) -> tuple[MatmulRecord, ...]:
 # (attention q.kT / attn.v contractions, softmax, normalization, elementwise/activation). These are
 # NOT erased — they carry prov.op/prov.family/prov.fqn + explicit operand shapes, so attention MACs
 # are recoverable from the IR with no model-card config. Disjoint from extract_matmuls (linalg.matmul).
-OPC_ATTENTION = "attention_contraction"   # q.kT / attn.v: SDPA-fused (prov.op=sdpa/family=attention, e.g.
-                                           # xr0) OR batch_matmul under an attention fqn -> real MACs
-OPC_BATCHED_MATMUL = "batched_matmul"      # a batch_matmul that is NOT attention (no attn fqn) -- e.g.
-                                           # groot's CategorySpecificMLP bmm; matmul-engine work, not attn
-OPC_LINEAR_GENERIC = "linear_generic"      # a genuine 2D-operand matmul/addmm emitted as a generic (rare;
-                                           # the addmm bias-adds are NOT this -> they fail the M/N/K check)
-OPC_CONV = "conv"                          # prov: contraction/conv2d (patch embed); MACs not quantified
-OPC_SOFTMAX = "softmax"                    # prov: normalization/softmax
-OPC_NORM = "normalization"                 # prov: normalization/layer_norm|rms
+OPC_ATTENTION = "attention_contraction"  # q.kT / attn.v: SDPA-fused (prov.op=sdpa/family=attention, e.g.
+# xr0) OR batch_matmul under an attention fqn -> real MACs
+OPC_BATCHED_MATMUL = "batched_matmul"  # a batch_matmul that is NOT attention (no attn fqn) -- e.g.
+# groot's CategorySpecificMLP bmm; matmul-engine work, not attn
+OPC_LINEAR_GENERIC = "linear_generic"  # a genuine 2D-operand matmul/addmm emitted as a generic (rare;
+# the addmm bias-adds are NOT this -> they fail the M/N/K check)
+OPC_CONV = "conv"  # prov: contraction/conv2d (patch embed); MACs not quantified
+OPC_SOFTMAX = "softmax"  # prov: normalization/softmax
+OPC_NORM = "normalization"  # prov: normalization/layer_norm|rms
 OPC_ACTIVATION = "activation_elementwise"  # prov: elementwise/{gelu,silu,erf,tanh,sigmoid,exp}
-OPC_ELEMENTWISE = "elementwise"            # prov: elementwise (add/mul/pow/...) incl. addmm bias-add
-OPC_REDUCTION = "reduction"                # prov: reduce
-OPC_LAYOUT = "layout"                      # prov: layout (expand/transpose) -- no compute
-OPC_OTHER = "other_generic"                # iota/gather_scatter/scan/compare/cast/embedding/untagged
-NON_GEMM_CLASSES = (OPC_ATTENTION, OPC_BATCHED_MATMUL, OPC_LINEAR_GENERIC, OPC_CONV, OPC_SOFTMAX,
-                    OPC_NORM, OPC_ACTIVATION, OPC_ELEMENTWISE, OPC_REDUCTION, OPC_LAYOUT, OPC_OTHER)
+OPC_ELEMENTWISE = "elementwise"  # prov: elementwise (add/mul/pow/...) incl. addmm bias-add
+OPC_REDUCTION = "reduction"  # prov: reduce
+OPC_LAYOUT = "layout"  # prov: layout (expand/transpose) -- no compute
+OPC_OTHER = "other_generic"  # iota/gather_scatter/scan/compare/cast/embedding/untagged
+NON_GEMM_CLASSES = (
+    OPC_ATTENTION,
+    OPC_BATCHED_MATMUL,
+    OPC_LINEAR_GENERIC,
+    OPC_CONV,
+    OPC_SOFTMAX,
+    OPC_NORM,
+    OPC_ACTIVATION,
+    OPC_ELEMENTWISE,
+    OPC_REDUCTION,
+    OPC_LAYOUT,
+    OPC_OTHER,
+)
 
 _ACT_OPS = {"gelu", "silu", "erf", "tanh", "sigmoid", "exp"}
 _CONV_OPS = {"conv2d", "conv1d", "conv3d", "convolution"}
-_ATTN_FQN = ("attn", "attention")          # an attention module fqn (self_attn/cross_attn/...attn1 match)
+_ATTN_FQN = ("attn", "attention")  # an attention module fqn (self_attn/cross_attn/...attn1 match)
 
 
 @dataclass
@@ -289,7 +364,7 @@ class NonGemmRecord:
     K: int = 0
     N: int = 0
     batch: int = 1
-    macs: int = 0              # only meaningful for the contraction classes (else 0)
+    macs: int = 0  # only meaningful for the contraction classes (else 0)
     dtype: str | None = None
 
 
@@ -326,9 +401,14 @@ def extract_non_gemm_ops(capture_dir: str) -> tuple[NonGemmRecord, ...]:
     for i, op in enumerate(o for o in module.walk() if o.name == "linalg.generic"):
         prov_op = _read_attr(op, "op")
         fam = _read_attr(op, "family")
-        rec = NonGemmRecord(index=i, op_class=OPC_OTHER, prov_op=prov_op,
-                            region_id=_read_attr(op, "region_id"), fqn=_read_attr(op, "fqn"),
-                            role=role_from_fqn(_read_attr(op, "fqn")))
+        rec = NonGemmRecord(
+            index=i,
+            op_class=OPC_OTHER,
+            prov_op=prov_op,
+            region_id=_read_attr(op, "region_id"),
+            fqn=_read_attr(op, "fqn"),
+            role=role_from_fqn(_read_attr(op, "fqn")),
+        )
 
         def _mnk():
             if len(op.operands) < 2:
@@ -350,17 +430,17 @@ def extract_non_gemm_ops(capture_dir: str) -> tuple[NonGemmRecord, ...]:
         if (fam == "attention" or prov_op == "sdpa") and _mnk():
             rec.op_class = OPC_ATTENTION
         elif fam == "attention" or prov_op == "sdpa":
-            rec.op_class = OPC_SOFTMAX                    # the softmax/scale part of a lowered SDPA
+            rec.op_class = OPC_SOFTMAX  # the softmax/scale part of a lowered SDPA
         elif fam == "contraction" and prov_op == "batch_matmul" and _mnk():
             rec.op_class = OPC_ATTENTION if attn_fqn else OPC_BATCHED_MATMUL
         elif fam == "contraction" and prov_op in _CONV_OPS:
-            rec.op_class = OPC_CONV                       # patch-embed conv; MACs not quantified
+            rec.op_class = OPC_CONV  # patch-embed conv; MACs not quantified
         elif fam == "contraction" and prov_op in ("matmul", "addmm") and _mnk():
-            rec.op_class = OPC_LINEAR_GENERIC             # genuine 2-D contraction as a generic (rare)
+            rec.op_class = OPC_LINEAR_GENERIC  # genuine 2-D contraction as a generic (rare)
         elif fam == "normalization" and prov_op == "softmax":
             rec.op_class = OPC_SOFTMAX
         elif fam == "normalization":
-            rec.op_class = OPC_NORM                       # layer_norm / rms
+            rec.op_class = OPC_NORM  # layer_norm / rms
         elif fam == "reduce":
             rec.op_class = OPC_REDUCTION
         elif fam == "layout":
@@ -390,10 +470,16 @@ REGION_OTHER = "other"
 # The nn.Module-type token that bounds a region within an fqn. Substring tests (structured, no regex);
 # ordered so the FIRST matching token (scanning root→leaf) is the region boundary.
 _REGION_TOKENS: tuple[tuple[str, str], ...] = (
-    ("attn", "attn"), ("attention", "attn"),          # self_attn / cross_attn / attn1 / ...attn
-    ("mlp", "mlp"), ("ffn", "mlp"), ("feed_forward", "mlp"), ("feedforward", "mlp"),
-    ("conv", "conv"), ("patch_embed", "conv"), ("patchembed", "conv"),
-    ("norm", "norm"),                                 # layernorm / rmsnorm / norm1 / input_layernorm
+    ("attn", "attn"),
+    ("attention", "attn"),  # self_attn / cross_attn / attn1 / ...attn
+    ("mlp", "mlp"),
+    ("ffn", "mlp"),
+    ("feed_forward", "mlp"),
+    ("feedforward", "mlp"),
+    ("conv", "conv"),
+    ("patch_embed", "conv"),
+    ("patchembed", "conv"),
+    ("norm", "norm"),  # layernorm / rmsnorm / norm1 / input_layernorm
 )
 _CONTRACTION_CLASSES = (OPC_ATTENTION, OPC_BATCHED_MATMUL, OPC_LINEAR_GENERIC)
 
@@ -416,18 +502,19 @@ def _region_group_key(fqn: str | None) -> tuple[str | None, str | None]:
     for i, tok in enumerate(parts):
         tt = _region_token_type(tok)
         if tt is not None:
-            return ".".join(parts[:i + 1]), tt
+            return ".".join(parts[: i + 1]), tt
     return fqn, None
 
 
 @dataclass
 class RecognizedRegion:
     """A recognized model region: what it IS, the ops that make it, and the join/selection keys."""
-    region_label: str                  # REGION_* (attention/linear/mlp/conv/norm/softmax/other)
-    fqn_group: str | None              # the nn.Module path the region occupies (the grouping key)
-    role: str | None                   # role_from_fqn(fqn_group) (backbone_once / repeated_head / ...)
-    op_labels: tuple[str, ...]         # the fine op classes present (the structural evidence)
-    region_ids: tuple[str, ...]        # prov.region_ids of member ops — the C7/C8 join + selection keys
+
+    region_label: str  # REGION_* (attention/linear/mlp/conv/norm/softmax/other)
+    fqn_group: str | None  # the nn.Module path the region occupies (the grouping key)
+    role: str | None  # role_from_fqn(fqn_group) (backbone_once / repeated_head / ...)
+    op_labels: tuple[str, ...]  # the fine op classes present (the structural evidence)
+    region_ids: tuple[str, ...]  # prov.region_ids of member ops — the C7/C8 join + selection keys
     contraction_count: int
     has_softmax: bool
 
@@ -459,8 +546,17 @@ def recognize_regions(capture_dir: str) -> tuple[RecognizedRegion, ...]:
         key, tt = _region_group_key(fqn)
         g = groups.get(key)
         if g is None:
-            g = {"token": tt, "labels": [], "region_ids": [], "contractions": 0,
-                 "softmax": False, "sdpa": False, "conv": False, "norm": False, "act": False}
+            g = {
+                "token": tt,
+                "labels": [],
+                "region_ids": [],
+                "contractions": 0,
+                "softmax": False,
+                "sdpa": False,
+                "conv": False,
+                "norm": False,
+                "act": False,
+            }
             groups[key] = g
         return g
 
@@ -505,17 +601,24 @@ def recognize_regions(capture_dir: str) -> tuple[RecognizedRegion, ...]:
         elif nc == 1:
             label = REGION_LINEAR
         elif nc >= 2:
-            label = REGION_MLP                      # multi-linear block, no activation tag
+            label = REGION_MLP  # multi-linear block, no activation tag
         elif g["softmax"]:
             label = REGION_SOFTMAX
         elif tt == "norm" or g["norm"]:
             label = REGION_NORM
         else:
             label = REGION_OTHER
-        out.append(RecognizedRegion(
-            region_label=label, fqn_group=key, role=role_from_fqn(key),
-            op_labels=tuple(dict.fromkeys(g["labels"])), region_ids=tuple(sorted(set(g["region_ids"]))),
-            contraction_count=nc, has_softmax=g["softmax"]))
+        out.append(
+            RecognizedRegion(
+                region_label=label,
+                fqn_group=key,
+                role=role_from_fqn(key),
+                op_labels=tuple(dict.fromkeys(g["labels"])),
+                region_ids=tuple(sorted(set(g["region_ids"]))),
+                contraction_count=nc,
+                has_softmax=g["softmax"],
+            )
+        )
     return tuple(out)
 
 
@@ -534,6 +637,7 @@ def matmul_dependencies(capture_dir: str) -> tuple[tuple[int, ...], ...]:
     path = f"{capture_dir}/model.mlir"
     try:
         from xdsl.ir import Operation
+
         module = _parse_capture(path)
     except Exception:
         return ()
@@ -555,8 +659,8 @@ def matmul_dependencies(capture_dir: str) -> tuple[tuple[int, ...], ...]:
             j = result_idx.get(id(v))
             if j is not None:
                 if j != i:
-                    preds.add(j)         # reached a producing matmul -> a real data dependency
-                continue                 # stop at the matmul boundary (do not trace through it)
+                    preds.add(j)  # reached a producing matmul -> a real data dependency
+                continue  # stop at the matmul boundary (do not trace through it)
             owner = getattr(v, "owner", None)
             if isinstance(owner, Operation):
                 stack.extend(owner.operands)
@@ -584,7 +688,7 @@ class RoleFacts:
         return {
             "matmul_count": self.matmul_count,
             "macs_per_invocation": self.macs,
-            "weight_bytes": self.weight_bytes,           # weights are reused, not ×K
+            "weight_bytes": self.weight_bytes,  # weights are reused, not ×K
             "activation_bytes_per_invocation": self.activation_bytes,
             "invocations": k,
             "macs_total": self.macs * k,
@@ -595,9 +699,9 @@ class RoleFacts:
 @dataclass
 class RegionRoleAttribution:
     role: str
-    attribution_status: str           # "attributed" | "unknown"
+    attribution_status: str  # "attributed" | "unknown"
     confidence: float
-    source: str                       # explicit_mapping | shape_cluster | unknown
+    source: str  # explicit_mapping | shape_cluster | unknown
     invocations: int
     facts: dict
     matmul_indices: list[int] = field(default_factory=list)
@@ -607,7 +711,7 @@ class RegionRoleAttribution:
 @dataclass
 class RegionAttribution:
     workload: str
-    attribution_status: str           # "attributed" | "partial" | "unknown"
+    attribution_status: str  # "attributed" | "partial" | "unknown"
     regions: list[RegionRoleAttribution]
     repeated_signatures: list[dict] = field(default_factory=list)
     unresolved: list[str] = field(default_factory=list)
@@ -643,8 +747,7 @@ def _repeated_signatures(records, min_count: int = 3) -> list[dict]:
     return out
 
 
-def attribute(capture_dir: str, topo: VlaRuntimeTopology,
-              mapping_rules: dict | None = None) -> RegionAttribution:
+def attribute(capture_dir: str, topo: VlaRuntimeTopology, mapping_rules: dict | None = None) -> RegionAttribution:
     """Attribute IR matmul facts to topology phases (explicit mapping > shape heuristic > unknown).
 
     Facts are always exact-from-IR; only the *role assignment* may be operator-supplied. With no
@@ -653,13 +756,16 @@ def attribute(capture_dir: str, topo: VlaRuntimeTopology,
     return attribute_records(extract_matmuls(capture_dir), topo, mapping_rules)
 
 
-def attribute_records(records, topo: VlaRuntimeTopology,
-                      mapping_rules: dict | None = None) -> RegionAttribution:
+def attribute_records(records, topo: VlaRuntimeTopology, mapping_rules: dict | None = None) -> RegionAttribution:
     """Pure attribution over already-extracted matmul records (unit-testable core)."""
     if not records:
-        return RegionAttribution(workload=topo.workload, attribution_status="unknown",
-                                 regions=[], parsed=False,
-                                 unresolved=["capture did not parse; no IR facts extractable"])
+        return RegionAttribution(
+            workload=topo.workload,
+            attribution_status="unknown",
+            regions=[],
+            parsed=False,
+            unresolved=["capture did not parse; no IR facts extractable"],
+        )
 
     K = topo.K
     rules = (mapping_rules or {}).get("rules", [])
@@ -674,7 +780,7 @@ def attribute_records(records, topo: VlaRuntimeTopology,
     for rec in records:
         role = None
         source = None
-        for rule in rules:                       # 1) explicit operator mapping (highest trust)
+        for rule in rules:  # 1) explicit operator mapping (highest trust)
             if _match(rule, rec):
                 role, source = rule["role"], "explicit_mapping"
                 break
@@ -688,11 +794,11 @@ def attribute_records(records, topo: VlaRuntimeTopology,
                 role, source = ROLE_REPEATED_HEAD, "structural_scf_for"
             else:
                 role, source = ROLE_BACKBONE, "structural_prefix"
-        if role is None:                          # 3) prov.fqn module-path inference (flat captures)
+        if role is None:  # 3) prov.fqn module-path inference (flat captures)
             role = role_from_fqn(rec.fqn)
             if role is not None:
                 source = "prov_fqn"
-        if role is None:                          # 4) unattributed (role not recoverable)
+        if role is None:  # 4) unattributed (role not recoverable)
             unknown.add(rec)
             unknown_idx.append(rec.index)
             continue
@@ -700,45 +806,66 @@ def attribute_records(records, topo: VlaRuntimeTopology,
         assigned_idx.setdefault(role, []).append(rec.index)
         sources.setdefault(role, set()).add(source)
 
-    _SRC_CONF = {"explicit_mapping": 0.9, "structural_scf_for": 0.85,
-                 "structural_prefix": 0.8, "prov_fqn": 0.7}
+    _SRC_CONF = {"explicit_mapping": 0.9, "structural_scf_for": 0.85, "structural_prefix": 0.8, "prov_fqn": 0.7}
     regions: list[RegionRoleAttribution] = []
     for role, facts in assigned.items():
-        invs = K if role == ROLE_REPEATED_HEAD else 1   # head ×K; backbone ×1 — never ×K backbone
+        invs = K if role == ROLE_REPEATED_HEAD else 1  # head ×K; backbone ×1 — never ×K backbone
         srcs = sources[role]
         src = next(iter(srcs)) if len(srcs) == 1 else "mixed"
         conf = min(_SRC_CONF.get(s, 0.5) for s in srcs)
-        regions.append(RegionRoleAttribution(
-            role=role, attribution_status="attributed", confidence=conf,
-            source=src, invocations=invs, facts=facts.scaled(invs),
-            matmul_indices=assigned_idx[role],
-            reason=f"{facts.matmul_count} matmuls assigned by {src}"))
+        regions.append(
+            RegionRoleAttribution(
+                role=role,
+                attribution_status="attributed",
+                confidence=conf,
+                source=src,
+                invocations=invs,
+                facts=facts.scaled(invs),
+                matmul_indices=assigned_idx[role],
+                reason=f"{facts.matmul_count} matmuls assigned by {src}",
+            )
+        )
     if unknown.matmul_count:
-        regions.append(RegionRoleAttribution(
-            role=ROLE_UNKNOWN, attribution_status="unknown", confidence=0.0, source="unknown",
-            invocations=1, facts=unknown.scaled(1), matmul_indices=unknown_idx,
-            reason="no explicit mapping rule matched; role not recoverable from the flat capture"))
+        regions.append(
+            RegionRoleAttribution(
+                role=ROLE_UNKNOWN,
+                attribution_status="unknown",
+                confidence=0.0,
+                source="unknown",
+                invocations=1,
+                facts=unknown.scaled(1),
+                matmul_indices=unknown_idx,
+                reason="no explicit mapping rule matched; role not recoverable from the flat capture",
+            )
+        )
 
-    status = ("attributed" if assigned and not unknown.matmul_count
-              else "partial" if assigned else "unknown")
+    status = "attributed" if assigned and not unknown.matmul_count else "partial" if assigned else "unknown"
     any_fqn = any(r.fqn for r in records)
     unresolved = []
     if unknown.matmul_count:
         if any_fqn:
             unresolved.append(
                 f"{unknown.matmul_count}/{len(records)} matmuls unattributed: their prov.fqn "
-                "matched no role keyword (extend _FQN_ROLE_KEYWORDS or add an explicit rule)")
+                "matched no role keyword (extend _FQN_ROLE_KEYWORDS or add an explicit rule)"
+            )
         else:
             unresolved.append(
                 f"{unknown.matmul_count}/{len(records)} matmuls unattributed: this capture has no "
                 "prov.fqn (predates the model2MLIR module-FQN provenance); re-capture for "
-                "automatic role recovery, or supply region_ids / shape_signature rules")
+                "automatic role recovery, or supply region_ids / shape_signature rules"
+            )
     if not any_fqn and not rules:
-        unresolved.append("no prov.fqn and no mapping rules; role recovery unavailable — "
-                          "loop/role-preserving capture is the Level-2 fix")
+        unresolved.append(
+            "no prov.fqn and no mapping rules; role recovery unavailable — "
+            "loop/role-preserving capture is the Level-2 fix"
+        )
     return RegionAttribution(
-        workload=topo.workload, attribution_status=status, regions=regions,
-        repeated_signatures=_repeated_signatures(records), unresolved=unresolved)
+        workload=topo.workload,
+        attribution_status=status,
+        regions=regions,
+        repeated_signatures=_repeated_signatures(records),
+        unresolved=unresolved,
+    )
 
 
 def to_yaml_obj(attr: RegionAttribution) -> dict:
@@ -748,10 +875,16 @@ def to_yaml_obj(attr: RegionAttribution) -> dict:
             "level": 1,
             "attribution_status": attr.attribution_status,
             "regions": [
-                {"role": r.role, "attribution_status": r.attribution_status,
-                 "confidence": r.confidence, "source": r.source,
-                 "invocations": r.invocations, "facts": r.facts,
-                 "matmul_count_attributed": len(r.matmul_indices), "reason": r.reason}
+                {
+                    "role": r.role,
+                    "attribution_status": r.attribution_status,
+                    "confidence": r.confidence,
+                    "source": r.source,
+                    "invocations": r.invocations,
+                    "facts": r.facts,
+                    "matmul_count_attributed": len(r.matmul_indices),
+                    "reason": r.reason,
+                }
                 for r in attr.regions
             ],
             "repeated_shape_signatures": attr.repeated_signatures,

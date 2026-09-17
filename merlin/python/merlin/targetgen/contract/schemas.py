@@ -4,14 +4,16 @@ A single place to load + validate the contract schemas so the runner, the tests,
 packages all enforce the same rules. Validation raises :class:`ContractViolation` with a concise
 message; nothing here ever silently accepts a malformed artifact.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from merlin.common.paths import repo_root
 from typing import Any
 
 import jsonschema
+
+from merlin.common.paths import repo_root
 
 # repo root = .../merlin (this file: merlin/python/merlin/targetgen/contract/schemas.py)
 _REPO = repo_root()
@@ -30,10 +32,12 @@ def contract_dir(override: str | Path | None = None) -> Path:
     if override:
         return Path(override)
     import os
+
     env = os.environ.get("MERLIN_CONTRACT_DIR")
     if env:
         return Path(env)
     from merlin.common.paths import data_path
+
     return data_path("contract")
 
 
@@ -89,12 +93,14 @@ def validate_capsule(cap: Any, *, contract: str | Path | None = None) -> None:
     """
     validate(cap, "capsule", contract=contract)
     from merlin.common import quant_formats as qf
+
     for loc, tok in _declared_dtypes(cap):
         if not isinstance(tok, str) or not qf.is_element_dtype(tok):
             raise ContractViolation(
                 f"capsule schema violation at {loc}: {tok!r} is not a registered numeric format "
                 f"(merlin/schemas/quant_formats.registry.yaml declares {qf.names()}) "
-                f"nor a machine width (i8/i32/f32/…)")
+                f"nor a machine width (i8/i32/f32/…)"
+            )
 
 
 def validate_command_buffer(cb: Any, *, contract: str | Path | None = None) -> None:
@@ -107,8 +113,8 @@ def validate_command_buffer(cb: Any, *, contract: str | Path | None = None) -> N
     on what the runner will refuse, or it is not the contract."""
     validate(cb, "command_buffer", contract=contract)
     from merlin.runtime.commandbuffer import validate_command_buffer as _structural
-    problems = [p for p in _structural(cb)
-                if "declares no 'tensors'" in p or "whole-program kernel_abi" in p]
+
+    problems = [p for p in _structural(cb) if "declares no 'tensors'" in p or "whole-program kernel_abi" in p]
     if problems:
         raise ContractViolation("command_buffer contract violation: " + "; ".join(problems))
 
@@ -142,6 +148,7 @@ def render_backend_contract(target: str, *, contract: str | Path | None = None) 
     kernel"`` and the entrypoint argv templates resolve ``--convert-iface-to-{target}``, exactly the value
     ``generate_prompt`` derives. gemmini resolves byte-identically to the former hand-authored literals."""
     import yaml
+
     text = (contract_dir(contract) / "mlir_oot_backend_contract.yaml").read_text(encoding="utf-8")
     return _resolve_target(yaml.safe_load(text), target)
 
@@ -151,6 +158,7 @@ def render_oracle_runner_contract(target: str, *, contract: str | Path | None = 
     (``spike_{target}_functional`` / ``{target}_verilator_rtl``) and the ``{target}_region`` cycle window
     fill from the active target. gemmini resolves byte-identically to the former hand-authored names."""
     import yaml
+
     text = (contract_dir(contract) / "oracle_runner_contract.yaml").read_text(encoding="utf-8")
     return _resolve_target(yaml.safe_load(text), target)
 

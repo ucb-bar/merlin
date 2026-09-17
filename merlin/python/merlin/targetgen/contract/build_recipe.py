@@ -1,4 +1,5 @@
 """Pure compile/link recipe shared by build-only and runtime services."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -66,11 +67,11 @@ class HarnessBuildRecipe:
         if type(self.kernel_stack_frame) is not KernelStackFramePolicy:
             raise self.error_cls(
                 "this target's build recipe declares no kernel stack-frame policy; the runner "
-                "cannot prove that the package entrypoint fits the target runtime stack")
+                "cannot prove that the package entrypoint fits the target runtime stack"
+            )
         return self.kernel_stack_frame
 
-    def command(self, *, sources: "Sequence[Path]", output: Path,
-                link_script: Path | None = None) -> list[str]:
+    def command(self, *, sources: "Sequence[Path]", output: Path, link_script: Path | None = None) -> list[str]:
         """The full compiler invocation for ``sources`` -> ``output``."""
         cmd = [str(self.compiler), *self.cflags]
         for root in self.include_roots:
@@ -111,10 +112,10 @@ class HarnessBuildRecipe:
                 return flag
         raise self.error_cls(
             "this target's build recipe declares no -march=; the runner cannot compile the package "
-            "kernel for the same ISA the harness is built for, and a mismatch is a runtime trap")
+            "kernel for the same ISA the harness is built for, and a mismatch is a runtime trap"
+        )
 
-    def link_command(self, *, objects: "Sequence[Path]", output: Path,
-                     link_script: Path | None = None) -> list[str]:
+    def link_command(self, *, objects: "Sequence[Path]", output: Path, link_script: Path | None = None) -> list[str]:
         """Link already-compiled objects. Support sources are NOT re-appended: they are among them."""
         cmd = [str(self.compiler), *self.cflags]
         for root in self.include_roots:

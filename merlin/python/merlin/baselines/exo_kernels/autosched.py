@@ -23,22 +23,26 @@ What EXO's automation still can NOT do here (honest gaps): pick the vector width
 (no widening-convert primitive) — so the int8 hot path keeps a hand dequant and feeds this
 autoscheduled f32 dot only its compute.
 """
+
 from __future__ import annotations
 
-from exo import proc, DRAM
-from exo.stdlib.scheduling import rename, simplify, replace_all, divide_loop, reorder_loops
-from exo.stdlib.stdlib import vectorize, fma_rule
+from exo import DRAM, proc
+from exo.stdlib.scheduling import divide_loop, rename, reorder_loops, replace_all, simplify
+from exo.stdlib.stdlib import fma_rule, vectorize
 
 from merlin.baselines.exo_kernels.rvv256 import (
-    RVV256, rvv256_vld, rvv256_zero, rvv256_vfmacc_vv, rvv256_vredsum,
+    RVV256,
+    rvv256_vfmacc_vv,
+    rvv256_vld,
+    rvv256_vredsum,
+    rvv256_zero,
 )
 
 VW = 8  # RVV f32 lanes at VLEN=256 (the K1 X60)
 
 
 @proc
-def fdot_nk_ref(M: size, N: size, K: size,
-                Y: f32[M, N] @ DRAM, X: f32[M, K] @ DRAM, Wf: f32[N, K] @ DRAM):
+def fdot_nk_ref(M: size, N: size, K: size, Y: f32[M, N] @ DRAM, X: f32[M, K] @ DRAM, Wf: f32[N, K] @ DRAM):
     # Transpose-free dot: both X[m,:] and W[n,:] are k-contiguous (weight stays native [N,K]).
     assert K % 8 == 0
     for m in seq(0, M):

@@ -5,6 +5,7 @@ explore both branches; an unknown data branch prevents a field claim. This is
 not a sequencer or arithmetic proof. Input and register identities are supplied
 by the trusted target adapter, never by the compiler under examination.
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -28,9 +29,15 @@ def register_definitions(hw_text: str, module: str) -> dict[str, str]:
     return definitions
 
 
-def derive_register_slices(hw_text: str, *, module: str, registers: list[str],
-                           selector: str, selector_value: int,
-                           inputs: dict[str, tuple[str, int]]) -> dict:
+def derive_register_slices(
+    hw_text: str,
+    *,
+    module: str,
+    registers: list[str],
+    selector: str,
+    selector_value: int,
+    inputs: dict[str, tuple[str, int]],
+) -> dict:
     """Recover one input slice/constant for each possible non-hold update.
 
     Missing or unsupported data is UNKNOWN, including cross-register updates.
@@ -38,9 +45,14 @@ def derive_register_slices(hw_text: str, *, module: str, registers: list[str],
     widths and slice offsets come solely from the supplied elaborated HW.
     """
     definitions = register_definitions(hw_text, module)
-    if (type(selector_value) is not int or not registers or len(set(registers)) != len(registers)
-            or selector in inputs or not inputs
-            or any(not name or type(width) is not int or width <= 0 for name, width in inputs.values())):
+    if (
+        type(selector_value) is not int
+        or not registers
+        or len(set(registers)) != len(registers)
+        or selector in inputs
+        or not inputs
+        or any(not name or type(width) is not int or width <= 0 for name, width in inputs.values())
+    ):
         raise ValueError("malformed register slice request")
     active = set()
 
@@ -122,9 +134,12 @@ def derive_register_slices(hw_text: str, *, module: str, registers: list[str],
                 elif all(type(v) is int for v in operands):
                     value = operands[0]
                     for operand in operands[1:]:
-                        if operation == "and": value &= operand
-                        elif operation == "or": value |= operand
-                        else: value ^= operand
+                        if operation == "and":
+                            value &= operand
+                        elif operation == "or":
+                            value |= operand
+                        else:
+                            value ^= operand
                     result.add(value)
                 elif width == 1:
                     result.update((0, 1))
@@ -158,10 +173,14 @@ def derive_register_slices(hw_text: str, *, module: str, registers: list[str],
         else:
             row.update(status="UNKNOWN", reason="multiple possible non-hold data updates")
         rows.append(row)
-    return {"schema": "conditional_register_slices_v1", "module": module,
-            "selector_value": selector_value, "registers": rows,
-            "scope": "all possible non-hold updates under selector; acceptance not proved",
-            "arithmetic_and_sequencer_progress": "UNPROVEN"}
+    return {
+        "schema": "conditional_register_slices_v1",
+        "module": module,
+        "selector_value": selector_value,
+        "registers": rows,
+        "scope": "all possible non-hold updates under selector; acceptance not proved",
+        "arithmetic_and_sequencer_progress": "UNPROVEN",
+    }
 
 
 def decode_register_slices(layout: dict, operands: dict[str, dict]) -> list[dict]:
@@ -187,11 +206,19 @@ def decode_register_slices(layout: dict, operands: dict[str, dict]) -> list[dict
                 operand = operands.get(field["input"], {})
                 if operand.get("kind") == "const" and type(operand.get("raw")) is int:
                     row["value"] = (operand["raw"] >> offset) & ((1 << width) - 1)
-                elif (operand.get("kind") == "argbase" and type(operand.get("arg_index")) is int
-                      and operand["arg_index"] >= 0 and type(operand.get("offset")) is int):
-                    row["symbolic_value"] = {"argument": operand["arg_index"], "byte_offset": operand["offset"],
-                        "extract_offset": offset, "extract_width": width,
-                        "address_range_validated": False}
+                elif (
+                    operand.get("kind") == "argbase"
+                    and type(operand.get("arg_index")) is int
+                    and operand["arg_index"] >= 0
+                    and type(operand.get("offset")) is int
+                ):
+                    row["symbolic_value"] = {
+                        "argument": operand["arg_index"],
+                        "byte_offset": operand["offset"],
+                        "extract_offset": offset,
+                        "extract_width": width,
+                        "address_range_validated": False,
+                    }
                 else:
                     row.update(status="UNKNOWN", reason="emitted operand unresolved")
         rows.append(row)

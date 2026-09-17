@@ -67,6 +67,7 @@ decision and needs its own evidence; the whole-register widths are individually 
 Nothing here is default-on: :func:`lmul_cflags` is only reached through a named, default-off
 ``impr_features`` feature, so a build that does not ask for it compiles byte-identically.
 """
+
 from __future__ import annotations
 
 #: The whole-register LMUL values the RVV ``vtype`` LMUL field encodes. The fractional settings
@@ -114,7 +115,8 @@ def _ladder_ceil(value: float) -> int:
             return lmul
     raise LmulDerivationError(
         f"a register group of {value:g} exceeds the widest the vtype encoding admits ({LMUL_MAX}); "
-        "no whole-register LMUL satisfies the constraint")
+        "no whole-register LMUL satisfies the constraint"
+    )
 
 
 def _ladder_floor(value: float) -> int:
@@ -135,12 +137,12 @@ def group_elements(lmul: int, *, acc_bits: int, vlen: int) -> int:
     if (int(vlen) * int(lmul)) % int(acc_bits):
         raise LmulDerivationError(
             f"a VLEN={vlen} group at LMUL={lmul} is not a whole number of {acc_bits}-bit elements; "
-            "the accumulator width must divide the group")
+            "the accumulator width must divide the group"
+        )
     return (int(vlen) * int(lmul)) // int(acc_bits)
 
 
-def group_lmul(*, operand_bits: int, acc_bits: int, vlen: int | None = None,
-               max_group_elems: int | None = None) -> int:
+def group_lmul(*, operand_bits: int, acc_bits: int, vlen: int | None = None, max_group_elems: int | None = None) -> int:
     """The register-group width for a contraction of ``operand_bits`` operands into ``acc_bits``.
 
     ``operand_bits`` is the NARROWEST operand element width (the one whose group would otherwise be
@@ -159,17 +161,18 @@ def group_lmul(*, operand_bits: int, acc_bits: int, vlen: int | None = None,
     if acc_bits < operand_bits:
         raise LmulDerivationError(
             f"acc_bits={acc_bits} is narrower than operand_bits={operand_bits}: an accumulator that "
-            "loses bits against its own operands is a mis-declared datapath, not a group width")
+            "loses bits against its own operands is a mis-declared datapath, not a group width"
+        )
     # FLOOR: LMUL * operand_bits >= acc_bits (cca_matrix.vtype_spans_tile_row, read with SEW=acc).
     lmul = _ladder_ceil(acc_bits / operand_bits)
     if (max_group_elems is None) != (vlen is None):
         raise LmulDerivationError(
             "max_group_elems and vlen are only meaningful together (the cap is a count of elements, "
-            "and a count of elements needs a VLEN to become a group width)")
+            "and a count of elements needs a VLEN to become a group width)"
+        )
     if max_group_elems is not None:
         # CEILING: do not hold more elements than the extent has.
-        lmul = min(lmul, extent_ceiling(acc_bits=acc_bits, vlen=int(vlen),
-                                        max_group_elems=int(max_group_elems)))
+        lmul = min(lmul, extent_ceiling(acc_bits=acc_bits, vlen=int(vlen), max_group_elems=int(max_group_elems)))
     return lmul
 
 
@@ -196,18 +199,21 @@ def elem_bits(t: str) -> int:
     """
     s = str(t).strip()
     for prefix in ("bf", "i", "f", "u"):
-        if s.startswith(prefix) and s[len(prefix):].isdigit():
-            return int(s[len(prefix):])
+        if s.startswith(prefix) and s[len(prefix) :].isdigit():
+            return int(s[len(prefix) :])
     raise LmulDerivationError(
         f"no element width derivable from type {t!r}; name the width in the type rather than "
-        "letting the group fall back to a default")
+        "letting the group fall back to a default"
+    )
 
 
-def group_lmul_for_elem_types(a: str, b: str, c: str, *, vlen: int | None = None,
-                              max_group_elems: int | None = None) -> int:
+def group_lmul_for_elem_types(
+    a: str, b: str, c: str, *, vlen: int | None = None, max_group_elems: int | None = None
+) -> int:
     """:func:`group_lmul` for a contraction spelled by its MLIR element types ``a x b -> c``."""
-    return group_lmul(operand_bits=min(elem_bits(a), elem_bits(b)), acc_bits=elem_bits(c),
-                      vlen=vlen, max_group_elems=max_group_elems)
+    return group_lmul(
+        operand_bits=min(elem_bits(a), elem_bits(b)), acc_bits=elem_bits(c), vlen=vlen, max_group_elems=max_group_elems
+    )
 
 
 def lmul_cflags(lmul: int) -> tuple[str, ...]:
@@ -219,8 +225,7 @@ def lmul_cflags(lmul: int) -> tuple[str, ...]:
     can push a transfer into a masked form the backend rejects).
     """
     if int(lmul) not in LMUL_LADDER:
-        raise LmulDerivationError(
-            f"LMUL={lmul!r} is not one of the whole-register widths {LMUL_LADDER}")
+        raise LmulDerivationError(f"LMUL={lmul!r} is not one of the whole-register widths {LMUL_LADDER}")
     return ("-mllvm", f"{LMUL_OPTION}={int(lmul)}")
 
 
@@ -251,12 +256,14 @@ def group_lmul_for_shapes(shapes, *, vlen: int | None = None) -> int:
         parallel = tuple(int(p) for p in getattr(shape, "parallel", ()) or ())
         cap = parallel[-1] if (parallel and vlen) else None
         try:
-            widths.append(group_lmul_for_elem_types(
-                *dtypes, vlen=(vlen if cap is not None else None), max_group_elems=cap))
+            widths.append(
+                group_lmul_for_elem_types(*dtypes, vlen=(vlen if cap is not None else None), max_group_elems=cap)
+            )
         except LmulDerivationError:
-            continue                       # an element type we cannot size is not a licence to guess
+            continue  # an element type we cannot size is not a licence to guess
     if not widths:
         raise LmulDerivationError(
             "no contraction in this module states element types we can size a register group from; "
-            "refusing to pin a width for arithmetic that was never read")
+            "refusing to pin a width for arithmetic that was never read"
+        )
     return max(widths)

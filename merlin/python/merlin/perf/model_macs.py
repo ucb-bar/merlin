@@ -4,6 +4,7 @@ A MAC requires an actual yielded multiply-accumulate recurrence. Static affine
 domains can include several reduction axes, as in convolution. Unsupported
 recurrences/domains/control flow remain visible UNKNOWN work, never missing zero.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -30,7 +31,7 @@ class ModelMACShape:
 
     @property
     def macs(self) -> int | None:
-        return prod(self.parallel+self.reduction) if self.status == "derived" else None
+        return prod(self.parallel + self.reduction) if self.status == "derived" else None
 
 
 def _iterators(op):
@@ -65,26 +66,26 @@ def _interval(expr, bounds):
     if isinstance(expr, AffineConstantExpr):
         return expr.value, expr.value
     if isinstance(expr, AffineDimExpr):
-        return 0, bounds[expr.position]-1
+        return 0, bounds[expr.position] - 1
     if not isinstance(expr, AffineBinaryOpExpr):
         raise ValueError("symbolic/unsupported affine address")
     left, right = _interval(expr.lhs, bounds), _interval(expr.rhs, bounds)
     if expr.kind == AffineBinaryOpKind.Add:
-        return left[0]+right[0], left[1]+right[1]
+        return left[0] + right[0], left[1] + right[1]
     if expr.kind == AffineBinaryOpKind.Mul:
         if left[0] != left[1] and right[0] != right[1]:
             raise ValueError("nonlinear affine address")
-        corners = [a*b for a in left for b in right]
+        corners = [a * b for a in left for b in right]
         return min(corners), max(corners)
     if right[0] != right[1] or right[0] <= 0:
         raise ValueError("unsupported affine divisor")
     divisor = right[0]
     if expr.kind == AffineBinaryOpKind.FloorDiv:
-        return left[0]//divisor, left[1]//divisor
+        return left[0] // divisor, left[1] // divisor
     if expr.kind == AffineBinaryOpKind.CeilDiv:
-        return -(-left[0]//divisor), -(-left[1]//divisor)
+        return -(-left[0] // divisor), -(-left[1] // divisor)
     if expr.kind == AffineBinaryOpKind.Mod:
-        return 0, divisor-1
+        return 0, divisor - 1
     raise ValueError("unsupported affine expression")
 
 
@@ -97,7 +98,7 @@ def _domain(op, iterators):
     if any(mapping.num_dims != len(iterators) or mapping.num_symbols for mapping in maps):
         raise ValueError("symbolic or inconsistent affine domain")
     shapes, dtypes = [], []
-    bounds = [None]*len(iterators)
+    bounds = [None] * len(iterators)
     for value, mapping in zip(op.operands, maps, strict=True):
         shape = tuple(value.type.get_shape())
         if len(shape) != len(mapping.results) or any(type(dim) is not int or dim <= 0 for dim in shape):
@@ -114,7 +115,7 @@ def _domain(op, iterators):
         raise ValueError("iteration bound lacks an exact operand dimension projection")
     # The output must index parallel coordinates only. This separates a true
     # accumulation from a reduction-labelled pointwise update of distinct cells.
-    output_maps = maps[len(tuple(op.inputs)):]
+    output_maps = maps[len(tuple(op.inputs)) :]
     parallel = {i for i, kind in enumerate(iterators) if kind == "parallel"}
     if len(output_maps) != 1 or any(not isinstance(expr, AffineDimExpr) for expr in output_maps[0].results):
         raise ValueError("unsupported accumulation output map")
@@ -126,8 +127,11 @@ def _domain(op, iterators):
             lower, upper = _interval(expr, bounds)
             if lower < 0 or upper >= extent:
                 raise ValueError("affine access is not proved in bounds on the inferred domain")
-    return (tuple(bounds[i] for i, kind in enumerate(iterators) if kind == "parallel"),
-            tuple(bounds[i] for i, kind in enumerate(iterators) if kind == "reduction"), tuple(dtypes))
+    return (
+        tuple(bounds[i] for i, kind in enumerate(iterators) if kind == "parallel"),
+        tuple(bounds[i] for i, kind in enumerate(iterators) if kind == "reduction"),
+        tuple(dtypes),
+    )
 
 
 def observe_model_macs(src: Any, *, entry: str | None = None) -> list[tuple[Any, ModelMACShape]]:
@@ -140,7 +144,7 @@ def observe_model_macs(src: Any, *, entry: str | None = None) -> list[tuple[Any,
     try:
         module = parse(src)
         functions = [op for op in module.body.block.ops if op.name == "func.func" and op.body.blocks]
-        matches = ([op for op in functions if op.sym_name.data == entry] if entry is not None else functions)
+        matches = [op for op in functions if op.sym_name.data == entry] if entry is not None else functions
         if len(matches) != 1 or len(matches[0].body.blocks) != 1:
             raise ValueError("one defined single-block entry is required")
         entry_function = matches[0]
@@ -150,16 +154,30 @@ def observe_model_macs(src: Any, *, entry: str | None = None) -> list[tuple[Any,
     found = []
     for op in entry_function.walk():
         if op.name in {"func.call", "func.call_indirect"}:
-            found.append((op, ModelMACShape(op.name, reason="called source work/multiplicity is unproved",
-                                           source_op_index=top.get(op))))
+            found.append(
+                (
+                    op,
+                    ModelMACShape(
+                        op.name, reason="called source work/multiplicity is unproved", source_op_index=top.get(op)
+                    ),
+                )
+            )
             continue
         if not op.name.startswith("linalg."):
             continue
         iterators = _iterators(op)
         if not iterators:
             if _yield_uses_product(op):
-                found.append((op, ModelMACShape(op.name, reason="product-bearing linalg work has unreadable iterators",
-                                               source_op_index=top.get(op))))
+                found.append(
+                    (
+                        op,
+                        ModelMACShape(
+                            op.name,
+                            reason="product-bearing linalg work has unreadable iterators",
+                            source_op_index=top.get(op),
+                        ),
+                    )
+                )
             continue
         if "reduction" not in iterators:
             continue
@@ -168,8 +186,14 @@ def observe_model_macs(src: Any, *, entry: str | None = None) -> list[tuple[Any,
             # Named linalg operations expose the same scalar region/iterator
             # interface. Reuse exactly the shared recurrence matcher, without
             # modifying source or widening the kernel specialization contract.
-            recurrence = _source_has_multiply_accumulate(SimpleNamespace(name="linalg.generic",
-                regions=op.regions, attributes={}, properties={"iterator_types": op.get_iterator_types()}))
+            recurrence = _source_has_multiply_accumulate(
+                SimpleNamespace(
+                    name="linalg.generic",
+                    regions=op.regions,
+                    attributes={},
+                    properties={"iterator_types": op.get_iterator_types()},
+                )
+            )
         if not recurrence and not _yield_uses_product(op):
             continue
         try:
@@ -178,8 +202,15 @@ def observe_model_macs(src: Any, *, entry: str | None = None) -> list[tuple[Any,
             if op not in top:
                 raise ValueError("enclosing source control-flow multiplicity is unproved")
             parallel, reduction, dtypes = _domain(op, iterators)
-            shape = ModelMACShape(op.name, parallel, reduction, dtypes, "derived",
-                                  "one proved yielded MAC per static affine-domain point", top[op])
+            shape = ModelMACShape(
+                op.name,
+                parallel,
+                reduction,
+                dtypes,
+                "derived",
+                "one proved yielded MAC per static affine-domain point",
+                top[op],
+            )
         except (ValueError, AttributeError, IndexError, NotImplementedError) as error:
             shape = ModelMACShape(op.name, reason=str(error), source_op_index=top.get(op))
         found.append((op, shape))

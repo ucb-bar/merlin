@@ -1,4 +1,5 @@
 """Validate synthesized plan dicts against the shared schemas (pre-write check)."""
+
 from __future__ import annotations
 
 from typing import Any

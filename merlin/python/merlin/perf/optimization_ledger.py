@@ -26,17 +26,27 @@ refuses the compute-bound/memory-bound verdict unless the caller supplies a MEAS
 An intensity is derivable from a command buffer; a ridge point is a property of hardware and is not
 invented here.
 """
+
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 import json
 import os
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["SCOPES", "VERDICTS", "SCHEMA", "Delta", "Attempt", "Ledger", "arithmetic_intensity",
-           "read_ledger", "append_attempts"]
+__all__ = [
+    "SCOPES",
+    "VERDICTS",
+    "SCHEMA",
+    "Delta",
+    "Attempt",
+    "Ledger",
+    "arithmetic_intensity",
+    "read_ledger",
+    "append_attempts",
+]
 
 #: The on-disk schema tag. A reader refuses anything else rather than best-effort parsing it: a
 #: ledger silently read as empty would report a campaign that tried nothing, which is the most
@@ -46,22 +56,22 @@ SCHEMA = "merlin_optimization_ledger_v1"
 #: Where an optimization acts. Recorded because the cheap wins and the structural wins live at
 #: different scopes, and a campaign that only ever finds one scope's worth is not done.
 SCOPES = (
-    "global",          # whole-graph: placement, offload fraction, what reaches the unit at all
-    "inter_layer",     # between layers: epilogue fusion, residency across a block, layout handoff
-    "local",           # inside one region: loop shape, index strength reduction, tiling
-    "encoding",        # instruction selection and packing: which command family, which fields
+    "global",  # whole-graph: placement, offload fraction, what reaches the unit at all
+    "inter_layer",  # between layers: epilogue fusion, residency across a block, layout handoff
+    "local",  # inside one region: loop shape, index strength reduction, tiling
+    "encoding",  # instruction selection and packing: which command family, which fields
     "transformation",  # semantics-preserving rewrites: quantization, layout change, reassociation
-    "host_lane",       # code quality on the scalar lane
-    "build",           # toolchain flags and pipeline order, no compiler change
-    "frontend",        # what the compiler can ingest at all
+    "host_lane",  # code quality on the scalar lane
+    "build",  # toolchain flags and pipeline order, no compiler change
+    "frontend",  # what the compiler can ingest at all
 )
 
 #: A verdict asserts what a MEASUREMENT said, or that there wasn't one.
 VERDICTS = (
-    "helped",      # measured better on at least one workload, with the delta recorded
-    "no_effect",   # measured, and the metric did not move
-    "refuted",     # measured worse, or rejected outright by hardware/a gate
-    "blocked",     # cannot proceed; `blocked_by` says what stops it
+    "helped",  # measured better on at least one workload, with the delta recorded
+    "no_effect",  # measured, and the metric did not move
+    "refuted",  # measured worse, or rejected outright by hardware/a gate
+    "blocked",  # cannot proceed; `blocked_by` says what stops it
     "unmeasured",  # tried or proposed, effect never measured -- NOT the same as no_effect
 )
 
@@ -117,10 +127,17 @@ class Delta:
         return (self.before / self.after) if self.lower_is_better else (self.after / self.before)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"workload": self.workload, "metric": self.metric, "before": self.before,
-                "after": self.after, "ratio": self.ratio, "instrument": self.instrument,
-                "unit": self.unit, "note": self.note,
-                "lower_is_better": self.lower_is_better}
+        return {
+            "workload": self.workload,
+            "metric": self.metric,
+            "before": self.before,
+            "after": self.after,
+            "ratio": self.ratio,
+            "instrument": self.instrument,
+            "unit": self.unit,
+            "note": self.note,
+            "lower_is_better": self.lower_is_better,
+        }
 
     @classmethod
     def from_dict(cls, row: Mapping[str, Any]) -> "Delta":
@@ -135,10 +152,16 @@ class Delta:
         lower = row.get("lower_is_better", True)
         if lower is not None and not isinstance(lower, bool):
             raise ValueError("lower_is_better must be true, false, or null")
-        return cls(workload=str(row.get("workload") or ""), metric=str(row.get("metric") or ""),
-                   before=_number(row.get("before")), after=_number(row.get("after")),
-                   instrument=str(row.get("instrument") or ""), unit=str(row.get("unit") or ""),
-                   note=str(row.get("note") or ""), lower_is_better=lower)
+        return cls(
+            workload=str(row.get("workload") or ""),
+            metric=str(row.get("metric") or ""),
+            before=_number(row.get("before")),
+            after=_number(row.get("after")),
+            instrument=str(row.get("instrument") or ""),
+            unit=str(row.get("unit") or ""),
+            note=str(row.get("note") or ""),
+            lower_is_better=lower,
+        )
 
 
 @dataclass(frozen=True)
@@ -147,12 +170,12 @@ class Attempt:
 
     mechanism: str
     scope: str
-    found_by: str                     # the instrument that surfaced the opportunity
+    found_by: str  # the instrument that surfaced the opportunity
     verdict: str
     hypothesis: str = ""
     deltas: tuple[Delta, ...] = ()
     blocked_by: str = ""
-    evidence: str = ""                # where a reader can check it: a path, a commit, a receipt
+    evidence: str = ""  # where a reader can check it: a path, a commit, a receipt
     iteration: int | None = None
     #: The MECHANISM text of an earlier attempt this one resolves. A ledger is append-only history,
     #: so a `blocked` row stays in the record -- but a reader scanning verdicts would otherwise see a
@@ -176,17 +199,26 @@ class Attempt:
         if self.verdict == "blocked" and not self.blocked_by:
             out.append("verdict 'blocked' must say what blocks it")
         if self.resolves and self.verdict in ("blocked", "unmeasured"):
-            out.append(f"verdict {self.verdict!r} cannot resolve an earlier attempt; only a "
-                       f"measured verdict can retire a blocker")
+            out.append(
+                f"verdict {self.verdict!r} cannot resolve an earlier attempt; only a "
+                f"measured verdict can retire a blocker"
+            )
         return tuple(out)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"mechanism": self.mechanism, "scope": self.scope, "found_by": self.found_by,
-                "verdict": self.verdict, "hypothesis": self.hypothesis,
-                "blocked_by": self.blocked_by, "evidence": self.evidence,
-                "iteration": self.iteration, "resolves": self.resolves,
-                "deltas": [d.to_dict() for d in self.deltas],
-                "problems": list(self.problems())}
+        return {
+            "mechanism": self.mechanism,
+            "scope": self.scope,
+            "found_by": self.found_by,
+            "verdict": self.verdict,
+            "hypothesis": self.hypothesis,
+            "blocked_by": self.blocked_by,
+            "evidence": self.evidence,
+            "iteration": self.iteration,
+            "resolves": self.resolves,
+            "deltas": [d.to_dict() for d in self.deltas],
+            "problems": list(self.problems()),
+        }
 
     @classmethod
     def from_dict(cls, row: Mapping[str, Any]) -> "Attempt":
@@ -198,17 +230,26 @@ class Attempt:
         if not isinstance(row, Mapping):
             raise ValueError("an attempt must be a mapping")
         raw = row.get("deltas")
-        deltas = tuple(Delta.from_dict(d) for d in raw) if isinstance(raw, Sequence) \
-            and not isinstance(raw, (str, bytes)) else ()
+        deltas = (
+            tuple(Delta.from_dict(d) for d in raw)
+            if isinstance(raw, Sequence) and not isinstance(raw, (str, bytes))
+            else ()
+        )
         iteration = row.get("iteration")
         if iteration is not None and (isinstance(iteration, bool) or not isinstance(iteration, int)):
             raise ValueError("iteration must be an integer or null")
-        return cls(mechanism=str(row.get("mechanism") or ""), scope=str(row.get("scope") or ""),
-                   found_by=str(row.get("found_by") or ""), verdict=str(row.get("verdict") or ""),
-                   hypothesis=str(row.get("hypothesis") or ""), deltas=deltas,
-                   blocked_by=str(row.get("blocked_by") or ""),
-                   evidence=str(row.get("evidence") or ""), iteration=iteration,
-                   resolves=str(row.get("resolves") or ""))
+        return cls(
+            mechanism=str(row.get("mechanism") or ""),
+            scope=str(row.get("scope") or ""),
+            found_by=str(row.get("found_by") or ""),
+            verdict=str(row.get("verdict") or ""),
+            hypothesis=str(row.get("hypothesis") or ""),
+            deltas=deltas,
+            blocked_by=str(row.get("blocked_by") or ""),
+            evidence=str(row.get("evidence") or ""),
+            iteration=iteration,
+            resolves=str(row.get("resolves") or ""),
+        )
 
 
 @dataclass
@@ -226,12 +267,13 @@ class Ledger:
         out: list[str] = []
         known = {a.mechanism for a in self.attempts}
         for index, attempt in enumerate(self.attempts):
-            out.extend(f"attempt {index} ({attempt.mechanism}): {why}"
-                       for why in attempt.problems())
+            out.extend(f"attempt {index} ({attempt.mechanism}): {why}" for why in attempt.problems())
             if attempt.resolves and attempt.resolves not in known:
-                out.append(f"attempt {index} ({attempt.mechanism}): resolves "
-                           f"{attempt.resolves!r}, which matches no recorded attempt -- a typo here "
-                           f"would silently leave a retired blocker looking live")
+                out.append(
+                    f"attempt {index} ({attempt.mechanism}): resolves "
+                    f"{attempt.resolves!r}, which matches no recorded attempt -- a typo here "
+                    f"would silently leave a retired blocker looking live"
+                )
         return tuple(out)
 
     def resolved(self) -> dict[str, str]:
@@ -246,8 +288,7 @@ class Ledger:
     def live_blockers(self) -> tuple[Attempt, ...]:
         """Blocked attempts nothing later resolved. What a reader should actually act on."""
         retired = set(self.resolved())
-        return tuple(a for a in self.attempts
-                     if a.verdict == "blocked" and a.mechanism not in retired)
+        return tuple(a for a in self.attempts if a.verdict == "blocked" and a.mechanism not in retired)
 
     def by_verdict(self) -> dict[str, int]:
         counts: dict[str, int] = {}
@@ -283,13 +324,18 @@ class Ledger:
         return tuple(out)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"schema": "merlin_optimization_ledger_v1", "target": self.target,
-                "n_attempts": len(self.attempts), "by_verdict": self.by_verdict(),
-                "by_scope": self.by_scope(), "instruments": self.instruments(),
-                "resolved": self.resolved(),
-                "n_live_blockers": len(self.live_blockers()),
-                "problems": list(self.problems()),
-                "attempts": [a.to_dict() for a in self.attempts]}
+        return {
+            "schema": "merlin_optimization_ledger_v1",
+            "target": self.target,
+            "n_attempts": len(self.attempts),
+            "by_verdict": self.by_verdict(),
+            "by_scope": self.by_scope(),
+            "instruments": self.instruments(),
+            "resolved": self.resolved(),
+            "n_live_blockers": len(self.live_blockers()),
+            "problems": list(self.problems()),
+            "attempts": [a.to_dict() for a in self.attempts],
+        }
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "Ledger":
@@ -298,15 +344,16 @@ class Ledger:
             raise ValueError("a ledger must be a mapping")
         schema = payload.get("schema")
         if schema != SCHEMA:
-            raise ValueError(f"expected schema {SCHEMA!r}, got {schema!r}; refusing to read a ledger "
-                             f"whose shape is unknown rather than reporting it as empty")
+            raise ValueError(
+                f"expected schema {SCHEMA!r}, got {schema!r}; refusing to read a ledger "
+                f"whose shape is unknown rather than reporting it as empty"
+            )
         raw = payload.get("attempts")
         if raw is None:
             raw = []
         if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
             raise ValueError("a ledger's attempts must be a sequence")
-        return cls(target=str(payload.get("target") or ""),
-                   attempts=[Attempt.from_dict(row) for row in raw])
+        return cls(target=str(payload.get("target") or ""), attempts=[Attempt.from_dict(row) for row in raw])
 
     def write(self, path: str | Path) -> Path:
         """Serialise atomically, so a reader never sees a half-written ledger.
@@ -318,8 +365,7 @@ class Ledger:
         target = Path(path)
         target.parent.mkdir(parents=True, exist_ok=True)
         scratch = target.with_name(target.name + f".{os.getpid()}.partial")
-        scratch.write_text(json.dumps(self.to_dict(), indent=2, sort_keys=False) + "\n",
-                           encoding="utf-8")
+        scratch.write_text(json.dumps(self.to_dict(), indent=2, sort_keys=False) + "\n", encoding="utf-8")
         os.replace(scratch, target)
         return target
 
@@ -331,20 +377,26 @@ class Ledger:
         scope_w = max([len("scope")] + [len(a.scope) for a in self.attempts])
         found_w = max([len("found_by")] + [len(a.found_by) for a in self.attempts])
         indent = " " * (verdict_w + scope_w + found_w + 3)
-        rows = [f"== optimization ledger: {self.target} ({len(self.attempts)} attempts)",
-                f"{'verdict':{verdict_w}} {'scope':{scope_w}} {'found_by':{found_w}} mechanism"]
+        rows = [
+            f"== optimization ledger: {self.target} ({len(self.attempts)} attempts)",
+            f"{'verdict':{verdict_w}} {'scope':{scope_w}} {'found_by':{found_w}} mechanism",
+        ]
         order = {v: i for i, v in enumerate(VERDICTS)}
         retired = self.resolved()
         for attempt in sorted(self.attempts, key=lambda a: order.get(a.verdict, 99)):
             mark = " [RETIRED]" if attempt.mechanism in retired else ""
-            rows.append(f"{attempt.verdict:{verdict_w}} {attempt.scope:{scope_w}} "
-                        f"{attempt.found_by:{found_w}} {attempt.mechanism}{mark}")
+            rows.append(
+                f"{attempt.verdict:{verdict_w}} {attempt.scope:{scope_w}} "
+                f"{attempt.found_by:{found_w}} {attempt.mechanism}{mark}"
+            )
             if mark:
                 rows.append(f"{indent}  RETIRED BY: {retired[attempt.mechanism]}")
             for delta in attempt.deltas:
                 ratio = "" if delta.ratio is None else f"  ({delta.ratio:.3f}x)"
-                rows.append(f"{indent}  {delta.workload}: {delta.metric} "
-                            f"{delta.before} -> {delta.after}{ratio} [{delta.instrument}]")
+                rows.append(
+                    f"{indent}  {delta.workload}: {delta.metric} "
+                    f"{delta.before} -> {delta.after}{ratio} [{delta.instrument}]"
+                )
             if attempt.blocked_by:
                 rows.append(f"{indent}  BLOCKED BY: {attempt.blocked_by}")
         for why in self.problems():
@@ -352,9 +404,13 @@ class Ledger:
         return "\n".join(rows)
 
 
-def arithmetic_intensity(routed_macs: int, traffic_bytes: int, *,
-                         machine_macs_per_byte: float | None = None,
-                         ridge_is_upper_bound: bool = True) -> dict[str, Any]:
+def arithmetic_intensity(
+    routed_macs: int,
+    traffic_bytes: int,
+    *,
+    machine_macs_per_byte: float | None = None,
+    ridge_is_upper_bound: bool = True,
+) -> dict[str, Any]:
     """MACs per byte for one program, and the bound-ness verdict only if the machine balance is given.
 
     Intensity is derivable from an emitted program. The RIDGE POINT -- the intensity at which a
@@ -381,14 +437,19 @@ def arithmetic_intensity(routed_macs: int, traffic_bytes: int, *,
     if traffic_bytes <= 0 or routed_macs < 0:
         return {"status": "unavailable", "reason": "a program with no priced traffic has no intensity"}
     intensity = routed_macs / float(traffic_bytes)
-    out: dict[str, Any] = {"status": "derived", "macs_per_byte": intensity,
-                           "routed_macs": routed_macs, "traffic_bytes": traffic_bytes,
-                           "licence": "intensity is derived from the emitted program; the ridge "
-                                      "point is a measured machine property and is not assumed"}
+    out: dict[str, Any] = {
+        "status": "derived",
+        "macs_per_byte": intensity,
+        "routed_macs": routed_macs,
+        "traffic_bytes": traffic_bytes,
+        "licence": "intensity is derived from the emitted program; the ridge "
+        "point is a measured machine property and is not assumed",
+    }
     if not machine_macs_per_byte or machine_macs_per_byte <= 0:
         out["bound_by"] = "UNKNOWN"
-        out["reason"] = ("no measured machine balance (peak MACs per achievable byte) was supplied, "
-                         "and one is not invented here")
+        out["reason"] = (
+            "no measured machine balance (peak MACs per achievable byte) was supplied, and one is not invented here"
+        )
         return out
     out["machine_macs_per_byte"] = float(machine_macs_per_byte)
     out["ridge_is_upper_bound"] = bool(ridge_is_upper_bound)
@@ -400,7 +461,8 @@ def arithmetic_intensity(routed_macs: int, traffic_bytes: int, *,
         out["reason"] = (
             "intensity is below an UPPER BOUND on the ridge, which proves nothing: the true ridge "
             "may sit below this intensity. Establish a lower bound on achievable bandwidth (a "
-            "transfer probe above the fitted domain) to decide this workload")
+            "transfer probe above the fitted domain) to decide this workload"
+        )
         return out
     out["bound_by"] = "memory"
     return out
@@ -409,6 +471,7 @@ def arithmetic_intensity(routed_macs: int, traffic_bytes: int, *,
 # ---------------------------------------------------------------------------------------------------
 # the campaign-level rollup
 # ---------------------------------------------------------------------------------------------------
+
 
 def read_ledger(path: str | Path, *, target: str = "") -> Ledger:
     """The ledger at ``path``, or an EMPTY one when the file does not exist yet.
@@ -440,13 +503,17 @@ def append_attempts(path: str | Path, attempts: Sequence[Attempt], *, target: st
     """
     existing = read_ledger(path, target=target)
     if existing.attempts and existing.target and existing.target != str(target):
-        raise ValueError(f"the ledger at {path} records target {existing.target!r}, not "
-                         f"{str(target)!r}; appending would mix two machines' measurements")
+        raise ValueError(
+            f"the ledger at {path} records target {existing.target!r}, not "
+            f"{str(target)!r}; appending would mix two machines' measurements"
+        )
     existing.target = str(target)
     for attempt in attempts:
         if not isinstance(attempt, Attempt):
-            raise ValueError("append_attempts takes Attempt rows, so an unvalidated mapping cannot "
-                             "reach the ledger without passing Attempt.from_dict first")
+            raise ValueError(
+                "append_attempts takes Attempt rows, so an unvalidated mapping cannot "
+                "reach the ledger without passing Attempt.from_dict first"
+            )
         existing.add(attempt)
     existing.write(path)
     return existing

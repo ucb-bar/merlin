@@ -36,6 +36,7 @@ experiment-driver work, which no compiler-verification layer can see and none cl
 therefore the expected result and the honest one; the number worth reporting is the rate WITHIN the
 population, alongside the population's size and how it was defined.
 """
+
 from __future__ import annotations
 
 import json
@@ -73,7 +74,7 @@ class Replayed:
     sha: str
     subject: str
     files: list[str]
-    outcome: str                                  # detected | missed | unreplayable | disqualified
+    outcome: str  # detected | missed | unreplayable | disqualified
     layers_red: list[str] = field(default_factory=list)
     note: str = ""
     #: False when the fix landed after the layers did -- see LAYERS_LANDED.
@@ -81,8 +82,7 @@ class Replayed:
 
 
 def _git(*args: str, cwd: Path | None = None) -> str:
-    return subprocess.run(("git",) + args, cwd=cwd, capture_output=True, text=True,
-                          check=False).stdout
+    return subprocess.run(("git",) + args, cwd=cwd, capture_output=True, text=True, check=False).stdout
 
 
 def _ancestors_of_layers(repo: Path) -> set[str]:
@@ -104,8 +104,7 @@ def population(repo: Path, ref: str = "HEAD") -> list[tuple[str, str, list[str]]
     The record stores the resolved sha so a rerun reproduces exactly the same sample rather than
     approximately the same one.
     """
-    out = _git("log", ref, "--format=%H%x00%s", "--name-only", "--grep=^fix(", "--", *OBSERVED_ROOTS,
-               cwd=repo)
+    out = _git("log", ref, "--format=%H%x00%s", "--name-only", "--grep=^fix(", "--", *OBSERVED_ROOTS, cwd=repo)
     entries: list[tuple[str, str, list[str]]] = []
     sha = subject = ""
     files: list[str] = []
@@ -152,16 +151,20 @@ def _shadow(repo: Path, sha: str, files: list[str], dest: Path) -> list[str]:
     # "No such file or directory" on a path that exists. symlinks=True copies links AS links for the
     # rest, so the shadow stays a faithful copy rather than a materialized one, and stays cheap: this
     # runs once per sampled commit.
-    shutil.copytree(repo / PACKAGE, pkg, symlinks=True, ignore_dangling_symlinks=True,
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "_data"))
+    shutil.copytree(
+        repo / PACKAGE,
+        pkg,
+        symlinks=True,
+        ignore_dangling_symlinks=True,
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "_data"),
+    )
     failed: list[str] = []
     for rel in files:
-        proc = subprocess.run(("git", "show", f"{sha}^:{rel}"), cwd=repo,
-                              capture_output=True, text=True, check=False)
+        proc = subprocess.run(("git", "show", f"{sha}^:{rel}"), cwd=repo, capture_output=True, text=True, check=False)
         if proc.returncode != 0:
             failed.append(rel)
             continue
-        target = dest / "merlin" / rel[len(PACKAGE) + 1:]
+        target = dest / "merlin" / rel[len(PACKAGE) + 1 :]
         if not target.parent.is_dir():
             failed.append(rel)
             continue
@@ -207,8 +210,14 @@ def _run_layers(repo: Path, pythonpath: str, timeout: int) -> dict[str, str]:
     verdicts: dict[str, str] = {}
     for name, argv in LAYERS.items():
         try:
-            proc = subprocess.run((str(repo / ".venv" / "bin" / "python"),) + argv, cwd=repo,
-                                  capture_output=True, text=True, env=env, timeout=timeout)
+            proc = subprocess.run(
+                (str(repo / ".venv" / "bin" / "python"),) + argv,
+                cwd=repo,
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=timeout,
+            )
         except subprocess.TimeoutExpired:
             verdicts[name] = "timeout"
             continue
@@ -223,8 +232,7 @@ def _run_layers(repo: Path, pythonpath: str, timeout: int) -> dict[str, str]:
     return verdicts
 
 
-def replay(repo: Path, n: int = 20, seed: int = 20260905, timeout: int = 300,
-           ref: str = "HEAD") -> dict:
+def replay(repo: Path, n: int = 20, seed: int = 20260905, timeout: int = 300, ref: str = "HEAD") -> dict:
     """Draw a sample, replay each defect, and return the record. Never raises on one bad commit."""
     resolved = _git("rev-parse", ref, cwd=repo).strip()
     pool = population(repo, resolved or ref)
@@ -241,9 +249,16 @@ def replay(repo: Path, n: int = 20, seed: int = 20260905, timeout: int = 300,
             failed = _shadow(repo, sha, files, dest)
             old = sha in historical
             if failed:
-                results.append(Replayed(sha[:8], subject, files, "unreplayable",
-                                        note=f"parent version unavailable for {failed}",
-                                        predates_layers=old))
+                results.append(
+                    Replayed(
+                        sha[:8],
+                        subject,
+                        files,
+                        "unreplayable",
+                        note=f"parent version unavailable for {failed}",
+                        predates_layers=old,
+                    )
+                )
                 continue
             verdicts = _run_layers(repo, str(dest), timeout)
             red = [k for k in usable if verdicts.get(k) == "red"]
@@ -251,18 +266,32 @@ def replay(repo: Path, n: int = 20, seed: int = 20260905, timeout: int = 300,
             if broken and not red:
                 # Every usable layer failed to RUN against this shadow, so nothing was measured. Calling
                 # it a miss would be as wrong as calling it a detection.
-                results.append(Replayed(sha[:8], subject, files, "unreplayable",
-                                        note=f"the shadowed package did not run: {broken}",
-                                        predates_layers=old))
+                results.append(
+                    Replayed(
+                        sha[:8],
+                        subject,
+                        files,
+                        "unreplayable",
+                        note=f"the shadowed package did not run: {broken}",
+                        predates_layers=old,
+                    )
+                )
                 continue
             if not usable:
-                results.append(Replayed(sha[:8], subject, files, "disqualified",
-                                        note="no layer was green on the real tree",
-                                        predates_layers=old))
+                results.append(
+                    Replayed(
+                        sha[:8],
+                        subject,
+                        files,
+                        "disqualified",
+                        note="no layer was green on the real tree",
+                        predates_layers=old,
+                    )
+                )
             else:
-                results.append(Replayed(sha[:8], subject, files,
-                                        "detected" if red else "missed", red,
-                                        predates_layers=old))
+                results.append(
+                    Replayed(sha[:8], subject, files, "detected" if red else "missed", red, predates_layers=old)
+                )
 
     counts: dict[str, int] = {}
     for r in results:
@@ -273,8 +302,7 @@ def replay(repo: Path, n: int = 20, seed: int = 20260905, timeout: int = 300,
     return {
         "schema": "verify_historical_replay/v1",
         "population_size": len(pool),
-        "population_definition": {"grep": "^fix(", "observed_roots": list(OBSERVED_ROOTS),
-                                  "ref": resolved or ref},
+        "population_definition": {"grep": "^fix(", "observed_roots": list(OBSERVED_ROOTS), "ref": resolved or ref},
         "sample_size": len(sample),
         "seed": seed,
         "baseline": baseline,
@@ -305,11 +333,15 @@ def render(rec: dict) -> str:
         # Loud, because a layer that did not run silently NARROWS the instrument, and the rate then
         # describes a smaller thing than the sentence around it claims. Twice now a layer was wired to
         # a module name that did not exist and the run reported a number for the remaining three.
-        lines.insert(3, f"WARNING   {len(unusable)} of {len(rec['baseline'])} layers were not usable "
-                        f"and could detect nothing: {unusable}")
+        lines.insert(
+            3,
+            f"WARNING   {len(unusable)} of {len(rec['baseline'])} layers were not usable "
+            f"and could detect nothing: {unusable}",
+        )
     for r in rec["results"]:
-        mark = {"detected": "CAUGHT", "missed": "missed", "unreplayable": "n/a  ",
-                "disqualified": "dq   "}[r["outcome"]]
+        mark = {"detected": "CAUGHT", "missed": "missed", "unreplayable": "n/a  ", "disqualified": "dq   "}[
+            r["outcome"]
+        ]
         layers = (" <- " + ", ".join(r["layers_red"])) if r["layers_red"] else ""
         age = "" if r["predates_layers"] else "  [postdates the layers]"
         lines.append(f"  {mark} {r['sha']} {r['subject'][:64]}{layers}{age}")
@@ -329,8 +361,9 @@ def main(argv=None) -> int:
     ap.add_argument("--n", type=int, default=20, help="sample size")
     ap.add_argument("--seed", type=int, default=20260905)
     ap.add_argument("--timeout", type=int, default=300, help="per-layer seconds")
-    ap.add_argument("--ref", default="HEAD",
-                    help="commit the population is taken from; pin it to reproduce a sample exactly")
+    ap.add_argument(
+        "--ref", default="HEAD", help="commit the population is taken from; pin it to reproduce a sample exactly"
+    )
     ap.add_argument("--write", action="store_true", help="write the record as a versioned product")
     a = ap.parse_args(argv)
 
@@ -339,11 +372,18 @@ def main(argv=None) -> int:
     if a.write:
         from merlin.common.artifacts import new_product
 
-        prod = new_product("verification", version=1, sources=[
-            f"{rec['population_size']} fix( commits touching {len(OBSERVED_ROOTS)} observed paths",
-            f"sample of {rec['sample_size']}, seed {rec['seed']}",
-        ], notes=("Historical replay: each sampled fix's PARENT files are shadowed over the package and "
-                  "the layers re-run. Unreplayable commits are reported, never dropped."))
+        prod = new_product(
+            "verification",
+            version=1,
+            sources=[
+                f"{rec['population_size']} fix( commits touching {len(OBSERVED_ROOTS)} observed paths",
+                f"sample of {rec['sample_size']}, seed {rec['seed']}",
+            ],
+            notes=(
+                "Historical replay: each sampled fix's PARENT files are shadowed over the package and "
+                "the layers re-run. Unreplayable commits are reported, never dropped."
+            ),
+        )
         out = prod.add_artifact("historical_replay.json")
         out.write_text(json.dumps(rec, indent=1), encoding="utf-8")
         prod.write_manifest()

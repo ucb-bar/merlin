@@ -27,6 +27,7 @@ and ``capsule_golden.materialize_capsule_leaves`` fills every leaf unconditional
 evidence for a human rather than an input to the grader. Claiming otherwise would overstate what this
 path does — see the 2026-09-05 correction in docs/design/compiler_verification.md.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -51,10 +52,19 @@ def entry_name(m: int, k: int, n: int, *, dtype: str, family: str) -> str:
     return f"{CX_PREFIX}_{family}_{dtype}_{m}x{k}x{n}".replace("-", "_")
 
 
-def counterexample_entry(*, target: str, m: int, k: int, n: int, dtype: str = "i8",
-                         family: str = "contraction", obligation: str = "",
-                         solver: str = "", bound_ms: int | None = None,
-                         evidence_path: str | None = None) -> dict[str, Any]:
+def counterexample_entry(
+    *,
+    target: str,
+    m: int,
+    k: int,
+    n: int,
+    dtype: str = "i8",
+    family: str = "contraction",
+    obligation: str = "",
+    solver: str = "",
+    bound_ms: int | None = None,
+    evidence_path: str | None = None,
+) -> dict[str, Any]:
     """One profile entry for a refuted lattice point.
 
     Extents are CONCRETE integers rather than the tile-relative spellings the synthesized entries
@@ -68,7 +78,7 @@ def counterexample_entry(*, target: str, m: int, k: int, n: int, dtype: str = "i
         + (f"; solver {solver}" if solver else "")
         + (f", bound {bound_ms} ms" if bound_ms is not None else "")
         + ". The SHAPE is the solver's; the stimulus is the corpus's own deterministic fill, because "
-          "a capsule has no field for input values"
+        "a capsule has no field for input values"
         + (f". Counterexample values: {evidence_path}" if evidence_path else "")
     )
     return {
@@ -114,12 +124,23 @@ def write_profile(target: str, entries: list[dict], *, provenance: dict | None =
         existing = list(doc.get("capsules") or [])
     merged, added = merge_entries(existing, entries)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump({
-        "provenance": dict(provenance or {}, generator="merlin.verify.counterexamples",
-                           note=("shapes refuted by SMT translation validation; the stimulus is the "
-                                 "corpus's deterministic fill, not the solver's values")),
-        "capsules": merged,
-    }, sort_keys=True), encoding="utf-8")
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "provenance": dict(
+                    provenance or {},
+                    generator="merlin.verify.counterexamples",
+                    note=(
+                        "shapes refuted by SMT translation validation; the stimulus is the "
+                        "corpus's deterministic fill, not the solver's values"
+                    ),
+                ),
+                "capsules": merged,
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
     print(f"{path}: {len(merged)} entr{'y' if len(merged) == 1 else 'ies'} ({added} new)")
     return path
 
@@ -137,12 +158,20 @@ def write_evidence(target: str, records: list[dict]) -> Path | None:
 
     from merlin.common.artifacts import new_product
 
-    prod = new_product("verification", version=1, target=target, sources=[
-        f"{len(records)} refuted lattice point(s) for {target}",
-        "values are the solver's model; the corpus grades the deterministic fill instead",
-    ], notes=("Counterexample values for refuted lattice points. Evidence for a human reading the "
-              "refutation -- a refutation without its counterexample is an assertion -- and NOT an "
-              "input to the grader, which has no field for input values."))
+    prod = new_product(
+        "verification",
+        version=1,
+        target=target,
+        sources=[
+            f"{len(records)} refuted lattice point(s) for {target}",
+            "values are the solver's model; the corpus grades the deterministic fill instead",
+        ],
+        notes=(
+            "Counterexample values for refuted lattice points. Evidence for a human reading the "
+            "refutation -- a refutation without its counterexample is an assertion -- and NOT an "
+            "input to the grader, which has no field for input values."
+        ),
+    )
     out = prod.add_artifact("counterexamples.json")
     out.write_text(json.dumps(records, indent=1), encoding="utf-8")
     prod.write_manifest()

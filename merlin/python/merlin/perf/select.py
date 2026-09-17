@@ -36,6 +36,7 @@ second target is actually in the loop.
 VOI 0 -- correctly, because VOI ranks what is worth *querying*, not what is worth *implementing*. A
 known-good change should be applied, not re-measured.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -60,9 +61,11 @@ EVALUATED = "evaluated"
 
 #: Dropped from the VOI product on purpose; see the module docstring. Kept as a named constant so a
 #: reader who goes looking for it finds the decision instead of an omission.
-GENERALITY_DROPPED = ("Generality is constant across candidates while one target is in the "
-                      "comparison, so it cannot change a ranking. Restore it when a second target "
-                      "enters the loop.")
+GENERALITY_DROPPED = (
+    "Generality is constant across candidates while one target is in the "
+    "comparison, so it cannot change a ranking. Restore it when a second target "
+    "enters the loop."
+)
 
 
 class Axis(str, Enum):
@@ -99,9 +102,11 @@ class Candidate:
 
     @property
     def digest(self) -> str:
-        body = json.dumps({"axis": self.axis.value, "workload": self.workload,
-                           "setting": [[k, v] for k, v in self.setting]},
-                          sort_keys=True, default=str)
+        body = json.dumps(
+            {"axis": self.axis.value, "workload": self.workload, "setting": [[k, v] for k, v in self.setting]},
+            sort_keys=True,
+            default=str,
+        )
         return hashlib.sha1(body.encode("utf-8")).hexdigest()[:12]
 
     @property
@@ -120,11 +125,19 @@ class Candidate:
         def _s(v: object) -> object:
             return "UNKNOWN" if is_unknown(v) else v
 
-        return {"id": self.id, "digest": self.digest, "axis": self.axis.value,
-                "workload": self.workload, "setting": dict(self.setting),
-                "baseline_cycles": self.baseline_cycles, "saving_lo": _s(self.saving_lo),
-                "saving_hi": _s(self.saving_hi), "predicted_cycles": _s(self.predicted_cycles),
-                "is_upper_bound": self.is_upper_bound, "rationale": self.rationale}
+        return {
+            "id": self.id,
+            "digest": self.digest,
+            "axis": self.axis.value,
+            "workload": self.workload,
+            "setting": dict(self.setting),
+            "baseline_cycles": self.baseline_cycles,
+            "saving_lo": _s(self.saving_lo),
+            "saving_hi": _s(self.saving_hi),
+            "predicted_cycles": _s(self.predicted_cycles),
+            "is_upper_bound": self.is_upper_bound,
+            "rationale": self.rationale,
+        }
 
 
 @dataclass(frozen=True)
@@ -147,13 +160,17 @@ class AxisEvidence:
     def unavailable(self) -> "Unavailable | None":
         if self.established is not None:
             return None
-        return Unavailable(f"the {self.axis.value} axis on {self.workload!r}", self.missing,
-                           self.rationale)
+        return Unavailable(f"the {self.axis.value} axis on {self.workload!r}", self.missing, self.rationale)
 
     def to_dict(self) -> dict:
-        return {"axis": self.axis.value, "workload": self.workload, "established": self.established,
-                "candidates": [c.to_dict() for c in self.candidates],
-                "missing": list(self.missing), "rationale": self.rationale}
+        return {
+            "axis": self.axis.value,
+            "workload": self.workload,
+            "established": self.established,
+            "candidates": [c.to_dict() for c in self.candidates],
+            "missing": list(self.missing),
+            "rationale": self.rationale,
+        }
 
 
 def _movement_busy(source: ActivitySource) -> int | None:
@@ -179,8 +196,7 @@ def _transfer_ladder(observed: int, floor: int) -> list[int]:
     return sorted(out, reverse=True)
 
 
-def dma_axis(source: ActivitySource,
-             amp: "WorkloadAmplification | Unavailable | None") -> AxisEvidence:
+def dma_axis(source: ActivitySource, amp: "WorkloadAmplification | Unavailable | None") -> AxisEvidence:
     """Candidate descriptor shapes for one workload, or a named refusal.
 
     Needs three things and says which is missing: a movement resource in the activity source, an
@@ -196,33 +212,40 @@ def dma_axis(source: ActivitySource,
     """
     move_busy = _movement_busy(source)
     if move_busy is None or move_busy <= 0:
-        return AxisEvidence(Axis.DMA_TILING, source.workload, None,
-                            missing=("a movement resource with non-zero occupancy",),
-                            rationale=(f"{source.workload}: the activity source charges no cycles to "
-                                       f"a resource of kind {ResourceKind.MOVEMENT.value!r}, so a "
-                                       f"descriptor change has nothing to act on"))
+        return AxisEvidence(
+            Axis.DMA_TILING,
+            source.workload,
+            None,
+            missing=("a movement resource with non-zero occupancy",),
+            rationale=(
+                f"{source.workload}: the activity source charges no cycles to "
+                f"a resource of kind {ResourceKind.MOVEMENT.value!r}, so a "
+                f"descriptor change has nothing to act on"
+            ),
+        )
     if amp is None or isinstance(amp, Unavailable):
-        missing = amp.missing if isinstance(amp, Unavailable) else ("a data-movement amplification "
-                                                                    "observation",)
+        missing = amp.missing if isinstance(amp, Unavailable) else ("a data-movement amplification observation",)
         detail = amp.detail if isinstance(amp, Unavailable) else "no amplification supplied"
-        return AxisEvidence(Axis.DMA_TILING, source.workload, None, missing=tuple(missing),
-                            rationale=detail)
+        return AxisEvidence(Axis.DMA_TILING, source.workload, None, missing=tuple(missing), rationale=detail)
     if is_unknown(amp.block_bytes) or is_unknown(amp.transfers_min):
         return AxisEvidence(
-            Axis.DMA_TILING, source.workload, None,
-            missing=("the per-command byte volume (>=2 observed movement commands, or per-command "
-                     "byte counts)",),
-            rationale=(f"{source.workload}: moved {amp.moved_bytes} bytes for {amp.useful_bytes} "
-                       f"useful, but the byte volume of one command is not derivable, so a "
-                       f"descriptor sweep would be a sweep over an assumed granule"))
+            Axis.DMA_TILING,
+            source.workload,
+            None,
+            missing=("the per-command byte volume (>=2 observed movement commands, or per-command byte counts)",),
+            rationale=(
+                f"{source.workload}: moved {amp.moved_bytes} bytes for {amp.useful_bytes} "
+                f"useful, but the byte volume of one command is not derivable, so a "
+                f"descriptor sweep would be a sweep over an assumed granule"
+            ),
+        )
 
     block = float(amp.block_bytes)
     floor = int(amp.transfers_min)
     # The command count comes back out of the amplification split rather than from moved/block:
     # with heterogeneous descriptors the block is the LARGEST command, so dividing the total by it
     # undercounts the commands actually issued.
-    observed = (int(round(float(amp.redundancy_factor) * floor))
-                if not is_unknown(amp.redundancy_factor) else floor)
+    observed = int(round(float(amp.redundancy_factor) * floor)) if not is_unknown(amp.redundancy_factor) else floor
     share = amp.artifact_share
     ladder = _transfer_ladder(max(observed, floor), floor)
 
@@ -239,30 +262,49 @@ def dma_axis(source: ActivitySource,
         if hi <= 0:
             continue
         lo: float | _Unknown = UNKNOWN if is_unknown(share) else max(0.0, hi * float(share))
-        cands.append(Candidate(
-            axis=Axis.DMA_TILING, workload=source.workload,
-            setting=(("transfers", int(row["transfers"])), ("block_bytes", block)),
-            baseline_cycles=source.total_cycles, saving_hi=hi, saving_lo=lo,
-            is_upper_bound=True,
-            rationale=(f"{observed} command(s) of {block:.0f} B move {amp.moved_bytes} B for "
-                       f"{amp.useful_bytes} useful (x{amp.ratio:.3g}); issuing "
-                       f"{int(row['transfers'])} would move "
-                       f"{max(float(amp.useful_bytes), int(row['transfers']) * block):.0f} B, and "
-                       f"movement holds {move_busy} of {source.total_cycles} cycles")))
+        cands.append(
+            Candidate(
+                axis=Axis.DMA_TILING,
+                workload=source.workload,
+                setting=(("transfers", int(row["transfers"])), ("block_bytes", block)),
+                baseline_cycles=source.total_cycles,
+                saving_hi=hi,
+                saving_lo=lo,
+                is_upper_bound=True,
+                rationale=(
+                    f"{observed} command(s) of {block:.0f} B move {amp.moved_bytes} B for "
+                    f"{amp.useful_bytes} useful (x{amp.ratio:.3g}); issuing "
+                    f"{int(row['transfers'])} would move "
+                    f"{max(float(amp.useful_bytes), int(row['transfers']) * block):.0f} B, and "
+                    f"movement holds {move_busy} of {source.total_cycles} cycles"
+                ),
+            )
+        )
     if not cands:
-        return AxisEvidence(Axis.DMA_TILING, source.workload, False,
-                            rationale=(f"{source.workload}: {observed} command(s) already at or "
-                                       f"below the {floor}-command floor for {amp.useful_bytes} "
-                                       f"useful bytes at a {block:.0f} B granule; no descriptor "
-                                       f"shape moves fewer bytes"))
+        return AxisEvidence(
+            Axis.DMA_TILING,
+            source.workload,
+            False,
+            rationale=(
+                f"{source.workload}: {observed} command(s) already at or "
+                f"below the {floor}-command floor for {amp.useful_bytes} "
+                f"useful bytes at a {block:.0f} B granule; no descriptor "
+                f"shape moves fewer bytes"
+            ),
+        )
     cands.sort(key=lambda c: (-float(c.saving_hi), c.id))
-    return AxisEvidence(Axis.DMA_TILING, source.workload, True, tuple(cands),
-                        rationale=(f"swept {len(cands)} descriptor shape(s) between the observed "
-                                   f"{observed} and the {floor}-command floor"))
+    return AxisEvidence(
+        Axis.DMA_TILING,
+        source.workload,
+        True,
+        tuple(cands),
+        rationale=(
+            f"swept {len(cands)} descriptor shape(s) between the observed {observed} and the {floor}-command floor"
+        ),
+    )
 
 
-def overlap_axis(source: ActivitySource,
-                 hr: "WorkloadHeadroom | Unavailable | None") -> AxisEvidence:
+def overlap_axis(source: ActivitySource, hr: "WorkloadHeadroom | Unavailable | None") -> AxisEvidence:
     """Candidate overlap policies for one workload, one per concurrency-capable pair.
 
     The saving interval is where the honesty lives. With the realised overlap unobserved
@@ -274,16 +316,17 @@ def overlap_axis(source: ActivitySource,
     if hr is None or isinstance(hr, Unavailable):
         missing = hr.missing if isinstance(hr, Unavailable) else ("a concurrency headroom result",)
         detail = hr.detail if isinstance(hr, Unavailable) else "no headroom supplied"
-        return AxisEvidence(Axis.OVERLAP, source.workload, None, missing=tuple(missing),
-                            rationale=detail)
+        return AxisEvidence(Axis.OVERLAP, source.workload, None, missing=tuple(missing), rationale=detail)
 
     by_pair = {(p.a, p.b): p for p in hr.pairs}
 
     def _evaluate(point: Mapping[str, object]) -> float:
         return float(by_pair[(point["a"], point["b"])].saving_cycles)
 
-    rows = grid_search({"a": [p.a for p in hr.pairs], "b": [p.b for p in hr.pairs]},
-                       lambda pt: _evaluate(pt) if (pt["a"], pt["b"]) in by_pair else -1.0)
+    rows = grid_search(
+        {"a": [p.a for p in hr.pairs], "b": [p.b for p in hr.pairs]},
+        lambda pt: _evaluate(pt) if (pt["a"], pt["b"]) in by_pair else -1.0,
+    )
 
     cands: list[Candidate] = []
     for row in rows:
@@ -292,34 +335,54 @@ def overlap_axis(source: ActivitySource,
             continue
         hi = float(pair.saving_cycles)
         lo: float | _Unknown = 0.0 if pair.is_upper_bound else hi
-        cands.append(Candidate(
-            axis=Axis.OVERLAP, workload=source.workload,
-            setting=(("group_a", pair.a), ("group_b", pair.b)),
-            baseline_cycles=hr.total_cycles, saving_hi=hi, saving_lo=lo,
-            is_upper_bound=pair.is_upper_bound,
-            rationale=(f"{pair.a} is busy {pair.busy_a} cycles and {pair.b} {pair.busy_b}; running "
-                       f"them together saves at most min(a, b) = {pair.saving_cycles} of "
-                       f"{hr.total_cycles}"
-                       + ("; the realised overlap is unobserved, so this is a ceiling"
-                          if pair.is_upper_bound else "; measured against the realised overlap"))))
+        cands.append(
+            Candidate(
+                axis=Axis.OVERLAP,
+                workload=source.workload,
+                setting=(("group_a", pair.a), ("group_b", pair.b)),
+                baseline_cycles=hr.total_cycles,
+                saving_hi=hi,
+                saving_lo=lo,
+                is_upper_bound=pair.is_upper_bound,
+                rationale=(
+                    f"{pair.a} is busy {pair.busy_a} cycles and {pair.b} {pair.busy_b}; running "
+                    f"them together saves at most min(a, b) = {pair.saving_cycles} of "
+                    f"{hr.total_cycles}"
+                    + (
+                        "; the realised overlap is unobserved, so this is a ceiling"
+                        if pair.is_upper_bound
+                        else "; measured against the realised overlap"
+                    )
+                ),
+            )
+        )
     if not cands:
-        return AxisEvidence(Axis.OVERLAP, source.workload, False,
-                            rationale=(f"{source.workload}: no concurrency-capable pair has any "
-                                       f"overlappable time ({hr.grouping})"))
+        return AxisEvidence(
+            Axis.OVERLAP,
+            source.workload,
+            False,
+            rationale=(f"{source.workload}: no concurrency-capable pair has any overlappable time ({hr.grouping})"),
+        )
     cands.sort(key=lambda c: (-float(c.saving_hi), c.id))
-    return AxisEvidence(Axis.OVERLAP, source.workload, True, tuple(cands),
-                        rationale=f"{len(cands)} concurrency-capable pair(s) with headroom")
+    return AxisEvidence(
+        Axis.OVERLAP,
+        source.workload,
+        True,
+        tuple(cands),
+        rationale=f"{len(cands)} concurrency-capable pair(s) with headroom",
+    )
 
 
-def derive_axes(source: ActivitySource, *,
-                amplification: "WorkloadAmplification | Unavailable | None" = None,
-                headroom: "WorkloadHeadroom | Unavailable | None" = None,
-                ) -> dict[Axis, AxisEvidence]:
+def derive_axes(
+    source: ActivitySource,
+    *,
+    amplification: "WorkloadAmplification | Unavailable | None" = None,
+    headroom: "WorkloadHeadroom | Unavailable | None" = None,
+) -> dict[Axis, AxisEvidence]:
     """Both axes for one workload. Every axis is always present in the result, established or not --
     an axis dropped because its evidence was missing is an axis a reader cannot tell from one that
     was never asked about."""
-    return {Axis.DMA_TILING: dma_axis(source, amplification),
-            Axis.OVERLAP: overlap_axis(source, headroom)}
+    return {Axis.DMA_TILING: dma_axis(source, amplification), Axis.OVERLAP: overlap_axis(source, headroom)}
 
 
 def candidates_from(axes: "Mapping[Axis, AxisEvidence] | Iterable[AxisEvidence]") -> list[Candidate]:
@@ -337,6 +400,7 @@ def candidates_from(axes: "Mapping[Axis, AxisEvidence] | Iterable[AxisEvidence]"
 
 
 # --- value of information ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class VOI:
@@ -365,15 +429,21 @@ class VOI:
         def _s(v: object) -> object:
             return "UNKNOWN" if is_unknown(v) else v
 
-        return {"candidate_id": self.candidate_id, "axis": self.axis.value,
-                "impact": _s(self.impact), "uncertainty": _s(self.uncertainty),
-                "cost_units": _s(self.cost_units), "score": _s(self.score),
-                "unit": self.unit_name, "missing": list(self.missing),
-                "rationale": self.rationale, "generality": GENERALITY_DROPPED}
+        return {
+            "candidate_id": self.candidate_id,
+            "axis": self.axis.value,
+            "impact": _s(self.impact),
+            "uncertainty": _s(self.uncertainty),
+            "cost_units": _s(self.cost_units),
+            "score": _s(self.score),
+            "unit": self.unit_name,
+            "missing": list(self.missing),
+            "rationale": self.rationale,
+            "generality": GENERALITY_DROPPED,
+        }
 
 
-def voi(candidate: Candidate, *, reference_cycles: int, budget: Budget,
-        cost_units: float = 1.0) -> VOI:
+def voi(candidate: Candidate, *, reference_cycles: int, budget: Budget, cost_units: float = 1.0) -> VOI:
     """Score one candidate. ``reference_cycles`` is the runtime the impact is a share OF -- pass the
     corpus total when ranking across workloads, so a large saving on a tiny workload does not
     outrank a small saving on the workload that dominates the run.
@@ -386,9 +456,17 @@ def voi(candidate: Candidate, *, reference_cycles: int, budget: Budget,
     unit = budget.unit.name
     missing: list[str] = []
     if reference_cycles <= 0:
-        return VOI(candidate.id, candidate.axis, UNKNOWN, UNKNOWN, cost_units, UNKNOWN, unit,
-                   ("a positive reference cycle count",),
-                   "impact is a share of a runtime; a zero reference has no shares")
+        return VOI(
+            candidate.id,
+            candidate.axis,
+            UNKNOWN,
+            UNKNOWN,
+            cost_units,
+            UNKNOWN,
+            unit,
+            ("a positive reference cycle count",),
+            "impact is a share of a runtime; a zero reference has no shares",
+        )
 
     hi, lo = candidate.saving_hi, candidate.saving_lo
     if is_unknown(hi):
@@ -415,28 +493,50 @@ def voi(candidate: Candidate, *, reference_cycles: int, budget: Budget,
     else:
         score = float(impact) * float(uncertainty) / float(cost)
 
-    return VOI(candidate.id, candidate.axis, impact, uncertainty, cost, score, unit,
-               tuple(missing),
-               (f"impact = {'UNKNOWN' if is_unknown(impact) else format(impact, '.4g')} of "
-                f"{reference_cycles} reference cycles; uncertainty = "
-                f"{'UNKNOWN' if is_unknown(uncertainty) else format(uncertainty, '.3g')} "
-                f"(interval width / ceiling); cost = "
-                f"{'UNKNOWN' if is_unknown(cost) else format(cost, '.4g')} {unit} item(s)"))
+    return VOI(
+        candidate.id,
+        candidate.axis,
+        impact,
+        uncertainty,
+        cost,
+        score,
+        unit,
+        tuple(missing),
+        (
+            f"impact = {'UNKNOWN' if is_unknown(impact) else format(impact, '.4g')} of "
+            f"{reference_cycles} reference cycles; uncertainty = "
+            f"{'UNKNOWN' if is_unknown(uncertainty) else format(uncertainty, '.3g')} "
+            f"(interval width / ceiling); cost = "
+            f"{'UNKNOWN' if is_unknown(cost) else format(cost, '.4g')} {unit} item(s)"
+        ),
+    )
 
 
-def rank(candidates: Sequence[Candidate], *, reference_cycles: int, budget: Budget,
-         cost_units: "float | Mapping[str, float]" = 1.0) -> list[VOI]:
+def rank(
+    candidates: Sequence[Candidate],
+    *,
+    reference_cycles: int,
+    budget: Budget,
+    cost_units: "float | Mapping[str, float]" = 1.0,
+) -> list[VOI]:
     """Candidates by descending VOI. Unscorable candidates sort LAST but are RETAINED, with their
     missing evidence attached -- dropping them would hide the hole the axis has."""
     per = cost_units if isinstance(cost_units, Mapping) else None
-    out = [voi(c, reference_cycles=reference_cycles, budget=budget,
-               cost_units=float(per.get(c.id, 1.0)) if per else float(cost_units))
-           for c in candidates]
+    out = [
+        voi(
+            c,
+            reference_cycles=reference_cycles,
+            budget=budget,
+            cost_units=float(per.get(c.id, 1.0)) if per else float(cost_units),
+        )
+        for c in candidates
+    ]
     out.sort(key=lambda v: (v.known is False, -(float(v.score) if v.known else 0.0), v.candidate_id))
     return out
 
 
 # --- stop conditions ---------------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class StopPolicy:
@@ -471,8 +571,13 @@ class StopVerdict:
     evaluable: bool = True
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "fired": self.fired, "reason": self.reason,
-                "missing": list(self.missing), "evaluable": self.evaluable}
+        return {
+            "name": self.name,
+            "fired": self.fired,
+            "reason": self.reason,
+            "missing": list(self.missing),
+            "evaluable": self.evaluable,
+        }
 
 
 @dataclass(frozen=True)
@@ -506,23 +611,37 @@ def attainment_reached(state: SearchState, policy: StopPolicy) -> StopVerdict:
     """
     name = "attainment_reached"
     if is_unknown(state.attainable_cycles):
-        return StopVerdict(name, False,
-                           "the conservative attainable target is UNKNOWN, so attainment cannot be "
-                           "evaluated; not stopping",
-                           ("a resolved structural bound for this workload",), evaluable=False)
+        return StopVerdict(
+            name,
+            False,
+            "the conservative attainable target is UNKNOWN, so attainment cannot be evaluated; not stopping",
+            ("a resolved structural bound for this workload",),
+            evaluable=False,
+        )
     if is_unknown(state.best_cycles) or float(state.best_cycles) <= 0:
-        return StopVerdict(name, False, "no measured cycle count yet; not stopping",
-                           ("at least one evaluated candidate",), evaluable=False)
+        return StopVerdict(
+            name,
+            False,
+            "no measured cycle count yet; not stopping",
+            ("at least one evaluated candidate",),
+            evaluable=False,
+        )
     ratio = float(state.attainable_cycles) / float(state.best_cycles)
     if ratio >= policy.attainment_fraction:
-        return StopVerdict(name, True,
-                           f"measured {float(state.best_cycles):.0f} cycles is {ratio:.1%} of the "
-                           f"conservative attainable {float(state.attainable_cycles):.0f}, at or "
-                           f"above the {policy.attainment_fraction:.0%} policy threshold")
-    return StopVerdict(name, False,
-                       f"measured {float(state.best_cycles):.0f} cycles is {ratio:.1%} of the "
-                       f"conservative attainable {float(state.attainable_cycles):.0f}, below the "
-                       f"{policy.attainment_fraction:.0%} threshold")
+        return StopVerdict(
+            name,
+            True,
+            f"measured {float(state.best_cycles):.0f} cycles is {ratio:.1%} of the "
+            f"conservative attainable {float(state.attainable_cycles):.0f}, at or "
+            f"above the {policy.attainment_fraction:.0%} policy threshold",
+        )
+    return StopVerdict(
+        name,
+        False,
+        f"measured {float(state.best_cycles):.0f} cycles is {ratio:.1%} of the "
+        f"conservative attainable {float(state.attainable_cycles):.0f}, below the "
+        f"{policy.attainment_fraction:.0%} threshold",
+    )
 
 
 def predicted_remaining_below(state: SearchState, policy: StopPolicy) -> StopVerdict:
@@ -534,26 +653,39 @@ def predicted_remaining_below(state: SearchState, policy: StopPolicy) -> StopVer
     """
     name = "predicted_remaining_below"
     if is_unknown(state.best_cycles) or float(state.best_cycles) <= 0:
-        return StopVerdict(name, False, "no measured cycle count to improve on yet; not stopping",
-                           ("at least one evaluated candidate",), evaluable=False)
+        return StopVerdict(
+            name,
+            False,
+            "no measured cycle count to improve on yet; not stopping",
+            ("at least one evaluated candidate",),
+            evaluable=False,
+        )
     if is_unknown(state.predicted_best_cycles):
         # NOT EVALUABLE, rather than evaluated and negative. A caller that never enumerates an
         # unevaluated candidate can never supply this, so reporting it as a plain "did not fire"
         # puts a condition that cannot contribute beside three that can.
-        return StopVerdict(name, False,
-                           "no remaining candidate carries a prediction, so the remaining "
-                           "improvement is UNKNOWN; not stopping",
-                           ("a predicted cycle count for at least one unevaluated candidate",),
-                           evaluable=False)
+        return StopVerdict(
+            name,
+            False,
+            "no remaining candidate carries a prediction, so the remaining improvement is UNKNOWN; not stopping",
+            ("a predicted cycle count for at least one unevaluated candidate",),
+            evaluable=False,
+        )
     remaining = (float(state.best_cycles) - float(state.predicted_best_cycles)) / float(state.best_cycles)
     if remaining < policy.predicted_remaining:
-        return StopVerdict(name, True,
-                           f"the best remaining candidate predicts {remaining:.2%} improvement over "
-                           f"{float(state.best_cycles):.0f} cycles, below the "
-                           f"{policy.predicted_remaining:.0%} policy threshold")
-    return StopVerdict(name, False,
-                       f"the best remaining candidate predicts {remaining:.2%} improvement, at or "
-                       f"above the {policy.predicted_remaining:.0%} threshold")
+        return StopVerdict(
+            name,
+            True,
+            f"the best remaining candidate predicts {remaining:.2%} improvement over "
+            f"{float(state.best_cycles):.0f} cycles, below the "
+            f"{policy.predicted_remaining:.0%} policy threshold",
+        )
+    return StopVerdict(
+        name,
+        False,
+        f"the best remaining candidate predicts {remaining:.2%} improvement, at or "
+        f"above the {policy.predicted_remaining:.0%} threshold",
+    )
 
 
 def plateaued(state: SearchState, policy: StopPolicy) -> StopVerdict:
@@ -565,19 +697,25 @@ def plateaued(state: SearchState, policy: StopPolicy) -> StopVerdict:
     name = "plateaued"
     n = policy.plateau_queries
     if len(state.improvements) < n:
-        return StopVerdict(name, False,
-                           f"only {len(state.improvements)} quer(ies) so far; the rule needs {n} "
-                           f"consecutive ones")
+        return StopVerdict(
+            name, False, f"only {len(state.improvements)} quer(ies) so far; the rule needs {n} consecutive ones"
+        )
     last = state.improvements[-n:]
     if all(i < policy.plateau_improvement for i in last):
         shown = ", ".join(f"{i:.2%}" for i in last)
-        return StopVerdict(name, True,
-                           f"the last {n} queries improved by {shown}, each below the "
-                           f"{policy.plateau_improvement:.0%} policy threshold")
+        return StopVerdict(
+            name,
+            True,
+            f"the last {n} queries improved by {shown}, each below the "
+            f"{policy.plateau_improvement:.0%} policy threshold",
+        )
     best = max(last)
-    return StopVerdict(name, False,
-                       f"the last {n} queries include one improving {best:.2%}, at or above the "
-                       f"{policy.plateau_improvement:.0%} threshold")
+    return StopVerdict(
+        name,
+        False,
+        f"the last {n} queries include one improving {best:.2%}, at or above the "
+        f"{policy.plateau_improvement:.0%} threshold",
+    )
 
 
 def budget_exhausted(state: SearchState, policy: StopPolicy) -> StopVerdict:
@@ -585,13 +723,12 @@ def budget_exhausted(state: SearchState, policy: StopPolicy) -> StopVerdict:
     name = "budget_exhausted"
     why = state.budget.exhausted_reason
     if why is not None:
-        return StopVerdict(name, True,
-                           f"budget denominated in {state.budget.unit.name!r}: {why}")
+        return StopVerdict(name, True, f"budget denominated in {state.budget.unit.name!r}: {why}")
     remaining = state.budget.remaining_items
     left = "unbounded" if is_unknown(remaining) else f"{float(remaining):g}"
-    return StopVerdict(name, False,
-                       f"{state.budget.spent_items:g} {state.budget.unit.name} item(s) spent, "
-                       f"{left} remaining")
+    return StopVerdict(
+        name, False, f"{state.budget.spent_items:g} {state.budget.unit.name} item(s) spent, {left} remaining"
+    )
 
 
 #: The four conditions, in the order a report should read them.
@@ -610,6 +747,7 @@ def fired(verdicts: Sequence[StopVerdict]) -> tuple[StopVerdict, ...]:
 
 
 # --- the loop ----------------------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class QueryRecord:
@@ -632,12 +770,19 @@ class QueryRecord:
         def _s(v: object) -> object:
             return "UNKNOWN" if is_unknown(v) else v
 
-        return {"index": self.index, "candidate_id": self.candidate_id, "axis": self.axis.value,
-                "digest": self.digest, "measured_cycles": _s(self.measured_cycles),
-                "best_cycles": _s(self.best_cycles), "improvement": self.improvement,
-                "voi_score": _s(self.voi_score), "cumulative_items": self.cumulative_items,
-                "cumulative_seconds": self.cumulative_seconds,
-                "cumulative_dollars": self.cumulative_dollars}
+        return {
+            "index": self.index,
+            "candidate_id": self.candidate_id,
+            "axis": self.axis.value,
+            "digest": self.digest,
+            "measured_cycles": _s(self.measured_cycles),
+            "best_cycles": _s(self.best_cycles),
+            "improvement": self.improvement,
+            "voi_score": _s(self.voi_score),
+            "cumulative_items": self.cumulative_items,
+            "cumulative_seconds": self.cumulative_seconds,
+            "cumulative_dollars": self.cumulative_dollars,
+        }
 
 
 @dataclass
@@ -669,27 +814,38 @@ class SearchResult:
         def _s(v: object) -> object:
             return "UNKNOWN" if is_unknown(v) else v
 
-        return {"baseline_cycles": self.baseline_cycles, "best_cycles": _s(self.best_cycles),
-                "best_candidate_id": self.best_candidate_id,
-                "improvement": _s(self.improvement),
-                "queries": [q.to_dict() for q in self.queries],
-                "stop": [v.to_dict() for v in self.stop],
-                "stopped_by": list(self.stopped_by),
-                "ranked": [v.to_dict() for v in self.ranked],
-                "budget": self.budget.to_dict() if self.budget else None,
-                "policy": {"attainment_fraction": self.policy.attainment_fraction,
-                           "predicted_remaining": self.policy.predicted_remaining,
-                           "plateau_improvement": self.policy.plateau_improvement,
-                           "plateau_queries": self.policy.plateau_queries},
-                "skipped": [{"candidate_id": c, "reason": r} for c, r in self.skipped],
-                "generality": GENERALITY_DROPPED}
+        return {
+            "baseline_cycles": self.baseline_cycles,
+            "best_cycles": _s(self.best_cycles),
+            "best_candidate_id": self.best_candidate_id,
+            "improvement": _s(self.improvement),
+            "queries": [q.to_dict() for q in self.queries],
+            "stop": [v.to_dict() for v in self.stop],
+            "stopped_by": list(self.stopped_by),
+            "ranked": [v.to_dict() for v in self.ranked],
+            "budget": self.budget.to_dict() if self.budget else None,
+            "policy": {
+                "attainment_fraction": self.policy.attainment_fraction,
+                "predicted_remaining": self.policy.predicted_remaining,
+                "plateau_improvement": self.policy.plateau_improvement,
+                "plateau_queries": self.policy.plateau_queries,
+            },
+            "skipped": [{"candidate_id": c, "reason": r} for c, r in self.skipped],
+            "generality": GENERALITY_DROPPED,
+        }
 
 
-def search(candidates: Sequence[Candidate], *, evaluate, budget: Budget,
-           baseline_cycles: int, reference_cycles: int | None = None,
-           attainable_cycles: "float | _Unknown" = UNKNOWN,
-           policy: StopPolicy | None = None,
-           cost_units: "float | Mapping[str, float]" = 1.0) -> SearchResult:
+def search(
+    candidates: Sequence[Candidate],
+    *,
+    evaluate,
+    budget: Budget,
+    baseline_cycles: int,
+    reference_cycles: int | None = None,
+    attainable_cycles: "float | _Unknown" = UNKNOWN,
+    policy: StopPolicy | None = None,
+    cost_units: "float | Mapping[str, float]" = 1.0,
+) -> SearchResult:
     """Spend ``budget`` on the highest-VOI candidates until a stop condition fires.
 
     ``evaluate(candidate) -> measured cycles`` is the only thing that touches an oracle, so the whole
@@ -721,10 +877,14 @@ def search(candidates: Sequence[Candidate], *, evaluate, budget: Budget,
     def _state() -> SearchState:
         remaining = [by_id[v.candidate_id].predicted_cycles for v in pending]
         known = [float(r) for r in remaining if not is_unknown(r)]
-        return SearchState(baseline_cycles=baseline_cycles, best_cycles=best, budget=budget,
-                           attainable_cycles=attainable_cycles,
-                           predicted_best_cycles=min(known) if known else UNKNOWN,
-                           improvements=tuple(improvements))
+        return SearchState(
+            baseline_cycles=baseline_cycles,
+            best_cycles=best,
+            budget=budget,
+            attainable_cycles=attainable_cycles,
+            predicted_best_cycles=min(known) if known else UNKNOWN,
+            improvements=tuple(improvements),
+        )
 
     verdicts = check_stop(_state(), pol)
     while pending and not fired(verdicts):
@@ -732,16 +892,24 @@ def search(candidates: Sequence[Candidate], *, evaluate, budget: Budget,
         cand = by_id[v.candidate_id]
         st = seen.setdefault(cand.digest, CapsuleState(name=cand.id, digest=cand.digest))
         if st.known(EVALUATED) != VERDICT_UNKNOWN:
-            skipped.append((cand.id, f"identical to an already-evaluated candidate "
-                                     f"(digest {cand.digest}); served from cache, charged nothing"))
+            skipped.append(
+                (
+                    cand.id,
+                    f"identical to an already-evaluated candidate "
+                    f"(digest {cand.digest}); served from cache, charged nothing",
+                )
+            )
             verdicts = check_stop(_state(), pol)
             continue
-        items = float(per_cost.get(cand.id, 1.0)) if per_cost else (
-            float(cost_units) if not isinstance(cost_units, Mapping) else 1.0)
+        items = (
+            float(per_cost.get(cand.id, 1.0))
+            if per_cost
+            else (float(cost_units) if not isinstance(cost_units, Mapping) else 1.0)
+        )
         ok, why = budget.can_afford(items)
         if not ok:
             skipped.append((cand.id, why or "budget"))
-            pending.insert(0, v)          # not a verdict on it; it simply did not run
+            pending.insert(0, v)  # not a verdict on it; it simply did not run
             verdicts = check_stop(_state(), pol)
             break
         budget.charge(items=items, label=cand.id)
@@ -758,23 +926,42 @@ def search(candidates: Sequence[Candidate], *, evaluate, budget: Budget,
             gain = max(0.0, (baseline_cycles - float(best)) / baseline_cycles)
         improvements.append(gain)
 
-        queries.append(QueryRecord(
-            index=len(queries) + 1, candidate_id=cand.id, axis=cand.axis, digest=cand.digest,
-            measured_cycles=measured, best_cycles=best, improvement=gain, voi_score=v.score,
-            cumulative_items=budget.spent_items, cumulative_seconds=budget.spent_seconds,
-            cumulative_dollars=budget.spent_dollars))
+        queries.append(
+            QueryRecord(
+                index=len(queries) + 1,
+                candidate_id=cand.id,
+                axis=cand.axis,
+                digest=cand.digest,
+                measured_cycles=measured,
+                best_cycles=best,
+                improvement=gain,
+                voi_score=v.score,
+                cumulative_items=budget.spent_items,
+                cumulative_seconds=budget.spent_seconds,
+                cumulative_dollars=budget.spent_dollars,
+            )
+        )
         verdicts = check_stop(_state(), pol)
 
     for v in pending:
         if not any(v.candidate_id == c for c, _ in skipped):
             skipped.append((v.candidate_id, "not reached before the search stopped"))
 
-    return SearchResult(baseline_cycles=baseline_cycles, best_cycles=best, best_candidate_id=best_id,
-                        queries=queries, stop=verdicts, ranked=tuple(ranked), budget=budget,
-                        policy=pol, skipped=tuple(skipped))
+    return SearchResult(
+        baseline_cycles=baseline_cycles,
+        best_cycles=best,
+        best_candidate_id=best_id,
+        queries=queries,
+        stop=verdicts,
+        ranked=tuple(ranked),
+        budget=budget,
+        policy=pol,
+        skipped=tuple(skipped),
+    )
 
 
 # --- convergence curve -------------------------------------------------------------------------------
+
 
 def convergence_rows(result: SearchResult) -> list[dict]:
     """The curve: best-so-far against cumulative spend IN THE MEASURED SCARCE UNIT.
@@ -785,16 +972,33 @@ def convergence_rows(result: SearchResult) -> list[dict]:
     produces a differently-denominated curve on a target where the simulator is the expensive thing.
     """
     unit = result.budget.unit.name if result.budget else "unit"
-    rows = [{"query": 0, "cumulative_items": 0.0, "cumulative_seconds": 0.0,
-             "cumulative_dollars": 0.0, "best_cycles": float(result.baseline_cycles),
-             "improvement": 0.0, "unit": unit, "candidate_id": ""}]
+    rows = [
+        {
+            "query": 0,
+            "cumulative_items": 0.0,
+            "cumulative_seconds": 0.0,
+            "cumulative_dollars": 0.0,
+            "best_cycles": float(result.baseline_cycles),
+            "improvement": 0.0,
+            "unit": unit,
+            "candidate_id": "",
+        }
+    ]
     for q in result.queries:
-        rows.append({"query": q.index, "cumulative_items": q.cumulative_items,
-                     "cumulative_seconds": q.cumulative_seconds,
-                     "cumulative_dollars": q.cumulative_dollars,
-                     "best_cycles": (float(q.best_cycles) if not is_unknown(q.best_cycles)
-                                     else float(result.baseline_cycles)),
-                     "improvement": q.improvement, "unit": unit, "candidate_id": q.candidate_id})
+        rows.append(
+            {
+                "query": q.index,
+                "cumulative_items": q.cumulative_items,
+                "cumulative_seconds": q.cumulative_seconds,
+                "cumulative_dollars": q.cumulative_dollars,
+                "best_cycles": (
+                    float(q.best_cycles) if not is_unknown(q.best_cycles) else float(result.baseline_cycles)
+                ),
+                "improvement": q.improvement,
+                "unit": unit,
+                "candidate_id": q.candidate_id,
+            }
+        )
     return rows
 
 
@@ -810,8 +1014,15 @@ def write_convergence(result: SearchResult, out_dir: Path, *, stem: str = "conve
     unit = result.budget.unit if result.budget else None
     unit_name = unit.name if unit else "unit"
 
-    cols = ["query", "cumulative_items", "cumulative_seconds", "cumulative_dollars",
-            "best_cycles", "improvement", "candidate_id"]
+    cols = [
+        "query",
+        "cumulative_items",
+        "cumulative_seconds",
+        "cumulative_dollars",
+        "best_cycles",
+        "improvement",
+        "candidate_id",
+    ]
     csv_path = out_dir / f"{stem}.csv"
     lines = [",".join(cols)]
     for r in rows:
@@ -819,22 +1030,33 @@ def write_convergence(result: SearchResult, out_dir: Path, *, stem: str = "conve
     csv_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     json_path = out_dir / f"{stem}.json"
-    json_path.write_text(json.dumps(
-        {"unit": unit.to_dict() if unit else None, "rows": rows, "result": result.to_dict()},
-        indent=2, default=str) + "\n", encoding="utf-8")
+    json_path.write_text(
+        json.dumps(
+            {"unit": unit.to_dict() if unit else None, "rows": rows, "result": result.to_dict()}, indent=2, default=str
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     png_path: Path | None = None
     status = "not_run: no plotting backend"
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except Exception as exc:  # noqa: BLE001 -- an optional plotting dependency
         status = f"not_run: {type(exc).__name__}: {exc}"
     else:
         fig, ax = plt.subplots(figsize=(6.0, 3.6), dpi=160)
-        ax.step([r["cumulative_items"] for r in rows], [r["best_cycles"] for r in rows],
-                where="post", marker="o", markersize=3.0, linewidth=1.4)
+        ax.step(
+            [r["cumulative_items"] for r in rows],
+            [r["best_cycles"] for r in rows],
+            where="post",
+            marker="o",
+            markersize=3.0,
+            linewidth=1.4,
+        )
         price = ""
         if unit is not None and unit.seconds_per_item is not None:
             price = f" — {unit.seconds_per_item:.3g} s/item, measured"
@@ -847,8 +1069,14 @@ def write_convergence(result: SearchResult, out_dir: Path, *, stem: str = "conve
         for v in result.stop:
             if v.fired and rows:
                 ax.axvline(rows[-1]["cumulative_items"], linestyle="--", linewidth=0.9, alpha=0.6)
-                ax.annotate(v.name, xy=(rows[-1]["cumulative_items"], rows[-1]["best_cycles"]),
-                            xytext=(-4, 10), textcoords="offset points", ha="right", fontsize=7)
+                ax.annotate(
+                    v.name,
+                    xy=(rows[-1]["cumulative_items"], rows[-1]["best_cycles"]),
+                    xytext=(-4, 10),
+                    textcoords="offset points",
+                    ha="right",
+                    fontsize=7,
+                )
                 break
         fig.tight_layout()
         png_path = out_dir / f"{stem}.png"
@@ -874,8 +1102,12 @@ def emit_product(result: SearchResult, *, target: str, version: int = 1, notes: 
     """
     from merlin.common.artifacts import new_product
 
-    prod = new_product(PRODUCT_TOPIC, version=version, target=target,
-                       notes=notes or "bounded candidate selection over the two derived axes")
+    prod = new_product(
+        PRODUCT_TOPIC,
+        version=version,
+        target=target,
+        notes=notes or "bounded candidate selection over the two derived axes",
+    )
     written = write_convergence(result, prod.path)
     for name in ("convergence.csv", "convergence.json"):
         prod.add_artifact(name)

@@ -46,6 +46,7 @@ KNOWN ATTRIBUTION LIMITS (stated, not hidden).
 The op table (id -> op name + ``prov.*`` provenance + result type) is emitted alongside so
 the board's ``PROF <id> <ticks>`` lines can be joined back to model semantics.
 """
+
 from __future__ import annotations
 
 import json
@@ -62,8 +63,7 @@ MARK_SYM = "merlin_prof_mark"
 #: ``prov.role`` is stamped by a rewrite that SPLIT one captured op into several (the int8 datapath
 #: emits a contraction plus a requant epilogue from one matmul, and both carry the source op's fqn);
 #: without it the two pieces are indistinguishable under a single join key.
-_PROV_KEYS = ("prov.op", "prov.family", "prov.region_id", "prov.aten", "prov.module", "prov.fqn",
-              "prov.role")
+_PROV_KEYS = ("prov.op", "prov.family", "prov.region_id", "prov.aten", "prov.module", "prov.fqn", "prov.role")
 
 
 class OpProfileError(RuntimeError):
@@ -118,7 +118,7 @@ def _op_name(line: str) -> str:
     body = line.strip()
     eq = body.find(" = ")
     if eq >= 0 and body.startswith("%"):
-        body = body[eq + 3:]
+        body = body[eq + 3 :]
     tok = body.split(" ", 1)[0].split("(", 1)[0]
     return tok.rstrip(":")
 
@@ -138,7 +138,7 @@ def _callee(line: str) -> str | None:
     body = line.strip()
     eq = body.find(" = ")
     if eq >= 0 and body.startswith("%"):
-        body = body[eq + 3:]
+        body = body[eq + 3 :]
     head, _, rest = body.partition(" ")
     if head.split("(", 1)[0].rstrip(":") not in ("call", "func.call", '"func.call"'):
         return None
@@ -156,7 +156,7 @@ def _result_type(line: str) -> str | None:
             continue
         j = line.find(">", i)
         if j >= 0:
-            return line[i:j + 1]
+            return line[i : j + 1]
     return None
 
 
@@ -164,8 +164,8 @@ def _elem_count(ty: str | None) -> int | None:
     """Element count of a static shaped type string, or None if dynamic/unparsable."""
     if not ty:
         return None
-    inner = ty[ty.find("<") + 1:ty.rfind(">")]
-    dims = inner.split("x")[:-1]          # drop the element type
+    inner = ty[ty.find("<") + 1 : ty.rfind(">")]
+    dims = inner.split("x")[:-1]  # drop the element type
     n = 1
     for d in dims:
         d = d.strip()
@@ -215,8 +215,8 @@ def find_forward_ops(mlir_text: str) -> tuple[int, int, list[dict]]:
 
     ops: list[dict] = []
     ret_line = None
-    depth = 0                              # nesting relative to the function body
-    body: dict[int, set[str]] = {}         # op index -> the arith/math ops inside its region
+    depth = 0  # nesting relative to the function body
+    body: dict[int, set[str]] = {}  # op index -> the arith/math ops inside its region
     for i in range(start + 1, len(lines)):
         line = lines[i]
         stripped = line.strip()
@@ -250,18 +250,20 @@ def find_forward_ops(mlir_text: str) -> tuple[int, int, list[dict]]:
             # new op and no marker is spliced into the middle of the reduce. Region bodies of ops
             # whose ``{`` opens on their first line are at depth>0 and already excluded.
             if stripped.startswith("%") and " = " in stripped.split("(", 1)[0]:
-                ops.append({
-                    "id": len(ops),
-                    "line": i,
-                    "mlir_op": _op_name(line),      # dialect op, e.g. linalg.generic
-                    "result_type": _result_type(line),
-                    "callee": _callee(line),        # the routed entry point, when this op is a call
-                    # `prov.op`/`prov.family`/... land as op/family/region_id/aten/module below:
-                    # the SEMANTIC identity (softmax, rms_norm, ...) the capture recorded.
-                    **{k.split(".", 1)[1]: _attr_value(line, k) for k in _PROV_KEYS},
-                })
+                ops.append(
+                    {
+                        "id": len(ops),
+                        "line": i,
+                        "mlir_op": _op_name(line),  # dialect op, e.g. linalg.generic
+                        "result_type": _result_type(line),
+                        "callee": _callee(line),  # the routed entry point, when this op is a call
+                        # `prov.op`/`prov.family`/... land as op/family/region_id/aten/module below:
+                        # the SEMANTIC identity (softmax, rms_norm, ...) the capture recorded.
+                        **{k.split(".", 1)[1]: _attr_value(line, k) for k in _PROV_KEYS},
+                    }
+                )
         depth += _depth_delta(line)
-        if depth < 0:                      # closed the function body without a return
+        if depth < 0:  # closed the function body without a return
             raise OpProfileError("unbalanced braces before the terminator of @forward")
     if ret_line is None:
         raise OpProfileError("no `return`/`func.return` found in @forward")
@@ -289,17 +291,19 @@ def instrument(mlir_text: str) -> tuple[str, list[dict]]:
 
     # Marker insertions, keyed by the line they precede.
     def mark(mid: int, indent: str) -> list[str]:
-        return [f"{indent}%prof_id_{mid} = arith.constant {mid} : i32",
-                f"{indent}call @{MARK_SYM}(%prof_id_{mid}) : (i32) -> ()"]
+        return [
+            f"{indent}%prof_id_{mid} = arith.constant {mid} : i32",
+            f"{indent}call @{MARK_SYM}(%prof_id_{mid}) : (i32) -> ()",
+        ]
 
     at: dict[int, list[str]] = {}
     for rec in ops:
         line = lines[rec["line"]]
-        indent = line[:len(line) - len(line.lstrip())]
+        indent = line[: len(line) - len(line.lstrip())]
         at[rec["line"]] = mark(rec["id"], indent)
     sentinel = len(ops)
     rl = lines[ret_line]
-    at[ret_line] = mark(sentinel, rl[:len(rl) - len(rl.lstrip())])
+    at[ret_line] = mark(sentinel, rl[: len(rl) - len(rl.lstrip())])
 
     out: list[str] = []
     for i, line in enumerate(lines):
@@ -307,7 +311,7 @@ def instrument(mlir_text: str) -> tuple[str, list[dict]]:
         out.append(line)
 
     # Declare the hook just before @forward, at the function's own indentation.
-    decl_indent = lines[fn_line][:len(lines[fn_line]) - len(lines[fn_line].lstrip())]
+    decl_indent = lines[fn_line][: len(lines[fn_line]) - len(lines[fn_line].lstrip())]
     decl = f"{decl_indent}func.func private @{MARK_SYM}(i32) -> ()"
     # `fn_line` shifted by the markers inserted above it (there are none — all insertions are
     # inside the body — so the index is stable, but recompute defensively).
@@ -404,13 +408,23 @@ VECTORIZED_FAMILIES = frozenset({"contraction"})
 #:
 #: Kept a SUPERSET of ``xdsl_dialects.lowering.contraction_coverage.MATMUL_OPS`` (asserted by a test
 #: rather than by importing it, so this module stays pure-text and xDSL-free).
-CONTRACTION_OPS = frozenset({
-    "linalg.matmul", "linalg.batch_matmul", "linalg.quantized_matmul",
-    "linalg.matmul_transpose_a", "linalg.matmul_transpose_b",
-    "linalg.batch_matmul_transpose_a", "linalg.batch_matmul_transpose_b",
-    "linalg.matvec", "linalg.vecmat", "linalg.batch_matvec", "linalg.dot",
-    "linalg.quantized_batch_matmul", "linalg.contract",
-})
+CONTRACTION_OPS = frozenset(
+    {
+        "linalg.matmul",
+        "linalg.batch_matmul",
+        "linalg.quantized_matmul",
+        "linalg.matmul_transpose_a",
+        "linalg.matmul_transpose_b",
+        "linalg.batch_matmul_transpose_a",
+        "linalg.batch_matmul_transpose_b",
+        "linalg.matvec",
+        "linalg.vecmat",
+        "linalg.batch_matvec",
+        "linalg.dot",
+        "linalg.quantized_batch_matmul",
+        "linalg.contract",
+    }
+)
 
 
 def resolve_family(rec: dict) -> tuple[str, str]:
@@ -485,11 +499,15 @@ def sum_attributed_ticks(table: list[dict]) -> float:
     return sum(r["ticks_avg"] for r in table if r.get("ticks_avg") is not None)
 
 
-def coverage_report(attributed_ticks: float, wall_ticks: float | None, *,
-                    band: tuple[float, float] = COVERAGE_BAND,
-                    executions: int | None = None,
-                    timed_iterations: int | None = None,
-                    executions_per_timed_iteration: int | None = None) -> dict:
+def coverage_report(
+    attributed_ticks: float,
+    wall_ticks: float | None,
+    *,
+    band: tuple[float, float] = COVERAGE_BAND,
+    executions: int | None = None,
+    timed_iterations: int | None = None,
+    executions_per_timed_iteration: int | None = None,
+) -> dict:
     """Decide whether this profile may be quoted as a percentage of RUNTIME.
 
     ``attributed_ticks`` is per EXECUTION of ``@forward``; ``wall_ticks`` is per TIMED ITERATION.
@@ -508,22 +526,27 @@ def coverage_report(attributed_ticks: float, wall_ticks: float | None, *,
     per_iter = 1 if executions_per_timed_iteration is None else int(executions_per_timed_iteration)
     wall_per_execution = (wall_ticks / per_iter) if (wall_ticks and per_iter >= 1) else None
     cov = (attributed_ticks / wall_per_execution) if wall_per_execution else None
-    over_window = (executions is not None and timed_iterations is not None
-                   and executions > timed_iterations)
+    over_window = executions is not None and timed_iterations is not None and executions > timed_iterations
     if cov is None:
-        refusal = ("cannot derive how many @forward executions one timed iteration contains, so "
-                   "the per-execution wall has no divisor"
-                   if wall_ticks else
-                   "no measured wall ticks to divide by — a share of runtime has no denominator")
+        refusal = (
+            "cannot derive how many @forward executions one timed iteration contains, so "
+            "the per-execution wall has no divisor"
+            if wall_ticks
+            else "no measured wall ticks to divide by — a share of runtime has no denominator"
+        )
     elif cov < lo:
-        refusal = (f"profiler coverage {cov:.4f} is below {lo:.2f}: more than "
-                   f"{100 * (1 - cov):.1f}% of the wall was never attributed to any op, so a "
-                   f"bucket's share of RUNTIME is unknowable from this profile")
+        refusal = (
+            f"profiler coverage {cov:.4f} is below {lo:.2f}: more than "
+            f"{100 * (1 - cov):.1f}% of the wall was never attributed to any op, so a "
+            f"bucket's share of RUNTIME is unknowable from this profile"
+        )
     elif cov > hi:
-        refusal = (f"profiler coverage {cov:.4f} is above {hi:.2f}: the ops were credited MORE "
-                   f"time than the wall being measured, so every share of RUNTIME would be "
-                   f"inflated by an unknown factor. Usual cause: the attribution window and the "
-                   f"timed window count a different number of @forward executions")
+        refusal = (
+            f"profiler coverage {cov:.4f} is above {hi:.2f}: the ops were credited MORE "
+            f"time than the wall being measured, so every share of RUNTIME would be "
+            f"inflated by an unknown factor. Usual cause: the attribution window and the "
+            f"timed window count a different number of @forward executions"
+        )
     else:
         refusal = None
     return {
@@ -546,18 +569,21 @@ def coverage_report(attributed_ticks: float, wall_ticks: float | None, *,
         #: which is the direction that inflates coverage.
         "executions_exceed_timed_iterations": over_window,
         "refusal": refusal,
-        "note": ("Shares are a fraction of ATTRIBUTED op time unless runtime_shares_reportable is "
-                 "true. Coverage = attributed ticks per @forward EXECUTION / wall ticks per "
-                 "@forward EXECUTION, where the latter is the harness's per-timed-iteration wall "
-                 "divided by executions_per_timed_iteration. Both sides must count the same number "
-                 "of executions: counting more in the numerator inflates the coverage above 1.0 "
-                 "(untimed warmup passes accumulate into the shim), counting more in the "
-                 "denominator deflates it (a session runs @forward once per declared step)."),
+        "note": (
+            "Shares are a fraction of ATTRIBUTED op time unless runtime_shares_reportable is "
+            "true. Coverage = attributed ticks per @forward EXECUTION / wall ticks per "
+            "@forward EXECUTION, where the latter is the harness's per-timed-iteration wall "
+            "divided by executions_per_timed_iteration. Both sides must count the same number "
+            "of executions: counting more in the numerator inflates the coverage above 1.0 "
+            "(untimed warmup passes accumulate into the shim), counting more in the "
+            "denominator deflates it (a session runs @forward once per declared step)."
+        ),
     }
 
 
-def rollup(table: list[dict], keyfn, label: str, *, wall_ms: float | None = None,
-           coverage: float | None = None) -> list[dict]:
+def rollup(
+    table: list[dict], keyfn, label: str, *, wall_ms: float | None = None, coverage: float | None = None
+) -> list[dict]:
     """Aggregate per-execution ms by ``keyfn``, sorted by cost.
 
     ``share_of_attributed`` is always present. ``share_of_runtime`` is present only when the caller
@@ -575,8 +601,7 @@ def rollup(table: list[dict], keyfn, label: str, *, wall_ms: float | None = None
         ms = rec.get("ms_avg")
         if ms is None:
             continue
-        a = agg.setdefault(keyfn(rec), {"ms": 0.0, "n_ops": 0, "hits": 0, "vectorized": None,
-                                        "family_sources": set()})
+        a = agg.setdefault(keyfn(rec), {"ms": 0.0, "n_ops": 0, "hits": 0, "vectorized": None, "family_sources": set()})
         a["ms"] += ms
         a["n_ops"] += 1
         a["hits"] += int(rec.get("hits") or 0)
@@ -586,13 +611,20 @@ def rollup(table: list[dict], keyfn, label: str, *, wall_ms: float | None = None
     total = sum(a["ms"] for a in agg.values())
     rows = []
     for k, a in agg.items():
-        rows.append({label: k, "ms": a["ms"], "n_ops": a["n_ops"], "hits": a["hits"],
-                     "vectorized": a["vectorized"],
-                     "family_sources": sorted(a["family_sources"]),
-                     "share_of_attributed": (a["ms"] / total) if total else None,
-                     "share_of_runtime": (a["ms"] / wall_ms) if wall_ms else None,
-                     "share_denominator": "wall" if wall_ms else "attributed",
-                     "profiler_coverage": coverage})
+        rows.append(
+            {
+                label: k,
+                "ms": a["ms"],
+                "n_ops": a["n_ops"],
+                "hits": a["hits"],
+                "vectorized": a["vectorized"],
+                "family_sources": sorted(a["family_sources"]),
+                "share_of_attributed": (a["ms"] / total) if total else None,
+                "share_of_runtime": (a["ms"] / wall_ms) if wall_ms else None,
+                "share_denominator": "wall" if wall_ms else "attributed",
+                "profiler_coverage": coverage,
+            }
+        )
     rows.sort(key=lambda r: r["ms"], reverse=True)
     return rows
 
@@ -636,7 +668,7 @@ ROLE_CATEGORY = {
 #: `prov.op` overrides that split a family whose members do not cost alike.
 OP_CATEGORY = {
     "softmax": "reduction_softmax",
-    "view": "layout_view",            # metadata-only reshape: should read ~free
+    "view": "layout_view",  # metadata-only reshape: should read ~free
     "reshape": "layout_view",
     "squeeze": "layout_view",
     "unsqueeze": "layout_view",
@@ -698,25 +730,44 @@ MLIR_OP_CATEGORY = {
 #: The categories the tool ranks, in the order a reader should see them. A category absent from a
 #: given model simply does not appear; a category the profiler CANNOT see at all is listed in
 #: :data:`CATEGORIES_NOT_ATTRIBUTABLE` so its absence is never read as "it costs nothing".
-CATEGORY_ORDER = ("contraction", "quantize_requant", "quantize_scale_search", "elementwise",
-                  "normalization", "reduction_softmax", "gather", "layout_copy", "spectral",
-                  "layout_view", "fill_init", "alloc", "constant", "unclassified_generic")
+CATEGORY_ORDER = (
+    "contraction",
+    "quantize_requant",
+    "quantize_scale_search",
+    "elementwise",
+    "normalization",
+    "reduction_softmax",
+    "gather",
+    "layout_copy",
+    "spectral",
+    "layout_view",
+    "fill_init",
+    "alloc",
+    "constant",
+    "unclassified_generic",
+)
 
 #: What a per-op mark interval structurally CANNOT attribute, and why. Reported in the artifact so a
 #: reader does not mistake a missing row for a measured zero.
 CATEGORIES_NOT_ATTRIBUTABLE = {
-    "allocator": ("`memref.alloc`/`free` are hoisted toward the function entry by "
-                  "buffer-hoisting/buffer-loop-hoisting, so allocator cost drifts into whichever "
-                  "mark interval the hoisted alloc lands in (typically the first) rather than into "
-                  "the op that needed the buffer. Measure it differentially instead: build twice "
-                  "with and without MERLIN_BUMP_MALLOC and diff the walls."),
-    "fork_join": ("there is no fork/join inside a single-threaded @forward. Under "
-                  "parallel_harts/OpenMP the join happens INSIDE one top-level op, below the "
-                  "granularity of a mark interval, so it is charged to that op and cannot be "
-                  "separated from it."),
-    "intra_op": ("a mark interval is one whole top-level op. Anything inside it — a contraction's "
-                 "inner loop versus its tail, an epilogue the compiler fused into the op — is below "
-                 "this profiler's resolution."),
+    "allocator": (
+        "`memref.alloc`/`free` are hoisted toward the function entry by "
+        "buffer-hoisting/buffer-loop-hoisting, so allocator cost drifts into whichever "
+        "mark interval the hoisted alloc lands in (typically the first) rather than into "
+        "the op that needed the buffer. Measure it differentially instead: build twice "
+        "with and without MERLIN_BUMP_MALLOC and diff the walls."
+    ),
+    "fork_join": (
+        "there is no fork/join inside a single-threaded @forward. Under "
+        "parallel_harts/OpenMP the join happens INSIDE one top-level op, below the "
+        "granularity of a mark interval, so it is charged to that op and cannot be "
+        "separated from it."
+    ),
+    "intra_op": (
+        "a mark interval is one whole top-level op. Anything inside it — a contraction's "
+        "inner loop versus its tail, an epilogue the compiler fused into the op — is below "
+        "this profiler's resolution."
+    ),
 }
 
 
@@ -809,8 +860,9 @@ def resolve_category(rec: dict) -> tuple[str, str]:
     return f"unclassified:{name or '(unknown)'}", "unknown"
 
 
-def executions_per_iteration(executions: int | None, timed_iterations: int | None,
-                             warmup: int | None = 0) -> int | None:
+def executions_per_iteration(
+    executions: int | None, timed_iterations: int | None, warmup: int | None = 0
+) -> int | None:
     """How many ``@forward`` executions ONE timed iteration contains, or ``None`` if underivable.
 
     The shim's accumulators run from process start, so ``executions`` (the largest ``hits`` in the
@@ -849,10 +901,14 @@ def table_blocker(table: list[dict] | None) -> str | None:
     if table is None:
         return "no op table was produced at all"
     if not table:
-        return ("the instrumented run produced an EMPTY op table: the build emitted no "
-                "opprof_table.json, or no `PROF <id> <ticks> <hits>` line reached the console. "
-                "Nothing was measured — this is not a profile of a model with no ops.")
+        return (
+            "the instrumented run produced an EMPTY op table: the build emitted no "
+            "opprof_table.json, or no `PROF <id> <ticks> <hits>` line reached the console. "
+            "Nothing was measured — this is not a profile of a model with no ops."
+        )
     if not any(int(r.get("hits") or 0) for r in table):
-        return (f"the op table has {len(table)} ops and ZERO recorded hits: the marks were compiled "
-                f"in but never executed, or merlin_prof_dump() never ran. Nothing was measured.")
+        return (
+            f"the op table has {len(table)} ops and ZERO recorded hits: the marks were compiled "
+            f"in but never executed, or merlin_prof_dump() never ran. Nothing was measured."
+        )
     return None

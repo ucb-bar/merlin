@@ -43,20 +43,30 @@ def _memoize_by_file(fn):
             st = p.stat()
             key = (str(p.resolve()), st.st_mtime_ns, st.st_size, workload)
         except OSError:
-            return fn(model_mlir_path, workload)   # missing file: let fn return the not-present cert
+            return fn(model_mlir_path, workload)  # missing file: let fn return the not-present cert
         hit = cache.get(key)
         if hit is None:
             hit = fn(model_mlir_path, workload)
             cache[key] = hit
         return hit
 
-    wrapper.cache_clear = cache.clear   # test/debug hook
+    wrapper.cache_clear = cache.clear  # test/debug hook
     return wrapper
 
+
 _DTYPE_BYTES = {
-    "f64": 8, "f32": 4, "f16": 2, "bf16": 2,
-    "i64": 8, "i32": 4, "i16": 2, "i8": 1, "i1": 1,
-    "ui8": 1, "si64": 8, "si32": 4,
+    "f64": 8,
+    "f32": 4,
+    "f16": 2,
+    "bf16": 2,
+    "i64": 8,
+    "i32": 4,
+    "i16": 2,
+    "i8": 1,
+    "i1": 1,
+    "ui8": 1,
+    "si64": 8,
+    "si32": 4,
 }
 
 
@@ -66,8 +76,10 @@ def _while_loop_for(module):
     Read structurally from the parsed IR — the loop bounds/iter_args/body are real IR, not text."""
     for op in mlir_query.walk(module, "scf.for"):
         ub_owner = op.operands[1].owner
-        if (mlir_query.op_name(ub_owner) == "arith.constant"
-                and mlir_query.attr_str(ub_owner, "prov.op") == "while_loop"):
+        if (
+            mlir_query.op_name(ub_owner) == "arith.constant"
+            and mlir_query.attr_str(ub_owner, "prov.op") == "while_loop"
+        ):
             return op, ub_owner.value.value.data
     return None, None
 
@@ -82,11 +94,10 @@ class CarriedState:
     shape: list[int]
     dtype: str
     bytes: int | None
-    role: str          # counter | latent | kv_cache | token_buffer | other
+    role: str  # counter | latent | kv_cache | token_buffer | other
 
     def to_dict(self) -> dict:
-        return {"index": self.index, "shape": self.shape, "dtype": self.dtype,
-                "bytes": self.bytes, "role": self.role}
+        return {"index": self.index, "shape": self.shape, "dtype": self.dtype, "bytes": self.bytes, "role": self.role}
 
 
 @dataclass
@@ -134,20 +145,21 @@ def _classify(idx: int, dims: list[int], dtype: str) -> str:
         # scalar counter (tensor<i64>/[]) vs a small token buffer ([1xN])
         return "counter" if not dims or numel == 1 else "token_buffer"
     if not is_int and len(dims) >= 4:
-        return "kv_cache"          # rank>=4 float carry = static KV cache
+        return "kv_cache"  # rank>=4 float carry = static KV cache
     if not is_int and len(dims) == 3:
-        return "latent"            # action latent [B, horizon, dim]
+        return "latent"  # action latent [B, horizon, dim]
     return "other"
 
 
 @dataclass
 class ResidencyCert:
     """IR-proven residency split for a loop-preserving capture (P21 GAP-C)."""
+
     workload: str
     present: bool
     K: int | None = None
-    n_loop_invariant_operands: int = 0     # referenced in body, defined OUTSIDE -> resident-eligible
-    n_loop_carried: int = 0                # iter_args -> genuinely per-step state
+    n_loop_invariant_operands: int = 0  # referenced in body, defined OUTSIDE -> resident-eligible
+    n_loop_carried: int = 0  # iter_args -> genuinely per-step state
     n_body_defs: int = 0
     resident_proof: str = ""
     evidence: str = "recovered_from_ir"
@@ -178,7 +190,7 @@ def residency_from_ir(model_mlir_path: str | Path, workload: str = "") -> Reside
     if forop is None:
         return ResidencyCert(workload=workload, present=False)
     body = _for_body(forop)
-    block_args = set(body.args)                       # iv + iter_args (the loop-carried bound values)
+    block_args = set(body.args)  # iv + iter_args (the loop-carried bound values)
     # Walk the body region: defined = every SSA result produced INSIDE the region; used = every
     # operand referenced. Loop-invariant = used but neither defined in-region nor a carried block arg
     # (i.e. defined OUTSIDE -> reused read-only every iteration -> resident-eligible).
@@ -196,13 +208,17 @@ def residency_from_ir(model_mlir_path: str | Path, workload: str = "") -> Reside
     _walk(forop.body)
     invariant = used - defined - block_args
     return ResidencyCert(
-        workload=workload, present=True, K=K,
+        workload=workload,
+        present=True,
+        K=K,
         n_loop_invariant_operands=len(invariant),
-        n_loop_carried=len(block_args) - 1,           # exclude the IV
+        n_loop_carried=len(block_args) - 1,  # exclude the IV
         n_body_defs=len(defined),
-        resident_proof=(f"{len(invariant)} operands referenced read-only in the scf.for body but "
-                        f"defined outside the region -> loop-invariant across K={K} iterations "
-                        "(resident-eligible); avoidable reload = resident_bytes x (K-1)"),
+        resident_proof=(
+            f"{len(invariant)} operands referenced read-only in the scf.for body but "
+            f"defined outside the region -> loop-invariant across K={K} iterations "
+            "(resident-eligible); avoidable reload = resident_bytes x (K-1)"
+        ),
     )
 
 
@@ -239,9 +255,14 @@ def recover_loop(model_mlir_path: str | Path, workload: str = "") -> LoopRecover
 
     _count(forop.body)
     return LoopRecovery(
-        workload=workload, present=True, K=K, K_source="recovered_from_ir",
-        n_iter_args=len(carried), carried_state=carried,
-        repeated_region_op_count=body_ops, kv_cache_bytes=kv_bytes,
+        workload=workload,
+        present=True,
+        K=K,
+        K_source="recovered_from_ir",
+        n_iter_args=len(carried),
+        carried_state=carried,
+        repeated_region_op_count=body_ops,
+        kv_cache_bytes=kv_bytes,
         evidence=f"scf.for(0,{K},1) lowered from torch.while_loop "
-                 f"(bounds tagged prov.op=while_loop); {len(carried)} iter_args",
+        f"(bounds tagged prov.op=while_loop); {len(carried)} iter_args",
     )

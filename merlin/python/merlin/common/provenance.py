@@ -43,6 +43,7 @@ the one it prevents.
 the recorded provenance keeps the drift, so a result produced against an unexpected revision is
 identifiable afterwards rather than indistinguishable.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -53,10 +54,28 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["Artifact", "ArtifactCheck", "Observation", "Pin", "PinsError", "SourceStatus",
-           "Verification", "load_artifacts", "load_pins", "observe", "pin", "pins_path", "record",
-           "citation", "citations", "require", "source_digest", "source_status", "verify",
-           "verify_artifact"]
+__all__ = [
+    "Artifact",
+    "ArtifactCheck",
+    "Observation",
+    "Pin",
+    "PinsError",
+    "SourceStatus",
+    "Verification",
+    "load_artifacts",
+    "load_pins",
+    "observe",
+    "pin",
+    "pins_path",
+    "record",
+    "citation",
+    "citations",
+    "require",
+    "source_digest",
+    "source_status",
+    "verify",
+    "verify_artifact",
+]
 
 #: Recorded where a fact could not be read. Never compares equal to a real value, and callers must not
 #: treat it as "unchanged" — see :mod:`merlin.targetgen.artifact_dag` for the same convention.
@@ -69,6 +88,7 @@ class PinsError(RuntimeError):
 
 def pins_path() -> Path:
     from .paths import merlin_dir
+
     return Path(merlin_dir()) / "contract" / "hardware_pins.yaml"
 
 
@@ -158,6 +178,7 @@ class Pin:
     def checkout(self) -> Path | None:
         """Where this pin's sources should be, or None when the root env var is unset."""
         from .paths import env as _env
+
         root = _env(self.root_env) if self.root_env else None
         if not root:
             return None
@@ -172,7 +193,7 @@ class Observation:
     commit: str = UNKNOWN
     branch: str = UNKNOWN
     remote: str = UNKNOWN
-    dirty_files: int = -1                 # -1 = could not be determined
+    dirty_files: int = -1  # -1 = could not be determined
     present: bool = False
     #: Repo-relative paths git reports as modified or untracked. Recorded, not just counted, because
     #: whether a dirty tree matters depends entirely on WHICH files are dirty: an edited RTL source
@@ -184,9 +205,15 @@ class Observation:
         return None if self.dirty_files < 0 else self.dirty_files > 0
 
     def to_dict(self) -> dict[str, Any]:
-        return {"path": self.path, "commit": self.commit, "branch": self.branch,
-                "remote": self.remote, "dirty_files": self.dirty_files, "present": self.present,
-                "dirty_paths": list(self.dirty_paths)}
+        return {
+            "path": self.path,
+            "commit": self.commit,
+            "branch": self.branch,
+            "remote": self.remote,
+            "dirty_files": self.dirty_files,
+            "present": self.present,
+            "dirty_paths": list(self.dirty_paths),
+        }
 
 
 #: The only status that licenses calling a claim derived from a file a PINNED claim.
@@ -214,9 +241,9 @@ class SourceStatus:
     pin: str
     rel: str
     status: str = UNDETERMINABLE
-    digest: str = UNKNOWN                  # sha256 of the bytes on disk
-    pinned_digest: str = UNKNOWN           # sha256 of the same path at the pin's commit
-    declared_digest: str = ""              # the pin's local_edits entry, when it declares one
+    digest: str = UNKNOWN  # sha256 of the bytes on disk
+    pinned_digest: str = UNKNOWN  # sha256 of the same path at the pin's commit
+    declared_digest: str = ""  # the pin's local_edits entry, when it declares one
     reason: str = ""
 
     @property
@@ -224,9 +251,16 @@ class SourceStatus:
         return self.status == PINNED
 
     def to_dict(self) -> dict[str, Any]:
-        return {"pin": self.pin, "rel": self.rel, "status": self.status, "ok": self.ok,
-                "digest": self.digest, "pinned_digest": self.pinned_digest,
-                "declared_digest": self.declared_digest, "reason": self.reason}
+        return {
+            "pin": self.pin,
+            "rel": self.rel,
+            "status": self.status,
+            "ok": self.ok,
+            "digest": self.digest,
+            "pinned_digest": self.pinned_digest,
+            "declared_digest": self.declared_digest,
+            "reason": self.reason,
+        }
 
 
 @dataclass(frozen=True)
@@ -274,12 +308,18 @@ class Verification:
         return None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"pin": self.pin, "ok": self.ok, "observed": self.observed.to_dict(),
-                "drift": list(self.drift), "missing_paths": list(self.missing_paths),
-                "forbidden_present": list(self.forbidden_present), "notes": list(self.notes),
-                "nested_recorded": self.nested_recorded,
-                "sources": [s.to_dict() for s in self.sources],
-                "covered": [v.to_dict() for v in self.covered]}
+        return {
+            "pin": self.pin,
+            "ok": self.ok,
+            "observed": self.observed.to_dict(),
+            "drift": list(self.drift),
+            "missing_paths": list(self.missing_paths),
+            "forbidden_present": list(self.forbidden_present),
+            "notes": list(self.notes),
+            "nested_recorded": self.nested_recorded,
+            "sources": [s.to_dict() for s in self.sources],
+            "covered": [v.to_dict() for v in self.covered],
+        }
 
 
 @dataclass(frozen=True)
@@ -297,12 +337,12 @@ class Artifact:
     """
 
     name: str
-    path: str                              # absolute, relative to root_env, or repo-relative
+    path: str  # absolute, relative to root_env, or repo-relative
     description: str = ""
-    digest: str = ""                       # sha256 of the file/tree; empty = not yet recorded
+    digest: str = ""  # sha256 of the file/tree; empty = not yet recorded
     root_env: str = ""
-    built_from: tuple[str, ...] = ()       # pin names this was elaborated from
-    config: str = ""                       # the elaborated configuration, when there is one
+    built_from: tuple[str, ...] = ()  # pin names this was elaborated from
+    config: str = ""  # the elaborated configuration, when there is one
     notes: str = ""
     #: WHICH TARGET this artifact belongs to, and WHAT PART it plays for that target -- for example
     #: ``(target="…", role="verilator_binary")``. Both are declared, never parsed out of the artifact's
@@ -327,11 +367,13 @@ class Artifact:
 
     def resolve(self) -> Path | None:
         from .paths import env as _env
+
         if self.root_env:
             root = _env(self.root_env)
             return None if not root else Path(root) / self.path
         if self.repo_relative:
             from .paths import repo_root
+
             return repo_root() / self.path
         return Path(self.path)
 
@@ -344,7 +386,7 @@ class ArtifactCheck:
     path: str
     present: bool = False
     digest: str = UNKNOWN
-    matches: bool | None = None            # None when nothing was declared to match against
+    matches: bool | None = None  # None when nothing was declared to match against
     gaps: tuple[str, ...] = ()
 
     @property
@@ -352,9 +394,15 @@ class ArtifactCheck:
         return self.present and self.matches is True
 
     def to_dict(self) -> dict[str, Any]:
-        return {"artifact": self.artifact, "path": self.path, "present": self.present,
-                "digest": self.digest, "matches": self.matches, "ok": self.ok,
-                "gaps": list(self.gaps)}
+        return {
+            "artifact": self.artifact,
+            "path": self.path,
+            "present": self.present,
+            "digest": self.digest,
+            "matches": self.matches,
+            "ok": self.ok,
+            "gaps": list(self.gaps),
+        }
 
 
 def load_artifacts(path: "str | Path | None" = None) -> dict[str, Artifact]:
@@ -371,23 +419,27 @@ def load_artifacts(path: "str | Path | None" = None) -> dict[str, Artifact]:
     out: dict[str, Artifact] = {}
     for name, body in entries.items():
         if not isinstance(body, dict) or not body.get("path"):
-            raise PinsError(f"{p}: artifact {name!r} has no path; an artifact without one identifies "
-                            "nothing")
+            raise PinsError(f"{p}: artifact {name!r} has no path; an artifact without one identifies nothing")
         digest = body.get("digest") or ""
         if digest and not isinstance(digest, str):
-            raise PinsError(f"{p}: artifact {name!r} digest must be a quoted string, got "
-                            f"{type(digest).__name__}")
+            raise PinsError(f"{p}: artifact {name!r} digest must be a quoted string, got {type(digest).__name__}")
         kind = str(body.get("kind") or "file")
         if kind not in Artifact.KINDS:
-            raise PinsError(f"{p}: artifact {name!r} kind must be one of {list(Artifact.KINDS)}, "
-                            f"got {kind!r}")
+            raise PinsError(f"{p}: artifact {name!r} kind must be one of {list(Artifact.KINDS)}, got {kind!r}")
         out[str(name)] = Artifact(
-            name=str(name), path=str(body["path"]), description=str(body.get("description") or ""),
-            digest=str(digest), root_env=str(body.get("root_env") or ""),
-            kind=kind, repo_relative=bool(body.get("repo_relative", False)),
+            name=str(name),
+            path=str(body["path"]),
+            description=str(body.get("description") or ""),
+            digest=str(digest),
+            root_env=str(body.get("root_env") or ""),
+            kind=kind,
+            repo_relative=bool(body.get("repo_relative", False)),
             built_from=tuple(str(b) for b in (body.get("built_from") or ())),
-            config=str(body.get("config") or ""), notes=str(body.get("notes") or ""),
-            target=str(body.get("target") or ""), role=str(body.get("role") or ""))
+            config=str(body.get("config") or ""),
+            notes=str(body.get("notes") or ""),
+            target=str(body.get("target") or ""),
+            role=str(body.get("role") or ""),
+        )
     return out
 
 
@@ -405,31 +457,30 @@ def verify_artifact(name: str, *, path: "str | Path | None" = None) -> ArtifactC
     target = a.resolve()
     gaps: list[str] = []
     if target is None:
-        return ArtifactCheck(artifact=name, path=UNKNOWN, gaps=(
-            f"${a.root_env} is unset, so {name!r} cannot be located",))
+        return ArtifactCheck(
+            artifact=name, path=UNKNOWN, gaps=(f"${a.root_env} is unset, so {name!r} cannot be located",)
+        )
     if a.kind == "tree":
         if not target.is_dir():
-            return ArtifactCheck(artifact=name, path=str(target),
-                                 gaps=(f"no directory at {target}",))
+            return ArtifactCheck(artifact=name, path=str(target), gaps=(f"no directory at {target}",))
         from merlin.benchharness import hash_tree
+
         hashed = hash_tree(target)
         got = str(hashed.get("sha256") or "")
         if not hashed.get("present") or not got:
-            return ArtifactCheck(artifact=name, path=str(target),
-                                 gaps=(f"{target} has no hashable content",))
+            return ArtifactCheck(artifact=name, path=str(target), gaps=(f"{target} has no hashable content",))
     else:
         if not target.is_file():
-            return ArtifactCheck(artifact=name, path=str(target),
-                                 gaps=(f"no file at {target}",))
+            return ArtifactCheck(artifact=name, path=str(target), gaps=(f"no file at {target}",))
         got = file_digest(target)
     if not a.digest:
         gaps.append("no digest declared, so the file present cannot be confirmed to be the one meant")
-        return ArtifactCheck(artifact=name, path=str(target), present=True, digest=got,
-                             matches=None, gaps=tuple(gaps))
+        return ArtifactCheck(artifact=name, path=str(target), present=True, digest=got, matches=None, gaps=tuple(gaps))
     if got != a.digest:
         gaps.append(f"digest is {got[:16]} but the registry declares {a.digest[:16]}")
-    return ArtifactCheck(artifact=name, path=str(target), present=True, digest=got,
-                         matches=(got == a.digest), gaps=tuple(gaps))
+    return ArtifactCheck(
+        artifact=name, path=str(target), present=True, digest=got, matches=(got == a.digest), gaps=tuple(gaps)
+    )
 
 
 #: Parsed registries, keyed by (resolved path, mtime_ns, size). The stamp is part of the KEY, not a
@@ -453,7 +504,7 @@ def load_pins(path: "str | Path | None" = None) -> dict[str, Pin]:
     try:
         st = p.stat()
         memo_key = (str(p.resolve()), st.st_mtime_ns, st.st_size)
-    except OSError:                  # unstattable: parse it, and do not remember what we cannot key
+    except OSError:  # unstattable: parse it, and do not remember what we cannot key
         memo_key = None
     if memo_key is not None and memo_key in _PINS_MEMO:
         return dict(_PINS_MEMO[memo_key])
@@ -469,19 +520,26 @@ def load_pins(path: "str | Path | None" = None) -> dict[str, Pin]:
         if not isinstance(commit, str):
             # An all-digit sha is valid hex and YAML reads it as a NUMBER, dropping leading zeros -- so a
             # pin would silently verify against a different revision than the one written down.
-            raise PinsError(f"{p}: pin {name!r} commit must be quoted; YAML read {commit!r} as "
-                            f"{type(commit).__name__}, which loses leading zeros")
+            raise PinsError(
+                f"{p}: pin {name!r} commit must be quoted; YAML read {commit!r} as "
+                f"{type(commit).__name__}, which loses leading zeros"
+            )
         if len(commit) != 40 or any(c not in "0123456789abcdefABCDEF" for c in commit):
-            raise PinsError(f"{p}: pin {name!r} commit {commit!r} is not a full 40-character hex sha; an "
-                            "abbreviated revision can become ambiguous as history grows")
+            raise PinsError(
+                f"{p}: pin {name!r} commit {commit!r} is not a full 40-character hex sha; an "
+                "abbreviated revision can become ambiguous as history grows"
+            )
         out[name] = Pin(
-            name=str(name), commit=commit,
+            name=str(name),
+            commit=commit,
             repo_canonical=str(body.get("repo_canonical") or ""),
             branch=(None if body.get("branch") in (None, "") else str(body["branch"])),
-            root_env=str(body.get("root_env") or ""), path=str(body.get("path") or ""),
+            root_env=str(body.get("root_env") or ""),
+            path=str(body.get("path") or ""),
             requires_paths=tuple(body.get("requires_paths") or ()),
             forbids_paths=tuple(body.get("forbids_paths") or ()),
-            description=str(body.get("description") or ""), notes=str(body.get("notes") or ""),
+            description=str(body.get("description") or ""),
+            notes=str(body.get("notes") or ""),
             used_by=tuple(body.get("used_by") or ()),
             targets=_targets(p, name, body.get("targets")),
             repo_observed_note=str(body.get("repo_observed_note") or ""),
@@ -489,7 +547,8 @@ def load_pins(path: "str | Path | None" = None) -> dict[str, Pin]:
             nested_in=str(body.get("nested_in") or ""),
             nested_path=str(body.get("nested_path") or ""),
             covers=tuple(str(c) for c in (body.get("covers") or ())),
-            content_check=_tri(p, name, "content_check", body.get("content_check")))
+            content_check=_tri(p, name, "content_check", body.get("content_check")),
+        )
     _check_references(p, out)
     if memo_key is not None:
         _PINS_MEMO[memo_key] = dict(out)
@@ -520,9 +579,11 @@ def _tri(src: Path, name: str, field_name: str, raw: Any) -> bool | None:
     if raw is None:
         return None
     if not isinstance(raw, bool):
-        raise PinsError(f"{src}: pin {name!r} {field_name} must be a boolean or absent, got "
-                        f"{type(raw).__name__}; absent means 'decided by the pin's shape' and spelling "
-                        "that as a string would silently pick one of the two")
+        raise PinsError(
+            f"{src}: pin {name!r} {field_name} must be a boolean or absent, got "
+            f"{type(raw).__name__}; absent means 'decided by the pin's shape' and spelling "
+            "that as a string would silently pick one of the two"
+        )
     return raw
 
 
@@ -536,21 +597,28 @@ def _check_references(src: Path, pins: "Mapping[str, Pin]") -> None:
     for name, p in pins.items():
         if p.nested_in:
             if p.nested_in not in pins:
-                raise PinsError(f"{src}: pin {name!r} declares nested_in {p.nested_in!r}, which is not a "
-                                f"declared pin; declared: {sorted(pins)}")
+                raise PinsError(
+                    f"{src}: pin {name!r} declares nested_in {p.nested_in!r}, which is not a "
+                    f"declared pin; declared: {sorted(pins)}"
+                )
             if p.nested_in == name:
                 raise PinsError(f"{src}: pin {name!r} declares itself as its own container")
             if not p.nested_path:
-                raise PinsError(f"{src}: pin {name!r} declares nested_in {p.nested_in!r} but no "
-                                "nested_path; without the gitlink path the revision the container "
-                                "records cannot be read, and the check would pass by being unable to run")
+                raise PinsError(
+                    f"{src}: pin {name!r} declares nested_in {p.nested_in!r} but no "
+                    "nested_path; without the gitlink path the revision the container "
+                    "records cannot be read, and the check would pass by being unable to run"
+                )
         elif p.nested_path:
-            raise PinsError(f"{src}: pin {name!r} declares nested_path but no nested_in, so there is no "
-                            "repository to read that gitlink out of")
+            raise PinsError(
+                f"{src}: pin {name!r} declares nested_path but no nested_in, so there is no "
+                "repository to read that gitlink out of"
+            )
         for child in p.covers:
             if child not in pins:
-                raise PinsError(f"{src}: pin {name!r} covers {child!r}, which is not a declared pin; "
-                                f"declared: {sorted(pins)}")
+                raise PinsError(
+                    f"{src}: pin {name!r} covers {child!r}, which is not a declared pin; declared: {sorted(pins)}"
+                )
             if child == name:
                 raise PinsError(f"{src}: pin {name!r} covers itself")
 
@@ -565,11 +633,15 @@ def _local_edits(src: Path, name: str, raw: Any) -> tuple[tuple[str, str], ...]:
     for rel, digest in raw.items():
         if not isinstance(digest, str):
             # Same trap as the commit: an all-digit digest is valid hex and YAML reads it as a number.
-            raise PinsError(f"{src}: pin {name!r} local_edits[{rel!r}] must be a quoted sha256 string; "
-                            f"YAML read {type(digest).__name__}")
+            raise PinsError(
+                f"{src}: pin {name!r} local_edits[{rel!r}] must be a quoted sha256 string; "
+                f"YAML read {type(digest).__name__}"
+            )
         if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest.lower()):
-            raise PinsError(f"{src}: pin {name!r} local_edits[{rel!r}] is not a 64-character sha256 "
-                            f"({digest!r}); a partial digest does not identify content")
+            raise PinsError(
+                f"{src}: pin {name!r} local_edits[{rel!r}] is not a 64-character sha256 "
+                f"({digest!r}); a partial digest does not identify content"
+            )
         out.append((str(rel), digest.lower()))
     return tuple(sorted(out))
 
@@ -583,8 +655,7 @@ def pin(name: str, path: "str | Path | None" = None) -> Pin:
 
 def _git(repo: Path, *args: str) -> str | None:
     try:
-        got = subprocess.run(("git", "-C", str(repo)) + args, capture_output=True, text=True,
-                             timeout=60)
+        got = subprocess.run(("git", "-C", str(repo)) + args, capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         return None
     return got.stdout.strip() if got.returncode == 0 else None
@@ -613,7 +684,7 @@ def observation_scope():
     """
     global _OBSERVATION_SCOPE
     if _OBSERVATION_SCOPE is not None:
-        yield _OBSERVATION_SCOPE          # already inside one; a nested scope must not shorten it
+        yield _OBSERVATION_SCOPE  # already inside one; a nested scope must not shorten it
         return
     _OBSERVATION_SCOPE = {}
     try:
@@ -651,12 +722,14 @@ def _observe_now(checkout: "str | Path") -> Observation:
     status = _git(p, "status", "--porcelain")
     lines = [l for l in (status or "").splitlines() if l.strip()] if status is not None else []
     return Observation(
-        path=str(p), present=True,
+        path=str(p),
+        present=True,
         commit=commit or UNKNOWN,
         branch=branch or UNKNOWN,
         remote=remote or UNKNOWN,
         dirty_files=(len(lines) if status is not None else -1),
-        dirty_paths=tuple(sorted(_porcelain_paths(lines))))
+        dirty_paths=tuple(sorted(_porcelain_paths(lines))),
+    )
 
 
 def _porcelain_paths(lines: "Sequence[str]") -> set[str]:
@@ -717,15 +790,17 @@ def _git_blob(repo: Path, commit: str, rel: str) -> bytes | None:
     as agreement or as drift.
     """
     try:
-        got = subprocess.run(("git", "-C", str(repo), "cat-file", "blob", f"{commit}:{rel}"),
-                             capture_output=True, timeout=60)
+        got = subprocess.run(
+            ("git", "-C", str(repo), "cat-file", "blob", f"{commit}:{rel}"), capture_output=True, timeout=60
+        )
     except (OSError, subprocess.SubprocessError):
         return None
     return got.stdout if got.returncode == 0 else None
 
 
-def source_status(pin_name: str, rel: str, *, checkout: "str | Path | None" = None,
-                  path: "str | Path | None" = None) -> SourceStatus:
+def source_status(
+    pin_name: str, rel: str, *, checkout: "str | Path | None" = None, path: "str | Path | None" = None
+) -> SourceStatus:
     """Does the file at ``rel`` belong to the revision pin ``pin_name`` declares?
 
     The question a header-derived claim has to answer before it may call itself pinned. Answered by
@@ -737,45 +812,77 @@ def source_status(pin_name: str, rel: str, *, checkout: "str | Path | None" = No
     target = Path(checkout) if checkout is not None else p.checkout()
     norm = str(rel).lstrip("./")
     if target is None:
-        return SourceStatus(pin=pin_name, rel=norm, status=UNDETERMINABLE,
-                            reason=f"${p.root_env} is unset, so the file cannot be located")
+        return SourceStatus(
+            pin=pin_name,
+            rel=norm,
+            status=UNDETERMINABLE,
+            reason=f"${p.root_env} is unset, so the file cannot be located",
+        )
     full = Path(target) / norm
     if not full.is_file():
-        return SourceStatus(pin=pin_name, rel=norm, status=UNDETERMINABLE,
-                            reason=f"no file at {full}")
+        return SourceStatus(pin=pin_name, rel=norm, status=UNDETERMINABLE, reason=f"no file at {full}")
     have = file_digest(full)
     declared = p.declared_edit(norm) or ""
     blob = _git_blob(Path(target), p.commit, norm)
     if blob is None:
-        return SourceStatus(pin=pin_name, rel=norm, status=UNDETERMINABLE, digest=have,
-                            declared_digest=declared,
-                            reason=f"{norm} at {p.commit[:12]} could not be read from {target}'s object "
-                                   "store, so whether these bytes are the pinned revision's is UNKNOWN "
-                                   "— not 'no' and not 'yes'")
+        return SourceStatus(
+            pin=pin_name,
+            rel=norm,
+            status=UNDETERMINABLE,
+            digest=have,
+            declared_digest=declared,
+            reason=f"{norm} at {p.commit[:12]} could not be read from {target}'s object "
+            "store, so whether these bytes are the pinned revision's is UNKNOWN "
+            "— not 'no' and not 'yes'",
+        )
     want = hashlib.sha256(blob).hexdigest()
     if have == want:
-        return SourceStatus(pin=pin_name, rel=norm, status=PINNED, digest=have, pinned_digest=want,
-                            declared_digest=declared,
-                            reason=f"bytes are byte-identical to {norm} at {p.commit[:12]}")
+        return SourceStatus(
+            pin=pin_name,
+            rel=norm,
+            status=PINNED,
+            digest=have,
+            pinned_digest=want,
+            declared_digest=declared,
+            reason=f"bytes are byte-identical to {norm} at {p.commit[:12]}",
+        )
     if declared and have == declared:
-        return SourceStatus(pin=pin_name, rel=norm, status=OFF_PIN, digest=have, pinned_digest=want,
-                            declared_digest=declared,
-                            reason="bytes differ from the pinned revision and match the local edit the "
-                                   "pin declares; this is a REVIEWED off-pin file, and a claim citing it "
-                                   "must say '<commit> plus these bytes', never 'pinned'")
-    return SourceStatus(pin=pin_name, rel=norm, status=OFF_PIN, digest=have, pinned_digest=want,
-                        declared_digest=declared,
-                        reason=("bytes differ from the pinned revision AND from the local edit the pin "
-                                "declares, so the reviewed content is not the content that would be read"
-                                if declared else
-                                "bytes differ from the pinned revision and the pin declares no local "
-                                "edit for this path, so nothing describes what would be read"))
+        return SourceStatus(
+            pin=pin_name,
+            rel=norm,
+            status=OFF_PIN,
+            digest=have,
+            pinned_digest=want,
+            declared_digest=declared,
+            reason="bytes differ from the pinned revision and match the local edit the "
+            "pin declares; this is a REVIEWED off-pin file, and a claim citing it "
+            "must say '<commit> plus these bytes', never 'pinned'",
+        )
+    return SourceStatus(
+        pin=pin_name,
+        rel=norm,
+        status=OFF_PIN,
+        digest=have,
+        pinned_digest=want,
+        declared_digest=declared,
+        reason=(
+            "bytes differ from the pinned revision AND from the local edit the pin "
+            "declares, so the reviewed content is not the content that would be read"
+            if declared
+            else "bytes differ from the pinned revision and the pin declares no local "
+            "edit for this path, so nothing describes what would be read"
+        ),
+    )
 
 
-def verify(name: str, *, checkout: "str | Path | None" = None,
-           path: "str | Path | None" = None,
-           reads: "Sequence[str] | None" = None,
-           _seen: "frozenset[str] | None" = None) -> Verification:
+def verify(
+    name: str,
+    *,
+    checkout: "str | Path | None" = None,
+    path: "str | Path | None" = None,
+    reads: "Sequence[str] | None" = None,
+    _seen: "frozenset[str] | None" = None,
+) -> Verification:
     """Compare a checkout against its pin and report every disagreement.
 
     ``reads`` is the set of repo-relative paths the caller will actually consume; it defaults to the pin's
@@ -795,8 +902,11 @@ def verify(name: str, *, checkout: "str | Path | None" = None,
     p = pin(name, path)
     target = Path(checkout) if checkout is not None else p.checkout()
     if target is None:
-        return Verification(pin=name, observed=Observation(path=UNKNOWN),
-                            drift=(f"${p.root_env} is unset, so {name!r} cannot be located",))
+        return Verification(
+            pin=name,
+            observed=Observation(path=UNKNOWN),
+            drift=(f"${p.root_env} is unset, so {name!r} cannot be located",),
+        )
     got = observe(target)
     read_set = tuple(reads) if reads is not None else p.requires_paths
     drift: list[str] = []
@@ -827,27 +937,33 @@ def verify(name: str, *, checkout: "str | Path | None" = None,
             # called an off-pin instruction header clean and a byte-identical-to-the-pin parameter header
             # modified. Comparing against the pinned revision's blob is right in both directions. The
             # dirty accounting still runs for dirt OUTSIDE the read set.
-            statuses = tuple(source_status(name, rel, checkout=got.path, path=path)
-                             for rel in read_set)
+            statuses = tuple(source_status(name, rel, checkout=got.path, path=path) for rel in read_set)
             off = [s for s in statuses if s.status == OFF_PIN]
             unknown = [s for s in statuses if s.status == UNDETERMINABLE]
             for s in off:
-                drift.append(f"{s.rel} is OFF-PIN: {s.reason} (bytes {s.digest[:16]}, pinned revision "
-                             f"has {s.pinned_digest[:16]})")
+                drift.append(
+                    f"{s.rel} is OFF-PIN: {s.reason} (bytes {s.digest[:16]}, pinned revision "
+                    f"has {s.pinned_digest[:16]})"
+                )
             for s in unknown:
                 drift.append(f"{s.rel} is UNDETERMINABLE against this pin: {s.reason}")
             if statuses and not off and not unknown:
-                notes.append(f"{len(statuses)} read path(s) are byte-identical to the pin's commit, so "
-                             "claims derived from them are pinned claims regardless of what `git status` "
-                             "says about the tree")
+                notes.append(
+                    f"{len(statuses)} read path(s) are byte-identical to the pin's commit, so "
+                    "claims derived from them are pinned claims regardless of what `git status` "
+                    "says about the tree"
+                )
             if not read_set:
-                drift.append("content_check is on but the pin declares no read set, so there is nothing "
-                             "to verify by content and whether a claim would be pinned is UNKNOWN")
-            outside = tuple(d for d in got.dirty_paths
-                            if not _touches([d], read_set)) if got.dirty else ()
+                drift.append(
+                    "content_check is on but the pin declares no read set, so there is nothing "
+                    "to verify by content and whether a claim would be pinned is UNKNOWN"
+                )
+            outside = tuple(d for d in got.dirty_paths if not _touches([d], read_set)) if got.dirty else ()
             if outside:
-                notes.append(f"{len(outside)} uncommitted change(s) outside the read set; content "
-                             "verified per-path above, so these do not bear on the claims")
+                notes.append(
+                    f"{len(outside)} uncommitted change(s) outside the read set; content "
+                    "verified per-path above, so these do not bear on the claims"
+                )
         elif got.dirty:
             touched = _touches(got.dirty_paths, read_set)
             # A touched source whose CONTENT the pin declares (see Pin.local_edits) is accounted for:
@@ -865,31 +981,40 @@ def verify(name: str, *, checkout: "str | Path | None" = None,
             if stale:
                 drift.append(
                     f"declared local edit(s) {stale} no longer match the digest the pin records, so the "
-                    "content that was reviewed is not the content that would be read")
+                    "content that was reviewed is not the content that would be read"
+                )
             if unaccounted:
-                drift.append(f"{len(unaccounted)} of the source(s) this reads carry uncommitted changes "
-                             f"({unaccounted}), so the declared revision does not describe what would "
-                             "be read")
+                drift.append(
+                    f"{len(unaccounted)} of the source(s) this reads carry uncommitted changes "
+                    f"({unaccounted}), so the declared revision does not describe what would "
+                    "be read"
+                )
             if accounted:
-                notes.append(f"{len(accounted)} declared local edit(s) {accounted} match the digest the "
-                             "pin records; this is the pinned commit PLUS those bytes, and a result "
-                             "citing it must say so")
+                notes.append(
+                    f"{len(accounted)} declared local edit(s) {accounted} match the digest the "
+                    "pin records; this is the pinned commit PLUS those bytes, and a result "
+                    "citing it must say so"
+                )
             if not touched and not read_set:
                 # Nothing declared as read, so there is nothing to intersect and no basis for calling the
                 # dirt harmless. Fail closed rather than silently downgrading an unknown to a note.
-                drift.append(f"{got.dirty_files} uncommitted change(s) and no read set to check them "
-                             "against, so whether the declared revision describes what would be read "
-                             "is UNKNOWN")
+                drift.append(
+                    f"{got.dirty_files} uncommitted change(s) and no read set to check them "
+                    "against, so whether the declared revision describes what would be read "
+                    "is UNKNOWN"
+                )
             elif not touched:
                 notes.append(f"{got.dirty_files} uncommitted change(s), none of them a source this reads")
-        if (p.repo_canonical and got.remote not in (UNKNOWN, "")
-                and got.remote != p.repo_canonical and not p.repo_observed_note):
+        if (
+            p.repo_canonical
+            and got.remote not in (UNKNOWN, "")
+            and got.remote != p.repo_canonical
+            and not p.repo_observed_note
+        ):
             drift.append(f"origin is {got.remote} but the pin declares {p.repo_canonical}")
 
-    missing = tuple(rel for rel in p.requires_paths
-                    if got.present and not (Path(got.path) / rel).exists())
-    forbidden = tuple(rel for rel in p.forbids_paths
-                      if got.present and (Path(got.path) / rel).exists())
+    missing = tuple(rel for rel in p.requires_paths if got.present and not (Path(got.path) / rel).exists())
+    forbidden = tuple(rel for rel in p.forbids_paths if got.present and (Path(got.path) / rel).exists())
 
     # Covered pins. Their findings are FOLDED INTO this pin's drift, name-prefixed, rather than parked in
     # a side field: `ok` and `require`'s message are what callers act on, and a nested surface that only
@@ -903,8 +1028,7 @@ def verify(name: str, *, checkout: "str | Path | None" = None,
         try:
             cv = verify(child, path=path, _seen=seen)
         except PinsError as e:
-            drift.append(f"[{child}] could not be verified, so whether the surface it covers is pinned "
-                         f"is UNKNOWN: {e}")
+            drift.append(f"[{child}] could not be verified, so whether the surface it covers is pinned is UNKNOWN: {e}")
             continue
         covered.append(cv)
         for item in cv.drift:
@@ -916,13 +1040,20 @@ def verify(name: str, *, checkout: "str | Path | None" = None,
         for item in cv.notes:
             notes.append(f"[{child}] {item}")
 
-    return Verification(pin=name, observed=got, drift=tuple(drift), missing_paths=missing,
-                        forbidden_present=forbidden, notes=tuple(notes),
-                        nested_recorded=nested_recorded, sources=statuses, covered=tuple(covered))
+    return Verification(
+        pin=name,
+        observed=got,
+        drift=tuple(drift),
+        missing_paths=missing,
+        forbidden_present=forbidden,
+        notes=tuple(notes),
+        nested_recorded=nested_recorded,
+        sources=statuses,
+        covered=tuple(covered),
+    )
 
 
-def _nested_gitlink(p: Pin, got: Observation,
-                    path: "str | Path | None") -> tuple[str, list[str], list[str]]:
+def _nested_gitlink(p: Pin, got: Observation, path: "str | Path | None") -> tuple[str, list[str], list[str]]:
     """The revision the CONTAINER records for this nested checkout, and how it disagrees.
 
     Measured failure this exists for: the systolic generator (pinned, verified clean) records gitlink
@@ -936,35 +1067,62 @@ def _nested_gitlink(p: Pin, got: Observation,
     try:
         parent = pin(p.nested_in, path)
     except PinsError as e:
-        return "", [f"nested_in {p.nested_in!r} is not readable, so the revision the container records "
-                    f"for {p.nested_path!r} is UNDETERMINABLE: {e}"], notes
+        return (
+            "",
+            [
+                f"nested_in {p.nested_in!r} is not readable, so the revision the container records "
+                f"for {p.nested_path!r} is UNDETERMINABLE: {e}"
+            ],
+            notes,
+        )
     parent_co = parent.checkout()
     if parent_co is None or not parent_co.is_dir():
-        return "", [f"the containing checkout for {p.nested_in!r} is not present, so the gitlink it "
-                    f"records for {p.nested_path!r} is UNDETERMINABLE — not absent, and not agreement"], notes
+        return (
+            "",
+            [
+                f"the containing checkout for {p.nested_in!r} is not present, so the gitlink it "
+                f"records for {p.nested_path!r} is UNDETERMINABLE — not absent, and not agreement"
+            ],
+            notes,
+        )
     entry = _git(parent_co, "ls-files", "-s", p.nested_path)
     fields = (entry or "").split()
     recorded = fields[1] if len(fields) > 1 else ""
     if not recorded:
-        return "", [f"{p.nested_in!r} records no gitlink at {p.nested_path!r}, so which revision belongs "
-                    "in this nested checkout is UNDETERMINABLE"], notes
+        return (
+            "",
+            [
+                f"{p.nested_in!r} records no gitlink at {p.nested_path!r}, so which revision belongs "
+                "in this nested checkout is UNDETERMINABLE"
+            ],
+            notes,
+        )
     if recorded != p.commit:
-        drift.append(f"the containing repo {p.nested_in!r} records {recorded[:12]} at {p.nested_path} but "
-                     f"this pin declares {p.commit[:12]}: the pin and the superproject disagree about "
-                     "which revision this nested checkout is")
+        drift.append(
+            f"the containing repo {p.nested_in!r} records {recorded[:12]} at {p.nested_path} but "
+            f"this pin declares {p.commit[:12]}: the pin and the superproject disagree about "
+            "which revision this nested checkout is"
+        )
     else:
-        notes.append(f"{p.nested_in!r} records {recorded[:12]} at {p.nested_path}, agreeing with this "
-                     "pin's declared commit")
+        notes.append(
+            f"{p.nested_in!r} records {recorded[:12]} at {p.nested_path}, agreeing with this pin's declared commit"
+        )
     if got.commit not in (UNKNOWN, recorded):
-        drift.append(f"the nested checkout is at {got.commit[:12]} but {p.nested_in!r} records "
-                     f"{recorded[:12]} at {p.nested_path}: this working tree is OFF THE RECORDED GITLINK, "
-                     "so anything read from it belongs to a revision the container does not claim")
+        drift.append(
+            f"the nested checkout is at {got.commit[:12]} but {p.nested_in!r} records "
+            f"{recorded[:12]} at {p.nested_path}: this working tree is OFF THE RECORDED GITLINK, "
+            "so anything read from it belongs to a revision the container does not claim"
+        )
     return recorded, drift, notes
 
 
-def require(name: str, *, checkout: "str | Path | None" = None,
-            path: "str | Path | None" = None,
-            reads: "Sequence[str] | None" = None) -> Verification:
+def require(
+    name: str,
+    *,
+    checkout: "str | Path | None" = None,
+    path: "str | Path | None" = None,
+    reads: "Sequence[str] | None" = None,
+) -> Verification:
     """:func:`verify`, raising on any disagreement. Use before producing anything that claims a result.
 
     This is the call that must stand between a file-derived claim and a report that says "pinned": a read
@@ -976,14 +1134,20 @@ def require(name: str, *, checkout: "str | Path | None" = None,
         parts = list(got.drift)
         for s in got.sources:
             if s.status != PINNED:
-                parts.append(f"{s.rel}: {s.status.upper()} — a claim derived from these bytes "
-                             f"({s.digest[:16]}) is NOT a pinned claim")
+                parts.append(
+                    f"{s.rel}: {s.status.upper()} — a claim derived from these bytes "
+                    f"({s.digest[:16]}) is NOT a pinned claim"
+                )
         if got.missing_paths:
-            parts.append(f"missing required path(s) {list(got.missing_paths)} — this checkout does not "
-                         "contain what the work needs")
+            parts.append(
+                f"missing required path(s) {list(got.missing_paths)} — this checkout does not "
+                "contain what the work needs"
+            )
         if got.forbidden_present:
-            parts.append(f"path(s) {list(got.forbidden_present)} are present but the pin declares them "
-                         "absent, so this is not the revision it claims to be")
+            parts.append(
+                f"path(s) {list(got.forbidden_present)} are present but the pin declares them "
+                "absent, so this is not the revision it claims to be"
+            )
         raise PinsError(f"pin {name!r} does not match its checkout:\n  - " + "\n  - ".join(parts))
     return got
 
@@ -993,9 +1157,13 @@ def require(name: str, *, checkout: "str | Path | None" = None,
 PINNED_CITATION = "pinned"
 
 
-def citation(name: "str | Verification", *, checkout: "str | Path | None" = None,
-             path: "str | Path | None" = None,
-             reads: "Sequence[str] | None" = None) -> str:
+def citation(
+    name: "str | Verification",
+    *,
+    checkout: "str | Path | None" = None,
+    path: "str | Path | None" = None,
+    reads: "Sequence[str] | None" = None,
+) -> str:
     """How a result must SPELL the revision it was measured on. Never a bare sha.
 
     A bare sha reads as "pinned". It is the right spelling only when every read path's bytes are that
@@ -1017,8 +1185,7 @@ def citation(name: "str | Verification", *, checkout: "str | Path | None" = None
     citation that omitted the nested surface a claim actually rests on is the failure the registry's
     ``covers`` field exists to close.
     """
-    got = name if isinstance(name, Verification) else verify(
-        name, checkout=checkout, path=path, reads=reads)
+    got = name if isinstance(name, Verification) else verify(name, checkout=checkout, path=path, reads=reads)
     parts = [_cite_one(got, path)]
     parts.extend(_cite_one(child, path) for child in got.covered)
     return "; ".join(parts)
@@ -1037,14 +1204,19 @@ def _cite_one(got: Verification, path: "str | Path | None") -> str:
         head = f"{head} (checkout HEAD is {got.observed.commit[:12]})"
     unknown = [s for s in got.sources if s.status == UNDETERMINABLE]
     if unknown:
-        return (f"{head} UNDETERMINABLE: " + ", ".join(f"{s.rel} ({s.reason})" for s in unknown)
-                + " — do not publish a claim resting on these bytes")
+        return (
+            f"{head} UNDETERMINABLE: "
+            + ", ".join(f"{s.rel} ({s.reason})" for s in unknown)
+            + " — do not publish a claim resting on these bytes"
+        )
     off = [s for s in got.sources if s.status == OFF_PIN]
     if off:
         return f"{head} plus these bytes: " + ", ".join(f"{s.rel}@{s.digest[:16]}" for s in off)
     if not got.sources:
-        return (f"{head} — read set NOT verified by content, so whether these are the pinned revision's "
-                "bytes is unrecorded; not citable as pinned")
+        return (
+            f"{head} — read set NOT verified by content, so whether these are the pinned revision's "
+            "bytes is unrecorded; not citable as pinned"
+        )
     return f"{head} ({PINNED_CITATION})"
 
 
@@ -1078,10 +1250,13 @@ def file_digest(path: "str | Path") -> str:
         return UNKNOWN
 
 
-def record(*, pins: Mapping[str, Verification] | None = None,
-           sources: Sequence["str | Path"] = (),
-           artifacts: Mapping[str, "str | Path"] | None = None,
-           extra: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def record(
+    *,
+    pins: Mapping[str, Verification] | None = None,
+    sources: Sequence["str | Path"] = (),
+    artifacts: Mapping[str, "str | Path"] | None = None,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """The provenance block to embed in a manifest, run record or report.
 
     ``artifacts`` names binaries whose identity matters (a prebuilt simulator, a toolchain) and records a
@@ -1094,8 +1269,9 @@ def record(*, pins: Mapping[str, Verification] | None = None,
     out: dict[str, Any] = {
         "merlin": {
             "commit": merlin_commit,
-            "dirty_files": (len([l for l in merlin_dirty.splitlines() if l.strip()])
-                            if merlin_dirty is not None else -1),
+            "dirty_files": (
+                len([l for l in merlin_dirty.splitlines() if l.strip()]) if merlin_dirty is not None else -1
+            ),
         },
         "hardware_pins": {k: v.to_dict() for k, v in (pins or {}).items()},
         "all_pins_ok": all(v.ok for v in (pins or {}).values()) if pins else None,

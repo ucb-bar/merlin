@@ -8,24 +8,28 @@ cannot silently turn an optional GSIM observation into a certified result.
 The source capsules are never changed.  The emitted manifest records the descriptor, source and
 materialized tree digests, stage ordering, and the exact engine preflight used for the run.
 """
+
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import yaml
 
 from merlin.common.paths import repo_root
+
 from .contract.materialize import materialize_public_capsules
 from .target_experiment import TargetExperiment, descriptor_for, load_target_experiment
 
 
 def _tree_sha256(
-    root: Path, *, exclude: frozenset[str] = frozenset(),
+    root: Path,
+    *,
+    exclude: frozenset[str] = frozenset(),
     exclude_python_cache: bool = False,
 ) -> str:
     """Content-and-relative-path digest for a symlink-free capsule/cohort tree."""
@@ -40,9 +44,7 @@ def _tree_sha256(
         # source nor a stable part of an evaluation artifact, and including them makes validation fail
         # merely because grading executed the candidate.  Only these well-defined Python byproducts are
         # ignored; every authored/source/config/binary byte remains in the digest.
-        if exclude_python_cache and (
-            "__pycache__" in relative.parts or path.suffix in {".pyc", ".pyo"}
-        ):
+        if exclude_python_cache and ("__pycache__" in relative.parts or path.suffix in {".pyc", ".pyo"}):
             continue
         if not path.is_file():
             continue
@@ -71,21 +73,28 @@ def _git_source_identity(path: Path) -> dict[str, str]:
     try:
         root = subprocess.run(
             ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
         commit = subprocess.run(
             ["git", "-C", root, "rev-parse", "HEAD"],
-            check=True, capture_output=True, text=True,
+            check=True,
+            capture_output=True,
+            text=True,
         ).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
         return {"path": str(path.resolve())}
-    return {"path": str(path.resolve()), "git_root": str(Path(root).resolve()),
-            "git_commit": commit}
+    return {"path": str(path.resolve()), "git_root": str(Path(root).resolve()), "git_commit": commit}
 
 
 def configured_executable_binding(
-    *, engine: str, binary: str | Path, source: str | Path,
-    config: str | Path, config_tree: str | Path,
+    *,
+    engine: str,
+    binary: str | Path,
+    source: str | Path,
+    config: str | Path,
+    config_tree: str | Path,
 ) -> dict[str, Any]:
     """Content-address one executable and every configuration byte it may consume.
 
@@ -93,8 +102,7 @@ def configured_executable_binding(
     this helper merely refuses aliases/symlinks and binds regular bytes, relative names, and (when
     resolvable) the source commit that produced the executable.
     """
-    binary, source, config, config_tree = (
-        Path(binary), Path(source), Path(config), Path(config_tree))
+    binary, source, config, config_tree = (Path(binary), Path(source), Path(config), Path(config_tree))
     if not engine:
         raise ValueError("configured executable binding requires an engine name")
     if source.is_symlink() or not source.is_dir():
@@ -126,10 +134,13 @@ def _declared_l2_engine(target: str) -> str:
     so the label an L2 binding carries is the engine the target is actually graded on. Fails closed: a
     target that declares no simulator has no engine an L2 binding could be attributed to."""
     from .capsule_runner import _bespoke_sim_via
+
     engine = _bespoke_sim_via(target)
     if not engine:
-        raise ValueError(f"{target!r} declares no bespoke simulator (runner.sim_via / toolchain.sim_via), "
-                         f"so no L2 engine binding can be attributed to it")
+        raise ValueError(
+            f"{target!r} declares no bespoke simulator (runner.sim_via / toolchain.sim_via), "
+            f"so no L2 engine binding can be attributed to it"
+        )
     return engine
 
 
@@ -139,7 +150,8 @@ def cyclotron_l2_engine_binding(target: str) -> dict[str, Any]:
 
     # Cyclotron is the ENGINE here; the target being EVALUATED is the `target` parameter, recorded
     # as binding["target"] and checked by _validate_l2_engine_binding.
-    backend = get_backend("muon")  # target-ok: cyclotron is the muon backend's simulator, and the evaluated target is the `target` parameter
+    # target-ok rationale: cyclotron is that backend's simulator; the EVALUATED target is `target`.
+    backend = get_backend("muon")  # target-ok: engine backend, not the evaluated target
     binary = backend.cyclotron_path().resolve()
     # An explicit executable override may come from a different checkout than the timing tree.  Cite
     # both honestly: the binary's source tree is inferred from its canonical Cargo output layout while
@@ -154,15 +166,18 @@ def cyclotron_l2_engine_binding(target: str) -> dict[str, Any]:
     )
     binding["target"] = target
     binding["binding_sha256"] = _canonical_json_sha256(
-        {key: value for key, value in binding.items() if key != "binding_sha256"})
+        {key: value for key, value in binding.items() if key != "binding_sha256"}
+    )
     return binding
 
 
 def _validate_l2_engine_binding(binding: Any, *, target: str) -> dict[str, Any]:
-    if (not isinstance(binding, dict)
-            or binding.get("schema") != "configured_executable_binding_v1"
-            or binding.get("engine") != _declared_l2_engine(target)
-            or binding.get("target") != target):
+    if (
+        not isinstance(binding, dict)
+        or binding.get("schema") != "configured_executable_binding_v1"
+        or binding.get("engine") != _declared_l2_engine(target)
+        or binding.get("target") != target
+    ):
         raise ValueError("search score has no valid Cyclotron L2 engine binding")
     expected_sha = binding.get("binding_sha256")
     unsigned = {key: value for key, value in binding.items() if key != "binding_sha256"}
@@ -172,11 +187,9 @@ def _validate_l2_engine_binding(binding: Any, *, target: str) -> dict[str, Any]:
     config = binding.get("config")
     if not isinstance(binary, dict) or not isinstance(config, dict):
         raise ValueError("Cyclotron L2 engine binding is malformed")
-    if _file_sha256(Path(str(binary.get("path", ""))), what="bound Cyclotron executable") \
-            != binary.get("sha256"):
+    if _file_sha256(Path(str(binary.get("path", ""))), what="bound Cyclotron executable") != binary.get("sha256"):
         raise ValueError("bound Cyclotron executable content digest mismatch")
-    if _file_sha256(Path(str(config.get("path", ""))), what="bound Cyclotron config") \
-            != config.get("sha256"):
+    if _file_sha256(Path(str(config.get("path", ""))), what="bound Cyclotron config") != config.get("sha256"):
         raise ValueError("bound Cyclotron config content digest mismatch")
     tree = Path(str(config.get("tree", "")))
     if tree.is_symlink() or not tree.is_dir() or _tree_sha256(tree) != config.get("tree_sha256"):
@@ -212,10 +225,8 @@ def _search_source_records(te: TargetExperiment) -> list[dict[str, str]]:
         doc = yaml.safe_load((source / "capsule.yaml").read_text(encoding="utf-8")) or {}
         role = str(doc.get("source_role") or "")
         if role != "model_derived":
-            raise ValueError(
-                f"search cohort is not exclusively model-derived: {name} has source_role={role!r}")
-        records.append({"name": name, "source_role": role,
-                        "source_tree_sha256": _tree_sha256(source)})
+            raise ValueError(f"search cohort is not exclusively model-derived: {name} has source_role={role!r}")
+        records.append({"name": name, "source_role": role, "source_tree_sha256": _tree_sha256(source)})
     return sorted(records, key=lambda row: row["name"])
 
 
@@ -235,7 +246,8 @@ def _search_score_problems(score: Any, expected_names: list[str], *, target: str
     if score.get("n_capsules") != expected_n or score.get("n_passed") != expected_n:
         problems.append(
             f"score is not an exact all-pass ({score.get('n_passed')}/{score.get('n_capsules')}, "
-            f"expected {expected_n}/{expected_n})")
+            f"expected {expected_n}/{expected_n})"
+        )
     if score.get("all_pass") is not True:
         problems.append("score all_pass is not true")
     if score.get("n_certified") != expected_n:
@@ -255,8 +267,7 @@ def _search_score_problems(score: Any, expected_names: list[str], *, target: str
             problems.append("score contains a malformed per_capsule row")
             continue
         name = row.get("capsule", "<unnamed>")
-        if (row.get("pass") is not True or row.get("barrier_tier") != "L2"
-                or row.get("barrier_status") != "pass"):
+        if row.get("pass") is not True or row.get("barrier_tier") != "L2" or row.get("barrier_status") != "pass":
             problems.append(f"{name} is not a recorded L2 numeric pass")
         digest = row.get("execution_digest")
         try:
@@ -293,7 +304,10 @@ def _sealed_predecessor_cycle_policy(stage: dict[str, Any]) -> dict[str, Any]:
 
 
 def create_search_pass_seal(
-    dest: str | Path, te: TargetExperiment, candidate: str | Path, score: str | Path,
+    dest: str | Path,
+    te: TargetExperiment,
+    candidate: str | Path,
+    score: str | Path,
 ) -> dict[str, Any]:
     """Seal one exact all-pass L2 result with the candidate and source-tree identities.
 
@@ -322,7 +336,8 @@ def create_search_pass_seal(
     if score_binding != cyclotron_l2_engine_binding(te.target):
         raise ValueError(
             "search pass evidence rejected: measured Cyclotron executable/config identity differs "
-            "from the current L2 engine")
+            "from the current L2 engine"
+        )
     record = {
         "schema": "descriptor_search_pass_v3",
         "claim_scope": "admitted_search_covering_set_not_e2e_readiness",
@@ -336,8 +351,7 @@ def create_search_pass_seal(
         "score": str(score_path.resolve()),
         "score_sha256": score_sha256,
         "capsules": source_records,
-        "l2_cycles": {str(row["capsule"]): int(row["barrier_cycles"])
-                      for row in score_doc["per_capsule"]},
+        "l2_cycles": {str(row["capsule"]): int(row["barrier_cycles"]) for row in score_doc["per_capsule"]},
         "l2_engine_binding": score_binding,
         "n_capsules": len(names),
         "n_passed": len(names),
@@ -348,15 +362,20 @@ def create_search_pass_seal(
 
 
 def validate_search_pass_seal(
-    path: str | Path, te: TargetExperiment, candidate: str | Path,
+    path: str | Path,
+    te: TargetExperiment,
+    candidate: str | Path,
 ) -> dict[str, Any]:
     path, candidate = Path(path), Path(candidate)
     seal_sha256 = _file_sha256(path, what="search pass seal")
     record = json.loads(path.read_text(encoding="utf-8"))
     if record.get("schema") != "descriptor_search_pass_v3":
         raise ValueError(f"unsupported search pass seal: {path}")
-    if (record.get("target") != te.target or record.get("descriptor_sha256") != te.descriptor_sha256
-            or record.get("policy") != te.graded_cohort_policy):
+    if (
+        record.get("target") != te.target
+        or record.get("descriptor_sha256") != te.descriptor_sha256
+        or record.get("policy") != te.graded_cohort_policy
+    ):
         raise ValueError("search pass seal does not belong to the loaded target descriptor")
     if record.get("claim_scope") != "admitted_search_covering_set_not_e2e_readiness":
         raise ValueError("search pass seal overstates or omits its admitted-covering-set scope")
@@ -376,21 +395,20 @@ def validate_search_pass_seal(
     if record.get("n_capsules") != expected_n or record.get("n_passed") != expected_n:
         raise ValueError("search pass seal is not an exact all-pass")
     cycle_names = record.get("l2_cycles")
-    if (not isinstance(cycle_names, dict) or sorted(cycle_names) !=
-            sorted(row["name"] for row in expected_records)
-            or any(not isinstance(value, int) or isinstance(value, bool) or value <= 0
-                   for value in cycle_names.values())):
+    if (
+        not isinstance(cycle_names, dict)
+        or sorted(cycle_names) != sorted(row["name"] for row in expected_records)
+        or any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in cycle_names.values())
+    ):
         raise ValueError("search pass seal lacks exact positive per-capsule L2 cycles")
     score_path = Path(str(record.get("score", "")))
     if _file_sha256(score_path, what="sealed search score") != record.get("score_sha256"):
         raise ValueError("search score evidence digest mismatch")
     score_doc = json.loads(score_path.read_text(encoding="utf-8"))
-    problems = _search_score_problems(
-        score_doc, [row["name"] for row in expected_records], target=te.target)
+    problems = _search_score_problems(score_doc, [row["name"] for row in expected_records], target=te.target)
     if problems:
         raise ValueError("sealed search score no longer proves the pass: " + "; ".join(problems))
-    score_cycles = {str(row["capsule"]): int(row["barrier_cycles"])
-                    for row in score_doc["per_capsule"]}
+    score_cycles = {str(row["capsule"]): int(row["barrier_cycles"]) for row in score_doc["per_capsule"]}
     if record.get("l2_cycles") != score_cycles:
         raise ValueError("search pass seal L2 cycle map differs from its hash-bound score evidence")
     score_binding = score_doc["per_capsule"][0]["barrier_engine_binding"]
@@ -419,8 +437,7 @@ def engine_preflight(te: TargetExperiment, stage_name: str) -> dict[str, Any]:
     if selected.get("available") is not True:
         problems.append("declared evaluation engine is unavailable")
     if selected.get("engine") != requested:
-        problems.append(
-            f"descriptor requests {requested!r}, resolver selected {selected.get('engine')!r}")
+        problems.append(f"descriptor requests {requested!r}, resolver selected {selected.get('engine')!r}")
     if selected.get("fidelity") != "elaborated_rtl":
         problems.append("selected evaluation engine is not classified as elaborated RTL")
     if "UNRECORDED" in reason or "no build receipt" in reason.lower():
@@ -444,8 +461,7 @@ def engine_preflight(te: TargetExperiment, stage_name: str) -> dict[str, Any]:
         if citation.get("receipt_status") != "bound" or not isinstance(receipt, dict):
             problems.append("canonical GSIM binary lacks a bound build receipt")
         if binary_path.resolve() != canonical_binary:
-            problems.append(
-                f"GSIM selection is not the canonical install ({binary_path} != {canonical_binary})")
+            problems.append(f"GSIM selection is not the canonical install ({binary_path} != {canonical_binary})")
         try:
             binary_sha256 = _file_sha256(binary_path, what="canonical GSIM binary")
             receipt_sha256 = _file_sha256(receipt_path, what="canonical GSIM receipt")
@@ -480,7 +496,10 @@ def engine_preflight(te: TargetExperiment, stage_name: str) -> dict[str, Any]:
 
 
 def _validate_engine_binding(
-    preflight: Any, *, expected_engine: str, target: str,
+    preflight: Any,
+    *,
+    expected_engine: str,
+    target: str,
 ) -> dict[str, Any]:
     if not isinstance(preflight, dict) or preflight.get("ok") is not True:
         raise ValueError("evaluation engine preflight is not clean")
@@ -497,18 +516,20 @@ def _validate_engine_binding(
     unsigned = {key: value for key, value in binding.items() if key != "binding_sha256"}
     if _canonical_json_sha256(unsigned) != expected_binding_sha:
         raise ValueError("evaluation engine binding record digest mismatch")
-    if _file_sha256(Path(str(binding.get("binary", ""))), what="bound engine binary") \
-            != binding.get("binary_sha256"):
+    if _file_sha256(Path(str(binding.get("binary", ""))), what="bound engine binary") != binding.get("binary_sha256"):
         raise ValueError("bound engine binary content digest mismatch")
-    if _file_sha256(Path(str(binding.get("receipt", ""))), what="bound engine receipt") \
-            != binding.get("receipt_sha256"):
+    if _file_sha256(Path(str(binding.get("receipt", ""))), what="bound engine receipt") != binding.get(
+        "receipt_sha256"
+    ):
         raise ValueError("bound engine receipt content digest mismatch")
     receipt = binding.get("receipt_identity")
-    if (not isinstance(receipt, dict) or binding.get("receipt_status") != "bound"
-            or receipt.get("binary_sha256") != binding.get("binary_sha256")
-            or receipt.get("receipt_sha256") != binding.get("receipt_sha256")
-            or Path(str(receipt.get("receipt_path", ""))).resolve()
-            != Path(str(binding.get("receipt", ""))).resolve()):
+    if (
+        not isinstance(receipt, dict)
+        or binding.get("receipt_status") != "bound"
+        or receipt.get("binary_sha256") != binding.get("binary_sha256")
+        or receipt.get("receipt_sha256") != binding.get("receipt_sha256")
+        or Path(str(receipt.get("receipt_path", ""))).resolve() != Path(str(binding.get("receipt", ""))).resolve()
+    ):
         raise ValueError("bound engine receipt identity does not match its executable")
     return binding
 
@@ -530,15 +551,16 @@ def _predecessor_pass_evidence(
     after = str(te.evaluation_cohort(stage_name)["after"])
     if after == "search_l2_pass":
         raise ValueError(
-            f"evaluation stage {stage_name!r} requires a search-pass seal, not evaluation-stage "
-            "predecessor evidence")
+            f"evaluation stage {stage_name!r} requires a search-pass seal, not evaluation-stage predecessor evidence"
+        )
     if not after.endswith("_pass"):
         raise ValueError(f"evaluation stage {stage_name!r} has unsupported dependency {after!r}")
     predecessor_stage = after.removesuffix("_pass")
     if predecessor_cohort is None or predecessor_score is None:
         raise ValueError(
             f"evaluation stage {stage_name!r} requires --predecessor-cohort and "
-            f"--predecessor-score proving {predecessor_stage!r} passed")
+            f"--predecessor-score proving {predecessor_stage!r} passed"
+        )
 
     cohort_root = Path(predecessor_cohort)
     score_path = Path(predecessor_score)
@@ -548,8 +570,7 @@ def _predecessor_pass_evidence(
         raise ValueError(f"predecessor score is not a regular file: {score_path}")
     prior = validate_evaluation_cohort(cohort_root, te, candidate)
     if prior.get("stage") != predecessor_stage:
-        raise ValueError(
-            f"predecessor cohort is stage {prior.get('stage')!r}, expected {predecessor_stage!r}")
+        raise ValueError(f"predecessor cohort is stage {prior.get('stage')!r}, expected {predecessor_stage!r}")
 
     score = json.loads(score_path.read_text(encoding="utf-8"))
     expected_names = sorted(row["name"] for row in prior["capsules"])
@@ -565,7 +586,8 @@ def _predecessor_pass_evidence(
     if score.get("n_capsules") != expected_n or score.get("n_passed") != expected_n or expected_n == 0:
         problems.append(
             f"score is not an exact all-pass ({score.get('n_passed')}/{score.get('n_capsules')}, "
-            f"expected {expected_n}/{expected_n})")
+            f"expected {expected_n}/{expected_n})"
+        )
 
     rows = score.get("per_capsule")
     if not isinstance(rows, list):
@@ -581,11 +603,10 @@ def _predecessor_pass_evidence(
             continue
         tier_record = (row.get("tiers") or {}).get(required_tier)
         tier_status = tier_record.get("status") if isinstance(tier_record, dict) else tier_record
-        if (row.get("status") != "pass" or tier_status != "pass"
-                or (row.get("numeric") or {}).get("status") != "pass"):
+        if row.get("status") != "pass" or tier_status != "pass" or (row.get("numeric") or {}).get("status") != "pass":
             problems.append(
-                f"{row.get('capsule', '<unnamed>')} did not pass numeric grading and required tier "
-                f"{required_tier}")
+                f"{row.get('capsule', '<unnamed>')} did not pass numeric grading and required tier {required_tier}"
+            )
     if (score.get("pass_evidence") or {}).get("rtl_backed") != expected_n:
         problems.append("not every predecessor pass is backed by elaborated-RTL evidence")
     if problems:
@@ -594,15 +615,13 @@ def _predecessor_pass_evidence(
     return {
         "stage": predecessor_stage,
         "cohort": str(cohort_root.resolve()),
-        "cohort_manifest_sha256": hashlib.sha256(
-            (cohort_root / ".evaluation_cohort.json").read_bytes()).hexdigest(),
+        "cohort_manifest_sha256": hashlib.sha256((cohort_root / ".evaluation_cohort.json").read_bytes()).hexdigest(),
         "score": str(score_path.resolve()),
         "score_sha256": hashlib.sha256(score_path.read_bytes()).hexdigest(),
         "candidate_tree_sha256": prior["candidate_tree_sha256"],
         "materialized_tree_sha256": prior["materialized_tree_sha256"],
         "engine_binding_sha256": prior["engine_preflight"]["engine_binding"]["binding_sha256"],
-        "search_pass_seal_sha256": (
-            (prior.get("search_pass_evidence") or {}).get("seal_sha256")),
+        "search_pass_seal_sha256": ((prior.get("search_pass_evidence") or {}).get("seal_sha256")),
         "required_oracle_tier": required_tier,
         "n_capsules": expected_n,
         "n_passed": expected_n,
@@ -639,33 +658,30 @@ def materialize_evaluation_cohort(
     if after == "search_l2_pass":
         if predecessor_cohort is not None or predecessor_score is not None:
             raise ValueError(
-                f"evaluation stage {stage_name!r} follows the sealed search pass, not another "
-                "evaluation cohort")
+                f"evaluation stage {stage_name!r} follows the sealed search pass, not another evaluation cohort"
+            )
         if search_pass_seal is None:
             raise ValueError(
                 f"evaluation stage {stage_name!r} requires --search-pass-seal proving the exact "
-                "admitted cohort passed L2")
+                "admitted cohort passed L2"
+            )
         search_evidence = validate_search_pass_seal(search_pass_seal, te, candidate)
         if tuple(stage["include_capsules"]) != tuple(te.graded_include):
-            raise ValueError(
-                f"evaluation stage {stage_name!r} does not contain exactly the search cohort")
+            raise ValueError(f"evaluation stage {stage_name!r} does not contain exactly the search cohort")
         cycle_policy = _sealed_predecessor_cycle_policy(stage)
     else:
         if search_pass_seal is not None:
-            raise ValueError(
-                f"evaluation stage {stage_name!r} does not directly consume a search-pass seal")
-        predecessor = _predecessor_pass_evidence(
-            te, stage_name, candidate, predecessor_cohort, predecessor_score)
+            raise ValueError(f"evaluation stage {stage_name!r} does not directly consume a search-pass seal")
+        predecessor = _predecessor_pass_evidence(te, stage_name, candidate, predecessor_cohort, predecessor_score)
         cycle_policy = None
     preflight = engine_preflight(te, stage_name)
     if preflight.get("ok") is not True:
         raise ValueError(
             "evaluation engine preflight rejected materialization: "
-            + "; ".join(preflight.get("problems") or ["unknown engine preflight failure"]))
-    current_binding = _validate_engine_binding(
-        preflight, expected_engine=str(stage["oracle_engine"]), target=te.target)
-    if predecessor is not None and predecessor.get("engine_binding_sha256") \
-            != current_binding.get("binding_sha256"):
+            + "; ".join(preflight.get("problems") or ["unknown engine preflight failure"])
+        )
+    current_binding = _validate_engine_binding(preflight, expected_engine=str(stage["oracle_engine"]), target=te.target)
+    if predecessor is not None and predecessor.get("engine_binding_sha256") != current_binding.get("binding_sha256"):
         raise ValueError("evaluation engine binding changed since the predecessor GSIM pass")
     if dest.exists() and any(dest.iterdir()):
         raise ValueError(f"evaluation destination is not empty: {dest}")
@@ -685,22 +701,22 @@ def materialize_evaluation_cohort(
         if required_roles and role not in required_roles:
             raise ValueError(
                 f"evaluation cohort {stage_name!r} requires source role(s) "
-                f"{sorted(required_roles)}, but {name} is {role!r}")
-        source_records.append({"name": name, "source_role": role,
-                               "source_tree_sha256": _tree_sha256(src)})
+                f"{sorted(required_roles)}, but {name} is {role!r}"
+            )
+        source_records.append({"name": name, "source_role": role, "source_tree_sha256": _tree_sha256(src)})
     source_records = sorted(source_records, key=lambda row: row["name"])
     if search_evidence is not None and source_records != search_evidence["capsules"]:
-        raise ValueError(
-            "derived GSIM source trees/shapes differ from the sealed search cohort")
+        raise ValueError("derived GSIM source trees/shapes differ from the sealed search cohort")
 
     excluded = set(sources) - set(include)
     written = materialize_public_capsules(
-        dest, tier_ceiling=str(stage["oracle_tier"]), corpus_roots=te.graded_roots(),
+        dest,
+        tier_ceiling=str(stage["oracle_tier"]),
+        corpus_roots=te.graded_roots(),
         exclude=excluded,
     )
     if set(written) != set(include):
-        raise ValueError(
-            f"materialized cohort differs from declaration: wrote={written}, declared={sorted(include)}")
+        raise ValueError(f"materialized cohort differs from declaration: wrote={written}, declared={sorted(include)}")
 
     # This is a POST-SEARCH certification contract.  The source capsule intentionally leaves L3
     # optional so cheap search can use its sibling; in this isolated copy the stage's tier is mandatory.
@@ -712,7 +728,8 @@ def materialize_evaluation_cohort(
         if required_tier not in tiers:
             tiers.append(required_tier)
         doc["required_oracle_tiers"] = sorted(
-            set(tiers), key=lambda t: int(t[1:]) if t.startswith("L") and t[1:].isdigit() else 999)
+            set(tiers), key=lambda t: int(t[1:]) if t.startswith("L") and t[1:].isdigit() else 999
+        )
         doc.pop("unreachable_required_oracle_tiers", None)
         doc.pop("oracle_tier_ceiling", None)
         # Application-derived search capsules normally cap themselves at L2 and point at a reduced
@@ -727,8 +744,7 @@ def materialize_evaluation_cohort(
             "oracle_engine": stage["oracle_engine"],
         }
         if search_evidence is not None:
-            doc["evaluation_stage"]["predecessor_l2_cycles"] = int(
-                search_evidence["l2_cycles"][name])
+            doc["evaluation_stage"]["predecessor_l2_cycles"] = int(search_evidence["l2_cycles"][name])
             doc["evaluation_stage"]["cycle_budget"] = cycle_policy
         path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
 
@@ -768,13 +784,14 @@ def materialize_evaluation_cohort(
     if predecessor is not None:
         record["predecessor_pass_evidence"] = predecessor
     record["materialized_tree_sha256"] = _tree_sha256(dest)
-    (dest / ".evaluation_cohort.json").write_text(
-        json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (dest / ".evaluation_cohort.json").write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return record
 
 
 def validate_evaluation_cohort(
-    root: str | Path, te: TargetExperiment, candidate: str | Path,
+    root: str | Path,
+    te: TargetExperiment,
+    candidate: str | Path,
 ) -> dict[str, Any]:
     root = Path(root)
     record_path = root / ".evaluation_cohort.json"
@@ -805,12 +822,16 @@ def validate_evaluation_cohort(
             raise ValueError(f"{name} carries the wrong evaluation-stage marker")
         if str(stage["after"]) == "search_l2_pass":
             expected_cycles = ((record.get("search_pass_evidence") or {}).get("l2_cycles") or {}).get(name)
-            if (not isinstance(expected_cycles, int) or isinstance(expected_cycles, bool)
-                    or expected_cycles <= 0
-                    or marker.get("predecessor_l2_cycles") != expected_cycles):
+            if (
+                not isinstance(expected_cycles, int)
+                or isinstance(expected_cycles, bool)
+                or expected_cycles <= 0
+                or marker.get("predecessor_l2_cycles") != expected_cycles
+            ):
                 raise ValueError(f"{name} carries no exact sealed predecessor L2 cycle count")
-            if marker.get("cycle_budget") != _sealed_predecessor_cycle_policy(stage) \
-                    or record.get("cycle_budget") != _sealed_predecessor_cycle_policy(stage):
+            if marker.get("cycle_budget") != _sealed_predecessor_cycle_policy(stage) or record.get(
+                "cycle_budget"
+            ) != _sealed_predecessor_cycle_policy(stage):
                 raise ValueError(f"{name} carries the wrong sealed-cycle observation policy")
     expected_digest = record.get("materialized_tree_sha256")
     # The manifest itself was deliberately absent when its digest was calculated.
@@ -818,18 +839,20 @@ def validate_evaluation_cohort(
     if actual_digest != expected_digest:
         raise ValueError("evaluation cohort content digest mismatch")
     _validate_engine_binding(
-        record.get("engine_preflight"), expected_engine=str(stage["oracle_engine"]),
-        target=te.target)
+        record.get("engine_preflight"), expected_engine=str(stage["oracle_engine"]), target=te.target
+    )
     source_records = []
     sources = _source_capsules(te)
     for name in stage["include_capsules"]:
         source = sources[name]
         doc = yaml.safe_load((source / "capsule.yaml").read_text(encoding="utf-8")) or {}
-        source_records.append({
-            "name": name,
-            "source_role": str(doc.get("source_role") or ""),
-            "source_tree_sha256": _tree_sha256(source),
-        })
+        source_records.append(
+            {
+                "name": name,
+                "source_role": str(doc.get("source_role") or ""),
+                "source_tree_sha256": _tree_sha256(source),
+            }
+        )
     if sorted(source_records, key=lambda row: row["name"]) != record.get("capsules"):
         raise ValueError("evaluation source capsule tree digest mismatch")
     search_evidence = record.get("search_pass_evidence")
@@ -840,9 +863,19 @@ def validate_evaluation_cohort(
         if _file_sha256(seal_path, what="search pass seal") != search_evidence.get("seal_sha256"):
             raise ValueError("search pass seal evidence digest mismatch")
         sealed = validate_search_pass_seal(seal_path, te, candidate)
-        for field in ("seal_sha256", "score", "score_sha256", "candidate_tree_sha256",
-                      "capsules", "n_capsules", "n_passed", "required_oracle_tier", "claim_scope",
-                      "l2_cycles", "l2_engine_binding"):
+        for field in (
+            "seal_sha256",
+            "score",
+            "score_sha256",
+            "candidate_tree_sha256",
+            "capsules",
+            "n_capsules",
+            "n_passed",
+            "required_oracle_tier",
+            "claim_scope",
+            "l2_cycles",
+            "l2_engine_binding",
+        ):
             if search_evidence.get(field) != sealed.get(field):
                 raise ValueError(f"search pass evidence field changed: {field}")
     elif search_evidence is not None:
@@ -851,22 +884,18 @@ def validate_evaluation_cohort(
     if predecessor is not None:
         manifest_path = Path(str(predecessor.get("cohort", ""))) / ".evaluation_cohort.json"
         score_path = Path(str(predecessor.get("score", "")))
-        if (
-            not manifest_path.is_file()
-            or hashlib.sha256(manifest_path.read_bytes()).hexdigest()
-            != predecessor.get("cohort_manifest_sha256")
+        if not manifest_path.is_file() or hashlib.sha256(manifest_path.read_bytes()).hexdigest() != predecessor.get(
+            "cohort_manifest_sha256"
         ):
             raise ValueError("predecessor cohort evidence digest mismatch")
-        if (
-            not score_path.is_file()
-            or hashlib.sha256(score_path.read_bytes()).hexdigest()
-            != predecessor.get("score_sha256")
+        if not score_path.is_file() or hashlib.sha256(score_path.read_bytes()).hexdigest() != predecessor.get(
+            "score_sha256"
         ):
             raise ValueError("predecessor score evidence digest mismatch")
         prior = validate_evaluation_cohort(manifest_path.parent, te, candidate)
         if prior.get("materialized_tree_sha256") != predecessor.get("materialized_tree_sha256"):
             raise ValueError("predecessor materialized-tree hash chain mismatch")
-        prior_binding = ((prior.get("engine_preflight") or {}).get("engine_binding") or {})
+        prior_binding = (prior.get("engine_preflight") or {}).get("engine_binding") or {}
         if prior_binding.get("binding_sha256") != predecessor.get("engine_binding_sha256"):
             raise ValueError("predecessor engine-binding hash chain mismatch")
         prior_search = prior.get("search_pass_evidence") or {}
@@ -877,37 +906,39 @@ def validate_evaluation_cohort(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Seal search convergence or materialize a frozen post-search evaluation cohort")
+        description="Seal search convergence or materialize a frozen post-search evaluation cohort"
+    )
     parser.add_argument("--target", required=True)
     parser.add_argument("--stage")
     parser.add_argument("--dest")
-    parser.add_argument("--candidate", required=True,
-                        help="frozen compiler package evaluated by this stage")
-    parser.add_argument("--create-search-pass-seal",
-                        help="write a digest-bound exact-search-pass seal at this absent path")
-    parser.add_argument("--search-score",
-                        help="exact all-pass L2 self-check score used to create a search-pass seal")
-    parser.add_argument("--search-pass-seal",
-                        help="sealed exact all-pass L2 evidence required by the derived GSIM stage")
-    parser.add_argument("--predecessor-cohort",
-                        help="materialized predecessor cohort required by an after: *_pass stage")
-    parser.add_argument("--predecessor-score",
-                        help="grader score proving the predecessor cohort passed its physical tier")
-    parser.add_argument("--replace-empty", action="store_true",
-                        help="remove an existing empty destination before materializing")
+    parser.add_argument("--candidate", required=True, help="frozen compiler package evaluated by this stage")
+    parser.add_argument(
+        "--create-search-pass-seal", help="write a digest-bound exact-search-pass seal at this absent path"
+    )
+    parser.add_argument("--search-score", help="exact all-pass L2 self-check score used to create a search-pass seal")
+    parser.add_argument(
+        "--search-pass-seal", help="sealed exact all-pass L2 evidence required by the derived GSIM stage"
+    )
+    parser.add_argument(
+        "--predecessor-cohort", help="materialized predecessor cohort required by an after: *_pass stage"
+    )
+    parser.add_argument(
+        "--predecessor-score", help="grader score proving the predecessor cohort passed its physical tier"
+    )
+    parser.add_argument(
+        "--replace-empty", action="store_true", help="remove an existing empty destination before materializing"
+    )
     args = parser.parse_args(argv)
     descriptor = descriptor_for(args.target)
     if descriptor is None:
         raise SystemExit(f"no target experiment descriptor for {args.target!r}")
     te = load_target_experiment(descriptor)
     if args.create_search_pass_seal:
-        if args.stage or args.dest or args.search_pass_seal \
-                or args.predecessor_cohort or args.predecessor_score:
+        if args.stage or args.dest or args.search_pass_seal or args.predecessor_cohort or args.predecessor_score:
             parser.error("search-pass sealing cannot be combined with evaluation-stage arguments")
         if not args.search_score:
             parser.error("--create-search-pass-seal requires --search-score")
-        record = create_search_pass_seal(
-            args.create_search_pass_seal, te, args.candidate, args.search_score)
+        record = create_search_pass_seal(args.create_search_pass_seal, te, args.candidate, args.search_score)
         validate_search_pass_seal(args.create_search_pass_seal, te, args.candidate)
         print(json.dumps(record, indent=2, sort_keys=True))
         return 0
@@ -919,7 +950,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.replace_empty and dest.is_dir() and not any(dest.iterdir()):
         dest.rmdir()
     record = materialize_evaluation_cohort(
-        dest, te, args.stage, args.candidate,
+        dest,
+        te,
+        args.stage,
+        args.candidate,
         search_pass_seal=args.search_pass_seal,
         predecessor_cohort=args.predecessor_cohort,
         predecessor_score=args.predecessor_score,

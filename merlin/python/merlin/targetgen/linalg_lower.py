@@ -15,6 +15,7 @@ Currently supported patterns (each verified against the reference emitter):
 The dtype is set to ``f32`` (the reference emitter's compute domain); whether an fp32 kernel meets a
 bf16/f16 capsule's tolerance is a separate fidelity question settled by the cyclotron oracle.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -52,8 +53,11 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
     argshape = {a["index"]: list(a["shape"]) for a in args}
 
     # --- single elementwise map (equal-shape or row-broadcast) ---------------------------------------
-    if (len(ops) == 1 and ops[0]["family"] in ("elementwise", "elementwise_map")
-            and ops[0].get("op") not in ("gelu", "softmax", "geglu", "rope", "layer_norm", "rms_norm")):
+    if (
+        len(ops) == 1
+        and ops[0]["family"] in ("elementwise", "elementwise_map")
+        and ops[0].get("op") not in ("gelu", "softmax", "geglu", "rope", "layer_norm", "rms_norm")
+    ):
         op = ops[0]
         ins = op["ins"]
         combine = _combine_from_body(op["body_ops"])
@@ -67,19 +71,31 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
         if len(arg_ins) == 1 and len(const_ins) == 1:
             ai = arg_ins[0]["source"][1]
             out = "out"
-            tensors = {argname[ai]: {"shape": argshape[ai], "dtype": "f32", "role": "input"},
-                       out: {"shape": list(op["results"][0]["shape"]), "dtype": "f32", "role": "output"}}
-            cmd = {"opcode": "VECTOR_MAP", "operands": {"lhs": argname[ai], "dst": out},
-                   "attributes": {"combine": combine, "scalar": const_ins[0]["const_value"]}}
+            tensors = {
+                argname[ai]: {"shape": argshape[ai], "dtype": "f32", "role": "input"},
+                out: {"shape": list(op["results"][0]["shape"]), "dtype": "f32", "role": "output"},
+            }
+            cmd = {
+                "opcode": "VECTOR_MAP",
+                "operands": {"lhs": argname[ai], "dst": out},
+                "attributes": {"combine": combine, "scalar": const_ins[0]["const_value"]},
+            }
             # the emitted kernel takes (lhs, dst) — the func-arg order the linalg_positional harness feeds
-            return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                    "commands": [cmd], "outputs": [out],
-                    "interface": "linalg_positional", "arg_order": [argname[ai], out]}
+            return {
+                "abi_version": "0.1",
+                "target": target,
+                "tensors": tensors,
+                "commands": [cmd],
+                "outputs": [out],
+                "interface": "linalg_positional",
+                "arg_order": [argname[ai], out],
+            }
 
         if any(s["source"][0] != "arg" for s in ins):
             raise LinalgLowerError(
                 "reference lowering supports a two-arg elementwise map or arg-times-constant only "
-                f"(got {[s['source'] for s in ins]})")
+                f"(got {[s['source'] for s in ins]})"
+            )
         i0, i1 = ins[0]["source"][1], ins[1]["source"][1]
         s0, s1 = argshape[i0], argshape[i1]
         # accept equal-shape, or a length-n rhs broadcast over an (m,n) lhs (the emitter handles both)
@@ -92,19 +108,26 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
             argname[i1]: {"shape": s1, "dtype": "f32", "role": rhs_role},
             out: {"shape": list(op["results"][0]["shape"]), "dtype": "f32", "role": "output"},
         }
-        cmd = {"opcode": "VECTOR_MAP",
-               "operands": {"lhs": argname[i0], "rhs": argname[i1], "dst": out},
-               "attributes": {"combine": combine}}
+        cmd = {
+            "opcode": "VECTOR_MAP",
+            "operands": {"lhs": argname[i0], "rhs": argname[i1], "dst": out},
+            "attributes": {"combine": combine},
+        }
         # the emitted kernel takes (lhs, rhs, dst) — the func-arg order the linalg_positional harness feeds
-        return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                "commands": [cmd], "outputs": [out],
-                "interface": "linalg_positional", "arg_order": [argname[i0], argname[i1], out]}
+        return {
+            "abi_version": "0.1",
+            "target": target,
+            "tensors": tensors,
+            "commands": [cmd],
+            "outputs": [out],
+            "interface": "linalg_positional",
+            "arg_order": [argname[i0], argname[i1], out],
+        }
 
     # --- full attention: softmax(scale*Q@Kᵀ + mask) @ V (a softmax + two matmuls, optional causal) -----
     if any(o.get("op") == "softmax" for o in ops) and sum(o.get("family") == "contraction" for o in ops) == 2:
         mm = [o for o in ops if o.get("family") == "contraction"]
-        div_c = [i["const_value"] for o in ops if o.get("op") == "div"
-                 for i in o["ins"] if "const_value" in i]
+        div_c = [i["const_value"] for o in ops if o.get("op") == "div" for i in o["ins"] if "const_value" in i]
         causal = any(o.get("op") == "select" for o in ops)
 
         def _arg_or_transpose(src):
@@ -127,17 +150,21 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
                 argname[v_i]: {"shape": argshape[v_i], "dtype": "f32", "role": "input"},
                 out: {"shape": list(ops[-1]["results"][0]["shape"]), "dtype": "f32", "role": "output"},
             }
-            cmd = {"opcode": "ATTENTION_FULL",
-                   "operands": {"q": argname[q_i], "k": argname[k_i], "v": argname[v_i], "dst": out},
-                   "attributes": {"scale": 1.0 / div_c[0], "causal": causal}}
-            return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                    "commands": [cmd], "outputs": [out]}
+            cmd = {
+                "opcode": "ATTENTION_FULL",
+                "operands": {"q": argname[q_i], "k": argname[k_i], "v": argname[v_i], "dst": out},
+                "attributes": {"scale": 1.0 / div_c[0], "causal": causal},
+            }
+            return {"abi_version": "0.1", "target": target, "tensors": tensors, "commands": [cmd], "outputs": [out]}
 
     # --- SwiGLU/GEGLU: silu(X@W_gate) * (X@W_up) (a sigmoid + two shared-lhs matmuls) -----------------
     if any(o.get("op") == "sigmoid" for o in ops):
         mmg = [o for o in ops if o.get("family") == "contraction"]
-        if (len(mmg) == 2 and all(m["ins"][0]["source"][0] == "arg" and m["ins"][1]["source"][0] == "arg"
-                                  for m in mmg) and mmg[0]["ins"][0]["source"] == mmg[1]["ins"][0]["source"]):
+        if (
+            len(mmg) == 2
+            and all(m["ins"][0]["source"][0] == "arg" and m["ins"][1]["source"][0] == "arg" for m in mmg)
+            and mmg[0]["ins"][0]["source"] == mmg[1]["ins"][0]["source"]
+        ):
             x_i = mmg[0]["ins"][0]["source"][1]
             wg_i = mmg[0]["ins"][1]["source"][1]
             wu_i = mmg[1]["ins"][1]["source"][1]
@@ -148,13 +175,14 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
                 argname[wu_i]: {"shape": argshape[wu_i], "dtype": "f32", "role": "weight"},
                 out: {"shape": list(ops[-1]["results"][0]["shape"]), "dtype": "f32", "role": "output"},
             }
-            cmd = {"opcode": "GEGLU", "operands": {"src": argname[x_i], "w_gate": argname[wg_i],
-                                                   "w_up": argname[wu_i], "dst": out}}
-            return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                    "commands": [cmd], "outputs": [out]}
+            cmd = {
+                "opcode": "GEGLU",
+                "operands": {"src": argname[x_i], "w_gate": argname[wg_i], "w_up": argname[wu_i], "dst": out},
+            }
+            return {"abi_version": "0.1", "target": target, "tensors": tensors, "commands": [cmd], "outputs": [out]}
 
     # --- two chained 2-D matmuls: A@W1 then (that result)@W2 -----------------------------------------
-    if (len(ops) == 2 and ops[0].get("family") == "contraction" and ops[1].get("family") == "contraction"):
+    if len(ops) == 2 and ops[0].get("family") == "contraction" and ops[1].get("family") == "contraction":
         mm0, mm1 = ops[0], ops[1]
         for mm in (mm0, mm1):
             ext = mm.get("extents", {})
@@ -177,19 +205,30 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
             out: {"shape": list(mm1["results"][0]["shape"]), "dtype": "f32", "role": "output"},
         }
         commands = [
-            {"opcode": "RES_PACK", "operands": {"src": argname[w1_i], "dst": "W1p"},
-             "attributes": {"layout": "packed_rhs"}},
+            {
+                "opcode": "RES_PACK",
+                "operands": {"src": argname[w1_i], "dst": "W1p"},
+                "attributes": {"layout": "packed_rhs"},
+            },
             {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": argname[act_i], "rhs": "W1p", "dst": "acc0"}},
-            {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "H"},
-             "attributes": {"epilogue": [], "output_dtype": "f32"}},
-            {"opcode": "RES_PACK", "operands": {"src": argname[w2_i], "dst": "W2p"},
-             "attributes": {"layout": "packed_rhs"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc0", "dst": "H"},
+                "attributes": {"epilogue": [], "output_dtype": "f32"},
+            },
+            {
+                "opcode": "RES_PACK",
+                "operands": {"src": argname[w2_i], "dst": "W2p"},
+                "attributes": {"layout": "packed_rhs"},
+            },
             {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "H", "rhs": "W2p", "dst": "acc1"}},
-            {"opcode": "COMMIT", "operands": {"src": "acc1", "dst": out},
-             "attributes": {"epilogue": [], "output_dtype": "f32"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc1", "dst": out},
+                "attributes": {"epilogue": [], "output_dtype": "f32"},
+            },
         ]
-        return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                "commands": commands, "outputs": [out]}
+        return {"abi_version": "0.1", "target": target, "tensors": tensors, "commands": commands, "outputs": [out]}
 
     # --- a single batched matmul (batch,m,k)@(batch,k,n) ---------------------------------------------
     if len(ops) == 1 and ops[0].get("family") == "contraction" and "batch" in ops[0].get("extents", {}):
@@ -206,10 +245,8 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
             argname[w_i]: {"shape": argshape[w_i], "dtype": "f32", "role": "weight"},
             out: {"shape": list(mm["results"][0]["shape"]), "dtype": "f32", "role": "output"},
         }
-        cmd = {"opcode": "BATCHED_MATMUL",
-               "operands": {"a": argname[a_i], "w": argname[w_i], "dst": out}}
-        return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                "commands": [cmd], "outputs": [out]}
+        cmd = {"opcode": "BATCHED_MATMUL", "operands": {"a": argname[a_i], "w": argname[w_i], "dst": out}}
+        return {"abi_version": "0.1", "target": target, "tensors": tensors, "commands": [cmd], "outputs": [out]}
 
     # --- convolution lowered as im2col + matmul (ViT patch-embed): the region is one im2col gather feeding
     #     a matmul. Derive the conv geometry structurally from the operand/result shapes (no padding/dilation
@@ -236,11 +273,11 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
         sh = (ih - khh) // (oh - 1) if oh > 1 else 1
         sw = (iw - kww) // (ow - 1) if ow > 1 else 1
         src_offsets: list[int] = []
-        for kidx in range(kk):                                    # k = (c, kh, kw), row-major over the patch
+        for kidx in range(kk):  # k = (c, kh, kw), row-major over the patch
             c = kidx // (khh * kww)
             rem = kidx % (khh * kww)
             khi, kwi = rem // kww, rem % kww
-            for q in range(pp):                                   # q = (oh, ow) patch position, row-major
+            for q in range(pp):  # q = (oh, ow) patch position, row-major
                 ohi, owi = q // ow, q % ow
                 src_offsets.append(c * ih * iw + (ohi * sh + khi) * iw + (owi * sw + kwi))
         out = "out"
@@ -249,11 +286,12 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
             argname[w_i]: {"shape": argshape[w_i], "dtype": "f32", "role": "weight"},
             out: {"shape": res_shape, "dtype": "f32", "role": "output"},
         }
-        cmd = {"opcode": "CONV",
-               "operands": {"src": argname[x_i], "weight": argname[w_i], "dst": out},
-               "attributes": {"o": oc, "k": kk, "p": pp, "src_offsets": src_offsets}}
-        return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                "commands": [cmd], "outputs": [out]}
+        cmd = {
+            "opcode": "CONV",
+            "operands": {"src": argname[x_i], "weight": argname[w_i], "dst": out},
+            "attributes": {"o": oc, "k": kk, "p": pp, "src_offsets": src_offsets},
+        }
+        return {"abi_version": "0.1", "target": target, "tensors": tensors, "commands": [cmd], "outputs": [out]}
 
     # --- a single 2-D matmul, optionally followed by a row-broadcast bias add -------------------------
     if ops[0].get("family") == "contraction":
@@ -270,7 +308,9 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
         epilogue: list[str] = []
         if len(ops) == 2:
             add = ops[1]
-            if add["family"] not in ("elementwise", "elementwise_map") or "add" not in _combine_from_body(add["body_ops"]):
+            if add["family"] not in ("elementwise", "elementwise_map") or "add" not in _combine_from_body(
+                add["body_ops"]
+            ):
                 raise LinalgLowerError(f"the op after a matmul is not a bias add ({add['op']})")
             ains = add["ins"]
             srcs = [s["source"] for s in ains]
@@ -295,14 +335,15 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
             tensors[argname[bias_i]] = {"shape": argshape[bias_i], "dtype": "f32", "role": "bias"}
             commit_ops["bias"] = argname[bias_i]
         commands = [
-            {"opcode": "RES_PACK", "operands": {"src": argname[w_i], "dst": "Wp"},
-             "attributes": {"layout": "packed_rhs"}},
+            {
+                "opcode": "RES_PACK",
+                "operands": {"src": argname[w_i], "dst": "Wp"},
+                "attributes": {"layout": "packed_rhs"},
+            },
             {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": argname[act_i], "rhs": "Wp", "dst": "acc"}},
-            {"opcode": "COMMIT", "operands": commit_ops,
-             "attributes": {"epilogue": epilogue, "output_dtype": "f32"}},
+            {"opcode": "COMMIT", "operands": commit_ops, "attributes": {"epilogue": epilogue, "output_dtype": "f32"}},
         ]
-        return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                "commands": commands, "outputs": [out]}
+        return {"abi_version": "0.1", "target": target, "tensors": tensors, "commands": commands, "outputs": [out]}
 
     # --- RoPE: rotary position embedding, recognized by the co-present sin + cos ops -----------------
     #     out[p,i] = x[p,i]*cos(theta) + rotate_half(x)[p,i]*sin(theta); the emitter bakes inv_freq and
@@ -314,11 +355,12 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
         x_i = src_args[0]
         out = "out"
         result_shape = list(ops[-1]["results"][0]["shape"]) if ops[-1].get("results") else argshape[x_i]
-        tensors = {argname[x_i]: {"shape": argshape[x_i], "dtype": "f32", "role": "input"},
-                   out: {"shape": result_shape, "dtype": "f32", "role": "output"}}
+        tensors = {
+            argname[x_i]: {"shape": argshape[x_i], "dtype": "f32", "role": "input"},
+            out: {"shape": result_shape, "dtype": "f32", "role": "output"},
+        }
         cmd = {"opcode": "ROPE", "operands": {"src": argname[x_i], "dst": out}}
-        return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                "commands": [cmd], "outputs": [out]}
+        return {"abi_version": "0.1", "target": target, "tensors": tensors, "commands": [cmd], "outputs": [out]}
 
     # --- single-input elementwise transcendentals, recognized by provenance (softmax / gelu) ---------
     for _pop, _opcode in (("softmax", "SOFTMAX"), ("gelu", "GELU")):
@@ -329,27 +371,31 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
             x_i = src_args[0]
             out = "out"
             result_shape = list(ops[-1]["results"][0]["shape"]) if ops[-1].get("results") else argshape[x_i]
-            tensors = {argname[x_i]: {"shape": argshape[x_i], "dtype": "f32", "role": "input"},
-                       out: {"shape": result_shape, "dtype": "f32", "role": "output"}}
+            tensors = {
+                argname[x_i]: {"shape": argshape[x_i], "dtype": "f32", "role": "input"},
+                out: {"shape": result_shape, "dtype": "f32", "role": "output"},
+            }
             cmd = {"opcode": _opcode, "operands": {"src": argname[x_i], "dst": out}}
-            return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                    "commands": [cmd], "outputs": [out]}
+            return {"abi_version": "0.1", "target": target, "tensors": tensors, "commands": [cmd], "outputs": [out]}
 
     # --- logit soft-cap: div by cap -> tanh -> mul by cap (recognized by the tanh op + the cap const) --
     if any(o.get("op") == "tanh" for o in ops):
-        div_const = [i["const_value"] for o in ops if o.get("op") == "div"
-                     for i in o["ins"] if "const_value" in i]
+        div_const = [i["const_value"] for o in ops if o.get("op") == "div" for i in o["ins"] if "const_value" in i]
         src_args = [a["index"] for a in args if len(a["shape"]) == 2]
         if len(src_args) == 1 and div_const:
             x_i = src_args[0]
             out = "out"
             result_shape = list(ops[-1]["results"][0]["shape"]) if ops[-1].get("results") else argshape[x_i]
-            tensors = {argname[x_i]: {"shape": argshape[x_i], "dtype": "f32", "role": "input"},
-                       out: {"shape": result_shape, "dtype": "f32", "role": "output"}}
-            cmd = {"opcode": "SOFTCAP", "operands": {"src": argname[x_i], "dst": out},
-                   "attributes": {"cap": div_const[0]}}
-            return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                    "commands": [cmd], "outputs": [out]}
+            tensors = {
+                argname[x_i]: {"shape": argshape[x_i], "dtype": "f32", "role": "input"},
+                out: {"shape": result_shape, "dtype": "f32", "role": "output"},
+            }
+            cmd = {
+                "opcode": "SOFTCAP",
+                "operands": {"src": argname[x_i], "dst": out},
+                "attributes": {"cap": div_const[0]},
+            }
+            return {"abi_version": "0.1", "target": target, "tensors": tensors, "commands": [cmd], "outputs": [out]}
 
     # --- gemma double RMSNorm: two chained rmsnorm decompositions (recognized by TWO rsqrt ops) --------
     rsqrt_ops = [o for o in ops if any("rsqrt" in b for b in o["body_ops"])]
@@ -359,7 +405,7 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
         if len(x2d) == 1 and len(gam) == 2:
             x_i, g1_i, g2_i = x2d[0], gam[0], gam[1]
             eps = 1e-6
-            for rs in rsqrt_ops:                                  # eps = the const added before an rsqrt
+            for rs in rsqrt_ops:  # eps = the const added before an rsqrt
                 src = rs["ins"][0]["source"] if rs["ins"] else None
                 if src and src[0] == "op":
                     for inp in ops[src[1]]["ins"]:
@@ -373,13 +419,18 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
                 out: {"shape": list(ops[-1]["results"][0]["shape"]), "dtype": "f32", "role": "output"},
             }
             commands = [
-                {"opcode": "RMSNORM", "operands": {"src": argname[x_i], "gamma": argname[g1_i], "dst": "H"},
-                 "attributes": {"eps": eps}},
-                {"opcode": "RMSNORM", "operands": {"src": "H", "gamma": argname[g2_i], "dst": out},
-                 "attributes": {"eps": eps}},
+                {
+                    "opcode": "RMSNORM",
+                    "operands": {"src": argname[x_i], "gamma": argname[g1_i], "dst": "H"},
+                    "attributes": {"eps": eps},
+                },
+                {
+                    "opcode": "RMSNORM",
+                    "operands": {"src": "H", "gamma": argname[g2_i], "dst": out},
+                    "attributes": {"eps": eps},
+                },
             ]
-            return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                    "commands": commands, "outputs": [out]}
+            return {"abi_version": "0.1", "target": target, "tensors": tensors, "commands": commands, "outputs": [out]}
 
     # --- a decomposed row LayerNorm, recognized by the layer_norm provenance -------------------------
     if any(o.get("op") == "layer_norm" for o in ops):
@@ -416,14 +467,15 @@ def _lower_impl(parsed: dict[str, Any], *, target: str) -> dict[str, Any]:
             argname[beta_i]: {"shape": argshape[beta_i], "dtype": "f32", "role": "bias"},
             out: {"shape": result_shape, "dtype": "f32", "role": "output"},
         }
-        cmd = {"opcode": "LAYERNORM",
-               "operands": {"src": argname[x_i], "gamma": argname[gamma_i],
-                            "beta": argname[beta_i], "dst": out},
-               "attributes": {"eps": eps}}
-        return {"abi_version": "0.1", "target": target, "tensors": tensors,
-                "commands": [cmd], "outputs": [out]}
+        cmd = {
+            "opcode": "LAYERNORM",
+            "operands": {"src": argname[x_i], "gamma": argname[gamma_i], "beta": argname[beta_i], "dst": out},
+            "attributes": {"eps": eps},
+        }
+        return {"abi_version": "0.1", "target": target, "tensors": tensors, "commands": [cmd], "outputs": [out]}
 
     raise LinalgLowerError(
         f"reference lowering does not yet support this linalg pattern "
         f"({[o['op'] for o in ops]}); supported: single elementwise add/mul, matmul (+bias/chain/batch), "
-        f"layernorm")
+        f"layernorm"
+    )

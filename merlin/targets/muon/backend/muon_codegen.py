@@ -15,12 +15,14 @@ Design (faithful + simple):
 
 The console (OUT/METRIC/DONE) helpers come from :data:`merlin.runtime.backends.muon.MUON_CONSOLE`.
 """
+
 from __future__ import annotations
 
 from typing import Any
 
-from .muon import MUON_CONSOLE
 from merlin.runtime.commandbuffer import materialize_inputs
+
+from .muon import MUON_CONSOLE
 
 
 class MuonCodegenError(RuntimeError):
@@ -100,7 +102,7 @@ def emit_kernel_cpp(cb: dict[str, Any], *, num_warps: int = 4) -> str:
                     raise MuonCodegenError(f"bias {bias!r} not materialized")
                 epi_code += f"      acc += {_ident(bias)}[c];\n"
             # requant / acc_scale / i8 are Gemmini-only; ignored for the fp32 Muon corpus
-        compute.append(f"""    // commit {dst} = {lhs}[{m}x{k}] @ {rhs}[{k}x{n}]{(' ' + str(epi)) if epi else ''}
+        compute.append(f"""    // commit {dst} = {lhs}[{m}x{k}] @ {rhs}[{k}x{n}]{(" " + str(epi)) if epi else ""}
     for (uint32_t idx = tid; idx < {m * n}u; idx += nthreads) {{
       uint32_t r = idx / {n}u, c = idx % {n}u;
       float acc = 0.0f;
@@ -109,8 +111,7 @@ def emit_kernel_cpp(cb: dict[str, Any], *, num_warps: int = 4) -> str:
     }}
     mu_barrier(0, BLOCK_NUM_WARPS);""")
 
-    prints = "\n".join(
-        f'    mu_out_f32("{dst}", {m}, {n}, {_ident(dst)});' for dst, m, n in outs)
+    prints = "\n".join(f'    mu_out_f32("{dst}", {m}, {n}, {_ident(dst)});' for dst, m, n in outs)
 
     return f"""{MUON_CONSOLE}
 #include <mu_intrinsics.h>

@@ -18,6 +18,7 @@ counter; it is keyed on the ENGINE that executed the program, and the per-engine
 data, not a heuristic. `merlin.perf.hw_counters` derives what a target can count; this says whether
 what came back means anything.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -25,8 +26,18 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
-__all__ = ["REAL", "FABRICATED", "UNTIMED", "UNKNOWN", "Verdict", "verdict_for",
-           "is_trusted", "values_or_refusal", "require_trusted", "declared_engines"]
+__all__ = [
+    "REAL",
+    "FABRICATED",
+    "UNTIMED",
+    "UNKNOWN",
+    "Verdict",
+    "verdict_for",
+    "is_trusted",
+    "values_or_refusal",
+    "require_trusted",
+    "declared_engines",
+]
 
 #: Counters are wired to hardware event signals; values are measurements.
 REAL = "real"
@@ -58,22 +69,31 @@ class Verdict:
         if self.trusted:
             return None
         if self.verdict == UNKNOWN:
-            return (f"engine {self.engine!r} is not declared in counter_trust.yaml, so whether its "
-                    f"accelerator counters carry real values is UNKNOWN; refusing to report them")
+            return (
+                f"engine {self.engine!r} is not declared in counter_trust.yaml, so whether its "
+                f"accelerator counters carry real values is UNKNOWN; refusing to report them"
+            )
         detail = f" ({self.evidence_source})" if self.evidence_source else ""
-        return (f"engine {self.engine!r} accelerator counters are {self.verdict}{detail}: "
-                f"{self.evidence.strip() or 'no evidence recorded'}")
+        return (
+            f"engine {self.engine!r} accelerator counters are {self.verdict}{detail}: "
+            f"{self.evidence.strip() or 'no evidence recorded'}"
+        )
 
     def to_dict(self) -> dict[str, Any]:
-        return {"engine": self.engine, "verdict": self.verdict,
-                "evidence": self.evidence, "evidence_source": self.evidence_source,
-                "verified": self.verified}
+        return {
+            "engine": self.engine,
+            "verdict": self.verdict,
+            "evidence": self.evidence,
+            "evidence_source": self.evidence_source,
+            "verified": self.verified,
+        }
 
 
 @lru_cache(maxsize=1)
 def _declared() -> dict[str, Verdict]:
     """The reviewed table. Absent or malformed means every engine is UNKNOWN, never trusted."""
     import yaml
+
     from merlin.common.paths import merlin_dir
 
     path = merlin_dir() / "contract" / "counter_trust.yaml"
@@ -90,10 +110,14 @@ def _declared() -> dict[str, Verdict]:
             continue
         v = str(spec.get("verdict") or "")
         if v not in (REAL, FABRICATED, UNTIMED):
-            continue                      # an unrecognised verdict is not a licence to trust
-        out[str(name)] = Verdict(str(name), v, str(spec.get("evidence") or ""),
-                                 str(spec.get("evidence_source") or ""),
-                                 str(spec.get("verified") or ""))
+            continue  # an unrecognised verdict is not a licence to trust
+        out[str(name)] = Verdict(
+            str(name),
+            v,
+            str(spec.get("evidence") or ""),
+            str(spec.get("evidence_source") or ""),
+            str(spec.get("verified") or ""),
+        )
     return out
 
 
@@ -112,8 +136,7 @@ def is_trusted(engine: Any) -> bool:
     return verdict_for(engine).trusted
 
 
-def values_or_refusal(engine: Any, values: Mapping[str, Any]
-                      ) -> tuple[dict[str, Any] | None, str | None]:
+def values_or_refusal(engine: Any, values: Mapping[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
     """``(values, None)`` when ``engine``'s counters are real; ``(None, why)`` otherwise.
 
     Callers should record the refusal STRING in the receipt where the numbers would have gone, so a

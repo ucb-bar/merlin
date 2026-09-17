@@ -5,26 +5,32 @@ caller must independently prove the raw-source/manifest binding, preservation
 through normalization, and read-only use. Candidate role/recipe claims are not
 accepted here. No dtype conversion or interpretation of tensor bytes occurs.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
-from math import prod
-from pathlib import Path
 import struct
 from collections.abc import Sequence
-
+from dataclasses import dataclass
+from math import prod
+from pathlib import Path
 
 # File-format storage types, not accelerator facts. Keep this explicit: unknown
 # or sub-byte formats require their own byte-preserving contract, never a cast.
 _TYPES = {
-    "I8": ("i8", "int8", 1), "I16": ("i16", "int16", 2),
-    "I32": ("i32", "int32", 4), "I64": ("i64", "int64", 8),
-    "U8": ("ui8", "uint8", 1), "U16": ("ui16", "uint16", 2),
-    "U32": ("ui32", "uint32", 4), "U64": ("ui64", "uint64", 8),
-    "F16": ("f16", "float16", 2), "BF16": ("bf16", "bfloat16", 2),
-    "F32": ("f32", "float32", 4), "F64": ("f64", "float64", 8),
+    "I8": ("i8", "int8", 1),
+    "I16": ("i16", "int16", 2),
+    "I32": ("i32", "int32", 4),
+    "I64": ("i64", "int64", 8),
+    "U8": ("ui8", "uint8", 1),
+    "U16": ("ui16", "uint16", 2),
+    "U32": ("ui32", "uint32", 4),
+    "U64": ("ui64", "uint64", 8),
+    "F16": ("f16", "float16", 2),
+    "BF16": ("bf16", "bfloat16", 2),
+    "F32": ("f32", "float32", 4),
+    "F64": ("f64", "float64", 8),
     "BOOL": ("i1", "bool", 1),
 }
 _MAX_MANIFEST_BYTES = 4 * 1024 * 1024
@@ -33,8 +39,7 @@ _CHUNK_BYTES = 64 * 1024
 
 
 def _digest_pin(value: str) -> None:
-    if (not isinstance(value, str) or len(value) != 64
-            or any(c not in "0123456789abcdef" for c in value)):
+    if not isinstance(value, str) or len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
         raise ValueError("capture pins require lowercase SHA-256 hex digests")
 
 
@@ -50,9 +55,9 @@ def _unique_object(pairs):
 def _json_object(payload: bytes) -> dict:
     def invalid_constant(value):
         raise ValueError(f"non-finite capture JSON value: {value}")
+
     try:
-        value = json.loads(payload, object_pairs_hook=_unique_object,
-                           parse_constant=invalid_constant)
+        value = json.loads(payload, object_pairs_hook=_unique_object, parse_constant=invalid_constant)
     except (UnicodeError, json.JSONDecodeError) as error:
         raise ValueError("malformed capture JSON") from error
     if not isinstance(value, dict):
@@ -61,8 +66,7 @@ def _json_object(payload: bytes) -> dict:
 
 
 def _shape(value) -> tuple[int, ...]:
-    if (not isinstance(value, (list, tuple))
-            or any(type(dim) is not int or dim < 0 for dim in value)):
+    if not isinstance(value, (list, tuple)) or any(type(dim) is not int or dim < 0 for dim in value):
         raise ValueError("capture shape requires nonnegative integer extents")
     return tuple(value)
 
@@ -70,6 +74,7 @@ def _shape(value) -> tuple[int, ...]:
 @dataclass(frozen=True)
 class CapturedConstant:
     """An immutable byte snapshot. Its construction alone grants no authority."""
+
     entry_argument_index: int
     manifest_path: str
     manifest_sha256: str
@@ -89,23 +94,35 @@ class CapturedConstant:
         return {
             "schema": "verified_capture_constant_bytes_v1",
             "entry_argument_index": self.entry_argument_index,
-            "manifest_path": self.manifest_path, "manifest_sha256": self.manifest_sha256,
+            "manifest_path": self.manifest_path,
+            "manifest_sha256": self.manifest_sha256,
             "safetensors_path": self.safetensors_path,
             "safetensors_sha256": self.safetensors_sha256,
-            "tensor_key": self.tensor_key, "manifest_kind": self.manifest_kind,
-            "source_shape": list(self.source_shape), "source_dtype": self.source_dtype,
-            "storage_dtype": self.storage_dtype, "header_sha256": self.header_sha256,
+            "tensor_key": self.tensor_key,
+            "manifest_kind": self.manifest_kind,
+            "source_shape": list(self.source_shape),
+            "source_dtype": self.source_dtype,
+            "storage_dtype": self.storage_dtype,
+            "header_sha256": self.header_sha256,
             "file_offset_bytes": self.file_offset_bytes,
-            "payload_bytes": len(self.logical_payload), "payload_sha256": self.payload_sha256,
+            "payload_bytes": len(self.logical_payload),
+            "payload_sha256": self.payload_sha256,
             "scope": "pinned captured state bytes only; source binding and prepack authorization unproven",
             "prepack_authorized": False,
         }
 
 
-def verify_capture_constant(*, manifest_path: str | Path, manifest_sha256: str,
-                            safetensors_path: str | Path, safetensors_sha256: str,
-                            entry_argument_index: int, source_shape: Sequence[int],
-                            source_dtype: str, max_payload_bytes: int) -> CapturedConstant:
+def verify_capture_constant(
+    *,
+    manifest_path: str | Path,
+    manifest_sha256: str,
+    safetensors_path: str | Path,
+    safetensors_sha256: str,
+    entry_argument_index: int,
+    source_shape: Sequence[int],
+    source_dtype: str,
+    max_payload_bytes: int,
+) -> CapturedConstant:
     """Verify two pinned files and load only one explicitly bounded tensor.
 
     Every tensor header is checked for a contiguous, nonoverlapping valid file
@@ -131,9 +148,14 @@ def verify_capture_constant(*, manifest_path: str | Path, manifest_sha256: str,
     if any(not key.isascii() or not key.isdecimal() or str(int(key)) != key for key in manifest):
         raise ValueError("capture manifest requires unique canonical argument indices")
     entry = manifest.get(str(entry_argument_index))
-    if (not isinstance(entry, dict) or entry.get("kind") not in ("param", "buffer")
-            or "error" in entry or entry.get("stub", False) is not False
-            or not isinstance(entry.get("weight"), str) or not entry["weight"]):
+    if (
+        not isinstance(entry, dict)
+        or entry.get("kind") not in ("param", "buffer")
+        or "error" in entry
+        or entry.get("stub", False) is not False
+        or not isinstance(entry.get("weight"), str)
+        or not entry["weight"]
+    ):
         raise ValueError("argument is missing a concrete captured parameter/buffer")
     if _shape(entry.get("shape")) != wanted_shape:
         raise ValueError("manifest shape differs from source argument")
@@ -164,8 +186,7 @@ def verify_capture_constant(*, manifest_path: str | Path, manifest_sha256: str,
                 raise ValueError("unsupported safetensors storage dtype")
             shape = _shape(tensor["shape"])
             offsets = tensor["data_offsets"]
-            if (not isinstance(offsets, list) or len(offsets) != 2
-                    or any(type(n) is not int for n in offsets)):
+            if not isinstance(offsets, list) or len(offsets) != 2 or any(type(n) is not int for n in offsets):
                 raise ValueError("malformed safetensors data offsets")
             begin, end = offsets
             if not 0 <= begin <= end <= file_length - payload_base:
@@ -185,8 +206,11 @@ def verify_capture_constant(*, manifest_path: str | Path, manifest_sha256: str,
             raise ValueError("manifest weight key is absent from safetensors")
         dtype = tensor["dtype"]
         normalized_dtype, manifest_dtype, _ = _TYPES[dtype]
-        if (source_dtype != normalized_dtype or entry.get("dtype") != manifest_dtype
-                or _shape(tensor["shape"]) != wanted_shape):
+        if (
+            source_dtype != normalized_dtype
+            or entry.get("dtype") != manifest_dtype
+            or _shape(tensor["shape"]) != wanted_shape
+        ):
             raise ValueError("capture storage type/shape differs from source or manifest")
         begin, end = tensor["data_offsets"]
         if end - begin > max_payload_bytes:
@@ -203,18 +227,28 @@ def verify_capture_constant(*, manifest_path: str | Path, manifest_sha256: str,
         while chunk := stream.read(_CHUNK_BYTES):
             digest.update(chunk)
             prefix_end = min(len(prefix), position + len(chunk))
-            if position < prefix_end and chunk[:prefix_end-position] != prefix[position:prefix_end]:
+            if position < prefix_end and chunk[: prefix_end - position] != prefix[position:prefix_end]:
                 raise ValueError("safetensors header changed during verification")
             lo, hi = max(start, position), min(stop, position + len(chunk))
             if lo < hi:
-                payload.extend(chunk[lo-position:hi-position])
+                payload.extend(chunk[lo - position : hi - position])
             position += len(chunk)
-        if (position != file_length or digest.hexdigest() != safetensors_sha256
-                or len(payload) != end - begin):
+        if position != file_length or digest.hexdigest() != safetensors_sha256 or len(payload) != end - begin:
             raise ValueError("safetensors SHA-256 or file length mismatch")
     logical_payload = bytes(payload)
     return CapturedConstant(
-        entry_argument_index, str(manifest_path.resolve()), manifest_sha256,
-        str(safetensors_path.resolve()), safetensors_sha256, key, entry["kind"],
-        wanted_shape, source_dtype, dtype, hashlib.sha256(header_bytes).hexdigest(),
-        start, hashlib.sha256(logical_payload).hexdigest(), logical_payload)
+        entry_argument_index,
+        str(manifest_path.resolve()),
+        manifest_sha256,
+        str(safetensors_path.resolve()),
+        safetensors_sha256,
+        key,
+        entry["kind"],
+        wanted_shape,
+        source_dtype,
+        dtype,
+        hashlib.sha256(header_bytes).hexdigest(),
+        start,
+        hashlib.sha256(logical_payload).hexdigest(),
+        logical_payload,
+    )

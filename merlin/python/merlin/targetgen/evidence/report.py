@@ -11,19 +11,21 @@ The concept vocabulary is DATA, not a core literal: each target owns an
 contributes no concepts (honest: nothing authored ⇒ nothing detected), so the core stays
 target-name-free and a brand-new accelerator plugs in by dropping its vocabulary beside its sources.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 from merlin.common.yaml import load_yaml
 
-from ..io import first_lines
 from ..ingest.docs import discover_docs
 from ..ingest.examples import discover_examples
 from ..ingest.scala_chisel import discover_scala
 from ..ingest.source_manifest import SourceManifest
+from ..io import first_lines
 from ..rtl.facts import target_base
 from .store import Concept, Evidence, FileRecord
+
 
 def _concept_vocabulary(target_name: str) -> dict[str, list[str]]:
     """The per-target concept vocabulary, loaded from ``<target-dir>/evidence_concepts.yaml`` (data,
@@ -89,9 +91,7 @@ def build_evidence(manifest: SourceManifest) -> Evidence:
     table = _concept_vocabulary(manifest.target_name)
     concepts: list[Concept] = []
     for concept, keywords in table.items():
-        cites = sorted(
-            {rel for rel, text in haystacks if any(k in text for k in keywords)}
-        )
+        cites = sorted({rel for rel, text in haystacks if any(k in text for k in keywords)})
         if cites:
             concepts.append(Concept(concept=concept, evidence=cites))
 

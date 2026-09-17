@@ -7,6 +7,7 @@ matmul without writing and reading an im2col buffer.  Anything that does not pro
 from shapes and affine maps is refused.  The panel packer may still optimize every non-degenerate
 im2col contraction after this pass; these view contractions retain the ordinary per-op matmul arm.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -39,8 +40,8 @@ def _rewrite_one(mt) -> None:
     elem = source.type.get_element_type()
     view_t = TensorType(elem, [mt.channels, mt.m])
     view = CollapseShapeOp(
-        operands=[source], result_types=[view_t],
-        properties={"reassociation": _reassoc([[0, 1], [2, 3]])})
+        operands=[source], result_types=[view_t], properties={"reassociation": _reassoc([[0, 1], [2, 3]])}
+    )
     for key, value in mt.gather.attributes.items():
         view.attributes[key] = value
     view.attributes["prov.role"] = StringAttr("im2col_view")
@@ -94,8 +95,7 @@ def rewrite_prepared_file(prepared: "str | Path", work: "str | Path | None" = No
     report = rewrite_module(module)
     if not report.viewed:
         return prepared, report
-    out = (Path(work) / "model.im2col_views.mlir" if work is not None
-           else prepared.with_name("model.im2col_views.mlir"))
+    out = Path(work) / "model.im2col_views.mlir" if work is not None else prepared.with_name("model.im2col_views.mlir")
     out.write_text(str(module), encoding="utf-8")
     return out, report
 
@@ -104,13 +104,16 @@ def ensure_registered() -> str:
     from .impr_features import ImprFeature, known, register
 
     if FEATURE not in known():
-        register(ImprFeature(
-            name=FEATURE,
-            action_class="PASS",
-            description=(
-                "Replace a sole-use N=1, 1x1, stride/dilation-1 im2col copy with the proven "
-                "row-major [1,C,H,W] -> [C,H*W] collapse view. All other geometries and layouts "
-                "are refused. Non-identity convolutions remain eligible for im2col_panel_pack; "
-                "viewed contractions retain ordinary per-op matmul scheduling. Default off."),
-        ))
+        register(
+            ImprFeature(
+                name=FEATURE,
+                action_class="PASS",
+                description=(
+                    "Replace a sole-use N=1, 1x1, stride/dilation-1 im2col copy with the proven "
+                    "row-major [1,C,H,W] -> [C,H*W] collapse view. All other geometries and layouts "
+                    "are refused. Non-identity convolutions remain eligible for im2col_panel_pack; "
+                    "viewed contractions retain ordinary per-op matmul scheduling. Default off."
+                ),
+            )
+        )
     return FEATURE

@@ -14,6 +14,7 @@ Do not add target names, model names, capsule ids, or shape-specific rewrites he
 belongs in this registry only when its semantics are derived from the IR/provenance and independently
 tested against the originating framework.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -21,10 +22,10 @@ from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+from merlin.common import digest as _mdigest
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower.torchao_affine import lower_torchao_affine_quant
 from merlin.xdsl_dialects._common import text as module_text
-from merlin.common import digest as _mdigest
 
 
 class CaptureNormalizationError(RuntimeError):
@@ -56,11 +57,7 @@ def _opaque_calls(module) -> dict[str, int]:
     The upstream worker deliberately regards every ``func.call`` as opaque at this boundary.  Use the
     parsed operation and its callee rather than reimplementing its textual regular expression.
     """
-    names = Counter(
-        op.callee.string_value()
-        for op in module.walk()
-        if op.name == "func.call"
-    )
+    names = Counter(op.callee.string_value() for op in module.walk() if op.name == "func.call")
     return dict(sorted(names.items()))
 
 
@@ -85,11 +82,7 @@ def normalize_capture_mlir(
 
     if reported_opaque is not None:
         try:
-            reported = {
-                str(name): int(count)
-                for name, count in reported_opaque.items()
-                if int(count) != 0
-            }
+            reported = {str(name): int(count) for name, count in reported_opaque.items() if int(count) != 0}
         except (AttributeError, TypeError, ValueError) as exc:
             raise CaptureNormalizationError("capture worker opaque census is malformed") from exc
         reported = dict(sorted(reported.items()))
@@ -114,9 +107,7 @@ def normalize_capture_mlir(
     except CaptureNormalizationError:
         raise
     except Exception as exc:  # noqa: BLE001 - name the semantic boundary that failed
-        raise CaptureNormalizationError(
-            f"captured MLIR normalization failed: {type(exc).__name__}: {exc}"
-        ) from exc
+        raise CaptureNormalizationError(f"captured MLIR normalization failed: {type(exc).__name__}: {exc}") from exc
 
     receipt = {
         "schema": "merlin.capture-normalization.v1",

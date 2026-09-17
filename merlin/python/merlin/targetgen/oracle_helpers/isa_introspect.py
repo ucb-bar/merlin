@@ -20,6 +20,7 @@ so merlin's kernel structural checks select classes by role, never by a hardcode
 (``VMATPUSH_WEIGHT_MXU0``) so an example kernel written in mnemonics can be mapped back to semantic classes.
 Merlin holds no opcode table — everything here comes from the model's own ISA definition.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -34,15 +35,33 @@ import textwrap
 def _load_module(path: str):
     spec = importlib.util.spec_from_file_location("_merlin_isa_def", path)
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)                      # imports the model pkg (present in this venv)
+    spec.loader.exec_module(mod)  # imports the model pkg (present in this venv)
     return mod
 
 
 # Candidate operand attribute names an instruction format may read in to_bytecode(). Setting one the
 # format does not use is harmless (it never reaches the packed word); this list only needs to be a
 # SUPERSET of operand fields across formats. No opcode/funct here — those are the FIXED bits we derive.
-_OPERAND_ATTRS = ("rd", "rs1", "rs2", "imm", "vd", "vs1", "vs2", "es1", "shamt",
-                  "imm16", "imm12", "imm20", "uimm", "vt", "vm", "aq", "rl", "csr")
+_OPERAND_ATTRS = (
+    "rd",
+    "rs1",
+    "rs2",
+    "imm",
+    "vd",
+    "vs1",
+    "vs2",
+    "es1",
+    "shamt",
+    "imm16",
+    "imm12",
+    "imm20",
+    "uimm",
+    "vt",
+    "vm",
+    "aq",
+    "rl",
+    "csr",
+)
 
 
 def _operand_names(cls) -> list[str]:
@@ -69,7 +88,7 @@ def _zeroed_instance(cls):
     guards)."""
     inst = object.__new__(cls)
     for attr in _operand_names(cls):
-        if not hasattr(inst, attr):                    # missing (no class default) -> fill with 0
+        if not hasattr(inst, attr):  # missing (no class default) -> fill with 0
             try:
                 setattr(inst, attr, 0)
             except Exception:  # noqa: BLE001 — not settable on this format; leave it
@@ -86,8 +105,7 @@ def _base_word(cls) -> int | None:
         return None
 
 
-def _operand_fields(cls, base: int, operand_attrs: set[str] | None = None
-                    ) -> tuple[dict[str, list[int | None]], int]:
+def _operand_fields(cls, base: int, operand_attrs: set[str] | None = None) -> tuple[dict[str, list[int | None]], int]:
     """Per-operand-bit → word-bit map for every operand attribute the format actually uses, derived from
     the ISA def's OWN encoder — no field-position assumptions, works for any instruction format (contiguous,
     shifted, or permuted fields alike). For each candidate attr we PER-BIT probe: set operand bit ``i`` only
@@ -131,14 +149,14 @@ def _operand_fields(cls, base: int, operand_attrs: set[str] | None = None
             except Exception:  # noqa: BLE001 — value out of this field's range
                 bits.append(None)
                 continue
-            touched |= moved                           # every word bit this operand can vary (decode mask)
+            touched |= moved  # every word bit this operand can vary (decode mask)
             if moved == 0:
                 bits.append(None)
-            elif (moved & (moved - 1)) == 0:          # exactly one word bit moved -> linear placement
+            elif (moved & (moved - 1)) == 0:  # exactly one word bit moved -> linear placement
                 bits.append(moved.bit_length() - 1)
             else:
-                bits.append(-1)                        # multi-bit move -> aliased, refuse in the packer
-        while bits and bits[-1] is None:               # trim trailing unused operand bits
+                bits.append(-1)  # multi-bit move -> aliased, refuse in the packer
+        while bits and bits[-1] is None:  # trim trailing unused operand bits
             bits.pop()
         if any(b is not None for b in bits):
             fields[attr] = bits
@@ -166,13 +184,14 @@ def _canonical_placements(entries: list[dict]) -> dict:
     for e in entries:
         for attr, bits in (e.get("fields") or {}).items():
             if any(b is None or b == -1 for b in bits):
-                continue                                # only fully-linear placements are evidence
+                continue  # only fully-linear placements are evidence
             seen.setdefault(attr, set()).add(tuple(bits))
     return {a: list(v.pop()) for a, v in seen.items() if len(v) == 1}
 
 
-def _repair_dropped_operands(entries: list[dict], classes: dict,
-                             operand_attrs: dict[str, set[str]] | None = None) -> list[dict]:
+def _repair_dropped_operands(
+    entries: list[dict], classes: dict, operand_attrs: dict[str, set[str]] | None = None
+) -> list[dict]:
     """Restore an operand its shipped encoder DECLARES but never packs, and report what was restored.
 
     A shipped encoder can carry a field-packing bug: the atlas ``IType.to_bytecode`` assigns ``rd`` and
@@ -196,11 +215,9 @@ def _repair_dropped_operands(entries: list[dict], classes: dict,
         if cls is None:
             continue
         repair_expected = _declared_operands(cls)
-        exposed = ((operand_attrs or {}).get(e["mnemonic"])
-                   if operand_attrs is not None else repair_expected)
+        exposed = (operand_attrs or {}).get(e["mnemonic"]) if operand_attrs is not None else repair_expected
         exposed = exposed if exposed is not None else repair_expected
-        dropped = sorted(a for a in repair_expected - set(e.get("fields") or {})
-                         if canon.get(a))
+        dropped = sorted(a for a in repair_expected - set(e.get("fields") or {}) if canon.get(a))
         orig = cls.to_bytecode
         placements = {a: canon[a] for a in dropped}
 
@@ -208,7 +225,7 @@ def _repair_dropped_operands(entries: list[dict], classes: dict,
             word = int(_orig(self)) & 0xFFFFFFFF
             for attr, bits in _pl.items():
                 for b in bits:
-                    word &= ~(1 << b)                  # the stolen bits belong to this operand
+                    word &= ~(1 << b)  # the stolen bits belong to this operand
                 val = int(getattr(self, attr, 0) or 0)
                 for i, b in enumerate(bits):
                     if val >> i & 1:
@@ -229,7 +246,7 @@ def _repair_dropped_operands(entries: list[dict], classes: dict,
             if dropped:
                 e["repaired"] = dropped
         finally:
-            cls.to_bytecode = orig                     # never leave the shared ISA module mutated
+            cls.to_bytecode = orig  # never leave the shared ISA module mutated
     return entries
 
 
@@ -249,7 +266,7 @@ def _fixed_signature_from_fields(base: int, fields: dict[str, list[int | None]])
     for bits in fields.values():
         for b in bits:
             if isinstance(b, int) and b >= 0:
-                variable |= (1 << b)
+                variable |= 1 << b
     mask = (~variable) & 0xFFFFFFFF
     return mask, base & mask
 
@@ -270,8 +287,14 @@ def _pattern_module(mod) -> str:
 # word in that name — NOT by a target-specific class name. A target whose ISA names its PE-array result
 # register "accumulator" and its stationary-weight store "weight" classifies correctly; the words are
 # universal systolic-array vocabulary, and merlin core never sees them (it consumes the derived role).
-_REG_CONCEPTS = (("accumulat", "accumulator"), ("weight", "weight"), ("exponent", "exponent"),
-                 ("matrix", "tensor"), ("tensor", "tensor"), ("scalar", "scalar"))
+_REG_CONCEPTS = (
+    ("accumulat", "accumulator"),
+    ("weight", "weight"),
+    ("exponent", "exponent"),
+    ("matrix", "tensor"),
+    ("tensor", "tensor"),
+    ("scalar", "scalar"),
+)
 
 
 def _reg_concept(reg_name: str | None) -> str | None:
@@ -294,7 +317,7 @@ def _operand_kinds(sem_cls) -> list[str]:
         concept = _reg_concept(getattr(t, "reg_name", None))
         if concept:
             kinds.append(concept)
-        elif issubclass(t, int):                     # a bounded immediate (offset / literal)
+        elif issubclass(t, int):  # a bounded immediate (offset / literal)
             kinds.append("imm")
     return kinds
 
@@ -315,13 +338,13 @@ def _role_for_pattern(sem_cls) -> str:
     dest, srcs = kinds[0], kinds[1:]
     has_tensor = any(k == "tensor" for k in kinds)
     if "scalar" in kinds and "imm" in kinds and has_tensor:
-        return "memory"                               # tensor base+offset load/store (DRAM address)
+        return "memory"  # tensor base+offset load/store (DRAM address)
     if dest == "accumulator" and "weight" in srcs:
-        return "matmul"                               # systolic multiply into the accumulator
+        return "matmul"  # systolic multiply into the accumulator
     if dest == "weight":
-        return "weight_load"                          # push stationary weights
+        return "weight_load"  # push stationary weights
     if dest == "accumulator":
-        return "acc_seed"                             # push a seed/bias into the accumulator
+        return "acc_seed"  # push a seed/bias into the accumulator
     if "accumulator" in srcs and dest == "tensor":
         return "acc_readout_scaled" if "exponent" in kinds else "acc_readout"
     if dest == "tensor" and srcs and all(k == "tensor" for k in srcs):
@@ -335,8 +358,7 @@ def _role_for_pattern(sem_cls) -> str:
 # the typed operands distinguish scalar traffic from a tensor/DMA move.  This intentionally records no
 # mnemonic table and assumes no target register field.  The base/offset operands are the ones the
 # semantic method actually passes to memory, traced back through local assignments.
-_MEMORY_METHOD_PREFIXES = (("read_", "load"), ("load_", "load"),
-                           ("write_", "store"), ("store_", "store"))
+_MEMORY_METHOD_PREFIXES = (("read_", "load"), ("load_", "load"), ("write_", "store"), ("store_", "store"))
 _MEMORY_SPACE_WORDS = ("mem", "memory", "dram", "sram", "scratchpad")
 
 
@@ -351,8 +373,12 @@ def _self_attributes(node: ast.AST, aliases: dict[str, tuple[str, ...]]) -> tupl
     """Operand attributes feeding ``node``, including a local alias established earlier."""
     out: list[str] = []
     for part in ast.walk(node):
-        if isinstance(part, ast.Attribute) and isinstance(part.value, ast.Name) \
-                and part.value.id == "self" and part.attr not in out:
+        if (
+            isinstance(part, ast.Attribute)
+            and isinstance(part.value, ast.Name)
+            and part.value.id == "self"
+            and part.attr not in out
+        ):
             out.append(part.attr)
         elif isinstance(part, ast.Name):
             for attr in aliases.get(part.id, ()):
@@ -389,7 +415,7 @@ def _storage_call(tree: ast.AST, state_name: str) -> tuple[ast.Call, str, str, s
         for prefix, direction in _MEMORY_METHOD_PREFIXES:
             if not method.startswith(prefix):
                 continue
-            space = method[len(prefix):]
+            space = method[len(prefix) :]
             if space and any(word in space.lower() for word in _MEMORY_SPACE_WORDS):
                 found.append((node, method, direction, space))
             break
@@ -397,9 +423,14 @@ def _storage_call(tree: ast.AST, state_name: str) -> tuple[ast.Call, str, str, s
 
 
 def _positive_int(node: ast.AST | None) -> int | None:
-    return (int(node.value) if isinstance(node, ast.Constant)
-            and isinstance(node.value, int) and not isinstance(node.value, bool) and node.value > 0
-            else None)
+    return (
+        int(node.value)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, int)
+        and not isinstance(node.value, bool)
+        and node.value > 0
+        else None
+    )
 
 
 def _access_width(call: ast.Call, direction: str) -> int | None:
@@ -421,8 +452,13 @@ def _signed_operand(tree: ast.AST, operand: str, aliases: dict[str, tuple[str, .
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        name = (node.func.attr if isinstance(node.func, ast.Attribute)
-                else node.func.id if isinstance(node.func, ast.Name) else "")
+        name = (
+            node.func.attr
+            if isinstance(node.func, ast.Attribute)
+            else node.func.id
+            if isinstance(node.func, ast.Name)
+            else ""
+        )
         if "sign_extend" not in name.lower() or not node.args:
             continue
         if operand in _self_attributes(node.args[0], aliases):
@@ -431,8 +467,7 @@ def _signed_operand(tree: ast.AST, operand: str, aliases: dict[str, tuple[str, .
     return False, None
 
 
-def _offset_scale(tree: ast.AST, operand: str,
-                  aliases: dict[str, tuple[str, ...]]) -> int:
+def _offset_scale(tree: ast.AST, operand: str, aliases: dict[str, tuple[str, ...]]) -> int:
     """Address-unit scale applied to an offset operand by the instruction semantic.
 
     An unscaled immediate advances by one address unit.  A left shift or multiplication by a positive
@@ -466,8 +501,11 @@ def scalar_memory_semantics(op_cls, sem_cls, fields: dict) -> dict | None:
     resolves, while a tensor register in the typed operand set excludes a tensor-memory instruction.
     """
     kinds = _operand_kinds(sem_cls)
-    if not kinds or "scalar" not in kinds or any(
-            kind in ("tensor", "weight", "accumulator", "exponent") for kind in kinds):
+    if (
+        not kinds
+        or "scalar" not in kinds
+        or any(kind in ("tensor", "weight", "accumulator", "exponent") for kind in kinds)
+    ):
         return None
     method_name = _sem_method(op_cls)
     if method_name is None:
@@ -479,8 +517,9 @@ def scalar_memory_semantics(op_cls, sem_cls, fields: dict) -> dict | None:
     # Read parameter names from the already-parsed syntax.  ``inspect.signature`` evaluates deferred
     # annotations on Python 3.14 and can fail when a curated ISA document uses a type (such as its model
     # state) available only under TYPE_CHECKING.  Parameter identity needs no annotation evaluation.
-    function = next((node for node in ast.walk(tree)
-                     if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))), None)
+    function = next(
+        (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))), None
+    )
     params = [arg.arg for arg in function.args.args] if function is not None else []
     if len(params) < 2:
         return None
@@ -498,17 +537,14 @@ def scalar_memory_semantics(op_cls, sem_cls, fields: dict) -> dict | None:
             if operand in fields and operand not in address_operands:
                 address_operands.append(operand)
 
-    addressing: dict[str, object] = {"mode": "explicit_operands",
-                                     "operands": address_operands}
+    addressing: dict[str, object] = {"mode": "explicit_operands", "operands": address_operands}
     if len(address_operands) == 2:
         base, offset = address_operands
         signed, signed_width = _signed_operand(tree, offset, aliases)
-        addressing = {"mode": "base_plus_immediate", "base_operand": base,
-                      "offset_operand": offset}
+        addressing = {"mode": "base_plus_immediate", "base_operand": base, "offset_operand": offset}
         bits = signed_width
         if bits is None:
-            encoded = [bit for bit in (fields.get(offset) or ())
-                       if isinstance(bit, int) and bit >= 0]
+            encoded = [bit for bit in (fields.get(offset) or ()) if isinstance(bit, int) and bit >= 0]
             bits = len(encoded) or None
         if bits is not None:
             addressing["offset_bits"] = bits
@@ -596,9 +632,9 @@ def _terminator_flag(cls) -> str | None:
     except Exception:  # noqa: BLE001 — a datapath op reads unset operands and raises; not a terminator
         return None
     if rec.calls:
-        return None                                   # touched a register/memory method -> not a pure halt
+        return None  # touched a register/memory method -> not a pure halt
     true_bools = [k for k, v in rec.sets.items() if isinstance(v, bool) and v is True]
-    if len(rec.sets) == 1 and len(true_bools) == 1:   # sole effect: raise one boolean flag
+    if len(rec.sets) == 1 and len(true_bools) == 1:  # sole effect: raise one boolean flag
         return true_bools[0]
     return None
 
@@ -617,7 +653,7 @@ def _halt_ops(mod, by_mnem: dict) -> tuple[list[str], str | None]:
             flag_votes.setdefault(flag, []).append(name)
     if not flag_votes:
         return [], None
-    flag = max(flag_votes, key=lambda f: len(flag_votes[f]))   # the flag the most terminator ops raise
+    flag = max(flag_votes, key=lambda f: len(flag_votes[f]))  # the flag the most terminator ops raise
     return sorted(flag_votes[flag]), flag
 
 
@@ -627,6 +663,7 @@ def _discover_asm_operations(mod) -> dict:
     ISA-definition module, so we scan (a) the loaded module's own namespace and (b) the namespaces of the
     modules the module imported (already in ``sys.modules``, restricted to the ISA module's own top-level
     package so we never touch unrelated packages). First object with a non-empty ``operations`` dict wins."""
+
     def _ops_of(ns) -> dict | None:
         for obj in ns:
             ops = getattr(obj, "operations", None)
@@ -676,22 +713,27 @@ def main() -> int:
     patmod = _pattern_module(mod)
     by_class: dict[str, list] = {}
     by_mnem: dict[str, dict] = {}
-    asm_from_classes: dict[str, str] = {}          # asm-syntax token -> class name, from each op's own ClassVar
-    op_classes: dict = {}                          # mnemonic -> op class, for the dropped-operand repair pass
-    operand_attrs: dict[str, set[str]] = {}        # mnemonic -> assembler-visible semantic operands
+    asm_from_classes: dict[str, str] = {}  # asm-syntax token -> class name, from each op's own ClassVar
+    op_classes: dict = {}  # mnemonic -> op class, for the dropped-operand repair pass
+    operand_attrs: dict[str, set[str]] = {}  # mnemonic -> assembler-visible semantic operands
     for name, obj in vars(mod).items():
         if name.startswith("_") or not inspect.isclass(obj) or not hasattr(obj, "opcode"):
             continue
         op = getattr(obj, "opcode", None)
-        if not isinstance(op, int):                  # skip the imported format base classes (RType/IType…)
+        if not isinstance(op, int):  # skip the imported format base classes (RType/IType…)
             continue
         sem_cls = next((b for b in obj.__mro__ if getattr(b, "__module__", "") == patmod), None)
         if sem_cls is None:
             continue
         sem = sem_cls.__name__
-        entry = {"mnemonic": name, "opcode": op, "role": _role_for_pattern(sem_cls),
-                 "funct3": getattr(obj, "funct3", None), "funct7": getattr(obj, "funct7", None),
-                 "funct2": getattr(obj, "funct2", None)}
+        entry = {
+            "mnemonic": name,
+            "opcode": op,
+            "role": _role_for_pattern(sem_cls),
+            "funct3": getattr(obj, "funct3", None),
+            "funct7": getattr(obj, "funct7", None),
+            "funct2": getattr(obj, "funct2", None),
+        }
         # DECODE + ENCODE signature, both derived from the op's OWN encoder (position-free, format-agnostic):
         #  * fixed_mask/fixed_value — the fixed opcode/funct bits, so an emitted word classifies back to its
         #    semantic class (powers class-coverage / tiling / the disassembler);
@@ -713,7 +755,7 @@ def main() -> int:
         by_mnem[name] = {"class": sem, **entry}
         op_classes[name] = obj
         operand_attrs[name] = _declared_operands(sem_cls)
-        am = _asm_mnemonic_of(obj)                   # the op's OWN assembler syntax (e.g. vmatmul.mxu0)
+        am = _asm_mnemonic_of(obj)  # the op's OWN assembler syntax (e.g. vmatmul.mxu0)
         if am:
             asm_from_classes[am] = name
 
@@ -754,9 +796,17 @@ def main() -> int:
             halt_signatures.append([m, v])
 
     with open(a.out, "w") as f:
-        json.dump({"by_class": by_class, "by_mnemonic": by_mnem, "asm_mnemonics": asm,
-                   "halt_mnemonics": halt_mnemonics, "halt_flag": halt_flag,
-                   "halt_signatures": halt_signatures}, f)
+        json.dump(
+            {
+                "by_class": by_class,
+                "by_mnemonic": by_mnem,
+                "asm_mnemonics": asm,
+                "halt_mnemonics": halt_mnemonics,
+                "halt_flag": halt_flag,
+                "halt_signatures": halt_signatures,
+            },
+            f,
+        )
     return 0
 
 

@@ -14,6 +14,7 @@ harness already builds can be measured without recompiling it.
 Fail-closed: if the toolchain, the board, or the PMU is unavailable, :func:`measure` returns ``None``
 and callers keep their wall-time number — a missing counter is never reported as a zero.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -123,15 +124,39 @@ def ensure_deployed(*, timeout: int = 180) -> bool:
         src, binp = Path(tmp) / "pmustat.c", Path(tmp) / "pmustat"
         src.write_text(_PMUSTAT_C, encoding="utf-8")
         build = subprocess.run(
-            [str(cc), "--target=riscv64-unknown-linux-gnu", f"-march={k1.K1_MARCH}",
-             f"-mabi={k1.K1_MABI}", "-O2", "-static", "-o", str(binp), str(src)],
-            capture_output=True, text=True, timeout=timeout)
+            [
+                str(cc),
+                "--target=riscv64-unknown-linux-gnu",
+                f"-march={k1.K1_MARCH}",
+                f"-mabi={k1.K1_MABI}",
+                "-O2",
+                "-static",
+                "-o",
+                str(binp),
+                str(src),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
         if build.returncode != 0 or not binp.is_file():
             return False
         push = subprocess.run(
-            ["scp", "-i", k1.K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
-             str(binp), f"{k1.K1_HOST}:{REMOTE_PMUSTAT}"],
-            capture_output=True, text=True, timeout=timeout)
+            [
+                "scp",
+                "-i",
+                k1.K1_SSH_KEY,
+                "-o",
+                "BatchMode=yes",
+                "-o",
+                "StrictHostKeyChecking=no",
+                str(binp),
+                f"{k1.K1_HOST}:{REMOTE_PMUSTAT}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
         if push.returncode != 0:
             return False
     k1._ssh(f"chmod +x {REMOTE_PMUSTAT}", timeout=30)

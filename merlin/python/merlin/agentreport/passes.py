@@ -24,14 +24,14 @@ Regressions are NOT smoothed away at extraction. A score that genuinely went dow
 the run; flattening it here would hide it and there would be no way to get it back. The count is
 reported so a plot can decide, with the fact in hand, whether to draw a monotone envelope.
 """
+
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from merlin.agentreport.availability import (Availability, MEASURED, Status, derived,
-                                             measured, unavailable)
+from merlin.agentreport.availability import MEASURED, Availability, Status, derived, measured, unavailable
 
 #: Rows scoped to a subset of the corpus answer a different question than the full-suite ones and
 #: cannot share an axis with them. The full-suite scope is the driver's own spelling.
@@ -178,12 +178,16 @@ def read_passes(run_dir: Path, *, scope: str = SCOPE_ALL) -> PassSeries:
         kept.append((float(offset), row))
 
     if not kept:
-        series.availability.set("passes", unavailable(
-            f"{series.n_rows} self-check row(s) read, but none carried both the {scope!r} scope and "
-            f"this run's own suite size of {series.suite_size}: {series.n_no_denominator} had no "
-            f"denominator ({series.n_build_failed} of them a failed build), {series.n_scoped_out} "
-            f"were scoped to a subset of the corpus, and {series.n_other_suite} were graded against "
-            f"a different suite size"))
+        series.availability.set(
+            "passes",
+            unavailable(
+                f"{series.n_rows} self-check row(s) read, but none carried both the {scope!r} scope and "
+                f"this run's own suite size of {series.suite_size}: {series.n_no_denominator} had no "
+                f"denominator ({series.n_build_failed} of them a failed build), {series.n_scoped_out} "
+                f"were scoped to a subset of the corpus, and {series.n_other_suite} were graded against "
+                f"a different suite size"
+            ),
+        )
         return series
 
     clock = _rebase([off for off, _ in kept])
@@ -199,17 +203,24 @@ def read_passes(run_dir: Path, *, scope: str = SCOPE_ALL) -> PassSeries:
         if prev_passed is not None and passed < prev_passed:
             series.n_regressions += 1
         prev_passed = passed
-        series.points.append(PassPoint(t_s, passed, total,
-                                       str(row.get("barrier_tier") or ""), str(row.get("sim") or "")))
+        series.points.append(
+            PassPoint(t_s, passed, total, str(row.get("barrier_tier") or ""), str(row.get("sim") or ""))
+        )
     series.wall_s = series.points[-1].t_s if series.points else 0.0
-    note = (f"{len(series.points)} of {series.n_rows} self-check row(s) usable at this run's own "
-            f"suite size of {series.suite_size}")
+    note = (
+        f"{len(series.points)} of {series.n_rows} self-check row(s) usable at this run's own "
+        f"suite size of {series.suite_size}"
+    )
     if series.n_no_denominator:
-        note += (f"; {series.n_no_denominator} had no capsule count and were excluded "
-                 f"({series.n_build_failed} a failed build)")
+        note += (
+            f"; {series.n_no_denominator} had no capsule count and were excluded "
+            f"({series.n_build_failed} a failed build)"
+        )
     if series.n_other_suite:
-        note += (f"; {series.n_other_suite} row(s) were graded against a different suite size and "
-                 f"are a fraction of a different whole")
+        note += (
+            f"; {series.n_other_suite} row(s) were graded against a different suite size and "
+            f"are a fraction of a different whole"
+        )
     if series.n_inconsistent:
         note += f"; {series.n_inconsistent} row(s) disagreed with their own failing list"
     series.availability.set("passes", Status(MEASURED, reason=note, source="selfcheck_log"))
@@ -231,9 +242,13 @@ def _from_verdicts(run_dir: Path) -> PassSeries:
     series = PassSeries()
     history = run_dir / "qa_history"
     if not history.is_dir():
-        series.availability.set("passes", unavailable(
-            f"{run_dir.name} wrote neither selfcheck_log.jsonl nor a qa_history/ directory, so the "
-            f"run kept no in-run progress record"))
+        series.availability.set(
+            "passes",
+            unavailable(
+                f"{run_dir.name} wrote neither selfcheck_log.jsonl nor a qa_history/ directory, so the "
+                f"run kept no in-run progress record"
+            ),
+        )
         return series
 
     rows: list[tuple[float, int, int]] = []
@@ -257,8 +272,9 @@ def _from_verdicts(run_dir: Path) -> PassSeries:
         rows.append((stamped if stamped is not None else f.stat().st_mtime, passed, total))
     series.n_rows = len(rows) + series.n_no_denominator
     if not rows:
-        series.availability.set("passes", unavailable(
-            f"{run_dir.name} has a qa_history/ but none of its verdicts carried a capsule count"))
+        series.availability.set(
+            "passes", unavailable(f"{run_dir.name} has a qa_history/ but none of its verdicts carried a capsule count")
+        )
         return series
 
     rows.sort()
@@ -273,17 +289,27 @@ def _from_verdicts(run_dir: Path) -> PassSeries:
     if n_stamped == len(rows):
         series.availability.set("passes", measured("qa_history_graded_at"))
     elif n_stamped:
-        series.availability.set("passes", derived(
-            f"reconstructed from {len(rows)} qa_history verdict file(s), of which {n_stamped} carry "
-            f"the grader's own `graded_at` stamp and {len(rows) - n_stamped} fall back to the file's "
-            f"mtime. An mtime does not survive a tree copy, so the unstamped part of this axis is "
-            f"filesystem metadata.", source="qa_history_mixed"))
+        series.availability.set(
+            "passes",
+            derived(
+                f"reconstructed from {len(rows)} qa_history verdict file(s), of which {n_stamped} carry "
+                f"the grader's own `graded_at` stamp and {len(rows) - n_stamped} fall back to the file's "
+                f"mtime. An mtime does not survive a tree copy, so the unstamped part of this axis is "
+                f"filesystem metadata.",
+                source="qa_history_mixed",
+            ),
+        )
     else:
-        series.availability.set("passes", derived(
-            f"reconstructed from {len(rows)} qa_history verdict file(s); this run wrote no "
-            f"selfcheck_log.jsonl and its verdicts predate the `graded_at` stamp, so the time axis is "
-            f"the files' mtime rather than anything the run recorded. An mtime does not survive a "
-            f"tree copy.", source="qa_history_mtime"))
+        series.availability.set(
+            "passes",
+            derived(
+                f"reconstructed from {len(rows)} qa_history verdict file(s); this run wrote no "
+                f"selfcheck_log.jsonl and its verdicts predate the `graded_at` stamp, so the time axis is "
+                f"the files' mtime rather than anything the run recorded. An mtime does not survive a "
+                f"tree copy.",
+                source="qa_history_mtime",
+            ),
+        )
     return series
 
 
@@ -292,6 +318,7 @@ def _iso_seconds(value) -> float | None:
     if not isinstance(value, str) or not value:
         return None
     from datetime import datetime
+
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
     except ValueError:

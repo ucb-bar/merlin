@@ -134,7 +134,7 @@ def stream_stamped(
 
         def _write(line_bytes: bytes) -> None:
             arrived = now()
-            if raw_f is not None:                      # durable FIRST, interpreted second
+            if raw_f is not None:  # durable FIRST, interpreted second
                 raw_f.write(line_bytes)
                 raw_f.flush()
             text = line_bytes.decode("utf-8", errors="replace")
@@ -143,8 +143,12 @@ def stream_stamped(
             tf.flush()
 
         proc = subprocess.Popen(
-            cmd, cwd=None if cwd is None else str(cwd), stdout=subprocess.PIPE, stderr=ef,
-            env=env, start_new_session=True,
+            cmd,
+            cwd=None if cwd is None else str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=ef,
+            env=env,
+            start_new_session=True,
         )
         try:
             sel = selectors.DefaultSelector()
@@ -153,8 +157,7 @@ def stream_stamped(
                 if deadline is not None and time.monotonic() >= deadline:
                     timed_out = True
                     break
-                wait = _POLL_S if deadline is None else max(
-                    0.0, min(_POLL_S, deadline - time.monotonic()))
+                wait = _POLL_S if deadline is None else max(0.0, min(_POLL_S, deadline - time.monotonic()))
                 if not sel.select(timeout=wait):
                     if proc.poll() is not None and not sel.select(timeout=0):
                         break
@@ -170,9 +173,9 @@ def stream_stamped(
                     nl = buf.find(b"\n")
                     if nl < 0:
                         break
-                    _write(bytes(buf[:nl + 1]))
-                    del buf[:nl + 1]
-            if buf:                                    # a final line with no newline
+                    _write(bytes(buf[: nl + 1]))
+                    del buf[: nl + 1]
+            if buf:  # a final line with no newline
                 _write(bytes(buf))
                 buf.clear()
         finally:

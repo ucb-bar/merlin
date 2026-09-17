@@ -4,6 +4,7 @@ Keyed by the behavior descriptors (memory/control/granularity + workload regime)
 result is a PORTFOLIO of high-performing families rather than a single winner — Merlin does not
 prematurely converge on one abstraction style.
 """
+
 from __future__ import annotations
 
 
@@ -41,13 +42,19 @@ def archive_rows(archive: dict) -> list[dict]:
     rows = []
     for key, entry in archive.items():
         c, s = entry["candidate"], entry["score"]
-        rows.append({
-            "memory_abstraction": key[0], "control_abstraction": key[1],
-            "granularity": key[2], "workload_regime": key[3],
-            "strategy": c.artifact.get("id"),
-            "features": ";".join(c.artifact.get("interface_features", [])),
-            "correctness": s.correctness, "coverage": s.coverage,
-            "exploitability": s.exploitability, "speedup": s.speedup,
-            "total": round(s.total, 4),
-        })
+        rows.append(
+            {
+                "memory_abstraction": key[0],
+                "control_abstraction": key[1],
+                "granularity": key[2],
+                "workload_regime": key[3],
+                "strategy": c.artifact.get("id"),
+                "features": ";".join(c.artifact.get("interface_features", [])),
+                "correctness": s.correctness,
+                "coverage": s.coverage,
+                "exploitability": s.exploitability,
+                "speedup": s.speedup,
+                "total": round(s.total, 4),
+            }
+        )
     return rows

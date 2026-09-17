@@ -6,6 +6,7 @@ i8 x i8 -> i32 accumulation; zero points are 0). Outputs stay i32 accumulations 
 the workload spec carries no epilogue (merlin/benchmarks/semantic_memory/
 repeated_rhs_matmul.yaml: op_sequence [matmul]).
 """
+
 from __future__ import annotations
 
 from .._common import HAS_XDSL
@@ -15,13 +16,12 @@ def build_input_module(reuse: int = 4, m: int = 64, k: int = 128, n: int = 64):
     """func @repeated_rhs_matmul(A_0..A_{R-1}: mxk i8, W: kxn i8) -> R x (mxn i32)."""
     if not HAS_XDSL:
         return None
-    from xdsl.ir import Block, Region
     from xdsl.dialects import arith
     from xdsl.dialects import tensor as tensor_d
-    from xdsl.dialects.builtin import (FunctionType, IntegerAttr, ModuleOp, TensorType,
-                                       i8, i32)
+    from xdsl.dialects.builtin import FunctionType, IntegerAttr, ModuleOp, TensorType, i8, i32
     from xdsl.dialects.func import FuncOp, ReturnOp
     from xdsl.dialects.linalg import ops as linalg_ops
+    from xdsl.ir import Block, Region
 
     if reuse < 1:
         raise ValueError("reuse must be >= 1")
@@ -38,14 +38,12 @@ def build_input_module(reuse: int = 4, m: int = 64, k: int = 128, n: int = 64):
     outs = []
     for a in a_args:
         init = tensor_d.EmptyOp((), Ot)
-        mm = linalg_ops.QuantizedMatmulOp(
-            inputs=(a, w, zp.result, zp.result), outputs=(init.tensor,), res=(Ot,))
+        mm = linalg_ops.QuantizedMatmulOp(inputs=(a, w, zp.result, zp.result), outputs=(init.tensor,), res=(Ot,))
         ops += [init, mm]
         outs.append(mm.results[0])
     ops.append(ReturnOp(*outs))
     blk.add_ops(ops)
-    fn = FuncOp("repeated_rhs_matmul",
-                FunctionType.from_lists(arg_types, [Ot] * reuse), Region([blk]))
+    fn = FuncOp("repeated_rhs_matmul", FunctionType.from_lists(arg_types, [Ot] * reuse), Region([blk]))
     return ModuleOp([fn])
 
 
@@ -56,11 +54,11 @@ def build_matmul_chain(dims=(8, 16, 12, 6), elem="f32"):
     Returns (module, [weight arrays are the caller's to inject by name])."""
     if not HAS_XDSL:
         return None
-    from xdsl.ir import Block, Region
     from xdsl.dialects import tensor as tensor_d
     from xdsl.dialects.builtin import FunctionType, ModuleOp, TensorType, f16, f32, f64
     from xdsl.dialects.func import FuncOp, ReturnOp
     from xdsl.dialects.linalg import ops as linalg_ops
+    from xdsl.ir import Block, Region
 
     et = {"f16": f16, "f32": f32, "f64": f64}[elem]
     m = dims[0]
@@ -86,8 +84,7 @@ def build_matmul_chain(dims=(8, 16, 12, 6), elem="f32"):
     return ModuleOp([fn])
 
 
-def build_vector_block(m: int = 8, k: int = 16, elem: str = "f32",
-                       combine: str = "add", relu: bool = True):
+def build_vector_block(m: int = 8, k: int = 16, elem: str = "f32", combine: str = "add", relu: bool = True):
     """func @vecblock(A: m×k, W1: k×k, W2: k×k) -> m×k : ``combine(relu(A@W1), A@W2)``.
 
     Exercises the non-matmul vector path alongside matmuls: two ``linalg.matmul`` layers, an
@@ -96,13 +93,12 @@ def build_vector_block(m: int = 8, k: int = 16, elem: str = "f32",
     residual add or a gating multiply). ``combine`` ∈ {"add", "mul"}."""
     if not HAS_XDSL:
         return None
-    from xdsl.ir import Block, Region
     from xdsl.dialects import arith
     from xdsl.dialects import tensor as tensor_d
-    from xdsl.dialects.builtin import (FloatAttr, FunctionType, ModuleOp, TensorType,
-                                       f16, f32, f64)
+    from xdsl.dialects.builtin import FloatAttr, FunctionType, ModuleOp, TensorType, f16, f32, f64
     from xdsl.dialects.func import FuncOp, ReturnOp
     from xdsl.dialects.linalg import ops as linalg_ops
+    from xdsl.ir import Block, Region
 
     et = {"f16": f16, "f32": f32, "f64": f64}[elem]
     combine_op = {"add": linalg_ops.AddOp, "mul": linalg_ops.MulOp}[combine]
@@ -164,8 +160,7 @@ ELEMENTWISE_COMBINES = {"linalg.add": "add", "linalg.mul": "mul"}
 
 def find_elementwise(module):
     """All linalg elementwise ops the interface layer can materialize, as (op, combine) pairs."""
-    return [(op, ELEMENTWISE_COMBINES[op.name])
-            for op in module.walk() if op.name in ELEMENTWISE_COMBINES]
+    return [(op, ELEMENTWISE_COMBINES[op.name]) for op in module.walk() if op.name in ELEMENTWISE_COMBINES]
 
 
 def elementwise_operands(op):

@@ -21,6 +21,7 @@ A second guard follows from the same run: the partition sum may not exceed the m
 is what caught the fabricated set as arithmetically impossible rather than merely untrusted, and it
 would also catch a wrapped counter or two windows mixed into one reading.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
@@ -28,8 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["CounterRun", "harvest_counter_runs", "corpus_map", "format_corpus_map",
-           "engine_of", "CYCLE_MARKER"]
+__all__ = ["CounterRun", "harvest_counter_runs", "corpus_map", "format_corpus_map", "engine_of", "CYCLE_MARKER"]
 
 #: The engine that produced a console is read from the FILE NAME, because the readings themselves
 #: carry no engine and a graded run writes one console per oracle tier into one directory. The
@@ -58,10 +58,16 @@ class CounterRun:
         return sum(int(v) for v in self.readings.values())
 
     def to_dict(self) -> dict[str, Any]:
-        return {"workload": self.workload, "engine": self.engine,
-                "total_cycles": self.total_cycles, "charged_cycles": self.charged,
-                "readings": {k: int(v) for k, v in sorted(self.readings.items())},
-                "console": str(self.console), "trusted": self.trusted, "refusal": self.refusal}
+        return {
+            "workload": self.workload,
+            "engine": self.engine,
+            "total_cycles": self.total_cycles,
+            "charged_cycles": self.charged,
+            "readings": {k: int(v) for k, v in sorted(self.readings.items())},
+            "console": str(self.console),
+            "trusted": self.trusted,
+            "refusal": self.refusal,
+        }
 
 
 @dataclass
@@ -73,9 +79,13 @@ class HarvestResult:
         return [r for r in self.runs if r.trusted]
 
     def to_dict(self) -> dict[str, Any]:
-        return {"schema": "merlin_counter_harvest_v1",
-                "n_runs": len(self.runs), "n_trusted": len(self.trusted()),
-                "runs": [r.to_dict() for r in self.runs], "refusals": list(self.refusals)}
+        return {
+            "schema": "merlin_counter_harvest_v1",
+            "n_runs": len(self.runs),
+            "n_trusted": len(self.trusted()),
+            "runs": [r.to_dict() for r in self.runs],
+            "refusals": list(self.refusals),
+        }
 
 
 def engine_of(path: Path, engines: Iterable[str]) -> str | None:
@@ -117,12 +127,17 @@ def harvest_counter_runs(runs_root: Any, *, engines: Iterable[str]) -> HarvestRe
             continue
         engine = engine_of(console, engines)
         if engine is None:
-            out.refusals.append({
-                "console": str(console),
-                "reason": (f"the console's name names none of the declared engines "
-                           f"{sorted(engines)}, and the "
-                           "readings do not carry it; a graded run writes one console per tier into "
-                           "one directory, so guessing would mix a fabricated set with a real one")})
+            out.refusals.append(
+                {
+                    "console": str(console),
+                    "reason": (
+                        f"the console's name names none of the declared engines "
+                        f"{sorted(engines)}, and the "
+                        "readings do not carry it; a graded run writes one console per tier into "
+                        "one directory, so guessing would mix a fabricated set with a real one"
+                    ),
+                }
+            )
             continue
         readings = HC.parse_counter_output(text)
         if not readings:
@@ -130,16 +145,20 @@ def harvest_counter_runs(runs_root: Any, *, engines: Iterable[str]) -> HarvestRe
             continue
         cycle_lines = [line for line in text.splitlines() if CYCLE_MARKER in line]
         if not cycle_lines:
-            out.refusals.append({
-                "console": str(console),
-                "reason": (f"no {CYCLE_MARKER!r} line, so the partition has no window to be charged "
-                           f"against and the host residue cannot be computed")})
+            out.refusals.append(
+                {
+                    "console": str(console),
+                    "reason": (
+                        f"no {CYCLE_MARKER!r} line, so the partition has no window to be charged "
+                        f"against and the host residue cannot be computed"
+                    ),
+                }
+            )
             continue
         try:
             total = int(cycle_lines[-1].split()[-1])
         except ValueError:
-            out.refusals.append({"console": str(console),
-                                 "reason": f"unparseable cycle line {cycle_lines[-1]!r}"})
+            out.refusals.append({"console": str(console), "reason": f"unparseable cycle line {cycle_lines[-1]!r}"})
             continue
 
         verdict = CT.verdict_for(engine)
@@ -148,22 +167,31 @@ def harvest_counter_runs(runs_root: Any, *, engines: Iterable[str]) -> HarvestRe
         # charge more cycles than the window it was read in; the fabricated set failed this by 35x.
         charged = sum(int(v) for v in readings.values())
         if total > 0 and charged > total:
-            impossible = (f"the readings charge {charged} cycles against a {total}-cycle window "
-                          f"({charged / total:.1f}x): a partition cannot exceed its own window, so "
-                          f"this is fabricated, wrapped, or two windows mixed into one reading")
+            impossible = (
+                f"the readings charge {charged} cycles against a {total}-cycle window "
+                f"({charged / total:.1f}x): a partition cannot exceed its own window, so "
+                f"this is fabricated, wrapped, or two windows mixed into one reading"
+            )
             refusal = (refusal + "; " if refusal else "") + impossible
 
-        run = CounterRun(workload=console.parent.parent.name, engine=engine, total_cycles=total,
-                         readings=readings, console=console,
-                         trusted=not refusal, refusal=refusal)
+        run = CounterRun(
+            workload=console.parent.parent.name,
+            engine=engine,
+            total_cycles=total,
+            readings=readings,
+            console=console,
+            trusted=not refusal,
+            refusal=refusal,
+        )
         out.runs.append(run)
         if refusal:
             out.refusals.append({"console": str(console), "engine": engine, "reason": refusal})
     return out
 
 
-def corpus_map(runs: Iterable[CounterRun], *, header_text: str,
-               kind_of: Mapping[str, str]) -> tuple[Any, list[dict[str, Any]]]:
+def corpus_map(
+    runs: Iterable[CounterRun], *, header_text: str, kind_of: Mapping[str, str]
+) -> tuple[Any, list[dict[str, Any]]]:
     """``(CorpusAttribution, refusals)`` over the TRUSTED runs, or a refusal per run that cannot map.
 
     Each run is converted through :func:`merlin.perf.attribution.activity_from_counter_readings`,
@@ -179,16 +207,21 @@ def corpus_map(runs: Iterable[CounterRun], *, header_text: str,
             refusals.append({"workload": run.workload, "reason": run.refusal})
             continue
         try:
-            sources.append(A.activity_from_counter_readings(
-                run.readings, workload=run.workload, total_cycles=run.total_cycles,
-                header_text=header_text, kind_of=kind_of,
-                provenance=f"{run.engine} + full partition ({run.console.name})"))
+            sources.append(
+                A.activity_from_counter_readings(
+                    run.readings,
+                    workload=run.workload,
+                    total_cycles=run.total_cycles,
+                    header_text=header_text,
+                    kind_of=kind_of,
+                    provenance=f"{run.engine} + full partition ({run.console.name})",
+                )
+            )
         except ValueError as exc:
             refusals.append({"workload": run.workload, "reason": str(exc)})
     if not sources:
         return None, refusals
-    buckets = A.buckets_from_kinds({r.name: r.kind for r in sources[0].resources},
-                                   fixed_bucket="host")
+    buckets = A.buckets_from_kinds({r.name: r.kind for r in sources[0].resources}, fixed_bucket="host")
     return A.attribute_corpus(sources, buckets=buckets), refusals
 
 
@@ -196,18 +229,18 @@ def format_corpus_map(corpus: Any, *, refusals: Sequence[Mapping[str, Any]] = ()
     """The table the agent reads to choose where to work. ``NONE`` means nothing to win here."""
     if corpus is None:
         rows = ["== no workload produced a closed partition"]
-        rows += [f"   refused {r.get('workload', '?')}: {str(r.get('reason'))[:110]}"
-                 for r in refusals]
+        rows += [f"   refused {r.get('workload', '?')}: {str(r.get('reason'))[:110]}" for r in refusals]
         return "\n".join(rows)
     rows = [f"{'workload':26} {'bucket':9} {'cycles':>10} {'%window':>8}  family"]
     for workload, att in sorted(corpus.workloads.items()):
         total = att.total_cycles or 1
         for component in att.components:
-            family = (component.family.value if hasattr(component.family, "value")
-                      else str(component.family))
-            rows.append(f"{workload[:26]:26} {component.bucket:9} "
-                        f"{component.measured_cycles:>10,} "
-                        f"{100.0 * component.measured_cycles / total:>7.2f}%  {family}")
+            family = component.family.value if hasattr(component.family, "value") else str(component.family)
+            rows.append(
+                f"{workload[:26]:26} {component.bucket:9} "
+                f"{component.measured_cycles:>10,} "
+                f"{100.0 * component.measured_cycles / total:>7.2f}%  {family}"
+            )
     for r in refusals:
         rows.append(f"   refused {r.get('workload', '?')}: {str(r.get('reason'))[:110]}")
     return "\n".join(rows)

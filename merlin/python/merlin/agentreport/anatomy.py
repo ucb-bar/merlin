@@ -19,6 +19,7 @@ against 80 feedback calls costing 12,218 s. Development is free and feedback is 
 which is not what the call COUNTS suggest (281 inspect calls against 69 self-checks) and is exactly
 why both are carried here.
 """
+
 from __future__ import annotations
 
 import json
@@ -184,16 +185,25 @@ class Anatomy:
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
-        return {"run_id": self.run_id, "target": self.target, "arm": self.arm, "model": self.model,
-                "wall_s": self.wall_s, "calls": [asdict(c) for c in self.calls],
-                "verdicts": [asdict(v) for v in self.verdicts],
-                "token_curve": self.token_curve, "cost_curve": self.cost_curve,
-                "blocked": [asdict(b) for b in self.blocked],
-                "sim_events": [asdict(e) for e in self.sim_events],
-                "grade_costs": [asdict(g) for g in self.grade_costs],
-                "cost_kind": self.cost_kind, "cost_usd": self.cost_usd,
-                "notional_usd": self.notional_usd, "cost_reason": self.cost_reason,
-                "notes": self.notes}
+        return {
+            "run_id": self.run_id,
+            "target": self.target,
+            "arm": self.arm,
+            "model": self.model,
+            "wall_s": self.wall_s,
+            "calls": [asdict(c) for c in self.calls],
+            "verdicts": [asdict(v) for v in self.verdicts],
+            "token_curve": self.token_curve,
+            "cost_curve": self.cost_curve,
+            "blocked": [asdict(b) for b in self.blocked],
+            "sim_events": [asdict(e) for e in self.sim_events],
+            "grade_costs": [asdict(g) for g in self.grade_costs],
+            "cost_kind": self.cost_kind,
+            "cost_usd": self.cost_usd,
+            "notional_usd": self.notional_usd,
+            "cost_reason": self.cost_reason,
+            "notes": self.notes,
+        }
 
 
 _TIERS = ("L0", "L1", "L2", "L3", "L4")
@@ -214,18 +224,18 @@ def run_started_at(run_dir: Path) -> float | None:
     the left of the verdicts it belongs to, which is enough to put a grade's simulations before the
     grade that requested them."""
     import yaml
-    for name, path in (("timing", run_dir / "qa_loop_summary.yaml"),
-                       ("timing", run_dir / "qa_loop_state.yaml")):
+
+    for name, path in (("timing", run_dir / "qa_loop_summary.yaml"), ("timing", run_dir / "qa_loop_state.yaml")):
         if not path.is_file():
             continue
         try:
             doc = yaml.safe_load(path.read_text(encoding="utf-8", errors="ignore")) or {}
         except Exception:  # noqa: BLE001
             continue
-        stamp = ((doc.get(name) or {}).get("started_at")
-                 if isinstance(doc.get(name), dict) else None)
+        stamp = (doc.get(name) or {}).get("started_at") if isinstance(doc.get(name), dict) else None
         if isinstance(stamp, str) and stamp:
             from datetime import datetime
+
             try:
                 return datetime.fromisoformat(stamp).timestamp()
             except ValueError:
@@ -237,6 +247,7 @@ def run_started_at(run_dir: Path) -> float | None:
             stamp = doc.get("started_at")
             if isinstance(stamp, str) and stamp:
                 from datetime import datetime
+
                 return datetime.fromisoformat(stamp).timestamp()
         except Exception:  # noqa: BLE001
             pass
@@ -263,6 +274,7 @@ def read_verdicts(run_dir: Path, t0: float | None = None) -> list[Verdict]:
         when: float | None = None
         if isinstance(stamp, str) and stamp:
             from datetime import datetime
+
             try:
                 when = datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
             except ValueError:
@@ -281,9 +293,16 @@ def read_verdicts(run_dir: Path, t0: float | None = None) -> list[Verdict]:
             if isinstance(c, dict) and c.get("capsule"):
                 per[str(c["capsule"])] = str(c.get("status") or "")
                 tier[str(c["capsule"])] = _deepest_tier(c.get("tiers"))
-        out.append(Verdict(t_s=when - t0, n_passed=int(doc.get("n_passed") or 0),
-                           n_capsules=int(doc["n_capsules"]), name=path.stem,
-                           per_capsule=per, per_capsule_tier=tier))
+        out.append(
+            Verdict(
+                t_s=when - t0,
+                n_passed=int(doc.get("n_passed") or 0),
+                n_capsules=int(doc["n_capsules"]),
+                name=path.stem,
+                per_capsule=per,
+                per_capsule_tier=tier,
+            )
+        )
     return out
 
 
@@ -306,11 +325,16 @@ def read_blocked(run_dir: Path) -> list[Blocked]:
     for c in latest.get("per_capsule") or []:
         if not isinstance(c, dict) or c.get("status") == "pass":
             continue
-        out.append(Blocked(capsule=str(c.get("capsule") or ""), status=str(c.get("status") or ""),
-                           plane=str(c.get("failure_plane") or ""),
-                           category=str(c.get("failure_category") or ""),
-                           deepest_tier_passed=_deepest_tier(c.get("tiers")),
-                           detail=str(c.get("failure_detail") or "")[:400]))
+        out.append(
+            Blocked(
+                capsule=str(c.get("capsule") or ""),
+                status=str(c.get("status") or ""),
+                plane=str(c.get("failure_plane") or ""),
+                category=str(c.get("failure_category") or ""),
+                deepest_tier_passed=_deepest_tier(c.get("tiers")),
+                detail=str(c.get("failure_detail") or "")[:400],
+            )
+        )
     return out
 
 
@@ -321,6 +345,7 @@ def read_sim_events(run_dir: Path, t0: float | None = None) -> list[SimEvent]:
     different grades share the axis deliberately -- the question this answers is how much simulator
     work overlapped, and that is a property of the whole run rather than of one grade."""
     import yaml
+
     work = run_dir / "_qa_work"
     if not work.is_dir():
         return []
@@ -337,13 +362,15 @@ def read_sim_events(run_dir: Path, t0: float | None = None) -> list[SimEvent]:
             created = None
             if manifest.is_file():
                 try:
-                    created = (yaml.safe_load(manifest.read_text(encoding="utf-8",
-                                                                 errors="ignore")) or {}).get("created_at")
+                    created = (yaml.safe_load(manifest.read_text(encoding="utf-8", errors="ignore")) or {}).get(
+                        "created_at"
+                    )
                 except Exception:  # noqa: BLE001
                     created = None
             if not isinstance(created, str):
                 continue
             from datetime import datetime
+
             try:
                 end = datetime.fromisoformat(created).timestamp()
             except ValueError:
@@ -356,15 +383,24 @@ def read_sim_events(run_dir: Path, t0: float | None = None) -> list[SimEvent]:
                     continue
                 wall = float(timing.get("adapter_wall_s") or timing.get("sim_active_s") or 0.0)
                 conc = entry.get("concurrency")
-                out.append(SimEvent(
-                    capsule=str(doc.get("capsule") or path.parent.name), tier=str(tier),
-                    engine=str(entry.get("engine") or ""), start_s=end - wall, end_s=end,
-                    sim_active_s=float(timing.get("sim_active_s") or 0.0),
-                    build_s=float(timing.get("build_s") or 0.0),
-                    oracle_wait_s=float(timing.get("oracle_wait_s") or 0.0),
-                    workers=(int(conc["workers"]) if isinstance(conc, dict)
-                             and isinstance(conc.get("workers"), int) else None),
-                    grade=grade.name))
+                out.append(
+                    SimEvent(
+                        capsule=str(doc.get("capsule") or path.parent.name),
+                        tier=str(tier),
+                        engine=str(entry.get("engine") or ""),
+                        start_s=end - wall,
+                        end_s=end,
+                        sim_active_s=float(timing.get("sim_active_s") or 0.0),
+                        build_s=float(timing.get("build_s") or 0.0),
+                        oracle_wait_s=float(timing.get("oracle_wait_s") or 0.0),
+                        workers=(
+                            int(conc["workers"])
+                            if isinstance(conc, dict) and isinstance(conc.get("workers"), int)
+                            else None
+                        ),
+                        grade=grade.name,
+                    )
+                )
     if not out:
         return []
     base = t0 if t0 is not None else min(e.start_s for e in out)
@@ -406,8 +442,18 @@ def read_grade_costs(run_dir: Path) -> list[GradeCost]:
     return out
 
 
-def build_anatomy(run_dir: Path, spanset: SpanSet, *, run_id: str, target: str, arm: str,
-                  model: str, token_curve=None, cost_curve=None, cost=None) -> Anatomy:
+def build_anatomy(
+    run_dir: Path,
+    spanset: SpanSet,
+    *,
+    run_id: str,
+    target: str,
+    arm: str,
+    model: str,
+    token_curve=None,
+    cost_curve=None,
+    cost=None,
+) -> Anatomy:
     """Assemble one run's full record. Spans and verdicts keep their own clocks; both start at 0."""
     a = Anatomy(run_id=run_id, target=target, arm=arm, model=model, wall_s=spanset.wall_s)
     for sp in spanset.spans:
@@ -420,8 +466,10 @@ def build_anatomy(run_dir: Path, spanset: SpanSet, *, run_id: str, target: str, 
     a.sim_events = read_sim_events(run_dir, started)
     a.grade_costs = read_grade_costs(run_dir)
     if started is None:
-        a.notes.append("this run recorded no start time, so the grader's series are anchored on "
-                       "their own first event and may sit a few minutes off the transcript's clock")
+        a.notes.append(
+            "this run recorded no start time, so the grader's series are anchored on "
+            "their own first event and may sit a few minutes off the transcript's clock"
+        )
     a.token_curve = list(token_curve or [])
     a.cost_curve = list(cost_curve or [])
     # Carried verbatim from the facts row rather than recomputed here: one reader of the cost YAMLs is
@@ -437,5 +485,6 @@ def build_anatomy(run_dir: Path, spanset: SpanSet, *, run_id: str, target: str, 
             a.notes.append(
                 f"the verdict clock and the transcript clock disagree by {drift:.0%} "
                 f"({a.verdicts[-1].t_s / 3600:.1f} h of grading against {a.wall_s / 3600:.1f} h of "
-                f"transcript); they are two independent records and are drawn on their own scales")
+                f"transcript); they are two independent records and are drawn on their own scales"
+            )
     return a

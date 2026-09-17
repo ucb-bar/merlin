@@ -42,6 +42,7 @@ REACHES but that nothing has checked. It is a measurement, not a `PassInfo` fiel
 `exercised` is not one either: no static table can state whether anyone proved the pass does what it
 declares.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -71,8 +72,12 @@ from .._common import HAS_XDSL
 #                           buffer, its instruction encoding.
 #   boundary materialization  materializes the seam between compiled accelerator work and the host /
 #                           runtime: the interface ops, the call ABI, the dispatch table.
-OBLIGATIONS: tuple[str, ...] = ("partition/eligibility", "target transformation",
-                                "target lowering", "boundary materialization")
+OBLIGATIONS: tuple[str, ...] = (
+    "partition/eligibility",
+    "target transformation",
+    "target lowering",
+    "boundary materialization",
+)
 
 # Not determinable from the pass's own code. Reported, never silently accepted.
 UNKNOWN = "UNKNOWN"
@@ -89,13 +94,13 @@ DISPATCH_PROGRAM = "<dispatch-program>"
 
 @dataclass(frozen=True)
 class PassInfo:
-    name: str            # the conceptual MLIR pass name
-    stage: str           # phase the pass belongs to
+    name: str  # the conceptual MLIR pass name
+    stage: str  # phase the pass belongs to
     summary: str
-    entry: str           # dotted path of the implementing callable
-    input_dialect: str = UNKNOWN     # dialect consumed (or a sentinel above)
-    output_dialect: str = UNKNOWN    # dialect produced (or a sentinel above)
-    obligation: str = UNKNOWN        # one of OBLIGATIONS, or UNKNOWN
+    entry: str  # dotted path of the implementing callable
+    input_dialect: str = UNKNOWN  # dialect consumed (or a sentinel above)
+    output_dialect: str = UNKNOWN  # dialect produced (or a sentinel above)
+    obligation: str = UNKNOWN  # one of OBLIGATIONS, or UNKNOWN
     # Requirement classes declared by capsules in ``pass_requirements``.  A class, rather than a
     # target-specific capsule name in this shared module, keeps the catalog target-independent while
     # still proving that a concrete capsule carrying that class caused the invocation.
@@ -111,14 +116,24 @@ class PassInfo:
 
 
 NORMALIZATION_CATALOG: tuple[PassInfo, ...] = (
-    PassInfo("merlin-lower-quant-ext", "normalize",
-             "dequantize_per_channel -> linalg.generic (i8 weights stay i8 in memory)",
-             "merlin.llvmlower.passes_xdsl.lower_quant_ext",
-             input_dialect="quant_ext", output_dialect="linalg", obligation=UNKNOWN),
-    PassInfo("merlin-bf16-matmul-f32acc", "normalize",
-             "bf16 linalg.matmul -> f32-accumulating generic + truncf (matches torch)",
-             "merlin.llvmlower.passes_xdsl.lower_bf16_matmul_f32acc",
-             input_dialect="linalg", output_dialect="linalg", obligation=UNKNOWN),
+    PassInfo(
+        "merlin-lower-quant-ext",
+        "normalize",
+        "dequantize_per_channel -> linalg.generic (i8 weights stay i8 in memory)",
+        "merlin.llvmlower.passes_xdsl.lower_quant_ext",
+        input_dialect="quant_ext",
+        output_dialect="linalg",
+        obligation=UNKNOWN,
+    ),
+    PassInfo(
+        "merlin-bf16-matmul-f32acc",
+        "normalize",
+        "bf16 linalg.matmul -> f32-accumulating generic + truncf (matches torch)",
+        "merlin.llvmlower.passes_xdsl.lower_bf16_matmul_f32acc",
+        input_dialect="linalg",
+        output_dialect="linalg",
+        obligation=UNKNOWN,
+    ),
 )
 
 
@@ -133,10 +148,10 @@ _MODEL_CAPSTONES = (MODEL_BOUNDARY_CAPSTONE,)
 #: `pass_requirements`, both the capstone class, so `--fail-on-unrequired` would have rejected most of
 #: the compiler and the gate could not be turned on. Synthesis emits them from what each entry actually
 #: exercises, which is the only way the count moves without someone hand-labelling 180 capsules.
-REGION_PARTITION = "region-partition"          # partition/eligibility
-TILE_SCHEDULE = "tile-schedule"                # target transformation
-TARGET_ISA_LOWERING = "target-isa-lowering"    # target lowering
-HOST_SEAM = "host-seam"                        # boundary materialization
+REGION_PARTITION = "region-partition"  # partition/eligibility
+TILE_SCHEDULE = "tile-schedule"  # target transformation
+TARGET_ISA_LOWERING = "target-isa-lowering"  # target lowering
+HOST_SEAM = "host-seam"  # boundary materialization
 
 #: Which obligation each class discharges. Kept beside the classes so a reader can check the mapping is
 #: onto ``OBLIGATIONS`` without tracing call sites.
@@ -152,38 +167,62 @@ CLASS_OBLIGATION = {
 CATALOG: tuple[PassInfo, ...] = (
     # Dispatch formation: the roots that become units of placeable work. Structure changes, dialects
     # do not — the kernels and the driver are the same linalg-on-tensors the input was.
-    PassInfo("merlin-outline-dispatches", "outline",
-             "split func @forward into per-dispatch kernel funcs + a driver",
-             "merlin.xdsl_dialects.lowering.outline.outline_dispatches",
-             input_dialect="linalg", output_dialect="linalg",
-             obligation="partition/eligibility", required_by=_MODEL_CAPSTONES),
+    PassInfo(
+        "merlin-outline-dispatches",
+        "outline",
+        "split func @forward into per-dispatch kernel funcs + a driver",
+        "merlin.xdsl_dialects.lowering.outline.outline_dispatches",
+        input_dialect="linalg",
+        output_dialect="linalg",
+        obligation="partition/eligibility",
+        required_by=_MODEL_CAPSTONES,
+    ),
     # The driver stops being IR and becomes the table the runtime walks: buffer ids, model-arg
     # indices, result ids. That table IS the compiled-work/host seam.
-    PassInfo("merlin-emit-dispatch-program", "runtime",
-             "flatten the driver into a serializable dispatch DAG for the runtime",
-             "merlin.xdsl_dialects.lowering.dispatch_program.build_dispatch_program",
-             input_dialect="func", output_dialect=DISPATCH_PROGRAM,
-             obligation="boundary materialization", required_by=_MODEL_CAPSTONES),
-    PassInfo("merlin-partition-dispatches", "runtime",
-             "level-synchronous multicore schedule of the dispatch DAG across harts",
-             "merlin.xdsl_dialects.lowering.schedule_dispatch.partition_dispatches",
-             input_dialect=DISPATCH_PROGRAM, output_dialect=DISPATCH_PROGRAM,
-             obligation="partition/eligibility", required_by=_MODEL_CAPSTONES),
+    PassInfo(
+        "merlin-emit-dispatch-program",
+        "runtime",
+        "flatten the driver into a serializable dispatch DAG for the runtime",
+        "merlin.xdsl_dialects.lowering.dispatch_program.build_dispatch_program",
+        input_dialect="func",
+        output_dialect=DISPATCH_PROGRAM,
+        obligation="boundary materialization",
+        required_by=_MODEL_CAPSTONES,
+    ),
+    PassInfo(
+        "merlin-partition-dispatches",
+        "runtime",
+        "level-synchronous multicore schedule of the dispatch DAG across harts",
+        "merlin.xdsl_dialects.lowering.schedule_dispatch.partition_dispatches",
+        input_dialect=DISPATCH_PROGRAM,
+        output_dialect=DISPATCH_PROGRAM,
+        obligation="partition/eligibility",
+        required_by=_MODEL_CAPSTONES,
+    ),
     # The `_mlir_ciface_*` wrapper is literally the host call boundary; nothing else materializes it.
-    PassInfo("merlin-add-c-interface", "edge",
-             "attach llvm.emit_c_interface so each public func gets a ciface wrapper",
-             "merlin.llvmlower.passes_xdsl.add_c_interface",
-             input_dialect="func", output_dialect="func",
-             obligation="boundary materialization", required_by=_MODEL_CAPSTONES),
+    PassInfo(
+        "merlin-add-c-interface",
+        "edge",
+        "attach llvm.emit_c_interface so each public func gets a ciface wrapper",
+        "merlin.llvmlower.passes_xdsl.add_c_interface",
+        input_dialect="func",
+        output_dialect="func",
+        obligation="boundary materialization",
+        required_by=_MODEL_CAPSTONES,
+    ),
 )
 
 
 EDGE_CATALOG: tuple[PassInfo, ...] = (
-    PassInfo("merlin-lower-inline-asm", "edge",
-             "merlin.inline_asm -> llvm.inline_asm 1:1 (custom ISA, no LLVM fork)",
-             "merlin.llvmlower.custom_isa.lower_inline_asm",
-             input_dialect="merlin", output_dialect="llvm",
-             obligation="target lowering"),
+    PassInfo(
+        "merlin-lower-inline-asm",
+        "edge",
+        "merlin.inline_asm -> llvm.inline_asm 1:1 (custom ISA, no LLVM fork)",
+        "merlin.llvmlower.custom_isa.lower_inline_asm",
+        input_dialect="merlin",
+        output_dialect="llvm",
+        obligation="target lowering",
+    ),
 )
 
 
@@ -191,34 +230,54 @@ PROTOTYPE_CATALOG: tuple[PassInfo, ...] = (
     # staged core-dialect passes (synthetic-workload path; see pipeline.py)
     # Eligibility in the literal sense: it emits the capability, the requirement, and the proofs
     # (immutability, capacity fit) that decide whether the work is legal on this target at all.
-    PassInfo("merlin-infer-contract-facts", "contract",
-             "annotate linalg with reuse/immutability/quant/capacity facts",
-             "merlin.xdsl_dialects.lowering.contract_facts.lower_to_contract",
-             input_dialect="linalg", output_dialect="contract",
-             obligation="partition/eligibility"),
-    PassInfo("merlin-apply-schedule", "schedule",
-             "residency/tiling/vector-strategy decisions over contract facts",
-             "merlin.xdsl_dialects.lowering.schedule_decisions.lower_to_schedule",
-             input_dialect="contract", output_dialect="schedule",
-             obligation="target transformation"),
+    PassInfo(
+        "merlin-infer-contract-facts",
+        "contract",
+        "annotate linalg with reuse/immutability/quant/capacity facts",
+        "merlin.xdsl_dialects.lowering.contract_facts.lower_to_contract",
+        input_dialect="linalg",
+        output_dialect="contract",
+        obligation="partition/eligibility",
+    ),
+    PassInfo(
+        "merlin-apply-schedule",
+        "schedule",
+        "residency/tiling/vector-strategy decisions over contract facts",
+        "merlin.xdsl_dialects.lowering.schedule_decisions.lower_to_schedule",
+        input_dialect="contract",
+        output_dialect="schedule",
+        obligation="target transformation",
+    ),
     # The interface op set (resident_pack/matmul/commit/evict) is accelerator work by construction —
     # see targetgen.boundary on why that grammar cannot express host computation. Materializing into
     # it, completely or not at all (`unaccounted_ops` fails closed), is the boundary obligation.
-    PassInfo("merlin-materialize-interface", "interface",
-             "schedule decisions -> interface ops (resident_pack/matmul/commit)",
-             "merlin.xdsl_dialects.lowering.interface_lowering.lower_to_interface",
-             input_dialect="schedule", output_dialect="interface",
-             obligation="boundary materialization"),
-    PassInfo("merlin-lower-to-target", "target",
-             "interface ops -> a reference target dialect (toynpu/saturn)",  # target-ok: example targets named in a pass description
-             "merlin.xdsl_dialects.lowering.target_lowering.lower_to_target",
-             input_dialect="interface", output_dialect=TARGET_DIALECT,
-             obligation="target lowering"),
-    PassInfo("merlin-lower-to-runtime", "runtime",
-             "target ops -> runtime command-buffer IR",
-             "merlin.xdsl_dialects.lowering.runtime_lowering.lower_to_runtime",
-             input_dialect=TARGET_DIALECT, output_dialect="runtime",
-             obligation="target lowering"),
+    PassInfo(
+        "merlin-materialize-interface",
+        "interface",
+        "schedule decisions -> interface ops (resident_pack/matmul/commit)",
+        "merlin.xdsl_dialects.lowering.interface_lowering.lower_to_interface",
+        input_dialect="schedule",
+        output_dialect="interface",
+        obligation="boundary materialization",
+    ),
+    PassInfo(
+        "merlin-lower-to-target",
+        "target",
+        "interface ops -> a reference target dialect (toynpu/saturn)",  # target-ok: example targets named in a pass description
+        "merlin.xdsl_dialects.lowering.target_lowering.lower_to_target",
+        input_dialect="interface",
+        output_dialect=TARGET_DIALECT,
+        obligation="target lowering",
+    ),
+    PassInfo(
+        "merlin-lower-to-runtime",
+        "runtime",
+        "target ops -> runtime command-buffer IR",
+        "merlin.xdsl_dialects.lowering.runtime_lowering.lower_to_runtime",
+        input_dialect=TARGET_DIALECT,
+        output_dialect="runtime",
+        obligation="target lowering",
+    ),
 )
 
 
@@ -249,7 +308,7 @@ def all_catalogs() -> tuple[PassInfo, ...]:
 
 def by_stage(cat: Iterable[PassInfo] | None = None) -> dict[str, list[PassInfo]]:
     out: dict[str, list[PassInfo]] = {}
-    for p in (cat if cat is not None else CATALOG):
+    for p in cat if cat is not None else CATALOG:
         out.setdefault(p.stage, []).append(p)
     return out
 
@@ -269,8 +328,8 @@ def unrequired(cat: Iterable[PassInfo] | None = None) -> list[PassInfo]:
 # know that, and a check that infers it from the catalog would be the repeat of a failure this repo
 # has hit three times: a check that could not run reporting success. So invocation is recorded to a
 # file, and a gate with no file reports UNMEASURED — never "clean".
-PASS_LOG_ENV = "MERLIN_PASS_LOG"          # path of the JSONL invocation log; unset = no recording
-PASS_LOG_CAPSULE_ENV = "MERLIN_PASS_LOG_CAPSULE"   # capsule name to attribute invocations to
+PASS_LOG_ENV = "MERLIN_PASS_LOG"  # path of the JSONL invocation log; unset = no recording
+PASS_LOG_CAPSULE_ENV = "MERLIN_PASS_LOG_CAPSULE"  # capsule name to attribute invocations to
 PASS_LOG_REQUIREMENTS_ENV = "MERLIN_PASS_LOG_REQUIREMENTS"  # JSON list of requirement classes
 
 # The verification layers write to their OWN log, for the same reason and by the same rules: a
@@ -278,7 +337,7 @@ PASS_LOG_REQUIREMENTS_ENV = "MERLIN_PASS_LOG_REQUIREMENTS"  # JSON list of requi
 # must say "unmeasured" rather than "clean". It is a second file rather than a second field on
 # `PassInfo` because the catalog states what a pass is FOR, and no static table can state whether
 # anyone proved it does that — exactly the split that already keeps `exercised` out of the catalog.
-VERIFY_LOG_ENV = "MERLIN_VERIFY_LOG"      # path of the JSONL verdict log; unset = no recording
+VERIFY_LOG_ENV = "MERLIN_VERIFY_LOG"  # path of the JSONL verdict log; unset = no recording
 
 _LOG_INSTALL = "install"
 _LOG_INVOKE = "invoke"
@@ -304,24 +363,21 @@ VERDICT_VERIFIED = "verified"
 VERDICT_REFUTED = "refuted"
 VERDICT_ABSTRACTED = "abstracted"
 VERDICT_UNMEASURED = "unmeasured"
-VERDICTS: tuple[str, ...] = (VERDICT_VERIFIED, VERDICT_REFUTED, VERDICT_ABSTRACTED,
-                             VERDICT_UNMEASURED)
+VERDICTS: tuple[str, ...] = (VERDICT_VERIFIED, VERDICT_REFUTED, VERDICT_ABSTRACTED, VERDICT_UNMEASURED)
 
 # How the verdict was reached. The two layers answer different questions and neither subsumes the
 # other (the static layer says nothing about arithmetic; the formal layer says nothing about the
 # hardware), so the method is recorded rather than averaged away.
-METHOD_FILECHECK = "filecheck"            # static: the pass did the structural thing, on this input
-METHOD_SMT = "smt"                        # formal: semantics-preserving for all inputs at this shape
+METHOD_FILECHECK = "filecheck"  # static: the pass did the structural thing, on this input
+METHOD_SMT = "smt"  # formal: semantics-preserving for all inputs at this shape
 METHODS: tuple[str, ...] = (METHOD_FILECHECK, METHOD_SMT)
 
 _RECORDER_MARK = "_merlin_pass_recorder"
 
 # Set by :func:`pass_run_context`; a ContextVar so concurrent capsule grades in one process cannot
 # cross-attribute each other's pass runs.
-_CAPSULE: contextvars.ContextVar[str | None] = contextvars.ContextVar("merlin_pass_capsule",
-                                                                     default=None)
-_REQUIREMENTS: contextvars.ContextVar[tuple[str, ...]] = contextvars.ContextVar(
-    "merlin_pass_requirements", default=())
+_CAPSULE: contextvars.ContextVar[str | None] = contextvars.ContextVar("merlin_pass_capsule", default=None)
+_REQUIREMENTS: contextvars.ContextVar[tuple[str, ...]] = contextvars.ContextVar("merlin_pass_requirements", default=())
 
 
 def pass_log_path() -> Path | None:
@@ -344,8 +400,7 @@ def solver_verdict(status: str) -> str:
     ``unknown`` means the solver gave up. That last one becomes `unmeasured`, never `verified` — a
     timeout that reads as a proof is a check that could not run reporting success.
     """
-    return {"unsat": VERDICT_VERIFIED, "sat": VERDICT_REFUTED}.get(
-        str(status).strip().lower(), VERDICT_UNMEASURED)
+    return {"unsat": VERDICT_VERIFIED, "sat": VERDICT_REFUTED}.get(str(status).strip().lower(), VERDICT_UNMEASURED)
 
 
 def current_capsule() -> str | None:
@@ -416,7 +471,7 @@ def _op_count(obj) -> int | None:
         return None
     try:
         return sum(1 for _ in walk())
-    except Exception:                       # noqa: BLE001 -- a probe must never break the pass
+    except Exception:  # noqa: BLE001 -- a probe must never break the pass
         return None
 
 
@@ -439,7 +494,7 @@ def _ir_signature(obj) -> tuple[int, int, int] | None:
             attrs += len(getattr(op, "attributes", ()) or ())
             operands += len(getattr(op, "operands", ()) or ())
         return (ops, attrs, operands)
-    except Exception:                       # noqa: BLE001 -- a probe must never break the pass
+    except Exception:  # noqa: BLE001 -- a probe must never break the pass
         return None
 
 
@@ -464,7 +519,7 @@ def _product_size(result) -> tuple[int | None, str]:
         for f in dataclasses.fields(result):
             try:
                 v = getattr(result, f.name)
-            except Exception:               # noqa: BLE001 -- a probe must never break the pass
+            except Exception:  # noqa: BLE001 -- a probe must never break the pass
                 continue
             if isinstance(v, (list, tuple, set, dict)):
                 total += len(v)
@@ -478,9 +533,12 @@ def _product_size(result) -> tuple[int | None, str]:
 def _effect_of(subject, before: tuple[int, int, int] | None, result) -> tuple[str, dict]:
     after = _ir_signature(subject)
     produced, why = _product_size(result)
-    ev: dict = {"subject_before": list(before) if before else None,
-                "subject_after": list(after) if after else None,
-                "produced": produced, "product_read": why}
+    ev: dict = {
+        "subject_before": list(before) if before else None,
+        "subject_after": list(after) if after else None,
+        "produced": produced,
+        "product_read": why,
+    }
     rewrote = before is not None and after is not None and before != after
     if rewrote or (produced is not None and produced > 0):
         return (EFFECT_CHANGED, ev)
@@ -507,8 +565,9 @@ def _append(record: dict) -> None:
     _append_to(pass_log_path(), record)
 
 
-def record_invocation(name: str, *, capsule: str | None = None,
-                     effect: str = EFFECT_UNMEASURED, evidence: dict | None = None) -> None:
+def record_invocation(
+    name: str, *, capsule: str | None = None, effect: str = EFFECT_UNMEASURED, evidence: dict | None = None
+) -> None:
     """Record that pass ``name`` ran, and WHETHER IT DID ANYTHING.
 
     ``effect`` is the distinction this repo keeps paying for: measured on the capstone that certifies
@@ -520,15 +579,31 @@ def record_invocation(name: str, *, capsule: str | None = None,
     """
     if pass_log_path() is None:
         return
-    _append({"kind": _LOG_INVOKE, "pass": name, "capsule": capsule or current_capsule(),
-             "requirements": list(current_requirements()), "effect": effect,
-             "evidence": dict(evidence or {}),
-             "pid": os.getpid(), "t": round(time.time(), 3)})
+    _append(
+        {
+            "kind": _LOG_INVOKE,
+            "pass": name,
+            "capsule": capsule or current_capsule(),
+            "requirements": list(current_requirements()),
+            "effect": effect,
+            "evidence": dict(evidence or {}),
+            "pid": os.getpid(),
+            "t": round(time.time(), 3),
+        }
+    )
 
 
-def record_verification(name: str, *, requirement_class: str, method: str, verdict: str,
-                        target: str | None = None, capsule: str | None = None,
-                        evidence: dict | None = None, provenance: dict | None = None) -> None:
+def record_verification(
+    name: str,
+    *,
+    requirement_class: str,
+    method: str,
+    verdict: str,
+    target: str | None = None,
+    capsule: str | None = None,
+    evidence: dict | None = None,
+    provenance: dict | None = None,
+) -> None:
     """Record that a verification layer reached a VERDICT about pass ``name``.
 
     This is the join between the verification layers and the evidence system that already exists.
@@ -556,13 +631,22 @@ def record_verification(name: str, *, requirement_class: str, method: str, verdi
         raise ValueError(f"method {method!r} is not one of {METHODS}")
     if verify_log_path() is None:
         return
-    _append_to(verify_log_path(), {
-        "kind": _LOG_VERDICT, "pass": name, "capsule": capsule or current_capsule(),
-        "requirement_class": (requirement_class or "").strip() or UNKNOWN,
-        "target": (target or "").strip() or UNKNOWN,
-        "method": method, "verdict": verdict,
-        "evidence": dict(evidence or {}), "provenance": dict(provenance or {}),
-        "pid": os.getpid(), "t": round(time.time(), 3)})
+    _append_to(
+        verify_log_path(),
+        {
+            "kind": _LOG_VERDICT,
+            "pass": name,
+            "capsule": capsule or current_capsule(),
+            "requirement_class": (requirement_class or "").strip() or UNKNOWN,
+            "target": (target or "").strip() or UNKNOWN,
+            "method": method,
+            "verdict": verdict,
+            "evidence": dict(evidence or {}),
+            "provenance": dict(provenance or {}),
+            "pid": os.getpid(),
+            "t": round(time.time(), 3),
+        },
+    )
 
 
 def install_pass_recorder(cat: Iterable[PassInfo] | None = None) -> dict[str, str]:
@@ -576,7 +660,7 @@ def install_pass_recorder(cat: Iterable[PassInfo] | None = None) -> dict[str, st
     Idempotent: an already-wrapped callable is left alone.
     """
     status: dict[str, str] = {}
-    for p in (cat if cat is not None else CATALOG):
+    for p in cat if cat is not None else CATALOG:
         mod_name, _, fn_name = p.entry.rpartition(".")
         try:
             mod = importlib.import_module(mod_name)
@@ -588,10 +672,9 @@ def install_pass_recorder(cat: Iterable[PassInfo] | None = None) -> dict[str, st
             setattr(mod, fn_name, wrapped)
             _rebind_aliases(fn, wrapped)
             status[p.name] = "instrumented"
-        except Exception as e:                       # import cycles, optional deps, renamed entries
+        except Exception as e:  # import cycles, optional deps, renamed entries
             status[p.name] = f"failed: {type(e).__name__}: {str(e)[:120]}"
-    _append({"kind": _LOG_INSTALL, "passes": status, "pid": os.getpid(),
-             "t": round(time.time(), 3)})
+    _append({"kind": _LOG_INSTALL, "passes": status, "pid": os.getpid(), "t": round(time.time(), 3)})
     return status
 
 
@@ -610,7 +693,7 @@ def _rebind_aliases(original: Callable, wrapped: Callable) -> int:
             continue
         try:
             names = [k for k, v in vars(mod).items() if v is original]
-        except Exception:                            # a module with an exotic __dict__ proxy
+        except Exception:  # a module with an exotic __dict__ proxy
             continue
         for k in names:
             setattr(mod, k, wrapped)
@@ -621,10 +704,9 @@ def _rebind_aliases(original: Callable, wrapped: Callable) -> int:
 def _wrap(fn: Callable, name: str) -> Callable:
     @functools.wraps(fn)
     def recorded(*a, **kw):
-        if pass_log_path() is None:          # recording off: no probe, no overhead
+        if pass_log_path() is None:  # recording off: no probe, no overhead
             return fn(*a, **kw)
-        subject = next((x for x in list(a) + list(kw.values()) if _ir_signature(x) is not None),
-                       None)
+        subject = next((x for x in list(a) + list(kw.values()) if _ir_signature(x) is not None), None)
         before = _ir_signature(subject)
         result = fn(*a, **kw)
         effect, evidence = _effect_of(subject, before, result)
@@ -673,12 +755,12 @@ def read_pass_log(paths: Iterable[Path]) -> dict[str, Any]:
                 for name, st in (rec.get("passes") or {}).items():
                     instrumented.setdefault(name, set()).add(st)
             elif kind == _LOG_INVOKE and rec.get("pass"):
-                invocations.setdefault(rec["pass"], set()).add(rec.get("capsule")
-                                                               or "unattributed")
+                invocations.setdefault(rec["pass"], set()).add(rec.get("capsule") or "unattributed")
                 values = rec.get("requirements") or []
                 if isinstance(values, list):
                     requirements.setdefault(rec["pass"], set()).update(
-                        str(value) for value in values if str(value).strip())
+                        str(value) for value in values if str(value).strip()
+                    )
                 eff = str(rec.get("effect") or EFFECT_UNMEASURED)
                 counts = effects.setdefault(rec["pass"], {})
                 counts[eff] = counts.get(eff, 0) + 1
@@ -686,16 +768,18 @@ def read_pass_log(paths: Iterable[Path]) -> dict[str, Any]:
                     # Keep the evidence for the verdicts a reader will challenge; a `changed` needs
                     # no defence and the log would grow without bound.
                     evidence.setdefault(rec["pass"], []).append(dict(rec["evidence"]))
-    return {"logs_read": read, "unreadable": unreadable,
-            "instrumented": {k: sorted(v) for k, v in instrumented.items()},
-            "invocations": {k: sorted(v) for k, v in invocations.items()},
-            "requirements": {k: sorted(v) for k, v in requirements.items()},
-            "effects": {k: dict(v) for k, v in effects.items()},
-            "effect_evidence": {k: v[:8] for k, v in evidence.items()}}
+    return {
+        "logs_read": read,
+        "unreadable": unreadable,
+        "instrumented": {k: sorted(v) for k, v in instrumented.items()},
+        "invocations": {k: sorted(v) for k, v in invocations.items()},
+        "requirements": {k: sorted(v) for k, v in requirements.items()},
+        "effects": {k: dict(v) for k, v in effects.items()},
+        "effect_evidence": {k: v[:8] for k, v in evidence.items()},
+    }
 
 
-def exercise_report(cat: Iterable[PassInfo] | None = None,
-                    logs: Iterable[Path] | None = None) -> dict[str, Any]:
+def exercise_report(cat: Iterable[PassInfo] | None = None, logs: Iterable[Path] | None = None) -> dict[str, Any]:
     """Per-pass exercise status measured from the logs.
 
     Status is one of ``exercised`` (a capsule ran it AND it did something), ``exercised_noop`` (a
@@ -710,10 +794,19 @@ def exercise_report(cat: Iterable[PassInfo] | None = None,
     """
     passes = list(cat if cat is not None else CATALOG)
     paths = list(logs) if logs is not None else ([pass_log_path()] if pass_log_path() else [])
-    parsed = read_pass_log(paths) if paths else {"logs_read": [], "unreadable": {},
-                                                 "instrumented": {}, "invocations": {},
-                                                 "requirements": {}, "effects": {},
-                                                 "effect_evidence": {}}
+    parsed = (
+        read_pass_log(paths)
+        if paths
+        else {
+            "logs_read": [],
+            "unreadable": {},
+            "instrumented": {},
+            "invocations": {},
+            "requirements": {},
+            "effects": {},
+            "effect_evidence": {},
+        }
+    )
     out: dict[str, Any] = {}
     for p in passes:
         caps = parsed["invocations"].get(p.name)
@@ -739,12 +832,16 @@ def exercise_report(cat: Iterable[PassInfo] | None = None,
             status = "dead"
         else:
             status = "not_instrumented"
-        out[p.name] = {"status": status, "capsules": caps or [], "install": inst or [],
-                       "requirements": requirements, "required_hits": required_hits if caps else [],
-                       "effects": eff,
-                       "effect_evidence": parsed.get("effect_evidence", {}).get(p.name, [])}
-    return {"per_pass": out, "logs_read": parsed["logs_read"],
-            "unreadable": parsed["unreadable"]}
+        out[p.name] = {
+            "status": status,
+            "capsules": caps or [],
+            "install": inst or [],
+            "requirements": requirements,
+            "required_hits": required_hits if caps else [],
+            "effects": eff,
+            "effect_evidence": parsed.get("effect_evidence", {}).get(p.name, []),
+        }
+    return {"per_pass": out, "logs_read": parsed["logs_read"], "unreadable": parsed["unreadable"]}
 
 
 def read_verify_log(paths: Iterable[Path]) -> dict[str, Any]:
@@ -797,21 +894,27 @@ def read_verify_log(paths: Iterable[Path]) -> dict[str, Any]:
             capsules.setdefault(name, set()).add(str(rec.get("capsule") or "unattributed"))
             if got != VERDICT_VERIFIED:
                 evidence.setdefault(name, []).append(
-                    {"verdict": got, "method": str(rec.get("method") or UNKNOWN),
-                     "target": str(rec.get("target") or UNKNOWN),
-                     "evidence": dict(rec.get("evidence") or {}),
-                     "provenance": dict(rec.get("provenance") or {})})
-    return {"logs_read": read, "unreadable": unreadable,
-            "verdicts": {k: dict(v) for k, v in verdicts.items()},
-            "methods": {k: sorted(v) for k, v in methods.items()},
-            "targets": {k: sorted(v) for k, v in targets.items()},
-            "requirement_classes": {k: sorted(v) for k, v in classes.items()},
-            "capsules": {k: sorted(v) for k, v in capsules.items()},
-            "verdict_evidence": {k: v[:8] for k, v in evidence.items()}}
+                    {
+                        "verdict": got,
+                        "method": str(rec.get("method") or UNKNOWN),
+                        "target": str(rec.get("target") or UNKNOWN),
+                        "evidence": dict(rec.get("evidence") or {}),
+                        "provenance": dict(rec.get("provenance") or {}),
+                    }
+                )
+    return {
+        "logs_read": read,
+        "unreadable": unreadable,
+        "verdicts": {k: dict(v) for k, v in verdicts.items()},
+        "methods": {k: sorted(v) for k, v in methods.items()},
+        "targets": {k: sorted(v) for k, v in targets.items()},
+        "requirement_classes": {k: sorted(v) for k, v in classes.items()},
+        "capsules": {k: sorted(v) for k, v in capsules.items()},
+        "verdict_evidence": {k: v[:8] for k, v in evidence.items()},
+    }
 
 
-def verification_report(cat: Iterable[PassInfo] | None = None,
-                        logs: Iterable[Path] | None = None) -> dict[str, Any]:
+def verification_report(cat: Iterable[PassInfo] | None = None, logs: Iterable[Path] | None = None) -> dict[str, Any]:
     """Per-pass verification status measured from the verdict logs.
 
     Status is one of ``refuted`` (some layer DISPROVED the pass on some input), ``verified`` (some
@@ -833,9 +936,16 @@ def verification_report(cat: Iterable[PassInfo] | None = None,
     """
     passes = list(cat if cat is not None else CATALOG)
     paths = list(logs) if logs is not None else ([verify_log_path()] if verify_log_path() else [])
-    empty: dict[str, Any] = {"logs_read": [], "unreadable": {}, "verdicts": {}, "methods": {},
-                             "targets": {}, "requirement_classes": {}, "capsules": {},
-                             "verdict_evidence": {}}
+    empty: dict[str, Any] = {
+        "logs_read": [],
+        "unreadable": {},
+        "verdicts": {},
+        "methods": {},
+        "targets": {},
+        "requirement_classes": {},
+        "capsules": {},
+        "verdict_evidence": {},
+    }
     parsed = read_verify_log(paths) if paths else empty
     out: dict[str, Any] = {}
     for p in passes:
@@ -852,15 +962,22 @@ def verification_report(cat: Iterable[PassInfo] | None = None,
             status = VERDICT_ABSTRACTED
         else:
             status = "inconclusive"
-        out[p.name] = {"status": status, "verdicts": counts,
-                       "methods": parsed["methods"].get(p.name, []),
-                       "targets": parsed["targets"].get(p.name, []),
-                       "requirement_classes": parsed["requirement_classes"].get(p.name, []),
-                       "capsules": parsed["capsules"].get(p.name, []),
-                       "evidence": parsed["verdict_evidence"].get(p.name, [])}
+        out[p.name] = {
+            "status": status,
+            "verdicts": counts,
+            "methods": parsed["methods"].get(p.name, []),
+            "targets": parsed["targets"].get(p.name, []),
+            "requirement_classes": parsed["requirement_classes"].get(p.name, []),
+            "capsules": parsed["capsules"].get(p.name, []),
+            "evidence": parsed["verdict_evidence"].get(p.name, []),
+        }
     known = {p.name for p in passes}
-    return {"per_pass": out, "logs_read": parsed["logs_read"], "unreadable": parsed["unreadable"],
-            "unknown_passes": sorted(n for n in parsed["verdicts"] if n not in known)}
+    return {
+        "per_pass": out,
+        "logs_read": parsed["logs_read"],
+        "unreadable": parsed["unreadable"],
+        "unknown_passes": sorted(n for n in parsed["verdicts"] if n not in known),
+    }
 
 
 # Auto-install when the operator asked for a log. Importing this module is on the staged compile path
@@ -868,19 +985,20 @@ def verification_report(cat: Iterable[PassInfo] | None = None,
 # repoints callers that already did `from X import fn`.
 if os.environ.get(PASS_LOG_ENV):
     install_pass_recorder()
+
+
 @dataclass
 class DialectPlaneResult:
     """Artifacts from running the authored passes on a whole model2MLIR module."""
 
-    module: Any                    # outlined module (driver + kernel funcs)
-    dispatches: list               # list[DispatchInfo]
-    program: Any                   # DispatchProgram
-    partition: Any                 # PartitionResult
+    module: Any  # outlined module (driver + kernel funcs)
+    dispatches: list  # list[DispatchInfo]
+    program: Any  # DispatchProgram
+    partition: Any  # PartitionResult
     stats: dict[str, Any]
 
 
-def run_dialect_plane(module, forward: str | None = None, prune: bool = True, n_harts: int = 1
-                      ) -> DialectPlaneResult:
+def run_dialect_plane(module, forward: str | None = None, prune: bool = True, n_harts: int = 1) -> DialectPlaneResult:
     """Run the production whole-model boundary plane on a real captured module.
 
     The returned module is outlined and carries C wrappers; the dispatch program is verified and
@@ -902,16 +1020,14 @@ def run_dialect_plane(module, forward: str | None = None, prune: bool = True, n_
     try:
         from .contract_facts import lower_to_contract
         from .schedule_decisions import lower_to_schedule
+
         cm = lower_to_schedule(lower_to_contract(module))
         analysis = {
-            "reusable_weight_facts": sum(1 for op in cm.walk()
-                                         if op.name == "contract.fact"),
-            "resident_pack_required": sum(1 for op in cm.walk()
-                                          if op.name == "contract.require"),
-            "scheduled_resident_packs": sum(1 for op in cm.walk()
-                                            if op.name == "schedule.select_interface"),
+            "reusable_weight_facts": sum(1 for op in cm.walk() if op.name == "contract.fact"),
+            "resident_pack_required": sum(1 for op in cm.walk() if op.name == "contract.require"),
+            "scheduled_resident_packs": sum(1 for op in cm.walk() if op.name == "schedule.select_interface"),
         }
-    except Exception as e:                       # analysis is advisory; never block lowering
+    except Exception as e:  # analysis is advisory; never block lowering
         analysis = {"error": str(e)[:160]}
 
     outlined = outline_dispatches(module, forward=forward)
@@ -932,5 +1048,6 @@ def run_dialect_plane(module, forward: str | None = None, prune: bool = True, n_
         "partition": dict(partition.stats),
         "abstraction_analysis": analysis,
     }
-    return DialectPlaneResult(module=outlined.module, dispatches=outlined.dispatches,
-                              program=program, partition=partition, stats=stats)
+    return DialectPlaneResult(
+        module=outlined.module, dispatches=outlined.dispatches, program=program, partition=partition, stats=stats
+    )

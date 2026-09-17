@@ -17,6 +17,7 @@ then each declared release directory one level under it, then two. Nothing is gu
 declaration only an explicit prefix is accepted, and a missing tool comes back as ``None`` for the
 caller to report in its own terms.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -30,10 +31,10 @@ __all__ = ["ToolchainDeclaration", "declared", "default_install", "candidates", 
 class ToolchainDeclaration:
     """One contract's ``runtime.toolchain`` block."""
 
-    target: str                          # the target whose contract declares it
-    env: str                             # the variable that locates the install
-    release_dirs: tuple[str, ...] = ()   # extracted-release directory globs under the install
-    default_install: str | None = None   # repo-relative (or absolute) install used when unset
+    target: str  # the target whose contract declares it
+    env: str  # the variable that locates the install
+    release_dirs: tuple[str, ...] = ()  # extracted-release directory globs under the install
+    default_install: str | None = None  # repo-relative (or absolute) install used when unset
 
 
 def declared(env_var: str) -> ToolchainDeclaration | None:
@@ -45,6 +46,7 @@ def declared(env_var: str) -> ToolchainDeclaration | None:
     """
     try:
         from merlin.targetgen import target_registry
+
         names = list(target_registry.all_targets())
     except Exception:  # noqa: BLE001 — no registry, no declaration
         return None
@@ -58,10 +60,14 @@ def declared(env_var: str) -> ToolchainDeclaration | None:
         if not isinstance(block, dict) or block.get("env") != env_var:
             continue
         install = block.get("default_install")
-        found.append(ToolchainDeclaration(
-            target=name, env=env_var,
-            release_dirs=tuple(str(g) for g in (block.get("release_dirs") or ()) if str(g)),
-            default_install=str(install) if install else None))
+        found.append(
+            ToolchainDeclaration(
+                target=name,
+                env=env_var,
+                release_dirs=tuple(str(g) for g in (block.get("release_dirs") or ()) if str(g)),
+                default_install=str(install) if install else None,
+            )
+        )
     return found[0] if len(found) == 1 else None
 
 
@@ -75,6 +81,7 @@ def default_install(env_var: str) -> Path | None:
     if path.is_absolute():
         return path
     from merlin.common.paths import repo_root
+
     return repo_root() / path
 
 
@@ -93,8 +100,7 @@ def candidates(install: str | Path, env_var: str) -> list[Path]:
     return out
 
 
-def find_prefix(install: str | Path, env_var: str, *,
-                tools: Sequence[str] = ("clang",)) -> Path | None:
+def find_prefix(install: str | Path, env_var: str, *, tools: Sequence[str] = ("clang",)) -> Path | None:
     """The first candidate holding every ``bin/<tool>`` in ``tools`` (returned as found, unresolved),
     or None when none does."""
     for cand in candidates(install, env_var):

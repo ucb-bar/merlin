@@ -27,6 +27,7 @@ compiled by somebody else's toolchain and our own emitted code are all reduced t
 histogram, so "the expert accumulates 4x per operand load and we accumulate 1x" is a statement about
 the work, not about the language it was written in.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -100,32 +101,47 @@ class AsmAudit:
     def gaps(self) -> tuple[str, ...]:
         out: list[str] = []
         if not self.total:
-            out.append(f"{self.target}: the stream is EMPTY — nothing was decoded, which is not the "
-                       f"same as a kernel that drives nothing")
+            out.append(
+                f"{self.target}: the stream is EMPTY — nothing was decoded, which is not the "
+                f"same as a kernel that drives nothing"
+            )
         if self.unroled_identities:
-            out.append(f"{self.target}/{self.endpoint}: the derived table claims "
-                       f"{len(self.unroled_identities)} identity/identities no role covers "
-                       f"({', '.join(self.unroled_identities[:6])}) — a role-table gap we own")
+            out.append(
+                f"{self.target}/{self.endpoint}: the derived table claims "
+                f"{len(self.unroled_identities)} identity/identities no role covers "
+                f"({', '.join(self.unroled_identities[:6])}) — a role-table gap we own"
+            )
         if self.unaccounted:
-            out.append(f"{self.target}: {self.unaccounted} word(s) nothing could place — a decoder "
-                       f"gap or a mis-encoding; never counted as absent")
+            out.append(
+                f"{self.target}: {self.unaccounted} word(s) nothing could place — a decoder "
+                f"gap or a mis-encoding; never counted as absent"
+            )
         if self.total and not self.role_tagged:
-            out.append(f"{self.target}: NOTHING in this stream carries a role, so no facet lifted "
-                       f"from it means anything — a CCA built here would compare equal to everything")
+            out.append(
+                f"{self.target}: NOTHING in this stream carries a role, so no facet lifted "
+                f"from it means anything — a CCA built here would compare equal to everything"
+            )
         return tuple(out)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"target": self.target, "endpoint": self.endpoint, "engine": self.engine,
-                "total": self.total, "named_by_tool": self.named_by_tool,
-                "role_tagged": self.role_tagged, "claimed_no_role": self.claimed_no_role,
-                "unaccounted": self.unaccounted,
-                "unaccounted_widths": {str(k): v for k, v in sorted(self.unaccounted_widths.items())},
-                "semantic_fraction": round(self.semantic_fraction, 4),
-                "endpoint_fraction": round(self.endpoint_fraction, 4),
-                "role_histogram": dict(sorted(self.role_histogram.items())),
-                "unroled_identities": list(self.unroled_identities),
-                "consistent": self.is_consistent(),
-                "gaps": list(self.gaps()), "notes": list(self.notes)}
+        return {
+            "target": self.target,
+            "endpoint": self.endpoint,
+            "engine": self.engine,
+            "total": self.total,
+            "named_by_tool": self.named_by_tool,
+            "role_tagged": self.role_tagged,
+            "claimed_no_role": self.claimed_no_role,
+            "unaccounted": self.unaccounted,
+            "unaccounted_widths": {str(k): v for k, v in sorted(self.unaccounted_widths.items())},
+            "semantic_fraction": round(self.semantic_fraction, 4),
+            "endpoint_fraction": round(self.endpoint_fraction, 4),
+            "role_histogram": dict(sorted(self.role_histogram.items())),
+            "unroled_identities": list(self.unroled_identities),
+            "consistent": self.is_consistent(),
+            "gaps": list(self.gaps()),
+            "notes": list(self.notes),
+        }
 
 
 _UNKNOWN = "<unknown>"
@@ -136,8 +152,7 @@ _STREAM_SEQ = 0
 
 def _classify(decoded, endpoint, target: str, engine: str, notes=()) -> AsmAudit:
     """Split a decoded stream four ways. Shared by every decoder's output shape."""
-    a = AsmAudit(target=target, endpoint=getattr(endpoint, "name", ""), engine=engine,
-                 notes=tuple(notes))
+    a = AsmAudit(target=target, endpoint=getattr(endpoint, "name", ""), engine=engine, notes=tuple(notes))
     unroled: list[str] = []
     unaccounted: list[dict] = []
     positions: list[int] = []
@@ -169,9 +184,13 @@ def _classify(decoded, endpoint, target: str, engine: str, notes=()) -> AsmAudit
             a.unaccounted_widths[bits] = a.unaccounted_widths.get(bits, 0) + 1
             a.unaccounted_width_at[positions[-1]] = bits
             if len(unaccounted) < 8:
-                unaccounted.append({"index": getattr(d, "index", None),
-                                    "addr": getattr(d, "addr", None),
-                                    "fields": dict(getattr(d, "fields", {}) or {})})
+                unaccounted.append(
+                    {
+                        "index": getattr(d, "index", None),
+                        "addr": getattr(d, "addr", None),
+                        "fields": dict(getattr(d, "fields", {}) or {}),
+                    }
+                )
     a.unroled_identities = tuple(unroled)
     a.unaccounted_samples = tuple(unaccounted)
     a.unaccounted_indices = tuple(positions)
@@ -187,17 +206,22 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
     if endpoint is None:
         eps = [e for e in _ep.endpoints_for(target) if e.roles]
         endpoint = next((e for e in eps if "accumulate" in e.roles), eps[0] if eps else None)
-    block0 = ((_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {})
+    block0 = (_ep._spec().get("endpoints") or {}).get(getattr(endpoint, "name", "")) or {}
     enc0 = block0.get("encoding") or {}
-    stream = _rvv.decode(obj_path, triple=str(enc0.get("disasm_triple") or "riscv64"),
-                         mattr=enc0.get("disasm_mattr"))
+    stream = _rvv.decode(obj_path, triple=str(enc0.get("disasm_triple") or "riscv64"), mattr=enc0.get("disasm_mattr"))
     raws = [i.raw for i in getattr(stream, "insns", ())]
     if endpoint is None:
         # No accelerator endpoint: the base-ISA reading is the whole story, and saying so is the
         # honest report rather than an empty accelerator audit.
-        a = AsmAudit(target=target, engine="vector", total=len(raws),
-                     notes=("no compute endpoint declared for this target: every instruction is "
-                            "read as base ISA, and no endpoint semantics are claimed",))
+        a = AsmAudit(
+            target=target,
+            engine="vector",
+            total=len(raws),
+            notes=(
+                "no compute endpoint declared for this target: every instruction is "
+                "read as base ISA, and no endpoint semantics are claimed",
+            ),
+        )
         a.named_by_tool = sum(1 for r in raws if str(getattr(r, "mnemonic", "")) != _UNKNOWN)
         a.unaccounted = a.total - a.named_by_tool
         # Derived by subtraction, so WHICH words are unplaced is unknown. Marked, so a merge refuses
@@ -205,24 +229,36 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
         a.positions_known = False
         return a
 
-    block = ((_ep._spec().get("endpoints") or {}).get(endpoint.name) or {})
+    block = (_ep._spec().get("endpoints") or {}).get(endpoint.name) or {}
     kind = str((block.get("encoding") or {}).get("source") or "")
     if kind == "mnemonic_grammar":
         from merlin.kernels.decode import grammar as _gram
+
         decoded = _gram.decode_stream(raws, endpoint)
-        a = _classify(decoded, endpoint, target, endpoint.engine,
-                      notes=("vocabulary DECLARED from the ISA grammar, not derived from a decode "
-                             "table: what it misses is reported below rather than assumed absent",))
+        a = _classify(
+            decoded,
+            endpoint,
+            target,
+            endpoint.engine,
+            notes=(
+                "vocabulary DECLARED from the ISA grammar, not derived from a decode "
+                "table: what it misses is reported below rather than assumed absent",
+            ),
+        )
         missed = _gram.unroled_mnemonics(decoded)
         if missed:
-            a.notes += (f"{len(missed)} mnemonic(s) no declared role covers, by name: "
-                        f"{', '.join(missed[:12])}" + (" ..." if len(missed) > 12 else ""),)
+            a.notes += (
+                f"{len(missed)} mnemonic(s) no declared role covers, by name: "
+                f"{', '.join(missed[:12])}" + (" ..." if len(missed) > 12 else ""),
+            )
         return a
     if kind == "rtl_facts":
         from merlin.kernels.decode import rocc as _rocc
+
         decoded = _rocc.decode_stream(raws, _rocc.funct_table_for(target), endpoint.roles_of)
     elif kind == "isa_encoding":
         from merlin.kernels.decode import derived_isa as _isa
+
         enc = dict(_isa.encoding_for(target))
         width = (block.get("encoding") or {}).get("stream_width")
         if width:
@@ -230,6 +266,7 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
             # the internal width declines every architectural word and reports the kernel unaccounted.
             enc["inst_width"] = int(width)
         from merlin.kernels.decode import insn_header as _ih
+
         custom, _problems = _ih.table_for(target, endpoint)
         # Cede funct7-bearing words when another endpoint of this target claims that space by funct7.
         cede = tuple(
@@ -237,10 +274,11 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
             for e in _ep.endpoints_for(target)
             if e.name != endpoint.name
             for other in [((_ep._spec()["endpoints"].get(e.name) or {}).get("encoding") or {})]
-            if str(other.get("discriminator") or "") == "funct7" and other.get("opcode_space"))
-        decoded = _isa.decode_stream(raws, enc,
-                                     (block.get("encoding") or {}).get("spaces") or (),
-                                     endpoint.roles_of, custom, cede)
+            if str(other.get("discriminator") or "") == "funct7" and other.get("opcode_space")
+        )
+        decoded = _isa.decode_stream(
+            raws, enc, (block.get("encoding") or {}).get("spaces") or (), endpoint.roles_of, custom, cede
+        )
     elif kind == "funct_header":
         # A RoCC endpoint whose funct table comes from the target's own C ISA header. Reuses the RoCC
         # decoder unchanged: the ONLY difference from an RTL-derived table is where the codes were
@@ -248,23 +286,37 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
         from merlin.common import provenance as _prov
         from merlin.kernels.decode import rocc as _rocc
         from merlin.targetgen.rtl.circt_introspect import _functs_from_headers
+
         enc = block.get("encoding") or {}
         try:
             root = Path(_prov.verify(str(enc.get("pin"))).observed.path)
             by_code = _functs_from_headers([root / str(enc.get("path"))])
         except (KeyError, OSError, ValueError) as exc:
-            return AsmAudit(target=target, endpoint=endpoint.name, engine=endpoint.engine,
-                            total=len(raws),
-                            notes=(f"{target}: funct header unresolved ({type(exc).__name__})",))
-        opcodes = (_derived_opcodes(target) or {})
+            return AsmAudit(
+                target=target,
+                endpoint=endpoint.name,
+                engine=endpoint.engine,
+                total=len(raws),
+                notes=(f"{target}: funct header unresolved ({type(exc).__name__})",),
+            )
+        opcodes = _derived_opcodes(target) or {}
         opcode = opcodes.get(str(enc.get("opcode_space") or ""))
         if opcode is None:
-            return AsmAudit(target=target, endpoint=endpoint.name, engine=endpoint.engine,
-                            total=len(raws),
-                            notes=(f"{target}: opcode space {enc.get('opcode_space')!r} is not in the "
-                                   f"derived opcode table; refusing to guess its value",))
-        table = {"custom_opcode": opcode, "legal_funct": sorted(by_code),
-                 "names": {str(k): v for k, v in by_code.items()}}
+            return AsmAudit(
+                target=target,
+                endpoint=endpoint.name,
+                engine=endpoint.engine,
+                total=len(raws),
+                notes=(
+                    f"{target}: opcode space {enc.get('opcode_space')!r} is not in the "
+                    f"derived opcode table; refusing to guess its value",
+                ),
+            )
+        table = {
+            "custom_opcode": opcode,
+            "legal_funct": sorted(by_code),
+            "names": {str(k): v for k, v in by_code.items()},
+        }
         decoded = _rocc.decode_stream(raws, table, endpoint.roles_of)
         # This endpoint SHARES its opcode space with the target's SIMT surface, told apart by field:
         # a RoCC command carries its operation in funct7, an intrinsic has funct7 == 0. Claim only the
@@ -275,15 +327,24 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
                 if d.from_endpoint and not d.fields.get("funct"):
                     object.__setattr__(d, "from_endpoint", False)
                     object.__setattr__(d, "roles", ())
-        return _classify(decoded, endpoint, target, endpoint.engine,
-                         notes=("shares an opcode space with this target's SIMT endpoint; claims only "
-                                "funct7 != 0, since funct7 == 0 cannot be told apart by encoding",))
+        return _classify(
+            decoded,
+            endpoint,
+            target,
+            endpoint.engine,
+            notes=(
+                "shares an opcode space with this target's SIMT endpoint; claims only "
+                "funct7 != 0, since funct7 == 0 cannot be told apart by encoding",
+            ),
+        )
     elif kind == "matrix_units":
         encodings, why = _matrix_encodings(target, block)
         if not encodings:
-            return AsmAudit(target=target, endpoint=endpoint.name, engine=endpoint.engine,
-                            total=len(raws), notes=(why,))
+            return AsmAudit(
+                target=target, endpoint=endpoint.name, engine=endpoint.engine, total=len(raws), notes=(why,)
+            )
         from merlin.kernels.decode import opu as _opu
+
         decoded = _opu.decode_stream(raws, encodings, endpoint.roles_of)
         # `from_extension` is this decoder's spelling of "the derived table claims it"; the classifier
         # reads `from_endpoint`, so bridge the two rather than teaching the classifier a second name.
@@ -291,16 +352,23 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
             object.__setattr__(d, "from_endpoint", d.from_extension)
         return _classify(decoded, endpoint, target, endpoint.engine)
     else:
-        return AsmAudit(target=target, endpoint=endpoint.name, engine=endpoint.engine,
-                        total=len(raws),
-                        notes=(f"endpoint {endpoint.name!r} derives its encoding from {kind!r}, which "
-                               f"is not decodable from a binary — audit its text corpus instead",))
+        return AsmAudit(
+            target=target,
+            endpoint=endpoint.name,
+            engine=endpoint.engine,
+            total=len(raws),
+            notes=(
+                f"endpoint {endpoint.name!r} derives its encoding from {kind!r}, which "
+                f"is not decodable from a binary — audit its text corpus instead",
+            ),
+        )
     return _classify(decoded, endpoint, target, endpoint.engine)
 
 
 def _derived_opcodes(target: str) -> dict:
     """The target's own opcode-space table, so an opcode VALUE is never written down here."""
     from merlin.targetgen.rtl import mlc_bridge as _mb
+
     return dict((_mb.isa_encoding_for(target) or {}).get("opcodes") or {})
 
 
@@ -321,26 +389,33 @@ def _matrix_encodings(target: str, block: dict) -> tuple[dict, str]:
         from merlin.targetgen.rtl import opu_isa as _opu_isa
 
         enc = block.get("encoding") or {}
-        units = (_yaml.safe_load((merlin_dir() / "contract" / "matrix_units.yaml")
-                                 .read_text(encoding="utf-8")) or {}).get("units") or {}
+        units = (
+            _yaml.safe_load((merlin_dir() / "contract" / "matrix_units.yaml").read_text(encoding="utf-8")) or {}
+        ).get("units") or {}
         spec = units.get(enc.get("unit")) or {}
         if not spec:
             return {}, f"{target}: matrix_units.yaml declares no unit {enc.get('unit')!r}"
         root = Path(_prov.verify(str(spec["pin"])).observed.path)
         S, D = spec["sources"], spec["declarations"]
         derived = _opu_isa.derive(
-            consts=root / S["consts"], instructions=root / S["instructions"],
-            params=root / S["params"], funct6_enum=D["funct6_enum"],
-            consts_container=D["consts_container"], insn_seq=D["insn_seq"],
-            opcode_name=D["opcode_name"], form_funct3=D["form_funct3"])
+            consts=root / S["consts"],
+            instructions=root / S["instructions"],
+            params=root / S["params"],
+            funct6_enum=D["funct6_enum"],
+            consts_container=D["consts_container"],
+            insn_seq=D["insn_seq"],
+            opcode_name=D["opcode_name"],
+            form_funct3=D["form_funct3"],
+        )
         return dict(derived.encodings), ""
     except Exception as exc:  # noqa: BLE001
-        return {}, (f"{target}: the matrix extension's encoding could not be derived "
-                    f"({type(exc).__name__}: {exc}) — no table, and no guessed one either")
+        return {}, (
+            f"{target}: the matrix extension's encoding could not be derived "
+            f"({type(exc).__name__}: {exc}) — no table, and no guessed one either"
+        )
 
 
-def audit_every_endpoint(source, target: str, *, text: bool = False,
-                         stream: str = "") -> list[AsmAudit]:
+def audit_every_endpoint(source, target: str, *, text: bool = False, stream: str = "") -> list[AsmAudit]:
     """Audit ``source`` through EVERY endpoint the target declares, one audit each.
 
     Picking a single endpoint for a multi-engine target hides the other engine's work completely, and
@@ -369,8 +444,7 @@ def audit_every_endpoint(source, target: str, *, text: bool = False,
     if not eps:
         out = [audit_text(source, target) if text else audit_stream(source, target)]
     else:
-        out = [audit_text(source, target, e) if text else audit_stream(source, target, e)
-               for e in eps]
+        out = [audit_text(source, target, e) if text else audit_stream(source, target, e) for e in eps]
     # One source, one label -- so a merge can tell "two endpoints reading one kernel" apart from
     # "two kernels", which is the difference between intersecting positions and summing them.
     for a in out:
@@ -405,7 +479,7 @@ def merge_audits(audits) -> dict:
         eng = a.engine or "?"
         slot = by_engine.setdefault(eng, {"endpoints": [], "roles": {}})
         if a.endpoint and a.endpoint not in slot["endpoints"]:
-            slot["endpoints"].append(a.endpoint)      # the endpoint SET, not one entry per stream
+            slot["endpoints"].append(a.endpoint)  # the endpoint SET, not one entry per stream
         for k, v in a.role_histogram.items():
             slot["roles"][k] = slot["roles"].get(k, 0) + v
         key = a.stream or ""
@@ -436,10 +510,14 @@ def merge_audits(audits) -> dict:
     union_roles: set = set()
     for slot in by_engine.values():
         union_roles |= set(slot["roles"])
-    return {"per_engine": by_engine, "total": sum(totals_by_stream.values()),
-            "roles_union": sorted(union_roles), "unaccounted": unaccounted,
-            "unaccounted_widths": dict(sorted(widths.items())),
-            "n_streams": len(totals_by_stream)}
+    return {
+        "per_engine": by_engine,
+        "total": sum(totals_by_stream.values()),
+        "roles_union": sorted(union_roles),
+        "unaccounted": unaccounted,
+        "unaccounted_widths": dict(sorted(widths.items())),
+        "n_streams": len(totals_by_stream),
+    }
 
 
 def audit_text(lines, target: str, endpoint=None) -> AsmAudit:
@@ -459,9 +537,10 @@ def audit_text(lines, target: str, endpoint=None) -> AsmAudit:
     a = _classify(decoded, endpoint, target, getattr(endpoint, "engine", ""))
     unresolved = _text.unresolved_mnemonics(decoded)
     if unresolved:
-        a.notes += (f"{len(unresolved)} mnemonic(s) the derived model could not place, by name: "
-                    f"{', '.join(unresolved[:10])}"
-                    + (" ..." if len(unresolved) > 10 else ""),)
+        a.notes += (
+            f"{len(unresolved)} mnemonic(s) the derived model could not place, by name: "
+            f"{', '.join(unresolved[:10])}" + (" ..." if len(unresolved) > 10 else ""),
+        )
     return a
 
 
@@ -474,21 +553,28 @@ def comparable(a: AsmAudit, b: AsmAudit, *, min_semantic: float = 0.05) -> dict:
     """
     reasons: list[str] = []
     if a.target != b.target:
-        reasons.append(f"different targets ({a.target} vs {b.target}): the role vocabulary is shared "
-                       f"but the endpoints are not, so the histograms are not the same measurement")
+        reasons.append(
+            f"different targets ({a.target} vs {b.target}): the role vocabulary is shared "
+            f"but the endpoints are not, so the histograms are not the same measurement"
+        )
     for side, x in (("expert", a), ("ours", b)):
         if not x.total:
             reasons.append(f"{side}: empty stream — nothing was decoded")
         elif x.semantic_fraction < min_semantic:
-            reasons.append(f"{side}: only {x.semantic_fraction:.1%} of the stream carries a role, "
-                           f"below the {min_semantic:.0%} floor — a comparison against this side "
-                           f"would report agreement it did not observe")
-    return {"comparable": not reasons, "reasons": reasons,
-            "expert_semantic_fraction": round(a.semantic_fraction, 4),
-            "ours_semantic_fraction": round(b.semantic_fraction, 4),
-            "shared_roles": sorted(set(a.role_histogram) & set(b.role_histogram)),
-            "expert_only_roles": sorted(set(a.role_histogram) - set(b.role_histogram)),
-            "ours_only_roles": sorted(set(b.role_histogram) - set(a.role_histogram))}
+            reasons.append(
+                f"{side}: only {x.semantic_fraction:.1%} of the stream carries a role, "
+                f"below the {min_semantic:.0%} floor — a comparison against this side "
+                f"would report agreement it did not observe"
+            )
+    return {
+        "comparable": not reasons,
+        "reasons": reasons,
+        "expert_semantic_fraction": round(a.semantic_fraction, 4),
+        "ours_semantic_fraction": round(b.semantic_fraction, 4),
+        "shared_roles": sorted(set(a.role_histogram) & set(b.role_histogram)),
+        "expert_only_roles": sorted(set(a.role_histogram) - set(b.role_histogram)),
+        "ours_only_roles": sorted(set(b.role_histogram) - set(a.role_histogram)),
+    }
 
 
 # ---------------------------------------------------------------------------------------------
@@ -510,30 +596,45 @@ def _facets_reachable(roles: set, engine: str) -> dict:
 
     def _add(facet, needs, why):
         missing = sorted(n for n in needs if n not in have)
-        out[facet] = {"reachable": not missing, "needs": sorted(needs), "missing": missing,
-                      "why": why}
+        out[facet] = {"reachable": not missing, "needs": sorted(needs), "missing": missing, "why": why}
 
-    _add("compute.accumulator_resident", {"accumulate", "readout"},
-         "residency is 'does a readout occur between accumulates' — undecidable without both")
-    _add("compute.contraction_form", {"accumulate"},
-         "a stream that never advances a partial sum has no contraction form to report")
-    _add("dispatch.n_dispatches", {"config"},
-         "counting commands to the endpoint needs at least one role that IS a command")
-    _add("dispatch.loop_offloaded", {"loop_descriptor"},
-         "only an endpoint that ACCEPTS a loop descriptor can be asked whether one was used")
-    _add("dispatch.dma_overlap", {"dma"},
-         "no bulk-movement role means the question does not arise on this endpoint")
-    _add("memory.access_pattern", {"operand_load"},
-         "the access pattern is a property of the loads")
+    _add(
+        "compute.accumulator_resident",
+        {"accumulate", "readout"},
+        "residency is 'does a readout occur between accumulates' — undecidable without both",
+    )
+    _add(
+        "compute.contraction_form",
+        {"accumulate"},
+        "a stream that never advances a partial sum has no contraction form to report",
+    )
+    _add(
+        "dispatch.n_dispatches",
+        {"config"},
+        "counting commands to the endpoint needs at least one role that IS a command",
+    )
+    _add(
+        "dispatch.loop_offloaded",
+        {"loop_descriptor"},
+        "only an endpoint that ACCEPTS a loop descriptor can be asked whether one was used",
+    )
+    _add("dispatch.dma_overlap", {"dma"}, "no bulk-movement role means the question does not arise on this endpoint")
+    _add("memory.access_pattern", {"operand_load"}, "the access pattern is a property of the loads")
     if engine == "spatial":
-        _add("spatial.dataflow", {"weight_load", "accumulate"},
-             "weight-stationary vs output-stationary is visible in how weights enter relative to MACs")
+        _add(
+            "spatial.dataflow",
+            {"weight_load", "accumulate"},
+            "weight-stationary vs output-stationary is visible in how weights enter relative to MACs",
+        )
         _add("spatial.accumulator_resident", {"accumulate", "readout"}, "as compute.accumulator_resident")
     if engine == "simt":
         _add("simt.barriers_in_loop", {"sync"}, "a barrier count needs a sync role")
     if engine == "vector":
-        _add("memory.a_broadcast_vf", {"broadcast"},
-             "whether the scalar operand is broadcast rather than rebuilt is visible in the form suffix")
+        _add(
+            "memory.a_broadcast_vf",
+            {"broadcast"},
+            "whether the scalar operand is broadcast rather than rebuilt is visible in the form suffix",
+        )
     return out
 
 
@@ -550,13 +651,17 @@ def target_report(target: str, streams=()) -> dict:
     eps = _ep.endpoints_for(target)
     per_endpoint = []
     for e in eps:
-        per_endpoint.append({
-            "endpoint": e.name, "engine": e.engine, "source": e.source,
-            "roles_declared": sorted(e.roles),
-            "role_table_gaps": {k: list(v) for k, v in sorted(e.missing.items())},
-            "identities_without_a_role": list(e.unmapped)[:12],
-            "facets": _facets_reachable(set(e.roles), e.engine),
-        })
+        per_endpoint.append(
+            {
+                "endpoint": e.name,
+                "engine": e.engine,
+                "source": e.source,
+                "roles_declared": sorted(e.roles),
+                "role_table_gaps": {k: list(v) for k, v in sorted(e.missing.items())},
+                "identities_without_a_role": list(e.unmapped)[:12],
+                "facets": _facets_reachable(set(e.roles), e.engine),
+            }
+        )
 
     streams = list(streams)
     audits = [a.to_dict() for a in streams]
@@ -574,14 +679,21 @@ def target_report(target: str, streams=()) -> dict:
     merged = merge_audits(streams) if streams else {}
     by_ep: dict = {}
     for a in streams:
-        c = by_ep.setdefault(a.endpoint or "<none>", {
-            "engine": a.engine, "total": 0, "named_by_tool": 0, "role_tagged": 0,
-            "claimed_no_role": 0, "unaccounted": 0})
+        c = by_ep.setdefault(
+            a.endpoint or "<none>",
+            {
+                "engine": a.engine,
+                "total": 0,
+                "named_by_tool": 0,
+                "role_tagged": 0,
+                "claimed_no_role": 0,
+                "unaccounted": 0,
+            },
+        )
         for k in ("total", "named_by_tool", "role_tagged", "claimed_no_role", "unaccounted"):
             c[k] += getattr(a, k)
     for c in by_ep.values():
-        c["sums"] = c["total"] == (c["named_by_tool"] + c["role_tagged"]
-                                   + c["claimed_no_role"] + c["unaccounted"])
+        c["sums"] = c["total"] == (c["named_by_tool"] + c["role_tagged"] + c["claimed_no_role"] + c["unaccounted"])
         c["semantic_fraction_pooled"] = round(c["role_tagged"] / c["total"], 4) if c["total"] else None
 
     return {
@@ -591,10 +703,10 @@ def target_report(target: str, streams=()) -> dict:
         "observed": {
             "n_streams": len(audits),
             "roles_seen": sorted(observed_roles),
-            "declared_but_never_seen": sorted(
-                {r for e in eps for r in e.roles} - observed_roles) if audits else [],
-            "semantic_fraction": (round(sum(a["semantic_fraction"] for a in audits) / len(audits), 4)
-                                  if audits else None),
+            "declared_but_never_seen": sorted({r for e in eps for r in e.roles} - observed_roles) if audits else [],
+            "semantic_fraction": (
+                round(sum(a["semantic_fraction"] for a in audits) / len(audits), 4) if audits else None
+            ),
         },
         "coverage": {
             # Instruction words, counted ONCE per stream however many endpoints read them.
@@ -609,7 +721,9 @@ def target_report(target: str, streams=()) -> dict:
             "unaccounted_widths": merged.get("unaccounted_widths"),
             "unaccounted_fraction": (
                 round(merged["unaccounted"] / merged["total"], 4)
-                if merged.get("unaccounted") is not None and merged.get("total") else None),
+                if merged.get("unaccounted") is not None and merged.get("total")
+                else None
+            ),
         },
         "blocking": _blocking(eps, observed_roles, bool(audits)),
     }
@@ -619,18 +733,24 @@ def _blocking(eps, observed_roles: set, have_streams: bool) -> list[str]:
     """What stops this target from being compared apples-to-apples with another. Named, not counted."""
     out: list[str] = []
     if not eps:
-        out.append("no compute endpoint is declared: nothing in this target's assembly carries a "
-                   "declared meaning, so a CCA lifted from it compares equal to everything")
+        out.append(
+            "no compute endpoint is declared: nothing in this target's assembly carries a "
+            "declared meaning, so a CCA lifted from it compares equal to everything"
+        )
         return out
     for e in eps:
         if not e.roles:
             out.append(f"{e.name}: no role binds, so the stream can be decoded but not understood")
         if e.unmapped:
-            out.append(f"{e.name}: {len(e.unmapped)} identity/identities carry no role "
-                       f"({', '.join(list(e.unmapped)[:4])}) — the target's own table names them and "
-                       f"we do not say what they mean")
+            out.append(
+                f"{e.name}: {len(e.unmapped)} identity/identities carry no role "
+                f"({', '.join(list(e.unmapped)[:4])}) — the target's own table names them and "
+                f"we do not say what they mean"
+            )
     if have_streams and "accumulate" not in observed_roles:
-        out.append("no ACCUMULATE observed in any stream: either these kernels genuinely do not "
-                   "contract, or the accumulate role does not cover how this target spells it — and "
-                   "the contraction facets are undecidable either way")
+        out.append(
+            "no ACCUMULATE observed in any stream: either these kernels genuinely do not "
+            "contract, or the accumulate role does not cover how this target spells it — and "
+            "the contraction facets are undecidable either way"
+        )
     return out

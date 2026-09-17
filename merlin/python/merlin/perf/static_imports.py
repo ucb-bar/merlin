@@ -4,6 +4,7 @@ Only literal export tables and bounded literal comprehensions are evaluated. The
 the requested symbol through that table and pass the selected module to ``import_module``. This
 accounts implementation bytes; it is not a capability grant and does not override answer masks.
 """
+
 from __future__ import annotations
 
 import ast
@@ -35,8 +36,10 @@ def _literal(node: ast.AST, variables: dict[str, Any], budget: list[int]) -> Any
     if isinstance(node, ast.Dict):
         if any(key is None for key in node.keys):
             raise _Unsupported("unpacked lazy export tables are not statically resolved")
-        return {_literal(key, variables, budget): _literal(value, variables, budget)
-                for key, value in zip(node.keys, node.values)}
+        return {
+            _literal(key, variables, budget): _literal(value, variables, budget)
+            for key, value in zip(node.keys, node.values)
+        }
     if isinstance(node, ast.DictComp):
         result = {}
 
@@ -94,11 +97,13 @@ def resolve_lazy_export(source: bytes, *, package: str, symbol: str) -> LazyExpo
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == symbol:
             return LazyExportResolution("not_lazy")
         if isinstance(node, (ast.Import, ast.ImportFrom)) and any(
-                (alias.asname or alias.name.split(".")[0]) == symbol for alias in node.names):
+            (alias.asname or alias.name.split(".")[0]) == symbol for alias in node.names
+        ):
             return LazyExportResolution("not_lazy")
         if isinstance(node, (ast.Assign, ast.AnnAssign)) and any(
-                isinstance(target, ast.Name) and target.id == symbol
-                for target in (node.targets if isinstance(node, ast.Assign) else [node.target])):
+            isinstance(target, ast.Name) and target.id == symbol
+            for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        ):
             return LazyExportResolution("not_lazy")
     getters = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "__getattr__"]
     if not getters:
@@ -109,23 +114,37 @@ def resolve_lazy_export(source: bytes, *, package: str, symbol: str) -> LazyExpo
     requested = getter.args.args[0].arg
     table_name = module_variable = None
     for node in ast.walk(getter):
-        if (isinstance(node, ast.Assign) and len(node.targets) == 1
-                and isinstance(node.targets[0], ast.Name) and isinstance(node.value, ast.Call)
-                and isinstance(node.value.func, ast.Attribute) and node.value.func.attr == "get"
-                and isinstance(node.value.func.value, ast.Name) and len(node.value.args) == 1
-                and isinstance(node.value.args[0], ast.Name) and node.value.args[0].id == requested):
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Attribute)
+            and node.value.func.attr == "get"
+            and isinstance(node.value.func.value, ast.Name)
+            and len(node.value.args) == 1
+            and isinstance(node.value.args[0], ast.Name)
+            and node.value.args[0].id == requested
+        ):
             table_name, module_variable = node.value.func.value.id, node.targets[0].id
     if table_name is None:
         return LazyExportResolution("unresolved", reason="lazy getter has no recognized finite export table")
-    assignments = [node for node in tree.body if isinstance(node, (ast.Assign, ast.AnnAssign))
-                   and any(isinstance(target, ast.Name) and target.id == table_name
-                           for target in (node.targets if isinstance(node, ast.Assign) else [node.target]))]
+    assignments = [
+        node
+        for node in tree.body
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+        and any(
+            isinstance(target, ast.Name) and target.id == table_name
+            for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        )
+    ]
     if len(assignments) != 1:
         return LazyExportResolution("unresolved", reason="lazy export table is absent or reassigned")
     try:
         table = _literal(assignments[0].value, {}, [20000])
-        if not isinstance(table, dict) or any(not isinstance(k, str) or not isinstance(v, str)
-                                             for k, v in table.items()):
+        if not isinstance(table, dict) or any(
+            not isinstance(k, str) or not isinstance(v, str) for k, v in table.items()
+        ):
             raise _Unsupported("lazy export table must map symbol names to module names")
         if symbol == "*":
             raise _Unsupported("wildcard lazy exports require explicit selected-symbol imports")
@@ -135,10 +154,16 @@ def resolve_lazy_export(source: bytes, *, package: str, symbol: str) -> LazyExpo
         for node in ast.walk(getter):
             if not isinstance(node, ast.Call) or not node.args:
                 continue
-            name = (node.func.id if isinstance(node.func, ast.Name) else
-                    node.func.attr if isinstance(node.func, ast.Attribute) else "")
-            if name != "import_module" or not any(isinstance(item, ast.Name) and item.id == module_variable
-                                                 for item in ast.walk(node.args[0])):
+            name = (
+                node.func.id
+                if isinstance(node.func, ast.Name)
+                else node.func.attr
+                if isinstance(node.func, ast.Attribute)
+                else ""
+            )
+            if name != "import_module" or not any(
+                isinstance(item, ast.Name) and item.id == module_variable for item in ast.walk(node.args[0])
+            ):
                 continue
             module_calls.append(node)
         if len(module_calls) != 1:
@@ -148,14 +173,13 @@ def resolve_lazy_export(source: bytes, *, package: str, symbol: str) -> LazyExpo
         if not isinstance(module, str):
             raise _Unsupported("lazy import module is not a static string")
         if module.startswith("."):
-            if (len(call.args) != 2 or not isinstance(call.args[1], ast.Name)
-                    or call.args[1].id != "__name__"):
+            if len(call.args) != 2 or not isinstance(call.args[1], ast.Name) or call.args[1].id != "__name__":
                 raise _Unsupported("relative lazy import does not bind the declaring package")
             dots = len(module) - len(module.lstrip("."))
             components = package.split(".")
             if dots > len(components):
                 raise _Unsupported("relative lazy import escapes the package hierarchy")
-            module = ".".join((*components[:len(components) - dots + 1], module[dots:]))
+            module = ".".join((*components[: len(components) - dots + 1], module[dots:]))
         if not module or any(not component.isidentifier() for component in module.split(".")):
             raise _Unsupported("lazy import is not a Python module name")
         return LazyExportResolution("resolved", module=module)
@@ -165,6 +189,7 @@ def resolve_lazy_export(source: bytes, *, package: str, symbol: str) -> LazyExpo
 
 def imported_attribute_paths(tree: ast.AST, bindings: dict[str, set[str]]) -> set[str]:
     """Find selected package attributes through imported aliases and constant getattr calls."""
+
     def paths(node):
         if isinstance(node, ast.Name):
             return bindings.get(node.id, set())
@@ -176,8 +201,13 @@ def imported_attribute_paths(tree: ast.AST, bindings: dict[str, set[str]]) -> se
     for node in ast.walk(tree):
         if isinstance(node, ast.Attribute):
             result.update(paths(node))
-        elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "getattr"
-              and len(node.args) >= 2 and isinstance(node.args[1], ast.Constant)
-              and isinstance(node.args[1].value, str)):
+        elif (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "getattr"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and isinstance(node.args[1].value, str)
+        ):
             result.update(base + "." + node.args[1].value for base in paths(node.args[0]))
     return result

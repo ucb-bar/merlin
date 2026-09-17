@@ -27,6 +27,7 @@ FAIL CLOSED. A tagged empty whose ``qinner::`` key is absent from ``extra.npz``,
 shape/dtype disagrees with the IR, is an error. Substituting zeros would reproduce exactly the
 silent-garbage failure this exists to remove.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,10 +40,16 @@ EXTRA_PREFIX = "qinner::"
 
 #: ops that only re-view a tensor: a tagged empty reaches its consumer through them, so the tag
 #: walk (and the uninitialized-read check) has to see through them rather than stop at them.
-VIEW_OPS: frozenset[str] = frozenset({
-    "tensor.cast", "tensor.collapse_shape", "tensor.expand_shape", "tensor.reshape",
-    "tensor.extract_slice", "tensor.bitcast",
-})
+VIEW_OPS: frozenset[str] = frozenset(
+    {
+        "tensor.cast",
+        "tensor.collapse_shape",
+        "tensor.expand_shape",
+        "tensor.reshape",
+        "tensor.extract_slice",
+        "tensor.bitcast",
+    }
+)
 
 
 class QinnerError(RuntimeError):
@@ -53,9 +60,9 @@ class QinnerError(RuntimeError):
 class QinnerArg:
     """One inner tensor lifted to a trailing `@forward` argument."""
 
-    key: str                     #: the ``extra.npz`` key, without the ``qinner::`` prefix
+    key: str  #: the ``extra.npz`` key, without the ``qinner::`` prefix
     shape: tuple[int, ...]
-    dtype: str                   #: MLIR element-type spelling (``i8``, ``f32``, ...)
+    dtype: str  #: MLIR element-type spelling (``i8``, ``f32``, ...)
 
     def as_json(self) -> dict[str, Any]:
         return {"key": self.key, "shape": list(self.shape), "dtype": self.dtype}
@@ -120,8 +127,10 @@ def _propagate(module) -> None:
 def plan(module) -> list[QinnerArg]:
     """The ordered argument list :func:`lift` would append, without mutating ``module``."""
     _propagate(module)
-    return [QinnerArg(key, _shape_of(op.results[0].type), _elem_str(op.results[0].type))
-            for op, key in tagged_empties(module)]
+    return [
+        QinnerArg(key, _shape_of(op.results[0].type), _elem_str(op.results[0].type))
+        for op, key in tagged_empties(module)
+    ]
 
 
 def plan_for_bundle(mlir_path: str | Path) -> list[QinnerArg]:
@@ -164,8 +173,7 @@ def lift(module) -> list[QinnerArg]:
 
     funcs = {id(_entry_func(op)): _entry_func(op) for op, _ in targets}
     if len(funcs) != 1:
-        raise QinnerError(
-            f"quant-inner tensors span {len(funcs)} functions; expected one entry function")
+        raise QinnerError(f"quant-inner tensors span {len(funcs)} functions; expected one entry function")
     func = next(iter(funcs.values()))
     block = func.body.blocks[0]
 
@@ -178,7 +186,8 @@ def lift(module) -> list[QinnerArg]:
         op.detach()
         op.erase()
     func.properties["function_type"] = FunctionType.from_lists(
-        [a.type for a in block.args], list(func.function_type.outputs.data))
+        [a.type for a in block.args], list(func.function_type.outputs.data)
+    )
     return appended
 
 
@@ -202,8 +211,16 @@ def read_plan(path: str | Path) -> list[QinnerArg]:
 
 #: MLIR element spelling -> the numpy dtype the npz must hold. An unknown spelling is an error, not
 #: a reinterpretation of the stored bytes.
-_NP_OF = {"i8": "int8", "i16": "int16", "i32": "int32", "i64": "int64", "i1": "bool",
-          "f16": "float16", "f32": "float32", "f64": "float64"}
+_NP_OF = {
+    "i8": "int8",
+    "i16": "int16",
+    "i32": "int32",
+    "i64": "int64",
+    "i1": "bool",
+    "f16": "float16",
+    "f32": "float32",
+    "f64": "float64",
+}
 
 
 def resolve(extra: Any, args: Iterable[QinnerArg]) -> list["Any"]:
@@ -221,7 +238,8 @@ def resolve(extra: Any, args: Iterable[QinnerArg]) -> list["Any"]:
         if name not in files:
             raise QinnerError(
                 f"quant-inner tensor {a.key!r} is tagged in the IR but absent from extra.npz "
-                f"(looked for {name!r}); the compiled model would read uninitialized memory")
+                f"(looked for {name!r}); the compiled model would read uninitialized memory"
+            )
         arr = np.ascontiguousarray(extra[name])
         want_dt = _NP_OF.get(a.dtype)
         if want_dt is None:
@@ -229,12 +247,14 @@ def resolve(extra: Any, args: Iterable[QinnerArg]) -> list["Any"]:
         if tuple(int(d) for d in arr.shape) != a.shape or str(arr.dtype) != want_dt:
             raise QinnerError(
                 f"quant-inner tensor {a.key!r} is {tuple(arr.shape)}x{arr.dtype} in extra.npz but "
-                f"{a.shape}x{a.dtype} in the IR")
+                f"{a.shape}x{a.dtype} in the IR"
+            )
         out.append(arr)
     return out
 
 
 # --- the gate: uninitialized data must not reach computation ------------------------------------
+
 
 def uninitialized_reads(module) -> list[str]:
     """Every `tensor.empty` value that is READ by a compute op, as human-readable findings.
@@ -291,7 +311,8 @@ def uninitialized_reads(module) -> list[str]:
             spelling, key = origin
             findings.append(
                 f"{op.name} reads an uninitialized tensor.empty of type {spelling}"
-                + (f" (quant-inner key {key!r}, unbound)" if key else ""))
+                + (f" (quant-inner key {key!r}, unbound)" if key else "")
+            )
     return findings
 
 
@@ -308,4 +329,5 @@ def require_initialized(module, *, where: str = "") -> None:
         f"{head}{len(findings)} uninitialized tensor(s) reach computation; the compiled binary "
         f"would read unwritten memory while the numpy interpreter binds them:\n  {detail}\n"
         "If these are quantized-subclass inner tensors, the capture must tag them "
-        "(prov.quant_inner_<operand>) and store them in extra.npz under a qinner:: key.")
+        "(prov.quant_inner_<operand>) and store them in extra.npz under a qinner:: key."
+    )

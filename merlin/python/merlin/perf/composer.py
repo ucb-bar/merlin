@@ -36,6 +36,7 @@ What this module refuses to do
   :attr:`CorpusPrediction.bound_violations` surfaces it instead of the mean absolute error hiding
   it.
 """
+
 from __future__ import annotations
 
 import json
@@ -81,10 +82,13 @@ __all__ = [
 # ------------------------------------------------------------------------------------------------
 
 
-def peaks_from_observations(demands: "Mapping[str, Mapping[str, ResourceDemand]]",
-                            sources: "Iterable[ActivitySource]", *,
-                            units: "Mapping[str, str]",
-                            provenance: str) -> dict[str, Peak]:
+def peaks_from_observations(
+    demands: "Mapping[str, Mapping[str, ResourceDemand]]",
+    sources: "Iterable[ActivitySource]",
+    *,
+    units: "Mapping[str, str]",
+    provenance: str,
+) -> dict[str, Peak]:
     """One :class:`Peak` per resource, as the highest rate the corpus ever achieved.
 
     A ceiling on the achieved rate, not a nameplate peak -- which is the useful direction: every
@@ -108,15 +112,14 @@ def peaks_from_observations(demands: "Mapping[str, Mapping[str, ResourceDemand]]
     for name, samples in by_resource.items():
         unit = units.get(name)
         if unit is None:
-            raise ValueError(f"no demand unit declared for resource {name!r}; a rate with no unit "
-                             "is not a rate")
+            raise ValueError(f"no demand unit declared for resource {name!r}; a rate with no unit is not a rate")
         out[name] = Peak.observed_ceiling(name, samples, unit=unit, provenance=provenance)
     return out
 
 
-def fixed_terms_from_timing(records: "Sequence[Mapping[str, Any]] | None",
-                            modules: "Mapping[str, str]") -> tuple[dict[str, FixedTerm],
-                                                                   dict[str, Unavailable]]:
+def fixed_terms_from_timing(
+    records: "Sequence[Mapping[str, Any]] | None", modules: "Mapping[str, str]"
+) -> tuple[dict[str, FixedTerm], dict[str, Unavailable]]:
     """Per-resource pipeline-fill intercepts from the RTL timing walk, and the refusals.
 
     ``records`` is ``facts["timing"]``; ``modules`` maps each resource to the RTL module that
@@ -134,8 +137,10 @@ def fixed_terms_from_timing(records: "Sequence[Mapping[str, Any]] | None",
         record = None if index is None else index.get(module)
         if index is not None and record is None:
             bad[resource] = Unavailable(
-                f"pipeline fill for {resource}", (f"a timing record for module {module!r}",),
-                f"the walk covered {len(index)} module(s) and {module!r} was not among them")
+                f"pipeline fill for {resource}",
+                (f"a timing record for module {module!r}",),
+                f"the walk covered {len(index)} module(s) and {module!r} was not among them",
+            )
             continue
         got = FixedTerm.from_pipeline_depth(record, name=f"{resource}_fill", resource=resource)
         if isinstance(got, Unavailable):
@@ -145,8 +150,7 @@ def fixed_terms_from_timing(records: "Sequence[Mapping[str, Any]] | None",
     return ok, bad
 
 
-def structural_unit_time(resource: str, kind: ResourceKind, composed_busy: Any, *,
-                         provenance: str) -> ResourceTime:
+def structural_unit_time(resource: str, kind: ResourceKind, composed_busy: Any, *, provenance: str) -> ResourceTime:
     """Lift a :class:`merlin.perf.record.ComposedBusy` into a :class:`ResourceTime`.
 
     A unit whose cost is an intercept plus the delays its own program schedules has no useful
@@ -157,13 +161,26 @@ def structural_unit_time(resource: str, kind: ResourceKind, composed_busy: Any, 
     """
     if composed_busy.cycles is None:
         return ResourceTime(
-            resource=resource, kind=kind, cycles=UNKNOWN, unit="cycles", basis=Basis.MOVED,
-            fixed_cycles=int(composed_busy.lower_bound), evidence_kind="structural_bound",
-            provenance=provenance, reason=str(composed_busy.reason))
+            resource=resource,
+            kind=kind,
+            cycles=UNKNOWN,
+            unit="cycles",
+            basis=Basis.MOVED,
+            fixed_cycles=int(composed_busy.lower_bound),
+            evidence_kind="structural_bound",
+            provenance=provenance,
+            reason=str(composed_busy.reason),
+        )
     return ResourceTime(
-        resource=resource, kind=kind, cycles=float(composed_busy.cycles), unit="cycles",
-        basis=Basis.MOVED, fixed_cycles=int(composed_busy.lower_bound),
-        evidence_kind="structural_bound", provenance=provenance)
+        resource=resource,
+        kind=kind,
+        cycles=float(composed_busy.cycles),
+        unit="cycles",
+        basis=Basis.MOVED,
+        fixed_cycles=int(composed_busy.lower_bound),
+        evidence_kind="structural_bound",
+        provenance=provenance,
+    )
 
 
 # ------------------------------------------------------------------------------------------------
@@ -230,7 +247,8 @@ class Coverage:
             "module_count_share_note": (
                 "A COUNT OF MODULES. Not a confidence and not a coverage of runtime: the depth "
                 "walk resolves combinational leaves and refuses sequenced units, so it is biased "
-                "away from where the cycles are."),
+                "away from where the cycles are."
+            ),
             "resolved_resource_count": self.resolved_resource_count,
             "resource_count": self.resource_count,
             "time_weighted_resolved_share": _s(self.time_weighted_resolved_share),
@@ -241,10 +259,13 @@ class Coverage:
         }
 
 
-def coverage(sources: "Sequence[ActivitySource]",
-             envelopes: "Mapping[str, StructuralEnvelope]", *,
-             timing_records: "Sequence[Mapping[str, Any]] | None" = None,
-             structural_resources: "Iterable[str] | None" = None) -> Coverage:
+def coverage(
+    sources: "Sequence[ActivitySource]",
+    envelopes: "Mapping[str, StructuralEnvelope]",
+    *,
+    timing_records: "Sequence[Mapping[str, Any]] | None" = None,
+    structural_resources: "Iterable[str] | None" = None,
+) -> Coverage:
     """Coverage of a corpus, weighted by the measured cycles each resource actually carries.
 
     ``structural_resources`` names the resources whose peak or fill the RTL walk resolved (the keys
@@ -279,21 +300,30 @@ def coverage(sources: "Sequence[ActivitySource]",
         structural_share = sum(busy.get(n, 0) for n in set(structural_resources)) / denom
 
     walked = 0 if timing_records is None else len(timing_records)
-    resolved_modules = 0 if timing_records is None else sum(
-        1 for r in timing_records if r.get("pipeline_depth") is not None)
+    resolved_modules = (
+        0 if timing_records is None else sum(1 for r in timing_records if r.get("pipeline_depth") is not None)
+    )
 
-    note = ("time weighting uses each resource's share of measured busy cycles over the corpus "
-            f"({denom} busy cycles across {total} measured cycles)")
+    note = (
+        "time weighting uses each resource's share of measured busy cycles over the corpus "
+        f"({denom} busy cycles across {total} measured cycles)"
+    )
     if timing_records is None:
-        note += ("; no timing records were supplied, so the module count is 0/0 -- UNCACHED, not a "
-                 "design with no sequenced logic")
+        note += (
+            "; no timing records were supplied, so the module count is 0/0 -- UNCACHED, not a "
+            "design with no sequenced logic"
+        )
     return Coverage(
-        resolved_module_count=resolved_modules, walked_module_count=walked,
-        resolved_resource_count=len(all_resources - unresolved), resource_count=len(all_resources),
-        time_weighted_resolved_share=share, structurally_resolved_time_share=structural_share,
-        unresolved_time_share={n: busy.get(n, 0) / denom for n in sorted(unresolved)} if denom
-        else {},
-        unresolved_reasons=reasons, note=note)
+        resolved_module_count=resolved_modules,
+        walked_module_count=walked,
+        resolved_resource_count=len(all_resources - unresolved),
+        resource_count=len(all_resources),
+        time_weighted_resolved_share=share,
+        structurally_resolved_time_share=structural_share,
+        unresolved_time_share={n: busy.get(n, 0) / denom for n in sorted(unresolved)} if denom else {},
+        unresolved_reasons=reasons,
+        note=note,
+    )
 
 
 # ------------------------------------------------------------------------------------------------
@@ -346,13 +376,16 @@ class Prediction:
         def _s(v: Any) -> Any:
             return "UNKNOWN" if v is UNKNOWN else v
 
-        out = {"workload": self.workload, "measured_cycles": self.measured_cycles,
-               "predicted_cycles": _s(self.predicted_cycles),
-               "recovered_share": _s(self.recovered_share),
-               "partial_recovered_share": self.partial_recovered_share,
-               "respects_floor": self.respects_floor,
-               "is_valid_lower_bound": _s(self.is_valid_lower_bound),
-               "envelope": self.envelope.to_dict()}
+        out = {
+            "workload": self.workload,
+            "measured_cycles": self.measured_cycles,
+            "predicted_cycles": _s(self.predicted_cycles),
+            "recovered_share": _s(self.recovered_share),
+            "partial_recovered_share": self.partial_recovered_share,
+            "respects_floor": self.respects_floor,
+            "is_valid_lower_bound": _s(self.is_valid_lower_bound),
+            "envelope": self.envelope.to_dict(),
+        }
         if self.attribution is not None:
             out["attribution"] = self.attribution.to_dict()
         return out
@@ -374,8 +407,7 @@ class CorpusPrediction:
 
     @property
     def unresolved(self) -> dict[str, tuple[str, ...]]:
-        return {n: p.envelope.unresolved for n, p in self.predictions.items()
-                if p.envelope.unresolved}
+        return {n: p.envelope.unresolved for n, p in self.predictions.items() if p.envelope.unresolved}
 
     @property
     def floor_violations(self) -> tuple[str, ...]:
@@ -385,8 +417,7 @@ class CorpusPrediction:
     @property
     def bound_violations(self) -> tuple[str, ...]:
         """Workloads where the lower bound exceeds the measurement -- an input is falsified."""
-        return tuple(sorted(n for n, p in self.predictions.items()
-                            if p.is_valid_lower_bound is False))
+        return tuple(sorted(n for n, p in self.predictions.items() if p.is_valid_lower_bound is False))
 
     @property
     def limiters(self) -> dict[str, "str | _Unknown"]:
@@ -408,34 +439,43 @@ class CorpusPrediction:
             "eta": self.eta,
             "n_workloads": len(self.predictions),
             "n_resolved": len(self.resolved),
-            "corpus_recovered_share": ("UNKNOWN" if is_unknown(self.corpus_recovered_share())
-                                       else self.corpus_recovered_share()),
+            "corpus_recovered_share": (
+                "UNKNOWN" if is_unknown(self.corpus_recovered_share()) else self.corpus_recovered_share()
+            ),
             "floor_violations": list(self.floor_violations),
             "bound_violations": list(self.bound_violations),
             "unresolved": {k: list(v) for k, v in self.unresolved.items()},
             "coverage": None if self.coverage is None else self.coverage.to_dict(),
             "predictions": {n: p.to_dict() for n, p in sorted(self.predictions.items())},
-            "corpus_attribution": None if self.attribution is None else {
+            "corpus_attribution": None
+            if self.attribution is None
+            else {
                 "closes": self.attribution.closes,
                 "residual_cycles": self.attribution.residual_cycles,
-                "residual_is_constant": ("UNKNOWN" if is_unknown(
-                    self.attribution.residual_is_constant)
-                    else self.attribution.residual_is_constant),
+                "residual_is_constant": (
+                    "UNKNOWN"
+                    if is_unknown(self.attribution.residual_is_constant)
+                    else self.attribution.residual_is_constant
+                ),
                 "bucket_cycles": self.attribution.bucket_cycles(),
                 "families": self.attribution.families(),
             },
         }
 
 
-def compose_corpus(sources: "Sequence[ActivitySource]", *,
-                   times: "Mapping[str, Sequence[ResourceTime]]",
-                   operator: Composition, eta: float,
-                   fixed: "Mapping[str, Sequence[FixedTerm]] | None" = None,
-                   buckets: "Mapping[str, str] | None" = None,
-                   amplifications: "Mapping[str, Any] | None" = None,
-                   headrooms: "Mapping[str, Any] | None" = None,
-                   timing_records: "Sequence[Mapping[str, Any]] | None" = None,
-                   structural_resources: "Iterable[str] | None" = None) -> CorpusPrediction:
+def compose_corpus(
+    sources: "Sequence[ActivitySource]",
+    *,
+    times: "Mapping[str, Sequence[ResourceTime]]",
+    operator: Composition,
+    eta: float,
+    fixed: "Mapping[str, Sequence[FixedTerm]] | None" = None,
+    buckets: "Mapping[str, str] | None" = None,
+    amplifications: "Mapping[str, Any] | None" = None,
+    headrooms: "Mapping[str, Any] | None" = None,
+    timing_records: "Sequence[Mapping[str, Any]] | None" = None,
+    structural_resources: "Iterable[str] | None" = None,
+) -> CorpusPrediction:
     """Build every workload's envelope under one derived operator, then attribute its gap.
 
     ``operator`` and ``eta`` are required and are not defaulted anywhere on this path. Textbook
@@ -445,25 +485,35 @@ def compose_corpus(sources: "Sequence[ActivitySource]", *,
     envelopes: dict[str, StructuralEnvelope] = {}
     for s in sources:
         envelopes[s.workload] = envelope(
-            s.workload, list(times.get(s.workload, ())), operator=operator, eta=eta,
-            fixed=list((fixed or {}).get(s.workload, ())))
+            s.workload,
+            list(times.get(s.workload, ())),
+            operator=operator,
+            eta=eta,
+            fixed=list((fixed or {}).get(s.workload, ())),
+        )
 
     corpus_attr = None
     if buckets is not None:
-        corpus_attr = attribute_corpus(sources, buckets=buckets, envelopes=envelopes,
-                                       amplifications=amplifications, headrooms=headrooms)
+        corpus_attr = attribute_corpus(
+            sources, buckets=buckets, envelopes=envelopes, amplifications=amplifications, headrooms=headrooms
+        )
 
     preds = {
         s.workload: Prediction(
-            workload=s.workload, measured_cycles=s.total_cycles, envelope=envelopes[s.workload],
-            attribution=None if corpus_attr is None else corpus_attr.workloads.get(s.workload))
+            workload=s.workload,
+            measured_cycles=s.total_cycles,
+            envelope=envelopes[s.workload],
+            attribution=None if corpus_attr is None else corpus_attr.workloads.get(s.workload),
+        )
         for s in sources
     }
-    return CorpusPrediction(predictions=preds,
-                            coverage=coverage(sources, envelopes,
-                                              timing_records=timing_records,
-                                              structural_resources=structural_resources),
-                            attribution=corpus_attr, operator=operator, eta=eta)
+    return CorpusPrediction(
+        predictions=preds,
+        coverage=coverage(sources, envelopes, timing_records=timing_records, structural_resources=structural_resources),
+        attribution=corpus_attr,
+        operator=operator,
+        eta=eta,
+    )
 
 
 # ------------------------------------------------------------------------------------------------
@@ -489,10 +539,13 @@ class OperatorSensitivity:
     worst_understatement: float
 
 
-def operator_sensitivity(sources: "Sequence[ActivitySource]", *,
-                         times: "Mapping[str, Sequence[ResourceTime]]",
-                         fixed: "Mapping[str, Sequence[FixedTerm]] | None" = None,
-                         eta: float = 0.5) -> "OperatorSensitivity | Unavailable":
+def operator_sensitivity(
+    sources: "Sequence[ActivitySource]",
+    *,
+    times: "Mapping[str, Sequence[ResourceTime]]",
+    fixed: "Mapping[str, Sequence[FixedTerm]] | None" = None,
+    eta: float = 0.5,
+) -> "OperatorSensitivity | Unavailable":
     """Compose each workload under SUM, MAX and PARTIAL and report what the choice is worth."""
     totals: dict[str, float] = {c.value: 0.0 for c in Composition}
     per: dict[str, dict[str, float]] = {}
@@ -510,17 +563,23 @@ def operator_sensitivity(sources: "Sequence[ActivitySource]", *,
         per[s.workload] = row
         n += 1
     if not n:
-        return Unavailable("operator sensitivity",
-                           ("at least one workload whose resource times all resolved",),
-                           "an operator comparison over partially-resolved terms would compare "
-                           "two different sets of terms")
+        return Unavailable(
+            "operator sensitivity",
+            ("at least one workload whose resource times all resolved",),
+            "an operator comparison over partially-resolved terms would compare two different sets of terms",
+        )
     under = 0.0 if totals["sum"] <= 0 else 1.0 - totals["max"] / totals["sum"]
     worst_name, worst = max(
-        ((w, 0.0 if r["sum"] <= 0 else 1.0 - r["max"] / r["sum"]) for w, r in per.items()),
-        key=lambda p: p[1])
-    return OperatorSensitivity(n_workloads=n, by_operator=totals, per_workload=per,
-                               understatement_vs_sum=under, worst_workload=worst_name,
-                               worst_understatement=worst)
+        ((w, 0.0 if r["sum"] <= 0 else 1.0 - r["max"] / r["sum"]) for w, r in per.items()), key=lambda p: p[1]
+    )
+    return OperatorSensitivity(
+        n_workloads=n,
+        by_operator=totals,
+        per_workload=per,
+        understatement_vs_sum=under,
+        worst_workload=worst_name,
+        worst_understatement=worst,
+    )
 
 
 # ------------------------------------------------------------------------------------------------
@@ -528,18 +587,26 @@ def operator_sensitivity(sources: "Sequence[ActivitySource]", *,
 # ------------------------------------------------------------------------------------------------
 
 
-def emit_envelope_report(prediction: CorpusPrediction, *, target: str, version: int = 1,
-                         sources: "Sequence[str]" = (), notes: str = "") -> Any:
+def emit_envelope_report(
+    prediction: CorpusPrediction, *, target: str, version: int = 1, sources: "Sequence[str]" = (), notes: str = ""
+) -> Any:
     """Write the corpus prediction as a versioned product under the single generated-output root."""
     from merlin.common.artifacts import new_product
 
-    pd = new_product("perf-envelope", version=version, target=target, sources=list(sources),
-                     notes=notes or ("structural envelope, generalized ridge point and gap "
-                                     "attribution per workload; coverage is weighted by measured "
-                                     "time, and the module count is reported separately because it "
-                                     "is biased away from where the cycles are"))
+    pd = new_product(
+        "perf-envelope",
+        version=version,
+        target=target,
+        sources=list(sources),
+        notes=notes
+        or (
+            "structural envelope, generalized ridge point and gap "
+            "attribution per workload; coverage is weighted by measured "
+            "time, and the module count is reported separately because it "
+            "is biased away from where the cycles are"
+        ),
+    )
     body = prediction.to_dict()
-    pd.add_artifact("envelope.json").write_text(
-        json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    pd.add_artifact("envelope.json").write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     pd.write_manifest()
     return pd.path

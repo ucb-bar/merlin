@@ -35,6 +35,7 @@ target with neither yields ``UNKNOWN`` and the lane stays unmeasured — a self-
 command-buffer target does not reach its accelerator through a host custom opcode at all, and guessing
 one would decode another device's ISA and report a clean, wrong result.
 """
+
 from __future__ import annotations
 
 import json
@@ -79,6 +80,7 @@ def negative_lane_evidence() -> tuple[str, ...]:
     module's static scans of complete instruction streams. Derived from the runner's exported
     vocabulary rather than restating it, so the two cannot drift."""
     from .capsule_runner import EXECUTED_LANE_EVIDENCE
+
     return (*EXECUTED_LANE_EVIDENCE, LINKED_ELF_EVIDENCE, DECLARED_PROGRAM_EVIDENCE)
 
 
@@ -93,21 +95,26 @@ def accelerator_opcode(target: str) -> tuple[int | None, str]:
     """
     try:
         from .rtl.facts import load_facts
+
         facts = (load_facts(target) or {}).get("facts") or {}
         for itf in facts.get("interfaces") or []:
             if itf.get("name") == "funct_decode_table" and itf.get("custom_opcode") is not None:
                 return int(itf["custom_opcode"]), "rtl_facts.funct_decode_table.custom_opcode"
-    except Exception:                       # noqa: BLE001 -- an unavailable facts tree derives nothing
+    except Exception:  # noqa: BLE001 -- an unavailable facts tree derives nothing
         pass
     try:
         from .target_experiment import load_capability_manifest
-        enc = (load_capability_manifest(target).encoding or {})
+
+        enc = load_capability_manifest(target).encoding or {}
         if enc.get("custom_opcode") is not None:
             return int(enc["custom_opcode"]), "capability_manifest.encoding.custom_opcode"
-    except Exception:                       # noqa: BLE001 -- ditto for an unavailable manifest
+    except Exception:  # noqa: BLE001 -- ditto for an unavailable manifest
         pass
-    return None, "UNDERIVABLE: no funct_decode_table.custom_opcode in RTL facts and none in the " \
-                 "capability manifest's encoding block"
+    return (
+        None,
+        "UNDERIVABLE: no funct_decode_table.custom_opcode in RTL facts and none in the "
+        "capability manifest's encoding block",
+    )
 
 
 # --- structural ELF walk (no regex, no external tool, no ISA literals) -------------------------
@@ -131,11 +138,11 @@ def executable_sections(blob: bytes) -> list[tuple[str, int, int, int]]:
     end = _endian(blob)
     cls = blob[4]
     if cls == _ELFCLASS64:
-        shoff, = struct.unpack_from(end + "Q", blob, 0x28)
+        (shoff,) = struct.unpack_from(end + "Q", blob, 0x28)
         shentsize, shnum, shstrndx = struct.unpack_from(end + "HHH", blob, 0x3A)
         fmt, name_i, type_i, flags_i, addr_i, off_i, size_i = end + "IIQQQQIIQQ", 0, 1, 2, 3, 4, 5
     elif cls == _ELFCLASS32:
-        shoff, = struct.unpack_from(end + "I", blob, 0x20)
+        (shoff,) = struct.unpack_from(end + "I", blob, 0x20)
         shentsize, shnum, shstrndx = struct.unpack_from(end + "HHH", blob, 0x2E)
         fmt, name_i, type_i, flags_i, addr_i, off_i, size_i = end + "IIIIIIIIII", 0, 1, 2, 3, 4, 5
     else:
@@ -149,11 +156,11 @@ def executable_sections(blob: bytes) -> list[tuple[str, int, int, int]]:
             raise ElfUnreadable("section-header table runs past end of file")
         rows.append(struct.unpack_from(fmt, blob, base))
     strtab = rows[shstrndx]
-    strs = blob[strtab[off_i]:strtab[off_i] + strtab[size_i]]
+    strs = blob[strtab[off_i] : strtab[off_i] + strtab[size_i]]
 
     def _name(idx: int) -> str:
         stop = strs.find(b"\0", idx)
-        return strs[idx:stop if stop >= 0 else len(strs)].decode("utf-8", "replace")
+        return strs[idx : stop if stop >= 0 else len(strs)].decode("utf-8", "replace")
 
     out: list[tuple[str, int, int, int]] = []
     for r in rows:
@@ -210,8 +217,8 @@ def instruction_words(data: bytes, base_addr: int = 0):
 class ElfScan:
     """What a scan of one linked ELF for one target's accelerator opcode found."""
 
-    status: str                          # "measured" | "unmeasured"
-    opcode: int | str                    # the derived major opcode, or UNKNOWN
+    status: str  # "measured" | "unmeasured"
+    opcode: int | str  # the derived major opcode, or UNKNOWN
     opcode_source: str
     detail: str
     elf: str | None = None
@@ -224,9 +231,16 @@ class ElfScan:
         return len(self.hits)
 
     def to_dict(self) -> dict:
-        d = {"status": self.status, "opcode": self.opcode, "opcode_source": self.opcode_source,
-             "detail": self.detail, "elf": self.elf, "sections": list(self.sections),
-             "n_instruction_words": self.n_instruction_words, "n_hits": self.n_hits}
+        d = {
+            "status": self.status,
+            "opcode": self.opcode,
+            "opcode_source": self.opcode_source,
+            "detail": self.detail,
+            "elf": self.elf,
+            "sections": list(self.sections),
+            "n_instruction_words": self.n_instruction_words,
+            "n_hits": self.n_hits,
+        }
         if self.hits:
             # A handful of witnesses, so a violation names WHERE it was found and is checkable by hand.
             d["hits"] = [dict(h) for h in self.hits[:8]]
@@ -248,15 +262,19 @@ class ProgramScan:
         return len(self.hits)
 
     def to_dict(self) -> dict:
-        out = {"status": self.status, "detail": self.detail, "program": self.program,
-               "n_instruction_words": self.n_instruction_words, "n_hits": self.n_hits}
+        out = {
+            "status": self.status,
+            "detail": self.detail,
+            "program": self.program,
+            "n_instruction_words": self.n_instruction_words,
+            "n_hits": self.n_hits,
+        }
         if self.hits:
             out["hits"] = [dict(hit) for hit in self.hits[:8]]
         return out
 
 
-def scan_declared_program_for_accelerator(program_path, target: str,
-                                          *, max_hits: int = 64) -> ProgramScan:
+def scan_declared_program_for_accelerator(program_path, target: str, *, max_hits: int = 64) -> ProgramScan:
     """Scan the exact word stream declared by a self-hosted oracle for mesh-compute roles.
 
     Unlike a host ELF, this stream needs no guessed custom opcode: the target's discovered ISA model
@@ -269,41 +287,56 @@ def scan_declared_program_for_accelerator(program_path, target: str,
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         words = payload.get("words") if isinstance(payload, dict) else None
-        if (not isinstance(words, list) or not words
-                or any(isinstance(word, bool) or not isinstance(word, int) for word in words)):
+        if (
+            not isinstance(words, list)
+            or not words
+            or any(isinstance(word, bool) or not isinstance(word, int) for word in words)
+        ):
             raise ValueError("declared program requires a non-empty integer words list")
         from .isa_disasm import disassemble
         from .isa_model import isa_model_for_target
+
         model = isa_model_for_target(target)
         records = disassemble(model, words)
     except Exception as exc:  # noqa: BLE001 -- inability to decode is unmeasured, never clean
-        return ProgramScan("unmeasured",
-                           f"declared program could not be decoded ({type(exc).__name__}: {exc})",
-                           str(path))
+        return ProgramScan(
+            "unmeasured", f"declared program could not be decoded ({type(exc).__name__}: {exc})", str(path)
+        )
+
     # An overlap is safe for this narrow negative question only when every matching mnemonic has a
     # known non-mesh role. (Some discovered ISAs conservatively overlap terminator signatures.)
     def _could_be_mesh(record: dict) -> bool:
         names = [record.get("isa_mnemonic"), *(record.get("ambiguous_mnemonics") or [])]
         entries = getattr(model, "by_mnemonic", {})
-        return any((entries.get(str(name)) or {}).get("role") == "matmul"
-                   for name in names if name)
+        return any((entries.get(str(name)) or {}).get("role") == "matmul" for name in names if name)
 
-    undecodable = [record for record in records
-                   if record.get("illegal") or (record.get("ambiguous") and _could_be_mesh(record))]
+    undecodable = [
+        record for record in records if record.get("illegal") or (record.get("ambiguous") and _could_be_mesh(record))
+    ]
     if undecodable:
         return ProgramScan(
             "unmeasured",
             f"{len(undecodable)} instruction word(s) are illegal or ambiguously decoded",
-            str(path), len(words))
-    hits = tuple({"index": int(record["index"]), "word": record.get("word"),
-                  "mnemonic": record.get("isa_mnemonic") or record.get("mnemonic"),
-                  "role": record.get("role")}
-                 for record in records
-                 if record.get("role") == "matmul" or _could_be_mesh(record))[:max_hits]
+            str(path),
+            len(words),
+        )
+    hits = tuple(
+        {
+            "index": int(record["index"]),
+            "word": record.get("word"),
+            "mnemonic": record.get("isa_mnemonic") or record.get("mnemonic"),
+            "role": record.get("role"),
+        }
+        for record in records
+        if record.get("role") == "matmul" or _could_be_mesh(record)
+    )[:max_hits]
     return ProgramScan(
         "measured",
         f"decoded {len(words)} instruction word(s); {len(hits)} carry the mesh-compute role",
-        str(path), len(words), hits)
+        str(path),
+        len(words),
+        hits,
+    )
 
 
 def scan_elf_for_accelerator(elf_path, target: str, *, max_hits: int = 64) -> ElfScan:
@@ -315,12 +348,24 @@ def scan_elf_for_accelerator(elf_path, target: str, *, max_hits: int = 64) -> El
     opcode, source = accelerator_opcode(target)
     path = Path(elf_path)
     if opcode is None:
-        return ElfScan(status="unmeasured", opcode=UNKNOWN, opcode_source=source, elf=str(path),
-                       detail=("this target's accelerator major opcode is not derivable, so an "
-                               "instruction stream cannot be judged against it"))
+        return ElfScan(
+            status="unmeasured",
+            opcode=UNKNOWN,
+            opcode_source=source,
+            elf=str(path),
+            detail=(
+                "this target's accelerator major opcode is not derivable, so an "
+                "instruction stream cannot be judged against it"
+            ),
+        )
     if not path.is_file():
-        return ElfScan(status="unmeasured", opcode=opcode, opcode_source=source, elf=str(path),
-                       detail=f"no linked executable at {path}")
+        return ElfScan(
+            status="unmeasured",
+            opcode=opcode,
+            opcode_source=source,
+            elf=str(path),
+            detail=f"no linked executable at {path}",
+        )
     try:
         blob = path.read_bytes()
         if _endian(blob) != "<":
@@ -328,28 +373,46 @@ def scan_elf_for_accelerator(elf_path, target: str, *, max_hits: int = 64) -> El
             # stream is. Refusing a big-endian object is the fail-closed answer; decoding it with the
             # wrong byte order would report a confident, meaningless count.
             raise ElfUnreadable("big-endian ELF: this instruction walk reads little-endian words only")
-        machine, = struct.unpack_from("<H", blob, 0x12)
+        (machine,) = struct.unpack_from("<H", blob, 0x12)
         if machine != _EM_RISCV:
             raise ElfUnreadable(f"ELF e_machine {machine} is not the RISC-V host this scan walks")
         sections = executable_sections(blob)
     except (ElfUnreadable, OSError, struct.error, IndexError) as exc:
-        return ElfScan(status="unmeasured", opcode=opcode, opcode_source=source, elf=str(path),
-                       detail=f"linked executable could not be decoded ({type(exc).__name__}: {exc})")
+        return ElfScan(
+            status="unmeasured",
+            opcode=opcode,
+            opcode_source=source,
+            elf=str(path),
+            detail=f"linked executable could not be decoded ({type(exc).__name__}: {exc})",
+        )
     if not sections:
-        return ElfScan(status="unmeasured", opcode=opcode, opcode_source=source, elf=str(path),
-                       detail="the linked executable declares no executable sections to scan")
+        return ElfScan(
+            status="unmeasured",
+            opcode=opcode,
+            opcode_source=source,
+            elf=str(path),
+            detail="the linked executable declares no executable sections to scan",
+        )
     hits: list[dict] = []
     words = 0
     for name, off, size, addr in sections:
-        for at, word in instruction_words(blob[off:off + size], addr):
+        for at, word in instruction_words(blob[off : off + size], addr):
             words += 1
             if (word & 0x7F) == opcode and len(hits) < max_hits:
                 hits.append({"section": name, "addr": at, "word": word})
-    return ElfScan(status="measured", opcode=opcode, opcode_source=source, elf=str(path),
-                   sections=tuple(s[0] for s in sections), n_instruction_words=words,
-                   hits=tuple(hits),
-                   detail=(f"walked {words} instruction word(s) in {len(sections)} executable "
-                           f"section(s); {len(hits)} carry major opcode 0x{opcode:02x}"))
+    return ElfScan(
+        status="measured",
+        opcode=opcode,
+        opcode_source=source,
+        elf=str(path),
+        sections=tuple(s[0] for s in sections),
+        n_instruction_words=words,
+        hits=tuple(hits),
+        detail=(
+            f"walked {words} instruction word(s) in {len(sections)} executable "
+            f"section(s); {len(hits)} carry major opcode 0x{opcode:02x}"
+        ),
+    )
 
 
 # --- the lane report -------------------------------------------------------------------------
@@ -373,8 +436,9 @@ def lane_report_from_elf(capsule: dict, elf_path, *, target: str) -> dict | None
         return None
     both = sorted(set(req) & set(forbid))
     if both:
-        raise ValueError(f"capsule lanes {both} are both required and forbidden; one of the two "
-                         f"assertions can never hold")
+        raise ValueError(
+            f"capsule lanes {both} are both required and forbidden; one of the two assertions can never hold"
+        )
 
     scan = scan_elf_for_accelerator(elf_path, target) if _ACCELERATOR_LANE in forbid else None
     evidence = {ln: NO_EVIDENCE for ln in (*req, *forbid)}
@@ -406,7 +470,8 @@ def lane_report_from_elf(capsule: dict, elf_path, *, target: str) -> dict | None
     if req:
         out["caveat"] = (
             f"lanes {req} are REQUIRED, and a linked-ELF scan cannot credit them: an instruction present "
-            f"in the binary is not one that executed. They stay unmeasured on this path.")
+            f"in the binary is not one that executed. They stay unmeasured on this path."
+        )
         out["unmeasured_required"] = list(req)
     return out
 
@@ -427,11 +492,11 @@ def lane_report_from_declared_program(capsule: dict, program_path, *, target: st
         return None
     both = sorted(set(req) & set(forbid))
     if both:
-        raise ValueError(f"capsule lanes {both} are both required and forbidden; one of the two "
-                         "assertions can never hold")
+        raise ValueError(
+            f"capsule lanes {both} are both required and forbidden; one of the two assertions can never hold"
+        )
 
-    scan = (scan_declared_program_for_accelerator(program_path, target)
-            if _ACCELERATOR_LANE in forbid else None)
+    scan = scan_declared_program_for_accelerator(program_path, target) if _ACCELERATOR_LANE in forbid else None
     evidence = {lane: NO_EVIDENCE for lane in (*req, *forbid)}
     violated: list[str] = []
     if scan is not None and scan.status == "measured":
@@ -457,7 +522,8 @@ def lane_report_from_declared_program(capsule: dict, program_path, *, target: st
     if req:
         out["caveat"] = (
             f"lanes {req} are REQUIRED, and a declared-program scan cannot credit them: an instruction "
-            "present in the stream is not proof that it executed. They stay unmeasured on this path.")
+            "present in the stream is not proof that it executed. They stay unmeasured on this path."
+        )
         out["unmeasured_required"] = list(req)
     return out
 

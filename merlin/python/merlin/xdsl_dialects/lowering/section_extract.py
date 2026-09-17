@@ -12,14 +12,14 @@ internal. The section's boundary inputs — in first-use order — are the activ
 i8 weight (the dequant's quantized input, i.e. the transposed weight), and the per-channel scale; its
 single result is the matmul output. The caller injects those three and grades the result.
 """
+
 from __future__ import annotations
 
 from .._common import HAS_XDSL
 from .interface_lowering import _resolved_name
 
 _CONSTANT_LIKE = ("arith.constant", "tensor.splat", "tensor.empty")
-_VIEW_OPS = ("tensor.expand_shape", "tensor.collapse_shape", "tensor.cast", "linalg.copy",
-             "linalg.transpose")
+_VIEW_OPS = ("tensor.expand_shape", "tensor.collapse_shape", "tensor.cast", "linalg.copy", "linalg.transpose")
 
 
 def _prov_region(op) -> str | None:
@@ -75,8 +75,7 @@ def section_from_matmul(module, region_id=None):
     while i < len(seeds):
         for operand in seeds[i].operands:
             producer = getattr(operand, "owner", None)
-            if (producer is not None and _resolved_name(producer) in _CONSTANT_LIKE
-                    and id(producer) not in keep_ids):
+            if producer is not None and _resolved_name(producer) in _CONSTANT_LIKE and id(producer) not in keep_ids:
                 keep_ids.add(id(producer))
                 seeds.append(producer)
         i += 1
@@ -102,7 +101,6 @@ def section_from_matmul(module, region_id=None):
             vmap[old] = new
     result = vmap[mm.results[0]]
     new_block.add_op(ReturnOp(result))
-    fn = FuncOp("section", FunctionType.from_lists([v.type for v in boundary], [result.type]),
-                Region([new_block]))
+    fn = FuncOp("section", FunctionType.from_lists([v.type for v in boundary], [result.type]), Region([new_block]))
     module_out = ModuleOp([fn])
     return module_out, boundary, [mm.results[0]]

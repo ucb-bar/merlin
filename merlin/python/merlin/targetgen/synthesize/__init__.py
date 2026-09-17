@@ -7,13 +7,14 @@ plans derived from keyword-detected concepts, with every result flagged
 
 Each function returns a plain ``dict`` (schema-shaped); the pipeline validates and writes it.
 """
+
 from __future__ import annotations
 
-from .target_contract import synthesize_target_contract
 from .dialect_plan import synthesize_dialect_plan
-from .runtime_adapter_plan import synthesize_runtime_adapter_plan
-from .zephyr_plan import synthesize_zephyr_plan
 from .llvm_extension_plan import synthesize_llvm_extension_plan
+from .runtime_adapter_plan import synthesize_runtime_adapter_plan
+from .target_contract import synthesize_target_contract
+from .zephyr_plan import synthesize_zephyr_plan
 
 __all__ = [
     "synthesize_target_contract",

@@ -22,6 +22,7 @@ The set has seven origins, all derived:
 NOT masked (the historical cheat gap — a hard-coded path that left the memory dir unmasked — is exactly
 this class of bug, and this assertion closes it).
 """
+
 from __future__ import annotations
 
 import os
@@ -37,50 +38,49 @@ from merlin.targetgen.target_experiment import TargetExperiment
 # Reading the oracle gives a route to the true reference/simulator; reading the grader lets the agent
 # reverse-engineer the decoder/golden-gen instead of deriving from public facts. Neither arm may see them.
 ORACLE_MODULES: tuple[str, ...] = (
-    "merlin/python/merlin/runtime/reference.py",     # the numerical reference oracle
-    "merlin/python/merlin/runtime/simulator.py",     # the functional simulator oracle
-    "merlin/python/merlin/runtime/backends",         # the callable oracle backends (a route to the oracle)
+    "merlin/python/merlin/runtime/reference.py",  # the numerical reference oracle
+    "merlin/python/merlin/runtime/simulator.py",  # the functional simulator oracle
+    "merlin/python/merlin/runtime/backends",  # the callable oracle backends (a route to the oracle)
     # The per-target oracle adapters (L2/L3/L4 routing) + the RTL-model bridge they call. Reading these
     # hands the agent the DRAM ABI (base/layout/stacking) and readback convention it is supposed to DERIVE
     # from the public contract + RTL facts — the arm-4 answer_access leak this registry must close.
-    "merlin/python/merlin/targetgen/program_oracle.py",   # external_backend program oracle (atlas L2/L3/L4)
-    "merlin/python/merlin/targetgen/muon_oracles.py",     # SIMT/Muon oracle adapters (radiance)
-    "merlin/python/merlin/targetgen/heavy_oracles.py",    # heavy (cycle-accurate) oracle adapters
-    "merlin/python/merlin/targetgen/rtl/mlc_bridge.py",   # mlc arc cosim + DRAM readback (the oracle bridge)
+    "merlin/python/merlin/targetgen/program_oracle.py",  # external_backend program oracle (atlas L2/L3/L4)
+    "merlin/python/merlin/targetgen/muon_oracles.py",  # SIMT/Muon oracle adapters (radiance)
+    "merlin/python/merlin/targetgen/heavy_oracles.py",  # heavy (cycle-accurate) oracle adapters
+    "merlin/python/merlin/targetgen/rtl/mlc_bridge.py",  # mlc arc cosim + DRAM readback (the oracle bridge)
 )
 GRADER_MODULES: tuple[str, ...] = (
-    "merlin/python/merlin/targetgen/rocc/decode.py",     # raw command-trace decoder (grader internal)
-    "merlin/python/merlin/targetgen/trace_check.py",     # trace gate
-    "merlin/python/merlin/targetgen/capsule_grade.py",   # the grader
+    "merlin/python/merlin/targetgen/rocc/decode.py",  # raw command-trace decoder (grader internal)
+    "merlin/python/merlin/targetgen/trace_check.py",  # trace gate
+    "merlin/python/merlin/targetgen/capsule_grade.py",  # the grader
     "merlin/python/merlin/targetgen/capsule_golden.py",  # golden generation
     "merlin/python/merlin/targetgen/capsule_runner.py",  # the tier runner
-    "merlin/python/merlin/targetgen/capsule_dram.py",    # the DRAM preload/layout (input/output ABI the oracle expects)
-    "merlin/python/merlin/targetgen/oot_runner.py",       # the OOT build+grade driver
+    "merlin/python/merlin/targetgen/capsule_dram.py",  # the DRAM preload/layout (input/output ABI the oracle expects)
+    "merlin/python/merlin/targetgen/oot_runner.py",  # the OOT build+grade driver
     "merlin/python/merlin/targetgen/coverage_report.py",  # coverage grading
 )
 # Oracle-callable helper SUBPATHS that live INSIDE otherwise-allowed authoring tool dirs (the merlin-arm
 # leak): reading them gives a callable route to the oracle. These are relative fragments, matched by the
 # transcript audit (they are excised from the workspace copy by the deny-wins sub-path logic, not a
 # separate filesystem mask). Declared here so there is ONE source of oracle identity.
-ORACLE_CALLABLE_SUBPATHS: tuple[str, ...] = (
-    "runtime_adapter", "xdsl_dialects/lowering/pipeline")
+ORACLE_CALLABLE_SUBPATHS: tuple[str, ...] = ("runtime_adapter", "xdsl_dialects/lowering/pipeline")
 
 
 @dataclass(frozen=True)
 class AnswerSurface:
     """One answer-bearing path the sandbox must hide, with how it is masked."""
-    label: str          # human label for diagnostics
-    path: Path          # absolute host path
-    kind: str           # "file" -> /dev/null overlay ; "dir" -> tmpfs
-    origin: str         # golden | weight | hidden | prior_backend | oracle | grader | memory | example
+
+    label: str  # human label for diagnostics
+    path: Path  # absolute host path
+    kind: str  # "file" -> /dev/null overlay ; "dir" -> tmpfs
+    origin: str  # golden | weight | hidden | prior_backend | oracle | grader | memory | example
 
 
 def experimenter_memory_dir() -> Path:
     """The experimenter's Claude Code memory dir for THIS repo. Claude Code slugifies the project path
     by replacing ``/`` with ``-``; deriving it from the CURRENT repo (never hard-coding) is what keeps
     the mask honest across repo moves — a stale hard-coded slug is precisely the past cheat gap."""
-    return Path(os.path.expanduser(
-        f"~/.claude/projects/{str(repo_root()).replace('/', '-')}/memory"))
+    return Path(os.path.expanduser(f"~/.claude/projects/{str(repo_root()).replace('/', '-')}/memory"))
 
 
 def golden_files(te: TargetExperiment) -> list[Path]:
@@ -146,6 +146,7 @@ def _evicted_oracle_modules() -> list[Path]:
     paths: list[Path] = []
     try:
         from merlin.runtime.backends import base as _bk
+
         for key in ("backend", "sim_oracle"):
             for _name, p in _bk._oot_plugin_modules(key):
                 if p.exists():
@@ -167,8 +168,7 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
         origin = "example" if examples_dir in g.parents else "golden"
         out.append(AnswerSurface(f"{origin}:{g.relative_to(root)}", g, "file", origin))
     for weights in weight_files(te):
-        out.append(AnswerSurface(
-            f"weight:{weights.relative_to(root)}", weights, "file", "weight"))
+        out.append(AnswerSurface(f"weight:{weights.relative_to(root)}", weights, "file", "weight"))
 
     # Mask EVERY hidden-capsule dir under the capsule tree, not only THIS target's declared one. The bundle
     # grants the frozen ABI (``merlin/contract/``) broadly, which re-exposes the SHARED
@@ -213,15 +213,13 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
     for rel in ORACLE_MODULES:
         p = root / rel
         if p.exists():
-            out.append(AnswerSurface(f"oracle:{Path(rel).name}", p,
-                                     "dir" if p.is_dir() else "file", "oracle"))
-    for p in _evicted_oracle_modules():          # OV11: oracle/backend routes relocated to target packages
+            out.append(AnswerSurface(f"oracle:{Path(rel).name}", p, "dir" if p.is_dir() else "file", "oracle"))
+    for p in _evicted_oracle_modules():  # OV11: oracle/backend routes relocated to target packages
         out.append(AnswerSurface(f"oracle:{p.name}", p, "dir" if p.is_dir() else "file", "oracle"))
     for rel in GRADER_MODULES:
         p = root / rel
         if p.exists():
-            out.append(AnswerSurface(f"grader:{Path(rel).name}", p,
-                                     "dir" if p.is_dir() else "file", "grader"))
+            out.append(AnswerSurface(f"grader:{Path(rel).name}", p, "dir" if p.is_dir() else "file", "grader"))
 
     mem = experimenter_memory_dir()
     if mem.is_dir():
@@ -246,8 +244,9 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
 # VIOLATION -- withheld content reached the agent, or agent code routes to the oracle:
 #   path_read       a content read of a withheld path that returned data
 #   oracle_use      agent-authored code imports/calls a denied oracle module
-AUDIT_ADVISORY_KINDS: frozenset[str] = frozenset({
-    "blocked_probe", "recon_probe", "owned_read", "granted_read", "pattern_mention"})
+AUDIT_ADVISORY_KINDS: frozenset[str] = frozenset(
+    {"blocked_probe", "recon_probe", "owned_read", "granted_read", "pattern_mention"}
+)
 AUDIT_VIOLATION_KINDS: frozenset[str] = frozenset({"path_read", "oracle_use"})
 
 
@@ -275,7 +274,7 @@ def module_name_for(rel_path: str) -> str | None:
     prefix = "merlin/python/"
     if not rel.startswith(prefix):
         return None
-    rel = rel[len(prefix):]
+    rel = rel[len(prefix) :]
     if rel.endswith(".py"):
         rel = rel[:-3]
     parts = [seg for seg in rel.split("/") if seg and seg != "__init__"]
@@ -288,8 +287,7 @@ def declared_oracle_modules() -> tuple[str, ...]:
     """The DECLARED oracle registry as dotted module names -- the harness-level identity of "the
     oracle", independent of any bundle. Importing one of these is oracle USE for EVERY arm, even if
     some bundle's grant list were to name it."""
-    return tuple(dict.fromkeys(
-        m for m in (module_name_for(rel) for rel in ORACLE_MODULES) if m))
+    return tuple(dict.fromkeys(m for m in (module_name_for(rel) for rel in ORACLE_MODULES) if m))
 
 
 def module_matches(module: str, prefix: str) -> bool:
@@ -305,7 +303,9 @@ def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
     grader-private; ``grader`` = grader-module stems; ``oracle_subpath`` = the oracle-callable helper
     subpaths."""
     answer: list[str] = [
-        "golden.yaml", "expected_command_buffer", "expected_instruction_coverage.yaml",
+        "golden.yaml",
+        "expected_command_buffer",
+        "expected_instruction_coverage.yaml",
     ]
     # A token for EVERY hidden-capsule dir (this target's + the shared one + any other target's), matching
     # the filesystem mask above — the trailing two path components identify each hidden set (e.g.
@@ -330,7 +330,7 @@ def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
         answer.append("/".join(_weights.parts[-3:]))
     for rel in ORACLE_MODULES:
         # "merlin/runtime/reference" etc. — drop the merlin/python prefix + the .py suffix
-        frag = rel[len("merlin/python/"):] if rel.startswith("merlin/python/") else rel
+        frag = rel[len("merlin/python/") :] if rel.startswith("merlin/python/") else rel
         answer.append(frag[:-3] if frag.endswith(".py") else frag)
     answer += list(te.prior_backends)
     # Evicted oracle/backend routes, tokenised as "<target>/<route>" rather than by bare stem. Most of
@@ -343,5 +343,4 @@ def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
         answer.append(f"{_p.parent.name}/{_stem}" if _p.parent.name else _stem)
     answer.append("grader_private")
     grader = tuple(Path(rel).stem for rel in GRADER_MODULES)
-    return {"answer": tuple(dict.fromkeys(answer)), "grader": grader,
-            "oracle_subpath": ORACLE_CALLABLE_SUBPATHS}
+    return {"answer": tuple(dict.fromkeys(answer)), "grader": grader, "oracle_subpath": ORACLE_CALLABLE_SUBPATHS}

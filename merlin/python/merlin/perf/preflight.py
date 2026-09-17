@@ -48,6 +48,7 @@ instruction-memory capacity and the emitter's own section lengths all arrive as
 (:func:`merlin.perf.workload_gen.machine_facts` supplies every one of them). This module never asks
 which target it is looking at.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -60,11 +61,20 @@ from .oracle_cost import CostEstimate, CostLaw
 from .workload_gen import AliasReport, Placement, alias_report
 
 __all__ = [
-    "RateBasis", "Rate", "rate_from_observations",
-    "MachineBudget", "EmitterShape", "TensorSpec",
-    "Refusal", "Preflight",
-    "operands_from_declaration", "place_operands", "tile_passes_for",
-    "preflight_operands", "preflight_matmul", "render",
+    "RateBasis",
+    "Rate",
+    "rate_from_observations",
+    "MachineBudget",
+    "EmitterShape",
+    "TensorSpec",
+    "Refusal",
+    "Preflight",
+    "operands_from_declaration",
+    "place_operands",
+    "tile_passes_for",
+    "preflight_operands",
+    "preflight_matmul",
+    "render",
 ]
 
 
@@ -95,7 +105,7 @@ class Rate:
     fixed: float | None
     basis: RateBasis
     n_points: int
-    domain: tuple[int, int] | None = None      # (min, max) tile passes actually observed
+    domain: tuple[int, int] | None = None  # (min, max) tile passes actually observed
     note: str = ""
 
     @property
@@ -120,9 +130,15 @@ class Rate:
         return float(tile_passes) / float(self.domain[1])
 
     def as_dict(self) -> dict:
-        return {"per_tile_pass": self.per_tile_pass, "fixed": self.fixed, "basis": self.basis.value,
-                "n_points": self.n_points, "is_extrapolation": self.is_extrapolation,
-                "domain": list(self.domain) if self.domain else None, "note": self.note}
+        return {
+            "per_tile_pass": self.per_tile_pass,
+            "fixed": self.fixed,
+            "basis": self.basis.value,
+            "n_points": self.n_points,
+            "is_extrapolation": self.is_extrapolation,
+            "domain": list(self.domain) if self.domain else None,
+            "note": self.note,
+        }
 
 
 def rate_from_observations(observations: Sequence[tuple[int, int]], *, note: str = "") -> Rate:
@@ -135,24 +151,38 @@ def rate_from_observations(observations: Sequence[tuple[int, int]], *, note: str
     """
     pts = [(int(p), int(c)) for p, c in observations if int(p) > 0]
     if not pts:
-        return Rate(None, None, RateBasis.UNKNOWN, 0, None,
-                    note or "no (tile_passes, cycles) observation was supplied")
+        return Rate(None, None, RateBasis.UNKNOWN, 0, None, note or "no (tile_passes, cycles) observation was supplied")
     passes = [p for p, _ in pts]
     domain = (min(passes), max(passes))
     if len(set(passes)) < 2:
         mean_cycles = sum(c for _, c in pts) / len(pts)
         per = mean_cycles / passes[0]
-        return Rate(per, None, RateBasis.SINGLE_POINT_EXTRAPOLATION, len(pts), domain,
-                    note or (f"{len(pts)} observation(s) at a single tile-pass count ({passes[0]}); the "
-                             f"fixed fill/drain term is folded into the rate and cannot be separated"))
+        return Rate(
+            per,
+            None,
+            RateBasis.SINGLE_POINT_EXTRAPOLATION,
+            len(pts),
+            domain,
+            note
+            or (
+                f"{len(pts)} observation(s) at a single tile-pass count ({passes[0]}); the "
+                f"fixed fill/drain term is folded into the rate and cannot be separated"
+            ),
+        )
     n = len(pts)
     mx = sum(passes) / n
     my = sum(c for _, c in pts) / n
     sxx = sum((p - mx) ** 2 for p in passes)
     slope = sum((p - mx) * (c - my) for p, c in pts) / sxx
     intercept = my - slope * mx
-    return Rate(slope, intercept, RateBasis.FITTED, n, domain,
-                note or f"least squares over {n} points at {len(set(passes))} distinct tile-pass counts")
+    return Rate(
+        slope,
+        intercept,
+        RateBasis.FITTED,
+        n,
+        domain,
+        note or f"least squares over {n} points at {len(set(passes))} distinct tile-pass counts",
+    )
 
 
 # --- the machine's capacities, all supplied by the caller -------------------------------------------
@@ -182,17 +212,28 @@ class MachineBudget:
     def from_machine_facts(cls, facts: Any) -> "MachineBudget":
         """Build from a :class:`merlin.perf.workload_gen.MachineFacts`, whose every field is derived
         from the target's own RTL / manifest / shipped ISA reference."""
-        return cls(tile_rows=facts.tile.rows, tile_cols=facts.tile.cols,
-                   operand_bytes=facts.operand_bytes, accum_bytes=facts.accum_bytes,
-                   dram_window=facts.dram_window, imem_words=facts.imem_words,
-                   dram_base=int(getattr(facts, "dram_base", 0) or 0),
-                   provenance=dict(getattr(facts, "provenance", {}) or {}))
+        return cls(
+            tile_rows=facts.tile.rows,
+            tile_cols=facts.tile.cols,
+            operand_bytes=facts.operand_bytes,
+            accum_bytes=facts.accum_bytes,
+            dram_window=facts.dram_window,
+            imem_words=facts.imem_words,
+            dram_base=int(getattr(facts, "dram_base", 0) or 0),
+            provenance=dict(getattr(facts, "provenance", {}) or {}),
+        )
 
     def as_dict(self) -> dict:
-        return {"tile_rows": self.tile_rows, "tile_cols": self.tile_cols,
-                "operand_bytes": self.operand_bytes, "accum_bytes": self.accum_bytes,
-                "dram_window": self.dram_window, "imem_words": self.imem_words,
-                "dram_base": self.dram_base, "provenance": dict(self.provenance)}
+        return {
+            "tile_rows": self.tile_rows,
+            "tile_cols": self.tile_cols,
+            "operand_bytes": self.operand_bytes,
+            "accum_bytes": self.accum_bytes,
+            "dram_window": self.dram_window,
+            "imem_words": self.imem_words,
+            "dram_base": self.dram_base,
+            "provenance": dict(self.provenance),
+        }
 
 
 @dataclass(frozen=True)
@@ -216,22 +257,30 @@ class EmitterShape:
 
     @classmethod
     def from_section_words(cls, section_words: Mapping[str, int], *, provenance: str = "") -> "EmitterShape":
-        return cls(prologue_words=int(section_words.get("prologue", 0)),
-                   k_step_words=int(section_words.get("k_step", 0)),
-                   tile_epilogue_words=int(section_words.get("tile_epilogue", 0)),
-                   looped_words=int(section_words.get("total", 0)),
-                   provenance=provenance or "measured section lengths of an emitted program")
+        return cls(
+            prologue_words=int(section_words.get("prologue", 0)),
+            k_step_words=int(section_words.get("k_step", 0)),
+            tile_epilogue_words=int(section_words.get("tile_epilogue", 0)),
+            looped_words=int(section_words.get("total", 0)),
+            provenance=provenance or "measured section lengths of an emitted program",
+        )
 
     def unrolled_words(self, m_tiles: int, k_tiles: int, n_tiles: int) -> int:
         """The same count :meth:`merlin.perf.workload_gen.MatmulPlan.unrolled_word_estimate` produces."""
-        return (self.prologue_words
-                + m_tiles * k_tiles * n_tiles * self.k_step_words
-                + m_tiles * n_tiles * self.tile_epilogue_words)
+        return (
+            self.prologue_words
+            + m_tiles * k_tiles * n_tiles * self.k_step_words
+            + m_tiles * n_tiles * self.tile_epilogue_words
+        )
 
     def as_dict(self) -> dict:
-        return {"prologue_words": self.prologue_words, "k_step_words": self.k_step_words,
-                "tile_epilogue_words": self.tile_epilogue_words, "looped_words": self.looped_words,
-                "provenance": self.provenance}
+        return {
+            "prologue_words": self.prologue_words,
+            "k_step_words": self.k_step_words,
+            "tile_epilogue_words": self.tile_epilogue_words,
+            "looped_words": self.looped_words,
+            "provenance": self.provenance,
+        }
 
 
 @dataclass(frozen=True)
@@ -262,13 +311,16 @@ class TensorSpec:
         return int(round(self.elements * self.element_bytes))
 
     def operand(self) -> TensorOperand:
-        return TensorOperand(name=self.name, elements=self.elements,
-                             element_bytes=self.element_bytes,
-                             is_output=(self.role == "output"), broadcast=self.broadcast)
+        return TensorOperand(
+            name=self.name,
+            elements=self.elements,
+            element_bytes=self.element_bytes,
+            is_output=(self.role == "output"),
+            broadcast=self.broadcast,
+        )
 
 
-def operands_from_declaration(inputs: Sequence[Mapping[str, Any]], *,
-                              element_bytes_of) -> tuple[TensorSpec, ...]:
+def operands_from_declaration(inputs: Sequence[Mapping[str, Any]], *, element_bytes_of) -> tuple[TensorSpec, ...]:
     """Declared tensors (a capsule's ``inputs`` list) as :class:`TensorSpec`.
 
     ``element_bytes_of(dtype) -> float`` is the caller's, because the numeric-format vocabulary is DATA
@@ -282,8 +334,14 @@ def operands_from_declaration(inputs: Sequence[Mapping[str, Any]], *,
         if not name or not shape:
             raise ValueError(f"declared tensor {item!r} has no name or no shape; it cannot be sized")
         dtype = str(item.get("dtype") or "")
-        out.append(TensorSpec(name=name, shape=shape, element_bytes=float(element_bytes_of(dtype)),
-                              role=str(item.get("role") or "input")))
+        out.append(
+            TensorSpec(
+                name=name,
+                shape=shape,
+                element_bytes=float(element_bytes_of(dtype)),
+                role=str(item.get("role") or "input"),
+            )
+        )
     return tuple(out)
 
 
@@ -299,8 +357,7 @@ def place_operands(specs: Sequence[TensorSpec], *, origin: int, align: int) -> t
     out: list[Placement] = []
     for s in specs:
         cur = (cur + align - 1) // align * align
-        out.append(Placement(name=s.name, role=s.role, shape=list(s.shape), dtype="", nbytes=s.nbytes,
-                             base=cur))
+        out.append(Placement(name=s.name, role=s.role, shape=list(s.shape), dtype="", nbytes=s.nbytes, base=cur))
         cur += s.nbytes
     return tuple(out)
 
@@ -311,8 +368,7 @@ def tile_passes_for(m: int, k: int, n: int, budget: MachineBudget) -> tuple[int,
     Raises when an extent is not a whole number of tiles -- the same refusal
     :func:`merlin.perf.workload_gen.plan_matmul` makes, brought forward to cost nothing.
     """
-    for label, extent, edge in (("M", m, budget.tile_rows), ("K", k, budget.tile_cols),
-                                ("N", n, budget.tile_cols)):
+    for label, extent, edge in (("M", m, budget.tile_rows), ("K", k, budget.tile_cols), ("N", n, budget.tile_cols)):
         if extent <= 0 or extent % edge:
             raise ValueError(f"{label}={extent} is not a whole number of {edge}-wide tiles")
     return m // budget.tile_rows, k // budget.tile_cols, n // budget.tile_cols
@@ -397,19 +453,27 @@ class Preflight:
 
     def as_dict(self) -> dict:
         return {
-            "workload": self.workload, "ok": self.ok,
-            "useful_bytes": self.useful_bytes, "broadcast_bytes": self.broadcast_bytes,
+            "workload": self.workload,
+            "ok": self.ok,
+            "useful_bytes": self.useful_bytes,
+            "broadcast_bytes": self.broadcast_bytes,
             "footprint_bytes": self.footprint_bytes,
-            "alias": {"ok": self.alias.ok, "window": self.alias.window,
-                      "wrapped": list(self.alias.wrapped),
-                      "collisions": [list(c) for c in self.alias.collisions],
-                      "reason": self.alias.reason} if self.alias else None,
+            "alias": {
+                "ok": self.alias.ok,
+                "window": self.alias.window,
+                "wrapped": list(self.alias.wrapped),
+                "collisions": [list(c) for c in self.alias.collisions],
+                "reason": self.alias.reason,
+            }
+            if self.alias
+            else None,
             "tiles": list(self.tiles) if self.tiles else None,
             "tile_passes": self.tile_passes,
             "projected_cycles": self.projected_cycles,
             "cycles_are_an_extrapolation": self.rate.is_extrapolation,
             "rate": self.rate.as_dict(),
-            "program_words": self.program_words, "unrolled_words": self.unrolled_words,
+            "program_words": self.program_words,
+            "unrolled_words": self.unrolled_words,
             "imem_words": self.imem_words,
             "refusals": [r.as_dict() for r in self.refusals],
             "wall": {t: e.as_dict() for t, e in self.wall.items()},
@@ -417,13 +481,21 @@ class Preflight:
 
 
 # --- the decision -----------------------------------------------------------------------------------
-def preflight_operands(name: str, specs: Sequence[TensorSpec], *, budget: MachineBudget,
-                       rate: Rate | None = None, tile_passes: int | None = None,
-                       tiles: tuple[int, int, int] | None = None,
-                       placements: Sequence[Placement] | None = None,
-                       program_words: int | None = None, unrolled_words: int | None = None,
-                       laws: Mapping[str, CostLaw] | None = None,
-                       origin: int | None = None, align: int = 64) -> Preflight:
+def preflight_operands(
+    name: str,
+    specs: Sequence[TensorSpec],
+    *,
+    budget: MachineBudget,
+    rate: Rate | None = None,
+    tile_passes: int | None = None,
+    tiles: tuple[int, int, int] | None = None,
+    placements: Sequence[Placement] | None = None,
+    program_words: int | None = None,
+    unrolled_words: int | None = None,
+    laws: Mapping[str, CostLaw] | None = None,
+    origin: int | None = None,
+    align: int = 64,
+) -> Preflight:
     """Preflight a workload from its declared tensors.
 
     ``placements`` overrides the layout hypothesis when the caller already has a plan (then the alias
@@ -439,8 +511,11 @@ def preflight_operands(name: str, specs: Sequence[TensorSpec], *, budget: Machin
     ops = tuple(s.operand() for s in specs)
     useful, splat = useful_bytes(ops)
 
-    placed = tuple(placements) if placements is not None else place_operands(
-        specs, origin=budget.dram_base + align if origin is None else origin, align=align)
+    placed = (
+        tuple(placements)
+        if placements is not None
+        else place_operands(specs, origin=budget.dram_base + align if origin is None else origin, align=align)
+    )
     report = alias_report(placed, budget.dram_window)
     if not report.ok:
         code = DRAM_ALIAS if report.window is not None else DRAM_WINDOW_UNKNOWN
@@ -448,42 +523,79 @@ def preflight_operands(name: str, specs: Sequence[TensorSpec], *, budget: Machin
 
     projected = rate.cycles(tile_passes) if tile_passes else None
     if tile_passes and not rate.known:
-        refusals.append(Refusal(RATE_UNKNOWN,
-                                "no cycles-per-tile-pass observation was supplied, so this workload "
-                                "has no projected cost to budget against; " + rate.note))
+        refusals.append(
+            Refusal(
+                RATE_UNKNOWN,
+                "no cycles-per-tile-pass observation was supplied, so this workload "
+                "has no projected cost to budget against; " + rate.note,
+            )
+        )
 
     cap = budget.imem_words
     if program_words is None:
-        refusals.append(Refusal(IMEM_UNCHECKED,
-                                "no program length was supplied, so the instruction-memory fit COULD "
-                                "NOT BE CHECKED; a program longer than IMEM is not rejected -- its "
-                                "tail is never loaded and the device runs the prefix"))
+        refusals.append(
+            Refusal(
+                IMEM_UNCHECKED,
+                "no program length was supplied, so the instruction-memory fit COULD "
+                "NOT BE CHECKED; a program longer than IMEM is not rejected -- its "
+                "tail is never loaded and the device runs the prefix",
+            )
+        )
     elif cap is None:
-        refusals.append(Refusal(IMEM_UNCHECKED,
-                                f"the target publishes no instruction-memory capacity, so a "
-                                f"{program_words}-word program COULD NOT BE CHECKED; this is not a pass"))
+        refusals.append(
+            Refusal(
+                IMEM_UNCHECKED,
+                f"the target publishes no instruction-memory capacity, so a "
+                f"{program_words}-word program COULD NOT BE CHECKED; this is not a pass",
+            )
+        )
     elif program_words > cap:
-        refusals.append(Refusal(IMEM_OVERFLOW,
-                                f"the program is {program_words} words and instruction memory holds "
-                                f"{cap}; the tail would never be loaded and the cycle count would "
-                                f"describe the prefix"))
+        refusals.append(
+            Refusal(
+                IMEM_OVERFLOW,
+                f"the program is {program_words} words and instruction memory holds "
+                f"{cap}; the tail would never be loaded and the cycle count would "
+                f"describe the prefix",
+            )
+        )
 
     wall: dict[str, CostEstimate] = {}
     if laws and projected is not None and program_words is not None:
         for tier, law in laws.items():
             wall[tier] = law.estimate(projected, program_words)
 
-    return Preflight(workload=name, useful_bytes=useful, broadcast_bytes=splat,
-                     footprint_bytes=report.footprint_bytes, alias=report,
-                     tiles=tiles, tile_passes=tile_passes, projected_cycles=projected, rate=rate,
-                     program_words=program_words, unrolled_words=unrolled_words, imem_words=cap,
-                     refusals=tuple(refusals), wall=wall)
+    return Preflight(
+        workload=name,
+        useful_bytes=useful,
+        broadcast_bytes=splat,
+        footprint_bytes=report.footprint_bytes,
+        alias=report,
+        tiles=tiles,
+        tile_passes=tile_passes,
+        projected_cycles=projected,
+        rate=rate,
+        program_words=program_words,
+        unrolled_words=unrolled_words,
+        imem_words=cap,
+        refusals=tuple(refusals),
+        wall=wall,
+    )
 
 
-def preflight_matmul(name: str, *, m: int, k: int, n: int, budget: MachineBudget,
-                     rate: Rate | None = None, emitter: EmitterShape | None = None,
-                     loops: bool = True, laws: Mapping[str, CostLaw] | None = None,
-                     origin: int | None = None, align: int = 64) -> Preflight:
+def preflight_matmul(
+    name: str,
+    *,
+    m: int,
+    k: int,
+    n: int,
+    budget: MachineBudget,
+    rate: Rate | None = None,
+    emitter: EmitterShape | None = None,
+    loops: bool = True,
+    laws: Mapping[str, CostLaw] | None = None,
+    origin: int | None = None,
+    align: int = 64,
+) -> Preflight:
     """Preflight an ``[m, k] x [k, n]`` contraction from its shape alone.
 
     The three tensors are sized from the budget's own element widths, laid out the way the emitter lays
@@ -495,11 +607,21 @@ def preflight_matmul(name: str, *, m: int, k: int, n: int, budget: MachineBudget
         tiles = tile_passes_for(m, k, n, budget)
     except ValueError as e:
         empty = Rate(None, None, RateBasis.UNKNOWN, 0, None, "shape refused before any rate applies")
-        return Preflight(workload=name, useful_bytes=0, broadcast_bytes=0, footprint_bytes=0,
-                         alias=None, tiles=None, tile_passes=None, projected_cycles=None,
-                         rate=rate or empty, program_words=None, unrolled_words=None,
-                         imem_words=budget.imem_words,
-                         refusals=(Refusal(PARTIAL_TILE, str(e)),))
+        return Preflight(
+            workload=name,
+            useful_bytes=0,
+            broadcast_bytes=0,
+            footprint_bytes=0,
+            alias=None,
+            tiles=None,
+            tile_passes=None,
+            projected_cycles=None,
+            rate=rate or empty,
+            program_words=None,
+            unrolled_words=None,
+            imem_words=budget.imem_words,
+            refusals=(Refusal(PARTIAL_TILE, str(e)),),
+        )
     mt, kt, nt = tiles
     specs = (
         TensorSpec("A", (m, k), float(budget.operand_bytes), role="input"),
@@ -510,9 +632,19 @@ def preflight_matmul(name: str, *, m: int, k: int, n: int, budget: MachineBudget
     if emitter is not None:
         unrolled = emitter.unrolled_words(mt, kt, nt)
         words = emitter.looped_words if loops else unrolled
-    return preflight_operands(name, specs, budget=budget, rate=rate, tile_passes=mt * kt * nt,
-                              tiles=tiles, program_words=words, unrolled_words=unrolled,
-                              laws=laws, origin=origin, align=align)
+    return preflight_operands(
+        name,
+        specs,
+        budget=budget,
+        rate=rate,
+        tile_passes=mt * kt * nt,
+        tiles=tiles,
+        program_words=words,
+        unrolled_words=unrolled,
+        laws=laws,
+        origin=origin,
+        align=align,
+    )
 
 
 def render(pf: Preflight) -> str:
@@ -522,8 +654,10 @@ def render(pf: Preflight) -> str:
     lines = [f"{pf.workload}: {head}"]
     for r in pf.refusals:
         lines.append(f"  [{'hazard' if r.proven else 'unchecked'}] {r.code}: {r.detail}")
-    lines.append(f"  useful_bytes={pf.useful_bytes} footprint_bytes={pf.footprint_bytes}"
-                 + (f" broadcast_bytes={pf.broadcast_bytes}" if pf.broadcast_bytes else ""))
+    lines.append(
+        f"  useful_bytes={pf.useful_bytes} footprint_bytes={pf.footprint_bytes}"
+        + (f" broadcast_bytes={pf.broadcast_bytes}" if pf.broadcast_bytes else "")
+    )
     if pf.tile_passes is not None:
         tail = ""
         if pf.rate.is_extrapolation:
@@ -533,8 +667,9 @@ def render(pf: Preflight) -> str:
             tail += f" [x{reach:.3g} beyond the largest observed workload]"
         lines.append(f"  tile_passes={pf.tile_passes} projected_cycles={pf.projected_cycles}{tail}")
     if pf.program_words is not None or pf.unrolled_words is not None:
-        lines.append(f"  program_words={pf.program_words} unrolled_words={pf.unrolled_words} "
-                     f"imem_words={pf.imem_words}")
+        lines.append(
+            f"  program_words={pf.program_words} unrolled_words={pf.unrolled_words} imem_words={pf.imem_words}"
+        )
     for tier, est in sorted(pf.wall.items()):
         lines.append(f"  {tier}: {est}")
     return "\n".join(lines)

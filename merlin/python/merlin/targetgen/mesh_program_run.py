@@ -7,6 +7,7 @@ the RTL cosim is DERIVED from the target by mlc's registry (``program_oracle``).
 interface, injects the operands onto the command buffer's leaf tensors (by the harness-stamped DRAM layout),
 and reads the output back. It carries no target-name literal and fails closed (returns ``None``) on any gap.
 """
+
 from __future__ import annotations
 
 import base64
@@ -43,10 +44,10 @@ def _encode_operand(values, dtype: str) -> bytes | None:
     f = qf.get(dtype)
     bits = int(f.element_bits or 0)
     if bits % 8 or bits == 0:
-        return None                                  # sub-byte: packing is not this function's call
+        return None  # sub-byte: packing is not this function's call
 
     if f.kind == "int_affine":
-        lo, hi = ((-(2 ** (bits - 1)), 2 ** (bits - 1) - 1) if f.signed else (0, 2 ** bits - 1))
+        lo, hi = (-(2 ** (bits - 1)), 2 ** (bits - 1) - 1) if f.signed else (0, 2**bits - 1)
         code = "<i" if f.signed else "<u"
         return np.clip(np.rint(a), lo, hi).astype(f"{code}{bits // 8}").tobytes()
 
@@ -56,7 +57,7 @@ def _encode_operand(values, dtype: str) -> bytes | None:
         if bits == 64:
             return a.astype("<f8").tobytes()
         if bits == 16 and int(f.exp_bits or 0) == 5:
-            return a.astype("<f2").tobytes()         # IEEE half
+            return a.astype("<f2").tobytes()  # IEEE half
         if bits == 16 and int(f.exp_bits or 0) == 8:
             # bfloat16 is the top half of the fp32 word, round-to-nearest-even on the dropped half.
             u = a.astype("<f4").view("<u4").astype(np.uint32)
@@ -66,6 +67,7 @@ def _encode_operand(values, dtype: str) -> bytes | None:
 
     if f.kind == "fp_ocp":
         from merlin.targetgen.fp8_codec import ocp_encode
+
         eb, mb = int(f.exp_bits or 0), int(f.mant_bits or 0)
         if not eb or bits != 8:
             return None
@@ -79,19 +81,27 @@ def _encode_operand(values, dtype: str) -> bytes | None:
     return None
 
 
-def matmul_on_program_oracle(target: str, interface_mlir: str, A, W, *, model_ext: str,
-                             package: str | None, timeout: int = 900,
-                             dtype_hint: str | None = None,
-                             observed: dict | None = None) -> list | None:
+def matmul_on_program_oracle(
+    target: str,
+    interface_mlir: str,
+    A,
+    W,
+    *,
+    model_ext: str,
+    package: str | None,
+    timeout: int = 900,
+    dtype_hint: str | None = None,
+    observed: dict | None = None,
+) -> list | None:
     """Emit the target's matmul kernel from ``interface_mlir`` via its generated package, inject ``A``/``W``
     onto the command buffer, run the mlc-derived program oracle, and return the output tensor (nested list)
     or ``None`` (fail closed). Target-agnostic — the target only enters as the parameter that selects its own
     generated package + mlc cosim."""
     if package is None:
         return None
+    from ..benchharness import runs_root
     from . import capsule_common as CC
     from . import program_oracle as PO
-    from ..benchharness import runs_root
     from .capsule_common import make_run_paths
 
     with tempfile.TemporaryDirectory(prefix="mesh_prog_") as td:
@@ -100,29 +110,42 @@ def matmul_on_program_oracle(target: str, interface_mlir: str, A, W, *, model_ex
         cdir = tdp / "cap"
         cdir.mkdir(parents=True, exist_ok=True)
         (cdir / "capsule.interface.mlir").write_text(interface_mlir, encoding="utf-8")
-        capsule = {"name": "mesh_layer", "kind": "op", "interface_mlir": "capsule.interface.mlir",
-                   "operation": {"op": "matmul", "attributes": {}}, "__dir__": str(cdir),
-                   "required_oracle_tiers": ["L3"]}
-        paths = make_run_paths(runs_root(target, "mesh_prog"), "mesh_layer", suite="mesh",
-                               target=target, dtype="prog", benchmark="mesh_layer")
+        capsule = {
+            "name": "mesh_layer",
+            "kind": "op",
+            "interface_mlir": "capsule.interface.mlir",
+            "operation": {"op": "matmul", "attributes": {}},
+            "__dir__": str(cdir),
+            "required_oracle_tiers": ["L3"],
+        }
+        paths = make_run_paths(
+            runs_root(target, "mesh_prog"),
+            "mesh_layer",
+            suite="mesh",
+            target=target,
+            dtype="prog",
+            benchmark="mesh_layer",
+        )
         # The emitted-artifact name is the TARGET's, not a constant: a self-hosted-ISA target emits an
         # assembly kernel where a RoCC target emits LLVM-dialect MLIR. Read it from the same runner config
         # the grader uses rather than naming one.
         from .capsule_runner import _config_for_target
+
         try:
             _fourth = _config_for_target(target, None, dtype_hint or "int8").fourth_output_name
-        except Exception:                            # noqa: BLE001 — no runner config: cannot emit here
+        except Exception:  # noqa: BLE001 — no runner config: cannot emit here
             return None
         try:
-            _pkg, cb, kernel_text = CC.run_entrypoints(None, package, capsule, paths, contract=None,
-                                                       timeout=timeout, fourth_output_name=_fourth)
+            _pkg, cb, kernel_text = CC.run_entrypoints(
+                None, package, capsule, paths, contract=None, timeout=timeout, fourth_output_name=_fourth
+            )
         except (TypeError, AttributeError, ImportError, NameError):
             # OUR bug, not the target's. These were swallowed into the same `None` as a genuine
             # unavailability, and the caller reports None as "no reachable oracle in this env" -- so a
             # wrong call signature here presented as a missing oracle and this path never ran at all
             # on any target that uses it. Re-raised so a defect in the runner is attributed to the runner.
             raise
-        except Exception:                            # noqa: BLE001 — package can't emit this kernel: honest None
+        except Exception:  # noqa: BLE001 — package can't emit this kernel: honest None
             return None
         if cb is None or not kernel_text:
             return None
@@ -139,7 +162,7 @@ def matmul_on_program_oracle(target: str, interface_mlir: str, A, W, *, model_ex
 
         run = PO.program_oracle_adapter(target, model_ext=model_ext)
         odir = tdp / "oracle"
-        odir.mkdir(parents=True, exist_ok=True)      # the adapter writes the emitted kernel into it
+        odir.mkdir(parents=True, exist_ok=True)  # the adapter writes the emitted kernel into it
         try:
             res = run(cb, kernel_text, odir, timeout)
         except PO.ProgramDidNotHalt:
@@ -211,6 +234,7 @@ def _library_call(op) -> str | None:
 
 def _is_block_arg(value) -> bool:
     from xdsl.ir import Block
+
     return isinstance(getattr(value, "owner", None), Block)
 
 
@@ -232,6 +256,7 @@ def _op_family(op):
     ``EmptyOp``/``FillOp``/``ConstantOp`` init, or the terminator). Structural — matches on the op class,
     then on a ``linalg.generic``'s ``library_call`` tag (softmax/rmsnorm/rope/attention/…)."""
     from xdsl.dialects.linalg import ops as lo
+
     if isinstance(op, (lo.QuantizedMatmulOp, lo.MatmulOp)):
         return "matmul"
     if isinstance(op, lo.MaxOp) and _is_zero_fill(op.inputs[1]):
@@ -252,17 +277,18 @@ def _ordered_compute_ops(module) -> list:
     ``{"op", "family", "inputs" (SSA values), "result" (SSA value)}``. Inits/consts/terminator are
     dropped — exactly the ops that :func:`model_op_demands`/the router see, in the same order."""
     from xdsl.dialects.linalg import ops as lo
+
     out = []
     for op in module.walk():
         fam = _op_family(op)
         if fam is None:
             continue
         if fam == "relu":
-            inputs = [op.inputs[0]]                 # the zero-fill operand is not an activation
+            inputs = [op.inputs[0]]  # the zero-fill operand is not an activation
         elif isinstance(op, (lo.QuantizedMatmulOp, lo.MatmulOp)):
-            inputs = [op.inputs[0], op.inputs[1]]   # (lhs activation, rhs weight)
+            inputs = [op.inputs[0], op.inputs[1]]  # (lhs activation, rhs weight)
         else:
-            inputs = list(op.inputs)                # elementwise: two real tensor operands
+            inputs = list(op.inputs)  # elementwise: two real tensor operands
         out.append({"op": op, "family": fam, "inputs": inputs, "result": op.results[0]})
     return out
 
@@ -273,17 +299,16 @@ def demands_from_module(module, in_fmt: str, weight_fmt: str | None = None) -> l
     A contraction carries its real (M, K, N) extents and a weight format; every other op is unary. The order
     is the module's program order — the same order :func:`build_whole_model_program` walks the plan in."""
     from merlin.targetgen.routing import OpDemand
+
     wf = weight_fmt or in_fmt
     demands = []
     for info in _ordered_compute_ops(module):
         if info["family"] == "matmul":
             m, k = _shape(info["inputs"][0])
             n = _shape(info["inputs"][1])[1]
-            demands.append(OpDemand(op="matmul", in_fmt=in_fmt, weight_fmt=wf, site="matmul",
-                                    m=m, k=k, n=n))
+            demands.append(OpDemand(op="matmul", in_fmt=in_fmt, weight_fmt=wf, site="matmul", m=m, k=k, n=n))
         else:
-            demands.append(OpDemand(op=info["family"], in_fmt=in_fmt, weight_fmt=None,
-                                    site=info["family"]))
+            demands.append(OpDemand(op=info["family"], in_fmt=in_fmt, weight_fmt=None, site=info["family"]))
     return demands
 
 
@@ -294,10 +319,10 @@ class WholeModelStep:
     index: int
     op: str
     family: str
-    lane: str                       # "mesh" (systolic/spatial/simt) or "scalar" (vector/RVV lane)
-    unit: str | None                # the compute unit the router chose (None -> scalar/RVV fallback)
-    inputs: tuple[str, ...]         # tensor ids this step consumes (leaf ids or earlier steps' outputs)
-    output: str                     # tensor id this step produces
+    lane: str  # "mesh" (systolic/spatial/simt) or "scalar" (vector/RVV lane)
+    unit: str | None  # the compute unit the router chose (None -> scalar/RVV fallback)
+    inputs: tuple[str, ...]  # tensor ids this step consumes (leaf ids or earlier steps' outputs)
+    output: str  # tensor id this step produces
     m: int | None = None
     k: int | None = None
     n: int | None = None
@@ -310,7 +335,7 @@ class WholeModelProgram:
 
     target: str
     steps: list = field(default_factory=list)
-    leaves: dict = field(default_factory=dict)     # leaf tensor id -> {"role", "shape", "arg_index"}
+    leaves: dict = field(default_factory=dict)  # leaf tensor id -> {"role", "shape", "arg_index"}
     output: str = ""
 
     def n_mesh(self) -> int:
@@ -334,14 +359,16 @@ def build_whole_model_program(plan: dict, target: str, module) -> WholeModelProg
     if len(results) != len(compute):
         raise ValueError(
             f"routing plan has {len(results)} ops but the module has {len(compute)} compute ops — the plan "
-            f"must be routed from this module's demands (demands_from_module) so the two walks align")
+            f"must be routed from this module's demands (demands_from_module) so the two walks align"
+        )
     mesh_ids = {id(r) for r in plan.get("mesh", [])}
 
     # Leaf tensor ids: each block argument is a model leaf (an activation input or a resident weight).
     prog = WholeModelProgram(target=target)
-    leaf_id: dict = {}                                       # SSA block-arg value -> leaf id
+    leaf_id: dict = {}  # SSA block-arg value -> leaf id
     from xdsl.ir import Block
-    for info in compute:                                     # discover roles from how args are used
+
+    for info in compute:  # discover roles from how args are used
         for pos, v in enumerate(info["inputs"]):
             if _is_block_arg(v) and v not in leaf_id:
                 # a matmul's operand[1] is its weight; everything else consumed here is an activation.
@@ -350,15 +377,26 @@ def build_whole_model_program(plan: dict, target: str, module) -> WholeModelProg
                 leaf_id[v] = lid
                 prog.leaves[lid] = {"role": role, "shape": _shape(v), "arg_index": v.index}
 
-    value_id: dict = dict(leaf_id)                           # SSA value -> tensor id (leaves + step outputs)
+    value_id: dict = dict(leaf_id)  # SSA value -> tensor id (leaves + step outputs)
     for i, (info, r) in enumerate(zip(compute, results)):
         out_id = f"t{i}"
         in_ids = tuple(value_id.get(v, "?") for v in info["inputs"])
         lane = "mesh" if id(r) in mesh_ids else "scalar"
         d = r.demand
-        prog.steps.append(WholeModelStep(
-            index=i, op=d.op, family=info["family"], lane=lane, unit=r.unit,
-            inputs=in_ids, output=out_id, m=d.m, k=d.k, n=d.n))
+        prog.steps.append(
+            WholeModelStep(
+                index=i,
+                op=d.op,
+                family=info["family"],
+                lane=lane,
+                unit=r.unit,
+                inputs=in_ids,
+                output=out_id,
+                m=d.m,
+                k=d.k,
+                n=d.n,
+            )
+        )
         value_id[info["result"]] = out_id
     prog.output = prog.steps[-1].output if prog.steps else ""
     return prog
@@ -370,6 +408,7 @@ def _mesh_matmul_on_engine(lhs, rhs, target: str):
     output as a numpy array. (The RTL-cosim mesh execution is ``run_matmul_on_mesh``; this engine path is
     what the whole-model splice is gated against, numerically exact.)"""
     import numpy as np
+
     from merlin.xdsl_dialects.lowering import execute, lower_module
     from merlin.xdsl_dialects.lowering.input_workload import build_matmul_chain
 
@@ -389,6 +428,7 @@ def _erf(x):
     import math
 
     import numpy as np
+
     return np.vectorize(math.erf, otypes=[np.float64])(np.asarray(x, dtype=np.float64))
 
 
@@ -397,11 +437,12 @@ def _rope(x, base: float = 10000.0):
     (first-half, second-half) pair of channels by the position-dependent angle ``pos * base**(-2i/dim)``.
     Target-agnostic — the standard rotary transform, computed in f64."""
     import numpy as np
+
     a = np.asarray(x, dtype=np.float64)
     seq, dim = a.shape[-2], a.shape[-1]
     half = dim // 2
-    inv = base ** (-2.0 * np.arange(half) / dim)          # (half,)
-    ang = np.outer(np.arange(seq), inv)                    # (seq, half)
+    inv = base ** (-2.0 * np.arange(half) / dim)  # (half,)
+    ang = np.outer(np.arange(seq), inv)  # (seq, half)
     cos = np.concatenate([np.cos(ang), np.cos(ang)], axis=-1)
     sin = np.concatenate([np.sin(ang), np.sin(ang)], axis=-1)
     rot = np.concatenate([-a[..., half:], a[..., :half]], axis=-1)
@@ -420,6 +461,7 @@ def _scalar_op(family: str, operands: list):
     * ``silu`` = x · sigmoid(x); ``gelu`` = 0.5·x·(1 + erf(x/√2)); ``rope`` = rotary embedding.
     """
     import numpy as np
+
     ops = [np.asarray(o, dtype=np.float64) for o in operands]
     x = ops[0]
     if family == "relu":
@@ -462,6 +504,7 @@ def _fused_op(family: str, operands: list, mesh):
     * ``geglu`` = gelu(X·Wg) ⊙ (X·Wu) — two mesh matmuls, a gelu gate and an elementwise product.
     """
     import numpy as np
+
     ops = [np.asarray(o, dtype=np.float64) for o in operands]
     if family in ("attention", "attention_full"):
         q, k, v = ops[0], ops[1], ops[2]
@@ -492,6 +535,7 @@ def run_whole_model_program(program: WholeModelProgram, leaf_values: dict, mesh_
     threads that layer's on-device output into the scalar lane. A mesh_exec returning ``None`` raises
     ``MeshLayerUnavailable`` so the whole run fails closed (never fabricates the layer's output)."""
     import numpy as np
+
     env: dict = {}
     for lid, arr in leaf_values.items():
         env[lid] = np.asarray(arr, dtype=np.float32)
@@ -505,7 +549,7 @@ def run_whole_model_program(program: WholeModelProgram, leaf_values: dict, mesh_
         if mesh_exec is None:
             return _mesh_matmul_on_engine(lhs, rhs, program.target)
         got = mesh_exec(lhs, rhs, step)
-        if got is None:                                  # oracle could not run this layer — fail closed
+        if got is None:  # oracle could not run this layer — fail closed
             raise MeshLayerUnavailable(step.index, step.m, step.k, step.n)
         return np.asarray(got, dtype=np.float32)
 
@@ -518,8 +562,7 @@ def run_whole_model_program(program: WholeModelProgram, leaf_values: dict, mesh_
         elif step.family in _FUSED_MESH_FAMILIES:
             # a fused op: its matmul sub-ops run on the MESH lane (through the same executor), its softmax /
             # gelu / gate run inline on the scalar lane, threaded here by the splice.
-            env[step.output] = _fused_op(step.family, operands,
-                                         lambda lhs, rhs, _s=step: _run_mesh(lhs, rhs, _s))
+            env[step.output] = _fused_op(step.family, operands, lambda lhs, rhs, _s=step: _run_mesh(lhs, rhs, _s))
         else:
             env[step.output] = _scalar_op(step.family, operands)
     return {"outputs": {program.output: env[program.output]}, "env": env}
@@ -572,6 +615,7 @@ def _host_eager_final(program: "WholeModelProgram", leaf_values: dict):
     fused ops via the same executors the splice uses (so the only thing under test is that the spliced
     on-mesh path reproduces this independent numpy whole-model result)."""
     import numpy as np
+
     env: dict = {lid: np.asarray(arr, dtype=np.float64) for lid, arr in leaf_values.items()}
 
     def _np_mesh(lhs, rhs, _step=None):
@@ -588,10 +632,17 @@ def _host_eager_final(program: "WholeModelProgram", leaf_values: dict):
     return env[program.output]
 
 
-def verify_whole_model_program(module, target: str, in_fmt: str = "f32",
-                               weight_fmt: str | None = None, seed: int = 0, units=None,
-                               int_operands: bool = False, rtol: float = 1e-5,
-                               atol: float = 1e-5) -> dict:
+def verify_whole_model_program(
+    module,
+    target: str,
+    in_fmt: str = "f32",
+    weight_fmt: str | None = None,
+    seed: int = 0,
+    units=None,
+    int_operands: bool = False,
+    rtol: float = 1e-5,
+    atol: float = 1e-5,
+) -> dict:
     """End-to-end proof that the SPLICE orchestration is correct: route ``module``'s ops across ``target``'s
     compute units, build the co-scheduled whole-model program, run it per-op (mesh matmuls on the engine,
     scalar ops on the vector lane, activations handed between steps), and compare the final tensor to the
@@ -611,6 +662,7 @@ def verify_whole_model_program(module, target: str, in_fmt: str = "f32",
     whole module instead (:func:`_host_eager_final`) — this is what makes softmax/rmsnorm/attention chains
     gradeable. ``int_operands`` seeds small integers so an integer-exact whole model matches bit-for-bit."""
     import numpy as np
+
     from merlin.targetgen import routing as _routing
     from merlin.xdsl_dialects.lowering import execute, lower_module
 
@@ -621,8 +673,7 @@ def verify_whole_model_program(module, target: str, in_fmt: str = "f32",
     fn = next(op for op in module.walk() if op.name == "func.func")
     args = list(fn.body.blocks[0].args)
     if int_operands:
-        arrays = {a: np.rint(rng.standard_normal(tuple(_shape(a))) * 3).clip(-8, 7).astype(np.float32)
-                  for a in args}
+        arrays = {a: np.rint(rng.standard_normal(tuple(_shape(a))) * 3).clip(-8, 7).astype(np.float32) for a in args}
     else:
         arrays = {a: rng.standard_normal(tuple(_shape(a))).astype(np.float32) for a in args}
 
@@ -669,4 +720,5 @@ def _cu_units(target: str):
     """The target's contract compute units (loaded via the registry), for routing the splice plan."""
     from merlin.targetgen import compute_units as _cu
     from merlin.targetgen import target_registry as tr
+
     return _cu.compute_units(tr.load_contract(target))

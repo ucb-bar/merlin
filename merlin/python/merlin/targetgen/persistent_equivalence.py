@@ -30,6 +30,7 @@ Compile-time cost is reported as a first-class number, because the paper measure
 against egg and "the infrastructure retains both implementations; the performance benefit is not yet
 established" has to stay sayable.
 """
+
 from __future__ import annotations
 
 import time
@@ -39,9 +40,19 @@ from typing import Any
 
 from . import routing as _routing
 
-__all__ = ["COST_SCALE", "EGraphResult", "HYPOTHESES", "agreement", "alternatives_in",
-           "build_egraph", "extract_choice", "hypothesis_status", "recost", "run_extraction",
-           "select_by_extraction"]
+__all__ = [
+    "COST_SCALE",
+    "EGraphResult",
+    "HYPOTHESES",
+    "agreement",
+    "alternatives_in",
+    "build_egraph",
+    "extract_choice",
+    "hypothesis_status",
+    "recost",
+    "run_extraction",
+    "select_by_extraction",
+]
 
 #: Costs are attached as integers (the pass reads an ``IntAttr``), so a float cost is scaled and rounded.
 #: 1000x keeps sub-cycle resolution, well past anything a cycle-level cost model distinguishes. Two
@@ -55,27 +66,31 @@ HYPOTHESES: dict[str, dict[str, Any]] = {
     "H-EQ1": {
         "claim": "persistent alternatives select better than early extraction",
         "status": "not_established",
-        "why": ("with a single e-class and no rewrite rules, extraction is an argmin over the same costs "
-                "eager selection uses, so it cannot decide differently. Establishing this needs a "
-                "downstream pass that changes a candidate's cost after the graph is built; what is "
-                "demonstrated here is the precondition — the alternatives survive in the IR and "
-                "re-costing changes the choice. `contraction_egraph` now carries that precondition on "
-                "REAL IR (the linalg.generic and the microkernel call in one e-class, extraction emitting "
-                "whichever survives), so the alternatives are real enough to compile from; what stands "
-                "between that and a decision worth trusting is a MEASURED matrix-unit throughput, since "
-                "MeasuredCost declines an unmeasured unit and routes nothing"),
+        "why": (
+            "with a single e-class and no rewrite rules, extraction is an argmin over the same costs "
+            "eager selection uses, so it cannot decide differently. Establishing this needs a "
+            "downstream pass that changes a candidate's cost after the graph is built; what is "
+            "demonstrated here is the precondition — the alternatives survive in the IR and "
+            "re-costing changes the choice. `contraction_egraph` now carries that precondition on "
+            "REAL IR (the linalg.generic and the microkernel call in one e-class, extraction emitting "
+            "whichever survives), so the alternatives are real enough to compile from; what stands "
+            "between that and a decision worth trusting is a MEASURED matrix-unit throughput, since "
+            "MeasuredCost declines an unmeasured unit and routes nothing"
+        ),
     },
     "H-EQ2": {
         "claim": "saturate(E_parent, delta) is equivalent to saturate(program, parent | delta)",
         "status": "not_established",
-        "why": ("SATURATION NOW RUNS. `contraction_egraph.saturate_contraction` applies a PDL rule "
-                "('a rank-2 int8 contraction is also computable by the microkernel') through "
-                "apply-eqsat-pdl, and the e-class grows from one alternative to two with the second "
-                "created by the rule — measured on the real prepared model, one per distinct signature. "
-                "So the earlier 'not_exercised' no longer holds. The CLAIM is still not established: it is "
-                "about INCREMENTAL re-saturation, and nothing here re-saturates a parent graph against a "
-                "delta, so there is no incremental-vs-scratch comparison. The source paper is silent on "
-                "incremental re-saturation, so it cannot be inherited either"),
+        "why": (
+            "SATURATION NOW RUNS. `contraction_egraph.saturate_contraction` applies a PDL rule "
+            "('a rank-2 int8 contraction is also computable by the microkernel') through "
+            "apply-eqsat-pdl, and the e-class grows from one alternative to two with the second "
+            "created by the rule — measured on the real prepared model, one per distinct signature. "
+            "So the earlier 'not_exercised' no longer holds. The CLAIM is still not established: it is "
+            "about INCREMENTAL re-saturation, and nothing here re-saturates a parent graph against a "
+            "delta, so there is no incremental-vs-scratch comparison. The source paper is silent on "
+            "incremental re-saturation, so it cannot be inherited either"
+        ),
     },
 }
 
@@ -107,11 +122,16 @@ class EGraphResult:
         return self.build_seconds + self.extract_seconds
 
     def to_dict(self) -> dict[str, Any]:
-        return {"chosen": self.chosen, "alternatives": list(self.alternatives),
-                "costs": dict(self.costs), "unscored": list(self.unscored),
-                "build_seconds": round(self.build_seconds, 6),
-                "extract_seconds": round(self.extract_seconds, 6),
-                "total_seconds": round(self.total_seconds, 6), "gap": self.gap}
+        return {
+            "chosen": self.chosen,
+            "alternatives": list(self.alternatives),
+            "costs": dict(self.costs),
+            "unscored": list(self.unscored),
+            "build_seconds": round(self.build_seconds, 6),
+            "extract_seconds": round(self.extract_seconds, 6),
+            "total_seconds": round(self.total_seconds, 6),
+            "gap": self.gap,
+        }
 
 
 def _context():
@@ -124,8 +144,9 @@ def _context():
     return ctx
 
 
-def build_egraph(demand: "_routing.OpDemand", candidates: Sequence["_routing.Candidate"],
-                 cost_model: "_routing.CostModel"):
+def build_egraph(
+    demand: "_routing.OpDemand", candidates: Sequence["_routing.Candidate"], cost_model: "_routing.CostModel"
+):
     """``(module, alternatives, costs, unscored)`` for one contraction.
 
     Each candidate becomes one operation carrying its measured cost, and all of them feed a single
@@ -136,21 +157,26 @@ def build_egraph(demand: "_routing.OpDemand", candidates: Sequence["_routing.Can
     honest encoding: it remains a legal implementation, and it is not ranked, so extraction cannot prefer
     it for lack of data. Dropping it would erase a capability the target has.
     """
-    from xdsl.dialects import equivalence as E, test
+    from xdsl.dialects import equivalence as E
+    from xdsl.dialects import test
     from xdsl.dialects.builtin import IndexType, IntAttr, ModuleOp, StringAttr
     from xdsl.ir import Block, Region
 
     if not candidates:
-        raise ValueError("refusing to build an e-graph with no alternatives; an empty e-class extracts "
-                         "to nothing and would read as a routing decision")
+        raise ValueError(
+            "refusing to build an e-graph with no alternatives; an empty e-class extracts "
+            "to nothing and would read as a routing decision"
+        )
 
     started = time.perf_counter()
     idx = IndexType()
     ops, names, costs, unscored = [], [], {}, []
     for cand in candidates:
-        attrs: dict[str, Any] = {"unit": StringAttr(cand.unit),
-                                 "kind": StringAttr(cand.kind),
-                                 "exposure": StringAttr(cand.exposure)}
+        attrs: dict[str, Any] = {
+            "unit": StringAttr(cand.unit),
+            "kind": StringAttr(cand.kind),
+            "exposure": StringAttr(cand.exposure),
+        }
         score = cost_model(demand, cand)
         if score is None:
             unscored.append(cand.unit)
@@ -233,8 +259,9 @@ def run_extraction(module) -> tuple[str | None, float]:
     return (remaining[0] if remaining else None), elapsed
 
 
-def extract_choice(demand: "_routing.OpDemand", candidates: Sequence["_routing.Candidate"],
-                   cost_model: "_routing.CostModel") -> EGraphResult:
+def extract_choice(
+    demand: "_routing.OpDemand", candidates: Sequence["_routing.Candidate"], cost_model: "_routing.CostModel"
+) -> EGraphResult:
     """Build the e-graph, run the real eqsat passes, and report which alternative survived.
 
     The choice is read back from the extracted IR rather than computed alongside it. That is the point:
@@ -244,18 +271,33 @@ def extract_choice(demand: "_routing.OpDemand", candidates: Sequence["_routing.C
     module, names, costs, unscored, build_s = build_egraph(demand, candidates, cost_model)
     if not costs:
         # Nothing could be ranked. Fail closed rather than extract an arbitrary alternative.
-        return EGraphResult(chosen=None, alternatives=names, costs=costs, unscored=unscored,
-                            build_seconds=build_s,
-                            gap=("the cost model declined every alternative, so extraction has nothing "
-                                 "to minimise; the caller must fall back to declaration order"))
+        return EGraphResult(
+            chosen=None,
+            alternatives=names,
+            costs=costs,
+            unscored=unscored,
+            build_seconds=build_s,
+            gap=(
+                "the cost model declined every alternative, so extraction has nothing "
+                "to minimise; the caller must fall back to declaration order"
+            ),
+        )
     chosen, extract_s = run_extraction(module)
     gap = None if chosen is not None else "extraction left no costed alternative in the IR"
-    return EGraphResult(chosen=chosen, alternatives=names, costs=costs, unscored=unscored,
-                        build_seconds=build_s, extract_seconds=extract_s, gap=gap)
+    return EGraphResult(
+        chosen=chosen,
+        alternatives=names,
+        costs=costs,
+        unscored=unscored,
+        build_seconds=build_s,
+        extract_seconds=extract_s,
+        gap=gap,
+    )
 
 
-def select_by_extraction(candidates: Sequence["_routing.RouteCandidates"],
-                         cost_model: "_routing.CostModel") -> list["_routing.RouteResult"]:
+def select_by_extraction(
+    candidates: Sequence["_routing.RouteCandidates"], cost_model: "_routing.CostModel"
+) -> list["_routing.RouteResult"]:
     """A drop-in alternative to :func:`routing.select` that decides by extraction from an e-graph.
 
     Falls back to declaration order exactly where ``select`` does — on a gapped demand, and on one whose
@@ -274,8 +316,7 @@ def select_by_extraction(candidates: Sequence["_routing.RouteCandidates"],
     return out
 
 
-def agreement(candidates: Sequence["_routing.RouteCandidates"],
-              cost_model: "_routing.CostModel") -> dict[str, Any]:
+def agreement(candidates: Sequence["_routing.RouteCandidates"], cost_model: "_routing.CostModel") -> dict[str, Any]:
     """Compare extraction against eager selection over the same demands, and time both.
 
     Reported rather than asserted, and phrased as agreement rather than as a win: identical decisions are
@@ -292,7 +333,8 @@ def agreement(candidates: Sequence["_routing.RouteCandidates"],
 
     disagreements = [
         {"site": a.demand.site, "op": a.demand.op, "eager": a.unit, "extracted": b.unit}
-        for a, b in zip(eager, extracted, strict=True) if a.unit != b.unit
+        for a, b in zip(eager, extracted, strict=True)
+        if a.unit != b.unit
     ]
     return {
         "n_demands": len(candidates),

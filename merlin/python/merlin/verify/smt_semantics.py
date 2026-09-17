@@ -22,6 +22,7 @@ bit-exact float refinement check would reject *correct* backends — it is the w
 merely an expensive one. Float contractions belong in a structural/uninterpreted encoding; this
 module raises rather than pretending, so a float target can never be silently reported as verified.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -40,6 +41,7 @@ class UnsupportedSemantics(RuntimeError):
 @dataclass
 class Tensor:
     """A 2-D tensor of SMT bitvector terms, with concrete extents."""
+
     rows: int
     cols: int
     width: int
@@ -59,7 +61,8 @@ def _elem_width(mlir_type) -> int:
     raise UnsupportedSemantics(
         f"element type {name!r} has no bitvector encoding here. Float datapaths are handled "
         "structurally, not bit-exactly: reassociation is a legal backend choice, so a bit-exact "
-        "float refinement would reject correct backends.")
+        "float refinement would reject correct backends."
+    )
 
 
 def _shape(mlir_type) -> tuple[int, int]:
@@ -93,14 +96,11 @@ class Encoder:
         keeps every caller in the sign domain it actually reasons about, instead of making each one
         remember to convert.
         """
-        if not -(2 ** (width - 1)) <= value < 2 ** width:
-            raise UnsupportedSemantics(
-                f"constant {value} is not representable in {width} bits")
-        return self.smt.BvConstantOp(
-            self.smt.BitVectorAttr(value & ((1 << width) - 1), width)).results[0]
+        if not -(2 ** (width - 1)) <= value < 2**width:
+            raise UnsupportedSemantics(f"constant {value} is not representable in {width} bits")
+        return self.smt.BvConstantOp(self.smt.BitVectorAttr(value & ((1 << width) - 1), width)).results[0]
 
-    def symbolic_tensor(self, name: str, rows: int, cols: int, elem_width: int,
-                        acc_width: int = 32) -> Tensor:
+    def symbolic_tensor(self, name: str, rows: int, cols: int, elem_width: int, acc_width: int = 32) -> Tensor:
         """A tensor of fresh symbolic elements — the universally-quantified input, expressed as free
         constants (which is what keeps the query quantifier-free).
 
@@ -137,7 +137,8 @@ class Encoder:
         if w != to_w:
             raise UnsupportedSemantics(
                 f"cannot sign-extend {from_w} -> {to_w}: reached {w} by doubling. Widths must be "
-                f"related by a power of two; refusing rather than silently truncating.")
+                f"related by a power of two; refusing rather than silently truncating."
+            )
         return cur
 
     def _concat(self, high, low):
@@ -177,23 +178,25 @@ class Encoder:
         extents rather than symbolic ones.
         """
         if lhs.cols != rhs.rows:
-            raise UnsupportedSemantics(
-                f"contraction extent mismatch: {lhs.rows}x{lhs.cols} @ {rhs.rows}x{rhs.cols}")
+            raise UnsupportedSemantics(f"contraction extent mismatch: {lhs.rows}x{lhs.cols} @ {rhs.rows}x{rhs.cols}")
         prod_w = max(lhs.width, rhs.width) * 2
         if prod_w > acc_width:
             # Refuse rather than truncate: a product the accumulator cannot hold is a semantics
             # question about the target, not something this encoder may silently decide.
             raise UnsupportedSemantics(
                 f"a {lhs.width}x{rhs.width}-bit product needs {prod_w} bits but the accumulator is "
-                f"{acc_width}; refusing rather than truncating")
+                f"{acc_width}; refusing rather than truncating"
+            )
         # Widen each ELEMENT once, not once per use. lhs[m][k] is read for every output column and
         # rhs[k][n] for every output row, so extending inside the k-loop emits M*N*K widenings where
         # M*K + K*N suffice — at 16x16x16 that is 4096 against 512, an 8x term blowup in the exported
         # query for no semantic gain. The products themselves are genuinely M*N*K and are not cached.
-        lhs_w = {(m, k): self.sign_extend(lhs.at(m, k), lhs.width, prod_w)
-                 for m in range(lhs.rows) for k in range(lhs.cols)}
-        rhs_w = {(k, n): self.sign_extend(rhs.at(k, n), rhs.width, prod_w)
-                 for k in range(rhs.rows) for n in range(rhs.cols)}
+        lhs_w = {
+            (m, k): self.sign_extend(lhs.at(m, k), lhs.width, prod_w) for m in range(lhs.rows) for k in range(lhs.cols)
+        }
+        rhs_w = {
+            (k, n): self.sign_extend(rhs.at(k, n), rhs.width, prod_w) for k in range(rhs.rows) for n in range(rhs.cols)
+        }
         out: dict[tuple[int, int], Any] = {}
         for m in range(lhs.rows):
             for n in range(rhs.cols):
@@ -257,7 +260,8 @@ class Encoder:
         if len(flat) != n:
             raise UnsupportedSemantics(
                 f"bias has {len(flat)} elements but the accumulator has {n} columns; the reference "
-                f"engine requires a length-{n} bias vector")
+                f"engine requires a length-{n} bias vector"
+            )
         out = {}
         for (r, c), v in t.elems.items():
             b = flat[c]
@@ -322,6 +326,7 @@ class Encoder:
 
 # -- walking the interface dialect ----------------------------------------------------------------
 
+
 @dataclass
 class Encoded:
     """What one interpretation of a module yields.
@@ -330,12 +335,12 @@ class Encoded:
     two sides encoded over independent symbols would make the query trivially satisfiable and the
     check meaningless.
     """
+
     outputs: dict[str, Tensor]
     inputs: list[Tensor]
 
 
-def encode_interface(enc: Encoder, module, acc_width: int = 32,
-                    shared: list[Tensor] | None = None) -> Encoded:
+def encode_interface(enc: Encoder, module, acc_width: int = 32, shared: list[Tensor] | None = None) -> Encoded:
     """Interpret an ``interface`` module, returning its committed outputs and its symbolic inputs.
 
     This walks the ACTUAL IR: a matmul the pass failed to emit, an operand it swapped, or a commit it
@@ -366,7 +371,8 @@ def encode_interface(enc: Encoder, module, acc_width: int = 32,
     if shared is not None and len(shared) != len(block.args):
         raise UnsupportedSemantics(
             f"the interface module has {len(block.args)} block arguments but {len(shared)} shared "
-            f"leaves were offered; the two artifacts are not the same program")
+            f"leaves were offered; the two artifacts are not the same program"
+        )
     for i, arg in enumerate(block.args):
         rows, cols = _shape(arg.type)
         width = _elem_width(arg.type)
@@ -375,7 +381,8 @@ def encode_interface(enc: Encoder, module, acc_width: int = 32,
             if (bound.rows, bound.cols, bound.width) != (rows, cols, width):
                 raise UnsupportedSemantics(
                     f"argument {i} is {rows}x{cols}x{width}b in the interface module but the shared "
-                    f"leaf is {bound.rows}x{bound.cols}x{bound.width}b")
+                    f"leaf is {bound.rows}x{bound.cols}x{bound.width}b"
+                )
             env[arg] = bound
         else:
             env[arg] = enc.symbolic_tensor(f"arg{i}", rows, cols, width, acc_width)

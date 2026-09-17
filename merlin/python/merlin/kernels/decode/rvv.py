@@ -7,6 +7,7 @@ instruction is annotated with the *effective* vtype in force at its point. Outpu
 ``InsnStream`` that the CCA `vector` facet lifts from. This is the robust replacement for the
 regex-over-objdump-text in ``build_asm``/``fingerprint``.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -17,16 +18,15 @@ from .objdump import RawInsn, tokenize
 
 @dataclass(frozen=True)
 class VType:
-    sew: int | None = None        # element width in bits (8/16/32/64)
-    lmul: float | None = None     # group multiplier: 8,4,2,1, 0.5, 0.25, 0.125 (mf2/mf4/mf8)
-    tail: str | None = None       # "ta" | "tu"
-    mask: str | None = None       # "ma" | "mu"
+    sew: int | None = None  # element width in bits (8/16/32/64)
+    lmul: float | None = None  # group multiplier: 8,4,2,1, 0.5, 0.25, 0.125 (mf2/mf4/mf8)
+    tail: str | None = None  # "ta" | "tu"
+    mask: str | None = None  # "ma" | "mu"
 
     def __str__(self) -> str:
         if self.sew is None:
             return "vtype?"
-        lm = (f"m{int(self.lmul)}" if self.lmul and self.lmul >= 1
-              else f"mf{int(1/self.lmul)}" if self.lmul else "m?")
+        lm = f"m{int(self.lmul)}" if self.lmul and self.lmul >= 1 else f"mf{int(1 / self.lmul)}" if self.lmul else "m?"
         return f"e{self.sew}{lm}{self.tail or ''}{self.mask or ''}"
 
 
@@ -34,7 +34,7 @@ class VType:
 class VInsn:
     raw: RawInsn
     is_vector: bool
-    vtype: VType | None           # effective vtype at this instruction (vector insns only)
+    vtype: VType | None  # effective vtype at this instruction (vector insns only)
 
 
 #: Key for the whole-stream bucket in the per-section index. A NUL cannot appear in an objdump symbol
@@ -59,7 +59,8 @@ class InsnStream:
     # made a 30-fork generation stall for ~27 minutes; that 55 s is a wall observation under load, not
     # a clean measure of the code, so the ratio to quote is the same-moment one.
     _by_section: "dict[str, tuple[list[int], list[VInsn], bool]] | None" = field(
-        default=None, repr=False, compare=False)
+        default=None, repr=False, compare=False
+    )
 
     def _section_index(self) -> dict[int, str]:
         if self._section_at is None:
@@ -83,8 +84,7 @@ class InsnStream:
         return any(_is_backedge(i.raw) for i in self.insns)
 
     def count(self, *mnemonic_prefixes: str) -> int:
-        return sum(1 for i in self.insns
-                   if any(i.raw.mnemonic.startswith(p) for p in mnemonic_prefixes))
+        return sum(1 for i in self.insns if any(i.raw.mnemonic.startswith(p) for p in mnemonic_prefixes))
 
     def loop_spans(self) -> list[tuple[int, int]]:
         """[(start_addr, backedge_addr), ...] for every back-edge: the half-open address range a
@@ -184,11 +184,15 @@ class InsnStream:
         integer ``vwmacc``); the remainder dot-product uses ``vfmul``+``vfredosum`` and has none. So
         we scope to FMA-bearing loops and take the smallest of those; if none exists (e.g. an int or
         non-FMA kernel) we fall back to any vector loop, preserving the old behaviour."""
+
         def _has_fma(span):
-            return any(i.is_vector and i.raw.mnemonic.startswith(("vfmacc", "vfmadd", "vwmacc"))
-                       for i in self.insns_in(span))
+            return any(
+                i.is_vector and i.raw.mnemonic.startswith(("vfmacc", "vfmadd", "vwmacc")) for i in self.insns_in(span)
+            )
+
         def _has_vec(span):
             return any(i.is_vector for i in self.insns_in(span))
+
         fma = [s for s in self.kernel_loop_spans() if _has_fma(s)]
         if fma:
             return min(fma, key=lambda s: s[1] - s[0])
@@ -203,7 +207,7 @@ class InsnStream:
         idx = self._section_index()
         if hi in idx:
             return idx[hi]
-        for i in self.insns:                    # span not anchored on an instruction: fall back
+        for i in self.insns:  # span not anchored on an instruction: fall back
             if lo <= i.raw.addr <= hi:
                 return i.raw.section
         return ""
@@ -247,17 +251,16 @@ class InsnStream:
         stream order included -- asserted against it in the tests.
         """
         import bisect
+
         lo, hi = span
         sect = self._span_section(span)
-        addrs, items, ascending = self._section_buckets().get(sect or _ALL_SECTIONS,
-                                                              ([], [], True))
+        addrs, items, ascending = self._section_buckets().get(sect or _ALL_SECTIONS, ([], [], True))
         if not ascending:
             return [i for i in items if lo <= i.raw.addr <= hi]
-        return items[bisect.bisect_left(addrs, lo):bisect.bisect_right(addrs, hi)]
+        return items[bisect.bisect_left(addrs, lo) : bisect.bisect_right(addrs, hi)]
 
     def count_in(self, span: tuple[int, int], *mnemonic_prefixes: str) -> int:
-        return sum(1 for i in self.insns_in(span)
-                   if any(i.raw.mnemonic.startswith(p) for p in mnemonic_prefixes))
+        return sum(1 for i in self.insns_in(span) if any(i.raw.mnemonic.startswith(p) for p in mnemonic_prefixes))
 
 
 # Functions the LOWERING emits beside the model's own code, whose loops are not model compute. Named
@@ -295,8 +298,7 @@ def _parse_vtype(operands: list[str]) -> VType:
 
 
 _VSET = ("vsetvli", "vsetivli", "vsetvl")
-_BRANCH = ("beq", "bne", "blt", "bge", "bltu", "bgeu", "beqz", "bnez", "bgez", "blez",
-           "bgtz", "bltz", "j", "jal")
+_BRANCH = ("beq", "bne", "blt", "bge", "bltu", "bgeu", "beqz", "bnez", "bgez", "blez", "bgtz", "bltz", "j", "jal")
 
 
 def _is_branch(mnemonic: str) -> bool:
@@ -349,7 +351,7 @@ def _stream_from_raws(raws) -> InsnStream:
             cur = _parse_vtype(r.operands)
             out.append(VInsn(raw=r, is_vector=True, vtype=cur))
             continue
-        is_vec = r.mnemonic.startswith("v")          # RVV mnemonics are v-prefixed
+        is_vec = r.mnemonic.startswith("v")  # RVV mnemonics are v-prefixed
         out.append(VInsn(raw=r, is_vector=is_vec, vtype=cur if is_vec else None))
     return InsnStream(insns=out)
 
@@ -363,4 +365,5 @@ def decode_text(text: str) -> InsnStream:
     """Already-disassembled objdump text -> InsnStream (no toolchain needed). Lets a CCA be lifted
     from a saved objdump.txt (e.g. a beam fork's generated/objdump.txt) via cca.lift_asm(decode_text(...))."""
     from .objdump import tokenize_text
+
     return _stream_from_raws(tokenize_text(text))

@@ -21,6 +21,7 @@ further plumbing.
 Run in a SUBPROCESS under the m2m interpreter, exactly as ``_m2m_capture_worker`` is: torch lives in
 that venv and not in merlin's.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,12 +42,14 @@ def _example_inputs(exported):
     if not carried:
         raise RuntimeError(
             "the exported program carries no example_inputs; re-export with "
-            "torch.export.export(model, args) so the inputs travel with the graph")
+            "torch.export.export(model, args) so the inputs travel with the graph"
+        )
     args, kwargs = carried
     if kwargs:
         raise RuntimeError(
             f"the exported program carries keyword example inputs {sorted(kwargs)}, which the bundle "
-            f"writer cannot feed positionally; re-export with positional args only")
+            f"writer cannot feed positionally; re-export with positional args only"
+        )
     return tuple(args)
 
 
@@ -62,7 +65,6 @@ def main(argv=None) -> int:
         sys.path.insert(0, a.m2m_dir)
 
     import torch
-
     from m2m.capture.bundle import write_bundle
 
     src = Path(a.exported)
@@ -81,14 +83,15 @@ def main(argv=None) -> int:
     # module to say the question no longer applies -- export captured one mode and that is what the
     # graph is. Answering "already in that mode" is the truthful response; the alternative is
     # teaching every consumer that an exported program is a special case.
-    model.eval = lambda: model                     # noqa: E731 -- an instance-level no-op, by design
-    model.train = lambda mode=True: model          # noqa: E731
+    model.eval = lambda: model  # noqa: E731 -- an instance-level no-op, by design
+    model.train = lambda mode=True: model  # noqa: E731
 
     # `quant` is an m2m QuantizationConfig, not a scheme NAME -- passing the string through would be
     # accepted as a truthy object and then fail deep inside the writer, or worse, be ignored.
     quant = None
     if a.quant:
         from m2m.capture.torchao_pipeline import QuantizationConfig
+
         quant = QuantizationConfig(scheme=a.quant)
 
     out = Path(a.out)

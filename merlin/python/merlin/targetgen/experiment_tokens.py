@@ -17,6 +17,7 @@ subscription) is not charged per token, so its dollar figure is reported as ``su
 with ``estimated_cost_usd: null`` — money spent and money the same traffic WOULD have cost metered are
 different quantities and must never share a field. An unknown model yields no dollar figure at all.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,16 +27,23 @@ from pathlib import Path
 
 # USD per token (micro-rates → per-token). Adjust if provider pricing changes.
 _RATES = {  # (in_per_tok, out_per_tok)
-    "opus": (15e-6, 75e-6), "claude-opus-4-8": (15e-6, 75e-6),
-    "sonnet": (3e-6, 15e-6), "claude-sonnet-4-6": (3e-6, 15e-6),
-    "haiku": (0.8e-6, 4e-6), "claude-haiku-4-5-20251001": (0.8e-6, 4e-6),
+    "opus": (15e-6, 75e-6),
+    "claude-opus-4-8": (15e-6, 75e-6),
+    "sonnet": (3e-6, 15e-6),
+    "claude-sonnet-4-6": (3e-6, 15e-6),
+    "haiku": (0.8e-6, 4e-6),
+    "claude-haiku-4-5-20251001": (0.8e-6, 4e-6),
     # Non-Anthropic Bedrock models (APPROXIMATE published rates; keyed on a substring of the
     # inference-profile id so an unknown-to-claude model is not mis-priced at opus rates). Refine if
     # exact Bedrock pricing is confirmed.
-    "glm": (0.6e-6, 2.2e-6), "qwen": (0.3e-6, 1.2e-6),
-    "nemotron": (0.6e-6, 2.4e-6), "nvidia": (0.6e-6, 2.4e-6),
-    "deepseek": (0.5e-6, 1.5e-6), "kimi": (0.6e-6, 2.5e-6),
-    "nova-lite": (0.06e-6, 0.24e-6), "nova-pro": (0.8e-6, 3.2e-6),
+    "glm": (0.6e-6, 2.2e-6),
+    "qwen": (0.3e-6, 1.2e-6),
+    "nemotron": (0.6e-6, 2.4e-6),
+    "nvidia": (0.6e-6, 2.4e-6),
+    "deepseek": (0.5e-6, 1.5e-6),
+    "kimi": (0.6e-6, 2.5e-6),
+    "nova-lite": (0.06e-6, 0.24e-6),
+    "nova-pro": (0.8e-6, 3.2e-6),
 }
 _CACHE_WRITE_MULT = 1.25
 _CACHE_READ_MULT = 0.10
@@ -53,6 +61,7 @@ def _load_price_overrides() -> dict[str, tuple[float, float, float, float]]:
     Absent/malformed → no overlay (built-in ``_RATES`` only), never a crash."""
     try:  # process env wins, then the repo .env (same source the rest of the toolchain reads)
         from merlin.common.paths import _dotenv
+
         path = (os.environ.get("AET_PRICE_TABLE") or _dotenv().get("AET_PRICE_TABLE") or "").strip()
     except Exception:  # noqa: BLE001
         path = os.environ.get("AET_PRICE_TABLE", "").strip()
@@ -60,11 +69,12 @@ def _load_price_overrides() -> dict[str, tuple[float, float, float, float]]:
         return {}
     try:
         import yaml
+
         raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     except Exception:  # noqa: BLE001 — malformed price file must never break token accounting
         return {}
     out: dict[str, tuple[float, float, float, float]] = {}
-    for k, v in (raw.items() if isinstance(raw, dict) else []):
+    for k, v in raw.items() if isinstance(raw, dict) else []:
         try:
             if isinstance(v, dict):
                 i, o = float(v["input"]), float(v["output"])
@@ -180,7 +190,8 @@ def _blocks_in(evt: dict) -> tuple[int, int]:
 REASONING_BLOCKS_UNKNOWN = (
     "reasoning tokens were reported but this driver's stream delimits no reasoning block, so the block "
     "COUNT is not measurable from this transcript. Recorded as null, never 0: a zero here reads as "
-    "'the model did no thinking' while its own token counter says otherwise.")
+    "'the model did no thinking' while its own token counter says otherwise."
+)
 
 
 def _record_reasoning_blocks(rec: dict, blocks: int, reasoning_tokens: int) -> None:
@@ -192,8 +203,7 @@ def _record_reasoning_blocks(rec: dict, blocks: int, reasoning_tokens: int) -> N
         rec["thinking_blocks_unavailable_reason"] = REASONING_BLOCKS_UNKNOWN
 
 
-def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
-                     trust_cli_cost: bool = True) -> dict:
+def parse_transcript(path: str | Path, *, billing_mode: str = METERED, trust_cli_cost: bool = True) -> dict:
     """Parse a stream-json JSONL transcript → token/cost/tool-call summary (honest if absent).
 
     ``billing_mode`` comes from the DRIVER that produced the transcript (see the harness's
@@ -205,23 +215,23 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
         return {"available": False, "reason": f"transcript not found: {p}"}
     seen: set[str] = set()
     stream_by_model: dict[str, dict] = defaultdict(
-        lambda: {"input": 0, "cache_create": 0, "cache_read": 0, "output": 0, "reasoning": 0,
-                 "messages": 0})
+        lambda: {"input": 0, "cache_create": 0, "cache_read": 0, "output": 0, "reasoning": 0, "messages": 0}
+    )
     tool_calls = 0
     thinking_blocks = 0
     any_usage = False
     n_events = 0
     codex_turns_started = codex_turns_reported = 0
     codex_usage_complete: bool | None = None
-    result_usage: dict = {}               # authoritative, SUBAGENT-INCLUSIVE per-model usage, SUMMED
-                                          # across every result event in the file (one per round)
+    result_usage: dict = {}  # authoritative, SUBAGENT-INCLUSIVE per-model usage, SUMMED
+    # across every result event in the file (one per round)
     # The CLI's own total_cost_usd is authoritative ONLY when the CLI is billing the model it thinks it
     # is running. Drive a foreign model through it (an agentic harness pointed at a proxy) and the figure
     # is priced against the CLI's own catalogue: a nemotron round on Bedrock, whose real cost is cents,
     # was reported by the claude CLI as $21.68 -- enough to trip a campaign's spend cap and terminate a
     # healthy run for a reason that never happened. Callers driving a bridged model pass
     # trust_cli_cost=False so the dollars come from tokens x the real model's rate instead.
-    result_cost = None                    # the CLI's true total_cost_usd
+    result_cost = None  # the CLI's true total_cost_usd
     for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
         line = line.strip()
         if not line:
@@ -235,8 +245,9 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
             codex_turns_started += int(evt.get("turns_started", 0) or 0)
             codex_turns_reported += int(evt.get("turns_usage_reported", 0) or 0)
             complete = evt.get("usage_complete")
-            codex_usage_complete = bool(complete) if codex_usage_complete is None else (
-                codex_usage_complete and bool(complete))
+            codex_usage_complete = (
+                bool(complete) if codex_usage_complete is None else (codex_usage_complete and bool(complete))
+            )
         _r, _t = _blocks_in(evt)
         thinking_blocks += _r
         tool_calls += _t
@@ -290,8 +301,8 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
     if result_usage:
         usage_source = "result_event"
         by_model: dict[str, dict] = defaultdict(
-            lambda: {"input": 0, "cache_create": 0, "cache_read": 0, "output": 0, "reasoning": 0,
-                     "messages": 0})
+            lambda: {"input": 0, "cache_create": 0, "cache_read": 0, "output": 0, "reasoning": 0, "messages": 0}
+        )
         for model, mu in result_usage.items():
             if not isinstance(mu, dict):
                 continue
@@ -306,11 +317,14 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
         by_model = stream_by_model
 
     if not any_usage:
-        rec = {"available": False, "reason": "no usage metadata in transcript",
-               "n_events": n_events, "tool_calls": tool_calls,
-               "thinking_blocks": thinking_blocks}
-        _record_reasoning_blocks(rec, thinking_blocks,
-                                 sum(m["reasoning"] for m in stream_by_model.values()))
+        rec = {
+            "available": False,
+            "reason": "no usage metadata in transcript",
+            "n_events": n_events,
+            "tool_calls": tool_calls,
+            "thinking_blocks": thinking_blocks,
+        }
+        _record_reasoning_blocks(rec, thinking_blocks, sum(m["reasoning"] for m in stream_by_model.values()))
         return rec
 
     # Keep the historical ``tokens_input`` field (all non-cache-read prefill) for downstream
@@ -327,13 +341,13 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
     tok_reason = sum(m["reasoning"] for m in stream_by_model.values())
     unpriced: list[str] = []
     if usage_source == "result_event" and result_cost is not None and trust_cli_cost:
-        cost = float(result_cost)                 # the CLI's authoritative, subagent-inclusive total
+        cost = float(result_cost)  # the CLI's authoritative, subagent-inclusive total
     else:
         cost = 0.0
         for model, m in by_model.items():
             rate = _bucket_rate(model)
             if rate is None:
-                unpriced.append(model)            # fail closed: no rate -> no dollar figure at all
+                unpriced.append(model)  # fail closed: no rate -> no dollar figure at all
                 continue
             rin, rout, rcache_read, rcache_write = rate
             cost += m["input"] * rin
@@ -342,32 +356,39 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
             cost += m["output"] * rout
     rec = {
         "available": True,
-        "usage_source": usage_source,   # 'result_event' (subagent-inclusive) | 'assistant_stream' (fallback)
+        "usage_source": usage_source,  # 'result_event' (subagent-inclusive) | 'assistant_stream' (fallback)
         "tokens_input": tok_in,
         "tokens_fresh_input": tok_fresh_in,
         "tokens_cache_write": tok_cache_write,
-        "tokens_cached": tok_cached, "tokens_output": tok_out,
+        "tokens_cached": tok_cached,
+        "tokens_output": tok_out,
         "tokens_total": tok_in + tok_cached + tok_out,
         # tool_calls/thinking are TOP-LEVEL agent only — subagent tool_use never appears in the top-level
         # stream and the result event carries no per-subagent tool count, so this cannot include them.
-        "tool_calls": tool_calls, "thinking_blocks": thinking_blocks,
+        "tool_calls": tool_calls,
+        "thinking_blocks": thinking_blocks,
         "subagent_tool_calls_tracked": False,
         "unique_messages": len(seen),
         "billing_mode": billing_mode,
         "tokens_native_by_model": {k: dict(v) for k, v in by_model.items()},
         "n_events": n_events,
         "tokens_input_semantics": "fresh_input_plus_cache_write; use explicit buckets for analysis",
-        "cache_read_share_of_input": (tok_cached / (tok_fresh_in + tok_cache_write + tok_cached)
-                                      if (tok_fresh_in + tok_cache_write + tok_cached) else None),
-        "cache_write_share_of_input": (tok_cache_write /
-                                       (tok_fresh_in + tok_cache_write + tok_cached)
-                                       if (tok_fresh_in + tok_cache_write + tok_cached) else None),
+        "cache_read_share_of_input": (
+            tok_cached / (tok_fresh_in + tok_cache_write + tok_cached)
+            if (tok_fresh_in + tok_cache_write + tok_cached)
+            else None
+        ),
+        "cache_write_share_of_input": (
+            tok_cache_write / (tok_fresh_in + tok_cache_write + tok_cached)
+            if (tok_fresh_in + tok_cache_write + tok_cached)
+            else None
+        ),
     }
     # Fail closed: a driver that bills reasoning tokens but never delimits a reasoning block yields
     # UNKNOWN, not 0 (see _record_reasoning_blocks).
     _record_reasoning_blocks(rec, thinking_blocks, tok_reason)
     if tok_reason:
-        rec["tokens_reasoning"] = tok_reason      # subset of tokens_output; not added to any total
+        rec["tokens_reasoning"] = tok_reason  # subset of tokens_output; not added to any total
     if codex_usage_complete is not None:
         rec["usage_complete"] = codex_usage_complete
         rec["turns_started"] = codex_turns_started
@@ -381,17 +402,16 @@ def parse_transcript(path: str | Path, *, billing_mode: str = METERED,
         rec["estimated_cost_usd"] = None
         rec["cost_unavailable_reason"] = (
             f"{billing_mode}: a subscription seat is not billed per token; any dollar figure is what the "
-            "same traffic would have cost metered, not money spent")
+            "same traffic would have cost metered, not money spent"
+        )
         if not unpriced:
             rec["subscription_notional_usd"] = round(cost, 4)
         else:
-            rec["cost_unavailable_reason"] += ("; no metered rate for "
-                                               + ", ".join(sorted(unpriced)) + " either")
+            rec["cost_unavailable_reason"] += "; no metered rate for " + ", ".join(sorted(unpriced)) + " either"
     elif unpriced:
         # No rate for a model that actually ran ⇒ no dollar figure, with the gap named.
         rec["estimated_cost_usd"] = None
-        rec["cost_unavailable_reason"] = ("no price entry for model(s): "
-                                          + ", ".join(sorted(unpriced)))
+        rec["cost_unavailable_reason"] = "no price entry for model(s): " + ", ".join(sorted(unpriced))
     else:
         rec["estimated_cost_usd"] = round(cost, 4)
     return rec
@@ -501,8 +521,7 @@ def _opencode_usage(events: list[dict]) -> dict | None:
 _AGENT_READERS = {"codex": _codex_usage, "opencode": _opencode_usage}
 
 
-def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "",
-                           billing_mode: str = METERED) -> dict:
+def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "", billing_mode: str = METERED) -> dict:
     """Token/cost totals from an agent CLI transcript that is NOT claude stream-json.
 
     `parse_transcript` reads the claude CLI's `result`/`assistant` event shape. Point it at a
@@ -518,9 +537,10 @@ def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "",
         return {"available": False, "reason": f"transcript not found: {p}"}
     reader = _AGENT_READERS.get(driver)
     if reader is None:
-        return {"available": False,
-                "reason": f"no transcript reader for driver {driver!r}; "
-                          f"known: {sorted(_AGENT_READERS)}"}
+        return {
+            "available": False,
+            "reason": f"no transcript reader for driver {driver!r}; known: {sorted(_AGENT_READERS)}",
+        }
 
     events, n_lines = [], 0
     for line in p.read_text(encoding="utf-8", errors="ignore").splitlines():
@@ -543,11 +563,14 @@ def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "",
 
     u = reader(events)
     if u is None:
-        rec = {"available": False,
-               "reason": f"{driver} transcript carries no usage (turn failed or was cut off); "
-                         f"UNPRICED, not zero",
-               "n_events": n_lines, "usage_complete": False, "billing_mode": billing_mode,
-               "tool_calls": tool_calls}
+        rec = {
+            "available": False,
+            "reason": f"{driver} transcript carries no usage (turn failed or was cut off); UNPRICED, not zero",
+            "n_events": n_lines,
+            "usage_complete": False,
+            "billing_mode": billing_mode,
+            "tool_calls": tool_calls,
+        }
         _record_reasoning_blocks(rec, reasoning_blocks, 0)
         return rec
 
@@ -568,18 +591,27 @@ def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "",
         # Cache WRITES are fresh input the provider charged for, so they belong in the total; cached
         # READS are counted separately because they are the cheap half and must never be summed into
         # the fresh-token axis a cost curve is plotted against.
-        "tokens_total": tok_in + u.get("tokens_cache_write", 0) + tok_cached + tok_out
-                        + (0 if u.get("reasoning_is_subset_of_output", True)
-                           else u.get("tokens_reasoning", 0)),
+        "tokens_total": tok_in
+        + u.get("tokens_cache_write", 0)
+        + tok_cached
+        + tok_out
+        + (0 if u.get("reasoning_is_subset_of_output", True) else u.get("tokens_reasoning", 0)),
         "billing_mode": billing_mode,
         "tool_calls": tool_calls,
         "subagent_tool_calls_tracked": False,
         "n_events": n_lines,
     }
     _record_reasoning_blocks(rec, reasoning_blocks, u.get("tokens_reasoning", 0) or 0)
-    for k in ("tokens_cache_write", "tokens_reasoning", "reasoning_is_subset_of_output",
-              "turns_started", "turns_completed", "steps", "usage_complete",
-              "input_included_cached"):
+    for k in (
+        "tokens_cache_write",
+        "tokens_reasoning",
+        "reasoning_is_subset_of_output",
+        "turns_started",
+        "turns_completed",
+        "steps",
+        "usage_complete",
+        "input_included_cached",
+    ):
         if k in u:
             rec[k] = u[k]
 
@@ -587,10 +619,13 @@ def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "",
     cost = None
     if rate is not None:
         rin, rout, rcache_read, rcache_write = rate
-        billable_out = tok_out + (0 if u.get("reasoning_is_subset_of_output", True)
-                                  else u.get("tokens_reasoning", 0))
-        cost = (tok_in * rin + u.get("tokens_cache_write", 0) * rcache_write
-                + tok_cached * rcache_read + billable_out * rout)
+        billable_out = tok_out + (0 if u.get("reasoning_is_subset_of_output", True) else u.get("tokens_reasoning", 0))
+        cost = (
+            tok_in * rin
+            + u.get("tokens_cache_write", 0) * rcache_write
+            + tok_cached * rcache_read
+            + billable_out * rout
+        )
 
     if billing_mode != METERED:
         # A seat is not billed per token. The spend field stays empty so no aggregator can sum a
@@ -598,7 +633,8 @@ def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "",
         rec["estimated_cost_usd"] = None
         rec["cost_unavailable_reason"] = (
             f"{billing_mode}: a subscription seat is not billed per token; any dollar figure is what "
-            "the same traffic would have cost metered, not money spent")
+            "the same traffic would have cost metered, not money spent"
+        )
         if cost is not None:
             rec["subscription_notional_usd"] = round(cost, 4)
         else:
@@ -625,13 +661,21 @@ def parse_agent_transcript(path: str | Path, *, driver: str, model: str = "",
 # carried the priced figure.
 
 #: the money/provenance fields a reprice owns; everything else in a record is left untouched.
-MONEY_FIELDS = ("estimated_cost_usd", "subscription_notional_usd", "cost_unavailable_reason",
-                "cost_source")
+MONEY_FIELDS = ("estimated_cost_usd", "subscription_notional_usd", "cost_unavailable_reason", "cost_source")
 
 #: the process-block keys a run manifest mirrors from the cost record (see the harness's grader).
-_MANIFEST_PROCESS_KEYS = ("wall_time_seconds", "tokens_total", "tokens_input", "tokens_output",
-                          "tokens_reasoning", "estimated_cost_usd", "billing_mode",
-                          "subscription_notional_usd", "cost_unavailable_reason", "tool_calls")
+_MANIFEST_PROCESS_KEYS = (
+    "wall_time_seconds",
+    "tokens_total",
+    "tokens_input",
+    "tokens_output",
+    "tokens_reasoning",
+    "estimated_cost_usd",
+    "billing_mode",
+    "subscription_notional_usd",
+    "cost_unavailable_reason",
+    "tool_calls",
+)
 
 
 def _cost_from_tokens(rec: dict) -> tuple[float | None, list[str]]:
@@ -667,10 +711,12 @@ def _cost_from_tokens(rec: dict) -> tuple[float | None, list[str]]:
     billable_out = int(rec.get("tokens_output", 0) or 0)
     if not rec.get("reasoning_is_subset_of_output", True):
         billable_out += int(rec.get("tokens_reasoning", 0) or 0)
-    cost = (int(rec.get("tokens_input", 0) or 0) * rin
-            + int(rec.get("tokens_cache_write", 0) or 0) * rin * _CACHE_WRITE_MULT
-            + int(rec.get("tokens_cached", 0) or 0) * rin * _CACHE_READ_MULT
-            + billable_out * rout)
+    cost = (
+        int(rec.get("tokens_input", 0) or 0) * rin
+        + int(rec.get("tokens_cache_write", 0) or 0) * rin * _CACHE_WRITE_MULT
+        + int(rec.get("tokens_cached", 0) or 0) * rin * _CACHE_READ_MULT
+        + billable_out * rout
+    )
     return cost, []
 
 
@@ -682,8 +728,11 @@ def price_fields(rec: dict) -> dict:
     returned unchanged, so a reprice can only ever fill in or correct OUR OWN arithmetic.
     """
     billing_mode = rec.get("billing_mode") or METERED
-    cli_priced = (billing_mode == METERED and rec.get("estimated_cost_usd") is not None
-                  and rec.get("cost_source") not in ("price_table",))
+    cli_priced = (
+        billing_mode == METERED
+        and rec.get("estimated_cost_usd") is not None
+        and rec.get("cost_source") not in ("price_table",)
+    )
     if cli_priced:
         return {k: rec[k] for k in MONEY_FIELDS if k in rec}
 
@@ -691,8 +740,10 @@ def price_fields(rec: dict) -> dict:
     out: dict = {}
     if billing_mode != METERED:
         out["estimated_cost_usd"] = None
-        reason = (f"{billing_mode}: a subscription seat is not billed per token; any dollar figure is "
-                  "what the same traffic would have cost metered, not money spent")
+        reason = (
+            f"{billing_mode}: a subscription seat is not billed per token; any dollar figure is "
+            "what the same traffic would have cost metered, not money spent"
+        )
         if cost is not None and not unpriced:
             out["subscription_notional_usd"] = round(cost, 4)
         else:
@@ -721,16 +772,20 @@ def reprice_run(run_dir: str | Path, *, write: bool = True) -> dict:
     d = Path(run_dir)
     cost_path = d if d.is_file() else d / "cost_time_toolcalls.yaml"
     if not cost_path.is_file():
-        return {"path": str(cost_path), "changed": {}, "manifest_changed": {},
-                "skipped": "no cost_time_toolcalls.yaml"}
+        return {"path": str(cost_path), "changed": {}, "manifest_changed": {}, "skipped": "no cost_time_toolcalls.yaml"}
     rec = yaml.safe_load(cost_path.read_text(encoding="utf-8")) or {}
     if not rec.get("available", False):
-        return {"path": str(cost_path), "changed": {}, "manifest_changed": {},
-                "skipped": "run recorded no usage metadata"}
+        return {
+            "path": str(cost_path),
+            "changed": {},
+            "manifest_changed": {},
+            "skipped": "run recorded no usage metadata",
+        }
 
     want = price_fields(rec)
-    changed = {k: (rec.get(k), want.get(k)) for k in MONEY_FIELDS
-               if (k in want) != (k in rec) or rec.get(k) != want.get(k)}
+    changed = {
+        k: (rec.get(k), want.get(k)) for k in MONEY_FIELDS if (k in want) != (k in rec) or rec.get(k) != want.get(k)
+    }
     if changed and write:
         for k in MONEY_FIELDS:
             rec.pop(k, None)
@@ -756,30 +811,38 @@ def reprice_run(run_dir: str | Path, *, write: bool = True) -> dict:
     return {"path": str(cost_path), "changed": changed, "manifest_changed": man_changed}
 
 
-def write_cost_yaml(summary: dict, out: str | Path, *, wall_time_seconds=None,
-                    model=None, exit_code=None) -> None:
+def write_cost_yaml(summary: dict, out: str | Path, *, wall_time_seconds=None, model=None, exit_code=None) -> None:
     import yaml
+
     rec = {"model": model, "wall_time_seconds": wall_time_seconds, "exit_code": exit_code, **summary}
     Path(out).write_text(yaml.safe_dump(rec, sort_keys=False), encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
+
     ap = argparse.ArgumentParser(description="Extract tokens/cost/tool-calls from a transcript")
-    ap.add_argument("transcript", nargs="?",
-                    help="transcript to parse (omit when using --reprice)")
+    ap.add_argument("transcript", nargs="?", help="transcript to parse (omit when using --reprice)")
     ap.add_argument("--out", default=None)
     ap.add_argument("--wall", type=float, default=None)
     ap.add_argument("--model", default=None)
-    ap.add_argument("--billing-mode", default=METERED,
-                    choices=[METERED, SUBSCRIPTION_NOTIONAL],
-                    help="how the run is billed (a subscription seat reports notional dollars only)")
-    ap.add_argument("--reprice", nargs="+", metavar="RUN_DIR",
-                    help="re-derive the dollar fields of already-parsed runs from their STORED token "
-                         "counts and the current price table, and re-sync each run manifest's copy. "
-                         "Accepts run dirs or cost_time_toolcalls.yaml paths.")
-    ap.add_argument("--check", action="store_true",
-                    help="with --reprice: report drift and exit non-zero, writing nothing")
+    ap.add_argument(
+        "--billing-mode",
+        default=METERED,
+        choices=[METERED, SUBSCRIPTION_NOTIONAL],
+        help="how the run is billed (a subscription seat reports notional dollars only)",
+    )
+    ap.add_argument(
+        "--reprice",
+        nargs="+",
+        metavar="RUN_DIR",
+        help="re-derive the dollar fields of already-parsed runs from their STORED token "
+        "counts and the current price table, and re-sync each run manifest's copy. "
+        "Accepts run dirs or cost_time_toolcalls.yaml paths.",
+    )
+    ap.add_argument(
+        "--check", action="store_true", help="with --reprice: report drift and exit non-zero, writing nothing"
+    )
     a = ap.parse_args(argv)
 
     if a.reprice:

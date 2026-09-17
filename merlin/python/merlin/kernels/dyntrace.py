@@ -14,6 +14,7 @@ kinds its producer CAN emit, and every aggregate over a kind outside that set re
 (UNKNOWN) rather than ``0``. Asking for DMA bytes from a producer that cannot see DMA is answered
 "I don't know", never "zero".
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,17 +23,20 @@ from typing import Any, Iterable
 #: The closed event vocabulary. Closed on purpose: a producer that needs a kind not in this list is
 #: describing something the rest of the pipeline cannot reason about, and adding it is a decision.
 EVENT_KINDS: tuple[str, ...] = (
-    "host_compute",              # work on the host/scalar core, outside any dispatch
-    "dispatch_begin",            # a launch starts
-    "dispatch_end",              # a launch retires
-    "dma_read", "dma_write",     # bulk asynchronous movement, not through the compute datapath
-    "local_load", "local_store", # movement into/out of the endpoint's own local memory
-    "compute",                   # the endpoint doing arithmetic
-    "commit", "readout",         # draining an accumulator, and making the result visible
-    "sync",                      # a fence/barrier/completion wait
-    "queue_wait",                # ready work not yet started, because the queue was busy
-    "engine_idle",               # the engine had nothing to do
-    "engine_stall",              # the engine had work and could not proceed
+    "host_compute",  # work on the host/scalar core, outside any dispatch
+    "dispatch_begin",  # a launch starts
+    "dispatch_end",  # a launch retires
+    "dma_read",
+    "dma_write",  # bulk asynchronous movement, not through the compute datapath
+    "local_load",
+    "local_store",  # movement into/out of the endpoint's own local memory
+    "compute",  # the endpoint doing arithmetic
+    "commit",
+    "readout",  # draining an accumulator, and making the result visible
+    "sync",  # a fence/barrier/completion wait
+    "queue_wait",  # ready work not yet started, because the queue was busy
+    "engine_idle",  # the engine had nothing to do
+    "engine_stall",  # the engine had work and could not proceed
 )
 
 #: Kinds that consume wall/cycle time without doing the work the model asked for. Named so a report
@@ -101,8 +105,10 @@ class Trace:
             out.extend(e.problems())
         emitted = {e.kind for e in self.events}
         for k in sorted(emitted - set(self.records)):
-            out.append(f"emitted {k!r} events without declaring the kind recordable — the capability "
-                       f"declaration is what makes an ABSENCE readable, so it must be complete")
+            out.append(
+                f"emitted {k!r} events without declaring the kind recordable — the capability "
+                f"declaration is what makes an ABSENCE readable, so it must be complete"
+            )
         return tuple(out)
 
     # --- aggregates: UNKNOWN unless the producer can see the kind -----------------------------
@@ -117,15 +123,14 @@ class Trace:
             return None
         sized = [e.nbytes for e in self.events if e.kind in kinds]
         if any(b is None for b in sized):
-            return None            # a partially-sized total is not a total
+            return None  # a partially-sized total is not a total
         return sum(b for b in sized if b is not None)
 
     def cycles_in(self, kind: str, *, engine: str | None = None) -> int | None:
         """Cycles spent in ``kind``; None when unrecordable or untimed."""
         if not self.can_see(kind):
             return None
-        picked = [e for e in self.events
-                  if e.kind == kind and (engine is None or e.engine == engine)]
+        picked = [e for e in self.events if e.kind == kind and (engine is None or e.engine == engine)]
         durations = [e.duration for e in picked]
         if any(d is None for d in durations):
             return None
@@ -152,8 +157,10 @@ class Trace:
         """What this trace cannot answer, stated. An empty trace is a gap, not a quiet zero."""
         out: list[str] = []
         if not self.records:
-            out.append(f"{self.source}: producer capability undeclared — every aggregate is UNKNOWN, "
-                       f"which is NOT the same as zero")
+            out.append(
+                f"{self.source}: producer capability undeclared — every aggregate is UNKNOWN, "
+                f"which is NOT the same as zero"
+            )
             return tuple(out)
         for k in sorted(set(EVENT_KINDS) - set(self.records)):
             out.append(f"{self.source}: cannot record {k!r}; an absence of it means nothing")

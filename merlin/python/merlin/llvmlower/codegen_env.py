@@ -16,6 +16,7 @@ thing that goes stale -- the next variable someone adds is the one that is not o
 absence is silent -- and the cost of capturing a few irrelevant variables is nothing next to the
 cost of a binary nobody can reproduce.
 """
+
 from __future__ import annotations
 
 import os

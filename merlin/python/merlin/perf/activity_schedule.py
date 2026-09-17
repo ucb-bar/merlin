@@ -8,6 +8,7 @@ while a non-overlapping target puts them in one serial group or supplies the req
 This is an analytical schedule over exact full-model event counts.  Reduced simulations calibrate
 the event durations; they are not replayed once per full-size tile.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -75,8 +76,7 @@ def _union_length(intervals: Sequence[tuple[float, float]]) -> float:
     return sum(hi - lo for lo, hi in _merged_intervals(intervals))
 
 
-def _intersection_length(a: Sequence[tuple[float, float]],
-                         b: Sequence[tuple[float, float]]) -> float:
+def _intersection_length(a: Sequence[tuple[float, float]], b: Sequence[tuple[float, float]]) -> float:
     # Several independent engines of one kind can occupy the same wall-clock
     # interval. Count that interval once, not once per participating engine.
     left = _merged_intervals(a)
@@ -101,9 +101,13 @@ class ActivityTimeline:
     total_cycles: float
     critical_path_cycles: float
 
-    def occupancy(self, *, compute_kinds: Sequence[str] = ("compute",),
-                  movement_kinds: Sequence[str] = ("movement", "encoding"),
-                  provenance: Sequence[str] = ()) -> OccupancySummary:
+    def occupancy(
+        self,
+        *,
+        compute_kinds: Sequence[str] = ("compute",),
+        movement_kinds: Sequence[str] = ("movement", "encoding"),
+        provenance: Sequence[str] = (),
+    ) -> OccupancySummary:
         compute_set, movement_set = set(compute_kinds), set(movement_kinds)
         busy: dict[str, float] = {}
         compute_resources: set[str] = set()
@@ -149,9 +153,11 @@ class ActivityTimeline:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {"total_cycles": self.total_cycles,
-                "critical_path_cycles": self.critical_path_cycles,
-                "events": [event.to_dict() for event in self.events]}
+        return {
+            "total_cycles": self.total_cycles,
+            "critical_path_cycles": self.critical_path_cycles,
+            "events": [event.to_dict() for event in self.events],
+        }
 
 
 def schedule_activity(events: Sequence[ActivityEvent]) -> ActivityTimeline:
@@ -173,8 +179,7 @@ def schedule_activity(events: Sequence[ActivityEvent]) -> ActivityTimeline:
     for event in events:
         absent = [dep for dep in event.depends_on if dep not in end_by_id]
         if absent:
-            raise ValueError(
-                f"activity event {event.id!r} has non-topological or absent dependencies {absent}")
+            raise ValueError(f"activity event {event.id!r} has non-topological or absent dependencies {absent}")
         ready = max((end_by_id[dep] for dep in event.depends_on), default=0.0)
         start = max(ready, resource_free.get(event.resource, 0.0))
         if event.serial_group:
@@ -185,8 +190,7 @@ def schedule_activity(events: Sequence[ActivityEvent]) -> ActivityTimeline:
         resource_free[event.resource] = end
         if event.serial_group:
             group_free[event.serial_group] = end
-        path_by_id[event.id] = float(event.cycles) + max(
-            (path_by_id[dep] for dep in event.depends_on), default=0.0)
+        path_by_id[event.id] = float(event.cycles) + max((path_by_id[dep] for dep in event.depends_on), default=0.0)
     total = max(end_by_id.values(), default=0.0)
     critical = max(path_by_id.values(), default=0.0)
     return ActivityTimeline(tuple(scheduled), total, critical)

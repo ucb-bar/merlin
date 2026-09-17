@@ -6,26 +6,39 @@ and target fusion. It proves exact computation by recursively inlining the befor
 checking structural equivalence. It does not claim that a target eliminated those tensors in memory,
 or that fewer calls alone prove a cycle improvement.
 """
+
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Sequence
 from dataclasses import replace
-import hashlib
 
 from .dispatch_program import DispatchProgram, Node, build_dispatch_program
 from .global_plan import (
-    BufferRepresentation, CycleInterval, GlobalPlan, RegionAlternative, ValueRepresentation,
+    BufferRepresentation,
+    CycleInterval,
+    GlobalPlan,
+    RegionAlternative,
+    ValueRepresentation,
 )
 from .global_plan_emission import (
-    BoundaryMapping, EmittedComponent, GlobalPlanEmission, _component_boundary, dispatch_digest,
+    BoundaryMapping,
+    EmittedComponent,
+    GlobalPlanEmission,
+    _component_boundary,
+    dispatch_digest,
     verify_global_plan_emission,
 )
 from .outline import OutlineResult
 
 
 def plan_dispatch_fusion(
-        program: DispatchProgram, groups: Sequence[Sequence[int]], *, placement: str,
-        representation: Callable[[str], ValueRepresentation]) -> GlobalPlan:
+    program: DispatchProgram,
+    groups: Sequence[Sequence[int]],
+    *,
+    placement: str,
+    representation: Callable[[str], ValueRepresentation],
+) -> GlobalPlan:
     """Make an exact whole-graph cover from proposed contiguous fusion groups.
 
     Unselected nodes remain explicit singleton regions. The caller supplies legal representations
@@ -36,9 +49,13 @@ def plan_dispatch_fusion(
     covered: set[int] = set()
     for raw in groups:
         group = tuple(raw)
-        if (len(group) < 2 or any(isinstance(i, bool) or not isinstance(i, int) for i in group)
-                or group != tuple(range(group[0], group[-1] + 1))
-                or group[0] < 0 or group[-1] >= len(program.nodes)):
+        if (
+            len(group) < 2
+            or any(isinstance(i, bool) or not isinstance(i, int) for i in group)
+            or group != tuple(range(group[0], group[-1] + 1))
+            or group[0] < 0
+            or group[-1] >= len(program.nodes)
+        ):
             raise ValueError("fusion groups must contain at least two consecutive graph nodes")
         if covered.intersection(group):
             raise ValueError("fusion groups overlap")
@@ -51,18 +68,24 @@ def plan_dispatch_fusion(
     while index < len(program.nodes):
         group = grouped.get(index, (index,))
         inputs, outputs = _component_boundary(program, group)
-        symbol = (f"{program.entry}$kernel_fused_{index}" if len(group) > 1 else
-                  program.nodes[index].op)
-        alternatives.append(RegionAlternative(
-            id=f"region_{index}", nodes=group, implementation=symbol, placement=placement,
-            cycles=unknown,
-            inputs=tuple(BufferRepresentation(b, representation(b))
-                         for b in sorted(inputs, key=order.__getitem__)),
-            outputs=tuple(BufferRepresentation(b, representation(b))
-                          for b in sorted(outputs, key=order.__getitem__))))
+        symbol = f"{program.entry}$kernel_fused_{index}" if len(group) > 1 else program.nodes[index].op
+        alternatives.append(
+            RegionAlternative(
+                id=f"region_{index}",
+                nodes=group,
+                implementation=symbol,
+                placement=placement,
+                cycles=unknown,
+                inputs=tuple(BufferRepresentation(b, representation(b)) for b in sorted(inputs, key=order.__getitem__)),
+                outputs=tuple(
+                    BufferRepresentation(b, representation(b)) for b in sorted(outputs, key=order.__getitem__)
+                ),
+            )
+        )
         index = group[-1] + 1
-    return GlobalPlan(tuple(alternatives), (), unknown,
-                      notes=("structural fusion; timing and physical movement remain unmeasured",))
+    return GlobalPlan(
+        tuple(alternatives), (), unknown, notes=("structural fusion; timing and physical movement remain unmeasured",)
+    )
 
 
 def _inline_operations(operations, mapping, destination, functions, stack=()):
@@ -137,21 +160,21 @@ class OutlinedGlobalPlanEmitter:
         for item in plan.selected:
             for binding in (*item.inputs, *item.outputs):
                 spec = program.buffers.get(binding.buffer)
-                expected = (ValueRepresentation("tensor_ssa", "logical", spec.dtype)
-                            if spec is not None else None)
+                expected = ValueRepresentation("tensor_ssa", "logical", spec.dtype) if spec is not None else None
                 if binding.representation != expected:
                     raise ValueError(
                         "outlined fusion preserves logical tensor SSA; physical encodings require "
-                        "a target representation emitter")
-        functions = {op.sym_name.data: op for op in self.outlined.module.body.block.ops
-                     if op.name == "func.func"}
+                        "a target representation emitter"
+                    )
+        functions = {op.sym_name.data: op for op in self.outlined.module.body.block.ops if op.name == "func.func"}
         original = functions[program.entry]
         source = original.body.blocks[0]
         source_ops = [op for op in source.ops if op.name != "func.return"]
         if len(source_ops) != len(program.nodes):
             raise ValueError("model graph does not account for every driver operation")
-        values = {buffer.id: source.args[buffer.arg_index]
-                  for buffer in program.buffers.values() if buffer.kind == "arg"}
+        values = {
+            buffer.id: source.args[buffer.arg_index] for buffer in program.buffers.values() if buffer.kind == "arg"
+        }
         for node, op in zip(program.nodes, source_ops, strict=True):
             values.update(zip(node.outputs, op.results, strict=True))
         block = Block(arg_types=[arg.type for arg in source.args])
@@ -180,43 +203,65 @@ class OutlinedGlobalPlanEmitter:
                 mapping = dict(zip((values[name] for name in inputs), body.args, strict=True))
                 _inline_operations([source_ops[index] for index in indices], mapping, body, functions)
                 body.add_op(ReturnOp(*(mapping[values[name]] for name in outputs)))
-                fused = FuncOp(item.implementation,
-                               ([values[name].type for name in inputs],
-                                [values[name].type for name in outputs]), Region([body]))
+                fused = FuncOp(
+                    item.implementation,
+                    ([values[name].type for name in inputs], [values[name].type for name in outputs]),
+                    Region([body]),
+                )
                 fused.sym_visibility = StringAttr("private")
                 fused_functions.append(fused)
                 functions[item.implementation] = fused
-                call = CallOp(item.implementation,
-                              [driver_map[values[name]] for name in inputs],
-                              [values[name].type for name in outputs])
+                call = CallOp(
+                    item.implementation,
+                    [driver_map[values[name]] for name in inputs],
+                    [values[name].type for name in outputs],
+                )
                 block.add_op(call)
                 driver_map.update(zip((values[name] for name in outputs), call.results, strict=True))
                 nodes.append(Node("dispatch", item.implementation, inputs, outputs, captures=[]))
-            receipts.append(EmittedComponent(
-                item.id, (len(nodes) - 1,), tuple((name, name) for name in inputs),
-                tuple((name, name) for name in outputs)))
+            receipts.append(
+                EmittedComponent(
+                    item.id,
+                    (len(nodes) - 1,),
+                    tuple((name, name) for name in inputs),
+                    tuple((name, name) for name in outputs),
+                )
+            )
         block.add_op(ReturnOp(*(driver_map[values[name]] for name in program.results)))
         driver = FuncOp(program.entry, original.function_type, Region([block]))
         driver.attributes.update(original.attributes)
-        module = ModuleOp([driver, *[op.clone() for op in self.outlined.module.body.block.ops
-                                    if op is not original], *fused_functions])
+        module = ModuleOp(
+            [
+                driver,
+                *[op.clone() for op in self.outlined.module.body.block.ops if op is not original],
+                *fused_functions,
+            ]
+        )
         module.verify()
         if not _expanded_driver(self.outlined.module, program.entry).is_structurally_equivalent(
-                _expanded_driver(module, program.entry)):
+            _expanded_driver(module, program.entry)
+        ):
             raise ValueError("global fusion changed the expanded model computation")
         live = set(program.results)
         live.update(name for node in nodes for name in (*node.inputs, *node.outputs))
         live.update(name for name, spec in program.buffers.items() if spec.kind == "arg")
-        dispatch = DispatchProgram(program.entry, list(program.args),
-                                   {name: replace(spec, shape=list(spec.shape))
-                                    for name, spec in program.buffers.items() if name in live},
-                                   nodes, list(program.results))
+        dispatch = DispatchProgram(
+            program.entry,
+            list(program.args),
+            {name: replace(spec, shape=list(spec.shape)) for name, spec in program.buffers.items() if name in live},
+            nodes,
+            list(program.results),
+        )
         emission = GlobalPlanEmission(
-            dispatch, plan.digest, dispatch_digest(program), tuple(receipts), (),
-            tuple(BoundaryMapping("input", name, name) for name, spec in program.buffers.items()
-                  if spec.kind == "arg") +
-            tuple(BoundaryMapping("output", name, name) for name in program.results),
-            ("exact single-block call inlining and SSA cloning",))
+            dispatch,
+            plan.digest,
+            dispatch_digest(program),
+            tuple(receipts),
+            (),
+            tuple(BoundaryMapping("input", name, name) for name, spec in program.buffers.items() if spec.kind == "arg")
+            + tuple(BoundaryMapping("output", name, name) for name in program.results),
+            ("exact single-block call inlining and SSA cloning",),
+        )
         errors = verify_global_plan_emission(program, plan, emission)
         if errors:
             raise ValueError("invalid outlined global fusion: " + "; ".join(errors))
@@ -229,10 +274,12 @@ class OutlinedGlobalPlanEmitter:
             "original_module_sha256": hashlib.sha256(str(self.outlined.module).encode()).hexdigest(),
             "emitted_module_sha256": hashlib.sha256(str(module).encode()).hexdigest(),
             "computation": "expanded_driver_structurally_equivalent",
-            "logical_nodes": len(program.nodes), "emitted_nodes": len(nodes),
+            "logical_nodes": len(program.nodes),
+            "emitted_nodes": len(nodes),
             "logical_dispatches": program.n_dispatches,
             "emitted_dispatches": dispatch.n_dispatches,
-            "timing": "UNKNOWN", "physical_movement": "UNKNOWN",
+            "timing": "UNKNOWN",
+            "physical_movement": "UNKNOWN",
             "full_model_simulated": False,
         }
         return emission

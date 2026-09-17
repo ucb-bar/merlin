@@ -29,6 +29,7 @@ CONFLICT (fusing first removes the very transposes this looks for):
   fusion only for the re-layouts the hoist reports as BLOCKED (an argument with readers other than the
   transpose, where pre-applying the layout would change what those readers see).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,13 +54,18 @@ def _report(src: Path, func: str):
 def main(argv: "list[str] | None" = None) -> int:
     ap = argparse.ArgumentParser(
         prog="merlin-bundle-pretranspose",
-        description="Pre-apply weight transposes to a capture bundle (offline, bit-exact).")
+        description="Pre-apply weight transposes to a capture bundle (offline, bit-exact).",
+    )
     ap.add_argument("bundle", help="source capture bundle directory")
-    ap.add_argument("--out", default=None,
-                    help="destination bundle (default: <bundle>_pretransposed, a SIBLING of the source)")
+    ap.add_argument(
+        "--out", default=None, help="destination bundle (default: <bundle>_pretransposed, a SIBLING of the source)"
+    )
     ap.add_argument("--func", default="forward", help="function to analyse (default: forward)")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="report the hoistable/blocked split and the bytes it would save; write nothing")
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="report the hoistable/blocked split and the bytes it would save; write nothing",
+    )
     a = ap.parse_args(argv)
 
     src = Path(a.bundle).resolve()
@@ -67,13 +73,17 @@ def main(argv: "list[str] | None" = None) -> int:
         raise SystemExit(f"[pretranspose] {src} is not a capture bundle (no model.mlir)")
 
     rep = _report(src, a.func)
-    mib = rep.hoistable_bytes / 2 ** 20
-    print(f"[pretranspose] {src.name}: {len(rep.hoistable)} hoistable, {len(rep.blocked)} blocked"
-          f"{f', {len(rep.unpriceable)} UNPRICEABLE' if rep.unpriceable else ''}")
+    mib = rep.hoistable_bytes / 2**20
+    print(
+        f"[pretranspose] {src.name}: {len(rep.hoistable)} hoistable, {len(rep.blocked)} blocked"
+        f"{f', {len(rep.unpriceable)} UNPRICEABLE' if rep.unpriceable else ''}"
+    )
     print(f"[pretranspose] moved per inference today: {mib:,.1f} MiB ({rep.hoistable_bytes:,} bytes)")
     for r in rep.blocked:
-        print(f"[pretranspose]   BLOCKED arg {r.arg}: the argument has readers besides the transpose, "
-              "so pre-applying the layout would change what they see")
+        print(
+            f"[pretranspose]   BLOCKED arg {r.arg}: the argument has readers besides the transpose, "
+            "so pre-applying the layout would change what they see"
+        )
     if rep.unpriceable:
         # fail-closed: an unpriceable re-layout is one the analysis could not size, and a plan that
         # silently omits it would under-report the saving. Say so rather than proceeding quietly.
@@ -92,10 +102,14 @@ def main(argv: "list[str] | None" = None) -> int:
 
     rec = hoist_weight_transposes(src, dst, a.func)
     print(f"[pretranspose] wrote {dst}")
-    print(json.dumps({"name": rec.name, "source_bundle": rec.source_bundle,
-                      "effect": rec.effect, "caveats": rec.caveats}, indent=2))
+    print(
+        json.dumps(
+            {"name": rec.name, "source_bundle": rec.source_bundle, "effect": rec.effect, "caveats": rec.caveats},
+            indent=2,
+        )
+    )
     return 0
 
 
-if __name__ == "__main__":       # pragma: no cover
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

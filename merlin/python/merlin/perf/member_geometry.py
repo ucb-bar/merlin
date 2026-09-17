@@ -26,6 +26,7 @@ known hole and a silent one.
 Nothing here names a target. The census is looked up by the ``target`` it is handed, exactly as the
 conformance lattice does.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -62,13 +63,18 @@ def declared_geometry(capsule: object) -> dict[str, Any]:
     """
     if not isinstance(capsule, Mapping):
         return {"status": "refused", "reason": "the capsule is not a mapping"}
-    op = str(((capsule.get("operation") or {}) if isinstance(capsule.get("operation"), Mapping)
-              else {}).get("op") or "")
+    op = str(
+        ((capsule.get("operation") or {}) if isinstance(capsule.get("operation"), Mapping) else {}).get("op") or ""
+    )
     if op not in _CONTRACTION_OPS:
-        return {"status": "refused",
-                "reason": (f"op {op!r} declares no contraction operands this reader can price; its "
-                           f"geometry is not (M, K, N) and inventing one would misattribute it"),
-                "op": op}
+        return {
+            "status": "refused",
+            "reason": (
+                f"op {op!r} declares no contraction operands this reader can price; its "
+                f"geometry is not (M, K, N) and inventing one would misattribute it"
+            ),
+            "op": op,
+        }
     rows = capsule.get("inputs")
     if not isinstance(rows, (list, tuple)):
         return {"status": "refused", "reason": "the capsule declares no inputs", "op": op}
@@ -81,26 +87,43 @@ def declared_geometry(capsule: object) -> dict[str, Any]:
     weights = [n for n, r in roles.items() if r == _WEIGHT_ROLE]
     activations = [n for n, r in roles.items() if r == _ACTIVATION_ROLE]
     if len(weights) != 1 or not activations:
-        return {"status": "refused",
-                "reason": (f"expected exactly one {_WEIGHT_ROLE!r} operand and at least one "
-                           f"{_ACTIVATION_ROLE!r}; found {len(weights)} and {len(activations)}"),
-                "op": op}
+        return {
+            "status": "refused",
+            "reason": (
+                f"expected exactly one {_WEIGHT_ROLE!r} operand and at least one "
+                f"{_ACTIVATION_ROLE!r}; found {len(weights)} and {len(activations)}"
+            ),
+            "op": op,
+        }
     weight = _rank2(shapes, weights[0])
     # Every activation of a resident-weight member shares one (M, K); taking the first is not a choice
     # between them, and a member whose activations disagreed would be a different claim entirely.
     activation = _rank2(shapes, sorted(activations)[0])
     if weight is None or activation is None:
-        return {"status": "refused",
-                "reason": "an operand is not a positive rank-2 shape, so no (M, K, N) is declared",
-                "op": op}
+        return {
+            "status": "refused",
+            "reason": "an operand is not a positive rank-2 shape, so no (M, K, N) is declared",
+            "op": op,
+        }
     K_w, N = weight
     M, K_a = activation
     if K_w != K_a:
-        return {"status": "refused",
-                "reason": (f"the activation reduces over {K_a} and the weight over {K_w}; the operands "
-                           f"do not describe one contraction"), "op": op}
-    return {"status": "derived", "op": op, "M": M, "K": K_w, "N": N,
-            "basis": "the capsule's own declared operand shapes (activation MxK, weight KxN)"}
+        return {
+            "status": "refused",
+            "reason": (
+                f"the activation reduces over {K_a} and the weight over {K_w}; the operands "
+                f"do not describe one contraction"
+            ),
+            "op": op,
+        }
+    return {
+        "status": "derived",
+        "op": op,
+        "M": M,
+        "K": K_w,
+        "N": N,
+        "basis": "the capsule's own declared operand shapes (activation MxK, weight KxN)",
+    }
 
 
 def census_classes(target: str) -> dict[str, Any]:
@@ -120,8 +143,7 @@ def census_classes(target: str) -> dict[str, Any]:
     required = (geometry or {}).get("required") if isinstance(geometry, Mapping) else None
     if not isinstance(required, (list, tuple)):
         return {}
-    return {str(e["class"]): dict(e) for e in required
-            if isinstance(e, Mapping) and e.get("class")}
+    return {str(e["class"]): dict(e) for e in required if isinstance(e, Mapping) and e.get("class")}
 
 
 def stamp_for(capsule: object, *, target: str) -> dict[str, Any] | None:
@@ -140,22 +162,29 @@ def stamp_for(capsule: object, *, target: str) -> dict[str, Any] | None:
     label = classify_geometry(M, N, K)
     census = census_classes(target)
     block: dict[str, Any] = {
-        "M": M, "K": K, "N": N, "out_elements": M * N,
+        "M": M,
+        "K": K,
+        "N": N,
+        "out_elements": M * N,
         "geometry_class": label,
         "classifier": "merlin.dse_guidance.shape_taxonomy.classify_geometry",
         "basis": declared["basis"],
     }
     if not census:
         block["in_census"] = None
-        block["census_note"] = ("this target has no derived shape_geometry census, so whether real "
-                                "models present this class is unknown rather than false")
+        block["census_note"] = (
+            "this target has no derived shape_geometry census, so whether real "
+            "models present this class is unknown rather than false"
+        )
         return block
     entry = census.get(label)
     block["in_census"] = entry is not None
     block["census_classes"] = sorted(census)
     if entry is None:
-        block["census_note"] = ("no captured model presents this geometric class, so improving this "
-                                "member improves a shape the models do not contain")
+        block["census_note"] = (
+            "no captured model presents this geometric class, so improving this "
+            "member improves a shape the models do not contain"
+        )
         return block
     block["census_mac_fraction"] = entry.get("mac_fraction")
     block["census_out_elements"] = entry.get("out_elements")
@@ -163,6 +192,8 @@ def stamp_for(capsule: object, *, target: str) -> dict[str, Any] | None:
     unreachable = entry.get("unreachable")
     if unreachable:
         block["census_unreachable"] = str(unreachable)
-        block["census_note"] = ("this class is in the census but the census itself records it as "
-                                "unbuildable on this target, so membership is by aspect ratio only")
+        block["census_note"] = (
+            "this class is in the census but the census itself records it as "
+            "unbuildable on this target, so membership is by aspect ratio only"
+        )
     return block

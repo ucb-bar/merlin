@@ -11,6 +11,7 @@ unaliased f32 parameter with one contraction use and no other reader.  It may re
 sole-use collapse/expand metadata only when those reshapes preserve the output-channel partition.
 Anything less precise is skipped or refused rather than reported as an applied optimization.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -24,13 +25,20 @@ from typing import Any
 
 import numpy as np
 
-
 FEATURE = "prequantize_constant_weights"
 REWRITE_VERSION = "3"
 _KEY_FILES = ("model.mlir", "weights.safetensors", "weights.safetensors.manifest.json")
-_NP = {"I8": np.int8, "U8": np.uint8, "I16": np.int16, "I32": np.int32,
-       "I64": np.int64, "F16": np.float16, "F32": np.float32, "F64": np.float64,
-       "BF16": np.uint16}
+_NP = {
+    "I8": np.int8,
+    "U8": np.uint8,
+    "I16": np.int16,
+    "I32": np.int32,
+    "I64": np.int64,
+    "F16": np.float16,
+    "F32": np.float32,
+    "F64": np.float64,
+    "BF16": np.uint16,
+}
 
 
 class PrequantizeRefused(RuntimeError):
@@ -88,9 +96,7 @@ def read_tensors(path: Path | str) -> dict[str, np.ndarray]:
     return out
 
 
-_SSA_CHARS = frozenset(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.$-"
-)
+_SSA_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.$-")
 
 
 @dataclass(frozen=True)
@@ -260,14 +266,14 @@ def _input_operands(line: str) -> _InputGroup | None:
         return None
     opening = marker + len("ins")
     closing = _matching(text, opening, "(", ")")
-    if closing is None or "outs(" not in text[closing + 1:]:
+    if closing is None or "outs(" not in text[closing + 1 :]:
         return None
-    content = text[opening + 1:closing]
+    content = text[opening + 1 : closing]
     colon_relative = _top_level_separator(content, ":")
     if colon_relative is None:
         return None
     operands_text = content[:colon_relative]
-    types_text = content[colon_relative + 1:]
+    types_text = content[colon_relative + 1 :]
     return _InputGroup(
         _split_top_level(operands_text),
         _split_top_level(types_text),
@@ -285,12 +291,12 @@ def _parse_layout(line: str) -> _LayoutUse | None:
     equal = text.find("=", text.find(result) + len(result))
     if equal < 0:
         return None
-    tail = text[equal + 1:].lstrip()
+    tail = text[equal + 1 :].lstrip()
     names = ("tensor.collapse_shape", "tensor.expand_shape")
     op_name = next((name for name in names if tail.startswith(name)), None)
     if op_name is None:
         return None
-    after_name = tail[len(op_name):].lstrip()
+    after_name = tail[len(op_name) :].lstrip()
     source_tokens = _ssa_tokens(after_name)
     if not source_tokens or not after_name.startswith(source_tokens[0]):
         return None
@@ -314,8 +320,8 @@ def _parse_layout(line: str) -> _LayoutUse | None:
     return _LayoutUse(
         result=result,
         source=source_tokens[0],
-        source_type=after_name[first + len("tensor<"):first_end],
-        result_type=after_name[second + len("tensor<"):second_end],
+        source_type=after_name[first + len("tensor<") : first_end],
+        result_type=after_name[second + len("tensor<") : second_end],
     )
 
 
@@ -336,8 +342,9 @@ def _ssa_users(lines: list[str], token: str, signature_index: int) -> list[int]:
     return users
 
 
-def _trace_weight(lines: list[str], signature_index: int, arg: int,
-                  shape: tuple[int, ...], name: str) -> tuple[WeightPlan | None, str | None]:
+def _trace_weight(
+    lines: list[str], signature_index: int, arg: int, shape: tuple[int, ...], name: str
+) -> tuple[WeightPlan | None, str | None]:
     """Trace a constant through sole-use shape metadata to its supported contraction use."""
     token = f"%{arg}"
     current_shape = shape
@@ -354,9 +361,13 @@ def _trace_weight(lines: list[str], signature_index: int, arg: int,
         if layout is not None and layout.source == token:
             source = _tensor_type(layout.source_type)
             result = _tensor_type(layout.result_type)
-            if (source is None or result is None or source != (current_shape, "f32")
-                    or result[1] != "f32"
-                    or int(np.prod(source[0])) != int(np.prod(result[0]))):
+            if (
+                source is None
+                or result is None
+                or source != (current_shape, "f32")
+                or result[1] != "f32"
+                or int(np.prod(source[0])) != int(np.prod(result[0]))
+            ):
                 return None, f"arg {arg}: target {name!r} has an invalid layout-only use"
             layout_lines.append(use_line)
             token = layout.result
@@ -376,9 +387,12 @@ def _trace_weight(lines: list[str], signature_index: int, arg: int,
             return None, f"arg {arg}: target {name!r} use type disagrees with its layout chain"
         if " = linalg.matmul" in line and len(current_shape) == 2 and operand_index in (0, 1):
             scale_axis = operand_index
-        elif (" = linalg.generic" in line and operand_index == 1
-              and 'prov.conv_path = "direct_contraction"' in line
-              and len(current_shape) >= 2):
+        elif (
+            " = linalg.generic" in line
+            and operand_index == 1
+            and 'prov.conv_path = "direct_contraction"' in line
+            and len(current_shape) >= 2
+        ):
             scale_axis = 0
         else:
             return None, None
@@ -388,11 +402,9 @@ def _trace_weight(lines: list[str], signature_index: int, arg: int,
         # refused. RHS matrices remain direct rank-2 values, where source/use axis 1 is identical.
         if scale_axis == 0 and shape[0] != current_shape[0]:
             return None, f"arg {arg}: target {name!r} layout merges its scale axis"
-        if scale_axis == 1 and (len(shape) != 2 or layout_lines
-                                or shape[1] != current_shape[1]):
+        if scale_axis == 1 and (len(shape) != 2 or layout_lines or shape[1] != current_shape[1]):
             return None, f"arg {arg}: target {name!r} layout does not preserve its scale axis"
-        return WeightPlan(arg, name, shape, current_shape, scale_axis,
-                          tuple(layout_lines), use_line, token), None
+        return WeightPlan(arg, name, shape, current_shape, scale_axis, tuple(layout_lines), use_line, token), None
     return None, f"arg {arg}: target {name!r} layout chain exceeds the eight-op safety bound"
 
 
@@ -400,8 +412,7 @@ def plan(src: Path | str) -> PrequantizePlan:
     src = Path(src)
     text = (src / "model.mlir").read_text(encoding="utf-8")
     lines = text.splitlines()
-    signature_index = next((i for i, line in enumerate(lines)
-                            if line.lstrip().startswith("func.func @forward(")), -1)
+    signature_index = next((i for i, line in enumerate(lines) if line.lstrip().startswith("func.func @forward(")), -1)
     manifest = json.loads((src / "weights.safetensors.manifest.json").read_text())
     header, _base, _meta = _header(src / "weights.safetensors")
     problems: list[str] = []
@@ -439,35 +450,43 @@ def plan(src: Path | str) -> PrequantizePlan:
         if spec.get("dtype") != "F32" or tuple(spec.get("shape", ())) != shape:
             problems.append(
                 f"arg {arg}: target {name!r} manifest/header disagree or are not F32: "
-                f"manifest={list(shape)}, header={spec}")
+                f"manifest={list(shape)}, header={spec}"
+            )
             continue
         if name + ".__merlin_int8_scale" in header:
             problems.append(f"arg {arg}: target {name!r} is already prequantized")
             continue
         offsets = tuple(spec.get("data_offsets", ()))
         expected_bytes = int(np.prod(shape)) * np.dtype(np.float32).itemsize
-        if (len(offsets) != 2 or not all(isinstance(x, int) for x in offsets)
-                or offsets[0] < 0 or offsets[0] > offsets[1] or offsets[1] > payload_bytes
-                or offsets[1] - offsets[0] != expected_bytes):
-            problems.append(
-                f"arg {arg}: target {name!r} has invalid safetensors byte range {offsets}")
+        if (
+            len(offsets) != 2
+            or not all(isinstance(x, int) for x in offsets)
+            or offsets[0] < 0
+            or offsets[0] > offsets[1]
+            or offsets[1] > payload_bytes
+            or offsets[1] - offsets[0] != expected_bytes
+        ):
+            problems.append(f"arg {arg}: target {name!r} has invalid safetensors byte range {offsets}")
             continue
-        readers = [k for k, other in manifest.items()
-                   if other.get("weight") == name and k != key]
+        readers = [k for k, other in manifest.items() if other.get("weight") == name and k != key]
         if readers:
             problems.append(f"arg {arg}: target {name!r} is also bound by args {readers}")
             continue
         mine = ranges[name]
-        overlap = [other for other, theirs in ranges.items()
-                   if other != name and len(theirs) == 2
-                   and theirs[0] < mine[1] and mine[0] < theirs[1]]
+        overlap = [
+            other
+            for other, theirs in ranges.items()
+            if other != name and len(theirs) == 2 and theirs[0] < mine[1] and mine[0] < theirs[1]
+        ]
         if overlap:
             problems.append(f"arg {arg}: target {name!r} shares bytes with {overlap}")
             continue
         signature = f"%{arg}: tensor<{'x'.join(map(str, shape))}xf32>"
-        signature_fields = _split_top_level(
-            lines[signature_index].split("@forward(", 1)[1].rsplit(") ->", 1)[0]
-        ) if signature_index >= 0 and ") ->" in lines[signature_index] else ()
+        signature_fields = (
+            _split_top_level(lines[signature_index].split("@forward(", 1)[1].rsplit(") ->", 1)[0])
+            if signature_index >= 0 and ") ->" in lines[signature_index]
+            else ()
+        )
         if sum(field == signature for field in signature_fields) != 1:
             problems.append(f"arg {arg}: expected exactly one forward signature token {signature!r}")
             continue
@@ -482,7 +501,8 @@ def _quantize(weight: np.ndarray, name: str, scale_axis: int) -> tuple[np.ndarra
     scale = np.max(np.abs(weight), axis=reduce_axes) / np.float32(127.0)
     if not np.all(np.isfinite(scale)) or np.any(scale == 0):
         raise PrequantizeRefused(
-            f"{name}: non-finite or zero output-channel scale has target-dependent fptosi semantics")
+            f"{name}: non-finite or zero output-channel scale has target-dependent fptosi semantics"
+        )
     broadcast = [1] * weight.ndim
     broadcast[scale_axis] = weight.shape[scale_axis]
     quant = np.clip(np.rint(weight / scale.reshape(broadcast)), -127, 127).astype(np.int8)
@@ -519,8 +539,7 @@ def _rewrite_weights(src: Path, dst: Path, weights: tuple[WeightPlan, ...]) -> N
 
     offset = 0
     for name, data, dtype, shape in chunks:
-        new_header[name] = {"dtype": dtype, "shape": shape,
-                            "data_offsets": [offset, offset + len(data)]}
+        new_header[name] = {"dtype": dtype, "shape": shape, "data_offsets": [offset, offset + len(data)]}
         offset += len(data)
     if meta is not None:
         new_header["__metadata__"] = meta
@@ -538,8 +557,7 @@ def _rewrite_ir(text: str, weights: tuple[WeightPlan, ...]) -> str:
     by_line = {item.use_line: item for item in weights}
     layout_lines = {line for item in weights for line in item.layout_lines}
 
-    signature_index = next((i for i, line in enumerate(lines)
-                            if line.lstrip().startswith("func.func @forward(")), None)
+    signature_index = next((i for i, line in enumerate(lines) if line.lstrip().startswith("func.func @forward(")), None)
     if signature_index is None or ") ->" not in lines[signature_index]:
         raise PrequantizeRefused("@forward must have a one-line ranked-tensor signature")
     signature = lines[signature_index]
@@ -548,9 +566,7 @@ def _rewrite_ir(text: str, weights: tuple[WeightPlan, ...]) -> str:
         old = f"%{item.arg}: tensor<{shape}xf32>"
         new = f"%{item.arg}: tensor<{shape}xi8>"
         signature = signature.replace(old, new)
-    extra = ", ".join(
-        f"%merlin_wq_scale{item.arg}: tensor<{item.shape[item.scale_axis]}xf32>"
-        for item in weights)
+    extra = ", ".join(f"%merlin_wq_scale{item.arg}: tensor<{item.shape[item.scale_axis]}xf32>" for item in weights)
     head, tail = signature.rsplit(") ->", 1)
     lines[signature_index] = f"{head}, {extra}) ->{tail}"
 
@@ -563,21 +579,22 @@ def _rewrite_ir(text: str, weights: tuple[WeightPlan, ...]) -> str:
         if item is None:
             out.append(line)
             continue
-        indent = line[:len(line) - len(line.lstrip())]
+        indent = line[: len(line) - len(line.lstrip())]
         arg = item.arg
         shape = "x".join(map(str, item.use_shape))
         scale_len = item.shape[item.scale_axis]
         typ = f"tensor<{shape}"
-        out.extend([
-            f"{indent}%merlin_wq_zero{arg} = arith.constant 0 : i32",
-            f"{indent}%merlin_wq_zps{arg} = tensor.splat %merlin_wq_zero{arg} : "
-            f"tensor<{scale_len}xi32>",
-            f'{indent}%merlin_wq_deq{arg} = "quant_ext.dequantize_per_channel"('
-            f"{item.use_value}, %merlin_wq_scale{arg}, %merlin_wq_zps{arg}) "
-            f'<{{axis = {item.scale_axis} : i64, input_dtype = "i8"}}> '
-            f"{{prov.op = \"dequantize\", prov.family = \"quantize\"}} : "
-            f"({typ}xi8>, tensor<{scale_len}xf32>, tensor<{scale_len}xi32>) -> {typ}xf32>",
-        ])
+        out.extend(
+            [
+                f"{indent}%merlin_wq_zero{arg} = arith.constant 0 : i32",
+                f"{indent}%merlin_wq_zps{arg} = tensor.splat %merlin_wq_zero{arg} : tensor<{scale_len}xi32>",
+                f'{indent}%merlin_wq_deq{arg} = "quant_ext.dequantize_per_channel"('
+                f"{item.use_value}, %merlin_wq_scale{arg}, %merlin_wq_zps{arg}) "
+                f'<{{axis = {item.scale_axis} : i64, input_dtype = "i8"}}> '
+                f'{{prov.op = "dequantize", prov.family = "quantize"}} : '
+                f"({typ}xi8>, tensor<{scale_len}xf32>, tensor<{scale_len}xi32>) -> {typ}xf32>",
+            ]
+        )
         parsed = _input_operands(line)
         if parsed is None:
             raise PrequantizeRefused(f"arg {arg}: contraction use disappeared during rewrite")
@@ -586,11 +603,7 @@ def _rewrite_ir(text: str, weights: tuple[WeightPlan, ...]) -> str:
         if len(positions) != 1:
             raise PrequantizeRefused(f"arg {arg}: contraction operand became ambiguous during rewrite")
         rewritten[positions[0]] = f"%merlin_wq_deq{arg}"
-        out.append(
-            line[:parsed.operands_start]
-            + ", ".join(rewritten)
-            + line[parsed.colon:]
-        )
+        out.append(line[: parsed.operands_start] + ", ".join(rewritten) + line[parsed.colon :])
     return "\n".join(out) + "\n"
 
 
@@ -604,8 +617,14 @@ def cache_key(src: Path | str) -> str:
 
 
 def prequantized_bundle(src: Path | str, *, cache_root: Path | str | None = None) -> tuple[Path, dict]:
-    from ..baselines.bundle_rewrite import (REWRITES_FILE, RewriteRecord, _carry_sidecars,
-                                             read_rewrites, record_rewrite, retarget_weights_file)
+    from ..baselines.bundle_rewrite import (
+        REWRITES_FILE,
+        RewriteRecord,
+        _carry_sidecars,
+        read_rewrites,
+        record_rewrite,
+        retarget_weights_file,
+    )
     from ..common.artifacts import cache_dir
 
     src = Path(src).resolve()
@@ -613,8 +632,7 @@ def prequantized_bundle(src: Path | str, *, cache_root: Path | str | None = None
     root.mkdir(parents=True, exist_ok=True)
     dst = root / f"{src.name}__{cache_key(src)}"
     if dst.is_dir():
-        records = [record for record in read_rewrites(dst)
-                   if record.name == "prequantize_constant_weights"]
+        records = [record for record in read_rewrites(dst) if record.name == "prequantize_constant_weights"]
         if records:
             return dst, {"cached": True, **records[-1].effect}
         shutil.rmtree(dst)
@@ -634,32 +652,38 @@ def prequantized_bundle(src: Path | str, *, cache_root: Path | str | None = None
         for item in candidate.weights:
             manifest[str(item.arg)]["dtype"] = "int8"
             manifest[str(next_arg)] = {
-                "kind": "param", "weight": item.scale_name, "dtype": "float32",
-                "shape": [item.shape[item.scale_axis]], "generated_by": FEATURE,
+                "kind": "param",
+                "weight": item.scale_name,
+                "dtype": "float32",
+                "shape": [item.shape[item.scale_axis]],
+                "generated_by": FEATURE,
             }
             next_arg += 1
         (tmp / "weights.safetensors.manifest.json").write_text(json.dumps(manifest, indent=2))
         text = _rewrite_ir((src / "model.mlir").read_text(), candidate.weights)
         text, retargeted = retarget_weights_file(text, (tmp / "weights.safetensors").resolve())
         (tmp / "model.mlir").write_text(text)
-        writes = {"model.mlir", "weights.safetensors", "weights.safetensors.manifest.json",
-                  REWRITES_FILE}
+        writes = {"model.mlir", "weights.safetensors", "weights.safetensors.manifest.json", REWRITES_FILE}
         skipped = _carry_sidecars(src, tmp, writes)
         if (src / REWRITES_FILE).is_file():
             shutil.copy2(src / REWRITES_FILE, tmp / REWRITES_FILE)
         record = RewriteRecord(
-            name="prequantize_constant_weights", source_bundle=src.name,
-            soundness=("each selected f32 tensor is an unaliased stored parameter whose sole reader "
-                       "is a supported contraction, optionally through output-channel-preserving "
-                       "collapse/expand metadata; stored q/scale use the compiler's existing "
-                       "symmetric per-output-channel round-even formula"),
-            effect={"weights_prequantized": len(candidate.weights),
-                    "weight_args": [item.arg for item in candidate.weights],
-                    "weight_names": [item.weight for item in candidate.weights],
-                    "weights_file_retargeted": retargeted,
-                    "sidecars_not_carried": skipped},
-            caveats=([f"stale, NOT carried over from the source bundle: {skipped}"]
-                     if skipped else []),
+            name="prequantize_constant_weights",
+            source_bundle=src.name,
+            soundness=(
+                "each selected f32 tensor is an unaliased stored parameter whose sole reader "
+                "is a supported contraction, optionally through output-channel-preserving "
+                "collapse/expand metadata; stored q/scale use the compiler's existing "
+                "symmetric per-output-channel round-even formula"
+            ),
+            effect={
+                "weights_prequantized": len(candidate.weights),
+                "weight_args": [item.arg for item in candidate.weights],
+                "weight_names": [item.weight for item in candidate.weights],
+                "weights_file_retargeted": retargeted,
+                "sidecars_not_carried": skipped,
+            },
+            caveats=([f"stale, NOT carried over from the source bundle: {skipped}"] if skipped else []),
         )
         record_rewrite(tmp, record)
         try:
@@ -669,8 +693,7 @@ def prequantized_bundle(src: Path | str, *, cache_root: Path | str | None = None
             if not dst.is_dir():
                 raise
             return dst, {"cached": True, **record.effect}
-        text, changed = retarget_weights_file((dst / "model.mlir").read_text(),
-                                              dst / "weights.safetensors")
+        text, changed = retarget_weights_file((dst / "model.mlir").read_text(), dst / "weights.safetensors")
         if changed:
             (dst / "model.mlir").write_text(text)
         return dst, {"cached": False, **record.effect}
@@ -681,15 +704,21 @@ def prequantized_bundle(src: Path | str, *, cache_root: Path | str | None = None
 
 def _feature():
     from .impr_features import ImprFeature
+
     return ImprFeature(
-        name=FEATURE, action_class="PASS",
-        description=("AOT-quantize eligible constant contraction weights with the exact W8A8 formula, "
-                     "store i8+scale in a cached rewritten bundle, and let the existing static-weight "
-                     "fast path remove their per-inference scale search/broadcast/quantization."))
+        name=FEATURE,
+        action_class="PASS",
+        description=(
+            "AOT-quantize eligible constant contraction weights with the exact W8A8 formula, "
+            "store i8+scale in a cached rewritten bundle, and let the existing static-weight "
+            "fast path remove their per-inference scale search/broadcast/quantization."
+        ),
+    )
 
 
 def ensure_registered() -> str:
     from .impr_features import known, register
+
     if FEATURE not in known():
         register(_feature())
     return FEATURE

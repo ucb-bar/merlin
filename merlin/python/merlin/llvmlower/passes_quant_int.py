@@ -19,6 +19,7 @@ The output stays f32 so downstream (nonlinears) is unchanged — this is the con
 map is an identity projection of the parallel iterator dims are converted (matmul + the m2m
 attention/batched generics); anything else is left for the f32 fallback (``lower_quant_ext``).
 """
+
 from __future__ import annotations
 
 
@@ -38,6 +39,7 @@ def _carry_prov(src, **roles) -> None:
     another. Nothing downstream reads ``prov.*`` for codegen, so this changes identity only.
     """
     from xdsl.dialects.builtin import StringAttr
+
     prov = {k: v for k, v in src.attributes.items() if k.startswith("prov.")}
     for role, dst in roles.items():
         dst.attributes.update(prov)
@@ -47,15 +49,21 @@ def _carry_prov(src, **roles) -> None:
 def _is_dequant(op) -> bool:
     # ``op`` may be a Block (a block-argument owner) — guard with getattr.
     name = getattr(op, "op_name", None)
-    return (getattr(op, "name", None) == "builtin.unregistered" and name is not None
-            and name.data == "quant_ext.dequantize_per_channel")
+    return (
+        getattr(op, "name", None) == "builtin.unregistered"
+        and name is not None
+        and name.data == "quant_ext.dequantize_per_channel"
+    )
 
 
 def _is_dequant_per_tensor(op) -> bool:
     """Whether ``op`` is model2MLIR's PT2E activation dequantize boundary."""
     name = getattr(op, "op_name", None)
-    return (getattr(op, "name", None) == "builtin.unregistered" and name is not None
-            and name.data == "quant_ext.dequantize_per_tensor")
+    return (
+        getattr(op, "name", None) == "builtin.unregistered"
+        and name is not None
+        and name.data == "quant_ext.dequantize_per_tensor"
+    )
 
 
 def _constant_int(value) -> int | None:
@@ -79,10 +87,12 @@ def _is_canonical_matmul(ndim: int, in_maps, out_dims, red_flags) -> bool:
     correctness bug rather than a missed optimization. Everything that does not match keeps the
     generic form and simply stays out of reach of the named-op schedules.
     """
-    return (ndim == 3
-            and list(red_flags) == [False, False, True]
-            and [list(m) for m in in_maps] == [[0, 2], [2, 1]]
-            and list(out_dims) == [0, 1])
+    return (
+        ndim == 3
+        and list(red_flags) == [False, False, True]
+        and [list(m) for m in in_maps] == [[0, 2], [2, 1]]
+        and list(out_dims) == [0, 1]
+    )
 
 
 def _select_targets(targets, select, key=None):
@@ -145,11 +155,13 @@ def _emit_torchao_reciprocal_tensor(scale):
     body.add_ops([one, reciprocal, L.YieldOp(reciprocal.result)])
     identity = AffineMapAttr(AffineMap.identity(rank))
     generic = L.GenericOp(
-        inputs=(scale,), outputs=(empty.results[0],), body=Region(body),
+        inputs=(scale,),
+        outputs=(empty.results[0],),
+        body=Region(body),
         indexing_maps=ArrayAttr([identity, identity]),
-        iterator_types=ArrayAttr(
-            [L.IteratorTypeAttr(L.IteratorType.PARALLEL)] * rank),
-        result_types=(scale_type,))
+        iterator_types=ArrayAttr([L.IteratorTypeAttr(L.IteratorType.PARALLEL)] * rank),
+        result_types=(scale_type,),
+    )
     return [empty, generic], generic.results[0]
 
 
@@ -257,6 +269,7 @@ def _is_pure_gather(op) -> bool:
     """All-parallel, single-input, single-result f32 ``linalg.generic`` that only copies elements."""
     from xdsl.dialects.builtin import TensorType, f32
     from xdsl.dialects.linalg import ops as L
+
     if getattr(op, "name", None) != "linalg.generic":
         return False
     if len(op.inputs) != 1 or len(op.outputs) != 1 or len(op.results) != 1:
@@ -276,7 +289,7 @@ def _is_pure_gather(op) -> bool:
     except Exception:
         return False
     if any(d < 0 for d in shp):
-        return False                              # dynamic extent: nothing here is priceable
+        return False  # dynamic extent: nothing here is priceable
     return _yields_only_input(op)
 
 
@@ -289,6 +302,7 @@ def _gather_chain(value):
     ``(None, reason)`` and leaves the operand alone whenever that cannot be established.
     """
     from xdsl.ir import Operation
+
     cur = value
     reshapes = []
     for _ in range(_MAX_RESHAPE_CHAIN):
@@ -324,8 +338,8 @@ def _affine_terms(expr):
     coverage proof succeed and put a PER-TENSOR scale on a WEIGHT whose per-row scale is per output
     channel -- a precision regression dressed as a win. The refusal is counted, not silent.
     """
-    from xdsl.ir.affine import (AffineBinaryOpExpr, AffineBinaryOpKind, AffineConstantExpr,
-                                AffineDimExpr)
+    from xdsl.ir.affine import AffineBinaryOpExpr, AffineBinaryOpKind, AffineConstantExpr, AffineDimExpr
+
     terms, const = [], 0
     stack = [(expr, 1)]
     while stack:
@@ -368,6 +382,7 @@ def _gather_coverage(gather) -> "tuple[str | None, list[int], str]":
     Fails closed everywhere: any expression, bound or rank this cannot price returns ``None``.
     """
     from xdsl.ir.affine import AffineDimExpr
+
     maps = list(gather.indexing_maps)
     if len(maps) != 2:
         return None, [], "unexpected_map_count"
@@ -466,22 +481,35 @@ def _emit_prequant_gather(gather, reshapes):
     amx_e = tensor.EmptyOp((), sc_t)
     zero_f = arith.ConstantOp(FloatAttr(0.0, f32))
     amx_f = L.FillOp(inputs=[zero_f.results[0]], outputs=[amx_e.results[0]], res=[sc_t])
-    rb = Block(arg_types=[f32, f32]); a_in, acc_in = rb.args
-    ab = mathd.AbsFOp(a_in); mx = arith.MaximumfOp(ab.result, acc_in)
+    rb = Block(arg_types=[f32, f32])
+    a_in, acc_in = rb.args
+    ab = mathd.AbsFOp(a_in)
+    mx = arith.MaximumfOp(ab.result, acc_in)
     rb.add_ops([ab, mx, L.YieldOp(mx.result)])
     in_map = amap(r, AffineMap.identity(r).results)
-    amx = L.GenericOp(inputs=(amax_src,), outputs=(amx_f.results[0],), body=Region(rb),
-                      indexing_maps=ArrayAttr([in_map, amap(r, [])]),
-                      iterator_types=ArrayAttr([L.IteratorTypeAttr(red)] * r),
-                      result_types=(sc_t,))
+    amx = L.GenericOp(
+        inputs=(amax_src,),
+        outputs=(amx_f.results[0],),
+        body=Region(rb),
+        indexing_maps=ArrayAttr([in_map, amap(r, [])]),
+        iterator_types=ArrayAttr([L.IteratorTypeAttr(red)] * r),
+        result_types=(sc_t,),
+    )
     # --- s = amax / 127 ---
-    sc_e = tensor.EmptyOp((), sc_t); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
-    sb = Block(arg_types=[f32, f32]); s_in, _unused = sb.args
+    sc_e = tensor.EmptyOp((), sc_t)
+    c127 = arith.ConstantOp(FloatAttr(127.0, f32))
+    sb = Block(arg_types=[f32, f32])
+    s_in, _unused = sb.args
     safe_scale = _emit_torchao_symmetric_scale(sb, s_in, c127.results[0])
     sb.add_op(L.YieldOp(safe_scale))
-    s_a = L.GenericOp(inputs=(amx.results[0],), outputs=(sc_e.results[0],), body=Region(sb),
-                      indexing_maps=ArrayAttr([amap(0, []), amap(0, [])]),
-                      iterator_types=ArrayAttr([]), result_types=(sc_t,))
+    s_a = L.GenericOp(
+        inputs=(amx.results[0],),
+        outputs=(sc_e.results[0],),
+        body=Region(sb),
+        indexing_maps=ArrayAttr([amap(0, []), amap(0, [])]),
+        iterator_types=ArrayAttr([]),
+        result_types=(sc_t,),
+    )
     reciprocal_ops, reciprocal = _emit_torchao_reciprocal_tensor(s_a.results[0])
     # --- quantize the SOURCE (not the expansion): q = fptosi(clamp(roundeven(x*(1/s)), +-127)) ---
     # Quantizes ALL of A, including elements outside the covered box, which may therefore saturate at
@@ -489,26 +517,39 @@ def _emit_prequant_gather(gather, reshapes):
     # the gather rebuilt below, whose read set is exactly the box the scale was derived from.
     ident_r = AffineMap.identity(r).results
     i8_src_t = TensorType(i8, ash)
-    q_e = tensor.EmptyOp((), i8_src_t); c127n = arith.ConstantOp(FloatAttr(-127.0, f32))
-    qb = Block(arg_types=[f32, f32, i8]); xv, inv_sv, _q = qb.args
-    q1 = arith.MulfOp(xv, inv_sv); q2 = mathd.RoundEvenOp(q1.result)
+    q_e = tensor.EmptyOp((), i8_src_t)
+    c127n = arith.ConstantOp(FloatAttr(-127.0, f32))
+    qb = Block(arg_types=[f32, f32, i8])
+    xv, inv_sv, _q = qb.args
+    q1 = arith.MulfOp(xv, inv_sv)
+    q2 = mathd.RoundEvenOp(q1.result)
     q3 = arith.MinimumfOp(q2.result, c127.results[0])
-    q4 = arith.MaximumfOp(q3.result, c127n.results[0]); q5 = arith.FPToSIOp(q4.result, i8)
+    q4 = arith.MaximumfOp(q3.result, c127n.results[0])
+    q5 = arith.FPToSIOp(q4.result, i8)
     qb.add_ops([q1, q2, q3, q4, q5, L.YieldOp(q5.result)])
-    q = L.GenericOp(inputs=(src, reciprocal), outputs=(q_e.results[0],), body=Region(qb),
-                    indexing_maps=ArrayAttr([amap(r, ident_r), amap(r, []), amap(r, ident_r)]),
-                    iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * r),
-                    result_types=(i8_src_t,))
+    q = L.GenericOp(
+        inputs=(src, reciprocal),
+        outputs=(q_e.results[0],),
+        body=Region(qb),
+        indexing_maps=ArrayAttr([amap(r, ident_r), amap(r, []), amap(r, ident_r)]),
+        iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * r),
+        result_types=(i8_src_t,),
+    )
     # --- the SAME gather, now moving i8 (identical maps, iterators and empty body) ---
     g_t = TensorType(i8, list(gather.results[0].type.get_shape()))
     g_e = tensor.EmptyOp((), g_t)
-    gb = Block(arg_types=[i8, i8]); gb.add_ops([L.YieldOp(gb.args[0])])
-    g8 = L.GenericOp(inputs=(q.results[0],), outputs=(g_e.results[0],), body=Region(gb),
-                     indexing_maps=gather.indexing_maps, iterator_types=gather.iterator_types,
-                     result_types=(g_t,))
+    gb = Block(arg_types=[i8, i8])
+    gb.add_ops([L.YieldOp(gb.args[0])])
+    g8 = L.GenericOp(
+        inputs=(q.results[0],),
+        outputs=(g_e.results[0],),
+        body=Region(gb),
+        indexing_maps=gather.indexing_maps,
+        iterator_types=gather.iterator_types,
+        result_types=(g_t,),
+    )
     g8.attributes.update({k: v for k, v in gather.attributes.items() if k.startswith("prov.")})
-    pre = (pre_amax + [amx_e, zero_f, amx_f, amx, sc_e, c127, s_a]
-           + reciprocal_ops + [q_e, c127n, q, g_e, g8])
+    pre = pre_amax + [amx_e, zero_f, amx_f, amx, sc_e, c127, s_a] + reciprocal_ops + [q_e, c127n, q, g_e, g8]
     # The quantization ops belong to the region the gather came from, so they carry ITS identity with
     # a role of their own. Without this a profile joining on `prov.fqn` falls back to the MLIR op name
     # and every activation quantize in the model collapses into one `linalg.generic` bucket.
@@ -518,8 +559,12 @@ def _emit_prequant_gather(gather, reshapes):
     cur = g8.results[0]
     for rs in reshapes:
         rt = TensorType(i8, list(rs.results[0].type.get_shape()))
-        new = type(rs).create(operands=[cur, *list(rs.operands[1:])], result_types=[rt],
-                              properties=dict(rs.properties), attributes=dict(rs.attributes))
+        new = type(rs).create(
+            operands=[cur, *list(rs.operands[1:])],
+            result_types=[rt],
+            properties=dict(rs.properties),
+            attributes=dict(rs.attributes),
+        )
         pre.append(new)
         cur = new.results[0]
 
@@ -530,9 +575,14 @@ def _emit_prequant_gather(gather, reshapes):
     return cur, s_a.results[0], pre, dead, mode
 
 
-def lower_contraction_int8(module, *, named_contraction: bool = False,
-                           select=None, prequant_gather: bool = False,
-                           report_out: "dict | None" = None) -> int:
+def lower_contraction_int8(
+    module,
+    *,
+    named_contraction: bool = False,
+    select=None,
+    prequant_gather: bool = False,
+    report_out: "dict | None" = None,
+) -> int:
     """Rewrite f32 contractions into i8×i8→i32 + dynamic act-quant + requant. Returns count.
 
     ``prequant_gather`` (default False, so the shipped datapath is byte-identical) turns on the
@@ -550,11 +600,10 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
     """
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
-    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, FloatAttr, TensorType,
-                                       f32, i8, i32)
+    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, FloatAttr, TensorType, f32, i8, i32
     from xdsl.dialects.linalg import ops as L
     from xdsl.ir import Block, Region
-    from xdsl.ir.affine import AffineMap, AffineDimExpr
+    from xdsl.ir.affine import AffineDimExpr, AffineMap
 
     par, red = L.IteratorType.PARALLEL, L.IteratorType.REDUCTION
 
@@ -572,20 +621,20 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
         # conv / non-projection contractions (input map carries a stride/dilation affine
         # expression like (d2*16+d5)) are handled by lower_conv_int8, which preserves the
         # exact maps — the matmul rebuild below would drop the compound terms.
-        if any(not isinstance(r, AffineDimExpr)
-               for m in op.indexing_maps for r in m.data.results):
+        if any(not isinstance(r, AffineDimExpr) for m in op.indexing_maps for r in m.data.results):
             return None
         iters = [getattr(a, "data", a) for a in op.iterator_types]
         if not any(i == red for i in iters):
             return None
         bn = [b.name for b in op.body.blocks[0].ops]
-        if not (("arith.mulf" in bn and "arith.addf" in bn)
-                or ("arith.muli" in bn and "arith.addi" in bn)):
+        if not (("arith.mulf" in bn and "arith.addf" in bn) or ("arith.muli" in bn and "arith.addi" in bn)):
             return None
         maps = list(op.indexing_maps)
         ndim = maps[0].data.num_dims
+
         def dimlist(m):
             return [r.position for r in m.data.results if isinstance(r, AffineDimExpr)]
+
         in_maps = [dimlist(maps[0]), dimlist(maps[1])]
         out_dims = dimlist(maps[-1])
         red_flags = [it == red for it in iters]
@@ -616,19 +665,19 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
     for op, (ndim, in_maps, out_dims, red_flags) in targets:
         block = op.parent_block()
         out_t = op.results[0].type
-        P = len(out_dims)                                # output / parallel rank
+        P = len(out_dims)  # output / parallel rank
         d_par = AffineMap.identity(P).results
         # output-position of each iterator dim (parallel dims only)
         pos_of = {d: out_dims.index(d) for d in out_dims}
-        pre = []                                         # ops to insert before `op`
+        pre = []  # ops to insert before `op`
 
         i8_inputs = []
-        scale_vals = []                                  # (ssa, [output-positions]) per operand
+        scale_vals = []  # (ssa, [output-positions]) per operand
         for oi, operand in enumerate(op.inputs):
-            dims = in_maps[oi]                            # iterator dims this operand indexes
-            red_pos = [p for p, d in enumerate(dims) if red_flags[d]]   # positions in operand
+            dims = in_maps[oi]  # iterator dims this operand indexes
+            red_pos = [p for p, d in enumerate(dims) if red_flags[d]]  # positions in operand
             par_pos = [p for p, d in enumerate(dims) if not red_flags[d]]
-            par_outpos = [pos_of[dims[p]] for p in par_pos]             # -> requant out dims
+            par_outpos = [pos_of[dims[p]] for p in par_pos]  # -> requant out dims
             shp = list(operand.type.get_shape())
             sc_shape = [shp[p] for p in par_pos]
             sc_t = TensorType(f32, sc_shape)
@@ -643,17 +692,20 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
             # packer may hoist this sole-use constant layout offline; scalar/RVV paths still see
             # the explicit, target-neutral i8 transpose.
             transpose = operand.owner if getattr(operand.owner, "name", None) == "linalg.transpose" else None
-            transposed_deq = (transpose.inputs[0].owner if transpose is not None
-                              and list(transpose.permutation.get_values()) == [1, 0]
-                              else None)
-            if (_is_dequant(transposed_deq)
-                    and isinstance(transposed_deq.operands[0].type, TensorType)
-                    and transposed_deq.operands[0].type.element_type == i8
-                    and len(shp) == 2):
+            transposed_deq = (
+                transpose.inputs[0].owner
+                if transpose is not None and list(transpose.permutation.get_values()) == [1, 0]
+                else None
+            )
+            if (
+                _is_dequant(transposed_deq)
+                and isinstance(transposed_deq.operands[0].type, TensorType)
+                and transposed_deq.operands[0].type.element_type == i8
+                and len(shp) == 2
+            ):
                 i8_t = TensorType(i8, shp)
                 tr_empty = tensor.EmptyOp((), i8_t)
-                tr_i8 = L.TransposeOp(transposed_deq.operands[0], tr_empty.results[0],
-                                      transpose.permutation, i8_t)
+                tr_i8 = L.TransposeOp(transposed_deq.operands[0], tr_empty.results[0], transpose.permutation, i8_t)
                 pre += [tr_empty, tr_i8]
                 i8_inputs.append(tr_i8.results[0])
                 scale_vals.append((transposed_deq.operands[1], par_outpos))
@@ -666,11 +718,13 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
                 i8_inputs.append(deq.operands[0])
                 scale_vals.append((deq.operands[1], par_outpos))
                 continue
-            if (_is_dequant_per_tensor(operand.owner)
-                    and len(operand.owner.operands) >= 3
-                    and _constant_int(operand.owner.operands[2]) == 0
-                    and isinstance(operand.owner.operands[0].type, TensorType)
-                    and operand.owner.operands[0].type.element_type == i8):
+            if (
+                _is_dequant_per_tensor(operand.owner)
+                and len(operand.owner.operands) >= 3
+                and _constant_int(operand.owner.operands[2]) == 0
+                and isinstance(operand.owner.operands[0].type, TensorType)
+                and operand.owner.operands[0].type.element_type == i8
+            ):
                 # Static PT2E activation: consume the calibrated i8 tensor and
                 # its scalar scale directly. No amax scan and no second quantize.
                 deq = operand.owner
@@ -679,7 +733,7 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
                 _bump(report_out, "static_activation_reused")
                 continue
             if operand.type.element_type != f32:
-                i8_inputs.append(operand)                # already integer
+                i8_inputs.append(operand)  # already integer
                 scale_vals.append((None, par_outpos))
                 continue
 
@@ -698,75 +752,99 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
                     if built is None:
                         # coverage unprovable: leave the operand on the per-row path rather than
                         # quantize it against a scale derived from elements the gather never reads.
-                        _bump(report_out,
-                              f"prequant_gather_refused_{_gather_coverage(g_op)[2]}")
+                        _bump(report_out, f"prequant_gather_refused_{_gather_coverage(g_op)[2]}")
                 if built is not None:
                     i8_val, s_ssa, g_pre, g_dead, g_mode = built
                     pre += g_pre
                     dead_chain_ops.extend(g_dead)
                     i8_inputs.append(i8_val)
-                    scale_vals.append((s_ssa, []))          # PER-TENSOR: no output dim to index by
+                    scale_vals.append((s_ssa, []))  # PER-TENSOR: no output dim to index by
                     _bump(report_out, "prequant_gather_rewrites")
                     _bump(report_out, f"prequant_gather_mode_{g_mode}")
                     continue
 
             # dynamic per-(parallel-row) quant of an f32 activation
             ident_r = AffineMap.identity(r).results
-            red_iters = ArrayAttr([L.IteratorTypeAttr(red if p in red_pos else par)
-                                   for p in range(r)])
+            red_iters = ArrayAttr([L.IteratorTypeAttr(red if p in red_pos else par) for p in range(r)])
             sc_map_in = amap(r, ident_r)
             sc_map_out = amap(r, [ident_r[p] for p in par_pos])
             # abs-max
             amx_e = tensor.EmptyOp((), sc_t)
             zero_f = arith.ConstantOp(FloatAttr(0.0, f32))
             amx_f = L.FillOp(inputs=[zero_f.results[0]], outputs=[amx_e.results[0]], res=[sc_t])
-            rb = Block(arg_types=[f32, f32]); a_in, acc_in = rb.args
-            ab = mathd.AbsFOp(a_in); mx = arith.MaximumfOp(ab.result, acc_in)
+            rb = Block(arg_types=[f32, f32])
+            a_in, acc_in = rb.args
+            ab = mathd.AbsFOp(a_in)
+            mx = arith.MaximumfOp(ab.result, acc_in)
             rb.add_ops([ab, mx, L.YieldOp(mx.result)])
-            amx = L.GenericOp(inputs=(operand,), outputs=(amx_f.results[0],), body=Region(rb),
-                              indexing_maps=ArrayAttr([sc_map_in, sc_map_out]),
-                              iterator_types=red_iters, result_types=(sc_t,))
+            amx = L.GenericOp(
+                inputs=(operand,),
+                outputs=(amx_f.results[0],),
+                body=Region(rb),
+                indexing_maps=ArrayAttr([sc_map_in, sc_map_out]),
+                iterator_types=red_iters,
+                result_types=(sc_t,),
+            )
             # s = amax / 127
-            sc_e = tensor.EmptyOp((), sc_t); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
+            sc_e = tensor.EmptyOp((), sc_t)
+            c127 = arith.ConstantOp(FloatAttr(127.0, f32))
             ident_p = AffineMap.identity(len(sc_shape)).results
-            sb = Block(arg_types=[f32, f32]); s_in, _ = sb.args
+            sb = Block(arg_types=[f32, f32])
+            s_in, _ = sb.args
             safe_scale = _emit_torchao_symmetric_scale(sb, s_in, c127.results[0])
             sb.add_op(L.YieldOp(safe_scale))
-            sc = L.GenericOp(inputs=(amx.results[0],), outputs=(sc_e.results[0],), body=Region(sb),
-                             indexing_maps=ArrayAttr([amap(len(sc_shape), ident_p),
-                                                      amap(len(sc_shape), ident_p)]),
-                             iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * len(sc_shape)),
-                             result_types=(sc_t,))
+            sc = L.GenericOp(
+                inputs=(amx.results[0],),
+                outputs=(sc_e.results[0],),
+                body=Region(sb),
+                indexing_maps=ArrayAttr([amap(len(sc_shape), ident_p), amap(len(sc_shape), ident_p)]),
+                iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * len(sc_shape)),
+                result_types=(sc_t,),
+            )
             reciprocal_ops, reciprocal = _emit_torchao_reciprocal_tensor(sc.results[0])
             # quantize: q = fptosi(clamp(roundeven(x*(1/s)), -127, 127))
             i8_t = TensorType(i8, shp)
-            q_e = tensor.EmptyOp((), i8_t); c127n = arith.ConstantOp(FloatAttr(-127.0, f32))
-            qb = Block(arg_types=[f32, f32, i8]); xv, inv_sv, _ = qb.args
-            q1 = arith.MulfOp(xv, inv_sv); q2 = mathd.RoundEvenOp(q1.result)
+            q_e = tensor.EmptyOp((), i8_t)
+            c127n = arith.ConstantOp(FloatAttr(-127.0, f32))
+            qb = Block(arg_types=[f32, f32, i8])
+            xv, inv_sv, _ = qb.args
+            q1 = arith.MulfOp(xv, inv_sv)
+            q2 = mathd.RoundEvenOp(q1.result)
             q3 = arith.MinimumfOp(q2.result, c127.results[0])
-            q4 = arith.MaximumfOp(q3.result, c127n.results[0]); q5 = arith.FPToSIOp(q4.result, i8)
+            q4 = arith.MaximumfOp(q3.result, c127n.results[0])
+            q5 = arith.FPToSIOp(q4.result, i8)
             qb.add_ops([q1, q2, q3, q4, q5, L.YieldOp(q5.result)])
-            q = L.GenericOp(inputs=(operand, reciprocal), outputs=(q_e.results[0],),
-                            body=Region(qb),
-                            indexing_maps=ArrayAttr([amap(r, ident_r), sc_map_out, amap(r, ident_r)]),
-                            iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * r),
-                            result_types=(i8_t,))
-            pre += [amx_e, zero_f, amx_f, amx, sc_e, c127, sc, *reciprocal_ops,
-                    q_e, c127n, q]
+            q = L.GenericOp(
+                inputs=(operand, reciprocal),
+                outputs=(q_e.results[0],),
+                body=Region(qb),
+                indexing_maps=ArrayAttr([amap(r, ident_r), sc_map_out, amap(r, ident_r)]),
+                iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * r),
+                result_types=(i8_t,),
+            )
+            pre += [amx_e, zero_f, amx_f, amx, sc_e, c127, sc, *reciprocal_ops, q_e, c127n, q]
             i8_inputs.append(q.results[0])
             scale_vals.append((sc.results[0], par_outpos))
 
         # i8×i8→i32 contraction (reuse maps/iters)
         acc_t = TensorType(i32, list(out_t.get_shape()))
-        acc_e = tensor.EmptyOp((), acc_t); zi = arith.ConstantOp.from_int_and_width(0, 32)
+        acc_e = tensor.EmptyOp((), acc_t)
+        zi = arith.ConstantOp.from_int_and_width(0, 32)
         acc_f = L.FillOp(inputs=[zi.results[0]], outputs=[acc_e.results[0]], res=[acc_t])
-        mm_maps = ArrayAttr([amap(ndim, [AffineDimExpr(d) for d in in_maps[0]]),
-                             amap(ndim, [AffineDimExpr(d) for d in in_maps[1]]),
-                             amap(ndim, [AffineDimExpr(d) for d in out_dims])])
+        mm_maps = ArrayAttr(
+            [
+                amap(ndim, [AffineDimExpr(d) for d in in_maps[0]]),
+                amap(ndim, [AffineDimExpr(d) for d in in_maps[1]]),
+                amap(ndim, [AffineDimExpr(d) for d in out_dims]),
+            ]
+        )
         mm_iters = ArrayAttr([L.IteratorTypeAttr(red if red_flags[d] else par) for d in range(ndim)])
-        mb = Block(arg_types=[i8, i8, i32]); av, bv, acc = mb.args
-        ea = arith.ExtSIOp(av, i32); eb = arith.ExtSIOp(bv, i32)
-        pm = arith.MuliOp(ea.result, eb.result); pa = arith.AddiOp(pm.result, acc)
+        mb = Block(arg_types=[i8, i8, i32])
+        av, bv, acc = mb.args
+        ea = arith.ExtSIOp(av, i32)
+        eb = arith.ExtSIOp(bv, i32)
+        pm = arith.MuliOp(ea.result, eb.result)
+        pa = arith.AddiOp(pm.result, acc)
         mb.add_ops([ea, eb, pm, pa, L.YieldOp(pa.result)])
         # NAMED OP vs GENERIC — this choice decides whether the schedule levers exist at all.
         #
@@ -786,11 +864,16 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
         # asserts an indexing convention, and claiming one the op does not have would be a
         # correctness bug, not a missed optimization.
         if named_contraction and _is_canonical_matmul(ndim, in_maps, out_dims, red_flags):
-            i8mm = L.MatmulOp(inputs=tuple(i8_inputs), outputs=(acc_f.results[0],),
-                              res=(acc_t,))
+            i8mm = L.MatmulOp(inputs=tuple(i8_inputs), outputs=(acc_f.results[0],), res=(acc_t,))
         else:
-            i8mm = L.GenericOp(inputs=tuple(i8_inputs), outputs=(acc_f.results[0],), body=Region(mb),
-                               indexing_maps=mm_maps, iterator_types=mm_iters, result_types=(acc_t,))
+            i8mm = L.GenericOp(
+                inputs=tuple(i8_inputs),
+                outputs=(acc_f.results[0],),
+                body=Region(mb),
+                indexing_maps=mm_maps,
+                iterator_types=mm_iters,
+                result_types=(acc_t,),
+            )
 
         # requant: out_f32 = sitofp(acc) * scale_lhs * scale_rhs
         sc_inputs, sc_maps = [], [amap(P, d_par)]
@@ -801,16 +884,23 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
             sc_maps.append(amap(P, [d_par[p] for p in outpos]))
         out_e = tensor.EmptyOp((), out_t)
         wb = Block(arg_types=[i32] + [f32] * len(sc_inputs) + [f32])
-        accv = wb.args[0]; svs = wb.args[1:1 + len(sc_inputs)]
-        cur = arith.SIToFPOp(accv, f32); ops_w = [cur]
+        accv = wb.args[0]
+        svs = wb.args[1 : 1 + len(sc_inputs)]
+        cur = arith.SIToFPOp(accv, f32)
+        ops_w = [cur]
         for sv in svs:
-            m = arith.MulfOp(cur.result, sv); ops_w.append(m); cur = m
+            m = arith.MulfOp(cur.result, sv)
+            ops_w.append(m)
+            cur = m
         wb.add_ops(ops_w + [L.YieldOp(cur.result)])
-        requant = L.GenericOp(inputs=(i8mm.results[0], *sc_inputs), outputs=(out_e.results[0],),
-                              body=Region(wb),
-                              indexing_maps=ArrayAttr(sc_maps + [amap(P, d_par)]),
-                              iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * P),
-                              result_types=(out_t,))
+        requant = L.GenericOp(
+            inputs=(i8mm.results[0], *sc_inputs),
+            outputs=(out_e.results[0],),
+            body=Region(wb),
+            indexing_maps=ArrayAttr(sc_maps + [amap(P, d_par)]),
+            iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * P),
+            result_types=(out_t,),
+        )
         _carry_prov(op, contraction=i8mm, requant=requant)
 
         for new in pre + [acc_e, zi, acc_f, i8mm, out_e, requant]:
@@ -867,11 +957,10 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
     so the deadness is a gated fact instead of a comment."""
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
-    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, FloatAttr, TensorType,
-                                       f32, i8, i32)
+    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, FloatAttr, TensorType, f32, i8, i32
     from xdsl.dialects.linalg import ops as L
     from xdsl.ir import Block, Region
-    from xdsl.ir.affine import AffineMap, AffineDimExpr
+    from xdsl.ir.affine import AffineDimExpr, AffineMap
 
     par, red = L.IteratorType.PARALLEL, L.IteratorType.REDUCTION
 
@@ -928,16 +1017,15 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
         # than inflating with the ops an earlier quant pass just minted (measured: 190 -> 228 on
         # deepjscc once `quantize_before_gather` had run).
         if "prov.role" not in op.attributes and (
-                "prov.conv_path" in op.attributes
-                or getattr(op.attributes.get("prov.op"), "data", "").startswith("conv")):
+            "prov.conv_path" in op.attributes or getattr(op.attributes.get("prov.op"), "data", "").startswith("conv")
+        ):
             n_conv_prov += 1
         if op.name != "linalg.generic" or len(op.inputs) != 2 or not op.body.blocks:
             continue
         n_generics += 1
         maps = list(op.indexing_maps)
-        if not any(not isinstance(r, AffineDimExpr)
-                   for m in maps for r in m.data.results):
-            continue                                     # not a conv (no compound map term)
+        if not any(not isinstance(r, AffineDimExpr) for m in maps for r in m.data.results):
+            continue  # not a conv (no compound map term)
         n_compound += 1
         # "compound" is not the same as "windowed". The predicate above also admits a BROADCAST,
         # whose non-dim map result is a bare constant index (`(d0, d1, 0, 0)`) with no stride in it
@@ -948,23 +1036,20 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
         # Fails OPEN on the diagnostic side: an expression `_affine_terms` cannot decompose (mod,
         # floordiv) counts as windowed, so an unrecognised window can never make this pass claim it
         # was inert when it was merely unlucky.
-        if any(not isinstance(r, AffineDimExpr) and _affine_terms(r)[0] != []
-               for m in maps for r in m.data.results):
+        if any(not isinstance(r, AffineDimExpr) and _affine_terms(r)[0] != [] for m in maps for r in m.data.results):
             n_windowed += 1
         out_t = op.results[0].type
         if not (isinstance(out_t, TensorType) and out_t.element_type == f32):
             continue
         bn = [b.name for b in op.body.blocks[0].ops]
-        if not (("arith.mulf" in bn and "arith.addf" in bn)
-                or ("arith.muli" in bn and "arith.addi" in bn)):
+        if not (("arith.mulf" in bn and "arith.addf" in bn) or ("arith.muli" in bn and "arith.addi" in bn)):
             continue
         # operand 0 = activation (compound map); operand 1 = weight (dequant i8, or plain f32 —
         # torchao leaves conv weights f32, so we dynamically per-output-channel quantize them).
         act, wt = op.inputs[0], op.inputs[1]
         if not (isinstance(act.type, TensorType) and act.type.element_type == f32):
             continue
-        if not (_is_dequant(wt.owner)
-                or (isinstance(wt.type, TensorType) and wt.type.element_type == f32)):
+        if not (_is_dequant(wt.owner) or (isinstance(wt.type, TensorType) and wt.type.element_type == f32)):
             continue
         targets.append(op)
     targets = _select_targets(targets, select)
@@ -979,7 +1064,8 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
         red_flags = [it == red for it in iters]
         act, wt = op.inputs[0], op.inputs[1]
         out_t = op.results[0].type
-        ash = list(act.type.get_shape()); r = len(ash)
+        ash = list(act.type.get_shape())
+        r = len(ash)
         pre = []
 
         # --- weight -> i8 + per-output-channel scale s_w ---
@@ -991,59 +1077,73 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
         wt_keep = []
         for ax, expr in enumerate(wt_exprs):
             terms, _const = _affine_terms(expr)
-            if terms and all(0 <= d < len(red_flags) and not red_flags[d]
-                             for d, _coeff in terms):
+            if terms and all(0 <= d < len(red_flags) and not red_flags[d] for d, _coeff in terms):
                 wt_keep.append(ax)
         if _is_dequant(wt.owner):
             deq = wt.owner
-            wt_i8, s_w = deq.operands[0], deq.operands[1]        # already i8 + per-channel scale
+            wt_i8, s_w = deq.operands[0], deq.operands[1]  # already i8 + per-channel scale
         else:
             # dynamically per-output-channel quantize the f32 weight (reduce over its kernel axes)
-            wsh = list(wt.type.get_shape()); wr = len(wsh)
+            wsh = list(wt.type.get_shape())
+            wr = len(wsh)
             ws_shape = [wsh[ax] for ax in wt_keep]
             ws_t = TensorType(f32, ws_shape)
             id_w = AffineMap.identity(wr).results
             keep_res = [id_w[ax] for ax in wt_keep]
-            w_amx_e = tensor.EmptyOp((), ws_t); wzero = arith.ConstantOp(FloatAttr(0.0, f32))
+            w_amx_e = tensor.EmptyOp((), ws_t)
+            wzero = arith.ConstantOp(FloatAttr(0.0, f32))
             w_amx_f = L.FillOp(inputs=[wzero.results[0]], outputs=[w_amx_e.results[0]], res=[ws_t])
-            wrb = Block(arg_types=[f32, f32]); wa, wacc = wrb.args
-            wab = mathd.AbsFOp(wa); wmx = arith.MaximumfOp(wab.result, wacc)
+            wrb = Block(arg_types=[f32, f32])
+            wa, wacc = wrb.args
+            wab = mathd.AbsFOp(wa)
+            wmx = arith.MaximumfOp(wab.result, wacc)
             wrb.add_ops([wab, wmx, L.YieldOp(wmx.result)])
-            w_amx = L.GenericOp(inputs=(wt,), outputs=(w_amx_f.results[0],), body=Region(wrb),
-                                indexing_maps=ArrayAttr([amap(wr, id_w), amap(wr, keep_res)]),
-                                iterator_types=ArrayAttr(
-                                    [L.IteratorTypeAttr(par if ax in wt_keep else red)
-                                     for ax in range(wr)]),
-                                result_types=(ws_t,))
-            ws_e = tensor.EmptyOp((), ws_t); wc127 = arith.ConstantOp(FloatAttr(127.0, f32))
+            w_amx = L.GenericOp(
+                inputs=(wt,),
+                outputs=(w_amx_f.results[0],),
+                body=Region(wrb),
+                indexing_maps=ArrayAttr([amap(wr, id_w), amap(wr, keep_res)]),
+                iterator_types=ArrayAttr([L.IteratorTypeAttr(par if ax in wt_keep else red) for ax in range(wr)]),
+                result_types=(ws_t,),
+            )
+            ws_e = tensor.EmptyOp((), ws_t)
+            wc127 = arith.ConstantOp(FloatAttr(127.0, f32))
             id_k = AffineMap.identity(len(ws_shape)).results
-            wsb = Block(arg_types=[f32, f32]); ws_in, _ = wsb.args
+            wsb = Block(arg_types=[f32, f32])
+            ws_in, _ = wsb.args
             safe_wscale = _emit_torchao_symmetric_scale(wsb, ws_in, wc127.results[0])
             wsb.add_op(L.YieldOp(safe_wscale))
-            s_w_g = L.GenericOp(inputs=(w_amx.results[0],), outputs=(ws_e.results[0],),
-                                body=Region(wsb),
-                                indexing_maps=ArrayAttr([amap(len(ws_shape), id_k),
-                                                         amap(len(ws_shape), id_k)]),
-                                iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * len(ws_shape)),
-                                result_types=(ws_t,))
+            s_w_g = L.GenericOp(
+                inputs=(w_amx.results[0],),
+                outputs=(ws_e.results[0],),
+                body=Region(wsb),
+                indexing_maps=ArrayAttr([amap(len(ws_shape), id_k), amap(len(ws_shape), id_k)]),
+                iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * len(ws_shape)),
+                result_types=(ws_t,),
+            )
             s_w = s_w_g.results[0]
             reciprocal_ops, reciprocal = _emit_torchao_reciprocal_tensor(s_w)
-            wi8_t = TensorType(i8, wsh); wq_e = tensor.EmptyOp((), wi8_t)
+            wi8_t = TensorType(i8, wsh)
+            wq_e = tensor.EmptyOp((), wi8_t)
             wc127n = arith.ConstantOp(FloatAttr(-127.0, f32))
-            wqb = Block(arg_types=[f32, f32, i8]); wxv, inv_wsv, _ = wqb.args
-            wq1 = arith.MulfOp(wxv, inv_wsv); wq2 = mathd.RoundEvenOp(wq1.result)
+            wqb = Block(arg_types=[f32, f32, i8])
+            wxv, inv_wsv, _ = wqb.args
+            wq1 = arith.MulfOp(wxv, inv_wsv)
+            wq2 = mathd.RoundEvenOp(wq1.result)
             wq3 = arith.MinimumfOp(wq2.result, wc127.results[0])
-            wq4 = arith.MaximumfOp(wq3.result, wc127n.results[0]); wq5 = arith.FPToSIOp(wq4.result, i8)
+            wq4 = arith.MaximumfOp(wq3.result, wc127n.results[0])
+            wq5 = arith.FPToSIOp(wq4.result, i8)
             wqb.add_ops([wq1, wq2, wq3, wq4, wq5, L.YieldOp(wq5.result)])
-            wq = L.GenericOp(inputs=(wt, reciprocal), outputs=(wq_e.results[0],),
-                             body=Region(wqb),
-                             indexing_maps=ArrayAttr([amap(wr, id_w), amap(wr, keep_res),
-                                                      amap(wr, id_w)]),
-                             iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * wr),
-                             result_types=(wi8_t,))
+            wq = L.GenericOp(
+                inputs=(wt, reciprocal),
+                outputs=(wq_e.results[0],),
+                body=Region(wqb),
+                indexing_maps=ArrayAttr([amap(wr, id_w), amap(wr, keep_res), amap(wr, id_w)]),
+                iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * wr),
+                result_types=(wi8_t,),
+            )
             wt_i8 = wq.results[0]
-            pre += [w_amx_e, wzero, w_amx_f, w_amx, ws_e, wc127, s_w_g,
-                    *reciprocal_ops, wq_e, wc127n, wq]
+            pre += [w_amx_e, wzero, w_amx_f, w_amx, ws_e, wc127, s_w_g, *reciprocal_ops, wq_e, wc127n, wq]
 
         recovered = static_activation(act)
         if recovered is not None:
@@ -1055,53 +1155,84 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
             # capture must reuse the calibrated branch above for every conv.
             sc_t = TensorType(f32, [])
             ident_r = AffineMap.identity(r).results
-            amx_e = tensor.EmptyOp((), sc_t); zero_f = arith.ConstantOp(FloatAttr(0.0, f32))
+            amx_e = tensor.EmptyOp((), sc_t)
+            zero_f = arith.ConstantOp(FloatAttr(0.0, f32))
             amx_f = L.FillOp(inputs=[zero_f.results[0]], outputs=[amx_e.results[0]], res=[sc_t])
-            rb = Block(arg_types=[f32, f32]); a_in, acc_in = rb.args
-            ab = mathd.AbsFOp(a_in); mx = arith.MaximumfOp(ab.result, acc_in)
+            rb = Block(arg_types=[f32, f32])
+            a_in, acc_in = rb.args
+            ab = mathd.AbsFOp(a_in)
+            mx = arith.MaximumfOp(ab.result, acc_in)
             rb.add_ops([ab, mx, L.YieldOp(mx.result)])
-            amx = L.GenericOp(inputs=(act,), outputs=(amx_f.results[0],), body=Region(rb),
-                              indexing_maps=ArrayAttr([amap(r, ident_r), amap(r, [])]),
-                              iterator_types=ArrayAttr([L.IteratorTypeAttr(red)] * r),
-                              result_types=(sc_t,))
-            sc_e = tensor.EmptyOp((), sc_t); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
-            sb = Block(arg_types=[f32, f32]); s_in, _ = sb.args
+            amx = L.GenericOp(
+                inputs=(act,),
+                outputs=(amx_f.results[0],),
+                body=Region(rb),
+                indexing_maps=ArrayAttr([amap(r, ident_r), amap(r, [])]),
+                iterator_types=ArrayAttr([L.IteratorTypeAttr(red)] * r),
+                result_types=(sc_t,),
+            )
+            sc_e = tensor.EmptyOp((), sc_t)
+            c127 = arith.ConstantOp(FloatAttr(127.0, f32))
+            sb = Block(arg_types=[f32, f32])
+            s_in, _ = sb.args
             safe_scale = _emit_torchao_symmetric_scale(sb, s_in, c127.results[0])
             sb.add_op(L.YieldOp(safe_scale))
-            s_a = L.GenericOp(inputs=(amx.results[0],), outputs=(sc_e.results[0],), body=Region(sb),
-                              indexing_maps=ArrayAttr([amap(0, []), amap(0, [])]),
-                              iterator_types=ArrayAttr([]), result_types=(sc_t,))
+            s_a = L.GenericOp(
+                inputs=(amx.results[0],),
+                outputs=(sc_e.results[0],),
+                body=Region(sb),
+                indexing_maps=ArrayAttr([amap(0, []), amap(0, [])]),
+                iterator_types=ArrayAttr([]),
+                result_types=(sc_t,),
+            )
             reciprocal_ops, reciprocal = _emit_torchao_reciprocal_tensor(s_a.results[0])
-            i8_t = TensorType(i8, ash); q_e = tensor.EmptyOp((), i8_t)
+            i8_t = TensorType(i8, ash)
+            q_e = tensor.EmptyOp((), i8_t)
             c127n = arith.ConstantOp(FloatAttr(-127.0, f32))
-            qb = Block(arg_types=[f32, f32, i8]); xv, inv_sv, _ = qb.args
-            q1 = arith.MulfOp(xv, inv_sv); q2 = mathd.RoundEvenOp(q1.result)
+            qb = Block(arg_types=[f32, f32, i8])
+            xv, inv_sv, _ = qb.args
+            q1 = arith.MulfOp(xv, inv_sv)
+            q2 = mathd.RoundEvenOp(q1.result)
             q3 = arith.MinimumfOp(q2.result, c127.results[0])
-            q4 = arith.MaximumfOp(q3.result, c127n.results[0]); q5 = arith.FPToSIOp(q4.result, i8)
+            q4 = arith.MaximumfOp(q3.result, c127n.results[0])
+            q5 = arith.FPToSIOp(q4.result, i8)
             qb.add_ops([q1, q2, q3, q4, q5, L.YieldOp(q5.result)])
-            q = L.GenericOp(inputs=(act, reciprocal), outputs=(q_e.results[0],), body=Region(qb),
-                            indexing_maps=ArrayAttr([amap(r, ident_r), amap(r, []), amap(r, ident_r)]),
-                            iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * r),
-                            result_types=(i8_t,))
-            pre += [amx_e, zero_f, amx_f, amx, sc_e, c127, s_a, *reciprocal_ops,
-                    q_e, c127n, q]
+            q = L.GenericOp(
+                inputs=(act, reciprocal),
+                outputs=(q_e.results[0],),
+                body=Region(qb),
+                indexing_maps=ArrayAttr([amap(r, ident_r), amap(r, []), amap(r, ident_r)]),
+                iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * r),
+                result_types=(i8_t,),
+            )
+            pre += [amx_e, zero_f, amx_f, amx, sc_e, c127, s_a, *reciprocal_ops, q_e, c127n, q]
             q_value, s_a_value = q.results[0], s_a.results[0]
         # --- i8×i8→i32 conv: EXACT original maps + iterators preserved ---
         acc_t = TensorType(i32, list(out_t.get_shape()))
-        acc_e = tensor.EmptyOp((), acc_t); zi = arith.ConstantOp.from_int_and_width(0, 32)
+        acc_e = tensor.EmptyOp((), acc_t)
+        zi = arith.ConstantOp.from_int_and_width(0, 32)
         acc_f = L.FillOp(inputs=[zi.results[0]], outputs=[acc_e.results[0]], res=[acc_t])
-        mb = Block(arg_types=[i8, i8, i32]); av, bv, acc = mb.args
-        ea = arith.ExtSIOp(av, i32); eb = arith.ExtSIOp(bv, i32)
-        pm = arith.MuliOp(ea.result, eb.result); pa = arith.AddiOp(pm.result, acc)
+        mb = Block(arg_types=[i8, i8, i32])
+        av, bv, acc = mb.args
+        ea = arith.ExtSIOp(av, i32)
+        eb = arith.ExtSIOp(bv, i32)
+        pm = arith.MuliOp(ea.result, eb.result)
+        pa = arith.AddiOp(pm.result, acc)
         mb.add_ops([ea, eb, pm, pa, L.YieldOp(pa.result)])
-        i8cv = L.GenericOp(inputs=(q_value, wt_i8), outputs=(acc_f.results[0],),
-                           body=Region(mb), indexing_maps=ArrayAttr(maps),
-                           iterator_types=op.iterator_types, result_types=(acc_t,))
+        i8cv = L.GenericOp(
+            inputs=(q_value, wt_i8),
+            outputs=(acc_f.results[0],),
+            body=Region(mb),
+            indexing_maps=ArrayAttr(maps),
+            iterator_types=op.iterator_types,
+            result_types=(acc_t,),
+        )
 
         # --- requant: out_f32[..] = sitofp(acc) * s_a * s_w[out_channel] ---
         # output map is a plain identity projection of the parallel dims.
         out_dims = [rr.position for rr in maps[-1].data.results]
-        P = len(out_dims); d_par = AffineMap.identity(P).results
+        P = len(out_dims)
+        d_par = AffineMap.identity(P).results
         # weight's (single) parallel iterator dim -> output channel position
         scale_exprs = [wt_exprs[ax] for ax in wt_keep]
         if not scale_exprs:
@@ -1112,16 +1243,20 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
         if out_dims != list(range(P)):
             continue
         out_e = tensor.EmptyOp((), out_t)
-        wb = Block(arg_types=[i32, f32, f32, f32]); accv, sav, swv, _ = wb.args
-        cur = arith.SIToFPOp(accv, f32); m1 = arith.MulfOp(cur.result, sav)
+        wb = Block(arg_types=[i32, f32, f32, f32])
+        accv, sav, swv, _ = wb.args
+        cur = arith.SIToFPOp(accv, f32)
+        m1 = arith.MulfOp(cur.result, sav)
         m2 = arith.MulfOp(m1.result, swv)
         wb.add_ops([cur, m1, m2, L.YieldOp(m2.result)])
-        requant = L.GenericOp(inputs=(i8cv.results[0], s_a_value, s_w),
-                              outputs=(out_e.results[0],), body=Region(wb),
-                              indexing_maps=ArrayAttr([amap(P, d_par), amap(P, []),
-                                                       amap(P, scale_exprs), amap(P, d_par)]),
-                              iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * P),
-                              result_types=(out_t,))
+        requant = L.GenericOp(
+            inputs=(i8cv.results[0], s_a_value, s_w),
+            outputs=(out_e.results[0],),
+            body=Region(wb),
+            indexing_maps=ArrayAttr([amap(P, d_par), amap(P, []), amap(P, scale_exprs), amap(P, d_par)]),
+            iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * P),
+            result_types=(out_t,),
+        )
         _carry_prov(op, contraction=i8cv, requant=requant)
 
         for new in pre + [acc_e, zi, acc_f, i8cv, out_e, requant]:
@@ -1130,26 +1265,35 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
         block.detach_op(op)
         n += 1
     if report_out is not None:
-        report_out.update({"generics_scanned": n_generics, "compound_map_generics": n_compound,
-                           "windowed_map_generics": n_windowed, "conv_prov_ops": n_conv_prov,
-                           "lowered": n, "static_activation_reused": n_static_activation,
-                           "dynamic_activation_quantized": n - n_static_activation})
+        report_out.update(
+            {
+                "generics_scanned": n_generics,
+                "compound_map_generics": n_compound,
+                "windowed_map_generics": n_windowed,
+                "conv_prov_ops": n_conv_prov,
+                "lowered": n,
+                "static_activation_reused": n_static_activation,
+                "dynamic_activation_quantized": n - n_static_activation,
+            }
+        )
     # SAY SO when a module is full of convolutions and this pass found none of them. Silence here is
     # exactly how a dead pass passes for a live one: "0 lowered" reads as "nothing to do" whether the
     # module had no convs or had 190 the predicate cannot see.
     if n == 0 and n_windowed == 0 and n_conv_prov:
-        print(f"[quant] conv_int8 INERT: {n_conv_prov} ops carry convolution provenance but 0 "
-              f"linalg.generic of {n_generics} carries a WINDOWED (stride/dilation) indexing map "
-              f"({n_compound} carry a constant-index one, which is a broadcast, not a conv) -- the "
-              f"frontend already expanded every conv into im2col + matmul, so this pass cannot "
-              f"reach one")
+        print(
+            f"[quant] conv_int8 INERT: {n_conv_prov} ops carry convolution provenance but 0 "
+            f"linalg.generic of {n_generics} carries a WINDOWED (stride/dilation) indexing map "
+            f"({n_compound} carry a constant-index one, which is a broadcast, not a conv) -- the "
+            f"frontend already expanded every conv into im2col + matmul, so this pass cannot "
+            f"reach one"
+        )
     return n
 
 
 # I-BERT integer-exp constants (2nd-order poly exp(p) ~ a(p+b)^2 + c on p in [-ln2,0]).
 _IEXP_A, _IEXP_B, _IEXP_C = 0.35815147, 1.35330989, 0.34401959
-_IEXP_SH = 30      # fixed-point fraction bits for the poly
-_IEXP_K = 8        # exponent-quantization step is ln2 / 2**K  (see _IEXP_S below)
+_IEXP_SH = 30  # fixed-point fraction bits for the poly
+_IEXP_K = 8  # exponent-quantization step is ln2 / 2**K  (see _IEXP_S below)
 _IEXP_CLAMP = -30.0  # exp(-30) ~ 1e-13: the value a masked/saturated input decays to
 
 # The exponent grid is FIXED, not derived from the row's dynamic range.
@@ -1170,11 +1314,11 @@ _IEXP_CLAMP = -30.0  # exp(-30) ~ 1e-13: the value a masked/saturated input deca
 # the 2nd-order polynomial's OWN accuracy floor (max rel err 0.404% over |x| < 10, vs 0.40% as
 # K -> inf), i.e. refining further buys nothing. Six per-row generics (max-reduction, scale, qln2,
 # b, A, reciprocal) are deleted along with the dynamic scale.
-_IEXP_S = 0.6931471805599453 / (1 << _IEXP_K)          # ln2 / 2**K
-_IEXP_BQ = int(round(_IEXP_B / _IEXP_S))               # b in exponent-grid units
+_IEXP_S = 0.6931471805599453 / (1 << _IEXP_K)  # ln2 / 2**K
+_IEXP_BQ = int(round(_IEXP_B / _IEXP_S))  # b in exponent-grid units
 _IEXP_AQ = int(round(_IEXP_A * (1 << _IEXP_SH) * _IEXP_S * _IEXP_S))
 _IEXP_CQ = int(round(_IEXP_C * (1 << _IEXP_SH)))
-_IEXP_QMAX = int(round(-_IEXP_CLAMP / _IEXP_S))        # |q| ceiling => z <= QMAX >> K
+_IEXP_QMAX = int(round(-_IEXP_CLAMP / _IEXP_S))  # |q| ceiling => z <= QMAX >> K
 
 
 def _iexp_body(arith, i32, i64, q):
@@ -1188,21 +1332,21 @@ def _iexp_body(arith, i32, i64, q):
     from xdsl.dialects.builtin import FloatAttr, IntegerAttr, f32
 
     zc = arith.ConstantOp.from_int_and_width(0, 32)
-    nq = arith.SubiOp(zc.result, q)                      # -q >= 0
+    nq = arith.SubiOp(zc.result, q)  # -q >= 0
     ck = arith.ConstantOp(IntegerAttr(_IEXP_K, i32))
-    z = arith.ShRSIOp(nq.result, ck.results[0])          # z = floor(-q / 2**K)
+    z = arith.ShRSIOp(nq.result, ck.results[0])  # z = floor(-q / 2**K)
     zs = arith.ShLIOp(z.result, ck.results[0])
-    r = arith.AddiOp(q, zs.result)                       # r = q + z*2**K, in (-2**K, 0]
+    r = arith.AddiOp(q, zs.result)  # r = q + z*2**K, in (-2**K, 0]
     cb = arith.ConstantOp(IntegerAttr(_IEXP_BQ, i32))
-    t = arith.AddiOp(r.result, cb.results[0])            # t = r + b, all in grid units
+    t = arith.AddiOp(r.result, cb.results[0])  # t = r + b, all in grid units
     t64 = arith.ExtSIOp(t.result, i64)
     tt = arith.MuliOp(t64.result, t64.result)
     ca = arith.ConstantOp(IntegerAttr(_IEXP_AQ, i64))
     att = arith.MuliOp(ca.results[0], tt.result)
     cc = arith.ConstantOp(IntegerAttr(_IEXP_CQ, i64))
-    ep = arith.AddiOp(att.result, cc.results[0])         # A*t^2 + C, at 2**SH fixed point
+    ep = arith.AddiOp(att.result, cc.results[0])  # A*t^2 + C, at 2**SH fixed point
     z64 = arith.ExtSIOp(z.result, i64)
-    e = arith.ShRSIOp(ep.result, z64.result)             # ... >> z  (the 2**-z range reduction)
+    e = arith.ShRSIOp(ep.result, z64.result)  # ... >> z  (the 2**-z range reduction)
     ef = arith.SIToFPOp(e.result, f32)
     inv = arith.ConstantOp(FloatAttr(1.0 / (1 << _IEXP_SH), f32))
     exf = arith.MulfOp(ef.result, inv.results[0])
@@ -1223,13 +1367,13 @@ def lower_softmax_int(module, *, select=None) -> int:
     """
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
-    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, FloatAttr,
-                                       TensorType, f32, i32, i64)
+    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, FloatAttr, TensorType, f32, i32, i64
     from xdsl.dialects.linalg import ops as L
     from xdsl.ir import Block, Region
     from xdsl.ir.affine import AffineMap
 
     par = L.IteratorType.PARALLEL
+
     def amap(n, dims):
         return AffineMapAttr(AffineMap(n, 0, tuple(dims)))
 
@@ -1237,22 +1381,30 @@ def lower_softmax_int(module, *, select=None) -> int:
         # a bare exp generic whose input is the max-subtraction (S - rowmax) — the softmax
         # signature. Guards against rewriting non-softmax exps (whose input may be > 0, which
         # the <=0 i-exp + [-30,0] clamp would corrupt).
-        if not (op.name == "linalg.generic" and len(op.inputs) == 1 and op.body.blocks
-                and [b.name for b in op.body.blocks[0].ops] == ["math.exp", "linalg.yield"]):
+        if not (
+            op.name == "linalg.generic"
+            and len(op.inputs) == 1
+            and op.body.blocks
+            and [b.name for b in op.body.blocks[0].ops] == ["math.exp", "linalg.yield"]
+        ):
             return False
         src = op.inputs[0].owner
-        return (getattr(src, "name", None) == "linalg.generic" and src.body.blocks
-                and any(b.name == "arith.subf" for b in src.body.blocks[0].ops))
+        return (
+            getattr(src, "name", None) == "linalg.generic"
+            and src.body.blocks
+            and any(b.name == "arith.subf" for b in src.body.blocks[0].ops)
+        )
 
     targets = [op for op in module.walk() if _is_softmax_exp(op)]
     targets = _select_targets(targets, select)
     n = 0
     for op in targets:
-        xs = op.inputs[0]                          # x = scores - rowmax, f32 [.., L], <= 0
+        xs = op.inputs[0]  # x = scores - rowmax, f32 [.., L], <= 0
         st = op.results[0].type
         if not (isinstance(st, TensorType) and st.element_type == f32):
             continue
-        shp = list(st.get_shape()); R = len(shp)
+        shp = list(st.get_shape())
+        R = len(shp)
         if R < 1:
             continue
         block = op.parent_block()
@@ -1269,19 +1421,26 @@ def lower_softmax_int(module, *, select=None) -> int:
         #   z  = (-q) >> K ; r = q + (z << K)    x = -z*ln2 + r*S with r*S in (-ln2, 0]
         #   e  = (A*(r+b)^2 + C) >> z        the poly, then the power-of-two range reduction
         ee = tensor.EmptyOp((), st)
-        eb = Block(arg_types=[f32, f32]); xv, _ = eb.args
+        eb = Block(arg_types=[f32, f32])
+        xv, _ = eb.args
         cclamp = arith.ConstantOp(FloatAttr(_IEXP_CLAMP, f32))
         xc = arith.MaximumfOp(xv, cclamp.results[0])
         cs = arith.ConstantOp(FloatAttr(_IEXP_S, f32))
-        qd = arith.DivfOp(xc.result, cs.results[0]); qr = mathd.RoundEvenOp(qd.result)
+        qd = arith.DivfOp(xc.result, cs.results[0])
+        qr = mathd.RoundEvenOp(qd.result)
         qi = arith.FPToSIOp(qr.result, i32)
         ops_e = [cclamp, xc, cs, qd, qr, qi]
         ops_e += _iexp_body(arith, i32, i64, qi.result)
         exf = ops_e[-1]
         eb.add_ops(ops_e + [L.YieldOp(exf.result)])
-        eg = L.GenericOp(inputs=(xs,), outputs=(ee.results[0],), body=Region(eb),
-                         indexing_maps=ArrayAttr([full, full]), iterator_types=all_par,
-                         result_types=(st,))
+        eg = L.GenericOp(
+            inputs=(xs,),
+            outputs=(ee.results[0],),
+            body=Region(eb),
+            indexing_maps=ArrayAttr([full, full]),
+            iterator_types=all_par,
+            result_types=(st,),
+        )
         new += [ee, eg]
 
         for nop in new:
@@ -1302,113 +1461,212 @@ def lower_gelu_int(module, *, select=None) -> int:
     ``0.5*x*(1+erf)``. The transcendental ``math.erf`` is gone. Anchors on each erf generic.
     Numerically validated vs exact GELU: cos > 0.9999. Returns count."""
     import math as _m
+
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
-    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, FloatAttr, IntegerAttr,
-                                       TensorType, f32, i32, i64)
+    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, FloatAttr, IntegerAttr, TensorType, f32, i32, i64
     from xdsl.dialects.linalg import ops as L
     from xdsl.ir import Block, Region
     from xdsl.ir.affine import AffineMap
 
-    par = L.IteratorType.PARALLEL; red = L.IteratorType.REDUCTION
+    par = L.IteratorType.PARALLEL
+    red = L.IteratorType.REDUCTION
+
     def amap(n, dims):
         return AffineMapAttr(AffineMap(n, 0, tuple(dims)))
+
     sqrt2 = _m.sqrt(2.0)
     SH = 24
 
-    targets = [op for op in module.walk()
-               if op.name == "linalg.generic" and len(op.inputs) == 1 and op.body.blocks
-               and any(b.name == "math.erf" for b in op.body.blocks[0].ops)]
+    targets = [
+        op
+        for op in module.walk()
+        if op.name == "linalg.generic"
+        and len(op.inputs) == 1
+        and op.body.blocks
+        and any(b.name == "math.erf" for b in op.body.blocks[0].ops)
+    ]
     targets = _select_targets(targets, select)
     n = 0
     for op in targets:
-        x = op.inputs[0]; st = op.results[0].type
+        x = op.inputs[0]
+        st = op.results[0].type
         if not (isinstance(st, TensorType) and st.element_type == f32):
             continue
-        shp = list(st.get_shape()); R = len(shp)
+        shp = list(st.get_shape())
+        R = len(shp)
         if R < 1:
             continue
         Rt = TensorType(f32, shp[:-1])
         block = op.parent_block()
         idR = AffineMap.identity(R).results
-        full = amap(R, idR); row = amap(R, idR[:R - 1]); idp = AffineMap.identity(R - 1).results
+        full = amap(R, idR)
+        row = amap(R, idR[: R - 1])
+        idp = AffineMap.identity(R - 1).results
         red_it = ArrayAttr([L.IteratorTypeAttr(par)] * (R - 1) + [L.IteratorTypeAttr(red)])
         all_par = ArrayAttr([L.IteratorTypeAttr(par)] * R)
         par_rowit = ArrayAttr([L.IteratorTypeAttr(par)] * (R - 1))
         new = []
 
         # sx[..] = max|x| over last / 127
-        ae = tensor.EmptyOp((), Rt); z0 = arith.ConstantOp(FloatAttr(0.0, f32))
+        ae = tensor.EmptyOp((), Rt)
+        z0 = arith.ConstantOp(FloatAttr(0.0, f32))
         af = L.FillOp(inputs=[z0.results[0]], outputs=[ae.results[0]], res=[Rt])
-        rb = Block(arg_types=[f32, f32]); a_in, acc = rb.args
-        ab = mathd.AbsFOp(a_in); mx = arith.MaximumfOp(ab.result, acc)
+        rb = Block(arg_types=[f32, f32])
+        a_in, acc = rb.args
+        ab = mathd.AbsFOp(a_in)
+        mx = arith.MaximumfOp(ab.result, acc)
         rb.add_ops([ab, mx, L.YieldOp(mx.result)])
-        amax = L.GenericOp(inputs=(x,), outputs=(af.results[0],), body=Region(rb),
-                           indexing_maps=ArrayAttr([full, row]), iterator_types=red_it, result_types=(Rt,))
-        sre = tensor.EmptyOp((), Rt); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
-        sb = Block(arg_types=[f32, f32]); nm, _ = sb.args
-        sd = arith.DivfOp(nm, c127.results[0]); eps = arith.ConstantOp(FloatAttr(1e-12, f32))
+        amax = L.GenericOp(
+            inputs=(x,),
+            outputs=(af.results[0],),
+            body=Region(rb),
+            indexing_maps=ArrayAttr([full, row]),
+            iterator_types=red_it,
+            result_types=(Rt,),
+        )
+        sre = tensor.EmptyOp((), Rt)
+        c127 = arith.ConstantOp(FloatAttr(127.0, f32))
+        sb = Block(arg_types=[f32, f32])
+        nm, _ = sb.args
+        sd = arith.DivfOp(nm, c127.results[0])
+        eps = arith.ConstantOp(FloatAttr(1e-12, f32))
         sfl = arith.MaximumfOp(sd.result, eps.results[0])
-        sz = arith.ConstantOp(FloatAttr(0.0, f32)); so = arith.ConstantOp(FloatAttr(1.0, f32))
+        sz = arith.ConstantOp(FloatAttr(0.0, f32))
+        so = arith.ConstantOp(FloatAttr(1.0, f32))
         is_zero = arith.CmpfOp(nm, sz.results[0], "oeq")
         safe = arith.SelectOp(is_zero.result, so.results[0], sfl.result)
         sb.add_ops([sd, eps, sfl, sz, so, is_zero, safe, L.YieldOp(safe.result)])
-        sx = L.GenericOp(inputs=(amax.results[0],), outputs=(sre.results[0],), body=Region(sb),
-                         indexing_maps=ArrayAttr([amap(R - 1, idp), amap(R - 1, idp)]),
-                         iterator_types=par_rowit, result_types=(Rt,))
+        sx = L.GenericOp(
+            inputs=(amax.results[0],),
+            outputs=(sre.results[0],),
+            body=Region(sb),
+            indexing_maps=ArrayAttr([amap(R - 1, idp), amap(R - 1, idp)]),
+            iterator_types=par_rowit,
+            result_types=(Rt,),
+        )
         new += [ae, z0, af, amax, sre, c127, sx]
 
         def per_row(fn, elem):
-            ot = TensorType(elem, shp[:-1]); e = tensor.EmptyOp((), ot)
-            bb = Block(arg_types=[f32, elem]); s_in, _ = bb.args
-            cops, res = fn(s_in); bb.add_ops(cops + [L.YieldOp(res)])
-            g = L.GenericOp(inputs=(sx.results[0],), outputs=(e.results[0],), body=Region(bb),
-                            indexing_maps=ArrayAttr([amap(R - 1, idp), amap(R - 1, idp)]),
-                            iterator_types=par_rowit, result_types=(ot,))
-            new.extend([e, g]); return g.results[0]
+            ot = TensorType(elem, shp[:-1])
+            e = tensor.EmptyOp((), ot)
+            bb = Block(arg_types=[f32, elem])
+            s_in, _ = bb.args
+            cops, res = fn(s_in)
+            bb.add_ops(cops + [L.YieldOp(res)])
+            g = L.GenericOp(
+                inputs=(sx.results[0],),
+                outputs=(e.results[0],),
+                body=Region(bb),
+                indexing_maps=ArrayAttr([amap(R - 1, idp), amap(R - 1, idp)]),
+                iterator_types=par_rowit,
+                result_types=(ot,),
+            )
+            new.extend([e, g])
+            return g.results[0]
 
         # qb = round(-B*sqrt2 / sx) ; Aq = round(A * sx^2/2 * 2^SH)
         def _qb(s):
-            c = arith.ConstantOp(FloatAttr(-_IGELU_B * sqrt2, f32)); d = arith.DivfOp(c.results[0], s)
-            r = mathd.RoundEvenOp(d.result); ci = arith.FPToSIOp(r.result, i32)
+            c = arith.ConstantOp(FloatAttr(-_IGELU_B * sqrt2, f32))
+            d = arith.DivfOp(c.results[0], s)
+            r = mathd.RoundEvenOp(d.result)
+            ci = arith.FPToSIOp(r.result, i32)
             return [c, d, r, ci], ci.result
+
         def _A(s):
             c = arith.ConstantOp(FloatAttr(_IGELU_A * 0.5 * (1 << SH), f32))
-            s2 = arith.MulfOp(s, s); m2 = arith.MulfOp(c.results[0], s2.result)
-            r = mathd.RoundEvenOp(m2.result); ci = arith.FPToSIOp(r.result, i32)
+            s2 = arith.MulfOp(s, s)
+            m2 = arith.MulfOp(c.results[0], s2.result)
+            r = mathd.RoundEvenOp(m2.result)
+            ci = arith.FPToSIOp(r.result, i32)
             return [c, s2, m2, r, ci], ci.result
-        qb = per_row(_qb, i32); Aq = per_row(_A, i32)
+
+        qb = per_row(_qb, i32)
+        Aq = per_row(_A, i32)
 
         # per-element integer i-GELU
         ge = tensor.EmptyOp((), st)
-        eb = Block(arg_types=[f32, f32, i32, i32, f32])   # x, sx, qb, Aq, out
+        eb = Block(arg_types=[f32, f32, i32, i32, f32])  # x, sx, qb, Aq, out
         xv, sv, qbv, av, _ = eb.args
-        c127f = arith.ConstantOp(FloatAttr(127.0, f32)); c127n = arith.ConstantOp(FloatAttr(-127.0, f32))
-        qd = arith.DivfOp(xv, sv); qr = mathd.RoundEvenOp(qd.result)
-        qcl = arith.MinimumfOp(qr.result, c127f.results[0]); qcl2 = arith.MaximumfOp(qcl.result, c127n.results[0])
+        c127f = arith.ConstantOp(FloatAttr(127.0, f32))
+        c127n = arith.ConstantOp(FloatAttr(-127.0, f32))
+        qd = arith.DivfOp(xv, sv)
+        qr = mathd.RoundEvenOp(qd.result)
+        qcl = arith.MinimumfOp(qr.result, c127f.results[0])
+        qcl2 = arith.MaximumfOp(qcl.result, c127n.results[0])
         q = arith.FPToSIOp(qcl2.result, i32)
         # |q| via arith (math.absi has no LLVM lowering in this pipeline): maxsi(q, -q)
-        zi0 = arith.ConstantOp.from_int_and_width(0, 32); nq = arith.SubiOp(zi0.result, q.result)
+        zi0 = arith.ConstantOp.from_int_and_width(0, 32)
+        nq = arith.SubiOp(zi0.result, q.result)
         aq = arith.MaxSIOp(q.result, nq.result)
-        qc = arith.MinSIOp(aq.result, qbv); t = arith.SubiOp(qc.result, qbv)
-        t64 = arith.ExtSIOp(t.result, i64); a64 = arith.ExtSIOp(av, i64)
-        tt = arith.MuliOp(t64.result, t64.result); att = arith.MuliOp(a64.result, tt.result)
-        Ci = arith.ConstantOp(IntegerAttr(1 << SH, i64)); poly = arith.AddiOp(att.result, Ci.results[0])
+        qc = arith.MinSIOp(aq.result, qbv)
+        t = arith.SubiOp(qc.result, qbv)
+        t64 = arith.ExtSIOp(t.result, i64)
+        a64 = arith.ExtSIOp(av, i64)
+        tt = arith.MuliOp(t64.result, t64.result)
+        att = arith.MuliOp(a64.result, tt.result)
+        Ci = arith.ConstantOp(IntegerAttr(1 << SH, i64))
+        poly = arith.AddiOp(att.result, Ci.results[0])
         polyf = arith.SIToFPOp(poly.result, f32)
-        inv = arith.ConstantOp(FloatAttr(1.0 / (1 << SH), f32)); pf = arith.MulfOp(polyf.result, inv.results[0])
+        inv = arith.ConstantOp(FloatAttr(1.0 / (1 << SH), f32))
+        pf = arith.MulfOp(polyf.result, inv.results[0])
         # sgn(x): x<0 -> -1 else +1
-        zc = arith.ConstantOp(FloatAttr(0.0, f32)); lt = arith.CmpfOp(xv, zc.results[0], "olt")
-        nf = arith.ConstantOp(FloatAttr(-1.0, f32)); pf1 = arith.ConstantOp(FloatAttr(1.0, f32))
+        zc = arith.ConstantOp(FloatAttr(0.0, f32))
+        lt = arith.CmpfOp(xv, zc.results[0], "olt")
+        nf = arith.ConstantOp(FloatAttr(-1.0, f32))
+        pf1 = arith.ConstantOp(FloatAttr(1.0, f32))
         sgn = arith.SelectOp(lt.result, nf.results[0], pf1.results[0])
         erf = arith.MulfOp(sgn.result, pf.result)
-        one = arith.ConstantOp(FloatAttr(1.0, f32)); ope = arith.AddfOp(one.results[0], erf.result)
-        half = arith.ConstantOp(FloatAttr(0.5, f32)); hx = arith.MulfOp(half.results[0], xv)
+        one = arith.ConstantOp(FloatAttr(1.0, f32))
+        ope = arith.AddfOp(one.results[0], erf.result)
+        half = arith.ConstantOp(FloatAttr(0.5, f32))
+        hx = arith.MulfOp(half.results[0], xv)
         g = arith.MulfOp(hx.result, ope.result)
-        eb.add_ops([c127f, c127n, qd, qr, qcl, qcl2, q, zi0, nq, aq, qc, t, t64, a64, tt, att, Ci, poly,
-                    polyf, inv, pf, zc, lt, nf, pf1, sgn, erf, one, ope, half, hx, g, L.YieldOp(g.result)])
-        gelu = L.GenericOp(inputs=(x, sx.results[0], qb, Aq), outputs=(ge.results[0],), body=Region(eb),
-                           indexing_maps=ArrayAttr([full, row, row, row, full]),
-                           iterator_types=all_par, result_types=(st,))
+        eb.add_ops(
+            [
+                c127f,
+                c127n,
+                qd,
+                qr,
+                qcl,
+                qcl2,
+                q,
+                zi0,
+                nq,
+                aq,
+                qc,
+                t,
+                t64,
+                a64,
+                tt,
+                att,
+                Ci,
+                poly,
+                polyf,
+                inv,
+                pf,
+                zc,
+                lt,
+                nf,
+                pf1,
+                sgn,
+                erf,
+                one,
+                ope,
+                half,
+                hx,
+                g,
+                L.YieldOp(g.result),
+            ]
+        )
+        gelu = L.GenericOp(
+            inputs=(x, sx.results[0], qb, Aq),
+            outputs=(ge.results[0],),
+            body=Region(eb),
+            indexing_maps=ArrayAttr([full, row, row, row, full]),
+            iterator_types=all_par,
+            result_types=(st,),
+        )
         new += [ge, gelu]
         for nop in new:
             block.insert_op_before(nop, op)
@@ -1427,13 +1685,13 @@ def lower_silu_int(module, *, select=None) -> int:
     ``prov.op = sigmoid`` generic; the downstream ``x * sigmoid`` multiply stays. Returns count."""
     from xdsl.dialects import arith, tensor
     from xdsl.dialects import math as mathd
-    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, FloatAttr,
-                                       TensorType, f32, i32, i64)
+    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, FloatAttr, TensorType, f32, i32, i64
     from xdsl.dialects.linalg import ops as L
     from xdsl.ir import Block, Region
     from xdsl.ir.affine import AffineMap
 
     par = L.IteratorType.PARALLEL
+
     def amap(n, dims):
         return AffineMapAttr(AffineMap(n, 0, tuple(dims)))
 
@@ -1441,17 +1699,18 @@ def lower_silu_int(module, *, select=None) -> int:
         if not (op.name == "linalg.generic" and len(op.inputs) == 1 and op.body.blocks):
             return False
         hint = op.attributes.get("prov.op")
-        return (getattr(hint, "data", None) == "sigmoid"
-                and any(b.name == "math.exp" for b in op.body.blocks[0].ops))
+        return getattr(hint, "data", None) == "sigmoid" and any(b.name == "math.exp" for b in op.body.blocks[0].ops)
 
     targets = [op for op in module.walk() if _is_sigmoid(op)]
     targets = _select_targets(targets, select)
     n = 0
     for op in targets:
-        x = op.inputs[0]; st = op.results[0].type
+        x = op.inputs[0]
+        st = op.results[0].type
         if not (isinstance(st, TensorType) and st.element_type == f32):
             continue
-        shp = list(st.get_shape()); R = len(shp)
+        shp = list(st.get_shape())
+        R = len(shp)
         if R < 1:
             continue
         block = op.parent_block()
@@ -1465,26 +1724,36 @@ def lower_silu_int(module, *, select=None) -> int:
         # which made the logistic's resolution depend on the largest activation sharing its row.
         #   q = -min(roundeven(|x| / S), QMAX)     QMAX caps z so the >> z below stays in range
         ee = tensor.EmptyOp((), st)
-        eb = Block(arg_types=[f32, f32]); xv, _ = eb.args
+        eb = Block(arg_types=[f32, f32])
+        xv, _ = eb.args
         axv = mathd.AbsFOp(xv)
         cs = arith.ConstantOp(FloatAttr(_IEXP_S, f32))
-        qd = arith.DivfOp(axv.result, cs.results[0]); qr = mathd.RoundEvenOp(qd.result)
+        qd = arith.DivfOp(axv.result, cs.results[0])
+        qr = mathd.RoundEvenOp(qd.result)
         cqm = arith.ConstantOp(FloatAttr(float(_IEXP_QMAX), f32))
         qcl = arith.MinimumfOp(qr.result, cqm.results[0])
         qa = arith.FPToSIOp(qcl.result, i32)
-        c0 = arith.ConstantOp.from_int_and_width(0, 32); qv = arith.SubiOp(c0.result, qa.result)
+        c0 = arith.ConstantOp.from_int_and_width(0, 32)
+        qv = arith.SubiOp(c0.result, qa.result)
         ops_s = [axv, cs, qd, qr, cqm, qcl, qa, c0, qv]
         ops_s += _iexp_body(arith, i32, i64, qv.result)
         exf = ops_s[-1]
         # sig = num/denom, num = (x>=0 ? 1 : e), denom = 1+e
-        one = arith.ConstantOp(FloatAttr(1.0, f32)); denom = arith.AddfOp(one.results[0], exf.result)
-        zc = arith.ConstantOp(FloatAttr(0.0, f32)); ge0 = arith.CmpfOp(xv, zc.results[0], "oge")
+        one = arith.ConstantOp(FloatAttr(1.0, f32))
+        denom = arith.AddfOp(one.results[0], exf.result)
+        zc = arith.ConstantOp(FloatAttr(0.0, f32))
+        ge0 = arith.CmpfOp(xv, zc.results[0], "oge")
         num = arith.SelectOp(ge0.result, one.results[0], exf.result)
         sig = arith.DivfOp(num.result, denom.result)
         eb.add_ops(ops_s + [one, denom, zc, ge0, num, sig, L.YieldOp(sig.result)])
-        sg = L.GenericOp(inputs=(x,), outputs=(ee.results[0],), body=Region(eb),
-                         indexing_maps=ArrayAttr([full, full]), iterator_types=all_par,
-                         result_types=(st,))
+        sg = L.GenericOp(
+            inputs=(x,),
+            outputs=(ee.results[0],),
+            body=Region(eb),
+            indexing_maps=ArrayAttr([full, full]),
+            iterator_types=all_par,
+            result_types=(st,),
+        )
         new += [ee, sg]
         for nop in new:
             block.insert_op_before(nop, op)
@@ -1495,7 +1764,7 @@ def lower_silu_int(module, *, select=None) -> int:
 
 
 # Fast inverse square root magic constant (Quake): y0 = bitcast(0x5f3759df - (bits(v)>>1)).
-_RSQRT_MAGIC = 0x5f3759df
+_RSQRT_MAGIC = 0x5F3759DF
 
 
 def lower_rsqrt_int(module, *, select=None) -> int:
@@ -1519,18 +1788,24 @@ def lower_rsqrt_int(module, *, select=None) -> int:
         new = []
         # y0 = bitcast(magic - (bitcast(v) >> 1))
         bi = arith.BitcastOp(v, i32)
-        one = arith.ConstantOp(IntegerAttr(1, i32)); sh = arith.ShRSIOp(bi.result, one.results[0])
-        magic = arith.ConstantOp(IntegerAttr(_RSQRT_MAGIC, i32)); sub = arith.SubiOp(magic.results[0], sh.result)
+        one = arith.ConstantOp(IntegerAttr(1, i32))
+        sh = arith.ShRSIOp(bi.result, one.results[0])
+        magic = arith.ConstantOp(IntegerAttr(_RSQRT_MAGIC, i32))
+        sub = arith.SubiOp(magic.results[0], sh.result)
         y = arith.BitcastOp(sub.result, f32)
         new += [bi, one, sh, magic, sub, y]
-        half = arith.ConstantOp(FloatAttr(0.5, f32)); threehalf = arith.ConstantOp(FloatAttr(1.5, f32))
+        half = arith.ConstantOp(FloatAttr(0.5, f32))
+        threehalf = arith.ConstantOp(FloatAttr(1.5, f32))
         new += [half, threehalf]
         cur = y.result
         for _ in range(NEWTON):
-            yy = arith.MulfOp(cur, cur); vyy = arith.MulfOp(v, yy.result)
-            hvyy = arith.MulfOp(half.results[0], vyy.result); s = arith.SubfOp(threehalf.results[0], hvyy.result)
+            yy = arith.MulfOp(cur, cur)
+            vyy = arith.MulfOp(v, yy.result)
+            hvyy = arith.MulfOp(half.results[0], vyy.result)
+            s = arith.SubfOp(threehalf.results[0], hvyy.result)
             ny = arith.MulfOp(cur, s.result)
-            new += [yy, vyy, hvyy, s, ny]; cur = ny.result
+            new += [yy, vyy, hvyy, s, ny]
+            cur = ny.result
         for nop in new:
             block.insert_op_before(nop, op)
         op.results[0].replace_all_uses_with(cur)

@@ -6,6 +6,7 @@ and timed independently under the same backend protocol.  The analyzer knows no 
 simulator, or operation name: the frozen descriptor declares the group field, role names, permitted
 semantic difference, evidence lanes, and replicate schedule.
 """
+
 from __future__ import annotations
 
 import copy
@@ -29,8 +30,11 @@ def _mapping(value: object, label: str) -> Mapping[str, Any]:
 
 
 def _simple_names(value: object, *, count: int | None = None) -> tuple[str, ...]:
-    if (not isinstance(value, Sequence) or isinstance(value, str)
-            or any(not isinstance(x, str) or not x or x.strip() != x for x in value)):
+    if (
+        not isinstance(value, Sequence)
+        or isinstance(value, str)
+        or any(not isinstance(x, str) or not x or x.strip() != x for x in value)
+    ):
         raise _Refusal("replicate identities must be a list of simple non-empty names")
     names = tuple(value)
     if len(set(names)) != len(names):
@@ -41,23 +45,20 @@ def _simple_names(value: object, *, count: int | None = None) -> tuple[str, ...]
 
 
 def _validated(descriptors: object, offered_replicates: Sequence[str] | None = None) -> dict[str, Any]:
-    if (not isinstance(descriptors, Sequence) or isinstance(descriptors, str)
-            or not descriptors):
+    if not isinstance(descriptors, Sequence) or isinstance(descriptors, str) or not descriptors:
         raise _Refusal("no capsule descriptors were supplied")
     members = [_mapping(row, f"descriptor {i}") for i, row in enumerate(descriptors)]
     names = [row.get("name") for row in members]
     if any(not isinstance(name, str) or not name for name in names) or len(set(names)) != len(names):
         raise _Refusal("capsule descriptor names must be non-empty and unique")
 
-    performances = [_mapping(row.get("performance"), f"descriptor {row['name']!r} performance")
-                    for row in members]
+    performances = [_mapping(row.get("performance"), f"descriptor {row['name']!r} performance") for row in members]
     if any(perf.get("claim") != "DIFFERENTIAL" for perf in performances):
         raise _Refusal("comparison-group analysis accepts DIFFERENTIAL claims only")
     families = {str(perf.get("family") or "") for perf in performances}
     if len(families) != 1 or "" in families:
         raise _Refusal(f"descriptors do not agree on one performance family: {sorted(families)}")
-    contracts = [_mapping(perf.get("acceptance"), "the frozen acceptance contract")
-                 for perf in performances]
+    contracts = [_mapping(perf.get("acceptance"), "the frozen acceptance contract") for perf in performances]
     contract = contracts[0]
     if any(row != contract for row in contracts):
         raise _Refusal("members disagree about the frozen acceptance contract")
@@ -67,13 +68,16 @@ def _validated(descriptors: object, offered_replicates: Sequence[str] | None = N
         raise _Refusal("acceptance schema_version must be 1")
     program_arm = contract.get("program_arm")
     if program_arm not in ("baseline", "candidate"):
-        raise _Refusal(
-            "comparison-group acceptance must name program_arm as 'baseline' or 'candidate'")
+        raise _Refusal("comparison-group acceptance must name program_arm as 'baseline' or 'candidate'")
 
     roles_value = contract.get("roles")
-    if (not isinstance(roles_value, Sequence) or isinstance(roles_value, str)
-            or len(roles_value) != 2 or any(not isinstance(x, str) or not x for x in roles_value)
-            or roles_value[0] == roles_value[1]):
+    if (
+        not isinstance(roles_value, Sequence)
+        or isinstance(roles_value, str)
+        or len(roles_value) != 2
+        or any(not isinstance(x, str) or not x for x in roles_value)
+        or roles_value[0] == roles_value[1]
+    ):
         raise _Refusal("acceptance must name exactly two distinct comparison roles")
     roles = tuple(roles_value)
     predicted = contract.get("expected_faster")
@@ -83,9 +87,12 @@ def _validated(descriptors: object, offered_replicates: Sequence[str] | None = N
     if not isinstance(group_field, str) or not group_field:
         raise _Refusal("acceptance.group_field must be a non-empty field name")
     allowed_value = contract.get("allowed_attribute_differences")
-    if (not isinstance(allowed_value, Sequence) or isinstance(allowed_value, str)
-            or any(not isinstance(x, str) or not x for x in allowed_value)
-            or len(set(allowed_value)) != len(allowed_value)):
+    if (
+        not isinstance(allowed_value, Sequence)
+        or isinstance(allowed_value, str)
+        or any(not isinstance(x, str) or not x for x in allowed_value)
+        or len(set(allowed_value)) != len(allowed_value)
+    ):
         raise _Refusal("allowed_attribute_differences must be a unique list of names")
     allowed = set(allowed_value)
 
@@ -99,13 +106,12 @@ def _validated(descriptors: object, offered_replicates: Sequence[str] | None = N
     identities = _simple_names(rep.get("identities"), count=exact)
     if offered_replicates is not None and tuple(offered_replicates) != identities:
         raise _Refusal(
-            f"the run offers replicates {list(offered_replicates)}, but the frozen contract requires "
-            f"{list(identities)}")
+            f"the run offers replicates {list(offered_replicates)}, but the frozen contract requires {list(identities)}"
+        )
 
     evidence = _mapping(contract.get("evidence"), "acceptance.evidence")
     lanes: list[tuple[str, str]] = []
-    for sim_key, tier_key in (("correctness_simulator", "correctness_tier"),
-                              ("timing_simulator", "timing_tier")):
+    for sim_key, tier_key in (("correctness_simulator", "correctness_tier"), ("timing_simulator", "timing_tier")):
         simulator, tier = evidence.get(sim_key), evidence.get(tier_key)
         if not isinstance(simulator, str) or not simulator or not isinstance(tier, str) or not tier:
             raise _Refusal(f"acceptance.evidence omits {sim_key}/{tier_key}")
@@ -120,8 +126,7 @@ def _validated(descriptors: object, offered_replicates: Sequence[str] | None = N
         if role in groups.setdefault(group, {}):
             raise _Refusal(f"comparison group {group!r} repeats role {role!r}")
         groups[group][str(role)] = descriptor
-    incomplete = {group: sorted(set(roles) - set(rows)) for group, rows in groups.items()
-                  if set(rows) != set(roles)}
+    incomplete = {group: sorted(set(roles) - set(rows)) for group, rows in groups.items() if set(rows) != set(roles)}
     if incomplete:
         raise _Refusal(f"comparison groups do not contain exactly both roles: {incomplete}")
 
@@ -139,47 +144,77 @@ def _validated(descriptors: object, offered_replicates: Sequence[str] | None = N
         la = dict(_mapping(lop.get("attributes"), f"{left['name']}.operation.attributes"))
         ra = dict(_mapping(rop.get("attributes"), f"{right['name']}.operation.attributes"))
         for key in allowed:
-            la.pop(key, None); ra.pop(key, None)
+            la.pop(key, None)
+            ra.pop(key, None)
         if la != ra:
             raise _Refusal(
                 f"comparison group {group!r} operation attributes differ outside the declared "
-                f"allowed set {sorted(allowed)}")
+                f"allowed set {sorted(allowed)}"
+            )
 
-    return {"family": next(iter(families)), "members": members, "contract": contract,
-            "roles": roles, "predicted": predicted, "groups": groups,
-            "identities": identities, "lanes": lanes, "evidence": evidence}
+    return {
+        "family": next(iter(families)),
+        "members": members,
+        "contract": contract,
+        "roles": roles,
+        "predicted": predicted,
+        "groups": groups,
+        "identities": identities,
+        "lanes": lanes,
+        "evidence": evidence,
+    }
 
 
-def preflight_comparison_group_claim(descriptors: object, *,
-                                     replicates: Sequence[str]) -> dict[str, Any]:
+def preflight_comparison_group_claim(descriptors: object, *, replicates: Sequence[str]) -> dict[str, Any]:
     """Validate the frozen groups and author their exact L2/L3 measurement identities."""
     try:
         resolved = _validated(descriptors, replicates)
     except (_Refusal, KeyError, TypeError, ValueError) as exc:
-        return {"schema_version": 1, "family": None, "claim": "DIFFERENTIAL",
-                "status": REFUSED, "declaration": None, "cohort": None, "replicates": [],
-                "expected_identities": [], "unresolved_facts": [],
-                "refusal_reasons": [str(exc)]}
-    role_of = {str(row["name"]): str(row[resolved["contract"]["group_field"]]["role"])
-               for row in resolved["members"]}
+        return {
+            "schema_version": 1,
+            "family": None,
+            "claim": "DIFFERENTIAL",
+            "status": REFUSED,
+            "declaration": None,
+            "cohort": None,
+            "replicates": [],
+            "expected_identities": [],
+            "unresolved_facts": [],
+            "refusal_reasons": [str(exc)],
+        }
+    role_of = {str(row["name"]): str(row[resolved["contract"]["group_field"]]["role"]) for row in resolved["members"]}
     expected = [
-        {"family": resolved["family"], "capsule": str(row["name"]),
-         "comparison_role": role_of[str(row["name"])],
-         "program_arm": str(resolved["contract"]["program_arm"]), "simulator": simulator,
-         "replicate": replicate, "tier": tier}
+        {
+            "family": resolved["family"],
+            "capsule": str(row["name"]),
+            "comparison_role": role_of[str(row["name"])],
+            "program_arm": str(resolved["contract"]["program_arm"]),
+            "simulator": simulator,
+            "replicate": replicate,
+            "tier": tier,
+        }
         for row in resolved["members"]
         for replicate in resolved["identities"]
         for simulator, tier in resolved["lanes"]
     ]
-    return {"schema_version": 1, "family": resolved["family"], "claim": "DIFFERENTIAL",
-            "status": "READY", "declaration": copy.deepcopy(dict(resolved["contract"])),
-            "cohort": {"groups": sorted(resolved["groups"]), "roles": list(resolved["roles"]),
-                       "capsules": sorted(str(row["name"]) for row in resolved["members"]),
-                       "replicates": list(resolved["identities"]),
-                       "evidence_lanes": [{"simulator": s, "tier": t}
-                                          for s, t in resolved["lanes"]]},
-            "replicates": list(resolved["identities"]), "expected_identities": expected,
-            "unresolved_facts": [], "refusal_reasons": []}
+    return {
+        "schema_version": 1,
+        "family": resolved["family"],
+        "claim": "DIFFERENTIAL",
+        "status": "READY",
+        "declaration": copy.deepcopy(dict(resolved["contract"])),
+        "cohort": {
+            "groups": sorted(resolved["groups"]),
+            "roles": list(resolved["roles"]),
+            "capsules": sorted(str(row["name"]) for row in resolved["members"]),
+            "replicates": list(resolved["identities"]),
+            "evidence_lanes": [{"simulator": s, "tier": t} for s, t in resolved["lanes"]],
+        },
+        "replicates": list(resolved["identities"]),
+        "expected_identities": expected,
+        "unresolved_facts": [],
+        "refusal_reasons": [],
+    }
 
 
 def _fail(reason: str, **extra: Any) -> dict[str, Any]:
@@ -196,9 +231,13 @@ def analyze_comparison_group_claim(descriptors: object, results: object) -> dict
         return _fail("no measured rows were supplied")
     timing_sim = str(resolved["evidence"]["timing_simulator"])
     timing_tier = str(resolved["evidence"]["timing_tier"])
-    rows = [row for row in results if isinstance(row, Mapping)
-            and (row.get("simulator") in (None, timing_sim))
-            and (row.get("tier") in (None, timing_tier))]
+    rows = [
+        row
+        for row in results
+        if isinstance(row, Mapping)
+        and (row.get("simulator") in (None, timing_sim))
+        and (row.get("tier") in (None, timing_tier))
+    ]
     if not rows:
         return _fail(f"no results belong to timing lane {timing_sim}/{timing_tier}")
 
@@ -208,19 +247,22 @@ def analyze_comparison_group_claim(descriptors: object, results: object) -> dict
     # scalar epilogue).  Treating such a row as timing evidence turns a failed control into an
     # apparently established differential.  ``correct`` is the target-neutral bit published by the
     # execution stage after numeric, simulator, protocol, and lane checks; absence is not success.
-    unqualified = [f"{row.get('capsule')}/{row.get('replicate')}"
-                   for row in rows if row.get("correct") is not True]
+    unqualified = [f"{row.get('capsule')}/{row.get('replicate')}" for row in rows if row.get("correct") is not True]
     if unqualified:
-        return _fail("timing results lack a passing correctness/contract grade",
-                     unqualified=unqualified[:12])
+        return _fail("timing results lack a passing correctness/contract grade", unqualified=unqualified[:12])
 
     expected_arm = str(resolved["contract"]["program_arm"])
     program_arms = {str(row.get("program_arm", row.get("arm"))) for row in rows}
     if program_arms != {expected_arm}:
-        return _fail(
-            f"results use program arms {sorted(program_arms)}, expected exactly {expected_arm!r}")
-    identity_key = next((key for key in ("artifact_sha256", "package_sha256", "submission_sha256")
-                         if any(row.get(key) is not None for row in rows)), None)
+        return _fail(f"results use program arms {sorted(program_arms)}, expected exactly {expected_arm!r}")
+    identity_key = next(
+        (
+            key
+            for key in ("artifact_sha256", "package_sha256", "submission_sha256")
+            if any(row.get(key) is not None for row in rows)
+        ),
+        None,
+    )
     if identity_key is None:
         return _fail("results carry no artifact/package/submission digest, so one program is not proven")
     artifacts = {str(row.get(identity_key)) for row in rows if row.get(identity_key) is not None}
@@ -241,9 +283,12 @@ def analyze_comparison_group_claim(descriptors: object, results: object) -> dict
         if str(replicate) in slot:
             return _fail(f"duplicate timing result for {capsule}/{replicate}")
         slot[str(replicate)] = float(cycles)
-    missing = [f"{capsule}/{replicate}" for capsule in sorted(allowed_capsules)
-               for replicate in resolved["identities"]
-               if replicate not in by_capsule.get(capsule, {})]
+    missing = [
+        f"{capsule}/{replicate}"
+        for capsule in sorted(allowed_capsules)
+        for replicate in resolved["identities"]
+        if replicate not in by_capsule.get(capsule, {})
+    ]
     if missing:
         return _fail("the timing cohort is incomplete", missing=missing[:12])
 
@@ -262,12 +307,20 @@ def analyze_comparison_group_claim(descriptors: object, results: object) -> dict
             other = roles[1] if predicted == roles[0] else roles[0]
             delta = representative[other] - representative[predicted]
             passed = delta > band
-        verdict_rows.append({"group": group, "members": names, **representative,
-                             "delta_cycles": delta, "replicate_band": band})
+        verdict_rows.append(
+            {"group": group, "members": names, **representative, "delta_cycles": delta, "replicate_band": band}
+        )
         if not passed:
             losers.append(group)
     if losers:
-        return {"verdict": REFUTED, "rows": verdict_rows, "groups": losers,
-                "reason": f"the predicted group direction failed beyond its band in {len(losers)} group(s)"}
-    return {"verdict": ESTABLISHED, "rows": verdict_rows,
-            "reason": f"all {len(verdict_rows)} comparison groups separate in the predicted direction"}
+        return {
+            "verdict": REFUTED,
+            "rows": verdict_rows,
+            "groups": losers,
+            "reason": f"the predicted group direction failed beyond its band in {len(losers)} group(s)",
+        }
+    return {
+        "verdict": ESTABLISHED,
+        "rows": verdict_rows,
+        "reason": f"all {len(verdict_rows)} comparison groups separate in the predicted direction",
+    }

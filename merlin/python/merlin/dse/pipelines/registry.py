@@ -10,6 +10,7 @@ will become real xDSL rewrites on the stable plane) are registered as identity h
 xDSL pass spec still loads and runs. When the xDSL dialects land, these identities are swapped
 for real rewrites without touching the strategy / harness / search layers.
 """
+
 from __future__ import annotations
 
 from typing import Callable
@@ -29,6 +30,7 @@ def register_pass(name: str, fn: PassFn | None = None):
     def _decorator(f: PassFn) -> PassFn:
         _REGISTRY[name] = f
         return f
+
     return _decorator
 
 
@@ -82,6 +84,5 @@ def _batch_dispatch(plan: Plan) -> Plan:
 
 
 # --- lowering passes (identity until the xDSL stable plane exists) ---------------------------
-for _name in ("merlin-contract", "merlin-schedule", "interface-lower", "toynpu-lower",
-              "runtime-lower"):
+for _name in ("merlin-contract", "merlin-schedule", "interface-lower", "toynpu-lower", "runtime-lower"):
     register_pass(_name, lambda plan: plan)

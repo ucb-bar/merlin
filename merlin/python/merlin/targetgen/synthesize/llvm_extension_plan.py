@@ -11,6 +11,7 @@ ENDPOINT (``families.contract_endpoint_kind`` -> ``family_profile``), never from
 A contract with no compute_units (the neutral ``toy_npu`` example) resolves no family and falls back to
 the FAMILY-DEFAULT seed (out-of-tree, runtime-calls/command-buffer, no fork).
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -30,21 +31,36 @@ _COMMON_TRIGGERS = [
 # Fork posture per codegen ENDPOINT (the family axis), not per target name. {endpoint -> (requires_fork,
 # initial_strategy, reason)}.
 _BY_ENDPOINT: dict[str, tuple[Any, str, str]] = {
-    "command_buffer": (False, "runtime_calls_or_command_buffer",
-                       "Executes via the target command buffer / simulator; no LLVM changes."),
-    "inline_asm_insn": (False, "inline_asm_insn_on_stock_llvm",
-                        "Emit the target dialect as llvm.inline_asm/.insn on STOCK LLVM; patch LLVM "
-                        "only if custom-instruction emission is later required."),
-    "external_backend": (False, "external_device_assembler",
-                         "Emit a device kernel.S the target's own assembler builds; no host LLVM fork."),
-    "upstream_target": ("maybe", "rvv_intrinsics_or_existing_riscv_vector_path",
-                        "Vector/scalar lowers through the upstream LLVM RISC-V/RVV path; custom "
-                        "extensions may eventually require LLVM TableGen/backend changes."),
+    "command_buffer": (
+        False,
+        "runtime_calls_or_command_buffer",
+        "Executes via the target command buffer / simulator; no LLVM changes.",
+    ),
+    "inline_asm_insn": (
+        False,
+        "inline_asm_insn_on_stock_llvm",
+        "Emit the target dialect as llvm.inline_asm/.insn on STOCK LLVM; patch LLVM "
+        "only if custom-instruction emission is later required.",
+    ),
+    "external_backend": (
+        False,
+        "external_device_assembler",
+        "Emit a device kernel.S the target's own assembler builds; no host LLVM fork.",
+    ),
+    "upstream_target": (
+        "maybe",
+        "rvv_intrinsics_or_existing_riscv_vector_path",
+        "Vector/scalar lowers through the upstream LLVM RISC-V/RVV path; custom "
+        "extensions may eventually require LLVM TableGen/backend changes.",
+    ),
 }
 # The FAMILY-DEFAULT seed (the neutral toy_npu example resolves no compute-unit family): out-of-tree,
 # runtime-calls / command-buffer, no fork.
-_DEFAULT = (False, "runtime_calls_or_command_buffer",
-            "Default out-of-tree posture (family-default seed); confirm against target source.")
+_DEFAULT = (
+    False,
+    "runtime_calls_or_command_buffer",
+    "Default out-of-tree posture (family-default seed); confirm against target source.",
+)
 
 
 def synthesize_llvm_extension_plan(evidence: Evidence, target_contract: dict[str, Any]) -> dict[str, Any]:

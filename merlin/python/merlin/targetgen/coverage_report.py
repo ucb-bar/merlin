@@ -3,6 +3,7 @@
 Produces a ``coverage.json`` (validated against ``coverage.schema.json``) and a Markdown
 ``isa_coverage_report.md`` with explicit "not covered" rows -- nothing is implied covered.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,10 +23,21 @@ from .capsule_common import tier_status as _tier_status
 # (`_class_axis_baseline`), modes from what its graded capsules actually declare. A target whose
 # vocabulary does not resolve reports what its traces were OBSERVED to run and nothing else — fail
 # closed, never another machine's universe. Kept as named constants only because callers import them.
-BASELINE_CLASSES = ["CONFIG_EX", "CONFIG_LD", "CONFIG_ST", "MVIN", "MVOUT", "PRELOAD",
-                    "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "FLUSH", "FENCE", "LOOP_WS", "LOOP_CONV"]
-BASELINE_MODES = ["i8", "relu", "acc_scale", "k_accumulate", "resident_reuse",
-                  "conv2d", "movement", "padded_edge"]
+BASELINE_CLASSES = [
+    "CONFIG_EX",
+    "CONFIG_LD",
+    "CONFIG_ST",
+    "MVIN",
+    "MVOUT",
+    "PRELOAD",
+    "COMPUTE_PRELOADED",
+    "COMPUTE_ACCUMULATE",
+    "FLUSH",
+    "FENCE",
+    "LOOP_WS",
+    "LOOP_CONV",
+]
+BASELINE_MODES = ["i8", "relu", "acc_scale", "k_accumulate", "resident_reuse", "conv2d", "movement", "padded_edge"]
 #: Back-compat aliases for the baseline sets (their former names).
 ALL_CLASSES = BASELINE_CLASSES
 ALL_MODES = BASELINE_MODES
@@ -40,8 +52,7 @@ def _ratio(num: int, den: int):
 #: The axis a decline was decided on, in the order :func:`eligibility.is_eligible` checks them. Named
 #: rather than parsed out of the verdict's prose: the reason string is a human sentence and matching it
 #: would break the moment somebody rewords it, which is exactly how this repo has mis-measured before.
-DECLINE_AXES = ("undetermined", "family", "dtype", "rank", "batch", "layout", "engine", "fused_only",
-                "unknown")
+DECLINE_AXES = ("undetermined", "family", "dtype", "rank", "batch", "layout", "engine", "fused_only", "unknown")
 
 
 def _decline_axis(desc, family: str, cap_map: dict, *, undetermined: bool) -> str:
@@ -144,9 +155,16 @@ def _capsule_region(cap: dict):
         if declared:
             in_dtype = weight_dtype = declared
         rank, batch, layout = None, 1, None
-    return _el.RegionDescriptor(source=cap.get("name", ""), op=op, family=fam,
-                                in_dtype=in_dtype, weight_dtype=weight_dtype,
-                                rank=rank, batch=batch, layout=layout)
+    return _el.RegionDescriptor(
+        source=cap.get("name", ""),
+        op=op,
+        family=fam,
+        in_dtype=in_dtype,
+        weight_dtype=weight_dtype,
+        rank=rank,
+        batch=batch,
+        layout=layout,
+    )
 
 
 def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str | None) -> dict:
@@ -159,7 +177,7 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
     from . import eligibility as _el
     from .capsule_runner import _TIER_SIM
 
-    sim_tiers = tuple(_TIER_SIM)                      # tiers that run the emitted artifact on a simulator
+    sim_tiers = tuple(_TIER_SIM)  # tiers that run the emitted artifact on a simulator
     cap_map: dict = {}
     undetermined: frozenset = frozenset()
     if target:
@@ -219,10 +237,18 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         # accelerator is a violation — the fallback escape hatch cannot hide an emit-layer gap. An
         # ineligible region (or one with must_accelerate unset / fallback_allowed) legitimately falls back.
         violated = must and eligible and not accelerated
-        per_capsule.append({"capsule": r["capsule"], "semantic_family": family, "eligible": eligible,
-                            "accelerated": accelerated, "must_accelerate": must,
-                            "must_accelerate_violated": violated, "reason": reason,
-                            "undetermined": is_undetermined})
+        per_capsule.append(
+            {
+                "capsule": r["capsule"],
+                "semantic_family": family,
+                "eligible": eligible,
+                "accelerated": accelerated,
+                "must_accelerate": must,
+                "must_accelerate_violated": violated,
+                "reason": reason,
+                "undetermined": is_undetermined,
+            }
+        )
         if is_undetermined:
             n_undetermined += 1
             undetermined_capsules.append(r["capsule"])
@@ -237,8 +263,9 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
             unclassified_capsules.append(r["capsule"])
         # Per-family denominator, so "ARR = 1.000" can be read as the coverage it actually asserts
         # rather than as coverage of everything the target can do.
-        fb = by_family.setdefault(family or "unclassified",
-                                  {"n_regions": 0, "n_eligible": 0, "n_eligible_accelerated": 0})
+        fb = by_family.setdefault(
+            family or "unclassified", {"n_regions": 0, "n_eligible": 0, "n_eligible_accelerated": 0}
+        )
         fb["n_regions"] += 1
         if eligible:
             fb["n_eligible"] += 1
@@ -275,10 +302,15 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         # word for this op" is a gap in our vocabulary and is already reported as `n_unclassified` --
         # reporting it as a decline would put the blame on the hardware.
         if must and not eligible and not accelerated and family is not None:
-            declined_offload.append({"capsule": r["capsule"], "semantic_family": family,
-                                     "declined_on": _decline_axis(desc, family, cap_map,
-                                                                  undetermined=is_undetermined),
-                                     "reason": reason, "undetermined": is_undetermined})
+            declined_offload.append(
+                {
+                    "capsule": r["capsule"],
+                    "semantic_family": family,
+                    "declined_on": _decline_axis(desc, family, cap_map, undetermined=is_undetermined),
+                    "reason": reason,
+                    "undetermined": is_undetermined,
+                }
+            )
         if accelerated:
             n_accelerated += 1
             if eligible:
@@ -316,8 +348,10 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         # Which families the recall was actually computed over. A target may declare three families and
         # have only two of them reachable standalone, in which case the headline ratio is a statement
         # about those two and nothing else.
-        "by_family": {f: {**b, "recall": _ratio(b["n_eligible_accelerated"], b["n_eligible"])}
-                      for f, b in sorted(by_family.items())},
+        "by_family": {
+            f: {**b, "recall": _ratio(b["n_eligible_accelerated"], b["n_eligible"])}
+            for f, b in sorted(by_family.items())
+        },
         "fused_only_families": fused_only,
         "n_fused_only_ineligible": n_fused_only_ineligible,
         # Families the target DECLARES and no capsule exercises. Distinct from fused_only, where the
@@ -339,9 +373,11 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         # for a repertoire the machine does not claim. Both are correct fallbacks and neither is scored,
         # but they are different facts about the submission's workload and reporting one count for both
         # hides that.
-        "declined_offload_by_axis": {ax: sum(1 for d in declined_offload if d["declined_on"] == ax)
-                                     for ax in DECLINE_AXES
-                                     if any(d["declined_on"] == ax for d in declined_offload)},
+        "declined_offload_by_axis": {
+            ax: sum(1 for d in declined_offload if d["declined_on"] == ax)
+            for ax in DECLINE_AXES
+            if any(d["declined_on"] == ax for d in declined_offload)
+        },
         "acceleratable_region_recall": _ratio(n_eligible_accelerated, n_eligible),
         # The floor under the headline. `n_undetermined` regions are the ones whose family no rung of
         # the evidence ladder could decide; by design they leave BOTH sides of the ratio, because
@@ -350,8 +386,7 @@ def _acceleratable_coverage(results: list[dict], cap_by_name: dict, target: str 
         # undecidable region silently shrinks the denominator, and a shrinking denominator RAISES
         # recall. Charging them all to the denominator does not score them -- it brackets them, so a
         # target whose evidence is thin reads as a WIDE range instead of a high number.
-        "acceleratable_region_recall_lower_bound":
-            _ratio(n_eligible_accelerated, n_eligible + n_undetermined),
+        "acceleratable_region_recall_lower_bound": _ratio(n_eligible_accelerated, n_eligible + n_undetermined),
         "acceleration_precision": _ratio(n_accel_eligible, n_accelerated),
         "by_generalization_axis": by_generalization_axis,
         "per_capsule": per_capsule,
@@ -374,17 +409,18 @@ def _isa_class_vocabulary(target: str | None) -> list[str]:
         return []
     try:
         from .target_experiment import load_capability_manifest
+
         m = load_capability_manifest(target)
     except Exception:  # noqa: BLE001 — no resolvable manifest -> rely on observed traces
         return _derived_isa_classes(target)
     out: list[str] = []
-    for itf in (m.contract.get("interfaces") or []):     # self-hosted ISA / SIMT decoded classes
+    for itf in m.contract.get("interfaces") or []:  # self-hosted ISA / SIMT decoded classes
         out += list(itf.get("instruction_classes") or [])
     enc = m.encoding or {}
     sc = enc.get("semantic_class") or {}
     cst = enc.get("config_subtype") or {}
-    for name in sc.values():                              # RoCC/systolic semantic classes
-        if cst and str(name).upper() == "CONFIG":        # replaced by its subtypes in the trace
+    for name in sc.values():  # RoCC/systolic semantic classes
+        if cst and str(name).upper() == "CONFIG":  # replaced by its subtypes in the trace
             continue
         out.append(name)
     out += list(cst.values())
@@ -413,18 +449,26 @@ def _derived_isa_classes(target: str) -> list[str]:
     guessed at from a name."""
     try:
         from . import isa_taxonomy
+
         tax = isa_taxonomy.taxonomy_for_target(target)
     except Exception:  # noqa: BLE001 — no derivable ISA definition -> stay silent, fail closed
         return []
     return [c for c in dict.fromkeys((tax.get("by_class") or {})) if c]
+
+
 def _axes(baseline: list[str], observed) -> list[str]:
     """Baseline axes first (stable report order), then anything else observed, sorted."""
     extra = sorted(set(observed) - set(baseline))
     return [*baseline, *extra]
 
 
-def aggregate(results: list[dict], capsules: list[dict] | None = None,
-              traces: dict[str, dict] | None = None, *, target: str | None = None) -> dict:
+def aggregate(
+    results: list[dict],
+    capsules: list[dict] | None = None,
+    traces: dict[str, dict] | None = None,
+    *,
+    target: str | None = None,
+) -> dict:
     """Aggregate capsule_result dicts (+ optional capsules/traces) into a coverage dict.
 
     The instruction-class universe is DERIVED from ``target``'s own ISA unioned with the classes the
@@ -459,6 +503,7 @@ def aggregate(results: list[dict], capsules: list[dict] | None = None,
     # hardcoded as vcs/firesim here — so a target whose ladder names its heavy oracles differently is
     # counted under its own substrate labels.
     from .capsule_runner import _TIER_SIM
+
     heavy_tiers = tuple(t for t in ("L4", "L5") if t in _TIER_SIM)
     unavail = {_TIER_SIM[t]: 0 for t in heavy_tiers}
 
@@ -501,15 +546,25 @@ def aggregate(results: list[dict], capsules: list[dict] | None = None,
 
 
 def render_markdown(cov: dict, results: list[dict]) -> str:
-    L = ["# ISA / capsule coverage report (capsule_bench_v0)", "",
-         f"Total capsules: **{cov['total']}**  ·  by kind: {cov['by_kind']}  ·  "
-         f"by label: {cov['by_label']}", "",
-         "## Oracle tiers reached (passing)", "",
-         "| tier | capsules passing |", "|---|---|"]
+    L = [
+        "# ISA / capsule coverage report (capsule_bench_v0)",
+        "",
+        f"Total capsules: **{cov['total']}**  ·  by kind: {cov['by_kind']}  ·  by label: {cov['by_label']}",
+        "",
+        "## Oracle tiers reached (passing)",
+        "",
+        "| tier | capsules passing |",
+        "|---|---|",
+    ]
     for t in TIERS:
         L.append(f"| {t} | {cov['by_tier_reached'].get(t, 0)} |")
-    L += ["", "## Instruction-class coverage (explicit not-covered rows)", "",
-          "| class | capsules exercising |", "|---|---|"]
+    L += [
+        "",
+        "## Instruction-class coverage (explicit not-covered rows)",
+        "",
+        "| class | capsules exercising |",
+        "|---|---|",
+    ]
     # Iterate the AGGREGATE's own axes, and ONLY those: they are already this target's vocabulary unioned
     # with what the corpus exercised (see _class_axis_baseline). Re-prepending the baseline list here put
     # another machine's classes back into the rendered table even once the counts had stopped carrying
@@ -532,67 +587,97 @@ def render_markdown(cov: dict, results: list[dict]) -> str:
         _lo = arr.get("acceleratable_region_recall_lower_bound")
         _p = arr.get("acceleration_precision")
         _n_e, _n_u, _n_c = arr.get("n_eligible", 0), arr.get("n_undetermined", 0), arr.get("n_unclassified", 0)
-        L += ["", "## Acceleratable Region Recall", "",
-              f"- eligible regions (the denominator): **{_n_e}**",
-              f"- of those, accelerated: **{arr.get('n_eligible_accelerated', 0)}**",
-              f"- **ARR = {'n/a' if _r is None else f'{_r:.3f}'}**"
-              + ("" if _lo is None or _r is None or abs(_lo - _r) < 1e-9 else
-                 f" _(floor {_lo:.3f} with the {_n_u} undetermined region(s) charged to the"
-                 f" denominator -- the true value is in that range)_")
-              + f"  ·  precision = {'n/a' if _p is None else f'{_p:.3f}'}",
-              "",
-              f"- undetermined (evidence could not decide the family): **{_n_u}**",
-              f"- unclassified (this taxonomy has no name for the op): **{_n_c}**", ""]
+        L += [
+            "",
+            "## Acceleratable Region Recall",
+            "",
+            f"- eligible regions (the denominator): **{_n_e}**",
+            f"- of those, accelerated: **{arr.get('n_eligible_accelerated', 0)}**",
+            f"- **ARR = {'n/a' if _r is None else f'{_r:.3f}'}**"
+            + (
+                ""
+                if _lo is None or _r is None or abs(_lo - _r) < 1e-9
+                else f" _(floor {_lo:.3f} with the {_n_u} undetermined region(s) charged to the"
+                f" denominator -- the true value is in that range)_"
+            )
+            + f"  ·  precision = {'n/a' if _p is None else f'{_p:.3f}'}",
+            "",
+            f"- undetermined (evidence could not decide the family): **{_n_u}**",
+            f"- unclassified (this taxonomy has no name for the op): **{_n_c}**",
+            "",
+        ]
         _bf = arr.get("by_family") or {}
         if _bf:
-            L += ["| semantic family | regions | eligible | accelerated | recall |",
-                  "|---|---|---|---|---|"]
+            L += ["| semantic family | regions | eligible | accelerated | recall |", "|---|---|---|---|---|"]
             for _f, _b in _bf.items():
                 _fr = _b.get("recall")
-                L.append(f"| {_f} | {_b['n_regions']} | {_b['n_eligible']} | "
-                         f"{_b['n_eligible_accelerated']} | "
-                         f"{'n/a' if _fr is None else f'{_fr:.3f}'} |")
+                L.append(
+                    f"| {_f} | {_b['n_regions']} | {_b['n_eligible']} | "
+                    f"{_b['n_eligible_accelerated']} | "
+                    f"{'n/a' if _fr is None else f'{_fr:.3f}'} |"
+                )
             L.append("")
         _fo = arr.get("fused_only_families") or []
         if _fo:
-            L += [f"> This target runs {', '.join(_fo)} ONLY fused behind another family (the "
-                  f"accumulator-readout epilogue, not a standalone engine), so "
-                  f"{arr.get('n_fused_only_ineligible', 0)} standalone region(s) of it are ineligible "
-                  f"BY HARDWARE and never enter the denominator. The recall above is a claim about the "
-                  f"families in the table, not about everything the device can compute.", ""]
+            L += [
+                f"> This target runs {', '.join(_fo)} ONLY fused behind another family (the "
+                f"accumulator-readout epilogue, not a standalone engine), so "
+                f"{arr.get('n_fused_only_ineligible', 0)} standalone region(s) of it are ineligible "
+                f"BY HARDWARE and never enter the denominator. The recall above is a claim about the "
+                f"families in the table, not about everything the device can compute.",
+                "",
+            ]
         if _n_u or _n_c:
-            L += [f"> {_n_u + _n_c} region(s) are in NEITHER the numerator nor the denominator. "
-                  f"Undetermined is a gap in the target's evidence; unclassified is a gap in our "
-                  f"vocabulary. Neither says the hardware cannot do the work, and the recall above is "
-                  f"computed over the remainder — do not quote it alone.", ""]
+            L += [
+                f"> {_n_u + _n_c} region(s) are in NEITHER the numerator nor the denominator. "
+                f"Undetermined is a gap in the target's evidence; unclassified is a gap in our "
+                f"vocabulary. Neither says the hardware cannot do the work, and the recall above is "
+                f"computed over the remainder — do not quote it alone.",
+                "",
+            ]
         if arr.get("declined_offload"):
             rows = arr["declined_offload"]
-            shown = ", ".join(f"{d['capsule']} ({d['semantic_family']}/{d.get('declined_on', '?')})"
-                              for d in rows[:6])
+            shown = ", ".join(f"{d['capsule']} ({d['semantic_family']}/{d.get('declined_on', '?')})" for d in rows[:6])
             byax = arr.get("declined_offload_by_axis") or {}
             axes = ", ".join(f"{k}={v}" for k, v in byax.items())
-            L += [f"> **declined offload** on {len(rows)} capsule(s): {shown} — the region declared "
-                  f"`must_accelerate`, the target could not take it on the axis named beside it, and it "
-                  f"ran on the host. Correct, and unpriced: `must_accelerate` cannot report it because "
-                  f"the region is ineligible.",
-                  f">   declined on: {axes or 'unrecorded'}",
-                  f">   first reason: {rows[0]['reason']}", ""]
+            L += [
+                f"> **declined offload** on {len(rows)} capsule(s): {shown} — the region declared "
+                f"`must_accelerate`, the target could not take it on the axis named beside it, and it "
+                f"ran on the host. Correct, and unpriced: `must_accelerate` cannot report it because "
+                f"the region is ineligible.",
+                f">   declined on: {axes or 'unrecorded'}",
+                f">   first reason: {rows[0]['reason']}",
+                "",
+            ]
         if arr.get("must_accelerate_violations"):
-            L += [f"> **must_accelerate violated** on {len(arr['must_accelerate_violations'])} capsule(s): "
-                  f"{', '.join(arr['must_accelerate_violations'][:8])} — an ELIGIBLE region that fell back.",
-                  ""]
+            L += [
+                f"> **must_accelerate violated** on {len(arr['must_accelerate_violations'])} capsule(s): "
+                f"{', '.join(arr['must_accelerate_violations'][:8])} — an ELIGIBLE region that fell back.",
+                "",
+            ]
 
-    L += ["", "## Heavy-oracle availability (honest)", "",
-          f"- VCS (L4) recorded unavailable on **{cov['unavailable']['vcs']}** capsules",
-          f"- FireSim (L5) recorded unavailable on **{cov['unavailable']['firesim']}** capsules",
-          "", "_Not-run is not pass: a mandatory tier recorded unavailable yields capsule "
-          "status=incomplete, never pass._"]
+    L += [
+        "",
+        "## Heavy-oracle availability (honest)",
+        "",
+        f"- VCS (L4) recorded unavailable on **{cov['unavailable']['vcs']}** capsules",
+        f"- FireSim (L5) recorded unavailable on **{cov['unavailable']['firesim']}** capsules",
+        "",
+        "_Not-run is not pass: a mandatory tier recorded unavailable yields capsule status=incomplete, never pass._",
+    ]
     return "\n".join(L) + "\n"
 
 
-def write(cov: dict, out_json: str | Path, out_md: str | Path | None = None,
-          results: list[dict] | None = None, *, contract: str | Path | None = None) -> None:
+def write(
+    cov: dict,
+    out_json: str | Path,
+    out_md: str | Path | None = None,
+    results: list[dict] | None = None,
+    *,
+    contract: str | Path | None = None,
+) -> None:
     from .contract import schemas
+
     schemas.validate(cov, "coverage", contract=contract)
     Path(out_json).write_text(json.dumps(cov, indent=2), encoding="utf-8")
     if out_md:

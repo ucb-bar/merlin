@@ -14,6 +14,7 @@ path that does not need it -- whereas a fabricated default is a wrong answer tha
 
 Vocabularies are closed sets validated fail-closed, exactly as ``families.ENDPOINT_KINDS`` is.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -29,8 +30,7 @@ from dataclasses import dataclass, field
 #:   mmio_store       -- the host stores to a control aperture
 #:   command_buffer   -- a command buffer is handed to the device's own runtime
 #:   device_native    -- the device fetches and decodes its own instruction stream
-COMMAND_TRANSPORTS: tuple[str, ...] = ("host_instruction", "mmio_store", "command_buffer",
-                                       "device_native")
+COMMAND_TRANSPORTS: tuple[str, ...] = ("host_instruction", "mmio_store", "command_buffer", "device_native")
 
 #: WHERE the operands live, and who is responsible for putting them there.
 #:   pointer_args      -- host allocates; the device is handed pointers and pulls (DMA)
@@ -80,8 +80,11 @@ class Link:
 
     def unknowns(self) -> tuple[str, ...]:
         """The axes that could not be derived. A caller that needs one must refuse, not assume."""
-        return tuple(n for n in ("command_transport", "operand_placement", "address_translation",
-                                 "emitted_artifact") if getattr(self, n) is None)
+        return tuple(
+            n
+            for n in ("command_transport", "operand_placement", "address_translation", "emitted_artifact")
+            if getattr(self, n) is None
+        )
 
     def to_device_address(self, host_addr: int) -> int | None:
         """Translate a host address, or None when the translation is not derivable."""
@@ -89,7 +92,7 @@ class Link:
             return host_addr
         if self.address_translation == "offset":
             return host_addr - int(self.address_offset or 0)
-        return None            # separate_space or underivable: the caller must move the bytes
+        return None  # separate_space or underivable: the caller must move the bytes
 
 
 @dataclass(frozen=True)
@@ -120,7 +123,7 @@ class Host:
             return self.vector_harts > 0
         if self.vector_hart_ids is not None:
             return len(self.vector_hart_ids) > 0
-        return None            # nothing declared either way: not derivable, say so
+        return None  # nothing declared either way: not derivable, say so
 
 
 @dataclass(frozen=True)
@@ -128,8 +131,8 @@ class Device:
     """One accelerator, and how it is reached."""
 
     name: str
-    kind: str | None = None            # a compute_units KIND (systolic/simt/spatial/vector/scalar)
-    endpoint_kind: str | None = None   # the legacy token, kept: the Link is derived FROM it + facts
+    kind: str | None = None  # a compute_units KIND (systolic/simt/spatial/vector/scalar)
+    endpoint_kind: str | None = None  # the legacy token, kept: the Link is derived FROM it + facts
     link: Link = field(default_factory=Link)
     evidence: dict[str, str] = field(default_factory=dict)
 

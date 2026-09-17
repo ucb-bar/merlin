@@ -6,6 +6,7 @@ markers: ``CYCLES <n>``, ``KIND <k> COUNT <c> CYCLES <n>``, ``REGION_CYCLES <n>`
 labelled fields, replacing the ad-hoc ``re.search(r"CYCLES\\s+(\\d+)")`` scrapes that were spread
 across the runtime / cost-model / benchmark drivers. No ``re`` here by design.
 """
+
 from __future__ import annotations
 
 

@@ -21,6 +21,7 @@ judgement:
 Everything else is left alone and merely reported, because "probably finished" is not a property of
 a run directory that this tool can read off the filesystem. Dry-run is the default; ``--apply`` acts.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,7 +51,7 @@ def contract() -> dict:
     raising, so pricing the root still works in a checkout that has not got the file.
     """
     from merlin.common.paths import merlin_dir  # noqa: PLC0415
-    from merlin.common.yaml import load_yaml    # noqa: PLC0415
+    from merlin.common.yaml import load_yaml  # noqa: PLC0415
 
     try:
         return load_yaml(merlin_dir() / "contract" / _CONTRACT) or {}
@@ -135,7 +136,7 @@ def measure(root: Path, *, usage: Usage | None = None) -> Usage:
         try:
             entries = list(os.scandir(current))
         except OSError:
-            continue                          # vanished or unreadable mid-walk; report what we saw
+            continue  # vanished or unreadable mid-walk; report what we saw
         for entry in entries:
             try:
                 if entry.is_symlink():
@@ -173,7 +174,7 @@ def pending_snapshots(roots: list[Path] | None = None) -> tuple[list[Path], int]
     """Input closures abandoned mid-copy. A complete one is named without the suffix."""
     found: list[Path] = []
     total = 0
-    for root in (roots if roots is not None else scan_roots()):
+    for root in roots if roots is not None else scan_roots():
         if not root.is_dir():
             continue
         for path in root.rglob(_SNAPSHOT_DIR + _PENDING_SUFFIX):
@@ -212,15 +213,19 @@ def snapshot_sharing(roots: list[Path] | None = None) -> dict:
     """
     usage = Usage()
     count = 0
-    for root in (roots if roots is not None else scan_roots()):
+    for root in roots if roots is not None else scan_roots():
         if not root.is_dir():
             continue
         for path in root.rglob(_SNAPSHOT_DIR):
             if path.is_dir() and not path.is_symlink():
                 count += 1
                 measure(path, usage=usage)
-    return {"snapshots": count, "apparent_bytes": usage.apparent,
-            "occupied_bytes": usage.occupied, "files": usage.files}
+    return {
+        "snapshots": count,
+        "apparent_bytes": usage.apparent,
+        "occupied_bytes": usage.occupied,
+        "files": usage.files,
+    }
 
 
 # --- layout drift ------------------------------------------------------------------------------
@@ -245,12 +250,10 @@ def layout_drift() -> dict:
     for path in _safe_dirs(out_dir()):
         if path.name not in roots:
             usage = measure(path)
-            report["stray_roots"].append({"name": path.name, "bytes": usage.occupied,
-                                          "files": usage.files})
+            report["stray_roots"].append({"name": path.name, "bytes": usage.occupied, "files": usage.files})
     for path in _safe_dirs(artifacts_dir()):
         usage = measure(path)
-        row = {"name": path.name, "bytes": usage.occupied, "files": usage.files,
-               "units": len(_safe_dirs(path))}
+        row = {"name": path.name, "bytes": usage.occupied, "files": usage.files, "units": len(_safe_dirs(path))}
         key = "declared_concerns" if path.name in concerns else "undeclared_concerns"
         report[key].append(row)
     for key in ("stray_roots", "undeclared_concerns", "declared_concerns"):
@@ -286,7 +289,7 @@ def _undeclared_payload() -> list[dict]:
         except (OSError, ValueError):
             continue
         if not declared:
-            continue                      # a placeholder manifest declares nothing, so nothing drifts
+            continue  # a placeholder manifest declares nothing, so nothing drifts
         total = undeclared = 0
         for directory, _dirs, names in os.walk(path):
             for entry in names:
@@ -301,8 +304,9 @@ def _undeclared_payload() -> list[dict]:
                 if candidate.relative_to(path).as_posix() not in declared | {"manifest.yaml"}:
                     undeclared += size
         if undeclared:
-            rows.append({"group": group, "unit": name, "declared": len(declared),
-                         "bytes": undeclared, "unit_bytes": total})
+            rows.append(
+                {"group": group, "unit": name, "declared": len(declared), "bytes": undeclared, "unit_bytes": total}
+            )
     rows.sort(key=lambda r: -r["bytes"])
     return rows
 
@@ -329,8 +333,9 @@ def _unit_name_drift() -> list[dict]:
         row[0] += 1
         if unit_timestamp(name) is None:
             row[1] += 1
-    rows = [{"group": group, "units": total, "undated": odd}
-            for group, (total, odd) in counts.items() if 0 < odd < total]
+    rows = [
+        {"group": group, "units": total, "undated": odd} for group, (total, odd) in counts.items() if 0 < odd < total
+    ]
     rows.sort(key=lambda r: -r["undated"])
     return rows
 
@@ -339,52 +344,65 @@ def _print_layout(report: dict, top: int) -> None:
     stray, undeclared = report["stray_roots"], report["undeclared_concerns"]
     declared = report["declared_concerns"]
     roots = out_roots()
-    print(f"out/ roots: {len(roots)} declared ({', '.join(roots)}), "
-          f"{len(stray)} undeclared")
+    print(f"out/ roots: {len(roots)} declared ({', '.join(roots)}), {len(stray)} undeclared")
     for row in stray:
-        print(f"  [stray root]  {_human(row['bytes']):>10}  {row['files']:>7,} files  "
-              f"out/{row['name']}")
+        print(f"  [stray root]  {_human(row['bytes']):>10}  {row['files']:>7,} files  out/{row['name']}")
     if stray:
-        print("  -> generated output belongs under one of the three roots; anything else is a root\n"
-              "     the convention retired, and the write-guard hook only blocks paths it knows.")
+        print(
+            "  -> generated output belongs under one of the three roots; anything else is a root\n"
+            "     the convention retired, and the write-guard hook only blocks paths it knows."
+        )
 
     print(f"\nout/artifacts concerns: {len(declared)} declared, {len(undeclared)} undeclared")
     declared_bytes = sum(r["bytes"] for r in declared)
     undeclared_bytes = sum(r["bytes"] for r in undeclared)
     print(f"  declared   {_human(declared_bytes):>10}")
-    print(f"  undeclared {_human(undeclared_bytes):>10}   "
-          f"({len(undeclared)} dirs, {sum(r['units'] for r in undeclared):,} units)")
+    print(
+        f"  undeclared {_human(undeclared_bytes):>10}   "
+        f"({len(undeclared)} dirs, {sum(r['units'] for r in undeclared):,} units)"
+    )
     if undeclared:
         print(f"\n  largest undeclared (top {top}):")
         for row in undeclared[:top]:
             print(f"    {_human(row['bytes']):>10}  {row['units']:>5} units  {row['name']}")
-        print("\n  Each needs one of: a fold in merlin/contract/storage.yaml, an entry in that\n"
-              "  file's concern roster, or retirement. `merlin-storage organize` applies the folds.")
+        print(
+            "\n  Each needs one of: a fold in merlin/contract/storage.yaml, an entry in that\n"
+            "  file's concern roster, or retirement. `merlin-storage organize` applies the folds."
+        )
 
     odd = report.get("unconventional_units") or []
     if odd:
         total = sum(r["undated"] for r in odd)
-        print(f"\ngroups written both ways: {total:,} undated units across {len(odd)} groups "
-              f"(top {min(top, len(odd))})")
+        print(
+            f"\ngroups written both ways: {total:,} undated units across {len(odd)} groups (top {min(top, len(odd))})"
+        )
         for row in odd[:top]:
             print(f"  {row['undated']:>6} of {row['units']:<6} {row['group']}")
-        print("\n  These trees hold conventionally-named units AND directories with no <TS> token,\n"
-              "  so the same concern is being written through new_product() and by something that\n"
-              "  just made a directory. An undated unit cannot be ordered against its siblings, so no\n"
-              "  retention depth can place it. That is a producer fix, not a disk decision.")
+        print(
+            "\n  These trees hold conventionally-named units AND directories with no <TS> token,\n"
+            "  so the same concern is being written through new_product() and by something that\n"
+            "  just made a directory. An undated unit cannot be ordered against its siblings, so no\n"
+            "  retention depth can place it. That is a producer fix, not a disk decision."
+        )
 
     payload = report.get("undeclared_payload") or []
     if payload:
         total = sum(r["bytes"] for r in payload)
-        print(f"\nbytes inside a product its own manifest does not list: {_human(total)} across "
-              f"{len(payload)} units (top {min(top, len(payload))})")
+        print(
+            f"\nbytes inside a product its own manifest does not list: {_human(total)} across "
+            f"{len(payload)} units (top {min(top, len(payload))})"
+        )
         for row in payload[:top]:
             share = row["bytes"] / row["unit_bytes"] * 100 if row["unit_bytes"] else 0
-            print(f"  {_human(row['bytes']):>12} of {_human(row['unit_bytes']):>12} ({share:3.0f}%)  "
-                  f"{row['declared']:>4} declared  {row['group']}/{row['unit']}")
-        print("\n  A manifest is the product's statement of what it contains, so this needs no\n"
-              "  threshold: the producer already declared the answer. Undeclared bulk is build\n"
-              "  output that belongs under out/build/, referenced by digest rather than embedded.")
+            print(
+                f"  {_human(row['bytes']):>12} of {_human(row['unit_bytes']):>12} ({share:3.0f}%)  "
+                f"{row['declared']:>4} declared  {row['group']}/{row['unit']}"
+            )
+        print(
+            "\n  A manifest is the product's statement of what it contains, so this needs no\n"
+            "  threshold: the producer already declared the answer. Undeclared bulk is build\n"
+            "  output that belongs under out/build/, referenced by digest rather than embedded."
+        )
 
 
 # --- per-experiment accounting ----------------------------------------------------------------
@@ -403,8 +421,7 @@ def _is_version_level(name: str) -> bool:
     Treating one as a unit prices a whole version series as a single experiment -- ``perf-bench``'s
     ``v1`` holds 34 GB -- which is the one number guaranteed to mislead.
     """
-    return (name.startswith(_VERSION_PREFIX) and len(name) > 1
-            and name[1:].isdigit())
+    return name.startswith(_VERSION_PREFIX) and len(name) > 1 and name[1:].isdigit()
 
 
 def experiment_units() -> list[tuple[str, str, Path]]:
@@ -429,7 +446,7 @@ def experiment_units() -> list[tuple[str, str, Path]]:
             descend(_label(suite), suite, 0)
     for concern in _safe_dirs(artifacts_dir()):
         if concern.name == "cache":
-            continue                          # regenerable by convention; priced as a cache instead
+            continue  # regenerable by convention; priced as a cache instead
         for axis in _safe_dirs(concern):
             descend(_label(axis), axis, 0)
     return found
@@ -456,9 +473,9 @@ def _safe_dirs(parent: Path) -> list[Path]:
     reason.
     """
     try:
-        return sorted(p for p in parent.iterdir()
-                      if p.is_dir() and not p.is_symlink()
-                      and not p.name.startswith((".", "__")))
+        return sorted(
+            p for p in parent.iterdir() if p.is_dir() and not p.is_symlink() and not p.name.startswith((".", "__"))
+        )
     except OSError:
         return []
 
@@ -493,18 +510,26 @@ def _print_experiments(groups: dict, top: int, match: str | None) -> None:
     total_bytes = sum(r["bytes"] for _, r in rows)
     shown = rows[:top]
     label = f" matching {match!r}" if match else ""
-    print(f"{total_units:,} experiment unit(s){label}, {_human(total_bytes)} "
-          f"(top {len(shown)} of {len(rows)} groups by total)\n")
+    print(
+        f"{total_units:,} experiment unit(s){label}, {_human(total_bytes)} "
+        f"(top {len(shown)} of {len(rows)} groups by total)\n"
+    )
     print(f"  {'group':<46} {'units':>6} {'total':>12} {'mean/unit':>12} {'files':>10}")
     for group, row in shown:
-        print(f"  {group:<46} {row['units']:>6} {_human(row['bytes']):>12} "
-              f"{_human(row['mean_bytes']):>12} {row['files']:>10,}")
-    print("\nA group that is large with a SMALL mean is large by accumulation -- that is a retention\n"
-          "decision, not a producer bug. A large mean is the producer writing too much per run.")
+        print(
+            f"  {group:<46} {row['units']:>6} {_human(row['bytes']):>12} "
+            f"{_human(row['mean_bytes']):>12} {row['files']:>10,}"
+        )
+    print(
+        "\nA group that is large with a SMALL mean is large by accumulation -- that is a retention\n"
+        "decision, not a producer bug. A large mean is the producer writing too much per run."
+    )
     biggest = max(rows, key=lambda kv: kv[1]["mean_bytes"])
-    print(f"\nheaviest per run: {biggest[0]} at {_human(biggest[1]['mean_bytes'])}/unit "
-          f"(largest single unit: {biggest[1]['largest'][0]} "
-          f"{_human(biggest[1]['largest'][1])})")
+    print(
+        f"\nheaviest per run: {biggest[0]} at {_human(biggest[1]['mean_bytes'])}/unit "
+        f"(largest single unit: {biggest[1]['largest'][0]} "
+        f"{_human(biggest[1]['largest'][1])})"
+    )
 
 
 def collect() -> dict:
@@ -512,36 +537,49 @@ def collect() -> dict:
     report: dict = {"out_root": str(out_dir()), "roots": {}, "concerns": {}}
     try:
         disk = shutil.disk_usage(out_dir() if out_dir().exists() else Path.cwd())
-        report["filesystem"] = {"total_bytes": disk.total, "used_bytes": disk.used,
-                                "free_bytes": disk.free}
+        report["filesystem"] = {"total_bytes": disk.total, "used_bytes": disk.used, "free_bytes": disk.free}
     except OSError:
         report["filesystem"] = {}
     for name, path in roots.items():
         usage = measure(path)
-        report["roots"][name] = {"apparent_bytes": usage.apparent,
-                                 "occupied_bytes": usage.occupied, "files": usage.files}
+        report["roots"][name] = {
+            "apparent_bytes": usage.apparent,
+            "occupied_bytes": usage.occupied,
+            "files": usage.files,
+        }
     if artifacts_dir().is_dir():
-        for concern in sorted(p for p in artifacts_dir().iterdir()
-                              if p.is_dir() and not p.is_symlink()):
+        for concern in sorted(p for p in artifacts_dir().iterdir() if p.is_dir() and not p.is_symlink()):
             usage = measure(concern)
-            report["concerns"][concern.name] = {"occupied_bytes": usage.occupied,
-                                                "files": usage.files}
+            report["concerns"][concern.name] = {"occupied_bytes": usage.occupied, "files": usage.files}
     report["bundle_snapshots"] = snapshot_sharing()
     store = store_root()
     store_usage = measure(store)
     orphans, orphan_bytes = store_orphans(store)
     pending, pending_bytes = pending_snapshots()
     caches, cache_bytes = purgeable_caches(store)
-    report["store"] = {"path": str(store), "occupied_bytes": store_usage.occupied,
-                       "objects": store_usage.files, "orphan_objects": len(orphans),
-                       "orphan_bytes": orphan_bytes}
+    report["store"] = {
+        "path": str(store),
+        "occupied_bytes": store_usage.occupied,
+        "objects": store_usage.files,
+        "orphan_objects": len(orphans),
+        "orphan_bytes": orphan_bytes,
+    }
     report["reclaimable"] = {
-        "store-orphans": {"count": len(orphans), "bytes": orphan_bytes,
-                          "why": "no snapshot links these objects any more"},
-        "pending-snapshots": {"count": len(pending), "bytes": pending_bytes,
-                              "why": "input closures abandoned mid-copy; never complete"},
-        "caches": {"count": len(caches), "bytes": cache_bytes,
-                   "why": "out/artifacts/cache/<ns> is declared regenerable"},
+        "store-orphans": {
+            "count": len(orphans),
+            "bytes": orphan_bytes,
+            "why": "no snapshot links these objects any more",
+        },
+        "pending-snapshots": {
+            "count": len(pending),
+            "bytes": pending_bytes,
+            "why": "input closures abandoned mid-copy; never complete",
+        },
+        "caches": {
+            "count": len(caches),
+            "bytes": cache_bytes,
+            "why": "out/artifacts/cache/<ns> is declared regenerable",
+        },
     }
     return report
 
@@ -549,8 +587,10 @@ def collect() -> dict:
 def _print_report(report: dict, top: int) -> None:
     fs = report.get("filesystem") or {}
     if fs:
-        print(f"filesystem   {_human(fs['used_bytes'])} used, {_human(fs['free_bytes'])} free "
-              f"of {_human(fs['total_bytes'])}")
+        print(
+            f"filesystem   {_human(fs['used_bytes'])} used, {_human(fs['free_bytes'])} free "
+            f"of {_human(fs['total_bytes'])}"
+        )
     print(f"out root     {report['out_root']}")
     for name, row in report["roots"].items():
         shared = row["apparent_bytes"] - row["occupied_bytes"]
@@ -567,15 +607,21 @@ def _print_report(report: dict, top: int) -> None:
     if snap["snapshots"]:
         saved = snap["apparent_bytes"] - snap["occupied_bytes"]
         share = saved / snap["apparent_bytes"] * 100 if snap["apparent_bytes"] else 0.0
-        print(f"\nper-run input closures: {snap['snapshots']} snapshots, "
-              f"{_human(snap['apparent_bytes'])} declared, {_human(snap['occupied_bytes'])} on disk "
-              f"({_human(saved)} shared, {share:.0f}%)")
+        print(
+            f"\nper-run input closures: {snap['snapshots']} snapshots, "
+            f"{_human(snap['apparent_bytes'])} declared, {_human(snap['occupied_bytes'])} on disk "
+            f"({_human(saved)} shared, {share:.0f}%)"
+        )
         if share < 1.0 and snap["snapshots"] > 1:
-            print("  NOTE: these closures share almost nothing. If their grants overlap, they "
-                  "predate the content store or were written with MERLIN_BUNDLE_CAS disabled.")
+            print(
+                "  NOTE: these closures share almost nothing. If their grants overlap, they "
+                "predate the content store or were written with MERLIN_BUNDLE_CAS disabled."
+            )
     store = report["store"]
-    print(f"content store: {_human(store['occupied_bytes'])} in {store['objects']:,} objects "
-          f"({store['orphan_objects']:,} unreferenced, {_human(store['orphan_bytes'])})")
+    print(
+        f"content store: {_human(store['occupied_bytes'])} in {store['objects']:,} objects "
+        f"({store['orphan_objects']:,} unreferenced, {_human(store['orphan_bytes'])})"
+    )
 
     print("\nreclaimable now (merlin-storage prune --apply <class>):")
     for name, row in report["reclaimable"].items():
@@ -608,7 +654,7 @@ def planned_folds() -> list[tuple[Path, Path, str]]:
         elif not (destination.exists() or destination.is_symlink()):
             state = "pending"
         elif destination.is_dir() and not destination.is_symlink():
-            state = "merge"                 # two old names, one concern: move the units across
+            state = "merge"  # two old names, one concern: move the units across
         else:
             state = "conflict"
         plan.append((source, destination, state))
@@ -629,8 +675,9 @@ def _holds_tracked_files(source: Path) -> bool:
     import subprocess  # noqa: PLC0415
 
     try:
-        done = subprocess.run(["git", "ls-files", "-z", "--", str(source)],
-                              capture_output=True, cwd=source.parent, timeout=60)
+        done = subprocess.run(
+            ["git", "ls-files", "-z", "--", str(source)], capture_output=True, cwd=source.parent, timeout=60
+        )
     except (OSError, subprocess.SubprocessError):
         return False
     return done.returncode == 0 and bool(done.stdout.strip(b"\0"))
@@ -668,7 +715,7 @@ def fold(source: Path, destination: Path) -> None:
     try:
         source.symlink_to(os.path.relpath(destination, source.parent), target_is_directory=True)
     except OSError:
-        source.mkdir(parents=True, exist_ok=True)   # put it back rather than lose the old name
+        source.mkdir(parents=True, exist_ok=True)  # put it back rather than lose the old name
         for was, now in reversed(moved):
             os.rename(now, was)
         raise
@@ -711,13 +758,13 @@ def dedup_candidates(roots: list[Path] | None = None, *, min_bytes: int = 1 << 2
     by_size: dict[int, list[Path]] = {}
     seen: set[tuple[int, int]] = set()
     skipped_sealed = 0
-    for root in (roots if roots is not None else scan_roots()):
+    for root in roots if roots is not None else scan_roots():
         stack = [root]
         while stack:
             current = stack.pop()
             if _sealed(current, patterns):
                 skipped_sealed += 1
-                continue                      # its verifier reads file modes; sharing an inode breaks it
+                continue  # its verifier reads file modes; sharing an inode breaks it
             try:
                 entries = list(os.scandir(current))
             except OSError:
@@ -738,7 +785,7 @@ def dedup_candidates(roots: list[Path] | None = None, *, min_bytes: int = 1 << 2
                     continue
                 key = (stat.st_dev, stat.st_ino)
                 if key in seen:
-                    continue                  # already counted under another name: it is the saving
+                    continue  # already counted under another name: it is the saving
                 seen.add(key)
                 by_size.setdefault(stat.st_size, []).append(Path(entry.path))
 
@@ -758,8 +805,12 @@ def dedup_candidates(roots: list[Path] | None = None, *, min_bytes: int = 1 << 2
                 groups.append((size, sorted(same)))
                 reclaimable += size * (len(same) - 1)
     groups.sort(key=lambda g: -g[0] * (len(g[1]) - 1))
-    return {"groups": groups, "reclaimable_bytes": reclaimable,
-            "files": sum(len(g[1]) for g in groups), "sealed_trees_skipped": skipped_sealed}
+    return {
+        "groups": groups,
+        "reclaimable_bytes": reclaimable,
+        "files": sum(len(g[1]) for g in groups),
+        "sealed_trees_skipped": skipped_sealed,
+    }
 
 
 def _writable_parents(paths: list[Path]) -> dict[Path, int]:
@@ -812,8 +863,7 @@ def dedup(groups: list[tuple[int, list[Path]]]) -> dict:
                 except OSError:
                     continue
     stored = max(0, measure(store_root()).occupied - before)
-    return {"released_bytes": released, "stored_bytes": stored,
-            "reclaimed_bytes": released - stored, "names": changed}
+    return {"released_bytes": released, "stored_bytes": stored, "reclaimed_bytes": released - stored, "names": changed}
 
 
 # --- retention ------------------------------------------------------------------------------------
@@ -832,8 +882,13 @@ _TS_LEN = 16
 def unit_timestamp(name: str) -> str | None:
     """The ``YYYYMMDDTHHMMSSZ`` token in a run or product name, or None if it carries none."""
     for token in name.split("_"):
-        if (len(token) == _TS_LEN and token[8] == "T" and token[15] == "Z"
-                and token[:8].isdigit() and token[9:15].isdigit()):
+        if (
+            len(token) == _TS_LEN
+            and token[8] == "T"
+            and token[15] == "Z"
+            and token[:8].isdigit()
+            and token[9:15].isdigit()
+        ):
             return token
     return None
 
@@ -867,15 +922,14 @@ def retention_plan(keep: int, match: str | None = None) -> dict:
         for _stamp, name, path in rows[keep:]:
             try:
                 if path.resolve() in kept_alive:
-                    continue                  # a `latest` pointer resolves here; it is the live one
+                    continue  # a `latest` pointer resolves here; it is the live one
             except OSError:
                 continue
             size = measure(path).occupied
             drops.append({"name": name, "path": str(path), "bytes": size})
             plan["drop_bytes"] += size
             plan["drop_units"] += 1
-        plan["groups"][group] = {"units": len(rows), "undated": unplaceable.get(group, 0),
-                                 "drops": drops}
+        plan["groups"][group] = {"units": len(rows), "undated": unplaceable.get(group, 0), "drops": drops}
     for group, count in unplaceable.items():
         plan["groups"].setdefault(group, {"units": 0, "undated": count, "drops": []})
     return plan
@@ -933,18 +987,17 @@ def _organize(apply: bool) -> int:
     tracked = [src for src, _dst, state in plan if state == "tracked"]
     done = sum(1 for _s, _d, state in plan if state == "done")
     for source, destination in conflicts:
-        print(f"  CONFLICT {_label(source)} -> {_label(destination)} already exists",
-              file=sys.stderr)
+        print(f"  CONFLICT {_label(source)} -> {_label(destination)} already exists", file=sys.stderr)
     for source in tracked:
-        print(f"  SKIPPED  {_label(source)} holds tracked files; git does not walk the symlink a "
-              f"fold leaves behind", file=sys.stderr)
+        print(
+            f"  SKIPPED  {_label(source)} holds tracked files; git does not walk the symlink a fold leaves behind",
+            file=sys.stderr,
+        )
     unresolved = len(conflicts) + len(tracked)
     if not pending:
-        print(f"nothing to fold ({done} already folded, {len(conflicts)} conflicts, "
-              f"{len(tracked)} held by git)")
+        print(f"nothing to fold ({done} already folded, {len(conflicts)} conflicts, {len(tracked)} held by git)")
         return 1 if unresolved else 0
-    print(f"{'folding' if apply else 'would fold'} {len(pending)} directories "
-          f"({done} already folded)")
+    print(f"{'folding' if apply else 'would fold'} {len(pending)} directories ({done} already folded)")
     failures = 0
     for source, destination, state in pending:
         note = "  (merge)" if state == "merge" else ""
@@ -970,11 +1023,15 @@ def _dedup(paths: list[Path] | None, min_bytes: int, top: int, apply: bool) -> i
     if not groups:
         print("no duplicated content found")
         return 0
-    print(f"{len(groups)} content group(s) held under {found['files']} names, "
-          f"{_human(found['reclaimable_bytes'])} reclaimable")
+    print(
+        f"{len(groups)} content group(s) held under {found['files']} names, "
+        f"{_human(found['reclaimable_bytes'])} reclaimable"
+    )
     if found["sealed_trees_skipped"]:
-        print(f"  ({found['sealed_trees_skipped']} mode-verified tree(s) skipped: sharing an inode "
-              f"would break their own integrity check)")
+        print(
+            f"  ({found['sealed_trees_skipped']} mode-verified tree(s) skipped: sharing an inode "
+            f"would break their own integrity check)"
+        )
     for size, same in groups[:top]:
         print(f"\n  {_human(size * (len(same) - 1)):>12}  {len(same)}x {_human(size)}")
         for path in same[:4]:
@@ -985,10 +1042,12 @@ def _dedup(paths: list[Path] | None, min_bytes: int, top: int, apply: bool) -> i
         print("\ndry run -- pass --apply to collapse these onto one copy each")
         return 0
     result = dedup(groups)
-    print(f"\nreclaimed {_human(result['reclaimed_bytes'])}: {result['names']} names released "
-          f"{_human(result['released_bytes'])} and {_human(result['stored_bytes'])} moved into the "
-          f"store as the one remaining copy.\nEvery name still resolves to the same bytes, now "
-          f"read-only and shared.")
+    print(
+        f"\nreclaimed {_human(result['reclaimed_bytes'])}: {result['names']} names released "
+        f"{_human(result['released_bytes'])} and {_human(result['stored_bytes'])} moved into the "
+        f"store as the one remaining copy.\nEvery name still resolves to the same bytes, now "
+        f"read-only and shared."
+    )
     return 0
 
 
@@ -997,17 +1056,17 @@ def _retain(keep: int, match: str | None, apply: bool) -> int:
     if not plan["drop_units"]:
         print(f"keeping {keep} per group drops nothing")
         return 0
-    print(f"{'removing' if apply else 'would remove'} {plan['drop_units']} unit(s), "
-          f"{_human(plan['drop_bytes'])}, keeping the {keep} newest per group")
+    print(
+        f"{'removing' if apply else 'would remove'} {plan['drop_units']} unit(s), "
+        f"{_human(plan['drop_bytes'])}, keeping the {keep} newest per group"
+    )
     failures = 0
-    for group, row in sorted(plan["groups"].items(), key=lambda kv: -sum(
-            d["bytes"] for d in kv[1]["drops"])):
+    for group, row in sorted(plan["groups"].items(), key=lambda kv: -sum(d["bytes"] for d in kv[1]["drops"])):
         if not row["drops"]:
             continue
         cost = sum(d["bytes"] for d in row["drops"])
         undated = f", {row['undated']} undated kept" if row["undated"] else ""
-        print(f"\n  {group}  ({len(row['drops'])} of {row['units']} dated units, "
-              f"{_human(cost)}{undated})")
+        print(f"\n  {group}  ({len(row['drops'])} of {row['units']} dated units, {_human(cost)}{undated})")
         for drop in row["drops"][:6]:
             print(f"      {_human(drop['bytes']):>12}  {drop['name']}")
         if len(row["drops"]) > 6:
@@ -1021,8 +1080,10 @@ def _retain(keep: int, match: str | None, apply: bool) -> int:
                 failures += 1
                 print(f"      FAILED {drop['name']}: {exc}", file=sys.stderr)
     if not apply:
-        print("\ndry run -- pass --apply to remove. Ordering is by the timestamp in each unit's\n"
-              "name, never by mtime; a unit carrying no timestamp is never dropped.")
+        print(
+            "\ndry run -- pass --apply to remove. Ordering is by the timestamp in each unit's\n"
+            "name, never by mtime; a unit carrying no timestamp is never dropped."
+        )
     return 1 if failures else 0
 
 
@@ -1030,8 +1091,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="merlin-storage", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
 
-    show = sub.add_parser("report", help="what the generated-output root costs and why "
-                                        "(walks the whole root; minutes on a large one)")
+    show = sub.add_parser(
+        "report", help="what the generated-output root costs and why (walks the whole root; minutes on a large one)"
+    )
     show.add_argument("--top", type=int, default=12, help="how many artifact concerns to list")
     show.add_argument("--json", action="store_true", help="emit the measurements instead of a table")
 
@@ -1044,33 +1106,23 @@ def main(argv: list[str] | None = None) -> int:
     lay.add_argument("--top", type=int, default=15, help="how many undeclared concerns to list")
     lay.add_argument("--json", action="store_true", help="emit the measurements instead of a table")
 
-    org = sub.add_parser("organize", help="fold the tree into the shape the contract declares "
-                                         "(dry run by default)")
-    org.add_argument("--apply", action="store_true",
-                     help="actually move; without it nothing is touched")
+    org = sub.add_parser("organize", help="fold the tree into the shape the contract declares (dry run by default)")
+    org.add_argument("--apply", action="store_true", help="actually move; without it nothing is touched")
 
-    dd = sub.add_parser("dedup", help="collapse files that hold bytes another file already holds "
-                                     "(dry run by default)")
-    dd.add_argument("paths", nargs="*", type=Path,
-                    help="where to look (default: every declared scan root)")
-    dd.add_argument("--min-bytes", type=int, default=1 << 20,
-                    help="ignore files smaller than this (default 1 MiB)")
+    dd = sub.add_parser("dedup", help="collapse files that hold bytes another file already holds (dry run by default)")
+    dd.add_argument("paths", nargs="*", type=Path, help="where to look (default: every declared scan root)")
+    dd.add_argument("--min-bytes", type=int, default=1 << 20, help="ignore files smaller than this (default 1 MiB)")
     dd.add_argument("--top", type=int, default=15, help="how many duplicate groups to list")
-    dd.add_argument("--apply", action="store_true",
-                    help="actually re-point the names; without it nothing is touched")
+    dd.add_argument("--apply", action="store_true", help="actually re-point the names; without it nothing is touched")
 
     ret = sub.add_parser("retain", help="what a retention depth would drop (dry run by default)")
-    ret.add_argument("--keep", type=int, required=True,
-                     help="how many of the newest units to keep per group")
+    ret.add_argument("--keep", type=int, required=True, help="how many of the newest units to keep per group")
     ret.add_argument("--match", help="only units whose name contains this (e.g. phase2)")
-    ret.add_argument("--apply", action="store_true",
-                     help="actually remove; without it nothing is touched")
+    ret.add_argument("--apply", action="store_true", help="actually remove; without it nothing is touched")
 
     prune = sub.add_parser("prune", help="reclaim the provably-safe classes (dry run by default)")
-    prune.add_argument("classes", nargs="*", choices=CLASSES,
-                       help="which classes to reclaim (default: all of them)")
-    prune.add_argument("--apply", action="store_true",
-                       help="actually remove; without it nothing is touched")
+    prune.add_argument("classes", nargs="*", choices=CLASSES, help="which classes to reclaim (default: all of them)")
+    prune.add_argument("--apply", action="store_true", help="actually remove; without it nothing is touched")
 
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 

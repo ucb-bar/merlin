@@ -16,14 +16,14 @@ Deliberately conservative in one respect: the host is a LAST-RESORT candidate. N
 a device today stops routing, and no op that currently reaches the host is newly refused. The change
 is that the result is now explained rather than inferred.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-__all__ = ["HOST_DEVICE", "Placement", "Placed", "device_selector", "host_units", "place",
-           "units_for"]
+__all__ = ["HOST_DEVICE", "Placement", "Placed", "device_selector", "host_units", "place", "units_for"]
 
 #: The device name a host placement carries. Not a target: it is the absence of one, named so a
 #: report can say "host" without a caller testing for None.
@@ -35,9 +35,9 @@ class Placed:
     """One op's placement, and why."""
 
     demand: Any
-    device: str                      # a device name, or HOST_DEVICE
-    unit: str | None                 # the compute unit within it, when one was legal
-    lane: str                        # on_mesh | in_contract_vector_scalar | scalar_rvv_lane
+    device: str  # a device name, or HOST_DEVICE
+    unit: str | None  # the compute unit within it, when one was legal
+    lane: str  # on_mesh | in_contract_vector_scalar | scalar_rvv_lane
     why: str
     #: The accumulate token the CHOSEN unit matched, exactly as ``routing.RouteResult.acc`` carries it.
     #: Not decoration: the mesh certifier compiles each placed contraction in its routed operand AND
@@ -111,18 +111,31 @@ class Placement:
         rows = []
         for pl in self.placed:
             d = pl.demand
-            rows.append({
-                "op": getattr(d, "op", None),
-                "in_fmt": getattr(d, "in_fmt", None), "weight_fmt": getattr(d, "weight_fmt", None),
-                "site": getattr(d, "site", None),
-                "m": getattr(d, "m", None), "n": getattr(d, "n", None), "k": getattr(d, "k", None),
-                "rank": getattr(d, "rank", None),
-                "device": pl.device, "unit": pl.unit, "lane": pl.lane, "acc": pl.acc,
-                "gap": pl.gap,
-                "why": pl.why, "emulated": bool(pl.emulated),
-            })
-        return {"placed": rows, "lanes": self.lanes(), "n_emulated": len(self.emulated()),
-                "emulated": [r for r in rows if r["emulated"]]}
+            rows.append(
+                {
+                    "op": getattr(d, "op", None),
+                    "in_fmt": getattr(d, "in_fmt", None),
+                    "weight_fmt": getattr(d, "weight_fmt", None),
+                    "site": getattr(d, "site", None),
+                    "m": getattr(d, "m", None),
+                    "n": getattr(d, "n", None),
+                    "k": getattr(d, "k", None),
+                    "rank": getattr(d, "rank", None),
+                    "device": pl.device,
+                    "unit": pl.unit,
+                    "lane": pl.lane,
+                    "acc": pl.acc,
+                    "gap": pl.gap,
+                    "why": pl.why,
+                    "emulated": bool(pl.emulated),
+                }
+            )
+        return {
+            "placed": rows,
+            "lanes": self.lanes(),
+            "n_emulated": len(self.emulated()),
+            "emulated": [r for r in rows if r["emulated"]],
+        }
 
     def lanes(self) -> dict[str, int]:
         out: dict[str, int] = {}
@@ -136,8 +149,9 @@ def _host_dtypes() -> tuple[str, ...]:
     rather than listed here, so the two cannot drift."""
     try:
         from merlin.compile_cli import _RVV_DTYPES
+
         return tuple(_RVV_DTYPES)
-    except Exception:            # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return ()
 
 
@@ -164,7 +178,8 @@ def units_for(system) -> list[tuple[str, Any]]:
     Devices precede the host so that declaration-order selection -- what the router does today when no
     cost model is supplied -- keeps preferring a device, and this stays inert on existing inputs.
     """
-    from merlin.targetgen import compute_units as _cu, target_registry as _tr
+    from merlin.targetgen import compute_units as _cu
+    from merlin.targetgen import target_registry as _tr
 
     out: list[tuple[str, Any]] = []
     for dev in getattr(system, "devices", ()) or ():
@@ -177,7 +192,7 @@ def units_for(system) -> list[tuple[str, Any]]:
             # composition, so nothing caught it.
             for u in (_cu.effective(u, units) for u in units):
                 out.append((dev.name, u))
-        except Exception:        # noqa: BLE001 -- an unresolvable device contributes no units
+        except Exception:  # noqa: BLE001 -- an unresolvable device contributes no units
             continue
     for u in host_units(getattr(system, "host", None)):
         out.append((HOST_DEVICE, u))
@@ -190,8 +205,7 @@ def _candidate(unit, demand):
     from merlin.targetgen.routing import Candidate, _legal_on  # noqa: PLC2701
 
     _legal, acc = _legal_on(unit, demand)
-    return Candidate(unit=unit.name, kind=unit.kind, acc=acc,
-                     exposure=getattr(unit, "exposure", None))
+    return Candidate(unit=unit.name, kind=unit.kind, acc=acc, exposure=getattr(unit, "exposure", None))
 
 
 def _lane_for(kind: str | None, on_host: bool) -> str:
@@ -202,8 +216,7 @@ def _lane_for(kind: str | None, on_host: bool) -> str:
     return "on_mesh" if kind in _MESH_KINDS else "in_contract_vector_scalar"
 
 
-def place(demands: Sequence[Any], system, *,
-          cost: Callable[[Any, Any], float | None] | None = None) -> Placement:
+def place(demands: Sequence[Any], system, *, cost: Callable[[Any, Any], float | None] | None = None) -> Placement:
     """Place every demand on the system, preferring a device and explaining each choice.
 
     ``cost`` scores a ``(demand, unit)`` pairing; ``None`` (the default) keeps declaration order,
@@ -230,10 +243,18 @@ def place(demands: Sequence[Any], system, *,
         if not pool:
             # Nothing can take it, the host included -- today this is the silent case. The op still
             # goes to the host (the lowering will emulate it); what is new is that we say so.
-            placed.append(Placed(demand=d, device=HOST_DEVICE, unit=None,
-                                 lane="scalar_rvv_lane", emulated=True, gap=_gap_text(d),
-                                 why=f"no unit accepts op={getattr(d, 'op', '?')} "
-                                     f"in={getattr(d, 'in_fmt', '?')}; host must emulate it"))
+            placed.append(
+                Placed(
+                    demand=d,
+                    device=HOST_DEVICE,
+                    unit=None,
+                    lane="scalar_rvv_lane",
+                    emulated=True,
+                    gap=_gap_text(d),
+                    why=f"no unit accepts op={getattr(d, 'op', '?')} "
+                    f"in={getattr(d, 'in_fmt', '?')}; host must emulate it",
+                )
+            )
             continue
 
         chosen, why = pool[0], "first legal unit in declaration order"
@@ -242,8 +263,7 @@ def place(demands: Sequence[Any], system, *,
             # model in the repo already implements (it reads `candidate.unit` as a NAME), and passing
             # the unit object instead made "a cost model is an argument" true only of cost models
             # written for this function. MeasuredCost could not be passed at all.
-            scored = [(c, i, p) for i, p in enumerate(pool)
-                      if (c := cost(d, _candidate(p[1], d))) is not None]
+            scored = [(c, i, p) for i, p in enumerate(pool) if (c := cost(d, _candidate(p[1], d))) is not None]
             if scored:
                 best = min(scored, key=lambda t: (t[0], t[1]))
                 chosen, why = best[2], f"lowest cost {best[0]:.4g} of {len(scored)} priced candidate(s)"
@@ -252,11 +272,17 @@ def place(demands: Sequence[Any], system, *,
 
         dev, unit = chosen
         on_host = dev == HOST_DEVICE
-        placed.append(Placed(demand=d, device=dev, unit=unit.name,
-                             lane=_lane_for(unit.kind, on_host),
-                             acc=_legal_on(unit, d)[1],
-                             gap=_gap_text(d) if on_host else None,
-                             why=why if not on_host else f"{why} (no device accepted it)"))
+        placed.append(
+            Placed(
+                demand=d,
+                device=dev,
+                unit=unit.name,
+                lane=_lane_for(unit.kind, on_host),
+                acc=_legal_on(unit, d)[1],
+                gap=_gap_text(d) if on_host else None,
+                why=why if not on_host else f"{why} (no device accepted it)",
+            )
+        )
 
     return Placement(placed=tuple(placed))
 
@@ -295,7 +321,7 @@ def device_selector(placement: Placement) -> Callable[[Any], bool]:
     def _select(shape) -> bool:
         try:
             key = (int(shape.parallel[-2]), int(shape.reduction[0]), int(shape.parallel[-1]))
-        except Exception:        # noqa: BLE001 -- a shape this selector cannot read is not one it moves
+        except Exception:  # noqa: BLE001 -- a shape this selector cannot read is not one it moves
             return False
         return decided.get(key, False)
 
@@ -317,7 +343,9 @@ def measured_cost_for(system) -> "Callable[[Any, Any], float | None] | None":
 
     What unlocks it is per-unit certification data, not code here.
     """
-    from merlin.targetgen import compute_units as _cu, routing as _r, target_registry as _tr
+    from merlin.targetgen import compute_units as _cu
+    from merlin.targetgen import routing as _r
+    from merlin.targetgen import target_registry as _tr
 
     rates: dict[str, float] = {}
     edges: dict[str, int] = {}
@@ -325,7 +353,7 @@ def measured_cost_for(system) -> "Callable[[Any, Any], float | None] | None":
     for dev in getattr(system, "devices", ()) or ():
         try:
             units = _cu.compute_units(_tr.load_contract(dev.name))
-        except Exception:            # noqa: BLE001
+        except Exception:  # noqa: BLE001
             continue
         for u in units:
             rate = _declared_rate(u)
@@ -335,7 +363,7 @@ def measured_cost_for(system) -> "Callable[[Any, Any], float | None] | None":
             if edge:
                 edges[u.name] = edge
     if not rates:
-        return None                  # nothing measured: say so rather than price with a default
+        return None  # nothing measured: say so rather than price with a default
     return _r.MeasuredCost(macs_per_cycle=rates, tile_edge=edges, tile_overhead_cycles=overhead)
 
 
@@ -346,7 +374,7 @@ def _declared_rate(unit) -> float | None:
     costing with it credits every shape with work it will not do — which is precisely the error
     ``MeasuredCost`` documents itself as avoiding.
     """
-    raw = getattr(unit, "requant", None)          # opaque per-unit dict; never interpreted structurally
+    raw = getattr(unit, "requant", None)  # opaque per-unit dict; never interpreted structurally
     if isinstance(raw, dict):
         got = raw.get("macs_per_cycle")
         if isinstance(got, (int, float)) and got > 0:
@@ -358,6 +386,7 @@ def _declared_tile_edge(device: str) -> int | None:
     """The device's tile edge from its own RTL facts, or None."""
     try:
         from merlin.llvmlower.device_shim import tile_edge_for
+
         return tile_edge_for(device)
-    except Exception:            # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None

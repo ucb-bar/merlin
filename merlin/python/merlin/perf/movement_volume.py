@@ -17,18 +17,24 @@ Unsupported or malformed commands make the whole result UNKNOWN; known traffic i
 lower bound.  A byte count that silently omits an opcode reads as a program that moved less data,
 which on this axis means "faster" -- the same failure `work_volume` refuses on the compute axis.
 """
+
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 import hashlib
 import json
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from merlin.runtime.commandbuffer import batched_matmul_geometry
 
-__all__ = ["CommandMovement", "ProgramMovement", "movement_from_command_buffer",
-           "movement_evidence", "NO_COMMAND_BUFFER_REFUSAL"]
+__all__ = [
+    "CommandMovement",
+    "ProgramMovement",
+    "movement_from_command_buffer",
+    "movement_evidence",
+    "NO_COMMAND_BUFFER_REFUSAL",
+]
 
 #: Commands that move no operand bytes themselves. ``EVICT`` unbinds a handle; the bytes it drops were
 #: charged at the pack and are not moved again by dropping them.
@@ -55,8 +61,14 @@ class CommandMovement:
     refusal: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"index": self.index, "opcode": self.opcode, "bytes_in": self.bytes_in,
-                "bytes_out": self.bytes_out, "provenance": self.provenance, "refusal": self.refusal}
+        return {
+            "index": self.index,
+            "opcode": self.opcode,
+            "bytes_in": self.bytes_in,
+            "bytes_out": self.bytes_out,
+            "provenance": self.provenance,
+            "refusal": self.refusal,
+        }
 
 
 @dataclass(frozen=True)
@@ -85,24 +97,32 @@ class ProgramMovement:
         return None if self.is_lower_bound else self.known_bytes
 
     def to_dict(self) -> dict[str, Any]:
-        return {"basis": self.basis, "unit": self.unit,
-                "known_bytes_in": self.known_bytes_in, "known_bytes_out": self.known_bytes_out,
-                "known_bytes": self.known_bytes, "exact_bytes": self.exact_bytes,
-                "is_lower_bound": self.is_lower_bound, "artifact_sha256": self.artifact_sha256,
-                "refusals": list(self.refusals),
-                # THE LIMITATION TRAVELS WITH THE NUMBER. A resident operand is charged once at its
-                # pack, so this counts the traffic the command buffer DECLARES, not the traffic the
-                # emitted program issues. A backend whose lowering re-loads a resident tile per
-                # output tile produces exactly the same number here -- measured 2026-09-06 on
-                # gemmini, where the command buffer's RES_PACK / MATMUL_RESIDENT / EVICT sequence is
-                # correct while the emitted stream reportedly reloads. Residency is therefore NOT
-                # verifiable from this block, and a reader who treats it as issued traffic will
-                # conclude residency was achieved whenever it was merely intended.
-                "counts": "declared_by_command_buffer",
-                "resident_operand_charged": "once_at_pack",
-                "cannot_detect": ("a lowering that re-loads a resident operand; compare mvin count "
-                                  "against RES_PACK count in the decoded instruction stream"),
-                "commands": [command.to_dict() for command in self.commands]}
+        return {
+            "basis": self.basis,
+            "unit": self.unit,
+            "known_bytes_in": self.known_bytes_in,
+            "known_bytes_out": self.known_bytes_out,
+            "known_bytes": self.known_bytes,
+            "exact_bytes": self.exact_bytes,
+            "is_lower_bound": self.is_lower_bound,
+            "artifact_sha256": self.artifact_sha256,
+            "refusals": list(self.refusals),
+            # THE LIMITATION TRAVELS WITH THE NUMBER. A resident operand is charged once at its
+            # pack, so this counts the traffic the command buffer DECLARES, not the traffic the
+            # emitted program issues. A backend whose lowering re-loads a resident tile per
+            # output tile produces exactly the same number here -- measured 2026-09-06 on
+            # gemmini, where the command buffer's RES_PACK / MATMUL_RESIDENT / EVICT sequence is
+            # correct while the emitted stream reportedly reloads. Residency is therefore NOT
+            # verifiable from this block, and a reader who treats it as issued traffic will
+            # conclude residency was achieved whenever it was merely intended.
+            "counts": "declared_by_command_buffer",
+            "resident_operand_charged": "once_at_pack",
+            "cannot_detect": (
+                "a lowering that re-loads a resident operand; compare mvin count "
+                "against RES_PACK count in the decoded instruction stream"
+            ),
+            "commands": [command.to_dict() for command in self.commands],
+        }
 
 
 def _nbytes(tensors: Mapping[str, Any], name: Any) -> int | None:
@@ -116,11 +136,17 @@ def _nbytes(tensors: Mapping[str, Any], name: Any) -> int | None:
     if not isinstance(tensor, Mapping):
         return None
     shape, dtype = tensor.get("shape"), tensor.get("dtype")
-    if (not isinstance(shape, Sequence) or isinstance(shape, (str, bytes)) or not shape
-            or any(not isinstance(v, int) or isinstance(v, bool) or v <= 0 for v in shape)
-            or not isinstance(dtype, str) or not dtype):
+    if (
+        not isinstance(shape, Sequence)
+        or isinstance(shape, (str, bytes))
+        or not shape
+        or any(not isinstance(v, int) or isinstance(v, bool) or v <= 0 for v in shape)
+        or not isinstance(dtype, str)
+        or not dtype
+    ):
         return None
     from merlin.targetgen.capsule_dram import tensor_nbytes
+
     try:
         return int(tensor_nbytes(list(shape), dtype))
     except (KeyError, ValueError):
@@ -130,9 +156,12 @@ def _nbytes(tensors: Mapping[str, Any], name: Any) -> int | None:
 def _shape(tensors: Mapping[str, Any], name: Any) -> tuple[int, ...] | None:
     tensor = tensors.get(name) if isinstance(name, str) else None
     raw = tensor.get("shape") if isinstance(tensor, Mapping) else None
-    if (not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)) or not raw
-            or any(not isinstance(value, int) or isinstance(value, bool) or value <= 0
-                   for value in raw)):
+    if (
+        not isinstance(raw, Sequence)
+        or isinstance(raw, (str, bytes))
+        or not raw
+        or any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in raw)
+    ):
         return None
     return tuple(int(value) for value in raw)
 
@@ -140,14 +169,18 @@ def _shape(tensors: Mapping[str, Any], name: Any) -> tuple[int, ...] | None:
 def movement_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramMovement:
     """Recover exact operand traffic from shared IR semantics, preserving every refusal."""
     try:
-        artifact_sha256 = hashlib.sha256(json.dumps(
-            command_buffer, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        artifact_sha256 = hashlib.sha256(
+            json.dumps(command_buffer, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
     except (TypeError, ValueError):
         artifact_sha256 = ""
     tensors = command_buffer.get("tensors") if isinstance(command_buffer, Mapping) else None
     instructions = command_buffer.get("commands") if isinstance(command_buffer, Mapping) else None
-    if not isinstance(tensors, Mapping) or not isinstance(instructions, Sequence) \
-            or isinstance(instructions, (str, bytes)):
+    if (
+        not isinstance(tensors, Mapping)
+        or not isinstance(instructions, Sequence)
+        or isinstance(instructions, (str, bytes))
+    ):
         refusal = "command buffer must carry tensor declarations and a command sequence"
         return ProgramMovement((), 0, 0, True, (refusal,), artifact_sha256=artifact_sha256)
 
@@ -209,8 +242,7 @@ def movement_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramMo
                     moved_in, moved_out = a_bytes + w_bytes, dst_bytes
                     total_in += moved_in
                     total_out += moved_out
-                    rows.append(CommandMovement(
-                        index, opcode, moved_in, moved_out, provenance))
+                    rows.append(CommandMovement(index, opcode, moved_in, moved_out, provenance))
                     continue
                 reason = "BATCHED_MATMUL a/w/dst storage does not have an exact byte size"
         elif opcode in _READS:
@@ -221,7 +253,7 @@ def movement_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramMo
                 if not isinstance(name, str):
                     continue
                 if name in handles:
-                    continue          # resident: charged once, at its pack
+                    continue  # resident: charged once, at its pack
                 nbytes = _nbytes(tensors, name)
                 if nbytes is None:
                     unresolved.append(role)
@@ -231,20 +263,22 @@ def movement_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramMo
                 total_in += moved
                 rows.append(CommandMovement(index, opcode, moved, 0, provenance))
                 continue
-            reason = (f"{opcode} operand(s) {sorted(unresolved)} do not resolve to a declared tensor "
-                      f"or a resident handle")
+            reason = (
+                f"{opcode} operand(s) {sorted(unresolved)} do not resolve to a declared tensor or a resident handle"
+            )
         else:
-            reason = (f"opcode {opcode!r} has no traffic-counting rule; whether it moves operand "
-                      f"bytes is UNKNOWN")
+            reason = f"opcode {opcode!r} has no traffic-counting rule; whether it moves operand bytes is UNKNOWN"
         rows.append(CommandMovement(index, opcode, None, None, provenance, reason))
         refusals.append(reason)
 
-    return ProgramMovement(tuple(rows), total_in, total_out, bool(refusals), tuple(refusals),
-                           artifact_sha256=artifact_sha256)
+    return ProgramMovement(
+        tuple(rows), total_in, total_out, bool(refusals), tuple(refusals), artifact_sha256=artifact_sha256
+    )
 
 
-NO_COMMAND_BUFFER_REFUSAL = ("the graded run produced no compiler command buffer, so its operand "
-                             "traffic is not established")
+NO_COMMAND_BUFFER_REFUSAL = (
+    "the graded run produced no compiler command buffer, so its operand traffic is not established"
+)
 
 
 def movement_evidence(command_buffer: Any, *, compiler_provenance: str) -> dict[str, Any]:
@@ -255,11 +289,19 @@ def movement_evidence(command_buffer: Any, *, compiler_provenance: str) -> dict[
     the other. An intensity taken across two programs is not an intensity.
     """
     if not isinstance(command_buffer, Mapping):
-        return {"basis": "compiler_command_buffer", "unit": "bytes", "known_bytes_in": 0,
-                "known_bytes_out": 0, "known_bytes": 0, "exact_bytes": None,
-                "is_lower_bound": True, "artifact_sha256": "",
-                "refusals": [NO_COMMAND_BUFFER_REFUSAL], "commands": [],
-                "compiler_provenance": compiler_provenance}
+        return {
+            "basis": "compiler_command_buffer",
+            "unit": "bytes",
+            "known_bytes_in": 0,
+            "known_bytes_out": 0,
+            "known_bytes": 0,
+            "exact_bytes": None,
+            "is_lower_bound": True,
+            "artifact_sha256": "",
+            "refusals": [NO_COMMAND_BUFFER_REFUSAL],
+            "commands": [],
+            "compiler_provenance": compiler_provenance,
+        }
     block = movement_from_command_buffer(command_buffer).to_dict()
     block["compiler_provenance"] = compiler_provenance
     return block

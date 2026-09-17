@@ -12,6 +12,7 @@ The worker validates that manifest against the frozen MLIR signature, safetensor
 and every golden result.  Legacy capsules may still recover an ABI from ``torch.export``; newly generated
 capsules never do, because rebuilding an unquantized loader can have a different placeholder list.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -80,8 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     if captured_manifest_name:
         captured_manifest_path = Path(captured_manifest_name).resolve(strict=True)
         captured_manifest = json.loads(captured_manifest_path.read_text(encoding="utf-8"))
-        if not isinstance(captured_manifest, dict) or set(captured_manifest) != {
-                str(i) for i in range(len(signature))}:
+        if not isinstance(captured_manifest, dict) or set(captured_manifest) != {str(i) for i in range(len(signature))}:
             raise RuntimeError("capture-time manifest does not cover every frozen interface argument")
         frozen_weights = load_file(str(weights_path), device="cpu")
         supplied_inputs = np.load(inputs_path, allow_pickle=False)
@@ -91,19 +91,16 @@ def main(argv: list[str] | None = None) -> int:
             meta = captured_manifest[str(index)]
             sig_shape = [int(v) for v in sig["shape"]]
             if list(meta.get("shape") or sig_shape) != sig_shape:
-                raise RuntimeError(
-                    f"capture manifest shape disagrees with interface argument {index}")
+                raise RuntimeError(f"capture manifest shape disagrees with interface argument {index}")
             if meta.get("kind") in ("param", "buffer"):
                 key = meta.get("weight")
                 if key:
                     if key not in frozen_weights:
-                        raise RuntimeError(
-                            f"capture manifest argument {index} names absent frozen tensor {key!r}")
+                        raise RuntimeError(f"capture manifest argument {index} names absent frozen tensor {key!r}")
                     stored = frozen_weights[key]
                     # Tensor-subclass arguments are represented by a one-element dead-argument stub.
                     if not meta.get("stub") and list(stored.shape) != sig_shape:
-                        raise RuntimeError(
-                            f"frozen tensor {key!r} shape disagrees with interface argument {index}")
+                        raise RuntimeError(f"frozen tensor {key!r} shape disagrees with interface argument {index}")
                 continue
             key = f"in{user_index}"
             if key not in supplied_inputs.files or user_index >= len(loader_inputs):
@@ -111,8 +108,7 @@ def main(argv: list[str] | None = None) -> int:
             loader_arr = loader_inputs[user_index].detach().cpu().numpy()
             frozen_arr = supplied_inputs[key]
             if list(loader_arr.shape) != sig_shape or list(frozen_arr.shape) != sig_shape:
-                raise RuntimeError(
-                    f"user input {user_index} shape disagrees with interface argument {index}")
+                raise RuntimeError(f"user input {user_index} shape disagrees with interface argument {index}")
             if not np.array_equal(loader_arr, frozen_arr):
                 raise RuntimeError(f"frozen input {user_index} disagrees with frozen loader")
             name = str(meta.get("name") or f"input_{user_index}")
@@ -121,7 +117,8 @@ def main(argv: list[str] | None = None) -> int:
         if user_index != len(loader_inputs) or user_index != len(supplied_inputs.files):
             raise RuntimeError(
                 f"input cardinality mismatch: manifest={user_index}, loader={len(loader_inputs)}, "
-                f"frozen={len(supplied_inputs.files)}")
+                f"frozen={len(supplied_inputs.files)}"
+            )
 
         output_signature = list(req.get("output_signature") or [])
         output_order = list(req.get("output_order") or [])
@@ -157,16 +154,14 @@ def main(argv: list[str] | None = None) -> int:
     exported = torch.export.export(model, loader_inputs)
     specs = list(exported.graph_signature.input_specs)
     if len(specs) != len(signature):
-        raise RuntimeError(
-            f"loader export has {len(specs)} arguments but frozen interface has {len(signature)}")
+        raise RuntimeError(f"loader export has {len(specs)} arguments but frozen interface has {len(signature)}")
 
     frozen_weights = load_file(str(weights_path), device="cpu")
     state = dict(model.state_dict())
     if set(frozen_weights) != set(state):
         missing = sorted(set(state) - set(frozen_weights))
         extra = sorted(set(frozen_weights) - set(state))
-        raise RuntimeError(
-            f"frozen weights do not match loader state_dict keys (missing={missing}, extra={extra})")
+        raise RuntimeError(f"frozen weights do not match loader state_dict keys (missing={missing}, extra={extra})")
 
     supplied_inputs = np.load(inputs_path, allow_pickle=False)
     expected_golden = np.load(golden_path, allow_pickle=False)
@@ -186,7 +181,8 @@ def main(argv: list[str] | None = None) -> int:
             if list(actual.shape) != sig_shape or list(frozen.shape) != sig_shape:
                 raise RuntimeError(
                     f"weight {key!r} shape disagrees with interface argument {index}: "
-                    f"loader={list(actual.shape)} frozen={list(frozen.shape)} interface={sig_shape}")
+                    f"loader={list(actual.shape)} frozen={list(frozen.shape)} interface={sig_shape}"
+                )
             if actual.dtype != frozen.dtype or not torch.equal(actual, frozen):
                 raise RuntimeError(f"frozen weight {key!r} bytes/values disagree with frozen loader")
             manifest[str(index)] = {
@@ -199,7 +195,8 @@ def main(argv: list[str] | None = None) -> int:
         if spec.kind != InputKind.USER_INPUT:
             raise RuntimeError(
                 f"unsupported export argument kind at {index}: {spec.kind}; capsule bundles may not "
-                "guess lifted/custom arguments")
+                "guess lifted/custom arguments"
+            )
         key = f"in{user_index}"
         if user_index >= len(loader_inputs) or key not in supplied_inputs.files:
             raise RuntimeError(f"missing frozen user input {key} for export argument {index}")
@@ -208,7 +205,8 @@ def main(argv: list[str] | None = None) -> int:
         if list(loader_arr.shape) != sig_shape or list(frozen_arr.shape) != sig_shape:
             raise RuntimeError(
                 f"user input {user_index} shape disagrees with interface argument {index}: "
-                f"loader={list(loader_arr.shape)} frozen={list(frozen_arr.shape)} interface={sig_shape}")
+                f"loader={list(loader_arr.shape)} frozen={list(frozen_arr.shape)} interface={sig_shape}"
+            )
         if not np.array_equal(loader_arr, frozen_arr):
             raise RuntimeError(f"frozen input {user_index} disagrees with frozen loader")
         manifest[str(index)] = {"kind": "input", "name": arg_name}
@@ -217,7 +215,8 @@ def main(argv: list[str] | None = None) -> int:
     if user_index != len(loader_inputs) or user_index != len(supplied_inputs.files):
         raise RuntimeError(
             f"input cardinality mismatch: export={user_index}, loader={len(loader_inputs)}, "
-            f"frozen={len(supplied_inputs.files)}")
+            f"frozen={len(supplied_inputs.files)}"
+        )
 
     with torch.no_grad():
         observed = model(*loader_inputs)
@@ -231,13 +230,11 @@ def main(argv: list[str] | None = None) -> int:
     rtol = float(policy.get("rtol", 0.0) or 0.0)
     if list(observed.shape) != list(expected_golden.shape):
         raise RuntimeError(
-            f"frozen golden shape {list(expected_golden.shape)} disagrees with loader "
-            f"{list(observed.shape)}")
+            f"frozen golden shape {list(expected_golden.shape)} disagrees with loader {list(observed.shape)}"
+        )
     if not np.allclose(observed, expected_golden, atol=atol, rtol=rtol, equal_nan=True):
-        delta = float(np.max(np.abs(observed.astype(np.float64) -
-                                    expected_golden.astype(np.float64))))
-        raise RuntimeError(
-            f"frozen golden disagrees with frozen loader (max_abs={delta}, atol={atol}, rtol={rtol})")
+        delta = float(np.max(np.abs(observed.astype(np.float64) - expected_golden.astype(np.float64))))
+        raise RuntimeError(f"frozen golden disagrees with frozen loader (max_abs={delta}, atol={atol}, rtol={rtol})")
 
     report = {
         "version": 1,

@@ -19,6 +19,7 @@ of the IR is today, and it is what makes progress countable:
 ``asserted``  the token exists and names a producer, but no layer has discharged it
 ``unattributed``  the token names no producing pass, so nothing could discharge it even in principle
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -31,6 +32,7 @@ UNATTRIBUTED = "unattributed"
 @dataclass(frozen=True)
 class Proof:
     """One ``contract.prove`` token and its evidential standing."""
+
     requirement: str
     producer_pass: str | None
     status: str

@@ -10,6 +10,7 @@ import, or a proc may fail to compile. Every such case is **skipped and logged**
 fatal); the corpus is still satisfied by XNNPACK + Autocomp alone. Skip counts are surfaced
 via the returned diagnostics so the report can state them honestly.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -40,8 +41,7 @@ def _detect_target(source_text: str, default: str | None) -> str:
 
 def _guess_op(name: str) -> str:
     n = name.lower()
-    for kw, op in (("matmul", "matmul"), ("sgemm", "gemm"), ("gemm", "gemm"),
-                   ("conv", "conv"), ("filter", "conv")):
+    for kw, op in (("matmul", "matmul"), ("sgemm", "gemm"), ("gemm", "gemm"), ("conv", "conv"), ("filter", "conv")):
         if kw in n:
             return op
     return "unknown"
@@ -121,8 +121,13 @@ def ingest_exo_schedules(repo: str, limit: int | None = None) -> Iterator[Normal
             rel = str(spec_path)
         op = _guess_op(spec_path.stem) if _guess_op(spec_path.stem) != "unknown" else _guess_op(text[:2000])
         yield NormalizedKernel(
-            source="exo", target="exo_schedule", path=rel, op=op, dtype="unknown",
-            raw_text=text, meta={"kind": "schedule"},
+            source="exo",
+            target="exo_schedule",
+            path=rel,
+            op=op,
+            dtype="unknown",
+            raw_text=text,
+            meta={"kind": "schedule"},
         )
         count += 1
         if limit is not None and count >= limit:
@@ -202,8 +207,12 @@ def ingest_exo(
                     (out / f"{spec_path.stem}__{name}.c").write_text(c_code, encoding="utf-8")
                 diag["compiled"] += 1
                 yield NormalizedKernel(
-                    source="exo", target=fam, path=f"{rel}::{name}",
-                    op=_guess_op(name), dtype=_sniff_dtype(c_code), raw_text=c_code,
+                    source="exo",
+                    target=fam,
+                    path=f"{rel}::{name}",
+                    op=_guess_op(name),
+                    dtype=_sniff_dtype(c_code),
+                    raw_text=c_code,
                     meta={"proc": name},
                 )
                 count += 1

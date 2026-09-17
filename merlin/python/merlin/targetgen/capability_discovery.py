@@ -82,6 +82,7 @@ does not support fp32 *matmul*. Collapsing those into "supports fp32" is how a c
 claim its mesh cannot honor, so every dtype finding names the datapath role it belongs to and
 :func:`delta` compares only the OPERAND role against a declared family's dtypes.
 """
+
 from __future__ import annotations
 
 import json
@@ -94,10 +95,26 @@ from merlin.common.paths import artifacts_dir, merlin_dir, repo_root, targets_di
 from merlin.targetgen import semantic_families as _sf
 
 __all__ = [
-    "ABSENT", "ENCODABLE_NOT_BUILT", "PRESENT", "UNDETERMINABLE",
-    "BitField", "CapabilitySurface", "ConfigField", "ElaboratedConfig", "Evidence", "Finding",
-    "HeaderModel", "Macro", "ProvenanceRefused", "ResolvedSource",
-    "declared", "delta", "discover", "elaborated_config", "isa_sources", "parse_c_header",
+    "ABSENT",
+    "ENCODABLE_NOT_BUILT",
+    "PRESENT",
+    "UNDETERMINABLE",
+    "BitField",
+    "CapabilitySurface",
+    "ConfigField",
+    "ElaboratedConfig",
+    "Evidence",
+    "Finding",
+    "HeaderModel",
+    "Macro",
+    "ProvenanceRefused",
+    "ResolvedSource",
+    "declared",
+    "delta",
+    "discover",
+    "elaborated_config",
+    "isa_sources",
+    "parse_c_header",
     "targets_with_facts",
 ]
 
@@ -135,10 +152,10 @@ class ProvenanceRefused(RuntimeError):
 class Evidence:
     """Where a finding came from. A finding with no evidence is not reported at all."""
 
-    rung: str                    # "rtl_facts" | "isa_header" | "contract"
-    locator: str                 # a file path, or a dotted fact key
-    observed: str                # the literal text or value read
-    line: int | None = None      # 1-based source line, when the locator is a file
+    rung: str  # "rtl_facts" | "isa_header" | "contract"
+    locator: str  # a file path, or a dotted fact key
+    observed: str  # the literal text or value read
+    line: int | None = None  # 1-based source line, when the locator is a file
 
     def to_dict(self) -> dict[str, Any]:
         return {k: v for k, v in asdict(self).items() if v is not None}
@@ -148,14 +165,14 @@ class Evidence:
 class Finding:
     """One entry of a support surface."""
 
-    axis: str                          # see AXES
-    name: str                          # the thing supported, in the source's own spelling
-    state: str                         # PRESENT / ABSENT / UNDETERMINABLE
+    axis: str  # see AXES
+    name: str  # the thing supported, in the source's own spelling
+    state: str  # PRESENT / ABSENT / UNDETERMINABLE
     evidence: tuple[Evidence, ...] = ()
-    value: Any = None                  # encoding, bit range, dtype token, parameter list...
-    family: str | None = None          # canonical semantic family this licenses, when nameable
-    family_basis: str | None = None    # which rung/table named that family
-    datapath: str | None = None        # for dtype axes: WHICH datapath the claim is about
+    value: Any = None  # encoding, bit range, dtype token, parameter list...
+    family: str | None = None  # canonical semantic family this licenses, when nameable
+    family_basis: str | None = None  # which rung/table named that family
+    datapath: str | None = None  # for dtype axes: WHICH datapath the claim is about
     #: Whether the bytes this finding came from are the ones the hardware pin describes. Anything other
     #: than ``pinned``/``nested_pinned`` means the claim is real but NOT a pinned claim, and must not be
     #: cited as one — see :func:`_pin_status`.
@@ -169,8 +186,13 @@ class Finding:
         return f"{self.axis}:{self.name}"
 
     def to_dict(self) -> dict[str, Any]:
-        d = {"axis": self.axis, "name": self.name, "state": self.state, "key": self.key,
-             "evidence": [e.to_dict() for e in self.evidence]}
+        d = {
+            "axis": self.axis,
+            "name": self.name,
+            "state": self.state,
+            "key": self.key,
+            "evidence": [e.to_dict() for e in self.evidence],
+        }
         for k in ("value", "family", "family_basis", "datapath", "pin_status", "gate", "detail"):
             v = getattr(self, k)
             if v not in (None, "", ()):
@@ -181,20 +203,20 @@ class Finding:
 #: Every axis a surface can carry. Closed so a caller can iterate them and see which came back
 #: ``undeterminable`` for a target rather than silently not asking.
 AXES: tuple[str, ...] = (
-    "datapath_dtype",     # dtype of one named datapath (operand / accumulate / scale / ...)
-    "scale_rounding",     # how the scale/requant path rounds
-    "activation_mode",    # accumulator-readout activation selector, by NAME, with its encoding
-    "pooling",            # windowed reduce on readout + its parameters
-    "transpose",          # operand transposition + which operand
-    "padding",            # implicit edge padding + its parameters
-    "requant",            # accumulator-scale / shift requantization on readout
-    "residual_add",       # add-onto-existing-output
-    "accumulate_onto",    # accumulate into the existing accumulator rather than overwrite
-    "block_format",       # per-block scaled (micro-scaling) format selectors
-    "dilation",           # dilated windows
-    "op_class",           # an instruction class the decode table names
-    "build_config",       # a field of the elaborated build configuration, and what it corroborates
-    "family",             # a canonical semantic family the surface licenses
+    "datapath_dtype",  # dtype of one named datapath (operand / accumulate / scale / ...)
+    "scale_rounding",  # how the scale/requant path rounds
+    "activation_mode",  # accumulator-readout activation selector, by NAME, with its encoding
+    "pooling",  # windowed reduce on readout + its parameters
+    "transpose",  # operand transposition + which operand
+    "padding",  # implicit edge padding + its parameters
+    "requant",  # accumulator-scale / shift requantization on readout
+    "residual_add",  # add-onto-existing-output
+    "accumulate_onto",  # accumulate into the existing accumulator rather than overwrite
+    "block_format",  # per-block scaled (micro-scaling) format selectors
+    "dilation",  # dilated windows
+    "op_class",  # an instruction class the decode table names
+    "build_config",  # a field of the elaborated build configuration, and what it corroborates
+    "family",  # a canonical semantic family the surface licenses
 )
 
 
@@ -202,13 +224,13 @@ AXES: tuple[str, ...] = (
 class ResolvedSource:
     """One ISA source, resolved to real bytes, with how it was found and what it belongs to."""
 
-    declared_as: str             # the string the target's descriptor declared
-    path: str                    # the file actually read
-    how: str                     # which resolution rule matched
-    pin: str | None = None       # the hardware pin whose checkout it lives in, when any
-    kind: str = ""               # "c_header" | "other"
-    digest: str = ""             # sha256 of the bytes actually read
-    inner_checkout: dict[str, Any] | None = None   # git observation of the tree the file sits in
+    declared_as: str  # the string the target's descriptor declared
+    path: str  # the file actually read
+    how: str  # which resolution rule matched
+    pin: str | None = None  # the hardware pin whose checkout it lives in, when any
+    kind: str = ""  # "c_header" | "other"
+    digest: str = ""  # sha256 of the bytes actually read
+    inner_checkout: dict[str, Any] | None = None  # git observation of the tree the file sits in
     #: Whether the pin that is supposed to describe this file actually does — see :func:`_pin_status`.
     pin_status: dict[str, Any] = field(default_factory=dict)
 
@@ -221,7 +243,7 @@ class CapabilitySurface:
     """What a target supports, as one side of the comparison."""
 
     target: str
-    origin: str                                  # "discovered" | "declared"
+    origin: str  # "discovered" | "declared"
     findings: list[Finding] = field(default_factory=list)
     sources: list[ResolvedSource] = field(default_factory=list)
     provenance: dict[str, Any] = field(default_factory=dict)
@@ -243,8 +265,7 @@ class CapabilitySurface:
         return [f for f in self.findings if f.state == ENCODABLE_NOT_BUILT]
 
     def present(self, axis: str | None = None) -> list[Finding]:
-        return [f for f in self.findings
-                if f.state == PRESENT and (axis is None or f.axis == axis)]
+        return [f for f in self.findings if f.state == PRESENT and (axis is None or f.axis == axis)]
 
     def families(self) -> dict[str, Finding]:
         """family name -> the strongest finding that licenses it."""
@@ -256,8 +277,7 @@ class CapabilitySurface:
         return out
 
     def undeterminable_axes(self) -> list[str]:
-        decided = {f.axis for f in self.findings
-                   if f.state in (PRESENT, ABSENT, ENCODABLE_NOT_BUILT)}
+        decided = {f.axis for f in self.findings if f.state in (PRESENT, ABSENT, ENCODABLE_NOT_BUILT)}
         return [a for a in AXES if a not in decided]
 
     def to_dict(self) -> dict[str, Any]:
@@ -320,7 +340,7 @@ class BitField:
 class HeaderModel:
     path: str
     macros: tuple[Macro, ...] = ()
-    typedefs: tuple[tuple[str, str, int], ...] = ()     # (alias, underlying, line)
+    typedefs: tuple[tuple[str, str, int], ...] = ()  # (alias, underlying, line)
     bitfields: tuple[BitField, ...] = ()
     includes: tuple[str, ...] = ()
 
@@ -358,7 +378,7 @@ def _split_code_and_comments(text: str) -> tuple[list[str], list[tuple[int, str]
                 in_str = None
             i += 1
             continue
-        if ch == '"' and text[i:i + 3] == '"""':
+        if ch == '"' and text[i : i + 3] == '"""':
             # Scala's triple-quoted string. Without this the scanner takes the first quote as the start
             # of an ordinary string and swallows the rest of the file at the first apostrophe inside it.
             j = text.find('"""', i + 3)
@@ -379,13 +399,13 @@ def _split_code_and_comments(text: str) -> tuple[list[str], list[tuple[int, str]
         if ch == "/" and nxt == "/":
             j = text.find("\n", i)
             j = n if j < 0 else j
-            comments.append((line, text[i + 2:j].strip()))
+            comments.append((line, text[i + 2 : j].strip()))
             i = j
             continue
         if ch == "/" and nxt == "*":
             j = text.find("*/", i + 2)
             j = n if j < 0 else j + 2
-            chunk = text[i + 2:max(i + 2, j - 2)]
+            chunk = text[i + 2 : max(i + 2, j - 2)]
             comments.append((line, " ".join(chunk.split())))
             for c in chunk:
                 if c == "\n":
@@ -445,8 +465,7 @@ def _parse_define(line_no: int, body: str) -> Macro | None:
                 if depth == 0:
                     break
         params = tuple(p.strip() for p in tail[1:k].split(",") if p.strip())
-        return Macro(name=name, body=tail[k + 1:].strip(), line=line_no,
-                     is_function=True, params=params)
+        return Macro(name=name, body=tail[k + 1 :].strip(), line=line_no, is_function=True, params=params)
     return Macro(name=name, body=tail.strip(), line=line_no)
 
 
@@ -509,7 +528,7 @@ def parse_c_header(path: "str | Path") -> HeaderModel:
                     includes.append(t[1:-1])
             continue
         if logical.startswith("typedef "):
-            stmt = logical[len("typedef "):].partition(";")[0].strip()
+            stmt = logical[len("typedef ") :].partition(";")[0].strip()
             words = stmt.split()
             if len(words) >= 2 and words[-1].isidentifier():
                 typedefs.append((words[-1], " ".join(words[:-1]), line_no))
@@ -517,8 +536,13 @@ def parse_c_header(path: "str | Path") -> HeaderModel:
     bitfields: list[BitField] = []
     for line_no, text_c in comments:
         bitfields.extend(_parse_bit_layout(line_no, text_c))
-    return HeaderModel(path=str(p), macros=tuple(macros), typedefs=tuple(typedefs),
-                       bitfields=tuple(bitfields), includes=tuple(includes))
+    return HeaderModel(
+        path=str(p),
+        macros=tuple(macros),
+        typedefs=tuple(typedefs),
+        bitfields=tuple(bitfields),
+        includes=tuple(includes),
+    )
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -557,11 +581,13 @@ def _descriptor_targets() -> set[str]:
 
 def _yaml(path: Path) -> dict[str, Any]:
     import yaml
+
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
 def _target_contract(target: str) -> tuple[dict[str, Any], Path | None]:
     from .rtl.facts import target_contract_path
+
     p = target_contract_path(target)
     if p.is_file():
         return _yaml(p), p
@@ -696,18 +722,25 @@ def isa_sources(target: str, *, follow_includes: bool = True) -> list[ResolvedSo
         seen.add(rp)
         kind = "c_header" if p.suffix.lower() in _C_SUFFIXES else "other"
         obs = _prov.observe(p.parent)
-        src = ResolvedSource(declared_as=declared_as, path=rp, how=how, pin=pin_name, kind=kind,
-                             digest=_prov.source_digest([rp]),
-                             inner_checkout=obs.to_dict() if obs.present else None,
-                             pin_status=_pin_status(p, pin_name))
+        src = ResolvedSource(
+            declared_as=declared_as,
+            path=rp,
+            how=how,
+            pin=pin_name,
+            kind=kind,
+            digest=_prov.source_digest([rp]),
+            inner_checkout=obs.to_dict() if obs.present else None,
+            pin_status=_pin_status(p, pin_name),
+        )
         out.append(src)
         return src
 
     for declared_path in _declared_isa_paths(target):
         p, how, pin_name = _resolve_declared_path(declared_path, pins)
         if p is None:
-            out.append(ResolvedSource(declared_as=declared_path, path="", how="unresolved",
-                                      pin=None, kind="", digest=""))
+            out.append(
+                ResolvedSource(declared_as=declared_path, path="", how="unresolved", pin=None, kind="", digest="")
+            )
             continue
         src = _add(declared_path, p, how, pin_name)
         if src is None or not follow_includes or src.kind != "c_header":
@@ -720,7 +753,7 @@ def isa_sources(target: str, *, follow_includes: bool = True) -> list[ResolvedSo
             for base in (p.parent, p.parent.parent):
                 cand = base / inc
                 if cand.is_file():
-                    _add(f"{declared_path} -> #include \"{inc}\"", cand, "local_include", pin_name)
+                    _add(f'{declared_path} -> #include "{inc}"', cand, "local_include", pin_name)
                     break
     return out
 
@@ -752,8 +785,9 @@ _FEATURE_STEMS: dict[str, tuple[tuple[str, ...], str | None]] = {
 #: — as opposed to a tuning knob that merely happens to share a word with a feature. Without this,
 #: ``mvin_scale_shared`` (an area/sharing option) was read as the enable for the requant path and
 #: reported it as not built, which is the over-correction mirror of the bug this rung exists to fix.
-_PRESENCE_TOKENS = frozenset({"has", "have", "enable", "enabled", "enables", "support", "supports",
-                              "with", "use", "uses", "include", "includes"})
+_PRESENCE_TOKENS = frozenset(
+    {"has", "have", "enable", "enabled", "enables", "support", "supports", "with", "use", "uses", "include", "includes"}
+)
 
 #: Tokens whose presence in an identifier marks it as an ACTIVATION selector. Used to pick which
 #: enumeration in the header is the activation-mode enum; the MEMBERS are then read off the header.
@@ -835,8 +869,7 @@ def _tokens(name: str) -> list[str]:
 #: ``spad`` (a scratchpad) as a padding parameter, which is a capability manufactured out of an
 #: abbreviation. These are the edge/direction words an interface fuses onto a per-edge parameter --
 #: up / left / right / down / top / bottom, and their pooled (``p``-prefixed) variants.
-_FUSED_PREFIXES = frozenset({"u", "l", "r", "d", "t", "b",
-                             "pu", "pl", "pr", "pd", "pt", "pb"})
+_FUSED_PREFIXES = frozenset({"u", "l", "r", "d", "t", "b", "pu", "pl", "pr", "pd", "pt", "pb"})
 
 
 def _matches_stem(token: str, stems: tuple[str, ...]) -> bool:
@@ -853,7 +886,7 @@ def _matches_stem(token: str, stems: tuple[str, ...]) -> bool:
     for stem in stems:
         if token == stem:
             return True
-        if len(stem) >= 3 and token.endswith(stem) and token[:-len(stem)] in _FUSED_PREFIXES:
+        if len(stem) >= 3 and token.endswith(stem) and token[: -len(stem)] in _FUSED_PREFIXES:
             return True
     return False
 
@@ -912,6 +945,7 @@ def _facts_if_present(target: str) -> tuple[dict[str, Any] | None, str]:
     turn into one. A cold cache is ``undeterminable``, which is the honest answer.
     """
     from .rtl.facts import rtl_facts_path
+
     # SAME ORDER ``rtl.facts.ensure_facts`` uses (cache, then the committed artifact). Reading the other
     # one would describe a different bundle than every other consumer sees: on this checkout the two
     # disagree about at least one funct name, and a surface derived from the artifact nobody grades
@@ -950,16 +984,15 @@ def targets_with_facts() -> list[str]:
     return out
 
 
-def _from_spatial_facts(body: dict[str, Any], loc: str, out: list[Finding],
-                        notes: list[str]) -> bool:
+def _from_spatial_facts(body: dict[str, Any], loc: str, out: list[Finding], notes: list[str]) -> bool:
     """The SPATIAL fact schema, whose bundle carries ``fields`` instead of arrays/datapaths.
 
     Handled through :mod:`capability_manifests`'s own readers rather than a second copy of them, so a
     target on that extractor is not silently reported as having an empty fact bundle — which is what a
     single-schema reader does, and it is indistinguishable from hardware that has nothing.
     """
-    from .capability_manifests import (_spatial_capabilities_from_fields, _spatial_datapaths_from_fields,
-                                       _spatial_fields)
+    from .capability_manifests import _spatial_capabilities_from_fields, _spatial_datapaths_from_fields, _spatial_fields
+
     fields = _spatial_fields(body)
     if not fields:
         return False
@@ -967,37 +1000,71 @@ def _from_spatial_facts(body: dict[str, Any], loc: str, out: list[Finding],
     tile = geom.get("tile") or {}
     if tile.get("rows") and tile.get("cols"):
         ev = (fields.get("tile_dim") or {}).get("evidence", "")
-        out.append(Finding(
-            axis="family", name="contraction", state=PRESENT, family="contraction",
-            family_basis="rtl_facts.fields.tile_dim (spatial schema)",
-            value={"tile": tile, "mrf_depth": geom.get("mrf_depth")},
-            evidence=(Evidence(rung="rtl_facts", locator=f"{loc}#fields.tile_dim",
-                               observed=f"tile {tile['rows']}x{tile['cols']}: {ev}"),),
-            detail="an accumulator tile of multiply-accumulate cells licenses reduce-over-k"))
+        out.append(
+            Finding(
+                axis="family",
+                name="contraction",
+                state=PRESENT,
+                family="contraction",
+                family_basis="rtl_facts.fields.tile_dim (spatial schema)",
+                value={"tile": tile, "mrf_depth": geom.get("mrf_depth")},
+                evidence=(
+                    Evidence(
+                        rung="rtl_facts",
+                        locator=f"{loc}#fields.tile_dim",
+                        observed=f"tile {tile['rows']}x{tile['cols']}: {ev}",
+                    ),
+                ),
+                detail="an accumulator tile of multiply-accumulate cells licenses reduce-over-k",
+            )
+        )
     _primary, storage, accumulate = _spatial_datapaths_from_fields(fields)
-    for entry in ((fields.get("dtypes") or {}).get("value") or []):
+    for entry in (fields.get("dtypes") or {}).get("value") or []:
         nm, opnd, acc = entry.get("name"), entry.get("operand"), entry.get("accumulator")
-        ev = Evidence(rung="rtl_facts", locator=f"{loc}#fields.dtypes",
-                      observed=f"{nm}: operand {opnd} -> accumulator {acc} ({entry.get('path', '')})")
+        ev = Evidence(
+            rung="rtl_facts",
+            locator=f"{loc}#fields.dtypes",
+            observed=f"{nm}: operand {opnd} -> accumulator {acc} ({entry.get('path', '')})",
+        )
         if opnd:
-            out.append(Finding(axis="datapath_dtype", name=f"operand={nm}", state=PRESENT,
-                               value=str(nm), datapath="operand", evidence=(ev,),
-                               detail=f"the spatial unit's operand datapath carries {nm} ({opnd})"))
+            out.append(
+                Finding(
+                    axis="datapath_dtype",
+                    name=f"operand={nm}",
+                    state=PRESENT,
+                    value=str(nm),
+                    datapath="operand",
+                    evidence=(ev,),
+                    detail=f"the spatial unit's operand datapath carries {nm} ({opnd})",
+                )
+            )
         if acc:
-            out.append(Finding(axis="datapath_dtype", name=f"accumulate({nm})={acc}", state=PRESENT,
-                               value=str(acc), datapath="accumulate", evidence=(ev,),
-                               detail=f"accumulating {nm} operands into {acc}"))
+            out.append(
+                Finding(
+                    axis="datapath_dtype",
+                    name=f"accumulate({nm})={acc}",
+                    state=PRESENT,
+                    value=str(acc),
+                    datapath="accumulate",
+                    evidence=(ev,),
+                    detail=f"accumulating {nm} operands into {acc}",
+                )
+            )
     if storage:
-        notes.append(f"spatial fact schema: {len(storage)} operand format(s) evidenced ({storage}) with "
-                     f"{len(accumulate)} (in,weight)->acc rule(s)")
+        notes.append(
+            f"spatial fact schema: {len(storage)} operand format(s) evidenced ({storage}) with "
+            f"{len(accumulate)} (in,weight)->acc rule(s)"
+        )
     return True
 
 
 def _from_facts(target: str, out: list[Finding], notes: list[str]) -> bool:
     facts, how = _facts_if_present(target)
     if facts is None:
-        notes.append("no readable RTL fact bundle (cache cold and no committed artifact): every "
-                     "fact-grounded axis is undeterminable, NOT absent")
+        notes.append(
+            "no readable RTL fact bundle (cache cold and no committed artifact): every "
+            "fact-grounded axis is undeterminable, NOT absent"
+        )
         return False
     body = _facts_body(facts)
     loc = how
@@ -1005,54 +1072,84 @@ def _from_facts(target: str, out: list[Finding], notes: list[str]) -> bool:
     if committed.is_file() and str(committed) != loc:
         try:
             if committed.read_bytes() != Path(loc).read_bytes():
-                notes.append(f"TWO fact bundles exist for this target and they DIFFER: this surface was "
-                             f"derived from {loc}, and the reviewed in-tree artifact {committed} is not "
-                             f"byte-identical to it. Reconcile them before citing either")
+                notes.append(
+                    f"TWO fact bundles exist for this target and they DIFFER: this surface was "
+                    f"derived from {loc}, and the reviewed in-tree artifact {committed} is not "
+                    f"byte-identical to it. Reconcile them before citing either"
+                )
         except OSError:
             pass
     if _from_spatial_facts(body, loc, out, notes):
         return True
     if not (body.get("arrays") or body.get("interfaces") or body.get("datapaths")):
-        notes.append(f"the RTL fact bundle at {loc} carries no arrays, interfaces or datapaths: it was "
-                     "read but is EMPTY, so every fact-grounded axis stays undeterminable")
+        notes.append(
+            f"the RTL fact bundle at {loc} carries no arrays, interfaces or datapaths: it was "
+            "read but is EMPTY, so every fact-grounded axis stays undeterminable"
+        )
         return False
 
-    for dp in (body.get("datapaths") or []):
+    for dp in body.get("datapaths") or []:
         name = str(dp.get("name") or "")
         dtype = dp.get("dtype")
         if not name or not dtype:
             continue
         role = _FACTS_DATAPATH_ROLE.get("_".join(_tokens(name)))
-        out.append(Finding(
-            axis="datapath_dtype", name=f"{name}={dtype}", state=PRESENT, value=str(dtype),
-            datapath=role,
-            evidence=(Evidence(rung="rtl_facts", locator=f"{loc}#facts.datapaths[{name}].dtype",
-                               observed=f"{name}: {dtype} ({dp.get('evidence', '')})"),),
-            detail=(f"the RTL's `{name}` datapath carries {dtype}"
-                    + (f" (dataflow role: {role})" if role else
-                       " — the fact bundle's name maps to no known dataflow role, so this dtype is "
-                       "reported but takes no part in the declared-vs-discovered dtype diff")
-                    + "; this claim is about THAT datapath only")))
+        out.append(
+            Finding(
+                axis="datapath_dtype",
+                name=f"{name}={dtype}",
+                state=PRESENT,
+                value=str(dtype),
+                datapath=role,
+                evidence=(
+                    Evidence(
+                        rung="rtl_facts",
+                        locator=f"{loc}#facts.datapaths[{name}].dtype",
+                        observed=f"{name}: {dtype} ({dp.get('evidence', '')})",
+                    ),
+                ),
+                detail=(
+                    f"the RTL's `{name}` datapath carries {dtype}"
+                    + (
+                        f" (dataflow role: {role})"
+                        if role
+                        else " — the fact bundle's name maps to no known dataflow role, so this dtype is "
+                        "reported but takes no part in the declared-vs-discovered dtype diff"
+                    )
+                    + "; this claim is about THAT datapath only"
+                ),
+            )
+        )
 
     arrays = body.get("arrays") or []
     for a in arrays:
         rows, cols = a.get("rows"), a.get("cols")
         if not (rows and cols):
             continue
-        out.append(Finding(
-            axis="family", name="contraction", state=PRESENT, family="contraction",
-            family_basis="rtl_facts.arrays",
-            value={"array": a.get("name"), "rows": rows, "cols": cols,
-                   "mac_idiom": a.get("mac_idiom")},
-            evidence=(Evidence(rung="rtl_facts", locator=f"{loc}#facts.arrays[{a.get('name')}]",
-                               observed=f"{a.get('container')} of {a.get('instances')} "
-                                        f"{a.get('element')} ({rows}x{cols}), "
-                                        f"mac_idiom={a.get('mac_idiom')}"),),
-            detail="a multiply-accumulate array licenses reduce-over-k"))
+        out.append(
+            Finding(
+                axis="family",
+                name="contraction",
+                state=PRESENT,
+                family="contraction",
+                family_basis="rtl_facts.arrays",
+                value={"array": a.get("name"), "rows": rows, "cols": cols, "mac_idiom": a.get("mac_idiom")},
+                evidence=(
+                    Evidence(
+                        rung="rtl_facts",
+                        locator=f"{loc}#facts.arrays[{a.get('name')}]",
+                        observed=f"{a.get('container')} of {a.get('instances')} "
+                        f"{a.get('element')} ({rows}x{cols}), "
+                        f"mac_idiom={a.get('mac_idiom')}",
+                    ),
+                ),
+                detail="a multiply-accumulate array licenses reduce-over-k",
+            )
+        )
 
     contract, cpath = _target_contract(target)
-    sem_class = ((contract.get("encoding") or {}).get("semantic_class") or {})
-    for iface in (body.get("interfaces") or []):
+    sem_class = (contract.get("encoding") or {}).get("semantic_class") or {}
+    for iface in body.get("interfaces") or []:
         names = iface.get("names") or {}
         if not names:
             continue
@@ -1063,36 +1160,62 @@ def _from_facts(target: str, out: list[Finding], notes: list[str]) -> bool:
             fam = _sf.from_isa_class(declared_class) if declared_class else None
             named = str(opname).strip()
             recovered = bool(named) and (named[0].isalpha() or named[0] == "_")
-            out.append(Finding(
-                axis="op_class", name=(named if recovered else f"funct_{code}"),
-                # The decoder proves the CODE is legal; when the extractor could not recover a name for
-                # it, what the class IS stays undeterminable. Reporting `?` as a class name would put a
-                # non-name into a vocabulary other tools match against.
-                state=PRESENT if recovered else UNDETERMINABLE,
-                value={"code": code, "declared_class": declared_class},
-                family=fam,
-                family_basis=("contract.encoding.semantic_class -> semantic_families.from_isa_class"
-                              if fam else None),
-                evidence=(Evidence(rung="rtl_facts",
-                                   locator=f"{loc}#facts.interfaces[{iname}].names[{code}]",
-                                   observed=f"{code}: {opname} ({iface.get('method', '')})"),),
-                detail=(("" if declared_class else
-                         "the contract maps no shared semantic_class to this funct code, so the family "
-                         "it licenses is UNDETERMINABLE — an RTL module name is not evidence of one")
-                        if recovered else
-                        f"the decoder proves funct {code} is legal, but the extractor recovered no name "
-                        f"for it (it recorded {opname!r}); what this class IS stays undeterminable")))
+            out.append(
+                Finding(
+                    axis="op_class",
+                    name=(named if recovered else f"funct_{code}"),
+                    # The decoder proves the CODE is legal; when the extractor could not recover a name for
+                    # it, what the class IS stays undeterminable. Reporting `?` as a class name would put a
+                    # non-name into a vocabulary other tools match against.
+                    state=PRESENT if recovered else UNDETERMINABLE,
+                    value={"code": code, "declared_class": declared_class},
+                    family=fam,
+                    family_basis=(
+                        "contract.encoding.semantic_class -> semantic_families.from_isa_class" if fam else None
+                    ),
+                    evidence=(
+                        Evidence(
+                            rung="rtl_facts",
+                            locator=f"{loc}#facts.interfaces[{iname}].names[{code}]",
+                            observed=f"{code}: {opname} ({iface.get('method', '')})",
+                        ),
+                    ),
+                    detail=(
+                        (
+                            ""
+                            if declared_class
+                            else "the contract maps no shared semantic_class to this funct code, so the family "
+                            "it licenses is UNDETERMINABLE — an RTL module name is not evidence of one"
+                        )
+                        if recovered
+                        else f"the decoder proves funct {code} is legal, but the extractor recovered no name "
+                        f"for it (it recorded {opname!r}); what this class IS stays undeterminable"
+                    ),
+                )
+            )
             if fam:
-                out.append(Finding(
-                    axis="family", name=fam, state=PRESENT, family=fam,
-                    family_basis="contract.encoding.semantic_class",
-                    evidence=(Evidence(rung="rtl_facts",
-                                       locator=f"{loc}#facts.interfaces[{iname}].names[{code}]",
-                                       observed=f"{code}: {opname} -> class {declared_class}"),
-                              Evidence(rung="contract",
-                                       locator=f"{cpath}#encoding.semantic_class[{code}]",
-                                       observed=str(declared_class))),
-                    detail=f"instruction class {declared_class} licenses {fam}"))
+                out.append(
+                    Finding(
+                        axis="family",
+                        name=fam,
+                        state=PRESENT,
+                        family=fam,
+                        family_basis="contract.encoding.semantic_class",
+                        evidence=(
+                            Evidence(
+                                rung="rtl_facts",
+                                locator=f"{loc}#facts.interfaces[{iname}].names[{code}]",
+                                observed=f"{code}: {opname} -> class {declared_class}",
+                            ),
+                            Evidence(
+                                rung="contract",
+                                locator=f"{cpath}#encoding.semantic_class[{code}]",
+                                observed=str(declared_class),
+                            ),
+                        ),
+                        detail=f"instruction class {declared_class} licenses {fam}",
+                    )
+                )
     return True
 
 
@@ -1107,8 +1230,7 @@ def _enum_groups(macros: tuple[Macro, ...]) -> list[list[Macro]]:
     Grouping is STRUCTURAL: adjacency in the file plus consecutive values. No name is required to look
     like anything, so an enum this repo has never seen groups the same way.
     """
-    ints = sorted([m for m in macros if not m.is_function and m.int_value is not None],
-                  key=lambda m: m.line)
+    ints = sorted([m for m in macros if not m.is_function and m.int_value is not None], key=lambda m: m.line)
     groups: list[list[Macro]] = []
     cur: list[Macro] = []
     for m in ints:
@@ -1142,31 +1264,60 @@ def _activation_modes(hms: list[HeaderModel], out: list[Finding]) -> None:
                 toks = _tokens(m.name)
                 identity = "no" in toks or "none" in toks
                 fam, basis = (None, "identity_mode") if identity else _family_for_mode(m.name)
-                ev = (Evidence(rung="isa_header", locator=hm.path, line=m.line,
-                               observed=f"#define {m.name} {m.body}"),)
-                out.append(Finding(
-                    axis="activation_mode", name=m.name, state=PRESENT, value=m.int_value,
-                    family=fam, family_basis=(basis if fam else None), evidence=ev,
-                    gate=({"status": "identity_mode"} if identity else None),
-                    detail=("the identity (pass-through) mode" if identity else
-                            ("an activation-mode encoding on the accumulator readout path; the family "
-                             "is named from the shared op vocabulary, not from the hardware's structure"
-                             if fam else
-                             "an activation-mode encoding whose name the shared op vocabulary does not "
-                             "know — family UNDETERMINABLE, deliberately not guessed"))))
+                ev = (Evidence(rung="isa_header", locator=hm.path, line=m.line, observed=f"#define {m.name} {m.body}"),)
+                out.append(
+                    Finding(
+                        axis="activation_mode",
+                        name=m.name,
+                        state=PRESENT,
+                        value=m.int_value,
+                        family=fam,
+                        family_basis=(basis if fam else None),
+                        evidence=ev,
+                        gate=({"status": "identity_mode"} if identity else None),
+                        detail=(
+                            "the identity (pass-through) mode"
+                            if identity
+                            else (
+                                "an activation-mode encoding on the accumulator readout path; the family "
+                                "is named from the shared op vocabulary, not from the hardware's structure"
+                                if fam
+                                else "an activation-mode encoding whose name the shared op vocabulary does not "
+                                "know — family UNDETERMINABLE, deliberately not guessed"
+                            )
+                        ),
+                    )
+                )
                 if fam:
-                    out.append(Finding(
-                        axis="family", name=fam, state=PRESENT, family=fam,
-                        family_basis=f"isa_header.activation_mode({m.name}) via {basis}", evidence=ev,
-                        value={"licensed_by": f"activation_mode:{m.name}"},
-                        detail=f"activation mode {m.name} is a hardware selector for {fam}"))
+                    out.append(
+                        Finding(
+                            axis="family",
+                            name=fam,
+                            state=PRESENT,
+                            family=fam,
+                            family_basis=f"isa_header.activation_mode({m.name}) via {basis}",
+                            evidence=ev,
+                            value={"licensed_by": f"activation_mode:{m.name}"},
+                            detail=f"activation mode {m.name} is a hardware selector for {fam}",
+                        )
+                    )
     if not seen and any_source:
-        out.append(Finding(
-            axis="activation_mode", name="activation_mode", state=ABSENT,
-            evidence=tuple(Evidence(rung="isa_header", locator=hm.path,
-                                    observed="no contiguous #define enumeration in this header carries "
-                                             "an activation token") for hm in hms[:4]),
-            detail="every readable ISA source was parsed and none enumerates an activation selector"))
+        out.append(
+            Finding(
+                axis="activation_mode",
+                name="activation_mode",
+                state=ABSENT,
+                evidence=tuple(
+                    Evidence(
+                        rung="isa_header",
+                        locator=hm.path,
+                        observed="no contiguous #define enumeration in this header carries an activation token",
+                    )
+                    for hm in hms[:4]
+                ),
+                detail="every readable ISA source was parsed and none enumerates an activation selector",
+            )
+        )
 
 
 def _identifier_sites(hm: HeaderModel) -> list[tuple[str, Evidence, str]]:
@@ -1187,17 +1338,31 @@ def _identifier_sites(hm: HeaderModel) -> list[tuple[str, Evidence, str]]:
     for m in hm.macros:
         if m.is_function:
             for p in m.params:
-                sites.append((p, Evidence(rung="isa_header", locator=hm.path, line=m.line,
-                                          observed=f"{m.name}(..., {p}, ...)"),
-                              f"parameter of {m.name}"))
+                sites.append(
+                    (
+                        p,
+                        Evidence(rung="isa_header", locator=hm.path, line=m.line, observed=f"{m.name}(..., {p}, ...)"),
+                        f"parameter of {m.name}",
+                    )
+                )
         elif not m.body.strip():
-            sites.append((m.name, Evidence(rung="isa_header", locator=hm.path, line=m.line,
-                                           observed=f"#define {m.name}"),
-                          "valueless feature macro"))
+            sites.append(
+                (
+                    m.name,
+                    Evidence(rung="isa_header", locator=hm.path, line=m.line, observed=f"#define {m.name}"),
+                    "valueless feature macro",
+                )
+            )
     for bf in hm.bitfields:
-        sites.append((bf.name, Evidence(rung="isa_header", locator=hm.path, line=bf.line,
-                                        observed=f"{bf.register} {bf.span} {bf.name}"),
-                      f"{bf.register} bit-field {bf.span}"))
+        sites.append(
+            (
+                bf.name,
+                Evidence(
+                    rung="isa_header", locator=hm.path, line=bf.line, observed=f"{bf.register} {bf.span} {bf.name}"
+                ),
+                f"{bf.register} bit-field {bf.span}",
+            )
+        )
     return sites
 
 
@@ -1223,34 +1388,55 @@ def _feature_axes(hms: list[HeaderModel], out: list[Finding]) -> None:
                 if not _matches_stem(t, stems) and not t.isdigit():
                     quals.add(t)
         if not hits:
-            out.append(Finding(
-                axis=axis, name=axis, state=ABSENT,
-                evidence=tuple(Evidence(rung="isa_header", locator=hm.path,
-                                        observed=f"no macro parameter, bit-field or valueless feature "
-                                                 f"macro carries any of {sorted(stems)}")
-                               for hm in hms[:4]),
-                detail="every readable ISA source was parsed and none states this axis"))
+            out.append(
+                Finding(
+                    axis=axis,
+                    name=axis,
+                    state=ABSENT,
+                    evidence=tuple(
+                        Evidence(
+                            rung="isa_header",
+                            locator=hm.path,
+                            observed=f"no macro parameter, bit-field or valueless feature "
+                            f"macro carries any of {sorted(stems)}",
+                        )
+                        for hm in hms[:4]
+                    ),
+                    detail="every readable ISA source was parsed and none states this axis",
+                )
+            )
             continue
         fam = _family_for_op(op_hint)
         ev_all: list[Evidence] = []
         for ident in sorted(hits):
             ev_all.extend(hits[ident][:1])
-        out.append(Finding(
-            axis=axis, name=axis, state=PRESENT,
-            value={"parameters": sorted(hits), "qualifiers": sorted(quals)},
-            family=fam,
-            family_basis=(f"feature '{axis}' -> op '{op_hint}' -> semantic_families.from_op"
-                          if fam else None),
-            evidence=tuple(ev_all[:10]),
-            detail=f"{len(hits)} identifier(s) in the target's own interface evidence {axis}; "
-                   f"`qualifiers` are the remaining tokens of those identifiers, which is where the "
-                   f"operand or variant each one applies to shows up"))
+        out.append(
+            Finding(
+                axis=axis,
+                name=axis,
+                state=PRESENT,
+                value={"parameters": sorted(hits), "qualifiers": sorted(quals)},
+                family=fam,
+                family_basis=(f"feature '{axis}' -> op '{op_hint}' -> semantic_families.from_op" if fam else None),
+                evidence=tuple(ev_all[:10]),
+                detail=f"{len(hits)} identifier(s) in the target's own interface evidence {axis}; "
+                f"`qualifiers` are the remaining tokens of those identifiers, which is where the "
+                f"operand or variant each one applies to shows up",
+            )
+        )
         if fam:
-            out.append(Finding(
-                axis="family", name=fam, state=PRESENT, family=fam,
-                family_basis=f"isa_header.{axis}", evidence=tuple(ev_all[:3]),
-                value={"licensed_by": f"{axis}:{axis}"},
-                detail=f"the {axis} hardware feature licenses {fam}"))
+            out.append(
+                Finding(
+                    axis="family",
+                    name=fam,
+                    state=PRESENT,
+                    family=fam,
+                    family_basis=f"isa_header.{axis}",
+                    evidence=tuple(ev_all[:3]),
+                    value={"licensed_by": f"{axis}:{axis}"},
+                    detail=f"the {axis} hardware feature licenses {fam}",
+                )
+            )
 
 
 def _dtype_axes(hms: list[HeaderModel], out: list[Finding]) -> None:
@@ -1287,64 +1473,99 @@ def _dtype_axes(hms: list[HeaderModel], out: list[Finding]) -> None:
             if len(toks) >= 3 and toks[-2:] == ["is", "float"]:
                 markers.setdefault("_".join(toks[:-2]), {})["is_float"] = (m.line, m.name, hm.path)
             elif len(toks) >= 3 and toks[-2:] == ["exp", "bits"] and m.int_value is not None:
-                markers.setdefault("_".join(toks[:-2]), {})["exp_bits"] = (m.int_value, m.line,
-                                                                           m.name, hm.path)
+                markers.setdefault("_".join(toks[:-2]), {})["exp_bits"] = (m.int_value, m.line, m.name, hm.path)
             elif len(toks) >= 3 and toks[-2:] == ["sig", "bits"] and m.int_value is not None:
-                markers.setdefault("_".join(toks[:-2]), {})["sig_bits"] = (m.int_value, m.line,
-                                                                           m.name, hm.path)
+                markers.setdefault("_".join(toks[:-2]), {})["sig_bits"] = (m.int_value, m.line, m.name, hm.path)
 
     if not by_role and hms:
-        out.append(Finding(
-            axis="datapath_dtype", name="datapath_dtype", state=ABSENT,
-            evidence=tuple(Evidence(rung="isa_header", locator=hm.path,
-                                    observed="no typedef in this header names a datapath role")
-                           for hm in hms[:4]),
-            detail="every readable ISA source was parsed and none typedefs a datapath element type"))
+        out.append(
+            Finding(
+                axis="datapath_dtype",
+                name="datapath_dtype",
+                state=ABSENT,
+                evidence=tuple(
+                    Evidence(
+                        rung="isa_header", locator=hm.path, observed="no typedef in this header names a datapath role"
+                    )
+                    for hm in hms[:4]
+                ),
+                detail="every readable ISA source was parsed and none typedefs a datapath element type",
+            )
+        )
 
     for role, entries in sorted(by_role.items()):
         for alias, under, line, path in entries:
             key = "_".join(_tokens(alias))
             mk = markers.get(key, {})
-            ev = [Evidence(rung="isa_header", locator=path, line=line,
-                           observed=f"typedef {under} {alias};")]
+            ev = [Evidence(rung="isa_header", locator=path, line=line, observed=f"typedef {under} {alias};")]
             extra = []
             for label, item in sorted(mk.items()):
                 if label == "is_float":
                     ln, nm, pth = item
-                    ev.append(Evidence(rung="isa_header", locator=pth, line=ln,
-                                       observed=f"#define {nm}"))
+                    ev.append(Evidence(rung="isa_header", locator=pth, line=ln, observed=f"#define {nm}"))
                     extra.append("declared FLOAT by its own marker")
                 else:
                     val, ln, nm, pth = item
-                    ev.append(Evidence(rung="isa_header", locator=pth, line=ln,
-                                       observed=f"#define {nm} {val}"))
+                    ev.append(Evidence(rung="isa_header", locator=pth, line=ln, observed=f"#define {nm} {val}"))
                     extra.append(f"{label}={val}")
-            out.append(Finding(
-                axis="datapath_dtype", name=f"{role}:{alias}={under}", state=PRESENT, value=under,
-                datapath=role, evidence=tuple(ev),
-                detail=(f"the {role} datapath (`{alias}`) is `{under}`"
+            out.append(
+                Finding(
+                    axis="datapath_dtype",
+                    name=f"{role}:{alias}={under}",
+                    state=PRESENT,
+                    value=under,
+                    datapath=role,
+                    evidence=tuple(ev),
+                    detail=(
+                        f"the {role} datapath (`{alias}`) is `{under}`"
                         + (f" ({'; '.join(extra)})" if extra else "")
-                        + ". This claim is about THAT datapath and no other.")))
+                        + ". This claim is about THAT datapath and no other."
+                    ),
+                )
+            )
 
     if rounding or scale_macros:
-        ev = tuple(Evidence(rung="isa_header", locator=path, line=m.line,
-                            observed=(f"#define {m.name}"
-                                      + (f"({', '.join(m.params)})" if m.is_function else "")
-                                      + " " + " ".join(m.body.split())[:100]).strip())
-                   for m, path in (rounding + scale_macros)[:8])
-        out.append(Finding(
-            axis="scale_rounding", name="scale_rounding", state=PRESENT,
-            value={"rounding_macros": sorted({m.name for m, _p in rounding}),
-                   "scale_macros": sorted({m.name for m, _p in scale_macros})},
-            evidence=ev,
-            detail="the header defines the scale/requant path's own rounding; the arithmetic itself is "
-                   "the target's own lowering, which this module reports rather than models"))
+        ev = tuple(
+            Evidence(
+                rung="isa_header",
+                locator=path,
+                line=m.line,
+                observed=(
+                    f"#define {m.name}"
+                    + (f"({', '.join(m.params)})" if m.is_function else "")
+                    + " "
+                    + " ".join(m.body.split())[:100]
+                ).strip(),
+            )
+            for m, path in (rounding + scale_macros)[:8]
+        )
+        out.append(
+            Finding(
+                axis="scale_rounding",
+                name="scale_rounding",
+                state=PRESENT,
+                value={
+                    "rounding_macros": sorted({m.name for m, _p in rounding}),
+                    "scale_macros": sorted({m.name for m, _p in scale_macros}),
+                },
+                evidence=ev,
+                detail="the header defines the scale/requant path's own rounding; the arithmetic itself is "
+                "the target's own lowering, which this module reports rather than models",
+            )
+        )
     elif hms:
-        out.append(Finding(
-            axis="scale_rounding", name="scale_rounding", state=ABSENT,
-            evidence=tuple(Evidence(rung="isa_header", locator=hm.path,
-                                    observed="no rounding or scale macro defined") for hm in hms[:4]),
-            detail="every readable ISA source was parsed and none defines a scale-path rounding"))
+        out.append(
+            Finding(
+                axis="scale_rounding",
+                name="scale_rounding",
+                state=ABSENT,
+                evidence=tuple(
+                    Evidence(rung="isa_header", locator=hm.path, observed="no rounding or scale macro defined")
+                    for hm in hms[:4]
+                ),
+                detail="every readable ISA source was parsed and none defines a scale-path rounding",
+            )
+        )
 
 
 def _corroborate_dtypes(findings: list[Finding], notes: list[str]) -> None:
@@ -1363,13 +1584,16 @@ def _corroborate_dtypes(findings: list[Finding], notes: list[str]) -> None:
     rtl, hdr = by_rung.get("rtl_facts", {}), by_rung.get("isa_header", {})
     for role in sorted(set(rtl) & set(hdr)):
         if rtl[role] & hdr[role]:
-            notes.append(f"datapath {role!r}: RTL facts {sorted(rtl[role])} and the ISA header "
-                         f"{sorted(hdr[role])} agree")
+            notes.append(
+                f"datapath {role!r}: RTL facts {sorted(rtl[role])} and the ISA header {sorted(hdr[role])} agree"
+            )
         else:
-            notes.append(f"DISAGREEMENT on datapath {role!r}: RTL facts say {sorted(rtl[role])}, the "
-                         f"ISA header says {sorted(hdr[role])}. One of the two sources does not "
-                         f"describe the hardware the other does; do not cite either until it is "
-                         f"resolved")
+            notes.append(
+                f"DISAGREEMENT on datapath {role!r}: RTL facts say {sorted(rtl[role])}, the "
+                f"ISA header says {sorted(hdr[role])}. One of the two sources does not "
+                f"describe the hardware the other does; do not cite either until it is "
+                f"resolved"
+            )
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -1392,9 +1616,14 @@ def _corroborate_dtypes(findings: list[Finding], notes: list[str]) -> None:
 #: assumed, so ``CapacityInKilobytes(256)`` becomes 262144 bytes because the word "kilobytes" is in the
 #: constructor, not because anything here knows what that constructor is.
 _UNIT_SCALE: dict[str, int] = {
-    "bytes": 1, "byte": 1,
-    "kilobytes": 1024, "kilobyte": 1024, "kib": 1024,
-    "megabytes": 1024 * 1024, "megabyte": 1024 * 1024, "mib": 1024 * 1024,
+    "bytes": 1,
+    "byte": 1,
+    "kilobytes": 1024,
+    "kilobyte": 1024,
+    "kib": 1024,
+    "megabytes": 1024 * 1024,
+    "megabyte": 1024 * 1024,
+    "mib": 1024 * 1024,
 }
 
 #: Operators whose ``=`` must not be mistaken for a named argument's assignment.
@@ -1423,10 +1652,10 @@ class ConfigField:
     """One field of the elaborated build configuration."""
 
     name: str
-    raw: str                       # the expression exactly as written
-    value: Any = None              # bool / int when it could be read literally, else None
+    raw: str  # the expression exactly as written
+    value: Any = None  # bool / int when it could be read literally, else None
     unit_scale: int | None = None  # the multiplier its own wrapper names, for a capacity
-    origin: str = "set"            # "set" (the config passes it) | "declared_default" (the class's)
+    origin: str = "set"  # "set" (the config passes it) | "declared_default" (the class's)
     locator: str = ""
     line: int = 0
 
@@ -1437,9 +1666,15 @@ class ConfigField:
         return None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "raw": self.raw, "value": self.value, "origin": self.origin,
-                "locator": self.locator, "line": self.line,
-                **({"unit_scale": self.unit_scale} if self.unit_scale else {})}
+        return {
+            "name": self.name,
+            "raw": self.raw,
+            "value": self.value,
+            "origin": self.origin,
+            "locator": self.locator,
+            "line": self.line,
+            **({"unit_scale": self.unit_scale} if self.unit_scale else {}),
+        }
 
 
 @dataclass(frozen=True)
@@ -1448,8 +1683,8 @@ class ElaboratedConfig:
 
     name: str
     fields: dict[str, ConfigField] = field(default_factory=dict)
-    chain: tuple[tuple[str, str, int], ...] = ()      # (identifier, file, line) as it was followed
-    instantiated: str = ""                            # the class whose named arguments were read
+    chain: tuple[tuple[str, str, int], ...] = ()  # (identifier, file, line) as it was followed
+    instantiated: str = ""  # the class whose named arguments were read
     ambiguities: tuple[str, ...] = ()
     unresolved: tuple[str, ...] = ()
     sources_read: int = 0
@@ -1460,11 +1695,16 @@ class ElaboratedConfig:
         return f.value if f is not None and isinstance(f.value, bool) else None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "instantiated": self.instantiated,
-                "chain": [{"identifier": i, "file": f, "line": ln} for i, f, ln in self.chain],
-                "fields": {k: v.to_dict() for k, v in sorted(self.fields.items())},
-                "ambiguities": list(self.ambiguities), "unresolved": list(self.unresolved),
-                "sources_read": self.sources_read, "truncated": self.truncated}
+        return {
+            "name": self.name,
+            "instantiated": self.instantiated,
+            "chain": [{"identifier": i, "file": f, "line": ln} for i, f, ln in self.chain],
+            "fields": {k: v.to_dict() for k, v in sorted(self.fields.items())},
+            "ambiguities": list(self.ambiguities),
+            "unresolved": list(self.unresolved),
+            "sources_read": self.sources_read,
+            "truncated": self.truncated,
+        }
 
 
 # --- small structural scanners over a bracket language ---------------------------------------------
@@ -1544,11 +1784,12 @@ def _assign_split(item: str) -> tuple[str, str] | None:
         elif ch in ")]}":
             depth -= 1
         elif ch == "=" and depth == 0:
-            if any(item.startswith(op, i) for op in _EQ_NOT_ASSIGN) or \
-                    any(item[max(0, i - len(op) + 1):i + 1] == op for op in _EQ_NOT_ASSIGN):
+            if any(item.startswith(op, i) for op in _EQ_NOT_ASSIGN) or any(
+                item[max(0, i - len(op) + 1) : i + 1] == op for op in _EQ_NOT_ASSIGN
+            ):
                 i += 1
                 continue
-            return item[:i].strip(), item[i + 1:].strip()
+            return item[:i].strip(), item[i + 1 :].strip()
         i += 1
     return None
 
@@ -1590,8 +1831,8 @@ def _scala_value(raw: str) -> tuple[Any, int | None]:
     except ValueError:
         pass
     if t.endswith(")") and "(" in t:
-        callee = t[:t.index("(")].strip()
-        inner = t[t.index("(") + 1:-1].strip()
+        callee = t[: t.index("(")].strip()
+        inner = t[t.index("(") + 1 : -1].strip()
         try:
             n = int(inner, 0)
         except ValueError:
@@ -1634,8 +1875,7 @@ def _config_sources(target: str) -> tuple[list[tuple[Path, str]], bool]:
                     return out, truncated
                 fp = Path(dirpath) / fn
                 try:
-                    code, _c = _split_code_and_comments(fp.read_text(encoding="utf-8",
-                                                                     errors="replace"))
+                    code, _c = _split_code_and_comments(fp.read_text(encoding="utf-8", errors="replace"))
                 except OSError:
                     continue
                 out.append((fp, "\n".join(code)))
@@ -1670,9 +1910,9 @@ def _index_declarations(sources: list[tuple[Path, str]]) -> dict[str, list[dict[
                     m += 1
                 name = code[k:m]
                 if name and (name[0].isalpha() or name[0] == "_") and name not in _DECL_KEYWORDS:
-                    index.setdefault(name, []).append({
-                        "kind": word, "file": str(path), "line": _line_of(code, i),
-                        "code": code, "head_end": m})
+                    index.setdefault(name, []).append(
+                        {"kind": word, "file": str(path), "line": _line_of(code, i), "code": code, "head_end": m}
+                    )
                 i = m
                 continue
             i = j
@@ -1684,13 +1924,13 @@ def _decl_region(decl: dict[str, Any]) -> str:
     code, i, n = decl["code"], decl["head_end"], len(decl["code"])
     while i < n and code[i].isspace():
         i += 1
-    if i < n and code[i] == "[":                       # skip type parameters
+    if i < n and code[i] == "[":  # skip type parameters
         i = _balanced_end(code, i)
         while i < n and code[i].isspace():
             i += 1
     if i < n and code[i] in "({":
-        return code[i:_balanced_end(code, i)]
-    if i < n and code[i] == "=":                       # a `val` initializer
+        return code[i : _balanced_end(code, i)]
+    if i < n and code[i] == "=":  # a `val` initializer
         j = i + 1
         while j < n and code[j].isspace():
             j += 1
@@ -1700,7 +1940,7 @@ def _decl_region(decl: dict[str, Any]) -> str:
                 k = _balanced_end(code, k)
                 continue
             k += 1
-        return code[j:max(k, j)]
+        return code[j : max(k, j)]
     # A declaration with neither a parameter list nor an initializer right after its name -- e.g.
     # `class X extends Base(...)`. Its payload is the first bracket group that follows, and skipping it
     # is not harmless: the configuration named by the fact bundle is exactly this shape, so a resolver
@@ -1708,12 +1948,12 @@ def _decl_region(decl: dict[str, Any]) -> str:
     k = i
     while k < n and k - i < 4000:
         if code[k] in "({":
-            return code[k:_balanced_end(code, k)]
+            return code[k : _balanced_end(code, k)]
         if code[k].isalpha() or code[k] == "_":
             m = k
             while m < n and (code[m].isalnum() or code[m] == "_"):
                 m += 1
-            if code[k:m] in _DECL_KEYWORDS:            # ran into the next declaration
+            if code[k:m] in _DECL_KEYWORDS:  # ran into the next declaration
                 return ""
             k = m
             continue
@@ -1731,7 +1971,7 @@ def _named_arg_calls(region: str) -> list[tuple[str, dict[str, str]]]:
             continue
         callee, _start = _ident_before(region, i)
         end = _balanced_end(region, i)
-        body = region[i + 1:end - 1]
+        body = region[i + 1 : end - 1]
         if callee:
             args: dict[str, str] = {}
             for item in _split_top_level(body, ","):
@@ -1772,7 +2012,7 @@ def elaborated_config(target: str, facts: dict[str, Any]) -> ElaboratedConfig | 
     whole point: the field that gates three activation modes here is never mentioned by the config, and
     reading its absence as "unknown" would leave the header's claim unchallenged.
     """
-    src = ((_facts_body(facts).get("source") or {}) if isinstance(facts, dict) else {})
+    src = (_facts_body(facts).get("source") or {}) if isinstance(facts, dict) else {}
     cfg_name = str(src.get("config") or "").strip()
     if not cfg_name:
         return None
@@ -1781,8 +2021,7 @@ def elaborated_config(target: str, facts: dict[str, Any]) -> ElaboratedConfig | 
         return None
     index = _index_declarations(sources)
     if cfg_name not in index:
-        return ElaboratedConfig(name=cfg_name, unresolved=(cfg_name,), sources_read=len(sources),
-                                truncated=truncated)
+        return ElaboratedConfig(name=cfg_name, unresolved=(cfg_name,), sources_read=len(sources), truncated=truncated)
 
     chain: list[tuple[str, str, int]] = []
     seen: set[str] = set()
@@ -1813,9 +2052,13 @@ def elaborated_config(target: str, facts: dict[str, Any]) -> ElaboratedConfig | 
     # count picked a different, larger configuration in the same generator. A tie at the same distance
     # between two DIFFERENT callees is an ambiguity this reports rather than resolves by picking one.
     if not calls:
-        return ElaboratedConfig(name=cfg_name, chain=tuple(chain), unresolved=("no named-argument "
-                                "instantiation reachable from the configuration",),
-                                sources_read=len(sources), truncated=truncated)
+        return ElaboratedConfig(
+            name=cfg_name,
+            chain=tuple(chain),
+            unresolved=("no named-argument instantiation reachable from the configuration",),
+            sources_read=len(sources),
+            truncated=truncated,
+        )
     # TOTAL ordering. Ranking by (depth, -argcount) alone leaves ties broken by list order, and
     # that order comes from set iteration upstream -- so the winner moved with PYTHONHASHSEED.
     # Measured 2026-09-03: this reported has_max_pool at Configs.scala line 20 or 21 depending
@@ -1825,25 +2068,46 @@ def elaborated_config(target: str, facts: dict[str, Any]) -> ElaboratedConfig | 
     # at random. Sorting by the locator as well makes the choice a property of the sources.
     calls.sort(key=lambda c: (c[0], -len(c[2]), c[1], c[3], c[4]))
     best = calls[0]
-    ambiguous = tuple(sorted({c[1] for c in calls
-                              if c[0] == best[0] and len(c[2]) == len(best[2]) and c[1] != best[1]}))
+    ambiguous = tuple(
+        sorted({c[1] for c in calls if c[0] == best[0] and len(c[2]) == len(best[2]) and c[1] != best[1]})
+    )
     _d, callee, args, cfile, cline = best
 
     fields: dict[str, ConfigField] = {}
     for k, raw in args.items():
         val, scale = _scala_value(raw)
-        fields[k] = ConfigField(name=k, raw=" ".join(raw.split())[:160], value=val, unit_scale=scale,
-                                origin="set", locator=cfile, line=cline)
+        fields[k] = ConfigField(
+            name=k,
+            raw=" ".join(raw.split())[:160],
+            value=val,
+            unit_scale=scale,
+            origin="set",
+            locator=cfile,
+            line=cline,
+        )
     for decl in index.get(callee, []):
         for k, raw in _param_defaults(_decl_region(decl)).items():
             if k in fields:
                 continue
             val, scale = _scala_value(raw)
-            fields[k] = ConfigField(name=k, raw=" ".join(raw.split())[:160], value=val,
-                                    unit_scale=scale, origin="declared_default",
-                                    locator=decl["file"], line=decl["line"])
-    return ElaboratedConfig(name=cfg_name, fields=fields, chain=tuple(chain), instantiated=callee,
-                            ambiguities=ambiguous, sources_read=len(sources), truncated=truncated)
+            fields[k] = ConfigField(
+                name=k,
+                raw=" ".join(raw.split())[:160],
+                value=val,
+                unit_scale=scale,
+                origin="declared_default",
+                locator=decl["file"],
+                line=decl["line"],
+            )
+    return ElaboratedConfig(
+        name=cfg_name,
+        fields=fields,
+        chain=tuple(chain),
+        instantiated=callee,
+        ambiguities=ambiguous,
+        sources_read=len(sources),
+        truncated=truncated,
+    )
 
 
 def _config_references(text: str) -> set[str]:
@@ -1897,8 +2161,9 @@ def _identifiers(text: str) -> set[str]:
     return out
 
 
-def _gates_for_token(token: str, sources: list[tuple[Path, str]],
-                     cfg: ElaboratedConfig) -> tuple[frozenset[str], list[tuple[str, int, str]]]:
+def _gates_for_token(
+    token: str, sources: list[tuple[Path, str]], cfg: ElaboratedConfig
+) -> tuple[frozenset[str], list[tuple[str, int, str]]]:
     """Which BOOLEAN configuration fields guard every use of ``token`` in the elaboration sources.
 
     For each occurrence of the identifier, the innermost enclosing parenthesis group is split on
@@ -1928,8 +2193,7 @@ def _gates_for_token(token: str, sources: list[tuple[Path, str]],
                 name = conj.strip().strip("()").strip()
                 if name.endswith(".B"):
                     name = name[:-2].strip()
-                if name.isidentifier() and isinstance(cfg.fields.get(name, ConfigField("", "")).value,
-                                                      bool):
+                if name.isidentifier() and isinstance(cfg.fields.get(name, ConfigField("", "")).value, bool):
                     found.add(name)
             if found:
                 per_site.append(frozenset(found))
@@ -1953,7 +2217,7 @@ def _enclosing_group(code: str, idx: int) -> str | None:
         elif c == "(":
             if depth == 0:
                 end = _balanced_end(code, i)
-                return code[i + 1:end - 1]
+                return code[i + 1 : end - 1]
             depth -= 1
         elif c == "\n" and depth == 0 and i and code[i - 1] == "\n":
             return None
@@ -1967,8 +2231,7 @@ def _enclosing_group(code: str, idx: int) -> str | None:
 _GEOMETRY_TOKENS = {"rows": ("rows",), "cols": ("columns", "cols")}
 
 
-def _corroborate_config(cfg: ElaboratedConfig, body: dict[str, Any], out: list[Finding],
-                        notes: list[str]) -> None:
+def _corroborate_config(cfg: ElaboratedConfig, body: dict[str, Any], out: list[Finding], notes: list[str]) -> None:
     """Cross-check the fields that the RTL extractor also measured. Agreement is evidence too."""
     loc = f"{cfg.instantiated} named arguments"
     arrays = body.get("arrays") or []
@@ -1977,9 +2240,11 @@ def _corroborate_config(cfg: ElaboratedConfig, body: dict[str, Any], out: list[F
             measured = a.get(axis)
             if not measured:
                 continue
-            cands = {n: f for n, f in cfg.fields.items()
-                     if isinstance(f.value, int) and not isinstance(f.value, bool)
-                     and any(w in _tokens(n) for w in words)}
+            cands = {
+                n: f
+                for n, f in cfg.fields.items()
+                if isinstance(f.value, int) and not isinstance(f.value, bool) and any(w in _tokens(n) for w in words)
+            }
             # a spatial array is (mesh x tile); accept either the mesh field alone or its product with
             # the matching tile field, and say which one matched
             hit = None
@@ -1996,40 +2261,64 @@ def _corroborate_config(cfg: ElaboratedConfig, body: dict[str, Any], out: list[F
                     break
             if hit:
                 n, f, how = hit
-                out.append(Finding(
-                    axis="build_config", name=f"array.{axis}={measured}", state=PRESENT,
-                    value={"measured": measured, "config": how, "field": n},
-                    evidence=(Evidence(rung="build_config", locator=f.locator, line=f.line,
-                                       observed=f"{n} = {f.raw} ({f.origin})"),),
-                    detail=f"the elaborated configuration and the RTL extractor AGREE on the array's "
-                           f"{axis} ({measured}) — {how}"))
+                out.append(
+                    Finding(
+                        axis="build_config",
+                        name=f"array.{axis}={measured}",
+                        state=PRESENT,
+                        value={"measured": measured, "config": how, "field": n},
+                        evidence=(
+                            Evidence(
+                                rung="build_config",
+                                locator=f.locator,
+                                line=f.line,
+                                observed=f"{n} = {f.raw} ({f.origin})",
+                            ),
+                        ),
+                        detail=f"the elaborated configuration and the RTL extractor AGREE on the array's "
+                        f"{axis} ({measured}) — {how}",
+                    )
+                )
             else:
-                notes.append(f"array {axis}: the RTL measured {measured} and no integer configuration "
-                             f"field named for {words} matches it ({sorted(cands)})")
-    for mem in (body.get("memories") or []):
+                notes.append(
+                    f"array {axis}: the RTL measured {measured} and no integer configuration "
+                    f"field named for {words} matches it ({sorted(cands)})"
+                )
+    for mem in body.get("memories") or []:
         want = mem.get("bytes")
         if not want:
             continue
-        caps = {n: f for n, f in cfg.fields.items()
-                if f.scaled is not None and "capacity" in _tokens(n)}
+        caps = {n: f for n, f in cfg.fields.items() if f.scaled is not None and "capacity" in _tokens(n)}
         match = [(n, f) for n, f in sorted(caps.items()) if f.scaled == want]
         if len(match) == 1:
             n, f = match[0]
-            out.append(Finding(
-                axis="build_config", name=f"memory.{mem.get('name')}={want}", state=PRESENT,
-                value={"measured_bytes": want, "field": n, "raw": f.raw},
-                evidence=(Evidence(rung="build_config", locator=f.locator, line=f.line,
-                                   observed=f"{n} = {f.raw} -> {f.scaled} bytes ({f.origin})"),),
-                detail=f"the elaborated configuration and the RTL extractor AGREE on the "
-                       f"{mem.get('name')} capacity ({want} bytes), via {n}"))
+            out.append(
+                Finding(
+                    axis="build_config",
+                    name=f"memory.{mem.get('name')}={want}",
+                    state=PRESENT,
+                    value={"measured_bytes": want, "field": n, "raw": f.raw},
+                    evidence=(
+                        Evidence(
+                            rung="build_config",
+                            locator=f.locator,
+                            line=f.line,
+                            observed=f"{n} = {f.raw} -> {f.scaled} bytes ({f.origin})",
+                        ),
+                    ),
+                    detail=f"the elaborated configuration and the RTL extractor AGREE on the "
+                    f"{mem.get('name')} capacity ({want} bytes), via {n}",
+                )
+            )
         elif not match and caps:
-            notes.append(f"memory {mem.get('name')!r}: the RTL measured {want} bytes and no capacity "
-                         f"field of the configuration evaluates to it "
-                         f"({ {n: f.scaled for n, f in caps.items()} })")
+            notes.append(
+                f"memory {mem.get('name')!r}: the RTL measured {want} bytes and no capacity "
+                f"field of the configuration evaluates to it "
+                f"({ {n: f.scaled for n, f in caps.items()} })"
+            )
 
 
-def _apply_build_gates(target: str, cfg: ElaboratedConfig, findings: list[Finding],
-                       notes: list[str]) -> None:
+def _apply_build_gates(target: str, cfg: ElaboratedConfig, findings: list[Finding], notes: list[str]) -> None:
     """Re-state header-derived capabilities against what the design actually contains.
 
     Three outcomes per capability, and the middle one is the reason this rung exists:
@@ -2044,63 +2333,105 @@ def _apply_build_gates(target: str, cfg: ElaboratedConfig, findings: list[Findin
     for f in list(findings):
         if f.axis == "activation_mode":
             if (f.gate or {}).get("status") == "identity_mode":
-                continue                     # the pass-through mode selects no unit; nothing gates it
+                continue  # the pass-through mode selects no unit; nothing gates it
             gates, sites = _gates_for_token(f.name, sources, cfg)
-            _restate(f, findings, gates, sites, cfg, notes,
-                     unfound_detail=f"the mode name {f.name!r} appears nowhere in the elaboration "
-                                    f"sources, so whether the design contains its unit could not be "
-                                    f"determined")
+            _restate(
+                f,
+                findings,
+                gates,
+                sites,
+                cfg,
+                notes,
+                unfound_detail=f"the mode name {f.name!r} appears nowhere in the elaboration "
+                f"sources, so whether the design contains its unit could not be "
+                f"determined",
+            )
         elif f.axis in _FEATURE_STEMS and f.state == PRESENT:
             stems = _FEATURE_STEMS[f.axis][0]
-            gates = frozenset(n for n, cf in cfg.fields.items()
-                              if isinstance(cf.value, bool)
-                              and (set(_tokens(n)) & _PRESENCE_TOKENS)
-                              and any(_matches_stem(t, stems) for t in _tokens(n)))
+            gates = frozenset(
+                n
+                for n, cf in cfg.fields.items()
+                if isinstance(cf.value, bool)
+                and (set(_tokens(n)) & _PRESENCE_TOKENS)
+                and any(_matches_stem(t, stems) for t in _tokens(n))
+            )
             if not gates:
                 # The full field list WAS read (set values plus declared defaults); the absence of any
                 # switch for this axis in it is evidence that the feature is not build-conditional.
-                _stamp(f, findings, {"status": "ungated", "checked_fields": len(cfg.fields),
-                                     "config": cfg.name})
+                _stamp(f, findings, {"status": "ungated", "checked_fields": len(cfg.fields), "config": cfg.name})
                 continue
-            sites = [(cf.locator, cf.line, f"{n} = {cf.raw} ({cf.origin})")
-                     for n, cf in sorted(cfg.fields.items()) if n in gates]
+            sites = [
+                (cf.locator, cf.line, f"{n} = {cf.raw} ({cf.origin})")
+                for n, cf in sorted(cfg.fields.items())
+                if n in gates
+            ]
             _restate(f, findings, gates, sites, cfg, notes, unfound_detail="")
 
 
-def _restate(f: Finding, findings: list[Finding], gates: "frozenset[str]",
-             sites: list[tuple[str, int, str]], cfg: ElaboratedConfig, notes: list[str],
-             *, unfound_detail: str) -> None:
+def _restate(
+    f: Finding,
+    findings: list[Finding],
+    gates: "frozenset[str]",
+    sites: list[tuple[str, int, str]],
+    cfg: ElaboratedConfig,
+    notes: list[str],
+    *,
+    unfound_detail: str,
+) -> None:
     if not gates:
         if sites or not unfound_detail:
             _stamp(f, findings, {"status": "ungated", "config": cfg.name})
             return
-        _replace(findings, f, state=UNDETERMINABLE,
-                 gate={"status": "no_gate_found", "config": cfg.name},
-                 detail=(f.detail + " | " + unfound_detail).strip(" |"))
+        _replace(
+            findings,
+            f,
+            state=UNDETERMINABLE,
+            gate={"status": "no_gate_found", "config": cfg.name},
+            detail=(f.detail + " | " + unfound_detail).strip(" |"),
+        )
         return
     values = {g: cfg.boolean(g) for g in sorted(gates)}
-    ev = tuple(Evidence(rung="build_config", locator=loc, line=ln, observed=obs)
-               for loc, ln, obs in sites[:4])
-    ev += tuple(Evidence(rung="build_config", locator=cfg.fields[g].locator, line=cfg.fields[g].line,
-                         observed=f"{g} = {cfg.fields[g].raw} ({cfg.fields[g].origin})")
-                for g in sorted(gates) if g in cfg.fields)
+    ev = tuple(Evidence(rung="build_config", locator=loc, line=ln, observed=obs) for loc, ln, obs in sites[:4])
+    ev += tuple(
+        Evidence(
+            rung="build_config",
+            locator=cfg.fields[g].locator,
+            line=cfg.fields[g].line,
+            observed=f"{g} = {cfg.fields[g].raw} ({cfg.fields[g].origin})",
+        )
+        for g in sorted(gates)
+        if g in cfg.fields
+    )
     if all(values.values()):
-        _replace(findings, f, state=PRESENT, gate={"status": "built", "fields": values,
-                                                   "config": cfg.name},
-                 evidence=f.evidence + ev,
-                 detail=(f.detail + f" | BUILT: every gate {values} holds in the elaborated "
-                                    f"configuration {cfg.name}").strip(" |"))
+        _replace(
+            findings,
+            f,
+            state=PRESENT,
+            gate={"status": "built", "fields": values, "config": cfg.name},
+            evidence=f.evidence + ev,
+            detail=(f.detail + f" | BUILT: every gate {values} holds in the elaborated configuration {cfg.name}").strip(
+                " |"
+            ),
+        )
         return
     off = sorted(g for g, v in values.items() if v is False)
-    _replace(findings, f, state=ENCODABLE_NOT_BUILT,
-             gate={"status": "not_built", "fields": values, "off": off, "config": cfg.name},
-             evidence=f.evidence + ev,
-             detail=(f.detail + f" | ENCODABLE BUT NOT BUILT: the ISA encodes it and the elaborated "
-                                f"configuration {cfg.name} leaves {off} false "
-                                f"({[cfg.fields[g].origin for g in off if g in cfg.fields]}), so the "
-                                f"design contains no unit for it").strip(" |"))
-    notes.append(f"{f.axis} {f.name!r}: ENCODABLE BUT NOT BUILT — gated on {off} which the elaborated "
-                 f"configuration {cfg.name} leaves false; declaring it would be over-declaration")
+    _replace(
+        findings,
+        f,
+        state=ENCODABLE_NOT_BUILT,
+        gate={"status": "not_built", "fields": values, "off": off, "config": cfg.name},
+        evidence=f.evidence + ev,
+        detail=(
+            f.detail + f" | ENCODABLE BUT NOT BUILT: the ISA encodes it and the elaborated "
+            f"configuration {cfg.name} leaves {off} false "
+            f"({[cfg.fields[g].origin for g in off if g in cfg.fields]}), so the "
+            f"design contains no unit for it"
+        ).strip(" |"),
+    )
+    notes.append(
+        f"{f.axis} {f.name!r}: ENCODABLE BUT NOT BUILT — gated on {off} which the elaborated "
+        f"configuration {cfg.name} leaves false; declaring it would be over-declaration"
+    )
 
 
 def _stamp(f: Finding, findings: list[Finding], gate: dict[str, Any]) -> None:
@@ -2110,6 +2441,7 @@ def _stamp(f: Finding, findings: list[Finding], gate: dict[str, Any]) -> None:
 def _replace(findings: list[Finding], old: Finding, **changes: Any) -> None:
     """Swap a finding for an updated copy, and drop any `family` finding it alone licensed."""
     import dataclasses as _dc
+
     new = _dc.replace(old, **changes)
     findings[findings.index(old)] = new
     if new.state == PRESENT or not old.family:
@@ -2118,8 +2450,12 @@ def _replace(findings: list[Finding], old: Finding, **changes: Any) -> None:
     # family name) instead would have withdrawn a sibling's licence too: three of five activation modes
     # are not built here, and the loose match took RELU's elementwise_map licence down with them.
     for g in list(findings):
-        if (g.axis == "family" and g.family == old.family
-                and isinstance(g.value, dict) and g.value.get("licensed_by") == old.key):
+        if (
+            g.axis == "family"
+            and g.family == old.family
+            and isinstance(g.value, dict)
+            and g.value.get("licensed_by") == old.key
+        ):
             findings.remove(g)
 
 
@@ -2150,8 +2486,12 @@ def discover(target: str, *, require_pin: bool = True) -> CapabilitySurface:
         raise ProvenanceRefused(
             f"{target}: hardware pin(s) {bad} do not verify against their checkout; refusing to report "
             f"a capability surface. Details: "
-            + "; ".join(f"{n}: drift={verifications[n].drift} missing={verifications[n].missing_paths} "
-                        f"forbidden={verifications[n].forbidden_present}" for n in bad))
+            + "; ".join(
+                f"{n}: drift={verifications[n].drift} missing={verifications[n].missing_paths} "
+                f"forbidden={verifications[n].forbidden_present}"
+                for n in bad
+            )
+        )
     if bad:
         surf.notes.append(f"REPORTED WITHOUT PIN VERIFICATION: {bad} do not match their checkout")
 
@@ -2188,22 +2528,27 @@ def discover(target: str, *, require_pin: bool = True) -> CapabilitySurface:
         st = (status_by_path.get(ev.locator) or {}).get("status", UNKNOWN_STATUS)
         extra = ""
         if st not in _PIN_OK:
-            rec = (status_by_path.get(ev.locator) or {})
-            extra = (f" | NOT A PINNED CLAIM: this came from {Path(ev.locator).name} whose status is "
-                     f"{st!r} (checkout {rec.get('checkout_commit', UNKNOWN_STATUS)}, superproject "
-                     f"records {rec.get('superproject_records', UNKNOWN_STATUS)}"
-                     + (", file locally modified" if rec.get("file_dirty") else "")
-                     + "). The source_digest identifies the bytes; the pin does not.")
+            rec = status_by_path.get(ev.locator) or {}
+            extra = (
+                f" | NOT A PINNED CLAIM: this came from {Path(ev.locator).name} whose status is "
+                f"{st!r} (checkout {rec.get('checkout_commit', UNKNOWN_STATUS)}, superproject "
+                f"records {rec.get('superproject_records', UNKNOWN_STATUS)}"
+                + (", file locally modified" if rec.get("file_dirty") else "")
+                + "). The source_digest identifies the bytes; the pin does not."
+            )
         import dataclasses as _dc
+
         surf.findings[i] = _dc.replace(f, pin_status=st, detail=(f.detail + extra).strip(" |"))
-    off = sorted({Path(s.path).name for s in surf.sources
-                  if s.path and (s.pin_status or {}).get("status") not in _PIN_OK})
+    off = sorted(
+        {Path(s.path).name for s in surf.sources if s.path and (s.pin_status or {}).get("status") not in _PIN_OK}
+    )
     if off:
         surf.notes.append(
             f"HEADER-DERIVED CLAIMS ARE NOT PINNED CLAIMS on this checkout: {off} do not belong to the "
             f"revision the pin describes (nested checkout off the recorded gitlink, and/or locally "
             f"modified). Each such finding carries its own pin_status; the recorded source_digest, not "
-            f"the pin, identifies what was read")
+            f"the pin, identifies what was read"
+        )
 
     # THE DECIDING RUNG. Ranked above the header: the header says what the ISA can ENCODE, the
     # elaborated configuration says what was BUILT.
@@ -2213,37 +2558,53 @@ def discover(target: str, *, require_pin: bool = True) -> CapabilitySurface:
         try:
             cfg = elaborated_config(target, facts_doc)
         except Exception as e:  # noqa: BLE001 — a source tree we cannot parse leaves the rung silent
-            surf.notes.append(f"build-configuration rung failed ({type(e).__name__}: {e}); every "
-                              f"header capability stays as the header reported it")
+            surf.notes.append(
+                f"build-configuration rung failed ({type(e).__name__}: {e}); every "
+                f"header capability stays as the header reported it"
+            )
     if cfg is not None and cfg.fields:
         rungs.append("build_config")
         surf.provenance_config = cfg
-        surf.findings.append(Finding(
-            axis="build_config", name=cfg.name, state=PRESENT,
-            value={"instantiated": cfg.instantiated, "n_fields": len(cfg.fields),
-                   "n_set": sum(1 for f in cfg.fields.values() if f.origin == "set"),
-                   "n_default": sum(1 for f in cfg.fields.values()
-                                    if f.origin == "declared_default")},
-            evidence=tuple(Evidence(rung="build_config", locator=fl, line=ln,
-                                    observed=f"{ident}")
-                           for ident, fl, ln in cfg.chain[:6]),
-            detail=f"the RTL fact bundle names {cfg.name} as the elaborated configuration; it resolves "
-                   f"to {cfg.instantiated} with {len(cfg.fields)} field(s), unset ones taking the "
-                   f"class's own declared default"))
+        surf.findings.append(
+            Finding(
+                axis="build_config",
+                name=cfg.name,
+                state=PRESENT,
+                value={
+                    "instantiated": cfg.instantiated,
+                    "n_fields": len(cfg.fields),
+                    "n_set": sum(1 for f in cfg.fields.values() if f.origin == "set"),
+                    "n_default": sum(1 for f in cfg.fields.values() if f.origin == "declared_default"),
+                },
+                evidence=tuple(
+                    Evidence(rung="build_config", locator=fl, line=ln, observed=f"{ident}")
+                    for ident, fl, ln in cfg.chain[:6]
+                ),
+                detail=f"the RTL fact bundle names {cfg.name} as the elaborated configuration; it resolves "
+                f"to {cfg.instantiated} with {len(cfg.fields)} field(s), unset ones taking the "
+                f"class's own declared default",
+            )
+        )
         _corroborate_config(cfg, _facts_body(facts_doc), surf.findings, surf.notes)
         _apply_build_gates(target, cfg, surf.findings, surf.notes)
         if cfg.ambiguities:
-            surf.notes.append(f"build configuration {cfg.name}: more than one instantiation is equally "
-                              f"plausible ({cfg.ambiguities}); the largest was used and the others are "
-                              f"recorded rather than silently discarded")
+            surf.notes.append(
+                f"build configuration {cfg.name}: more than one instantiation is equally "
+                f"plausible ({cfg.ambiguities}); the largest was used and the others are "
+                f"recorded rather than silently discarded"
+            )
     elif cfg is not None:
-        surf.notes.append(f"build configuration {cfg.name!r} named by the fact bundle could not be "
-                          f"resolved to fields ({cfg.unresolved or 'no fields'}); every header "
-                          f"capability stays UNGATED and its build status is undeterminable")
+        surf.notes.append(
+            f"build configuration {cfg.name!r} named by the fact bundle could not be "
+            f"resolved to fields ({cfg.unresolved or 'no fields'}); every header "
+            f"capability stays UNGATED and its build status is undeterminable"
+        )
     else:
-        surf.notes.append("no build-configuration rung: the fact bundle names no elaborated "
-                          "configuration, so what the design CONTAINS (as opposed to what its ISA can "
-                          "encode) is undeterminable for every header capability")
+        surf.notes.append(
+            "no build-configuration rung: the fact bundle names no elaborated "
+            "configuration, so what the design CONTAINS (as opposed to what its ISA can "
+            "encode) is undeterminable for every header capability"
+        )
 
     surf.rungs_ran = tuple(rungs)
     _corroborate_dtypes(surf.findings, surf.notes)
@@ -2253,16 +2614,20 @@ def discover(target: str, *, require_pin: bool = True) -> CapabilitySurface:
         surf.notes.append(
             "no structurally-readable ISA source for this target (declared source kinds: "
             f"{kinds}); every header-grounded axis (activation modes, pooling, transpose, padding, "
-            "residual, block format, scale dtype/rounding) is UNDETERMINABLE, not absent")
+            "residual, block format, scale dtype/rounding) is UNDETERMINABLE, not absent"
+        )
 
     surf.provenance = _prov.record(
         pins=verifications,
         sources=[s.path for s in surf.sources if s.path],
-        extra={"capability_discovery": {
-            "rungs": ["rtl_facts", "isa_header"],
-            "sources": [s.to_dict() for s in surf.sources],
-            "pin_verification_required": require_pin,
-        }})
+        extra={
+            "capability_discovery": {
+                "rungs": ["rtl_facts", "isa_header"],
+                "sources": [s.to_dict() for s in surf.sources],
+                "pin_verification_required": require_pin,
+            }
+        },
+    )
     # A pin says which COMMIT was checked out. It says nothing about a nested checkout inside it, and a
     # header living in a submodule that the pin does not list is exactly where a surface silently stops
     # describing the pinned revision. Surface it as a note rather than letting the digest carry it alone.
@@ -2272,7 +2637,8 @@ def discover(target: str, *, require_pin: bool = True) -> CapabilitySurface:
             surf.notes.append(
                 f"source {s.path} sits in a checkout with {inner['dirty_files']} uncommitted change(s) "
                 f"at {inner.get('commit')}; the recorded source_digest, not the pin, identifies the "
-                f"bytes this surface was derived from")
+                f"bytes this surface was derived from"
+            )
     return surf
 
 
@@ -2285,53 +2651,96 @@ def declared(target: str) -> CapabilitySurface:
     contract, cpath = _target_contract(target)
     if not contract:
         surf.resolved = False
-        surf.notes.append("no target contract resolved: the declaration is UNDETERMINABLE, which is "
-                          "not the same as a target that declares nothing")
+        surf.notes.append(
+            "no target contract resolved: the declaration is UNDETERMINABLE, which is "
+            "not the same as a target that declares nothing"
+        )
         return surf
     loc = str(cpath)
     try:
         units = _units(contract)
     except Exception as e:  # noqa: BLE001 — a contract this repo's own loader rejects is not "declares nothing"
         surf.resolved = False
-        surf.notes.append(f"the target contract at {loc} could not be parsed by compute_units "
-                          f"({type(e).__name__}: {e}); its declaration is UNDETERMINABLE")
+        surf.notes.append(
+            f"the target contract at {loc} could not be parsed by compute_units "
+            f"({type(e).__name__}: {e}); its declaration is UNDETERMINABLE"
+        )
         return surf
     caps = semantic_capability_map(units)
     for fam, cap in sorted(caps.items()):
-        surf.findings.append(Finding(
-            axis="family", name=fam, state=PRESENT, family=fam, family_basis="contract",
-            value={"dtypes": list(cap.dtypes), "ranks": list(cap.ranks),
-                   "composed_with": list(cap.composed_with), "engines": list(cap.engines),
-                   "transpose": cap.transpose},
-            evidence=(Evidence(rung="contract", locator=f"{loc}#compute_units[].semantic_capabilities",
-                               observed=f"family: {fam}, dtypes: {list(cap.dtypes)}"
-                                        + (f", composed_with: {list(cap.composed_with)}"
-                                           if cap.composed_with else "")),),
-            detail="declared by the capability manifest"))
+        surf.findings.append(
+            Finding(
+                axis="family",
+                name=fam,
+                state=PRESENT,
+                family=fam,
+                family_basis="contract",
+                value={
+                    "dtypes": list(cap.dtypes),
+                    "ranks": list(cap.ranks),
+                    "composed_with": list(cap.composed_with),
+                    "engines": list(cap.engines),
+                    "transpose": cap.transpose,
+                },
+                evidence=(
+                    Evidence(
+                        rung="contract",
+                        locator=f"{loc}#compute_units[].semantic_capabilities",
+                        observed=f"family: {fam}, dtypes: {list(cap.dtypes)}"
+                        + (f", composed_with: {list(cap.composed_with)}" if cap.composed_with else ""),
+                    ),
+                ),
+                detail="declared by the capability manifest",
+            )
+        )
         for dt in cap.dtypes:
-            surf.findings.append(Finding(
-                axis="datapath_dtype", name=f"operand={dt}", state=PRESENT, value=dt,
-                datapath="operand",
-                evidence=(Evidence(rung="contract",
-                                   locator=f"{loc}#compute_units[].semantic_capabilities[{fam}].dtypes",
-                                   observed=str(dt)),),
-                detail=f"declared operand dtype for family {fam}"))
+            surf.findings.append(
+                Finding(
+                    axis="datapath_dtype",
+                    name=f"operand={dt}",
+                    state=PRESENT,
+                    value=dt,
+                    datapath="operand",
+                    evidence=(
+                        Evidence(
+                            rung="contract",
+                            locator=f"{loc}#compute_units[].semantic_capabilities[{fam}].dtypes",
+                            observed=str(dt),
+                        ),
+                    ),
+                    detail=f"declared operand dtype for family {fam}",
+                )
+            )
         if cap.transpose:
-            surf.findings.append(Finding(
-                axis="transpose", name="transpose", state=PRESENT,
-                evidence=(Evidence(rung="contract",
-                                   locator=f"{loc}#compute_units[].semantic_capabilities[{fam}]",
-                                   observed="transpose: true"),),
-                detail=f"declared transposable for family {fam}"))
+            surf.findings.append(
+                Finding(
+                    axis="transpose",
+                    name="transpose",
+                    state=PRESENT,
+                    evidence=(
+                        Evidence(
+                            rung="contract",
+                            locator=f"{loc}#compute_units[].semantic_capabilities[{fam}]",
+                            observed="transpose: true",
+                        ),
+                    ),
+                    detail=f"declared transposable for family {fam}",
+                )
+            )
     for u in units:
         for op in u.ops:
             fam = _sf.from_op(op)
-            surf.findings.append(Finding(
-                axis="op_class", name=op, state=PRESENT, family=fam,
-                family_basis="contract.compute_units[].ops -> semantic_families.from_op" if fam else None,
-                evidence=(Evidence(rung="contract", locator=f"{loc}#compute_units[{u.name}].ops",
-                                   observed=op),),
-                detail=f"declared op of unit {u.name}"))
+            surf.findings.append(
+                Finding(
+                    axis="op_class",
+                    name=op,
+                    state=PRESENT,
+                    family=fam,
+                    family_basis="contract.compute_units[].ops -> semantic_families.from_op" if fam else None,
+                    evidence=(Evidence(rung="contract", locator=f"{loc}#compute_units[{u.name}].ops", observed=op),),
+                    detail=f"declared op of unit {u.name}",
+                )
+            )
     return surf
 
 
@@ -2361,16 +2770,22 @@ def delta(target: str, *, require_pin: bool = True) -> dict[str, Any]:
         # under-declared and every declared one as missing. That is not a delta, it is an artifact of
         # not looking, and it is exactly the shape of finding people act on without re-checking.
         return {
-            "target": target, "status": "no_readable_declaration",
-            "under_declared": [], "over_declared": [],
-            "undeterminable": [{"kind": "declaration", "name": target,
-                                "detail": "; ".join(dec.notes) or "no declaration resolved"}],
-            "discovered_families": sorted(disc_fams), "declared_families": [],
-            "datapath_dtypes": {}, "rungs_ran": list(disc.rungs_ran),
+            "target": target,
+            "status": "no_readable_declaration",
+            "under_declared": [],
+            "over_declared": [],
+            "undeterminable": [
+                {"kind": "declaration", "name": target, "detail": "; ".join(dec.notes) or "no declaration resolved"}
+            ],
+            "discovered_families": sorted(disc_fams),
+            "declared_families": [],
+            "datapath_dtypes": {},
+            "rungs_ran": list(disc.rungs_ran),
             "encodable_not_built": [f.to_dict() for f in disc.encodable_not_built()],
             "build_config": (disc.provenance_config.to_dict() if disc.provenance_config else None),
-            "source_pin_status": {Path(s.path).name: (s.pin_status or {}).get("status", UNKNOWN_STATUS)
-                                  for s in disc.sources if s.path},
+            "source_pin_status": {
+                Path(s.path).name: (s.pin_status or {}).get("status", UNKNOWN_STATUS) for s in disc.sources if s.path
+            },
             "notes": list(disc.notes) + list(dec.notes),
             "provenance": disc.provenance,
             "sources": [s.to_dict() for s in disc.sources],
@@ -2394,52 +2809,75 @@ def delta(target: str, *, require_pin: bool = True) -> dict[str, Any]:
             continue
         prims = _sf.primitives_of(fam)
         covered_by_primitives = bool(prims) and all(p in dec_fams for p in prims)
-        under.append({
-            "kind": "family", "name": fam,
-            "basis": f.family_basis, "detail": f.detail,
-            "declared_primitives_cover_it": covered_by_primitives,
-            "evidence": [e.to_dict() for e in f.evidence],
-        })
+        under.append(
+            {
+                "kind": "family",
+                "name": fam,
+                "basis": f.family_basis,
+                "detail": f.detail,
+                "declared_primitives_cover_it": covered_by_primitives,
+                "evidence": [e.to_dict() for e in f.evidence],
+            }
+        )
     for fam, f in sorted(dec_fams.items()):
         if fam in disc_fams:
             continue
         if fam in not_built:
             f_nb = not_built[fam]
-            over.append({
-                "kind": "family", "name": fam,
-                "detail": f"declared, and the elaborated build configuration does not contain it: "
-                          f"{f_nb.axis} {f_nb.name!r} is ENCODABLE BUT NOT BUILT "
-                          f"({(f_nb.gate or {}).get('off')} false in "
-                          f"{(f_nb.gate or {}).get('config')})",
-                "declared_as": f.value,
-                "evidence": [e.to_dict() for e in f_nb.evidence[:3]],
-            })
+            over.append(
+                {
+                    "kind": "family",
+                    "name": fam,
+                    "detail": f"declared, and the elaborated build configuration does not contain it: "
+                    f"{f_nb.axis} {f_nb.name!r} is ENCODABLE BUT NOT BUILT "
+                    f"({(f_nb.gate or {}).get('off')} false in "
+                    f"{(f_nb.gate or {}).get('config')})",
+                    "declared_as": f.value,
+                    "evidence": [e.to_dict() for e in f_nb.evidence[:3]],
+                }
+            )
             continue
         needs = _FAMILY_DECIDED_BY.get(fam)
         if needs is None or needs not in disc.rungs_ran:
             # The rung that could have found this family never ran. Silence from a rung that did not
             # run is not evidence of absence, and calling it over-declared here would delete a real
             # capability from a manifest on the strength of a missing file.
-            undet.append({
-                "kind": "family", "name": fam,
-                "detail": (f"declared, and undecidable: the {needs or 'deciding'} rung — the only one "
-                           f"that could evidence {fam} on this target — did not run "
-                           f"(rungs that did: {list(disc.rungs_ran) or 'none'})"),
-                "evidence": [e.to_dict() for e in f.evidence],
-            })
+            undet.append(
+                {
+                    "kind": "family",
+                    "name": fam,
+                    "detail": (
+                        f"declared, and undecidable: the {needs or 'deciding'} rung — the only one "
+                        f"that could evidence {fam} on this target — did not run "
+                        f"(rungs that did: {list(disc.rungs_ran) or 'none'})"
+                    ),
+                    "evidence": [e.to_dict() for e in f.evidence],
+                }
+            )
             continue
-        over.append({
-            "kind": "family", "name": fam,
-            "detail": f"declared, and the {needs} rung RAN and evidenced nothing for it",
-            "declared_as": f.value,
-            "evidence": [e.to_dict() for e in f.evidence],
-        })
+        over.append(
+            {
+                "kind": "family",
+                "name": fam,
+                "detail": f"declared, and the {needs} rung RAN and evidenced nothing for it",
+                "declared_as": f.value,
+                "evidence": [e.to_dict() for e in f.evidence],
+            }
+        )
 
     # Feature axes the header evidences but no declared capability expresses. `transpose` is the only
     # feature the SemanticCapability vocabulary has a field for today; the rest have no declared home at
     # all, which is itself the finding.
-    for axis in ("pooling", "padding", "requant", "residual_add", "accumulate_onto", "block_format",
-                 "dilation", "transpose"):
+    for axis in (
+        "pooling",
+        "padding",
+        "requant",
+        "residual_add",
+        "accumulate_onto",
+        "block_format",
+        "dilation",
+        "transpose",
+    ):
         d = [f for f in disc.by_axis(axis) if f.state == PRESENT]
         if not d:
             continue
@@ -2452,44 +2890,69 @@ def delta(target: str, *, require_pin: bool = True) -> dict[str, Any]:
         # declaration vocabulary has nowhere to put at all.
         if d[0].family and d[0].family in dec_fams:
             continue
-        under.append({
-            "kind": "feature", "name": axis,
-            "basis": d[0].family_basis, "detail": d[0].detail, "value": d[0].value,
-            "licenses_family": d[0].family,
-            "detail_extra": ("this feature licenses no canonical family, so the manifest vocabulary "
-                             "has no field in which to admit or deny it"
-                             if not d[0].family else ""),
-            "evidence": [e.to_dict() for e in d[0].evidence],
-        })
+        under.append(
+            {
+                "kind": "feature",
+                "name": axis,
+                "basis": d[0].family_basis,
+                "detail": d[0].detail,
+                "value": d[0].value,
+                "licenses_family": d[0].family,
+                "detail_extra": (
+                    "this feature licenses no canonical family, so the manifest vocabulary "
+                    "has no field in which to admit or deny it"
+                    if not d[0].family
+                    else ""
+                ),
+                "evidence": [e.to_dict() for e in d[0].evidence],
+            }
+        )
 
     disc_operand = _dtypes(disc, "operand")
     dec_operand = _dtypes(dec, "operand")
     for dt, f in sorted(disc_operand.items()):
         if dt in dec_operand or _normalized_dtype(dt) in {_normalized_dtype(x) for x in dec_operand}:
             continue
-        under.append({"kind": "operand_dtype", "name": dt, "detail": f.detail,
-                      "evidence": [e.to_dict() for e in f.evidence]})
+        under.append(
+            {"kind": "operand_dtype", "name": dt, "detail": f.detail, "evidence": [e.to_dict() for e in f.evidence]}
+        )
     for dt, f in sorted(dec_operand.items()):
         if dt in disc_operand or _normalized_dtype(dt) in {_normalized_dtype(x) for x in disc_operand}:
             continue
         if not disc_operand:
-            undet.append({"kind": "operand_dtype", "name": dt,
-                          "detail": "declared as an operand dtype; NO rung produced an operand-datapath "
-                                    "dtype at all, so nothing here can contradict it",
-                          "evidence": [e.to_dict() for e in f.evidence]})
+            undet.append(
+                {
+                    "kind": "operand_dtype",
+                    "name": dt,
+                    "detail": "declared as an operand dtype; NO rung produced an operand-datapath "
+                    "dtype at all, so nothing here can contradict it",
+                    "evidence": [e.to_dict() for e in f.evidence],
+                }
+            )
             continue
-        over.append({"kind": "operand_dtype", "name": dt,
-                     "detail": f"declared as an operand dtype; the operand datapath evidences "
-                               f"{sorted(disc_operand)} and not this",
-                     "evidence": [e.to_dict() for e in f.evidence]})
+        over.append(
+            {
+                "kind": "operand_dtype",
+                "name": dt,
+                "detail": f"declared as an operand dtype; the operand datapath evidences "
+                f"{sorted(disc_operand)} and not this",
+                "evidence": [e.to_dict() for e in f.evidence],
+            }
+        )
 
     for axis in disc.undeterminable_axes():
-        undet.append({"kind": "axis", "name": axis,
-                      "detail": "no rung capable of deciding this axis was available for this target"})
+        undet.append(
+            {
+                "kind": "axis",
+                "name": axis,
+                "detail": "no rung capable of deciding this axis was available for this target",
+            }
+        )
     for f in disc.findings:
         if f.axis in ("activation_mode", "op_class") and f.state == PRESENT and f.family is None:
-            undet.append({"kind": f.axis, "name": f.name, "detail": f.detail,
-                          "evidence": [e.to_dict() for e in f.evidence]})
+            undet.append(
+                {"kind": f.axis, "name": f.name, "detail": f.detail, "evidence": [e.to_dict() for e in f.evidence]}
+            )
 
     return {
         "target": target,
@@ -2500,18 +2963,17 @@ def delta(target: str, *, require_pin: bool = True) -> dict[str, Any]:
         # encodes them and this elaboration does not contain them. Adding them to a manifest would be
         # over-declaration; deleting the encoding from the ISA would be wrong too.
         "encodable_not_built": [f.to_dict() for f in disc.encodable_not_built()],
-        "source_pin_status": {Path(s.path).name: (s.pin_status or {}).get("status", UNKNOWN_STATUS)
-                              for s in disc.sources if s.path},
+        "source_pin_status": {
+            Path(s.path).name: (s.pin_status or {}).get("status", UNKNOWN_STATUS) for s in disc.sources if s.path
+        },
         "under_declared": under,
         "over_declared": over,
         "undeterminable": undet,
         "discovered_families": sorted(disc_fams),
         "declared_families": sorted(dec_fams),
         "datapath_dtypes": {
-            role: sorted({str(f.value) for f in disc.findings
-                          if f.axis == "datapath_dtype" and f.datapath == role})
-            for role in sorted({f.datapath for f in disc.findings
-                                if f.axis == "datapath_dtype" and f.datapath})
+            role: sorted({str(f.value) for f in disc.findings if f.axis == "datapath_dtype" and f.datapath == role})
+            for role in sorted({f.datapath for f in disc.findings if f.axis == "datapath_dtype" and f.datapath})
         },
         "notes": list(disc.notes) + list(dec.notes),
         "provenance": disc.provenance,
@@ -2522,17 +2984,37 @@ def delta(target: str, *, require_pin: bool = True) -> dict[str, Any]:
 #: Spellings of the same width+signedness that different sources use. NOT a dtype registry — only enough
 #: to stop `i8` and `int8` reading as two different claims about one datapath.
 _DTYPE_ALIASES: dict[str, str] = {
-    "i8": "int8", "int8_t": "int8", "int8": "int8",
-    "i16": "int16", "int16_t": "int16", "int16": "int16",
-    "i32": "int32", "int32_t": "int32", "int32": "int32",
-    "i64": "int64", "int64_t": "int64", "int64": "int64",
-    "u8": "uint8", "uint8_t": "uint8", "uint8": "uint8",
-    "u32": "uint32", "uint32_t": "uint32", "uint32": "uint32",
-    "u64": "uint64", "uint64_t": "uint64", "uint64": "uint64",
-    "f32": "float32", "float": "float32", "float32": "float32",
-    "f64": "float64", "double": "float64", "float64": "float64",
-    "f16": "float16", "float16": "float16",
-    "bf16": "bfloat16", "bfloat16": "bfloat16",
+    "i8": "int8",
+    "int8_t": "int8",
+    "int8": "int8",
+    "i16": "int16",
+    "int16_t": "int16",
+    "int16": "int16",
+    "i32": "int32",
+    "int32_t": "int32",
+    "int32": "int32",
+    "i64": "int64",
+    "int64_t": "int64",
+    "int64": "int64",
+    "u8": "uint8",
+    "uint8_t": "uint8",
+    "uint8": "uint8",
+    "u32": "uint32",
+    "uint32_t": "uint32",
+    "uint32": "uint32",
+    "u64": "uint64",
+    "uint64_t": "uint64",
+    "uint64": "uint64",
+    "f32": "float32",
+    "float": "float32",
+    "float32": "float32",
+    "f64": "float64",
+    "double": "float64",
+    "float64": "float64",
+    "f16": "float16",
+    "float16": "float16",
+    "bf16": "bfloat16",
+    "bfloat16": "bfloat16",
 }
 
 

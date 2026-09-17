@@ -20,6 +20,7 @@ assumed dtype set appears here. An unparseable dtype or an absent lane record ma
 quantity UNKNOWN and the totals an explicit LOWER BOUND -- it never substitutes a guess, because a
 byte total silently completed by a default is worse than no total: it reads as a measurement.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -51,7 +52,7 @@ def dtype_bits(token: Any) -> int | None:
     for kind in ("bf", "fp", "f", "i", "si", "ui", "u", "int", "uint", "float", "bfloat"):
         if not name.startswith(kind):
             continue
-        rest = name[len(kind):]
+        rest = name[len(kind) :]
         digits = ""
         for ch in rest:
             if ch.isdigit():
@@ -103,26 +104,27 @@ class LaneCost:
     @property
     def host_lane_region_count(self) -> int:
         """Regions on any lane the program did not mark as its accelerator lane."""
-        return sum(n for (lane, _), n in self.regions_by_lane_family.items()
-                   if lane not in self._accelerator_lanes())
+        return sum(n for (lane, _), n in self.regions_by_lane_family.items() if lane not in self._accelerator_lanes())
 
     def _accelerator_lanes(self) -> frozenset[str]:
         """Lanes the program's own records call accelerator lanes. Derived from the record, not named
         here: a lane vocabulary is the compiler's, and hardcoding one target's spelling would make
         every other target read as 100% host."""
-        return frozenset(lane for (lane, _) in self.regions_by_lane_family
-                         if "mesh" in lane or "accel" in lane or "unit" in lane)
+        return frozenset(
+            lane for (lane, _) in self.regions_by_lane_family if "mesh" in lane or "accel" in lane or "unit" in lane
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "footprint_bytes": self.footprint_bytes,
             "traffic_bytes": self.traffic_bytes,
             "is_lower_bound": self.is_lower_bound,
-            "bytes_by_role_dtype": {f"{r}/{d}": b for (r, d), b in
-                                    sorted(self.bytes_by_role_dtype.items(), key=lambda kv: -kv[1])},
-            "regions_by_lane_family": {f"{l}/{f}": n for (l, f), n in
-                                       sorted(self.regions_by_lane_family.items(),
-                                              key=lambda kv: -kv[1])},
+            "bytes_by_role_dtype": {
+                f"{r}/{d}": b for (r, d), b in sorted(self.bytes_by_role_dtype.items(), key=lambda kv: -kv[1])
+            },
+            "regions_by_lane_family": {
+                f"{l}/{f}": n for (l, f), n in sorted(self.regions_by_lane_family.items(), key=lambda kv: -kv[1])
+            },
             "host_lane_region_count": self.host_lane_region_count,
             "refusals": list(self.refusals),
         }
@@ -148,8 +150,7 @@ def lane_cost(command_buffer: Mapping[str, Any]) -> LaneCost:
     """
     tensors_in = command_buffer.get("tensors")
     if not isinstance(tensors_in, Mapping):
-        return LaneCost((), {}, 0, 0, {}, True,
-                        ("command buffer declares no tensors mapping",))
+        return LaneCost((), {}, 0, 0, {}, True, ("command buffer declares no tensors mapping",))
 
     rows: list[TensorBytes] = []
     by_key: dict[tuple[str, str], int] = {}
@@ -167,8 +168,11 @@ def lane_cost(command_buffer: Mapping[str, Any]) -> LaneCost:
         elems = _elements(spec.get("shape"))
         bits = dtype_bits(dtype)
         if elems is None or bits is None:
-            why = ("shape is not a sequence of non-negative ints" if elems is None
-                   else f"dtype {dtype!r} carries no derivable element width")
+            why = (
+                "shape is not a sequence of non-negative ints"
+                if elems is None
+                else f"dtype {dtype!r} carries no derivable element width"
+            )
             rows.append(TensorBytes(str(name), role, dtype, elems, None, why))
             refusals.append(f"{name}: {why}")
             continue
@@ -190,8 +194,7 @@ def lane_cost(command_buffer: Mapping[str, Any]) -> LaneCost:
     elif placement is not None:
         refusals.append("params.lane_placement is present but not a sequence of mappings")
 
-    return LaneCost(tuple(rows), by_key, footprint, traffic, by_lane,
-                    bool(refusals), tuple(refusals))
+    return LaneCost(tuple(rows), by_key, footprint, traffic, by_lane, bool(refusals), tuple(refusals))
 
 
 def format_report(cost: LaneCost, *, label: str = "") -> str:

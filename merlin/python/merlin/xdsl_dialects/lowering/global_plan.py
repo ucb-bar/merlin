@@ -11,6 +11,7 @@ individually cheap kernels whose intervening pack, host/device crossing, spill, 
 more expensive than both.  Keeping the edge work explicit lets a whole-model optimizer price that
 case instead of hiding it in whichever endpoint happened to be measured first.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -86,9 +87,13 @@ class ValueRepresentation:
     attributes: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
-        for name, value in (("placement", self.placement), ("layout", self.layout),
-                            ("dtype", self.dtype), ("encoding", self.encoding),
-                            ("quantization", self.quantization)):
+        for name, value in (
+            ("placement", self.placement),
+            ("layout", self.layout),
+            ("dtype", self.dtype),
+            ("encoding", self.encoding),
+            ("quantization", self.quantization),
+        ):
             if not str(value).strip():
                 raise ValueError(f"a value representation must name its {name}")
         if tuple(sorted(self.attributes)) != self.attributes:
@@ -161,12 +166,10 @@ class ResourceOccupancy:
         if not self.resource.strip():
             raise ValueError("resource occupancy must name its resource")
         if not self.cycles.resolved:
-            raise ValueError(
-                f"occupancy for {self.resource!r} is unresolved: {self.cycles.missing}")
+            raise ValueError(f"occupancy for {self.resource!r} is unresolved: {self.cycles.missing}")
 
     def to_dict(self) -> dict[str, Any]:
-        return {"resource": self.resource, "cycles": self.cycles.to_dict(),
-                "provenance": self.provenance}
+        return {"resource": self.resource, "cycles": self.cycles.to_dict(), "provenance": self.provenance}
 
 
 @dataclass(frozen=True)
@@ -206,10 +209,8 @@ class RegionAlternative:
         resources = [item.resource for item in self.occupancy]
         if len(resources) != len(set(resources)):
             raise ValueError(f"alternative {self.id!r} repeats a resource occupancy")
-        if self.cycles.resolved and any(
-                float(item.cycles.hi) > float(self.cycles.hi) for item in self.occupancy):
-            raise ValueError(
-                f"alternative {self.id!r} has resource occupancy longer than its region latency")
+        if self.cycles.resolved and any(float(item.cycles.hi) > float(self.cycles.hi) for item in self.occupancy):
+            raise ValueError(f"alternative {self.id!r} has resource occupancy longer than its region latency")
 
     def input_representation(self, buffer: str) -> ValueRepresentation | None:
         return next((item.representation for item in self.inputs if item.buffer == buffer), None)
@@ -264,8 +265,7 @@ class TransitionAlternative:
         if len(resources) != len(set(resources)):
             raise ValueError(f"transition {self.id!r} repeats a resource occupancy")
         if any(float(item.cycles.hi) > float(self.cycles.hi) for item in self.occupancy):
-            raise ValueError(
-                f"transition {self.id!r} has resource occupancy longer than its latency")
+            raise ValueError(f"transition {self.id!r} has resource occupancy longer than its latency")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -303,8 +303,7 @@ class GlobalPlan:
 
     @property
     def required_capabilities(self) -> tuple[str, ...]:
-        return tuple(sorted({cap for alternative in self.selected
-                             for cap in alternative.required_capabilities}))
+        return tuple(sorted({cap for alternative in self.selected for cap in alternative.required_capabilities}))
 
     def to_dict(self, *, include_digest: bool = True) -> dict[str, Any]:
         out = {
@@ -336,15 +335,13 @@ def verify_global_plan(program: DispatchProgram, plan: GlobalPlan) -> list[str]:
             if index >= len(program.nodes):
                 problems.append(f"alternative {alternative.id!r} references absent node {index}")
             elif index in owners:
-                problems.append(
-                    f"node {index} is covered by both {owners[index]!r} and {alternative.id!r}")
+                problems.append(f"node {index} is covered by both {owners[index]!r} and {alternative.id!r}")
             else:
                 owners[index] = alternative.id
         available = set(program.buffers)
         for rep in (*alternative.inputs, *alternative.outputs):
             if rep.buffer not in available:
-                problems.append(
-                    f"alternative {alternative.id!r} names absent buffer {rep.buffer!r}")
+                problems.append(f"alternative {alternative.id!r} names absent buffer {rep.buffer!r}")
     missing = sorted(set(range(len(program.nodes))) - set(owners))
     if missing:
         problems.append(f"plan leaves node(s) uncovered: {missing}")

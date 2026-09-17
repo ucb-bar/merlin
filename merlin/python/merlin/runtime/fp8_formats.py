@@ -13,6 +13,7 @@ baked value table — and every unknown spelling FAILS CLOSED (``KeyError``), ex
 saturn ``float8`` fix. ``bias`` is itself the derived IEEE value ``(1 << (exp_bits - 1)) - 1``, kept in the
 row only so the three MX widths read explicitly against their RTL definitions (FP6E3M2/FP4E2M1/e4m3).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -23,31 +24,43 @@ import numpy as np
 #   "mx_finite"  no inf / no NaN; every code is a finite value       MX fp6 (e3m2) / fp4 (e2m1)
 # Row = (exp_bits, mantissa_bits, bias, scheme). bias == (1 << (exp_bits - 1)) - 1 for every entry (derived).
 _FORMATS = {
-    "fp8_e4m3": (4, 3, 7, "e4m3fn"),    # OCP float8_e4m3fn: finite-only, NaN = all-exp-1 & all-mant-1, max 448
-    "fp8_e5m2": (5, 2, 15, "ieee"),     # OCP float8_e5m2: IEEE-like, inf = all-exp-1 & mant-0, max 57344
-    "fp6_e3m2": (3, 2, 3, "mx_finite"), # MX FP6 (FP6E3M2NearestFinder.scala): 1 sign | 3 exp bias-3 | 2 mant
-    "fp4_e2m1": (2, 1, 1, "mx_finite"), # MX FP4: 1 sign | 2 exp bias-1 | 1 mant
-    "fp16":     (5, 10, 15, "ieee"),    # IEEE binary16
-    "bf16":     (8, 7, 127, "ieee"),    # bfloat16
-    "f32":      (8, 23, 127, "ieee"),   # IEEE binary32
+    "fp8_e4m3": (4, 3, 7, "e4m3fn"),  # OCP float8_e4m3fn: finite-only, NaN = all-exp-1 & all-mant-1, max 448
+    "fp8_e5m2": (5, 2, 15, "ieee"),  # OCP float8_e5m2: IEEE-like, inf = all-exp-1 & mant-0, max 57344
+    "fp6_e3m2": (3, 2, 3, "mx_finite"),  # MX FP6 (FP6E3M2NearestFinder.scala): 1 sign | 3 exp bias-3 | 2 mant
+    "fp4_e2m1": (2, 1, 1, "mx_finite"),  # MX FP4: 1 sign | 2 exp bias-1 | 1 mant
+    "fp16": (5, 10, 15, "ieee"),  # IEEE binary16
+    "bf16": (8, 7, 127, "ieee"),  # bfloat16
+    "f32": (8, 23, 127, "ieee"),  # IEEE binary32
 }
-_FP8 = {"fp8_e4m3", "fp8_e5m2"}         # the fp8 subset (the fp8-only public API restricts to these)
+_FP8 = {"fp8_e4m3", "fp8_e5m2"}  # the fp8 subset (the fp8-only public API restricts to these)
 
 # accepted aliases (MLIR / torch / manifest spellings) -> canonical token. The ``mxfp*`` manifest tokens
 # map onto their MX float layout: an MX PE's mxfp8 IS an e4m3-layout operand (the saturating/NaN-free
 # product/scale semantics live in the numeric reference, not in the operand code<->value map).
 _ALIASES = {
-    "f8E4M3FN": "fp8_e4m3", "f8e4m3fn": "fp8_e4m3", "e4m3": "fp8_e4m3", "mxfp8": "fp8_e4m3",
-    "f8E5M2": "fp8_e5m2", "f8e5m2": "fp8_e5m2", "e5m2": "fp8_e5m2",
-    "f6E3M2FN": "fp6_e3m2", "e3m2": "fp6_e3m2", "mxfp6": "fp6_e3m2",
-    "f4E2M1FN": "fp4_e2m1", "e2m1": "fp4_e2m1", "mxfp4": "fp4_e2m1",
-    "f16": "fp16", "float16": "fp16",
+    "f8E4M3FN": "fp8_e4m3",
+    "f8e4m3fn": "fp8_e4m3",
+    "e4m3": "fp8_e4m3",
+    "mxfp8": "fp8_e4m3",
+    "f8E5M2": "fp8_e5m2",
+    "f8e5m2": "fp8_e5m2",
+    "e5m2": "fp8_e5m2",
+    "f6E3M2FN": "fp6_e3m2",
+    "e3m2": "fp6_e3m2",
+    "mxfp6": "fp6_e3m2",
+    "f4E2M1FN": "fp4_e2m1",
+    "e2m1": "fp4_e2m1",
+    "mxfp4": "fp4_e2m1",
+    "f16": "fp16",
+    "float16": "fp16",
     "bfloat16": "bf16",
-    "float32": "f32", "fp32": "f32", "f8E8M0FNU": "e8m0",
+    "float32": "f32",
+    "fp32": "f32",
+    "f8E8M0FNU": "e8m0",
 }
 
 # --- E8M0 block scale (8-bit exponent-only, no sign/mantissa), derived bias 127; code 0xFF is NaN. --------
-E8M0 = {"bits": 8, "bias": (1 << (8 - 1)) - 1, "nan_code": (1 << 8) - 1}   # bias == 127
+E8M0 = {"bits": 8, "bias": (1 << (8 - 1)) - 1, "nan_code": (1 << 8) - 1}  # bias == 127
 
 
 def float_format_of(dtype: str) -> str | None:
@@ -112,12 +125,12 @@ def normal_range(fmt: str) -> tuple[float, float]:
     flushes them), above the second it saturates.
     """
     eb, mb, bias, scheme = float_format_params(fmt)
-    top = (1 << eb) - 1                                # all-ones exponent code
-    if scheme == "ieee":                               # reserved for inf/NaN -> the one below it is max
+    top = (1 << eb) - 1  # all-ones exponent code
+    if scheme == "ieee":  # reserved for inf/NaN -> the one below it is max
         emax_code, mant_num = top - 1, (1 << (mb + 1)) - 1
-    elif scheme == "e4m3fn":                           # only all-ones exp AND all-ones mantissa is NaN
+    elif scheme == "e4m3fn":  # only all-ones exp AND all-ones mantissa is NaN
         emax_code, mant_num = top, (1 << (mb + 1)) - 2
-    else:                                              # "mx_finite": every code is a finite value
+    else:  # "mx_finite": every code is a finite value
         emax_code, mant_num = top, (1 << (mb + 1)) - 1
     max_finite = (mant_num / float(1 << mb)) * (2.0 ** (emax_code - bias))
     return 2.0 ** (1 - bias), float(max_finite)
@@ -128,21 +141,21 @@ def _decode(codes: np.ndarray, fmt: str) -> np.ndarray:
     scheme's inf/NaN encodings are all handled; the mapping is derived from (exp_bits, mantissa_bits,
     bias, scheme), never hardcoded per format. Sign bit sits at ``exp_bits + mantissa_bits``."""
     eb, mb, bias, scheme = float_format_params(fmt)
-    mmax = 1 << mb                                     # mantissa denominator
-    emax = (1 << eb) - 1                               # all-ones exponent code
+    mmax = 1 << mb  # mantissa denominator
+    emax = (1 << eb) - 1  # all-ones exponent code
     u = np.ascontiguousarray(codes).astype(np.uint32)
     sign = np.where((u >> (eb + mb)) & 1 == 1, np.float32(-1.0), np.float32(1.0))
     exp = (u >> mb) & emax
     man = (u & (mmax - 1)).astype(np.float32)
-    with np.errstate(over="ignore"):                   # top-exponent codes overflow to inf (filtered below)
-        sub = (man / mmax) * np.float32(2.0 ** (1 - bias))        # exp==0: subnormal
+    with np.errstate(over="ignore"):  # top-exponent codes overflow to inf (filtered below)
+        sub = (man / mmax) * np.float32(2.0 ** (1 - bias))  # exp==0: subnormal
         nrm = (1.0 + man / mmax) * np.exp2(exp.astype(np.float32) - bias)
     val = (sign * np.where(exp == 0, sub, nrm)).astype(np.float32)
-    top = (exp == emax)
-    if scheme == "ieee":                               # exp all-1 -> inf (man 0) / NaN (man != 0)
+    top = exp == emax
+    if scheme == "ieee":  # exp all-1 -> inf (man 0) / NaN (man != 0)
         val = np.where(top & (man == 0), sign * np.float32(np.inf), val)
         val = np.where(top & (man != 0), np.float32(np.nan), val)
-    elif scheme == "e4m3fn":                           # only all-1 exp & all-1 mantissa is NaN
+    elif scheme == "e4m3fn":  # only all-1 exp & all-1 mantissa is NaN
         val = np.where(top & (man == (mmax - 1)), np.float32(np.nan), val)
     # scheme == "mx_finite": every code is a finite value (MX fp6/fp4) -> nothing to special-case
     return val
@@ -150,7 +163,7 @@ def _decode(codes: np.ndarray, fmt: str) -> np.ndarray:
 
 def fp8_to_f32(u8: np.ndarray, fmt: str) -> np.ndarray:
     """Decode fp8 bytes to float32 under the named fp8 format (see :func:`_decode`)."""
-    canonical_fp8(fmt)                                 # fail closed on a non-fp8 format
+    canonical_fp8(fmt)  # fail closed on a non-fp8 format
     return _decode(np.ascontiguousarray(u8, np.uint8), fmt)
 
 
@@ -184,9 +197,9 @@ def _grid_values(fmt: str) -> list[float]:
     format's own bias/exponent range, not a hand-picked magnitude list."""
     _, _, bias, _ = float_format_params(fmt)
     out: set[float] = set()
-    for e in range(-min(bias, 12), min(bias, 13)):     # modest window inside the format's exponent range
+    for e in range(-min(bias, 12), min(bias, 13)):  # modest window inside the format's exponent range
         for m in range(8):
-            v = (1.0 + m / 8.0) * (2.0 ** e)
+            v = (1.0 + m / 8.0) * (2.0**e)
             out.add(v)
             out.add(-v)
     return sorted(out)
@@ -233,7 +246,7 @@ def float_to_codes(values, fmt: str) -> np.ndarray:
     if np.isnan(a).any():
         raise ValueError(f"cannot encode NaN into {t} (fail closed)")
     bits = storage_bits(t)
-    if bits >= 32:                                     # f32: the value already is the stored pattern
+    if bits >= 32:  # f32: the value already is the stored pattern
         return np.ascontiguousarray(a).view(np.uint32).copy()
     codes = np.arange(1 << bits, dtype=np.uint32)
     vals = _decode(codes, t)
@@ -249,7 +262,7 @@ def float_to_codes(values, fmt: str) -> np.ndarray:
     lo = hi - 1
     dlo, dhi = np.abs(a64 - vals[lo]), np.abs(vals[hi] - a64)
     pick = np.where(dhi < dlo, hi, lo)
-    tie = dlo == dhi                                   # round-half-to-even on the CODE pattern
+    tie = dlo == dhi  # round-half-to-even on the CODE pattern
     if tie.any():
         even_hi = (codes[hi] & 1) == 0
         pick = np.where(tie, np.where(even_hi, hi, lo), pick)

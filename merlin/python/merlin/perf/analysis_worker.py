@@ -4,6 +4,7 @@ This module does not invent a sandbox. The host supplies command prefixes built 
 existing inner-command policy, binding only the immutable compiler and dedicated scratch.
 Only JSON crosses the worker boundary; submitted compiler Python is never imported here.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -12,16 +13,15 @@ import importlib
 import importlib.util
 import json
 import os
-from pathlib import Path
 import signal
 import stat
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from merlin.perf.execution_policy import FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS
-
 
 _RESULT_TRANSPORT_GRACE_SECONDS = 5.0
 
@@ -38,8 +38,7 @@ def _read_output(path: Path) -> str:
     parent_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
     try:
         try:
-            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
-                         dir_fd=parent_fd)
+            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent_fd)
         except FileNotFoundError:
             return ""
     finally:
@@ -56,10 +55,16 @@ def _json_default(value: Any) -> Any:
     raise TypeError(f"non-JSON worker result: {type(value).__name__}")
 
 
-def run_sandboxed_entrypoint(package: Any, name: str, interface: Path,
-                            output_json: Path | None = None, *,
-                            sandbox: Mapping[str, Any], timeout_s: float,
-                            own_process_group: bool = True) -> subprocess.CompletedProcess:
+def run_sandboxed_entrypoint(
+    package: Any,
+    name: str,
+    interface: Path,
+    output_json: Path | None = None,
+    *,
+    sandbox: Mapping[str, Any],
+    timeout_s: float,
+    own_process_group: bool = True,
+) -> subprocess.CompletedProcess:
     """Invoke manifest argv inside a host-created inner policy; never import the package.
 
     The same helper can serve short-probe compilation. Inside an analysis worker, children
@@ -74,13 +79,20 @@ def run_sandboxed_entrypoint(package: Any, name: str, interface: Path,
         raise ValueError("compiler execution requires the existing clear-environment bwrap policy")
     if Path(package.directory).resolve() != Path(sandbox["package_path"]).resolve():
         raise ValueError("sandbox compiler identity does not match submitted package")
-    argv = OR._resolve_argv(package, name, Path(interface).resolve(),
-                            Path(output_json).resolve() if output_json else None)
+    argv = OR._resolve_argv(
+        package, name, Path(interface).resolve(), Path(output_json).resolve() if output_json else None
+    )
     if OR._needs_interpreter(package, argv):
         argv = [sys.executable, *argv]
     command = [*prefix, *argv]
-    process = subprocess.Popen(command, cwd=str(package.directory), stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, text=True, start_new_session=own_process_group)
+    process = subprocess.Popen(
+        command,
+        cwd=str(package.directory),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=own_process_group,
+    )
     try:
         stdout, stderr = process.communicate(timeout=timeout_s)
         return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
@@ -101,21 +113,30 @@ class IsolatedAnalysisWorker:
     must mount ``scratch`` read-write and compiler/dependency inputs read-only. Request,
     result and logs remain outside that scratch, inaccessible to compiler subprocesses.
     """
-    def __init__(self, *, stage_path: Path, sandbox_factory: Callable[..., Mapping[str, Any]],
-                 output: Path):
+
+    def __init__(self, *, stage_path: Path, sandbox_factory: Callable[..., Mapping[str, Any]], output: Path):
         self.stage_path = Path(stage_path).resolve()
         self.sandbox_factory = sandbox_factory
         self.output = Path(output).resolve()
         self.completed_sandboxes: Mapping[str, Any] | None = None
 
-    def __call__(self, baseline: Path, candidate: Path, sentinel: Any, *, timeout_s: float,
-                 artifact_sink: Callable[..., Any] | None = None, **kwargs: Any) -> dict[str, Any]:
+    def __call__(
+        self,
+        baseline: Path,
+        candidate: Path,
+        sentinel: Any,
+        *,
+        timeout_s: float,
+        artifact_sink: Callable[..., Any] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         from tempfile import mkdtemp
 
         if not 0 < timeout_s <= FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:
             raise ValueError(
                 "analysis worker requires a positive full-graph static-analysis budget at most "
-                f"{FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:g}s")
+                f"{FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:g}s"
+            )
         started = time.monotonic()
         self.output.mkdir(parents=True, exist_ok=True)
         work = Path(mkdtemp(prefix="analysis_", dir=self.output))
@@ -138,19 +159,23 @@ class IsolatedAnalysisWorker:
         if analysis_timeout <= 0:
             raise TimeoutError("analysis preparation left no child execution budget")
         request = {
-            "stage_path": str(self.stage_path), "baseline": str(Path(baseline).resolve()),
-            "candidate": str(Path(candidate).resolve()), "sentinel": dataclasses.asdict(sentinel),
-            "timeout_s": analysis_timeout, "kwargs": kwargs,
+            "stage_path": str(self.stage_path),
+            "baseline": str(Path(baseline).resolve()),
+            "candidate": str(Path(candidate).resolve()),
+            "sentinel": dataclasses.asdict(sentinel),
+            "timeout_s": analysis_timeout,
+            "kwargs": kwargs,
             "sandboxes": sandboxes,
-            "scratch": str(scratch), "result": str(work / "result.json"),
+            "scratch": str(scratch),
+            "result": str(work / "result.json"),
         }
         request_path = work / "request.json"
         request_path.write_text(json.dumps(request, default=_json_default))
         request_path.chmod(0o600)
         environment = dict(os.environ)
         environment["PYTHONPATH"] = os.pathsep.join(
-            str(Path(value or ".").resolve())
-            for value in environment.get("PYTHONPATH", "").split(os.pathsep))
+            str(Path(value or ".").resolve()) for value in environment.get("PYTHONPATH", "").split(os.pathsep)
+        )
         remaining = timeout_s - (time.monotonic() - started)
         process = None
         status = "failed"
@@ -159,8 +184,12 @@ class IsolatedAnalysisWorker:
                 raise TimeoutError("analysis preparation exhausted its wall-clock budget")
             with (work / "worker.stdout").open("wb") as stdout, (work / "worker.stderr").open("wb") as stderr:
                 process = subprocess.Popen(
-                    [sys.executable, "-m", __name__, str(request_path)], env=environment,
-                    stdout=stdout, stderr=stderr, start_new_session=True)
+                    [sys.executable, "-m", __name__, str(request_path)],
+                    env=environment,
+                    stdout=stdout,
+                    stderr=stderr,
+                    start_new_session=True,
+                )
                 try:
                     process.wait(timeout=remaining)
                 except subprocess.TimeoutExpired as exc:
@@ -180,15 +209,23 @@ class IsolatedAnalysisWorker:
             if process is not None:
                 _kill_group(process.pid)
                 process.wait()
-            (work / "receipt.json").write_text(json.dumps({
-                "schema": "bounded_host_analysis_worker_v1", "status": status,
-                "wall_seconds": time.monotonic() - started, "budget_seconds": timeout_s,
-                "analysis_budget_seconds": analysis_timeout,
-                "request_sha256": hashlib.sha256(request_path.read_bytes()).hexdigest(),
-                "worker_pid": process.pid if process else None,
-                "process_group_cleanup": process is not None,
-                "candidate_execution": "existing_inner_bwrap_policy", "simulation": False,
-            }, indent=2))
+            (work / "receipt.json").write_text(
+                json.dumps(
+                    {
+                        "schema": "bounded_host_analysis_worker_v1",
+                        "status": status,
+                        "wall_seconds": time.monotonic() - started,
+                        "budget_seconds": timeout_s,
+                        "analysis_budget_seconds": analysis_timeout,
+                        "request_sha256": hashlib.sha256(request_path.read_bytes()).hexdigest(),
+                        "worker_pid": process.pid if process else None,
+                        "process_group_cleanup": process is not None,
+                        "candidate_execution": "existing_inner_bwrap_policy",
+                        "simulation": False,
+                    },
+                    indent=2,
+                )
+            )
 
 
 def _worker(request_path: Path) -> int:
@@ -205,8 +242,9 @@ def _worker(request_path: Path) -> int:
     deadline = started + request["timeout_s"]
     retained: dict[str, Any] = {}
 
-    def emit_pair(package: Any, interface: Path, unused_scratch: Path, tag: str,
-                  timeout_s: int) -> tuple[int, str, str]:
+    def emit_pair(
+        package: Any, interface: Path, unused_scratch: Path, tag: str, timeout_s: int
+    ) -> tuple[int, str, str]:
         from merlin.targetgen import oot_runner as OR
 
         scratch = Path(request["scratch"]) / tag
@@ -227,20 +265,33 @@ def _worker(request_path: Path) -> int:
             destination = output if name in ("emit_command_buffer", "emit_analysis_bundle") else None
             try:
                 result = run_sandboxed_entrypoint(
-                    package, name, source, destination, sandbox=request["sandboxes"][tag],
-                    timeout_s=min(timeout_s, deadline - time.monotonic()), own_process_group=False)
+                    package,
+                    name,
+                    source,
+                    destination,
+                    sandbox=request["sandboxes"][tag],
+                    timeout_s=min(timeout_s, deadline - time.monotonic()),
+                    own_process_group=False,
+                )
             except (subprocess.TimeoutExpired, TimeoutError) as exc:
                 stderr = getattr(exc, "stderr", None) or ""
                 if isinstance(stderr, bytes):
                     stderr = stderr.decode("utf-8", errors="replace")
-                rows.append({"command": name, "returncode": None,
-                             "exception": type(exc).__name__, "stderr_tail": stderr[-4096:]})
+                rows.append(
+                    {
+                        "command": name,
+                        "returncode": None,
+                        "exception": type(exc).__name__,
+                        "stderr_tail": stderr[-4096:],
+                    }
+                )
                 (request_path.parent / f"{tag}_{name}.stderr").write_text(stderr)
                 persist()
                 raise
             results.append(result)
-            rows.append({"command": name, "returncode": result.returncode,
-                         "stderr_tail": (result.stderr or "")[-4096:]})
+            rows.append(
+                {"command": name, "returncode": result.returncode, "stderr_tail": (result.stderr or "")[-4096:]}
+            )
             (request_path.parent / f"{tag}_{name}.stderr").write_text(result.stderr or "")
             persist()
             if result.returncode != 0:
@@ -249,11 +300,15 @@ def _worker(request_path: Path) -> int:
                 return result.returncode, "", ""
         target_result = results[0] if entrypoints == ("emit_analysis_bundle",) else results[1]
         (request_path.parent / f"{tag}_lowered.mlir").write_text(target_result.stdout or "")
-        return (next((result.returncode for result in results if result.returncode), 0),
-                target_result.stdout or "", _read_output(output))
+        return (
+            next((result.returncode for result in results if result.returncode), 0),
+            target_result.stdout or "",
+            _read_output(output),
+        )
 
     def machine_audit(lowered_text: str, *, arm: str, timeout_s: float) -> dict[str, Any]:
         from merlin.runtime.backends.base import get_backend
+
         backend = get_backend(str(request["kwargs"]["target"]))
         analyzer = getattr(backend, "analyze_machine_artifact", None)
         if analyzer is None:
@@ -267,8 +322,9 @@ def _worker(request_path: Path) -> int:
             if remaining <= 0:
                 raise TimeoutError("machine assembly exceeded whole-model analysis deadline")
             command = [*prefix, *map(str, argv)]
-            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                       text=True)  # Same worker process group; parent owns cleanup.
+            process = subprocess.Popen(
+                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )  # Same worker process group; parent owns cleanup.
             try:
                 stdout, stderr = process.communicate(timeout=remaining)
                 return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
@@ -277,8 +333,12 @@ def _worker(request_path: Path) -> int:
                     process.kill()
                 process.wait()
 
-        return analyzer(lowered_text, workdir=Path(request["scratch"]) / f"machine_{arm}",
-                        run_command=run_command, timeout_seconds=min(timeout_s, deadline-time.monotonic()))
+        return analyzer(
+            lowered_text,
+            workdir=Path(request["scratch"]) / f"machine_{arm}",
+            run_command=run_command,
+            timeout_seconds=min(timeout_s, deadline - time.monotonic()),
+        )
 
     try:
         kwargs = request["kwargs"]
@@ -289,6 +349,7 @@ def _worker(request_path: Path) -> int:
                 verifier = getattr(verifier, name)
             kwargs["global_plan_verifier"] = verifier
         from merlin.runtime.backends.base import get_backend
+
         try:
             backend = get_backend(str(kwargs.get("target", "")))
             identity_provider = getattr(backend, "machine_artifact_policy_identity", None)
@@ -296,17 +357,25 @@ def _worker(request_path: Path) -> int:
         except (ImportError, KeyError, ValueError):
             build_policy = None  # Optional compiled-machine evidence cannot invent target support.
         analysis = stage.analyze_whole_model_emission(
-            Path(request["baseline"]), Path(request["candidate"]),
-            stage.StageE2ESentinel(**request["sentinel"]), timeout_s=request["timeout_s"],
-            artifact_sink=retained.update, emit_pair_runner=emit_pair,
-            machine_artifact_auditor=machine_audit, machine_build_policy_identity=build_policy, **kwargs)
+            Path(request["baseline"]),
+            Path(request["candidate"]),
+            stage.StageE2ESentinel(**request["sentinel"]),
+            timeout_s=request["timeout_s"],
+            artifact_sink=retained.update,
+            emit_pair_runner=emit_pair,
+            machine_artifact_auditor=machine_audit,
+            machine_build_policy_identity=build_policy,
+            **kwargs,
+        )
         retained.pop("parsed_lowered_module", None)
         result = {"analysis": analysis, "artifacts": retained}
     except Exception as exc:
         result = {"failure": {"type": type(exc).__name__, "reason": str(exc)[:20000]}}
         result["failure"]["emission_diagnostics"] = {
-            tag: json.loads(path.read_text()) for tag in ("baseline", "candidate")
-            if (path := request_path.parent / f"{tag}_emission.json").is_file()}
+            tag: json.loads(path.read_text())
+            for tag in ("baseline", "candidate")
+            if (path := request_path.parent / f"{tag}_emission.json").is_file()
+        }
     Path(request["result"]).write_text(json.dumps(result, default=_json_default))
     return 0
 

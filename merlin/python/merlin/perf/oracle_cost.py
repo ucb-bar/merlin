@@ -41,6 +41,7 @@ The module is a modelling tool: it fits and reports. Measurement is the caller's
 :class:`Substrate` protocol, so anything that can run a program -- an RTL simulator, an ISA model, a
 board -- can be priced by the same code.
 """
+
 from __future__ import annotations
 
 import statistics
@@ -50,11 +51,26 @@ from enum import Enum
 from typing import Protocol, runtime_checkable
 
 __all__ = [
-    "ProbeKind", "Provenance", "CostSample", "Term", "CostLaw", "CostEstimate",
-    "Validation", "ConcurrencyReport", "MixedConcurrency", "NotEnoughEvidence",
-    "Substrate", "RunOutcome", "Probe",
-    "fit_cost_law", "cycles_only_slope", "average_replicates", "concurrency_inflation",
-    "halt_first_probes", "measure", "render_law",
+    "ProbeKind",
+    "Provenance",
+    "CostSample",
+    "Term",
+    "CostLaw",
+    "CostEstimate",
+    "Validation",
+    "ConcurrencyReport",
+    "MixedConcurrency",
+    "NotEnoughEvidence",
+    "Substrate",
+    "RunOutcome",
+    "Probe",
+    "fit_cost_law",
+    "cycles_only_slope",
+    "average_replicates",
+    "concurrency_inflation",
+    "halt_first_probes",
+    "measure",
+    "render_law",
 ]
 
 
@@ -132,10 +148,17 @@ class Term:
         return self.provenance is not Provenance.UNKNOWN and self.value is not None
 
     def as_dict(self) -> dict:
-        return {"name": self.name, "value": self.value, "unit": self.unit,
-                "provenance": self.provenance.value, "construction": self.construction,
-                "n": self.n, "r2": self.r2, "domain": list(self.domain) if self.domain else None,
-                "note": self.note}
+        return {
+            "name": self.name,
+            "value": self.value,
+            "unit": self.unit,
+            "provenance": self.provenance.value,
+            "construction": self.construction,
+            "n": self.n,
+            "r2": self.r2,
+            "domain": list(self.domain) if self.domain else None,
+            "note": self.note,
+        }
 
 
 @dataclass(frozen=True)
@@ -166,13 +189,20 @@ class CostEstimate:
         return bool(self.excluded)
 
     def as_dict(self) -> dict:
-        return {"substrate": self.substrate, "concurrency": self.concurrency,
-                "cycles": self.cycles, "words": self.words, "seconds": self.seconds,
-                "by_term": dict(self.by_term), "measured": list(self.measured),
-                "assumed": list(self.assumed), "excluded": list(self.excluded),
-                "extrapolation": dict(self.extrapolation),
-                "within_measured_domain": self.within_measured_domain,
-                "is_lower_bound": self.is_lower_bound}
+        return {
+            "substrate": self.substrate,
+            "concurrency": self.concurrency,
+            "cycles": self.cycles,
+            "words": self.words,
+            "seconds": self.seconds,
+            "by_term": dict(self.by_term),
+            "measured": list(self.measured),
+            "assumed": list(self.assumed),
+            "excluded": list(self.excluded),
+            "extrapolation": dict(self.extrapolation),
+            "within_measured_domain": self.within_measured_domain,
+            "is_lower_bound": self.is_lower_bound,
+        }
 
     def __str__(self) -> str:  # concurrency is never optional in the human-readable form either
         tail = ""
@@ -181,8 +211,10 @@ class CostEstimate:
         beyond = {a: f for a, f in self.extrapolation.items() if f > 1.0}
         if beyond:
             tail += " [EXTRAPOLATED " + ", ".join(f"{a} x{f:.3g}" for a, f in beyond.items()) + "]"
-        return (f"{self.substrate}: {self.seconds:.4g} s for {self.cycles} cycles / "
-                f"{self.words} words at concurrency={self.concurrency}{tail}")
+        return (
+            f"{self.substrate}: {self.seconds:.4g} s for {self.cycles} cycles / "
+            f"{self.words} words at concurrency={self.concurrency}{tail}"
+        )
 
 
 @dataclass(frozen=True)
@@ -195,8 +227,12 @@ class Validation:
     rows: tuple[dict, ...] = ()
 
     def as_dict(self) -> dict:
-        return {"n": self.n, "median_abs_rel_err": self.median_abs_rel_err,
-                "max_abs_rel_err": self.max_abs_rel_err, "rows": [dict(r) for r in self.rows]}
+        return {
+            "n": self.n,
+            "median_abs_rel_err": self.median_abs_rel_err,
+            "max_abs_rel_err": self.max_abs_rel_err,
+            "rows": [dict(r) for r in self.rows],
+        }
 
 
 @dataclass(frozen=True)
@@ -210,9 +246,13 @@ class ConcurrencyReport:
     note: str
 
     def as_dict(self) -> dict:
-        return {"workers": self.workers, "serial_seconds": self.serial_seconds,
-                "observed_seconds": self.observed_seconds, "inflation_x": self.inflation_x,
-                "note": self.note}
+        return {
+            "workers": self.workers,
+            "serial_seconds": self.serial_seconds,
+            "observed_seconds": self.observed_seconds,
+            "inflation_x": self.inflation_x,
+            "note": self.note,
+        }
 
 
 @dataclass(frozen=True)
@@ -280,10 +320,17 @@ class CostLaw:
                 extrapolation[axis] = float("inf")
                 assumed.append(f"{axis}_domain")
         return CostEstimate(
-            substrate=self.substrate, concurrency=self.concurrency, cycles=cycles, words=words,
-            seconds=sum(by_term.values()), by_term=by_term,
-            measured=tuple(measured), assumed=tuple(assumed), excluded=tuple(excluded),
-            extrapolation=extrapolation)
+            substrate=self.substrate,
+            concurrency=self.concurrency,
+            cycles=cycles,
+            words=words,
+            seconds=sum(by_term.values()),
+            by_term=by_term,
+            measured=tuple(measured),
+            assumed=tuple(assumed),
+            excluded=tuple(excluded),
+            extrapolation=extrapolation,
+        )
 
     def validate(self, samples: Iterable[CostSample], *, average_reps: bool = True) -> Validation:
         """Held-out error. Samples must share the law's concurrency, or the comparison is meaningless."""
@@ -294,32 +341,47 @@ class CostLaw:
             if s.concurrency != self.concurrency:
                 raise MixedConcurrency(
                     f"validating a law fitted at concurrency={self.concurrency} against a sample taken "
-                    f"at concurrency={s.concurrency}: a throughput number cannot check a latency law")
+                    f"at concurrency={s.concurrency}: a throughput number cannot check a latency law"
+                )
             est = self.estimate(s.cycles, s.words)
             rel = (est.seconds - s.seconds) / s.seconds if s.seconds else float("inf")
             errs.append(abs(rel))
-            out.append({"label": s.label, "cycles": s.cycles, "words": s.words,
-                        "predicted_seconds": est.seconds, "measured_seconds": s.seconds,
-                        "rel_err": rel})
+            out.append(
+                {
+                    "label": s.label,
+                    "cycles": s.cycles,
+                    "words": s.words,
+                    "predicted_seconds": est.seconds,
+                    "measured_seconds": s.seconds,
+                    "rel_err": rel,
+                }
+            )
         if not errs:
             raise NotEnoughEvidence("validate() was given no samples")
-        return Validation(n=len(errs), median_abs_rel_err=statistics.median(errs),
-                          max_abs_rel_err=max(errs), rows=tuple(out))
+        return Validation(
+            n=len(errs), median_abs_rel_err=statistics.median(errs), max_abs_rel_err=max(errs), rows=tuple(out)
+        )
 
     def as_dict(self) -> dict:
-        return {"substrate": self.substrate, "concurrency": self.concurrency,
-                "form": "seconds = fixed + per_cycle*cycles + per_word*words",
-                "fixed": self.fixed.as_dict(), "per_cycle": self.per_cycle.as_dict(),
-                "per_word": self.per_word.as_dict(),
-                "cycles_per_second": self.cycles_per_second,
-                "words_per_second": self.words_per_second,
-                "cycles_only_per_cycle": self.cycles_only_per_cycle,
-                "cycles_only_overstatement": self.cycles_only_overstatement,
-                "measured_domain": self.measured_domain,
-                "n_samples": self.n_samples, "notes": list(self.notes)}
+        return {
+            "substrate": self.substrate,
+            "concurrency": self.concurrency,
+            "form": "seconds = fixed + per_cycle*cycles + per_word*words",
+            "fixed": self.fixed.as_dict(),
+            "per_cycle": self.per_cycle.as_dict(),
+            "per_word": self.per_word.as_dict(),
+            "cycles_per_second": self.cycles_per_second,
+            "words_per_second": self.words_per_second,
+            "cycles_only_per_cycle": self.cycles_only_per_cycle,
+            "cycles_only_overstatement": self.cycles_only_overstatement,
+            "measured_domain": self.measured_domain,
+            "n_samples": self.n_samples,
+            "notes": list(self.notes),
+        }
 
 
 # --- the fit ----------------------------------------------------------------------------------------
+
 
 def _ols(xs: Sequence[float], ys: Sequence[float]) -> tuple[float, float, float]:
     """``(intercept, slope, r2)`` of a least-squares line. Two distinct x values minimum."""
@@ -347,7 +409,8 @@ def _one_concurrency(samples: Sequence[CostSample], allow_mixed: bool) -> int:
         raise MixedConcurrency(
             f"samples span concurrencies {found}: a per-query time measured under parallelism is a "
             f"throughput figure and pooling it with serial latencies fits neither. Split the fit, or "
-            f"pass allow_mixed_concurrency=True and own the consequence.")
+            f"pass allow_mixed_concurrency=True and own the consequence."
+        )
     return found[0]
 
 
@@ -363,8 +426,16 @@ def average_replicates(samples: Iterable[CostSample]) -> list[CostSample]:
     for key, group in buckets.items():
         first = group[0]
         mean = sum(g.seconds for g in group) / len(group)
-        out.append(CostSample(seconds=mean, cycles=first.cycles, words=first.words,
-                              concurrency=first.concurrency, kind=first.kind, label=first.label))
+        out.append(
+            CostSample(
+                seconds=mean,
+                cycles=first.cycles,
+                words=first.words,
+                concurrency=first.concurrency,
+                kind=first.kind,
+                label=first.label,
+            )
+        )
     return out
 
 
@@ -432,23 +503,34 @@ def fit_cost_law(
         if not pinned:
             notes.append(
                 f"the load probe's cycles are NOT pinned ({span[0]}..{span[1]}): its slope carries "
-                f"some of the cycle term, so the word term is DERIVED rather than isolated")
+                f"some of the cycle term, so the word term is DERIVED rather than isolated"
+            )
         per_word = Term(
-            name="per_word", value=c, unit="s/word",
+            name="per_word",
+            value=c,
+            unit="s/word",
             provenance=Provenance.MEASURED if pinned else Provenance.DERIVED,
             construction="halt-first program: all W words load, ~1 instruction retires",
-            n=len(load), r2=w_r2,
+            n=len(load),
+            r2=w_r2,
             domain=(float(min(s.words for s in load)), float(max(s.words for s in load))),
-            note=None if pinned else f"load-probe cycles spanned {span[0]}..{span[1]}")
+            note=None if pinned else f"load-probe cycles spanned {span[0]}..{span[1]}",
+        )
     else:
         c = None
         per_word = Term(
-            name="per_word", value=None, unit="s/word", provenance=Provenance.UNKNOWN,
+            name="per_word",
+            value=None,
+            unit="s/word",
+            provenance=Provenance.UNKNOWN,
             construction="none — no halt-first load probe was supplied",
             note="without a load probe the program-size cost cannot be separated from the cycle cost; "
-                 "any cycle slope below has absorbed it")
-        notes.append("NO LOAD PROBE: the per-word term is UNKNOWN and the per-cycle term is "
-                     "contaminated by it. Run a halt-first ladder to separate them.")
+            "any cycle slope below has absorbed it",
+        )
+        notes.append(
+            "NO LOAD PROBE: the per-word term is UNKNOWN and the per-cycle term is "
+            "contaminated by it. Run a halt-first ladder to separate them."
+        )
 
     # 2. remove the word term before fitting cycles.
     def residual(s: CostSample) -> float:
@@ -460,8 +542,7 @@ def fit_cost_law(
     if cycle_fit_min_cycles is not None:
         cycle_pool = [s for s in cycle_pool if s.cycles >= cycle_fit_min_cycles]
     if len({s.cycles for s in cycle_pool}) >= 2:
-        c_intercept, b, c_r2 = _ols([float(s.cycles) for s in cycle_pool],
-                                    [residual(s) for s in cycle_pool])
+        c_intercept, b, c_r2 = _ols([float(s.cycles) for s in cycle_pool], [residual(s) for s in cycle_pool])
         words_span = (min(s.words for s in cycle_pool), max(s.words for s in cycle_pool))
         words_pinned = from_ladder and words_span[1] <= max(2 * words_span[0], words_span[0] + 8)
         if from_ladder and words_pinned and per_word.known:
@@ -471,26 +552,44 @@ def fit_cost_law(
         else:
             prov, how = Provenance.DERIVED, ("cycles-only fit — NO word term was available to remove")
         per_cycle = Term(
-            name="per_cycle", value=b, unit="s/cycle", provenance=prov, construction=how,
-            n=len(cycle_pool), r2=c_r2,
+            name="per_cycle",
+            value=b,
+            unit="s/cycle",
+            provenance=prov,
+            construction=how,
+            n=len(cycle_pool),
+            r2=c_r2,
             domain=(float(min(s.cycles for s in cycle_pool)), float(max(s.cycles for s in cycle_pool))),
-            note=None if prov is Provenance.MEASURED else
-                 "not isolated by construction; only as correct as the term subtracted from it")
+            note=None
+            if prov is Provenance.MEASURED
+            else "not isolated by construction; only as correct as the term subtracted from it",
+        )
     else:
         c_intercept = None
         b = None
-        per_cycle = Term(name="per_cycle", value=None, unit="s/cycle", provenance=Provenance.UNKNOWN,
-                         construction="none — fewer than two distinct cycle counts",
-                         note="no cycle sweep: the simulated-time cost is UNKNOWN")
+        per_cycle = Term(
+            name="per_cycle",
+            value=None,
+            unit="s/cycle",
+            provenance=Provenance.UNKNOWN,
+            construction="none — fewer than two distinct cycle counts",
+            note="no cycle sweep: the simulated-time cost is UNKNOWN",
+        )
         notes.append("NO CYCLE SWEEP: the per-cycle term is UNKNOWN.")
 
     # 4. the FIXED term.
     fixed = _fixed_term(floors, b, c, c_intercept, cycle_pool, origin_reach, notes)
 
     return CostLaw(
-        substrate=substrate, concurrency=concurrency, fixed=fixed, per_cycle=per_cycle,
-        per_word=per_word, cycles_only_per_cycle=cycles_only_slope(corpus or cycle_pool),
-        n_samples=len(rows), notes=tuple(notes))
+        substrate=substrate,
+        concurrency=concurrency,
+        fixed=fixed,
+        per_cycle=per_cycle,
+        per_word=per_word,
+        cycles_only_per_cycle=cycles_only_slope(corpus or cycle_pool),
+        n_samples=len(rows),
+        notes=tuple(notes),
+    )
 
 
 def _fixed_term(floors, b, c, c_intercept, cycle_pool, origin_reach, notes) -> Term:
@@ -499,42 +598,79 @@ def _fixed_term(floors, b, c, c_intercept, cycle_pool, origin_reach, notes) -> T
         f = min(floors, key=lambda s: (s.words, s.cycles))
         value = f.seconds - b * f.cycles - c * f.words
         if value < 0:
-            notes.append(f"the floor probe implies a NEGATIVE fixed term ({value:.4g} s); recorded "
-                         f"UNKNOWN rather than a negative cost")
-            return Term(name="fixed", value=None, unit="s", provenance=Provenance.UNKNOWN,
-                        construction="floor probe, but it came out negative",
-                        note=f"floor probe residual {value:.4g} s")
-        return Term(name="fixed", value=value, unit="s", provenance=Provenance.MEASURED,
-                    construction=f"floor probe ({f.words} words, {f.cycles} cycles), rate terms removed",
-                    n=len(floors), domain=(0.0, 0.0))
+            notes.append(
+                f"the floor probe implies a NEGATIVE fixed term ({value:.4g} s); recorded "
+                f"UNKNOWN rather than a negative cost"
+            )
+            return Term(
+                name="fixed",
+                value=None,
+                unit="s",
+                provenance=Provenance.UNKNOWN,
+                construction="floor probe, but it came out negative",
+                note=f"floor probe residual {value:.4g} s",
+            )
+        return Term(
+            name="fixed",
+            value=value,
+            unit="s",
+            provenance=Provenance.MEASURED,
+            construction=f"floor probe ({f.words} words, {f.cycles} cycles), rate terms removed",
+            n=len(floors),
+            domain=(0.0, 0.0),
+        )
     if c_intercept is None or not cycle_pool:
-        return Term(name="fixed", value=None, unit="s", provenance=Provenance.UNKNOWN,
-                    construction="none — no floor probe and no cycle fit",
-                    note="the per-query overhead was never measured; it is NOT zero")
+        return Term(
+            name="fixed",
+            value=None,
+            unit="s",
+            provenance=Provenance.UNKNOWN,
+            construction="none — no floor probe and no cycle fit",
+            note="the per-query overhead was never measured; it is NOT zero",
+        )
     lo = min(s.cycles for s in cycle_pool)
     hi = max(s.cycles for s in cycle_pool)
     if hi and lo > origin_reach * hi:
         notes.append(
             f"the cycle fit spans {lo}..{hi}, so its intercept ({c_intercept:.4g} s) is an "
-            f"extrapolation back across the whole domain, not a measurement of the fixed term")
-        return Term(name="fixed", value=None, unit="s", provenance=Provenance.UNKNOWN,
-                    construction=f"cycle-fit intercept rejected: domain starts at {lo} of {hi}",
-                    note=f"rejected intercept {c_intercept:.6g} s; supply a floor probe to measure it")
+            f"extrapolation back across the whole domain, not a measurement of the fixed term"
+        )
+        return Term(
+            name="fixed",
+            value=None,
+            unit="s",
+            provenance=Provenance.UNKNOWN,
+            construction=f"cycle-fit intercept rejected: domain starts at {lo} of {hi}",
+            note=f"rejected intercept {c_intercept:.6g} s; supply a floor probe to measure it",
+        )
     if c_intercept < 0:
-        notes.append(f"the fitted fixed term is NEGATIVE ({c_intercept:.4g} s), which is not a cost — "
-                     f"recorded UNKNOWN; it is fit curvature, not a discount")
-        return Term(name="fixed", value=None, unit="s", provenance=Provenance.UNKNOWN,
-                    construction="cycle-fit intercept, rejected as negative",
-                    note=f"rejected intercept {c_intercept:.6g} s")
-    return Term(name="fixed", value=c_intercept, unit="s", provenance=Provenance.MEASURED,
-                construction="intercept of the cycle fit, word term removed",
-                n=len(cycle_pool), domain=(float(lo), float(hi)))
+        notes.append(
+            f"the fitted fixed term is NEGATIVE ({c_intercept:.4g} s), which is not a cost — "
+            f"recorded UNKNOWN; it is fit curvature, not a discount"
+        )
+        return Term(
+            name="fixed",
+            value=None,
+            unit="s",
+            provenance=Provenance.UNKNOWN,
+            construction="cycle-fit intercept, rejected as negative",
+            note=f"rejected intercept {c_intercept:.6g} s",
+        )
+    return Term(
+        name="fixed",
+        value=c_intercept,
+        unit="s",
+        provenance=Provenance.MEASURED,
+        construction="intercept of the cycle fit, word term removed",
+        n=len(cycle_pool),
+        domain=(float(lo), float(hi)),
+    )
 
 
 # --- concurrency ------------------------------------------------------------------------------------
 
-def concurrency_inflation(*, serial_seconds: float, observed_seconds: float,
-                          workers: int) -> ConcurrencyReport:
+
+def concurrency_inflation(*, serial_seconds: float, observed_seconds: float, workers: int) -> ConcurrencyReport:
     """What N-way parallelism did to a per-query number.
 
     The same query, same program, same cycle count, costs more wall-clock per query when N of them
@@ -548,14 +684,20 @@ def concurrency_inflation(*, serial_seconds: float, observed_seconds: float,
         raise ValueError("workers must be >= 1")
     x = observed_seconds / serial_seconds
     return ConcurrencyReport(
-        workers=workers, serial_seconds=serial_seconds, observed_seconds=observed_seconds,
+        workers=workers,
+        serial_seconds=serial_seconds,
+        observed_seconds=observed_seconds,
         inflation_x=x,
-        note=(f"a per-query cost of {observed_seconds:.4g} s measured under {workers}-way parallelism "
-              f"is {x:.3g}x its {serial_seconds:.4g} s serial latency — it is a throughput figure, not "
-              f"a latency figure, and must not be quoted as one"))
+        note=(
+            f"a per-query cost of {observed_seconds:.4g} s measured under {workers}-way parallelism "
+            f"is {x:.3g}x its {serial_seconds:.4g} s serial latency — it is a throughput figure, not "
+            f"a latency figure, and must not be quoted as one"
+        ),
+    )
 
 
 # --- measurement driver -----------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class RunOutcome:
@@ -617,13 +759,21 @@ def measure(substrate: Substrate, probes: Iterable[Probe], *, reps: int = 1) -> 
     for probe in probes:
         for _ in range(reps):
             r = substrate.run(probe.program)
-            out.append(CostSample(seconds=r.seconds, cycles=r.cycles, words=r.words,
-                                  concurrency=substrate.concurrency, kind=probe.kind,
-                                  label=probe.label))
+            out.append(
+                CostSample(
+                    seconds=r.seconds,
+                    cycles=r.cycles,
+                    words=r.words,
+                    concurrency=substrate.concurrency,
+                    kind=probe.kind,
+                    label=probe.label,
+                )
+            )
     return out
 
 
 # --- reporting --------------------------------------------------------------------------------------
+
 
 def _rate(value: float | None, per: str) -> str:
     if not value:
@@ -631,39 +781,43 @@ def _rate(value: float | None, per: str) -> str:
     return f"{value * 1e3:.6g} ms/{per}  ({1.0 / value:,.1f} {per}s/s)"
 
 
-def render_law(law: CostLaw, *, validation: Validation | None = None,
-               concurrency: ConcurrencyReport | None = None) -> str:
+def render_law(
+    law: CostLaw, *, validation: Validation | None = None, concurrency: ConcurrencyReport | None = None
+) -> str:
     """A human-readable report. Concurrency is on the first line and in every projection."""
     lines = [
         f"{law.substrate} — oracle cost law   (CONCURRENCY = {law.concurrency})",
         "  seconds = fixed + per_cycle*cycles + per_word*words",
         "",
         f"  per_cycle : {_rate(law.per_cycle.value, 'cycle')}",
-        f"              {law.per_cycle.provenance.value}  n={law.per_cycle.n}  "
-        f"r2={law.per_cycle.r2:.6g}" if law.per_cycle.r2 is not None else
-        f"              {law.per_cycle.provenance.value}  n={law.per_cycle.n}",
+        f"              {law.per_cycle.provenance.value}  n={law.per_cycle.n}  r2={law.per_cycle.r2:.6g}"
+        if law.per_cycle.r2 is not None
+        else f"              {law.per_cycle.provenance.value}  n={law.per_cycle.n}",
         f"              via {law.per_cycle.construction}",
         f"  per_word  : {_rate(law.per_word.value, 'word')}",
-        f"              {law.per_word.provenance.value}  n={law.per_word.n}  "
-        f"r2={law.per_word.r2:.6g}" if law.per_word.r2 is not None else
-        f"              {law.per_word.provenance.value}  n={law.per_word.n}",
+        f"              {law.per_word.provenance.value}  n={law.per_word.n}  r2={law.per_word.r2:.6g}"
+        if law.per_word.r2 is not None
+        else f"              {law.per_word.provenance.value}  n={law.per_word.n}",
         f"              via {law.per_word.construction}",
-        f"  fixed     : "
-        + (f"{law.fixed.value * 1e3:.6g} ms" if law.fixed.known else "UNKNOWN (not zero)"),
+        f"  fixed     : " + (f"{law.fixed.value * 1e3:.6g} ms" if law.fixed.known else "UNKNOWN (not zero)"),
         f"              {law.fixed.provenance.value}  via {law.fixed.construction}",
     ]
     if law.cycles_only_overstatement:
-        lines += ["",
-                  f"  a CYCLES-ONLY fit would report {law.cycles_only_per_cycle * 1e3:.6g} ms/cycle — "
-                  f"{law.cycles_only_overstatement:.3g}x the marginal rate, because it charges the "
-                  f"program load to the cycles."]
+        lines += [
+            "",
+            f"  a CYCLES-ONLY fit would report {law.cycles_only_per_cycle * 1e3:.6g} ms/cycle — "
+            f"{law.cycles_only_overstatement:.3g}x the marginal rate, because it charges the "
+            f"program load to the cycles.",
+        ]
     dom = law.measured_domain
     if dom:
         lines += ["", "  measured domain: " + ", ".join(f"{k} <= {v:,.0f}" for k, v in dom.items())]
     if validation is not None:
-        lines += ["",
-                  f"  held out: n={validation.n}  median |rel err| = "
-                  f"{validation.median_abs_rel_err:.2%}  max = {validation.max_abs_rel_err:.2%}"]
+        lines += [
+            "",
+            f"  held out: n={validation.n}  median |rel err| = "
+            f"{validation.median_abs_rel_err:.2%}  max = {validation.max_abs_rel_err:.2%}",
+        ]
     if concurrency is not None:
         lines += ["", f"  concurrency: {concurrency.note}"]
     for n in law.notes:

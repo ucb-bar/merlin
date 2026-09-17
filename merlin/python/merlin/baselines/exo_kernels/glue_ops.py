@@ -11,23 +11,24 @@ the scalar path (no RVV transcendental in this EXO port), so the glue computes `
 then this kernel does the vector ``silu*u`` product — the exp stays labeled scalar, the product is
 RVV.
 """
+
 from __future__ import annotations
 
-from exo import proc, DRAM
+from exo import DRAM, proc
 from exo.stdlib.scheduling import (
     divide_loop,
-    stage_mem,
+    replace_all,
     set_memory,
     simplify,
-    replace_all,
+    stage_mem,
 )
 
 from merlin.baselines.exo_kernels.rvv256 import (
     RVV256,
-    rvv256_vld,
-    rvv256_vst,
     rvv256_vfadd,
     rvv256_vfmul,
+    rvv256_vld,
+    rvv256_vst,
 )
 
 

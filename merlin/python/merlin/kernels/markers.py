@@ -18,6 +18,7 @@ family is a new data file, not an edit here.
 ``markers_for(target)`` resolves a kernel's ``target`` to its family and returns the compiled
 regex table for that family, merged over the ``generic`` baseline.
 """
+
 from __future__ import annotations
 
 import re  # regex-ok: compiles the motif patterns each family declares as data (feature_extraction/)
@@ -63,8 +64,7 @@ def _target_families() -> dict[str, str]:
             key = str(spelling).lower()
             owner = out.setdefault(key, family)
             if owner != family:
-                raise ValueError(f"kernel.target {key!r} is claimed by two ISA families: "
-                                 f"{owner!r} and {family!r}")
+                raise ValueError(f"kernel.target {key!r} is claimed by two ISA families: {owner!r} and {family!r}")
     return out
 
 
@@ -80,8 +80,10 @@ def _raw(family: str) -> dict[str, list[str]]:
     table = load_feature_contract(family).get("markers") or {}
     unknown = sorted(set(table) - set(MOTIFS))
     if unknown:
-        raise ValueError(f"feature_extraction/{family}.yaml declares markers for unknown motif(s) "
-                         f"{unknown}; the vocabulary is markers.MOTIFS")
+        raise ValueError(
+            f"feature_extraction/{family}.yaml declares markers for unknown motif(s) "
+            f"{unknown}; the vocabulary is markers.MOTIFS"
+        )
     return {motif: [str(p) for p in (pats or [])] for motif, pats in table.items()}
 
 

@@ -16,6 +16,7 @@ tokens are a whole-token PREFIX of the bundle's. Substring matching would be wro
 ``lstmnetvit2`` must NOT match ``lstmnetvit``. Nothing here uses regex -- the pattern that silently
 matches too much or too little is the failure this repo's parsing rule exists to prevent.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,11 +29,13 @@ def _doc() -> dict:
     import yaml
 
     from merlin.common.paths import merlin_dir
+
     p = merlin_dir().joinpath(*_CONTRACT)
     if not p.is_file():
         raise FileNotFoundError(
             f"no claim-model declaration at {p}; the derivation/claim split cannot be applied, and "
-            f"deriving the requirement from every capture would make the coverage claim circular")
+            f"deriving the requirement from every capture would make the coverage claim circular"
+        )
     doc = yaml.safe_load(p.read_text(encoding="utf-8"))
     if not isinstance(doc, dict) or not doc.get("claim_models"):
         raise ValueError(f"{p} declares no `claim_models`")
@@ -79,7 +82,7 @@ def model_of(bundle: str) -> str | None:
     best_len = 0
     for m in claim_models():
         mt = _tokens(m)
-        if len(mt) > len(bt) or bt[:len(mt)] != mt:
+        if len(mt) > len(bt) or bt[: len(mt)] != mt:
             continue
         if len(mt) > best_len:
             best, best_len = m, len(mt)

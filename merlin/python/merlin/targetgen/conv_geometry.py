@@ -37,6 +37,7 @@ which the swapped assignment does not satisfy except in degenerate cases. A gath
 identity yields ``None``: an unverified geometry is not recorded, because a wrong stride would demand
 capsules for a convolution the model does not contain.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -53,9 +54,9 @@ class ConvGeometry:
     dilation: tuple[int, ...]
     pad_before: tuple[int, ...]
     pad_after: tuple[int, ...]
-    input_dilation: tuple[int, ...]                # >1 means a TRANSPOSED convolution
-    pad_known: bool                                # False when no readable padding producer was found
-    in_spatial: tuple[int, ...]                    # the real input, before padding
+    input_dilation: tuple[int, ...]  # >1 means a TRANSPOSED convolution
+    pad_known: bool  # False when no readable padding producer was found
+    in_spatial: tuple[int, ...]  # the real input, before padding
     out_spatial: tuple[int, ...]
     channels_in: int
     dtype: str
@@ -90,17 +91,29 @@ class ConvGeometry:
         else:
             pad = pb if self.symmetric_pad else f"{pb}_{pa}"
         base = f"k{k}/s{s}/d{d}/pad{pad}"
-        return base + ("/indilated" + "x".join(str(v) for v in self.input_dilation)
-                       if any(v != 1 for v in self.input_dilation) else "")
+        return base + (
+            "/indilated" + "x".join(str(v) for v in self.input_dilation)
+            if any(v != 1 for v in self.input_dilation)
+            else ""
+        )
 
     def to_dict(self) -> dict:
-        return {"signature": self.signature(), "kernel": list(self.kernel),
-                "stride": list(self.stride), "dilation": list(self.dilation),
-                "pad_before": list(self.pad_before), "pad_after": list(self.pad_after),
-                "input_dilation": list(self.input_dilation), "pad_known": self.pad_known,
-                "in_spatial": list(self.in_spatial), "out_spatial": list(self.out_spatial),
-                "channels_in": self.channels_in, "dtype": self.dtype,
-                "padded": self.padded, "symmetric_pad": self.symmetric_pad}
+        return {
+            "signature": self.signature(),
+            "kernel": list(self.kernel),
+            "stride": list(self.stride),
+            "dilation": list(self.dilation),
+            "pad_before": list(self.pad_before),
+            "pad_after": list(self.pad_after),
+            "input_dilation": list(self.input_dilation),
+            "pad_known": self.pad_known,
+            "in_spatial": list(self.in_spatial),
+            "out_spatial": list(self.out_spatial),
+            "channels_in": self.channels_in,
+            "dtype": self.dtype,
+            "padded": self.padded,
+            "symmetric_pad": self.symmetric_pad,
+        }
 
 
 def _terms(expr) -> "dict[int, int] | None":
@@ -110,8 +123,7 @@ def _terms(expr) -> "dict[int, int] | None":
     tiled or packed forms whose geometry is not read the same way, and treating one as linear would
     return a stride that is not the program's.
     """
-    from xdsl.ir.affine import (AffineBinaryOpExpr, AffineBinaryOpKind, AffineConstantExpr,
-                                AffineDimExpr)
+    from xdsl.ir.affine import AffineBinaryOpExpr, AffineBinaryOpKind, AffineConstantExpr, AffineDimExpr
 
     if isinstance(expr, AffineDimExpr):
         return {int(expr.position): 1}
@@ -175,8 +187,9 @@ def _pad_chain(value) -> "tuple[dict, bool]":
         if dest is None or len(dest) != len(prop["static_offsets"]):
             break
         found = True
-        for i, (off, size, strd) in enumerate(zip(prop["static_offsets"], prop["static_sizes"],
-                                                  prop["static_strides"])):
+        for i, (off, size, strd) in enumerate(
+            zip(prop["static_offsets"], prop["static_sizes"], prop["static_strides"])
+        ):
             # A strided insert SPACES the source out: it occupies (size-1)*stride + 1 of the
             # destination. Anything past that on either side is border padding.
             span = (size - 1) * strd + 1
@@ -215,8 +228,7 @@ def _im2col_km(op) -> "tuple[int, int] | None":
         for value in frontier:
             for use in getattr(value, "uses", ()):
                 user = getattr(use, "operation", None)
-                if user is None or mq.op_name(user) not in ("tensor.collapse_shape",
-                                                            "tensor.expand_shape"):
+                if user is None or mq.op_name(user) not in ("tensor.collapse_shape", "tensor.expand_shape"):
                     continue
                 for res in getattr(user, "results", ()):
                     shaped = _shaped(res)
@@ -250,12 +262,15 @@ def _resolve_axes(axes, *, bare, padded, k_total: int, m_total: int):
         kernels, strides, dils, poss, outs = [], [], [], [], []
         for (pos, da, ca, db, cb, ea, eb), pick in zip(axes, choice):
             # pick 0: `da` is the kernel dim; pick 1: `db` is.
-            kdim, odim = ((da, db) if pick == 0 else (db, da))
-            kext, oext = ((ea, eb) if pick == 0 else (eb, ea))
+            kdim, odim = (da, db) if pick == 0 else (db, da)
+            kext, oext = (ea, eb) if pick == 0 else (eb, ea)
             dil = ca if kdim == da else cb
             strd = cb if kdim == da else ca
-            kernels.append(kext); strides.append(strd); dils.append(dil)
-            poss.append(pos); outs.append(oext)
+            kernels.append(kext)
+            strides.append(strd)
+            dils.append(dil)
+            poss.append(pos)
+            outs.append(oext)
         kprod = 1
         for v in kernels:
             kprod *= v
@@ -275,12 +290,14 @@ def _resolve_axes(axes, *, bare, padded, k_total: int, m_total: int):
             continue
         # The convolution output identity, applied last as a consistency check rather than as the
         # discriminator it cannot be.
-        if any(o != (padded[pos] - ((k - 1) * d + 1)) // s + 1
-               for k, s, d, pos, o in zip(kernels, strides, dils, poss, outs)):
+        if any(
+            o != (padded[pos] - ((k - 1) * d + 1)) // s + 1
+            for k, s, d, pos, o in zip(kernels, strides, dils, poss, outs)
+        ):
             continue
         fits.append((list(zip(kernels, strides, dils, poss, outs)), channel))
     if len(fits) != 1:
-        return None                                # undetermined, or contradictory -- never guessed
+        return None  # undetermined, or contradictory -- never guessed
     return fits[0]
 
 
@@ -296,7 +313,7 @@ def geometries(src) -> list[ConvGeometry]:
 
     try:
         module = mq.parse(src)
-    except Exception:                              # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return []
 
     out: list[ConvGeometry] = []
@@ -316,8 +333,7 @@ def geometries(src) -> list[ConvGeometry]:
             # Anything else and the extents below would be indexed wrongly, so it is required rather
             # than assumed.
             out_terms = [_terms(r) for r in maps[-1]]
-            if len(out_terms) != len(extents) or any(
-                    t is None or t != {i: 1} for i, t in enumerate(out_terms)):
+            if len(out_terms) != len(extents) or any(t is None or t != {i: 1} for i, t in enumerate(out_terms)):
                 continue
 
             # The K side of the im2col, read from the reshape the gather feeds. This is what DECIDES
@@ -338,7 +354,7 @@ def geometries(src) -> list[ConvGeometry]:
                     break
                 if len(t) == 1:
                     bare.append(extents[next(iter(t))])
-                    continue                       # batch or channel, not a window axis
+                    continue  # batch or channel, not a window axis
                 if len(t) != 2:
                     ok = False
                     break
@@ -347,8 +363,7 @@ def geometries(src) -> list[ConvGeometry]:
             if not ok or not axes or len(bare) != 2:
                 continue
 
-            resolved = _resolve_axes(axes, bare=bare, padded=padded,
-                                     k_total=k_total, m_total=m_total)
+            resolved = _resolve_axes(axes, bare=bare, padded=padded, k_total=k_total, m_total=m_total)
             if resolved is None:
                 continue
             spatial, cin = resolved
@@ -365,16 +380,25 @@ def geometries(src) -> list[ConvGeometry]:
             pa = tuple(pads["after"].get(pos, 0) for (_, _, _, pos, _) in spatial)
             idil = tuple(pads["input_dilation"].get(pos, 1) for (_, _, _, pos, _) in spatial)
             # The real input, before the padding was added and before any input dilation spaced it.
-            ins = tuple(((padded[pos] - pb[i] - pa[i]) - 1) // idil[i] + 1
-                        for i, (_, _, _, pos, _) in enumerate(spatial))
-            out.append(ConvGeometry(
-                kernel=tuple(k for k, _, _, _, _ in spatial),
-                stride=tuple(s for _, s, _, _, _ in spatial),
-                dilation=tuple(d for _, _, d, _, _ in spatial),
-                pad_before=pb, pad_after=pa, input_dilation=idil, pad_known=pad_known,
-                in_spatial=ins, out_spatial=tuple(o for *_, o in spatial),
-                channels_in=cin, dtype=dtype))
-        except Exception:                          # noqa: BLE001 -- one bad op never kills the walk
+            ins = tuple(
+                ((padded[pos] - pb[i] - pa[i]) - 1) // idil[i] + 1 for i, (_, _, _, pos, _) in enumerate(spatial)
+            )
+            out.append(
+                ConvGeometry(
+                    kernel=tuple(k for k, _, _, _, _ in spatial),
+                    stride=tuple(s for _, s, _, _, _ in spatial),
+                    dilation=tuple(d for _, _, d, _, _ in spatial),
+                    pad_before=pb,
+                    pad_after=pa,
+                    input_dilation=idil,
+                    pad_known=pad_known,
+                    in_spatial=ins,
+                    out_spatial=tuple(o for *_, o in spatial),
+                    channels_in=cin,
+                    dtype=dtype,
+                )
+            )
+        except Exception:  # noqa: BLE001 -- one bad op never kills the walk
             continue
     return out
 
@@ -393,7 +417,7 @@ def _cached_geometries(path) -> list[ConvGeometry]:
         st = _P(path).stat()
         key = (str(path), st.st_mtime_ns, st.st_size)
     except OSError:
-        return geometries(path)                    # not a file we can stamp; parse it and do not cache
+        return geometries(path)  # not a file we can stamp; parse it and do not cache
     hit = _GEOMETRY_CACHE.get(key)
     if hit is None:
         hit = geometries(path)
@@ -411,7 +435,7 @@ def geometry_classes(captures: dict) -> dict:
     for label, path in sorted((captures or {}).items()):
         try:
             found = _cached_geometries(path)
-        except Exception as e:                     # noqa: BLE001 -- reported, never skipped silently
+        except Exception as e:  # noqa: BLE001 -- reported, never skipped silently
             unreadable[label] = f"{type(e).__name__}: {str(e)[-160:]}"
             continue
         for g in found:
@@ -428,5 +452,6 @@ def geometry_classes(captures: dict) -> dict:
             "map and its padding producer rather than from op attributes -- torch-mlir emits im2col, "
             "so a captured convolution carries no padding/stride/dilation attribute to read. Each "
             "geometry is verified against padded == (out-1)*stride + (kernel-1)*dilation + 1 and "
-            "dropped when it does not hold, so an unverified window never becomes an obligation"),
+            "dropped when it does not hold, so an unverified window never becomes an obligation"
+        ),
     }

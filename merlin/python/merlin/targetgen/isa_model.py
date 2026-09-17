@@ -12,6 +12,7 @@ The per-mnemonic ``fields`` map (operand-bit -> word-bit, derived by differentia
 ``to_bytecode``) is what lets the assembler PACK and the disassembler UNPACK operands into exactly the bits
 the hardware uses — with no hand-authored, per-target field table.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -60,8 +61,9 @@ class IsaModel:
         runtime ABI does not carry it — the fork-free consumer must fail closed, never guess a CSR number."""
         csrs = (self.runtime_abi or {}).get("special_csrs") or {}
         if role not in csrs:
-            raise KeyError(f"runtime_abi has no special CSR {role!r} for target {self.target!r} "
-                           "(derive it, do not hardcode)")
+            raise KeyError(
+                f"runtime_abi has no special CSR {role!r} for target {self.target!r} (derive it, do not hardcode)"
+            )
         return int(csrs[role])
 
     def sfu_op(self, op: str) -> dict:
@@ -69,8 +71,7 @@ class IsaModel:
         runtime ABI does not carry it (fail closed)."""
         ops = (self.runtime_abi or {}).get("sfu_ops") or {}
         if op not in ops:
-            raise KeyError(f"runtime_abi has no SFU op {op!r} for target {self.target!r} "
-                           "(derive it, do not hardcode)")
+            raise KeyError(f"runtime_abi has no SFU op {op!r} for target {self.target!r} (derive it, do not hardcode)")
         return dict(ops[op])
 
     def aperture(self, name: str) -> int:
@@ -78,8 +79,9 @@ class IsaModel:
         Raises when the runtime ABI does not carry it (fail closed)."""
         aps = (self.runtime_abi or {}).get("apertures") or {}
         if name not in aps:
-            raise KeyError(f"runtime_abi has no aperture {name!r} for target {self.target!r} "
-                           "(derive it, do not hardcode)")
+            raise KeyError(
+                f"runtime_abi has no aperture {name!r} for target {self.target!r} (derive it, do not hardcode)"
+            )
         return int(aps[name])
 
     def base_isa_family(self) -> str:
@@ -135,8 +137,10 @@ def isa_model_for(te_or_target: Any, *, model_ext: str | None = None, timeout: i
 
     # descriptor + target name, without importing a specific target
     if isinstance(te_or_target, str):
-        from .target_experiment import load_target_experiment
         from merlin.common.paths import merlin_dir
+
+        from .target_experiment import load_target_experiment
+
         target = te_or_target
         p = merlin_dir() / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml"
         te = load_target_experiment(p) if p.is_file() else None
@@ -161,6 +165,7 @@ def isa_model_for(te_or_target: Any, *, model_ext: str | None = None, timeout: i
     dram_base = 0
     try:
         from .dram_facts import dram_base_for
+
         dram_base = int(dram_base_for(target) or 0)
     except Exception:  # noqa: BLE001 — no derivable memory map -> floor 0 (linter then skips the check)
         dram_base = 0
@@ -169,11 +174,19 @@ def isa_model_for(te_or_target: Any, *, model_ext: str | None = None, timeout: i
     # text and their decode signatures for detection. Empty for a target whose ISA def has no such op (the
     # linter then reports an honest INFO instead of a false 'no halt').
     halt_mnem = tuple(tax.get("halt_mnemonics") or ())
-    halt_sigs = tuple((int(m), int(v)) for m, v in (tax.get("halt_signatures") or [])
-                      if isinstance(m, int) and isinstance(v, int))
+    halt_sigs = tuple(
+        (int(m), int(v)) for m, v in (tax.get("halt_signatures") or []) if isinstance(m, int) and isinstance(v, int)
+    )
 
-    return IsaModel(target=target, by_mnemonic=by_mnem, asm_mnemonics=asm, roles=roles,
-                    dram_base=dram_base, halt_mnemonics=halt_mnem, halt_signatures=halt_sigs)
+    return IsaModel(
+        target=target,
+        by_mnemonic=by_mnem,
+        asm_mnemonics=asm,
+        roles=roles,
+        dram_base=dram_base,
+        halt_mnemonics=halt_mnem,
+        halt_signatures=halt_sigs,
+    )
 
 
 def isa_model_from_encoding(target: str, fact: dict) -> IsaModel:
@@ -182,8 +195,9 @@ def isa_model_from_encoding(target: str, fact: dict) -> IsaModel:
     Returns an empty model when the fact carries no field layout (caller no-ops). Nothing here is
     target-specific; the fact is the sole input."""
     fields_in = fact.get("fields") or {}
-    field_layout = {str(k): (int(v[0]), int(v[1])) for k, v in fields_in.items()
-                    if isinstance(v, (list, tuple)) and len(v) == 2}
+    field_layout = {
+        str(k): (int(v[0]), int(v[1])) for k, v in fields_in.items() if isinstance(v, (list, tuple)) and len(v) == 2
+    }
     opcode_table = {str(k): int(v) for k, v in (fact.get("opcodes") or {}).items()}
     if not field_layout or not opcode_table:
         return IsaModel(target=target)
@@ -191,15 +205,32 @@ def isa_model_from_encoding(target: str, fact: dict) -> IsaModel:
     spaces = {str(k): int(v) for k, v in (fact.get("address_spaces") or {}).items()}
     as_field = str(fact.get("address_space_field") or "")
     runtime_abi = fact.get("runtime_abi") if isinstance(fact.get("runtime_abi"), dict) else {}
-    return IsaModel(target=target, inst_width=width, field_layout=field_layout, opcode_table=opcode_table,
-                    address_spaces=spaces, address_space_field=(as_field if as_field in field_layout else ""),
-                    runtime_abi=runtime_abi or {})
+    return IsaModel(
+        target=target,
+        inst_width=width,
+        field_layout=field_layout,
+        opcode_table=opcode_table,
+        address_spaces=spaces,
+        address_space_field=(as_field if as_field in field_layout else ""),
+        runtime_abi=runtime_abi or {},
+    )
 
 
 #: Entry keys that are not encoding-derived fields, so a correction leaves them alone.
-_ERRATA_KEEP = frozenset({"class", "role", "mnemonic", "fields", "fixed_mask", "fixed_value",
-                          "spec_fixed_value", "errata_applied", "errata_unresolved",
-                          "errata_dropped_fields"})
+_ERRATA_KEEP = frozenset(
+    {
+        "class",
+        "role",
+        "mnemonic",
+        "fields",
+        "fixed_mask",
+        "fixed_value",
+        "spec_fixed_value",
+        "errata_applied",
+        "errata_unresolved",
+        "errata_dropped_fields",
+    }
+)
 
 
 #: Field spans of the 32-bit RISC-V instruction word, by the name the derived entry uses. These are
@@ -211,7 +242,11 @@ _ERRATA_FIELD_SPANS = {  # derived-ok: candidate spans, each REJECTED unless it 
     # field instead of having this layout assumed of it. Positions of the 32-bit RISC-V instruction
     # FORMAT, never a value; every funct/opcode VALUE still comes from the target's own definition.
     # derived-ok: rejected unless it reproduces the target's own shipped field value
-    "opcode": (0, 7), "funct3": (12, 3), "funct2": (25, 2), "funct7": (25, 7)}  # derived-ok: verified per entry
+    "opcode": (0, 7),  # derived-ok: format position, confirmed per target in _confirmed_span
+    "funct3": (12, 3),  # derived-ok: format position, confirmed per target in _confirmed_span
+    "funct2": (25, 2),  # derived-ok: format position, confirmed per target in _confirmed_span
+    "funct7": (25, 7),  # derived-ok: format position, confirmed per target in _confirmed_span
+}
 
 
 def _confirmed_span(name: str, declared_word: int, declared_value: int) -> tuple[int, int] | None:
@@ -234,11 +269,13 @@ def _reviewed_errata(target: str) -> dict[str, dict]:
 
     Absent file, unreadable file or no section for this target all mean "no corrections", never an
     error: a target whose spec agrees with its hardware must be unaffected by this path existing."""
-    from .contract.schemas import contract_dir       # a missing helper is a BUG, not "no corrections"
+    from .contract.schemas import contract_dir  # a missing helper is a BUG, not "no corrections"
+
     registry = contract_dir() / "isa_errata.yaml"
     if not registry.exists():
         return {}
     import yaml
+
     doc = yaml.safe_load(registry.read_text()) or {}
     section = ((doc.get("errata") or {}).get(target)) or {}
     return {str(k): v for k, v in section.items() if isinstance(v, dict)}
@@ -295,7 +332,8 @@ def apply_errata(model: IsaModel, errata: dict[str, dict]) -> IsaModel:
             lo, width = span
             target_entry[fname] = (corrected >> lo) & ((1 << width) - 1)
         target_entry["errata_applied"] = {
-            "declared": entry.get("declared"), "hardware": hardware,
+            "declared": entry.get("declared"),
+            "hardware": hardware,
             "sources_against_spec": list(entry.get("sources_against_spec") or ()),
         }
         target_entry["spec_fixed_value"] = target_entry.get("fixed_value")
@@ -310,6 +348,7 @@ def isa_model_for_target(target: str, *, apply_corrections: bool = True) -> IsaM
     through to the probe path unchanged."""
     try:
         from .rtl import mlc_bridge
+
         fact = mlc_bridge.isa_encoding_for(target)
     except Exception:  # noqa: BLE001 — mlc absent / cache missing -> fall back to the probe path
         fact = None
@@ -328,18 +367,25 @@ def isa_model_for_target(target: str, *, apply_corrections: bool = True) -> IsaM
     # target with either richer source is unaffected, and still empty when no table exists.
     try:
         from .rtl import facts as _facts
+
         derived = isa_model_from_rocc_facts(target, _facts.load_facts(target) or {})
     except Exception:  # noqa: BLE001 - no facts bundle is an absence of evidence, not an error
         return probed
     return apply_errata(derived if not derived.is_empty() else probed, corrections)
+
 
 #: RISC-V base instruction-word field positions. A property of the 32-bit RISC-V encoding itself --
 #: field WIDTHS, not accelerator values -- and the same layout ``merlin.kernels.decode.rocc``
 #: disassembles against. Every VALUE (which opcode, which funct means what) comes from the target's
 #: own RTL decode table. Nothing here is per-target.
 _RISCV_FIELD_BITS = {
-    "funct": list(range(25, 32)), "rs2": list(range(20, 25)), "rs1": list(range(15, 20)),
-    "xd": [14], "xs1": [13], "xs2": [12], "rd": list(range(7, 12)),
+    "funct": list(range(25, 32)),
+    "rs2": list(range(20, 25)),
+    "rs1": list(range(15, 20)),
+    "xd": [14],
+    "xs1": [13],
+    "xs2": [12],
+    "rd": list(range(7, 12)),
     "opcode": list(range(0, 7)),
 }
 _ROCC_FUNCT_SHIFT = 25
@@ -366,8 +412,10 @@ def isa_model_from_rocc_facts(target: str, facts: "Mapping[str, Any]") -> IsaMod
     bundle carries no decode table, so a caller no-ops rather than assuming an encoding.
     """
     body = facts.get("facts") if isinstance(facts.get("facts"), Mapping) else facts
-    table = next((i for i in (body.get("interfaces") or ())
-                  if isinstance(i, Mapping) and i.get("name") == "funct_decode_table"), None)
+    table = next(
+        (i for i in (body.get("interfaces") or ()) if isinstance(i, Mapping) and i.get("name") == "funct_decode_table"),
+        None,
+    )
     if not table:
         return IsaModel(target=target)
     opcode, names = table.get("custom_opcode"), table.get("names") or {}
@@ -380,18 +428,26 @@ def isa_model_from_rocc_facts(target: str, facts: "Mapping[str, Any]") -> IsaMod
     for raw_funct, mnemonic in sorted(names.items(), key=lambda kv: int(kv[0])):
         funct = int(raw_funct)
         by_mnemonic[str(mnemonic)] = {
-            "class": "RoCCCustom", "mnemonic": str(mnemonic), "opcode": opcode,
-            "role": "accelerator", "funct3": None, "funct7": funct, "funct2": None,
+            "class": "RoCCCustom",
+            "mnemonic": str(mnemonic),
+            "opcode": opcode,
+            "role": "accelerator",
+            "funct3": None,
+            "funct7": funct,
+            "funct2": None,
             "fixed_mask": identity_mask,
             "fixed_value": (funct << _ROCC_FUNCT_SHIFT) | opcode,
             "fields": {k: list(v) for k, v in operands.items()},
         }
     return IsaModel(
-        target=target, by_mnemonic=by_mnemonic, asm_mnemonics=tuple(sorted(by_mnemonic)),
+        target=target,
+        by_mnemonic=by_mnemonic,
+        asm_mnemonics=tuple(sorted(by_mnemonic)),
         # A role maps to the instruction CLASSES that fill it -- `candidate_ops` selects
         # mnemonics whose entry["class"] is in this list, so mapping to mnemonics yields an
         # empty menu for every role.
-        roles={"accelerator": ["RoCCCustom"]}, inst_width=32,
+        roles={"accelerator": ["RoCCCustom"]},
+        inst_width=32,
         field_layout={k: (max(v), min(v)) for k, v in _RISCV_FIELD_BITS.items()},
         opcode_table={m: e["funct7"] for m, e in by_mnemonic.items()},
     )

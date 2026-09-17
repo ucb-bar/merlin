@@ -7,6 +7,7 @@ namespace so the relocated SIMT backend can reach it as a sibling
 (``get_backend("muon").muon_link`` / ``from . import muon_link``) without re-homing the generic code
 under a target-named directory.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen.fixed_format.link import *  # noqa: F401,F403

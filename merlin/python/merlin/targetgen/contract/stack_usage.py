@@ -1,10 +1,12 @@
 """Fail-closed parsing and recording of compiler-produced static stack-frame measurements."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
+
 from merlin.common import digest as _mdigest
 
 
@@ -59,33 +61,31 @@ def parse_stack_usage(text: str) -> tuple[StackUsageRow, ...]:
             continue
         fields = line.split("\t")
         if len(fields) != 3:
-            raise StackFramePreflightError(
-                f"stack-usage report line {number} does not have three tab-separated fields")
+            raise StackFramePreflightError(f"stack-usage report line {number} does not have three tab-separated fields")
         identity, byte_text, allocation = fields
         source_identity, separator, function = identity.rpartition(":")
         if not separator or not source_identity or not function:
-            raise StackFramePreflightError(
-                f"stack-usage report line {number} has no source/function identity")
+            raise StackFramePreflightError(f"stack-usage report line {number} has no source/function identity")
         if not byte_text.isascii() or not byte_text.isdecimal():
-            raise StackFramePreflightError(
-                f"stack-usage report line {number} has a non-decimal frame size")
+            raise StackFramePreflightError(f"stack-usage report line {number} has a non-decimal frame size")
         frame_bytes = int(byte_text)
         if allocation not in {"static", "dynamic", "dynamic,bounded"}:
             raise StackFramePreflightError(
-                f"stack-usage report line {number} has unknown allocation kind {allocation!r}")
+                f"stack-usage report line {number} has unknown allocation kind {allocation!r}"
+            )
         rows.append(StackUsageRow(source_identity, function, frame_bytes, allocation))
     if not rows:
         raise StackFramePreflightError("stack-usage report is empty")
     return tuple(rows)
 
 
-def measure_entrypoint(report_path: Path, *, llvm_path: Path, entry_symbol: str,
-                       max_static_bytes: int) -> StackFrameMeasurement:
+def measure_entrypoint(
+    report_path: Path, *, llvm_path: Path, entry_symbol: str, max_static_bytes: int
+) -> StackFrameMeasurement:
     """Require one fresh, source-bound, fully static entrypoint row within the target's budget."""
     report_path, llvm_path = Path(report_path), Path(llvm_path)
     if report_path.is_symlink() or not report_path.is_file():
-        raise StackFramePreflightError(
-            f"compiler produced no regular stack-usage report at {report_path}")
+        raise StackFramePreflightError(f"compiler produced no regular stack-usage report at {report_path}")
     try:
         rows = parse_stack_usage(report_path.read_text(encoding="utf-8"))
     except UnicodeError as exc:
@@ -93,47 +93,53 @@ def measure_entrypoint(report_path: Path, *, llvm_path: Path, entry_symbol: str,
     for row in rows:
         if Path(row.source_identity).name != llvm_path.name:
             raise StackFramePreflightError(
-                f"stack row for {row.function!r} names source {row.source_identity!r}, "
-                f"expected {llvm_path.name!r}")
+                f"stack row for {row.function!r} names source {row.source_identity!r}, expected {llvm_path.name!r}"
+            )
     # Clang writes the absolute input path into each otherwise deterministic row.  Canonicalize that
     # one workdir-dependent component after validating it, so two byte-identical compilations yield
     # the same evidence artifact and build-cache receipt.  Counts, classifications, symbols and row
     # order remain exactly compiler-produced.
-    canonical = "".join(
-        f"{llvm_path.name}:{row.function}\t{row.frame_bytes}\t{row.allocation}\n"
-        for row in rows)
+    canonical = "".join(f"{llvm_path.name}:{row.function}\t{row.frame_bytes}\t{row.allocation}\n" for row in rows)
     report_path.write_text(canonical, encoding="utf-8")
     # A dynamic helper beneath a static entrypoint is still an unbounded stack use.  Reject every
     # dynamic row in the translation unit, not merely a dynamic spelling on the entry row.
     dynamic = [row.function for row in rows if row.allocation != "static"]
     if dynamic:
-        raise StackFramePreflightError(
-            "stack-usage report contains dynamic allocation for: " + ", ".join(dynamic))
+        raise StackFramePreflightError("stack-usage report contains dynamic allocation for: " + ", ".join(dynamic))
     matches = [row for row in rows if row.function == entry_symbol]
     if len(matches) != 1:
         raise StackFramePreflightError(
-            f"stack-usage report contains {len(matches)} rows for entrypoint {entry_symbol!r}; "
-            "exactly one is required")
+            f"stack-usage report contains {len(matches)} rows for entrypoint {entry_symbol!r}; exactly one is required"
+        )
     row = matches[0]
     if type(max_static_bytes) is not int or max_static_bytes <= 0:
         raise StackFramePreflightError("stack-frame budget is not a positive integer")
     measurement = StackFrameMeasurement(
-        entry_symbol=entry_symbol, frame_bytes=row.frame_bytes,
-        max_static_bytes=max_static_bytes, report_rows=len(rows))
+        entry_symbol=entry_symbol, frame_bytes=row.frame_bytes, max_static_bytes=max_static_bytes, report_rows=len(rows)
+    )
     if measurement.frame_bytes > measurement.max_static_bytes:
         raise StackFramePreflightError(
             f"entrypoint {entry_symbol!r} needs {measurement.frame_bytes} static stack bytes, "
             f"exceeding the target-declared {measurement.max_static_bytes}-byte budget by "
             f"{measurement.frame_bytes - measurement.max_static_bytes} bytes",
-            measurement=measurement)
+            measurement=measurement,
+        )
     return measurement
 
 
-def write_receipt(path: Path, *, status: str, llvm_path: Path, object_path: Path,
-                  report_path: Path, entry_symbol: str, max_static_bytes: int,
-                  measurement: StackFrameMeasurement | None = None,
-                  diagnostic: str | None = None,
-                  repair: dict | None = None) -> Path:
+def write_receipt(
+    path: Path,
+    *,
+    status: str,
+    llvm_path: Path,
+    object_path: Path,
+    report_path: Path,
+    entry_symbol: str,
+    max_static_bytes: int,
+    measurement: StackFrameMeasurement | None = None,
+    diagnostic: str | None = None,
+    repair: dict | None = None,
+) -> Path:
     """Write the content-bound stack assessment beside the compiler outputs."""
     llvm_path, object_path, report_path = map(Path, (llvm_path, object_path, report_path))
     record = {

@@ -12,6 +12,7 @@ Custom-dialect ops (``quant_ext.*``, gemmini, anything model2MLIR emits) round-t
 
 xDSL-gated: requires the ``xdsl`` install (present in the default .venv). No ``re`` here by design.
 """
+
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -99,13 +100,13 @@ def _sym_name(fn) -> str | None:
     return getattr(sym, "data", None) if sym is not None else None
 
 
-def forward_signature(src: "Any", func_name: str = "forward"
-                      ) -> tuple[list[tuple[list[int], str]], list[tuple[list[int], str]]]:
+def forward_signature(
+    src: "Any", func_name: str = "forward"
+) -> tuple[list[tuple[list[int], str]], list[tuple[list[int], str]]]:
     """``(inputs, results)`` of ``@func_name`` as lists of ``(shape, dtype)``, read from the function
     type (not the printed text). Raises ``ValueError`` if the function is absent."""
     module = parse(src)
-    fn = next((op for op in module.walk()
-               if op.name == "func.func" and _sym_name(op) == func_name), None)
+    fn = next((op for op in module.walk() if op.name == "func.func" and _sym_name(op) == func_name), None)
     if fn is None:
         raise ValueError(f"no func.func @{func_name} in module")
     ftype = fn.function_type
@@ -115,8 +116,7 @@ def forward_signature(src: "Any", func_name: str = "forward"
 
 
 #: dtype string -> bytes per element, for the dtypes model2MLIR captures emit.
-_DTYPE_BYTES = {"f64": 8, "f32": 4, "f16": 2, "bf16": 2,
-                "i64": 8, "i32": 4, "i16": 2, "i8": 1, "i1": 1}
+_DTYPE_BYTES = {"f64": 8, "f32": 4, "f16": 2, "bf16": 2, "i64": 8, "i32": 4, "i16": 2, "i8": 1, "i1": 1}
 
 
 def value_bytes(t) -> int:
@@ -148,8 +148,7 @@ def activation_peak_bytes(src: "Any", func_name: str = "forward") -> int | None:
     """
     try:
         module = parse(src)
-        fn = next((op for op in module.walk()
-                   if op.name == "func.func" and _sym_name(op) == func_name), None)
+        fn = next((op for op in module.walk() if op.name == "func.func" and _sym_name(op) == func_name), None)
         if fn is None or not fn.body.blocks:
             return None
         ops = list(fn.body.blocks[0].ops)
@@ -168,7 +167,7 @@ def activation_peak_bytes(src: "Any", func_name: str = "forward") -> int | None:
             for val in [v for v in live if last_use.get(v, -1) <= i]:
                 del live[val]
         return peak or None
-    except Exception:                                            # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None
 
 

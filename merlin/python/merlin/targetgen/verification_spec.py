@@ -14,6 +14,7 @@ reads ONLY ``capsule.yaml`` (never ``golden.yaml`` / any answer surface), so the
 an expected output. It is target-agnostic: everything comes from the ``TargetExperiment`` and its corpus —
 no target-name literal, no regex.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -35,7 +36,7 @@ def _suite_roots(te: Any) -> list[Path]:
     primary = getattr(te, "capsule_corpus", None)
     if primary:
         roots.append(Path(primary))
-    for rel in (getattr(te, "corpus_siblings", lambda: [])() or []):
+    for rel in getattr(te, "corpus_siblings", lambda: [])() or []:
         p = repo_root() / rel
         if p.is_dir():
             roots.append(p)
@@ -71,8 +72,9 @@ def _io_dtypes(cap: dict) -> tuple[str, str]:
     ins = cap.get("inputs") or []
     operand = sorted({str(t.get("dtype")) for t in ins if t.get("dtype")})
     op = cap.get("operation") or {}
-    out_dt = str((op.get("attributes") or {}).get("output_dtype")
-                 or (cap.get("numeric_policy") or {}).get("dtype") or "?")
+    out_dt = str(
+        (op.get("attributes") or {}).get("output_dtype") or (cap.get("numeric_policy") or {}).get("dtype") or "?"
+    )
     return ("+".join(operand) if operand else "?", out_dt)
 
 
@@ -97,9 +99,15 @@ def build_spec(te: Any) -> dict[str, Any]:
         slot["coverage"].update(classes)
         if epi:
             slot["epilogues"].add("+".join(epi))
-    ops_out = {op: {"dtypes": sorted(s["dtypes"]), "accept": sorted(s["accept"]),
-                    "coverage": sorted(s["coverage"]), "epilogues": sorted(s["epilogues"])}
-               for op, s in sorted(ops.items())}
+    ops_out = {
+        op: {
+            "dtypes": sorted(s["dtypes"]),
+            "accept": sorted(s["accept"]),
+            "coverage": sorted(s["coverage"]),
+            "epilogues": sorted(s["epilogues"]),
+        }
+        for op, s in sorted(ops.items())
+    }
     return {
         "target": getattr(te, "target", "?"),
         "n_capsules": len(caps),
@@ -116,17 +124,21 @@ def render_markdown(te: Any) -> str:
     L: list[str] = []
     L.append(f"# Verification spec — acceptance contract for `{spec['target']}`")
     L.append("")
-    L.append("_You are bringing up the software stack for brand-new hardware. Your world is the RTL, the "
-             "shipped ISA/ABI docs, any example kernel, and this spec — there is **no pre-existing SW "
-             "stack and no answer key**. This is the contract the verification team gives you: it says "
-             "WHAT we test for and the pass criteria, not the expected outputs. Validate your work the way "
-             "an engineer does — compute the operation's expected result yourself from the declared inputs, "
-             "run your emitted artifact on the RTL, and debug divergences with the disassembler / trace / "
-             "hardware-state tools._")
+    L.append(
+        "_You are bringing up the software stack for brand-new hardware. Your world is the RTL, the "
+        "shipped ISA/ABI docs, any example kernel, and this spec — there is **no pre-existing SW "
+        "stack and no answer key**. This is the contract the verification team gives you: it says "
+        "WHAT we test for and the pass criteria, not the expected outputs. Validate your work the way "
+        "an engineer does — compute the operation's expected result yourself from the declared inputs, "
+        "run your emitted artifact on the RTL, and debug divergences with the disassembler / trace / "
+        "hardware-state tools._"
+    )
     L.append("")
-    L.append(f"**Scope:** {spec['n_capsules']} graded capsules across the operations below (the hidden "
-             "holdout is not shown). Each capsule's `capsule.yaml` is the itemized test: its declared "
-             "operation, input/output dtypes, acceptance policy, and required datapath coverage.")
+    L.append(
+        f"**Scope:** {spec['n_capsules']} graded capsules across the operations below (the hidden "
+        "holdout is not shown). Each capsule's `capsule.yaml` is the itemized test: its declared "
+        "operation, input/output dtypes, acceptance policy, and required datapath coverage."
+    )
     L.append("")
     L.append("## Target operations, datatypes, and acceptance")
     for op, d in spec["ops"].items():
@@ -134,21 +146,28 @@ def render_markdown(te: Any) -> str:
         L.append(f"- **datatypes (operands -> output):** {', '.join(d['dtypes']) or '?'}")
         if d["epilogues"]:
             L.append(f"- **epilogues:** {', '.join(d['epilogues'])}")
-        L.append(f"- **acceptance policy:** {', '.join(d['accept']) or '?'}  "
-                 "(exact_int = bit-exact integer match; tolerance_float = within the stated atol/rtol)")
+        L.append(
+            f"- **acceptance policy:** {', '.join(d['accept']) or '?'}  "
+            "(exact_int = bit-exact integer match; tolerance_float = within the stated atol/rtol)"
+        )
         if d["coverage"]:
-            L.append(f"- **datapath coverage (must actually exercise, not fake):** "
-                     f"{', '.join(d['coverage'])}")
+            L.append(f"- **datapath coverage (must actually exercise, not fake):** {', '.join(d['coverage'])}")
         L.append("")
     L.append("## What is tested (engineer terms)")
-    L.append("- **Functional correctness:** your emitted artifact, run on the RTL (the oracle), must "
-             "compute the declared operation within the acceptance policy above. There is no stored "
-             "golden you can read — the reference is the operation's own mathematical definition, which "
-             "you can reproduce from the declared inputs.")
-    L.append("- **Datapath coverage:** the emitted stream must exercise the real hardware datapath (the "
-             "required instruction classes), not shortcut the result.")
-    L.append("- **Legality:** every emitted instruction must be one the target's decoder accepts (ISA "
-             "legality), and the program must terminate.")
+    L.append(
+        "- **Functional correctness:** your emitted artifact, run on the RTL (the oracle), must "
+        "compute the declared operation within the acceptance policy above. There is no stored "
+        "golden you can read — the reference is the operation's own mathematical definition, which "
+        "you can reproduce from the declared inputs."
+    )
+    L.append(
+        "- **Datapath coverage:** the emitted stream must exercise the real hardware datapath (the "
+        "required instruction classes), not shortcut the result."
+    )
+    L.append(
+        "- **Legality:** every emitted instruction must be one the target's decoder accepts (ISA "
+        "legality), and the program must terminate."
+    )
     if spec["isa_docs"]:
         L.append("")
         L.append("## ISA / ABI references")
@@ -171,8 +190,8 @@ def write_spec(te: Any, dest_dir: str | Path, *, name: str = "verification_spec.
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
-    from merlin.targetgen.target_experiment import load_target_experiment
     from merlin.common.paths import merlin_dir
+    from merlin.targetgen.target_experiment import load_target_experiment
 
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target", required=True)

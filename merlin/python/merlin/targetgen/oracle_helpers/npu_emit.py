@@ -23,6 +23,7 @@ from bits[11:7] → garbage). One-line upstream fix pending in ucb-ee194-tapeout
 this shim keeps the SHARED external tree untouched. Only IType is affected. The capsule path never
 assembles here, so it never needs the shim (the agent emits the encoded ``.word``/``.insn`` directly).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,14 +36,20 @@ def _install_itype_shim() -> None:
     from npu_model.isa import IType, _mask  # the MODEL's ISA definition (never a merlin opcode table)
 
     def _rd_fixed(self):  # correct field packing: rd from self.rd (not self.imm)
-        return ((_mask(self.imm, 12) << 20) | (_mask(self.rs1, 5) << 15)
-                | (_mask(self.funct3, 3) << 12) | (_mask(getattr(self, "rd", 0), 5) << 7)
-                | _mask(self.opcode, 7))
+        return (
+            (_mask(self.imm, 12) << 20)
+            | (_mask(self.rs1, 5) << 15)
+            | (_mask(self.funct3, 3) << 12)
+            | (_mask(getattr(self, "rd", 0), 5) << 7)
+            | _mask(self.opcode, 7)
+        )
+
     IType.to_bytecode = _rd_fixed
 
 
 def _tensor_bytes(t) -> bytes:
     import torch
+
     # reinterpret to uint8 in torch first — .numpy() rejects fp8/bf16 scalar types.
     return t.flatten().contiguous().view(torch.uint8).numpy().tobytes()
 
@@ -51,17 +58,16 @@ def _layout_inputs(specs: list[dict]) -> list[dict]:
     """Convert [{name,base,dtype,values(nested list)}] to [{base,b64}] DRAM bytes in the model's dtypes."""
     import numpy as np
     import torch
+
     _NP = {"int8": np.int8, "i8": np.int8}
     out = []
     for spec in specs:
         dt = spec["dtype"]
         vals = np.asarray(spec["values"])
         if dt in ("fp8_e4m3",):
-            bts = torch.from_numpy(vals.astype(np.float32)).to(torch.float8_e4m3fn).view(
-                torch.uint8).numpy().tobytes()
+            bts = torch.from_numpy(vals.astype(np.float32)).to(torch.float8_e4m3fn).view(torch.uint8).numpy().tobytes()
         elif dt in ("bf16",):
-            bts = torch.from_numpy(vals.astype(np.float32)).to(torch.bfloat16).view(
-                torch.uint8).numpy().tobytes()
+            bts = torch.from_numpy(vals.astype(np.float32)).to(torch.bfloat16).view(torch.uint8).numpy().tobytes()
         else:
             bts = vals.astype(_NP.get(dt, np.int8)).tobytes()
         out.append({"base": int(spec["base"]), "b64": base64.b64encode(bts).decode()})
@@ -84,18 +90,21 @@ def main() -> int:
         if a.fix_itype_rd:
             _install_itype_shim()
         import importlib
+
         mod = importlib.import_module("npu_model.configs.programs")
         prog = getattr(mod, a.program)()
         bundle["words"] = [int(w) & 0xFFFFFFFF for w in prog.assemble()]
         for base, arr in getattr(prog, "memory_regions", []):
-            bundle["inputs"].append({"base": int(base),
-                                     "b64": base64.b64encode(_tensor_bytes(arr)).decode()})
+            bundle["inputs"].append({"base": int(base), "b64": base64.b64encode(_tensor_bytes(arr)).decode()})
         g = getattr(prog, "golden_result", None)
         if g is not None:
             gbase, gt = g
             bundle["output"] = {"base": int(gbase), "shape": list(gt.shape), "dtype": str(gt.dtype)}
-            bundle["golden"] = {"b64": base64.b64encode(_tensor_bytes(gt)).decode(),
-                                "shape": list(gt.shape), "dtype": str(gt.dtype)}
+            bundle["golden"] = {
+                "b64": base64.b64encode(_tensor_bytes(gt)).decode(),
+                "shape": list(gt.shape),
+                "dtype": str(gt.dtype),
+            }
     else:
         # capsule path: lay out the emitted-capsule input tensors ONLY (words come from stock LLVM,
         # merlin-side). No model assembler is imported on this path.

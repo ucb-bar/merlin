@@ -14,6 +14,7 @@ torch is not available in this environment; goldens are labeled ``merlin_tensor_
 only for the im2col gather). A capsule may cross-check against torch in ``model_slice_export`` when
 torch is present.
 """
+
 from __future__ import annotations
 
 import math
@@ -51,7 +52,8 @@ def materialize_capsule_leaves(capsule: dict) -> dict[str, Tensor]:
     for spec in capsule.get("inputs", []):
         if spec.get("role") in ("input", "weight", "bias"):
             env[spec["name"]] = Tensor.deterministic(
-                spec["name"], tuple(spec["shape"]), spec.get("dtype", "i8"), lo, hi)
+                spec["name"], tuple(spec["shape"]), spec.get("dtype", "i8"), lo, hi
+            )
     return env
 
 
@@ -59,14 +61,17 @@ def materialize_capsule_leaves(capsule: dict) -> dict[str, Tensor]:
 # im2col (shared by golden + runner harness for conv2d)
 # --------------------------------------------------------------------------------------------
 from merlin.runtime.commandbuffer import (  # noqa: E402  (single source of truth)
-    BIAS_STAGES, apply_pool_stage, bias_tensor_name, conv_im2col, conv_out_dims)
+    BIAS_STAGES,
+    apply_pool_stage,
+    bias_tensor_name,
+    conv_im2col,
+    conv_out_dims,
+)
 
 
-def im2col(ifm: Tensor, ci: int, kh: int, kw: int, *, stride, padding, dilation,
-           layout: str = "nhwc") -> Tensor:
+def im2col(ifm: Tensor, ci: int, kh: int, kw: int, *, stride, padding, dilation, layout: str = "nhwc") -> Tensor:
     """Thin wrapper over the runtime's canonical :func:`conv_im2col` (shared with the harness)."""
-    return conv_im2col(ifm, kh=kh, kw=kw, ci=ci, stride=stride, padding=padding,
-                       dilation=dilation, layout=layout)
+    return conv_im2col(ifm, kh=kh, kw=kw, ci=ci, stride=stride, padding=padding, dilation=dilation, layout=layout)
 
 
 # --------------------------------------------------------------------------------------------
@@ -112,9 +117,9 @@ def _narrow_to_dtype(t: Tensor, dtype: str) -> Tensor:
     if parsed is None:
         return t
     bits, signed = parsed
-    if bits >= 32:                      # wide accumulator width — no narrowing
+    if bits >= 32:  # wide accumulator width — no narrowing
         return t
-    if dtype == "i8":                   # byte-identical to the historical to_i8() path
+    if dtype == "i8":  # byte-identical to the historical to_i8() path
         return t.to_i8()
     if signed:
         lo, hi = -(1 << (bits - 1)), (1 << (bits - 1)) - 1
@@ -124,8 +129,7 @@ def _narrow_to_dtype(t: Tensor, dtype: str) -> Tensor:
     return Tensor(t.shape, out, dtype)
 
 
-def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor],
-                    operands: dict | None = None) -> Tensor:
+def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor], operands: dict | None = None) -> Tensor:
     for stage in attrs.get("epilogue", []):
         if stage in BIAS_STAGES:
             t = t.add_bias(env[bias_tensor_name(operands or {}, attrs, op="epilogue")])
@@ -138,7 +142,8 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor],
                     "stage is NOT applied with a default: the golden, the reference and the simulator "
                     "each carry their own fallback shift, so an undeclared one makes them agree with "
                     "each other while the backend is handed a stage with no parameter — and the capsule "
-                    "then passes for a reason unrelated to what it tests")
+                    "then passes for a reason unrelated to what it tests"
+                )
             t = t.requant(int(shift))
         elif stage == "acc_scale":
             # The acc_scale readout rounding mode is a named, overridable parameter (default the gemmini
@@ -150,7 +155,8 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor],
                 raise ValueError(
                     f"acc_scale requant_round={mode!r} is declared but the integer Tensor engine only "
                     f"reproduces 'half_even'; grade this datapath against an independent golden.yaml "
-                    f"instead of silently rounding half-even")
+                    f"instead of silently rounding half-even"
+                )
             t = t.requant_acc_scale(float(attrs.get("acc_scale", 1.0)))
         elif stage == "relu":
             t = t.relu()
@@ -163,9 +169,7 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor],
             # matrix down to ``[N*Ho*Wo, Co]``. Neither shape says what spatial extent its rows
             # unflatten to. Parsed by the runtime's one ``pool_params``, so this golden and the
             # reference/simulator it is compared against cannot disagree about the window.
-            t = apply_pool_stage(
-                t, stage, attrs,
-                op=f"golden epilogue of {attrs.get('out', 'the output')!r}")
+            t = apply_pool_stage(t, stage, attrs, op=f"golden epilogue of {attrs.get('out', 'the output')!r}")
         else:
             # FAIL CLOSED ON AN EPILOGUE STAGE THIS ENGINE CANNOT APPLY. There was no terminal branch
             # here, so an unrecognised stage was silently skipped and the capsule shipped a golden that
@@ -179,7 +183,8 @@ def _apply_epilogue(t: Tensor, attrs: dict, env: dict[str, Tensor],
                 f"it (implemented: bias_add/bias, requant, acc_scale, relu, maxpool). Implement it here -- "
                 f"and in "
                 f"the reference and simulator, which grade against this -- rather than shipping a golden "
-                f"that skips it")
+                f"that skips it"
+            )
     return _narrow_to_dtype(t, attrs.get("output_dtype", "i32"))
 
 
@@ -196,7 +201,7 @@ def _rmsnorm(x: Tensor, gamma: Tensor, eps: float) -> Tensor:
         raise ValueError(f"rmsnorm: gamma has {len(g)} element(s), expected {cols}")
     out: list[float] = []
     for r in range(rows):
-        row = [float(v) for v in x.data[r * cols:(r + 1) * cols]]
+        row = [float(v) for v in x.data[r * cols : (r + 1) * cols]]
         inv = 1.0 / math.sqrt(sum(v * v for v in row) / cols + eps)
         out.extend(v * inv * g[c] for c, v in enumerate(row))
     return Tensor((rows, cols), out, "f32")
@@ -219,7 +224,7 @@ def _rope_rotate_half(t: Tensor, theta: float) -> Tensor:
     freq = [theta ** (-(i / half)) for i in range(half)]
     out: list[float] = []
     for p in range(rows):
-        row = [float(v) for v in t.data[p * d:(p + 1) * d]]
+        row = [float(v) for v in t.data[p * d : (p + 1) * d]]
         cos = [math.cos(p * f) for f in freq]
         sin = [math.sin(p * f) for f in freq]
         for c in range(d):
@@ -235,7 +240,7 @@ def _softmax_rows(t: Tensor) -> Tensor:
     rows, cols = t.shape
     out: list[float] = []
     for r in range(rows):
-        row = [float(v) for v in t.data[r * cols:(r + 1) * cols]]
+        row = [float(v) for v in t.data[r * cols : (r + 1) * cols]]
         mx = max(row)
         ex = [math.exp(v - mx) for v in row]
         s = sum(ex)
@@ -243,8 +248,9 @@ def _softmax_rows(t: Tensor) -> Tensor:
     return Tensor((rows, cols), out, "f32")
 
 
-def _attention(q: Tensor, k: Tensor, v: Tensor, *, scale: float | None = None,
-               causal: bool = False, softcap: float | None = None) -> Tensor:
+def _attention(
+    q: Tensor, k: Tensor, v: Tensor, *, scale: float | None = None, causal: bool = False, softcap: float | None = None
+) -> Tensor:
     """Scaled dot-product attention: ``softmax(softcap?(Q@K^T * scale) + causal_mask) @ V``.
 
     ONE definition covering the plain, causal, soft-capped and block-scaled (MX) attention capsules —
@@ -260,14 +266,14 @@ def _attention(q: Tensor, k: Tensor, v: Tensor, *, scale: float | None = None,
     sc = (1.0 / math.sqrt(d)) if scale is None else float(scale)
     scores: list[float] = []
     for i in range(m):
-        qi = [float(x) for x in q.data[i * d:(i + 1) * d]]
+        qi = [float(x) for x in q.data[i * d : (i + 1) * d]]
         for j in range(n):
-            kj = k.data[j * d:(j + 1) * d]
+            kj = k.data[j * d : (j + 1) * d]
             s = sum(a * float(b) for a, b in zip(qi, kj)) * sc
             if softcap is not None:
                 s = float(softcap) * math.tanh(s / float(softcap))
             if causal and j > i:
-                s = -math.inf          # masked BEFORE softmax; exp(-inf) == 0 contributes nothing
+                s = -math.inf  # masked BEFORE softmax; exp(-inf) == 0 contributes nothing
             scores.append(s)
     p = _softmax_rows(Tensor((m, n), scores, "f32"))
     return p.matmul(v)
@@ -281,8 +287,7 @@ def _nested_list(t: Tensor) -> Any:
         return t.to_list()
     if len(t.shape) == 3:
         b, m, n = t.shape
-        return [[[t.data[x * m * n + i * n + j] for j in range(n)] for i in range(m)]
-                for x in range(b)]
+        return [[[t.data[x * m * n + i * n + j] for j in range(n)] for i in range(m)] for x in range(b)]
     raise ValueError(f"golden: cannot shape a rank-{len(t.shape)} result into nested lists")
 
 
@@ -296,8 +301,8 @@ def _batched_matmul(a: Tensor, w: Tensor) -> Tensor:
         raise ValueError(f"batched matmul shape mismatch: {a.shape} @ {w.shape}")
     out: list[float] = []
     for b in range(batch):
-        asl = Tensor((m, k), a.data[b * m * k:(b + 1) * m * k], a.dtype)
-        wsl = Tensor((k, n), w.data[b * k * n:(b + 1) * k * n], w.dtype)
+        asl = Tensor((m, k), a.data[b * m * k : (b + 1) * m * k], a.dtype)
+        wsl = Tensor((k, n), w.data[b * k * n : (b + 1) * k * n], w.dtype)
         out.extend(asl.matmul(wsl).data)
     return Tensor((batch, m, n), out, "f32")
 
@@ -319,6 +324,7 @@ def _load_golden_yaml(capsule_dir: str | Path | None) -> dict | None:
     if not capsule_dir:
         return None
     import yaml
+
     gy = Path(capsule_dir) / "golden.yaml"
     if not gy.is_file():
         return None
@@ -359,7 +365,7 @@ def canonical_input_raws(capsule: dict, capsule_dir: str | Path | None = None) -
             out[name] = bytes(int(x, 16) & 0xFF for x in raws)
     for name, spec in _decoded_inputs(ins).items():
         if name in out:
-            continue                                   # recorded device bytes always win over re-encoding
+            continue  # recorded device bytes always win over re-encoding
         enc = _encode_leaf(capsule, name, spec)
         if enc is not None:
             out[name] = enc
@@ -368,7 +374,7 @@ def canonical_input_raws(capsule: dict, capsule_dir: str | Path | None = None) -
 
 def _leaf_dtype(capsule: dict, name: str) -> str | None:
     """The declared dtype of leaf ``name``, read off the capsule's own input list (never inferred)."""
-    for t in (capsule.get("inputs") or []):
+    for t in capsule.get("inputs") or []:
         if t.get("name") == name:
             return t.get("dtype")
     return None
@@ -384,6 +390,7 @@ def _encode_leaf(capsule: dict, name: str, values: list) -> bytes | None:
     import numpy as _np
 
     from merlin.runtime import fp8_formats as _ff
+
     try:
         raw = _ff.encode_bytes(values, dtype)
         width = _ff.storage_bits(dtype) // 8
@@ -412,7 +419,7 @@ def _decoded_inputs(ins: dict) -> dict[str, list]:
             continue
         flat: list = []
         stack = [decoded]
-        while stack:                                   # flatten any nesting to row-major order
+        while stack:  # flatten any nesting to row-major order
             cur = stack.pop(0)
             if isinstance(cur, list):
                 stack = list(cur) + stack
@@ -435,7 +442,7 @@ def canonical_input_values(capsule: dict, capsule_dir: str | Path | None = None)
     ins = ((gy.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}
     out: dict[str, dict] = {}
     for name, spec in ins.items():
-        if not isinstance(spec, dict):   # skip non-tensor provenance (mxfp8 block-scale code arrays, examples)
+        if not isinstance(spec, dict):  # skip non-tensor provenance (mxfp8 block-scale code arrays, examples)
             continue
         decoded = spec.get("decoded")
         if decoded is not None:
@@ -494,7 +501,7 @@ def mx_scale_codes(capsule: dict, capsule_dir: str | Path | None = None) -> dict
     ins = ((gy.get("oracle_provenance", {}) or {}).get("inputs", {})) or {}
     out: dict[str, list[int]] = {}
     for name, spec in ins.items():
-        if not isinstance(spec, list):   # scale-code arrays are lists; tensor specs are dicts (skipped here)
+        if not isinstance(spec, list):  # scale-code arrays are lists; tensor specs are dicts (skipped here)
             continue
         flat: list[int] = []
         for row in spec:
@@ -523,23 +530,40 @@ def mx_operands(capsule: dict, capsule_dir: str | Path | None = None) -> dict | 
     # emitter packs them block-diagonally into a single MX tile.
     bc = ins.get("batched_codes")
     if isinstance(bc, dict) and bc.get("batches"):
-        return {"fmt": bc.get("fmt", "fp8_e4m3"), "batched": True,
-                "B": bc["B"], "M": bc["M"], "H": bc["H"], "N": bc["N"],
-                "stacked_out_shape": bc.get("stacked_out_shape"),
-                "logical_output_shape": bc.get("logical_output_shape"),
-                "batches": bc["batches"]}
+        return {
+            "fmt": bc.get("fmt", "fp8_e4m3"),
+            "batched": True,
+            "B": bc["B"],
+            "M": bc["M"],
+            "H": bc["H"],
+            "N": bc["N"],
+            "stacked_out_shape": bc.get("stacked_out_shape"),
+            "logical_output_shape": bc.get("logical_output_shape"),
+            "batches": bc["batches"],
+        }
     # Flash attention (fused MX): O = mx_matmul(softmax(mx_matmul(Q,Kᵀ)/scale), V). The golden decomposes it
     # into the two MX matmul stages (each with its own operand codes + E8M0 scales) plus the softmax scale +
     # the P (softmax output) requant scales, so the reference kernel can chain two mxgemm calls with an
     # on-device softmax+requant between them. Passed through as ``flash``; the emitter builds the fused kernel.
     ac = ins.get("attention_codes")
     if isinstance(ac, dict) and ac.get("qk_stage") and ac.get("pv_stage"):
-        return {"fmt": ac.get("fmt", "fp8_e4m3"), "flash": True,
-                "M": ac["M"], "H": ac["H"], "Skv": ac["Skv"], "Dv": ac["Dv"],
-                "att_scale": ac["att_scale"], "softcap": ac.get("softcap"),
-                "qk_stage": ac["qk_stage"], "pv_stage": ac["pv_stage"],
-                "SA_q": ac["SA_q"], "SB_k": ac["SB_k"], "SB_v": ac["SB_v"], "SA_p": ac.get("SA_p"),
-                "P_decoded": ac.get("P_decoded")}
+        return {
+            "fmt": ac.get("fmt", "fp8_e4m3"),
+            "flash": True,
+            "M": ac["M"],
+            "H": ac["H"],
+            "Skv": ac["Skv"],
+            "Dv": ac["Dv"],
+            "att_scale": ac["att_scale"],
+            "softcap": ac.get("softcap"),
+            "qk_stage": ac["qk_stage"],
+            "pv_stage": ac["pv_stage"],
+            "SA_q": ac["SA_q"],
+            "SB_k": ac["SB_k"],
+            "SB_v": ac["SB_v"],
+            "SA_p": ac.get("SA_p"),
+            "P_decoded": ac.get("P_decoded"),
+        }
     oc = ins.get("operand_codes")
     if not isinstance(oc, dict) or "A_bytes" not in oc:
         return None
@@ -550,10 +574,19 @@ def mx_operands(capsule: dict, capsule_dir: str | Path | None = None) -> dict | 
     if sa is None or sb is None:
         return None
     return {
-        "fmt": oc["fmt"], "M": oc["M"], "N": oc["N"], "K": oc["K"], "G": oc.get("G", 0),
-        "A_bytes": oc["A_bytes"], "B_bytes": oc["B_bytes"],
-        "A_shape": oc.get("A_shape"), "B_shape": oc.get("B_shape"),
-        "SA": sa, "SB": sb, "lutA": oc.get("lutA"), "lutB": oc.get("lutB"),
+        "fmt": oc["fmt"],
+        "M": oc["M"],
+        "N": oc["N"],
+        "K": oc["K"],
+        "G": oc.get("G", 0),
+        "A_bytes": oc["A_bytes"],
+        "B_bytes": oc["B_bytes"],
+        "A_shape": oc.get("A_shape"),
+        "B_shape": oc.get("B_shape"),
+        "SA": sa,
+        "SB": sb,
+        "lutA": oc.get("lutA"),
+        "lutB": oc.get("lutB"),
         "_scale_codes": scales,
     }
 
@@ -599,7 +632,8 @@ def golden(capsule: dict, capsule_dir: str | Path | None = None) -> dict[str, li
             raise ValueError(
                 f"independent float golden declared (golden_source="
                 f"{golden_source(capsule, capsule_dir)!r}) but golden.yaml has no 'outputs' "
-                f"({Path(capsule_dir) / 'golden.yaml' if capsule_dir else '<no dir>'})")
+                f"({Path(capsule_dir) / 'golden.yaml' if capsule_dir else '<no dir>'})"
+            )
         return outs
     return _recompute_golden(capsule)
 
@@ -638,7 +672,8 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             return order[-1]
         raise KeyError(
             f"capsule declares op {op!r}, whose name states that a bias is added, but names no bias "
-            f"tensor: no `attributes.bias`, no input with role 'bias', and no `arg_order`")
+            f"tensor: no `attributes.bias`, no input with role 'bias', and no `arg_order`"
+        )
 
     if op in ("matmul", "linear"):
         lhs = env[attrs.get("lhs", _pick("input"))]
@@ -665,15 +700,16 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
             raise ValueError(
                 f"capsule declares op {op!r}, whose name states that the contraction is batched, but "
                 f"its operands are rank {len(lhs.shape)} and {len(w.shape)}: a batched golden needs "
-                f"[B,M,K] and [B,K,N]")
+                f"[B,M,K] and [B,K,N]"
+            )
         b, m, k = lhs.shape
         b2, k2, n = w.shape
         if b != b2 or k != k2:
             raise ValueError(f"batched matmul shape mismatch: {lhs.shape} x {w.shape}")
         batches: list = []
         for i in range(b):
-            a_i = Tensor((m, k), lhs.data[i * m * k:(i + 1) * m * k], lhs.dtype)
-            w_i = Tensor((k, n), w.data[i * k * n:(i + 1) * k * n], w.dtype)
+            a_i = Tensor((m, k), lhs.data[i * m * k : (i + 1) * m * k], lhs.dtype)
+            w_i = Tensor((k, n), w.data[i * k * n : (i + 1) * k * n], w.dtype)
             batches.append(_apply_epilogue(a_i.matmul(w_i), attrs, env).to_list())
         return {out_name: batches}
 
@@ -700,29 +736,38 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         # cannot disagree about what adding a bias means, which is the whole basis of the comparison.
         src = env[attrs.get("src", _pick("input"))]
         stages = list(attrs.get("epilogue") or []) or ["bias_add"]
-        return {out_name: _apply_epilogue(src, {**attrs, "epilogue": stages,
-                                                 "bias": _bias_name()}, env).to_list()}
+        return {out_name: _apply_epilogue(src, {**attrs, "epilogue": stages, "bias": _bias_name()}, env).to_list()}
 
     if op == "conv2d":
         ifm = env[attrs["ifm"]]
-        w = env[attrs["weight"]]              # packed [Kh*Kw*Ci, Co]
-        ci = int(attrs["ci"]); kh = int(attrs["kh"]); kw = int(attrs["kw"])
-        cols = im2col(ifm, ci, kh, kw, stride=tuple(attrs.get("stride", [1, 1])),
-                      padding=tuple(attrs.get("padding", [0, 0, 0, 0])),
-                      dilation=tuple(attrs.get("dilation", [1, 1])),
-                      layout=attrs.get("layout", "nhwc"))
+        w = env[attrs["weight"]]  # packed [Kh*Kw*Ci, Co]
+        ci = int(attrs["ci"])
+        kh = int(attrs["kh"])
+        kw = int(attrs["kw"])
+        cols = im2col(
+            ifm,
+            ci,
+            kh,
+            kw,
+            stride=tuple(attrs.get("stride", [1, 1])),
+            padding=tuple(attrs.get("padding", [0, 0, 0, 0])),
+            dilation=tuple(attrs.get("dilation", [1, 1])),
+            layout=attrs.get("layout", "nhwc"),
+        )
         t = cols.matmul(w)
         t = _apply_epilogue(t, attrs, env)
         return {out_name: t.to_list()}
 
     if op == "attention_qk":
-        q = env[attrs["q"]]; k = env[attrs["k"]]
-        t = q.matmul(_transpose2d(k))         # Q @ K^T
+        q = env[attrs["q"]]
+        k = env[attrs["k"]]
+        t = q.matmul(_transpose2d(k))  # Q @ K^T
         t = _apply_epilogue(t, attrs, env)
         return {out_name: t.to_list()}
 
     if op == "attention_pv":
-        p = env[attrs["p"]]; v = env[attrs["v"]]
+        p = env[attrs["p"]]
+        v = env[attrs["v"]]
         t = p.matmul(v)
         t = _apply_epilogue(t, attrs, env)
         return {out_name: t.to_list()}
@@ -733,9 +778,11 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         outs: dict[str, list] = {}
         for spec in attrs["matmuls"]:
             t = env[spec["lhs"]].matmul(w)
-            sub = {"epilogue": spec.get("epilogue", []),
-                   "output_dtype": spec.get("output_dtype", "i32"),
-                   "acc_scale": spec.get("acc_scale", attrs.get("acc_scale", 1.0))}
+            sub = {
+                "epilogue": spec.get("epilogue", []),
+                "output_dtype": spec.get("output_dtype", "i32"),
+                "acc_scale": spec.get("acc_scale", attrs.get("acc_scale", 1.0)),
+            }
             t = _apply_epilogue(t, sub, env)
             outs[spec["out"]] = t.to_list()
         return outs
@@ -761,9 +808,11 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
     # every capsule (present or future) that declares the op, on any target. Each composition reuses
     # the same primitives, so a fused capsule cannot disagree with its unfused counterpart.
     if op == "rmsnorm":
-        t = _rmsnorm(env[attrs.get("src", _pick("input"))],
-                     env[attrs.get("gamma", _pick("weight"))],
-                     float(attrs.get("eps", 1e-5)))
+        t = _rmsnorm(
+            env[attrs.get("src", _pick("input"))],
+            env[attrs.get("gamma", _pick("weight"))],
+            float(attrs.get("eps", 1e-5)),
+        )
         return {out_name: _apply_epilogue(t, attrs, env).to_list()}
 
     if op == "rmsnorm_qkv":
@@ -788,15 +837,18 @@ def _recompute_golden(capsule: dict) -> dict[str, list]:
         if not (kn and vn):
             raise ValueError(f"golden: {op} needs q/k/v operands (got {order!r})")
         cap_v = attrs.get("softcap")
-        t = _attention(env[qn], env[kn], env[vn],
-                       scale=attrs.get("scale"),
-                       causal=bool(attrs.get("causal", False)),
-                       softcap=float(cap_v) if cap_v is not None else None)
+        t = _attention(
+            env[qn],
+            env[kn],
+            env[vn],
+            scale=attrs.get("scale"),
+            causal=bool(attrs.get("causal", False)),
+            softcap=float(cap_v) if cap_v is not None else None,
+        )
         return {out_name: _apply_epilogue(t, attrs, env).to_list()}
 
     if op in ("gemv_batched", "batched_matmul"):
-        t = _batched_matmul(env[attrs.get("lhs", _pick("input"))],
-                            env[attrs.get("weight", _pick("weight"))])
+        t = _batched_matmul(env[attrs.get("lhs", _pick("input"))], env[attrs.get("weight", _pick("weight"))])
         return {out_name: _nested_list(_apply_epilogue(t, attrs, env))}
 
     raise ValueError(f"golden: unsupported operation {op!r}")
@@ -828,17 +880,24 @@ def _flat(nested) -> list:
 _MISMATCH_INDEX_CAP = 64
 
 
-def compare(expected: dict[str, list], observed: dict[str, list], policy: dict,
-            *, golden_source: str = "merlin_tensor_int") -> dict:
+def compare(
+    expected: dict[str, list], observed: dict[str, list], policy: dict, *, golden_source: str = "merlin_tensor_int"
+) -> dict:
     """Exact-int (or tolerance-float) comparison; returns a numeric_report dict. ``golden_source`` is
     stamped into the report so provenance is honest — ``merlin_tensor_int`` for a recomputed integer
     golden, or the INDEPENDENT source (e.g. ``specir_refmodel_fp8_bf16``) when it was read from
     ``golden.yaml`` rather than recomputed."""
     mode = policy.get("compare", "exact_int")
-    rep: dict[str, Any] = {"policy": mode, "golden_source": golden_source,
-                           "status": "pass", "mismatch_count": 0,
-                           "max_abs_error": 0, "max_rel_error": 0.0,
-                           "first_mismatch": None, "per_output": {}}
+    rep: dict[str, Any] = {
+        "policy": mode,
+        "golden_source": golden_source,
+        "status": "pass",
+        "mismatch_count": 0,
+        "max_abs_error": 0,
+        "max_rel_error": 0.0,
+        "first_mismatch": None,
+        "per_output": {},
+    }
     total_mismatch = 0
     for name, exp in expected.items():
         ef = _flat(exp)
@@ -856,10 +915,13 @@ def compare(expected: dict[str, list], observed: dict[str, list], policy: dict,
             # "5 mismatches" -- looking like near-success when it is 5 of 8 wrong. Both were misread that
             # way on a real run. Name the class and carry both lengths so the number is interpretable.
             rep["status"] = "fail"
-            rep["per_output"][name] = {"status": "fail",
-                                       "reason": f"length {len(of)} != {len(ef)}",
-                                       "failure_class": "output_shape_mismatch",
-                                       "n_expected": len(ef), "n_observed": len(of)}
+            rep["per_output"][name] = {
+                "status": "fail",
+                "reason": f"length {len(of)} != {len(ef)}",
+                "failure_class": "output_shape_mismatch",
+                "n_expected": len(ef),
+                "n_observed": len(of),
+            }
             rep.setdefault("outputs_wrong_shape", []).append(name)
             total_mismatch += abs(len(ef) - len(of)) + 1
             continue
@@ -882,7 +944,8 @@ def compare(expected: dict[str, list], observed: dict[str, list], policy: dict,
                 bad = int(a) != int(b)
                 d = abs(int(a) - int(b))
             else:
-                rtol = float(policy.get("rtol", 0.0)); atol = float(policy.get("atol", 0.0))
+                rtol = float(policy.get("rtol", 0.0))
+                atol = float(policy.get("atol", 0.0))
                 d = abs(float(a) - float(b))
                 bad = d > (atol + rtol * abs(float(a)))
             if bad:
@@ -897,11 +960,14 @@ def compare(expected: dict[str, list], observed: dict[str, list], policy: dict,
                     first = {"output": name, "index": idx, "expected": a, "observed": b}
                 if len(bad_idx) < _MISMATCH_INDEX_CAP:
                     bad_idx.append(idx)
-        rep["per_output"][name] = {"status": "pass" if mism == 0 else "fail",
-                                   "mismatch_count": mism, "max_abs_error": maxabs,
-                                   "max_rel_error": maxrel,
-                                   "n_elements": len(ef),
-                                   "saturated": bool(mism and mism == len(ef))}
+        rep["per_output"][name] = {
+            "status": "pass" if mism == 0 else "fail",
+            "mismatch_count": mism,
+            "max_abs_error": maxabs,
+            "max_rel_error": maxrel,
+            "n_elements": len(ef),
+            "saturated": bool(mism and mism == len(ef)),
+        }
         if mism:
             rep["per_output"][name]["mismatch_indices"] = bad_idx
             rep["per_output"][name]["mismatch_indices_truncated"] = mism > len(bad_idx)
@@ -936,4 +1002,5 @@ def compare(expected: dict[str, list], observed: dict[str, list], policy: dict,
 
 def write_numeric_report(path: str | Path, report: dict) -> None:
     import yaml
+
     Path(path).write_text(yaml.safe_dump(report, sort_keys=False), encoding="utf-8")

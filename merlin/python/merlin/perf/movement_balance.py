@@ -32,6 +32,7 @@ That asymmetry is the whole result and :attr:`MovementBalance.ridge_licence` sta
 tempting reading -- "intensity under the ridge, so memory-bound" -- is exactly the inference this
 module's own history shows going wrong.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -39,8 +40,15 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any
 
-__all__ = ["MovementSample", "MovementBalance", "SaturatedRate", "fit",
-           "saturated_bandwidth", "MIN_DISTINCT_SIZES", "MIN_DOMAIN_RATIO"]
+__all__ = [
+    "MovementSample",
+    "MovementBalance",
+    "SaturatedRate",
+    "fit",
+    "saturated_bandwidth",
+    "MIN_DISTINCT_SIZES",
+    "MIN_DOMAIN_RATIO",
+]
 
 #: Two points can fit a line through any two points; the third is what makes a bad fit visible at
 #: all. The repo's standing rule is at least two points per fitted parameter, and there are two.
@@ -67,8 +75,13 @@ class MovementSample:
     package: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {"program": self.program, "bytes_moved": self.bytes_moved, "cycles": self.cycles,
-                "engine": self.engine, "package": self.package}
+        return {
+            "program": self.program,
+            "bytes_moved": self.bytes_moved,
+            "cycles": self.cycles,
+            "engine": self.engine,
+            "package": self.package,
+        }
 
 
 @dataclass(frozen=True)
@@ -92,7 +105,8 @@ class MovementBalance:
         "the slope is a MARGINAL rate over the measured domain and, where the intercept dominates, "
         "a LOWER bound on what a large transfer can achieve -- so peak_compute divided by it is an "
         "UPPER bound on the ridge. An intensity above that bound is provably compute-bound; an "
-        "intensity below it proves NOTHING and is not evidence of being memory-bound.")
+        "intensity below it proves NOTHING and is not evidence of being memory-bound."
+    )
 
     @property
     def derived(self) -> bool:
@@ -112,24 +126,34 @@ class MovementBalance:
         return float(peak_macs_per_cycle) / float(self.peak_bytes_per_cycle)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"schema": "merlin_movement_balance_v1", "status": self.status,
-                "reason": self.reason, "peak_bytes_per_cycle": self.peak_bytes_per_cycle,
-                "base_latency_cycles": self.base_latency_cycles, "r_squared": self.r_squared,
-                "domain_bytes": list(self.domain_bytes) if self.domain_bytes else None,
-                "n_samples": self.n_samples, "n_distinct_sizes": self.n_distinct_sizes,
-                "residual_cycles": list(self.residual_cycles),
-                "samples": [s.to_dict() for s in self.samples],
-                "notes": list(self.notes), "ridge_licence": self.ridge_licence}
+        return {
+            "schema": "merlin_movement_balance_v1",
+            "status": self.status,
+            "reason": self.reason,
+            "peak_bytes_per_cycle": self.peak_bytes_per_cycle,
+            "base_latency_cycles": self.base_latency_cycles,
+            "r_squared": self.r_squared,
+            "domain_bytes": list(self.domain_bytes) if self.domain_bytes else None,
+            "n_samples": self.n_samples,
+            "n_distinct_sizes": self.n_distinct_sizes,
+            "residual_cycles": list(self.residual_cycles),
+            "samples": [s.to_dict() for s in self.samples],
+            "notes": list(self.notes),
+            "ridge_licence": self.ridge_licence,
+        }
 
 
 def _refuse(reason: str, samples: Sequence[MovementSample]) -> MovementBalance:
-    return MovementBalance(status="unavailable", reason=reason, n_samples=len(samples),
-                           n_distinct_sizes=len({s.bytes_moved for s in samples}),
-                           samples=tuple(samples))
+    return MovementBalance(
+        status="unavailable",
+        reason=reason,
+        n_samples=len(samples),
+        n_distinct_sizes=len({s.bytes_moved for s in samples}),
+        samples=tuple(samples),
+    )
 
 
-def fit(samples: Sequence[MovementSample], *, engine: str | None = None,
-        package: str | None = None) -> MovementBalance:
+def fit(samples: Sequence[MovementSample], *, engine: str | None = None, package: str | None = None) -> MovementBalance:
     """Separate the per-byte rate from the fixed per-transfer cost, or refuse and say why.
 
     Exact rational least squares, so nothing rounds on the way to the coefficients (the same choice
@@ -144,20 +168,26 @@ def fit(samples: Sequence[MovementSample], *, engine: str | None = None,
         if row.bytes_moved <= 0 or row.cycles <= 0:
             return _refuse(
                 f"{row.program!r} reports {row.bytes_moved} bytes in {row.cycles} cycles; a "
-                f"non-positive extent cannot be a measured transfer", rows)
+                f"non-positive extent cannot be a measured transfer",
+                rows,
+            )
     if engine is not None:
         wrong = sorted({s.engine for s in rows if s.engine != engine})
         if wrong:
             return _refuse(
                 f"the series mixes engine(s) {wrong} with the required {engine!r}; a functional "
                 f"model's instruction count is not a cycle count and the two must not be fitted "
-                f"together", rows)
+                f"together",
+                rows,
+            )
     if package is not None:
         wrong = sorted({s.package for s in rows if s.package != package})
         if wrong:
             return _refuse(
                 f"the series mixes compiler package(s) {wrong} with the required {package!r}; two "
-                f"packages emit two schedules, so their difference is not the transfer size", rows)
+                f"packages emit two schedules, so their difference is not the transfer size",
+                rows,
+            )
 
     # A byte size that disagrees with itself is the corpus failure this module exists to avoid, and
     # it is refused rather than averaged: averaging would turn a 12.8x disagreement into a number.
@@ -171,20 +201,26 @@ def fit(samples: Sequence[MovementSample], *, engine: str | None = None,
             f"{len(disagreeing)} transfer size(s) measured more than one cycle count "
             f"({disagreeing}), disagreeing by up to {worst:.1f}x. These are different emitted "
             f"programs at one declared volume, so what varies between them is not the transfer "
-            f"size; averaging them would charge their difference to bytes", rows)
+            f"size; averaging them would charge their difference to bytes",
+            rows,
+        )
 
     sizes = sorted(by_size)
     if len(sizes) < MIN_DISTINCT_SIZES:
         return _refuse(
             f"{len(sizes)} distinct transfer size(s); at least {MIN_DISTINCT_SIZES} are needed "
             f"because two points fit a line through any two points and the third is what makes a "
-            f"bad fit visible", rows)
+            f"bad fit visible",
+            rows,
+        )
     ratio = sizes[-1] / sizes[0]
     if ratio < MIN_DOMAIN_RATIO:
         return _refuse(
             f"the transfer sizes span only {ratio:.2f}x ({sizes[0]}..{sizes[-1]} B), under the "
             f"{MIN_DOMAIN_RATIO}x this fit requires: over a narrow domain the intercept is measured "
-            f"precisely and the rate is not, while r-squared stays high", rows)
+            f"precisely and the rate is not, while r-squared stays high",
+            rows,
+        )
 
     xs = [Fraction(s.bytes_moved) for s in rows]
     ys = [Fraction(s.cycles) for s in rows]
@@ -199,7 +235,9 @@ def fit(samples: Sequence[MovementSample], *, engine: str | None = None,
         return _refuse(
             f"the fitted slope is {float(slope):.6g} cycles/byte, which is not positive: over this "
             f"series a larger transfer did not cost more, so the samples do not measure a transfer "
-            f"rate", rows)
+            f"rate",
+            rows,
+        )
     intercept = mean_y - slope * mean_x
     predicted = [intercept + slope * x for x in xs]
     sst = sum((y - mean_y) ** 2 for y in ys)
@@ -215,14 +253,20 @@ def fit(samples: Sequence[MovementSample], *, engine: str | None = None,
     if intercept <= 0:
         notes.append(
             "the fitted intercept is not positive, which no sequenced engine can be: read the rate "
-            "as unreliable rather than the engine as free")
+            "as unreliable rather than the engine as free"
+        )
     return MovementBalance(
         status="derived",
-        peak_bytes_per_cycle=float(1 / slope), base_latency_cycles=float(intercept),
-        r_squared=r2, domain_bytes=(sizes[0], sizes[-1]), n_samples=n,
+        peak_bytes_per_cycle=float(1 / slope),
+        base_latency_cycles=float(intercept),
+        r_squared=r2,
+        domain_bytes=(sizes[0], sizes[-1]),
+        n_samples=n,
         n_distinct_sizes=len(sizes),
         residual_cycles=tuple(round(float(y - p), 3) for y, p in zip(ys, predicted, strict=True)),
-        samples=tuple(rows), notes=tuple(notes))
+        samples=tuple(rows),
+        notes=tuple(notes),
+    )
 
 
 @dataclass(frozen=True)
@@ -233,7 +277,7 @@ class SaturatedRate:
     saturated: bool
     plateau_points: int
     domain_bytes: tuple[int, int]
-    observations: tuple[tuple[int, int, float], ...] = ()   # (bytes, busy_cycles, rate)
+    observations: tuple[tuple[int, int, float], ...] = ()  # (bytes, busy_cycles, rate)
     structural_width_bytes: int | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
 
@@ -248,19 +292,26 @@ class SaturatedRate:
         return float(peak_macs_per_cycle) / float(self.bytes_per_busy_cycle)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"schema": "merlin_saturated_bandwidth_v1",
-                "bytes_per_busy_cycle": self.bytes_per_busy_cycle, "saturated": self.saturated,
-                "two_sided": self.two_sided, "plateau_points": self.plateau_points,
-                "domain_bytes": list(self.domain_bytes),
-                "observations": [list(o) for o in self.observations],
-                "structural_width_bytes": self.structural_width_bytes,
-                "notes": list(self.notes)}
+        return {
+            "schema": "merlin_saturated_bandwidth_v1",
+            "bytes_per_busy_cycle": self.bytes_per_busy_cycle,
+            "saturated": self.saturated,
+            "two_sided": self.two_sided,
+            "plateau_points": self.plateau_points,
+            "domain_bytes": list(self.domain_bytes),
+            "observations": [list(o) for o in self.observations],
+            "structural_width_bytes": self.structural_width_bytes,
+            "notes": list(self.notes),
+        }
 
 
-def saturated_bandwidth(observations: Sequence[tuple[int, int]], *,
-                        structural_width_bytes: int | None = None,
-                        plateau_tolerance: float = 0.10,
-                        min_plateau_points: int = 3) -> SaturatedRate:
+def saturated_bandwidth(
+    observations: Sequence[tuple[int, int]],
+    *,
+    structural_width_bytes: int | None = None,
+    plateau_tolerance: float = 0.10,
+    min_plateau_points: int = 3,
+) -> SaturatedRate:
     """Peak bytes per BUSY cycle from a saturating curve, or a rate that is not yet a peak.
 
     WHY THIS IS STRONGER THAN THE MARGINAL FIT IN :func:`fit`. That fit divides bytes by the whole
@@ -281,9 +332,16 @@ def saturated_bandwidth(observations: Sequence[tuple[int, int]], *,
     """
     rows = [(int(b), int(c)) for b, c in observations if int(b) > 0 and int(c) > 0]
     if len(rows) < min_plateau_points:
-        return SaturatedRate(0.0, False, 0, (0, 0), notes=(
-            f"{len(rows)} usable observation(s); at least {min_plateau_points} are needed for a "
-            f"plateau to be distinguishable from a rising curve",))
+        return SaturatedRate(
+            0.0,
+            False,
+            0,
+            (0, 0),
+            notes=(
+                f"{len(rows)} usable observation(s); at least {min_plateau_points} are needed for a "
+                f"plateau to be distinguishable from a rising curve",
+            ),
+        )
     rows.sort()
     rates = [(b, c, b / c) for b, c in rows]
     best = max(r[2] for r in rates)
@@ -307,21 +365,30 @@ def saturated_bandwidth(observations: Sequence[tuple[int, int]], *,
         notes.append(
             "NOT saturated: the curve is still rising, so this is a lower bound on the peak and "
             "licenses only an UPPER bound on the ridge -- i.e. it can prove a workload "
-            "compute-bound and can never prove one memory-bound")
+            "compute-bound and can never prove one memory-bound"
+        )
     if structural_width_bytes:
         ratio = best / float(structural_width_bytes)
         notes.append(
             f"the plateau sits at {ratio:.3f}x the target's derived {structural_width_bytes}-byte "
             f"row width; agreement is CORROBORATION that this is the datapath's ceiling and not a "
             f"property of the sizes tried, but a wider burst path, if the target has one, would "
-            f"raise it")
-    return SaturatedRate(best, saturated, plateau, (rates[0][0], rates[-1][0]),
-                         observations=tuple(rates), structural_width_bytes=structural_width_bytes,
-                         notes=tuple(notes))
+            f"raise it"
+        )
+    return SaturatedRate(
+        best,
+        saturated,
+        plateau,
+        (rates[0][0], rates[-1][0]),
+        observations=tuple(rates),
+        structural_width_bytes=structural_width_bytes,
+        notes=tuple(notes),
+    )
 
 
-def samples_from_capsule_runs(runs_root: Any, *, engine: str = "gsim",
-                              package: str = "") -> tuple[list[MovementSample], list[dict]]:
+def samples_from_capsule_runs(
+    runs_root: Any, *, engine: str = "gsim", package: str = ""
+) -> tuple[list[MovementSample], list[dict]]:
     """``(samples, refusals)`` over the pure-movement capsule runs under ``runs_root``.
 
     A run contributes only when it PASSED, its cycles came from a cycle-accurate engine, and every
@@ -343,8 +410,12 @@ def samples_from_capsule_runs(runs_root: Any, *, engine: str = "gsim",
         name = run_dir.name
         buffer_path = run_dir / "generated" / "command_buffer.json"
         if not buffer_path.is_file():
-            refusals.append({"program": name, "reason": "the run kept no emitted command buffer, "
-                                                        "so its cycles cannot be attributed"})
+            refusals.append(
+                {
+                    "program": name,
+                    "reason": "the run kept no emitted command buffer, so its cycles cannot be attributed",
+                }
+            )
             continue
         try:
             document = json.loads(result_path.read_text(encoding="utf-8"))
@@ -354,27 +425,41 @@ def samples_from_capsule_runs(runs_root: Any, *, engine: str = "gsim",
             continue
         tier = None
         for row in (document.get("tiers") or {}).values():
-            if (isinstance(row, Mapping) and row.get("cycles") is not None
-                    and row.get("derived_from_rtl") is True and row.get("engine") == engine):
+            if (
+                isinstance(row, Mapping)
+                and row.get("cycles") is not None
+                and row.get("derived_from_rtl") is True
+                and row.get("engine") == engine
+            ):
                 tier = row
                 break
         if tier is None:
-            refusals.append({"program": name,
-                             "reason": f"no cycle count from a cycle-accurate {engine} tier; a "
-                                       f"functional model's instruction count is not a cycle count"})
+            refusals.append(
+                {
+                    "program": name,
+                    "reason": f"no cycle count from a cycle-accurate {engine} tier; a "
+                    f"functional model's instruction count is not a cycle count",
+                }
+            )
             continue
         if tier.get("status") != "pass":
-            refusals.append({"program": name,
-                             "reason": f"the tier reached status {tier.get('status')!r}; cycles "
-                                       f"from a run that did not compute its declared operation "
-                                       f"are not poolable with cycles from one that did"})
+            refusals.append(
+                {
+                    "program": name,
+                    "reason": f"the tier reached status {tier.get('status')!r}; cycles "
+                    f"from a run that did not compute its declared operation "
+                    f"are not poolable with cycles from one that did",
+                }
+            )
             continue
         tensors = buffer.get("tensors") or {}
         total, why = 0, ""
         for index, command in enumerate(buffer.get("commands") or []):
             if str(command.get("opcode") or "") != "MOVEMENT":
-                why = (f"command {index} is {command.get('opcode')!r}, not a movement command, so "
-                       f"this program's cycles are not all transfer cost")
+                why = (
+                    f"command {index} is {command.get('opcode')!r}, not a movement command, so "
+                    f"this program's cycles are not all transfer cost"
+                )
                 break
             for role in ("src", "dst"):
                 tensor = tensors.get((command.get("operands") or {}).get(role))
@@ -389,6 +474,13 @@ def samples_from_capsule_runs(runs_root: Any, *, engine: str = "gsim",
         if why:
             refusals.append({"program": name, "reason": why})
             continue
-        out.append(MovementSample(program=name, bytes_moved=total, cycles=int(tier["cycles"]),
-                                  engine=str(tier.get("engine") or engine), package=package))
+        out.append(
+            MovementSample(
+                program=name,
+                bytes_moved=total,
+                cycles=int(tier["cycles"]),
+                engine=str(tier.get("engine") or engine),
+                package=package,
+            )
+        )
     return out, refusals

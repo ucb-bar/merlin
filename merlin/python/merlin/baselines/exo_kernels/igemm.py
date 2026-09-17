@@ -20,15 +20,16 @@ loop by ``U`` keeps U i32 accumulators live and issues U×(vle16+vwmacc) vector 
 A-load + branch, raising RVV% and cutting per-MAC overhead. :func:`build_igemm` emits the kernel
 for a given ``U``; :mod:`merlin.baselines.exo` searches U on-board and keeps the best-measured one.
 """
+
 from __future__ import annotations
 
-from exo import proc, DRAM
+from exo import DRAM, proc
 from exo.stdlib.scheduling import (
     divide_loop,
-    stage_mem,
+    replace_all,
     set_memory,
     simplify,
-    replace_all,
+    stage_mem,
     unroll_loop,
 )
 
@@ -38,8 +39,8 @@ from merlin.baselines.exo_kernels.rvv256 import (
     rvv256_vld_i16,
     rvv256_vld_i32,
     rvv256_vst_i32,
-    rvv256_zero_i32,
     rvv256_vwmacc_vx,
+    rvv256_zero_i32,
 )
 
 NB = 16  # output-feature tile (i16 m1 / i32 m2 lanes at VLEN=256)
@@ -51,8 +52,8 @@ def igemm_nt_ref(
     N: size,
     K: size,
     Y: i32[M, N] @ DRAM,
-    X: ui16[M, K] @ DRAM,     # activation, i8 sign-extended to i16 by the glue (EXO ui16 -> C int16)
-    Wt: ui16[K, N] @ DRAM,    # weight transposed to [K, N] and i8->i16 by the glue
+    X: ui16[M, K] @ DRAM,  # activation, i8 sign-extended to i16 by the glue (EXO ui16 -> C int16)
+    Wt: ui16[K, N] @ DRAM,  # weight transposed to [K, N] and i8->i16 by the glue
 ):
     # pragma: no cover
     assert N % 16 == 0
@@ -75,8 +76,7 @@ def _schedule_base(p):
     p = stage_mem(p, "for ni in _: Y_reg[ni] += _", "Wt[k, 16*no:16*no+16]", "W_reg")
     p = simplify(p)
     p = set_memory(p, "W_reg", RVV256_I16)
-    p = replace_all(p, [rvv256_vld_i32, rvv256_zero_i32, rvv256_vld_i16, rvv256_vwmacc_vx,
-                        rvv256_vst_i32])
+    p = replace_all(p, [rvv256_vld_i32, rvv256_zero_i32, rvv256_vld_i16, rvv256_vwmacc_vx, rvv256_vst_i32])
     return simplify(p)
 
 
@@ -89,8 +89,7 @@ def _make_uref(U: int):
     BW = 16 * U
 
     @proc
-    def igemm_nt_ref(M: size, N: size, K: size, Y: i32[M, N] @ DRAM, X: ui16[M, K] @ DRAM,
-                     Wt: ui16[K, N] @ DRAM):
+    def igemm_nt_ref(M: size, N: size, K: size, Y: i32[M, N] @ DRAM, X: ui16[M, K] @ DRAM, Wt: ui16[K, N] @ DRAM):
         # pragma: no cover
         assert N % BW == 0
         for m in seq(0, M):
@@ -118,15 +117,15 @@ def _schedule_u(U: int):
     thing it can't is arraying the sizeless register type."""
     BW = 16 * U
     p = _make_uref(U)
-    p = unroll_loop(p, "nu")   # init tile loop -> U init loops
-    p = unroll_loop(p, "nu")   # k-body tile loop -> U accumulate loops inside the shared k-loop
+    p = unroll_loop(p, "nu")  # init tile loop -> U init loops
+    p = unroll_loop(p, "nu")  # k-body tile loop -> U accumulate loops inside the shared k-loop
     p = simplify(p)
     # stage each tile j into its own 16-wide i32 register across the whole nb-body (U inits + k);
     # the per-tile window only redirects that tile's 16 columns.
     for j in range(U):
         base = f"16*{j}+{BW}*nb" if j else f"{BW}*nb"
         first_init = p.find("for ni in _: Y[m,_] = 0.0 #0")
-        blk = first_init.as_block().expand(0, U)   # U init loops (incl this) ... incl the k-loop
+        blk = first_init.as_block().expand(0, U)  # U init loops (incl this) ... incl the k-loop
         p = stage_mem(p, blk, f"Y[m, {base}:{base}+16]", f"Yr{j}")
         p = simplify(p)
         p = set_memory(p, f"Yr{j}", RVV256_I32)
@@ -136,8 +135,7 @@ def _schedule_u(U: int):
         p = stage_mem(p, f"for ni in _: Yr{j}[ni] += _", f"Wt[k, {base}:{base}+16]", f"Wr{j}")
         p = simplify(p)
         p = set_memory(p, f"Wr{j}", RVV256_I16)
-    p = replace_all(p, [rvv256_vld_i32, rvv256_zero_i32, rvv256_vld_i16, rvv256_vwmacc_vx,
-                        rvv256_vst_i32])
+    p = replace_all(p, [rvv256_vld_i32, rvv256_zero_i32, rvv256_vld_i16, rvv256_vwmacc_vx, rvv256_vst_i32])
     return simplify(p)
 
 

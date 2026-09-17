@@ -14,6 +14,7 @@ reason this is safe to put in front of an agent:
 * ``abstained`` — this checker cannot model something the buffer uses. Exit 2, NOT a failure of the
   backend. An abstention reported as a defect would penalise correct work for our incompleteness.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,16 +54,17 @@ def _load_interface(path: Path):
 def _report(verdict, *, shape_note: str = "") -> int:
     print(f"verdict: {verdict.status}{shape_note}")
     if verdict.status == "unsat":
-        print("VERIFIED — the command buffer computes what the interface program specified, "
-              "for every input at this shape.")
+        print(
+            "VERIFIED — the command buffer computes what the interface program specified, "
+            "for every input at this shape."
+        )
         return EXIT_VERIFIED
     if verdict.status == "sat":
         print("REFUTED — these inputs make the buffer disagree with the program it was given:")
         for name, value in sorted((verdict.model_values or {}).items()):
             print(f"    {name} = {value}")
         if not verdict.model_values:
-            print("    (no model recovered — report this, a refutation without a counterexample "
-                  "is an assertion)")
+            print("    (no model recovered — report this, a refutation without a counterexample is an assertion)")
         return EXIT_REFUTED
     print("ABSTAINED — no verdict within the budget. This says nothing about the backend.")
     return EXIT_ABSTAINED
@@ -76,8 +78,7 @@ def cmd_compile(args) -> int:
     cb: dict[str, Any] = json.loads(Path(args.command_buffer).read_text(encoding="utf-8"))
     module = _load_interface(Path(args.interface))
     try:
-        verdict = validate_compilation(module, cb, acc_width=args.acc_width,
-                                       timeout_ms=args.timeout_ms)
+        verdict = validate_compilation(module, cb, acc_width=args.acc_width, timeout_ms=args.timeout_ms)
     except UnsupportedSemantics as exc:
         # Incompleteness in THIS checker, not a defect in the backend. Say so plainly, because the
         # difference decides whether an agent should change its code or ignore the message.
@@ -91,8 +92,18 @@ def cmd_faults(args) -> int:
     """Run the seeded fault corpus past every layer (the detection matrix)."""
     from .evaluate import main as evaluate_main
 
-    argv = ["--m", str(args.m), "--k", str(args.k), "--n", str(args.n),
-            "--reuse", str(args.reuse), "--timeout-ms", str(args.timeout_ms)]
+    argv = [
+        "--m",
+        str(args.m),
+        "--k",
+        str(args.k),
+        "--n",
+        str(args.n),
+        "--reuse",
+        str(args.reuse),
+        "--timeout-ms",
+        str(args.timeout_ms),
+    ]
     if args.json:
         argv.append("--json")
     if args.write:

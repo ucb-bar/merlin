@@ -21,6 +21,7 @@ need the same weighting — the cross-model family census
 (``build_tools/scripts/model_op_census.py``) and the per-contraction census (:mod:`.census`) — and two
 copies of a cost proxy drift into two different rankings of the same model.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -32,12 +33,12 @@ __all__ = ["body_arith_ops", "footprint_bytes", "iteration_space", "work_of"]
 #: Named linalg ops carry no region, so their body arithmetic is implicit. Value = scalar arith ops
 #: performed per iteration-space point.
 NAMED_BODY_OPS: dict[str, int] = {
-    "linalg.matmul": 2,          # mul + add
+    "linalg.matmul": 2,  # mul + add
     "linalg.batch_matmul": 2,
     "linalg.matvec": 2,
-    "linalg.fill": 0,            # a store, no arithmetic
+    "linalg.fill": 0,  # a store, no arithmetic
     "linalg.copy": 0,
-    "linalg.transpose": 0,       # pure movement
+    "linalg.transpose": 0,  # pure movement
     "linalg.broadcast": 0,
     "linalg.reduce": 1,
 }
@@ -45,7 +46,7 @@ NAMED_BODY_OPS: dict[str, int] = {
 #: Named contractions whose iteration space is NOT just the result shape: the reduction dim has to
 #: come from an input. Value = (operand index, dim index within that operand).
 NAMED_EXTRA_DIM: dict[str, tuple[int, int]] = {
-    "linalg.matmul": (0, -1),        # K = lhs last dim
+    "linalg.matmul": (0, -1),  # K = lhs last dim
     "linalg.batch_matmul": (0, -1),
     "linalg.matvec": (0, -1),
 }
@@ -63,6 +64,7 @@ def _generic_iteration_space(op) -> tuple[int, bool]:
     if maps is None:
         return 0, False
     from xdsl.ir.affine import AffineDimExpr
+
     tensors = [*op.operands, *op.results]
     extents: dict[int, int] = {}
     ndims = 0

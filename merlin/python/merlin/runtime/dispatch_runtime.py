@@ -20,6 +20,7 @@ This is the Python reference executor; the deployable C runtime walks the same d
 program. Only the view-op semantics needed by the captured models are implemented; an
 unrecognized op raises (no silent skips).
 """
+
 from __future__ import annotations
 
 import json
@@ -29,8 +30,16 @@ from typing import Any
 
 import numpy as np
 
-_NP = {"f32": np.float32, "f64": np.float64, "f16": np.float16,
-       "i64": np.int64, "i32": np.int32, "i16": np.int16, "i8": np.int8, "i1": np.int8}
+_NP = {
+    "f32": np.float32,
+    "f64": np.float64,
+    "f16": np.float16,
+    "i64": np.int64,
+    "i32": np.int32,
+    "i16": np.int16,
+    "i8": np.int8,
+    "i1": np.int8,
+}
 
 
 class DispatchRuntimeError(RuntimeError):
@@ -43,7 +52,7 @@ class DispatchRuntimeError(RuntimeError):
 # only happens inside compiled kernels, never in the numpy view evaluator.
 def f32_to_bf16(x: np.ndarray) -> np.ndarray:
     u = np.ascontiguousarray(x, np.float32).view(np.uint32)
-    bias = ((u >> 16) & 1) + 0x7FFF              # round to nearest even
+    bias = ((u >> 16) & 1) + 0x7FFF  # round to nearest even
     return ((u + bias) >> 16).astype(np.uint16)
 
 
@@ -62,7 +71,7 @@ def f8e4m3fn_to_f32(u8: np.ndarray) -> np.ndarray:
     sign = np.where((u >> 7) & 1 == 1, np.float32(-1.0), np.float32(1.0))
     exp = (u >> 3) & 0xF
     man = (u & 0x7).astype(np.float32)
-    sub = (man / 8.0) * np.float32(2.0 ** -6)                  # exp == 0: subnormal
+    sub = (man / 8.0) * np.float32(2.0**-6)  # exp == 0: subnormal
     nrm = (1.0 + man / 8.0) * np.exp2((exp.astype(np.float32)) - 7.0)
     val = (sign * np.where(exp == 0, sub, nrm)).astype(np.float32)
     return np.where((exp == 0xF) & (u & 0x7 == 0x7), np.float32(np.nan), val)
@@ -76,6 +85,7 @@ def _np_dtype(elem: str):
 
 
 # --- forward-argument binding (inputs + weights), mirroring llvmlower.c_runtime ----------
+
 
 def resolve_forward_args(model_dir: str | Path) -> list[np.ndarray]:
     """Numpy array for every ``func @forward`` argument, in signature order."""
@@ -98,12 +108,11 @@ def resolve_forward_args(model_dir: str | Path) -> list[np.ndarray]:
     if order_path.is_file():
         input_order = {k: int(v) for k, v in json.loads(order_path.read_text()).items()}
     else:
-        input_order = {"img": 0, "img_mask": 1, "lang_tokens": 2, "lang_masks": 3,
-                       "state": 4, "noise": 5, "ids": 0}
+        input_order = {"img": 0, "img_mask": 1, "lang_tokens": 2, "lang_masks": 3, "state": 4, "noise": 5, "ids": 0}
 
     def buffer_array(name: str) -> np.ndarray:
         for k in extra_files:
-            if k.startswith("buf::") and "b_" + k[len("buf::"):].replace(".", "_") == name:
+            if k.startswith("buf::") and "b_" + k[len("buf::") :].replace(".", "_") == name:
                 return np.ascontiguousarray(extra[k])
         raise DispatchRuntimeError(f"buffer {name!r} not in {extra_path}")
 
@@ -120,7 +129,7 @@ def resolve_forward_args(model_dir: str | Path) -> list[np.ndarray]:
                 args.append(np.zeros(shape, dtype=_np_dtype(dt)))
                 continue
             begin, end = hdr[meta["weight"]]["data_offsets"]
-            store_dt = hdr[meta["weight"]].get("dtype")            # safetensors storage dtype
+            store_dt = hdr[meta["weight"]].get("dtype")  # safetensors storage dtype
             if store_dt == "F8_E4M3":
                 # fp8 weight-only: stored 1-byte e4m3, decoded to the f32 arg the graph expects
                 arr = f8e4m3fn_to_f32(np.frombuffer(blob[begin:end], np.uint8)).reshape(shape)
@@ -139,16 +148,17 @@ def resolve_forward_args(model_dir: str | Path) -> list[np.ndarray]:
             wname = meta.get("weight")
             if wname and wname in hdr:
                 begin, end = hdr[wname]["data_offsets"]
-                arr = np.ascontiguousarray(
-                    np.frombuffer(blob[begin:end], dtype=_np_dtype(dt)).reshape(shape))
+                arr = np.ascontiguousarray(np.frombuffer(blob[begin:end], dtype=_np_dtype(dt)).reshape(shape))
             else:
                 arr = buffer_array(name)
-        elif "lifted_tensor" in name:          # lifted get_attr constant (name varies by model)
-            arr = np.ascontiguousarray(extra[lifted_names[li]]); li += 1
+        elif "lifted_tensor" in name:  # lifted get_attr constant (name varies by model)
+            arr = np.ascontiguousarray(extra[lifted_names[li]])
+            li += 1
         elif name in input_order and f"in{input_order[name]}" in inputs.files:
             arr = np.ascontiguousarray(inputs[f"in{input_order[name]}"])
         else:
-            arr = np.ascontiguousarray(inputs[f"in{n_in}"]); n_in += 1
+            arr = np.ascontiguousarray(inputs[f"in{n_in}"])
+            n_in += 1
         if dt == "bf16":
             args.append(f32_to_bf16(arr).reshape(shape))
         else:
@@ -158,7 +168,7 @@ def resolve_forward_args(model_dir: str | Path) -> list[np.ndarray]:
 
 # --- view-op evaluation ------------------------------------------------------------------
 
-_DYN = -9223372036854775808            # xDSL dynamic-dim sentinel
+_DYN = -9223372036854775808  # xDSL dynamic-dim sentinel
 
 
 def _tensor_shape(t) -> tuple[int, ...]:
@@ -228,16 +238,40 @@ def _pad_rank(a: list[int], fill: int, rank: int) -> list[int]:
 
 
 # Scalar arith evaluated directly (driver-level index/condition glue, not compute kernels).
-_CMPI_PRED = {0: lambda a, b: a == b, 1: lambda a, b: a != b,
-              2: lambda a, b: a < b, 3: lambda a, b: a <= b,
-              4: lambda a, b: a > b, 5: lambda a, b: a >= b,
-              6: lambda a, b: a < b, 7: lambda a, b: a <= b,
-              8: lambda a, b: a > b, 9: lambda a, b: a >= b}
+_CMPI_PRED = {
+    0: lambda a, b: a == b,
+    1: lambda a, b: a != b,
+    2: lambda a, b: a < b,
+    3: lambda a, b: a <= b,
+    4: lambda a, b: a > b,
+    5: lambda a, b: a >= b,
+    6: lambda a, b: a < b,
+    7: lambda a, b: a <= b,
+    8: lambda a, b: a > b,
+    9: lambda a, b: a >= b,
+}
 _SCALAR_ARITH = {
-    "arith.addi", "arith.subi", "arith.muli", "arith.divsi", "arith.remsi",
-    "arith.maxsi", "arith.minsi", "arith.andi", "arith.ori", "arith.xori",
-    "arith.cmpi", "arith.select", "arith.extsi", "arith.extui", "arith.trunci",
-    "arith.addf", "arith.subf", "arith.mulf", "arith.divf", "arith.sitofp", "arith.fptosi",
+    "arith.addi",
+    "arith.subi",
+    "arith.muli",
+    "arith.divsi",
+    "arith.remsi",
+    "arith.maxsi",
+    "arith.minsi",
+    "arith.andi",
+    "arith.ori",
+    "arith.xori",
+    "arith.cmpi",
+    "arith.select",
+    "arith.extsi",
+    "arith.extui",
+    "arith.trunci",
+    "arith.addf",
+    "arith.subf",
+    "arith.mulf",
+    "arith.divf",
+    "arith.sitofp",
+    "arith.fptosi",
 }
 
 
@@ -253,14 +287,22 @@ def _eval_scalar_arith(op, env):
     b = env[id(op.operands[1])]
     if name == "arith.cmpi":
         return bool(_CMPI_PRED[int(op.properties["predicate"].value.data)](a, b))
-    return {"arith.addi": lambda: a + b, "arith.subi": lambda: a - b,
-            "arith.muli": lambda: a * b, "arith.divsi": lambda: int(a / b),
-            "arith.remsi": lambda: int(a - b * int(a / b)),
-            "arith.maxsi": lambda: max(a, b), "arith.minsi": lambda: min(a, b),
-            "arith.andi": lambda: a & b, "arith.ori": lambda: a | b,
-            "arith.xori": lambda: a ^ b,
-            "arith.addf": lambda: a + b, "arith.subf": lambda: a - b,
-            "arith.mulf": lambda: a * b, "arith.divf": lambda: a / b}[name]()
+    return {
+        "arith.addi": lambda: a + b,
+        "arith.subi": lambda: a - b,
+        "arith.muli": lambda: a * b,
+        "arith.divsi": lambda: int(a / b),
+        "arith.remsi": lambda: int(a - b * int(a / b)),
+        "arith.maxsi": lambda: max(a, b),
+        "arith.minsi": lambda: min(a, b),
+        "arith.andi": lambda: a & b,
+        "arith.ori": lambda: a | b,
+        "arith.xori": lambda: a ^ b,
+        "arith.addf": lambda: a + b,
+        "arith.subf": lambda: a - b,
+        "arith.mulf": lambda: a * b,
+        "arith.divf": lambda: a / b,
+    }[name]()
 
 
 def _eval_view(op, env: dict[int, Any]):
@@ -276,14 +318,14 @@ def _eval_view(op, env: dict[int, Any]):
         shape = []
         for d in _tensor_shape(rtype):
             if d <= _DYN // 2:
-                shape.append(int(env[id(dyn[j])])); j += 1
+                shape.append(int(env[id(dyn[j])]))
+                j += 1
             else:
                 shape.append(d)
         return np.zeros(shape, _scalar_dtype(rtype))
     if name in ("tensor.splat", "linalg.fill"):
         elem = _elem_str(rtype)
-        return np.full(rshape, _fill_value(env[id(op.operands[0])], elem),
-                       dtype=_np_dtype(elem))
+        return np.full(rshape, _fill_value(env[id(op.operands[0])], elem), dtype=_np_dtype(elem))
     if name in ("tensor.collapse_shape", "tensor.expand_shape"):
         return np.ascontiguousarray(env[id(op.operands[0])]).reshape(_reshape_shape(rtype))
     if name == "tensor.concat":
@@ -293,10 +335,9 @@ def _eval_view(op, env: dict[int, Any]):
         src = env[id(op.operands[0])]
         low = _int_array(op.properties["static_low"])
         high = _int_array(op.properties["static_high"])
-        if op.operands[1:]:                       # dynamic pad amounts not supported
+        if op.operands[1:]:  # dynamic pad amounts not supported
             raise DispatchRuntimeError("dynamic tensor.pad amounts not supported")
-        return np.pad(src, list(zip(low, high)), mode="constant",
-                      constant_values=_pad_value(op, env))
+        return np.pad(src, list(zip(low, high)), mode="constant", constant_values=_pad_value(op, env))
     if name == "tensor.extract_slice":
         seg = _int_array(op.properties["operandSegmentSizes"])
         if seg[1:] != [0, 0, 0]:
@@ -349,10 +390,10 @@ def _eval_view(op, env: dict[int, Any]):
 
 # --- the executor ------------------------------------------------------------------------
 
+
 def _kernel_io(call):
     """(callee symbol, output (shape,dtype) list) for a func.call."""
-    callee = call.callee.string_value() if hasattr(call.callee, "string_value") \
-        else call.callee.root_reference.data
+    callee = call.callee.string_value() if hasattr(call.callee, "string_value") else call.callee.root_reference.data
     outs = [(_tensor_shape(r.type), _scalar_dtype(r.type)) for r in call.results]
     return callee, outs
 
@@ -394,6 +435,7 @@ def mesh_datapath(target: str):
     change. The MLIR spelling the filter wants is ``b.mlir_dtype(b.operand_dtype)``.
     """
     from ..compile_cli import _mesh_tile_binding
+
     return _mesh_tile_binding(target, None, None)
 
 
@@ -408,6 +450,7 @@ def boundary_scale(x, fmt: str) -> float:
     Returns 1.0 for an all-zero or non-finite operand -- there is nothing to place.
     """
     from . import fp8_formats as FF
+
     mx = float(np.abs(x).max()) if x.size else 0.0
     if not (mx > 0.0) or not np.isfinite(mx):
         return 1.0
@@ -421,13 +464,16 @@ def _representability(x, fmt: str, *, flush: bool) -> dict:
     finite saturate. Counted and REPORTED rather than assumed away -- an operand the hardware cannot hold
     is a silent wrong answer, and the only reason this went unnoticed for so long is that nobody counted."""
     from . import fp8_formats as FF
+
     min_normal, max_finite = FF.normal_range(fmt)
     ax = np.abs(np.asarray(x, dtype=np.float64))
     subnormal = int(np.count_nonzero((ax > 0.0) & (ax < min_normal)))
-    return {"n_values": int(ax.size),
-            "n_subnormal": subnormal,
-            "n_flushed_to_zero": subnormal if flush else 0,
-            "n_saturating": int(np.count_nonzero(ax > max_finite))}
+    return {
+        "n_values": int(ax.size),
+        "n_subnormal": subnormal,
+        "n_flushed_to_zero": subnormal if flush else 0,
+        "n_saturating": int(np.count_nonzero(ax > max_finite)),
+    }
 
 
 def float_boundary_operands(a, b, binding) -> tuple[list, list, float, dict]:
@@ -446,6 +492,7 @@ def float_boundary_operands(a, b, binding) -> tuple[list, list, float, dict]:
     left is e4m3's 3-bit mantissa plus bf16 accumulation, which no boundary can scale away.
     """
     from . import fp8_formats as FF
+
     fmt = binding.operand_dtype
     af, bf = np.asarray(a, dtype=np.float64), np.asarray(b, dtype=np.float64)
     sa, sb = boundary_scale(af, fmt), boundary_scale(bf, fmt)
@@ -459,11 +506,11 @@ def float_boundary_operands(a, b, binding) -> tuple[list, list, float, dict]:
     mb = float(np.abs(bf).max()) if bf.size else 0.0
     try:
         _min_acc, max_acc = FF.normal_range(binding.accum_dtype)
-    except KeyError:                                   # integer or unresolvable accumulator: no float cap
+    except KeyError:  # integer or unresolvable accumulator: no float cap
         max_acc = None
     if max_acc is not None and ma > 0.0 and mb > 0.0:
         k = max(1, int(af.shape[1])) if af.ndim == 2 else 1
-        headroom = max_acc / 2.0                       # half the range, so the sum has somewhere to land
+        headroom = max_acc / 2.0  # half the range, so the sum has somewhere to land
         worst = (ma / sa) * (mb / sb) * k
         if np.isfinite(worst) and worst > headroom:
             back = math.ceil(math.log2(worst / headroom))
@@ -472,9 +519,13 @@ def float_boundary_operands(a, b, binding) -> tuple[list, list, float, dict]:
 
     qa, qb = af / sa, bf / sb
     flush = bool(getattr(binding, "subnormal_operand_flush", False))
-    rec = {"operand_dtype": fmt, "scale_a": sa, "scale_b": sb,
-           "a": _representability(qa, fmt, flush=flush),
-           "b": _representability(qb, fmt, flush=flush)}
+    rec = {
+        "operand_dtype": fmt,
+        "scale_a": sa,
+        "scale_b": sb,
+        "a": _representability(qa, fmt, flush=flush),
+        "b": _representability(qb, fmt, flush=flush),
+    }
     return qa.tolist(), qb.tolist(), sa * sb, rec
 
 
@@ -483,8 +534,7 @@ def _has_contraction(kfn) -> bool:
     classifier declined, structurally (no name matching on the symbol)."""
     for op in kfn.walk():
         nm = getattr(op, "name", "")
-        if nm in ("linalg.matmul", "linalg.batch_matmul", "linalg.matmul_transpose_b",
-                  "linalg.quantized_matmul"):
+        if nm in ("linalg.matmul", "linalg.batch_matmul", "linalg.matmul_transpose_b", "linalg.quantized_matmul"):
             return True
     return False
 
@@ -498,6 +548,7 @@ def _classify_mesh_matmul(kfn, accept: tuple[str, ...] = ("f32",)) -> dict | Non
     routed nothing at all on any target whose datapath is not int8. Returns ``{"a", "b", "in_dtype"}`` so
     the boundary knows whether the layer arrives already in the mesh's format or needs converting."""
     from xdsl.dialects.builtin import TensorType
+
     block = kfn.body.blocks[0]
     arg_ids = {id(a): i for i, a in enumerate(block.args)}
     ret = next((o for o in block.ops if o.name == "func.return"), None)
@@ -516,7 +567,7 @@ def _classify_mesh_matmul(kfn, accept: tuple[str, ...] = ("f32",)) -> dict | Non
     if ea is None or ea != eb or ea not in accept:
         return None
     if id(a_val) not in arg_ids or id(b_val) not in arg_ids:
-        return None                                          # an operand is computed inside the kernel
+        return None  # an operand is computed inside the kernel
     return {"a": arg_ids[id(a_val)], "b": arg_ids[id(b_val)], "in_dtype": ea}
 
 
@@ -553,6 +604,7 @@ def _classify_mesh_contraction(kfn, accept: tuple[str, ...] = ("f32",)) -> dict 
     otherwise permuted contraction has the same iterators and computes something else, and routing it to
     the mesh would silently produce the wrong answer. Fails closed when the maps cannot be read."""
     from xdsl.dialects.builtin import TensorType
+
     block = kfn.body.blocks[0]
     arg_ids = {id(a): i for i, a in enumerate(block.args)}
     ret = next((o for o in block.ops if o.name == "func.return"), None)
@@ -561,8 +613,7 @@ def _classify_mesh_contraction(kfn, accept: tuple[str, ...] = ("f32",)) -> dict 
     gen = getattr(ret.operands[0], "owner", None)
     if gen is None or getattr(gen, "name", None) != "linalg.generic" or len(gen.inputs) != 2:
         return None
-    if tuple(str(getattr(a, "data", a)).rsplit(".", 1)[-1].lower()
-             for a in gen.iterator_types) != _MATMUL_ITERS:
+    if tuple(str(getattr(a, "data", a)).rsplit(".", 1)[-1].lower() for a in gen.iterator_types) != _MATMUL_ITERS:
         return None
     if not _is_widening_mac_body(gen):
         return None
@@ -585,12 +636,11 @@ def _classify_mesh_contraction(kfn, accept: tuple[str, ...] = ("f32",)) -> dict 
     try:
         maps = [m.data for m in gen.indexing_maps]
         got = tuple(tuple(str(r) for r in mp.results) for mp in maps)
-    except Exception:                                        # noqa: BLE001 — unreadable maps: fail closed
+    except Exception:  # noqa: BLE001 — unreadable maps: fail closed
         return None
     if got != (("d0", "d2"), ("d2", "d1"), ("d0", "d1")):
         return None
-    return {"a": arg_ids[id(a_val)], "b": arg_ids[id(b_val)], "in_dtype": ea,
-            "via": "generic"}
+    return {"a": arg_ids[id(a_val)], "b": arg_ids[id(b_val)], "in_dtype": ea, "via": "generic"}
 
 
 def _oracle_unreachable(decline: str) -> bool:
@@ -607,17 +657,34 @@ def _oracle_unreachable(decline: str) -> bool:
     d = (decline or "").lower()
     if not d:
         return False
-    return any(tok in d for tok in ("timed out", "timeout", "invocation failed",
-                                    "no such file", "not found", "unreachable",
-                                    "build failed", "oracle unavailable"))
+    return any(
+        tok in d
+        for tok in (
+            "timed out",
+            "timeout",
+            "invocation failed",
+            "no such file",
+            "not found",
+            "unreachable",
+            "build failed",
+            "oracle unavailable",
+        )
+    )
 
 
-def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
-            entry: str = "forward", cache_dir: str | Path | None = None,
-            tap=None, qinner: dict | None = None,
-            kernel_backend: str | None = None, mesh_target: str | None = None,
-            mesh_package: str | None = None,
-            counters: dict | None = None) -> list[np.ndarray]:
+def execute(
+    outline_result,
+    arg_arrays: list[np.ndarray],
+    workdir: str | Path,
+    entry: str = "forward",
+    cache_dir: str | Path | None = None,
+    tap=None,
+    qinner: dict | None = None,
+    kernel_backend: str | None = None,
+    mesh_target: str | None = None,
+    mesh_package: str | None = None,
+    counters: dict | None = None,
+) -> list[np.ndarray]:
     """Run the outlined model on bound arguments; return the driver's result arrays.
 
     ``cache_dir`` persists compiled kernel ``.so``s keyed by kernel-body hash, so repeated
@@ -636,16 +703,15 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
     if cache_dir is not None:
         cache_dir.mkdir(parents=True, exist_ok=True)
     module = outline_result.module
-    driver = next(op for op in module.walk()
-                  if op.name == "func.func" and op.sym_name.data == entry)
+    driver = next(op for op in module.walk() if op.name == "func.func" and op.sym_name.data == entry)
     block = driver.body.blocks[0]
 
     env: dict[int, Any] = {}
     for arg, arr in zip(block.args, arg_arrays):
         env[id(arg)] = arr
 
-    cache: dict[str, Any] = {}      # kernel body text -> HostModel
-    compiled: dict[str, Any] = {}   # symbol -> HostModel
+    cache: dict[str, Any] = {}  # kernel body text -> HostModel
+    compiled: dict[str, Any] = {}  # symbol -> HostModel
     n_unique = 0
 
     # --- optional XNNPACK kernel-backend routing (default-off) -----------------------------
@@ -659,9 +725,11 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         if not xnnpack_host.is_available():
             raise DispatchRuntimeError(
                 "kernel_backend='xnnpack' requested but the XNNPACK host GEMM lib could not "
-                "be built (see MERLIN_XNNPACK_REPO / tmp/kernels/XNNPACK)")
-        kfns = {op.sym_name.data: op for op in module.walk()
-                if op.name == "func.func" and "$kernel_" in op.sym_name.data}
+                "be built (see MERLIN_XNNPACK_REPO / tmp/kernels/XNNPACK)"
+            )
+        kfns = {
+            op.sym_name.data: op for op in module.walk() if op.name == "func.func" and "$kernel_" in op.sym_name.data
+        }
         for sym, kfn in kfns.items():
             route = xnnpack_host.classify_matmul_kernel(kfn)
             if route is not None:
@@ -676,7 +744,7 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
     # boundary: quantized for an integer datapath (the drop is expected quantization error, covered by the
     # whole-model tolerance), cast for a float one. Which of those applies is DERIVED from the target.
     mesh_routes: dict[str, dict] = {}
-    mesh_dp = None                                   # the target's CorpusBinding, whole (see mesh_datapath)
+    mesh_dp = None  # the target's CorpusBinding, whole (see mesh_datapath)
     # Kernel bodies by symbol, for the host-lane contraction count below. Built LAZILY and cached: the
     # two existing `kfns` maps are each bound inside a branch (the xnnpack route, and
     # `kernel_backend == "mesh"`), so neither exists on a plain host run -- reaching for one there is a
@@ -685,11 +753,12 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
 
     def _host_kernel_fn(sym: str):
         if not _host_kfn_cache:
-            _host_kfn_cache.update({o.sym_name.data: o for o in module.walk()
-                                    if o.name == "func.func" and "$kernel_" in o.sym_name.data})
+            _host_kfn_cache.update(
+                {o.sym_name.data: o for o in module.walk() if o.name == "func.func" and "$kernel_" in o.sym_name.data}
+            )
         return _host_kfn_cache.get(sym)
 
-    mesh_counts: dict = counters if counters is not None else {}   # per-CALL, not
+    mesh_counts: dict = counters if counters is not None else {}  # per-CALL, not
     # a module-global function attribute: run_suite grades capsules on a thread pool.
     if kernel_backend == "mesh":
         if not mesh_target:
@@ -698,24 +767,29 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         # The host lane materializes f32; the mesh may also take its own format directly.
         _mesh_et = mesh_dp.mlir_dtype(mesh_dp.operand_dtype)
         _accept = ("f32", _mesh_et) if _mesh_et != "f32" else ("f32",)
-        kfns = {op.sym_name.data: op for op in module.walk()
-                if op.name == "func.func" and "$kernel_" in op.sym_name.data}
+        kfns = {
+            op.sym_name.data: op for op in module.walk() if op.name == "func.func" and "$kernel_" in op.sym_name.data
+        }
         for sym, kfn in kfns.items():
             # a bare linalg.matmul, or the linalg.generic a quantization rewrite leaves behind
-            route = (_classify_mesh_matmul(kfn, _accept)
-                     or _classify_mesh_contraction(kfn, _accept))
+            route = _classify_mesh_matmul(kfn, _accept) or _classify_mesh_contraction(kfn, _accept)
             if route is not None:
                 mesh_routes[sym] = route
         # Matmul-family kernels the classifier REJECTED (bias-fused, transposed, batched-generic,
         # non-f32/i8, operand computed in-kernel). They never reach the mesh branch and so are invisible
         # to `mesh_fell_back`; counting them keeps the coverage claim honest.
-        _unrouted = sum(1 for sym, kfn in kfns.items()
-                        if sym not in mesh_routes and _has_contraction(kfn))
+        _unrouted = sum(1 for sym, kfn in kfns.items() if sym not in mesh_routes and _has_contraction(kfn))
         # mesh_unavailable seeded to 0 alongside the rest: absent it reads as UNKNOWN downstream,
         # which is the right answer for "nobody could tell" but the wrong one for "none occurred".
-        mesh_counts.update(mesh_ran=0, mesh_fell_back=0, mesh_unrouted_matmuls=_unrouted,
-                           mesh_routed=len(mesh_routes), mesh_unavailable=0,
-                           mesh_route_symbols=sorted(mesh_routes), dispatch_ledger=[])
+        mesh_counts.update(
+            mesh_ran=0,
+            mesh_fell_back=0,
+            mesh_unrouted_matmuls=_unrouted,
+            mesh_routed=len(mesh_routes),
+            mesh_unavailable=0,
+            mesh_route_symbols=sorted(mesh_routes),
+            dispatch_ledger=[],
+        )
         execute.last_mesh_routed = len(mesh_routes)
         execute.mesh_ran = 0
         execute.mesh_fell_back = 0
@@ -725,7 +799,7 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         # Conflating them reported "the model fell back to the host" for a whole model whose every layer
         # the mesh runs correctly -- the simulator had simply timed out.
         execute.mesh_unavailable = 0
-        execute.mesh_fallbacks = []                  # per-layer reasons, so a fallback is actionable
+        execute.mesh_fallbacks = []  # per-layer reasons, so a fallback is actionable
         execute.mesh_unavailable_detail = []
         # Layers whose capacity_fit obligation the RUNTIME discharged on the backend's behalf. A
         # whole-model pass that needed this is a statement about runtime+backend, not about the backend.
@@ -734,18 +808,24 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         # atlas divergence was invisible because nobody counted this; a run now reports it. The SAME dict
         # rides this call's counters, so a reader takes it off the run's own result rather than off a
         # module-global attribute that a concurrent grade would clobber.
-        execute.mesh_operand_repr = {"operand_dtype": mesh_dp.operand_dtype,
-                                     "subnormal_operand_flush": bool(mesh_dp.subnormal_operand_flush),
-                                     "n_values": 0, "n_subnormal": 0,
-                                     "n_flushed_to_zero": 0, "n_saturating": 0}
+        execute.mesh_operand_repr = {
+            "operand_dtype": mesh_dp.operand_dtype,
+            "subnormal_operand_flush": bool(mesh_dp.subnormal_operand_flush),
+            "n_values": 0,
+            "n_subnormal": 0,
+            "n_flushed_to_zero": 0,
+            "n_saturating": 0,
+        }
         if mesh_dp.integer:
             # Only the FLOAT boundary counts representability; an integer datapath saturates rather than
             # underflowing and takes the quantizing branch below. Say that, instead of shipping four
             # zeroes that read as a clean bill of health this check never issued.
             execute.mesh_operand_repr = {
-                "operand_dtype": mesh_dp.operand_dtype, "applicable": False,
+                "operand_dtype": mesh_dp.operand_dtype,
+                "applicable": False,
                 "note": "integer datapath: operands are quantized to the mesh's width at the boundary; "
-                        "the subnormal/saturation accounting applies to a float datapath only"}
+                "the subnormal/saturation accounting applies to a float datapath only",
+            }
         mesh_counts["mesh_operand_repr"] = execute.mesh_operand_repr
         mesh_counts["mesh_fallbacks"] = execute.mesh_fallbacks
         # Ride this run's own counters, not a module-global attribute a concurrent grade would clobber.
@@ -762,8 +842,7 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         if kernel_backend != "mesh":
             return
         ledger = mesh_counts.setdefault("dispatch_ledger", [])
-        ledger.append({"ordinal": len(ledger), "symbol": symbol, "lane": lane,
-                       "status": "pass", **evidence})
+        ledger.append({"ordinal": len(ledger), "symbol": symbol, "lane": lane, "status": "pass", **evidence})
 
     def kernel_model(symbol: str):
         if symbol in compiled:
@@ -809,8 +888,9 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         # Pre-index kernel funcs by symbol in ONE walk -- extract_kernel walks the whole
         # module per call (O(module)), which is O(symbols x module) overall and dominates
         # wall-clock for large graphs (pi05 ~4k symbols x 13k ops). Lookup + clone instead.
-        kfuncs = {op.sym_name.data: op for op in module.walk()
-                  if op.name == "func.func" and "$kernel_" in op.sym_name.data}
+        kfuncs = {
+            op.sym_name.data: op for op in module.walk() if op.name == "func.func" and "$kernel_" in op.sym_name.data
+        }
 
         def _ktext(sym: str) -> str:
             clone = kfuncs[sym].clone()
@@ -818,14 +898,14 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             clone.properties.pop("sym_visibility", None)
             return to_text(ModuleOp([clone]))
 
-        todo: dict[str, tuple] = {}     # digest -> (kernel_text, symbol); deduped by body
+        todo: dict[str, tuple] = {}  # digest -> (kernel_text, symbol); deduped by body
         seen: set[str] = set()
         for op in driver.walk():
             if op.name != "func.call":
                 continue
             sym, _ = _kernel_io(op)
             if sym in seen or sym not in kfuncs or sym in xnn_routes:
-                continue        # xnn-routed kernels are computed by XNNPACK, never compiled
+                continue  # xnn-routed kernels are computed by XNNPACK, never compiled
             seen.add(sym)
             ktext = _ktext(sym)
             digest = hashlib.sha1(ktext.encode()).hexdigest()[:16]
@@ -834,8 +914,10 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         if not todo:
             return
 
-        jobs = [(ktext, str(workdir / sym.replace("$", "_")), str(cache_dir / f"{digest}.so"))
-                for digest, (ktext, sym) in todo.items()]
+        jobs = [
+            (ktext, str(workdir / sym.replace("$", "_")), str(cache_dir / f"{digest}.so"))
+            for digest, (ktext, sym) in todo.items()
+        ]
         workers = int(_os.environ.get("MERLIN_COMPILE_WORKERS", "0")) or max(1, (_os.cpu_count() or 4))
         workers = min(len(jobs), workers)
         if workers <= 1:
@@ -868,7 +950,7 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 tap(op, [out])
             return
         mroute = mesh_routes.get(symbol)
-        if mroute is not None:                       # run this matmul LAYER on the target mesh (real data)
+        if mroute is not None:  # run this matmul LAYER on the target mesh (real data)
             from ..compile_cli import run_matmul_on_mesh
 
             a = np.ascontiguousarray(env[id(op.operands[mroute["a"]])])
@@ -878,14 +960,15 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
             binding = mesh_dp or mesh_datapath(mesh_target)
             op_dt, acc_dt, integer = binding.operand_dtype, binding.accum_dtype, bool(binding.integer)
             mesh_et = binding.mlir_dtype(op_dt)
-            if a.ndim == 2 and b.ndim == 2 and a.shape[1] == b.shape[0]:   # a plain 2-D contraction
-                if mroute["in_dtype"] == mesh_et:    # already in the mesh's format — no boundary convert
+            if a.ndim == 2 and b.ndim == 2 and a.shape[1] == b.shape[0]:  # a plain 2-D contraction
+                if mroute["in_dtype"] == mesh_et:  # already in the mesh's format — no boundary convert
                     qa, qb, scale = a.tolist(), b.tolist(), 1.0
                 elif integer:
                     # f32 -> per-tensor symmetric integer at the mesh boundary. The clip bound comes from
                     # the datapath's own width, not from a literal 127: a narrower or wider integer mesh
                     # would otherwise be fed operands saturated to some other unit's range.
                     from ..targetgen.capsule_dram import dtype_bits as _dbits
+
                     _bits = _dbits(op_dt)
                     lim = float(2 ** (_bits - 1) - 1)
                     af, bf = a.astype(np.float64), b.astype(np.float64)
@@ -917,9 +1000,9 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 # every layer returned None with no verdict and was recorded as a host fallback. That is
                 # how a model whose layers the mesh runs correctly reported "15 of 15 fell back": not a
                 # refusal, not even a timeout, simply nothing to ask.
-                mesh_out = run_matmul_on_mesh(mesh_target, qa, qb,
-                                              operand_dtype=op_dt, accum_dtype=acc_dt,
-                                              package=mesh_package, observed=_obs)
+                mesh_out = run_matmul_on_mesh(
+                    mesh_target, qa, qb, operand_dtype=op_dt, accum_dtype=acc_dt, package=mesh_package, observed=_obs
+                )
                 _cf = _obs.get("capacity_fit")
                 if _cf is not None:
                     _d = getattr(execute, "mesh_capacity_fit_delegated", None)
@@ -928,29 +1011,39 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                         # and "the backend only built one tile" are different facts about the backend,
                         # and only the second says its shape space is uncovered -- so the score can
                         # report the backend's own coverage apart from runtime+backend.
-                        _d.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
-                                   "required_elems": _cf.get("required_elems"),
-                                   "capacity_elems": _cf.get("capacity_elems"),
-                                   # WHICH tiler chose the extent: a capacity fact read out of the RTL,
-                                   # or a probe that halved until the backend stopped refusing. Those are
-                                   # different provenance claims and the record used to say neither.
-                                   "tile_source": _cf.get("tile_source"),
-                                   # ...and WHY it tiled at all (working-set capacity vs a declared
-                                   # primitive tile). A separate question from which tiler ran, so both
-                                   # ride the record — neither answers the other.
-                                   "tiled_by": _cf.get("tiled_by")})
+                        _d.append(
+                            {
+                                "kernel": symbol,
+                                "lhs": list(a.shape),
+                                "rhs": list(b.shape),
+                                "required_elems": _cf.get("required_elems"),
+                                "capacity_elems": _cf.get("capacity_elems"),
+                                # WHICH tiler chose the extent: a capacity fact read out of the RTL,
+                                # or a probe that halved until the backend stopped refusing. Those are
+                                # different provenance claims and the record used to say neither.
+                                "tile_source": _cf.get("tile_source"),
+                                # ...and WHY it tiled at all (working-set capacity vs a declared
+                                # primitive tile). A separate question from which tiler ran, so both
+                                # ride the record — neither answers the other.
+                                "tiled_by": _cf.get("tiled_by"),
+                            }
+                        )
                 if mesh_out is not None:
                     om = np.array(mesh_out, np.float64) * scale
                     env[id(op.results[0])] = om.reshape(outs[0][0]).astype(outs[0][1])
                     mesh_counts["mesh_ran"] = mesh_counts.get("mesh_ran", 0) + 1
                     execute.mesh_ran = getattr(execute, "mesh_ran", 0) + 1
                     _record_dispatch(
-                        symbol, "on_mesh", lhs_shape=list(a.shape), rhs_shape=list(b.shape),
+                        symbol,
+                        "on_mesh",
+                        lhs_shape=list(a.shape),
+                        rhs_shape=list(b.shape),
                         oracle_evidence=_obs.get("oracle_evidence"),
                         trace_check=_obs.get("trace_check"),
                         artifact_identity=_obs.get("artifact_identity"),
                         cert_run_id=_obs.get("cert_run_id"),
-                        capacity_fit=_obs.get("capacity_fit"))
+                        capacity_fit=_obs.get("capacity_fit"),
+                    )
                     if tap is not None:
                         tap(op, [env[id(op.results[0])]])
                     return
@@ -974,14 +1067,17 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 if not _recorded:
                     try:
                         from ..compile_cli import _MESH_REFUSAL
+
                         _recorded = _MESH_REFUSAL.get("reason")
-                    except Exception:                              # noqa: BLE001
+                    except Exception:  # noqa: BLE001
                         _recorded = None
-                _why = (f"mesh oracle declined {a.shape} @ {b.shape} ({op_dt}/{acc_dt}): "
-                        f"{str(_recorded)[:300]}" if _recorded else
-                        f"mesh oracle returned no result for {a.shape} @ {b.shape} "
-                        f"({op_dt}/{acc_dt}) — unsynthesizable at this shape, or the oracle "
-                        f"was unreachable")
+                _why = (
+                    f"mesh oracle declined {a.shape} @ {b.shape} ({op_dt}/{acc_dt}): {str(_recorded)[:300]}"
+                    if _recorded
+                    else f"mesh oracle returned no result for {a.shape} @ {b.shape} "
+                    f"({op_dt}/{acc_dt}) — unsynthesizable at this shape, or the oracle "
+                    f"was unreachable"
+                )
             # SEPARATE "the oracle could not tell us" FROM "the mesh refused". The host kernel runs
             # either way -- the model must still compute -- but only the second is evidence about the
             # backend. `_oracle_unreachable` keys on the oracle's OWN reported cause, never on a guess.
@@ -994,23 +1090,24 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 mesh_counts["mesh_unavailable"] = mesh_counts.get("mesh_unavailable", 0) + 1
                 _ud = mesh_counts.setdefault("mesh_unavailable_detail", [])
                 if len(_ud) < 64:
-                    _ud.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
-                                "reason": _why})
+                    _ud.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape), "reason": _why})
                 _unavailable = True
                 host_lane = "mesh_unavailable"
             else:
                 _unavailable = False
                 host_lane = "host_fallback"
-            host_evidence = {"lhs_shape": list(a.shape), "rhs_shape": list(b.shape),
-                             "mesh_decline": _why}
+            host_evidence = {"lhs_shape": list(a.shape), "rhs_shape": list(b.shape), "mesh_decline": _why}
             if not _unavailable:
                 # Name the layer, not just the count. "4 layers fell back" gives a reader nothing to act on;
                 # the SHAPES say whether the cause is one extent the backend cannot take or four different
                 # ones, which is the difference between a tiling gap and a capability gap.
                 try:
-                    _sh = f"{a.shape[0]}x{a.shape[1]}x{b.shape[1]}" if (a.ndim == 2 and b.ndim == 2) \
+                    _sh = (
+                        f"{a.shape[0]}x{a.shape[1]}x{b.shape[1]}"
+                        if (a.ndim == 2 and b.ndim == 2)
                         else f"rank{a.ndim}x{b.ndim}"
-                except Exception:                                  # noqa: BLE001
+                    )
+                except Exception:  # noqa: BLE001
                     _sh = "unknown"
                 mesh_counts.setdefault("mesh_fallback_shapes", []).append(f"{_sh}: {_why}")
                 # Capture the operands HERE, where they are already numpy arrays, rather than deeper in the
@@ -1018,18 +1115,19 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 # model and runs standalone differs only in the values it was handed.
                 try:
                     import tempfile as _tf
+
                     _n = len(mesh_counts["mesh_fallback_shapes"])
                     _p = Path(_tf.gettempdir()) / f"fallback_operands_{_n}.npz"
                     np.savez_compressed(_p, A=a, W=b)
                     mesh_counts.setdefault("mesh_fallback_operands", []).append(str(_p))
-                except Exception as _oe:                   # noqa: BLE001
+                except Exception as _oe:  # noqa: BLE001
                     mesh_counts.setdefault("mesh_fallback_operands", []).append(
-                        f"capture failed: {type(_oe).__name__}: {_oe}")
+                        f"capture failed: {type(_oe).__name__}: {_oe}"
+                    )
                 execute.mesh_fell_back = getattr(execute, "mesh_fell_back", 0) + 1
                 _fb = getattr(execute, "mesh_fallbacks", None)
-                if _fb is not None and len(_fb) < 64:            # bounded: a diagnostic, not a full trace
-                    _fb.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape),
-                                "reason": _why})
+                if _fb is not None and len(_fb) < 64:  # bounded: a diagnostic, not a full trace
+                    _fb.append({"kernel": symbol, "lhs": list(a.shape), "rhs": list(b.shape), "reason": _why})
         model = kernel_model(symbol)
         args, keep = [], []
         for o in op.operands:
@@ -1038,7 +1136,7 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 keep.append(a)
                 args.append((a.ctypes.data, a.shape))
             else:
-                args.append(ScalarArg(env[id(o)], str(o.type)))   # by-value scalar arg
+                args.append(ScalarArg(env[id(o)], str(o.type)))  # by-value scalar arg
         out_arrays = [np.zeros(sh, dt) for sh, dt in outs]
         args += [(o.ctypes.data, o.shape) for o in out_arrays]
         # THE HOST LANE ACTUALLY EXECUTING, which is the one thing nothing counted. `lane_report`
@@ -1068,12 +1166,12 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
         lb, ub, step = (int(env[id(op.operands[i])]) for i in range(3))
         body = op.regions[0].blocks[0]
         ivar, iter_args = body.args[0], list(body.args[1:])
-        acc = [env[id(o)] for o in op.operands[3:]]              # iter_args inits
+        acc = [env[id(o)] for o in op.operands[3:]]  # iter_args inits
         for i in range(lb, ub, step):
             env[id(ivar)] = i
             for a, v in zip(iter_args, acc):
                 env[id(a)] = v
-            acc = run_block(body) or acc                        # scf.yield -> new acc
+            acc = run_block(body) or acc  # scf.yield -> new acc
         for r, v in zip(op.results, acc):
             env[id(r)] = v
 
@@ -1127,7 +1225,7 @@ def execute(outline_result, arg_arrays: list[np.ndarray], workdir: str | Path,
                 env[id(op.results[0])] = val
                 if tap is not None:
                     tap(op, val)
-            for vid in dead.get(i, ()):                  # free now-dead intermediates
+            for vid in dead.get(i, ()):  # free now-dead intermediates
                 env.pop(vid, None)
         return None
 
@@ -1145,9 +1243,10 @@ def _propagate_quant_inner(module) -> int:
     CONSUMER ops instead: every op carries ``prov.quant_inner_<i>`` for operand ``i`` whose
     source is an inner-tensor empty. Covers int8 (dequant) and fp8 (mul x scale) patterns.
     Also honors the legacy ``prov.quant_inner_{w,s}`` on the dequant op (operands 0/1)."""
+
     def _tag_src_empty(val, tag):
         op = getattr(val, "owner", None)
-        for _ in range(8):                            # walk through transpose/cast wrappers
+        for _ in range(8):  # walk through transpose/cast wrappers
             if op is None or not hasattr(op, "name"):
                 return
             if op.name == "tensor.empty":
@@ -1162,23 +1261,29 @@ def _propagate_quant_inner(module) -> int:
         for key, tag in op.attributes.items():
             idx = None
             if key.startswith("prov.quant_inner_"):
-                suffix = key[len("prov.quant_inner_"):]
-                idx = {"w": 0, "s": 1}.get(suffix)        # legacy dequant aliases
+                suffix = key[len("prov.quant_inner_") :]
+                idx = {"w": 0, "s": 1}.get(suffix)  # legacy dequant aliases
                 if idx is None and suffix.isdigit():
                     idx = int(suffix)
             if idx is not None and idx < len(operands):
-                _tag_src_empty(operands[idx], tag); n += 1
+                _tag_src_empty(operands[idx], tag)
+                n += 1
     return n
 
 
-def run_model(model_dir: str | Path, workdir: str | Path,
-              cache_dir: str | Path | None = None, tap=None,
-              int8_compute: bool = False,
-              quant_passes: "list[str] | None" = None,
-              quant_select=None,
-              prequant_gather: bool = False,
-              kernel_backend: str | None = None, mesh_target: str | None = None,
-              mesh_package: str | None = None) -> dict[str, Any]:
+def run_model(
+    model_dir: str | Path,
+    workdir: str | Path,
+    cache_dir: str | Path | None = None,
+    tap=None,
+    int8_compute: bool = False,
+    quant_passes: "list[str] | None" = None,
+    quant_select=None,
+    prequant_gather: bool = False,
+    kernel_backend: str | None = None,
+    mesh_target: str | None = None,
+    mesh_package: str | None = None,
+) -> dict[str, Any]:
     """Outline + bind + execute a captured model; gate against ``golden.npy``.
 
     Returns ``{output, golden, cos, rel, ok, n_kernels, n_unique_kernels}``.
@@ -1200,12 +1305,15 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     ``nn.Linear`` only) whose quantization policy is narrower than ours.
     """
     from ..frontends.linalg_mlir import parse_mlir_file
-    from ..xdsl_dialects.lowering.outline import outline_dispatches
-
-    from ..llvmlower.passes_xdsl import (collapse_overrank_matmul, fix_bool_fptosi,
-                                         fix_bool_sitofp, lower_bf16_matmul_f32acc,
-                                         lower_quant_ext)
+    from ..llvmlower.passes_xdsl import (
+        collapse_overrank_matmul,
+        fix_bool_fptosi,
+        fix_bool_sitofp,
+        lower_bf16_matmul_f32acc,
+        lower_quant_ext,
+    )
     from ..llvmlower.torchao_affine import lower_torchao_affine_quant
+    from ..xdsl_dialects.lowering.outline import outline_dispatches
 
     model_dir = Path(model_dir)
     module = parse_mlir_file(model_dir / "model.mlir")
@@ -1219,12 +1327,13 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     # externs nothing defines; without this the module cannot even be outlined.
     lower_torchao_affine_quant(module)
     collapse_overrank_matmul(module)
-    _propagate_quant_inner(module)            # dequant prov.quant_inner_{w,s} -> source empties
+    _propagate_quant_inner(module)  # dequant prov.quant_inner_{w,s} -> source empties
     if int8_compute:
         # The integer (W8A8) datapath, via the quant-pass registry (the quantization region's
         # edit-point). apply_quant() with the default set runs the six lower_*_int passes in the
         # canonical order — byte-identical to the historical hardcoded sequence, now toggleable.
         from ..llvmlower.quant_passes import apply_quant
+
         # `prequant_gather` = the `quantize_before_gather` feature. Threaded through the HOST
         # interpreter too, not only the device build: the per-tensor activation scale it introduces is
         # a genuine numeric change, so it has to be gradeable against golden_w8a8.npy here before any
@@ -1234,15 +1343,14 @@ def run_model(model_dir: str | Path, workdir: str | Path,
         # working and the shipped datapath cannot drift behind a default argument.
         extra = {"prequant_gather": True} if prequant_gather else {}
         apply_quant(module, quant_passes, select=quant_select, **extra)
-    lower_quant_ext(module)                   # residual dequants (unconverted) -> f32 fallback
+    lower_quant_ext(module)  # residual dequants (unconverted) -> f32 fallback
     lower_bf16_matmul_f32acc(module)
     fix_bool_sitofp(module)
     # Keep the interpreter on the SAME bool-cast semantics as the compiled path: `fptosi f32 -> i1`
     # is poison in LLVM but `int(x)` here, so leaving it out is exactly how the two paths diverge.
     fix_bool_fptosi(module)
     outlined = outline_dispatches(module)
-    driver = next(op for op in outlined.module.walk()
-                  if op.name == "func.func" and "$kernel_" not in op.sym_name.data)
+    driver = next(op for op in outlined.module.walk() if op.name == "func.func" and "$kernel_" not in op.sym_name.data)
     out_types = list(driver.function_type.outputs.data)
     if not out_types:
         raise DispatchRuntimeError("whole-model forward has no results")
@@ -1253,32 +1361,44 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     extra_path = model_dir / "extra.npz"
     if extra_path.is_file():
         ex = np.load(extra_path)
-        qinner = {k[len("qinner::"):]: ex[k] for k in ex.files if k.startswith("qinner::")}
+        qinner = {k[len("qinner::") :]: ex[k] for k in ex.files if k.startswith("qinner::")}
     import os as _os
+
     # Per-run mesh counters. A whole-model verdict is decided by these, so they must not
     # live on a module-global function attribute that a concurrent grade can clobber.
     _mesh_counts: dict = {}
     if kernel_backend is None and _os.environ.get("MERLIN_XNNPACK_HOST") == "1":
         kernel_backend = "xnnpack"
-    results = execute(outlined, args, Path(workdir), cache_dir=cache_dir, tap=tap,
-                      qinner=qinner, kernel_backend=kernel_backend, mesh_target=mesh_target,
-                      mesh_package=mesh_package, counters=_mesh_counts)
+    results = execute(
+        outlined,
+        args,
+        Path(workdir),
+        cache_dir=cache_dir,
+        tap=tap,
+        qinner=qinner,
+        kernel_backend=kernel_backend,
+        mesh_target=mesh_target,
+        mesh_package=mesh_package,
+        counters=_mesh_counts,
+    )
     if len(results) != len(out_types):
-        raise DispatchRuntimeError(
-            f"whole-model execution returned {len(results)} values for {len(out_types)} results")
+        raise DispatchRuntimeError(f"whole-model execution returned {len(results)} values for {len(out_types)} results")
     # Widen each result independently.  Concatenating results would erase the declared ABI and can let
     # a correct first result hide an untouched recurrent-state result.
-    widened = [(bf16_to_f32(raw) if _elem_str(typ) == "bf16"
-                else np.asarray(raw, dtype=np.float32)).ravel()
-               for raw, typ in zip(results, out_types, strict=True)]
+    widened = [
+        (bf16_to_f32(raw) if _elem_str(typ) == "bf16" else np.asarray(raw, dtype=np.float32)).ravel()
+        for raw, typ in zip(results, out_types, strict=True)
+    ]
 
-    res: dict[str, Any] = {"output": results[0], "outputs": list(results),
-                           "n_kernels": outlined.n_kernels,
-                           "n_unique_kernels": getattr(execute, "last_unique_kernels", None),
-                           "kernel_backend": kernel_backend,
-                           "n_xnn_routed": (getattr(execute, "last_xnn_routed", 0)
-                                            if kernel_backend == "xnnpack" else 0),
-                           **_mesh_counts}
+    res: dict[str, Any] = {
+        "output": results[0],
+        "outputs": list(results),
+        "n_kernels": outlined.n_kernels,
+        "n_unique_kernels": getattr(execute, "last_unique_kernels", None),
+        "kernel_backend": kernel_backend,
+        "n_xnn_routed": (getattr(execute, "last_xnn_routed", 0) if kernel_backend == "xnnpack" else 0),
+        **_mesh_counts,
+    }
     goldens_path = model_dir / "goldens.npz"
     order_path = model_dir / "output_order.json"
     if goldens_path.is_file() and order_path.is_file():
@@ -1295,18 +1415,20 @@ def run_model(model_dir: str | Path, workdir: str | Path,
         checks = []
         for name, out, gold in zip(names, widened, golden_arrays, strict=True):
             if len(out) != len(gold):
-                raise DispatchRuntimeError(
-                    f"model result {name!r} has {len(out)} values, golden has {len(gold)}")
+                raise DispatchRuntimeError(f"model result {name!r} has {len(out)} values, golden has {len(gold)}")
             gmax = float(np.abs(gold).max())
             abs_err = float(np.abs(out - gold).max())
             rel = abs_err / max(1e-9, gmax)
             cos = float((out @ gold) / (np.linalg.norm(out) * np.linalg.norm(gold) + 1e-12))
             ok = rel < 1e-3 if gmax < 1e-6 else (cos > 0.9999 and rel < 1e-3)
-            checks.append({"name": name, "cos": cos, "rel": rel, "abs_err": abs_err,
-                           "gold_absmax": gmax, "ok": ok})
-        res.update(golden=golden_arrays[0], cos=min(x["cos"] for x in checks),
-                   rel=max(x["rel"] for x in checks),
-                   abs_err=max(x["abs_err"] for x in checks),
-                   gold_absmax=max(x["gold_absmax"] for x in checks),
-                   ok=all(x["ok"] for x in checks), output_checks=checks)
+            checks.append({"name": name, "cos": cos, "rel": rel, "abs_err": abs_err, "gold_absmax": gmax, "ok": ok})
+        res.update(
+            golden=golden_arrays[0],
+            cos=min(x["cos"] for x in checks),
+            rel=max(x["rel"] for x in checks),
+            abs_err=max(x["abs_err"] for x in checks),
+            gold_absmax=max(x["gold_absmax"] for x in checks),
+            ok=all(x["ok"] for x in checks),
+            output_checks=checks,
+        )
     return res

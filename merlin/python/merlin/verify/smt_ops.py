@@ -20,6 +20,7 @@ while the identical query at an 8-bit multiplier width refutes in 37 s -- partia
 as terms x width^2, so the wasted width was the whole cost. Upstream's exporter emits ``(concat a b)``
 for this op, verified by running it.
 """
+
 from __future__ import annotations
 
 from . import HAS_XDSL
@@ -28,8 +29,7 @@ if HAS_XDSL:
     from xdsl.dialects.builtin import IntegerAttr, i64
     from xdsl.dialects.smt import BitVectorType, BoolType
     from xdsl.ir import Dialect, Region
-    from xdsl.irdl import (IRDLOperation, irdl_op_definition, operand_def, prop_def, region_def,
-                           result_def)
+    from xdsl.irdl import IRDLOperation, irdl_op_definition, operand_def, prop_def, region_def, result_def
 
     @irdl_op_definition
     class SolverOp(IRDLOperation):
@@ -38,6 +38,7 @@ if HAS_XDSL:
         Mirrors upstream MLIR's op of the same name. The body is terminated by the existing
         ``smt.yield``; assertions inside the region become the query's assertions.
         """
+
         name = "smt.solver"
         body = region_def()
 
@@ -55,6 +56,7 @@ if HAS_XDSL:
         ``concat(ashr(x, n-1), x)`` — the high half of an arithmetic right shift by ``n-1`` is all
         sign bits — so no separate extend op is needed.
         """
+
         name = "smt.bv.concat"
         lhs = operand_def(BitVectorType)
         rhs = operand_def(BitVectorType)
@@ -73,8 +75,7 @@ if HAS_XDSL:
     #: reading the ordinal back; :func:`bv_cmp_exports_as` and the tests assert the exported SMT-LIB
     #: still says ``bvslt``, so a change in upstream's enum order fails loudly instead of silently
     #: inverting a comparison.
-    BV_CMP_PREDICATES = {"slt": 0, "sle": 1, "sgt": 2, "sge": 3,
-                         "ult": 4, "ule": 5, "ugt": 6, "uge": 7}
+    BV_CMP_PREDICATES = {"slt": 0, "sle": 1, "sgt": 2, "sge": 3, "ult": 4, "ule": 5, "ugt": 6, "uge": 7}
 
     @irdl_op_definition
     class BVCmpOp(IRDLOperation):
@@ -83,6 +84,7 @@ if HAS_XDSL:
         Needed for the readout epilogue: ``relu`` is ``ite(slt(x, 0), 0, x)`` and the saturating
         narrow to i8 is two clamps, neither expressible with the arithmetic ops xDSL ships.
         """
+
         name = "smt.bv.cmp"
         lhs = operand_def(BitVectorType)
         rhs = operand_def(BitVectorType)
@@ -92,10 +94,12 @@ if HAS_XDSL:
         @staticmethod
         def get(pred: str, lhs, rhs) -> "BVCmpOp":
             if pred not in BV_CMP_PREDICATES:
-                raise ValueError(f"unknown bv compare predicate {pred!r}; "
-                                 f"known: {sorted(BV_CMP_PREDICATES)}")
-            return BVCmpOp(operands=[lhs, rhs], result_types=[BoolType()],
-                           properties={"pred": IntegerAttr(BV_CMP_PREDICATES[pred], i64)})
+                raise ValueError(f"unknown bv compare predicate {pred!r}; known: {sorted(BV_CMP_PREDICATES)}")
+            return BVCmpOp(
+                operands=[lhs, rhs],
+                result_types=[BoolType()],
+                properties={"pred": IntegerAttr(BV_CMP_PREDICATES[pred], i64)},
+            )
 
     #: Registered separately from xDSL's own ``smt`` Dialect object so nothing upstream is mutated.
     SMT_SOLVER = Dialect("smt", [SolverOp, BVConcatOp, BVCmpOp], [])

@@ -46,6 +46,7 @@ CLI (``merlin-target-publish``)::
     merlin-target-publish promote  --target rvv --champion <package_id> [--no-gate]
     merlin-target-publish inspect  --target rvv [--champion <package_id>]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -112,10 +113,10 @@ class ChampionSelection:
     package_dir: Path
     manifest: dict[str, Any]
     family: str
-    layout_kind: str            # "vector_schedule" | "mlir_oot"
+    layout_kind: str  # "vector_schedule" | "mlir_oot"
     status: str
-    cert_status: str | None     # publication.certification (e.g. "pass") if recorded
-    cert_run: str | None        # publication.certified_by_run if recorded
+    cert_status: str | None  # publication.certification (e.g. "pass") if recorded
+    cert_run: str | None  # publication.certified_by_run if recorded
     oracle_cycles: int | None
     version: int
     lineage_depth: int
@@ -220,9 +221,13 @@ def package_dtype(pkg_dir: Path) -> str:
     return str(knobs.get("dtype_strategy", "fp32"))
 
 
-def select_champion(target: str, *, artifacts_root: str | Path | None = None,
-                    package_id: str | None = None,
-                    dtype_strategy: str | None = None) -> ChampionSelection:
+def select_champion(
+    target: str,
+    *,
+    artifacts_root: str | Path | None = None,
+    package_id: str | None = None,
+    dtype_strategy: str | None = None,
+) -> ChampionSelection:
     """Pick the champion package for ``target`` under ``out/artifacts/targets/<target>/``.
 
     If ``package_id`` is given, that package is selected. Otherwise, if exactly one package is
@@ -256,11 +261,13 @@ def select_champion(target: str, *, artifacts_root: str | Path | None = None,
     if dtype_strategy is not None:
         packages = [(d, m) for d, m in packages if package_dtype(d) == dtype_strategy]
         if not packages:
-            raise PublishError(
-                f"no {target!r} package with dtype_strategy={dtype_strategy!r} under {tdir}")
+            raise PublishError(f"no {target!r} package with dtype_strategy={dtype_strategy!r} under {tdir}")
 
-    champs = [(d, m) for d, m in packages
-              if isinstance(m.get("publication"), dict) and m["publication"].get("champion") is True]
+    champs = [
+        (d, m)
+        for d, m in packages
+        if isinstance(m.get("publication"), dict) and m["publication"].get("champion") is True
+    ]
     if len(champs) == 1:
         return _build_selection(target, champs[0][0], champs[0][1])
 
@@ -271,8 +278,7 @@ def select_champion(target: str, *, artifacts_root: str | Path | None = None,
 # ---------------------------------------------------------------------------- remote resolution
 
 
-def resolve_repo_name(target: str, *, config: str | Path | None = None,
-                      override: str | None = None) -> str:
+def resolve_repo_name(target: str, *, config: str | Path | None = None, override: str | None = None) -> str:
     """Resolve the PUBLIC repo name for ``target``. Precedence matches :func:`resolve_remote`:
     ``override`` > env ``MERLIN_PUBLISH_REPO_NAME_<TARGET>`` > ``publish.yaml``'s ``repo_names`` >
     the default ``<target>-mlir``.
@@ -297,8 +303,7 @@ def resolve_repo_name(target: str, *, config: str | Path | None = None,
     return f"{target}-mlir"
 
 
-def resolve_remote(target: str, *, config: str | Path | None = None,
-                   override: str | None = None) -> str:
+def resolve_remote(target: str, *, config: str | Path | None = None, override: str | None = None) -> str:
     """Resolve the git remote for ``target``. Precedence: ``override`` (``--remote``) >
     env ``MERLIN_PUBLISH_REMOTE_<TARGET>`` (via :func:`merlin.common.paths.env`, honoring ``.env``)
     > ``merlin/targets/publish.yaml``. Never hardcoded."""
@@ -313,8 +318,10 @@ def resolve_remote(target: str, *, config: str | Path | None = None,
     data = load_yaml(cfg_path) or {}
     remote = (data.get("targets") or {}).get(target)
     if not remote:
-        raise PublishError(f"no remote configured for {target!r} in {cfg_path} "
-                           f"(and no --remote / MERLIN_PUBLISH_REMOTE_{target.upper()})")
+        raise PublishError(
+            f"no remote configured for {target!r} in {cfg_path} "
+            f"(and no --remote / MERLIN_PUBLISH_REMOTE_{target.upper()})"
+        )
     return str(remote)
 
 
@@ -326,8 +333,7 @@ def _is_baseline(sel: "ChampionSelection") -> bool:
     return isinstance(pub, dict) and pub.get("role") == "baseline"
 
 
-def resolve_branch(sel: "ChampionSelection", *, override: str | None = None,
-                   config: str | Path | None = None) -> str:
+def resolve_branch(sel: "ChampionSelection", *, override: str | None = None, config: str | Path | None = None) -> str:
     """Resolve the publish BRANCH for a package (BB0 branch-per-version). Precedence, highest first:
     ``override`` (``--branch``) > env ``MERLIN_PUBLISH_BRANCH_<TARGET>`` > ``publish.yaml``
     ``branches.<target>.<package_id>`` > the default policy.
@@ -403,13 +409,13 @@ def _driver_cpp(sel: ChampionSelection) -> str:
         "#include <cstring>\n\n"
         "int main(int argc, char** argv) {\n"
         "  for (int i = 1; i < argc; ++i) {\n"
-        "    if (std::strcmp(argv[i], \"--version\") == 0) {\n"
-        f"      std::printf(\"{t} (merlin publish skeleton)\\n\");\n"
+        '    if (std::strcmp(argv[i], "--version") == 0) {\n'
+        f'      std::printf("{t} (merlin publish skeleton)\\n");\n'
         "      return 0;\n"
         "    }\n"
         "  }\n"
-        f"  std::fprintf(stderr, \"{t}: thin publish-skeleton driver; \"\n"
-        "               \"see payload/ for the codegen artifact.\\n\");\n"
+        f'  std::fprintf(stderr, "{t}: thin publish-skeleton driver; "\n'
+        '               "see payload/ for the codegen artifact.\\n");\n'
         "  return 0;\n"
         "}\n"
     )
@@ -429,8 +435,7 @@ def _tier_phrase(tier: Any) -> str:
         return f"cycle-accurate RTL ({oracles})"
     if tier.get("derived_from_rtl"):
         return f"RTL-derived, not cycle-accurate ({oracles})"
-    return (f"a functional simulator ({oracles}) \u2014 numerically correct; "
-            f"**not** an RTL or timing result")
+    return f"a functional simulator ({oracles}) \u2014 numerically correct; **not** an RTL or timing result"
 
 
 def _readme(sel: ChampionSelection, manifest: dict[str, Any]) -> str:
@@ -469,14 +474,16 @@ def _readme(sel: ChampionSelection, manifest: dict[str, Any]) -> str:
             "",
         ]
     lines += [
-        ("This repository is **generated** by Merlin's `merlin-target-publish` bridge. The "
-         "buildable tree at the repo root *is* the content; the package manifest + provenance "
-         "ride along under `.merlin/`."
-         if not gate_ok else
-         "This repository is **generated** by Merlin's `merlin-target-publish` bridge: it is the "
-         "certified champion codegen package for the target, exported as its own repo. The "
-         "buildable tree at the repo root *is* the content; the package manifest + provenance "
-         "ride along under `.merlin/`."),
+        (
+            "This repository is **generated** by Merlin's `merlin-target-publish` bridge. The "
+            "buildable tree at the repo root *is* the content; the package manifest + provenance "
+            "ride along under `.merlin/`."
+            if not gate_ok
+            else "This repository is **generated** by Merlin's `merlin-target-publish` bridge: it is the "
+            "certified champion codegen package for the target, exported as its own repo. The "
+            "buildable tree at the repo root *is* the content; the package manifest + provenance "
+            "ride along under `.merlin/`."
+        ),
         "",
         "## What",
         "",
@@ -523,8 +530,7 @@ def _readme(sel: ChampionSelection, manifest: dict[str, Any]) -> str:
         "## Provenance",
         "",
         f"- Certification: `{pub.get('certification', sel.cert_status or 'recorded:' + (sel.status or 'unknown'))}`",
-        f"- {'Graded' if not gate_ok else 'Certified'} by run: "
-        f"`{pub.get('certified_by_run', sel.cert_run or 'n/a')}`",
+        f"- {'Graded' if not gate_ok else 'Certified'} by run: `{pub.get('certified_by_run', sel.cert_run or 'n/a')}`",
         # An uncertified package's tier block describes the GRADING oracle, not a certification, so
         # it must not be introduced with the word "certified".
         f"- {'Oracle behind that tier' if not gate_ok else 'Certified against'}: "
@@ -563,9 +569,7 @@ def _index_readme(target: str, entries: list[dict[str, Any]]) -> str:
         "|---|---|---|---|---|",
     ]
     for e in entries:
-        lines.append(
-            f"| `{e['branch']}` | `{e['package_id']}` | `{e['dtype']}` | `{e['status']}` | "
-            f"{e['role']} |")
+        lines.append(f"| `{e['branch']}` | `{e['package_id']}` | `{e['dtype']}` | `{e['status']}` | {e['role']} |")
     lines += [
         "",
         "## Using a package",
@@ -581,8 +585,7 @@ def _index_readme(target: str, entries: list[dict[str, Any]]) -> str:
             "An `rvv` package is a **vector schedule**, not a dialect: the payload is a "
             "transform-dialect schedule plus the codegen knobs that go with it.",
             "",
-            "- `payload/schedule.mlir` — the transform-dialect schedule (tiling + vectorization "
-            "of the contractions)",
+            "- `payload/schedule.mlir` — the transform-dialect schedule (tiling + vectorization of the contractions)",
             "- `payload/knobs.yaml` — `cflags`, `dtype_strategy`, `op_match` tile/vector sizes, "
             "`lmul_policy`, and the `expected_instructions` the emitted code must contain",
             "- `payload/baseline_runs/` — the recorded reference runs",
@@ -666,14 +669,12 @@ def _cert_phrase(manifest: dict[str, Any]) -> str:
     rungs = [r for r in (pub.get("certified_rungs") or []) if isinstance(r, dict)]
     accurate = bool(tier.get("cycle_accurate")) and all(r.get("cycle_accurate") for r in rungs)
     from_rtl = bool(tier.get("derived_from_rtl")) and all(r.get("derived_from_rtl") for r in rungs)
-    qualifier = ("cycle-accurate RTL" if accurate and from_rtl
-                 else "RTL-derived" if from_rtl else "functional")
+    qualifier = "cycle-accurate RTL" if accurate and from_rtl else "RTL-derived" if from_rtl else "functional"
     n = len(rungs) or len(oracles)
     return f"certified ({qualifier}, {n} rung{'s' if n != 1 else ''}, {'/'.join(sorted(set(oracles)))})"
 
 
-def index_entries(target: str, *, artifacts_root: str | Path | None = None
-                  ) -> list[dict[str, Any]]:
+def index_entries(target: str, *, artifacts_root: str | Path | None = None) -> list[dict[str, Any]]:
     """Describe every package that WOULD be published for ``target``, for the landing page.
 
     Derived from the same selection/branch rules the publish path uses, so the index cannot
@@ -688,22 +689,25 @@ def index_entries(target: str, *, artifacts_root: str | Path | None = None
         sel = _build_selection(target, man_path.parent, man)
         gate_ok, _ = _check_gate(sel)
         if not gate_ok:
-            continue          # only certified packages are published, so only they are listed
+            continue  # only certified packages are published, so only they are listed
         is_base = _is_baseline(sel)
-        out.append({
-            "branch": resolve_branch(sel),
-            "package_id": sel.package_id,
-            "dtype": package_dtype(man_path.parent),
-            "status": sel.status or _cert_phrase(man) or "unknown",
-            "role": ("frozen unoptimized control (the before/after reference)" if is_base
-                     else "certified champion"),
-        })
+        out.append(
+            {
+                "branch": resolve_branch(sel),
+                "package_id": sel.package_id,
+                "dtype": package_dtype(man_path.parent),
+                "status": sel.status or _cert_phrase(man) or "unknown",
+                "role": (
+                    "frozen unoptimized control (the before/after reference)" if is_base else "certified champion"
+                ),
+            }
+        )
     return sorted(out, key=lambda e: (e["dtype"], e["branch"]))
 
 
-def assemble_index_tree(target: str, dest: str | Path, *,
-                        artifacts_root: str | Path | None = None,
-                        only_branches: "set[str] | None" = None) -> dict[str, Any]:
+def assemble_index_tree(
+    target: str, dest: str | Path, *, artifacts_root: str | Path | None = None, only_branches: "set[str] | None" = None
+) -> dict[str, Any]:
     """Assemble the default-branch landing page (README + LICENSE) into ``dest``.
 
     Deliberately NOT a package tree: the default branch must not look like one champion, or a
@@ -742,8 +746,9 @@ def _rewrite_build_paths(build: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for key, val in build.items():
         if key in ("configure", "command") and isinstance(val, list):
-            out[key] = [str(tok).replace("{package}/mlir_oot", "{package}").replace("mlir_oot/build", "build")
-                        for tok in val]
+            out[key] = [
+                str(tok).replace("{package}/mlir_oot", "{package}").replace("mlir_oot/build", "build") for tok in val
+            ]
         elif key == "tool_output" and isinstance(val, str):
             out[key] = val.replace("mlir_oot/build", "build").replace("{package}/mlir_oot", "{package}")
         else:
@@ -756,14 +761,14 @@ def _default_commands(sel: ChampionSelection) -> dict[str, Any]:
     return {
         "parse": {"argv": ["{tool}", "--verify-diagnostics", "{input_mlir}"]},
         "lower_interface_to_target": {"argv": ["{tool}", f"--convert-iface-to-{t}", "{input_mlir}"]},
-        "emit_command_buffer": {"argv": ["{tool}", f"--convert-iface-to-{t}",
-                                         "--emit-command-buffer={output_json}", "{input_mlir}"]},
+        "emit_command_buffer": {
+            "argv": ["{tool}", f"--convert-iface-to-{t}", "--emit-command-buffer={output_json}", "{input_mlir}"]
+        },
         "lower_target_to_llvm": {"argv": ["{tool}", f"--convert-{t}-to-llvm", "{input_mlir}"]},
     }
 
 
-def _rewrite_manifest(sel: ChampionSelection, *, layout_version: str,
-                      hoisted_tree: bool) -> dict[str, Any]:
+def _rewrite_manifest(sel: ChampionSelection, *, layout_version: str, hoisted_tree: bool) -> dict[str, Any]:
     """Build the contract manifest for the exported repo (repo root == {package}).
 
     If the source manifest is already contract-shaped, it is reused and its build paths rewritten;
@@ -789,13 +794,12 @@ def _rewrite_manifest(sel: ChampionSelection, *, layout_version: str,
             # while the runnable tool sat at the root, so a fetched clone could not invoke it.
             tool = str((src.get("entrypoints") or {}).get("tool") or sel.tool_name)
             if hoisted_tree and tool.startswith("mlir_oot/"):
-                tool = tool[len("mlir_oot/"):]
+                tool = tool[len("mlir_oot/") :]
             man.pop("build", None)
             man.setdefault("entrypoints", {})["tool"] = tool
         else:
             man["build"] = {
-                "configure": ["cmake", "-S", "{package}", "-B", "{package}/build",
-                              "-DCMAKE_BUILD_TYPE=Release"],
+                "configure": ["cmake", "-S", "{package}", "-B", "{package}/build", "-DCMAKE_BUILD_TYPE=Release"],
                 "command": ["cmake", "--build", "{package}/build"],
                 "tool_output": tool_out,
             }
@@ -807,12 +811,14 @@ def _rewrite_manifest(sel: ChampionSelection, *, layout_version: str,
             "language": "cpp",
             "authoring": src.get("authoring")
             if isinstance(src.get("authoring"), dict)
-            else {"mode": "deterministic_generated_from_spec",
-                  "author": "merlin-target-publish", "generated_by_agent": False},
+            else {
+                "mode": "deterministic_generated_from_spec",
+                "author": "merlin-target-publish",
+                "generated_by_agent": False,
+            },
             "integrity_exempt": bool(src.get("integrity_exempt", False)),
             "build": {
-                "configure": ["cmake", "-S", "{package}", "-B", "{package}/build",
-                              "-DCMAKE_BUILD_TYPE=Release"],
+                "configure": ["cmake", "-S", "{package}", "-B", "{package}/build", "-DCMAKE_BUILD_TYPE=Release"],
                 "command": ["cmake", "--build", "{package}/build"],
                 "tool_output": tool_out,
             },
@@ -894,8 +900,7 @@ def _copy_package_root(src: Path, dest: Path) -> None:
         if entry.is_dir():
             if target.exists():
                 shutil.rmtree(target)
-            shutil.copytree(entry, target,
-                            ignore=shutil.ignore_patterns("__pycache__", ".git"))
+            shutil.copytree(entry, target, ignore=shutil.ignore_patterns("__pycache__", ".git"))
         else:
             shutil.copy2(entry, target)
 
@@ -961,8 +966,12 @@ def _fingerprint(package_id: str, merlin_sha: str, cert_run_id: str) -> str:
 
 def _git_sha_full(root: Path | None = None) -> str:
     try:
-        out = subprocess.run(["git", "-C", str(root or paths.repo_root()), "rev-parse", "HEAD"],
-                             capture_output=True, text=True, timeout=10).stdout.strip()
+        out = subprocess.run(
+            ["git", "-C", str(root or paths.repo_root()), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout.strip()
         return out or "nogit"
     except Exception:
         return "nogit"
@@ -1046,18 +1055,20 @@ def _check_gate(sel: ChampionSelection) -> tuple[bool, str]:
         # then publishes without --no-gate, because its certification IS real silicon.
         ok = sel.status in CERTIFIED_STATUSES
         accepted = sorted(CERTIFIED_STATUSES, key=lambda s: _STATUS_RANK[s])
-        return ok, (f"rvv gate: status={sel.status!r} "
-                    f"(need one of {accepted})")
+        return ok, (f"rvv gate: status={sel.status!r} (need one of {accepted})")
     ok = sel.status == "rtl_certified" or sel.cert_status == "pass"
-    return ok, (f"mlir_oot gate: status={sel.status!r} certification={sel.cert_status!r} "
-                f"(need rtl_certified or oot_runner.certify pass)")
+    return ok, (
+        f"mlir_oot gate: status={sel.status!r} certification={sel.cert_status!r} "
+        f"(need rtl_certified or oot_runner.certify pass)"
+    )
 
 
 # ---------------------------------------------------------------------------- promotion
 
 
-def record_certification(target: str, package_id: str, results: "list[str | Path]", *,
-                         artifacts_root: str | Path | None = None) -> dict[str, Any]:
+def record_certification(
+    target: str, package_id: str, results: "list[str | Path]", *, artifacts_root: str | Path | None = None
+) -> dict[str, Any]:
     """Record one or more ``oot_runner.certify`` verdicts onto a package's manifest.
 
     A certify run writes ``results.yaml`` into its own run dir and stops there. Nothing ever carried
@@ -1085,41 +1096,47 @@ def record_certification(target: str, package_id: str, results: "list[str | Path
             raise PublishError(f"no certify results at {rp}")
         data = load_yaml(rp) or {}
         oracle = data.get("oracle") if isinstance(data.get("oracle"), dict) else {}
-        rungs.append({
-            "rung": str(data.get("rung", rp.parent.name)),
-            "run_id": str(data.get("run_id", "")),
-            "status": str(data.get("status", "UNKNOWN")),
-            "oracle": str(oracle.get("kind", "UNKNOWN")),
-            # `is True` on purpose: a missing key must not read as False, which would silently
-            # downgrade an RTL pass to a functional one (or vice versa) on a malformed file.
-            "derived_from_rtl": oracle.get("derived_from_rtl") is True,
-            "cycle_accurate": oracle.get("cycle_accurate") is True,
-            "cycles": oracle.get("cycles"),
-        })
+        rungs.append(
+            {
+                "rung": str(data.get("rung", rp.parent.name)),
+                "run_id": str(data.get("run_id", "")),
+                "status": str(data.get("status", "UNKNOWN")),
+                "oracle": str(oracle.get("kind", "UNKNOWN")),
+                # `is True` on purpose: a missing key must not read as False, which would silently
+                # downgrade an RTL pass to a functional one (or vice versa) on a malformed file.
+                "derived_from_rtl": oracle.get("derived_from_rtl") is True,
+                "cycle_accurate": oracle.get("cycle_accurate") is True,
+                "cycles": oracle.get("cycles"),
+            }
+        )
     if not rungs:
         raise PublishError("no certify results given")
 
     passed = all(r["status"] == "pass" for r in rungs)
     man = load_yaml(sel.package_dir / "manifest.yaml")
     pub = man.get("publication") if isinstance(man.get("publication"), dict) else {}
-    pub.update({
-        "certification": "pass" if passed else "fail",
-        "certified_by_run": rungs[0]["run_id"] or None,
-        "certified_at": utc_stamp(),
-        "certified_by": "merlin.targetgen.oot_runner.certify",
-        # The tier is the weakest rung's, not the strongest: a package is only as certified as its
-        # least-certified covered rung, and quoting the best one is how a headline outruns its
-        # evidence.
-        "certification_tier": {
-            "derived_from_rtl": all(r["derived_from_rtl"] for r in rungs),
-            "cycle_accurate": all(r["cycle_accurate"] for r in rungs),
-            "oracles": sorted({r["oracle"] for r in rungs}),
-        },
-        "certified_rungs": rungs,
-    })
+    pub.update(
+        {
+            "certification": "pass" if passed else "fail",
+            "certified_by_run": rungs[0]["run_id"] or None,
+            "certified_at": utc_stamp(),
+            "certified_by": "merlin.targetgen.oot_runner.certify",
+            # The tier is the weakest rung's, not the strongest: a package is only as certified as its
+            # least-certified covered rung, and quoting the best one is how a headline outruns its
+            # evidence.
+            "certification_tier": {
+                "derived_from_rtl": all(r["derived_from_rtl"] for r in rungs),
+                "cycle_accurate": all(r["cycle_accurate"] for r in rungs),
+                "oracles": sorted({r["oracle"] for r in rungs}),
+            },
+            "certified_rungs": rungs,
+        }
+    )
     man["publication"] = pub
     write_yaml(sel.package_dir / "manifest.yaml", man)
     return pub
+
+
 class MaterializeRefused(PublishError):
     """The submission or its score is not fit to install as a target's compiler."""
 
@@ -1143,15 +1160,24 @@ def _score_is_honest(score: dict) -> tuple[bool, str]:
         return False, "no capsule passed"
     hollow = [r.get("capsule") for r in passed if not (r.get("tiers") or {})]
     if hollow:
-        return False, (f"{len(hollow)} capsule(s) report pass with no tier evidence "
-                       f"({', '.join(str(h) for h in hollow[:4])}) — a pass with an empty tier map is "
-                       f"not evidence a compiler ran")
+        return False, (
+            f"{len(hollow)} capsule(s) report pass with no tier evidence "
+            f"({', '.join(str(h) for h in hollow[:4])}) — a pass with an empty tier map is "
+            f"not evidence a compiler ran"
+        )
     return True, f"{len(passed)}/{len(rows)} passed with tier evidence"
 
 
-def materialize_package(target: str, source: str | Path, *, package_id: str = "agent_spec_v1_mlir_oot",
-                        certified_by_run: str = "", score_path: str | Path | None = None,
-                        artifacts_root: str | Path | None = None, force: bool = False) -> Path:
+def materialize_package(
+    target: str,
+    source: str | Path,
+    *,
+    package_id: str = "agent_spec_v1_mlir_oot",
+    certified_by_run: str = "",
+    score_path: str | Path | None = None,
+    artifacts_root: str | Path | None = None,
+    force: bool = False,
+) -> Path:
     """Install a run's submission as ``out/artifacts/targets/<target>/<package_id>/`` and return its path.
 
     Deliberately does NOT set ``status:``. ``_STATUS_RANK`` knows only rtl_certified / k1_verified /
@@ -1161,6 +1187,7 @@ def materialize_package(target: str, source: str | Path, *, package_id: str = "a
     existing champion just by sorting earlier.
     """
     import shutil
+
     from ..common import provenance as PROV
 
     src_dir = Path(source)
@@ -1168,12 +1195,17 @@ def materialize_package(target: str, source: str | Path, *, package_id: str = "a
         raise MaterializeRefused(f"{src_dir} carries no manifest.yaml — not an OOT backend package")
     if score_path:
         import json as _json
+
         score = _json.loads(Path(score_path).read_text(encoding="utf-8"))
         ok, detail = _score_is_honest(score)
         if not ok:
             raise MaterializeRefused(f"refusing to install {target} compiler from {src_dir}: {detail}")
-        evidence = {"n_passed": score.get("n_passed"), "n_capsules": score.get("n_capsules"),
-                    "labels_graded": score.get("labels_graded"), "detail": detail}
+        evidence = {
+            "n_passed": score.get("n_passed"),
+            "n_capsules": score.get("n_capsules"),
+            "labels_graded": score.get("labels_graded"),
+            "detail": detail,
+        }
     else:
         evidence = {"detail": "no score supplied — installed unverified"}
 
@@ -1191,17 +1223,19 @@ def materialize_package(target: str, source: str | Path, *, package_id: str = "a
     pub = man.get("publication") if isinstance(man.get("publication"), dict) else {}
     pub.update(champion=False, certification="functional_tier", certified_by_run=certified_by_run)
     man["publication"] = pub
-    man["provenance"] = PROV.record(sources=[str(src_dir)],
-                                    extra={"installed_from_run": certified_by_run})
-    man["promotion"] = {"from": str(src_dir), "source_package_id": source_package_id,
-                        "promoted_by": "merlin-target-publish materialize",
-                        "score": str(score_path) if score_path else None, "evidence": evidence}
-    write_yaml(dst / "manifest.yaml", man)   # the module's own writer, not a raw dump
+    man["provenance"] = PROV.record(sources=[str(src_dir)], extra={"installed_from_run": certified_by_run})
+    man["promotion"] = {
+        "from": str(src_dir),
+        "source_package_id": source_package_id,
+        "promoted_by": "merlin-target-publish materialize",
+        "score": str(score_path) if score_path else None,
+        "evidence": evidence,
+    }
+    write_yaml(dst / "manifest.yaml", man)  # the module's own writer, not a raw dump
     return dst
 
 
-def promote(target: str, package_id: str, *, gate: bool = True,
-            artifacts_root: str | Path | None = None) -> None:
+def promote(target: str, package_id: str, *, gate: bool = True, artifacts_root: str | Path | None = None) -> None:
     """Promote ``package_id`` to be the single champion for ``target`` (manifest-only edit in out/).
 
     Verifies the certification gate (unless ``gate=False``), clears any prior champion, and sets
@@ -1230,14 +1264,16 @@ def promote(target: str, package_id: str, *, gate: bool = True,
     cert_run = _cert_run_id(sel)
     man = load_yaml(sel.package_dir / "manifest.yaml")
     pub = man.get("publication") if isinstance(man.get("publication"), dict) else {}
-    pub.update({
-        "champion": True,
-        "certification": "pass" if ok else "unverified",
-        "certified_by_run": cert_run,
-        "promoted_at": utc_stamp(),
-        "promoted_by": "merlin-target-publish",
-        "fingerprint": _fingerprint(sel.package_id, merlin_sha, cert_run),
-    })
+    pub.update(
+        {
+            "champion": True,
+            "certification": "pass" if ok else "unverified",
+            "certified_by_run": cert_run,
+            "promoted_at": utc_stamp(),
+            "promoted_by": "merlin-target-publish",
+            "fingerprint": _fingerprint(sel.package_id, merlin_sha, cert_run),
+        }
+    )
     man["publication"] = pub
     write_yaml(sel.package_dir / "manifest.yaml", man)
 
@@ -1246,8 +1282,7 @@ def promote(target: str, package_id: str, *, gate: bool = True,
 
 
 def _git(args: list[str], cwd: Path | None = None, *, check: bool = True) -> subprocess.CompletedProcess:
-    proc = subprocess.run(["git", *args], cwd=str(cwd) if cwd else None,
-                          capture_output=True, text=True, timeout=300)
+    proc = subprocess.run(["git", *args], cwd=str(cwd) if cwd else None, capture_output=True, text=True, timeout=300)
     if check and proc.returncode != 0:
         raise PublishError(f"git {' '.join(args)} failed (rc={proc.returncode}):\n{proc.stderr}")
     return proc
@@ -1300,9 +1335,16 @@ def _checkout_branch(clone_dir: Path, branch: str) -> bool:
     return False
 
 
-def _git_publish(remote: str, repo_dir: Path, sel: ChampionSelection, manifest: dict[str, Any],
-                 fingerprint: str, cert_run: str, stage_root: Path,
-                 branch: str) -> tuple[str, str, bool]:
+def _git_publish(
+    remote: str,
+    repo_dir: Path,
+    sel: ChampionSelection,
+    manifest: dict[str, Any],
+    fingerprint: str,
+    cert_run: str,
+    stage_root: Path,
+    branch: str,
+) -> tuple[str, str, bool]:
     """Clone the remote, check out ``branch``, replace the tree with the assembled repo, commit +
     tag, push to ``refs/heads/<branch>``. Idempotent PER BRANCH on the **fingerprint**: a matching
     branch-tip fingerprint is a no-op. Returns (commit_sha, tag, noop).
@@ -1338,16 +1380,22 @@ def _git_publish(remote: str, repo_dir: Path, sel: ChampionSelection, manifest: 
     # A --no-gate publish names itself in the SUBJECT. The history of a target repo is its
     # provenance trail; a commit that says "champion" for a package the gate refused makes that
     # trail assert the one thing that is not true about it.
-    subject = (f"publish({sel.target}): champion {sel.package_id}" if gate_ok
-               else f"publish({sel.target}): UNCERTIFIED package {sel.package_id}")
-    warning = "" if gate_ok else (
-        f"WARNING: published with --no-gate. This package did NOT pass the certification gate.\n"
-        f"Gate-Refusal: {gate_detail}\n"
-        f"Not-A-Champion: true\n"
+    subject = (
+        f"publish({sel.target}): champion {sel.package_id}"
+        if gate_ok
+        else f"publish({sel.target}): UNCERTIFIED package {sel.package_id}"
+    )
+    warning = (
+        ""
+        if gate_ok
+        else (
+            f"WARNING: published with --no-gate. This package did NOT pass the certification gate.\n"
+            f"Gate-Refusal: {gate_detail}\n"
+            f"Not-A-Champion: true\n"
+        )
     )
     body = (
-        warning +
-        f"{'Champion' if gate_ok else 'Package'}: {sel.package_id}\n"
+        warning + f"{'Champion' if gate_ok else 'Package'}: {sel.package_id}\n"
         f"Target: {sel.target}\n"
         f"Family: {sel.family}\n"
         f"Merlin-Sha: {merlin_sha}\n"
@@ -1357,19 +1405,45 @@ def _git_publish(remote: str, repo_dir: Path, sel: ChampionSelection, manifest: 
         "\n"
         f"Merlin-Publish-Fingerprint: {fingerprint}\n"
     )
-    _git(["-C", str(clone_dir),
-          "-c", "user.name=merlin-target-publish", "-c", "user.email=publish@merlin.local",
-          "commit", "-m", subject, "-m", body])
+    _git(
+        [
+            "-C",
+            str(clone_dir),
+            "-c",
+            "user.name=merlin-target-publish",
+            "-c",
+            "user.email=publish@merlin.local",
+            "commit",
+            "-m",
+            subject,
+            "-m",
+            body,
+        ]
+    )
     # annotated tag (carries the fingerprint; also robust to git configs that force annotation).
     # Never re-point an existing tag: a consumer may have pinned it, and this commit is a
     # re-certification of the SAME version, not a new release.
     if tag not in existing_tags:
-        _git(["-C", str(clone_dir),
-              "-c", "user.name=merlin-target-publish", "-c", "user.email=publish@merlin.local",
-              "tag", "-a", tag, "-m",
-              (f"{sel.target} champion {sel.package_id}" if gate_ok else
-               f"{sel.target} UNCERTIFIED package {sel.package_id} (published --no-gate)")
-              + f"\nMerlin-Publish-Fingerprint: {fingerprint}\n"])
+        _git(
+            [
+                "-C",
+                str(clone_dir),
+                "-c",
+                "user.name=merlin-target-publish",
+                "-c",
+                "user.email=publish@merlin.local",
+                "tag",
+                "-a",
+                tag,
+                "-m",
+                (
+                    f"{sel.target} champion {sel.package_id}"
+                    if gate_ok
+                    else f"{sel.target} UNCERTIFIED package {sel.package_id} (published --no-gate)"
+                )
+                + f"\nMerlin-Publish-Fingerprint: {fingerprint}\n",
+            ]
+        )
     commit_sha = _git(["-C", str(clone_dir), "rev-parse", "HEAD"]).stdout.strip()
 
     _git(["-C", str(clone_dir), "push", "origin", f"HEAD:refs/heads/{branch}"])
@@ -1378,10 +1452,16 @@ def _git_publish(remote: str, repo_dir: Path, sel: ChampionSelection, manifest: 
     return commit_sha, tag, False
 
 
-def publish_index(target: str, *, dry_run: bool = True, remote: str | None = None,
-                  config: str | Path | None = None,
-                  artifacts_root: str | Path | None = None,
-                  branch: str = "main", confirm_push: str | None = None) -> dict[str, Any]:
+def publish_index(
+    target: str,
+    *,
+    dry_run: bool = True,
+    remote: str | None = None,
+    config: str | Path | None = None,
+    artifacts_root: str | Path | None = None,
+    branch: str = "main",
+    confirm_push: str | None = None,
+) -> dict[str, Any]:
     """Publish the landing page to the repo's DEFAULT branch.
 
     Branch-per-version publishing leaves that branch empty, so `git clone` with no `-b` gives a
@@ -1410,18 +1490,23 @@ def publish_index(target: str, *, dry_run: bool = True, remote: str | None = Non
         }
         actions.append(f"remote branches: {sorted(remote_branches)}")
 
-    info = assemble_index_tree(target, repo_dir, artifacts_root=artifacts_root,
-                               only_branches=remote_branches)
+    info = assemble_index_tree(target, repo_dir, artifacts_root=artifacts_root, only_branches=remote_branches)
     actions.append(f"assembled index listing {len(info['entries'])} package(s) at {repo_dir}")
-    res: dict[str, Any] = {"target": target, "remote": resolved, "branch": branch,
-                           "entries": info["entries"], "repo_dir": str(repo_dir),
-                           "dry_run": dry_run, "actions": actions, "noop": False}
+    res: dict[str, Any] = {
+        "target": target,
+        "remote": resolved,
+        "branch": branch,
+        "entries": info["entries"],
+        "repo_dir": str(repo_dir),
+        "dry_run": dry_run,
+        "actions": actions,
+        "noop": False,
+    }
     if dry_run:
         actions.append("dry-run: nothing cloned, committed or pushed")
         return res
 
-    fingerprint = _fingerprint(f"{target}-index", _git_sha_full(),
-                               ",".join(e["branch"] for e in info["entries"]))
+    fingerprint = _fingerprint(f"{target}-index", _git_sha_full(), ",".join(e["branch"] for e in info["entries"]))
     res["fingerprint"] = fingerprint
     if _needs_push_confirmation(resolved) and confirm_push != fingerprint:
         actions.append(f"REFUSED push to non-local remote; re-run with --confirm-push {fingerprint}")
@@ -1435,12 +1520,25 @@ def publish_index(target: str, *, dry_run: bool = True, remote: str | None = Non
         return res
     _sync_tree(clone_dir, repo_dir)
     _git(["-C", str(clone_dir), "add", "--", "."])
-    _git(["-C", str(clone_dir),
-          "-c", "user.name=merlin-target-publish", "-c", "user.email=publish@merlin.local",
-          "commit", "-m", f"docs({target}): landing page for the published package branches",
-          "-m", (f"Lists the branches present on this remote and how to consume a package.\n"
-                 f"Merlin-Sha: {_git_sha_full()}\n\n"
-                 f"Merlin-Publish-Fingerprint: {fingerprint}\n")])
+    _git(
+        [
+            "-C",
+            str(clone_dir),
+            "-c",
+            "user.name=merlin-target-publish",
+            "-c",
+            "user.email=publish@merlin.local",
+            "commit",
+            "-m",
+            f"docs({target}): landing page for the published package branches",
+            "-m",
+            (
+                f"Lists the branches present on this remote and how to consume a package.\n"
+                f"Merlin-Sha: {_git_sha_full()}\n\n"
+                f"Merlin-Publish-Fingerprint: {fingerprint}\n"
+            ),
+        ]
+    )
     _git(["-C", str(clone_dir), "push", "origin", f"HEAD:refs/heads/{branch}"])
     res["commit_sha"] = _git(["-C", str(clone_dir), "rev-parse", "HEAD"]).stdout.strip()
     actions.append(f"pushed {res['commit_sha']} to {branch}")
@@ -1465,8 +1563,9 @@ def _needs_push_confirmation(remote: str) -> bool:
     return r.startswith(("git@", "ssh://", "https://", "http://")) or ":" in r
 
 
-def _require_push_confirmation(remote: str, repo_dir: Path, branch: str, fingerprint: str,
-                               confirm_push: str | None) -> None:
+def _require_push_confirmation(
+    remote: str, repo_dir: Path, branch: str, fingerprint: str, confirm_push: str | None
+) -> None:
     """Human gate before a real GitHub/network push: refuse unless ``confirm_push`` equals THIS publish's
     content fingerprint. Because the fingerprint is content-derived, a blind constant cannot pass — the
     operator must have seen the assembled artifact. On refusal, print the assembled repo tree (what would
@@ -1480,7 +1579,8 @@ def _require_push_confirmation(remote: str, repo_dir: Path, branch: str, fingerp
         f"push to non-local remote {remote} (branch {branch}) REFUSED without confirmation.\n"
         f"  Assembled repo tree that WOULD be pushed (inspect at {repo_dir}):\n{tree}\n"
         f"  Re-run with --confirm-push {fingerprint} (CLI) / confirm_push={fingerprint!r} (API) to push.\n"
-        f"  The token must equal this publish's content fingerprint, so it cannot be passed blindly.")
+        f"  The token must equal this publish's content fingerprint, so it cannot be passed blindly."
+    )
 
 
 @dataclass
@@ -1504,10 +1604,19 @@ class PublishResult:
     actions: list[str] = field(default_factory=list)
 
 
-def publish(target: str, *, dry_run: bool = True, remote: str | None = None, gate: bool = True,
-            verify_build: bool = True, package_id: str | None = None,
-            artifacts_root: str | Path | None = None, config: str | Path | None = None,
-            branch: str | None = None, confirm_push: str | None = None) -> PublishResult:
+def publish(
+    target: str,
+    *,
+    dry_run: bool = True,
+    remote: str | None = None,
+    gate: bool = True,
+    verify_build: bool = True,
+    package_id: str | None = None,
+    artifacts_root: str | Path | None = None,
+    config: str | Path | None = None,
+    branch: str | None = None,
+    confirm_push: str | None = None,
+) -> PublishResult:
     """Publish the champion of ``target`` as its own repo. Dry-run by default (no git/network).
 
     The gate refuses an uncertified champion unless ``gate=False`` (a loud warning is emitted).
@@ -1523,8 +1632,7 @@ def publish(target: str, *, dry_run: bool = True, remote: str | None = None, gat
     if gate and not gate_ok:
         raise PublishError(f"publish gate refused for {target}/{sel.package_id}: {gate_detail}")
     if not gate and not gate_ok:
-        sys.stderr.write(f"WARNING: --no-gate publishing UNCERTIFIED {target}/{sel.package_id}: "
-                         f"{gate_detail}\n")
+        sys.stderr.write(f"WARNING: --no-gate publishing UNCERTIFIED {target}/{sel.package_id}: {gate_detail}\n")
 
     ts = utc_stamp()
     stage_root = paths.build_dir() / "publish" / target / ts
@@ -1539,8 +1647,15 @@ def publish(target: str, *, dry_run: bool = True, remote: str | None = None, gat
     tag = f"v{version}-{sel.package_id}"
 
     result = PublishResult(
-        target=target, package_id=sel.package_id, remote=resolved_remote, dry_run=dry_run,
-        gate_ok=gate_ok, gate_detail=gate_detail, fingerprint=fingerprint, tag=tag, repo_dir=repo_dir,
+        target=target,
+        package_id=sel.package_id,
+        remote=resolved_remote,
+        dry_run=dry_run,
+        gate_ok=gate_ok,
+        gate_detail=gate_detail,
+        fingerprint=fingerprint,
+        tag=tag,
+        repo_dir=repo_dir,
     )
     result.branch = resolved_branch
     result.actions = [
@@ -1559,28 +1674,46 @@ def publish(target: str, *, dry_run: bool = True, remote: str | None = None, gat
 
     # human diff-confirm gate before any real network push (local/file remotes are exempt).
     _require_push_confirmation(resolved_remote, repo_dir, resolved_branch, fingerprint, confirm_push)
-    result.actions.append(f"push confirmed for non-local remote (fingerprint {fingerprint})"
-                          if _needs_push_confirmation(resolved_remote) else "local remote (no confirm)")
+    result.actions.append(
+        f"push confirmed for non-local remote (fingerprint {fingerprint})"
+        if _needs_push_confirmation(resolved_remote)
+        else "local remote (no confirm)"
+    )
 
     commit_sha, published_tag, noop = _git_publish(
-        resolved_remote, repo_dir, sel, manifest, fingerprint, cert_run, stage_root,
-        resolved_branch)
+        resolved_remote, repo_dir, sel, manifest, fingerprint, cert_run, stage_root, resolved_branch
+    )
     result.committed = not noop
     result.noop = noop
     result.commit_sha = commit_sha
     result.tag = published_tag
-    result.actions.append("no-op (fingerprint/tag already published)" if noop
-                          else f"committed {commit_sha} + tag {published_tag}, pushed to remote")
+    result.actions.append(
+        "no-op (fingerprint/tag already published)"
+        if noop
+        else f"committed {commit_sha} + tag {published_tag}, pushed to remote"
+    )
 
     # record the publish event as a versioned product
-    prod = new_product("publish", version=1, target=target,
-                       notes=f"publish {sel.package_id} -> {resolved_remote} ({'noop' if noop else 'committed'})")
+    prod = new_product(
+        "publish",
+        version=1,
+        target=target,
+        notes=f"publish {sel.package_id} -> {resolved_remote} ({'noop' if noop else 'committed'})",
+    )
     event = {
-        "target": target, "package_id": sel.package_id, "remote": resolved_remote,
+        "target": target,
+        "package_id": sel.package_id,
+        "remote": resolved_remote,
         "branch": resolved_branch,
-        "commit_sha": commit_sha, "tag": published_tag, "noop": noop,
-        "fingerprint": fingerprint, "merlin_git_sha": merlin_sha, "cert_run": cert_run,
-        "gate_ok": gate_ok, "gate_detail": gate_detail, "actions": result.actions,
+        "commit_sha": commit_sha,
+        "tag": published_tag,
+        "noop": noop,
+        "fingerprint": fingerprint,
+        "merlin_git_sha": merlin_sha,
+        "cert_run": cert_run,
+        "gate_ok": gate_ok,
+        "gate_detail": gate_detail,
+        "actions": result.actions,
     }
     out = prod.add_artifact("publish_event.yaml")
     out.write_text(dump_yaml(event), encoding="utf-8")
@@ -1622,8 +1755,9 @@ def _print_result(res: "PublishResult | dict[str, Any]") -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="merlin-target-publish",
-                                 description="Publish a target's certified champion as its own repo (WS-E).")
+    ap = argparse.ArgumentParser(
+        prog="merlin-target-publish", description="Publish a target's certified champion as its own repo (WS-E)."
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p_pub = sub.add_parser("publish", help="publish the champion as a standalone repo")
@@ -1636,8 +1770,11 @@ def main(argv: list[str] | None = None) -> int:
     p_pub.add_argument("--dry-run", action="store_true", help="plan only (default)")
     p_pub.add_argument("--execute", action="store_true", help="actually clone/commit/push")
     p_pub.add_argument("--no-gate", action="store_true", help="publish even if uncertified (LOUD warning)")
-    p_pub.add_argument("--confirm-push", help="content fingerprint confirming a real push to a non-local "
-                       "remote (printed when refused); required for a GitHub/network push")
+    p_pub.add_argument(
+        "--confirm-push",
+        help="content fingerprint confirming a real push to a non-local "
+        "remote (printed when refused); required for a GitHub/network push",
+    )
 
     p_prom = sub.add_parser("promote", help="mark a package the single champion for a target")
     p_prom.add_argument("--target", required=True)
@@ -1645,18 +1782,21 @@ def main(argv: list[str] | None = None) -> int:
     p_prom.add_argument("--artifacts-root")
     p_prom.add_argument("--no-gate", action="store_true")
 
-    p_cert = sub.add_parser("record-cert",
-                            help="record oot_runner.certify verdict(s) onto a package manifest")
+    p_cert = sub.add_parser("record-cert", help="record oot_runner.certify verdict(s) onto a package manifest")
     p_cert.add_argument("--target", required=True)
     p_cert.add_argument("--champion", "--package", dest="champion", required=True)
-    p_cert.add_argument("--results", nargs="+", required=True,
-                        help="one or more certify run dirs (or results.yaml paths)")
+    p_cert.add_argument(
+        "--results", nargs="+", required=True, help="one or more certify run dirs (or results.yaml paths)"
+    )
     p_cert.add_argument("--artifacts-root")
-    p_mat = sub.add_parser("materialize",
-                           help="install a run's submission as the target's OOT backend package")
+    p_mat = sub.add_parser("materialize", help="install a run's submission as the target's OOT backend package")
     p_mat.add_argument("--target", required=True)
-    p_mat.add_argument("--from", dest="source", required=True,
-                       help="the run's submission/ directory (manifest.yaml + the backend tree)")
+    p_mat.add_argument(
+        "--from",
+        dest="source",
+        required=True,
+        help="the run's submission/ directory (manifest.yaml + the backend tree)",
+    )
     p_mat.add_argument("--package-id", default="agent_spec_v1_mlir_oot")
     p_mat.add_argument("--certified-by-run", default="")
     p_mat.add_argument("--score", help="score_capsule.json justifying the install (checked, not trusted)")
@@ -1683,43 +1823,61 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.cmd == "publish":
-            res = publish(args.target, dry_run=not args.execute, remote=args.remote,
-                          gate=not args.no_gate, package_id=args.champion,
-                          artifacts_root=args.artifacts_root, config=args.config,
-                          branch=args.branch, confirm_push=args.confirm_push)
+            res = publish(
+                args.target,
+                dry_run=not args.execute,
+                remote=args.remote,
+                gate=not args.no_gate,
+                package_id=args.champion,
+                artifacts_root=args.artifacts_root,
+                config=args.config,
+                branch=args.branch,
+                confirm_push=args.confirm_push,
+            )
             _print_result(res)
             return 0
         if args.cmd == "index":
-            res = publish_index(args.target, dry_run=not args.execute, remote=args.remote,
-                                config=args.config, artifacts_root=args.artifacts_root,
-                                branch=args.branch, confirm_push=args.confirm_push)
+            res = publish_index(
+                args.target,
+                dry_run=not args.execute,
+                remote=args.remote,
+                config=args.config,
+                artifacts_root=args.artifacts_root,
+                branch=args.branch,
+                confirm_push=args.confirm_push,
+            )
             _print_result(res)
             return 0
         if args.cmd == "record-cert":
-            pub = record_certification(args.target, args.champion, args.results,
-                                       artifacts_root=args.artifacts_root)
+            pub = record_certification(args.target, args.champion, args.results, artifacts_root=args.artifacts_root)
             tier = pub.get("certification_tier") or {}
-            print(f"certification={pub.get('certification')} "
-                  f"rungs={len(pub.get('certified_rungs') or [])} "
-                  f"derived_from_rtl={tier.get('derived_from_rtl')} "
-                  f"cycle_accurate={tier.get('cycle_accurate')} "
-                  f"oracles={','.join(tier.get('oracles') or [])}")
+            print(
+                f"certification={pub.get('certification')} "
+                f"rungs={len(pub.get('certified_rungs') or [])} "
+                f"derived_from_rtl={tier.get('derived_from_rtl')} "
+                f"cycle_accurate={tier.get('cycle_accurate')} "
+                f"oracles={','.join(tier.get('oracles') or [])}"
+            )
             return 0 if pub.get("certification") == "pass" else 1
 
         if args.cmd == "materialize":
-            dst = materialize_package(args.target, args.source, package_id=args.package_id,
-                                      certified_by_run=args.certified_by_run, score_path=args.score,
-                                      artifacts_root=args.artifacts_root, force=args.force)
+            dst = materialize_package(
+                args.target,
+                args.source,
+                package_id=args.package_id,
+                certified_by_run=args.certified_by_run,
+                score_path=args.score,
+                artifacts_root=args.artifacts_root,
+                force=args.force,
+            )
             print(f"installed {args.target} backend -> {dst}")
             return 0
         if args.cmd == "promote":
-            promote(args.target, args.champion, gate=not args.no_gate,
-                    artifacts_root=args.artifacts_root)
+            promote(args.target, args.champion, gate=not args.no_gate, artifacts_root=args.artifacts_root)
             print(f"promoted {args.target}/{args.champion} to champion")
             return 0
         if args.cmd == "inspect":
-            sel = select_champion(args.target, artifacts_root=args.artifacts_root,
-                                  package_id=args.champion)
+            sel = select_champion(args.target, artifacts_root=args.artifacts_root, package_id=args.champion)
             remote = resolve_remote(args.target, config=args.config)
             branch = resolve_branch(sel, config=args.config)
             ok, detail = _check_gate(sel)

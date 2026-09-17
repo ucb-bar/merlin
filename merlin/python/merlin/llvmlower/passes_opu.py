@@ -39,6 +39,7 @@ init is DECLINED instead of silently computing ``A @ B`` and dropping the addend
 selector nothing is rewritten and the module is returned untouched. A pass that decided for itself would
 duplicate the routing decision that :mod:`merlin.targetgen.routing` and the e-graph exist to make.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,10 +48,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["OpuRewrite", "Routed", "SIDECAR_NAME", "SYMBOL_PREFIX", "load_sidecar",
-           "patch_declaration_arg_attrs", "rewrite_contractions_to_opu", "rewrite_prepared_file",
-           "routable_contractions", "tile_filling_selector", "unpatched_declarations",
-           "zero_initialised"]
+__all__ = [
+    "OpuRewrite",
+    "Routed",
+    "SIDECAR_NAME",
+    "SYMBOL_PREFIX",
+    "load_sidecar",
+    "patch_declaration_arg_attrs",
+    "rewrite_contractions_to_opu",
+    "rewrite_prepared_file",
+    "routable_contractions",
+    "tile_filling_selector",
+    "unpatched_declarations",
+    "zero_initialised",
+]
 
 #: Where the rewrite records what it minted, beside the prepared module.
 #:
@@ -119,7 +130,7 @@ class OpuRewrite:
     #: ``{symbol: (m, n, k)}``, or ``(b, m, n, k)`` for a batched one — one entry per DISTINCT type
     #: signature actually called. The arity is what tells the C emitter which entry shape to generate.
     signatures: dict[str, tuple[int, ...]] = field(default_factory=dict)
-    skipped: tuple[tuple[str, str], ...] = ()      # (what, why)
+    skipped: tuple[tuple[str, str], ...] = ()  # (what, why)
     #: The tile edge the decision was made against, when the caller supplied it. Without it the
     #: sidecar cannot say whether a routed contraction fills a tile, so the field is recorded as
     #: UNKNOWN rather than assumed — an unrecorded rule is exactly what this class exists to prevent.
@@ -147,21 +158,28 @@ class OpuRewrite:
 
     def to_dict(self) -> dict[str, Any]:
         sub = self.sub_tile()
-        return {"count": self.count,
-                "routed": [{"symbol": r.symbol, "b": r.batch, "m": r.m, "n": r.n, "k": r.k,
-                            "fqn": r.fqn} for r in self.routed],
-                "signatures": {k: list(v) for k, v in self.signatures.items()},
-                "skipped": [{"what": w, "why": y} for w, y in self.skipped],
-                "routing_rule": {
-                    "tile_edge": self.tile_edge if self.tile_edge is not None else "UNKNOWN",
-                    "fills_default_tile_rule": (None if self.tile_edge is None
-                                                else not sub),
-                    "sub_tile_routed": len(sub),
-                    "sub_tile_dims": sorted({d for r in sub
-                                             for d in (("m",) if r.m < int(self.tile_edge or 0) else ())
-                                             + (("n",) if r.n < int(self.tile_edge or 0) else ())}),
-                    "sub_tile_signatures": sorted({r.symbol for r in sub}),
-                }}
+        return {
+            "count": self.count,
+            "routed": [
+                {"symbol": r.symbol, "b": r.batch, "m": r.m, "n": r.n, "k": r.k, "fqn": r.fqn} for r in self.routed
+            ],
+            "signatures": {k: list(v) for k, v in self.signatures.items()},
+            "skipped": [{"what": w, "why": y} for w, y in self.skipped],
+            "routing_rule": {
+                "tile_edge": self.tile_edge if self.tile_edge is not None else "UNKNOWN",
+                "fills_default_tile_rule": (None if self.tile_edge is None else not sub),
+                "sub_tile_routed": len(sub),
+                "sub_tile_dims": sorted(
+                    {
+                        d
+                        for r in sub
+                        for d in (("m",) if r.m < int(self.tile_edge or 0) else ())
+                        + (("n",) if r.n < int(self.tile_edge or 0) else ())
+                    }
+                ),
+                "sub_tile_signatures": sorted({r.symbol for r in sub}),
+            },
+        }
 
 
 def zero_initialised(op) -> bool:
@@ -226,8 +244,9 @@ def _int_attr_value(attr) -> int | None:
     return data if isinstance(data, int) else None
 
 
-def routable_contractions(module, *, device: str | None = None,
-                          dtypes: "tuple[str, str, str] | None" = None) -> list[tuple[Any, Any]]:
+def routable_contractions(
+    module, *, device: str | None = None, dtypes: "tuple[str, str, str] | None" = None
+) -> list[tuple[Any, Any]]:
     """``[(op, shape)]`` for every contraction this path COULD take, with no decision made.
 
     Separated from the rewrite so a caller (a cost model, an e-graph, a report) can enumerate the
@@ -248,9 +267,10 @@ def routable_contractions(module, *, device: str | None = None,
     want = tuple(dtypes) if dtypes else INT8_DTYPES
     if device is not None:
         from merlin.system.offload import device_dtype_triples
+
         derived = device_dtype_triples(device)
         if not derived:
-            return []                    # fail closed: an underivable datapath routes nothing
+            return []  # fail closed: an underivable datapath routes nothing
         accepted = set(derived)
     else:
         accepted = {want}
@@ -280,10 +300,13 @@ def _signature_key(shape) -> tuple[int, ...]:
     return (*(int(d) for d in shape.parallel), int(shape.reduction[0]))
 
 
-def rewrite_contractions_to_opu(module, *,
-                               select: Callable[[Any], bool] | None = None,
-                               tile_edge: int | None = None,
-                               symbol_prefix: str = SYMBOL_PREFIX) -> OpuRewrite:
+def rewrite_contractions_to_opu(
+    module,
+    *,
+    select: Callable[[Any], bool] | None = None,
+    tile_edge: int | None = None,
+    symbol_prefix: str = SYMBOL_PREFIX,
+) -> OpuRewrite:
     """Replace each selected int8 contraction with a call to the matrix-unit kernel.
 
     Mutates ``module`` in place and returns what it did. ``select`` receives the
@@ -295,8 +318,7 @@ def rewrite_contractions_to_opu(module, *,
     from xdsl.ir import Block, Region
 
     if select is None:
-        return OpuRewrite(skipped=(("all", "no selector supplied, so nothing is routed"),),
-                          tile_edge=tile_edge)
+        return OpuRewrite(skipped=(("all", "no selector supplied, so nothing is routed"),), tile_edge=tile_edge)
 
     candidates = routable_contractions(module)
     chosen = [(op, sh) for op, sh in candidates if select(sh)]
@@ -321,8 +343,7 @@ def rewrite_contractions_to_opu(module, *,
         if len(operands) != 3 or len(op.results) != 1:
             # A contraction whose operand count is not (lhs, rhs, out-init) is not the shape this
             # callee promises; skip it rather than emit a call with the wrong arity.
-            skipped.append((sym, f"expected 3 operands and 1 result, got {len(operands)} and "
-                                 f"{len(op.results)}"))
+            skipped.append((sym, f"expected 3 operands and 1 result, got {len(operands)} and {len(op.results)}"))
             continue
 
         call = func.CallOp(sym, operands, [op.results[0].type])
@@ -336,8 +357,7 @@ def rewrite_contractions_to_opu(module, *,
         prov = getattr(op, "attributes", {}).get("prov.fqn") if hasattr(op, "attributes") else None
         if isinstance(prov, StringAttr):
             fqn = prov.data
-        routed.append(Routed(symbol=sym, parallel=tuple(shape.parallel),
-                             reduction=tuple(shape.reduction), fqn=fqn))
+        routed.append(Routed(symbol=sym, parallel=tuple(shape.parallel), reduction=tuple(shape.reduction), fqn=fqn))
 
     # Declarations go at the END of the module body. The board backends anchor theirs "before the first
     # func.func" with a regex over the printed text; appending to the module's own op list needs no
@@ -351,14 +371,18 @@ def rewrite_contractions_to_opu(module, *,
         # silently-copied weight would have shipped.
         read = DictionaryAttr({"bufferization.access": StringAttr("read")})
         write = DictionaryAttr({"bufferization.access": StringAttr("write")})
-        decl = func.FuncOp(sym, ((lhs_t, rhs_t, out_t), (out_t,)), Region(),
-                           visibility="private",
-                           arg_attrs=ArrayAttr([read, read, write]))
+        decl = func.FuncOp(
+            sym,
+            ((lhs_t, rhs_t, out_t), (out_t,)),
+            Region(),
+            visibility="private",
+            arg_attrs=ArrayAttr([read, read, write]),
+        )
         body.add_op(decl)
 
-    return OpuRewrite(routed=tuple(routed),
-                      signatures={s: k for k, s in symbols.items()},
-                      skipped=tuple(skipped), tile_edge=tile_edge)
+    return OpuRewrite(
+        routed=tuple(routed), signatures={s: k for k, s in symbols.items()}, skipped=tuple(skipped), tile_edge=tile_edge
+    )
 
 
 #: The access each callee argument has, positionally. Read by :func:`patch_declaration_arg_attrs`.
@@ -392,15 +416,16 @@ def patch_declaration_arg_attrs(text: str, rewrite: OpuRewrite) -> str:
         close = out.find(")", open_paren)
         if close < 0:
             continue
-        inner = out[open_paren + 1:close]
+        inner = out[open_paren + 1 : close]
         if "bufferization.access" in inner:
-            continue          # already annotated; re-splitting would double every attribute
+            continue  # already annotated; re-splitting would double every attribute
         parts = [p.strip() for p in inner.split(",")]
         if len(parts) != len(_ARG_ACCESS):
             continue
-        annotated = ", ".join(f'{p} {{bufferization.access = "{acc}"}}'
-                              for p, acc in zip(parts, _ARG_ACCESS, strict=True))
-        out = out[:open_paren + 1] + annotated + out[close:]
+        annotated = ", ".join(
+            f'{p} {{bufferization.access = "{acc}"}}' for p, acc in zip(parts, _ARG_ACCESS, strict=True)
+        )
+        out = out[: open_paren + 1] + annotated + out[close:]
     return out
 
 
@@ -417,7 +442,7 @@ def unpatched_declarations(text: str, rewrite: OpuRewrite) -> tuple[str, ...]:
             missing.append(sym)
             continue
         line_end = text.find("\n", at)
-        line = text[at:line_end if line_end > 0 else len(text)]
+        line = text[at : line_end if line_end > 0 else len(text)]
         if "bufferization.access" not in line:
             missing.append(sym)
     return tuple(missing)
@@ -436,8 +461,10 @@ def tile_filling_selector(tile_edge: int) -> Callable[[Any], bool]:
     """
     edge = int(tile_edge)
     if edge < 1:
-        raise ValueError(f"tile_edge={tile_edge} is not a lane count; it comes from the hardware's own "
-                         "vector length and a guessed one selects the wrong contractions")
+        raise ValueError(
+            f"tile_edge={tile_edge} is not a lane count; it comes from the hardware's own "
+            "vector length and a guessed one selects the wrong contractions"
+        )
 
     def select(shape) -> bool:
         # The LAST TWO parallel extents are the tile's, whatever the rank: a batch dim in front is a loop
@@ -447,11 +474,15 @@ def tile_filling_selector(tile_edge: int) -> Callable[[Any], bool]:
     return select
 
 
-def rewrite_prepared_file(prepared: "str | Path", work: "str | Path", *,
-                         select: Callable[[Any], bool] | None,
-                         tile_edge: int | None = None,
-                         symbol_prefix: str = SYMBOL_PREFIX,
-                         sidecar_name: str = SIDECAR_NAME) -> OpuRewrite:
+def rewrite_prepared_file(
+    prepared: "str | Path",
+    work: "str | Path",
+    *,
+    select: Callable[[Any], bool] | None,
+    tile_edge: int | None = None,
+    symbol_prefix: str = SYMBOL_PREFIX,
+    sidecar_name: str = SIDECAR_NAME,
+) -> OpuRewrite:
     """Rewrite a prepared module ON DISK in place and record what it minted.
 
     This is the seam a whole-model build uses: it reads the module the preparation passes produced,
@@ -468,8 +499,7 @@ def rewrite_prepared_file(prepared: "str | Path", work: "str | Path", *,
 
     prepared, work = Path(prepared), Path(work)
     module = parse_mlir_file(prepared)
-    rewrite = rewrite_contractions_to_opu(
-        module, select=select, tile_edge=tile_edge, symbol_prefix=symbol_prefix)
+    rewrite = rewrite_contractions_to_opu(module, select=select, tile_edge=tile_edge, symbol_prefix=symbol_prefix)
     if rewrite.count:
         text = patch_declaration_arg_attrs(to_text(module), rewrite)
         missing = unpatched_declarations(text, rewrite)
@@ -477,7 +507,8 @@ def rewrite_prepared_file(prepared: "str | Path", work: "str | Path", *,
             raise RuntimeError(
                 f"declarations {list(missing)} carry no bufferization.access attributes, so "
                 "one-shot-bufferize would copy the weight operand of every contraction routed to them; "
-                "refusing to write the module")
+                "refusing to write the module"
+            )
         prepared.write_text(text, encoding="utf-8")
     work.mkdir(parents=True, exist_ok=True)
     (work / sidecar_name).write_text(json.dumps(rewrite.to_dict(), indent=2), encoding="utf-8")
@@ -501,8 +532,9 @@ def load_sidecar(work: "str | Path", sidecar_name: str = SIDECAR_NAME) -> dict[s
     out: dict[str, tuple[int, ...]] = {}
     for sym, extents in sigs.items():
         if not isinstance(extents, (list, tuple)) or len(extents) not in (3, 4):
-            raise ValueError(f"{path}: signature {sym!r} is not an (m, n, k) triple or a "
-                             f"(b, m, n, k) quad: {extents!r}")
+            raise ValueError(
+                f"{path}: signature {sym!r} is not an (m, n, k) triple or a (b, m, n, k) quad: {extents!r}"
+            )
         out[str(sym)] = tuple(int(e) for e in extents)
     return out
 
@@ -518,6 +550,4 @@ def _signature_types(module, key: tuple[int, ...]):
     *batch, m, n, k = (int(v) for v in key)
     i8 = IntegerType(8)
     i32 = IntegerType(32)
-    return (TensorType(i8, [*batch, m, k]),
-            TensorType(i8, [*batch, k, n]),
-            TensorType(i32, [*batch, m, n]))
+    return (TensorType(i8, [*batch, m, k]), TensorType(i8, [*batch, k, n]), TensorType(i32, [*batch, m, n]))

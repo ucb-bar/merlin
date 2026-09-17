@@ -15,6 +15,7 @@ It is deliberately a SEPARATE image rather than lines added to the model harness
 with ``mstatus.VS == Off`` traps, and a trap inside a model run costs a long upload and reads as a
 hang. Here the worst case costs seconds and the preceding lines already say why it stopped.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,10 +26,18 @@ from .backends import spike as _spike
 from .backends.spike_model import DRAM_BASE, RVV_CFLAGS, _harness_dir, _run
 
 
-def build(work: str | Path, *, dram_base: int = DRAM_BASE, dram_bytes: int | None = None,
-          vlen: int | None = None, console: str = "htif", sdk_dir: str | Path | None = None,
-          sdk_chip: str | None = None, chip_freq_hz: int | None = None,
-          mtime_hz: int | None = None) -> Path:
+def build(
+    work: str | Path,
+    *,
+    dram_base: int = DRAM_BASE,
+    dram_bytes: int | None = None,
+    vlen: int | None = None,
+    console: str = "htif",
+    sdk_dir: str | Path | None = None,
+    sdk_chip: str | None = None,
+    chip_freq_hz: int | None = None,
+    mtime_hz: int | None = None,
+) -> Path:
     """Link the probe ELF into ``work`` and return its path.
 
     ``vlen`` only affects the ``-march`` the probe itself is built with; the number it REPORTS comes
@@ -47,16 +56,18 @@ def build(work: str | Path, *, dram_base: int = DRAM_BASE, dram_bytes: int | Non
     cflags = list(RVV_CFLAGS)
     if vlen is not None:
         from .backends.zephyr_model import march_with_vlen
+
         cflags = march_with_vlen(cflags, vlen)
 
     from .boards import CONSOLE_HTIF, CONSOLE_UART
+
     console_defs: list[str] = []
     console_src = h / "htif.c"
     if console == CONSOLE_UART:
         from .sdk_facts import derive_uart_console
+
         if not sdk_dir or not sdk_chip:
-            raise RuntimeError("console='uart' needs sdk_dir + sdk_chip (facts are derived, "
-                               "never hardcoded)")
+            raise RuntimeError("console='uart' needs sdk_dir + sdk_chip (facts are derived, never hardcoded)")
         console_defs = derive_uart_console(sdk_dir, sdk_chip).macros(chip_freq_hz=chip_freq_hz)
         console_src = h / "console_uart.c"
     elif console != CONSOLE_HTIF:
@@ -70,30 +81,48 @@ def build(work: str | Path, *, dram_base: int = DRAM_BASE, dram_bytes: int | Non
     # which mcycle gives a MEASURED core frequency (the number that says whether a PLL took effect).
     probe_defs: list[str] = []
     if dram_bytes:
-        probe_defs += [f"-DMERLIN_REGION_BASE={hex(dram_base)}ULL",
-                       f"-DMERLIN_REGION_BYTES={hex(int(dram_bytes))}ULL"]
+        probe_defs += [f"-DMERLIN_REGION_BASE={hex(dram_base)}ULL", f"-DMERLIN_REGION_BYTES={hex(int(dram_bytes))}ULL"]
     if mtime_hz:
         probe_defs.append(f"-DMERLIN_MTIME_HZ={int(mtime_hz)}u")
 
     objs = []
-    for obj, src, extra in (("probe_main.o", h / "vlen_probe.c", probe_defs),
-                            ("crt.o", h / "crt.S", []),
-                            ("console.o", console_src, console_defs),
-                            ("libc_min.o", h / "libc_min.c", [])):
+    for obj, src, extra in (
+        ("probe_main.o", h / "vlen_probe.c", probe_defs),
+        ("crt.o", h / "crt.S", []),
+        ("console.o", console_src, console_defs),
+        ("libc_min.o", h / "libc_min.c", []),
+    ):
         _run([gcc, *cflags, *extra, "-c", src, "-o", work / obj])
         objs.append(work / obj)
 
     elf = work / "vlen_probe.elf"
     # The weights symbol the shared linker script references is unused here; define it at the DRAM
     # base so the link resolves without a weights blob.
-    _run([gcc, *cflags, "-nostdlib", "-nostartfiles",
-          f"-Wl,--defsym,MERLIN_WEIGHTS_BASE={hex(dram_base)}",
-          "-T", h / "model_link.ld", *objs, "-o", elf])
+    _run(
+        [
+            gcc,
+            *cflags,
+            "-nostdlib",
+            "-nostartfiles",
+            f"-Wl,--defsym,MERLIN_WEIGHTS_BASE={hex(dram_base)}",
+            "-T",
+            h / "model_link.ld",
+            *objs,
+            "-o",
+            elf,
+        ]
+    )
     return elf
 
 
-def run_on_spike(elf: str | Path, *, vlen: int | None = None, dram_base: int = DRAM_BASE,
-                 mem_bytes: int = 256 * 1024 * 1024, timeout: int = 120) -> str:
+def run_on_spike(
+    elf: str | Path,
+    *,
+    vlen: int | None = None,
+    dram_base: int = DRAM_BASE,
+    mem_bytes: int = 256 * 1024 * 1024,
+    timeout: int = 120,
+) -> str:
     """Run the probe on spike and return its console text.
 
     Not ``spike_model.run``: that one is the MODEL protocol and rejects a run with no ``OUT`` line,
@@ -103,8 +132,13 @@ def run_on_spike(elf: str | Path, *, vlen: int | None = None, dram_base: int = D
 
     from .backends.zephyr_model import spike_isa
 
-    cmd = [str(_spike.spike_path()), f"--isa={spike_isa(vlen)}", "-p1",
-           f"-m{hex(dram_base)}:{hex(mem_bytes)}", str(elf)]
+    cmd = [
+        str(_spike.spike_path()),
+        f"--isa={spike_isa(vlen)}",
+        "-p1",
+        f"-m{hex(dram_base)}:{hex(mem_bytes)}",
+        str(elf),
+    ]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     return (proc.stdout or "") + (proc.stderr or "")
 
@@ -169,8 +203,14 @@ def verify_declared(declared_vlen: int | None, console: str) -> dict[str, Any]:
         verdict = PROBE_DISAGREES
     else:
         verdict = PROBE_AGREES
-    return {"verdict": verdict, "declared": declared_vlen, "measured": measured,
-            "consistent": consistent, "complete": bool(got.get("complete")), "probe": got}
+    return {
+        "verdict": verdict,
+        "declared": declared_vlen,
+        "measured": measured,
+        "consistent": consistent,
+        "complete": bool(got.get("complete")),
+        "probe": got,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -182,8 +222,12 @@ def main(argv: list[str] | None = None) -> int:
 
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--board", default="spike_riscv64")
-    ap.add_argument("--build-vlen", type=int, default=None,
-                    help="-march vector width to BUILD with (does not affect what is reported)")
+    ap.add_argument(
+        "--build-vlen",
+        type=int,
+        default=None,
+        help="-march vector width to BUILD with (does not affect what is reported)",
+    )
     ap.add_argument("--run", action="store_true", help="also run it on spike")
     ap.add_argument("--spike-vlen", type=int, default=None, help="VLEN to simulate")
     ap.add_argument("--out", default=None, help="copy the ELF here")
@@ -195,6 +239,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"probe: {elf} ({elf.stat().st_size} bytes)")
     if a.out:
         import shutil
+
         shutil.copy2(elf, a.out)
         print(f"copied to {a.out}")
     if a.run:
@@ -202,13 +247,12 @@ def main(argv: list[str] | None = None) -> int:
         # that region on purpose (it is how a returned log answers "is the DRAM really this big"), so a
         # simulator given less memory than the board faults at ITS edge and the probe looks broken:
         # `mem_mb` stops partway and no DONE is printed. Same reason the delivery packager passes it.
-        console = run_on_spike(elf, vlen=a.spike_vlen, dram_base=brd.dram_base,
-                               mem_bytes=brd.dram_bytes)
+        console = run_on_spike(elf, vlen=a.spike_vlen, dram_base=brd.dram_base, mem_bytes=brd.dram_bytes)
         rep = parse(console)
         print(json.dumps(rep, indent=2))
         return 0 if rep.get("complete") else 1
     return 0
 
 
-if __name__ == "__main__":            # pragma: no cover
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

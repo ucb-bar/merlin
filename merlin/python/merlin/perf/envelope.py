@@ -56,6 +56,7 @@ Reading a pipeline depth
   design whose modules were walked and refused -- only the latter justifies falling back to
   measurement.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -128,7 +129,8 @@ class Peak:
                 raise ValueError(
                     f"peak for {self.resource!r} is UNKNOWN with no reason. Recording UNKNOWN is "
                     "the honest outcome; recording it silently is not -- say what could not be "
-                    "established, because 'not derivable' and 'nobody looked' need different work.")
+                    "established, because 'not derivable' and 'nobody looked' need different work."
+                )
         else:
             if reason:
                 raise ValueError(f"peak for {self.resource!r} has a value and an unknown reason")
@@ -137,7 +139,8 @@ class Peak:
             if self.value <= 0:
                 raise ValueError(
                     f"peak for {self.resource!r} is {self.value}; a non-positive peak is not a "
-                    "peak. Record UNKNOWN with a reason instead of a rate that divides to infinity.")
+                    "peak. Record UNKNOWN with a reason instead of a rate that divides to infinity."
+                )
         object.__setattr__(self, "reason", reason)
 
     @property
@@ -145,15 +148,31 @@ class Peak:
         return self.value is not UNKNOWN
 
     @classmethod
-    def unknown(cls, resource: str, unit: str, reason: str, *, provenance: str,
-                evidence_kind: str = "structural_bound", n_samples: int = 0) -> "Peak":
+    def unknown(
+        cls,
+        resource: str,
+        unit: str,
+        reason: str,
+        *,
+        provenance: str,
+        evidence_kind: str = "structural_bound",
+        n_samples: int = 0,
+    ) -> "Peak":
         """A peak that could not be established, with the reason it could not."""
-        return cls(resource=resource, value=UNKNOWN, unit=unit, evidence_kind=evidence_kind,
-                   provenance=provenance, reason=reason, n_samples=n_samples)
+        return cls(
+            resource=resource,
+            value=UNKNOWN,
+            unit=unit,
+            evidence_kind=evidence_kind,
+            provenance=provenance,
+            reason=reason,
+            n_samples=n_samples,
+        )
 
     @classmethod
-    def observed_ceiling(cls, resource: str, samples: "Sequence[tuple[float, float]]", *,
-                         unit: str, provenance: str) -> "Peak":
+    def observed_ceiling(
+        cls, resource: str, samples: "Sequence[tuple[float, float]]", *, unit: str, provenance: str
+    ) -> "Peak":
         """The highest rate any observation achieved -- a CEILING, derived and then **falsified**.
 
         ``samples`` are ``(demand, busy_cycles)`` pairs. The rate is ``max(demand / busy)`` over the
@@ -169,28 +188,47 @@ class Peak:
         running = [(d, b) for d, b in pts if b > 0]
         if len(running) < 2:
             return cls.unknown(
-                resource, unit,
+                resource,
+                unit,
                 f"{len(running)} observation(s) with non-zero occupancy; a rate needs at least two "
                 "points, because one point cannot separate a rate from a rate plus an intercept",
-                provenance=provenance, evidence_kind="trace_derived", n_samples=len(running))
+                provenance=provenance,
+                evidence_kind="trace_derived",
+                n_samples=len(running),
+            )
         if not any(d > 0 for d, _b in running):
-            return cls.unknown(resource, unit,
-                               "every observation declares zero demand, so no rate is observable",
-                               provenance=provenance, evidence_kind="trace_derived",
-                               n_samples=len(running))
+            return cls.unknown(
+                resource,
+                unit,
+                "every observation declares zero demand, so no rate is observable",
+                provenance=provenance,
+                evidence_kind="trace_derived",
+                n_samples=len(running),
+            )
         rate = max(d / b for d, b in running if d > 0)
         violations = [(d, b) for d, b in pts if d > 0 and d / rate > b * (1.0 + _RATE_EPS)]
         if violations:
             worst = max(violations, key=lambda p: (p[0] / rate) - p[1])
             return cls.unknown(
-                resource, unit,
+                resource,
+                unit,
                 f"the ceiling {rate:.6g} {unit}/cycle is refuted by {len(violations)} of "
                 f"{len(pts)} observation(s): the worst declares {worst[0]:g} {unit} against "
                 f"{worst[1]:g} busy cycle(s), so this demand does not drive the resource's "
                 "occupancy and no rate over it is a bound",
-                provenance=provenance, evidence_kind="trace_derived", n_samples=len(pts))
-        return cls(resource=resource, value=rate, unit=unit, evidence_kind="trace_derived",
-                   provenance=provenance, n_samples=len(pts), is_ceiling=True)
+                provenance=provenance,
+                evidence_kind="trace_derived",
+                n_samples=len(pts),
+            )
+        return cls(
+            resource=resource,
+            value=rate,
+            unit=unit,
+            evidence_kind="trace_derived",
+            provenance=provenance,
+            n_samples=len(pts),
+            is_ceiling=True,
+        )
 
 
 @dataclass(frozen=True)
@@ -219,8 +257,9 @@ class FixedTerm:
             raise ValueError(f"fixed term {self.name!r} cycles must be >= 0, got {self.cycles}")
 
     @classmethod
-    def from_pipeline_depth(cls, record: "Mapping[str, Any] | None", *, name: str,
-                            resource: str = "") -> "FixedTerm | Unavailable":
+    def from_pipeline_depth(
+        cls, record: "Mapping[str, Any] | None", *, name: str, resource: str = ""
+    ) -> "FixedTerm | Unavailable":
         """A module's structural pipeline depth as an intercept, or the reason there is none.
 
         Consumes one record of the frozen ``facts["timing"]`` contract. Three refusals, each
@@ -243,11 +282,13 @@ class FixedTerm:
                 f"pipeline fill for {name}",
                 ("a timing record for this module",),
                 "the RTL was not reachable and no timing facts are cached on this host: UNCACHED "
-                "is not ABSENT, and a design nobody walked is not a design with no sequenced logic")
+                "is not ABSENT, and a design nobody walked is not a design with no sequenced logic",
+            )
         if "pipeline_depth" not in record:
             raise ValueError(
                 f"timing record for {name!r} carries no 'pipeline_depth' key; the fact contract "
-                "always sets it (to an int or to None) and a record without it is malformed")
+                "always sets it (to an int or to None) and a record without it is malformed"
+            )
         depth = record["pipeline_depth"]
         if depth is None:
             partial = record.get("partial_depth")
@@ -258,20 +299,26 @@ class FixedTerm:
                     ("a finite wiring depth for a sequenced module",),
                     f"pipeline_depth is UNKNOWN and partial_depth is {partial}, which is the "
                     "maximum over the ACYCLIC outputs only and is NOT this module's latency; "
-                    f"substituting it would be precise and wrong. {evidence}")
+                    f"substituting it would be precise and wrong. {evidence}",
+                )
             return Unavailable(
                 f"pipeline fill for {name}",
                 ("the sequencer's own limits, or a measurement",),
                 f"every output is reached through feedback, so no finite wiring depth is this "
-                f"module's latency. {evidence}")
+                f"module's latency. {evidence}",
+            )
         if isinstance(depth, bool) or not isinstance(depth, int):
             raise TypeError(f"timing record for {name!r} has a non-int pipeline_depth {depth!r}")
-        return cls(name=name, cycles=int(depth), resource=resource, law="rtl_pipeline_depth",
-                   provenance=str(record.get("evidence") or record.get("source") or ""))
+        return cls(
+            name=name,
+            cycles=int(depth),
+            resource=resource,
+            law="rtl_pipeline_depth",
+            provenance=str(record.get("evidence") or record.get("source") or ""),
+        )
 
     @classmethod
-    def from_fill_law(cls, law: str, dimension: int, *, name: str,
-                      resource: str = "") -> "FixedTerm":
+    def from_fill_law(cls, law: str, dimension: int, *, name: str, resource: str = "") -> "FixedTerm":
         """A pipeline fill from a named structural law over the unit's own dimension.
 
         Delegates to :func:`merlin.perf.record.fill_cycles` so the laws live in one place; that
@@ -279,8 +326,13 @@ class FixedTerm:
         """
         from .record import fill_cycles
 
-        return cls(name=name, cycles=fill_cycles(law, dimension), resource=resource, law=law,
-                   provenance=f"{law}(dimension={dimension})")
+        return cls(
+            name=name,
+            cycles=fill_cycles(law, dimension),
+            resource=resource,
+            law=law,
+            provenance=f"{law}(dimension={dimension})",
+        )
 
 
 @dataclass(frozen=True)
@@ -309,7 +361,8 @@ class ResourceDemand:
         if self.basis is Basis.MOVED and self.amplification is not None:
             raise ValueError(
                 f"demand for {self.resource!r} is already on the MOVED basis, so an amplification "
-                "factor would apply it twice")
+                "factor would apply it twice"
+            )
 
 
 @dataclass(frozen=True)
@@ -338,8 +391,7 @@ class ResourceTime:
         return self.cycles is not UNKNOWN
 
 
-def resource_time(demand: ResourceDemand, peak: Peak,
-                  fixed: "Sequence[FixedTerm]" = ()) -> ResourceTime:
+def resource_time(demand: ResourceDemand, peak: Peak, fixed: "Sequence[FixedTerm]" = ()) -> ResourceTime:
     """``demand / peak`` plus this resource's own intercepts. UNKNOWN propagates from either input.
 
     The amplification gate is generalization (b): an ``ALGORITHMIC`` demand priced without a
@@ -347,47 +399,72 @@ def resource_time(demand: ResourceDemand, peak: Peak,
     rather than published.
     """
     if demand.resource != peak.resource:
-        raise ValueError(f"demand names resource {demand.resource!r} but the peak names "
-                         f"{peak.resource!r}; a rate for one unit cannot price another")
+        raise ValueError(
+            f"demand names resource {demand.resource!r} but the peak names "
+            f"{peak.resource!r}; a rate for one unit cannot price another"
+        )
     own = [f for f in fixed if f.resource == demand.resource]
     fixed_cycles = sum(f.cycles for f in own)
-    prov = "; ".join(p for p in ([demand.provenance, peak.provenance]
-                                 + [f.provenance for f in own]) if p)
+    prov = "; ".join(p for p in ([demand.provenance, peak.provenance] + [f.provenance for f in own]) if p)
 
     if demand.amount == 0:
         # A resource the program never asks to do anything takes zero cycles at ANY positive rate,
         # so this resolves even where the peak does not -- and it pays no fill, because a pipeline
         # fill is charged per drained result and there are none. Derived, not defaulted.
         return ResourceTime(
-            resource=demand.resource, kind=demand.kind, cycles=0.0, unit=demand.unit,
-            basis=demand.basis, fixed_cycles=0, evidence_kind=peak.evidence_kind,
-            provenance=prov)
+            resource=demand.resource,
+            kind=demand.kind,
+            cycles=0.0,
+            unit=demand.unit,
+            basis=demand.basis,
+            fixed_cycles=0,
+            evidence_kind=peak.evidence_kind,
+            provenance=prov,
+        )
 
     amount: "float | _Unknown" = demand.amount
     if demand.basis is Basis.ALGORITHMIC:
         amp = demand.amplification
         if amp is None or is_unknown(amp):
             return ResourceTime(
-                resource=demand.resource, kind=demand.kind, cycles=UNKNOWN, unit=demand.unit,
-                basis=demand.basis, fixed_cycles=fixed_cycles, evidence_kind=peak.evidence_kind,
+                resource=demand.resource,
+                kind=demand.kind,
+                cycles=UNKNOWN,
+                unit=demand.unit,
+                basis=demand.basis,
+                fixed_cycles=fixed_cycles,
+                evidence_kind=peak.evidence_kind,
                 provenance=prov,
                 reason="the demand counts the bytes the ALGORITHM needs, and no measured transfer "
-                       "amplification accompanies it. A bound built on algorithmic rather than "
-                       "moved bytes is optimistic by exactly that factor (9-28x on this corpus), "
-                       "which is the flattering direction")
+                "amplification accompanies it. A bound built on algorithmic rather than "
+                "moved bytes is optimistic by exactly that factor (9-28x on this corpus), "
+                "which is the flattering direction",
+            )
         amount = demand.amount * float(amp)
 
     if not peak.known:
         return ResourceTime(
-            resource=demand.resource, kind=demand.kind, cycles=UNKNOWN, unit=demand.unit,
-            basis=demand.basis, fixed_cycles=fixed_cycles, evidence_kind=peak.evidence_kind,
-            provenance=prov, reason=f"the peak for {demand.resource!r} is UNKNOWN: {peak.reason}")
+            resource=demand.resource,
+            kind=demand.kind,
+            cycles=UNKNOWN,
+            unit=demand.unit,
+            basis=demand.basis,
+            fixed_cycles=fixed_cycles,
+            evidence_kind=peak.evidence_kind,
+            provenance=prov,
+            reason=f"the peak for {demand.resource!r} is UNKNOWN: {peak.reason}",
+        )
 
     return ResourceTime(
-        resource=demand.resource, kind=demand.kind,
-        cycles=float(amount) / float(peak.value) + fixed_cycles, unit=demand.unit,
-        basis=demand.basis, fixed_cycles=fixed_cycles, evidence_kind=peak.evidence_kind,
-        provenance=prov)
+        resource=demand.resource,
+        kind=demand.kind,
+        cycles=float(amount) / float(peak.value) + fixed_cycles,
+        unit=demand.unit,
+        basis=demand.basis,
+        fixed_cycles=fixed_cycles,
+        evidence_kind=peak.evidence_kind,
+        provenance=prov,
+    )
 
 
 @dataclass(frozen=True)
@@ -430,14 +507,14 @@ def _apply(values: "Sequence[float]", operator: Composition, eta: float) -> floa
     if operator is Composition.MAX:
         return float(max(values))
     if operator is Composition.PARTIAL:
-        pairs = sum(min(values[i], values[j])
-                    for i in range(len(values)) for j in range(i + 1, len(values)))
+        pairs = sum(min(values[i], values[j]) for i in range(len(values)) for j in range(i + 1, len(values)))
         return float(sum(values)) - eta * pairs
     raise ValueError(f"unknown composition operator {operator!r}")
 
 
-def compose(times: "Sequence[ResourceTime]", *, operator: Composition, eta: float,
-            workload_fixed: "Sequence[FixedTerm]" = ()) -> Composed:
+def compose(
+    times: "Sequence[ResourceTime]", *, operator: Composition, eta: float, workload_fixed: "Sequence[FixedTerm]" = ()
+) -> Composed:
     """Compose per-resource times into one lower bound under a **supplied** operator.
 
     There is no default. ``operator`` and ``eta`` come from
@@ -456,16 +533,21 @@ def compose(times: "Sequence[ResourceTime]", *, operator: Composition, eta: floa
     before its slowest resource), not a fudge, and the clamp is recorded.
     """
     if not isinstance(operator, Composition):
-        raise TypeError(f"operator must be a Composition, got {operator!r}; the composition "
-                        "operator is derived and passed, never defaulted")
+        raise TypeError(
+            f"operator must be a Composition, got {operator!r}; the composition "
+            "operator is derived and passed, never defaulted"
+        )
     eta = float(eta)
     if not 0.0 <= eta <= 1.0:
-        raise ValueError(f"eta {eta} is outside [0, 1]; it is a realised fraction of the available "
-                         "overlap, not a scale factor")
+        raise ValueError(
+            f"eta {eta} is outside [0, 1]; it is a realised fraction of the available overlap, not a scale factor"
+        )
     stray = [f.name for f in workload_fixed if f.resource]
     if stray:
-        raise ValueError(f"workload_fixed carries resource-owned term(s) {stray}; a fill that "
-                         "belongs to an engine is inside that engine's time and overlaps with it")
+        raise ValueError(
+            f"workload_fixed carries resource-owned term(s) {stray}; a fill that "
+            "belongs to an engine is inside that engine's time and overlaps with it"
+        )
 
     resolved = [t for t in times if t.known]
     unresolved = tuple(t.resource for t in times if not t.known)
@@ -481,10 +563,17 @@ def compose(times: "Sequence[ResourceTime]", *, operator: Composition, eta: floa
     if clamped:
         total = floor
     return Composed(
-        cycles=(UNKNOWN if unresolved else total), partial_cycles=total, floor_cycles=floor,
-        operator=operator, eta=eta, overlap_saving=float(sum(values)) + pedestal - total,
-        unresolved=unresolved, workload_fixed_cycles=fixed_cycles, clamped_to_floor=clamped,
-        serial_fixed_cycles=serial)
+        cycles=(UNKNOWN if unresolved else total),
+        partial_cycles=total,
+        floor_cycles=floor,
+        operator=operator,
+        eta=eta,
+        overlap_saving=float(sum(values)) + pedestal - total,
+        unresolved=unresolved,
+        workload_fixed_cycles=fixed_cycles,
+        clamped_to_floor=clamped,
+        serial_fixed_cycles=serial,
+    )
 
 
 @dataclass(frozen=True)
@@ -549,14 +638,19 @@ class StructuralEnvelope:
         }
 
 
-def envelope(workload: str, times: "Sequence[ResourceTime]", *, operator: Composition, eta: float,
-             fixed: "Sequence[FixedTerm]" = ()) -> StructuralEnvelope:
+def envelope(
+    workload: str,
+    times: "Sequence[ResourceTime]",
+    *,
+    operator: Composition,
+    eta: float,
+    fixed: "Sequence[FixedTerm]" = (),
+) -> StructuralEnvelope:
     """Build the envelope for one workload from its per-resource times and the derived operator."""
     workload_fixed = tuple(f for f in fixed if not f.resource)
     composed = compose(times, operator=operator, eta=eta, workload_fixed=workload_fixed)
 
-    resolved = sorted(((t.resource, float(t.cycles)) for t in times if t.known),
-                      key=lambda p: (-p[1], p[0]))
+    resolved = sorted(((t.resource, float(t.cycles)) for t in times if t.known), key=lambda p: (-p[1], p[0]))
     terms = {n: c for n, c in resolved}
     if resolved:
         limiter, limiter_cycles = resolved[0]
@@ -573,6 +667,14 @@ def envelope(workload: str, times: "Sequence[ResourceTime]", *, operator: Compos
         share = UNKNOWN
 
     return StructuralEnvelope(
-        workload=workload, times=tuple(times), fixed=tuple(fixed), composed=composed, terms=terms,
-        limiter=limiter, limiter_cycles=limiter_cycles, margin_to_second=margin, margin_share=share,
-        limiter_is_provisional=bool(composed.unresolved))
+        workload=workload,
+        times=tuple(times),
+        fixed=tuple(fixed),
+        composed=composed,
+        terms=terms,
+        limiter=limiter,
+        limiter_cycles=limiter_cycles,
+        margin_to_second=margin,
+        margin_share=share,
+        limiter_is_provisional=bool(composed.unresolved),
+    )

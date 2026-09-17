@@ -11,12 +11,12 @@ hand-authored, gemmini-overfit YAML.
 Faithful to the hand-authored gemmini bundles (verified by ``test_generate_bundles`` — the generated
 allow/deny path SETS match, and verify_no_cheat + the sandbox stay green).
 """
+
 from __future__ import annotations
 
 import copy
-from typing import Any
-
 from pathlib import Path
+from typing import Any
 
 from . import tool_registry as TR
 from .target_experiment import TargetExperiment
@@ -27,22 +27,32 @@ _PY = "merlin/python/merlin/"  # the agnostic merlin package prefix (identical f
 # The tools each rung GRANTS are named in tool_registry.ARM_TOOLS, so a rung and an ablation cell are
 # the same kind of object: a set of tool names. What stays here is the deny side, which is not a tool
 # list — it is the wider surface an arm must not reach even though a shared grant would expose it.
-_CPP_DENY_AGN = [f"{_PY}targetgen/rtl/{m}.py" for m in
-                 ("gen_iface_irdl", "gen_isa_module", "gen_rtl_digest", "gen_numeric_facts")] + [
-    f"{_PY}targetgen/oot_starterkit/", f"{_PY}targetgen/synthesize/", f"{_PY}xdsl_dialects/",
-    f"{_PY}targetgen/generate/xdsl.py", f"{_PY}targetgen/generate/runtime_adapter.py",
-    f"{_PY}runtime/reference.py", f"{_PY}runtime/simulator.py", f"{_PY}xdsl_dialects/lowering/"]
+_CPP_DENY_AGN = [
+    f"{_PY}targetgen/rtl/{m}.py" for m in ("gen_iface_irdl", "gen_isa_module", "gen_rtl_digest", "gen_numeric_facts")
+] + [
+    f"{_PY}targetgen/oot_starterkit/",
+    f"{_PY}targetgen/synthesize/",
+    f"{_PY}xdsl_dialects/",
+    f"{_PY}targetgen/generate/xdsl.py",
+    f"{_PY}targetgen/generate/runtime_adapter.py",
+    f"{_PY}runtime/reference.py",
+    f"{_PY}runtime/simulator.py",
+    f"{_PY}xdsl_dialects/lowering/",
+]
 # oracle-callable routes denied in the xDSL/CIRCT arms (arm3/arm4).
-_ORACLE_DENY = [f"{_PY}runtime/reference.py", f"{_PY}runtime/simulator.py",
-                f"{_PY}targetgen/generate/runtime_adapter.py", f"{_PY}xdsl_dialects/lowering/"]
+_ORACLE_DENY = [
+    f"{_PY}runtime/reference.py",
+    f"{_PY}runtime/simulator.py",
+    f"{_PY}targetgen/generate/runtime_adapter.py",
+    f"{_PY}xdsl_dialects/lowering/",
+]
 # The verification seam is DENIED, not merely left off the allow list, on every assisted arm that does
 # not carry it. One of its two paths -- the ``merlin-opt`` driver -- lives INSIDE ``xdsl_dialects/``,
 # which ``xdsl_kit`` grants as a whole directory. Omitting it would therefore grant it anyway, the verify
 # arm's treatment would reduce to one directory nobody else imports, and the verify-vs-arm-4 contrast
 # would be reported over a difference that partly does not exist. Deny wins in the sandbox binder, so
 # naming the file masks it inside the granted directory.
-_VERIFY_DENY = [{"path": p, "reason": TR.spec("verify_seam").deny_reason}
-                for p in TR.spec("verify_seam").bundle_paths]
+_VERIFY_DENY = [{"path": p, "reason": TR.spec("verify_seam").deny_reason} for p in TR.spec("verify_seam").bundle_paths]
 
 
 def _tool_allow(te: TargetExperiment, tools: tuple[str, ...]) -> list[dict]:
@@ -92,35 +102,57 @@ def _host_lane_grants(te: TargetExperiment) -> tuple[list[dict], list[dict]]:
         read_only += [p for p in lane.read_only if p not in read_only]
         deny += [p for p in lane.deny_modification if p not in deny]
     if not read_only and not deny:
-        raise ValueError(f"{te.path}: `host_lane` declares neither `read_only` nor `deny_modification`; "
-                         f"a lane that is pinned by nothing is not pinned")
+        raise ValueError(
+            f"{te.path}: `host_lane` declares neither `read_only` nor `deny_modification`; "
+            f"a lane that is pinned by nothing is not pinned"
+        )
     clash = sorted(set(read_only) & set(deny))
     if clash:
         raise ValueError(
             f"{te.path}: host_lane path(s) {clash} are listed BOTH read-only and denied. Deny wins in "
             f"the sandbox, so those grants would bind nothing and the arm would simply not see the "
-            f"frozen lane. Deny the implementation surface, not the artifact you are granting.")
-    allow = [{"path": p, "mode": "ro", "note": "frozen host lane (pinned infrastructure, read-only)"}
-             for p in read_only]
-    denied = [{"path": p, "reason": "frozen host lane: the experiment measures the target lane, not a "
-                                    "second CPU backend"} for p in deny]
+            f"frozen lane. Deny the implementation surface, not the artifact you are granting."
+        )
+    allow = [
+        {"path": p, "mode": "ro", "note": "frozen host lane (pinned infrastructure, read-only)"} for p in read_only
+    ]
+    denied = [
+        {"path": p, "reason": "frozen host lane: the experiment measures the target lane, not a second CPU backend"}
+        for p in deny
+    ]
     return allow, denied
 
 
 def _shared_allow(te: TargetExperiment, variant: str) -> list[dict]:
     """The target/experiment-parameterized allow block present in EVERY arm."""
     exp = te.exp_name
-    out = [{"path": "merlin/contract/", "mode": "ro", "note": "frozen ABI v0.1"},
-           {"path": te.corpus_rel(), "mode": "ro", "note": "capsule corpus"}]
+    out = [
+        {"path": "merlin/contract/", "mode": "ro", "note": "frozen ABI v0.1"},
+        {"path": te.corpus_rel(), "mode": "ro", "note": "capsule corpus"},
+    ]
     out += [{"path": s, "mode": "ro"} for s in te.corpus_siblings()]
     out += [{"path": h, "mode": "ro", "note": "ISA header (shared hardware spec)"} for h in te.isa_headers]
-    out += [{"path": f"experiments/{exp}/task/", "mode": "ro"},
-            {"path": "third_party/llvm-install/", "mode": "ro", "note": "LLVM/MLIR 23 toolchain"}]
+    out += [
+        {"path": f"experiments/{exp}/task/", "mode": "ro"},
+        {"path": "third_party/llvm-install/", "mode": "ro", "note": "LLVM/MLIR 23 toolchain"},
+    ]
     if te.hwbringup_set:
-        out.append({"path": te.hwbringup_set, "as": te.target, "mode": "ro",
-                    "note": "shared hardware spec: RTL + ISA headers + README + example (ALL arms)"})
-    out.append({"path": f"experiments/{exp}/scripts/agent_selfcheck.py", "as": "agent_selfcheck.py",
-                "mode": "ro", "note": "redacted self-check"})
+        out.append(
+            {
+                "path": te.hwbringup_set,
+                "as": te.target,
+                "mode": "ro",
+                "note": "shared hardware spec: RTL + ISA headers + README + example (ALL arms)",
+            }
+        )
+    out.append(
+        {
+            "path": f"experiments/{exp}/scripts/agent_selfcheck.py",
+            "as": "agent_selfcheck.py",
+            "mode": "ro",
+            "note": "redacted self-check",
+        }
+    )
     out += _host_lane_grants(te)[0]
     out += copy.deepcopy(te.information_set(variant).get("allowed") or [])
     return out
@@ -131,20 +163,30 @@ def _shared_deny(te: TargetExperiment, variant: str) -> list[dict]:
     exp = te.exp_name
     # answer surfaces live under the out/ generated root (the hand-authored bundles used a stale prefix
     # missing the out/ root; the real backends are under out/artifacts/, matching the launcher's lock).
-    out = [{"path": f"out/artifacts/targets/{te.target}/{b}/",
-            "reason": "prior backend / exemplar (answer surface)"} for b in te.prior_backends]
+    out = [
+        {"path": f"out/artifacts/targets/{te.target}/{b}/", "reason": "prior backend / exemplar (answer surface)"}
+        for b in te.prior_backends
+    ]
     if te.hidden_corpus():
         out.append({"path": te.hidden_corpus(), "reason": "hidden capsules + goldens"})
-    out += [{"path": f"experiments/{exp}/input_bundles/grader_private_v0/", "reason": "grader-private"},
-            {"path": f"experiments/{exp}/runs/", "reason": "prior submissions"}]
+    out += [
+        {"path": f"experiments/{exp}/input_bundles/grader_private_v0/", "reason": "grader-private"},
+        {"path": f"experiments/{exp}/runs/", "reason": "prior submissions"},
+    ]
     out += _host_lane_grants(te)[1]
     out += copy.deepcopy(te.information_set(variant).get("denied") or [])
     return out
 
 
-def _arm_manifest(te: TargetExperiment, arm: str, bundle_id: str, *,
-                  variant: str = "hwbringup_v0",
-                  add_tools: tuple[str, ...] = (), drop_tools: tuple[str, ...] = ()) -> dict[str, Any]:
+def _arm_manifest(
+    te: TargetExperiment,
+    arm: str,
+    bundle_id: str,
+    *,
+    variant: str = "hwbringup_v0",
+    add_tools: tuple[str, ...] = (),
+    drop_tools: tuple[str, ...] = (),
+) -> dict[str, Any]:
     """Assemble one arm's manifest = shared target/exp block + the tools its rung carries.
 
     ``add_tools`` / ``drop_tools`` express an ABLATION CELL — this rung plus or minus named tools. With
@@ -162,15 +204,26 @@ def _arm_manifest(te: TargetExperiment, arm: str, bundle_id: str, *,
     if arm == "raw_baseline":
         deny = [{"path": "merlin/", "reason": "Merlin internals (no tools for the raw arm)"}] + deny
     elif arm == "cpp_merlininfra":
-        deny = ([{"path": p, "reason": "denied tool (kept a strict subset of the xDSL arm)"} for p in _CPP_DENY_AGN]
-                + [{"path": te.irdl_pin, "reason": "IRDL spec (xDSL arm only)"},
-                   {"path": te.rtl_facts_pin, "reason": "RTL facts (CIRCT arm only)"}] + deny)
+        deny = (
+            [{"path": p, "reason": "denied tool (kept a strict subset of the xDSL arm)"} for p in _CPP_DENY_AGN]
+            + [
+                {"path": te.irdl_pin, "reason": "IRDL spec (xDSL arm only)"},
+                {"path": te.rtl_facts_pin, "reason": "RTL facts (CIRCT arm only)"},
+            ]
+            + deny
+        )
     elif arm in ("merlin_assisted", "merlin_eqsat"):
         # The eqsat arm shares the xDSL arm's denials on purpose: an arm that also gained the RTL facts
         # would differ in TWO ways and its result would not attribute to the seam.
-        deny = ([{"path": f"{_PY}targetgen/rtl/", "reason": "CIRCT RTL generators (CIRCT arm only)"},
-                 {"path": te.rtl_facts_pin, "reason": "RTL facts (CIRCT arm only)"}] + _VERIFY_DENY
-                + [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY] + deny)
+        deny = (
+            [
+                {"path": f"{_PY}targetgen/rtl/", "reason": "CIRCT RTL generators (CIRCT arm only)"},
+                {"path": te.rtl_facts_pin, "reason": "RTL facts (CIRCT arm only)"},
+            ]
+            + _VERIFY_DENY
+            + [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY]
+            + deny
+        )
     elif arm == "merlin_rtlchecks":
         deny = _VERIFY_DENY + [{"path": p, "reason": "oracle-callable route"} for p in _ORACLE_DENY] + deny
     elif arm == "merlin_verify":
@@ -181,16 +234,24 @@ def _arm_manifest(te: TargetExperiment, arm: str, bundle_id: str, *,
         raise ValueError(f"unknown arm {arm!r}")
     if add_tools or drop_tools:
         allow, deny = _apply_ablation(te, allow, deny, add_tools, drop_tools)
-    return {"bundle_id": bundle_id, "variant": variant, "arm": arm,
-            "task": f"{te.target}-mlir-oot-capsule",
-            "condition": info.get("condition", variant),
-            "source_pins": list(info.get("source_pins") or ()),
-            "description": f"{arm} arm for the {te.target} target (generated from target_experiment.yaml)",
-            "allowed": allow, "denied": deny, "tools": list(tools), "integrity_required": True}
+    return {
+        "bundle_id": bundle_id,
+        "variant": variant,
+        "arm": arm,
+        "task": f"{te.target}-mlir-oot-capsule",
+        "condition": info.get("condition", variant),
+        "source_pins": list(info.get("source_pins") or ()),
+        "description": f"{arm} arm for the {te.target} target (generated from target_experiment.yaml)",
+        "allowed": allow,
+        "denied": deny,
+        "tools": list(tools),
+        "integrity_required": True,
+    }
 
 
-def _apply_ablation(te: TargetExperiment, allow: list[dict], deny: list[dict],
-                    add_tools: tuple[str, ...], drop_tools: tuple[str, ...]) -> tuple[list[dict], list[dict]]:
+def _apply_ablation(
+    te: TargetExperiment, allow: list[dict], deny: list[dict], add_tools: tuple[str, ...], drop_tools: tuple[str, ...]
+) -> tuple[list[dict], list[dict]]:
     """Reconcile the deny side with the cell's added/dropped tools.
 
     An ADDED tool must lose the deny entry the base rung wrote for it (deny wins in the sandbox, so a
@@ -199,17 +260,20 @@ def _apply_ablation(te: TargetExperiment, allow: list[dict], deny: list[dict],
     added_paths = {p for n in add_tools for p in _tool_paths(te, n)}
     deny = [e for e in deny if e.get("path") not in added_paths]
     for name in drop_tools:
-        deny = [{"path": p, "reason": f"ablated: {name} withheld from this arm"}
-                for p in _tool_paths(te, name)] + deny
+        deny = [{"path": p, "reason": f"ablated: {name} withheld from this arm"} for p in _tool_paths(te, name)] + deny
     return allow, deny
 
 
 # arm -> the bundle-id stem (the launcher appends the variant suffix).
-_ARMS = {"raw_baseline": "raw_baseline", "cpp_merlininfra": "cpp_merlininfra",
-         "merlin_assisted": "merlin_assisted", "merlin_rtlchecks": "merlin_assisted_rtlchecks",
-         # arm5's stem CONTAINS "merlin_assisted" on purpose: generate_prompt._is_assisted_arm is a
-         # substring test, so the arm inherits the assisted seam menu with no prompt edit.
-         "merlin_eqsat": "merlin_assisted_eqsat"}
+_ARMS = {
+    "raw_baseline": "raw_baseline",
+    "cpp_merlininfra": "cpp_merlininfra",
+    "merlin_assisted": "merlin_assisted",
+    "merlin_rtlchecks": "merlin_assisted_rtlchecks",
+    # arm5's stem CONTAINS "merlin_assisted" on purpose: generate_prompt._is_assisted_arm is a
+    # substring test, so the arm inherits the assisted seam menu with no prompt edit.
+    "merlin_eqsat": "merlin_assisted_eqsat",
+}
 
 # Arms that EXIST but are not part of the default ladder: emitted only when named through ``arms=`` /
 # ``--arms``. The five stems above are the ids every committed bundle directory, every run path under
@@ -230,9 +294,14 @@ _OPT_IN_ARMS = {"merlin_verify": "merlin_assisted_verify"}
 _ALL_ARMS = {**_ARMS, **_OPT_IN_ARMS}
 
 
-def generate_bundles(te: TargetExperiment, *, variant: str = "hwbringup_v0",
-                     add_tools: tuple[str, ...] = (), drop_tools: tuple[str, ...] = (),
-                     arms: tuple[str, ...] = ()) -> dict[str, dict]:
+def generate_bundles(
+    te: TargetExperiment,
+    *,
+    variant: str = "hwbringup_v0",
+    add_tools: tuple[str, ...] = (),
+    drop_tools: tuple[str, ...] = (),
+    arms: tuple[str, ...] = (),
+) -> dict[str, dict]:
     """The bundle manifests for ``te``, keyed by bundle_id. Target-agnostic: the same code emits them
     for any target from its descriptor + derived paths (no hand-authored YAML).
 
@@ -249,8 +318,7 @@ def generate_bundles(te: TargetExperiment, *, variant: str = "hwbringup_v0",
     out = {}
     for arm in wanted:
         bid = f"{_ALL_ARMS[arm]}_{variant}{suffix}"
-        out[bid] = _arm_manifest(te, arm, bid, variant=variant,
-                                 add_tools=add_tools, drop_tools=drop_tools)
+        out[bid] = _arm_manifest(te, arm, bid, variant=variant, add_tools=add_tools, drop_tools=drop_tools)
     return out
 
 
@@ -258,9 +326,12 @@ def _dump_manifest(manifest: dict[str, Any]) -> str:
     """Serialize one bundle manifest to YAML (a generated header + the manifest body). Key order is
     preserved so the file reads like the hand-authored ones; consumers ``yaml.safe_load`` it."""
     import yaml
-    header = (f"# GENERATED by merlin.targetgen.generate_bundles for target {manifest.get('task')!r}.\n"
-              f"# Do not hand-edit: regenerate from target_experiment.yaml (the 4-arm ladder is a fixed\n"
-              f"# methodology; the target/experiment-specific paths come from the descriptor).\n")
+
+    header = (
+        f"# GENERATED by merlin.targetgen.generate_bundles for target {manifest.get('task')!r}.\n"
+        f"# Do not hand-edit: regenerate from target_experiment.yaml (the 4-arm ladder is a fixed\n"
+        f"# methodology; the target/experiment-specific paths come from the descriptor).\n"
+    )
     return header + yaml.safe_dump(manifest, sort_keys=False, default_flow_style=False, width=120)
 
 
@@ -286,8 +357,7 @@ def _tool_blurbs(manifest: dict[str, Any]) -> str:
     """
     names = list(manifest.get("tools") or ())
     if not names:
-        return ("- (this manifest predates tool recording; regenerate the bundle to list the tools "
-                "it grants)")
+        return "- (this manifest predates tool recording; regenerate the bundle to list the tools it grants)"
     from . import tool_registry as TR
 
     rows = []
@@ -308,6 +378,7 @@ def _allowed_merlin_tools_doc(manifest: dict[str, Any]) -> str:
     committed document that continued to claim ``sandbox=none`` long after scored launches required
     bwrap.
     """
+
     def entries(key: str, detail: str) -> str:
         rows = []
         for entry in manifest.get(key, ()):
@@ -353,8 +424,9 @@ Denied paths and answer surfaces remain masked even when a broader parent direct
 """
 
 
-def _materialize_prompt_and_grants(te: TargetExperiment, bdir, bundle_id: str, variant: str,
-                                   manifest: dict[str, Any], cap, written: list) -> None:
+def _materialize_prompt_and_grants(
+    te: TargetExperiment, bdir, bundle_id: str, variant: str, manifest: dict[str, Any], cap, written: list
+) -> None:
     """Emit the derivable, non-manifest bundle files idempotently:
       * ``STARTER_PROMPT.md`` — the target-general task prompt (``generate_prompt.render_prompt``); passed
         the bundle STEM as the arm so the assisted/CIRCT arms get their seam menu (``_is_assisted_arm``
@@ -367,6 +439,7 @@ def _materialize_prompt_and_grants(te: TargetExperiment, bdir, bundle_id: str, v
     ``cap`` is the target's capability manifest (or ``None`` if it could not be loaded — then the prompt is
     skipped with the grants still written)."""
     from pathlib import Path
+
     bdir = Path(bdir)
     stem = bundle_id[: -(len(variant) + 1)] if bundle_id.endswith("_" + variant) else bundle_id
     # hwbringup bundles are the REALISTIC experiment's info set; anything else renders at full scope.
@@ -394,17 +467,24 @@ def _materialize_prompt_and_grants(te: TargetExperiment, bdir, bundle_id: str, v
 
     if cap is not None:
         from .generate_prompt import render_prompt
+
         # Thread the bundle's OWN grant set, so the mandatory-workflow block names only the tools this
         # bundle actually binds. Without it the prompt falls back to a coarse match on the arm string
         # and an ablation cell would be handed its full rung's checklist -- telling the agent to use a
         # tool the cell deliberately withheld, which is the one thing a cell must never do.
-        granted = {e["path"] for e in (manifest.get("allowed") or [])
-                   if isinstance(e, dict) and str(e.get("path", "")).startswith(("merlin/", "experiments/"))}
+        granted = {
+            e["path"]
+            for e in (manifest.get("allowed") or [])
+            if isinstance(e, dict) and str(e.get("path", "")).startswith(("merlin/", "experiments/"))
+        }
         prompt = render_prompt(te, cap, experiment, stem, granted_tools=granted)
         if manifest.get("condition") == "kernel-library":
             library_alias = next(
-                (str(entry.get("as")) for entry in manifest.get("allowed", ())
-                 if isinstance(entry, dict) and entry.get("as") and "kernel" in str(entry.get("as"))),
+                (
+                    str(entry.get("as"))
+                    for entry in manifest.get("allowed", ())
+                    if isinstance(entry, dict) and entry.get("as") and "kernel" in str(entry.get("as"))
+                ),
                 "kernel-library",
             )
             prompt += f"""
@@ -426,10 +506,15 @@ not correctness-qualified implementations and must not be promoted without an in
         _w_always("ALLOWED_MERLIN_TOOLS.md", _allowed_merlin_tools_doc(manifest))
 
 
-def materialize_bundles(te: TargetExperiment, dest, *,
-                        variants: tuple[str, ...] = ("hwbringup_v0",),
-                        add_tools: tuple[str, ...] = (), drop_tools: tuple[str, ...] = (),
-                        arms: tuple[str, ...] = ()) -> list["Path"]:
+def materialize_bundles(
+    te: TargetExperiment,
+    dest,
+    *,
+    variants: tuple[str, ...] = ("hwbringup_v0",),
+    add_tools: tuple[str, ...] = (),
+    drop_tools: tuple[str, ...] = (),
+    arms: tuple[str, ...] = (),
+) -> list["Path"]:
     """Write every generated bundle under ``dest/<bundle_id>/`` for each requested ``variant``:
     ``input_bundle_manifest.yaml`` (always, overwritten — the manifest is fully generated) plus the
     derivable non-manifest files (a preserved ``STARTER_PROMPT.md`` plus always-derived grant lists and
@@ -438,11 +523,13 @@ def materialize_bundles(te: TargetExperiment, dest, *,
     ``dest`` is typically ``experiments/<exp>/input_bundles`` — the same tracked location the launcher and
     ``require_scaffolding`` read (bundles are curated inputs, not ``out/`` generated output)."""
     from pathlib import Path
+
     dest = Path(dest)
     # The capability manifest (needed to render STARTER_PROMPT.md) is target-level; load it once and
     # degrade honestly if unavailable (e.g. mlc absent) — manifests + grant files are still written.
     try:
         from .target_experiment import declared_vs_resolved_contract, load_capability_manifest
+
         # When the registry resolves nothing for this target, fall back to the contract the DESCRIPTOR
         # declares. Without this a descriptor could name its contract, have that file sit right there on
         # disk, and still render no prompt — which is how a target reached "bundles generated" with three
@@ -450,17 +537,20 @@ def materialize_bundles(te: TargetExperiment, dest, *,
         declared, resolved, verdict = declared_vs_resolved_contract(te)
         explicit = declared if verdict == "declared_only" else None
         if explicit:
-            print(f"  note: registry resolves no contract for {te.target!r}; using the descriptor's "
-                  f"declared {te.declared_contract}")
+            print(
+                f"  note: registry resolves no contract for {te.target!r}; using the descriptor's "
+                f"declared {te.declared_contract}"
+            )
         cap = load_capability_manifest(te.target, contract_path=explicit)
     except Exception as e:  # noqa: BLE001 — no capability manifest -> skip prompt, keep the rest
         cap = None
-        print(f"  note: capability manifest for {te.target!r} unavailable ({type(e).__name__}: {e}); "
-              f"STARTER_PROMPT.md not rendered (manifests + grant files still written).")
+        print(
+            f"  note: capability manifest for {te.target!r} unavailable ({type(e).__name__}: {e}); "
+            f"STARTER_PROMPT.md not rendered (manifests + grant files still written)."
+        )
     written: list[Path] = []
     for variant in variants:
-        bundles = generate_bundles(te, variant=variant, add_tools=add_tools, drop_tools=drop_tools,
-                                   arms=arms)
+        bundles = generate_bundles(te, variant=variant, add_tools=add_tools, drop_tools=drop_tools, arms=arms)
         for bundle_id, manifest in bundles.items():
             bdir = dest / bundle_id
             bdir.mkdir(parents=True, exist_ok=True)
@@ -493,17 +583,31 @@ def _main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Materialize the 4-arm bundle manifests from a descriptor.")
     ap.add_argument("--descriptor", help="path to a target_experiment.yaml (not needed for --list-tools)")
     ap.add_argument("--dest", default=None, help="output input_bundles dir (default: beside the descriptor)")
-    ap.add_argument("--variants", default="hwbringup_v0",
-                    help="comma-separated bundle-id variant suffixes (default: hwbringup_v0)")
-    ap.add_argument("--with-tool", action="append", default=[], metavar="NAME",
-                    help=f"ABLATION: grant this tool on top of the arm's rung (repeatable). "
-                         f"Known: {', '.join(TR.ablatable_tools())}")
-    ap.add_argument("--without-tool", action="append", default=[], metavar="NAME",
-                    help="ABLATION: withhold this tool from the arm's rung (repeatable). The bundle id "
-                         "gains a suffix naming the cell.")
-    ap.add_argument("--arms", default="",
-                    help=f"comma-separated arms to emit (default: the ladder, {', '.join(_ARMS)}). "
-                         f"Opt-in arms, emitted only when named: {', '.join(_OPT_IN_ARMS)}")
+    ap.add_argument(
+        "--variants", default="hwbringup_v0", help="comma-separated bundle-id variant suffixes (default: hwbringup_v0)"
+    )
+    ap.add_argument(
+        "--with-tool",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help=f"ABLATION: grant this tool on top of the arm's rung (repeatable). "
+        f"Known: {', '.join(TR.ablatable_tools())}",
+    )
+    ap.add_argument(
+        "--without-tool",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="ABLATION: withhold this tool from the arm's rung (repeatable). The bundle id "
+        "gains a suffix naming the cell.",
+    )
+    ap.add_argument(
+        "--arms",
+        default="",
+        help=f"comma-separated arms to emit (default: the ladder, {', '.join(_ARMS)}). "
+        f"Opt-in arms, emitted only when named: {', '.join(_OPT_IN_ARMS)}",
+    )
     ap.add_argument("--list-tools", action="store_true", help="print the tool catalog and exit")
     a = ap.parse_args(argv)
 
@@ -521,9 +625,14 @@ def _main(argv: list[str] | None = None) -> int:
     te = load_target_experiment(a.descriptor)
     dest = Path(a.dest) if a.dest else Path(a.descriptor).parent / "input_bundles"
     variants = tuple(v.strip() for v in a.variants.split(",") if v.strip())
-    written = materialize_bundles(te, dest, variants=variants,
-                                  add_tools=tuple(a.with_tool), drop_tools=tuple(a.without_tool),
-                                  arms=tuple(x.strip() for x in a.arms.split(",") if x.strip()))
+    written = materialize_bundles(
+        te,
+        dest,
+        variants=variants,
+        add_tools=tuple(a.with_tool),
+        drop_tools=tuple(a.without_tool),
+        arms=tuple(x.strip() for x in a.arms.split(",") if x.strip()),
+    )
     print(f"materialized {len(written)} bundle manifests under {dest} (target={te.target}):")
     for p in written:
         print(f"  {p.parent.name}/{p.name}")

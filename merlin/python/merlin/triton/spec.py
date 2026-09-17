@@ -13,6 +13,7 @@ deliberately not attempted: a wrong guess here is silent.
 Everything in this module is plain data with no Triton import, so it stays testable without the
 wheel installed.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
@@ -56,14 +57,17 @@ class KernelArg:
             if not self.shape:
                 raise KernelSpecError(
                     f"arg {self.name!r}: a pointer needs a static shape — the bridge re-raises it to a "
-                    "tensor-typed function argument and cannot do that for an unknown extent")
+                    "tensor-typed function argument and cannot do that for an unknown extent"
+                )
             if self.effect not in _EFFECTS:
                 raise KernelSpecError(
                     f"arg {self.name!r}: a pointer needs an explicit effect {_EFFECTS} — mutation is "
-                    "declared, never inferred from the body")
+                    "declared, never inferred from the body"
+                )
             if self.strides is not None and len(self.strides) != len(self.shape):
                 raise KernelSpecError(
-                    f"arg {self.name!r}: {len(self.strides)} strides for a rank-{len(self.shape)} shape")
+                    f"arg {self.name!r}: {len(self.strides)} strides for a rank-{len(self.shape)} shape"
+                )
         else:
             if self.shape or self.strides:
                 raise KernelSpecError(f"arg {self.name!r}: a scalar carries no shape/strides")
@@ -111,8 +115,9 @@ class GridSpec:
             if any(int(d) < 1 for d in self.dims):
                 raise KernelSpecError(f"grid extents must be >= 1, got {self.dims}")
 
-    def resolve(self, constexprs: Mapping[str, Any] | None = None,
-                runtime: Mapping[str, Any] | None = None) -> tuple[int, int, int]:
+    def resolve(
+        self, constexprs: Mapping[str, Any] | None = None, runtime: Mapping[str, Any] | None = None
+    ) -> tuple[int, int, int]:
         """Concrete (x, y, z) extents, right-padded with 1s."""
         dims = self.dims
         if dims is None:
@@ -159,7 +164,8 @@ class TritonKernelSpec:
         if not self.outputs:
             raise KernelSpecError(
                 "no argument is declared written — a kernel with no output would compile to a no-op; "
-                "declare effect='write' (or 'readwrite') on the destination")
+                "declare effect='write' (or 'readwrite') on the destination"
+            )
 
     @property
     def name(self) -> str:

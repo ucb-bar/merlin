@@ -4,6 +4,7 @@ Control flow, dominance and task ordering are checked here. This does not prove 
 trip-count equivalence, termination, hardware ordering or performance. Those obligations remain
 separate from a source/task ownership receipt.
 """
+
 from __future__ import annotations
 
 from collections import Counter
@@ -12,13 +13,13 @@ from typing import Any, Sequence
 from .host_cfg_index import PreparedHostCFG, prepare_host_cfg, require_prepared_host_cfg
 
 
-def analyze_task_cfg(function: Any, task_ids: Sequence[int], *,
-                     prepared_cfg: PreparedHostCFG | None = None) -> dict[str, Any]:
+def analyze_task_cfg(
+    function: Any, task_ids: Sequence[int], *, prepared_cfg: PreparedHostCFG | None = None
+) -> dict[str, Any]:
     """Check owned CFG operations and mandatory task coverage on every returning path."""
     from xdsl.ir import Block
 
-    cfg = (require_prepared_host_cfg(function, prepared_cfg)
-           if prepared_cfg is not None else prepare_host_cfg(function))
+    cfg = require_prepared_host_cfg(function, prepared_cfg) if prepared_cfg is not None else prepare_host_cfg(function)
     blocks = cfg.blocks
     problems: set[str] = set()
     if not blocks:
@@ -84,9 +85,14 @@ def analyze_task_cfg(function: Any, task_ids: Sequence[int], *,
         elif operation.name == "llvm.ptrtoint" and operands and operands[0] in addresses:
             addresses.update(operation.results)
             shared.add(operation)
-        elif operation.name == "llvm.add" and len(operands) == 2 and (
+        elif (
+            operation.name == "llvm.add"
+            and len(operands) == 2
+            and (
                 (operands[0] in addresses and operands[1] in constants)
-                or (operands[1] in addresses and operands[0] in constants)):
+                or (operands[1] in addresses and operands[0] in constants)
+            )
+        ):
             addresses.update(operation.results)
             shared.add(operation)
         elif operation.name == "llvm.alloca" and operands and all(v in constants for v in operands):
@@ -152,8 +158,11 @@ def analyze_task_cfg(function: Any, task_ids: Sequence[int], *,
     while changed:
         changed = False
         for block in blocks:
-            incoming = (set.intersection(*(must_out[p] for p in predecessors[block]))
-                        if block is not entry and predecessors[block] else set())
+            incoming = (
+                set.intersection(*(must_out[p] for p in predecessors[block]))
+                if block is not entry and predecessors[block]
+                else set()
+            )
             outgoing = incoming | block_tasks[block]
             if outgoing != must_out[block]:
                 must_out[block] = outgoing
@@ -163,10 +172,15 @@ def analyze_task_cfg(function: Any, task_ids: Sequence[int], *,
     if not universe.issubset(counts):
         problems.add("planned task emits no owned computation or control flow")
     return {
-        "schema": "compiler_task_cfg_evidence_v1", "status": "refused" if problems else "verified",
-        "problems": sorted(problems), "blocks": len(blocks), "reachable_blocks": len(reachable),
-        "return_blocks": len(returns), "emitted_operations_by_task": dict(sorted(counts.items())),
+        "schema": "compiler_task_cfg_evidence_v1",
+        "status": "refused" if problems else "verified",
+        "problems": sorted(problems),
+        "blocks": len(blocks),
+        "reachable_blocks": len(reachable),
+        "return_blocks": len(returns),
+        "emitted_operations_by_task": dict(sorted(counts.items())),
         "shared_prologue_operations": dict(sorted(shared_counts.items())),
         "proof_scope": "CFG reachability, SSA dominance, ordered and mandatory task ownership",
-        "loop_trip_count_equivalence": "UNPROVEN", "numeric_equivalence": "UNPROVEN",
+        "loop_trip_count_equivalence": "UNPROVEN",
+        "numeric_equivalence": "UNPROVEN",
     }

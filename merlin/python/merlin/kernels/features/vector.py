@@ -4,6 +4,7 @@ Decision recorded: *is the loop vector-length-agnostic* (scalable, RVV ``vsetvl`
 *fixed-width* (AVX/NEON) vs *not applicable* (systolic, e.g. Gemmini). Never records the
 concrete VLEN/LMUL — that is a constant, not a decision.
 """
+
 from __future__ import annotations
 
 from merlin.kernels.markers import target_family

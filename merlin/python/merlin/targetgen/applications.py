@@ -33,13 +33,13 @@ recovers the iteration space, and it classifies contraction GENERICS structurall
 because the int8 rewrite leaves generics behind and a name-only reader reports zero contractions on
 every int8 capture.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 
-__all__ = ["RegionClass", "ClassEvidence", "SizedCapsule", "classify_capture", "classify_captures",
-           "size_class"]
+__all__ = ["RegionClass", "ClassEvidence", "SizedCapsule", "classify_capture", "classify_captures", "size_class"]
 
 
 @dataclass(frozen=True)
@@ -48,10 +48,10 @@ class RegionClass:
 
     family: str
     dtype: str
-    alignment: str                                 # aligned | partial (vs the target's tile edge)
-    regime: str                                    # memory_regime.classify verdict
+    alignment: str  # aligned | partial (vs the target's tile edge)
+    regime: str  # memory_regime.classify verdict
     rank: int
-    geometry: str                                  # shape_taxonomy.classify_geometry verdict
+    geometry: str  # shape_taxonomy.classify_geometry verdict
 
     def key(self) -> str:
         return f"{self.family}/{self.dtype}/{self.alignment}/{self.regime}/rank{self.rank}/{self.geometry}"
@@ -66,20 +66,28 @@ class ClassEvidence:
     k: int
     n: int
     batch: int
-    multiplicity: int                              # regions in this class
-    work: int                                      # summed multiply-accumulates
-    work_complete: bool                            # False when any member's extents were partial
-    source: str                                    # the capture the representative came from
+    multiplicity: int  # regions in this class
+    work: int  # summed multiply-accumulates
+    work_complete: bool  # False when any member's extents were partial
+    source: str  # the capture the representative came from
 
     def to_dict(self) -> dict:
         return {
             "class": self.region_class.key(),
-            "family": self.region_class.family, "dtype": self.region_class.dtype,
-            "alignment": self.region_class.alignment, "regime": self.region_class.regime,
-            "rank": self.region_class.rank, "geometry": self.region_class.geometry,
-            "M": self.m, "K": self.k, "N": self.n, "batch": self.batch,
-            "multiplicity": self.multiplicity, "work": self.work,
-            "work_complete": self.work_complete, "source": self.source,
+            "family": self.region_class.family,
+            "dtype": self.region_class.dtype,
+            "alignment": self.region_class.alignment,
+            "regime": self.region_class.regime,
+            "rank": self.region_class.rank,
+            "geometry": self.region_class.geometry,
+            "M": self.m,
+            "K": self.k,
+            "N": self.n,
+            "batch": self.batch,
+            "multiplicity": self.multiplicity,
+            "work": self.work,
+            "work_complete": self.work_complete,
+            "source": self.source,
         }
 
 
@@ -118,14 +126,14 @@ def _regime(target: str, m: int, k: int, n: int, dtype: str | None, cache: dict)
     if "store" not in cache:
         try:
             cache["store"], cache["capacity"] = MR.operand_store(target)
-        except Exception:                          # noqa: BLE001 -- an underivable store is not a regime
+        except Exception:  # noqa: BLE001 -- an underivable store is not a regime
             cache["store"], cache["capacity"] = None, None
     store, capacity = cache["store"], cache["capacity"]
     if store is None or not capacity:
         return "unknown"
     try:
         rows = MR.deep_k_rows(store, int(k), m_extent=int(m), n_extent=int(n), dtype=dtype)
-    except Exception:                              # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return "unknown"
     return MR.classify(rows, rows, capacity)
 
@@ -141,13 +149,13 @@ def _dtype_of(shape, fallback: str | None) -> str:
     token = str(dtypes[0]) if dtypes else (fallback or "unknown")
     try:
         from merlin.targetgen.conformance import capsule_dtype
+
         return capsule_dtype(token)
-    except Exception:                              # noqa: BLE001 -- keep an unmappable token visible
+    except Exception:  # noqa: BLE001 -- keep an unmappable token visible
         return token
 
 
-def classify_capture(capture: str | Path, target: str, *,
-                     dtype_hint: str | None = None) -> "list[ClassEvidence]":
+def classify_capture(capture: str | Path, target: str, *, dtype_hint: str | None = None) -> "list[ClassEvidence]":
     """Group one capture's contractions into behavioural classes, heaviest representative each.
 
     Returns ``[]`` for a capture with no readable contraction -- an unreadable model is evidence
@@ -159,15 +167,16 @@ def classify_capture(capture: str | Path, target: str, *,
 
     try:
         observed = observe_contractions(Path(capture))
-    except Exception:                              # noqa: BLE001 -- an unreadable capture yields none
+    except Exception:  # noqa: BLE001 -- an unreadable capture yields none
         return []
     if not observed:
         return []
 
     try:
         from merlin.targetgen.target_registry import load_contract
+
         tile = int(_tile_dim(target, load_contract(target)) or 0)
-    except Exception:                              # noqa: BLE001 -- no edge is a real answer
+    except Exception:  # noqa: BLE001 -- no edge is a real answer
         tile = 0
 
     cache: dict = {}
@@ -180,7 +189,8 @@ def classify_capture(capture: str | Path, target: str, *,
         dtype = _dtype_of(shape, dtype_hint)
         rank = len(tuple(getattr(shape, "parallel", ()) or ()))
         cls = RegionClass(
-            family="contraction", dtype=dtype,
+            family="contraction",
+            dtype=dtype,
             alignment=_alignment(m, k, n, tile),
             regime=_regime(target, m, k, n, dtype, cache),
             rank=rank,
@@ -195,18 +205,26 @@ def classify_capture(capture: str | Path, target: str, *,
         # work is the one whose cost and numerics are worth reproducing.
         work_of = {mem: mem[0] * mem[1] * mem[2] * mem[3] for mem in members}
         rep = max(members, key=lambda mem: work_of[mem])
-        out.append(ClassEvidence(
-            region_class=cls, m=rep[0], k=rep[1], n=rep[2], batch=rep[3],
-            multiplicity=len(members), work=sum(work_of.values()), work_complete=True,
-            source=Path(capture).parent.name,
-        ))
+        out.append(
+            ClassEvidence(
+                region_class=cls,
+                m=rep[0],
+                k=rep[1],
+                n=rep[2],
+                batch=rep[3],
+                multiplicity=len(members),
+                work=sum(work_of.values()),
+                work_complete=True,
+                source=Path(capture).parent.name,
+            )
+        )
     out.sort(key=lambda e: (-e.work, e.region_class.key()))
     return out
 
 
-def _capture_quantization_summary(label: str, capture: str | Path,
-                                  evidence: list[ClassEvidence],
-                                  requested: set[str]) -> dict:
+def _capture_quantization_summary(
+    label: str, capture: str | Path, evidence: list[ClassEvidence], requested: set[str]
+) -> dict:
     """What one bundle actually exposes to application-axis derivation.
 
     A bundle name or top-level quantization label is not compute semantics.  In particular, a
@@ -251,10 +269,7 @@ def _capture_quantization_summary(label: str, capture: str | Path,
             )
         else:
             verdict = "no_explicit_block_scaled_compute"
-            reason = (
-                "no observed contraction exposes a requested block-scaled operand format with "
-                "its scale semantics"
-            )
+            reason = "no observed contraction exposes a requested block-scaled operand format with its scale semantics"
     return {
         "application": str(label),
         "capture": path.parent.name,
@@ -266,14 +281,14 @@ def _capture_quantization_summary(label: str, capture: str | Path,
     }
 
 
-def _missing_block_scaled_capability(captures: dict, capture_evidence: dict,
-                                     requested_formats: set[str]) -> dict | None:
+def _missing_block_scaled_capability(
+    captures: dict, capture_evidence: dict, requested_formats: set[str]
+) -> dict | None:
     """Actionable refusal when admitted block-scaled arithmetic is absent from applications."""
     if not requested_formats:
         return None
     summaries = [
-        _capture_quantization_summary(str(label), path, capture_evidence.get(str(label), []),
-                                      requested_formats)
+        _capture_quantization_summary(str(label), path, capture_evidence.get(str(label), []), requested_formats)
         for label, path in sorted((captures or {}).items())
     ]
     if any(row["verdict"] == "explicit_block_scaled_compute" for row in summaries):
@@ -284,12 +299,14 @@ def _missing_block_scaled_capability(captures: dict, capture_evidence: dict,
     formats = []
     for name in sorted(requested_formats):
         fmt = qf.get(name)
-        formats.append({
-            "format": name,
-            "scale_kind": fmt.scale.kind,
-            "block": fmt.scale.block,
-            "quant_ext_type": fmt.quant_ext_type,
-        })
+        formats.append(
+            {
+                "format": name,
+                "scale_kind": fmt.scale.kind,
+                "block": fmt.scale.block,
+                "quant_ext_type": fmt.quant_ext_type,
+            }
+        )
     return {
         "schema": "application_missing_capability_v1",
         "capability": "explicit_block_scaled_contraction_operands",
@@ -312,8 +329,9 @@ def _missing_block_scaled_capability(captures: dict, capture_evidence: dict,
     }
 
 
-def classify_captures(captures: dict, target: str, *,
-                      required_block_scaled_formats: set[str] | frozenset[str] = frozenset()) -> dict:
+def classify_captures(
+    captures: dict, target: str, *, required_block_scaled_formats: set[str] | frozenset[str] = frozenset()
+) -> dict:
     """Every application's classes, merged, with the work coverage the representatives account for.
 
     ``captures`` is ``{label: path}`` -- the same shape the conformance axes already take, so an
@@ -330,7 +348,7 @@ def classify_captures(captures: dict, target: str, *,
     for label, path in sorted((captures or {}).items()):
         try:
             evidence = classify_capture(path, target)
-        except Exception as exc:                   # noqa: BLE001 -- reported, never skipped silently
+        except Exception as exc:  # noqa: BLE001 -- reported, never skipped silently
             unreadable[str(label)] = f"{type(exc).__name__}: {str(exc)[-160:]}"
             continue
         capture_evidence[str(label)] = evidence
@@ -342,8 +360,12 @@ def classify_captures(captures: dict, target: str, *,
             # Merge: sum the mass, keep the heavier representative.
             heavier = ev if (ev.m * ev.k * ev.n * ev.batch) > (prior.m * prior.k * prior.n * prior.batch) else prior
             merged[ev.region_class] = ClassEvidence(
-                region_class=ev.region_class, m=heavier.m, k=heavier.k, n=heavier.n,
-                batch=heavier.batch, multiplicity=prior.multiplicity + ev.multiplicity,
+                region_class=ev.region_class,
+                m=heavier.m,
+                k=heavier.k,
+                n=heavier.n,
+                batch=heavier.batch,
+                multiplicity=prior.multiplicity + ev.multiplicity,
                 work=prior.work + ev.work,
                 work_complete=prior.work_complete and ev.work_complete,
                 source=heavier.source,
@@ -364,10 +386,10 @@ def classify_captures(captures: dict, target: str, *,
             "-- with the heaviest real shape in each class as its representative. A capsule per "
             "distinct shape would weight a one-off the same as a shape appearing 52 times; a top-N "
             "cut would rest on a threshold nobody can defend. Grouping by behaviour bounds the "
-            "capsule count by the lattice instead of by the size of the model"),
+            "capsule count by the lattice instead of by the size of the model"
+        ),
     }
-    missing = _missing_block_scaled_capability(
-        captures, capture_evidence, set(required_block_scaled_formats))
+    missing = _missing_block_scaled_capability(captures, capture_evidence, set(required_block_scaled_formats))
     if missing is not None:
         result["missing_capabilities"] = [missing]
     return result
@@ -378,6 +400,7 @@ def classify_captures(captures: dict, target: str, *,
 # than that, a second that extends it.
 # ---------------------------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class SizedCapsule:
     """One capsule derived from a class, with the tier it can afford and why."""
@@ -387,14 +410,21 @@ class SizedCapsule:
     k: int
     n: int
     batch: int
-    tier: str                                      # the deepest tier this size can afford
-    extends: "str | None"                          # the sibling this one rests on, when L2-only
+    tier: str  # the deepest tier this size can afford
+    extends: "str | None"  # the sibling this one rests on, when L2-only
     basis: dict
 
     def to_dict(self) -> dict:
-        return {"class": self.region_class.key(), "M": self.m, "K": self.k, "N": self.n,
-                "batch": self.batch, "tier": self.tier, "extends": self.extends,
-                "basis": dict(self.basis)}
+        return {
+            "class": self.region_class.key(),
+            "M": self.m,
+            "K": self.k,
+            "N": self.n,
+            "batch": self.batch,
+            "tier": self.tier,
+            "extends": self.extends,
+            "basis": dict(self.basis),
+        }
 
 
 def _round_down_to_tile(value: int, tile: int) -> int:
@@ -404,8 +434,9 @@ def _round_down_to_tile(value: int, tile: int) -> int:
     return max(tile, (int(value) // tile) * tile)
 
 
-def size_class(evidence: "ClassEvidence", *, target: str, budget_s: float,
-               tile: int | None = None, fit=None) -> "tuple[list[SizedCapsule], str | None]":
+def size_class(
+    evidence: "ClassEvidence", *, target: str, budget_s: float, tile: int | None = None, fit=None
+) -> "tuple[list[SizedCapsule], str | None]":
     """``([capsules], refusal)`` for one behavioural class.
 
     THE CONSTRAINT THAT DECIDES WHETHER ANY OF THIS IS USABLE. A capsule at an application's real
@@ -447,9 +478,11 @@ def size_class(evidence: "ClassEvidence", *, target: str, budget_s: float,
         # So the class is refused with the reason. The consequence is deliberate: a target must have
         # certified something before application-derived capsules are admitted for it, because
         # otherwise the large L2 capsule would rest on a sibling nobody could size.
-        return [], (f"{evidence.region_class.key()}: no measured certification history for "
-                    f"{target!r}, so no size of this class can be shown affordable; certify this "
-                    f"target's existing corpus first, then the fit gives a size")
+        return [], (
+            f"{evidence.region_class.key()}: no measured certification history for "
+            f"{target!r}, so no size of this class can be shown affordable; certify this "
+            f"target's existing corpus first, then the fit gives a size"
+        )
     else:
         # THE BUDGET IS IN WRITTEN OUTPUT ELEMENTS, so the bound is on M*N and NOT on max(M*K, K*N).
         # It used to be the latter, because the cost model was fitted against the largest operand; the
@@ -475,15 +508,19 @@ def size_class(evidence: "ClassEvidence", *, target: str, budget_s: float,
         # and refused for what is actually true about it: the cost is unknown, not large.
         operand_elements = max(evidence.m * k, k * evidence.n)
         if operand_elements > CC.MEASURED_MAX_OPERAND_ELEMENTS:
-            return [], (f"{evidence.region_class.key()}: its operands carry {operand_elements:,} "
-                        f"elements against a cost model calibrated to "
-                        f"{CC.MEASURED_MAX_OPERAND_ELEMENTS:,}, so the certification cost of this "
-                        f"class is UNKNOWN rather than affordable; measure a deeper operand first")
+            return [], (
+                f"{evidence.region_class.key()}: its operands carry {operand_elements:,} "
+                f"elements against a cost model calibrated to "
+                f"{CC.MEASURED_MAX_OPERAND_ELEMENTS:,}, so the certification cost of this "
+                f"class is UNKNOWN rather than affordable; measure a deeper operand first"
+            )
         per_extent = int(math.isqrt(max(0, budget_elements)))
         if per_extent < tile:
-            return [], (f"{evidence.region_class.key()}: a single {tile}x{tile} output tile writes "
-                        f"{tile * tile} elements, over the {budget_elements}-element budget at "
-                        f"{budget_s:.0f}s; no size of this class is certifiable here")
+            return [], (
+                f"{evidence.region_class.key()}: a single {tile}x{tile} output tile writes "
+                f"{tile * tile} elements, over the {budget_elements}-element budget at "
+                f"{budget_s:.0f}s; no size of this class is certifiable here"
+            )
         affordable_m = _round_down_to_tile(min(per_extent, evidence.m), tile)
         affordable_n = _round_down_to_tile(min(per_extent, evidence.n), tile)
         # Spend any budget the square clamp left over on the axis the application actually wants,
@@ -493,33 +530,55 @@ def size_class(evidence: "ClassEvidence", *, target: str, budget_s: float,
                 affordable_m = _round_down_to_tile(min(affordable_m + tile, evidence.m), tile)
             if affordable_n < evidence.n and affordable_m * (affordable_n + tile) <= budget_elements:
                 affordable_n = _round_down_to_tile(min(affordable_n + tile, evidence.n), tile)
-        size_basis = {"sized_by": "measured_cost_model", "budget_s": budget_s,
-                      "budget_elements": budget_elements,
-                      "budget_metric": getattr(fit, "metric", "written_output_elements"),
-                      "fitted_seconds": CC.predict_seconds(fit, affordable_m * affordable_n),
-                      "cost_fit": fit.to_dict()}
+        size_basis = {
+            "sized_by": "measured_cost_model",
+            "budget_s": budget_s,
+            "budget_elements": budget_elements,
+            "budget_metric": getattr(fit, "metric", "written_output_elements"),
+            "fitted_seconds": CC.predict_seconds(fit, affordable_m * affordable_n),
+            "cost_fit": fit.to_dict(),
+        }
 
     cert = SizedCapsule(
-        region_class=evidence.region_class, m=affordable_m, k=k, n=affordable_n,
-        batch=int(evidence.batch), tier="L3", extends=None,
-        basis={**size_basis, "clamped_from": [evidence.m, evidence.k, evidence.n],
-               "clamped": [affordable_m, k, affordable_n] != [evidence.m, k, evidence.n],
-               "representative_of": evidence.multiplicity, "work": evidence.work,
-               "source": evidence.source},
+        region_class=evidence.region_class,
+        m=affordable_m,
+        k=k,
+        n=affordable_n,
+        batch=int(evidence.batch),
+        tier="L3",
+        extends=None,
+        basis={
+            **size_basis,
+            "clamped_from": [evidence.m, evidence.k, evidence.n],
+            "clamped": [affordable_m, k, affordable_n] != [evidence.m, k, evidence.n],
+            "representative_of": evidence.multiplicity,
+            "work": evidence.work,
+            "source": evidence.source,
+        },
     )
     out = [cert]
 
     if (evidence.m, evidence.n) != (affordable_m, affordable_n):
         # The application's own shape, kept as an L2 EXTENSION of the certified one. Perf wants this
         # size; correctness rests on its smaller sibling having been certified cycle-accurately.
-        out.append(SizedCapsule(
-            region_class=evidence.region_class, m=int(evidence.m), k=k, n=int(evidence.n),
-            batch=int(evidence.batch), tier="L2", extends=cert.region_class.key(),
-            basis={"sized_by": "application_shape",
-                   "why": "the shape the application actually contains, too large to certify "
-                          "cycle-accurately; admissible only as an extension of the certified "
-                          "sibling of the same behavioural class",
-                   "representative_of": evidence.multiplicity, "work": evidence.work,
-                   "source": evidence.source},
-        ))
+        out.append(
+            SizedCapsule(
+                region_class=evidence.region_class,
+                m=int(evidence.m),
+                k=k,
+                n=int(evidence.n),
+                batch=int(evidence.batch),
+                tier="L2",
+                extends=cert.region_class.key(),
+                basis={
+                    "sized_by": "application_shape",
+                    "why": "the shape the application actually contains, too large to certify "
+                    "cycle-accurately; admissible only as an extension of the certified "
+                    "sibling of the same behavioural class",
+                    "representative_of": evidence.multiplicity,
+                    "work": evidence.work,
+                    "source": evidence.source,
+                },
+            )
+        )
     return out, None

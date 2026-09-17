@@ -10,9 +10,12 @@ The three modules keep their sibling ``from .gemmini_codegen import ...`` relati
 submodules of this package); their PARENT imports were rewritten absolute (``merlin.runtime.*``) so they resolve
 out-of-tree.
 """
+
 from __future__ import annotations
 
 import importlib
+
+from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register
 
 # Import ``gemmini`` — runs its module-level ``register(...)`` and re-exports its public API onto the package
 # so ``gem.available`` / ``gem.parse_output`` / ``gem.compile_command_buffer`` / ``gem.GemminiError`` resolve.
@@ -22,8 +25,6 @@ import importlib
 from . import gemmini  # noqa: F401
 from .gemmini import *  # noqa: F401,F403
 from .gemmini import _common_dir  # noqa: F401 — a private helper a test reaches (not caught by *)
-
-from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register
 
 # Re-register under the PACKAGE name (gemmini.py already registered under its own submodule name when imported
 # above; registration is last-wins per name), so get_backend("gemmini") re-resolves THIS package — which

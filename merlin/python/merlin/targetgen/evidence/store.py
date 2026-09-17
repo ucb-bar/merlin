@@ -3,6 +3,7 @@
 ``Evidence`` is the in-memory result of the evidence pass; it serializes to the
 ``evidence_report`` schema (``evidence_index.yaml``) and renders to ``evidence_report.md``.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -13,9 +14,9 @@ from typing import Any
 class FileRecord:
     """One discovered source file."""
 
-    path: str            # path relative to its source root (for citations)
-    kind: str            # doc | scala | example
-    summary: str         # short, filename/first-line derived
+    path: str  # path relative to its source root (for citations)
+    kind: str  # doc | scala | example
+    summary: str  # short, filename/first-line derived
 
     def to_dict(self) -> dict[str, Any]:
         return {"path": self.path, "kind": self.kind, "summary": self.summary}
@@ -47,11 +48,12 @@ class Evidence:
     def to_index_dict(self) -> dict[str, Any]:
         """Return the ``evidence_report``-schema mapping for ``evidence_index.yaml`` (validated)."""
         from merlin.common.schemas import validate_or_raise
+
         d = {
             "target": self.target,
             "sources": self.sources,
             "files": [f.to_dict() for f in self.files],
             "detected_concepts": [c.to_dict() for c in self.concepts],
         }
-        validate_or_raise(d, "evidence_report")   # schemas/ rule: if it lives here, code validates it
+        validate_or_raise(d, "evidence_report")  # schemas/ rule: if it lives here, code validates it
         return d

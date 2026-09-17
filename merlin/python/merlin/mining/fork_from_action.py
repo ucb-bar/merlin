@@ -16,6 +16,7 @@ Drop-in for ``beam.run_beam(proposer=...)``: same ``(divergences, knobs) -> [For
 ``knobs.propose_forks``, but consuming CCA Divergences instead of motif strings. (``knobs`` is
 retained for the existing motif-string beam path until the beam is cut over to CCA divergences in WS-D.)
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -28,8 +29,8 @@ from ..kernels.knobs import ForkProposal
 # router marks them forkable_now=True but the proposer had no builder, silently demoting them to
 # work-items. Map each to its feature so the beam actually mints the fork (BB1a: "propose more").
 _AXIS_FEATURE = {
-    "compute.mr_adapts_to_m": "accumulator_resident_mtail",   # M-tail clamp: M=1 decode matmul -> vfmacc
-    "compute.nr_is_vsetvlmax": "fused_vfmacc_scalable",       # scalable NR=vsetvlmax (small-N attention)
+    "compute.mr_adapts_to_m": "accumulator_resident_mtail",  # M-tail clamp: M=1 decode matmul -> vfmacc
+    "compute.nr_is_vsetvlmax": "fused_vfmacc_scalable",  # scalable NR=vsetvlmax (small-N attention)
 }
 
 
@@ -47,9 +48,15 @@ def action_to_fork(action: CompilerAction, knobs: dict[str, Any]) -> ForkProposa
     #    has a knobs dict, the IR has the arithmetic, and only one of them actually knows.
     if seam.startswith("impr_features:"):
         feat = seam.split(":", 1)[1].split()[0]
-        return ForkProposal(overrides={"compiler_features": [feat]}, lever="feature",
-                            targets=axis, evidence=ev, forkable=action.forkable_now, note=action.change,
-                            action=action)
+        return ForkProposal(
+            overrides={"compiler_features": [feat]},
+            lever="feature",
+            targets=axis,
+            evidence=ev,
+            forkable=action.forkable_now,
+            note=action.change,
+            action=action,
+        )
 
     # 2) a forkable schedule KNOB/HEURISTIC -> a concrete, KNOWN knob override.
     if action.forkable_now and not seam.startswith("pass:"):
@@ -64,12 +71,20 @@ def action_to_fork(action: CompilerAction, knobs: dict[str, Any]) -> ForkProposa
             # the same int8 datapath knob as widening (i32-accum + i8-sew via vwmacc).
             overrides = {"dtype_strategy": "int8_w8a8"}
         if overrides is not None:
-            return ForkProposal(overrides=overrides, lever="knob", targets=axis, evidence=ev,
-                                forkable=True, note=action.change, action=action)
+            return ForkProposal(
+                overrides=overrides,
+                lever="knob",
+                targets=axis,
+                evidence=ev,
+                forkable=True,
+                note=action.change,
+                action=action,
+            )
 
     # 3) deferred PASS/CODEGEN, or a forkable axis with no auto-knob builder yet -> HONEST work-item.
-    return ForkProposal(overrides={}, lever="work_item", targets=axis, evidence=ev,
-                        forkable=False, note=action.change, action=action)
+    return ForkProposal(
+        overrides={}, lever="work_item", targets=axis, evidence=ev, forkable=False, note=action.change, action=action
+    )
 
 
 def propose_forks_from_cca(divergences: list[Divergence], knobs: dict[str, Any]) -> list[ForkProposal]:

@@ -1,4 +1,5 @@
 """Emit a design_pressure dict (conforming to ``design_pressure.schema.yaml``)."""
+
 from __future__ import annotations
 
 from typing import Iterable

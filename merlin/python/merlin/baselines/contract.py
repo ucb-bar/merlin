@@ -14,6 +14,7 @@ that make the cross-framework comparison honest:
 The result is pure data (dataclasses) so it serializes to ``baseline_result.json`` next to the
 measurement, and :mod:`.aggregate` renders the n-way matrix from a directory of them.
 """
+
 from __future__ import annotations
 
 import json
@@ -37,21 +38,22 @@ class RegionProfile:
     (apples-to-apples), instead of collapsing into one whole-model number. ``cos`` / ``rel`` are the
     optional PER-REGION numerical-equivalence scores (vs the region's boundary golden); left None when
     a per-region golden was unavailable — reported honestly, never a silent pass (see ``region_passed``)."""
-    name: str                          # one of REGIONS (free-form allowed, but prefer the taxonomy)
-    rdtime_ticks: int | None = None    # raw K1 rdtime ticks bracketing the region
-    cycles: int | None = None          # est core cycles (ticks * CPU_HZ/TIMEBASE_HZ); NOT cycle-accurate
+
+    name: str  # one of REGIONS (free-form allowed, but prefer the taxonomy)
+    rdtime_ticks: int | None = None  # raw K1 rdtime ticks bracketing the region
+    cycles: int | None = None  # est core cycles (ticks * CPU_HZ/TIMEBASE_HZ); NOT cycle-accurate
     wall_ns: int | None = None
     rvv_coverage: float | None = None  # 0..1 fraction of the region's compute insns that are vector
-    calls: int | None = None           # how many times the region ran (loop trip count)
+    calls: int | None = None  # how many times the region ran (loop trip count)
     note: str = ""
     # --- shared model-layer provenance (the cross-compiler alignment / join key) ---
-    region_id: str = ""                # prov.region_id (e.g. "matmul_3")
-    fqn: str = ""                      # prov.fqn (deepest nn.Module path)
-    role: str = ""                     # role_from_fqn(fqn): backbone_once / repeated_head / ...
+    region_id: str = ""  # prov.region_id (e.g. "matmul_3")
+    fqn: str = ""  # prov.fqn (deepest nn.Module path)
+    role: str = ""  # role_from_fqn(fqn): backbone_once / repeated_head / ...
     # --- per-region numerical equivalence (vs region_goldens.npz), None = not scored ---
     cos: float | None = None
     rel: float | None = None
-    golden_ref: str = ""               # which region_goldens key this region was scored against
+    golden_ref: str = ""  # which region_goldens key this region was scored against
 
     def region_passed(self, cos_threshold: float | None, rel_threshold: float | None) -> bool | None:
         """Per-region equivalence verdict, mirroring the whole-model ``not_run_is_not_pass`` at region
@@ -68,17 +70,19 @@ class RegionProfile:
 @dataclass
 class ScalarFallback:
     """A region/symbol that could NOT be made RVV and fell back to scalar — recorded, not hidden."""
-    symbol: str                        # emitted function / kernel symbol
-    reason: str                        # why: 'no rvv microkernel' | 'unlegalizable shape' | ...
-    region: str = ""                   # which REGIONS bucket, if known
+
+    symbol: str  # emitted function / kernel symbol
+    reason: str  # why: 'no rvv microkernel' | 'unlegalizable shape' | ...
+    region: str = ""  # which REGIONS bucket, if known
 
 
 @dataclass
 class BaselineResult:
     """One (framework, model, variant) measurement on a substrate (default the K1 board)."""
+
     framework: str
     model: str
-    variant: str = "fp32"              # fp32 | int8 | fp8
+    variant: str = "fp32"  # fp32 | int8 | fp8
     substrate: str = "k1_spacemit"
 
     # --- lifecycle (drives not_run_is_not_pass) ---
@@ -114,15 +118,15 @@ class BaselineResult:
     regions: list[RegionProfile] = field(default_factory=list)
 
     # --- RVV honesty ---
-    rvv_coverage_overall: float | None = None      # 0..1 across the whole binary's compute insns
+    rvv_coverage_overall: float | None = None  # 0..1 across the whole binary's compute insns
     scalar_fallbacks: list[ScalarFallback] = field(default_factory=list)
 
     # --- gaps & provenance ---
-    gap_reason: str = ""               # MUST be non-empty when not built/ran; explains why
-    framework_commit: str = ""         # submodule SHA (part of the measurement)
-    toolchain: str = ""                # e.g. 'spacemit-clang-19' / 'llvm-23'
-    march: str = ""                    # e.g. 'rv64gcv'
-    cycle_accurate: bool = False       # K1 rdtime -> estimate (spike/FireSim remain authorities)
+    gap_reason: str = ""  # MUST be non-empty when not built/ran; explains why
+    framework_commit: str = ""  # submodule SHA (part of the measurement)
+    toolchain: str = ""  # e.g. 'spacemit-clang-19' / 'llvm-23'
+    march: str = ""  # e.g. 'rv64gcv'
+    cycle_accurate: bool = False  # K1 rdtime -> estimate (spike/FireSim remain authorities)
     board_vlenb: int | None = None
     timestamp: str = ""
     notes: str = ""
@@ -208,7 +212,8 @@ class BaselineResult:
         if not (self.built and self.ran) and not self.gap_reason:
             raise ValueError(
                 f"{self.framework}/{self.model}/{self.variant}: not built/ran but gap_reason is empty "
-                f"(not_run_is_not_pass requires an explicit reason)")
+                f"(not_run_is_not_pass requires an explicit reason)"
+            )
         return self
 
     def to_dict(self) -> dict:
@@ -233,20 +238,22 @@ class BaselineResult:
         """
         from merlin.common import provenance
 
-        return provenance.record(extra={
-            "substrate": self.substrate,
-            "board_identity": {
-                "march": self.march,
-                "vlenb": self.board_vlenb,
-                "conditions": self.board_conditions,
-            },
-            "toolchain": self.toolchain,
-            "framework": self.framework,
-            "framework_commit": self.framework_commit,
-            "note": "physical board: identified by its measured ISA/vector-length facts and the "
-                    "toolchain that built the binary, not by an RTL revision sha. No hardware pin "
-                    "applies.",
-        })
+        return provenance.record(
+            extra={
+                "substrate": self.substrate,
+                "board_identity": {
+                    "march": self.march,
+                    "vlenb": self.board_vlenb,
+                    "conditions": self.board_conditions,
+                },
+                "toolchain": self.toolchain,
+                "framework": self.framework,
+                "framework_commit": self.framework_commit,
+                "note": "physical board: identified by its measured ISA/vector-length facts and the "
+                "toolchain that built the binary, not by an RTL revision sha. No hardware pin "
+                "applies.",
+            }
+        )
 
     def write(self, out_dir: str | Path, *, filename: str = "baseline_result.json") -> Path:
         self.validate()

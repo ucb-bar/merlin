@@ -6,4 +6,5 @@ toolchain resolver (:mod:`toolchain`), and (added by later phases) the generic
 out-of-tree package runner. The contract bundle itself (the frozen, versioned spec a
 package author reads) lives under ``merlin/contract/`` (repo-root-relative; no compat symlink).
 """
+
 from __future__ import annotations

@@ -10,6 +10,7 @@ A new accelerator plugs in by being registered with mlc (its RTL → firtool/arc
 new Python here. Anything genuinely not derivable is the rare EXCEPTION and belongs in a declarative
 per-target artifact (YAML/MLIR) or a tool parameter, never in this module or the agnostic core.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,10 +19,11 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class TargetProfile:
     """What the generic backend needs, entirely DERIVED from mlc RTL discovery (no hand facts)."""
+
     target: str
-    legal_opcodes: tuple[int, ...] | None   # the ISA the decoder actually matches
-    memory_map: dict | None                 # operand/accumulator bank handles + row bytes
-    dim: int | None                         # systolic mesh DIM (None if the target has no mesh)
+    legal_opcodes: tuple[int, ...] | None  # the ISA the decoder actually matches
+    memory_map: dict | None  # operand/accumulator bank handles + row bytes
+    dim: int | None  # systolic mesh DIM (None if the target has no mesh)
 
     @property
     def has_mesh(self) -> bool:
@@ -39,7 +41,7 @@ class TargetProfile:
         indistinguishable, downstream, from a target whose RTL genuinely has no mesh and no accumulator.
         :func:`lever_derivation_gaps` exists to keep the two apart.
         """
-        return (self.legal_opcodes is None and self.memory_map is None and self.dim is None)
+        return self.legal_opcodes is None and self.memory_map is None and self.dim is None
 
 
 def _profile_from_reviewed_facts(target: str) -> TargetProfile | None:
@@ -53,6 +55,7 @@ def _profile_from_reviewed_facts(target: str) -> TargetProfile | None:
     """
     try:
         from .rtl.facts import load_facts
+
         body = (load_facts(target) or {}).get("facts") or {}
     except Exception:  # noqa: BLE001 — absent/unreadable reviewed artifact: try live discovery below
         return None
@@ -60,11 +63,9 @@ def _profile_from_reviewed_facts(target: str) -> TargetProfile | None:
         return None
 
     arrays = body.get("arrays") or ()
-    mesh = next((a for a in arrays
-                 if a.get("name") == "mesh" and a.get("rows") is not None), None)
+    mesh = next((a for a in arrays if a.get("name") == "mesh" and a.get("rows") is not None), None)
     if mesh is None:
-        mesh = next((a for a in arrays
-                     if a.get("rows") is not None and a.get("cols") is not None), None)
+        mesh = next((a for a in arrays if a.get("rows") is not None and a.get("cols") is not None), None)
     dim = int(mesh["rows"]) if mesh is not None else None
 
     memories = {str(m.get("name")): m for m in (body.get("memories") or ()) if m.get("name")}
@@ -74,8 +75,7 @@ def _profile_from_reviewed_facts(target: str) -> TargetProfile | None:
     if "accumulator" in memories:
         memory_map["accum_mem"] = memories["accumulator"]
 
-    decoder = next((i for i in (body.get("interfaces") or ())
-                    if i.get("legal_funct") is not None), None)
+    decoder = next((i for i in (body.get("interfaces") or ()) if i.get("legal_funct") is not None), None)
     legal = tuple(sorted({int(v) for v in (decoder.get("legal_funct") or ())})) if decoder else ()
     return TargetProfile(target=target, legal_opcodes=legal or None, memory_map=memory_map, dim=dim)
 
@@ -140,6 +140,7 @@ def _endpoint_levers(target: str) -> list[str]:
     """
     try:
         from ..kernels import endpoints as _ep
+
         eps = _ep.endpoints_for(target)
     except Exception:  # noqa: BLE001 — no endpoint declared / unreadable: derive nothing, claim nothing
         return []
@@ -154,8 +155,7 @@ def _endpoint_levers(target: str) -> list[str]:
     if "dma" in roles:
         out.append("dispatch.dma_overlap")
     if "sync" in roles:
-        out.append("simt.barriers_in_loop" if any(e.engine == "simt" for e in eps)
-                   else "dispatch.dma_overlap")
+        out.append("simt.barriers_in_loop" if any(e.engine == "simt" for e in eps) else "dispatch.dma_overlap")
     if "weight_load" in roles or "operand_load" in roles:
         out.append("layout.operand_major")
     return sorted(dict.fromkeys(out))
@@ -175,8 +175,10 @@ def lever_derivation_gaps(profile: TargetProfile) -> tuple[str, ...]:
     rather than from this profile: the stream is present whether or not RTL discovery is.)
     """
     if profile.discovered_nothing:
-        return (f"no RTL fact was grounded for {profile.target!r} (legal_opcodes, memory_map and dim are "
-                "all absent), so an empty lever list means UNKNOWN, not 'this hardware has no levers'",)
+        return (
+            f"no RTL fact was grounded for {profile.target!r} (legal_opcodes, memory_map and dim are "
+            "all absent), so an empty lever list means UNKNOWN, not 'this hardware has no levers'",
+        )
     gaps: list[str] = []
     if profile.dim is None:
         gaps.append("mesh dimension not discovered, so no dataflow lever is claimed")
@@ -189,28 +191,43 @@ def lever_derivation_gaps(profile: TargetProfile) -> tuple[str, ...]:
 # agnostic-per-FACET metadata (a property of the shared SpatialFacet schema), NOT per-target: any
 # systolic accelerator's dataflow/residency levers mean the same thing.
 _LEVER_META = {
-    "spatial.dataflow": ("HEURISTIC", "os",
-                         "select the systolic dataflow (WS/OS) — a discovered mesh implies this choice"),
-    "spatial.accumulator_resident": ("PASS", True,
-                                     "keep the output accumulator-resident across the reduction — a "
-                                     "discovered accumulator memory implies this choice"),
-    "memory.capacity_fit": ("HEURISTIC", True,
-                            "tile so the working set fits the discovered on-chip capacity — overrunning "
-                            "it is not slow, it is silently wrong"),
+    "spatial.dataflow": (
+        "HEURISTIC",
+        "os",
+        "select the systolic dataflow (WS/OS) — a discovered mesh implies this choice",
+    ),
+    "spatial.accumulator_resident": (
+        "PASS",
+        True,
+        "keep the output accumulator-resident across the reduction — a "
+        "discovered accumulator memory implies this choice",
+    ),
+    "memory.capacity_fit": (
+        "HEURISTIC",
+        True,
+        "tile so the working set fits the discovered on-chip capacity — overrunning "
+        "it is not slow, it is silently wrong",
+    ),
     # --- dispatch: implied by what the endpoint's own instruction table accepts ---
-    "dispatch.loop_offloaded": ("PASS", True,
-                                "hand the loop nest to the endpoint's own sequencer instead of issuing "
-                                "the nest command by command — the endpoint binds a loop_descriptor role"),
-    "dispatch.descriptor_reuse": ("KNOB", True,
-                                  "set endpoint state once and let the rest of the stream inherit it, "
-                                  "instead of re-configuring per tile"),
-    "dispatch.dma_overlap": ("HEURISTIC", True,
-                             "issue bulk movement so it overlaps the compute it feeds"),
-    "simt.barriers_in_loop": ("CODEGEN", 0,
-                              "hoist barriers out of the reduction loop — a barrier inside it says the "
-                              "engine cannot hold its state across the reduction"),
-    "layout.operand_major": ("KNOB", "k_major",
-                             "pack the operand in the major order the endpoint's load role streams"),
+    "dispatch.loop_offloaded": (
+        "PASS",
+        True,
+        "hand the loop nest to the endpoint's own sequencer instead of issuing "
+        "the nest command by command — the endpoint binds a loop_descriptor role",
+    ),
+    "dispatch.descriptor_reuse": (
+        "KNOB",
+        True,
+        "set endpoint state once and let the rest of the stream inherit it, instead of re-configuring per tile",
+    ),
+    "dispatch.dma_overlap": ("HEURISTIC", True, "issue bulk movement so it overlaps the compute it feeds"),
+    "simt.barriers_in_loop": (
+        "CODEGEN",
+        0,
+        "hoist barriers out of the reduction loop — a barrier inside it says the "
+        "engine cannot hold its state across the reduction",
+    ),
+    "layout.operand_major": ("KNOB", "k_major", "pack the operand in the major order the endpoint's load role streams"),
 }
 
 
@@ -231,12 +248,17 @@ def apply_codegen_opts(opts: dict, features, profile: TargetProfile) -> dict:
 def _resolver(spec, profile: TargetProfile) -> dict:
     """Realize the target-agnostic MicrokernelSpec as codegen knobs clamped to the DISCOVERED DIM."""
     dim = profile.dim or 1
-    feats = frozenset({"spatial.accumulator_resident"}) if (getattr(spec, "k_block", False)
-                                                            and profile.has_accumulator) else frozenset()
-    return {"tile_rows": min(int(getattr(spec, "MR", dim) or dim), dim),
-            "tile_cols": min(int(getattr(spec, "NR", dim) or dim), dim),
-            "k_tile": getattr(spec, "KC", dim),
-            "opts": apply_codegen_opts({}, feats, profile)}
+    feats = (
+        frozenset({"spatial.accumulator_resident"})
+        if (getattr(spec, "k_block", False) and profile.has_accumulator)
+        else frozenset()
+    )
+    return {
+        "tile_rows": min(int(getattr(spec, "MR", dim) or dim), dim),
+        "tile_cols": min(int(getattr(spec, "NR", dim) or dim), dim),
+        "k_tile": getattr(spec, "KC", dim),
+        "opts": apply_codegen_opts({}, feats, profile),
+    }
 
 
 def register(target: str, oot_package: str | None = None) -> None:
@@ -244,25 +266,33 @@ def register(target: str, oot_package: str | None = None) -> None:
     Python. Routes come from ``derived_levers(profile)``; the codegen seam is OOT-package-relative (the
     agent edits ITS generated middle-end); the micro-kernel resolver clamps to the discovered DIM.
     forkable_now is False until the target's OOT codegen threads the opts. Idempotent."""
-    from ..kernels import action_catalog as ac, microkernel
+    from ..kernels import action_catalog as ac
+    from ..kernels import microkernel
+
     prof = target_profile(target)
     ac.register_seam(
         "rtl_codegen",
         "<oot_package>/lowering/  (the generated OOT backend's command/tile-program emitter — thread the "
         "derived CodegenOpts through it)",
-        "the target's OOT codegen emitter (a discovery-derived lever is applied here)", True,
-        backend=target)
+        "the target's OOT codegen emitter (a discovery-derived lever is applied here)",
+        True,
+        backend=target,
+    )
     for lever in derived_levers(prof):
         action_class, target_value, change = _LEVER_META[lever]
-        ac.register_route(target, ac._Route(
-            axis=lever,
-            when=lambda d, _l=lever: bool(d.expert) and d.expert != d.ours,
-            action_class=action_class,
-            target_seam=f"rtl_codegen:{lever}",
-            change=change,
-            forkable_now=False,
-            expected_effect="expected (not yet measured): the discovered lever routed to the OOT codegen",
-            intended_facet={lever: target_value}))
+        ac.register_route(
+            target,
+            ac._Route(
+                axis=lever,
+                when=lambda d, _l=lever: bool(d.expert) and d.expert != d.ours,
+                action_class=action_class,
+                target_seam=f"rtl_codegen:{lever}",
+                change=change,
+                forkable_now=False,
+                expected_effect="expected (not yet measured): the discovered lever routed to the OOT codegen",
+                intended_facet={lever: target_value},
+            ),
+        )
     microkernel.register_resolver(target, lambda spec, _p=prof: _resolver(spec, _p))
 
 
@@ -272,16 +302,20 @@ def lift_cca_from_trace(trace: dict, profile: TargetProfile, *, op: str = "matmu
     readout width) plus the discovered DIM. The raw-stream DECODING is the target's concern (mlc's
     behavioral opcode→effect map, or a target decoder); this consumes the decoded histogram."""
     from ..kernels import cca
+
     insns = trace.get("instructions", [])
     hist = trace.get("summary", {}).get("class_histogram", {})
     has_compute = any(v for k, v in hist.items() if "COMPUTE" in k.upper())
-    acc_resident = (any("ACCUM" in k.upper() and v for k, v in hist.items())
-                    or any(i.get("accumulate") for i in insns))
+    acc_resident = any("ACCUM" in k.upper() and v for k, v in hist.items()) or any(i.get("accumulate") for i in insns)
     i32 = any(i.get("readout") == "i32" for i in insns)
-    counts = {"acc_resident": acc_resident if has_compute else None, "widening": has_compute,
-              "acc_dtype": ("i32" if i32 else "i8") if has_compute else None}
-    return cca.lift_spatial(counts, op=op, source=source, pe_rows=profile.dim, pe_cols=profile.dim,
-                            backend=profile.target)
+    counts = {
+        "acc_resident": acc_resident if has_compute else None,
+        "widening": has_compute,
+        "acc_dtype": ("i32" if i32 else "i8") if has_compute else None,
+    }
+    return cca.lift_spatial(
+        counts, op=op, source=source, pe_rows=profile.dim, pe_cols=profile.dim, backend=profile.target
+    )
 
 
 # Self-register as the derivation-driven route deriver: a seam-menu call for any non-RVV backend
@@ -290,6 +324,7 @@ def lift_cca_from_trace(trace: dict, profile: TargetProfile, *, op: str = "matmu
 # (no targetgen import) is unaffected. register() is idempotent and no-ops without RTL access.
 try:
     from ..kernels import action_catalog as _ac
+
     _ac.register_deriver(register)
 except Exception:  # noqa: BLE001 — kernels package layout differs / partial env
     pass

@@ -20,6 +20,7 @@ Merlin's shared lowering, not here.
 
 Design + the invariants it must uphold: ``docs/design/triton_frontend.md``.
 """
+
 from __future__ import annotations
 
 __all__: list[str] = []

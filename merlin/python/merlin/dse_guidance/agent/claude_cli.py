@@ -7,6 +7,7 @@ dse_guidance does not depend on the (uncommitted) targetgen package. Local auth,
 This is the *propose* side. The *dispose* side (a deterministic gate) lives in the calling slot;
 the agent's text is never trusted for numbers — only for interpretation, and even then it is gated.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,16 +23,18 @@ class AgentError(RuntimeError):
     pass
 
 
-def run_agent(prompt: str, *, model: str = "opus", timeout: int = 600,
-              workdir: str | Path | None = None, cache_bust: bool = True) -> dict[str, Any]:
+def run_agent(
+    prompt: str, *, model: str = "opus", timeout: int = 600, workdir: str | Path | None = None, cache_bust: bool = True
+) -> dict[str, Any]:
     """Run one headless Claude Code turn; return {text, usage, raw}. Raises AgentError on failure
     (including when the ``claude`` CLI is not installed — callers treat that as 'agent unavailable')."""
     if cache_bust:
         prompt = f"<!-- nonce: {uuid.uuid4().hex} -->\n{prompt}"
     cmd = ["claude", "-p", prompt, "--model", model, "--output-format", "json"]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                              cwd=str(workdir) if workdir else None)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, cwd=str(workdir) if workdir else None
+        )
     except FileNotFoundError as e:
         raise AgentError("the `claude` CLI is not on PATH (agent unavailable)") from e
     except subprocess.TimeoutExpired as e:

@@ -16,6 +16,7 @@ Corpora:
   builds from, keyed by framework, each with the ``kernel.source`` spellings that name it, its layout and
   where its checkout is found.
 """
+
 from __future__ import annotations
 
 import os
@@ -24,12 +25,13 @@ from pathlib import Path
 
 from merlin.common.paths import merlin_dir
 
-_REGISTRY = ("contract", "corpora.yaml")        # under merlin/
+_REGISTRY = ("contract", "corpora.yaml")  # under merlin/
 
 
 @lru_cache(maxsize=None)
 def _load_registry(path: Path) -> dict:
     from merlin.common.yaml import load_yaml
+
     data = load_yaml(path)
     if not isinstance(data, dict):
         raise ValueError(f"corpus registry {path} is not a mapping")
@@ -86,6 +88,7 @@ def kernel_corpus_root(name: str) -> Path | None:
     if env:
         return Path(env)
     from merlin.common.paths import repo_root
+
     local = repo_root() / "tmp" / "kernels" / str(spec.get("checkout") or name)
     if local.is_dir():
         return local
@@ -93,6 +96,7 @@ def kernel_corpus_root(name: str) -> Path | None:
     if ext.get("name"):
         try:
             from merlin.common.paths import ext_path
+
             cand = ext_path(str(ext["name"])) / str(ext.get("subpath") or "")
             if cand.is_dir():
                 return cand
@@ -123,11 +127,11 @@ def descriptor_path(target: str) -> Path:
     import os
 
     from merlin.common.paths import repo_root
+
     override = os.environ.get("MERLIN_TARGET_EXPERIMENT", "").strip()
     if override:
         return Path(override)
-    return (repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target
-            / "target_experiment.yaml")
+    return repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml"
 
 
 def source_experiment_env(target: str) -> list[str]:
@@ -171,8 +175,9 @@ def experiment_for(target: str):
         return None
     try:
         from merlin.targetgen.target_experiment import load_target_experiment
+
         te = load_target_experiment(desc)
-    except Exception:                                     # noqa: BLE001 — unreadable descriptor
+    except Exception:  # noqa: BLE001 — unreadable descriptor
         return None
     return te if str(getattr(te, "target", "")) == target else None
 
@@ -203,17 +208,18 @@ def graded_capsule_roots(target: str, *, hidden: bool = False) -> list[Path]:
     """
     desc = descriptor_path(target)
     if not desc.is_file():
-        return [] if hidden else capsule_corpus_roots()[:1]   # no descriptor: canonical corpus, unsplit
+        return [] if hidden else capsule_corpus_roots()[:1]  # no descriptor: canonical corpus, unsplit
     try:
         from merlin.targetgen.target_experiment import load_target_experiment
+
         te = load_target_experiment(desc)
-        if str(getattr(te, "target", "")) != target:      # an override naming a DIFFERENT target
+        if str(getattr(te, "target", "")) != target:  # an override naming a DIFFERENT target
             return [] if hidden else capsule_corpus_roots()[:1]
         roots = [r for r in (te.hidden_roots() if hidden else te.graded_roots()) if r.is_dir()]
-    except Exception:                                     # noqa: BLE001 — unreadable descriptor
+    except Exception:  # noqa: BLE001 — unreadable descriptor
         return [] if hidden else capsule_corpus_roots()[:1]
     if hidden:
-        return roots                                      # empty == this target ships no holdouts
+        return roots  # empty == this target ships no holdouts
     return roots or capsule_corpus_roots()[:1]
 
 
@@ -231,11 +237,12 @@ def perf_capsule_roots(target: str) -> list[Path]:
         return []
     try:
         from merlin.targetgen.target_experiment import load_target_experiment
+
         te = load_target_experiment(desc)
-        if str(getattr(te, "target", "")) != target:      # an override naming a DIFFERENT target
+        if str(getattr(te, "target", "")) != target:  # an override naming a DIFFERENT target
             return []
         return [r for r in te.perf_roots() if r.is_dir()]
-    except Exception:                                     # noqa: BLE001 — unreadable descriptor
+    except Exception:  # noqa: BLE001 — unreadable descriptor
         return []
 
 

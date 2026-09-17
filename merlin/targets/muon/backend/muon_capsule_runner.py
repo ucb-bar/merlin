@@ -10,6 +10,7 @@ runner-owned harness wraps it for the fork-free oracle (a full-program artifact 
 The RoCC trace gate is absent (``trace_gate=None``) because a SIMT target has no command-ISA analog. The
 public ``run_capsule``/``run_suite``/``main`` API is preserved for callers.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -17,10 +18,11 @@ from typing import Callable
 
 # re-exported for callers that used MR.discover_capsules / load_capsule / TierResult
 from merlin.targetgen.capsule_common import discover_capsules, load_capsule  # noqa: F401
-from merlin.targetgen.capsule_runner import TierResult, OracleUnavailable  # noqa: F401
-from .muon_oracles import default_adapters, flops_from_cb
+from merlin.targetgen.capsule_runner import OracleUnavailable, TierResult  # noqa: F401
 from merlin.targetgen.runner_config import RunnerConfig
+
 from .muon import MuonUnavailable  # noqa: F401
+from .muon_oracles import default_adapters, flops_from_cb
 
 SUITE = "muon-perf-bench"
 TARGET = "muon"
@@ -28,14 +30,27 @@ CONTRACT_VERSION = "0.1"
 
 # Muon's grading knobs — the only per-target data; everything else is the shared runner.
 _MUON_CONFIG = RunnerConfig(
-    target=TARGET, suite=SUITE, dtype="f32",
-    fourth_output_name="kernel.cpp",                       # SIMT C++ kernel (external_backend endpoint)
-    tier_sim={"L2": "cyclotron", "L3": "vcs"}, rtl_tiers=frozenset({"L3"}),
+    target=TARGET,
+    suite=SUITE,
+    dtype="f32",
+    fourth_output_name="kernel.cpp",  # SIMT C++ kernel (external_backend endpoint)
+    tier_sim={"L2": "cyclotron", "L3": "vcs"},
+    rtl_tiers=frozenset({"L3"}),
     oracle_tiers=("L2", "L3"),
-    perf_fields=("flops", "gflops", "pct_fp_peak",
-                 "warp_occupancy", "fp_util", "int_util", "sfu_util", "smem_lane_util",
-                 "dma_util", "tensor_util", "smem_conflict_rate"),
-    trace_gate=None,                                        # no RoCC trace gate on a SIMT target
+    perf_fields=(
+        "flops",
+        "gflops",
+        "pct_fp_peak",
+        "warp_occupancy",
+        "fp_util",
+        "int_util",
+        "sfu_util",
+        "smem_lane_util",
+        "dma_util",
+        "tensor_util",
+        "smem_conflict_rate",
+    ),
+    trace_gate=None,  # no RoCC trace gate on a SIMT target
     force_match_policy={"compare": "float", "atol": 1e-3},  # fp tolerance (device prints fixed decimals)
 )
 
@@ -84,11 +99,12 @@ def _utilization(summary: dict | None) -> dict:
     return {
         "warp_occupancy": warp_slots,
         "fp_util": _ratio(ex.get("fp_busy_sum"), cycles),
-        "int_util": _ratio((ex.get("int_busy_sum") or 0) + (ex.get("int_mul_busy_sum") or 0)
-                           + (ex.get("int_div_busy_sum") or 0), cycles),
+        "int_util": _ratio(
+            (ex.get("int_busy_sum") or 0) + (ex.get("int_mul_busy_sum") or 0) + (ex.get("int_div_busy_sum") or 0),
+            cycles,
+        ),
         "sfu_util": _ratio(ex.get("sfu_busy_sum"), cycles),
-        "smem_lane_util": _ratio(smem.get("lane_busy_sum"),
-                                 (smem.get("cycles") or 0) * (smem.get("lane_total") or 0)),
+        "smem_lane_util": _ratio(smem.get("lane_busy_sum"), (smem.get("cycles") or 0) * (smem.get("lane_total") or 0)),
         "dma_util": _ratio(dma.get("busy_sum"), dma.get("cycles")),
         "tensor_util": _ratio(tensor.get("busy_sum"), tensor.get("cycles")),
         "smem_conflict_rate": _ratio(conf.get("conflict_lanes"), conf.get("active_lanes")),
@@ -110,44 +126,80 @@ def _muon_perf(cb: dict, res: dict) -> dict:
 def _wrap_adapters(adapters: dict[str, Callable]) -> dict[str, Callable]:
     """Translate MuonUnavailable -> OracleUnavailable so the shared runner's honest-unavailable path
     (a single exception type) handles the SIMT oracles without a Muon-specific branch."""
+
     def wrap(adapter: Callable) -> Callable:
         def run(cb, artifact, workdir, timeout):
             try:
                 return adapter(cb, artifact, workdir, timeout)
             except MuonUnavailable as e:
                 raise OracleUnavailable(str(e)) from e
+
         return run
+
     return {tier: wrap(a) for tier, a in adapters.items()}
 
 
-def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
-                run_id: str | None = None, contract: str | Path | None = None,
-                oracle_adapters: dict[str, Callable] | None = None,
-                pkg=None, timeout: int = 600, target: str | None = None) -> dict:
+def run_capsule(
+    capsule: dict,
+    package_dir: str | Path,
+    *,
+    runs_root: str | Path,
+    run_id: str | None = None,
+    contract: str | Path | None = None,
+    oracle_adapters: dict[str, Callable] | None = None,
+    pkg=None,
+    timeout: int = 600,
+    target: str | None = None,
+) -> dict:
     """Run one Muon capsule via the shared runner with the Muon config.
 
     ``target`` is accepted for signature-parity with the shared bench driver but is advisory: the Muon
     config (``_MUON_CONFIG.target``) is authoritative, so this runner never mis-targets."""
     from merlin.targetgen import capsule_runner as CR
+
     adapters = _wrap_adapters(oracle_adapters if oracle_adapters is not None else default_adapters())
-    return CR.run_capsule(capsule, package_dir, runs_root=runs_root, run_id=run_id, contract=contract,
-                          oracle_adapters=adapters, pkg=pkg, timeout=timeout,
-                          config=_MUON_CONFIG, perf_extractor=_muon_perf)
+    return CR.run_capsule(
+        capsule,
+        package_dir,
+        runs_root=runs_root,
+        run_id=run_id,
+        contract=contract,
+        oracle_adapters=adapters,
+        pkg=pkg,
+        timeout=timeout,
+        config=_MUON_CONFIG,
+        perf_extractor=_muon_perf,
+    )
 
 
-def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str | Path,
-              contract: str | Path | None = None,
-              oracle_adapters: dict[str, Callable] | None = None, timeout: int = 600,
-              target: str | None = None) -> list[dict]:
+def run_suite(
+    capsules: list[dict],
+    package_dir: str | Path,
+    *,
+    runs_root: str | Path,
+    contract: str | Path | None = None,
+    oracle_adapters: dict[str, Callable] | None = None,
+    timeout: int = 600,
+    target: str | None = None,
+) -> list[dict]:
     from merlin.targetgen import capsule_runner as CR
+
     adapters = _wrap_adapters(oracle_adapters if oracle_adapters is not None else default_adapters())
-    return CR.run_suite(capsules, package_dir, runs_root=runs_root, contract=contract,
-                        oracle_adapters=adapters, timeout=timeout,
-                        config=_MUON_CONFIG, perf_extractor=_muon_perf)
+    return CR.run_suite(
+        capsules,
+        package_dir,
+        runs_root=runs_root,
+        contract=contract,
+        oracle_adapters=adapters,
+        timeout=timeout,
+        config=_MUON_CONFIG,
+        perf_extractor=_muon_perf,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
+
     ap = argparse.ArgumentParser(description="muon capsule/perf runner (shim over capsule_runner)")
     ap.add_argument("--package", required=True)
     ap.add_argument("--capsule", help="path to a single capsule dir")

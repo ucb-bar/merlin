@@ -19,6 +19,7 @@ WHAT A REWRITE MUST BE. Value-preserving on the model's OUTPUT, or it is not a r
 different model. Each applier here states its soundness condition, checks it, and refuses when it
 does not hold rather than applying anyway.
 """
+
 from __future__ import annotations
 
 import json
@@ -36,8 +37,17 @@ REWRITES_FILE = "bundle.rewrites.json"
 
 #: safetensors dtype spelling -> numpy. Only what a bundle actually stores; an unknown dtype is an
 #: error rather than a guess, because guessing wrong silently reinterprets the weight's bytes.
-_NP = {"I8": np.int8, "U8": np.uint8, "I16": np.int16, "I32": np.int32, "I64": np.int64,
-       "F16": np.float16, "F32": np.float32, "F64": np.float64, "BF16": np.uint16}
+_NP = {
+    "I8": np.int8,
+    "U8": np.uint8,
+    "I16": np.int16,
+    "I32": np.int32,
+    "I64": np.int64,
+    "F16": np.float16,
+    "F32": np.float32,
+    "F64": np.float64,
+    "BF16": np.uint16,
+}
 
 
 @dataclass
@@ -162,8 +172,9 @@ def _read_header(safetensors: Path) -> dict[str, Any]:
     return header
 
 
-def hoist_safety_problems(src: Path | str, man: dict[str, Any], want: dict[str, int],
-                          hoisted_args: set[int]) -> list[str]:
+def hoist_safety_problems(
+    src: Path | str, man: dict[str, Any], want: dict[str, int], hoisted_args: set[int]
+) -> list[str]:
     """Reasons the stored layout of `want` (weight name -> arg) CANNOT be pre-applied to `src`.
 
     Empty means safe. Each check is here because its ABSENCE is silent -- the IR analysis proves the
@@ -195,11 +206,11 @@ def hoist_safety_problems(src: Path | str, man: dict[str, Any], want: dict[str, 
                 f"arg {arg}: weight {name!r} has no bytes in weights.safetensors "
                 f"({'manifest marks it stub=true' if stubbed else 'dangling manifest entry'}); "
                 "its layout cannot be pre-applied, and flipping only the manifest shape would "
-                "describe a transpose that never happened")
+                "describe a transpose that never happened"
+            )
             continue
         if len(spec.get("shape", ())) != 2:
-            problems.append(f"arg {arg}: weight {name!r} has shape {spec.get('shape')}; only 2-D "
-                            "weights are hoisted")
+            problems.append(f"arg {arg}: weight {name!r} has shape {spec.get('shape')}; only 2-D weights are hoisted")
 
     for key, entry in man.items():
         w = entry.get("weight")
@@ -208,7 +219,8 @@ def hoist_safety_problems(src: Path | str, man: dict[str, Any], want: dict[str, 
         if int(key) not in hoisted_args:
             problems.append(
                 f"weight {w!r} is also read by arg {key}, which is NOT hoisted; pre-transposing it "
-                "would change what that argument sees")
+                "would change what that argument sees"
+            )
 
     ranges = {n: tuple(s["data_offsets"]) for n, s in header.items() if "data_offsets" in s}
     for name in sorted(want):
@@ -219,7 +231,8 @@ def hoist_safety_problems(src: Path | str, man: dict[str, Any], want: dict[str, 
             if other != name and theirs[0] < mine[1] and mine[0] < theirs[1]:
                 problems.append(
                     f"weight {name!r} shares bytes [{mine[0]}, {mine[1]}) with {other!r}; "
-                    "transposing it would rewrite the other tensor's data underneath it")
+                    "transposing it would rewrite the other tensor's data underneath it"
+                )
     return problems
 
 
@@ -242,15 +255,14 @@ def retarget_weights_file(mlir_text: str, weights_path: Path | str) -> tuple[str
             head, _, rest = line.partition(key)
             _old, quote, tail = rest.partition('"')
             if quote:
-                line = f"{head}{key}{weights_path}\"{tail}"
+                line = f'{head}{key}{weights_path}"{tail}'
                 changed = True
         out.append(line)
     return "\n".join(out) + "\n", changed
 
 
 #: written by the hoist itself -- never carried over from the source bundle
-_HOIST_WRITES = {"model.mlir", "weights.safetensors", "weights.safetensors.manifest.json",
-                 REWRITES_FILE}
+_HOIST_WRITES = {"model.mlir", "weights.safetensors", "weights.safetensors.manifest.json", REWRITES_FILE}
 #: derived from the PRE-rewrite `model.mlir`; carrying it forward would let a consumer lower stale IR
 _STALE_PREFIX = "model.prepared"
 
@@ -275,8 +287,7 @@ def _carry_sidecars(src: Path, dst: Path, written: set[str]) -> list[str]:
     return skipped
 
 
-def hoist_weight_transposes(src: Path | str, dst: Path | str,
-                            func_name: str = "forward") -> RewriteRecord:
+def hoist_weight_transposes(src: Path | str, dst: Path | str, func_name: str = "forward") -> RewriteRecord:
     """Store every sole-use weight in the layout its consumer wants, so the model stops transposing
     weights at run time.
 
@@ -297,9 +308,9 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str,
     that the bytes written are exactly `stored.T`, so an error surfaces here rather than as wrong
     logits hours later on a simulator.
     """
-    from ..xdsl_dialects.lowering.weight_layout import weight_layout_report
     from ..common import mlir_query as mq
     from ..common.ir_lock import IR_LOCK
+    from ..xdsl_dialects.lowering.weight_layout import weight_layout_report
 
     src, dst = Path(src), Path(dst)
     mlir_text = (src / "model.mlir").read_text()
@@ -307,25 +318,24 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str,
         report = weight_layout_report(mq.parse(mlir_text), func_name)
 
     man = json.loads((src / "weights.safetensors.manifest.json").read_text())
-    weight_args = {int(k) for k, entry in man.items()
-                   if k.isdigit() and "weight" in entry}
+    weight_args = {int(k) for k, entry in man.items() if k.isdigit() and "weight" in entry}
     # The IR-only analysis also sees sole-use transposes of runtime inputs.  Those values have no
     # stored payload to rewrite and must remain graph operations; they do not invalidate independent
     # manifest-declared weight candidates.  Storage eligibility is decided here, where the manifest
     # is authoritative, rather than guessed from provenance or argument position.
     by_arg = {r.arg: r for r in report.hoistable if r.arg in weight_args}
     unpriceable_weights = [
-        problem for problem in report.unpriceable
-        if any(problem.startswith(f"arg {arg}:") for arg in weight_args)
+        problem for problem in report.unpriceable if any(problem.startswith(f"arg {arg}:") for arg in weight_args)
     ]
     if unpriceable_weights:
-        raise ValueError(                       # fail closed: an unpriced weight is not a free one
+        raise ValueError(  # fail closed: an unpriced weight is not a free one
             f"cannot hoist safely, {len(unpriceable_weights)} weight re-layout(s) could not be "
-            f"priced: {unpriceable_weights}")
+            f"priced: {unpriceable_weights}"
+        )
     if not by_arg:
         raise ValueError(f"no hoistable weight transposes in {src}")
 
-    want: dict[str, int] = {}                   # safetensors tensor name -> arg index
+    want: dict[str, int] = {}  # safetensors tensor name -> arg index
     for arg in by_arg:
         entry = man.get(str(arg))
         assert entry is not None and "weight" in entry
@@ -337,15 +347,15 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str,
     # while reading the wrong bytes, so they are checked here and refused, never worked around.
     problems = hoist_safety_problems(src, man, want, set(by_arg))
     if problems:
-        raise RewriteRefused(
-            f"cannot pre-apply the weight layout of {src.name}: " + "; ".join(problems))
+        raise RewriteRefused(f"cannot pre-apply the weight layout of {src.name}: " + "; ".join(problems))
 
     dst.mkdir(parents=True, exist_ok=True)
     done = _rewrite_safetensors(src, dst, set(want))
-    if done != len(want):                       # belt-and-braces: the checks above should make this
-        raise RewriteRefused(                   # unreachable, and a silent undercount is the failure
+    if done != len(want):  # belt-and-braces: the checks above should make this
+        raise RewriteRefused(  # unreachable, and a silent undercount is the failure
             f"{src.name}: transposed {done} of {len(want)} weights; refusing to write a bundle whose "
-            "manifest claims a layout its bytes do not have")
+            "manifest claims a layout its bytes do not have"
+        )
 
     for entry in man.values():
         if entry.get("weight") in want and "shape" in entry:
@@ -358,22 +368,23 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str,
     (dst / "model.mlir").write_text(new_text)
 
     skipped = _carry_sidecars(src, dst, _HOIST_WRITES)
-    if (src / REWRITES_FILE).is_file():         # carry the chain forward, do not start a new one
+    if (src / REWRITES_FILE).is_file():  # carry the chain forward, do not start a new one
         shutil.copy2(src / REWRITES_FILE, dst / REWRITES_FILE)
 
     rec = RewriteRecord(
         name="hoist_weight_transposes",
         source_bundle=src.name,
-        soundness=("each hoisted argument's transpose is its SOLE consumer, so pre-applying the "
-                   "layout cannot change what any other reader sees; verified per argument by "
-                   "weight_layout_report, and each weight's bytes asserted equal to stored.T"),
+        soundness=(
+            "each hoisted argument's transpose is its SOLE consumer, so pre-applying the "
+            "layout cannot change what any other reader sees; verified per argument by "
+            "weight_layout_report, and each weight's bytes asserted equal to stored.T"
+        ),
         effect={
             "weights_pre_transposed": done,
             "transposes_removed": len(by_arg),
             "ops_removed": dropped,
             "bytes_moved_per_inference_before": sum(r.bytes_moved for r in by_arg.values()),
-            "mib_moved_per_inference_before": round(
-                sum(r.bytes_moved for r in by_arg.values()) / 2 ** 20, 1),
+            "mib_moved_per_inference_before": round(sum(r.bytes_moved for r in by_arg.values()) / 2**20, 1),
             "bytes_moved_per_inference_after": 0,
             "blocked_not_hoisted": len(report.blocked),
             "non_weight_transposes_not_hoisted": len(report.hoistable) - len(by_arg),
@@ -381,14 +392,25 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str,
             "sidecars_not_carried": skipped,
             "analysis": "merlin.xdsl_dialects.lowering.weight_layout.weight_layout_report",
         },
-        caveats=([f"{len(report.blocked)} re-layout(s) were NOT hoisted (argument has other readers)"]
-                 if report.blocked else [])
-        + ([f"{len(report.hoistable) - len(by_arg)} sole-use transpose(s) were NOT hoisted because "
-            "their arguments are runtime inputs, not manifest-declared weights"]
-           if len(report.hoistable) != len(by_arg) else [])
+        caveats=(
+            [f"{len(report.blocked)} re-layout(s) were NOT hoisted (argument has other readers)"]
+            if report.blocked
+            else []
+        )
+        + (
+            [
+                f"{len(report.hoistable) - len(by_arg)} sole-use transpose(s) were NOT hoisted because "
+                "their arguments are runtime inputs, not manifest-declared weights"
+            ]
+            if len(report.hoistable) != len(by_arg)
+            else []
+        )
         + ([f"stale, NOT carried over from the source bundle: {skipped}"] if skipped else [])
-        + ([] if retargeted else ["prov.weights_file was absent, so it could not be retargeted at "
-                                  "this bundle's own weights"]),
+        + (
+            []
+            if retargeted
+            else ["prov.weights_file was absent, so it could not be retargeted at this bundle's own weights"]
+        ),
     )
     record_rewrite(dst, rec)
     return rec
@@ -412,14 +434,13 @@ def _rewrite_safetensors(src: Path, dst: Path, want: set[str]) -> int:
                 if len(shape) != 2:
                     raise ValueError(f"{name}: only 2-D weights are hoisted, got {shape}")
                 shape = [shape[1], shape[0]]
-            new_header[name] = {"dtype": spec["dtype"], "shape": shape,
-                                "data_offsets": [off, off + (e - s)]}
+            new_header[name] = {"dtype": spec["dtype"], "shape": shape, "data_offsets": [off, off + (e - s)]}
             order.append((name, s, e, spec))
             off += e - s
         if meta is not None:
             new_header["__metadata__"] = meta
         blob = json.dumps(new_header, separators=(",", ":")).encode()
-        blob += b" " * ((-len(blob)) % 8)        # safetensors wants 8-byte aligned data
+        blob += b" " * ((-len(blob)) % 8)  # safetensors wants 8-byte aligned data
 
         done = 0
         with open(dst / "weights.safetensors", "wb") as out:
@@ -465,10 +486,9 @@ def specialize_gather(src: Path | str, dst: Path | str, func_name: str = "forwar
     tensor's sole consumer -- anything else reading it would silently receive renumbered tokens.
     :func:`find_gather_specializations` enforces that and reports a rejection instead.
     """
-    from ..xdsl_dialects.lowering.gather_specialization import (
-        find_gather_specializations, kept_rows)
     from ..common import mlir_query as mq
     from ..common.ir_lock import IR_LOCK
+    from ..xdsl_dialects.lowering.gather_specialization import find_gather_specializations, kept_rows
 
     src, dst = Path(src), Path(dst)
     mlir_text = (src / "model.mlir").read_text()
@@ -477,8 +497,8 @@ def specialize_gather(src: Path | str, dst: Path | str, func_name: str = "forwar
     if not specs:
         raise ValueError(
             f"no specializable gather in {src}"
-            + (f" ({len(rejections)} rejected: {[r.reason for r in rejections]})" if rejections
-               else ""))
+            + (f" ({len(rejections)} rejected: {[r.reason for r in rejections]})" if rejections else "")
+        )
     if len(specs) > 1:
         raise ValueError(f"{len(specs)} specializable gathers; this applier handles exactly one")
     spec = specs[0]
@@ -488,8 +508,7 @@ def specialize_gather(src: Path | str, dst: Path | str, func_name: str = "forwar
     if entry is None or "weight" not in entry:
         raise ValueError(f"table arg {spec.table_arg} names no weight in the manifest")
 
-    order = json.loads((src / "input_order.json").read_text()) if (
-        src / "input_order.json").is_file() else None
+    order = json.loads((src / "input_order.json").read_text()) if (src / "input_order.json").is_file() else None
     with np.load(src / "inputs.npz") as z:
         inputs = {k: z[k] for k in z.files}
     idx_key = _input_key_for_arg(man, order, spec.index_arg, inputs)
@@ -503,16 +522,16 @@ def specialize_gather(src: Path | str, dst: Path | str, func_name: str = "forwar
         entry["shape"] = [len(kept)] + list(entry["shape"][1:])
     (dst / "weights.safetensors.manifest.json").write_text(json.dumps(man, indent=2))
 
-    inputs[idx_key] = np.asarray(renumbered, dtype=inputs[idx_key].dtype).reshape(
-        inputs[idx_key].shape)
+    inputs[idx_key] = np.asarray(renumbered, dtype=inputs[idx_key].dtype).reshape(inputs[idx_key].shape)
     np.savez(dst / "inputs.npz", **inputs)
 
-    (dst / "model.mlir").write_text(_retype_arg(
-        mlir_text, spec.table_arg, spec.table_shape,
-        [len(kept)] + list(spec.table_shape[1:]), spec.table_dtype))
+    (dst / "model.mlir").write_text(
+        _retype_arg(
+            mlir_text, spec.table_arg, spec.table_shape, [len(kept)] + list(spec.table_shape[1:]), spec.table_dtype
+        )
+    )
 
-    for name in ("extra.npz", "input_order.json", "golden.npy", "golden_w8a8.npy",
-                 "region_goldens.npz"):
+    for name in ("extra.npz", "input_order.json", "golden.npy", "golden_w8a8.npy", "region_goldens.npz"):
         _link_or_copy(src / name, dst / name)
     if (src / REWRITES_FILE).is_file():
         shutil.copy2(src / REWRITES_FILE, dst / REWRITES_FILE)
@@ -524,16 +543,25 @@ def specialize_gather(src: Path | str, dst: Path | str, func_name: str = "forwar
     rec = RewriteRecord(
         name="specialize_gather",
         source_bundle=src.name,
-        soundness=(f"the index tensor (arg {spec.index_arg}) has exactly one consumer, so "
-                   "renumbering the stored ids and keeping only the rows they select is "
-                   "value-preserving; checked by find_gather_specializations"),
-        effect={"table_arg": spec.table_arg, "rows_before": rows_before, "rows_after": len(kept),
-                "table_mib_before": round(rows_before * trailing * width / 2 ** 20, 3),
-                "table_mib_after": round(len(kept) * trailing * width / 2 ** 20, 3),
-                "index_arg": spec.index_arg, "index_arg_consumers": 1,
-                "analysis": "merlin.xdsl_dialects.lowering.gather_specialization"},
-        caveats=[f"VALID FOR THESE ROW INDICES ONLY: {kept}. This is input specialization, not dead "
-                 "code elimination -- any other input selects rows that are no longer present."],
+        soundness=(
+            f"the index tensor (arg {spec.index_arg}) has exactly one consumer, so "
+            "renumbering the stored ids and keeping only the rows they select is "
+            "value-preserving; checked by find_gather_specializations"
+        ),
+        effect={
+            "table_arg": spec.table_arg,
+            "rows_before": rows_before,
+            "rows_after": len(kept),
+            "table_mib_before": round(rows_before * trailing * width / 2**20, 3),
+            "table_mib_after": round(len(kept) * trailing * width / 2**20, 3),
+            "index_arg": spec.index_arg,
+            "index_arg_consumers": 1,
+            "analysis": "merlin.xdsl_dialects.lowering.gather_specialization",
+        },
+        caveats=[
+            f"VALID FOR THESE ROW INDICES ONLY: {kept}. This is input specialization, not dead "
+            "code elimination -- any other input selects rows that are no longer present."
+        ],
     )
     record_rewrite(dst, rec)
     return rec
@@ -549,11 +577,12 @@ def _input_key_for_arg(man: dict, order: Any, arg: int, inputs: dict) -> str:
         k = f"in{order.index(name)}"
         if k in inputs:
             return k
-    if len(inputs) == 1:                    # unambiguous: one input, one index tensor
+    if len(inputs) == 1:  # unambiguous: one input, one index tensor
         return next(iter(inputs))
     raise ValueError(
         f"cannot tell which inputs.npz array feeds arg {arg} (manifest name {name!r}, "
-        f"arrays {sorted(inputs)}); refusing to guess")
+        f"arrays {sorted(inputs)}); refusing to guess"
+    )
 
 
 def _slice_table(src: Path, dst: Path, weight: str, kept: list[int]) -> None:
@@ -574,8 +603,7 @@ def _slice_table(src: Path, dst: Path, weight: str, kept: list[int]) -> None:
             if name == weight:
                 shape = [len(kept)] + shape[1:]
                 nbytes = nbytes * len(kept) // spec["shape"][0]
-            new_header[name] = {"dtype": spec["dtype"], "shape": shape,
-                                "data_offsets": [off, off + nbytes]}
+            new_header[name] = {"dtype": spec["dtype"], "shape": shape, "data_offsets": [off, off + nbytes]}
             order.append((name, s, e, spec))
             off += nbytes
         if meta is not None:
@@ -599,7 +627,7 @@ def _slice_table(src: Path, dst: Path, weight: str, kept: list[int]) -> None:
                 if dt is None:
                     raise ValueError(f"{name}: unknown safetensors dtype {spec['dtype']!r}")
                 row_bytes = (e - s) // spec["shape"][0]
-                for r in kept:                        # row-at-a-time: the table can be gigabytes
+                for r in kept:  # row-at-a-time: the table can be gigabytes
                     f.seek(data_start + s + r * row_bytes)
                     out.write(f.read(row_bytes))
 
@@ -617,8 +645,7 @@ def _mentions_ssa(line: str, name: str) -> bool:
         i = end
 
 
-def _retype_arg(mlir_text: str, arg: int, old_shape: list[int], new_shape: list[int],
-                dtype: str) -> str:
+def _retype_arg(mlir_text: str, arg: int, old_shape: list[int], new_shape: list[int], dtype: str) -> str:
     """Give `@forward` argument `arg` its new table type -- EVERYWHERE the value is typed.
 
     Not just the signature. The gather's own `tensor.extract %0[...] : tensor<256000x2304xf32>`
@@ -639,6 +666,7 @@ def _retype_arg(mlir_text: str, arg: int, old_shape: list[int], new_shape: list[
             changed += 1
         out.append(line)
     if not changed:
-        raise ValueError(f"argument {name} never appears with type {old_t}; refusing to write IR "
-                         "whose table type was not updated")
+        raise ValueError(
+            f"argument {name} never appears with type {old_t}; refusing to write IR whose table type was not updated"
+        )
     return "\n".join(out) + "\n"

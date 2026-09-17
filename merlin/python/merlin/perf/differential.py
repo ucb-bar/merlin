@@ -38,6 +38,7 @@ A comparison that cannot be made returns a refusal naming what blocked it. It ne
 comparing the totals, because on this evidence one or both of them is UNKNOWN, and an UNKNOWN that
 quietly becomes a number is the failure this whole layer exists to prevent.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -83,10 +84,14 @@ class Comparison:
         if self.faster == "tie":
             return "the two schedules are indistinguishable on the resolved terms"
         if self.basis == EXACT:
-            return (f"{self.faster} is faster by {abs(self.delta_cycles):.0f} cycles "
-                    f"({len(self.cancelled)} unresolved resource(s) cancelled)")
-        return (f"{self.faster} is no slower than the other, by a margin this evidence cannot size "
-                f"({len(self.cancelled)} unresolved resource(s) cancelled)")
+            return (
+                f"{self.faster} is faster by {abs(self.delta_cycles):.0f} cycles "
+                f"({len(self.cancelled)} unresolved resource(s) cancelled)"
+            )
+        return (
+            f"{self.faster} is no slower than the other, by a margin this evidence cannot size "
+            f"({len(self.cancelled)} unresolved resource(s) cancelled)"
+        )
 
 
 def _demand_amounts(demands: "Mapping[str, Any] | None") -> dict[str, float]:
@@ -97,76 +102,116 @@ def _demand_amounts(demands: "Mapping[str, Any] | None") -> dict[str, float]:
     return out
 
 
-def comparable(a: Composed, b: Composed, *,
-               demands_a: "Mapping[str, Any] | None" = None,
-               demands_b: "Mapping[str, Any] | None" = None) -> tuple[bool, str]:
+def comparable(
+    a: Composed,
+    b: Composed,
+    *,
+    demands_a: "Mapping[str, Any] | None" = None,
+    demands_b: "Mapping[str, Any] | None" = None,
+) -> tuple[bool, str]:
     """Whether these two composed bounds may be differenced at all, and why not when they may not.
 
     Separated from :func:`compare` so a caller can ask the question without asking for an answer --
     a search that must skip incomparable pairs should not have to read a refusal to learn that."""
     if a.operator is not b.operator:
-        return False, (f"composed by different operators ({a.operator.name} vs {b.operator.name}); "
-                       "they are not the same instrument")
+        return False, (
+            f"composed by different operators ({a.operator.name} vs {b.operator.name}); "
+            "they are not the same instrument"
+        )
     if a.eta != b.eta:
         return False, f"different overlap coefficients ({a.eta} vs {b.eta})"
     if set(a.unresolved) != set(b.unresolved):
         only_a = sorted(set(a.unresolved) - set(b.unresolved))
         only_b = sorted(set(b.unresolved) - set(a.unresolved))
-        return False, (f"the unresolved sets differ (only in a: {only_a}; only in b: {only_b}); "
-                       "an unknown present on one side cannot cancel")
+        return False, (
+            f"the unresolved sets differ (only in a: {only_a}; only in b: {only_b}); "
+            "an unknown present on one side cannot cancel"
+        )
     if a.operator is Composition.PARTIAL:
-        return False, ("a partial-overlap operator credits pairs, so neither the magnitude nor the "
-                       "ordering of a resolved-part difference survives; refusing rather than "
-                       "approximating")
+        return False, (
+            "a partial-overlap operator credits pairs, so neither the magnitude nor the "
+            "ordering of a resolved-part difference survives; refusing rather than "
+            "approximating"
+        )
     da, db = _demand_amounts(demands_a), _demand_amounts(demands_b)
     if da or db:
         for name in sorted(set(a.unresolved)):
             if name not in da or name not in db:
-                return False, (f"the demand on unresolved resource {name!r} is not stated for both "
-                               "sides, so it cannot be shown to cancel")
+                return False, (
+                    f"the demand on unresolved resource {name!r} is not stated for both "
+                    "sides, so it cannot be shown to cancel"
+                )
             if da[name] != db[name]:
-                return False, (f"unresolved resource {name!r} is asked for different work "
-                               f"({da[name]} vs {db[name]}), so its unknown cost does not cancel")
+                return False, (
+                    f"unresolved resource {name!r} is asked for different work "
+                    f"({da[name]} vs {db[name]}), so its unknown cost does not cancel"
+                )
     elif a.unresolved:
-        return False, ("demands were not supplied, so the unresolved resources cannot be shown to "
-                       "carry equal work; a matching unresolved SET is not sufficient")
+        return False, (
+            "demands were not supplied, so the unresolved resources cannot be shown to "
+            "carry equal work; a matching unresolved SET is not sufficient"
+        )
     return True, "same operator, same unresolved resources, equal work on each"
 
 
-def compare(a: Composed, b: Composed, *,
-            demands_a: "Mapping[str, Any] | None" = None,
-            demands_b: "Mapping[str, Any] | None" = None,
-            label_a: str = "a", label_b: str = "b") -> Comparison:
+def compare(
+    a: Composed,
+    b: Composed,
+    *,
+    demands_a: "Mapping[str, Any] | None" = None,
+    demands_b: "Mapping[str, Any] | None" = None,
+    label_a: str = "a",
+    label_b: str = "b",
+) -> Comparison:
     """Order two schedules by their resolved parts, cancelling the unknowns they share."""
     ok, why = comparable(a, b, demands_a=demands_a, demands_b=demands_b)
     if not ok:
         return Comparison(faster=None, delta_cycles=None, basis=REFUSED, reason=why)
 
-    delta = b.partial_cycles - a.partial_cycles          # positive -> a is faster
+    delta = b.partial_cycles - a.partial_cycles  # positive -> a is faster
     if delta == 0:
-        return Comparison(faster="tie", delta_cycles=0.0,
-                          basis=EXACT if a.operator in _ADDITIVE else ORDERING_ONLY,
-                          reason="the resolved parts are equal", cancelled=tuple(a.unresolved))
+        return Comparison(
+            faster="tie",
+            delta_cycles=0.0,
+            basis=EXACT if a.operator in _ADDITIVE else ORDERING_ONLY,
+            reason="the resolved parts are equal",
+            cancelled=tuple(a.unresolved),
+        )
     winner = label_a if delta > 0 else label_b
 
     if a.operator in _ADDITIVE:
-        return Comparison(faster=winner, delta_cycles=delta, basis=EXACT,
-                          reason=("the operator is additive, so the difference of the resolved parts "
-                                  "is the difference of the totals"),
-                          cancelled=tuple(a.unresolved))
+        return Comparison(
+            faster=winner,
+            delta_cycles=delta,
+            basis=EXACT,
+            reason=(
+                "the operator is additive, so the difference of the resolved parts is the difference of the totals"
+            ),
+            cancelled=tuple(a.unresolved),
+        )
     if a.operator in _MONOTONE:
-        return Comparison(faster=winner, delta_cycles=None, basis=ORDERING_ONLY,
-                          reason=("the operator is monotone but not additive: a smaller resolved part "
-                                  "cannot produce a larger total, but an unresolved resource may "
-                                  "dominate both and shrink the true gap to nothing"),
-                          cancelled=tuple(a.unresolved))
-    return Comparison(faster=None, delta_cycles=None, basis=REFUSED,
-                      reason=f"operator {a.operator.name} is neither additive nor monotone here")
+        return Comparison(
+            faster=winner,
+            delta_cycles=None,
+            basis=ORDERING_ONLY,
+            reason=(
+                "the operator is monotone but not additive: a smaller resolved part "
+                "cannot produce a larger total, but an unresolved resource may "
+                "dominate both and shrink the true gap to nothing"
+            ),
+            cancelled=tuple(a.unresolved),
+        )
+    return Comparison(
+        faster=None,
+        delta_cycles=None,
+        basis=REFUSED,
+        reason=f"operator {a.operator.name} is neither additive nor monotone here",
+    )
 
 
-def rank_schedules(candidates: "Mapping[str, Composed]", *,
-                   demands: "Mapping[str, Mapping[str, Any]] | None" = None
-                   ) -> tuple[list[str], list[Comparison]]:
+def rank_schedules(
+    candidates: "Mapping[str, Composed]", *, demands: "Mapping[str, Mapping[str, Any]] | None" = None
+) -> tuple[list[str], list[Comparison]]:
     """Order schedules best-first by pairwise comparison, and report every pair that refused.
 
     Ordering is by resolved part among the mutually comparable, which is sound exactly when the
@@ -176,10 +221,15 @@ def rank_schedules(candidates: "Mapping[str, Composed]", *,
     names = sorted(candidates)
     refusals: list[Comparison] = []
     for i, x in enumerate(names):
-        for y in names[i + 1:]:
-            c = compare(candidates[x], candidates[y],
-                        demands_a=(demands or {}).get(x), demands_b=(demands or {}).get(y),
-                        label_a=x, label_b=y)
+        for y in names[i + 1 :]:
+            c = compare(
+                candidates[x],
+                candidates[y],
+                demands_a=(demands or {}).get(x),
+                demands_b=(demands or {}).get(y),
+                label_a=x,
+                label_b=y,
+            )
             if c.basis == REFUSED:
                 refusals.append(c)
     order = sorted(names, key=lambda n: candidates[n].partial_cycles)
@@ -232,17 +282,26 @@ class VectorComparison:
         if self.faster == "tie":
             return "the two schedules are equal on every engine"
         if self.total_delta_cycles is not None:
-            return (f"{self.faster} dominates on all {len(self.per_engine)} engine(s), "
-                    f"by {abs(self.total_delta_cycles):.0f} cycles summed")
-        return (f"{self.faster} dominates: no worse on every engine and strictly better on at least "
-                f"one, by a margin this evidence cannot sum")
+            return (
+                f"{self.faster} dominates on all {len(self.per_engine)} engine(s), "
+                f"by {abs(self.total_delta_cycles):.0f} cycles summed"
+            )
+        return (
+            f"{self.faster} dominates: no worse on every engine and strictly better on at least "
+            f"one, by a margin this evidence cannot sum"
+        )
 
 
-def compare_by_engine(a: "Mapping[str, Composed]", b: "Mapping[str, Composed]", *,
-                      demands_a: "Mapping[str, Mapping[str, Any]] | None" = None,
-                      demands_b: "Mapping[str, Mapping[str, Any]] | None" = None,
-                      label_a: str = "a", label_b: str = "b",
-                      engines_compose: "Composition | None" = None) -> VectorComparison:
+def compare_by_engine(
+    a: "Mapping[str, Composed]",
+    b: "Mapping[str, Composed]",
+    *,
+    demands_a: "Mapping[str, Mapping[str, Any]] | None" = None,
+    demands_b: "Mapping[str, Mapping[str, Any]] | None" = None,
+    label_a: str = "a",
+    label_b: str = "b",
+    engines_compose: "Composition | None" = None,
+) -> VectorComparison:
     """Compare two schedules engine by engine and report which, if either, DOMINATES.
 
     ``a`` and ``b`` map engine name -> that engine's composed bound. ``engines_compose`` is how the
@@ -258,16 +317,26 @@ def compare_by_engine(a: "Mapping[str, Composed]", b: "Mapping[str, Composed]", 
     if ea != eb:
         only_a, only_b = sorted(ea - eb), sorted(eb - ea)
         return VectorComparison(
-            per_engine={}, faster=None, basis=REFUSED,
-            reason=(f"the schedules name different engines (only in {label_a}: {only_a}; only in "
-                    f"{label_b}: {only_b}); an engine absent on one side is unmeasured there, not "
-                    "zero, and treating it as zero reports moving work off an engine as speeding it up"))
+            per_engine={},
+            faster=None,
+            basis=REFUSED,
+            reason=(
+                f"the schedules name different engines (only in {label_a}: {only_a}; only in "
+                f"{label_b}: {only_b}); an engine absent on one side is unmeasured there, not "
+                "zero, and treating it as zero reports moving work off an engine as speeding it up"
+            ),
+        )
 
     per: dict[str, Comparison] = {}
     for e in sorted(ea):
-        per[e] = compare(a[e], b[e],
-                         demands_a=(demands_a or {}).get(e), demands_b=(demands_b or {}).get(e),
-                         label_a=label_a, label_b=label_b)
+        per[e] = compare(
+            a[e],
+            b[e],
+            demands_a=(demands_a or {}).get(e),
+            demands_b=(demands_b or {}).get(e),
+            label_a=label_a,
+            label_b=label_b,
+        )
 
     undecided = tuple(e for e, c in per.items() if c.basis == REFUSED)
     winners = {e: c.faster for e, c in per.items() if c.basis != REFUSED}
@@ -278,34 +347,53 @@ def compare_by_engine(a: "Mapping[str, Composed]", b: "Mapping[str, Composed]", 
         # A real trade-off. Report it EVEN IF an engine refused: knowing the two disagree is a
         # stronger statement than "undecidable", and it is the answer a scheduler has to act on.
         return VectorComparison(
-            per_engine=per, faster=None, basis=INCOMPARABLE,
+            per_engine=per,
+            faster=None,
+            basis=INCOMPARABLE,
             reason="neither schedule is at least as good on every engine",
             undecided_engines=undecided,
-            traded=tuple(sorted(non_tie.items())))
+            traded=tuple(sorted(non_tie.items())),
+        )
 
     if undecided:
         return VectorComparison(
-            per_engine=per, faster=None, basis=REFUSED,
-            reason=(f"engine(s) {list(undecided)} could not be compared, so no claim covers every "
-                    "engine; the engines that did compare do not disagree"),
-            undecided_engines=undecided)
+            per_engine=per,
+            faster=None,
+            basis=REFUSED,
+            reason=(
+                f"engine(s) {list(undecided)} could not be compared, so no claim covers every "
+                "engine; the engines that did compare do not disagree"
+            ),
+            undecided_engines=undecided,
+        )
 
     if not distinct:
-        return VectorComparison(per_engine=per, faster="tie", basis=EXACT,
-                                reason="every engine is a tie", total_delta_cycles=0.0)
+        return VectorComparison(
+            per_engine=per, faster="tie", basis=EXACT, reason="every engine is a tie", total_delta_cycles=0.0
+        )
 
     winner = distinct.pop()
     all_exact = all(c.basis == EXACT for c in per.values())
     if all_exact and engines_compose in _ADDITIVE:
         total = sum(c.delta_cycles or 0.0 for c in per.values())
         return VectorComparison(
-            per_engine=per, faster=winner, basis=EXACT,
-            reason=("every engine compared exactly and the engines compose additively, so the "
-                    "per-engine differences sum"),
-            total_delta_cycles=total)
-    why = ("not every engine compared exactly" if not all_exact else
-           f"the engines compose by {engines_compose.name if engines_compose else 'an undeclared operator'}, "
-           "so per-engine differences may not be summed")
+            per_engine=per,
+            faster=winner,
+            basis=EXACT,
+            reason=(
+                "every engine compared exactly and the engines compose additively, so the per-engine differences sum"
+            ),
+            total_delta_cycles=total,
+        )
+    why = (
+        "not every engine compared exactly"
+        if not all_exact
+        else f"the engines compose by {engines_compose.name if engines_compose else 'an undeclared operator'}, "
+        "so per-engine differences may not be summed"
+    )
     return VectorComparison(
-        per_engine=per, faster=winner, basis=ORDERING_ONLY,
-        reason=f"{winner} is no worse on every engine and better on at least one, but {why}")
+        per_engine=per,
+        faster=winner,
+        basis=ORDERING_ONLY,
+        reason=f"{winner} is no worse on every engine and better on at least one, but {why}",
+    )

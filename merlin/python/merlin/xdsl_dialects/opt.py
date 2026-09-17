@@ -29,6 +29,7 @@ Usage::
     merlin-opt input.mlir -p merlin-apply-schedule
     merlin-opt input.mlir --merlin-target toy_npu -p merlin-lower-to-target
 """
+
 from __future__ import annotations
 
 import argparse
@@ -178,12 +179,12 @@ def merlin_passes() -> tuple[dict[str, Any], list[tuple[str, str]]]:
     ok: dict[str, Any] = {}
     skipped: list[tuple[str, str]] = []
     for info in P.all_catalogs():
-        fn = _resolve(info.entry)          # raises on a broken catalog entry, by design
+        fn = _resolve(info.entry)  # raises on a broken catalog entry, by design
         if not _takes_module(fn):
             skipped.append((info.name, _NOT_A_MODULE_PASS))
             continue
         cls = _make_pass(info)
-        ok[info.name] = (lambda c=cls: c)
+        ok[info.name] = lambda c=cls: c
     return ok, skipped
 
 
@@ -240,18 +241,24 @@ if HAS_XDSL:
         def register_all_arguments(self, arg_parser: argparse.ArgumentParser):
             super().register_all_arguments(arg_parser)
             # NOTE: -t/--target is taken by xDSLOptMain (output target), hence --merlin-target.
-            arg_parser.add_argument("--dialect-plan", default=None,
-                                    help="path to a dialect_plan.yaml naming the target dialect")
-            arg_parser.add_argument("--merlin-target", default=None,
-                                    help="target name whose dialect plan to load")
-            arg_parser.add_argument("--list-merlin-passes", action="store_true",
-                                    help="list merlin catalog passes (and any that cannot be an "
-                                         "MLIR pass, with the reason) and exit")
-            arg_parser.add_argument("--emit", default=None, choices=sorted(EMITTERS),
-                                    help="run a NON-MLIR stage of the dispatch chain and print its "
-                                         "text. These stages consume and produce Python objects "
-                                         "rather than IR, so they can never be ModulePasses -- but "
-                                         "their output is stable text, which is all FileCheck needs.")
+            arg_parser.add_argument(
+                "--dialect-plan", default=None, help="path to a dialect_plan.yaml naming the target dialect"
+            )
+            arg_parser.add_argument("--merlin-target", default=None, help="target name whose dialect plan to load")
+            arg_parser.add_argument(
+                "--list-merlin-passes",
+                action="store_true",
+                help="list merlin catalog passes (and any that cannot be an MLIR pass, with the reason) and exit",
+            )
+            arg_parser.add_argument(
+                "--emit",
+                default=None,
+                choices=sorted(EMITTERS),
+                help="run a NON-MLIR stage of the dispatch chain and print its "
+                "text. These stages consume and produce Python objects "
+                "rather than IR, so they can never be ModulePasses -- but "
+                "their output is stable text, which is all FileCheck needs.",
+            )
 
         def setup_pipeline(self):
             """Skip pipeline construction in ``--emit`` mode.
@@ -300,8 +307,7 @@ if HAS_XDSL:
                 info = by_name[name]
                 if name in skipped:
                     continue
-                print(f"  {name:34s} {info.input_dialect} -> {info.output_dialect}"
-                      f"   [{info.obligation}]")
+                print(f"  {name:34s} {info.input_dialect} -> {info.output_dialect}   [{info.obligation}]")
             if skipped:
                 print("\nNOT registrable as an MLIR pass (reported, not dropped):")
                 for name, reason in sorted(skipped.items()):
@@ -316,8 +322,9 @@ def _prescan(argv: list[str]) -> tuple[dict | None, str | None]:
     known, _ = pre.parse_known_args(argv)
     plan = None
     if known.dialect_plan:
-        import yaml
         from pathlib import Path
+
+        import yaml
 
         plan = yaml.safe_load(Path(known.dialect_plan).read_text(encoding="utf-8"))
     return plan, known.merlin_target

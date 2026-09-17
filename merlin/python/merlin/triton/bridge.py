@@ -25,6 +25,7 @@ is genuinely safe to drop; "safe to drop" is therefore a decision that gets reco
 the same linalg-on-tensors a hand-written frontend would produce, and the router in
 :mod:`merlin.compile_core` decides where it goes.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -40,28 +41,61 @@ from .spec import TritonKernelSpec
 CORE_DIALECTS = frozenset({"builtin", "func", "arith", "math", "tensor", "linalg", "scf", "cf"})
 
 # Triton spells element types the way MLIR does, except for the `fp`/`f` prefix on floats.
-_DTYPES = {"fp64": "f64", "fp32": "f32", "fp16": "f16", "bf16": "bf16",
-           "i64": "i64", "i32": "i32", "i16": "i16", "i8": "i8", "i1": "i1"}
+_DTYPES = {
+    "fp64": "f64",
+    "fp32": "f32",
+    "fp16": "f16",
+    "bf16": "bf16",
+    "i64": "i64",
+    "i32": "i32",
+    "i16": "i16",
+    "i8": "i8",
+    "i1": "i1",
+}
 
 # MLIR's arith::CmpIPredicate ordinals, as carried by the `predicate` attribute.
-_CMPI = {0: "eq", 1: "ne", 2: "slt", 3: "sle", 4: "sgt", 5: "sge",
-         6: "ult", 7: "ule", 8: "ugt", 9: "uge"}
+_CMPI = {0: "eq", 1: "ne", 2: "slt", 3: "sle", 4: "sgt", 5: "sge", 6: "ult", 7: "ule", 8: "ugt", 9: "uge"}
 
 # Ops with no side effect, so an instance whose results are unused computes nothing and may be
 # dropped. Triton emits a range check per index expression (extend to i64, compare against the i32
 # limits, and) whose result nothing consumes; that is what this list is for. Membership is required
 # rather than assumed, so an unrecognized dead op still fails closed.
-_PURE = frozenset({
-    "arith.constant", "arith.extsi", "arith.extui", "arith.trunci", "arith.index_cast",
-    "arith.addi", "arith.muli", "arith.subi", "arith.cmpi", "arith.andi", "arith.ori",
-    "arith.addf", "arith.mulf", "arith.subf", "arith.divf",
-    "tt.make_range", "tt.splat", "tt.expand_dims", "tt.broadcast", "tt.addptr",
-    "tt.get_program_id", "tt.load", "tt.dot",
-})
+_PURE = frozenset(
+    {
+        "arith.constant",
+        "arith.extsi",
+        "arith.extui",
+        "arith.trunci",
+        "arith.index_cast",
+        "arith.addi",
+        "arith.muli",
+        "arith.subi",
+        "arith.cmpi",
+        "arith.andi",
+        "arith.ori",
+        "arith.addf",
+        "arith.mulf",
+        "arith.subf",
+        "arith.divf",
+        "tt.make_range",
+        "tt.splat",
+        "tt.expand_dims",
+        "tt.broadcast",
+        "tt.addptr",
+        "tt.get_program_id",
+        "tt.load",
+        "tt.dot",
+    }
+)
 
-_ELEMENTWISE = {"arith.addf": "AddOp", "arith.addi": "AddOp",
-                "arith.mulf": "MulOp", "arith.muli": "MulOp",
-                "arith.subf": "SubOp", "arith.subi": "SubOp"}
+_ELEMENTWISE = {
+    "arith.addf": "AddOp",
+    "arith.addi": "AddOp",
+    "arith.mulf": "MulOp",
+    "arith.muli": "MulOp",
+    "arith.subf": "SubOp",
+    "arith.subi": "SubOp",
+}
 
 
 @dataclass(frozen=True)
@@ -104,13 +138,19 @@ def to_linalg(ttir: source.TTIRModule, spec: TritonKernelSpec) -> BridgeResult:
     builder = _Bridge(ttir, spec)
     module: ModuleOp = builder.run()
     _check_core_only(module)
-    return BridgeResult(module=module, text=_text(module), report=builder.report,
-                        entry=spec.name, arg_names=builder.arg_names,
-                        result_names=builder.result_names)
+    return BridgeResult(
+        module=module,
+        text=_text(module),
+        report=builder.report,
+        entry=spec.name,
+        arg_names=builder.arg_names,
+        result_names=builder.result_names,
+    )
 
 
 def _text(module) -> str:
     from merlin.xdsl_dialects._common import text
+
     return text(module)
 
 
@@ -123,8 +163,8 @@ def _check_core_only(module) -> None:
     if offenders:
         raise BridgeError(
             f"the bridge left non-core ops in its output: {sorted(offenders)}",
-            hint=f"linalg-on-tensors is the convergence point; allowed dialects are "
-                 f"{sorted(CORE_DIALECTS)}")
+            hint=f"linalg-on-tensors is the convergence point; allowed dialects are {sorted(CORE_DIALECTS)}",
+        )
 
 
 class _Bridge:
@@ -147,15 +187,17 @@ class _Bridge:
 
     def _element_type(self, dtype: str):
         from xdsl.dialects.builtin import BFloat16Type, Float16Type, Float32Type, Float64Type, IntegerType
+
         mlir = _DTYPES.get(dtype)
         if mlir is None:
-            raise BridgeError(f"unsupported element type {dtype!r}",
-                              hint=f"known types: {sorted(_DTYPES)}")
-        return {"f64": Float64Type(), "f32": Float32Type(), "f16": Float16Type(),
-                "bf16": BFloat16Type()}.get(mlir) or IntegerType(int(mlir[1:]))
+            raise BridgeError(f"unsupported element type {dtype!r}", hint=f"known types: {sorted(_DTYPES)}")
+        return {"f64": Float64Type(), "f32": Float32Type(), "f16": Float16Type(), "bf16": BFloat16Type()}.get(
+            mlir
+        ) or IntegerType(int(mlir[1:]))
 
     def _tensor_type(self, arg):
         from xdsl.dialects.builtin import TensorType
+
         return TensorType(self._element_type(arg.dtype), list(arg.shape or ()))
 
     # ---------------------------------------------------------------- driver
@@ -183,7 +225,8 @@ class _Bridge:
             raise BridgeError(
                 f"nothing is stored to output argument(s) {missing}",
                 hint="an argument declared effect='write' must be written by the kernel; either the "
-                     "effect declaration is wrong or the store was not recognized")
+                "effect declaration is wrong or the store was not recognized",
+            )
 
         self.ops.append(ReturnOp(*[self.stored[a.name] for a in outputs]))
         block.add_ops(self.ops)
@@ -196,32 +239,29 @@ class _Bridge:
         """Map the TTIR entry parameters onto the declared spec arguments, checking they agree."""
         params = source.entry_block_args(self.ttir)
         if len(params) != len(self.spec.args):
-            raise BridgeError(
-                f"kernel takes {len(params)} parameter(s) but the spec declares "
-                f"{len(self.spec.args)}")
+            raise BridgeError(f"kernel takes {len(params)} parameter(s) but the spec declares {len(self.spec.args)}")
         for param, arg in zip(params, self.spec.args):
             ttir_type = str(param.get_type())
             pointee = source.pointee_dtype(ttir_type)
             if arg.kind == "pointer":
                 if pointee is None:
                     raise BridgeError(
-                        f"argument {arg.name!r} is declared a pointer but the kernel takes "
-                        f"{ttir_type} there")
+                        f"argument {arg.name!r} is declared a pointer but the kernel takes {ttir_type} there"
+                    )
                 if pointee != _DTYPES.get(arg.dtype):
                     raise BridgeError(
-                        f"argument {arg.name!r} is declared {arg.dtype} but the kernel takes a "
-                        f"pointer to {pointee}")
+                        f"argument {arg.name!r} is declared {arg.dtype} but the kernel takes a pointer to {pointee}"
+                    )
                 # A rank-0 offset: a bare pointer is just a tile of one address, so `tt.addptr`
                 # before the splat and after it are the same operation.
                 self.env[param.id()] = PointerTensor(arg.name, Affine())
             else:
                 if pointee is not None:
                     raise BridgeError(
-                        f"argument {arg.name!r} is declared a scalar but the kernel takes "
-                        f"{ttir_type} there")
+                        f"argument {arg.name!r} is declared a scalar but the kernel takes {ttir_type} there"
+                    )
                 value = self.spec.assumptions.get(arg.name)
-                self.env[param.id()] = (Affine(const=int(value)) if value is not None
-                                        else UnresolvedScalar(arg.name))
+                self.env[param.id()] = Affine(const=int(value)) if value is not None else UnresolvedScalar(arg.name)
 
     def _live_ops(self, ops: list) -> set[int]:
         """Ops whose results are transitively needed — backward liveness to a fixpoint.
@@ -241,8 +281,7 @@ class _Bridge:
                 producer[op.get_result(index).id()] = op
 
         live: set[int] = set()
-        frontier = [op for op in ops
-                    if op.get_num_results() == 0 and op.get_name() not in ("builtin.module",)]
+        frontier = [op for op in ops if op.get_num_results() == 0 and op.get_name() not in ("builtin.module",)]
         while frontier:
             op = frontier.pop()
             if id(op) in live:
@@ -274,7 +313,8 @@ class _Bridge:
             raise BridgeError(
                 f"the bridge did not account for {unaccounted} — translation is incomplete",
                 hint="every op must be lowered or explicitly discarded; this is the guard against "
-                     "emitting a module that quietly computes something else")
+                "emitting a module that quietly computes something else",
+            )
 
     # ---------------------------------------------------------------- op translation
 
@@ -282,9 +322,11 @@ class _Bridge:
         handler = getattr(self, "_op_" + name.replace(".", "_"), None)
         if handler is None:
             raise BridgeError(
-                f"no translation for {name}", op=name,
+                f"no translation for {name}",
+                op=name,
                 hint="the bridge covers pointer arithmetic, masked load/store, tt.dot and "
-                     "elementwise arith; anything else must be added deliberately, with a test")
+                "elementwise arith; anything else must be added deliberately, with a test",
+            )
         handler(op, results)
         self.report.lowered(name)
 
@@ -292,23 +334,24 @@ class _Bridge:
         value = self.env.get(op.get_operand(i).id())
         if value is None:
             raise BridgeError(
-                f"operand {i} of {op.get_name()} was produced by an op the bridge skipped",
-                op=op.get_name())
+                f"operand {i} of {op.get_name()} was produced by an op the bridge skipped", op=op.get_name()
+            )
         if isinstance(value, UnresolvedScalar):
             raise BridgeError(
-                f"runtime scalar {value.name!r} is used in an address or mask but has no "
-                "compile-time value",
+                f"runtime scalar {value.name!r} is used in an address or mask but has no compile-time value",
                 op=op.get_name(),
                 hint=f"declare it in the spec, e.g. assumptions={{{value.name!r}: <extent>}} — the "
-                     "grid and the declared shapes have to be reconcilable at compile time")
+                "grid and the declared shapes have to be reconcilable at compile time",
+            )
         return value
 
     def _index(self, op, i: int) -> Affine:
         value = self._operand(op, i)
         if not isinstance(value, Affine):
             raise BridgeError(
-                f"operand {i} of {op.get_name()} is not an index expression (got "
-                f"{type(value).__name__})", op=op.get_name())
+                f"operand {i} of {op.get_name()} is not an index expression (got {type(value).__name__})",
+                op=op.get_name(),
+            )
         return value
 
     def _shape(self, value) -> tuple[int, ...]:
@@ -336,8 +379,10 @@ class _Bridge:
         if value is None:
             raise BridgeError("constant value could not be read", op="arith.constant")
         shape = self._shape(results[0])
-        self._bind(results, FloatConst(float(value), shape) if isinstance(value, float)
-                   else Affine(shape=shape, const=int(value)))
+        self._bind(
+            results,
+            FloatConst(float(value), shape) if isinstance(value, float) else Affine(shape=shape, const=int(value)),
+        )
 
     def _op_tt_splat(self, op, results) -> None:
         value = self._operand(op, 0)
@@ -396,8 +441,10 @@ class _Bridge:
                 terms.extend(value.terms)
             else:
                 raise BridgeError(
-                    "arith.andi over non-mask values is not translated", op="arith.andi",
-                    hint="bitwise integer arithmetic inside an index expression is not affine")
+                    "arith.andi over non-mask values is not translated",
+                    op="arith.andi",
+                    hint="bitwise integer arithmetic inside an index expression is not affine",
+                )
         self._bind(results, Conjunction(tuple(terms)))
 
     # -- memory ------------------------------------------------------------------------------
@@ -409,16 +456,17 @@ class _Bridge:
         if previous and previous != pattern:
             raise BridgeError(
                 f"argument {arg.name!r} is accessed two different ways ({previous!r} and "
-                f"{pattern!r}) — the bridge re-raises each argument to one tensor value")
+                f"{pattern!r}) — the bridge re-raises each argument to one tensor value"
+            )
         self.report.pointer_patterns[arg.name] = pattern
         if writing and not arg.is_written:
             raise BridgeError(
                 f"the kernel stores to {arg.name!r}, which the spec declares effect={arg.effect!r}",
                 hint="a mutation the caller believes cannot happen is a miscompile, so the effect "
-                     "must be declared, not discovered")
+                "must be declared, not discovered",
+            )
         if not writing and arg.effect == "write":
-            raise BridgeError(
-                f"the kernel loads from {arg.name!r}, which the spec declares write-only")
+            raise BridgeError(f"the kernel loads from {arg.name!r}, which the spec declares write-only")
         return arg
 
     def _mask_operand(self, op, i: int):
@@ -427,9 +475,7 @@ class _Bridge:
         value = self._operand(op, i)
         if isinstance(value, (Predicate, Conjunction)):
             return value
-        raise BridgeError(
-            f"operand {i} of {op.get_name()} is a {type(value).__name__}, not a mask",
-            op=op.get_name())
+        raise BridgeError(f"operand {i} of {op.get_name()} is a {type(value).__name__}, not a mask", op=op.get_name())
 
     def _op_tt_load(self, op, results) -> None:
         ptr = self._operand(op, 0)
@@ -442,7 +488,8 @@ class _Bridge:
         if op.get_num_operands() > 2:
             self.report.notes.append(
                 f"masked load of {arg.name!r}: `other` is unobservable because masked-off lanes are "
-                "outside the declared extent and are never stored")
+                "outside the declared extent and are never stored"
+            )
         self._bind(results, Tensor(self.block_values[arg.name], arg.shape or ()))
 
     def _op_tt_store(self, op, results) -> None:
@@ -452,8 +499,8 @@ class _Bridge:
         value = self._operand(op, 1)
         if not isinstance(value, Tensor):
             raise BridgeError(
-                f"tt.store of a {type(value).__name__} — only a computed tensor can be stored",
-                op="tt.store")
+                f"tt.store of a {type(value).__name__} — only a computed tensor can be stored", op="tt.store"
+            )
         arg = self._pointer_argument(ptr, self._mask_operand(op, 2), writing=True)
         if arg.name in self.stored:
             raise BridgeError(f"argument {arg.name!r} is stored to more than once", op="tt.store")
@@ -468,6 +515,7 @@ class _Bridge:
     def _empty_like(self, element_type, shape):
         from xdsl.dialects import tensor as tensor_d
         from xdsl.dialects.builtin import TensorType
+
         result_type = TensorType(element_type, list(shape))
         empty = tensor_d.EmptyOp((), result_type)
         self.ops.append(empty)
@@ -480,20 +528,29 @@ class _Bridge:
 
         if self.grid != (1, 1, 1):
             raise BridgeError(
-                f"tt.dot under a grid of {list(self.grid)} programs", op="tt.dot",
+                f"tt.dot under a grid of {list(self.grid)} programs",
+                op="tt.dot",
                 hint="a multi-program contraction needs tiled accumulation re-raised as a reduction; "
-                     "the bridge normalizes a grid only when every program's payload is elementwise")
+                "the bridge normalizes a grid only when every program's payload is elementwise",
+            )
         lhs, rhs = self._operand(op, 0), self._operand(op, 1)
         if not isinstance(lhs, Tensor) or not isinstance(rhs, Tensor):
             raise BridgeError("tt.dot operands are not loaded tensors", op="tt.dot")
         acc = self._operand(op, 2)
-        zero = (isinstance(acc, Affine) and acc.is_constant and acc.const == 0
-                or isinstance(acc, FloatConst) and acc.value == 0.0)
+        zero = (
+            isinstance(acc, Affine)
+            and acc.is_constant
+            and acc.const == 0
+            or isinstance(acc, FloatConst)
+            and acc.value == 0.0
+        )
         if not zero:
             raise BridgeError(
-                "tt.dot starts from a non-zero accumulator", op="tt.dot",
+                "tt.dot starts from a non-zero accumulator",
+                op="tt.dot",
                 hint="an initial accumulator value would have to become a linalg `outs` operand "
-                     "carrying real data, which changes residency analysis; not yet translated")
+                "carrying real data, which changes residency analysis; not yet translated",
+            )
 
         element = self._element_type(_result_dtype(results[0]))
         shape = (lhs.shape[0], rhs.shape[1])
@@ -508,11 +565,10 @@ class _Bridge:
             zp = arith.ConstantOp(IntegerAttr(0, 32))
             self.ops.append(zp)
             mm = linalg_ops.QuantizedMatmulOp(
-                inputs=(lhs.value, rhs.value, zp.result, zp.result),
-                outputs=(fill.results[0],), res=(result_type,))
+                inputs=(lhs.value, rhs.value, zp.result, zp.result), outputs=(fill.results[0],), res=(result_type,)
+            )
         else:
-            mm = linalg_ops.MatmulOp(inputs=(lhs.value, rhs.value),
-                                     outputs=(fill.results[0],), res=(result_type,))
+            mm = linalg_ops.MatmulOp(inputs=(lhs.value, rhs.value), outputs=(fill.results[0],), res=(result_type,))
         self.ops.append(mm)
         self._bind(results, Tensor(mm.results[0], shape))
 
@@ -524,15 +580,14 @@ class _Bridge:
             # Integer adds and multiplies are overwhelmingly index arithmetic, not data.
             if kind in ("AddOp", "MulOp", "SubOp") and op.get_name().endswith("i"):
                 return self._index_arithmetic(op, results)
-            raise BridgeError(
-                f"{op.get_name()} mixes tensors and index expressions", op=op.get_name())
+            raise BridgeError(f"{op.get_name()} mixes tensors and index expressions", op=op.get_name())
         if lhs.value.type != rhs.value.type:
             raise BridgeError(
-                f"{op.get_name()} over differently-typed tensors ({lhs.value.type} and "
-                f"{rhs.value.type})", op=op.get_name())
+                f"{op.get_name()} over differently-typed tensors ({lhs.value.type} and {rhs.value.type})",
+                op=op.get_name(),
+            )
         init, result_type = self._empty_like(lhs.value.type.get_element_type(), lhs.shape)
-        emitted = getattr(linalg_ops, kind)(inputs=(lhs.value, rhs.value), outputs=(init,),
-                                            res=(result_type,))
+        emitted = getattr(linalg_ops, kind)(inputs=(lhs.value, rhs.value), outputs=(init,), res=(result_type,))
         self.ops.append(emitted)
         self._bind(results, Tensor(emitted.results[0], lhs.shape))
 
@@ -554,7 +609,7 @@ def _result_dtype(result) -> str:
     text = str(result.get_type())
     if not text.startswith("tensor<"):
         raise BridgeError(f"expected a tensor result, got {text}")
-    element = text[len("tensor<"):-1].split("x")[-1]
+    element = text[len("tensor<") : -1].split("x")[-1]
     for spec_name, mlir in _DTYPES.items():
         if mlir == element:
             return spec_name
@@ -563,6 +618,7 @@ def _result_dtype(result) -> str:
 
 def _zero_attr(element_type):
     from xdsl.dialects.builtin import FloatAttr, IntegerAttr, IntegerType
+
     if isinstance(element_type, IntegerType):
         return IntegerAttr(0, element_type)
     return FloatAttr(0.0, element_type)
@@ -571,8 +627,10 @@ def _zero_attr(element_type):
 def _install_elementwise_handlers() -> None:
     """Bind one handler per elementwise arith op, so the dispatch stays a lookup, not a chain."""
     for op_name, kind in _ELEMENTWISE.items():
+
         def handler(self, op, results, _kind=kind):
             self._elementwise(op, results, _kind)
+
         setattr(_Bridge, "_op_" + op_name.replace(".", "_"), handler)
 
 

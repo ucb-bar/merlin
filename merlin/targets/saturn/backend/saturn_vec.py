@@ -5,6 +5,7 @@ VOUT parser (flat 1-D outputs, matching the reference's 1-D ``to_list``). Gates 
 with :func:`merlin.runtime.reference.reference_outputs`. This is the NON-matmul family's
 execution path — same oracle plumbing, different semantics.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -12,8 +13,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from merlin.runtime.reference import outputs_match, reference_outputs
 from merlin.runtime.backends import spike
+from merlin.runtime.reference import outputs_match, reference_outputs
+
 from .saturn_vec_codegen import generate_driver
 
 # Harness objects needed by the vector kernel (no matmul asm).
@@ -26,25 +28,32 @@ class SaturnVecError(RuntimeError):
 
 def available() -> bool:
     h = spike.harness_dir()
-    return (spike.gcc_path().is_file() and spike.spike_path().is_file()
-            and all((h / f).is_file() for f in HARNESS_FILES))
+    return spike.gcc_path().is_file() and spike.spike_path().is_file() and all((h / f).is_file() for f in HARNESS_FILES)
 
 
-def compile_command_buffer(cb: dict[str, Any], workdir: str | Path,
-                           driver_src: str | None = None) -> Path:
+def compile_command_buffer(cb: dict[str, Any], workdir: str | Path, driver_src: str | None = None) -> Path:
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
-    (work / "main.c").write_text(driver_src if driver_src is not None else generate_driver(cb),
-                                 encoding="utf-8")
+    (work / "main.c").write_text(driver_src if driver_src is not None else generate_driver(cb), encoding="utf-8")
     elf = work / "merlin_vec.elf"
     h = spike.harness_dir()
     cmd = [
         str(spike.gcc_path()),
-        "-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany",
-        "-O2", "-ffreestanding", "-nostdlib", "-nostartfiles",
-        "-I", str(h), "-T", str(h / "link.ld"),
+        "-march=rv64gcv",
+        "-mabi=lp64d",
+        "-mcmodel=medany",
+        "-O2",
+        "-ffreestanding",
+        "-nostdlib",
+        "-nostartfiles",
+        "-I",
+        str(h),
+        "-T",
+        str(h / "link.ld"),
         *(str(h / f) for f in HARNESS_FILES),
-        str(work / "main.c"), "-o", str(elf),
+        str(work / "main.c"),
+        "-o",
+        str(elf),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -79,8 +88,9 @@ def parse_output(text: str) -> tuple[dict[str, list], dict[str, int]]:
     return outputs, raw
 
 
-def run_command_buffer(cb: dict[str, Any], *, workdir: str | Path | None = None,
-                       timeout: int = 300, driver_src: str | None = None) -> dict[str, Any]:
+def run_command_buffer(
+    cb: dict[str, Any], *, workdir: str | Path | None = None, timeout: int = 300, driver_src: str | None = None
+) -> dict[str, Any]:
     """Compile + run an RVV vector command buffer on spike rv64gcv; gate on reference equality."""
     if not available():
         raise SaturnVecError("saturn-vec spike toolchain not available (set MERLIN_CHIPYARD)")

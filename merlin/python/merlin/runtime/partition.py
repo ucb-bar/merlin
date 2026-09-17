@@ -18,13 +18,13 @@ leaves the placing to the existing layout code. Two ways to describe them:
 The JSON is a list of windows, sizes in bytes or with a ``K``/``M``/``G`` suffix::
 
     {
-      "dram_base": "0x80000000",
-      "dram_bytes": "512M",
-      "partitions": [
-        {"name": "big",   "bytes": "256M"},
-        {"name": "small", "bytes": "128M"},
-        {"name": "spare", "bytes": "128M", "reserved": true}
-      ]
+        "dram_base": "0x80000000",
+        "dram_bytes": "512M",
+        "partitions": [
+            {"name": "big", "bytes": "256M"},
+            {"name": "small", "bytes": "128M"},
+            {"name": "spare", "bytes": "128M", "reserved": true},
+        ],
     }
 
 Sizes, not addresses, by default: bases are computed by packing in order, so a map cannot describe
@@ -38,6 +38,7 @@ make that true of arbitrary code. Enforcement needs RISC-V PMP, which is a separ
 disabled in the board configs this ships against. Any report generated here says so, because a
 partition map that reads as a safety guarantee is worse than none.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,7 +48,7 @@ from pathlib import Path
 #: Suffix multipliers for human-written sizes. Deliberately powers of two: a "256M" window that meant
 #: 256e6 would silently be 6% smaller than the linker script's 256 MiB and the mismatch would land as
 #: an overlap at the far end of the region.
-_SUFFIX = {"k": 1024, "m": 1024 ** 2, "g": 1024 ** 3}
+_SUFFIX = {"k": 1024, "m": 1024**2, "g": 1024**3}
 
 
 class PartitionError(RuntimeError):
@@ -60,7 +61,7 @@ def parse_size(value: "int | str") -> int:
     Accepts what a human writes in a config file (``"256M"``, ``"0x10000000"``, ``268435456``) and
     rejects anything ambiguous rather than guessing.
     """
-    if isinstance(value, bool):                      # bool is an int subclass; never a size
+    if isinstance(value, bool):  # bool is an int subclass; never a size
         raise PartitionError(f"not a size: {value!r}")
     if isinstance(value, int):
         if value < 0:
@@ -91,7 +92,7 @@ class Partition:
     name: str
     base: int
     size: int
-    reserved: bool = False        # not ours to use; carved out so nothing else is placed there
+    reserved: bool = False  # not ours to use; carved out so nothing else is placed there
 
     @property
     def end(self) -> int:
@@ -109,9 +110,14 @@ class Partition:
         return {"dram_base": self.base, "dram_bytes": self.size}
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "base": hex(self.base), "size_bytes": self.size,
-                "size_mb": round(self.size / 2 ** 20, 1), "end": hex(self.end),
-                "reserved": self.reserved}
+        return {
+            "name": self.name,
+            "base": hex(self.base),
+            "size_bytes": self.size,
+            "size_mb": round(self.size / 2**20, 1),
+            "end": hex(self.end),
+            "reserved": self.reserved,
+        }
 
 
 @dataclass(frozen=True)
@@ -130,24 +136,27 @@ class PartitionMap:
         for p in self.partitions:
             if p.name == name:
                 return p
-        raise PartitionError(f"no partition named {name!r} "
-                             f"(have {[p.name for p in self.partitions]})")
+        raise PartitionError(f"no partition named {name!r} (have {[p.name for p in self.partitions]})")
 
     def usable(self) -> tuple[Partition, ...]:
         return tuple(p for p in self.partitions if not p.reserved)
 
     def to_dict(self) -> dict:
-        return {"dram_base": hex(self.dram_base), "dram_bytes": self.dram_bytes,
-                "dram_mb": round(self.dram_bytes / 2 ** 20, 1),
-                "partitions": [p.to_dict() for p in self.partitions],
-                "unallocated_bytes": self.dram_bytes - sum(p.size for p in self.partitions),
-                "note": ("Windows are a LINKING convention, not isolation: nothing in the hardware "
-                         "prevents one image from writing another's window. Enforcement would need "
-                         "RISC-V PMP, which is a separate mechanism.")}
+        return {
+            "dram_base": hex(self.dram_base),
+            "dram_bytes": self.dram_bytes,
+            "dram_mb": round(self.dram_bytes / 2**20, 1),
+            "partitions": [p.to_dict() for p in self.partitions],
+            "unallocated_bytes": self.dram_bytes - sum(p.size for p in self.partitions),
+            "note": (
+                "Windows are a LINKING convention, not isolation: nothing in the hardware "
+                "prevents one image from writing another's window. Enforcement would need "
+                "RISC-V PMP, which is a separate mechanism."
+            ),
+        }
 
 
-def _validate(dram_base: int, dram_bytes: int, parts: list[Partition],
-              align: int) -> PartitionMap:
+def _validate(dram_base: int, dram_bytes: int, parts: list[Partition], align: int) -> PartitionMap:
     """Reject any map that could produce two images sharing an address."""
     if dram_bytes <= 0:
         raise PartitionError("dram_bytes must be positive")
@@ -165,24 +174,28 @@ def _validate(dram_base: int, dram_bytes: int, parts: list[Partition],
         if p.base % align:
             raise PartitionError(
                 f"partition {p.name!r} base {hex(p.base)} is not {align}-byte aligned; an unaligned "
-                "window breaks the image's own alignment assumptions")
+                "window breaks the image's own alignment assumptions"
+            )
         if p.base < dram_base or p.end > dram_base + dram_bytes:
             raise PartitionError(
                 f"partition {p.name!r} [{hex(p.base)}, {hex(p.end)}) falls outside the region "
                 f"[{hex(dram_base)}, {hex(dram_base + dram_bytes)}) — an image linked for it would "
-                "address memory the chip does not have")
+                "address memory the chip does not have"
+            )
     ordered = sorted(parts, key=lambda p: p.base)
     for a, b in zip(ordered, ordered[1:]):
         if a.end > b.base:
             raise PartitionError(
                 f"partitions {a.name!r} and {b.name!r} OVERLAP: [{hex(a.base)}, {hex(a.end)}) meets "
                 f"[{hex(b.base)}, {hex(b.end)}). Two images placed here would silently overwrite each "
-                "other's weights and activations — wrong numbers, not a crash.")
+                "other's weights and activations — wrong numbers, not a crash."
+            )
     return PartitionMap(dram_base=dram_base, dram_bytes=dram_bytes, partitions=tuple(ordered))
 
 
-def equal_partitions(n: int, *, dram_base: int, dram_bytes: int,
-                     align: int = 1 << 20, names: "list[str] | None" = None) -> PartitionMap:
+def equal_partitions(
+    n: int, *, dram_base: int, dram_bytes: int, align: int = 1 << 20, names: "list[str] | None" = None
+) -> PartitionMap:
     """``n`` equal windows — the "one independent image per core" case.
 
     Each window is truncated DOWN to ``align``, so the slices never grow into one another; the
@@ -194,18 +207,18 @@ def equal_partitions(n: int, *, dram_base: int, dram_bytes: int,
     slice_size = (dram_bytes // n) & ~(align - 1)
     if slice_size <= 0:
         raise PartitionError(
-            f"{dram_bytes / 2**20:.0f} MB does not divide into {n} windows of at least "
-            f"{align / 2**20:.0f} MB")
+            f"{dram_bytes / 2**20:.0f} MB does not divide into {n} windows of at least {align / 2**20:.0f} MB"
+        )
     labels = names or [f"core{i}" for i in range(n)]
     if len(labels) != n:
         raise PartitionError(f"got {len(labels)} names for {n} partitions")
-    parts = [Partition(name=labels[i], base=dram_base + i * slice_size, size=slice_size)
-             for i in range(n)]
+    parts = [Partition(name=labels[i], base=dram_base + i * slice_size, size=slice_size) for i in range(n)]
     return _validate(dram_base, dram_bytes, parts, align)
 
 
-def load_partition_map(path: "str | Path", *, dram_base: int | None = None,
-                       dram_bytes: int | None = None, align: int = 1 << 20) -> PartitionMap:
+def load_partition_map(
+    path: "str | Path", *, dram_base: int | None = None, dram_bytes: int | None = None, align: int = 1 << 20
+) -> PartitionMap:
     """Read a JSON partition map. ``dram_base``/``dram_bytes`` override the file's own values.
 
     Sizes pack in order unless a partition states its own ``base``; an explicit base is validated
@@ -245,8 +258,14 @@ def load_partition_map(path: "str | Path", *, dram_base: int | None = None,
         pbase = parse_size(item["base"]) if "base" in item else cursor
         if pbase % align:
             pbase = (pbase + align - 1) & ~(align - 1)
-        parts.append(Partition(name=str(item.get("name", f"part{i}")), base=pbase, size=psize,
-                               reserved=bool(item.get("reserved", False))))
+        parts.append(
+            Partition(
+                name=str(item.get("name", f"part{i}")),
+                base=pbase,
+                size=psize,
+                reserved=bool(item.get("reserved", False)),
+            )
+        )
         cursor = (pbase + psize + align - 1) & ~(align - 1)
     return _validate(base, size, parts, align)
 
@@ -285,5 +304,5 @@ def main(argv: "list[str] | None" = None) -> int:
     return 0
 
 
-if __name__ == "__main__":            # pragma: no cover
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

@@ -25,6 +25,7 @@ NOTHING HERE READS THE EXPERIMENT TREE. The caller walks the run roots and passe
 because the roots, the action vocabulary and the ledger's location are all launcher decisions -- a
 module that hardcoded them would describe one campaign and mislabel the next.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -33,9 +34,17 @@ from typing import Any
 
 from merlin.agentreport.availability import Availability, measured, unavailable
 
-__all__ = ["ActionCost", "BudgetBreakdown", "AttemptSummary", "CampaignAnalysis",
-           "summarize_broker_calls", "summarize_attempts", "REFUSAL_RETURNCODES",
-           "COST_TIERS", "tier_of"]
+__all__ = [
+    "ActionCost",
+    "BudgetBreakdown",
+    "AttemptSummary",
+    "CampaignAnalysis",
+    "summarize_broker_calls",
+    "summarize_attempts",
+    "REFUSAL_RETURNCODES",
+    "COST_TIERS",
+    "tier_of",
+]
 
 #: Return codes a brokered action uses to REFUSE rather than to fail. Distinct from a non-zero exit
 #: that means the action ran and the thing it did was wrong: a refusal means the action declined to
@@ -85,12 +94,17 @@ class ActionCost:
         return self.refused / self.calls if self.calls else 0.0
 
     def to_dict(self) -> dict[str, Any]:
-        return {"action": self.action, "calls": self.calls,
-                "wall_seconds": round(self.wall_seconds, 1),
-                "mean_seconds": round(self.mean_seconds, 2), "tier": self.tier,
-                "refused": self.refused, "failed": self.failed,
-                "refused_seconds": round(self.refused_seconds, 1),
-                "refusal_rate": round(self.refusal_rate, 4)}
+        return {
+            "action": self.action,
+            "calls": self.calls,
+            "wall_seconds": round(self.wall_seconds, 1),
+            "mean_seconds": round(self.mean_seconds, 2),
+            "tier": self.tier,
+            "refused": self.refused,
+            "failed": self.failed,
+            "refused_seconds": round(self.refused_seconds, 1),
+            "refusal_rate": round(self.refusal_rate, 4),
+        }
 
 
 @dataclass
@@ -119,7 +133,8 @@ class BudgetBreakdown:
     def by_tier(self) -> dict[str, dict[str, float]]:
         """Calls and wall time per cost tier. The shape of the campaign in one table."""
         out: dict[str, dict[str, float]] = {
-            name: {"calls": 0, "wall_seconds": 0.0, "refused": 0} for name, _, _ in COST_TIERS}
+            name: {"calls": 0, "wall_seconds": 0.0, "refused": 0} for name, _, _ in COST_TIERS
+        }
         for action in self.actions:
             bucket = out[action.tier]
             bucket["calls"] += action.calls
@@ -128,24 +143,28 @@ class BudgetBreakdown:
         return out
 
     def to_dict(self) -> dict[str, Any]:
-        return {"schema": "merlin_phase2_budget_v1", "calls": self.calls,
-                "wall_seconds": round(self.wall_seconds, 1),
-                "refused": self.refused, "refused_seconds": round(self.refused_seconds, 1),
-                "refused_call_fraction": round(self.refused / self.calls, 4) if self.calls else None,
-                "refused_wall_fraction": (round(self.refused_seconds / self.wall_seconds, 4)
-                                          if self.wall_seconds else None),
-                "by_tier": {k: {"calls": int(v["calls"]),
-                                "wall_seconds": round(v["wall_seconds"], 1),
-                                "refused": int(v["refused"])}
-                            for k, v in self.by_tier().items()},
-                "actions": [a.to_dict() for a in
-                            sorted(self.actions, key=lambda a: -a.wall_seconds)],
-                "availability": {k: s.to_dict() for k, s in self.availability}}
+        return {
+            "schema": "merlin_phase2_budget_v1",
+            "calls": self.calls,
+            "wall_seconds": round(self.wall_seconds, 1),
+            "refused": self.refused,
+            "refused_seconds": round(self.refused_seconds, 1),
+            "refused_call_fraction": round(self.refused / self.calls, 4) if self.calls else None,
+            "refused_wall_fraction": (
+                round(self.refused_seconds / self.wall_seconds, 4) if self.wall_seconds else None
+            ),
+            "by_tier": {
+                k: {"calls": int(v["calls"]), "wall_seconds": round(v["wall_seconds"], 1), "refused": int(v["refused"])}
+                for k, v in self.by_tier().items()
+            },
+            "actions": [a.to_dict() for a in sorted(self.actions, key=lambda a: -a.wall_seconds)],
+            "availability": {k: s.to_dict() for k, s in self.availability},
+        }
 
 
-def summarize_broker_calls(calls: Sequence[Any], *,
-                           refusal_codes: frozenset[int] = REFUSAL_RETURNCODES
-                           ) -> BudgetBreakdown:
+def summarize_broker_calls(
+    calls: Sequence[Any], *, refusal_codes: frozenset[int] = REFUSAL_RETURNCODES
+) -> BudgetBreakdown:
     """Group brokered calls by action. ``calls`` are :class:`~merlin.agentreport.phase2.BrokerCall`.
 
     A call with no return code is counted but neither credited nor charged as a refusal, and the
@@ -171,15 +190,23 @@ def summarize_broker_calls(calls: Sequence[Any], *,
             cost.failed += 1
     out.actions = list(per.values())
     if not calls:
-        out.availability.set("budget", unavailable(
-            "no brokered receipts were found, so the campaign's cost cannot be attributed to "
-            "actions; a zero here would read as a campaign that spent nothing"))
+        out.availability.set(
+            "budget",
+            unavailable(
+                "no brokered receipts were found, so the campaign's cost cannot be attributed to "
+                "actions; a zero here would read as a campaign that spent nothing"
+            ),
+        )
     else:
         out.availability.set("budget", measured(source="broker_receipts_jsonl"))
     if unknown_rc:
-        out.availability.set("outcomes", unavailable(
-            f"{unknown_rc} of {len(calls)} calls carry no return code, so their outcome is neither "
-            f"a success nor a refusal and is excluded from both"))
+        out.availability.set(
+            "outcomes",
+            unavailable(
+                f"{unknown_rc} of {len(calls)} calls carry no return code, so their outcome is neither "
+                f"a success nor a refusal and is excluded from both"
+            ),
+        )
     else:
         out.availability.set("outcomes", measured(source="broker_receipts_jsonl"))
     return out
@@ -207,21 +234,27 @@ class AttemptSummary:
         return len([s for s, n in self.by_scope.items() if n])
 
     def to_dict(self) -> dict[str, Any]:
-        return {"schema": "merlin_phase2_attempts_v1", "total": self.total,
-                "by_verdict": dict(self.by_verdict), "by_scope": dict(self.by_scope),
-                "scopes_reached": self.scopes_reached,
-                "distinct_instruments": len(self.instruments),
-                "instruments": list(self.instruments),
-                "measured_attempts": self.measured_attempts,
-                "n_refuted": len(self.refuted), "refuted": list(self.refuted),
-                "n_live_blockers": len(self.live_blockers),
-                "live_blockers": list(self.live_blockers),
-                "integrity_problems": list(self.integrity_problems),
-                "availability": {k: s.to_dict() for k, s in self.availability}}
+        return {
+            "schema": "merlin_phase2_attempts_v1",
+            "total": self.total,
+            "by_verdict": dict(self.by_verdict),
+            "by_scope": dict(self.by_scope),
+            "scopes_reached": self.scopes_reached,
+            "distinct_instruments": len(self.instruments),
+            "instruments": list(self.instruments),
+            "measured_attempts": self.measured_attempts,
+            "n_refuted": len(self.refuted),
+            "refuted": list(self.refuted),
+            "n_live_blockers": len(self.live_blockers),
+            "live_blockers": list(self.live_blockers),
+            "integrity_problems": list(self.integrity_problems),
+            "availability": {k: s.to_dict() for k, s in self.availability},
+        }
 
 
-def summarize_attempts(ledger: Any, *, asserts_measurement: frozenset[str] = frozenset(
-        {"helped", "no_effect", "refuted"})) -> AttemptSummary:
+def summarize_attempts(
+    ledger: Any, *, asserts_measurement: frozenset[str] = frozenset({"helped", "no_effect", "refuted"})
+) -> AttemptSummary:
     """Group a :class:`~merlin.perf.optimization_ledger.Ledger`'s rows for a campaign report.
 
     ``integrity_problems`` is reported rather than raised: a ledger row that does not stand up is a
@@ -239,28 +272,38 @@ def summarize_attempts(ledger: Any, *, asserts_measurement: frozenset[str] = fro
         if verdict in asserts_measurement:
             out.measured_attempts += 1
         if verdict == "refuted":
-            out.refuted.append({
-                "mechanism": str(getattr(attempt, "mechanism", "")),
-                "found_by": str(getattr(attempt, "found_by", "")),
-                "why_the_branch_is_dead": str(getattr(attempt, "hypothesis", "")),
-                "deltas": [d.to_dict() for d in getattr(attempt, "deltas", ()) or ()],
-                "evidence": str(getattr(attempt, "evidence", ""))})
+            out.refuted.append(
+                {
+                    "mechanism": str(getattr(attempt, "mechanism", "")),
+                    "found_by": str(getattr(attempt, "found_by", "")),
+                    "why_the_branch_is_dead": str(getattr(attempt, "hypothesis", "")),
+                    "deltas": [d.to_dict() for d in getattr(attempt, "deltas", ()) or ()],
+                    "evidence": str(getattr(attempt, "evidence", "")),
+                }
+            )
         problems = tuple(getattr(attempt, "problems", lambda: ())() or ())
         if problems:
-            out.integrity_problems.append({
-                "mechanism": str(getattr(attempt, "mechanism", "")), "problems": list(problems)})
-    out.instruments = sorted({str(getattr(a, "found_by", "")) for a in attempts
-                              if getattr(a, "found_by", "")})
+            out.integrity_problems.append(
+                {"mechanism": str(getattr(attempt, "mechanism", "")), "problems": list(problems)}
+            )
+    out.instruments = sorted({str(getattr(a, "found_by", "")) for a in attempts if getattr(a, "found_by", "")})
     for blocker in list(getattr(ledger, "live_blockers", lambda: ())() or ()):
-        out.live_blockers.append({
-            "mechanism": str(getattr(blocker, "mechanism", "")),
-            "blocked_by": str(getattr(blocker, "blocked_by", "")),
-            "found_by": str(getattr(blocker, "found_by", ""))})
+        out.live_blockers.append(
+            {
+                "mechanism": str(getattr(blocker, "mechanism", "")),
+                "blocked_by": str(getattr(blocker, "blocked_by", "")),
+                "found_by": str(getattr(blocker, "found_by", "")),
+            }
+        )
     if not attempts:
-        out.availability.set("attempts", unavailable(
-            "the campaign ledger holds no attempts, so nothing can be said about what was tried; "
-            "an empty table would read as a campaign that tried nothing rather than one whose "
-            "record is missing"))
+        out.availability.set(
+            "attempts",
+            unavailable(
+                "the campaign ledger holds no attempts, so nothing can be said about what was tried; "
+                "an empty table would read as a campaign that tried nothing rather than one whose "
+                "record is missing"
+            ),
+        )
     else:
         out.availability.set("attempts", measured(source="optimization_ledger_json"))
     return out
@@ -288,38 +331,58 @@ class CampaignAnalysis:
             merged.set(f"attempts.{name}", status)
         for name, status in self.availability:
             merged.set(name, status)
-        return {"schema": "merlin_phase2_campaign_analysis_v1", "target": self.target,
-                "stages": self.stages, "tool_spans": self.tool_spans,
-                "point_events_excluded": self.point_events,
-                "budget": self.budget.to_dict(), "attempts": self.attempts.to_dict(),
-                "outcomes": list(self.outcomes),
-                "availability": {k: s.to_dict() for k, s in merged},
-                "availability_score": round(merged.score, 4)}
+        return {
+            "schema": "merlin_phase2_campaign_analysis_v1",
+            "target": self.target,
+            "stages": self.stages,
+            "tool_spans": self.tool_spans,
+            "point_events_excluded": self.point_events,
+            "budget": self.budget.to_dict(),
+            "attempts": self.attempts.to_dict(),
+            "outcomes": list(self.outcomes),
+            "availability": {k: s.to_dict() for k, s in merged},
+            "availability_score": round(merged.score, 4),
+        }
 
 
-def build_analysis(*, target: str, stages: int, tool_spans: int, point_events: int,
-                   broker_calls: Sequence[Any], ledger: Any,
-                   outcomes: Sequence[Mapping[str, Any]] = ()) -> CampaignAnalysis:
+def build_analysis(
+    *,
+    target: str,
+    stages: int,
+    tool_spans: int,
+    point_events: int,
+    broker_calls: Sequence[Any],
+    ledger: Any,
+    outcomes: Sequence[Mapping[str, Any]] = (),
+) -> CampaignAnalysis:
     """Assemble the analysis from facts the caller read. No path is touched here."""
-    analysis = CampaignAnalysis(target=str(target), stages=int(stages),
-                                tool_spans=int(tool_spans), point_events=int(point_events))
+    analysis = CampaignAnalysis(
+        target=str(target), stages=int(stages), tool_spans=int(tool_spans), point_events=int(point_events)
+    )
     analysis.budget = summarize_broker_calls(broker_calls)
     analysis.attempts = summarize_attempts(ledger)
     analysis.outcomes = [dict(row) for row in outcomes]
     if not stages:
-        analysis.availability.set("stages", unavailable(
-            "no phase-2 stage directory carried telemetry, so the lane's shape is unknown"))
+        analysis.availability.set(
+            "stages", unavailable("no phase-2 stage directory carried telemetry, so the lane's shape is unknown")
+        )
     else:
         analysis.availability.set("stages", measured(source="run_tree_walk"))
     if not tool_spans:
-        analysis.availability.set("lane_shape", unavailable(
-            "no tool spans were recorded, so whether the lane runs serially or in parallel cannot "
-            "be established from this campaign"))
+        analysis.availability.set(
+            "lane_shape",
+            unavailable(
+                "no tool spans were recorded, so whether the lane runs serially or in parallel cannot "
+                "be established from this campaign"
+            ),
+        )
     else:
         analysis.availability.set("lane_shape", measured(source="agent_tools_jsonl"))
     if not analysis.outcomes:
-        analysis.availability.set("outcomes", unavailable(
-            "the caller supplied no per-workload outcome, so the campaign's product is unstated"))
+        analysis.availability.set(
+            "outcomes",
+            unavailable("the caller supplied no per-workload outcome, so the campaign's product is unstated"),
+        )
     else:
         analysis.availability.set("outcomes", measured(source="caller_supplied_receipts"))
     return analysis

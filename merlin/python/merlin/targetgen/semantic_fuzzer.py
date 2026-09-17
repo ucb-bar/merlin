@@ -11,6 +11,7 @@ accelerator) on each, and the fraction it lowers correctly is a sampled Accelera
 Deterministic per seed (``random.Random(seed)``): the same (contract, seed) yields the same corpus, so a
 fuzz finding is reproducible.
 """
+
 from __future__ import annotations
 
 import random
@@ -48,10 +49,18 @@ def fuzz_program(seed: int, cap_map: dict[str, SemanticCapability], *, max_len: 
     dt = _pick_dtype(rng, cap)
     contractionish = head_fam in ("contraction", "attention")
     m, k, n = (rng.choice(_DIMS), rng.choice(_DIMS), rng.choice(_DIMS))
-    regions.append(RegionDescriptor(
-        source=f"fuzz{seed}/{head_fam}0", family=head_fam, in_dtype=dt,
-        weight_dtype=(dt if contractionish else None),
-        m=m, k=(k if contractionish else None), n=(n if contractionish else None), rank=2))
+    regions.append(
+        RegionDescriptor(
+            source=f"fuzz{seed}/{head_fam}0",
+            family=head_fam,
+            in_dtype=dt,
+            weight_dtype=(dt if contractionish else None),
+            m=m,
+            k=(k if contractionish else None),
+            n=(n if contractionish else None),
+            rank=2,
+        )
+    )
 
     epilogue_fams = [f for f in _EPILOGUE if f in cap_map]
     for i in range(rng.randint(0, max_len - 1)):
@@ -60,12 +69,12 @@ def fuzz_program(seed: int, cap_map: dict[str, SemanticCapability], *, max_len: 
         fam = rng.choice(epilogue_fams)
         ecap = cap_map[fam]
         edt = _pick_dtype(rng, ecap)
-        regions.append(RegionDescriptor(
-            source=f"fuzz{seed}/{fam}{i + 1}", family=fam, in_dtype=edt, m=n, rank=2))
+        regions.append(RegionDescriptor(source=f"fuzz{seed}/{fam}{i + 1}", family=fam, in_dtype=edt, m=n, rank=2))
     return FuzzProgram(name=f"fuzz_{seed}", seed=seed, regions=tuple(regions))
 
 
-def fuzz_corpus(cap_map: dict[str, SemanticCapability], n: int, *, base_seed: int = 0,
-                max_len: int = 5) -> list[FuzzProgram]:
+def fuzz_corpus(
+    cap_map: dict[str, SemanticCapability], n: int, *, base_seed: int = 0, max_len: int = 5
+) -> list[FuzzProgram]:
     """``n`` deterministic random programs (seeds ``base_seed .. base_seed+n-1``)."""
     return [fuzz_program(base_seed + i, cap_map, max_len=max_len) for i in range(n)]

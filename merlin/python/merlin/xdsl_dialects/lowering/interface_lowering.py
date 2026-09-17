@@ -10,6 +10,7 @@ decoration is consumed (dropped). A contraction whose accumulator init is not pr
 REFUSED, not rebuilt: the commit accumulates from zero, so the init would be dropped silently. The
 cross-op analyses (use-after-evict, place legality, discharged checks) run on the result.
 """
+
 from __future__ import annotations
 
 from .._common import HAS_XDSL
@@ -23,8 +24,7 @@ class LoweringError(RuntimeError):
 # linalg elementwise op name -> interface.vector_map combine token (two real tensor operands).
 _ELEMENTWISE_COMBINE = {"linalg.add": "add", "linalg.mul": "mul"}
 
-_VIEW_OPS = ("tensor.expand_shape", "tensor.collapse_shape", "tensor.cast", "linalg.copy",
-             "linalg.transpose")
+_VIEW_OPS = ("tensor.expand_shape", "tensor.collapse_shape", "tensor.cast", "linalg.copy", "linalg.transpose")
 
 
 def _resolved_name(op) -> str | None:
@@ -72,8 +72,7 @@ def _dequant_source(rhs, value_map):
             continue
         if nm is not None and nm.startswith("quant_ext.dequantize"):
             w = _map_through_views(owner.operands[0], value_map)
-            scale = (_map_through_views(owner.operands[1], value_map)
-                     if len(owner.operands) > 1 else None)
+            scale = _map_through_views(owner.operands[1], value_map) if len(owner.operands) > 1 else None
             if w is None or scale is None:
                 return None
             axis = 1
@@ -117,7 +116,7 @@ def _is_zero_dense_constant(owner) -> bool:
     try:
         values = list(get_values())
         return bool(values) and all(float(v) == 0.0 for v in values)
-    except Exception:                        # unreadable attribute -> not provably zero
+    except Exception:  # unreadable attribute -> not provably zero
         return False
 
 
@@ -152,7 +151,7 @@ def init_contributes_nothing(value) -> bool:
     constant, and a fill whose scalar cannot be resolved are all NOT provably zero and answer False.
     """
     owner = getattr(value, "owner", None)
-    name = _resolved_name(owner)             # None for a block argument
+    name = _resolved_name(owner)  # None for a block argument
     if name == "tensor.empty":
         return True
     if name == "linalg.fill":
@@ -189,7 +188,7 @@ def accumulated_inits(op) -> list:
     args = list(blocks[0].args)
     if len(args) < len(outs):
         return outs
-    out_args = args[len(args) - len(outs):]
+    out_args = args[len(args) - len(outs) :]
     return [v for v, a in zip(outs, out_args) if len(list(a.uses)) > 0]
 
 
@@ -201,8 +200,7 @@ def nonzero_accumulator_inits(payload) -> list:
     :func:`_check_payload_complete`; a router that asks the first should ask this one too, or it
     will route to the staged path a payload the staged path must refuse.
     """
-    return [(op, v) for op in payload for v in accumulated_inits(op)
-            if not init_contributes_nothing(v)]
+    return [(op, v) for op in payload for v in accumulated_inits(op) if not init_contributes_nothing(v)]
 
 
 def _value_origin(value) -> str:
@@ -238,7 +236,8 @@ def _lower_vector_map(op, value_map, i):
                 f"({_value_origin(operand)}, type {operand.type}) — the interface vector lane "
                 "consumes materialized tensors, so an operand folded away as contraction "
                 "scaffolding (a constant, a non-zero fill) has no value to read. Refusing rather "
-                "than emitting a vector_map over a tensor the engine never materializes.")
+                "than emitting a vector_map over a tensor the engine never materializes."
+            )
         return value_map[operand]
 
     name = op.name
@@ -247,13 +246,13 @@ def _lower_vector_map(op, value_map, i):
         props = {"combine": StringAttr(_ELEMENTWISE_COMBINE[name])}
     elif name == "linalg.max" and _is_zero_fill(op.inputs[1]):
         a = materialized(op.inputs[0])
-        lhs = rhs = a                       # identity copy of lhs; rhs is unused by the engine
-        props = {"combine": StringAttr("identity"),
-                 "activation": ArrayAttr([StringAttr("relu")])}
+        lhs = rhs = a  # identity copy of lhs; rhs is unused by the engine
+        props = {"combine": StringAttr("identity"), "activation": ArrayAttr([StringAttr("relu")])}
     else:
         raise LoweringError(
             f"interface lowering does not model vector op '{name}' "
-            "(only elementwise add/mul and relu = max(x, 0) map to the engine's vector path)")
+            "(only elementwise add/mul and relu = max(x, 0) map to the engine's vector path)"
+        )
     return i.VectorMapOp(operands=[lhs, rhs], result_types=[op.results[0].type], properties=props)
 
 
@@ -290,8 +289,7 @@ def _is_trailing_broadcast(amap, rank: int) -> bool:
     if amap.num_dims != rank or amap.num_symbols:
         return False
     res = amap.results
-    return (len(res) == 1 and isinstance(res[0], AffineDimExpr)
-            and res[0].position == rank - 1)
+    return len(res) == 1 and isinstance(res[0], AffineDimExpr) and res[0].position == rank - 1
 
 
 def _adds_its_two_inputs(op) -> bool:
@@ -426,9 +424,7 @@ def payload_ops(block, matmuls) -> list:
     rebuilt — as a ``bias_add`` stage on its contraction's commit rather than as an op of its own.
     """
     fused = find_bias_epilogues(block, matmuls)
-    return (list(matmuls)
-            + [op for op in block.ops if _is_vector_lane_op(op)]
-            + [g for g, _ in fused.values()])
+    return list(matmuls) + [op for op in block.ops if _is_vector_lane_op(op)] + [g for g, _ in fused.values()]
 
 
 def support_ops(block, payload: set) -> set:
@@ -449,8 +445,7 @@ def support_ops(block, payload: set) -> set:
         for op in block.ops:
             if op in support or op in payload or not op.results:
                 continue
-            if all(use.operation in payload or use.operation in support
-                   for res in op.results for use in res.uses):
+            if all(use.operation in payload or use.operation in support for res in op.results for use in res.uses):
                 support.add(op)
                 changed = True
     return support
@@ -472,9 +467,11 @@ def unaccounted_ops(block, payload) -> list:
     payload = set(payload)
     support = support_ops(block, payload)
     terminator = block.last_op
-    return [op for op in block.ops
-            if op not in support and op not in payload and op is not terminator
-            and op.dialect_name() not in decoration]
+    return [
+        op
+        for op in block.ops
+        if op not in support and op not in payload and op is not terminator and op.dialect_name() not in decoration
+    ]
 
 
 def _check_payload_complete(fn, src_block, payload: list) -> None:
@@ -492,12 +489,14 @@ def _check_payload_complete(fn, src_block, payload: list) -> None:
     dropped = [op.name for op in unaccounted_ops(src_block, payload)]
     if dropped:
         raise LoweringError(
-            "interface materialization would silently drop " f"{len(dropped)} op(s) of the payload: "
+            "interface materialization would silently drop "
+            f"{len(dropped)} op(s) of the payload: "
             + ", ".join(sorted(set(dropped)))
             + ". The staged pipeline rebuilds the function body as resident_pack/matmul/commit/evict, "
-              "so it can only carry matmul-family computation; anything else (masked store, "
-              "elementwise epilogue, grid loop) has to be expressed as an interface op before it can "
-              "descend. Failing here instead of compiling a different program.")
+            "so it can only carry matmul-family computation; anything else (masked store, "
+            "elementwise epilogue, grid loop) has to be expressed as an interface op before it can "
+            "descend. Failing here instead of compiling a different program."
+        )
 
     # An epilogue would be caught above, but a payload whose RESULTS are not returned is a second way
     # to lose computation (the rebuilt return carries the materialized payload results, in order).
@@ -511,16 +510,19 @@ def _check_payload_complete(fn, src_block, payload: list) -> None:
     if terminator is not None:
         returned = list(terminator.operands)
         payload_set = set(payload)
-        expected = [res for op in payload
-                    if not any(use.operation in payload_set
-                               for r in op.results for use in r.uses)
-                    for res in op.results]
+        expected = [
+            res
+            for op in payload
+            if not any(use.operation in payload_set for r in op.results for use in r.uses)
+            for res in op.results
+        ]
         if returned != expected:
             raise LoweringError(
                 f"function @{fn.sym_name.data} returns {len(returned)} value(s) that are not exactly "
                 f"the {len(expected)} terminal payload result(s), in order — interface materialization "
                 "returns the rebuilt results of the payload it found, so the difference would be "
-                "dropped.")
+                "dropped."
+            )
 
     _check_inits_accounted(fn, payload)
 
@@ -554,7 +556,8 @@ def _check_inits_accounted(fn, payload: list) -> None:
         "constant can be proven to contribute nothing; `interface.commit`'s epilogue is a "
         "per-column bias_add, which cannot carry a general init. Refusing instead of compiling a "
         "different program — hoist the init out of the contraction (a bias-add epilogue, or an "
-        "explicit add of the contraction's result) or compile this function through the LLVM path.")
+        "explicit add of the contraction's result) or compile this function through the LLVM path."
+    )
 
 
 def _lower_elementwise_to_interface(fn, src_block, elementwise: list):
@@ -577,7 +580,8 @@ def _lower_elementwise_to_interface(fn, src_block, elementwise: list):
         raise LoweringError(
             f"interface materialization would silently drop {len(dropped)} op(s) of the elementwise "
             f"payload: {', '.join(sorted(set(dropped)))}. Failing here instead of compiling a "
-            "different program.")
+            "different program."
+        )
     # Same value-level guard as the matmul path: an op that READS its `outs` is accumulating onto
     # that init, and this rebuild does not carry one either.
     _check_inits_accounted(fn, payload)
@@ -594,11 +598,13 @@ def _lower_elementwise_to_interface(fn, src_block, elementwise: list):
                 raise LoweringError(
                     "elementwise operand is not a function argument — the interface layer maps "
                     "operands through the function's own arguments, so a computed operand cannot "
-                    "be materialized (chain the kernel or re-raise it to an argument)")
+                    "be materialized (chain the kernel or re-raise it to an argument)"
+                )
         new = i.ElementwiseOp(
             operands=[value_map[lhs], value_map[rhs]],
             result_types=[op.results[0].type],
-            properties={"combine": StringAttr(combine)})
+            properties={"combine": StringAttr(combine)},
+        )
         value_map[op.results[0]] = new.out
         ops.append(new)
 
@@ -608,7 +614,8 @@ def _lower_elementwise_to_interface(fn, src_block, elementwise: list):
     if returned != expected:
         raise LoweringError(
             f"function @{fn.sym_name.data} returns {len(returned)} value(s) that are not exactly the "
-            f"{len(expected)} elementwise result(s), in order — the difference would be dropped.")
+            f"{len(expected)} elementwise result(s), in order — the difference would be dropped."
+        )
 
     out_types = [v.type for v in expected]
     ops.append(ReturnOp(*[value_map[v] for v in expected]))
@@ -621,8 +628,7 @@ def lower_to_interface(module):
     """Build a fresh interface-level module from the scheduled module."""
     if not HAS_XDSL:
         return module
-    from xdsl.dialects.builtin import (ArrayAttr, FunctionType, IntegerAttr, ModuleOp,
-                                       StringAttr, TensorType)
+    from xdsl.dialects.builtin import ArrayAttr, FunctionType, IntegerAttr, ModuleOp, StringAttr, TensorType
     from xdsl.dialects.func import FuncOp, ReturnOp
     from xdsl.ir import Block, Region
 
@@ -635,14 +641,14 @@ def lower_to_interface(module):
         """The commit output dtype token, DERIVED from the accumulator element type — not
         assumed i32 (a f32 matmul commits f32; an i8→i32 matmul commits i32)."""
         from xdsl.dialects.builtin import IntegerType
+
         et = t.element_type
         return f"i{et.width.data}" if isinstance(et, IntegerType) else str(et)
 
     # Which payload values were selected for residency (+ requested visibility)?
     selected = {}
     for op in module.walk():
-        if (isinstance(op, s.SelectInterfaceOp)
-                and op.interface.data == "resident_packed_tensor"):
+        if isinstance(op, s.SelectInterfaceOp) and op.interface.data == "resident_packed_tensor":
             vis = op.visibility.data if op.visibility is not None else None
             selected[op.value] = vis
     fns = [op for op in module.walk() if op.name == "func.func"]
@@ -652,12 +658,14 @@ def lower_to_interface(module):
         # Only fns[0] is materialized, so the rest would vanish without a word.
         raise LoweringError(
             f"{len(fns)} func.func in module ({', '.join(f.sym_name.data for f in fns)}) — interface "
-            "materialization rebuilds a single function; submit one kernel per module")
+            "materialization rebuilds a single function; submit one kernel per module"
+        )
     fn = fns[0]
     if len(fn.body.blocks) != 1:
         raise LoweringError(
             f"@{fn.sym_name.data} has {len(fn.body.blocks)} blocks — only the entry block is "
-            "materialized, so control flow must be resolved before this stage")
+            "materialized, so control flow must be resolved before this stage"
+        )
     src_block = fn.body.blocks[0]
     matmuls = find_matmuls(module)
     elementwise = find_elementwise(module)
@@ -685,7 +693,8 @@ def lower_to_interface(module):
                 "has no SSA) and only the function's own tensor arguments are declared in the "
                 "buffer's resource table. A computed or constant bias would have to be named "
                 "something the engine never materializes, so it is refused rather than invented: "
-                "raise the bias to a function argument.")
+                "raise the bias to a function argument."
+            )
     fused_generics = {gen for gen, _ in bias_epilogues.values()}
     payload = payload_ops(src_block, matmuls)
     _check_payload_complete(fn, src_block, payload)
@@ -700,14 +709,12 @@ def lower_to_interface(module):
         if old_w not in value_map:
             raise LoweringError("selected weight is not a function argument")
         w = value_map[old_w]
-        props = {"layout": i.LayoutAttr(i.Layout.PACKED_RHS),
-                 "lifetime": i.LifetimeAttr(i.Lifetime.REGION)}
+        props = {"layout": i.LayoutAttr(i.Layout.PACKED_RHS), "lifetime": i.LifetimeAttr(i.Lifetime.REGION)}
         if vis is not None:
             props["visibility"] = i.VisibilityAttr(vis)
         pack = i.ResidentPackOp(
-            operands=[w, None],
-            result_types=[i.ResidentTensorType(w.type, StringAttr("packed_rhs"))],
-            properties=props)
+            operands=[w, None], result_types=[i.ResidentTensorType(w.type, StringAttr("packed_rhs"))], properties=props
+        )
         packs[old_w] = pack
         ops.append(pack)
 
@@ -729,8 +736,7 @@ def lower_to_interface(module):
                 raise LoweringError("matmul lhs is not a materialized value")
             lhs = value_map[old_lhs]
             acc_type = i.AccumulatorType(op.results[0].type)
-            dq = None if (old_rhs in packs or old_rhs in value_map) \
-                else _dequant_source(old_rhs, value_map)
+            dq = None if (old_rhs in packs or old_rhs in value_map) else _dequant_source(old_rhs, value_map)
             if old_rhs in packs:
                 rhs = packs[old_rhs].res
             elif dq is not None:
@@ -743,9 +749,12 @@ def lower_to_interface(module):
                     pk = i.ResidentPackOp(
                         operands=[w_val, scale_val],
                         result_types=[i.ResidentTensorType(old_rhs.type, StringAttr("packed_rhs"))],
-                        properties={"layout": i.LayoutAttr(i.Layout.PACKED_RHS),
-                                    "lifetime": i.LifetimeAttr(i.Lifetime.REGION),
-                                    "dequant_axis": IntegerAttr(axis, 64)})
+                        properties={
+                            "layout": i.LayoutAttr(i.Layout.PACKED_RHS),
+                            "lifetime": i.LifetimeAttr(i.Lifetime.REGION),
+                            "dequant_axis": IntegerAttr(axis, 64),
+                        },
+                    )
                     ops.append(pk)
                     inline_packs[w_val] = pk
                 rhs = pk.res
@@ -760,8 +769,11 @@ def lower_to_interface(module):
                     pk = i.ResidentPackOp(
                         operands=[base, None],
                         result_types=[i.ResidentTensorType(base.type, StringAttr("packed_rhs"))],
-                        properties={"layout": i.LayoutAttr(i.Layout.PACKED_RHS),
-                                    "lifetime": i.LifetimeAttr(i.Lifetime.REGION)})
+                        properties={
+                            "layout": i.LayoutAttr(i.Layout.PACKED_RHS),
+                            "lifetime": i.LifetimeAttr(i.Lifetime.REGION),
+                        },
+                    )
                     ops.append(pk)
                     inline_packs[base] = pk
                 rhs = pk.res
@@ -773,9 +785,11 @@ def lower_to_interface(module):
                 raise LoweringError("matmul result is not a tensor")
             fused = bias_epilogues.get(op)
             stages = [StringAttr("bias_add")] if fused is not None else []
-            commit = i.CommitOp(operands=[imm.acc], result_types=[out_t], properties={
-                "epilogue": ArrayAttr(stages),
-                "output_dtype": StringAttr(_out_dtype(out_t))})
+            commit = i.CommitOp(
+                operands=[imm.acc],
+                result_types=[out_t],
+                properties={"epilogue": ArrayAttr(stages), "output_dtype": StringAttr(_out_dtype(out_t))},
+            )
             ops += [imm, commit]
             value_map[op.results[0]] = commit.out
             if fused is not None:
@@ -802,9 +816,11 @@ def lower_to_interface(module):
         # init tensors, the linalg.fill that materializes a relu's zero) are consumed. Any other
         # payload op is one this stage does not yet lower to an interface form — fail closed so the
         # boundary is visible, never silently dropped (that would miscompile a whole model).
-        if (op.dialect_name() in (c.DIALECT_NAME, s.DIALECT_NAME)
-                or op.name in ("arith.constant", "tensor.empty", "linalg.fill", "tensor.splat")
-                or _resolved_name(op).startswith("quant_ext.dequantize")):
+        if (
+            op.dialect_name() in (c.DIALECT_NAME, s.DIALECT_NAME)
+            or op.name in ("arith.constant", "tensor.empty", "linalg.fill", "tensor.splat")
+            or _resolved_name(op).startswith("quant_ext.dequantize")
+        ):
             # A dequantize feeding a matmul RHS is consumed by that matmul's dequant-pack above; a
             # dead one is harmless to drop. Its scale/weight args flow through as pack operands.
             continue
@@ -822,7 +838,8 @@ def lower_to_interface(module):
             if name is None:
                 raise LoweringError(
                     "a bias-add epilogue's bias tensor has no command-buffer name — refusing "
-                    "rather than committing a `bias_add` stage the engine cannot resolve")
+                    "rather than committing a `bias_add` stage the engine cannot resolve"
+                )
             commit.properties["bias"] = StringAttr(name)
 
     outs = []
@@ -838,13 +855,14 @@ def lower_to_interface(module):
         ops.append(i.ResidentEvictOp(operands=[pack.res]))
     ops.append(ReturnOp(*outs))
     blk.add_ops(ops)
-    new_fn = FuncOp(fn.sym_name.data, FunctionType.from_lists(arg_types, out_types),
-                    Region([blk]))
+    new_fn = FuncOp(fn.sym_name.data, FunctionType.from_lists(arg_types, out_types), Region([blk]))
     out = ModuleOp([new_fn])
 
-    problems = (analyses.check_no_use_after_evict(out)
-                + analyses.check_place_legality(module)
-                + analyses.check_contract_discharged(module))
+    problems = (
+        analyses.check_no_use_after_evict(out)
+        + analyses.check_place_legality(module)
+        + analyses.check_contract_discharged(module)
+    )
     if problems:
         raise LoweringError("; ".join(problems))
     return out

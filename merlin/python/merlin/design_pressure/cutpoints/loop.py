@@ -3,6 +3,7 @@
 At the loop view the region's iteration structure (the action-chunk loop) is explicit, so
 layout-conversion and lifetime pressure across iterations become visible.
 """
+
 from __future__ import annotations
 
 from merlin.design_pressure.metrics.layout import metric_layout

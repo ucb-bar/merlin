@@ -3,6 +3,7 @@ cluster (~dozens) instead of every kernel (hundreds). The signature (dossier.sig
 kernels that make the same RVV decisions + structure; within a cluster they differ only in shape/
 naming, so a single representative carries the cluster's lesson. This is what makes the
 representative agent mode cheap and consistent (vs per-kernel)."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -19,9 +20,7 @@ class Cluster:
     @property
     def representative(self) -> KernelDossier:
         """The smallest-MR member (the simplest exemplar of the cluster's decision/structure)."""
-        return min(self.members,
-                   key=lambda d: ((d.decisions.get("register_block") or {}).get("mr") or 0,
-                                  d.path))
+        return min(self.members, key=lambda d: ((d.decisions.get("register_block") or {}).get("mr") or 0, d.path))
 
     def summary(self) -> dict[str, Any]:
         rep = self.representative

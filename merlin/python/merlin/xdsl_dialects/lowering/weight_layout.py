@@ -24,6 +24,7 @@ Structural throughout: an argument is a weight because it is a function argument
 re-layout because it is a transpose reading one. No name matching, no provenance tags — 751 of that
 model's 843 generics carry no tag at all.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -32,8 +33,7 @@ from typing import Any
 from ...common import mlir_query as mq
 
 #: bytes per element, by the dtype spelling `mlir_query.type_shape_dtype` returns.
-_WIDTH = {"i8": 1, "u8": 1, "i16": 2, "f16": 2, "bf16": 2,
-          "i32": 4, "f32": 4, "i64": 8, "f64": 8}
+_WIDTH = {"i8": 1, "u8": 1, "i16": 2, "f16": 2, "bf16": 2, "i32": 4, "f32": 4, "i64": 8, "f64": 8}
 
 
 @dataclass(frozen=True)
@@ -116,10 +116,15 @@ def weight_layout_report(module: Any, func_name: str = "forward") -> WeightLayou
             rep.unpriceable.append(f"arg {i}: unknown element width for dtype {dtype!r}")
 
         sole = len(uses) == 1 and len(transposes) == 1
-        reason = "" if sole else (
-            f"argument has {len(uses)} consumers ({len(transposes)} transpose(s)); pre-transposing "
-            "would change what the other readers see")
-        rep.relayouts.append(WeightRelayout(
-            arg=i, shape=list(shape), dtype=dtype, result_shape=res_shape,
-            hoistable=sole, reason=reason))
+        reason = (
+            ""
+            if sole
+            else (
+                f"argument has {len(uses)} consumers ({len(transposes)} transpose(s)); pre-transposing "
+                "would change what the other readers see"
+            )
+        )
+        rep.relayouts.append(
+            WeightRelayout(arg=i, shape=list(shape), dtype=dtype, result_shape=res_shape, hoistable=sole, reason=reason)
+        )
     return rep

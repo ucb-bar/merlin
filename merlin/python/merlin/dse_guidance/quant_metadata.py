@@ -9,6 +9,7 @@ capture. Reads the gitignored local qdq MLIR and emits a committed summary (the 
 Honest gap: the qdq capture is torchao int8 weight-only, NOT the model's native scheme (e.g. bitvla's W1.58
 ternary) — recorded per workload, never hidden. Structural; no perf claim.
 """
+
 from __future__ import annotations
 
 import csv
@@ -17,8 +18,16 @@ from pathlib import Path
 
 from merlin.common import mlir_query
 
-_QM_COLS = ["workload", "n_dequant_ops", "storage_dtype", "scale_granularity", "dequant_placement",
-            "compute_dtype", "accumulator_dtype", "native_scheme_gap"]
+_QM_COLS = [
+    "workload",
+    "n_dequant_ops",
+    "storage_dtype",
+    "scale_granularity",
+    "dequant_placement",
+    "compute_dtype",
+    "accumulator_dtype",
+    "native_scheme_gap",
+]
 
 # native low-bit scheme per workload (from the P19 source audit) vs what the torchao qdq capture exposes.
 # P21-S4: bitvla's native W1.58 ternary is now captured directly (recaptures_native/bitvla); the gap text
@@ -27,8 +36,17 @@ _NATIVE = {"bitvla": "W1.58 ternary BitLinear (packed int2 + absmean scale) — 
 
 # P21-S4 native low-bit capture (BitLinear.quantize_weights materialized): the packed-int2 ternary
 # STORAGE + per-tensor absmean scale are captured directly (vs the torchao-int8 qdq stand-in).
-_NATIVE_COLS = ["workload", "native_scheme", "storage", "n_packed_weight_tensors",
-                "scale", "dequant_placement", "compute_dtype", "unpack_visibility", "status"]
+_NATIVE_COLS = [
+    "workload",
+    "native_scheme",
+    "storage",
+    "n_packed_weight_tensors",
+    "scale",
+    "dequant_placement",
+    "compute_dtype",
+    "unpack_visibility",
+    "status",
+]
 
 
 def native_quant_rows(cs_dir) -> list[dict]:
@@ -36,42 +54,47 @@ def native_quant_rows(cs_dir) -> list[dict]:
     the default torchao-int8 qdq capture could not: packed-int2 ternary storage + absmean scale.
     '' / [] when no native capture is present (committed summary stands)."""
     from merlin.dse_guidance.corpus import RECAP_MODELS, _recap_dir_in
+
     rows = []
     for d in [_recap_dir_in(w, "recaptures_native") for w in sorted(RECAP_MODELS)]:
         p = d / "model.mlir"
         if not p.is_file():
             continue
         txt = p.read_text(errors="ignore")
-        n_i8 = txt.count("xi8>")                     # packed-int2 weights stored in i8 tensors
+        n_i8 = txt.count("xi8>")  # packed-int2 weights stored in i8 tensors
         # P22 GAP-D: the int2 bit-unpack chain is folded to the named quant_ext.unpack_int2 op
         # (opt-in fuse_int2_unpack recognizer). When present, the unpack is RECOVERED as a named op;
         # otherwise it falls back to the opaque func.call form.
         n_unpack = txt.count("quant_ext.unpack_int2")
         if n_unpack:
-            unpack_vis = (f"recovered (quant_ext.unpack_int2 named op x{n_unpack}); "
-                          "storage + scale + unpack all first-class")
+            unpack_vis = (
+                f"recovered (quant_ext.unpack_int2 named op x{n_unpack}); storage + scale + unpack all first-class"
+            )
             status = "recovered_full (native ternary datapath: storage + scale + named unpack op)"
         else:
             n_opaque = txt.count("func.call")
-            unpack_vis = (f"partial — bit-unpack in opaque func.call ({n_opaque}); "
-                          "storage+scale recovered (model forward .item()s the scale)")
+            unpack_vis = (
+                f"partial — bit-unpack in opaque func.call ({n_opaque}); "
+                "storage+scale recovered (model forward .item()s the scale)"
+            )
             status = "recovered_storage_and_scale (native ternary datapath visible)"
-        rows.append({
-            "workload": d.name,
-            "native_scheme": "W1.58 ternary (BitLinear, packed int2: 4 ternary values per i8 byte)",
-            "storage": "int2_packed_in_i8",
-            "n_packed_weight_tensors": n_i8,
-            "scale": "per_tensor_absmean (w_step buffer)",
-            "dequant_placement": "before_matmul (unpack+scale then GEMM; compute f32)",
-            "compute_dtype": "f32 (dequant-before-matmul; same placement as the int8 path)",
-            "unpack_visibility": unpack_vis,
-            "status": status,
-        })
+        rows.append(
+            {
+                "workload": d.name,
+                "native_scheme": "W1.58 ternary (BitLinear, packed int2: 4 ternary values per i8 byte)",
+                "storage": "int2_packed_in_i8",
+                "n_packed_weight_tensors": n_i8,
+                "scale": "per_tensor_absmean (w_step buffer)",
+                "dequant_placement": "before_matmul (unpack+scale then GEMM; compute f32)",
+                "compute_dtype": "f32 (dequant-before-matmul; same placement as the int8 path)",
+                "unpack_visibility": unpack_vis,
+                "status": status,
+            }
+        )
     return rows
 
 
-_LOWBIT_TIER_COLS = ["workload", "tier", "storage", "scale", "compute", "accuracy_status",
-                     "honest_gap", "evidence"]
+_LOWBIT_TIER_COLS = ["workload", "tier", "storage", "scale", "compute", "accuracy_status", "honest_gap", "evidence"]
 
 
 def low_bit_visibility_rows(cs_dir) -> list[dict]:
@@ -85,47 +108,70 @@ def low_bit_visibility_rows(cs_dir) -> list[dict]:
     assumed). Native packed fp8/int4 for the rest needs model-specific quant exports (scoped, not faked)."""
     from merlin.common import paths as _paths
     from merlin.dse_guidance.corpus import available_models
+
     bench = _paths.bench_dir() / "dse_guidance"
     nat_dir, lvl_dir = bench / "recaptures_native", bench / "recaptures_levels"
     # measured W8A8 accuracy gate (which int8 variants pass/fail/were-not-measured)
     try:
         from merlin.dse_guidance import accuracy_gate as AG
+
         _pts = AG.load()
     except Exception:  # noqa: BLE001
         AG, _pts = None, []
+
     def _acc(w):
         if AG is None:
             return "unavailable (int8 not measured for this model)"
         st = AG.status_for(w, "int8_w8a8", _pts)
-        return ({"pass": "measured_pass", "fail": "measured_fail"}.get(st)
-                or "unavailable (int8 not measured for this model)")
+        return {"pass": "measured_pass", "fail": "measured_fail"}.get(
+            st
+        ) or "unavailable (int8 not measured for this model)"
+
     rows = []
     for w in available_models():
-        nat = (nat_dir / w / "model.mlir")
-        qdq = (lvl_dir / w / "model_qdq.mlir")
+        nat = nat_dir / w / "model.mlir"
+        qdq = lvl_dir / w / "model_qdq.mlir"
         if nat.is_file() and "quant_ext.unpack_int2" in nat.read_text(errors="ignore"):
-            tier, storage, scale, gap = ("native", "int2_packed_in_i8",
-                                         "per_tensor_absmean", "none (native ternary fully recovered)")
+            tier, storage, scale, gap = (
+                "native",
+                "int2_packed_in_i8",
+                "per_tensor_absmean",
+                "none (native ternary fully recovered)",
+            )
         elif qdq.is_file():
-            tier, storage, scale, gap = ("qdq_int8", "i8", "per_channel",
-                                         "torchao int8 stand-in — model's native scheme (fp8/int4/ternary) "
-                                         "needs a model-specific capture")
+            tier, storage, scale, gap = (
+                "qdq_int8",
+                "i8",
+                "per_channel",
+                "torchao int8 stand-in — model's native scheme (fp8/int4/ternary) needs a model-specific capture",
+            )
         else:
-            tier, storage, scale, gap = ("dequant_only", "f32 (dequantized at load)", "erased",
-                                         "low-bit abstractions blocked; needs a qdq/native capture")
-        rows.append({
-            "workload": w, "tier": tier, "storage": storage, "scale": scale,
-            "compute": "f32 (dequant-before-matmul)" if tier != "native"
-                       else "f32 (native unpack+scale, dequant-before-matmul)",
-            "accuracy_status": _acc(w),
-            "honest_gap": gap,
-            "evidence": "recovered_from_ir" if tier != "dequant_only" else "n/a (f32 capture)",
-        })
+            tier, storage, scale, gap = (
+                "dequant_only",
+                "f32 (dequantized at load)",
+                "erased",
+                "low-bit abstractions blocked; needs a qdq/native capture",
+            )
+        rows.append(
+            {
+                "workload": w,
+                "tier": tier,
+                "storage": storage,
+                "scale": scale,
+                "compute": "f32 (dequant-before-matmul)"
+                if tier != "native"
+                else "f32 (native unpack+scale, dequant-before-matmul)",
+                "accuracy_status": _acc(w),
+                "honest_gap": gap,
+                "evidence": "recovered_from_ir" if tier != "dequant_only" else "n/a (f32 capture)",
+            }
+        )
     return rows
 
 
 def low_bit_visibility_csv(cs_dir) -> str:
     from merlin.dse_guidance.corpus import _csv
+
     return _csv(low_bit_visibility_rows(cs_dir), _LOWBIT_TIER_COLS)
 
 
@@ -144,13 +190,16 @@ def quant_rows(cs_dir: Path) -> list[dict]:
     from merlin.common import paths
     from merlin.common.artifacts import recaptures_dir
     from merlin.dse_guidance.corpus import RECAP_MODELS
+
     rows = []
     for w in sorted(RECAP_MODELS):
         # recaptures_levels holds model_qdq.mlir (not model.mlir): committed under merlin/benchmarks/
         # with an out/artifacts/recaptures/ overflow (same layout as the other corpora), NOT a sibling
         # of cs_dir (which broke silently once case_study moved under out/artifacts/).
-        for base in (paths.bench_dir() / "dse_guidance" / "recaptures_levels" / w,
-                     recaptures_dir() / "dse_guidance" / "recaptures_levels" / w):
+        for base in (
+            paths.bench_dir() / "dse_guidance" / "recaptures_levels" / w,
+            recaptures_dir() / "dse_guidance" / "recaptures_levels" / w,
+        ):
             p = base / "model_qdq.mlir"
             if p.is_file():
                 d = base
@@ -158,22 +207,33 @@ def quant_rows(cs_dir: Path) -> list[dict]:
         else:
             continue
         module = mlir_query.parse(p)
-        deq_ops = [op for op in module.walk()
-                   if mlir_query.op_name(op).startswith("quant_ext.dequantize")]
+        deq_ops = [op for op in module.walk() if mlir_query.op_name(op).startswith("quant_ext.dequantize")]
         n = len(deq_ops)
         if not n:
             continue
         names = {mlir_query.op_name(op) for op in deq_ops}
-        dtypes = sorted({dt for op in deq_ops
-                         if (dt := mlir_query.attr_str(op, "input_dtype"))}) or ["i8"]
-        gran = ("per_channel" if any("channel" in x for x in names)
-                else "per_tensor" if any("tensor" in x for x in names)
-                else "per_group" if any("group" in x for x in names) else "unspecified")
-        rows.append({"workload": d.name, "n_dequant_ops": n,
-                     "storage_dtype": "|".join(dtypes), "scale_granularity": gran,
-                     "dequant_placement": "before_matmul (weight dequantized then GEMM)",
-                     "compute_dtype": "f32 (dequantized)", "accumulator_dtype": "f32",
-                     "native_scheme_gap": _NATIVE.get(d.name, "torchao int8 weight-only (capture default)")})
+        dtypes = sorted({dt for op in deq_ops if (dt := mlir_query.attr_str(op, "input_dtype"))}) or ["i8"]
+        gran = (
+            "per_channel"
+            if any("channel" in x for x in names)
+            else "per_tensor"
+            if any("tensor" in x for x in names)
+            else "per_group"
+            if any("group" in x for x in names)
+            else "unspecified"
+        )
+        rows.append(
+            {
+                "workload": d.name,
+                "n_dequant_ops": n,
+                "storage_dtype": "|".join(dtypes),
+                "scale_granularity": gran,
+                "dequant_placement": "before_matmul (weight dequantized then GEMM)",
+                "compute_dtype": "f32 (dequantized)",
+                "accumulator_dtype": "f32",
+                "native_scheme_gap": _NATIVE.get(d.name, "torchao int8 weight-only (capture default)"),
+            }
+        )
     return rows
 
 
@@ -190,14 +250,16 @@ def quant_csv(cs_dir: Path) -> str:
 
 def requirements_md(cs_dir: Path) -> str:
     rows = quant_rows(cs_dir)
-    return ("# Low-bit capture requirements (P20 Tool E)\n\n"
-            "> What the qdq recapture exposes (unblocks the low-bit abstractions) vs what a NATIVE low-bit "
-            "capture would still need. The qdq MLIR keeps explicit `quant_ext.dequantize*` with storage "
-            "dtype + scale granularity; the dequant sits before the GEMM (compute stays f32), so the "
-            "packed-compute datapath is still not exercised. Structural; no perf claim.\n\n"
-            f"- Quant metadata recovered for {len(rows)} workload(s) with a qdq capture: "
-            f"{', '.join(r['workload'] for r in rows) or 'none'}.\n"
-            "- **Native-scheme gaps** (qdq is torchao int8, not the model's native scheme): "
-            "bitvla needs a packed-ternary (W1.58) capture; native int4/fp8 datapaths need a "
-            "compute-in-low-bit capture (dequant-on-load fused), not dequant-before-GEMM.\n"
-            "- Per-workload detail: `quant_metadata_visibility.csv`.\n")
+    return (
+        "# Low-bit capture requirements (P20 Tool E)\n\n"
+        "> What the qdq recapture exposes (unblocks the low-bit abstractions) vs what a NATIVE low-bit "
+        "capture would still need. The qdq MLIR keeps explicit `quant_ext.dequantize*` with storage "
+        "dtype + scale granularity; the dequant sits before the GEMM (compute stays f32), so the "
+        "packed-compute datapath is still not exercised. Structural; no perf claim.\n\n"
+        f"- Quant metadata recovered for {len(rows)} workload(s) with a qdq capture: "
+        f"{', '.join(r['workload'] for r in rows) or 'none'}.\n"
+        "- **Native-scheme gaps** (qdq is torchao int8, not the model's native scheme): "
+        "bitvla needs a packed-ternary (W1.58) capture; native int4/fp8 datapaths need a "
+        "compute-in-low-bit capture (dequant-on-load fused), not dequant-before-GEMM.\n"
+        "- Per-workload detail: `quant_metadata_visibility.csv`.\n"
+    )

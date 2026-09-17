@@ -28,6 +28,7 @@ already true of the lists this replaces. The one target-varying grant (a target'
 is named INDIRECTLY, as the attribute of the descriptor that derives it, so no target name appears here
 and a new target needs no edit.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -43,15 +44,17 @@ class BrokerSpec:
     target model, both of which are masked there. The broker runs outside, the shim forwards over a
     channel dir in the (bind-mounted) workspace. See ``harness/isa_tools_broker.py`` for the pattern.
     """
-    channel: str                                  # channel dir under the workspace, e.g. ".isa_channel"
-    module: str                                   # the driver-side broker module
-    log: str                                      # its log file, written into the channel dir
-    shims: tuple[tuple[str, str], ...]            # (shim module, name it is staged as in the workspace)
+
+    channel: str  # channel dir under the workspace, e.g. ".isa_channel"
+    module: str  # the driver-side broker module
+    log: str  # its log file, written into the channel dir
+    shims: tuple[tuple[str, str], ...]  # (shim module, name it is staged as in the workspace)
 
 
 @dataclass(frozen=True)
 class ToolSpec:
     """One arm-gated tool: what it grants, how it is reached, and whether it may be ablated alone."""
+
     name: str
     blurb: str
     #: Repo-root-relative paths granted read access. Literal + target-agnostic.
@@ -76,21 +79,25 @@ class ToolSpec:
 #: the syntax the agent chose, the disassembler and linter inspect the agent's OWN emitted words, and
 #: the CCA calls diff public schema against public routes. They are gated to the assisted arms not
 #: because they leak anything, but because unaided raw-ISA authoring is what the baseline measures.
-_ISA_BROKER = BrokerSpec(".isa_channel", "isa_tools_broker.py", "isa_tools_broker.log",
-                         (("isa_tools_shim.py", "isa_tools.py"),))
-_CCA_BROKER = BrokerSpec(".cca_channel", "cca_broker.py", "cca_broker.log",
-                         (("cca_shim.py", "cca_contract.py"), ("cca_shim.py", "action_catalog.py")))
+_ISA_BROKER = BrokerSpec(
+    ".isa_channel", "isa_tools_broker.py", "isa_tools_broker.log", (("isa_tools_shim.py", "isa_tools.py"),)
+)
+_CCA_BROKER = BrokerSpec(
+    ".cca_channel",
+    "cca_broker.py",
+    "cca_broker.log",
+    (("cca_shim.py", "cca_contract.py"), ("cca_shim.py", "action_catalog.py")),
+)
 
 
 TOOLS: dict[str, ToolSpec] = {
     "cpp_oot_generators": ToolSpec(
         "cpp_oot_generators",
         "Generic C++ out-of-tree backend generators: MLIR scaffold, LLVM lowering plan, target repo.",
-        bundle_paths=tuple(f"{_PY}targetgen/generate/{m}.py"
-                           for m in ("mlir_scaffold", "llvm_plan", "target_repo")),
+        bundle_paths=tuple(f"{_PY}targetgen/generate/{m}.py" for m in ("mlir_scaffold", "llvm_plan", "target_repo")),
         note="ALLOWED tool: generic C++ OOT generator",
-        deny_reason="denied tool (kept a strict subset of the xDSL arm)"),
-
+        deny_reason="denied tool (kept a strict subset of the xDSL arm)",
+    ),
     # Shared, answer-free INFRASTRUCTURE every granted merlin tool imports. `targetgen/rtl/facts.py`
     # opens with `from merlin.common.paths import artifacts_dir, targets_dir`, so without this grant the
     # RTL-facts generators die in the sandbox with ModuleNotFoundError: No module named 'merlin.common'.
@@ -124,52 +131,57 @@ TOOLS: dict[str, ToolSpec] = {
             f"{_PY}kernels/roles.py",
         ),
         note="ALLOWED tool: xDSL kit / CCA spine",
-        ablatable=False),
-
+        ablatable=False,
+    ),
     "xdsl_kit": ToolSpec(
         "xdsl_kit",
         "The xDSL authoring kit: dialect synthesis, the generators, the dialect definitions, the "
         "interface emitters and the out-of-tree starter kit.",
-        bundle_paths=(f"{_PY}targetgen/synthesize/", f"{_PY}targetgen/generate/", f"{_PY}xdsl_dialects/",
-                      f"{_PY}targetgen/contract/interface_emit.py",
-                      f"{_PY}targetgen/contract/linalg_iface.py", f"{_PY}targetgen/oot_starterkit/"),
-        note="ALLOWED tool: xDSL kit / CCA spine"),
-
+        bundle_paths=(
+            f"{_PY}targetgen/synthesize/",
+            f"{_PY}targetgen/generate/",
+            f"{_PY}xdsl_dialects/",
+            f"{_PY}targetgen/contract/interface_emit.py",
+            f"{_PY}targetgen/contract/linalg_iface.py",
+            f"{_PY}targetgen/oot_starterkit/",
+        ),
+        note="ALLOWED tool: xDSL kit / CCA spine",
+    ),
     "cca_spine": ToolSpec(
         "cca_spine",
         "The Common-Compute-Abstraction spine — the where/how of modifying a compiler: extract a CCA, "
         "diff two, check the CCA<->action bijection, walk the escalation ladder, author a microkernel.",
-        bundle_paths=tuple(f"{_PY}kernels/{m}.py" for m in
-                           ("cca", "cca_compare", "cca_contract", "action_catalog", "microkernel"))
-                     + (f"{_PY}targetgen/rtl_backend.py",),
-        note="ALLOWED tool: xDSL kit / CCA spine"),
-
+        bundle_paths=tuple(
+            f"{_PY}kernels/{m}.py" for m in ("cca", "cca_compare", "cca_contract", "action_catalog", "microkernel")
+        )
+        + (f"{_PY}targetgen/rtl_backend.py",),
+        note="ALLOWED tool: xDSL kit / CCA spine",
+    ),
     "rtl_generators": ToolSpec(
         "rtl_generators",
         "The CIRCT RTL-fact generators: derive an ISA encoder module, a distilled RTL digest and a "
         "numeric-shape checker from the target's elaborated RTL rather than from its documentation.",
         bundle_paths=(f"{_PY}targetgen/rtl/",),
         note="ALLOWED (CIRCT arm): RTL-facts generators",
-        deny_reason="CIRCT RTL generators (CIRCT arm only)"),
-
+        deny_reason="CIRCT RTL generators (CIRCT arm only)",
+    ),
     "rtl_facts": ToolSpec(
         "rtl_facts",
         "The facts already extracted from THIS target's RTL — the generators' output, granted directly.",
         derived_paths=("rtl_facts_pin",),
         note="ALLOWED (CIRCT arm): RTL-extracted facts",
-        deny_reason="RTL facts (CIRCT arm only)"),
-
+        deny_reason="RTL facts (CIRCT arm only)",
+    ),
     # The treatment under test is the SEAM itself — the agent registers its own implementation as an
     # alternative in an e-class and the extractor chooses — so the arm carrying it must differ from the
     # arm it is compared against in exactly this one declared way.
     "eqsat_seam": ToolSpec(
         "eqsat_seam",
         "The equivalence seam: an e-graph over real IR plus the persistent equivalence store.",
-        bundle_paths=(f"{_PY}targetgen/contraction_egraph.py",
-                      f"{_PY}targetgen/persistent_equivalence.py"),
+        bundle_paths=(f"{_PY}targetgen/contraction_egraph.py", f"{_PY}targetgen/persistent_equivalence.py"),
         note="ALLOWED (eqsat arm): the equivalence seam",
-        deny_reason="equivalence seam (eqsat arm only)"),
-
+        deny_reason="equivalence seam (eqsat arm only)",
+    ),
     # The treatment is the VERIFICATION SEAM: the agent can run one pass on one module and check what it
     # did (structurally, and against an SMT encoding of the pass pair) instead of only learning from a
     # capsule verdict. Like the eqsat seam it is oracle-free — it compares the compiler's own before/after
@@ -185,19 +197,20 @@ TOOLS: dict[str, ToolSpec] = {
         "single pass on a single module. Advisory only -- it does not gate your submission.",
         bundle_paths=(f"{_PY}verify/", f"{_PY}xdsl_dialects/opt.py"),
         note="ALLOWED (verify arm): the compiler-verification seam",
-        deny_reason="compiler-verification seam (verify arm only)"),
-
+        deny_reason="compiler-verification seam (verify arm only)",
+    ),
     "isa_tools": ToolSpec(
         "isa_tools",
         "Derived assembler, disassembler, static linter and lite debugger for the target's own ISA. "
         "Oracle-free: it encodes the syntax you chose and inspects the words you emitted.",
-        broker=_ISA_BROKER),
-
+        broker=_ISA_BROKER,
+    ),
     "cca_tools": ToolSpec(
         "cca_tools",
         "The two mandated CCA introspection calls — check_bijection and escalation_ladder — reachable "
         "as plain imports inside the sandbox. Oracle-free: public schema against public routes.",
-        broker=_CCA_BROKER),
+        broker=_CCA_BROKER,
+    ),
 }
 
 
@@ -206,20 +219,20 @@ TOOLS: dict[str, ToolSpec] = {
 #: is the order grants are written into a manifest.
 _ASSISTED = ("merlin_infra", "xdsl_kit", "cca_spine", "isa_tools", "cca_tools")
 ARM_TOOLS: dict[str, tuple[str, ...]] = {
-    "raw_baseline":     (),
-    "cpp_merlininfra":  ("cpp_oot_generators",),
-    "merlin_assisted":  _ASSISTED,
+    "raw_baseline": (),
+    "cpp_merlininfra": ("cpp_oot_generators",),
+    "merlin_assisted": _ASSISTED,
     "merlin_rtlchecks": _ASSISTED + ("rtl_generators", "rtl_facts"),
     # The eqsat arm shares the xDSL arm's denials on purpose: an arm that also gained the RTL facts
     # would differ in TWO ways and its result would not attribute to the seam.
-    "merlin_eqsat":     _ASSISTED + ("eqsat_seam",),
+    "merlin_eqsat": _ASSISTED + ("eqsat_seam",),
     # A NEW arm, not a wider arm-4. The verification seam could have been folded into merlin_rtlchecks,
     # and that would have been the cheaper edit — but arm-4 exists to carry exactly one addition over
     # arm-3 (the RTL generators + the facts they extract), and every arm-3-vs-arm-4 number already
     # reported rests on that. An arm-4 that also gained the verification seam would differ from arm-3 in
     # two ways at once, so its delta would attribute to neither, and the earlier contrast would silently
     # stop being comparable to the later one. Same reasoning as the eqsat arm above; same resolution.
-    "merlin_verify":    _ASSISTED + ("rtl_generators", "rtl_facts", "verify_seam"),
+    "merlin_verify": _ASSISTED + ("rtl_generators", "rtl_facts", "verify_seam"),
 }
 
 
@@ -252,12 +265,13 @@ def arm_tools(arm: str, *, add: tuple[str, ...] = (), drop: tuple[str, ...] = ()
     not measure what its name says.
     """
     for n in (*add, *drop):
-        spec(n)                                   # fail closed on a typo before anything is generated
+        spec(n)  # fail closed on a typo before anything is generated
     bad = [n for n in drop if not spec(n).ablatable]
     if bad:
         raise ValueError(
             f"cannot ablate {bad} alone: other granted tools import it, so the cell would measure their "
-            f"absence too. Ablatable tools: {list(ablatable_tools())}")
+            f"absence too. Ablatable tools: {list(ablatable_tools())}"
+        )
     try:
         base = ARM_TOOLS[arm]
     except KeyError:

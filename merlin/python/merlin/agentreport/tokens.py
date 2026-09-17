@@ -22,6 +22,7 @@ new deployment of an existing model needs no edit here. What CANNOT be repaired 
 bare family name -- ``opus`` names no particular Opus -- so those are normalized and then FLAGGED,
 because silently folding them into a specific version invents a fact.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -36,8 +37,21 @@ UNPRICED = "unpriced"
 #: Deployment/vendor prefixes a model id may be published under. Stripped left to right; each is a
 #: routing fact about WHERE the model was called, never about WHICH model it is.
 _PATH_SEPARATORS = ("/",)
-_VENDOR_PREFIXES = ("us.", "eu.", "apac.", "anthropic.", "openai.", "zai.", "nvidia.",
-                    "amazon.", "moonshotai.", "qwen.", "deepseek.", "meta.", "mistral.")
+_VENDOR_PREFIXES = (
+    "us.",
+    "eu.",
+    "apac.",
+    "anthropic.",
+    "openai.",
+    "zai.",
+    "nvidia.",
+    "amazon.",
+    "moonshotai.",
+    "qwen.",
+    "deepseek.",
+    "meta.",
+    "mistral.",
+)
 #: Version/revision suffixes a deployment appends. Stripped only from the END.
 _VERSION_SUFFIXES = ("-v1:0", "-v1", ":0")
 #: A model id with no version component names a FAMILY, not a model. Listed so the flag can be set;
@@ -65,7 +79,7 @@ def normalize_model(raw: str) -> tuple[str, bool]:
         lowered = name.lower()
         for prefix in _VENDOR_PREFIXES:
             if lowered.startswith(prefix) and len(name) > len(prefix):
-                name = name[len(prefix):]
+                name = name[len(prefix) :]
                 break
         else:
             break
@@ -99,8 +113,8 @@ class TokenFacts:
     rate_limit_wait_s: float = 0.0
 
     cost_kind: str = UNPRICED
-    cost_usd: float | None = None        # metered spend ONLY. None unless cost_kind == METERED.
-    notional_usd: float | None = None    # what a seat run would have cost. Never summed with cost_usd.
+    cost_usd: float | None = None  # metered spend ONLY. None unless cost_kind == METERED.
+    notional_usd: float | None = None  # what a seat run would have cost. Never summed with cost_usd.
     cost_reason: str = ""
 
     availability: Availability = field(default_factory=Availability)
@@ -124,17 +138,20 @@ def read_tokens(run_dir: Path) -> TokenFacts:
     facts = TokenFacts()
     path = run_dir / "cost_time_toolcalls.yaml"
     if not path.is_file():
-        facts.availability.set("tokens", unavailable(
-            f"{run_dir.name} wrote no cost_time_toolcalls.yaml, so this run has no token or cost "
-            f"accounting at all"))
+        facts.availability.set(
+            "tokens",
+            unavailable(
+                f"{run_dir.name} wrote no cost_time_toolcalls.yaml, so this run has no token or cost accounting at all"
+            ),
+        )
         facts.availability.set("cost", unavailable("no accounting file"))
         return facts
     try:
         import yaml
+
         doc = yaml.safe_load(path.read_text(encoding="utf-8", errors="ignore")) or {}
     except Exception:  # noqa: BLE001
-        facts.availability.set("tokens", unavailable(
-            f"{path.name} could not be parsed as YAML"))
+        facts.availability.set("tokens", unavailable(f"{path.name} could not be parsed as YAML"))
         facts.availability.set("cost", unavailable("accounting file unreadable"))
         return facts
 
@@ -166,19 +183,31 @@ def read_tokens(run_dir: Path) -> TokenFacts:
         # `tokens_cached` merges reads and writes. Attributing it to reads would understate cost by
         # the write premium, so it is recorded as the sum it is and the split is declared missing.
         facts.cache_read_tokens = _int(doc.get("tokens_cached"))
-        facts.availability.set("token_split", unavailable(
-            "this run recorded only the summed `tokens_cached`; cache reads and cache writes are "
-            "billed roughly an order of magnitude apart and cannot be separated after the fact",
-            source="tokens_cached"))
+        facts.availability.set(
+            "token_split",
+            unavailable(
+                "this run recorded only the summed `tokens_cached`; cache reads and cache writes are "
+                "billed roughly an order of magnitude apart and cannot be separated after the fact",
+                source="tokens_cached",
+            ),
+        )
     facts.total_tokens = _int(doc.get("tokens_total")) or (
-        facts.input_tokens + facts.output_tokens + facts.cache_read_tokens + facts.cache_creation_tokens)
+        facts.input_tokens + facts.output_tokens + facts.cache_read_tokens + facts.cache_creation_tokens
+    )
 
     if facts.total_tokens > 0:
         facts.availability.set("tokens", measured("cost_time_toolcalls"))
     else:
-        facts.availability.set("tokens", unavailable(
-            str(doc.get("reason") or "the accounting file recorded no token usage; a run killed "
-                "before its driver reported usage keeps its transcript but not its token counts")))
+        facts.availability.set(
+            "tokens",
+            unavailable(
+                str(
+                    doc.get("reason")
+                    or "the accounting file recorded no token usage; a run killed "
+                    "before its driver reported usage keeps its transcript but not its token counts"
+                )
+            ),
+        )
 
     metered = doc.get("estimated_cost_usd")
     notional = doc.get("subscription_notional_usd")
@@ -190,12 +219,14 @@ def read_tokens(run_dir: Path) -> TokenFacts:
         facts.cost_kind, facts.notional_usd = NOTIONAL, float(notional)
         facts.cost_reason = reason or (
             "a subscription seat is not billed per token; this figure is what the same traffic would "
-            "have cost metered, not money spent")
+            "have cost metered, not money spent"
+        )
         facts.availability.set("cost", derived(facts.cost_reason, source="subscription_notional_usd"))
     else:
         facts.cost_kind = UNPRICED
         facts.cost_reason = reason or (
             f"no rate is available for model {facts.model_raw!r}, so this run has no dollar figure. "
-            f"A zero here would be indistinguishable from a free run.")
+            f"A zero here would be indistinguishable from a free run."
+        )
         facts.availability.set("cost", unavailable(facts.cost_reason))
     return facts

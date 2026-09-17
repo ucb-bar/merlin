@@ -14,6 +14,7 @@ Component names are the canonical set the axis catalog reduces against (``comput
 ``dma_memory``, ``packing``, ``cpu_dispatch``, ``sync``, ``intermediate_materialization``,
 ``capacity_spill``, ``other``). They may be given with or without a trailing ``_ms``.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -47,9 +48,9 @@ class BaselineCost:
     workload: str
     baseline_total_ms: float
     target_total_ms: float | None
-    components: dict[str, float]              # component -> cost (canonical names, no _ms suffix)
-    evidence: dict[str, str]                  # component -> evidence tag
-    unit: str = "ms"                          # "ms" for measured/modelled; e.g. "cycles" for synth
+    components: dict[str, float]  # component -> cost (canonical names, no _ms suffix)
+    evidence: dict[str, str]  # component -> evidence tag
+    unit: str = "ms"  # "ms" for measured/modelled; e.g. "cycles" for synth
     # Optional role-attributed sub-breakdowns. These let residency benefit be charged to the
     # repeated action head only (not the once-per-replan backbone) — the backbone/head fix.
     head_components: dict[str, float] = field(default_factory=dict)
@@ -114,8 +115,7 @@ def parse(doc: dict) -> BaselineCost:
         components["residual"] = components.get("residual", 0.0) + diff
         evidence.setdefault("residual", "assumed")
         warnings.append(
-            f"components sum to {comp_sum:g} ms but total_ms={total:g} ms; "
-            f"added residual={diff:g} ms (tagged assumed)"
+            f"components sum to {comp_sum:g} ms but total_ms={total:g} ms; added residual={diff:g} ms (tagged assumed)"
         )
 
     target = doc.get("target") or {}

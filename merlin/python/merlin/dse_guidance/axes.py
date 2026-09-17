@@ -19,6 +19,7 @@ Grounding rules (so no number is invented):
   * The axis's evidence tag is the weakest of its model evidence and the evidence of every
     baseline component it touches.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -79,18 +80,19 @@ def _affected_total(baseline: BaselineCost, components: list[str]) -> float:
     # A component may live in the whole-model breakdown or only in a role sub-breakdown
     # (repeated_head / loop_invariant, e.g. weight_memory, prefix_kv_memory). Cap against the
     # largest place it appears so a sub-breakdown benefit is not clamped to a missing whole.
-    return sum(max(baseline.component(c), baseline.head_component(c),
-                   baseline.loop_invariant_component(c)) for c in components)
+    return sum(
+        max(baseline.component(c), baseline.head_component(c), baseline.loop_invariant_component(c)) for c in components
+    )
 
 
-def _combined_evidence(model_evidence: str, baseline: BaselineCost,
-                       components: list[str]) -> str:
+def _combined_evidence(model_evidence: str, baseline: BaselineCost, components: list[str]) -> str:
     tags = [model_evidence] + [baseline.evidence_for(c) for c in components]
     return E.weakest_evidence(tags)
 
 
-def evaluate_axis(axis: str, facts: dict, baseline: BaselineCost,
-                  coupling_per_replan: dict | None = None) -> AxisResult:
+def evaluate_axis(
+    axis: str, facts: dict, baseline: BaselineCost, coupling_per_replan: dict | None = None
+) -> AxisResult:
     """Evaluate one axis: benefit (ms), legality, evidence, cost tier, reason."""
     family = AXIS_FAMILY[axis]
     cost_tier = E.COST_TIERS[axis]
@@ -121,15 +123,13 @@ def evaluate_axis(axis: str, facts: dict, baseline: BaselineCost,
         legal = spill > 0
         benefit = spill if legal else 0.0
         model_evidence = "structural_bound"
-        reason = (f"removes the {spill:g} ms capacity spill" if legal
-                  else "no capacity spill in the baseline to remove")
+        reason = f"removes the {spill:g} ms capacity spill" if legal else "no capacity spill in the baseline to remove"
 
     elif axis == "resident_packed_weights":
         # ACTION-HEAD weights only — reused across the repeated head. The once-per-replan
         # backbone is a separate cross-replan residency question and is NOT counted here.
         reuse = max(int(facts.get("visible_weight_reuse", 1)), 1)
-        legal = bool(facts.get("has_repeated_head") and facts.get("head_weights_immutable")
-                     and reuse > 1)
+        legal = bool(facts.get("has_repeated_head") and facts.get("head_weights_immutable") and reuse > 1)
         if not legal:
             components = ["packing"]
             reason = "no repeated-head reuse of immutable weights (backbone-only or reuse<=1)"
@@ -141,36 +141,39 @@ def evaluate_axis(axis: str, facts: dict, baseline: BaselineCost,
             pack_b = baseline.head_component("packing") * (1 - 1 / reuse)
             wmem = baseline.head_component("weight_memory") or baseline.head_component("dma_memory")
             benefit = pack_b + wmem * (1 - 1 / reuse)
-            reason = (f"action-head weights reused {reuse}x; resident head weights remove "
-                      f"repeated head packing + weight DMA (backbone excluded)")
+            reason = (
+                f"action-head weights reused {reuse}x; resident head weights remove "
+                f"repeated head packing + weight DMA (backbone excluded)"
+            )
         elif facts.get("dram_reducible_fraction") is not None:
             # Single-region workload: the region IS the repeated head (no separate backbone).
             frac = float(facts["dram_reducible_fraction"])
             components = ["packing", "dma_memory"]
-            benefit = baseline.component("packing") * (1 - 1 / reuse) \
-                + baseline.component("dma_memory") * frac
-            reason = (f"weights reused {reuse}x; one-time pack + resident load removes repeated "
-                      f"packing and {frac:.0%} of DMA traffic (region-derived)")
+            benefit = baseline.component("packing") * (1 - 1 / reuse) + baseline.component("dma_memory") * frac
+            reason = (
+                f"weights reused {reuse}x; one-time pack + resident load removes repeated "
+                f"packing and {frac:.0%} of DMA traffic (region-derived)"
+            )
         else:
             # Real whole-model capture: structurally legal, but we cannot separate action-head
             # cost from the backbone, so the benefit is NOT quantified (no fabricated magnitude).
             components = []
             quantified = False
             model_evidence = "assumed"
-            reason = ("action head reuses weights across the K-loop, but this flat capture does "
-                      "not separate action-head cost from the backbone; residency benefit not "
-                      "quantified (structural legality only — needs a backbone/head split)")
+            reason = (
+                "action head reuses weights across the K-loop, but this flat capture does "
+                "not separate action-head cost from the backbone; residency benefit not "
+                "quantified (structural legality only — needs a backbone/head split)"
+            )
 
     elif axis == "resident_prefix_kv":
         # Prefix/KV produced once by the backbone, reused across the K-step head. Reduce its
         # reload traffic only when its own cost is provided (loop_invariant sub-breakdown or a
         # prefix_kv_memory component); otherwise legal-but-unquantified.
         reuse = max(int(facts.get("visible_prefix_kv_reuse", 1)), 1)
-        legal = bool(facts.get("has_repeated_head") and facts.get("prefix_kv_loop_invariant")
-                     and reuse > 1)
+        legal = bool(facts.get("has_repeated_head") and facts.get("prefix_kv_loop_invariant") and reuse > 1)
         li_cost = baseline.loop_invariant_component("prefix_kv_memory")
-        whole_cost = baseline.component("prefix_kv_memory") if "prefix_kv_memory" \
-            in baseline.components else 0.0
+        whole_cost = baseline.component("prefix_kv_memory") if "prefix_kv_memory" in baseline.components else 0.0
         kv_cost = li_cost or whole_cost
         if not legal:
             reason = "prefix/KV is not loop-invariant across a repeated head"
@@ -181,22 +184,23 @@ def evaluate_axis(axis: str, facts: dict, baseline: BaselineCost,
         else:
             quantified = False
             model_evidence = "assumed"
-            reason = ("prefix/KV is loop-invariant but no prefix_kv_memory cost was provided; "
-                      "benefit not quantified")
+            reason = "prefix/KV is loop-invariant but no prefix_kv_memory cost was provided; benefit not quantified"
 
     elif axis == "command_batching":
         components = ["cpu_dispatch", "sync"]
         legal = int(facts.get("dispatches_per_replan", 1)) > 1
         cap = _affected_total(baseline, components)
-        if legal and coupling_per_replan and coupling_per_replan.get("op_level") \
-                and coupling_per_replan.get("batched"):
-            saved = (coupling_per_replan.get("cpu_dispatch_ms_saved", 0.0)
-                     + coupling_per_replan.get("sync_ms_saved", 0.0))
+        if legal and coupling_per_replan and coupling_per_replan.get("op_level") and coupling_per_replan.get("batched"):
+            saved = coupling_per_replan.get("cpu_dispatch_ms_saved", 0.0) + coupling_per_replan.get(
+                "sync_ms_saved", 0.0
+            )
             benefit = max(0.0, min(saved, cap))
             model_evidence = coupling_per_replan.get("source", "measured")
-            reason = ("measured op-level vs batched submit saving "
-                      f"({coupling_per_replan['op_level']['num_dispatches']} -> "
-                      f"{coupling_per_replan['batched']['num_dispatches']} dispatches)")
+            reason = (
+                "measured op-level vs batched submit saving "
+                f"({coupling_per_replan['op_level']['num_dispatches']} -> "
+                f"{coupling_per_replan['batched']['num_dispatches']} dispatches)"
+            )
         elif legal:
             n = int(facts["dispatches_per_replan"])
             benefit = cap * (1 - 1 / n)
@@ -224,12 +228,14 @@ def evaluate_axis(axis: str, facts: dict, baseline: BaselineCost,
             per_step = (op["cpu_dispatch_ms"] + op["sync_ms"]) / max(op["num_dispatches"], 1) * dps
             benefit = max(0.0, min(per_step * (K - 1), cap))
             model_evidence = op.get("source", "measured")
-            reason = f"on-device K={K} loop removes {K-1} per-step host launches (measured)"
+            reason = f"on-device K={K} loop removes {K - 1} per-step host launches (measured)"
         elif legal:
             benefit = cap * (1 - 1 / K)
             model_evidence = "structural_bound"
-            reason = (f"on-device K={K} loop removes per-step host dispatch/sync inside the "
-                      f"{scope} (backbone dispatch excluded)")
+            reason = (
+                f"on-device K={K} loop removes per-step host dispatch/sync inside the "
+                f"{scope} (backbone dispatch excluded)"
+            )
         else:
             reason = "no bounded K-loop (K<=1)"
 
@@ -238,8 +244,11 @@ def evaluate_axis(axis: str, facts: dict, baseline: BaselineCost,
         legal = bool(facts.get("has_epilogue"))
         benefit = baseline.component("intermediate_materialization") if legal else 0.0
         model_evidence = "structural_bound"
-        reason = ("commit-in-place removes the i32 intermediate materialization"
-                  if legal else "no contraction+epilogue pattern present")
+        reason = (
+            "commit-in-place removes the i32 intermediate materialization"
+            if legal
+            else "no contraction+epilogue pattern present"
+        )
 
     elif axis == "event_tokens":
         components = ["sync"]
@@ -247,8 +256,11 @@ def evaluate_axis(axis: str, facts: dict, baseline: BaselineCost,
         # Upper structural bound: event tokens can overlap the sync wait behind compute.
         benefit = baseline.component("sync") if legal else 0.0
         model_evidence = "structural_bound"
-        reason = ("event tokens overlap the sync wait behind compute (upper bound)"
-                  if legal else "no dependency chain to overlap")
+        reason = (
+            "event tokens overlap the sync wait behind compute (upper bound)"
+            if legal
+            else "no dependency chain to overlap"
+        )
 
     else:  # pragma: no cover - guarded by REQUIRED_AXES
         raise KeyError(f"unknown axis '{axis}'")
@@ -275,7 +287,6 @@ def evaluate_axis(axis: str, facts: dict, baseline: BaselineCost,
     )
 
 
-def evaluate_axes(facts: dict, baseline: BaselineCost,
-                  coupling_per_replan: dict | None = None) -> list[AxisResult]:
+def evaluate_axes(facts: dict, baseline: BaselineCost, coupling_per_replan: dict | None = None) -> list[AxisResult]:
     """Evaluate every catalog axis under the given representation facts and baseline."""
     return [evaluate_axis(a, facts, baseline, coupling_per_replan) for a in REQUIRED_AXES]

@@ -89,9 +89,8 @@ def residue_class_defect(
 def words_from_bytes(raw: bytes) -> list[int]:
     """Split a readback into little-endian 4-byte words, without interpreting them."""
     if len(raw) % 4:
-        raise ReadbackIntegrityError(
-            f"readback is {len(raw)} bytes, not a whole number of 4-byte words")
-    return [int.from_bytes(raw[i:i + 4], "little") for i in range(0, len(raw), 4)]
+        raise ReadbackIntegrityError(f"readback is {len(raw)} bytes, not a whole number of 4-byte words")
+    return [int.from_bytes(raw[i : i + 4], "little") for i in range(0, len(raw), 4)]
 
 
 def require_intact(raw: bytes, *, transport: str) -> None:

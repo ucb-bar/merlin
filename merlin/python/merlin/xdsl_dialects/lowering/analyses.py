@@ -5,6 +5,7 @@ program order or SSA def-use chains across ops, so they are explicit analyses ru
 the lowering pipeline (and directly by tests). Each returns a list of problem strings
 (empty == clean).
 """
+
 from __future__ import annotations
 
 from .._common import HAS_XDSL
@@ -35,7 +36,8 @@ def check_no_use_after_evict(module) -> list[str]:
                 if operand in evicted and not isinstance(op, i.ResidentEvictOp):
                     problems.append(
                         "use of resident handle after evict: %s uses a handle evicted "
-                        "by an earlier %s" % (op.name, evicted[operand].name))
+                        "by an earlier %s" % (op.name, evicted[operand].name)
+                    )
             if isinstance(op, i.ResidentEvictOp):
                 evicted[op.handle] = op
     return problems
@@ -58,17 +60,17 @@ def check_place_legality(module) -> list[str]:
         if isinstance(op, s.PlaceOp):
             if op.state.data == s.MemoryState.RESIDENT:
                 if op.capability is None:
-                    problems.append(
-                        "schedule.place to resident state without a capability operand")
+                    problems.append("schedule.place to resident state without a capability operand")
                 elif "resident_packed_tensor" not in cap_features.get(op.capability, set()):
                     problems.append(
-                        "schedule.place to resident state but the capability does not "
-                        "declare resident_packed_tensor")
+                        "schedule.place to resident state but the capability does not declare resident_packed_tensor"
+                    )
         elif isinstance(op, s.SelectInterfaceOp):
             if op.interface.data not in all_features:
                 problems.append(
                     "schedule.select_interface %r not declared by any "
-                    "contract.capability in the module" % op.interface.data)
+                    "contract.capability in the module" % op.interface.data
+                )
     return problems
 
 
@@ -85,8 +87,8 @@ def check_contract_discharged(module) -> list[str]:
         if isinstance(op, c.CheckOp):
             if not op.proofs and op.requirement.data not in declared:
                 problems.append(
-                    "contract.check %r has no proof token and no capability covers it"
-                    % op.requirement.data)
+                    "contract.check %r has no proof token and no capability covers it" % op.requirement.data
+                )
     return problems
 
 
@@ -111,24 +113,19 @@ def check_command_buffer_consistency(module) -> list[str]:
         if isinstance(op, r.CommandBufferAppendOp):
             creator = op.cb.owner
             if not isinstance(creator, r.CommandBufferCreateOp):
-                problems.append(
-                    "runtime.command_buffer.append on a value not produced by "
-                    "command_buffer.create")
+                problems.append("runtime.command_buffer.append on a value not produced by command_buffer.create")
                 continue
             dev_op = creator.dev.owner
             if not isinstance(dev_op, r.DeviceGetOp):
-                problems.append(
-                    "runtime.command_buffer.create device not produced by device.get")
+                problems.append("runtime.command_buffer.create device not produced by device.get")
                 continue
             backend = dev_op.backend.data.value
             if op.queue is not None:
                 queue = op.queue.data.value
                 if queue not in BACKEND_QUEUES.get(backend, set()):
-                    problems.append(
-                        "queue kind %r unsupported on backend %r" % (queue, backend))
+                    problems.append("queue kind %r unsupported on backend %r" % (queue, backend))
         elif isinstance(op, r.SubmitOp):
             creator = op.cb.owner
             if isinstance(creator, r.CommandBufferCreateOp) and creator.dev is not op.dev:
-                problems.append(
-                    "runtime.submit device differs from the command buffer's device")
+                problems.append("runtime.submit device differs from the command buffer's device")
     return problems

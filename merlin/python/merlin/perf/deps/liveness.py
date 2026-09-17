@@ -28,14 +28,26 @@ THREE PASSES, and each mirrors a rule established elsewhere in this package:
   earlier to cover a latency extends its value's live range by exactly the distance it moved, and a
   file with as few slots as a tensor register file runs out long before instruction memory does.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 __all__ = [
-    "Access", "Effects", "Instruction", "LivenessReport", "Pressure", "ValueRange",
-    "constant_state", "effects_of", "liveness", "live_values", "pressure", "report", "value_ranges",
+    "Access",
+    "Effects",
+    "Instruction",
+    "LivenessReport",
+    "Pressure",
+    "ValueRange",
+    "constant_state",
+    "effects_of",
+    "liveness",
+    "live_values",
+    "pressure",
+    "report",
+    "value_ranges",
 ]
 
 
@@ -103,8 +115,7 @@ def effects_of(instruction: Instruction, directions: Any) -> Effects:
 
     per_operand = (getattr(directions, "by_mnemonic", {}) or {}).get(instruction.mnemonic)
     if per_operand is None:
-        return Effects(defs=(), uses=(), unresolved=("<the instruction was never probed>",),
-                       observed=False)
+        return Effects(defs=(), uses=(), unresolved=("<the instruction was never probed>",), observed=False)
     defs: list[Access] = []
     uses: list[Access] = []
     unresolved: list[str] = []
@@ -131,9 +142,13 @@ def effects_of(instruction: Instruction, directions: Any) -> Effects:
 # ---------------------------------------------------------------------------------------------------
 # forward: which registers hold a constant this pass can name
 # ---------------------------------------------------------------------------------------------------
-def constant_state(instructions: "Sequence[Instruction]", effects: "Sequence[Effects]", *,
-                   immediate_forms: Mapping[str, str],
-                   zero_slot: Mapping[str, int] | None = None) -> list[dict[Access, int | None]]:
+def constant_state(
+    instructions: "Sequence[Instruction]",
+    effects: "Sequence[Effects]",
+    *,
+    immediate_forms: Mapping[str, str],
+    zero_slot: Mapping[str, int] | None = None,
+) -> list[dict[Access, int | None]]:
     """Per-instruction snapshots of which values hold a constant this pass can name.
 
     Forward propagation with KILL semantics, exactly as the movement-volume pass does it: a value
@@ -164,7 +179,7 @@ def constant_state(instructions: "Sequence[Instruction]", effects: "Sequence[Eff
             if imm_operand is not None and imm_operand in instruction.operands:
                 state[value] = int(instruction.operands[imm_operand])
             else:
-                state[value] = None          # written by something unevaluatable -> UNKNOWN, not stale
+                state[value] = None  # written by something unevaluatable -> UNKNOWN, not stale
         if effect.unresolved:
             # An instruction whose footprint is incomplete may have written anything, so nothing
             # survives it. Keeping the old values here is the flattering error: it would let an
@@ -210,12 +225,16 @@ class Pressure:
 
     def claim(self) -> str:
         if self.capacity is None:
-            return (f"{self.file}: {self.peak} value(s) live at once (peak at instruction "
-                    f"{self.at_index}); the file's capacity is UNKNOWN, so whether that fits was NOT "
-                    "checked")
+            return (
+                f"{self.file}: {self.peak} value(s) live at once (peak at instruction "
+                f"{self.at_index}); the file's capacity is UNKNOWN, so whether that fits was NOT "
+                "checked"
+            )
         verdict = "fits" if self.fits else "OVERFLOWS"
-        return (f"{self.file}: {self.peak} of {self.capacity} slot(s) live at once (peak at "
-                f"instruction {self.at_index}) -- {verdict}")
+        return (
+            f"{self.file}: {self.peak} of {self.capacity} slot(s) live at once (peak at "
+            f"instruction {self.at_index}) -- {verdict}"
+        )
 
 
 @dataclass(frozen=True)
@@ -233,13 +252,16 @@ class LivenessReport:
     def claim(self) -> str:
         peaks = "; ".join(p.claim() for p in self.pressure)
         if self.incomplete:
-            return (f"{peaks} -- CONDITIONAL: {len(self.incomplete)} instruction(s) have an "
-                    "unresolved operand, so values they touch are missing from these sets")
+            return (
+                f"{peaks} -- CONDITIONAL: {len(self.incomplete)} instruction(s) have an "
+                "unresolved operand, so values they touch are missing from these sets"
+            )
         return peaks
 
 
-def liveness(instructions: "Sequence[Instruction]", effects: "Sequence[Effects]", *,
-             max_rounds: int = 64) -> tuple[tuple[frozenset[Access], ...], tuple[frozenset[Access], ...]]:
+def liveness(
+    instructions: "Sequence[Instruction]", effects: "Sequence[Effects]", *, max_rounds: int = 64
+) -> tuple[tuple[frozenset[Access], ...], tuple[frozenset[Access], ...]]:
     """Backward live-value analysis over the instruction stream's own control-flow graph.
 
     ``live_in[i] = (live_out[i] - defs[i]) | uses[i]`` and ``live_out[i]`` is the union over
@@ -280,8 +302,9 @@ def live_values(instructions: "Sequence[Instruction]", effects: "Sequence[Effect
     return liveness(instructions, effects)[0]
 
 
-def value_ranges(instructions: "Sequence[Instruction]", effects: "Sequence[Effects]",
-                 live_out: "Sequence[frozenset[Access]]") -> tuple[ValueRange, ...]:
+def value_ranges(
+    instructions: "Sequence[Instruction]", effects: "Sequence[Effects]", live_out: "Sequence[frozenset[Access]]"
+) -> tuple[ValueRange, ...]:
     """``[definition, last use]`` for every value the region defines.
 
     A value still live when the region ends does not get a closed range: it ESCAPES, and giving it a
@@ -300,14 +323,20 @@ def value_ranges(instructions: "Sequence[Instruction]", effects: "Sequence[Effec
                 continue
             seen.add((value, i))
             use = last_use.get(value)
-            out.append(ValueRange(value=value, defined_at=i,
-                                  last_use=(use if use is not None and use >= i else None),
-                                  escapes=value in end_live))
+            out.append(
+                ValueRange(
+                    value=value,
+                    defined_at=i,
+                    last_use=(use if use is not None and use >= i else None),
+                    escapes=value in end_live,
+                )
+            )
     return tuple(out)
 
 
-def pressure(live_in: "Sequence[frozenset[Access]]",
-             capacities: Mapping[str, int] | None = None) -> tuple[Pressure, ...]:
+def pressure(
+    live_in: "Sequence[frozenset[Access]]", capacities: Mapping[str, int] | None = None
+) -> tuple[Pressure, ...]:
     """Peak simultaneous live values per state file -- the resource a reordering spends first.
 
     A file whose capacity is not derivable reports its peak with the capacity UNKNOWN. That is not a
@@ -322,16 +351,26 @@ def pressure(live_in: "Sequence[frozenset[Access]]",
             if count > peaks.get(file_name, (0, 0))[0]:
                 peaks[file_name] = (count, index)
     caps = dict(capacities or {})
-    return tuple(Pressure(file=name, peak=count, at_index=at, capacity=caps.get(name))
-                 for name, (count, at) in sorted(peaks.items()))
+    return tuple(
+        Pressure(file=name, peak=count, at_index=at, capacity=caps.get(name))
+        for name, (count, at) in sorted(peaks.items())
+    )
 
 
-def report(instructions: "Sequence[Instruction]", effects: "Sequence[Effects]", *,
-           capacities: Mapping[str, int] | None = None) -> LivenessReport:
+def report(
+    instructions: "Sequence[Instruction]", effects: "Sequence[Effects]", *, capacities: Mapping[str, int] | None = None
+) -> LivenessReport:
     """Liveness, ranges and pressure in one pass, carrying every incompleteness forward."""
     live_in, live_out = liveness(instructions, effects)
-    incomplete = tuple(f"[{i}] {ins.mnemonic}: {'; '.join(eff.unresolved)}"
-                       for i, (ins, eff) in enumerate(zip(instructions, effects)) if eff.unresolved)
-    return LivenessReport(live_in=live_in, live_out=live_out,
-                          ranges=value_ranges(instructions, effects, live_out),
-                          pressure=pressure(live_in, capacities), incomplete=incomplete)
+    incomplete = tuple(
+        f"[{i}] {ins.mnemonic}: {'; '.join(eff.unresolved)}"
+        for i, (ins, eff) in enumerate(zip(instructions, effects))
+        if eff.unresolved
+    )
+    return LivenessReport(
+        live_in=live_in,
+        live_out=live_out,
+        ranges=value_ranges(instructions, effects, live_out),
+        pressure=pressure(live_in, capacities),
+        incomplete=incomplete,
+    )

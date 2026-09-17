@@ -5,6 +5,7 @@ the *hardware must provide*, and what the *runtime must provide* for an abstract
 exposed — plus the four lowering variants (baseline / software_visible / hardware_managed /
 oracle) that the DSE workstream evaluates to answer "expose to SW, hide in HW, or drop?".
 """
+
 from __future__ import annotations
 
 from typing import Iterable

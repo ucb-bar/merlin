@@ -34,6 +34,7 @@ direction, silently:
 Nothing here names a target, a unit, an opcode or a geometry: the unit NAMES and their kinds come
 from the producer, which is the only party that knows them.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -41,10 +42,22 @@ from dataclasses import dataclass
 from typing import Any
 
 __all__ = [
-    "ALIAS_COLLISIONS_KEY", "BUSY_PREFIX", "CONCURRENCY_UNRECORDED", "IDLE_QUANTITY",
-    "IN_PROGRAM_SUFFIX", "ObservationBlock", "OVERLAP_ACROSS_KINDS", "OVERLAP_OBSERVED",
-    "OVERLAP_PREFIX", "PARTITIONED_KEY", "SAMPLED_QUANTITY", "TIMING_CAPABILITY_KEY",
-    "TIMING_OBSERVATIONS_KEY", "UNMEASURED_UNITS_KEY", "block_from_tier_record", "concurrency_of",
+    "ALIAS_COLLISIONS_KEY",
+    "BUSY_PREFIX",
+    "CONCURRENCY_UNRECORDED",
+    "IDLE_QUANTITY",
+    "IN_PROGRAM_SUFFIX",
+    "ObservationBlock",
+    "OVERLAP_ACROSS_KINDS",
+    "OVERLAP_OBSERVED",
+    "OVERLAP_PREFIX",
+    "PARTITIONED_KEY",
+    "SAMPLED_QUANTITY",
+    "TIMING_CAPABILITY_KEY",
+    "TIMING_OBSERVATIONS_KEY",
+    "UNMEASURED_UNITS_KEY",
+    "block_from_tier_record",
+    "concurrency_of",
     "validate_block",
 ]
 
@@ -82,7 +95,8 @@ SAMPLED_QUANTITY = "sampled_cycles.dbg_tap"
 CONCURRENCY_UNRECORDED = (
     "concurrency unrecorded: this run predates the concurrency stamp. Its CYCLE counts are still "
     "comparable (cycles are concurrency-invariant); its WALL times are not comparable with any "
-    "other run's, and the concurrency it ran at cannot be recovered")
+    "other run's, and the concurrency it ran at cannot be recovered"
+)
 
 
 def concurrency_of(record: Any) -> "dict[str, Any] | str":
@@ -123,7 +137,7 @@ class ObservationBlock:
         for e in self.observations:
             q = str(e.get("quantity") or "")
             if q.startswith(BUSY_PREFIX) and q.endswith(IN_PROGRAM_SUFFIX):
-                out[q[len(BUSY_PREFIX):-len(IN_PROGRAM_SUFFIX)]] = int(e["value"])
+                out[q[len(BUSY_PREFIX) : -len(IN_PROGRAM_SUFFIX)]] = int(e["value"])
         return out
 
     def kinds(self) -> dict[str, str]:
@@ -135,7 +149,7 @@ class ObservationBlock:
             q = str(e.get("quantity") or "")
             kind = str(e.get("kind") or "")
             if kind and q.startswith(BUSY_PREFIX) and q.endswith(IN_PROGRAM_SUFFIX):
-                out[q[len(BUSY_PREFIX):-len(IN_PROGRAM_SUFFIX)]] = kind
+                out[q[len(BUSY_PREFIX) : -len(IN_PROGRAM_SUFFIX)]] = kind
         return out
 
     def quantity(self, name: str) -> int | None:
@@ -162,11 +176,13 @@ class ObservationBlock:
         return self.quantity(OVERLAP_OBSERVED)
 
     def to_dict(self) -> dict[str, Any]:
-        return {UNMEASURED_UNITS_KEY: list(self.unmeasured_units),
-                PARTITIONED_KEY: self.partitioned,
-                ALIAS_COLLISIONS_KEY: self.alias_collisions,
-                "n_observations": len(self.observations),
-                "refusals": list(self.refusals)}
+        return {
+            UNMEASURED_UNITS_KEY: list(self.unmeasured_units),
+            PARTITIONED_KEY: self.partitioned,
+            ALIAS_COLLISIONS_KEY: self.alias_collisions,
+            "n_observations": len(self.observations),
+            "refusals": list(self.refusals),
+        }
 
 
 def _numeric(value: Any) -> float | None:
@@ -188,21 +204,31 @@ def validate_block(raw: Any) -> "ObservationBlock | None":
         return None
     entries = raw.get(TIMING_OBSERVATIONS_KEY)
     if entries is None:
-        return None                     # no capability: emit nothing, not a block of zeros
+        return None  # no capability: emit nothing, not a block of zeros
     refusals: list[str] = []
     if not isinstance(entries, Sequence) or isinstance(entries, (str, bytes)):
-        return ObservationBlock((), (), True, None,
-                                (f"{TIMING_OBSERVATIONS_KEY!r} is not a list of entries, so nothing "
-                                 "in it can be placed",))
+        return ObservationBlock(
+            (),
+            (),
+            True,
+            None,
+            (f"{TIMING_OBSERVATIONS_KEY!r} is not a list of entries, so nothing in it can be placed",),
+        )
 
     unmeasured = raw.get(UNMEASURED_UNITS_KEY)
     if not isinstance(unmeasured, Sequence) or isinstance(unmeasured, (str, bytes)):
         return ObservationBlock(
-            (), (), True, None,
-            (f"the producer emitted {TIMING_OBSERVATIONS_KEY!r} without {UNMEASURED_UNITS_KEY!r}. "
-             "That field is REQUIRED and may not be defaulted to an empty list: a block that does "
-             "not say which units it failed to read is claiming a completeness it has not earned, "
-             "and an unread signal is UNMEASURED, never zero. The whole block is refused",))
+            (),
+            (),
+            True,
+            None,
+            (
+                f"the producer emitted {TIMING_OBSERVATIONS_KEY!r} without {UNMEASURED_UNITS_KEY!r}. "
+                "That field is REQUIRED and may not be defaulted to an empty list: a block that does "
+                "not say which units it failed to read is claiming a completeness it has not earned, "
+                "and an unread signal is UNMEASURED, never zero. The whole block is refused",
+            ),
+        )
 
     partitioned = raw.get(PARTITIONED_KEY)
     if not isinstance(partitioned, bool):
@@ -210,7 +236,8 @@ def validate_block(raw: Any) -> "ObservationBlock | None":
             f"the producer did not state {PARTITIONED_KEY!r}, so no overlap reading is licensed "
             "from this block; a bucket set that partitions the timeline reports zero overlap by "
             "construction and cannot be told apart from one that genuinely observed none. Treated "
-            "as partitioned (fail closed)")
+            "as partitioned (fail closed)"
+        )
         partitioned = True
 
     alias = raw.get(ALIAS_COLLISIONS_KEY)
@@ -219,7 +246,8 @@ def validate_block(raw: Any) -> "ObservationBlock | None":
         refusals.append(
             f"the producer did not carry {ALIAS_COLLISIONS_KEY!r}. A wrapping memory window maps two "
             "addresses onto one byte, so zero collisions is a property of the span this program "
-            "touched and has to be re-established per run. Recorded as UNKNOWN, not as zero")
+            "touched and has to be re-established per run. Recorded as UNKNOWN, not as zero"
+        )
 
     kept: list[dict[str, Any]] = []
     for i, entry in enumerate(entries):
@@ -232,8 +260,10 @@ def validate_block(raw: Any) -> "ObservationBlock | None":
             continue
         value = _numeric(entry.get("value"))
         if value is None:
-            refusals.append(f"{quantity}: the instrument did not report a value, so it is dropped "
-                            "rather than recorded as 0 ('not reported' is not 'cost nothing')")
+            refusals.append(
+                f"{quantity}: the instrument did not report a value, so it is dropped "
+                "rather than recorded as 0 ('not reported' is not 'cost nothing')"
+            )
             continue
         if value < 0:
             refusals.append(f"{quantity}: negative value {value!r}")
@@ -243,17 +273,18 @@ def validate_block(raw: Any) -> "ObservationBlock | None":
                 f"{quantity}: a per-unit busy count must be namespaced "
                 f"'{BUSY_PREFIX}<unit>{IN_PROGRAM_SUFFIX}'. A count taken from a running program is "
                 "CONTENDED, and an unnamespaced one can be paired with an isolation-probe constant "
-                "of the same name -- which is a different measurement")
+                "of the same name -- which is a different measurement"
+            )
             continue
         if quantity.startswith(OVERLAP_PREFIX) and partitioned:
             refusals.append(
                 f"{quantity}: the producer asserts {PARTITIONED_KEY}=true, so its buckets charge "
                 "every cycle to exactly one owner and report zero overlap whether or not the "
-                "hardware overlaps. An overlap reading from a partitioned source is not evidence")
+                "hardware overlaps. An overlap reading from a partitioned source is not evidence"
+            )
             continue
         kept.append(dict(entry))
-    return ObservationBlock(tuple(kept), tuple(str(u) for u in unmeasured), bool(partitioned),
-                            alias_n, tuple(refusals))
+    return ObservationBlock(tuple(kept), tuple(str(u) for u in unmeasured), bool(partitioned), alias_n, tuple(refusals))
 
 
 def block_from_tier_record(record: Any) -> "ObservationBlock | None":

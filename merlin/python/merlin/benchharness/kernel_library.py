@@ -55,7 +55,7 @@ class Entry:
     #: `propose` uses it to pick a candidate, and evaluation decides whether it was true.
     parametric_axes: tuple[str, ...] = ()
     cycles: int | None = None
-    provenance: str = ""              # which arm/run produced it
+    provenance: str = ""  # which arm/run produced it
     task_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -83,8 +83,12 @@ class Decision:
 
     def is_free_reuse(self) -> bool:
         """Countable as zero-cost reuse: a free level, settled, and not demoted."""
-        return (self.level in FREE_LEVELS and not self.pending_confirmation
-                and self.confirmed is not False and not self.llm_called)
+        return (
+            self.level in FREE_LEVELS
+            and not self.pending_confirmation
+            and self.confirmed is not False
+            and not self.llm_called
+        )
 
 
 class KernelLibrary:
@@ -105,13 +109,13 @@ class KernelLibrary:
         if config_id is not None:
             out = [e for e in out if e.config_id == config_id]
         # Deterministic: cheapest known kernel first, then a stable tiebreak.
-        return sorted(out, key=lambda e: (e.cycles if e.cycles is not None else 1 << 62,
-                                          e.config_id, e.kernel_path))
+        return sorted(out, key=lambda e: (e.cycles if e.cycles is not None else 1 << 62, e.config_id, e.kernel_path))
 
     # -- ladder --------------------------------------------------------------------------------
 
-    def propose(self, signature: str, config_id: str, *, family: str = "", regime: str = "",
-                config_axes: Iterable[str] = ()) -> Decision:
+    def propose(
+        self, signature: str, config_id: str, *, family: str = "", regime: str = "", config_axes: Iterable[str] = ()
+    ) -> Decision:
         """Advise a level for this (signature, config). Records the decision; calls no model.
 
         An L1 proposal comes back `pending_confirmation`. The caller must run the evaluator and pass
@@ -119,9 +123,14 @@ class KernelLibrary:
         """
         exact = self.find(signature, config_id)
         if exact:
-            d = Decision(signature, config_id, EXACT, exact[0].kernel_path,
-                         "an entry exists for this exact signature and configuration",
-                         llm_called=False)
+            d = Decision(
+                signature,
+                config_id,
+                EXACT,
+                exact[0].kernel_path,
+                "an entry exists for this exact signature and configuration",
+                llm_called=False,
+            )
             self.decisions.append(d)
             return d
 
@@ -133,29 +142,41 @@ class KernelLibrary:
                 # candidate for a different config, which is the correct default: silence is not a
                 # promise of generality.
                 if wanted and wanted <= set(e.parametric_axes):
-                    d = Decision(signature, config_id, PARAMETRIC, e.kernel_path,
-                                 f"same signature; entry claims the differing axes "
-                                 f"{sorted(wanted)}. UNCONFIRMED until it is evaluated against "
-                                 f"this configuration.",
-                                 llm_called=False, pending_confirmation=True)
+                    d = Decision(
+                        signature,
+                        config_id,
+                        PARAMETRIC,
+                        e.kernel_path,
+                        f"same signature; entry claims the differing axes "
+                        f"{sorted(wanted)}. UNCONFIRMED until it is evaluated against "
+                        f"this configuration.",
+                        llm_called=False,
+                        pending_confirmation=True,
+                    )
                     self.decisions.append(d)
                     return d
 
         if family or regime:
-            near = [e for e in self.entries
-                    if e.family == family and e.regime == regime and e.signature != signature]
+            near = [e for e in self.entries if e.family == family and e.regime == regime and e.signature != signature]
             if near:
-                seed = sorted(near, key=lambda e: (e.cycles if e.cycles is not None else 1 << 62,
-                                                   e.signature, e.kernel_path))[0]
-                d = Decision(signature, config_id, WARM_START, seed.kernel_path,
-                             f"no entry for this signature; seeding from a kernel in the same "
-                             f"family and size regime ({family}/{regime})",
-                             llm_called=True)
+                seed = sorted(
+                    near, key=lambda e: (e.cycles if e.cycles is not None else 1 << 62, e.signature, e.kernel_path)
+                )[0]
+                d = Decision(
+                    signature,
+                    config_id,
+                    WARM_START,
+                    seed.kernel_path,
+                    f"no entry for this signature; seeding from a kernel in the same "
+                    f"family and size regime ({family}/{regime})",
+                    llm_called=True,
+                )
                 self.decisions.append(d)
                 return d
 
-        d = Decision(signature, config_id, NEW, None,
-                     "no entry shares this signature, family and regime", llm_called=True)
+        d = Decision(
+            signature, config_id, NEW, None, "no entry shares this signature, family and regime", llm_called=True
+        )
         self.decisions.append(d)
         return d
 
@@ -191,8 +212,7 @@ class KernelLibrary:
         The metric that matters: compiling is not surviving, so this counts confirmations, not
         attempts. None when no L1 was ever proposed -- distinct from a depth of zero.
         """
-        l1 = [d for d in self.decisions
-              if d.level == PARAMETRIC or d.demoted_from == PARAMETRIC]
+        l1 = [d for d in self.decisions if d.level == PARAMETRIC or d.demoted_from == PARAMETRIC]
         if not l1:
             return None
         return sum(1 for d in l1 if d.confirmed) / float(len(l1))
@@ -210,8 +230,7 @@ class KernelLibrary:
             "entries": len(self.entries),
             "decisions": len(self.decisions),
             "pending_confirmation": sum(1 for d in self.decisions if d.pending_confirmation),
-            "by_level": {lv: sum(1 for d in settled if d.level == lv)
-                         for lv in (EXACT, PARAMETRIC, WARM_START, NEW)},
+            "by_level": {lv: sum(1 for d in settled if d.level == lv) for lv in (EXACT, PARAMETRIC, WARM_START, NEW)},
             "demoted": sum(1 for d in self.decisions if d.demoted_from),
             "llm_calls": sum(1 for d in settled if d.llm_called),
             "reuse_rate": self.reuse_rate(),
@@ -226,11 +245,11 @@ class KernelLibrary:
         if base is None:
             raise ValueError("no root given for the kernel library")
         base.mkdir(parents=True, exist_ok=True)
-        (base / "entries.json").write_text(
-            json.dumps([e.to_dict() for e in self.entries], indent=2, sort_keys=True))
+        (base / "entries.json").write_text(json.dumps([e.to_dict() for e in self.entries], indent=2, sort_keys=True))
         # The decision log is the ledger's counterpart: written whether or not a model was called.
         (base / "reuse_decisions.json").write_text(
-            json.dumps([d.to_dict() for d in self.decisions], indent=2, sort_keys=True))
+            json.dumps([d.to_dict() for d in self.decisions], indent=2, sort_keys=True)
+        )
         (base / "reuse_summary.json").write_text(json.dumps(self.summary(), indent=2, sort_keys=True))
         return base
 
@@ -247,8 +266,7 @@ class KernelLibrary:
         return lib
 
 
-def audit_against_ledger(decisions: Sequence[Decision],
-                         ledger_calls: int) -> dict[str, Any]:
+def audit_against_ledger(decisions: Sequence[Decision], ledger_calls: int) -> dict[str, Any]:
     """Cross-check the decision log against what the accounting says was actually spent.
 
     They are produced independently -- the log before dispatch, the ledger from transcripts -- so

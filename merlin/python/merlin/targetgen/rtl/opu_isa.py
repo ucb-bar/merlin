@@ -27,15 +27,27 @@ derived field carries ``{value, derived, source, evidence}`` like the other fact
 package, and a field that cannot be grounded is reported ``derived=False`` with the reason rather than
 guessed.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["Encoding", "IsaDerivation", "bit_literal_defs", "chisel_enum_ordinals", "crosscheck",
-           "derive", "insn_r_macros", "instruction_props", "scala_call_args", "scala_param_names",
-           "unit_instruction_forms", "vector_unit_params"]
+__all__ = [
+    "Encoding",
+    "IsaDerivation",
+    "bit_literal_defs",
+    "chisel_enum_ordinals",
+    "crosscheck",
+    "derive",
+    "insn_r_macros",
+    "instruction_props",
+    "scala_call_args",
+    "scala_param_names",
+    "unit_instruction_forms",
+    "vector_unit_params",
+]
 
 #: A ``ChiselEnum`` placeholder — a reserved slot that consumes an ordinal without naming it.
 _PLACEHOLDER = "_"
@@ -70,7 +82,7 @@ def _block_after(text: str, header: str) -> str | None:
         elif text[k] == "}":
             depth -= 1
             if depth == 0:
-                return text[j + 1:k]
+                return text[j + 1 : k]
     return None
 
 
@@ -93,7 +105,7 @@ def _balanced_after(text: str, header: str, opener: str = "{", closer: str = "}"
         elif text[k] == closer:
             depth -= 1
             if depth == 0:
-                return text[j + 1:k]
+                return text[j + 1 : k]
     return None
 
 
@@ -149,8 +161,7 @@ def scala_param_names(text: str, decl: str) -> list[str]:
     return names
 
 
-def vector_unit_params(config_text: str, config_class: str, *,
-                       mixin_text: str | None = None) -> dict[str, int]:
+def vector_unit_params(config_text: str, config_class: str, *, mixin_text: str | None = None) -> dict[str, int]:
     """``{param_name: value}`` for the vector-unit mixin a config instantiates.
 
     The mixin is DISCOVERED rather than named: whichever call in the config's body has a simple name
@@ -170,14 +181,13 @@ def vector_unit_params(config_text: str, config_class: str, *,
     every consumer of this needs a number that is *right*, and a defaulted vector length produces a
     plausible, wrong tile edge.
     """
-    body = _balanced_after(_strip_comments(config_text), f"class {config_class} extends Config(",
-                           "(", ")")
+    body = _balanced_after(_strip_comments(config_text), f"class {config_class} extends Config(", "(", ")")
     if body is None:
         return {}
     callee = None
     for mixin in _split_top_level(body, "+"):
         head = mixin.strip().removeprefix("new ").strip().split("(", 1)[0]
-        simple = head.strip().rsplit(".", 1)[-1]      # drop any package qualification
+        simple = head.strip().rsplit(".", 1)[-1]  # drop any package qualification
         if simple.endswith(_VECTOR_UNIT_MIXIN_SUFFIX):
             callee = simple
             break
@@ -188,7 +198,7 @@ def vector_unit_params(config_text: str, config_class: str, *,
         return {}
     names = scala_param_names(mixin_text, f"class {callee}") if mixin_text else []
     out: dict[str, int] = {}
-    position = 0                          # only POSITIONAL arguments advance this
+    position = 0  # only POSITIONAL arguments advance this
     for arg in args:
         name, sep, rhs = arg.partition("=")
         if sep and name.strip().isidentifier():
@@ -201,7 +211,7 @@ def vector_unit_params(config_text: str, config_class: str, *,
         try:
             value = int(token.removesuffix(".U").strip(), 0)
         except ValueError:
-            continue                      # a params object or an Option, not a scalar we can bind
+            continue  # a params object or an Option, not a scalar we can bind
         if key:
             out[key] = value
     return out
@@ -235,10 +245,10 @@ def chisel_enum_ordinals(text: str, enum_name: str) -> dict[str, int]:
         line = raw.strip()
         if not line.startswith("val ") or "=" not in line:
             continue
-        names_part, value_part = line[len("val "):].split("=", 1)
+        names_part, value_part = line[len("val ") :].split("=", 1)
         value_part = value_part.strip()
         if not value_part.startswith("Value"):
-            continue                      # `val x = something_else` is not an enum slot
+            continue  # `val x = something_else` is not an enum slot
         names = [n.strip() for n in names_part.split(",") if n.strip()]
         if not names:
             continue
@@ -260,7 +270,7 @@ def _explicit_ordinal(value_part: str) -> int | None:
     """The integer in ``Value(0x40.U)``, or None for a bare ``Value``."""
     if not value_part.startswith("Value("):
         return None
-    inner = value_part[len("Value("):]
+    inner = value_part[len("Value(") :]
     close = inner.find(")")
     if close < 0:
         return None
@@ -288,7 +298,7 @@ def bit_literal_defs(text: str, container: str) -> dict[str, int]:
         line = raw.strip()
         if not line.startswith("def ") or "=" not in line:
             continue
-        name, value = line[len("def "):].split("=", 1)
+        name, value = line[len("def ") :].split("=", 1)
         name = name.strip()
         if not name or not name.isidentifier():
             continue
@@ -333,8 +343,8 @@ def instruction_props(text: str) -> dict[str, dict[str, Any]]:
         line = raw.strip()
         if not line.startswith("object ") or "val props" not in line:
             continue
-        name = line[len("object "):].split(None, 1)[0].strip()
-        seq = line[line.find("Seq(") + 4:] if "Seq(" in line else ""
+        name = line[len("object ") :].split(None, 1)[0].strip()
+        seq = line[line.find("Seq(") + 4 :] if "Seq(" in line else ""
         rec: dict[str, Any] = {"funct6_member": None, "flags": {}}
         for tok in seq.split(","):
             # The final token carries the closing `) }` of both the Seq and the object body, possibly
@@ -345,12 +355,12 @@ def instruction_props(text: str) -> dict[str, dict[str, Any]]:
             if not tok:
                 continue
             if tok.startswith("F6("):
-                member = tok[len("F6("):].rstrip(")").strip()
+                member = tok[len("F6(") :].rstrip(")").strip()
                 rec["funct6_member"] = member.rsplit(".", 1)[-1] if "." in member else member
             elif "." in tok:
                 key, _, val = tok.partition(".")
                 if val in ("Y", "N"):
-                    rec["flags"][key.strip()] = (val == "Y")
+                    rec["flags"][key.strip()] = val == "Y"
         if rec["funct6_member"] is not None:
             out[name] = rec
     return out
@@ -380,7 +390,7 @@ def unit_instruction_forms(text: str, seq_name: str) -> list[tuple[str, str]]:
                 end = k
                 break
     out: list[tuple[str, str]] = []
-    for tok in _strip_comments(text[j + 4:end]).split(","):
+    for tok in _strip_comments(text[j + 4 : end]).split(","):
         tok = tok.strip()
         if not tok:
             continue
@@ -406,11 +416,11 @@ def insn_r_macros(text: str) -> dict[str, dict[str, Any]]:
         line = raw.strip()
         if not line.startswith("#define ") or "(" not in line:
             continue
-        head = line[len("#define "):]
-        name = head[:head.find("(")].strip()
-        args = [a.strip() for a in head[head.find("(") + 1:head.find(")")].split(",") if a.strip()]
+        head = line[len("#define ") :]
+        name = head[: head.find("(")].strip()
+        args = [a.strip() for a in head[head.find("(") + 1 : head.find(")")].split(",") if a.strip()]
         # The body may continue on following lines via a trailing backslash.
-        body, k = head[head.find(")") + 1:], idx
+        body, k = head[head.find(")") + 1 :], idx
         while body.rstrip().endswith("\\") and k + 1 < len(lines):
             k += 1
             body = body.rstrip().rstrip("\\") + lines[k]
@@ -419,16 +429,22 @@ def insn_r_macros(text: str) -> dict[str, dict[str, Any]]:
         if i < 0:
             continue
         fields: list[int] = []
-        for tok in body[i + len(marker):].split(","):
+        for tok in body[i + len(marker) :].split(","):
             got = _c_int(tok)
             if got is None:
-                break                      # the register operands are strings, not literals
+                break  # the register operands are strings, not literals
             fields.append(got)
         if len(fields) < 3:
             continue
         opcode, funct3, funct7 = fields[0], fields[1], fields[2]
-        out[name] = {"opcode": opcode, "funct3": funct3, "funct7": funct7,
-                     "funct6": funct7 >> 1, "vm": funct7 & 1, "args": args}
+        out[name] = {
+            "opcode": opcode,
+            "funct3": funct3,
+            "funct7": funct7,
+            "funct6": funct7 >> 1,
+            "vm": funct7 & 1,
+            "args": args,
+        }
     return out
 
 
@@ -452,7 +468,7 @@ class Encoding:
     """One instruction's fields, with where each came from."""
 
     mnemonic: str
-    form: str                       # the funct3 class this instance was instantiated as (VV / VX / ...)
+    form: str  # the funct3 class this instance was instantiated as (VV / VX / ...)
     opcode: int
     funct3: int
     funct6: int
@@ -467,8 +483,7 @@ class Encoding:
     def insn_r(self, rd: str, rs1: str, rs2: str) -> str:
         """The ``.insn r`` directive that encodes this instruction — the only way to emit it, since no
         assembler knows the mnemonic."""
-        return (f".insn r {self.opcode:#x}, {self.funct3:#x}, {self.funct7:#x}, "
-                f"{rd}, {rs1}, {rs2}")
+        return f".insn r {self.opcode:#x}, {self.funct3:#x}, {self.funct7:#x}, {rd}, {rs1}, {rs2}"
 
 
 @dataclass(frozen=True)
@@ -486,8 +501,7 @@ class IsaDerivation:
 
     @property
     def ok(self) -> bool:
-        return (not self.gaps and bool(self.encodings)
-                and all(c.get("agrees") for c in self.crosschecks))
+        return not self.gaps and bool(self.encodings) and all(c.get("agrees") for c in self.crosschecks)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -496,16 +510,32 @@ class IsaDerivation:
             "gaps": list(self.gaps),
             "crosschecks": [dict(c) for c in self.crosschecks],
             "encodings": {
-                name: {"mnemonic": e.mnemonic, "form": e.form, "opcode": e.opcode,
-                       "funct3": e.funct3, "funct6": e.funct6, "funct7": e.funct7,
-                       "funct6_member": e.funct6_member, "flags": dict(e.flags)}
-                for name, e in sorted(self.encodings.items())},
+                name: {
+                    "mnemonic": e.mnemonic,
+                    "form": e.form,
+                    "opcode": e.opcode,
+                    "funct3": e.funct3,
+                    "funct6": e.funct6,
+                    "funct7": e.funct7,
+                    "funct6_member": e.funct6_member,
+                    "flags": dict(e.flags),
+                }
+                for name, e in sorted(self.encodings.items())
+            },
         }
 
 
-def derive(*, consts: "str | Path", instructions: "str | Path", params: "str | Path",
-           funct6_enum: str, consts_container: str, insn_seq: str,
-           opcode_name: str, form_funct3: dict[str, str]) -> IsaDerivation:
+def derive(
+    *,
+    consts: "str | Path",
+    instructions: "str | Path",
+    params: "str | Path",
+    funct6_enum: str,
+    consts_container: str,
+    insn_seq: str,
+    opcode_name: str,
+    form_funct3: dict[str, str],
+) -> IsaDerivation:
     """Derive every instruction in ``insn_seq`` from the three Chisel sources.
 
     ``form_funct3`` maps an instantiation form to the consts name holding its funct3 (e.g.
@@ -553,15 +583,19 @@ def derive(*, consts: "str | Path", instructions: "str | Path", params: "str | P
             continue
         if opcode is None:
             continue
-        encodings[obj] = Encoding(mnemonic=obj, form=form, opcode=opcode,
-                                  funct3=consts_defs[f3_name], funct6=ordinals[member],
-                                  funct6_member=member, flags=dict(prop["flags"]))
-    return IsaDerivation(encodings=encodings, sources={k: str(v) for k, v in paths.items()},
-                         gaps=tuple(gaps))
+        encodings[obj] = Encoding(
+            mnemonic=obj,
+            form=form,
+            opcode=opcode,
+            funct3=consts_defs[f3_name],
+            funct6=ordinals[member],
+            funct6_member=member,
+            flags=dict(prop["flags"]),
+        )
+    return IsaDerivation(encodings=encodings, sources={k: str(v) for k, v in paths.items()}, gaps=tuple(gaps))
 
 
-def crosscheck_sources(derivation: IsaDerivation, sources: dict, *,
-                       pairs: dict[str, str]) -> dict:
+def crosscheck_sources(derivation: IsaDerivation, sources: dict, *, pairs: dict[str, str]) -> dict:
     """Cross-check a derivation against SEVERAL independent sources and report every dispute.
 
     :func:`crosscheck` compares against one header and fails closed on any disagreement, which is the
@@ -587,8 +621,10 @@ def crosscheck_sources(derivation: IsaDerivation, sources: dict, *,
     per_source: dict[str, dict] = {}
     for label, path in (sources or {}).items():
         try:
-            per_source[str(label)] = {"macros": insn_r_macros(Path(path).read_text(encoding="utf-8")),
-                                      "path": str(path)}
+            per_source[str(label)] = {
+                "macros": insn_r_macros(Path(path).read_text(encoding="utf-8")),
+                "path": str(path),
+            }
         except OSError as exc:
             per_source[str(label)] = {"unavailable": f"{type(exc).__name__}: {exc}", "path": str(path)}
 
@@ -596,8 +632,7 @@ def crosscheck_sources(derivation: IsaDerivation, sources: dict, *,
     disputed: list[dict] = []
     for name, enc in sorted(derivation.encodings.items()):
         macro_name = pairs.get(name)
-        row = {"instruction": name, "macro": macro_name,
-               "derived": {f: getattr(enc, f) for f in fields}, "sources": {}}
+        row = {"instruction": name, "macro": macro_name, "derived": {f: getattr(enc, f) for f in fields}, "sources": {}}
         for label, blob in per_source.items():
             if "unavailable" in blob:
                 row["sources"][label] = {"status": "unavailable", "reason": blob["unavailable"]}
@@ -606,14 +641,11 @@ def crosscheck_sources(derivation: IsaDerivation, sources: dict, *,
             if macro is None:
                 row["sources"][label] = {"status": "absent"}
                 continue
-            row["sources"][label] = {"status": "present",
-                                     **{f: macro[f] for f in fields if f in macro}}
+            row["sources"][label] = {"status": "present", **{f: macro[f] for f in fields if f in macro}}
         for f in fields:
-            vals = {lab: s[f] for lab, s in row["sources"].items()
-                    if s.get("status") == "present" and f in s}
+            vals = {lab: s[f] for lab, s in row["sources"].items() if s.get("status") == "present" and f in s}
             if len(set(vals.values()) | {row["derived"][f]}) > 1:
-                disputed.append({"instruction": name, "field": f,
-                                 "derived": row["derived"][f], "sources": vals})
+                disputed.append({"instruction": name, "field": f, "derived": row["derived"][f], "sources": vals})
         rows.append(row)
 
     readable = [lab for lab, b in per_source.items() if "unavailable" not in b]
@@ -637,8 +669,7 @@ def crosscheck_sources(derivation: IsaDerivation, sources: dict, *,
     }
 
 
-def crosscheck(derivation: IsaDerivation, header: "str | Path", *,
-               pairs: dict[str, str]) -> IsaDerivation:
+def crosscheck(derivation: IsaDerivation, header: "str | Path", *, pairs: dict[str, str]) -> IsaDerivation:
     """Check the derivation against a C header's ``.insn r`` literals and record the result.
 
     ``pairs`` maps a derived instruction name to the header's macro name for it (the two vocabularies
@@ -650,33 +681,49 @@ def crosscheck(derivation: IsaDerivation, header: "str | Path", *,
         macros = insn_r_macros(Path(header).read_text(encoding="utf-8"))
     except OSError as exc:
         return IsaDerivation(
-            encodings=derivation.encodings, sources={**derivation.sources, "header": str(header)},
+            encodings=derivation.encodings,
+            sources={**derivation.sources, "header": str(header)},
             gaps=derivation.gaps,
-            crosschecks=derivation.crosschecks + ({"agrees": False, "reason": f"unreadable: {exc}"},))
+            crosschecks=derivation.crosschecks + ({"agrees": False, "reason": f"unreadable: {exc}"},),
+        )
 
     records: list[dict[str, Any]] = []
     for name, enc in sorted(derivation.encodings.items()):
         macro_name = pairs.get(name)
         if macro_name is None:
-            records.append({"instruction": name, "agrees": False,
-                            "reason": "no cross-check macro declared for this instruction"})
+            records.append(
+                {"instruction": name, "agrees": False, "reason": "no cross-check macro declared for this instruction"}
+            )
             continue
         macro = macros.get(macro_name)
         if macro is None:
-            records.append({"instruction": name, "macro": macro_name, "agrees": False,
-                            "reason": f"macro {macro_name!r} not found in the header"})
+            records.append(
+                {
+                    "instruction": name,
+                    "macro": macro_name,
+                    "agrees": False,
+                    "reason": f"macro {macro_name!r} not found in the header",
+                }
+            )
             continue
-        disagreements = [f"{f}: rtl={got} header={macro[f]}"
-                         for f, got in (("opcode", enc.opcode), ("funct3", enc.funct3),
-                                        ("funct6", enc.funct6))
-                         if macro[f] != got]
-        records.append({"instruction": name, "macro": macro_name,
-                        "agrees": not disagreements,
-                        "fields": {"opcode": enc.opcode, "funct3": enc.funct3,
-                                   "funct6": enc.funct6, "funct7": enc.funct7},
-                        "macro_args": macro["args"],
-                        "reason": "; ".join(disagreements)})
-    return IsaDerivation(encodings=derivation.encodings,
-                         sources={**derivation.sources, "header": str(header)},
-                         gaps=derivation.gaps,
-                         crosschecks=derivation.crosschecks + tuple(records))
+        disagreements = [
+            f"{f}: rtl={got} header={macro[f]}"
+            for f, got in (("opcode", enc.opcode), ("funct3", enc.funct3), ("funct6", enc.funct6))
+            if macro[f] != got
+        ]
+        records.append(
+            {
+                "instruction": name,
+                "macro": macro_name,
+                "agrees": not disagreements,
+                "fields": {"opcode": enc.opcode, "funct3": enc.funct3, "funct6": enc.funct6, "funct7": enc.funct7},
+                "macro_args": macro["args"],
+                "reason": "; ".join(disagreements),
+            }
+        )
+    return IsaDerivation(
+        encodings=derivation.encodings,
+        sources={**derivation.sources, "header": str(header)},
+        gaps=derivation.gaps,
+        crosschecks=derivation.crosschecks + tuple(records),
+    )

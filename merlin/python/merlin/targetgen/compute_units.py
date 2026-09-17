@@ -19,6 +19,7 @@ Compute units may **compose** (`contains`): a unit can embed others (e.g. a gemm
 inside a radiance cluster), and its *effective* capability is the union of itself and what it
 contains — so gemmini-mx works standalone or as a sub-unit.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
@@ -62,11 +63,11 @@ class SemanticCapability:
 
     family: str
     dtypes: tuple[str, ...] = ()
-    ranks: tuple[int, ...] = ()           # legal tensor ranks (e.g. (2, 3) for 2D + batched); () = any
-    transpose: bool = True                # transposed-operand variants legal where applicable
-    arbitrary_mnk: bool = True            # M/N/K need not be tile multiples (tails handled)
-    batch: bool = True                    # batch dimensions supported
-    layouts: tuple[str, ...] = ()         # legal layout tags (coarse); () = unconstrained
+    ranks: tuple[int, ...] = ()  # legal tensor ranks (e.g. (2, 3) for 2D + batched); () = any
+    transpose: bool = True  # transposed-operand variants legal where applicable
+    arbitrary_mnk: bool = True  # M/N/K need not be tile multiples (tails handled)
+    batch: bool = True  # batch dimensions supported
+    layouts: tuple[str, ...] = ()  # legal layout tags (coarse); () = unconstrained
     #: Which compute-unit KINDS provide this family on this target — the engine attribution.
     #:
     #: The fold below merges every unit's capabilities into one family -> capability map and, until
@@ -94,10 +95,10 @@ class SemanticCapability:
 class ComputeUnit:
     name: str
     kind: str
-    dtypes: tuple[str, ...] = ()          # quant_format names this unit computes on
+    dtypes: tuple[str, ...] = ()  # quant_format names this unit computes on
     ops: tuple[str, ...] = ()
     accumulate: tuple[AccumRule, ...] = ()
-    scaling: str | None = None            # a quant_formats SCALE_KIND (per_channel/block_e8m0/none/...)
+    scaling: str | None = None  # a quant_formats SCALE_KIND (per_channel/block_e8m0/none/...)
     requant: dict[str, Any] | None = None  # opaque {ref: <out-of-tree lowering id>}; not interpreted
     contains: tuple[str, ...] = ()
     semantic_capabilities: tuple[SemanticCapability, ...] = ()
@@ -135,8 +136,7 @@ class ComputeUnit:
         # accumulator on the way out (the COMMIT epilogue), and it cannot run one on its own. Claiming
         # the composed form here would route a free-standing batch norm onto hardware that has no way
         # to execute it.
-        return any(cap.family == family and not cap.composed_with
-                   for cap in self.semantic_capabilities)
+        return any(cap.family == family and not cap.composed_with for cap in self.semantic_capabilities)
 
 
 def _accum(raw: Any) -> AccumRule:
@@ -146,20 +146,25 @@ def _accum(raw: Any) -> AccumRule:
 def _sem_cap(raw: dict[str, Any], unit_name: str) -> SemanticCapability:
     family = raw.get("family")
     if not _sf.is_family(family):
-        raise ValueError(f"compute unit {unit_name!r}: semantic_capabilities family {family!r} not in "
-                         f"{sorted(_sf.FAMILIES)}")
+        raise ValueError(
+            f"compute unit {unit_name!r}: semantic_capabilities family {family!r} not in {sorted(_sf.FAMILIES)}"
+        )
     if raw.get("engines"):
         # Refused rather than honoured: engine attribution is DERIVED from the declaring unit's kind
         # (see SemanticCapability.engines). Letting a contract author it would permit exactly the drift
         # the derivation exists to prevent -- a unit of kind "vector" declaring that its capability
         # runs on a systolic array, which no reader could then contradict.
-        raise ValueError(f"compute unit {unit_name!r}: semantic_capability {family!r} declares "
-                         f"'engines'; attribution is derived from the unit's kind, not authored")
+        raise ValueError(
+            f"compute unit {unit_name!r}: semantic_capability {family!r} declares "
+            f"'engines'; attribution is derived from the unit's kind, not authored"
+        )
     dtypes = tuple(raw.get("dtypes", ()) or ())
     unknown = [d for d in dtypes if not qf.has(d)]
     if unknown:
-        raise ValueError(f"compute unit {unit_name!r}: semantic_capability {family!r} unknown quant "
-                         f"formats {unknown} (known: {qf.names()})")
+        raise ValueError(
+            f"compute unit {unit_name!r}: semantic_capability {family!r} unknown quant "
+            f"formats {unknown} (known: {qf.names()})"
+        )
     return SemanticCapability(
         family=family,
         dtypes=dtypes,
@@ -194,8 +199,7 @@ def _derived_sem_caps(raw: dict[str, Any], unit_name: str) -> tuple[SemanticCapa
         family = _sf.from_op(op)
         if family is not None and family not in families:
             families.append(family)
-    return tuple(SemanticCapability(family=f, dtypes=dtypes, notes=f"derived from {unit_name!r} ops")
-                 for f in families)
+    return tuple(SemanticCapability(family=f, dtypes=dtypes, notes=f"derived from {unit_name!r} ops") for f in families)
 
 
 def _unit(raw: dict[str, Any]) -> ComputeUnit:
@@ -205,19 +209,19 @@ def _unit(raw: dict[str, Any]) -> ComputeUnit:
     dtypes = tuple(raw.get("dtypes", ()) or ())
     unknown = [d for d in dtypes if not qf.has(d)]
     if unknown:
-        raise ValueError(f"compute unit {raw.get('name')!r}: unknown quant formats {unknown} "
-                         f"(known: {qf.names()})")
+        raise ValueError(f"compute unit {raw.get('name')!r}: unknown quant formats {unknown} (known: {qf.names()})")
     scaling = raw.get("scaling")
     if scaling is not None and scaling not in qf.SCALE_KINDS:
-        raise ValueError(f"compute unit {raw.get('name')!r}: scaling {scaling!r} not in "
-                         f"{sorted(qf.SCALE_KINDS)}")
+        raise ValueError(f"compute unit {raw.get('name')!r}: scaling {scaling!r} not in {sorted(qf.SCALE_KINDS)}")
     name = raw["name"]
     exposure = raw.get("exposure")
     if exposure is not None:
-        from . import families                  # lazy: families is a sibling registry, not a dependency
+        from . import families  # lazy: families is a sibling registry, not a dependency
+
         if exposure not in families.ENDPOINT_KINDS:
-            raise ValueError(f"compute unit {raw.get('name')!r}: exposure {exposure!r} not in "
-                             f"{list(families.ENDPOINT_KINDS)}")
+            raise ValueError(
+                f"compute unit {raw.get('name')!r}: exposure {exposure!r} not in {list(families.ENDPOINT_KINDS)}"
+            )
     return ComputeUnit(
         name=name,
         kind=kind,
@@ -229,9 +233,11 @@ def _unit(raw: dict[str, Any]) -> ComputeUnit:
         contains=tuple(raw.get("contains", ()) or ()),
         # An explicit declaration always wins; derive from this unit's own ops only when absent, so a
         # target that DOES declare its semantic block is completely unaffected.
-        semantic_capabilities=(tuple(_sem_cap(s, name) for s in raw["semantic_capabilities"])
-                               if raw.get("semantic_capabilities")
-                               else _derived_sem_caps(raw, name)),
+        semantic_capabilities=(
+            tuple(_sem_cap(s, name) for s in raw["semantic_capabilities"])
+            if raw.get("semantic_capabilities")
+            else _derived_sem_caps(raw, name)
+        ),
         exposure=exposure,
     )
 
@@ -254,6 +260,7 @@ def resolve_exposure(unit: ComputeUnit, *, target_endpoint_kind: str | None = No
     if target_endpoint_kind is not None:
         return target_endpoint_kind
     from . import families
+
     return families.family_profile(unit.kind).endpoint_kind_default
 
 
@@ -290,8 +297,14 @@ def effective(unit: ComputeUnit, all_units: list[ComputeUnit]) -> ComputeUnit:
         accum += [a for a in child.accumulate if a not in accum]
         sem += [s for s in child.semantic_capabilities if s not in sem]
     return ComputeUnit(
-        name=unit.name, kind=unit.kind, dtypes=tuple(dtypes), ops=tuple(ops),
-        accumulate=tuple(accum), scaling=unit.scaling, requant=unit.requant, contains=unit.contains,
+        name=unit.name,
+        kind=unit.kind,
+        dtypes=tuple(dtypes),
+        ops=tuple(ops),
+        accumulate=tuple(accum),
+        scaling=unit.scaling,
+        requant=unit.requant,
+        contains=unit.contains,
         semantic_capabilities=tuple(sem),
         # Composition unions CAPABILITY (what can be computed), not exposure: how software drives this
         # unit is a property of this unit, and inheriting a child's would silently retarget the parent.
@@ -322,6 +335,7 @@ def _merge_caps(a: SemanticCapability, b: SemanticCapability) -> SemanticCapabil
     it standalone, so the restriction must not survive the merge. Unioning it would let one unit's
     limitation constrain another unit's freedom; an empty intersection correctly means "standalone".
     """
+
     def _u(x: tuple, y: tuple) -> tuple:
         out = list(x)
         out += [v for v in y if v not in out]
@@ -379,8 +393,7 @@ def providers_of(family: str, units: list[ComputeUnit]) -> tuple[tuple[str, str]
     question is which piece of silicon computes the family -- a cluster does not acquire a mesh's
     contraction by containing it, it acquires the mesh.
     """
-    return tuple((u.name, u.kind) for u in units
-                 if any(c.family == family for c in u.semantic_capabilities))
+    return tuple((u.name, u.kind) for u in units if any(c.family == family for c in u.semantic_capabilities))
 
 
 def semantic_engine_map(units: list[ComputeUnit]) -> dict[str, tuple[tuple[str, str], ...]]:

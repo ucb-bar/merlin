@@ -13,12 +13,12 @@ without inspecting a model name, tensor shape, dtype recipe, or target.  Other m
 left for the existing libm path.  It is an alternative to ``fuse_quantize_round_convert``; enabling
 both would erase the round before this stage and is rejected by the lowering entry point.
 """
+
 from __future__ import annotations
 
 import subprocess
 import tempfile
 from pathlib import Path
-
 
 FEATURE = "lower_roundeven_to_intrinsic"
 MARKER = "__merlin_lower_roundeven_to_intrinsic__"
@@ -27,8 +27,9 @@ REPORT_TOKEN = "OK roundeven_intrinsic"
 
 def _edit_pipeline(passes: list[str]) -> list[str]:
     """Insert the runner-owned marker after linalg-to-loop conversion."""
-    matches = [i for i, p in enumerate(passes)
-               if "convert-linalg-to-loops" in p or "convert-linalg-to-parallel-loops" in p]
+    matches = [
+        i for i, p in enumerate(passes) if "convert-linalg-to-loops" in p or "convert-linalg-to-parallel-loops" in p
+    ]
     if not matches:
         raise ValueError(f"{FEATURE} requires a linalg-to-loops lowering stage")
     i = max(matches) + 1
@@ -39,17 +40,20 @@ def ensure_registered() -> str:
     from .impr_features import ImprFeature, known, register
 
     if FEATURE not in known():
-        register(ImprFeature(
-            name=FEATURE,
-            action_class="PASS",
-            description=(
-                "Replace math.roundeven with the semantically identical llvm.intr.roundeven after "
-                "linalg-to-loop conversion. This prevents convert-math-to-libm from emitting a "
-                "scalar roundevenf call while avoiding the large ordinary-arithmetic expansion of "
-                "fuse_quantize_round_convert. Structure-only, target/model/shape independent, and "
-                "default-off; mutually exclusive with fuse_quantize_round_convert."),
-            edit_pipeline=_edit_pipeline,
-        ))
+        register(
+            ImprFeature(
+                name=FEATURE,
+                action_class="PASS",
+                description=(
+                    "Replace math.roundeven with the semantically identical llvm.intr.roundeven after "
+                    "linalg-to-loop conversion. This prevents convert-math-to-libm from emitting a "
+                    "scalar roundevenf call while avoiding the large ordinary-arithmetic expansion of "
+                    "fuse_quantize_round_convert. Structure-only, target/model/shape independent, and "
+                    "default-off; mutually exclusive with fuse_quantize_round_convert."
+                ),
+                edit_pipeline=_edit_pipeline,
+            )
+        )
     return FEATURE
 
 
@@ -110,17 +114,14 @@ def apply_for_test(mlir_text: str) -> tuple[str, int]:
     src, script = work / "in.mlir", work / "run.py"
     src.write_text(mlir_text, encoding="utf-8")
     script.write_text(
-        "import sys\nfrom torch_mlir import ir\n"
-        + RUNNER_PRELUDE.split("_RI_MARKER =", 1)[0]
-        + "ctx = ir.Context()\n"
+        "import sys\nfrom torch_mlir import ir\n" + RUNNER_PRELUDE.split("_RI_MARKER =", 1)[0] + "ctx = ir.Context()\n"
         "with open(sys.argv[1]) as f: module = ir.Module.parse(f.read(), ctx)\n"
         "n = _lower_roundeven_intrinsics(ctx, module)\n"
         "print('COUNT', n)\nprint('MODULE_BEGIN')\nprint(module.operation)\n",
-        encoding="utf-8")
-    proc = subprocess.run([str(m2m_python()), str(script), str(src)], capture_output=True,
-                          text=True, timeout=120)
+        encoding="utf-8",
+    )
+    proc = subprocess.run([str(m2m_python()), str(script), str(src)], capture_output=True, text=True, timeout=120)
     if proc.returncode != 0:
         raise RuntimeError(f"roundeven intrinsic rewrite failed:\n{proc.stdout}\n{proc.stderr}")
-    count = int(next(line.split()[1] for line in proc.stdout.splitlines()
-                     if line.startswith("COUNT ")))
+    count = int(next(line.split()[1] for line in proc.stdout.splitlines() if line.startswith("COUNT ")))
     return proc.stdout.split("MODULE_BEGIN\n", 1)[1], count

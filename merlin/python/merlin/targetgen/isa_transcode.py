@@ -25,6 +25,7 @@ No target-name literal, no ``re``: field positions and opcode values are read fr
 the rv32 side uses the fixed, external standard-RISC-V field positions (a property of the stock
 toolchain's ISA, not of any target).
 """
+
 from __future__ import annotations
 
 import struct
@@ -44,18 +45,18 @@ _LUI, _AUIPC, _JAL, _JALR, _SYSTEM = 0x37, 0x17, 0x6F, 0x67, 0x73
 # "the result was there". Every target whose decoder defines MISC_MEM gains it; one whose decoder does
 # not is still refused by `encode`, which checks the DERIVED opcode table.
 _MISC_MEM = 0x0F
-_OP_FP = 0x53                        # zfinx FP is register-register (GPRs)
-_FMA = {0x43, 0x47, 0x4B, 0x4F}      # MADD / MSUB / NMSUB / NMADD — fused multiply-add (4 source regs)
+_OP_FP = 0x53  # zfinx FP is register-register (GPRs)
+_FMA = {0x43, 0x47, 0x4B, 0x4F}  # MADD / MSUB / NMSUB / NMADD — fused multiply-add (4 source regs)
 # CUSTOM0..3 (the SIMT-control / accelerator opcodes: tmc, wspawn, split, join, barrier, ...) are
 # register-register `.insn r` forms — opcode + f3 + f7 select the operation, rd/rs1/rs2 are GPRs. Standard
 # RISC-V custom-opcode values; the target's own table is still what the packer uses (compared as data).
 _CUSTOM = {0x0B, 0x2B, 0x5B, 0x7B}
 _ITYPE = {_LOAD, _OP_IMM, _JALR, _SYSTEM, _MISC_MEM}
 _STYPE = {_STORE}
-_BTYPE = {0x63}          # BRANCH
+_BTYPE = {0x63}  # BRANCH
 _JTYPE = {_JAL}
 _UTYPE = {_LUI, _AUIPC}
-_RTYPE = {_OP, _OP_FP} | _CUSTOM   # register-register (incl. zfinx FP on GPRs + the SIMT CUSTOM ops)
+_RTYPE = {_OP, _OP_FP} | _CUSTOM  # register-register (incl. zfinx FP on GPRs + the SIMT CUSTOM ops)
 
 
 # Standard RISC-V opcode VALUES for the FP-extension family (a fixed external fact of stock RISC-V,
@@ -101,10 +102,10 @@ class _Decoded:
     rs1: int
     rs2: int
     f7: int
-    imm: int        # full signed immediate (already stride-scaled for branch/jal)
-    has_imm: bool   # False for register-register ops (the second-source field is a real register)
+    imm: int  # full signed immediate (already stride-scaled for branch/jal)
+    has_imm: bool  # False for register-register ops (the second-source field is a real register)
     is_store_like: bool  # store/branch: the immediate's high byte lives in the rd field
-    rs3: int = 0    # third source register (fused-multiply-add only); placed only for non-immediate forms
+    rs3: int = 0  # third source register (fused-multiply-add only); placed only for non-immediate forms
 
 
 def _decode_rv32(word: int, stride_ratio: int) -> _Decoded:
@@ -123,9 +124,9 @@ def _decode_rv32(word: int, stride_ratio: int) -> _Decoded:
         has_imm, rs3, f7 = False, (word >> 27) & 0x1F, (word >> 25) & 0x3
     elif op in _ITYPE:
         rs2 = 0
-        if op == _OP_IMM and f3 in (0x1, 0x5):        # slli/srli/srai: shamt is the imm; funct7 -> f7
+        if op == _OP_IMM and f3 in (0x1, 0x5):  # slli/srli/srai: shamt is the imm; funct7 -> f7
             imm = (word >> 20) & 0x1F
-        elif op == _SYSTEM:                            # csr number (unsigned 12-bit) is the imm
+        elif op == _SYSTEM:  # csr number (unsigned 12-bit) is the imm
             imm, f7 = (word >> 20) & 0xFFF, 0
         else:
             imm, f7 = _sx((word >> 20) & 0xFFF, 12), 0
@@ -134,25 +135,35 @@ def _decode_rv32(word: int, stride_ratio: int) -> _Decoded:
         imm = _sx((((word >> 25) & 0x7F) << 5) | ((word >> 7) & 0x1F), 12)
     elif op in _BTYPE:
         rd, is_store_like, f7 = 0, True, 0
-        b = (((word >> 31) & 1) << 12) | (((word >> 7) & 1) << 11) \
-            | (((word >> 25) & 0x3F) << 5) | (((word >> 8) & 0xF) << 1)
+        b = (
+            (((word >> 31) & 1) << 12)
+            | (((word >> 7) & 1) << 11)
+            | (((word >> 25) & 0x3F) << 5)
+            | (((word >> 8) & 0xF) << 1)
+        )
         imm = _sx(b, 13) * stride_ratio
     elif op in _JTYPE:
         # J-type has no funct3 field; bits [14:12] are immediate bits, so f3 must be cleared (the wide
         # format carries the whole displacement in the contiguous immediate).
         rs1, rs2, f7, f3 = 0, 0, 0, 0
-        j = (((word >> 31) & 1) << 20) | (((word >> 12) & 0xFF) << 12) \
-            | (((word >> 20) & 1) << 11) | (((word >> 21) & 0x3FF) << 1)
+        j = (
+            (((word >> 31) & 1) << 20)
+            | (((word >> 12) & 0xFF) << 12)
+            | (((word >> 20) & 1) << 11)
+            | (((word >> 21) & 0x3FF) << 1)
+        )
         imm = _sx(j, 21) * stride_ratio
     elif op in _UTYPE:
         if op == _AUIPC:
-            raise TranscodeError("auipc: a PC-relative pair is not a pure field re-map under a changed "
-                                 "instruction stride; keep this reference relocation-based (fail closed)")
+            raise TranscodeError(
+                "auipc: a PC-relative pair is not a pure field re-map under a changed "
+                "instruction stride; keep this reference relocation-based (fail closed)"
+            )
         # U-type likewise has no funct3 field; bits [14:12] are part of the upper immediate.
         rs1, rs2, f7, f3 = 0, 0, 0, 0
-        imm = (word >> 12) & 0xFFFFF                    # lui upper immediate (hardware applies << 12)
+        imm = (word >> 12) & 0xFFFFF  # lui upper immediate (hardware applies << 12)
     elif op in _RTYPE:
-        has_imm = False                                # rs2 is a real register; funct7 already in f7
+        has_imm = False  # rs2 is a real register; funct7 already in f7
     else:
         raise TranscodeError(f"opcode {op:#04x} is not handled by the base-ISA transcoder")
     return _Decoded(op, rd, f3, rs1, rs2, f7, imm, has_imm, is_store_like, rs3)
@@ -171,8 +182,10 @@ class FixedFormatTranscoder:
         # target whose runtime ABI has not been derived leaves the family blank -> the legacy path is allowed.)
         fam = model.base_isa_family()
         if fam and not fam.startswith("riscv"):
-            raise TranscodeError(f"fixed-format transcode assumes a RISC-V base substrate; derived "
-                                 f"base_isa_family={fam!r} for target {model.target!r} (fail closed)")
+            raise TranscodeError(
+                f"fixed-format transcode assumes a RISC-V base substrate; derived "
+                f"base_isa_family={fam!r} for target {model.target!r} (fail closed)"
+            )
         self.fl = dict(model.field_layout)
         self.width = int(model.inst_width)
         self.opcodes = {int(v) for v in model.opcode_table.values()}
@@ -203,7 +216,7 @@ class FixedFormatTranscoder:
             raise TranscodeError(f"opcode {d.opcode:#04x} is not in the target's derived opcode table")
         rd, rs2 = d.rd, d.rs2
         word = 0
-        word |= d.opcode << self.fl["opcode"][1]       # opcode at its field's low bit (extension=0)
+        word |= d.opcode << self.fl["opcode"][1]  # opcode at its field's low bit (extension=0)
         if d.has_imm:
             imm32 = d.imm & 0xFFFFFFFF
             imm_hi = (imm32 >> 24) & 0xFF
@@ -223,8 +236,10 @@ class FixedFormatTranscoder:
         # contiguous immediate field, so placing it under an immediate would corrupt the immediate.
         if d.rs3:
             if d.has_imm or "rs3" not in self.fl:
-                raise TranscodeError("this instruction needs a third-source (rs3) field the target's layout "
-                                     "does not provide (or an immediate form overlaps it) — fail closed")
+                raise TranscodeError(
+                    "this instruction needs a third-source (rs3) field the target's layout "
+                    "does not provide (or an immediate form overlaps it) — fail closed"
+                )
             word = self._place(word, "rs3", d.rs3)
         return word & ((1 << self.width) - 1)
 
@@ -247,5 +262,4 @@ def emit_kernel_asm(words: list[int], inst_width: int, entry: str = "main") -> s
     """Wrap transcoded words as a `.text` assembly unit exporting ``entry`` — the input stock ``llvm-mc``
     assembles into the target object that links against the vendored runtime (BSP)."""
     body = to_data_lines(words, inst_width)
-    return (f".section .text\n.global {entry}\n.type {entry},@function\n{entry}:\n"
-            f"{body}.size {entry}, .-{entry}\n")
+    return f".section .text\n.global {entry}\n.type {entry},@function\n{entry}:\n{body}.size {entry}, .-{entry}\n"

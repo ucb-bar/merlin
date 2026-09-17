@@ -12,6 +12,7 @@ and so each layer can be run by hand to see what it says. Both distinguish "reje
   dynamic check the formal layers sit beside, and it is in the instrument so a detection can be
   ATTRIBUTED: a defect both catch is not evidence for the new layer.
 """
+
 from __future__ import annotations
 
 import os
@@ -74,7 +75,7 @@ def _oracle(repo: Path) -> int:
                 continue
             got_ref, got_sim = reference_outputs(cb), simulate(cb)["outputs"]
         except Exception:
-            continue                      # this capsule is not evaluable here; not a disagreement
+            continue  # this capsule is not evaluable here; not a disagreement
         checked += 1
         for name, expected in want.items():
             if name in got_ref and got_ref[name] != expected:
@@ -85,8 +86,7 @@ def _oracle(repo: Path) -> int:
         print("no capsule was evaluable; this layer did not run", file=sys.stderr)
         return 3
     if disagreements:
-        print(f"{len(disagreements)} disagreement(s) over {checked} capsule(s): "
-              f"{disagreements[:6]}", file=sys.stderr)
+        print(f"{len(disagreements)} disagreement(s) over {checked} capsule(s): {disagreements[:6]}", file=sys.stderr)
         return 1
     return 0
 

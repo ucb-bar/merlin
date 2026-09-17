@@ -17,6 +17,7 @@ position. Determinism, the ``lo..hi`` range and the pure-integer construction ar
 changes is that rows and columns now differ from one another, so row/column/stride/transpose bugs
 alter the output and the grader can see them.
 """
+
 from __future__ import annotations
 
 _U32 = 0xFFFFFFFF
@@ -78,8 +79,7 @@ def grid_shape(shape: tuple[int, ...]) -> tuple[int, int]:
     return (max(rows, 1), max(cols, 1))
 
 
-def fill(name: str, shape: tuple[int, ...],
-         lo: int = DEFAULT_LO, hi: int = DEFAULT_HI) -> list[int]:
+def fill(name: str, shape: tuple[int, ...], lo: int = DEFAULT_LO, hi: int = DEFAULT_HI) -> list[int]:
     """Flat row-major integer stimulus for ``shape``, deterministic in ``name``.
 
     Values lie in ``lo..hi`` inclusive. The result is indexed by ``(row, col)``, so distinct rows
@@ -110,9 +110,11 @@ def sign_coverage(values: "list[int]") -> dict[str, bool]:
     assumed to: `fill_signed` draws from a hash, so a small or narrow operand can legitimately
     miss a class, and a test asserting "this covers negatives" is worthless if it never looks.
     """
-    return {"negative": any(v < 0 for v in values),
-            "zero": any(v == 0 for v in values),
-            "positive": any(v > 0 for v in values)}
+    return {
+        "negative": any(v < 0 for v in values),
+        "zero": any(v == 0 for v in values),
+        "positive": any(v > 0 for v in values),
+    }
 
 
 # --------------------------------------------------------------------------------------------
@@ -148,20 +150,26 @@ def _c_value(seed: str, span: int, lo: int, cast: str) -> str:
     return f"({cast})((int32_t)(merlin_mix(r,c,(uint32_t)({seed}))%{span}u) + ({lo}))"
 
 
-def c_fill_loop(dest: str, rows: str, cols: str, seed: str, *, cast: str = "elem_t",
-                lo: int = 0, hi: int = 3, indent: str = "  ") -> str:
+def c_fill_loop(
+    dest: str, rows: str, cols: str, seed: str, *, cast: str = "elem_t", lo: int = 0, hi: int = 3, indent: str = "  "
+) -> str:
     """A C statement filling ``dest`` (a flat row-major buffer) with the same values :func:`fill`
     produces. ``rows``/``cols``/``seed`` are C expressions so the caller can pass macros."""
     span = hi - lo + 1
-    return (f"{indent}for (uint32_t r=0;r<(uint32_t)({rows});r++) "
-            f"for (uint32_t c=0;c<(uint32_t)({cols});c++) "
-            f"{{ ({dest})[r*(uint32_t)({cols})+c] = {_c_value(seed, span, lo, cast)}; }}")
+    return (
+        f"{indent}for (uint32_t r=0;r<(uint32_t)({rows});r++) "
+        f"for (uint32_t c=0;c<(uint32_t)({cols});c++) "
+        f"{{ ({dest})[r*(uint32_t)({cols})+c] = {_c_value(seed, span, lo, cast)}; }}"
+    )
 
 
-def c_fill_loop_2d(dest: str, rows: str, cols: str, seed: str, *, cast: str = "elem_t",
-                   lo: int = 0, hi: int = 3, indent: str = "  ") -> str:
+def c_fill_loop_2d(
+    dest: str, rows: str, cols: str, seed: str, *, cast: str = "elem_t", lo: int = 0, hi: int = 3, indent: str = "  "
+) -> str:
     """Like :func:`c_fill_loop` but for a C array declared as ``dest[rows][cols]``."""
     span = hi - lo + 1
-    return (f"{indent}for (uint32_t r=0;r<(uint32_t)({rows});r++) "
-            f"for (uint32_t c=0;c<(uint32_t)({cols});c++) "
-            f"{{ ({dest})[r][c] = {_c_value(seed, span, lo, cast)}; }}")
+    return (
+        f"{indent}for (uint32_t r=0;r<(uint32_t)({rows});r++) "
+        f"for (uint32_t c=0;c<(uint32_t)({cols});c++) "
+        f"{{ ({dest})[r][c] = {_c_value(seed, span, lo, cast)}; }}"
+    )

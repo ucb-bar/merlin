@@ -10,6 +10,7 @@ capsule joins its family's holdout automatically.
 Whole-model capsules (no single ``semantic_family``) are never held out — they are the integration test
 that a family-holdout compiler still runs an end-to-end model — so they stay in DEV.
 """
+
 from __future__ import annotations
 
 
@@ -20,6 +21,7 @@ def _family(cap: dict) -> str | None:
         return fam
     # fall back to deriving from the op when the capsule predates annotation
     from merlin.targetgen import semantic_families as sf
+
     return sf.from_op((cap.get("operation") or {}).get("op"))
 
 
@@ -66,8 +68,14 @@ def manifest(capsules: list[dict], *, target: str | None = None) -> dict:
         "n_capsules": len(capsules),
         "families": families_present(capsules),
         "n_splits": len(splits),
-        "splits": [{"name": f"holdout_{s['held_out_family']}",
-                    "held_out_family": s["held_out_family"],
-                    "n_holdout": len(s["holdout"]), "n_dev": len(s["dev"]),
-                    "holdout": s["holdout"]} for s in splits],
+        "splits": [
+            {
+                "name": f"holdout_{s['held_out_family']}",
+                "held_out_family": s["held_out_family"],
+                "n_holdout": len(s["holdout"]),
+                "n_dev": len(s["dev"]),
+                "holdout": s["holdout"],
+            }
+            for s in splits
+        ],
     }

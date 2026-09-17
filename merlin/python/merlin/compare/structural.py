@@ -12,13 +12,14 @@ The cached decode is the authoritative structural fingerprint that ``kernel_brea
 from; lifting it back into CCA is honest (same fields, same source), deterministic, and avoids a
 redundant per-shape rebuild while keeping the rebuild reachable.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from merlin.common.paths import repo_root
 from typing import Any
 
+from merlin.common.paths import repo_root
 from merlin.kernels.cca import CCA, ComputeFacet, VectorFacet, lift_asm
 
 from .spec import Config, Workload
@@ -35,7 +36,7 @@ _DECODE_KERNEL = {
     "xnnpack": "xnnpack",
     "openblas": "openblas",
     "ours_wholemodel": "ours_wholemodel",
-    "ours_wholemodel_vf": "ours_v3",   # the .vf wholemodel carries the v3 register-blocked decode
+    "ours_wholemodel_vf": "ours_v3",  # the .vf wholemodel carries the v3 register-blocked decode
     "ours_v3": "ours_v3",
     "ours_tiled": "ours_vfmacc_tiled",
 }
@@ -46,7 +47,7 @@ _DECODE_KERNEL = {
 _WORKLOAD_SHAPE = {
     "openvla": "openvla_proj_17x192x576",
     "rdt2": "rdt2_attn_28x1024x1024",
-    "bitvla": "cube_64",          # bitvla's dominant projection decodes like the cube micro-kernel
+    "bitvla": "cube_64",  # bitvla's dominant projection decodes like the cube micro-kernel
 }
 
 
@@ -59,7 +60,8 @@ def _row_to_cca(row: dict, *, source: str) -> CCA:
     # register_block matches the live lift's (mr, ("vsetvlmax", lmul)) shape when both are known.
     reg_block = (mr, ("vsetvlmax", lmul)) if (mr and sew and lmul) else None
     return CCA(
-        op="matmul", backend=["rvv"],
+        op="matmul",
+        backend=["rvv"],
         compute=ComputeFacet(
             op="matmul",
             contraction_form=row.get("contraction_form"),
@@ -69,8 +71,11 @@ def _row_to_cca(row: dict, *, source: str) -> CCA:
         ),
         vector=VectorFacet(sew=sew, lmul=lmul, vl_strategy=vl_strategy),
         provenance={
-            "level": "asm", "source": source, "confidence": "high",
-            "decode_kernel": row.get("kernel"), "decode_shape": row.get("shape"),
+            "level": "asm",
+            "source": source,
+            "confidence": "high",
+            "decode_kernel": row.get("kernel"),
+            "decode_shape": row.get("shape"),
             # carry the .vf-vs-.vv counts so attribution can cite them (kernel_breakdown.md evidence).
             "fma_loop_vfmacc_vf": row.get("fma_loop_vfmacc_vf"),
             "fma_loop_vfmacc_vv": row.get("fma_loop_vfmacc_vv"),
@@ -140,5 +145,6 @@ def decode_o(model_o: str | Path, *, op: str = "matmul", source: str | None = No
     ``decode.rvv.decode`` + ``cca.lift_asm`` exactly as the ceiling drivers do. v1 does not call this
     (it ingests the cached decode); it is the seam for re-decoding a freshly rebuilt kernel."""
     from merlin.kernels.decode.rvv import decode
+
     stream = decode(str(model_o))
     return lift_asm(stream, op=op, source=source or str(model_o), backend="rvv")

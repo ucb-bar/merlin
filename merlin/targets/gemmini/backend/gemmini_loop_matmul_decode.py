@@ -4,6 +4,7 @@ This edge names the target's state and queued command ports. Every selector,
 field offset and width is recovered from host-pinned facts/elaborated hardware.
 No candidate descriptor or header packing expression supplies the layout.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -11,17 +12,45 @@ import json
 
 from merlin.targetgen.address_space import derive_address_space
 from merlin.targetgen.rtl.register_slices import (
-    decode_register_slices, derive_register_slices, register_definitions,
+    decode_register_slices,
+    derive_register_slices,
+    register_definitions,
 )
 
-_FIELDS = frozenset((
-    "max_i", "max_j", "max_k", "pad_i", "pad_j", "pad_k",
-    "a_dram_addr", "b_dram_addr", "c_dram_addr", "d_dram_addr",
-    "a_dram_stride", "b_dram_stride", "c_dram_stride", "d_dram_stride",
-    "a_transpose", "b_transpose", "full_c", "low_d", "ex_accumulate", "act",
-    "a_ex_spad_id", "b_ex_spad_id", "inc_acc_addr", "spad_only", "c_spad_addr",
-    "lda_started", "ldb_started", "ldd_started", "ex_started", "st_started",
-))
+_FIELDS = frozenset(
+    (
+        "max_i",
+        "max_j",
+        "max_k",
+        "pad_i",
+        "pad_j",
+        "pad_k",
+        "a_dram_addr",
+        "b_dram_addr",
+        "c_dram_addr",
+        "d_dram_addr",
+        "a_dram_stride",
+        "b_dram_stride",
+        "c_dram_stride",
+        "d_dram_stride",
+        "a_transpose",
+        "b_transpose",
+        "full_c",
+        "low_d",
+        "ex_accumulate",
+        "act",
+        "a_ex_spad_id",
+        "b_ex_spad_id",
+        "inc_acc_addr",
+        "spad_only",
+        "c_spad_addr",
+        "lda_started",
+        "ldb_started",
+        "ldd_started",
+        "ex_started",
+        "st_started",
+    )
+)
 
 
 def _physical_type(store) -> dict | None:
@@ -45,8 +74,7 @@ def _readout_types(facts: dict) -> dict:
     body = facts.get("facts") if isinstance(facts, dict) else None
     target = body.get("target") if isinstance(body, dict) else None
     if not isinstance(target, str) or not target:
-        return {"full_c_0": None, "full_c_1": None,
-                "status": "UNKNOWN", "reason": "facts do not identify their target"}
+        return {"full_c_0": None, "full_c_1": None, "status": "UNKNOWN", "reason": "facts do not identify their target"}
     space = derive_address_space(target, facts=facts)
     narrow, full = space.store("scratchpad"), space.store("accumulator")
     narrow_type = _physical_type(narrow) if narrow is not None else None
@@ -56,8 +84,11 @@ def _readout_types(facts: dict) -> dict:
         "full_c_0": narrow_type,
         "full_c_1": full_type,
         "status": status,
-        "reason": (None if status == "derived" else
-                   "operand/accumulator store element types are not both grounded in RTL facts"),
+        "reason": (
+            None
+            if status == "derived"
+            else "operand/accumulator store element types are not both grounded in RTL facts"
+        ),
         "sources": dict(space.sources),
     }
 
@@ -100,21 +131,35 @@ def derive_layouts(*, facts_text: str, hardware_text: str) -> dict:
         selector = int(code)
         if selector not in table["legal_funct"]:
             raise ValueError("header-only selector is not an RTL fact")
-        layout = derive_register_slices(hardware_text, module="LoopMatmul", registers=registers,
-            selector="%cmd_q.io_deq_bits_cmd_inst_funct", selector_value=selector, inputs=inputs)
+        layout = derive_register_slices(
+            hardware_text,
+            module="LoopMatmul",
+            registers=registers,
+            selector="%cmd_q.io_deq_bits_cmd_inst_funct",
+            selector_value=selector,
+            inputs=inputs,
+        )
         for row in layout["registers"]:
             row.update(labels[row["register"]])
         layouts[str(selector)] = {"instruction_name": name, "layout": layout}
-    return {"schema": "loop_matmul_register_layouts_v1", "layouts": layouts,
+    return {
+        "schema": "loop_matmul_register_layouts_v1",
+        "layouts": layouts,
         "binding": {"facts_sha256": hashlib.sha256(facts_text.encode()).hexdigest(), "hardware_sha256": hardware_sha},
         "physical_readout_types": _readout_types(facts),
         "selected_fields": sorted(_FIELDS),
         "absent_selected_fields": sorted(_FIELDS - {item["field"] for item in labels.values()}),
-        "unexamined_state_and_semantics": ["is_resadd global state", "on-chip initial address state",
-            "stride units and generated DMA address arithmetic", "accumulator arithmetic and readout",
-            "command acceptance and inter-loop sequencing"],
+        "unexamined_state_and_semantics": [
+            "is_resadd global state",
+            "on-chip initial address state",
+            "stride units and generated DMA address arithmetic",
+            "accumulator arithmetic and readout",
+            "command acceptance and inter-loop sequencing",
+        ],
         "scope": "conditional selected register updates; unknown controls overapproximated",
-        "descriptor_arithmetic_equivalence": "UNKNOWN", "sequencer_progress": "UNPROVEN"}
+        "descriptor_arithmetic_equivalence": "UNKNOWN",
+        "sequencer_progress": "UNPROVEN",
+    }
 
 
 def observe_instructions(instructions: list[dict], *, layouts: dict) -> dict:
@@ -126,13 +171,23 @@ def observe_instructions(instructions: list[dict], *, layouts: dict) -> dict:
         entry = layouts["layouts"].get(str(instruction.get("funct")))
         if entry is None:
             continue
-        observations.append({"instruction_index": instruction["index"],
-            "instruction_name": entry["instruction_name"],
-            "fields": decode_register_slices(entry["layout"],
-                {"rs1": instruction.get("rs1", {}), "rs2": instruction.get("rs2", {})})})
-    return {"schema": "loop_matmul_register_observations_v1", "binding": layouts["binding"],
-        "instructions": observations, "address_ranges_validated": False,
-        "descriptor_arithmetic_equivalence": "UNKNOWN", "timing_calibration_admissible": False}
+        observations.append(
+            {
+                "instruction_index": instruction["index"],
+                "instruction_name": entry["instruction_name"],
+                "fields": decode_register_slices(
+                    entry["layout"], {"rs1": instruction.get("rs1", {}), "rs2": instruction.get("rs2", {})}
+                ),
+            }
+        )
+    return {
+        "schema": "loop_matmul_register_observations_v1",
+        "binding": layouts["binding"],
+        "instructions": observations,
+        "address_ranges_validated": False,
+        "descriptor_arithmetic_equivalence": "UNKNOWN",
+        "timing_calibration_admissible": False,
+    }
 
 
 def _consensus_field(fields: list[dict], name: str) -> tuple[dict | int | None, str | None]:
@@ -182,42 +237,50 @@ def derive_writebacks(instructions: list[dict], *, layouts: dict) -> dict:
         name = instruction["instruction_name"]
         covered.append(index)
         if name == "LOOP_WS_CONFIG_ADDRS_DC":
-            latest_destination, latest_destination_error = _consensus_field(
-                instruction["fields"], "c_dram_addr")
+            latest_destination, latest_destination_error = _consensus_field(instruction["fields"], "c_dram_addr")
             continue
         if name != "LOOP_WS":
             continue
         full_c, full_c_error = _consensus_field(instruction["fields"], "full_c")
         if full_c_error is not None or latest_destination_error is not None:
-            unresolved.append({"instruction_index": index,
-                               "reason": full_c_error or latest_destination_error})
+            unresolved.append({"instruction_index": index, "reason": full_c_error or latest_destination_error})
             continue
         if type(latest_destination) is int:
             if latest_destination != 0:
-                unresolved.append({"instruction_index": index,
-                                   "reason": "C address is a non-null absolute value, not a kernel ABI argument"})
+                unresolved.append(
+                    {
+                        "instruction_index": index,
+                        "reason": "C address is a non-null absolute value, not a kernel ABI argument",
+                    }
+                )
             # A null C address suppresses the LoopMatmul store in the elaborated controller.
             continue
         if not isinstance(latest_destination, dict) or full_c not in (0, 1):
-            unresolved.append({"instruction_index": index,
-                               "reason": "destination or physical full_c selector is unresolved"})
+            unresolved.append(
+                {"instruction_index": index, "reason": "destination or physical full_c selector is unresolved"}
+            )
             continue
         physical_type = readout_types.get(f"full_c_{full_c}")
         if readout_types.get("status") != "derived" or not isinstance(physical_type, dict):
-            unresolved.append({"instruction_index": index,
-                               "reason": readout_types.get("reason") or
-                               "physical readout type is not derived from RTL facts"})
+            unresolved.append(
+                {
+                    "instruction_index": index,
+                    "reason": readout_types.get("reason") or "physical readout type is not derived from RTL facts",
+                }
+            )
             continue
-        writebacks.append({
-            "instruction_index": index,
-            "instruction_name": name,
-            "destination": dict(latest_destination),
-            "physical_readout": {
-                "encoding": physical_type["encoding"],
-                "width_bits": physical_type["width_bits"],
-            },
-            "selector": {"field": "full_c", "value": full_c},
-        })
+        writebacks.append(
+            {
+                "instruction_index": index,
+                "instruction_name": name,
+                "destination": dict(latest_destination),
+                "physical_readout": {
+                    "encoding": physical_type["encoding"],
+                    "width_bits": physical_type["width_bits"],
+                },
+                "selector": {"field": "full_c", "value": full_c},
+            }
+        )
     return {
         "schema": "loop_matmul_writeback_evidence_v1",
         "binding": dict(layouts["binding"]),

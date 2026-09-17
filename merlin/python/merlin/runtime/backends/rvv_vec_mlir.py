@@ -8,6 +8,7 @@ Merlin reference — proving the compiler path, not a kernel. (The same module l
 riscv object; native-RVV vectorization currently covers contractions, so elementwise/reduction
 lower to scalar RVV-target code — correct, just not yet vector-instruction'd; see SV findings.)
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -78,8 +79,7 @@ def emit_mlir(cb: dict[str, Any]) -> tuple[str, list[str], str]:
             inner = [f"      %s = {arith} %in, %in0 : i32"]
             yld = "%s"
             if relu:
-                inner += ["      %z = arith.constant 0 : i32",
-                          "      %rl = arith.maxsi %s, %z : i32"]
+                inner += ["      %z = arith.constant 0 : i32", "      %rl = arith.maxsi %s, %z : i32"]
                 yld = "%rl"
             body += [
                 f"  {r} = linalg.generic {{indexing_maps = [{ID1}, {ID1}, {ID1}], "
@@ -111,9 +111,11 @@ def emit_mlir(cb: dict[str, Any]) -> tuple[str, list[str], str]:
             raise ValueError(f"unsupported vector opcode {op!r}")
 
     on = sh[out]
-    text = (f"builtin.module {{\n  func.func @forward({arg_decl}) -> tensor<{on}xi32> {{\n"
-            + "\n".join(body)
-            + f"\n    func.return {ssa[out]} : tensor<{on}xi32>\n  }}\n}}\n")
+    text = (
+        f"builtin.module {{\n  func.func @forward({arg_decl}) -> tensor<{on}xi32> {{\n"
+        + "\n".join(body)
+        + f"\n    func.return {ssa[out]} : tensor<{on}xi32>\n  }}\n}}\n"
+    )
     return text, inputs, out
 
 
@@ -121,10 +123,11 @@ def run_host(cb: dict[str, Any], workdir: str | Path | None = None) -> dict[str,
     """Lower the vector cb through merlin's MLIR→LLVM compiler and run on host; gate vs reference."""
     import tempfile
     from pathlib import Path
+
     import numpy as np
 
-    from merlin.llvmlower.lower import lower_model
     from merlin.llvmlower.abi import HostModel
+    from merlin.llvmlower.lower import lower_model
     from merlin.runtime.reference import outputs_match, reference_outputs
 
     sh = _shapes(cb)
@@ -146,8 +149,13 @@ def run_host(cb: dict[str, Any], workdir: str | Path | None = None) -> dict[str,
 
     got = {out: y.tolist()}
     ref = reference_outputs(cb)
-    return {"outputs": got, "correct": outputs_match(got, ref),
-            "mlir": text, "host_so": str(res.host_so), "oracle": {"kind": "merlin_mlir_host"}}
+    return {
+        "outputs": got,
+        "correct": outputs_match(got, ref),
+        "mlir": text,
+        "host_so": str(res.host_so),
+        "oracle": {"kind": "merlin_mlir_host"},
+    }
 
 
 def lower_rvv(cb: dict[str, Any], workdir: str | Path | None = None) -> dict[str, Any]:
@@ -156,15 +164,12 @@ def lower_rvv(cb: dict[str, Any], workdir: str | Path | None = None) -> dict[str
     import tempfile
     from pathlib import Path
 
-    from merlin.llvmlower.lower import lower_model
     from merlin.llvmlower.custom_isa import disassemble
+    from merlin.llvmlower.lower import lower_model
 
     text, _, _ = emit_mlir(cb)
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="vecrvv_"))
-    res = lower_model(text, work, targets=("riscv",), vectorize=True,
-                      transform_schedule=ELEMENTWISE_RVV_SCHEDULE)
+    res = lower_model(text, work, targets=("riscv",), vectorize=True, transform_schedule=ELEMENTWISE_RVV_SCHEDULE)
     dis = disassemble(res.riscv_obj)
-    rvv = [m for m in ("vsetvli", "vsetivli", "vle32.v", "vadd.vv", "vmul.vv",
-                       "vredsum", "vfadd", "vmv") if m in dis]
-    return {"riscv_obj": str(res.riscv_obj), "has_rvv": bool(rvv),
-            "rvv_ops": rvv, "ll_path": str(res.ll_path)}
+    rvv = [m for m in ("vsetvli", "vsetivli", "vle32.v", "vadd.vv", "vmul.vv", "vredsum", "vfadd", "vmv") if m in dis]
+    return {"riscv_obj": str(res.riscv_obj), "has_rvv": bool(rvv), "rvv_ops": rvv, "ll_path": str(res.ll_path)}

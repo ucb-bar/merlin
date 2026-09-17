@@ -8,6 +8,7 @@ add, requantization (rounding arithmetic shift), relu, and saturating cast to in
 This is real arithmetic, not a stub: the simulator's outputs are computed here and compared
 against an independent reference recomputation.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -60,8 +61,7 @@ class Tensor:
         return cls(tuple(shape), [0] * n, dtype)
 
     @classmethod
-    def deterministic(cls, name: str, shape: tuple[int, ...], dtype: str = "i8",
-                      lo: int = 0, hi: int = 3) -> "Tensor":
+    def deterministic(cls, name: str, shape: tuple[int, ...], dtype: str = "i8", lo: int = 0, hi: int = 3) -> "Tensor":
         """Fill deterministically from ``name`` (no RNG): stable across runs/machines.
 
         The fill is indexed by ``(row, col)`` rather than by flat position, so rows and columns
@@ -92,7 +92,7 @@ class Tensor:
             return list(self.data)
         if len(self.shape) == 2:
             rows, cols = self.shape
-            return [self.data[r * cols:(r + 1) * cols] for r in range(rows)]
+            return [self.data[r * cols : (r + 1) * cols] for r in range(rows)]
 
         def _nest(dims, flat):
             """Row-major split of ``flat`` into ``dims``; the data layout is unchanged, only the nesting."""
@@ -106,7 +106,7 @@ class Tensor:
             stride = 1
             for x in dims[1:]:
                 stride *= x
-            return [_nest(dims[1:], flat[i * stride:(i + 1) * stride]) for i in range(dims[0])]
+            return [_nest(dims[1:], flat[i * stride : (i + 1) * stride]) for i in range(dims[0])]
 
         return _nest(list(self.shape), self.data)
 
@@ -165,21 +165,21 @@ class Tensor:
         accumulator-readout path uses this, not the round-half-up shift."""
         import struct
 
-        def f32(v: float) -> float:                       # round a Python float to IEEE-754 single
+        def f32(v: float) -> float:  # round a Python float to IEEE-754 single
             return struct.unpack("<f", struct.pack("<f", v))[0]
 
         s = f32(scale)
         out = []
         for x in self.data:
-            prod = f32(f32(float(x)) * s)                 # float32 product, as the C macro computes it
-            i = int(prod)                                 # trunc toward zero
+            prod = f32(f32(float(x)) * s)  # float32 product, as the C macro computes it
+            i = int(prod)  # trunc toward zero
             nxt = i - 1 if prod < 0 else i + 1
             rem = abs(prod - i)
             if rem < 0.5:
                 y = i
             elif rem > 0.5:
                 y = nxt
-            else:                                         # exact tie -> round to even
+            else:  # exact tie -> round to even
                 y = i if i % 2 == 0 else nxt
             out.append(int(y))
         return Tensor(self.shape, out, self.dtype)
@@ -204,8 +204,9 @@ class Tensor:
         """Sum all elements -> a length-1 tensor."""
         return Tensor((1,), [sum(self.data)], self.dtype)
 
-    def maxpool2d_rows(self, *, in_dims, pool_size, pool_stride,
-                       pool_padding=(0, 0, 0, 0), pad_value: int | None = None) -> "Tensor":
+    def maxpool2d_rows(
+        self, *, in_dims, pool_size, pool_stride, pool_padding=(0, 0, 0, 0), pad_value: int | None = None
+    ) -> "Tensor":
         """Windowed MAX over the spatial axes of a 2-D ``[batch*H*W, C]`` tensor -> ``[batch*Ho*Wo, C]``.
 
         THE ONLY windowed-max primitive in the runtime, on purpose. ``reduce_sum`` above is a TOTAL
@@ -228,8 +229,7 @@ class Tensor:
         numbers -- the exact silent-wrong-answer this repo fails closed against.
         """
         if len(self.shape) != 2:
-            raise ValueError(
-                f"maxpool2d_rows expects a 2-D [rows, C] tensor, got shape {self.shape}")
+            raise ValueError(f"maxpool2d_rows expects a 2-D [rows, C] tensor, got shape {self.shape}")
         rows, channels = self.shape
         H, W = int(in_dims[0]), int(in_dims[1])
         ph, pw = int(pool_size[0]), int(pool_size[1])
@@ -248,18 +248,21 @@ class Tensor:
             # well-formed result, which is the failure mode that is impossible to spot downstream.
             raise ValueError(
                 f"maxpool2d_rows: {rows} rows is not a whole multiple of the declared plane "
-                f"{H}x{W}={plane}; the pool geometry does not describe this tensor")
+                f"{H}x{W}={plane}; the pool geometry does not describe this tensor"
+            )
         if (pt or pl or pb or pr) and pad_value is None:
             raise ValueError(
                 f"maxpool2d_rows: pool_padding {(pt, pl, pb, pr)} is nonzero but no pad_value was "
                 f"declared; the identity element for a max over a padded cell is a property of the "
-                f"datapath (-inf mathematically, commonly 0 in a store path) and is not derivable here")
+                f"datapath (-inf mathematically, commonly 0 in a store path) and is not derivable here"
+            )
         batch = rows // plane
         Ho, Wo = pool_out_dims(H, W, (ph, pw), (sh, sw), (pt, pl, pb, pr))
         if Ho < 1 or Wo < 1:
             raise ValueError(
                 f"maxpool2d_rows: window {(ph, pw)} stride {(sh, sw)} padding {(pt, pl, pb, pr)} "
-                f"leaves no output position over a {H}x{W} plane (got {Ho}x{Wo})")
+                f"leaves no output position over a {H}x{W} plane (got {Ho}x{Wo})"
+            )
         src = self.data
         out = [0] * (batch * Ho * Wo * channels)
         oi = 0

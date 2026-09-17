@@ -41,9 +41,9 @@ linalg is bit-identical to torchao's own eager result, not merely close:
 
 ``_choose_qparams_affine`` (SYMMETRIC)::
 
-    max_abs = max(-amin(x), amax(x))            # == max(|x|) elementwise-exactly
-    scale   = max_abs / (float(qmax - qmin) / 2)
-    scale   = clamp(scale, min=eps)
+    max_abs = max(-amin(x), amax(x))  # == max(|x|) elementwise-exactly
+    scale = max_abs / (float(qmax - qmin) / 2)
+    scale = clamp(scale, min=eps)
 
 ``_quantize_affine``::
 
@@ -63,6 +63,7 @@ it is added as an f32 zero, whose only effect on the result is turning ``-0.0`` 
 both convert to integer 0. An ASYMMETRIC scheme has a data-dependent zero point that the capture
 threw away, so it is refused here rather than approximated.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -107,10 +108,14 @@ class ActivationQuant:
 #: reading the function it cites; an unknown scheme fails closed.
 ACTIVATION_QUANT: dict[str, ActivationQuant] = {
     "int8_dyn_act_int8_weight": ActivationQuant(
-        mapping="SYMMETRIC", quant_min=-127, quant_max=127, eps=1e-5, granularity="per_token",
+        mapping="SYMMETRIC",
+        quant_min=-127,
+        quant_max=127,
+        eps=1e-5,
+        granularity="per_token",
         source="torchao.quantization.quant_api._int8_symm_per_token_reduced_range_quant, "
-               "selected by Int8DynamicActivationInt8WeightConfig's default "
-               "act_mapping_type=MappingType.SYMMETRIC",
+        "selected by Int8DynamicActivationInt8WeightConfig's default "
+        "act_mapping_type=MappingType.SYMMETRIC",
     ),
 }
 
@@ -161,26 +166,26 @@ def derive_block_layout(in_shape, scale_shape) -> BlockLayout:
     if any(d < 0 for d in in_shape) or any(d < 0 for d in scale_shape):
         raise TorchAOAffineError(
             f"dynamic dims in a torchao affine quant (input {in_shape}, scale {scale_shape}); "
-            "the block layout is not derivable from a symbolic shape")
+            "the block layout is not derivable from a symbolic shape"
+        )
 
     if len(scale_shape) == len(in_shape):
         block: list[int] = []
         for dim, nblocks in zip(in_shape, scale_shape):
             if nblocks == 0 or dim % nblocks:
-                raise TorchAOAffineError(
-                    f"scale shape {scale_shape} does not tile input shape {in_shape} evenly")
+                raise TorchAOAffineError(f"scale shape {scale_shape} does not tile input shape {in_shape} evenly")
             block.append(dim // nblocks)
         return BlockLayout(in_shape, scale_shape, tuple(block))
 
-    if len(scale_shape) < len(in_shape) and scale_shape == in_shape[:len(scale_shape)]:
+    if len(scale_shape) < len(in_shape) and scale_shape == in_shape[: len(scale_shape)]:
         kept = len(scale_shape)
-        return BlockLayout(in_shape, scale_shape,
-                           (1,) * kept + in_shape[kept:])
+        return BlockLayout(in_shape, scale_shape, (1,) * kept + in_shape[kept:])
 
     raise TorchAOAffineError(
         f"cannot derive the torchao block_size from input shape {in_shape} and scale shape "
         f"{scale_shape}: the scale is neither a rank-preserving tiling nor the leading axes of "
-        "the input. The capture dropped block_size, so there is nothing else to read it from.")
+        "the input. The capture dropped block_size, so there is nothing else to read it from."
+    )
 
 
 def _base_symbol(callee: str) -> str:
@@ -214,8 +219,7 @@ def _maps(rank: int, kept: int, block_size, *, in_map_first: bool = True):
         # Rank-preserving: axis i of the scale indexes block (d_i floordiv block_size[i]).
         results = []
         for i in range(rank):
-            results.append(identity.results[i] if block_size[i] == 1
-                           else identity.results[i] // int(block_size[i]))
+            results.append(identity.results[i] if block_size[i] == 1 else identity.results[i] // int(block_size[i]))
         scale_map = AffineMap(rank, 0, tuple(results))
     else:
         scale_map = AffineMap(rank, 0, tuple(identity.results[:kept]))
@@ -229,8 +233,7 @@ def lower_torchao_affine_quant(module, *, report_out: "dict | None" = None) -> i
     pipeline cannot perturb a bundle that never had them.
     """
     from xdsl.dialects import arith, math, tensor
-    from xdsl.dialects.builtin import (AffineMapAttr, ArrayAttr, Float32Type, IntegerType,
-                                       TensorType)
+    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, Float32Type, IntegerType, TensorType
     from xdsl.dialects.linalg import ops as L
     from xdsl.ir import Block, Region
 
@@ -257,19 +260,21 @@ def lower_torchao_affine_quant(module, *, report_out: "dict | None" = None) -> i
         raise TorchAOAffineError(
             f"the module carries {len(choose_calls) + len(quant_calls)} torchao affine-quant "
             f"call(s) but no {SCHEME_ATTR!r} attribute, so the mapping type, quant range and eps "
-            "cannot be derived. The capture dropped them from the call itself.")
+            "cannot be derived. The capture dropped them from the call itself."
+        )
     spec = ACTIVATION_QUANT.get(scheme)
     if spec is None:
         raise TorchAOAffineError(
             f"torchao scheme {scheme!r} has no activation-quant entry in ACTIVATION_QUANT; add one "
-            "after reading the quant_api function it uses (known: "
-            + ", ".join(sorted(ACTIVATION_QUANT)) + ")")
+            "after reading the quant_api function it uses (known: " + ", ".join(sorted(ACTIVATION_QUANT)) + ")"
+        )
     if spec.mapping != "SYMMETRIC":
         raise TorchAOAffineError(
             f"torchao scheme {scheme!r} quantizes activations with mapping {spec.mapping}, whose "
             "zero point is data-dependent — and the capture's opaque fallback DROPPED the zero "
             "point operand (it maps getitem(x, 0) only). There is nothing to reconstruct it from, "
-            "so this is refused rather than approximated with zero.")
+            "so this is refused rather than approximated with zero."
+        )
 
     f32 = Float32Type()
     # torchao: scale = max_abs / (float(quant_max - quant_min) / 2), then clamp(min=eps).
@@ -285,13 +290,15 @@ def lower_torchao_affine_quant(module, *, report_out: "dict | None" = None) -> i
             raise TorchAOAffineError(
                 f"@{call.callee.string_value()} operates on {in_t.element_type}/"
                 f"{scale_t.element_type}; torchao computes qparams in the input dtype and this "
-                "lowering has only been verified bit-exact for f32")
+                "lowering has only been verified bit-exact for f32"
+            )
         layout = derive_block_layout(in_t.get_shape(), scale_t.get_shape())
         if layout.granularity != spec.granularity:
             raise TorchAOAffineError(
                 f"@{call.callee.string_value()}: the call's types imply block_size "
                 f"{layout.block_size} ({layout.granularity}) but scheme {scheme!r} quantizes "
-                f"activations {spec.granularity} ({spec.source})")
+                f"activations {spec.granularity} ({spec.source})"
+            )
         rank, kept = len(layout.in_shape), len(layout.scale_shape)
         identity, scale_map = _maps(rank, kept, layout.block_size)
         red_iters = [L.IteratorTypeAttr(L.IteratorType.PARALLEL) for _ in range(rank)]
@@ -316,9 +323,13 @@ def lower_torchao_affine_quant(module, *, report_out: "dict | None" = None) -> i
         mx = arith.MaximumfOp(accv, absf.result)
         rbody.add_ops([absf, mx, L.YieldOp(mx.result)])
         reduce_gen = L.GenericOp(
-            inputs=(src,), outputs=(seed.results[0],), body=Region(rbody),
+            inputs=(src,),
+            outputs=(seed.results[0],),
+            body=Region(rbody),
             indexing_maps=ArrayAttr([AffineMapAttr(identity), AffineMapAttr(scale_map)]),
-            iterator_types=ArrayAttr(red_iters), result_types=(acc_t,))
+            iterator_types=ArrayAttr(red_iters),
+            result_types=(acc_t,),
+        )
 
         # scale = clamp(max_abs / half_range, min=eps) — divide first, clamp second.
         empty_scale = tensor.EmptyOp((), scale_t)
@@ -332,9 +343,13 @@ def lower_torchao_affine_quant(module, *, report_out: "dict | None" = None) -> i
         par_iters = ArrayAttr([L.IteratorTypeAttr(L.IteratorType.PARALLEL) for _ in range(kept)])
         sid = _maps(kept, kept, (1,) * kept)[0]
         scale_gen = L.GenericOp(
-            inputs=(reduce_gen.results[0],), outputs=(empty_scale.tensor,), body=Region(sbody),
+            inputs=(reduce_gen.results[0],),
+            outputs=(empty_scale.tensor,),
+            body=Region(sbody),
             indexing_maps=ArrayAttr([AffineMapAttr(sid), AffineMapAttr(sid)]),
-            iterator_types=par_iters, result_types=(scale_t,))
+            iterator_types=par_iters,
+            result_types=(scale_t,),
+        )
 
         for new in (reduce_gen, scale_gen):
             carry_provenance(new, call, "torchao_choose_qparams_affine")
@@ -349,28 +364,31 @@ def lower_torchao_affine_quant(module, *, report_out: "dict | None" = None) -> i
             raise TorchAOAffineError(
                 f"@{call.callee.string_value()} has {len(call.operands)} operands; this lowering "
                 "handles the capture's (input, scale) shape, whose dropped zero point is provably "
-                "zero for a SYMMETRIC scheme")
+                "zero for a SYMMETRIC scheme"
+            )
         src, scale = call.operands
         in_t, scale_t, out_t = src.type, scale.type, call.results[0].type
         if in_t.element_type != f32:
             raise TorchAOAffineError(
                 f"@{call.callee.string_value()} quantizes a {in_t.element_type} input; only f32 "
-                "has been verified bit-exact against torchao")
+                "has been verified bit-exact against torchao"
+            )
         out_elem = out_t.element_type
         if not isinstance(out_elem, IntegerType):
-            raise TorchAOAffineError(
-                f"@{call.callee.string_value()} returns {out_elem}, not an integer type")
+            raise TorchAOAffineError(f"@{call.callee.string_value()} returns {out_elem}, not an integer type")
         width = out_elem.width.data
         lo, hi = -(1 << (width - 1)), (1 << (width - 1)) - 1
         if not (lo <= spec.quant_min <= spec.quant_max <= hi):
             raise TorchAOAffineError(
                 f"scheme {scheme!r} clamps to [{spec.quant_min}, {spec.quant_max}], outside the "
-                f"range of the call's own result type {out_elem}")
+                f"range of the call's own result type {out_elem}"
+            )
         layout = derive_block_layout(in_t.get_shape(), scale_t.get_shape())
         if layout.granularity != spec.granularity:
             raise TorchAOAffineError(
                 f"@{call.callee.string_value()}: types imply {layout.granularity} "
-                f"(block_size {layout.block_size}) but scheme {scheme!r} is {spec.granularity}")
+                f"(block_size {layout.block_size}) but scheme {scheme!r} is {spec.granularity}"
+            )
         rank, kept = len(layout.in_shape), len(layout.scale_shape)
         identity, scale_map = _maps(rank, kept, layout.block_size)
 
@@ -381,20 +399,21 @@ def lower_torchao_affine_quant(module, *, report_out: "dict | None" = None) -> i
         one = _f32_const(1.0)
         qmin = _f32_const(float(spec.quant_min))
         qmax = _f32_const(float(spec.quant_max))
-        recip = arith.DivfOp(one.result, sv)                 # 1.0 / scale, THEN multiply
+        recip = arith.DivfOp(one.result, sv)  # 1.0 / scale, THEN multiply
         prod = arith.MulfOp(xv, recip.result)
-        rnd = math.RoundEvenOp(prod.result)                  # torch.round == ties-to-even
+        rnd = math.RoundEvenOp(prod.result)  # torch.round == ties-to-even
         clo = arith.MaximumfOp(rnd.result, qmin.result)
         chi = arith.MinimumfOp(clo.result, qmax.result)
         cast = arith.FPToSIOp(chi.result, out_elem)
         body.add_ops([one, qmin, qmax, recip, prod, rnd, clo, chi, cast, L.YieldOp(cast.result)])
         gen = L.GenericOp(
-            inputs=(src, scale), outputs=(empty.tensor,), body=Region(body),
-            indexing_maps=ArrayAttr([AffineMapAttr(identity), AffineMapAttr(scale_map),
-                                     AffineMapAttr(identity)]),
-            iterator_types=ArrayAttr([L.IteratorTypeAttr(L.IteratorType.PARALLEL)
-                                      for _ in range(rank)]),
-            result_types=(out_t,))
+            inputs=(src, scale),
+            outputs=(empty.tensor,),
+            body=Region(body),
+            indexing_maps=ArrayAttr([AffineMapAttr(identity), AffineMapAttr(scale_map), AffineMapAttr(identity)]),
+            iterator_types=ArrayAttr([L.IteratorTypeAttr(L.IteratorType.PARALLEL) for _ in range(rank)]),
+            result_types=(out_t,),
+        )
         carry_provenance(gen, call, "torchao_quantize_affine")
         parent.insert_op_before(empty, call)
         parent.insert_op_before(gen, call)

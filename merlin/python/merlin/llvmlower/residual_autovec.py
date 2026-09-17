@@ -21,8 +21,8 @@ explicit vector IR produced by the transform schedule remains explicit; clang is
 allowed to optimize the scalar residue around it.  Correctness and cross-model
 performance still belong to the normal board gates before promotion.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 FEATURE = "vectorize_scalar_residue"
 _GLOBAL_DISABLES = frozenset(("-fno-vectorize", "-fno-slp-vectorize"))
@@ -36,17 +36,20 @@ def ensure_registered() -> str:
     from .impr_features import ImprFeature, known, register
 
     if FEATURE not in known():
-        register(ImprFeature(
-            name=FEATURE,
-            action_class="HEURISTIC",
-            description=(
-                "Remove the package-wide -fno-vectorize/-fno-slp-vectorize flags from the "
-                "whole-model object so clang may vectorize scalar residue around explicitly "
-                "scheduled RVV contractions. Measured on K1: LSTMNetVIT W8A8 284.8 ms to "
-                "120.3 ms at eight harts (2.37x), and panel-packed TinyLlama W8A8 median "
-                "749.4 ms to 496.4 ms (1.51x) at eight harts with byte-identical LLVM IR, "
-                "weights, and complete output; default off and subject to correctness and "
-                "cross-model board gates."),
-            edit_cflags=_edit_cflags,
-        ))
+        register(
+            ImprFeature(
+                name=FEATURE,
+                action_class="HEURISTIC",
+                description=(
+                    "Remove the package-wide -fno-vectorize/-fno-slp-vectorize flags from the "
+                    "whole-model object so clang may vectorize scalar residue around explicitly "
+                    "scheduled RVV contractions. Measured on K1: LSTMNetVIT W8A8 284.8 ms to "
+                    "120.3 ms at eight harts (2.37x), and panel-packed TinyLlama W8A8 median "
+                    "749.4 ms to 496.4 ms (1.51x) at eight harts with byte-identical LLVM IR, "
+                    "weights, and complete output; default off and subject to correctness and "
+                    "cross-model board gates."
+                ),
+                edit_cflags=_edit_cflags,
+            )
+        )
     return FEATURE

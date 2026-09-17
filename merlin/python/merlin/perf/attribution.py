@@ -44,6 +44,7 @@ gated on evidence that is either present or not:
 * a bucket whose measured cycles already equal its structural bound implies **no** family, which is
   a finding (there is nothing to win here) and not a missing one.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
@@ -97,8 +98,9 @@ class OptimizationFamily(str, Enum):
     NONE = "none"
 
 
-def buckets_from_kinds(kinds: "Mapping[str, ResourceKind]", *, fixed_bucket: str,
-                       other_bucket: "str | None" = None) -> dict[str, str]:
+def buckets_from_kinds(
+    kinds: "Mapping[str, ResourceKind]", *, fixed_bucket: str, other_bucket: "str | None" = None
+) -> dict[str, str]:
     """Route each resource to a bucket by its derived kind. Refuses where the kind does not decide.
 
     ``COMPUTE`` and ``MOVEMENT`` map to ``compute`` and ``dma``: those follow from what the kind
@@ -125,14 +127,20 @@ def buckets_from_kinds(kinds: "Mapping[str, ResourceKind]", *, fixed_bucket: str
             raise ValueError(
                 f"resource {name!r} has kind {kind.value!r}, which does not decide a bucket. Pass "
                 "other_bucket explicitly -- a resource whose role was not established must not be "
-                "silently folded into one that was.")
+                "silently folded into one that was."
+            )
     return out
 
 
-def activity_from_counter_readings(readings: "Mapping[str, int]", *, workload: str,
-                                  total_cycles: int, header_text: str,
-                                  kind_of: "Mapping[str, str]",
-                                  provenance: str = "") -> "ActivitySource":
+def activity_from_counter_readings(
+    readings: "Mapping[str, int]",
+    *,
+    workload: str,
+    total_cycles: int,
+    header_text: str,
+    kind_of: "Mapping[str, str]",
+    provenance: str = "",
+) -> "ActivitySource":
     """One bracketed run's counter readings as an :class:`ActivitySource`, or a refusal saying why.
 
     THE ONE HOP THE WHOLE-MODEL PATH WAS MISSING. Every other piece of this stack already existed --
@@ -161,7 +169,8 @@ def activity_from_counter_readings(readings: "Mapping[str, int]", *, workload: s
     if not counters.complete():
         raise ValueError(
             "this target's counter header does not derive a complete occupancy partition, so no "
-            "reading of it can close accelerator-busy")
+            "reading of it can close accelerator-busy"
+        )
     required = set(counters.by_combination.values())
     absent = sorted(required - set(readings or {}))
     if absent:
@@ -169,10 +178,17 @@ def activity_from_counter_readings(readings: "Mapping[str, int]", *, workload: s
             f"{len(absent)} of {len(required)} partition counter(s) are absent ({absent[:4]}): "
             f"accelerator-busy would be a LOWER bound and the host residue an UPPER bound, and an "
             f"attribution map built from them would label every bucket with a number that is not "
-            f"the quantity its name claims")
-    block = validate_block(HC.observations_from_counters(
-        readings, counters, total_cycles=int(total_cycles),
-        source=provenance or "hardware combination counters", kind_of=kind_of))
+            f"the quantity its name claims"
+        )
+    block = validate_block(
+        HC.observations_from_counters(
+            readings,
+            counters,
+            total_cycles=int(total_cycles),
+            source=provenance or "hardware combination counters",
+            kind_of=kind_of,
+        )
+    )
     if block is None:
         raise ValueError(f"{workload}: the counter readings did not form a believable timing block")
     busy = dict(block.busy_by_unit())
@@ -183,7 +199,8 @@ def activity_from_counter_readings(readings: "Mapping[str, int]", *, workload: s
     if undeclared:
         raise ValueError(
             f"{workload}: the producer stated no kind for unit(s) {undeclared}; a role read out of a "
-            f"unit's NAME is not a derivation")
+            f"unit's NAME is not a derivation"
+        )
     kinds = {unit: ResourceKind(kind) for unit, kind in declared.items()}
     idle = block.quantity(IDLE_QUANTITY)
     if idle is not None:
@@ -192,12 +209,17 @@ def activity_from_counter_readings(readings: "Mapping[str, int]", *, workload: s
         busy[IDLE_QUANTITY] = int(idle)
         kinds[IDLE_QUANTITY] = ResourceKind.FIXED
     return activity_from_busy(
-        workload, int(total_cycles), busy, kinds,
+        workload,
+        int(total_cycles),
+        busy,
+        kinds,
         # NOT a partition: a per-engine total includes the cycles that engine shared, so the totals
         # deliberately sum past the window. That is what licenses reading overlap off them, and
         # declaring True here would make `attribute` refuse the overlap it can actually see.
-        partitioned=False, completion_observable=None,
-        provenance=provenance or "hardware combination counters")
+        partitioned=False,
+        completion_observable=None,
+        provenance=provenance or "hardware combination counters",
+    )
 
 
 def buckets_match_reference() -> "bool | Unavailable":
@@ -209,9 +231,9 @@ def buckets_match_reference() -> "bool | Unavailable":
     try:
         from mlc.passes.attribution import BUCKETS as REFERENCE  # type: ignore[import-not-found]
     except Exception as exc:  # noqa: BLE001 -- an external, optionally-present checkout
-        return Unavailable("bucket vocabulary cross-check",
-                           ("the mlc package on the import path",),
-                           f"{type(exc).__name__}: {exc}")
+        return Unavailable(
+            "bucket vocabulary cross-check", ("the mlc package on the import path",), f"{type(exc).__name__}: {exc}"
+        )
     return tuple(REFERENCE) == BUCKETS
 
 
@@ -242,10 +264,16 @@ class GapComponent:
                 return "UNKNOWN"
             return v.value if isinstance(v, OptimizationFamily) else v
 
-        return {"bucket": self.bucket, "measured_cycles": self.measured_cycles,
-                "structural_cycles": _s(self.structural_cycles), "gap_cycles": _s(self.gap_cycles),
-                "evidence_kind": self.evidence_kind, "family": _s(self.family),
-                "rationale": self.rationale, "resources": list(self.resources)}
+        return {
+            "bucket": self.bucket,
+            "measured_cycles": self.measured_cycles,
+            "structural_cycles": _s(self.structural_cycles),
+            "gap_cycles": _s(self.gap_cycles),
+            "evidence_kind": self.evidence_kind,
+            "family": _s(self.family),
+            "rationale": self.rationale,
+            "resources": list(self.resources),
+        }
 
 
 @dataclass(frozen=True)
@@ -264,7 +292,8 @@ class Attribution:
             raise ValueError(
                 f"components are {names}; every bucket plus the residual must be present in order. "
                 "A bucket dropped because it was zero is a bucket a reader cannot tell from one "
-                "that was never computed.")
+                "that was never computed."
+            )
 
     def component(self, bucket: str) -> GapComponent:
         for c in self.components:
@@ -317,70 +346,90 @@ def _movement_family(amp: Any) -> "tuple[OptimizationFamily | _Unknown, str]":
     to chase a win that proper tiling would have taken for free.
     """
     if amp is None:
-        return UNKNOWN, ("no amplification split supplied: the moved/useful ratio alone cannot say "
-                         "whether the excess is the fixed per-transfer granule (which amortizes "
-                         "away as tiles grow) or genuine refetch (which does not)")
+        return UNKNOWN, (
+            "no amplification split supplied: the moved/useful ratio alone cannot say "
+            "whether the excess is the fixed per-transfer granule (which amortizes "
+            "away as tiles grow) or genuine refetch (which does not)"
+        )
     gran = getattr(amp, "granularity_factor", UNKNOWN)
     redu = getattr(amp, "redundancy_factor", UNKNOWN)
     if is_unknown(gran) or is_unknown(redu):
-        return UNKNOWN, ("the amplification split did not resolve (transfer count unknown), so the "
-                         "artifact and the amortizing-resistant part cannot be told apart")
+        return UNKNOWN, (
+            "the amplification split did not resolve (transfer count unknown), so the "
+            "artifact and the amortizing-resistant part cannot be told apart"
+        )
     if float(redu) >= float(gran):
-        return (OptimizationFamily.TRANSFER_REDUNDANCY,
-                f"redundancy {float(redu):.2f}x >= granularity {float(gran):.2f}x: the excess "
-                "survives amortization, so it is refetch and not the small-tile artifact")
-    return (OptimizationFamily.TRANSFER_GRANULARITY,
-            f"granularity {float(gran):.2f}x > redundancy {float(redu):.2f}x: most of the excess "
-            "is the fixed per-transfer block and amortizes away as the tile grows past it")
+        return (
+            OptimizationFamily.TRANSFER_REDUNDANCY,
+            f"redundancy {float(redu):.2f}x >= granularity {float(gran):.2f}x: the excess "
+            "survives amortization, so it is refetch and not the small-tile artifact",
+        )
+    return (
+        OptimizationFamily.TRANSFER_GRANULARITY,
+        f"granularity {float(gran):.2f}x > redundancy {float(redu):.2f}x: most of the excess "
+        "is the fixed per-transfer block and amortizes away as the tile grows past it",
+    )
 
 
 def _stall_family(head: Any) -> "tuple[OptimizationFamily | _Unknown, str]":
     if head is None:
-        return UNKNOWN, ("no concurrency headroom result supplied; a partitioned activity source "
-                         "cannot settle whether these cycles are overlappable")
+        return UNKNOWN, (
+            "no concurrency headroom result supplied; a partitioned activity source "
+            "cannot settle whether these cycles are overlappable"
+        )
     best = getattr(head, "best", None)
     if best is None or getattr(best, "saving_cycles", 0) <= 0:
-        return (OptimizationFamily.NONE,
-                "no pair of resource groups has overlappable time on this workload")
-    bound = " (an upper bound until realised overlap is observed)" if getattr(
-        best, "is_upper_bound", False) else ""
-    return (OptimizationFamily.OVERLAP,
-            f"overlapping {best.a} with {best.b} is worth up to {best.saving_cycles} cycles"
-            f"{bound}")
+        return (OptimizationFamily.NONE, "no pair of resource groups has overlappable time on this workload")
+    bound = " (an upper bound until realised overlap is observed)" if getattr(best, "is_upper_bound", False) else ""
+    return (
+        OptimizationFamily.OVERLAP,
+        f"overlapping {best.a} with {best.b} is worth up to {best.saving_cycles} cycles{bound}",
+    )
 
 
-def _family_for(bucket: str, gap: "float | _Unknown", measured: int, *, amplification: Any,
-                headroom: Any) -> "tuple[OptimizationFamily | _Unknown, str]":
+def _family_for(
+    bucket: str, gap: "float | _Unknown", measured: int, *, amplification: Any, headroom: Any
+) -> "tuple[OptimizationFamily | _Unknown, str]":
     if measured == 0:
-        return (OptimizationFamily.NONE,
-                "no cycles are charged to this bucket on this workload")
+        return (OptimizationFamily.NONE, "no cycles are charged to this bucket on this workload")
     if is_unknown(gap):
-        return UNKNOWN, ("the structural bound for this bucket is UNKNOWN, so the distance to it "
-                         "is not established and no family follows from it")
+        return UNKNOWN, (
+            "the structural bound for this bucket is UNKNOWN, so the distance to it "
+            "is not established and no family follows from it"
+        )
     if float(gap) <= 0:
-        return (OptimizationFamily.NONE,
-                "measured cycles already meet the structural bound for this bucket")
+        return (OptimizationFamily.NONE, "measured cycles already meet the structural bound for this bucket")
     if bucket == "dma":
         return _movement_family(amplification)
     if bucket == "compute":
-        return (OptimizationFamily.COMPUTE_UTILIZATION,
-                f"the engine is busy {float(gap):.0f} cycles beyond its structural bound: operand "
-                "supply, scheduling or drain, not arithmetic")
+        return (
+            OptimizationFamily.COMPUTE_UTILIZATION,
+            f"the engine is busy {float(gap):.0f} cycles beyond its structural bound: operand "
+            "supply, scheduling or drain, not arithmetic",
+        )
     if bucket == "stall":
         return _stall_family(headroom)
     if bucket == "control":
-        return (OptimizationFamily.ISSUE_CONTROL,
-                f"{float(gap):.0f} cycles are charged to no engine: issue, sequencing or command "
-                "turnaround")
+        return (
+            OptimizationFamily.ISSUE_CONTROL,
+            f"{float(gap):.0f} cycles are charged to no engine: issue, sequencing or command turnaround",
+        )
     if bucket == "host":
-        return (OptimizationFamily.HOST_BOUNDARY,
-                f"{float(gap):.0f} cycles sit on the far side of the accelerator boundary")
+        return (
+            OptimizationFamily.HOST_BOUNDARY,
+            f"{float(gap):.0f} cycles sit on the far side of the accelerator boundary",
+        )
     return UNKNOWN, f"no family is derivable for bucket {bucket!r}"
 
 
-def attribute(source: ActivitySource, *, buckets: "Mapping[str, str]",
-              envelope: "StructuralEnvelope | None" = None,
-              amplification: Any = None, headroom: Any = None) -> Attribution:
+def attribute(
+    source: ActivitySource,
+    *,
+    buckets: "Mapping[str, str]",
+    envelope: "StructuralEnvelope | None" = None,
+    amplification: Any = None,
+    headroom: Any = None,
+) -> Attribution:
     """Attribute one workload's measured cycles to buckets and price each bucket's gap.
 
     ``buckets`` maps every resource in ``source`` to one of :data:`BUCKETS`; an unmapped resource
@@ -393,7 +442,8 @@ def attribute(source: ActivitySource, *, buckets: "Mapping[str, str]",
         raise ValueError(
             f"{source.workload}: no bucket declared for resource(s) {missing}. The mapping comes "
             "from the resources' derived kinds (buckets_from_kinds) or from the caller; it is "
-            "never inferred from a bucket's spelling.")
+            "never inferred from a bucket's spelling."
+        )
     bad = sorted({b for b in buckets.values() if b not in BUCKETS})
     if bad:
         raise ValueError(f"bucket(s) {bad} are not in the vocabulary {list(BUCKETS)}")
@@ -425,27 +475,47 @@ def attribute(source: ActivitySource, *, buckets: "Mapping[str, str]",
     for b in BUCKETS:
         st = structural[b]
         gap: "float | _Unknown" = UNKNOWN if is_unknown(st) else measured[b] - float(st)
-        family, why = _family_for(b, gap, measured[b], amplification=amplification,
-                                  headroom=headroom)
+        family, why = _family_for(b, gap, measured[b], amplification=amplification, headroom=headroom)
         kinds = evidence[b] or ["measured"]
-        components.append(GapComponent(
-            bucket=b, measured_cycles=measured[b], structural_cycles=st, gap_cycles=gap,
-            evidence_kind=_weakest(kinds), family=family, rationale=why,
-            resources=tuple(sorted(members[b]))))
+        components.append(
+            GapComponent(
+                bucket=b,
+                measured_cycles=measured[b],
+                structural_cycles=st,
+                gap_cycles=gap,
+                evidence_kind=_weakest(kinds),
+                family=family,
+                rationale=why,
+                resources=tuple(sorted(members[b])),
+            )
+        )
 
     accounted = sum(measured.values())
     residual = source.total_cycles - accounted
-    components.append(GapComponent(
-        bucket=RESIDUAL, measured_cycles=residual, structural_cycles=UNKNOWN, gap_cycles=UNKNOWN,
-        evidence_kind="assumed", family=UNKNOWN,
-        rationale=("cycles the buckets do not account for. Emitted unconditionally, INCLUDING when "
-                   "it is zero: a residual that vanishes from a report is one that was absorbed "
-                   "into a term that did not earn it. A non-zero constant across a corpus is a "
-                   "systematic accounting offset, not noise, and is a fact about the instrument.")))
+    components.append(
+        GapComponent(
+            bucket=RESIDUAL,
+            measured_cycles=residual,
+            structural_cycles=UNKNOWN,
+            gap_cycles=UNKNOWN,
+            evidence_kind="assumed",
+            family=UNKNOWN,
+            rationale=(
+                "cycles the buckets do not account for. Emitted unconditionally, INCLUDING when "
+                "it is zero: a residual that vanishes from a report is one that was absorbed "
+                "into a term that did not earn it. A non-zero constant across a corpus is a "
+                "systematic accounting offset, not noise, and is a fact about the instrument."
+            ),
+        )
+    )
 
-    return Attribution(workload=source.workload, total_cycles=source.total_cycles,
-                       components=tuple(components), partitioned=source.partitioned,
-                       provenance=source.provenance)
+    return Attribution(
+        workload=source.workload,
+        total_cycles=source.total_cycles,
+        components=tuple(components),
+        partitioned=source.partitioned,
+        provenance=source.provenance,
+    )
 
 
 def _weakest(kinds: "Sequence[str]") -> str:
@@ -505,16 +575,22 @@ class CorpusAttribution:
         return out
 
 
-def attribute_corpus(sources: "Iterable[ActivitySource]", *, buckets: "Mapping[str, str]",
-                     envelopes: "Mapping[str, StructuralEnvelope] | None" = None,
-                     amplifications: "Mapping[str, Any] | None" = None,
-                     headrooms: "Mapping[str, Any] | None" = None) -> CorpusAttribution:
+def attribute_corpus(
+    sources: "Iterable[ActivitySource]",
+    *,
+    buckets: "Mapping[str, str]",
+    envelopes: "Mapping[str, StructuralEnvelope] | None" = None,
+    amplifications: "Mapping[str, Any] | None" = None,
+    headrooms: "Mapping[str, Any] | None" = None,
+) -> CorpusAttribution:
     """:func:`attribute` over a corpus, keyed by workload."""
     out: dict[str, Attribution] = {}
     for s in sources:
         out[s.workload] = attribute(
-            s, buckets=buckets,
+            s,
+            buckets=buckets,
             envelope=None if envelopes is None else envelopes.get(s.workload),
             amplification=None if amplifications is None else amplifications.get(s.workload),
-            headroom=None if headrooms is None else headrooms.get(s.workload))
+            headroom=None if headrooms is None else headrooms.get(s.workload),
+        )
     return CorpusAttribution(workloads=out)

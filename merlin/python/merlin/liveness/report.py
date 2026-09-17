@@ -2,6 +2,7 @@
 :class:`LivenessReport`. Kept dependency-free so both the static linter and the dynamic model emit the
 same shape and a caller can merge them.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -13,11 +14,11 @@ class Severity(str, enum.Enum):
     could NOT be derived (fail-closed), so it ranks above ``WARN``: an underived check is a gap the caller
     must see, not a pass."""
 
-    FAULT = "fault"      # will fault / cannot run or build on silicon
-    STALL = "stall"      # may hang: back-pressure, missing drain, capacity deadlock
+    FAULT = "fault"  # will fault / cannot run or build on silicon
+    STALL = "stall"  # may hang: back-pressure, missing drain, capacity deadlock
     UNKNOWN = "unknown"  # a precondition could not be derived (surfaced, never dropped)
-    WARN = "warn"        # risky but likely benign
-    INFO = "info"        # informational (peaks, headroom)
+    WARN = "warn"  # risky but likely benign
+    INFO = "info"  # informational (peaks, headroom)
 
     @property
     def rank(self) -> int:
@@ -36,8 +37,8 @@ class Finding:
     rule: str
     severity: Severity
     message: str
-    where: str | None = None          # pc / addr / instruction index / symbol / tensor
-    derived_from: str | None = None   # provenance of the fact used (fail-closed audit trail)
+    where: str | None = None  # pc / addr / instruction index / symbol / tensor
+    derived_from: str | None = None  # provenance of the fact used (fail-closed audit trail)
     evidence: dict | None = None
     fix_hint: str | None = None
 
@@ -92,9 +93,5 @@ class LivenessReport:
             "verdict": self.verdict,
             "findings": [f.to_dict() for f in self.findings],
             "resource_peaks": self.resource_peaks,
-            "counts": {
-                sev.value: len(self.by_severity(sev))
-                for sev in Severity
-                if self.by_severity(sev)
-            },
+            "counts": {sev.value: len(self.by_severity(sev)) for sev in Severity if self.by_severity(sev)},
         }

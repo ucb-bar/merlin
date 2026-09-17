@@ -33,6 +33,7 @@ exactly the baked-encoding guess the gates forbid. The numeric idle value is ins
 reset the model and read the register (:func:`reset_values`). That is a measurement of the design,
 needs no encoding table, and is why nothing here has to declare that zero means idle.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -48,15 +49,15 @@ _SUFFIX = ".kiss2"
 class FsmRegister:
     """One control-state register the RTL declares."""
 
-    module: str                 # the RTL module that owns it, e.g. "LoadController"
-    register: str               # the state register, e.g. "control_state"
+    module: str  # the RTL module that owns it, e.g. "LoadController"
+    register: str  # the state register, e.g. "control_state"
     #: How many states the transition table declares -- None when the FSM was detected but its table
     #: was not exported. None means UNKNOWN, never zero: the machine exists either way.
     states: int | None = None
     #: The symbolic state the design resets into, when a table was exported. Not the numeric idle
     #: encoding -- see :func:`reset_values`, which observes that instead of mapping to it.
     reset_state: str | None = None
-    exported: bool = False      # a transition table exists for it
+    exported: bool = False  # a transition table exists for it
     source: str = "yosys-fsm"
 
     @property
@@ -104,7 +105,7 @@ def _parse_header(path: Path) -> tuple[int, str] | None:
         for line in fh:
             line = line.strip()
             if not line.startswith("."):
-                break                       # the header is over; transitions follow
+                break  # the header is over; transitions follow
             key, _, rest = line.partition(" ")
             if key == ".s":
                 try:
@@ -151,7 +152,7 @@ def detected_registers(log_text: str) -> list[tuple[str, str]]:
         if not line.startswith(_DETECTED) or _FROM not in line:
             continue
         reg_part, _, mod_part = line.partition(_FROM)
-        reg = reg_part[len(_DETECTED):].strip().strip("`'\\ ")
+        reg = reg_part[len(_DETECTED) :].strip().strip("`'\\ ")
         mod = mod_part.strip().rstrip(".").strip("`'\\ ")
         if reg and mod:
             out.append((mod, reg))
@@ -179,15 +180,21 @@ def fsm_inventory(target: str, kiss2_dir: Path | str | None = None) -> list[FsmR
     for log in sorted(d.glob("*.log")):
         for pair in detected_registers(log.read_text(errors="replace")):
             found[pair] = None
-    for pair in tables:                     # a table with no log line still counts as found
+    for pair in tables:  # a table with no log line still counts as found
         found.setdefault(pair, None)
 
     out: list[FsmRegister] = []
     for module, register in sorted(found):
         t = tables.get((module, register))
-        out.append(FsmRegister(module=module, register=register,
-                               states=(t[0] if t else None), reset_state=(t[1] if t else None),
-                               exported=t is not None))
+        out.append(
+            FsmRegister(
+                module=module,
+                register=register,
+                states=(t[0] if t else None),
+                reset_state=(t[1] if t else None),
+                exported=t is not None,
+            )
+        )
     return out
 
 

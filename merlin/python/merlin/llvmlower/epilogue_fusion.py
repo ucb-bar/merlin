@@ -78,6 +78,7 @@ vector-to-LLVM conversion before changing it, rather than returning a wrong or i
 Default OFF. With an empty feature set the pass list is returned unchanged, so the frozen baseline
 lowers byte-identically.
 """
+
 from __future__ import annotations
 
 #: Feature name, as it appears in a package's ``compiler_features``.
@@ -123,19 +124,22 @@ def edit_pipeline(passes: list[str]) -> list[str]:
     if any("convert-vector-to-llvm" in stage for stage in out):
         raise ValueError(
             f"{FEATURE}: broad affine producer fusion is unsafe in a pipeline with vector accesses; "
-            "use the targeted contraction/requant fusion for that pipeline")
+            "use the targeted contraction/requant fusion for that pipeline"
+        )
     try:
         i = out.index(LOOP_ANCHOR)
     except ValueError:
         raise ValueError(
             f"{FEATURE}: anchor {LOOP_ANCHOR!r} not in the pipeline, so there is no loop-generation "
-            "stage to fuse in; refusing to guess where the fusion belongs") from None
-    out[i:i + 1] = fusion_stage()
+            "stage to fuse in; refusing to guess where the fusion belongs"
+        ) from None
+    out[i : i + 1] = fusion_stage()
     return out
 
 
 def _feature():
     from .impr_features import ImprFeature
+
     return ImprFeature(
         name=FEATURE,
         action_class="PASS",
@@ -165,6 +169,7 @@ def ensure_registered() -> str:
     """Register the feature if it is not already. Idempotent, so importing from several entry points
     is safe. Returns the feature name."""
     from .impr_features import known, register
+
     if FEATURE not in known():
         register(_feature())
     return FEATURE

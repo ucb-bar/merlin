@@ -12,6 +12,7 @@ resolved (weight traced through ``dequantize -> transpose`` back to its function
 Classification is structural (op names, ``prov.family``, and a scan of each region body) — no regex,
 no target names. It is derived from the module, never assumed.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -26,16 +27,42 @@ PIPELINE_TODAY = {"matmul", "elementwise", "activation", "scaffold"}
 
 # Body math that the engine has no operator for — its presence makes an op a FUNDAMENTAL gap
 # (needs a new engine primitive), not merely un-plumbed lowering.
-_UNMODELED_MATH = {"math.rsqrt", "math.exp", "math.powf", "math.sin", "math.cos",
-                   "math.log", "math.sqrt", "math.tanh", "math.erf", "arith.divf"}
+_UNMODELED_MATH = {
+    "math.rsqrt",
+    "math.exp",
+    "math.powf",
+    "math.sin",
+    "math.cos",
+    "math.log",
+    "math.sqrt",
+    "math.tanh",
+    "math.erf",
+    "arith.divf",
+}
 # Body math the engine DOES model elementwise.
-_MODELED_MATH = {"arith.mulf", "arith.addf", "arith.subf", "arith.maximumf", "linalg.yield",
-                 "arith.muli", "arith.addi"}
+_MODELED_MATH = {"arith.mulf", "arith.addf", "arith.subf", "arith.maximumf", "linalg.yield", "arith.muli", "arith.addi"}
 
-_VIEW_OPS = {"tensor.expand_shape", "tensor.collapse_shape", "tensor.cast", "tensor.extract_slice",
-             "tensor.concat", "linalg.transpose", "linalg.copy", "tensor.extract", "tensor.insert"}
-_SCAFFOLD_OPS = {"tensor.empty", "arith.constant", "tensor.splat", "linalg.yield", "linalg.index",
-                 "arith.index_cast", "func.return", "linalg.fill"}
+_VIEW_OPS = {
+    "tensor.expand_shape",
+    "tensor.collapse_shape",
+    "tensor.cast",
+    "tensor.extract_slice",
+    "tensor.concat",
+    "linalg.transpose",
+    "linalg.copy",
+    "tensor.extract",
+    "tensor.insert",
+}
+_SCAFFOLD_OPS = {
+    "tensor.empty",
+    "arith.constant",
+    "tensor.splat",
+    "linalg.yield",
+    "linalg.index",
+    "arith.index_cast",
+    "func.return",
+    "linalg.fill",
+}
 _MATMUL_OPS = {"linalg.matmul", "linalg.batch_matmul", "linalg.quantized_matmul"}
 # Named linalg elementwise / activation ops (as opposed to the linalg.generic bodies the real
 # model emits) — the engine's vector path models these directly.
@@ -145,7 +172,7 @@ def _trace_weight(value, func_args):
         elif nm.startswith("quant_ext.dequantize"):
             quant = nm
             dtype = _elem_dtype(owner.operands[0].type)
-            if len(owner.operands) > 1:                     # per-channel scale operand
+            if len(owner.operands) > 1:  # per-channel scale operand
                 s = owner.operands[1]
                 if isinstance(s, BlockArgument) and s in func_args:
                     scale_idx = func_args.index(s)
@@ -189,8 +216,8 @@ class CompilabilityReport:
     matmuls: list[MatmulSite]
     op_classes: dict[str, int]
     blockers: list[dict[str, Any]]
-    modeled: bool           # every op is engine-expressible (no fundamental gap)
-    pipeline_ready: bool    # every op is one lower_module lowers end-to-end today
+    modeled: bool  # every op is engine-expressible (no fundamental gap)
+    pipeline_ready: bool  # every op is one lower_module lowers end-to-end today
     unmodeled_families: dict[str, int] = field(default_factory=dict)
 
 
@@ -222,27 +249,50 @@ def compilability_report(module) -> CompilabilityReport:
                 m, k = ls
                 _, n = rs
             w_idx, s_idx, quant, dtype = _trace_weight(rhs, func_args)
-            matmuls.append(MatmulSite(
-                region_id=prov.get("prov.region_id"), m=m, k=k, n=n, lhs_shape=ls,
-                weight_arg=w_idx, scale_arg=s_idx, quant=quant, weight_dtype=dtype))
+            matmuls.append(
+                MatmulSite(
+                    region_id=prov.get("prov.region_id"),
+                    m=m,
+                    k=k,
+                    n=n,
+                    lhs_shape=ls,
+                    weight_arg=w_idx,
+                    scale_arg=s_idx,
+                    quant=quant,
+                    weight_dtype=dtype,
+                )
+            )
         if cat == "unmodeled":
             fam = prov.get("prov.family", "?")
             unmodeled_families[fam] = unmodeled_families.get(fam, 0) + 1
-            blockers.append({"op": name, "region_id": prov.get("prov.region_id"),
-                             "family": fam, "body_math": sorted(_body_op_names(op) & _UNMODELED_MATH)})
+            blockers.append(
+                {
+                    "op": name,
+                    "region_id": prov.get("prov.region_id"),
+                    "family": fam,
+                    "body_math": sorted(_body_op_names(op) & _UNMODELED_MATH),
+                }
+            )
 
     modeled = op_classes.get("unmodeled", 0) == 0
     pipeline_ready = all(c in PIPELINE_TODAY for c in op_classes)
-    return CompilabilityReport(matmuls=matmuls, op_classes=op_classes, blockers=blockers,
-                               modeled=modeled, pipeline_ready=pipeline_ready,
-                               unmodeled_families=unmodeled_families)
+    return CompilabilityReport(
+        matmuls=matmuls,
+        op_classes=op_classes,
+        blockers=blockers,
+        modeled=modeled,
+        pipeline_ready=pipeline_ready,
+        unmodeled_families=unmodeled_families,
+    )
 
 
 def report_from_file(path) -> CompilabilityReport:
     """Parse a model2MLIR linalg (+quant_ext) file and report its compilability."""
     from merlin.frontends import linalg_mlir as fl
+
     try:
         from merlin.frontends import quant_ext
+
         if quant_ext.available():
             return compilability_report(quant_ext.parse_quant_mlir(path))
     except Exception:

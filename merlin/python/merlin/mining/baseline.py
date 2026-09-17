@@ -15,6 +15,7 @@ So a baseline is a measurement like any other and carries its own identity. A co
 result and a baseline whose declared identity disagrees with the result's is REFUSED, because a number
 attributed to the wrong comparand is worse than no number: it gets cited.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,11 +29,12 @@ UNRECORDED = "unrecorded"
 @dataclass(frozen=True)
 class ExpertBaseline:
     """A measured expert wall time, with the identity of what produced it."""
+
     wall_ns: float
-    workload: str | None = None       # the bundle it was measured on
-    dtype: str | None = None          # the numeric format it was measured in
-    substrate: str | None = None      # which device/simulator produced the number
-    revision: str | None = None       # the expert source revision
+    workload: str | None = None  # the bundle it was measured on
+    dtype: str | None = None  # the numeric format it was measured in
+    substrate: str | None = None  # which device/simulator produced the number
+    revision: str | None = None  # the expert source revision
     note: str = ""
 
     @staticmethod
@@ -61,10 +63,10 @@ class ExpertBaseline:
         if self.dtype and dtype and _norm_dtype(self.dtype) != _norm_dtype(dtype):
             problems.append(
                 f"baseline was measured in {self.dtype!r} but this run is {dtype!r} — comparing a "
-                f"result against another numeric format's expert time measures the format, not us")
+                f"result against another numeric format's expert time measures the format, not us"
+            )
         if self.workload and workload and self.workload != workload:
-            problems.append(
-                f"baseline was measured on {self.workload!r} but this run is {workload!r}")
+            problems.append(f"baseline was measured on {self.workload!r} but this run is {workload!r}")
         return tuple(problems)
 
 
@@ -76,8 +78,9 @@ def _norm_dtype(name: str) -> str:
     return ("f" + s[2:]) if s.startswith("fp") else s
 
 
-def attainment(baseline: Any, wall_ns: float | None, *, workload: str | None = None,
-               dtype: str | None = None) -> tuple[float | None, tuple[str, ...], bool]:
+def attainment(
+    baseline: Any, wall_ns: float | None, *, workload: str | None = None, dtype: str | None = None
+) -> tuple[float | None, tuple[str, ...], bool]:
     """``(attainment, problems, provenance_recorded)`` for one measured wall against ``baseline``.
 
     Returns ``None`` for the ratio when there is no baseline, no measurement, or a declared mismatch —

@@ -53,9 +53,18 @@ from __future__ import annotations
 
 from typing import Any
 
-__all__ = ["ROUTE_ACCEPT", "ROUTE_DECLINE", "ROUTE_VIOLATION", "ROUTES",
-           "SILENT_NO_WORK", "DECLINES_AND_EMITS", "DECLINE_WITHOUT_REASON", "VIOLATION_KINDS",
-           "RouteVerdict", "route_of"]
+__all__ = [
+    "ROUTE_ACCEPT",
+    "ROUTE_DECLINE",
+    "ROUTE_VIOLATION",
+    "ROUTES",
+    "SILENT_NO_WORK",
+    "DECLINES_AND_EMITS",
+    "DECLINE_WITHOUT_REASON",
+    "VIOLATION_KINDS",
+    "RouteVerdict",
+    "route_of",
+]
 
 #: Target work was emitted. Route ``A`` of the partition (``H`` is not distinguishable from ``A`` by
 #: the buffer alone — the seam that separates them is declared outside it — so both land here and the
@@ -97,8 +106,16 @@ class RouteVerdict:
 
     __slots__ = ("route", "violations", "reason", "declined_op", "n_commands", "outputs")
 
-    def __init__(self, route: str, violations: list[tuple[str, str]], *, reason: str | None,
-                 declined_op: str | None, n_commands: int, outputs: list[str]):
+    def __init__(
+        self,
+        route: str,
+        violations: list[tuple[str, str]],
+        *,
+        reason: str | None,
+        declined_op: str | None,
+        n_commands: int,
+        outputs: list[str],
+    ):
         self.route = route
         self.violations = violations
         self.reason = reason
@@ -117,8 +134,7 @@ class RouteVerdict:
         return [k for k, _ in self.violations]
 
     def __repr__(self) -> str:
-        return (f"RouteVerdict(route={self.route!r}, n_commands={self.n_commands}, "
-                f"violations={self.kinds!r})")
+        return f"RouteVerdict(route={self.route!r}, n_commands={self.n_commands}, violations={self.kinds!r})"
 
 
 def _output_names(cb: dict[str, Any]) -> list[str]:
@@ -163,25 +179,43 @@ def route_of(cb: dict[str, Any]) -> RouteVerdict:
     violations: list[tuple[str, str]] = []
 
     if has_decline and commands:
-        violations.append((DECLINES_AND_EMITS, (
-            f"the buffer declines ({'op=' + repr(declined_op) + ', ' if declined_op else ''}"
-            f"reason={reason!r}) and ALSO emits {len(commands)} command(s) "
-            f"{[str(c.get('opcode')) for c in commands if isinstance(c, dict)][:6]}"
-            f"{', declaring output(s) ' + repr(outputs) if outputs else ''}. Routes A and D are "
-            f"disjoint: a consumer reading 'declined' excuses this case while a consumer reading "
-            f"'commands' executes it, so the same artifact both grades as declined and runs")))
+        violations.append(
+            (
+                DECLINES_AND_EMITS,
+                (
+                    f"the buffer declines ({'op=' + repr(declined_op) + ', ' if declined_op else ''}"
+                    f"reason={reason!r}) and ALSO emits {len(commands)} command(s) "
+                    f"{[str(c.get('opcode')) for c in commands if isinstance(c, dict)][:6]}"
+                    f"{', declaring output(s) ' + repr(outputs) if outputs else ''}. Routes A and D are "
+                    f"disjoint: a consumer reading 'declined' excuses this case while a consumer reading "
+                    f"'commands' executes it, so the same artifact both grades as declined and runs"
+                ),
+            )
+        )
 
     if has_decline and not reason:
-        violations.append((DECLINE_WITHOUT_REASON, (
-            f"the buffer declines but gives no readable reason (declined={declined!r}). A decline is "
-            f"an instruction to whoever has to act on it; it needs to say what was not lowered")))
+        violations.append(
+            (
+                DECLINE_WITHOUT_REASON,
+                (
+                    f"the buffer declines but gives no readable reason (declined={declined!r}). A decline is "
+                    f"an instruction to whoever has to act on it; it needs to say what was not lowered"
+                ),
+            )
+        )
 
     if not commands and not has_decline:
-        violations.append((SILENT_NO_WORK, (
-            f"the buffer emits no command and declares no 'declined' block"
-            f"{', and declares output(s) ' + repr(outputs) + ' that nothing computes' if outputs else ''}"
-            f". An empty command list plus a zero exit code does not identify accepted work, so this "
-            f"is indistinguishable from a program dropped on the floor and reported as success")))
+        violations.append(
+            (
+                SILENT_NO_WORK,
+                (
+                    f"the buffer emits no command and declares no 'declined' block"
+                    f"{', and declares output(s) ' + repr(outputs) + ' that nothing computes' if outputs else ''}"
+                    f". An empty command list plus a zero exit code does not identify accepted work, so this "
+                    f"is indistinguishable from a program dropped on the floor and reported as success"
+                ),
+            )
+        )
 
     if violations:
         route = ROUTE_VIOLATION
@@ -189,5 +223,6 @@ def route_of(cb: dict[str, Any]) -> RouteVerdict:
         route = ROUTE_ACCEPT
     else:
         route = ROUTE_DECLINE
-    return RouteVerdict(route, violations, reason=reason, declined_op=declined_op,
-                        n_commands=len(commands), outputs=outputs)
+    return RouteVerdict(
+        route, violations, reason=reason, declined_op=declined_op, n_commands=len(commands), outputs=outputs
+    )

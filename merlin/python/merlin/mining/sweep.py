@@ -5,6 +5,7 @@ packages are data not code edits). spike/K1 are subprocess/SSH-bound so a thread
 them; FireSim still serializes through its own queue downstream. Used by the beam-search to
 certify a whole generation of forks concurrently.
 """
+
 from __future__ import annotations
 
 import os
@@ -18,8 +19,9 @@ def _max_workers(n: int) -> int:
     return max(1, min(n, min(8, (os.cpu_count() or 4) - 2)))
 
 
-def run_sweep(jobs: list[dict[str, Any]], *, certify_fn: Callable = certify_rvv,
-              max_workers: int | None = None) -> list[dict[str, Any]]:
+def run_sweep(
+    jobs: list[dict[str, Any]], *, certify_fn: Callable = certify_rvv, max_workers: int | None = None
+) -> list[dict[str, Any]]:
     """Certify each job concurrently. Each job is a kwargs dict for ``certify_fn`` (must include
     package_dir, model_dir, runs_root, run_id). Returns results in submission order; a cell that
     raises is captured as ``{"status": "error", "error": ...}`` (the sweep never aborts)."""
@@ -31,8 +33,7 @@ def run_sweep(jobs: list[dict[str, Any]], *, certify_fn: Callable = certify_rvv,
         try:
             results[i] = certify_fn(**job)
         except Exception as e:  # a harness bug in one cell must not kill the sweep
-            results[i] = {"status": "error", "error": f"{type(e).__name__}: {e}",
-                          "run_id": job.get("run_id")}
+            results[i] = {"status": "error", "error": f"{type(e).__name__}: {e}", "run_id": job.get("run_id")}
 
     with ThreadPoolExecutor(max_workers=max_workers or _max_workers(len(jobs))) as ex:
         list(ex.map(lambda p: _run(*p), list(enumerate(jobs))))
@@ -57,13 +58,14 @@ def rank_results(scored: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     A fork that broke numerics (gate_ok False) sorts last regardless of speed — the INLINED-VS-ROUTED
     / real-vs-fake discipline: no speed credit without correctness."""
+
     def key(n: dict) -> tuple:
         correct = 1 if n.get("gate_ok") else 0
         # ranked_speedup (margin-gated / inert-clamped) drives when present; else the raw speedup.
         spd = n["ranked_speedup"] if "ranked_speedup" in n else n.get("speedup")
         sm = n.get("structural_match") or 0.0
         cyc = n.get("cycles")
-        not_inert = 0 if n.get("inert") else 1   # non-inert (1) sorts ahead of inert (0) on a tie
-        return (correct, spd if spd is not None else -1.0, sm,
-                -(cyc if cyc is not None else float("inf")), not_inert)
+        not_inert = 0 if n.get("inert") else 1  # non-inert (1) sorts ahead of inert (0) on a tie
+        return (correct, spd if spd is not None else -1.0, sm, -(cyc if cyc is not None else float("inf")), not_inert)
+
     return sorted(scored, key=key, reverse=True)

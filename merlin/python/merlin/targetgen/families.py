@@ -21,6 +21,7 @@ maps each kind to the CCA facet that describes it and derives the coarse
 correspondence this docstring used to assert in prose (five kinds cannot "align with" three tokens by
 inspection); it is a checked map now, not a comment.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,8 +33,7 @@ from merlin.targetgen.compute_units import KINDS
 # ``command_buffer`` is the ISA-less endpoint: the accelerator has no command ISA at all (it is driven
 # by a command buffer over one-hot control ports, e.g. a spatial tensor tile), so the 4th artifact IS
 # the schema-valid command buffer the target's runtime consumes — no ``.insn`` assembly.
-ENDPOINT_KINDS: tuple[str, ...] = ("inline_asm_insn", "upstream_target", "external_backend",
-                                   "command_buffer")
+ENDPOINT_KINDS: tuple[str, ...] = ("inline_asm_insn", "upstream_target", "external_backend", "command_buffer")
 
 # The single NEUTRAL example target the onboarding synthesizers calibrate against (see design
 # target_agnostic_core T11: keep exactly one toy_npu example). It is NOT hardware overfit — it seeds the
@@ -46,17 +46,18 @@ DEFAULT_EXAMPLE_TARGET = "toy_npu"
 @dataclass(frozen=True)
 class FamilyProfile:
     """Generation defaults for one compute-unit kind (all overridable by a capability manifest)."""
+
     kind: str
-    endpoint_kind_default: str          # ENDPOINT_KINDS[*] — how the 4th artifact is produced
-    encoding_required: bool             # does the op->.insn encoding derivation + trace gate apply?
-    trace_gate: str | None              # the trace-gate plugin name (e.g. "rocc_insn") or None
+    endpoint_kind_default: str  # ENDPOINT_KINDS[*] — how the 4th artifact is produced
+    encoding_required: bool  # does the op->.insn encoding derivation + trace gate apply?
+    trace_gate: str | None  # the trace-gate plugin name (e.g. "rocc_insn") or None
     default_rtl_tiers: tuple[str, ...]  # RTL grading tiers for this kind
-    perf_fields: tuple[str, ...]        # perf metrics the runner extracts (empty -> cycles only)
-    fact_extractor: str                 # RTL fact-extraction family this kind routes to (see mlc_bridge
-                                        # .fact_bundle_for): "circt_static" (the decoder/HW-dialect static
-                                        # bundle + the generic no-arc fallback), "simt_config" (the SIMT
-                                        # config+FIRRTL introspect), or "opu" (the spatial tensor-tile
-                                        # state-manifest introspect). Never a target *name* — a routing key.
+    perf_fields: tuple[str, ...]  # perf metrics the runner extracts (empty -> cycles only)
+    fact_extractor: str  # RTL fact-extraction family this kind routes to (see mlc_bridge
+    # .fact_bundle_for): "circt_static" (the decoder/HW-dialect static
+    # bundle + the generic no-arc fallback), "simt_config" (the SIMT
+    # config+FIRRTL introspect), or "opu" (the spatial tensor-tile
+    # state-manifest introspect). Never a target *name* — a routing key.
     #: HOW this kind's COMPUTE ELEMENT is located in an elaborated design — the routing axis the
     #: datapath reader (:mod:`merlin.targetgen.rtl.datapaths`) uses instead of a per-target branch:
     #:
@@ -74,14 +75,30 @@ class FamilyProfile:
 # (systolic MXUs; a SIMT core's op-level ISA is also pure .insn+CSR — see no-forked-toolchain-bringup).
 # vector/scalar lower through UPSTREAM LLVM targets (RVV/base RISC-V), so no per-target encoding.
 _PROFILES: dict[str, FamilyProfile] = {
-    "systolic": FamilyProfile("systolic", "inline_asm_insn", True, "rocc_insn", ("L3", "L4", "L5"), (),
-                              "circt_static", compute_element="array_element"),
-    "simt":     FamilyProfile("simt", "inline_asm_insn", False, None, ("L3",),
-                              ("flops", "gflops", "pct_fp_peak"), "simt_config",
-                              compute_element="lane_replication"),
-    "vector":   FamilyProfile("vector", "upstream_target", False, None, (), (), "circt_static",
-                              compute_element="lane_replication"),
-    "scalar":   FamilyProfile("scalar", "upstream_target", False, None, (), (), "circt_static"),
+    "systolic": FamilyProfile(
+        "systolic",
+        "inline_asm_insn",
+        True,
+        "rocc_insn",
+        ("L3", "L4", "L5"),
+        (),
+        "circt_static",
+        compute_element="array_element",
+    ),
+    "simt": FamilyProfile(
+        "simt",
+        "inline_asm_insn",
+        False,
+        None,
+        ("L3",),
+        ("flops", "gflops", "pct_fp_peak"),
+        "simt_config",
+        compute_element="lane_replication",
+    ),
+    "vector": FamilyProfile(
+        "vector", "upstream_target", False, None, (), (), "circt_static", compute_element="lane_replication"
+    ),
+    "scalar": FamilyProfile("scalar", "upstream_target", False, None, (), (), "circt_static"),
     # A scalar pipe has no replicated compute element: its datapath is the register file's width, which
     # a cell-geometry read cannot reach -- so `compute_element` stays the default "none" and the reader
     # reports that instead of naming whichever module happens to be widest.
@@ -91,9 +108,16 @@ _PROFILES: dict[str, FamilyProfile] = {
     # artifact IS the schema-valid command buffer (command_buffer endpoint). Its facts come from the OPU
     # state-manifest geometry (cluster x cell tile, MRF depth, int8/fp8 datapaths) via the "opu" fact
     # extractor. Perf is tensor-tile MAC throughput. (See memory: opu-endpoint-is-command-buffer-not-rocc.)
-    "spatial":  FamilyProfile("spatial", "command_buffer", False, None, ("L3", "L4", "L5"),
-                              ("macs", "mac_per_cycle", "pct_mac_peak"), "opu",
-                              compute_element="array_element"),
+    "spatial": FamilyProfile(
+        "spatial",
+        "command_buffer",
+        False,
+        None,
+        ("L3", "L4", "L5"),
+        ("macs", "mac_per_cycle", "pct_mac_peak"),
+        "opu",
+        compute_element="array_element",
+    ),
 }
 
 
@@ -116,6 +140,7 @@ def contract_endpoint_kind(contract: dict) -> str | None:
     synthesizers use it to route the fork/adapter posture by family instead of ``if name==``."""
     from .compute_units import compute_units
     from .target_experiment import _primary_kind
+
     units = compute_units(contract)
     if not units:
         return None

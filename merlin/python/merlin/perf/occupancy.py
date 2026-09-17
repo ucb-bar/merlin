@@ -48,14 +48,25 @@ and which unit a column belongs to -- are declared by the producer rather than g
 whose meaning cannot be established stays out of the joint counts and is reported as unmeasured --
 never defaulted to idle, which is the reading that flatters the result.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
 __all__ = [
-    "COMPLETION_FIELD", "DERIVED_KIND", "ENGINE_RULE", "Occupancy", "align_offset",
-    "calibrate_state_idle", "declared_engines", "derived_engines", "engine_set", "joint_counts",
-    "merge_engines", "subsumed_columns", "unit_bindings",
+    "COMPLETION_FIELD",
+    "DERIVED_KIND",
+    "ENGINE_RULE",
+    "Occupancy",
+    "align_offset",
+    "calibrate_state_idle",
+    "declared_engines",
+    "derived_engines",
+    "engine_set",
+    "joint_counts",
+    "merge_engines",
+    "subsumed_columns",
+    "unit_bindings",
 ]
 
 
@@ -67,9 +78,9 @@ class Occupancy(dict):
         return len(next(iter(self.values()))) if self else 0
 
 
-def subsumed_columns(hot: Mapping[str, Sequence[bool]],
-                     prefer=lambda a, b: False,
-                     unit_of: Mapping[str, str] | None = None) -> dict[str, str]:
+def subsumed_columns(
+    hot: Mapping[str, Sequence[bool]], prefer=lambda a, b: False, unit_of: Mapping[str, str] | None = None
+) -> dict[str, str]:
     """Columns that are a sub-signal or a duplicate of another, derived from the trace itself.
 
     ``unit_of`` maps a column to the DECLARED unit it belongs to, and two columns declared to
@@ -95,16 +106,16 @@ def subsumed_columns(hot: Mapping[str, Sequence[bool]],
         if n_a == 0:
             continue
         for b in cols:
-            if a == b or b in out:              # never fold a column into an already-folded one
+            if a == b or b in out:  # never fold a column into an already-folded one
                 continue
             ua, ub = units.get(a), units.get(b)
             if ua is not None and ub is not None and ua != ub:
-                continue                        # separately declared engines; nesting is structure
+                continue  # separately declared engines; nesting is structure
             n_b = sum(hot[b])
             if n_b < n_a:
                 continue
             if n_b == n_a and (list(hot[a]) != list(hot[b]) or prefer(a, b)):
-                continue                        # not a duplicate, or `a` is the keeper
+                continue  # not a duplicate, or `a` is the keeper
             if all((not hot[a][i]) or hot[b][i] for i in range(len(hot[a]))):
                 out[a] = b
                 break
@@ -125,8 +136,7 @@ def declared_engines(contract: Mapping) -> dict[str, dict]:
     """
     from merlin.targetgen.compute_units import compute_units
 
-    return {u.name: {"kind": u.kind, "contains": tuple(u.contains)}
-            for u in compute_units(dict(contract))}
+    return {u.name: {"kind": u.kind, "contains": tuple(u.contains)} for u in compute_units(dict(contract))}
 
 
 #: The port field whose presence makes a module's work separately ATTRIBUTABLE. A completion channel
@@ -144,16 +154,19 @@ COMPLETION_FIELD = "completed"
 DERIVED_KIND = "control"
 
 #: The bar a module must clear to count as an engine, stated once so a record can quote it.
-ENGINE_RULE = ("a module of the target's own elaboration that BOTH owns a control-state register the "
-               "FSM extraction detected (it sequences its own work) AND exposes a completion channel "
-               "in its elaborated port list (its work can be attributed to a command). Either half "
-               "alone is not an engine: an FSM with no completion port is a sub-sequencer nested "
-               "inside another engine's datapath, and a completion port with no FSM is a wrapper or "
-               "a command tracker")
+ENGINE_RULE = (
+    "a module of the target's own elaboration that BOTH owns a control-state register the "
+    "FSM extraction detected (it sequences its own work) AND exposes a completion channel "
+    "in its elaborated port list (its work can be attributed to a command). Either half "
+    "alone is not an engine: an FSM with no completion port is a sub-sequencer nested "
+    "inside another engine's datapath, and a completion port with no FSM is a wrapper or "
+    "a command tracker"
+)
 
 
-def derived_engines(target: str | None, *, fsm_registers=None, ports: Mapping | None = None,
-                    completion_field: str = COMPLETION_FIELD) -> tuple[dict[str, dict], dict]:
+def derived_engines(
+    target: str | None, *, fsm_registers=None, ports: Mapping | None = None, completion_field: str = COMPLETION_FIELD
+) -> tuple[dict[str, dict], dict]:
     """Engines the target's OWN RTL evidences, for a contract that names only its compute units.
 
     A capability contract declares COMPUTE units, because that is what a compiler routes against. The
@@ -178,16 +191,25 @@ def derived_engines(target: str | None, *, fsm_registers=None, ports: Mapping | 
     Returns ``({name: {kind, contains, basis}}, basis)`` where the second is the derivation's own
     account: its status, the rule, and every candidate it REFUSED with the reason it refused it.
     """
-    basis: dict = {"rule": ENGINE_RULE, "target": target, "completion_field": completion_field,
-                   "status": "unknown", "engines": [], "refused": {}}
+    basis: dict = {
+        "rule": ENGINE_RULE,
+        "target": target,
+        "completion_field": completion_field,
+        "status": "unknown",
+        "engines": [],
+        "refused": {},
+    }
     if not target:
-        basis["why"] = ("no target was named, so no RTL fact bundle could be opened. Whether this "
-                        "device has engines its contract does not name is UNKNOWN, not none")
+        basis["why"] = (
+            "no target was named, so no RTL fact bundle could be opened. Whether this "
+            "device has engines its contract does not name is UNKNOWN, not none"
+        )
         return {}, basis
 
     if fsm_registers is None:
         try:
             from merlin.targetgen.rtl.fsm import fsm_inventory
+
             fsm_registers = list(fsm_inventory(target))
         except (OSError, ImportError) as exc:
             fsm_registers = None
@@ -195,8 +217,9 @@ def derived_engines(target: str | None, *, fsm_registers=None, ports: Mapping | 
     if ports is None:
         try:
             from merlin.targetgen.rtl.ports import port_facts
+
             ports = port_facts(target, fields=(completion_field,))
-        except Exception as exc:                                                   # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             ports = {"status": "unavailable", "why": f"{type(exc).__name__}: {str(exc)[:160]}"}
 
     by_module: dict[str, list[str]] = {}
@@ -211,16 +234,20 @@ def derived_engines(target: str | None, *, fsm_registers=None, ports: Mapping | 
     basis["ports_status"] = port_status
     basis["ports_dialect"] = (ports or {}).get("dialect")
     if port_status != "derived":
-        basis["why"] = (f"this target's elaboration could not be read "
-                        f"({(ports or {}).get('why', 'no port facts')}), so no module's ports could "
-                        f"be checked for a {completion_field!r} channel. Engines beyond the "
-                        f"contract's declaration are UNKNOWN here, which is NOT the same as the "
-                        f"design having none")
+        basis["why"] = (
+            f"this target's elaboration could not be read "
+            f"({(ports or {}).get('why', 'no port facts')}), so no module's ports could "
+            f"be checked for a {completion_field!r} channel. Engines beyond the "
+            f"contract's declaration are UNKNOWN here, which is NOT the same as the "
+            f"design having none"
+        )
         return {}, basis
     if fsm_registers is None:
-        basis["why"] = ("the control-FSM extraction could not be read, so no module could be shown "
-                        "to sequence its own work. UNKNOWN, not none: this is a statement about the "
-                        "extraction and not about the design")
+        basis["why"] = (
+            "the control-FSM extraction could not be read, so no module could be shown "
+            "to sequence its own work. UNKNOWN, not none: this is a statement about the "
+            "extraction and not about the design"
+        )
         return {}, basis
 
     field = ((ports.get("fields") or {}).get(completion_field)) or {}
@@ -231,49 +258,64 @@ def derived_engines(target: str | None, *, fsm_registers=None, ports: Mapping | 
     basis["modules_completing_decoupled"] = sorted(handshaken)
 
     if not by_module:
-        basis["why"] = ("no control-state register was found for this target, so no module could be "
-                        "shown to sequence its own work. An absent FSM extraction is a statement "
-                        "about the extraction and NOT about the design: this target's engines "
-                        "beyond its declaration stay UNKNOWN")
+        basis["why"] = (
+            "no control-state register was found for this target, so no module could be "
+            "shown to sequence its own work. An absent FSM extraction is a statement "
+            "about the extraction and NOT about the design: this target's engines "
+            "beyond its declaration stay UNKNOWN"
+        )
         return {}, basis
 
     engines: dict[str, dict] = {}
     for module, regs in sorted(by_module.items()):
         if module in completing:
             engines[module] = {
-                "kind": DERIVED_KIND, "contains": (), "rtl_module": module,
-                "basis": (f"DERIVED from this target's own RTL, not declared: {module} owns "
-                          f"control-state register(s) {sorted(regs)} that the FSM extraction "
-                          f"detected, and its port list in the elaboration exposes a "
-                          f"{completion_field!r} channel"
-                          + (" as a ready/valid handshake, so a completion carries the id of the "
-                             "command it ends" if module in handshaken else
-                             " without a ready/valid handshake, so it signals completion but does "
-                             "not tag which command finished")
-                          + ". Its ROLE -- arithmetic or data movement -- is deliberately NOT "
-                            "established: deciding it would mean reading the module's name, which "
-                            "is the assumption this derivation exists to avoid")}
+                "kind": DERIVED_KIND,
+                "contains": (),
+                "rtl_module": module,
+                "basis": (
+                    f"DERIVED from this target's own RTL, not declared: {module} owns "
+                    f"control-state register(s) {sorted(regs)} that the FSM extraction "
+                    f"detected, and its port list in the elaboration exposes a "
+                    f"{completion_field!r} channel"
+                    + (
+                        " as a ready/valid handshake, so a completion carries the id of the command it ends"
+                        if module in handshaken
+                        else " without a ready/valid handshake, so it signals completion but does "
+                        "not tag which command finished"
+                    )
+                    + ". Its ROLE -- arithmetic or data movement -- is deliberately NOT "
+                    "established: deciding it would mean reading the module's name, which "
+                    "is the assumption this derivation exists to avoid"
+                ),
+            }
             continue
         basis["refused"][module] = (
             f"owns control-state register(s) {sorted(regs)} but exposes no {completion_field!r} "
             f"channel in the elaboration, so nothing can attribute its work to a command. On this "
             f"evidence it is a sub-sequencer inside another engine rather than an engine of its "
-            f"own -- UNKNOWN either way, and NOT counted as one")
+            f"own -- UNKNOWN either way, and NOT counted as one"
+        )
     basis["status"] = "derived"
     basis["engines"] = sorted(engines)
-    basis["why"] = (f"{len(engines)} engine(s) derived: of {len(by_module)} module(s) owning a "
-                    f"detected control FSM, {len(engines)} also expose a {completion_field!r} "
-                    f"channel in {ports.get('n_modules')} module(s) of the elaboration "
-                    f"({ports.get('dialect')} dialect)")
+    basis["why"] = (
+        f"{len(engines)} engine(s) derived: of {len(by_module)} module(s) owning a "
+        f"detected control FSM, {len(engines)} also expose a {completion_field!r} "
+        f"channel in {ports.get('n_modules')} module(s) of the elaboration "
+        f"({ports.get('dialect')} dialect)"
+    )
     if not engines:
-        basis["why"] += (". No module clears both halves of the rule, so whether this design has "
-                         "engines its contract does not name stays UNKNOWN -- the extractions ran "
-                         "and disagree with neither reading")
+        basis["why"] += (
+            ". No module clears both halves of the rule, so whether this design has "
+            "engines its contract does not name stays UNKNOWN -- the extractions ran "
+            "and disagree with neither reading"
+        )
     return engines, basis
 
 
-def engine_set(contract: Mapping, *, target: str | None = None, fsm_registers=None,
-               ports: Mapping | None = None) -> tuple[dict[str, dict], dict]:
+def engine_set(
+    contract: Mapping, *, target: str | None = None, fsm_registers=None, ports: Mapping | None = None
+) -> tuple[dict[str, dict], dict]:
     """The engine set an overlap term is defined over: what the contract DECLARES, widened by what
     the RTL EVIDENCES.
 
@@ -300,7 +342,7 @@ def engine_set(contract: Mapping, *, target: str | None = None, fsm_registers=No
     derived, basis = derived_engines(target, fsm_registers=fsm_registers, ports=ports)
 
     claimed: dict[str, str] = {}
-    for raw in ((contract or {}).get("compute_units") or ()):
+    for raw in (contract or {}).get("compute_units") or ():
         unit, module = str(raw.get("name") or ""), str(raw.get("rtl_module") or "")
         if unit in engines and module:
             claimed[module] = unit
@@ -312,36 +354,47 @@ def engine_set(contract: Mapping, *, target: str | None = None, fsm_registers=No
         module = next((m for m, u in claimed.items() if u == unit), "")
         if module and module in derived:
             spec["rtl_module"] = module
-            spec["basis"] = (f"DECLARED by the contract, and its ``rtl_module`` {module!r} "
-                             f"CROSS-CHECKED against this target's own elaboration: that module "
-                             f"clears the derived-engine rule, so this unit and it are one engine "
-                             f"and are counted once")
+            spec["basis"] = (
+                f"DECLARED by the contract, and its ``rtl_module`` {module!r} "
+                f"CROSS-CHECKED against this target's own elaboration: that module "
+                f"clears the derived-engine rule, so this unit and it are one engine "
+                f"and are counted once"
+            )
         elif module and module in known_modules:
             spec["rtl_module"] = module
-            spec["basis"] = (f"DECLARED by the contract; its ``rtl_module`` {module!r} IS in this "
-                             f"target's elaboration but does not clear the derived-engine rule "
-                             f"({basis['refused'].get(module, 'it owns no detected control FSM')}), "
-                             f"so the alias holds and no derived engine is folded into it")
+            spec["basis"] = (
+                f"DECLARED by the contract; its ``rtl_module`` {module!r} IS in this "
+                f"target's elaboration but does not clear the derived-engine rule "
+                f"({basis['refused'].get(module, 'it owns no detected control FSM')}), "
+                f"so the alias holds and no derived engine is folded into it"
+            )
         elif module and basis.get("status") == "derived":
             spec["rtl_module"] = module
-            spec["basis"] = (f"DECLARED by the contract, and its ``rtl_module`` {module!r} FAILS the "
-                             f"cross-check: this target's own elaboration was read and contains no "
-                             f"such module. The declaration is recorded and NOT corroborated")
+            spec["basis"] = (
+                f"DECLARED by the contract, and its ``rtl_module`` {module!r} FAILS the "
+                f"cross-check: this target's own elaboration was read and contains no "
+                f"such module. The declaration is recorded and NOT corroborated"
+            )
         elif module:
             spec["rtl_module"] = module
-            spec["basis"] = (f"DECLARED by the contract; its ``rtl_module`` {module!r} could not be "
-                             f"cross-checked because the RTL derivation is UNKNOWN here "
-                             f"({basis.get('why', '')})")
+            spec["basis"] = (
+                f"DECLARED by the contract; its ``rtl_module`` {module!r} could not be "
+                f"cross-checked because the RTL derivation is UNKNOWN here "
+                f"({basis.get('why', '')})"
+            )
         elif derived:
             unresolved.append(unit)
-            spec["basis"] = (f"DECLARED by the contract, which does not say which module of the "
-                             f"elaboration realises it. Whether one of the derived engine(s) "
-                             f"{sorted(derived)} IS this unit is UNKNOWN, so they are kept apart -- "
-                             f"which counts one engine twice if any of them is this one. Declaring "
-                             f"``rtl_module`` on this unit resolves it")
+            spec["basis"] = (
+                f"DECLARED by the contract, which does not say which module of the "
+                f"elaboration realises it. Whether one of the derived engine(s) "
+                f"{sorted(derived)} IS this unit is UNKNOWN, so they are kept apart -- "
+                f"which counts one engine twice if any of them is this one. Declaring "
+                f"``rtl_module`` on this unit resolves it"
+            )
         else:
-            spec["basis"] = ("DECLARED by the contract; no engine beyond the declaration was derived "
-                             f"({basis.get('why', '')})")
+            spec["basis"] = (
+                f"DECLARED by the contract; no engine beyond the declaration was derived ({basis.get('why', '')})"
+            )
     basis["unresolved_aliases"] = sorted(unresolved)
 
     for name, spec in derived.items():
@@ -353,8 +406,9 @@ def engine_set(contract: Mapping, *, target: str | None = None, fsm_registers=No
     return engines, basis
 
 
-def unit_bindings(columns: Sequence[str], binding: Mapping[str, str],
-                  engines: Mapping[str, dict]) -> tuple[dict[str, str], list[str]]:
+def unit_bindings(
+    columns: Sequence[str], binding: Mapping[str, str], engines: Mapping[str, dict]
+) -> tuple[dict[str, str], list[str]]:
     """``(unit_of, unbound)`` for ``columns``, validated against the declared engines.
 
     ``binding`` is the producer's column -> engine map: which engine each traced signal belongs to.
@@ -365,15 +419,16 @@ def unit_bindings(columns: Sequence[str], binding: Mapping[str, str],
     """
     unknown = sorted({e for e in binding.values() if e not in engines})
     if unknown:
-        raise ValueError(f"trace binds column(s) to undeclared engine(s) {unknown}; "
-                         f"the contract declares {sorted(engines)}")
+        raise ValueError(
+            f"trace binds column(s) to undeclared engine(s) {unknown}; the contract declares {sorted(engines)}"
+        )
     unit_of = {c: binding[c] for c in columns if c in binding}
     return unit_of, [c for c in columns if c not in binding]
 
 
-def calibrate_state_idle(traces: Sequence[Mapping[str, Sequence[str]]],
-                         state_columns: Sequence[str],
-                         port_columns: Sequence[str]) -> dict:
+def calibrate_state_idle(
+    traces: Sequence[Mapping[str, Sequence[str]]], state_columns: Sequence[str], port_columns: Sequence[str]
+) -> dict:
     """Which value of a state column means *idle*, derived across a whole corpus.
 
     ``0 == idle`` is exactly the kind of baked encoding constant that must not be guessed, and it
@@ -398,14 +453,13 @@ def calibrate_state_idle(traces: Sequence[Mapping[str, Sequence[str]]],
         if not rows_n:
             continue
         checked += 1
-        hot = {c: [tr[c][i] not in ("0", "") for i in range(rows_n)]
-               for c in port_columns if c in tr}
+        hot = {c: [tr[c][i] not in ("0", "") for i in range(rows_n)] for c in port_columns if c in tr}
         for s in state_columns:
             if s not in tr:
                 continue
             vals = set(tr[s])
             if len(vals) < 2:
-                continue                        # constant here; another trace may still settle it
+                continue  # constant here; another trace may still settle it
             for port, ph in hot.items():
                 if not any(ph):
                     continue
@@ -414,21 +468,33 @@ def calibrate_state_idle(traces: Sequence[Mapping[str, Sequence[str]]],
                         pairings.setdefault(s, set()).add((cand, port))
     idle_values = {iv for prs in pairings.values() for iv, _ in prs}
     if len(idle_values) != 1:
-        return {"idle_value": None, "paired_with": None, "paired_columns": [],
-                "checked_traces": checked,
-                "detail": ("no state column pairs cycle-exactly with a busy port" if not idle_values
-                           else f"paired columns disagree on the idle value ({sorted(idle_values)});"
-                                " refusing to pick one")}
-    return {"idle_value": idle_values.pop(),
-            "paired_with": sorted({p for prs in pairings.values() for _, p in prs}),
-            "paired_columns": sorted(pairings), "checked_traces": checked,
-            "detail": ("cycle-exact for the state columns that have a busy port; applying it to a "
-                       "column with no port is an INFERENCE from a shared encoding convention, not "
-                       "a measurement")}
+        return {
+            "idle_value": None,
+            "paired_with": None,
+            "paired_columns": [],
+            "checked_traces": checked,
+            "detail": (
+                "no state column pairs cycle-exactly with a busy port"
+                if not idle_values
+                else f"paired columns disagree on the idle value ({sorted(idle_values)}); refusing to pick one"
+            ),
+        }
+    return {
+        "idle_value": idle_values.pop(),
+        "paired_with": sorted({p for prs in pairings.values() for _, p in prs}),
+        "paired_columns": sorted(pairings),
+        "checked_traces": checked,
+        "detail": (
+            "cycle-exact for the state columns that have a busy port; applying it to a "
+            "column with no port is an INFERENCE from a shared encoding convention, not "
+            "a measurement"
+        ),
+    }
 
 
-def align_offset(a: Mapping[str, Sequence[bool]], b: Mapping[str, Sequence[bool]],
-                 candidates: Sequence[int] = (0, 1, -1, 2, -2)) -> tuple[int, int]:
+def align_offset(
+    a: Mapping[str, Sequence[bool]], b: Mapping[str, Sequence[bool]], candidates: Sequence[int] = (0, 1, -1, 2, -2)
+) -> tuple[int, int]:
     """The sampling offset between two instruments, DERIVED as the shift aligning the most columns.
 
     Two engines sample the same signal at different points in the cycle, so a fixed offset separates
@@ -455,8 +521,9 @@ def align_offset(a: Mapping[str, Sequence[bool]], b: Mapping[str, Sequence[bool]
     return best, max(hits_best, 0)
 
 
-def merge_engines(primary: Mapping[str, Sequence[bool]],
-                  secondary: Mapping[str, Sequence[bool]]) -> tuple[Occupancy, dict]:
+def merge_engines(
+    primary: Mapping[str, Sequence[bool]], secondary: Mapping[str, Sequence[bool]]
+) -> tuple[Occupancy, dict]:
     """Merge two instruments' occupancy vectors, keeping only what each independently contributes.
 
     A column from ``secondary`` is admitted only if it carries a cycle ``primary`` could not see. A
@@ -480,8 +547,7 @@ def merge_engines(primary: Mapping[str, Sequence[bool]],
         col = [col_raw[min(max(i + shift, 0), n - 1)] for i in range(n)]
         if not any(col):
             continue
-        same = next((x for x in primary
-                     if all(primary[x][i] == col[i] for i in range(lo, hi))), None)
+        same = next((x for x in primary if all(primary[x][i] == col[i] for i in range(lo, hi))), None)
         if same is not None:
             folded[c] = same
             continue
@@ -490,13 +556,12 @@ def merge_engines(primary: Mapping[str, Sequence[bool]],
             continue
         merged[c] = col
         added.append(c)
-    return merged, {"shift": shift, "columns_aligned_by_shift": aligned,
-                    "folded": folded, "added": added}
+    return merged, {"shift": shift, "columns_aligned_by_shift": aligned, "folded": folded, "added": added}
 
 
-def joint_counts(hot: Mapping[str, Sequence[bool]],
-                 kinds: Mapping[str, str] | None = None,
-                 unit_of: Mapping[str, str] | None = None) -> dict:
+def joint_counts(
+    hot: Mapping[str, Sequence[bool]], kinds: Mapping[str, str] | None = None, unit_of: Mapping[str, str] | None = None
+) -> dict:
     """Idle, overlap and per-column busy over an occupancy vector, after subsumption.
 
     ``overlap_across_kinds`` counts only columns whose kind the producer DECLARED, so it is a lower
@@ -522,11 +587,17 @@ def joint_counts(hot: Mapping[str, Sequence[bool]],
     # indistinguishable from a machine that genuinely serialises unless the distinction is carried.
     # A column that is constant across the run is not live: nothing was observed of it either way.
     live = [c for c in cols if any(hot[c]) and not all(hot[c])] or [c for c in cols if any(hot[c])]
-    return {"sampled_cycles": n, "joint_columns": cols, "subsumed_columns": subsumed,
-            "overlap_observable": len(live) >= 2,
-            "live_columns": live,
-            "busy": {c: sum(hot[c]) for c in hot}, "idle_cycles": idle, "overlap_any": ovl,
-            "overlap_across_kinds": ovl_kind,
-            "overlap_across_kinds_is_lower_bound": bool(undeclared),
-            "undeclared_columns": undeclared,
-            "unbound_columns": sorted(c for c in cols if c not in (unit_of or {}))}
+    return {
+        "sampled_cycles": n,
+        "joint_columns": cols,
+        "subsumed_columns": subsumed,
+        "overlap_observable": len(live) >= 2,
+        "live_columns": live,
+        "busy": {c: sum(hot[c]) for c in hot},
+        "idle_cycles": idle,
+        "overlap_any": ovl,
+        "overlap_across_kinds": ovl_kind,
+        "overlap_across_kinds_is_lower_bound": bool(undeclared),
+        "undeclared_columns": undeclared,
+        "unbound_columns": sorted(c for c in cols if c not in (unit_of or {})),
+    }

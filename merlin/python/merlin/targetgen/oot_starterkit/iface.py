@@ -4,7 +4,9 @@ Wraps the existing, tested `contract.interface_emit.parse_interface_mlir` (the c
 frozen grammar) so the agent does not rebuild it. Target-agnostic: the grammar is fixed by the contract,
 identical for every accelerator. No target semantics here.
 """
+
 from __future__ import annotations
+
 from typing import Any
 
 try:

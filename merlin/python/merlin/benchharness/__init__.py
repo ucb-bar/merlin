@@ -9,6 +9,7 @@ sandbox, perf runner, and grading dispatch move here incrementally, parameterize
 Canonical output routing (see CLAUDE.md "Generated-output convention"): runs -> `runs/`,
 products -> `artifacts/` — never inside the source tree.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -35,8 +36,9 @@ def reports_root(*parts: str) -> Path:
 def sh(args: list[str], cwd: Path | None = None, timeout: int = 120) -> str:
     """Run a command, return stripped stdout ('' on any failure/timeout)."""
     try:
-        return subprocess.run(args, cwd=str(cwd or repo_root()), capture_output=True, text=True,
-                              timeout=timeout).stdout.strip()
+        return subprocess.run(
+            args, cwd=str(cwd or repo_root()), capture_output=True, text=True, timeout=timeout
+        ).stdout.strip()
     except Exception:
         return ""
 
@@ -50,8 +52,10 @@ def hash_tree(root: Path) -> dict:
     for p in sorted(root.rglob("*")):
         if not p.is_file() or _SKIP & set(p.parts):
             continue
-        h.update(p.relative_to(root).as_posix().encode()); h.update(b"\0")
-        h.update(p.read_bytes()); h.update(b"\0")
+        h.update(p.relative_to(root).as_posix().encode())
+        h.update(b"\0")
+        h.update(p.read_bytes())
+        h.update(b"\0")
         n += 1
     return {"present": True, "sha256": h.hexdigest(), "n_files": n}
 

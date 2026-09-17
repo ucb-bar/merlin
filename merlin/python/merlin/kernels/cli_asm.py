@@ -5,6 +5,7 @@ facets a target can populate, which optimizations its assembly implies) go stale
 the corpus or a role table changes, so they belong in a command anyone can re-run rather than in a
 report someone wrote once.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -15,6 +16,7 @@ import sys
 
 def _audits(target: str, patterns):
     from merlin.kernels import asm_audit as A
+
     out = []
     for pat in patterns or ():
         for path in sorted(glob.glob(pat)):
@@ -29,12 +31,9 @@ def _audits(target: str, patterns):
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--target", required=True,
-                    help="the target whose endpoints and assembly are audited")
-    ap.add_argument("--stream", action="append", default=[],
-                    help="glob of compiled objects/ELFs to audit (repeatable)")
-    ap.add_argument("--asm", action="append", default=[],
-                    help="glob of hand-written .S kernels to audit (repeatable)")
+    ap.add_argument("--target", required=True, help="the target whose endpoints and assembly are audited")
+    ap.add_argument("--stream", action="append", default=[], help="glob of compiled objects/ELFs to audit (repeatable)")
+    ap.add_argument("--asm", action="append", default=[], help="glob of hand-written .S kernels to audit (repeatable)")
     ap.add_argument("--json", action="store_true", help="emit the full report as JSON")
     a = ap.parse_args(argv)
 
@@ -45,8 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     for pat in a.asm:
         for path in sorted(glob.glob(pat)):
             with open(path, encoding="utf-8", errors="replace") as fh:
-                audits.extend(A.audit_every_endpoint(fh.read().splitlines(), a.target,
-                                                    text=True, stream=path))
+                audits.extend(A.audit_every_endpoint(fh.read().splitlines(), a.target, text=True, stream=path))
 
     report = A.target_report(a.target, audits)
     hist: dict = {}
@@ -85,8 +83,10 @@ def main(argv: list[str] | None = None) -> int:
         if e["identities_without_a_role"]:
             print(f"    NO ROLE for    : {', '.join(e['identities_without_a_role'])}")
         unreachable = [f for f, v in e["facets"].items() if not v["reachable"]]
-        print(f"    facets reachable: {len(e['facets']) - len(unreachable)}/{len(e['facets'])}"
-              + (f"   blocked: {', '.join(unreachable)}" if unreachable else ""))
+        print(
+            f"    facets reachable: {len(e['facets']) - len(unreachable)}/{len(e['facets'])}"
+            + (f"   blocked: {', '.join(unreachable)}" if unreachable else "")
+        )
     if audits:
         sem = report["observed"]["semantic_fraction"]
         print(f"  observed: {total} instruction(s), {sem:.1%} carry a role")
@@ -95,15 +95,18 @@ def main(argv: list[str] | None = None) -> int:
         cov = report.get("coverage") or {}
         for ep, c in sorted((cov.get("per_endpoint") or {}).items()):
             flag = "" if c.get("sums") else "   !! DOES NOT SUM"
-            print(f"    {ep:16s} named={c['named_by_tool']:7d} roled={c['role_tagged']:6d} "
-                  f"claimed_no_role={c['claimed_no_role']:5d} unaccounted={c['unaccounted']:6d}{flag}")
+            print(
+                f"    {ep:16s} named={c['named_by_tool']:7d} roled={c['role_tagged']:6d} "
+                f"claimed_no_role={c['claimed_no_role']:5d} unaccounted={c['unaccounted']:6d}{flag}"
+            )
         una, frac = cov.get("unaccounted_by_every_endpoint"), cov.get("unaccounted_fraction")
         if una is None:
-            print("    unaccounted by EVERY endpoint: UNKNOWN (a count derived by subtraction "
-                  "cannot be intersected) — not zero")
+            print(
+                "    unaccounted by EVERY endpoint: UNKNOWN (a count derived by subtraction "
+                "cannot be intersected) — not zero"
+            )
         else:
-            print(f"    unaccounted by EVERY endpoint: {una}"
-                  + (f" ({frac:.2%})" if frac is not None else ""))
+            print(f"    unaccounted by EVERY endpoint: {una}" + (f" ({frac:.2%})" if frac is not None else ""))
             widths = cov.get("unaccounted_widths") or {}
             if widths:
                 # An entry narrower than the ISA's minimum instruction width is not an instruction at
@@ -116,8 +119,7 @@ def main(argv: list[str] | None = None) -> int:
         for eng, slot in sorted((report.get("per_engine") or {}).items()):
             print(f"    {eng:9} via {','.join(slot['endpoints'])}: {dict(sorted(slot['roles'].items()))}")
         if report["observed"]["declared_but_never_seen"]:
-            print(f"    declared but never seen: "
-                  f"{', '.join(report['observed']['declared_but_never_seen'])}")
+            print(f"    declared but never seen: {', '.join(report['observed']['declared_but_never_seen'])}")
     for b in report["blocking"]:
         print(f"  ! {b}")
     if report["opportunities"]:
@@ -131,5 +133,5 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-if __name__ == "__main__":                                  # pragma: no cover
+if __name__ == "__main__":  # pragma: no cover
     sys.exit(main())

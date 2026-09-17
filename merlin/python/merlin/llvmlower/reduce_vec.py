@@ -156,6 +156,7 @@ that is faster on silicon is a board measurement, and on this repo levers that r
 the object have measured SLOWER. Default-off; with the feature off nothing here is imported and the
 build is byte-identical.
 """
+
 from __future__ import annotations
 
 #: Feature name. Registered EAGERLY from ``impr_features`` (see :func:`ensure_registered`, called at
@@ -179,6 +180,7 @@ _REWRITABLE_MATH = ("math.absf",)
 
 def _float_width(t) -> int | None:
     from xdsl.dialects.builtin import Float16Type, Float32Type, Float64Type
+
     if isinstance(t, Float16Type):
         return 16
     if isinstance(t, Float32Type):
@@ -205,6 +207,7 @@ def rewrite_absf(module, report_out: "dict | None" = None) -> int:
     """
     from xdsl.dialects import arith
     from xdsl.dialects.builtin import IntegerAttr, IntegerType
+
     from .passes_xdsl import carry_provenance
 
     report: dict = {} if report_out is None else report_out
@@ -218,8 +221,7 @@ def rewrite_absf(module, report_out: "dict | None" = None) -> int:
             # A vector/tensor-typed or otherwise non-scalar-float operand. Inside a linalg body the
             # operand is always the scalar element type; anything else is outside this pass's
             # argument and is refused rather than guessed at.
-            report["refused_operand_not_scalar_float"] = (
-                report.get("refused_operand_not_scalar_float", 0) + 1)
+            report["refused_operand_not_scalar_float"] = report.get("refused_operand_not_scalar_float", 0) + 1
             continue
         block = op.parent_block()
         if block is None:
@@ -266,6 +268,7 @@ def _bounds(op) -> "list[int] | None":
     """The iteration-space extent of each loop dim, derived from the op's own operand shapes and
     indexing maps (an operand dim addressed by a bare dim expression pins that dim's bound)."""
     from xdsl.ir.affine import AffineDimExpr
+
     maps = op.properties.get("indexing_maps")
     if maps is None:
         return None
@@ -273,7 +276,7 @@ def _bounds(op) -> "list[int] | None":
     for a, val in zip(maps.data, op.operands):
         try:
             shape = list(val.type.get_shape())
-        except Exception:                                          # noqa: BLE001
+        except Exception:  # noqa: BLE001
             continue
         results = a.data.results
         if len(results) != len(shape):
@@ -287,8 +290,7 @@ def _bounds(op) -> "list[int] | None":
     return [seen[i] for i in range(n)]
 
 
-def tag_reductions(module, *, lanes: int, min_rank: int, max_rank: int,
-                   report_out: "dict | None" = None) -> int:
+def tag_reductions(module, *, lanes: int, min_rank: int, max_rank: int, report_out: "dict | None" = None) -> int:
     """Tag every claimable single-reduction-dim ``linalg.generic`` with ``merlin.vec_red{rank}``.
 
     Must run AFTER :func:`rewrite_absf` -- the body check below refuses any remaining ``math.*`` op,
@@ -311,7 +313,7 @@ def tag_reductions(module, *, lanes: int, min_rank: int, max_rank: int,
         kinds = _iterator_kinds(op)
         n_red = kinds.count("reduction")
         if n_red == 0:
-            continue                     # all-parallel: the vec_r arms' business, not this one
+            continue  # all-parallel: the vec_r arms' business, not this one
         if n_red != 1:
             # Two or more reduction dims is a contraction shape; the contraction arms own those, and
             # tiling both here would fight them.
@@ -345,8 +347,7 @@ def tag_reductions(module, *, lanes: int, min_rank: int, max_rank: int,
         # `vector.transfer_read` cannot build a projected permutation -- again a hard pipeline
         # failure rather than a declined op.
         maps = op.properties.get("indexing_maps")
-        if maps is not None and any(isinstance(r, AffineBinaryOpExpr)
-                                    for a in maps.data for r in a.data.results):
+        if maps is not None and any(isinstance(r, AffineBinaryOpExpr) for a in maps.data for r in a.data.results):
             refuse("compound_indexing_map")
             continue
         # The innermost extent must be a whole multiple of the vector width, whether that dim is the
@@ -366,8 +367,7 @@ def tag_reductions(module, *, lanes: int, min_rank: int, max_rank: int,
     return n
 
 
-def apply(module, *, lanes: int, min_rank: int, max_rank: int,
-          report_out: "dict | None" = None) -> dict:
+def apply(module, *, lanes: int, min_rank: int, max_rank: int, report_out: "dict | None" = None) -> dict:
     """Both halves, in the only order that works, and one report covering them."""
     report: dict = {} if report_out is None else report_out
     rewrite_absf(module, report_out=report)
@@ -392,7 +392,8 @@ def reduction_arms(lanes: int, min_rank: int, max_rank: int) -> str:
             f"    %rdt{rank}, %rdl{rank}:{rank} = transform.structured.tile_using_for %rd{rank} "
             f"tile_sizes [{sizes}] : (!transform.any_op) -> ({loops})\n"
             f"    transform.structured.vectorize %rdt{rank} vector_sizes [{sizes}] : "
-            f"!transform.any_op\n")
+            f"!transform.any_op\n"
+        )
     return "".join(arms)
 
 
@@ -415,42 +416,49 @@ def splice_reduction_arms(text: str, *, lanes: int, min_rank: int, max_rank: int
 def ensure_registered() -> str:
     """Register the feature if it is not already. Idempotent; returns :data:`FEATURE`."""
     from . import impr_features as F
+
     if FEATURE in F.known():
         return FEATURE
 
     def _edit(text: str) -> str:
-        return splice_reduction_arms(text, lanes=F.VEC_NONCONTRACTION_LANES,
-                                     min_rank=F.VEC_NONCONTRACTION_MIN_RANK,
-                                     max_rank=F.VEC_NONCONTRACTION_MAX_RANK)
+        return splice_reduction_arms(
+            text,
+            lanes=F.VEC_NONCONTRACTION_LANES,
+            min_rank=F.VEC_NONCONTRACTION_MIN_RANK,
+            max_rank=F.VEC_NONCONTRACTION_MAX_RANK,
+        )
 
-    F.register(F.ImprFeature(
-        name=FEATURE,
-        action_class="PASS",
-        description=(
-            "REFUTED, DEFAULT-OFF, DO NOT ENABLE WITHOUT RE-MEASURING. Vectorizes the amax "
-            "(absolute-max) reduction that dynamic activation quantization emits, by rewriting "
-            "`math.absf` to a bit-exact `bitcast -> and sign-mask -> bitcast` and tagging "
-            "single-reduction-dim generics `merlin.vec_red{rank}` for its own BOUNDED tile+vectorize "
-            "arms. The rewrite is EXACT -- the sign-mask form is the IEEE DEFINITION of absolute "
-            "value, verified over all 2**32 f32 bit patterns including every NaN payload, and IEEE "
-            "`maximum` is associative and commutative on the whole domain, so unlike "
-            "`vectorize_reduction` this needs no `reassociate-fp-reductions` and edits no pipeline "
-            "pass. It is nonetheless a REGRESSION on the only build measured. MEASURED, "
-            "resnet50_v1_5_int8_w8a8 through `mining.k1.build_k1_binary` with `rvv/hand_v0_int8`, "
-            "LINKED ELF: the premise was that `math.absf` is a libm call, and in the binary it is "
-            "not -- `fabsf` has 0 call sites (LLVM lowers it to `fabs.s`/`vfabs`) while `roundevenf` "
-            "has 109, and clang's own loop vectorizer already claims these reduction loops (54 "
-            "`vfredmax.vs`, matching the 54 reduction-innermost amax generics, plus 755 `vfmax.vv`). "
-            "Turning the feature on moves `forward` 145,891 -> 147,532 instructions (+1,641; vector "
-            "23,023 -> 23,898, scalar 122,867 -> 123,633) and collapses `vfredmax.vs` 54 -> 1, "
-            "because the fixed-width tile pre-commits the reduction and LLVM can no longer recognise "
-            "the max-reduction idiom. NO board number was taken: there is nothing here worth timing. "
-            "The census that motivated it stands -- on the prepared int8 modules `math.roundeven` and "
-            "`math.absf` carry ~50/50 of ALL `math.*` element traffic (resnet50 45.3M elements each "
-            "per inference; lstmnetvit 4.4M each; small_llama 89.6% of its total between them) while "
-            "exp/erf/tanh carry 0%, 0.02% and 0% -- so the lever that matters on this family is "
-            "`fuse_quantize_round_convert`, which attacks the one real libm blocker. Registered so "
-            "the refutation is citable and re-runnable rather than lost. Baseline byte-identical."),
-        edit_schedule=_edit,
-    ))
+    F.register(
+        F.ImprFeature(
+            name=FEATURE,
+            action_class="PASS",
+            description=(
+                "REFUTED, DEFAULT-OFF, DO NOT ENABLE WITHOUT RE-MEASURING. Vectorizes the amax "
+                "(absolute-max) reduction that dynamic activation quantization emits, by rewriting "
+                "`math.absf` to a bit-exact `bitcast -> and sign-mask -> bitcast` and tagging "
+                "single-reduction-dim generics `merlin.vec_red{rank}` for its own BOUNDED tile+vectorize "
+                "arms. The rewrite is EXACT -- the sign-mask form is the IEEE DEFINITION of absolute "
+                "value, verified over all 2**32 f32 bit patterns including every NaN payload, and IEEE "
+                "`maximum` is associative and commutative on the whole domain, so unlike "
+                "`vectorize_reduction` this needs no `reassociate-fp-reductions` and edits no pipeline "
+                "pass. It is nonetheless a REGRESSION on the only build measured. MEASURED, "
+                "resnet50_v1_5_int8_w8a8 through `mining.k1.build_k1_binary` with `rvv/hand_v0_int8`, "
+                "LINKED ELF: the premise was that `math.absf` is a libm call, and in the binary it is "
+                "not -- `fabsf` has 0 call sites (LLVM lowers it to `fabs.s`/`vfabs`) while `roundevenf` "
+                "has 109, and clang's own loop vectorizer already claims these reduction loops (54 "
+                "`vfredmax.vs`, matching the 54 reduction-innermost amax generics, plus 755 `vfmax.vv`). "
+                "Turning the feature on moves `forward` 145,891 -> 147,532 instructions (+1,641; vector "
+                "23,023 -> 23,898, scalar 122,867 -> 123,633) and collapses `vfredmax.vs` 54 -> 1, "
+                "because the fixed-width tile pre-commits the reduction and LLVM can no longer recognise "
+                "the max-reduction idiom. NO board number was taken: there is nothing here worth timing. "
+                "The census that motivated it stands -- on the prepared int8 modules `math.roundeven` and "
+                "`math.absf` carry ~50/50 of ALL `math.*` element traffic (resnet50 45.3M elements each "
+                "per inference; lstmnetvit 4.4M each; small_llama 89.6% of its total between them) while "
+                "exp/erf/tanh carry 0%, 0.02% and 0% -- so the lever that matters on this family is "
+                "`fuse_quantize_round_convert`, which attacks the one real libm blocker. Registered so "
+                "the refutation is citable and re-runnable rather than lost. Baseline byte-identical."
+            ),
+            edit_schedule=_edit,
+        )
+    )
     return FEATURE

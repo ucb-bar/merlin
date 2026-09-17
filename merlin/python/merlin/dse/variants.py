@@ -9,6 +9,7 @@ Two related views of "which interface is exposed", both expressed as cost-model 
   * ``contract_plans(rpv)`` — one plan per I0–I3 contract (features combined), driving the
     phase-transition experiment.
 """
+
 from __future__ import annotations
 
 from merlin.design_pressure.synthesize import FEATURE_ACCUMULATOR, FEATURE_RESIDENT
@@ -39,18 +40,18 @@ def build_variants(rpv: dict, feature: str) -> dict[str, dict]:
         # hardware_managed reuses the loaded weight implicitly (no exposed setup) but cannot
         # hoist the pack; oracle is idealised (residency with zero setup, perfect batching).
         return {
-            "baseline":         _plan(steps, steps, epi, steps),
-            "hardware_managed": _plan(steps, 1,     epi, steps),
-            "software_visible": _plan(1,     1,     epi, steps, resident_setup=True),
-            "oracle":           _plan(1,     1,     epi, 1),
+            "baseline": _plan(steps, steps, epi, steps),
+            "hardware_managed": _plan(steps, 1, epi, steps),
+            "software_visible": _plan(1, 1, epi, steps, resident_setup=True),
+            "oracle": _plan(1, 1, epi, 1),
         }
     if feature == FEATURE_ACCUMULATOR:
         # Residency held 'on' (pack once, load once) to isolate the commit effect.
         return {
-            "baseline":         _plan(1, 1, True,  steps),
+            "baseline": _plan(1, 1, True, steps),
             "hardware_managed": _plan(1, 1, False, steps),
             "software_visible": _plan(1, 1, False, steps, accumulator_setup=True),
-            "oracle":           _plan(1, 1, False, 1),
+            "oracle": _plan(1, 1, False, 1),
         }
     raise ValueError(f"unknown feature: {feature}")
 
@@ -65,16 +66,21 @@ def contract_plans(rpv: dict) -> dict[str, dict]:
     steps = _steps(rpv)
     epi = _epi(rpv)
     return {
-        "I0": _plan(steps, steps, epi,   steps),
-        "I1": _plan(steps, steps, epi,   steps),
-        "I2": _plan(1,     1,     epi,   steps, resident_setup=True),
-        "I3": _plan(1,     1,     False, steps, resident_setup=True, accumulator_setup=True),
+        "I0": _plan(steps, steps, epi, steps),
+        "I1": _plan(steps, steps, epi, steps),
+        "I2": _plan(1, 1, epi, steps, resident_setup=True),
+        "I3": _plan(1, 1, False, steps, resident_setup=True, accumulator_setup=True),
     }
 
 
-def _plan(pack_count: int, weight_loads: int, per_step_intermediate: bool,
-          dispatch_count: int, resident_setup: bool = False,
-          accumulator_setup: bool = False) -> dict:
+def _plan(
+    pack_count: int,
+    weight_loads: int,
+    per_step_intermediate: bool,
+    dispatch_count: int,
+    resident_setup: bool = False,
+    accumulator_setup: bool = False,
+) -> dict:
     return {
         "pack_count": pack_count,
         "weight_loads": weight_loads,

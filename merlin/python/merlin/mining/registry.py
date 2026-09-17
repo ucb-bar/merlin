@@ -13,6 +13,7 @@ transform SCHEDULE + cflags rather than a resident-accelerator dialect, so the p
 ``schedule.mlir`` + ``knobs.yaml`` (NOT a ``dialect.py`` exposing ``SPEC_OPS``). The loaded
 package feeds ``build_app(rvv_schedule=..., cflags_override=...)`` via :mod:`merlin.mining.apply`.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -29,12 +30,12 @@ _CFLAGS_ALLOW_PREFIXES = ("-march", "-mabi", "-mcmodel", "-O", "-f")
 class RvvPackage:
     """A loaded, isolated RVV codegen package."""
 
-    name: str                       # always "rvv"
+    name: str  # always "rvv"
     run_id: str
     directory: Path
-    schedule_text: str              # contents of schedule.mlir -> lower_to_llvm_ir(transform_schedule=)
-    cflags: list[str]               # RVV-specific cflags -> build_app(cflags_override=cflags+_CFLAGS_COMMON)
-    dtype_strategy: str             # fp32 | int8_w8a8 | bf16_f32acc | fp16_f32acc
+    schedule_text: str  # contents of schedule.mlir -> lower_to_llvm_ir(transform_schedule=)
+    cflags: list[str]  # RVV-specific cflags -> build_app(cflags_override=cflags+_CFLAGS_COMMON)
+    dtype_strategy: str  # fp32 | int8_w8a8 | bf16_f32acc | fp16_f32acc
     op_match: list[dict[str, Any]] = field(default_factory=list)
     lowering_patterns: list[str] = field(default_factory=list)
     lmul_policy: str = "m1"
@@ -124,8 +125,8 @@ def _resolve_features(knobs: dict, manifest: dict, shapes: "Any" = ()) -> list[s
     mk = knobs.get("microkernel")
     if mk:
         from .from_strategy import microkernel_features
-        for name in microkernel_features(mk, target=str(manifest.get("target", "rvv")),
-                                         shapes=shapes):
+
+        for name in microkernel_features(mk, target=str(manifest.get("target", "rvv")), shapes=shapes):
             if name not in feats:
                 feats.append(name)
     return feats

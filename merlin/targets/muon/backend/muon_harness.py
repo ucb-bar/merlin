@@ -20,21 +20,24 @@ The kernel is compiled into ``main`` with ``always_inline`` so its single call s
 relocation — a relocation-preserving transcode is the general fix, tracked with the multi-thread lane).
 This covers the whole-computation kernel functions the functional ladder needs.
 """
+
 from __future__ import annotations
 
-import struct
 import secrets
+import struct
 from dataclasses import dataclass
 from typing import Any
+
 
 @dataclass
 class TensorArg:
     """One kernel argument: a named tensor with a shape and its flat row-major values."""
+
     name: str
     rows: int
     cols: int
-    values: list[float]      # flat, row-major, length rows*cols
-    dtype: str               # "f32" | "i32" (the C element type the kernel sees)
+    values: list[float]  # flat, row-major, length rows*cols
+    dtype: str  # "f32" | "i32" (the C element type the kernel sees)
 
 
 def _f32_bits(x: float) -> int:
@@ -71,6 +74,7 @@ class Harness:
     ``blobs`` maps a C symbol to its raw little-endian bytes. The caller writes each one out and
     assembles it into the link (``.incbin``); the harness source refers to it as an ``extern`` array.
     Empty when every operand fit under :data:`_BLOB_MIN_ELEMS`."""
+
     source: str
     blobs: dict[str, bytes]
     results: list[dict] | None = None
@@ -82,9 +86,8 @@ def _result_declarations(outputs: list[TensorArg]) -> tuple[list[str], list[dict
 
     specs = _rp.result_specs(outputs)
     declarations = [
-        f'volatile uint32_t {_rp.STATUS_SYMBOL}[8] '
-        '__attribute__((used,section(".data.merlin_result"),aligned(64)));',
-        f'volatile uint32_t {_rp.MAILBOX_SYMBOL}[{_rp.MAILBOX_WORDS}] '
+        f'volatile uint32_t {_rp.STATUS_SYMBOL}[8] __attribute__((used,section(".data.merlin_result"),aligned(64)));',
+        f"volatile uint32_t {_rp.MAILBOX_SYMBOL}[{_rp.MAILBOX_WORDS}] "
         '__attribute__((used,section(".data.merlin_result"),aligned(64)));',
     ]
     return declarations, specs
@@ -97,21 +100,22 @@ def _result_publish_lines(result_arrays: list[tuple[str, dict]]) -> list[str]:
     lines = ["  uint32_t _merlin_sequence=1u;"]
     for arr, spec in result_arrays:
         total = int(spec["elements"])
-        lines += [f"  for(uint32_t _base=0;_base<{total}u;_base+={_rp.MAILBOX_WORDS}u){{",
-                  f"    uint32_t _count={total}u-_base;",
-                  f"    if(_count>{_rp.MAILBOX_WORDS}u)_count={_rp.MAILBOX_WORDS}u;",
-                  "    for(uint32_t _i=0;_i<_count;++_i)"
-                  f" {_rp.MAILBOX_SYMBOL}[_i]={arr}[_base+_i];",
-                  f"    {_rp.STATUS_SYMBOL}[1]=_count;",
-                  "    /* Release count/mailbox before the changing READY publication word. */",
-                  '    __asm__ volatile("fence rw,rw" ::: "memory");',
-                  f"    {_rp.STATUS_SYMBOL}[0]=(0x{_rp.RESULT_READY:08x}u^_merlin_sequence);",
-                  f"    while({_rp.STATUS_SYMBOL}[2]!=(0x{_rp.RESULT_ACK:08x}u^_merlin_sequence)){{"
-                  '__asm__ volatile("fence r,r" ::: "memory");}',
-                  "    /* Acquire ACK before reusing the mailbox for the next chunk. */",
-                  '    __asm__ volatile("fence r,rw" ::: "memory");',
-                  "    ++_merlin_sequence;",
-                  "  }"]
+        lines += [
+            f"  for(uint32_t _base=0;_base<{total}u;_base+={_rp.MAILBOX_WORDS}u){{",
+            f"    uint32_t _count={total}u-_base;",
+            f"    if(_count>{_rp.MAILBOX_WORDS}u)_count={_rp.MAILBOX_WORDS}u;",
+            f"    for(uint32_t _i=0;_i<_count;++_i) {_rp.MAILBOX_SYMBOL}[_i]={arr}[_base+_i];",
+            f"    {_rp.STATUS_SYMBOL}[1]=_count;",
+            "    /* Release count/mailbox before the changing READY publication word. */",
+            '    __asm__ volatile("fence rw,rw" ::: "memory");',
+            f"    {_rp.STATUS_SYMBOL}[0]=(0x{_rp.RESULT_READY:08x}u^_merlin_sequence);",
+            f"    while({_rp.STATUS_SYMBOL}[2]!=(0x{_rp.RESULT_ACK:08x}u^_merlin_sequence)){{"
+            '__asm__ volatile("fence r,r" ::: "memory");}',
+            "    /* Acquire ACK before reusing the mailbox for the next chunk. */",
+            '    __asm__ volatile("fence r,rw" ::: "memory");',
+            "    ++_merlin_sequence;",
+            "  }",
+        ]
     # GSIM's emitted model exits as soon as the Muon becomes idle.  Keep one
     # Muon thread live after the final ACK so the bounded run can sample the
     # Rocket carrier's retained pass/fail PC; otherwise the model can stop in
@@ -131,8 +135,7 @@ def _compact_result_publish_lines(total: int) -> list[str]:
         "  /* Release the complete full-output comparison before READY(1). */",
         '__asm__ volatile("fence rw,rw" ::: "memory");',
         f"  {_rp.STATUS_SYMBOL}[0]=(0x{_rp.RESULT_READY:08x}u^1u);",
-        f"  while({_rp.STATUS_SYMBOL}[2]!=(0x{_rp.RESULT_ACK:08x}u^1u)){{"
-        '__asm__ volatile("fence r,r" ::: "memory");}',
+        f'  while({_rp.STATUS_SYMBOL}[2]!=(0x{_rp.RESULT_ACK:08x}u^1u)){{__asm__ volatile("fence r,r" ::: "memory");}}',
         '  __asm__ volatile("fence r,rw" ::: "memory");',
         f"  if(_merlin_checked!={int(total)}u||_merlin_bad>_merlin_checked)"
         ' for(;;)__asm__ volatile("nop" ::: "memory");',
@@ -168,8 +171,12 @@ def _words_blob(words: list[int]) -> bytes:
 
 
 def _compact_numeric_support(
-    outputs: list[TensorArg], expected: dict[str, Any], policy: dict[str, Any] | None,
-    *, symbol_tag: str, console_verdict: bool = True,
+    outputs: list[TensorArg],
+    expected: dict[str, Any],
+    policy: dict[str, Any] | None,
+    *,
+    symbol_tag: str,
+    console_verdict: bool = True,
 ) -> tuple[list[str], list[str], dict[str, bytes], int]:
     """Trusted, integer-only post-kernel comparison for the Cyclotron L2 path.
 
@@ -179,15 +186,13 @@ def _compact_numeric_support(
     emitting one compact verdict.  The submitted kernel still computes the full
     shape; only result transport changes.
     """
-    if (not symbol_tag or any(not (ch.isalnum() or ch == "_") for ch in symbol_tag)
-            or symbol_tag[0].isdigit()):
+    if not symbol_tag or any(not (ch.isalnum() or ch == "_") for ch in symbol_tag) or symbol_tag[0].isdigit():
         raise ValueError("compact comparator symbol tag must be a non-empty C identifier")
     compare = str((policy or {}).get("compare", "exact_int"))
     atol = float((policy or {}).get("atol", 1e-3))
     rtol = float((policy or {}).get("rtol", 0.0))
     declarations = [
-        "static uint32_t _merlin_ordered_f32(uint32_t bits){"
-        "return (bits&0x80000000u)?~bits:(bits^0x80000000u);}",
+        "static uint32_t _merlin_ordered_f32(uint32_t bits){return (bits&0x80000000u)?~bits:(bits^0x80000000u);}",
     ]
     checks = ["  uint32_t _merlin_bad=0u;", "  uint32_t _merlin_checked=0u;"]
     blobs: dict[str, bytes] = {}
@@ -198,8 +203,7 @@ def _compact_numeric_support(
         values = _flat_values(expected[out.name])
         count = int(out.rows) * int(out.cols)
         if len(values) != count:
-            raise ValueError(
-                f"expected output {out.name!r} has {len(values)} elements, harness declares {count}")
+            raise ValueError(f"expected output {out.name!r} has {len(values)} elements, harness declares {count}")
         arr = f"_out_{out.name}"
         if compare in ("exact_int", "exact") and out.dtype == "i32":
             symbol = f"_merlin_private_{symbol_tag}_{index}"
@@ -258,7 +262,11 @@ def _emit_input(arr: str, arg: TensorArg, blobs: dict[str, bytes]) -> list[str]:
 
 
 def _emit_output(
-    arr: str, out: TensorArg, statics: list[str], *, force_static: bool = False,
+    arr: str,
+    out: TensorArg,
+    statics: list[str],
+    *,
+    force_static: bool = False,
 ) -> list[str]:
     """Reserve one OUTPUT buffer. Large ones move off the stack into ``.bss``.
 
@@ -267,7 +275,7 @@ def _emit_output(
     same HI20/LO12 pair as a blob."""
     n = out.rows * out.cols
     if n < _BLOB_MIN_ELEMS and not force_static:
-        return [f"  volatile uint32_t {arr}[{n}];"]   # stack (SP-relative -> no reloc)
+        return [f"  volatile uint32_t {arr}[{n}];"]  # stack (SP-relative -> no reloc)
     statics.append(f"static volatile uint32_t {arr}[{n}];")
     reason = "evaluator-visible result" if force_static else "too large for the stack"
     return [f"  /* {arr}: {out.rows}x{out.cols} in .bss, {reason} */"]
@@ -295,8 +303,15 @@ static void _pf(float x){{if(x<0.0f){{_pc('-');x=-x;}}uint32_t ip=(uint32_t)x;fl
 """
 
 
-def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[TensorArg],
-                  *, kernel_symbol: str, model, result_page: bool = False) -> str:
+def build_program(
+    kernel_fn_src: str,
+    args: list[TensorArg],
+    outputs: list[TensorArg],
+    *,
+    kernel_symbol: str,
+    model,
+    result_page: bool = False,
+) -> str:
     """Assemble the self-contained C program: helpers + the agent's kernel function + a ``main`` that
     embeds every input, calls ``kernel_symbol(<inputs>, <outputs>)``, and prints ``OUT <name> <r> <c> ...``
     for each output followed by ``DONE``. ``args`` is the kernel's input arguments in ABI order (weight,
@@ -330,7 +345,7 @@ def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[Tenso
                 body += result_allocations
                 result_allocations = []
         else:
-            body.append(f"  volatile uint32_t {arr}[{o.rows * o.cols}];")   # stack (SP-relative -> no reloc)
+            body.append(f"  volatile uint32_t {arr}[{o.rows * o.cols}];")  # stack (SP-relative -> no reloc)
         call_ptrs.append(f"(float*){arr}" if o.dtype == "f32" else f"(int32_t*){arr}")
     body.append(f"  {kernel_symbol}({', '.join(call_ptrs)});")
     for o in outputs:
@@ -388,10 +403,19 @@ def _decode_preload(tspec: dict | None) -> list[float] | None:
     import base64
 
     import numpy as np
+
     raw = base64.b64decode(tspec["preload_b64"])
     dt = str(tspec.get("dtype", "f32"))
-    codec = {"i8": "<i1", "int8": "<i1", "u8": "<u1", "uint8": "<u1",
-             "i32": "<i4", "int32": "<i4", "f32": "<f4", "float32": "<f4"}.get(dt)
+    codec = {
+        "i8": "<i1",
+        "int8": "<i1",
+        "u8": "<u1",
+        "uint8": "<u1",
+        "i32": "<i4",
+        "int32": "<i4",
+        "f32": "<f4",
+        "float32": "<f4",
+    }.get(dt)
     if codec is not None:
         arr = np.frombuffer(raw, dtype=codec)
     elif dt in ("fp16", "f16", "float16"):
@@ -399,9 +423,10 @@ def _decode_preload(tspec: dict | None) -> list[float] | None:
     elif dt in ("bf16", "bfloat16"):
         words = np.frombuffer(raw, dtype="<u2").astype(np.uint32) << 16
         arr = words.view(np.float32)
-    else:                                            # fp8 via the shared float-format codec
+    else:  # fp8 via the shared float-format codec
         try:
             from merlin.runtime.fp8_formats import _decode as _fp_decode
+
             arr = np.asarray(_fp_decode(np.frombuffer(raw, dtype=np.uint8), dt))
         except Exception as e:  # noqa: BLE001 — present operand we cannot decode: fail closed
             raise ValueError(f"injected operand of dtype {dt!r} has no decoder") from e
@@ -504,7 +529,7 @@ def _args_from_declared_abi(cb: dict, canon: dict, env: dict) -> tuple[list, lis
         if shp is None or vals is None:
             return None
         r, c = _shape2d(shp)
-        if len(vals) != r * c:            # a declaration inconsistent with its own operand
+        if len(vals) != r * c:  # a declaration inconsistent with its own operand
             return None
         in_args.append(TensorArg(nm, r, c, [float(x) for x in vals], "f32"))
 
@@ -545,13 +570,15 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
         if isinstance(c, dict):
             c = c.get("values")
         if c is not None:
-            def _fl(v):                                  # deep-flatten (batched operands are rank-3)
+
+            def _fl(v):  # deep-flatten (batched operands are rank-3)
                 if isinstance(v, (list, tuple)):
                     out: list[float] = []
                     for e in v:
                         out.extend(_fl(e))
                     return out
                 return [float(v)]
+
             return _fl(c)
         return [float(v) for row in t.to_list() for v in row]
 
@@ -575,7 +602,7 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
 
         in_args = []
         for nm in ins:
-            c = _decode_preload(tensors.get(nm))         # INJECTED operand takes precedence
+            c = _decode_preload(tensors.get(nm))  # INJECTED operand takes precedence
             if c is None:
                 c = canon.get(nm)
                 if isinstance(c, dict):
@@ -608,34 +635,45 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
                 return None
             m, d = qt.shape[0], qt.shape[1]
             n = kt.shape[0]
-            in_args = [TensorArg(q, m, d, _vals(canon0, q, qt), "f32"),
-                       TensorArg(k, n, d, _vals(canon0, k, kt), "f32")]
+            in_args = [TensorArg(q, m, d, _vals(canon0, q, qt), "f32"), TensorArg(k, n, d, _vals(canon0, k, kt), "f32")]
             out_args = [TensorArg(out, m, n, [0.0] * (m * n), "f32")]
             return in_args, out_args
         if op == "RMSNORM":
             _cmds = cb.get("commands", [])
             rms = [cc for cc in _cmds if (cc.get("opcode") or "").upper() == "RMSNORM"]
             _mms = [cc for cc in _cmds if (cc.get("opcode") or "").upper() in ("MATMUL", "MATMUL_RESIDENT")]
-            if len(rms) == 1 and _mms:                           # fused rmsnorm -> matmul (Y = rmsnorm(X,G) @ W)
+            if len(rms) == 1 and _mms:  # fused rmsnorm -> matmul (Y = rmsnorm(X,G) @ W)
                 ro = rms[0].get("operands", {})
                 g, x, h = ro.get("gamma"), ro.get("src"), ro.get("dst")
-                resident = {cc["operands"]["dst"]: cc["operands"]["src"] for cc in _cmds
-                            if (cc.get("opcode") or "").upper() == "RES_PACK"}
+                resident = {
+                    cc["operands"]["dst"]: cc["operands"]["src"]
+                    for cc in _cmds
+                    if (cc.get("opcode") or "").upper() == "RES_PACK"
+                }
                 mo = _mms[0].get("operands", {})
                 if mo.get("lhs") == h:
                     w = resident.get(mo.get("rhs"), mo.get("rhs"))
-                    commit = next((cc for cc in _cmds if (cc.get("opcode") or "").upper() == "COMMIT"
-                                   and cc["operands"].get("src") == mo.get("dst")), None)
+                    commit = next(
+                        (
+                            cc
+                            for cc in _cmds
+                            if (cc.get("opcode") or "").upper() == "COMMIT"
+                            and cc["operands"].get("src") == mo.get("dst")
+                        ),
+                        None,
+                    )
                     y = commit["operands"]["dst"] if commit else mo.get("dst")
                     if g and x and w and y and all(nm in env0 for nm in (g, x, w)) and len(env0[x].shape) == 2:
                         r, c = env0[x].shape
                         _, nn = env0[w].shape
                         gr, gc = _shape2d(list(env0[g].shape))
-                        in_args = [TensorArg(g, gr, gc, _vals(canon0, g, env0[g]), "f32"),
-                                   TensorArg(w, c, nn, _vals(canon0, w, env0[w]), "f32"),
-                                   TensorArg(x, r, c, _vals(canon0, x, env0[x]), "f32")]
+                        in_args = [
+                            TensorArg(g, gr, gc, _vals(canon0, g, env0[g]), "f32"),
+                            TensorArg(w, c, nn, _vals(canon0, w, env0[w]), "f32"),
+                            TensorArg(x, r, c, _vals(canon0, x, env0[x]), "f32"),
+                        ]
                         return in_args, [TensorArg(y, r, nn, [0.0] * (r * nn), "f32")]
-            if len(rms) == 2:                                    # gemma double rmsnorm (chained via alloca)
+            if len(rms) == 2:  # gemma double rmsnorm (chained via alloca)
                 a0, a1 = rms[0].get("operands", {}), rms[1].get("operands", {})
                 g1, g2, xx, yy = a0.get("gamma"), a1.get("gamma"), a0.get("src"), a1.get("dst")
                 if not (g1 and g2 and xx and yy) or xx not in env0 or g1 not in env0 or g2 not in env0:
@@ -646,9 +684,11 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
                 r, c = xt.shape[0], xt.shape[1]
                 g1r, g1c = _shape2d(list(env0[g1].shape))
                 g2r, g2c = _shape2d(list(env0[g2].shape))
-                in_args = [TensorArg(g1, g1r, g1c, _vals(canon0, g1, env0[g1]), "f32"),
-                           TensorArg(g2, g2r, g2c, _vals(canon0, g2, env0[g2]), "f32"),
-                           TensorArg(xx, r, c, _vals(canon0, xx, xt), "f32")]
+                in_args = [
+                    TensorArg(g1, g1r, g1c, _vals(canon0, g1, env0[g1]), "f32"),
+                    TensorArg(g2, g2r, g2c, _vals(canon0, g2, env0[g2]), "f32"),
+                    TensorArg(xx, r, c, _vals(canon0, xx, xt), "f32"),
+                ]
                 return in_args, [TensorArg(yy, r, c, [0.0] * (r * c), "f32")]
             x, g, out = o.get("src"), o.get("gamma"), o.get("dst")
             if not (x and g and out) or x not in env0 or g not in env0:
@@ -659,8 +699,10 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
             r, c = xt.shape[0], xt.shape[1]
             gr, gc = _shape2d(list(gt.shape))
             # weight-first ABI: [gamma] ++ [src] ++ [out]
-            in_args = [TensorArg(g, gr, gc, _vals(canon0, g, gt), "f32"),
-                       TensorArg(x, r, c, _vals(canon0, x, xt), "f32")]
+            in_args = [
+                TensorArg(g, gr, gc, _vals(canon0, g, gt), "f32"),
+                TensorArg(x, r, c, _vals(canon0, x, xt), "f32"),
+            ]
             out_args = [TensorArg(out, r, c, [0.0] * (r * c), "f32")]
             return in_args, out_args
         if op == "LAYERNORM":
@@ -674,9 +716,11 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
             gr, gc = _shape2d(list(gt.shape))
             br, bc = _shape2d(list(bt.shape))
             # weight-first ABI: [gamma, beta] ++ [src] ++ [out]
-            in_args = [TensorArg(g, gr, gc, _vals(canon0, g, gt), "f32"),
-                       TensorArg(b, br, bc, _vals(canon0, b, bt), "f32"),
-                       TensorArg(x, r, c, _vals(canon0, x, xt), "f32")]
+            in_args = [
+                TensorArg(g, gr, gc, _vals(canon0, g, gt), "f32"),
+                TensorArg(b, br, bc, _vals(canon0, b, bt), "f32"),
+                TensorArg(x, r, c, _vals(canon0, x, xt), "f32"),
+            ]
             out_args = [TensorArg(out, r, c, [0.0] * (r * c), "f32")]
             return in_args, out_args
         if op == "ATTENTION_FULL":
@@ -688,9 +732,11 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
                 return None
             mq, dq = qt.shape
             _, dvv = vt.shape
-            in_args = [TensorArg(q, qt.shape[0], qt.shape[1], _vals(canon0, q, qt), "f32"),
-                       TensorArg(k, kt.shape[0], kt.shape[1], _vals(canon0, k, kt), "f32"),
-                       TensorArg(v, vt.shape[0], vt.shape[1], _vals(canon0, v, vt), "f32")]
+            in_args = [
+                TensorArg(q, qt.shape[0], qt.shape[1], _vals(canon0, q, qt), "f32"),
+                TensorArg(k, kt.shape[0], kt.shape[1], _vals(canon0, k, kt), "f32"),
+                TensorArg(v, vt.shape[0], vt.shape[1], _vals(canon0, v, vt), "f32"),
+            ]
             return in_args, [TensorArg(out, mq, dvv, [0.0] * (mq * dvv), "f32")]
         if op == "GEGLU":
             x, wg, wu, out = o.get("src"), o.get("w_gate"), o.get("w_up"), o.get("dst")
@@ -701,9 +747,11 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
                 return None
             m, k = xt.shape
             _, n = wgt.shape
-            in_args = [TensorArg(wg, k, n, _vals(canon0, wg, wgt), "f32"),
-                       TensorArg(wu, k, n, _vals(canon0, wu, wut), "f32"),
-                       TensorArg(x, m, k, _vals(canon0, x, xt), "f32")]
+            in_args = [
+                TensorArg(wg, k, n, _vals(canon0, wg, wgt), "f32"),
+                TensorArg(wu, k, n, _vals(canon0, wu, wut), "f32"),
+                TensorArg(x, m, k, _vals(canon0, x, xt), "f32"),
+            ]
             return in_args, [TensorArg(out, m, n, [0.0] * (m * n), "f32")]
         if op in ("SOFTMAX", "GELU", "SOFTCAP"):
             x, out = o.get("src"), o.get("dst")
@@ -720,12 +768,21 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
             _cmds = cb.get("commands", [])
             _mms = [cc for cc in _cmds if (cc.get("opcode") or "").upper() in ("MATMUL", "MATMUL_RESIDENT")]
             x, out = o.get("src"), o.get("dst")
-            if _mms:                                                 # fused matmul -> rope (Y = rope(X @ W))
-                resident = {cc["operands"]["dst"]: cc["operands"]["src"] for cc in _cmds
-                            if (cc.get("opcode") or "").upper() == "RES_PACK"}
+            if _mms:  # fused matmul -> rope (Y = rope(X @ W))
+                resident = {
+                    cc["operands"]["dst"]: cc["operands"]["src"]
+                    for cc in _cmds
+                    if (cc.get("opcode") or "").upper() == "RES_PACK"
+                }
                 mo = _mms[0].get("operands", {})
-                commit = next((cc for cc in _cmds if (cc.get("opcode") or "").upper() == "COMMIT"
-                               and cc["operands"].get("src") == mo.get("dst")), None)
+                commit = next(
+                    (
+                        cc
+                        for cc in _cmds
+                        if (cc.get("opcode") or "").upper() == "COMMIT" and cc["operands"].get("src") == mo.get("dst")
+                    ),
+                    None,
+                )
                 h = commit["operands"]["dst"] if commit else mo.get("dst")
                 if x == h and out:
                     lhs = mo.get("lhs")
@@ -733,11 +790,13 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
                     if lhs in env0 and w in env0 and len(env0[lhs].shape) == 2 and len(env0[w].shape) == 2:
                         m, k = env0[lhs].shape
                         _, n = env0[w].shape
-                        in_args = [TensorArg(w, k, n, _vals(canon0, w, env0[w]), "f32"),
-                                   TensorArg(lhs, m, k, _vals(canon0, lhs, env0[lhs]), "f32")]
+                        in_args = [
+                            TensorArg(w, k, n, _vals(canon0, w, env0[w]), "f32"),
+                            TensorArg(lhs, m, k, _vals(canon0, lhs, env0[lhs]), "f32"),
+                        ]
                         return in_args, [TensorArg(out, m, n, [0.0] * (m * n), "f32")]
                 return None
-            if not (x and out) or x not in env0:                     # standalone rope over a leaf
+            if not (x and out) or x not in env0:  # standalone rope over a leaf
                 return None
             xt = env0[x]
             if len(xt.shape) != 2:
@@ -755,8 +814,7 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
             xv, wv = _vals(canon0, x, env0[x]), _vals(canon0, w, env0[w])
             # weight-first ABI [W, X, Y]; shapes are only used to embed the flat operands (row-major),
             # so any r*c matching the leaf's element count is faithful. Y is O*P (the conv output).
-            in_args = [TensorArg(w, oc, kk, wv, "f32"),
-                       TensorArg(x, len(xv), 1, xv, "f32")]
+            in_args = [TensorArg(w, oc, kk, wv, "f32"), TensorArg(x, len(xv), 1, xv, "f32")]
             out_args = [TensorArg(out, oc, pp, [0.0] * (oc * pp), "f32")]
             return in_args, out_args
         # The command-buffer schema declares BOTH spellings of this opcode legal (`BATCHED_MATMUL` and
@@ -773,8 +831,10 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
             _, k2, n = wt.shape
             # flatten the batch into rows for the flat preload (matches the kernel's flat indexing);
             # weight-first ABI: [w] ++ [a] ++ [out]
-            in_args = [TensorArg(w, batch * k2, n, _vals(canon0, w, wt), "f32"),
-                       TensorArg(a, batch * m, k, _vals(canon0, a, at), "f32")]
+            in_args = [
+                TensorArg(w, batch * k2, n, _vals(canon0, w, wt), "f32"),
+                TensorArg(a, batch * m, k, _vals(canon0, a, at), "f32"),
+            ]
             out_args = [TensorArg(out, batch * m, n, [0.0] * (batch * m * n), "f32")]
             return in_args, out_args
 
@@ -782,9 +842,9 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
     # matmul): resolve RES_PACK residents, the one matmul (accepting ``dst``/``out`` and ``rhs``/``weight``),
     # and the output NAME — the COMMIT dst that sources the matmul when present, else the matmul's own dst.
     resident_source: dict[str, str] = {}
-    matmuls: list[tuple[str, str, str]] = []      # (dst, lhs, rhs)
-    commits: list[tuple[str, str]] = []           # (out, src)
-    commit_bias: dict[str, str] = {}              # out -> bias operand (a bias_add epilogue)
+    matmuls: list[tuple[str, str, str]] = []  # (dst, lhs, rhs)
+    commits: list[tuple[str, str]] = []  # (out, src)
+    commit_bias: dict[str, str] = {}  # out -> bias operand (a bias_add epilogue)
     for cmd in cb.get("commands", []):
         op = (cmd.get("opcode") or "").upper()
         o = cmd.get("operands", {})
@@ -805,17 +865,19 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
     if len(matmuls) == 2:
         (d0, l0, r0), (d1, l1, r1) = matmuls
         env = materialize_inputs(cb)
-        out0 = next((cout for cout, csrc in commits if csrc == d0), d0)   # matmul0's committed output
-        if l1 in (d0, out0):                                              # matmul1 consumes it (via commit)
+        out0 = next((cout for cout, csrc in commits if csrc == d0), d0)  # matmul0's committed output
+        if l1 in (d0, out0):  # matmul1 consumes it (via commit)
             a_nm, w1, w2 = l0, resident_source.get(r0, r0), resident_source.get(r1, r1)
             y = next((cout for cout, csrc in commits if csrc == d1), d1)
             if all(nm in env and len(env[nm].shape) == 2 for nm in (a_nm, w1, w2)):
                 m, k = env[a_nm].shape
                 _, k2 = env[w1].shape
                 _, n = env[w2].shape
-                in_args = [TensorArg(w1, k, k2, _vals(canon0, w1, env[w1]), "f32"),
-                           TensorArg(w2, k2, n, _vals(canon0, w2, env[w2]), "f32"),
-                           TensorArg(a_nm, m, k, _vals(canon0, a_nm, env[a_nm]), "f32")]
+                in_args = [
+                    TensorArg(w1, k, k2, _vals(canon0, w1, env[w1]), "f32"),
+                    TensorArg(w2, k2, n, _vals(canon0, w2, env[w2]), "f32"),
+                    TensorArg(a_nm, m, k, _vals(canon0, a_nm, env[a_nm]), "f32"),
+                ]
                 out_args = [TensorArg(y, m, n, [0.0] * (m * n), "f32")]
                 return in_args, out_args
         return None
@@ -844,20 +906,22 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
     canon = cb.get("canonical_inputs") or {}
 
     def _flat(name: str, t) -> list[float] | None:
-        inj = _decode_preload(all_tensors.get(name))    # INJECTED operand takes precedence
+        inj = _decode_preload(all_tensors.get(name))  # INJECTED operand takes precedence
         if inj is not None:
             return inj
         c = canon.get(name)
         if isinstance(c, dict):
             c = c.get("values")
         if c is not None:
-            def _fl(v):                                  # deep-flatten (batched operands are rank-3)
+
+            def _fl(v):  # deep-flatten (batched operands are rank-3)
                 if isinstance(v, (list, tuple)):
                     out: list[float] = []
                     for e in v:
                         out.extend(_fl(e))
                     return out
                 return [float(v)]
+
             return _fl(c)
         return [float(v) for row in t.to_list() for v in row]
 
@@ -885,7 +949,7 @@ def _is_scale_operand(cb: dict, name: str) -> bool:
     Read from the cb's own per-operand ``role``, which is the capsule's declared role carried through. A
     scale is the one operand class an opcode branch here can silently drop while still returning a
     plausible answer, because the branches were written before block-scaled formats existed."""
-    for spec in (cb.get("operands") or []):
+    for spec in cb.get("operands") or []:
         if isinstance(spec, dict) and str(spec.get("name")) == name:
             return str(spec.get("role") or "").lower() == "scale"
     tspec = (cb.get("tensors") or {}).get(name)
@@ -913,8 +977,9 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
     try:
         derived = _args_from_cb_by_opcode(cb)
     except Exception:
-        derived = None          # a malformed/unfamiliar cb must fall through, not abort the harness
+        derived = None  # a malformed/unfamiliar cb must fall through, not abort the harness
     from merlin.runtime.commandbuffer import materialize_inputs
+
     canon = cb.get("canonical_inputs")
     if not isinstance(canon, dict):
         canon = {}
@@ -969,8 +1034,8 @@ def _args_from_dataflow(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | N
     canon = cb.get("canonical_inputs") or {}
     try:
         env = materialize_inputs(cb)
-    except Exception:                                    # noqa: BLE001 — an unmaterializable operand is
-        return None                                      # not bindable; stay fail-safe like the rules
+    except Exception:  # noqa: BLE001 — an unmaterializable operand is
+        return None  # not bindable; stay fail-safe like the rules
 
     def _leafvals(name: str) -> list[float] | None:
         """Same precedence the rules use: injected preload, then the golden's canonical operands, then
@@ -989,8 +1054,7 @@ def _args_from_dataflow(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | N
     def _role(name: str) -> str:
         return str((tensors.get(name) or {}).get("role", "")).lower()
 
-    ordered = ([n for n in leaves if _role(n) == "weight"]
-               + [n for n in leaves if _role(n) != "weight"])
+    ordered = [n for n in leaves if _role(n) == "weight"] + [n for n in leaves if _role(n) != "weight"]
     in_args: list[TensorArg] = []
     for name in ordered:
         spec = tensors.get(name) or {}
@@ -1070,7 +1134,7 @@ def bind_from_declarations(cb: dict, env0: dict, vals) -> tuple[list[TensorArg],
         return None
 
     orc = _rowcol((tensors.get(out_nm) or {}).get("shape"))
-    if orc is None:                       # produced shape not declared -> would require op knowledge
+    if orc is None:  # produced shape not declared -> would require op knowledge
         return None
 
     # Inputs: every other operand of the producing command that names a declared, materialized tensor.
@@ -1083,7 +1147,7 @@ def bind_from_declarations(cb: dict, env0: dict, vals) -> tuple[list[TensorArg],
         ins.append(v)
     if not ins:
         return None
-    ins.sort(key=lambda nm: 0 if _role(nm) == "weight" else 1)   # stable: weight-first, else as declared
+    ins.sort(key=lambda nm: 0 if _role(nm) == "weight" else 1)  # stable: weight-first, else as declared
 
     in_args = []
     for nm in ins:
@@ -1095,17 +1159,22 @@ def bind_from_declarations(cb: dict, env0: dict, vals) -> tuple[list[TensorArg],
     return in_args, [TensorArg(out_nm, orc[0], orc[1], [0.0] * (orc[0] * orc[1]), "f32")]
 
 
-def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorArg],
-                               *, kernel_symbol: str, model,
-                               result_page: bool = False,
-                               compact_expected: dict[str, Any] | None = None,
-                               compact_policy: dict[str, Any] | None = None,
-                               compact_symbol_tag: str | None = None,
-                               compact_result_page: bool = False,
-                               host_dump_outputs: bool = False,
-                               host_dump_done_marker: bool = True,
-                               launch: dict[str, Any] | None = None,
-                               resource_claims: dict[str, Any] | None = None) -> Harness:
+def build_external_kernel_main(
+    in_args: list[TensorArg],
+    out_args: list[TensorArg],
+    *,
+    kernel_symbol: str,
+    model,
+    result_page: bool = False,
+    compact_expected: dict[str, Any] | None = None,
+    compact_policy: dict[str, Any] | None = None,
+    compact_symbol_tag: str | None = None,
+    compact_result_page: bool = False,
+    host_dump_outputs: bool = False,
+    host_dump_done_marker: bool = True,
+    launch: dict[str, Any] | None = None,
+    resource_claims: dict[str, Any] | None = None,
+) -> Harness:
     """Harness ``main`` for an OBJECT kernel (an MLIR-lowered ``kernel.o``): declares ``kernel_symbol``
     EXTERN (not inlined), embeds every input, calls it, prints ``OUT <name> <r> <c> ...`` + ``DONE``. Unlike
     :func:`build_program` (which inlines a *source* kernel to stay relocation-free), the extern call leaves a
@@ -1116,8 +1185,7 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
     blobs the caller must assemble into the link."""
     modes = sum((bool(result_page), compact_expected is not None, bool(host_dump_outputs)))
     if modes > 1:
-        raise ValueError(
-            "result_page, compact_expected, and host_dump_outputs are mutually exclusive")
+        raise ValueError("result_page, compact_expected, and host_dump_outputs are mutually exclusive")
     if compact_result_page and compact_expected is None:
         raise ValueError("compact_result_page requires compact_expected")
     if not host_dump_outputs and not host_dump_done_marker:
@@ -1131,8 +1199,7 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
         arr = f"_in_{a.name}"
         inner += _emit_input(arr, a, blobs)
         call_ptrs.append(f"(const void*){arr}")
-    result_decls, result_specs = (
-        _result_declarations(out_args) if (result_page or compact_result_page) else ([], []))
+    result_decls, result_specs = _result_declarations(out_args) if (result_page or compact_result_page) else ([], [])
     result_arrays: list[tuple[str, dict]] = []
     for index, o in enumerate(out_args):
         arr = f"_out_{o.name}"
@@ -1156,27 +1223,39 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
         # the submitted object; direct tests may inject a deterministic tag.
         compact_symbol_tag = compact_symbol_tag or f"n{secrets.token_hex(16)}"
         compact_decls, compact_checks, compact_blobs, compact_total = _compact_numeric_support(
-            out_args, compact_expected, compact_policy, symbol_tag=compact_symbol_tag,
-            console_verdict=not compact_result_page)
+            out_args,
+            compact_expected,
+            compact_policy,
+            symbol_tag=compact_symbol_tag,
+            console_verdict=not compact_result_page,
+        )
         blobs.update(compact_blobs)
 
     # Blob and .bss symbols are file-scope, so they must be declared before main.
     body: list[str] = [_render_helpers(model).strip(), ""]
     # compact_decls are created after input blobs, so derive externs only after
     # adding the private expected-bound blobs above.
-    externs = [f"extern const uint32_t {sym}[];" for sym in sorted(blobs)
-               if not sym.startswith("_merlin_private_")]
-    body += externs + statics + result_decls + compact_decls \
+    externs = [f"extern const uint32_t {sym}[];" for sym in sorted(blobs) if not sym.startswith("_merlin_private_")]
+    body += (
+        externs
+        + statics
+        + result_decls
+        + compact_decls
         + ([""] if (externs or statics or result_decls or compact_decls) else [])
+    )
     launch_wrapper = _external_kernel_launch_wrapper(
-        launch, resource_claims, kernel_symbol=kernel_symbol, ptrs=ptrs,
-        argument_count=len(in_args) + len(out_args), model=model)
+        launch,
+        resource_claims,
+        kernel_symbol=kernel_symbol,
+        ptrs=ptrs,
+        argument_count=len(in_args) + len(out_args),
+        model=model,
+    )
     call_symbol = "__merlin_simt_launch" if launch_wrapper else kernel_symbol
     body += [f"extern void {kernel_symbol}({ptrs});"]
     if launch_wrapper:
         body += [launch_wrapper]
-    body += ["",
-             "int main(void){", "  if(_hid()!=0)return 0;"]
+    body += ["", "int main(void){", "  if(_hid()!=0)return 0;"]
     body += inner
     body.append(f"  {call_symbol}({', '.join(call_ptrs)});")
     for o in out_args:
@@ -1205,11 +1284,17 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
     else:
         body.append('  _ps("DONE\\n");')
     body += ["  return 0;", "}"]
-    return Harness(source="\n".join(body) + "\n", blobs=blobs,
-                   results=(result_specs if (result_page or compact_result_page) else
-                            [{"name": o.name, "elements": o.rows * o.cols, "dtype": o.dtype}
-                             for o in out_args]
-                            if (compact_expected is not None or host_dump_outputs) else None))
+    return Harness(
+        source="\n".join(body) + "\n",
+        blobs=blobs,
+        results=(
+            result_specs
+            if (result_page or compact_result_page)
+            else [{"name": o.name, "elements": o.rows * o.cols, "dtype": o.dtype} for o in out_args]
+            if (compact_expected is not None or host_dump_outputs)
+            else None
+        ),
+    )
 
 
 def _validated_external_kernel_launch(
@@ -1221,11 +1306,8 @@ def _validated_external_kernel_launch(
     if launch is None:
         return None
     kinds = {"simt_single_warp", "simt_all_warps"}
-    if (not isinstance(launch, dict) or set(launch) != {"kind"}
-            or launch.get("kind") not in kinds):
-        raise ValueError(
-            "kernel_abi.launch must be exactly {'kind': 'simt_single_warp'} "
-            "or {'kind': 'simt_all_warps'}")
+    if not isinstance(launch, dict) or set(launch) != {"kind"} or launch.get("kind") not in kinds:
+        raise ValueError("kernel_abi.launch must be exactly {'kind': 'simt_single_warp'} or {'kind': 'simt_all_warps'}")
     kind = launch["kind"]
     if not isinstance(resource_claims, dict):
         raise ValueError(f"{kind} launch requires command-buffer resource claims")
@@ -1237,12 +1319,18 @@ def _validated_external_kernel_launch(
     simt = facts.get("simt") if isinstance(facts, dict) else None
     names = ("cores", "warps_per_core", "lanes_per_warp")
     geometry = {name: simt.get(name) if isinstance(simt, dict) else None for name in names}
-    bad = {name: value for name, value in geometry.items()
-           if not isinstance(value, int) or isinstance(value, bool) or value <= 0}
+    bad = {
+        name: value
+        for name, value in geometry.items()
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0
+    }
     if bad:
         raise ValueError(f"target RTL facts have invalid SIMT geometry: {bad}")
-    mismatches = {name: {"claimed": resource_claims.get(name), "rtl": geometry[name]}
-                  for name in names if resource_claims.get(name) != geometry[name]}
+    mismatches = {
+        name: {"claimed": resource_claims.get(name), "rtl": geometry[name]}
+        for name in names
+        if resource_claims.get(name) != geometry[name]
+    }
     if mismatches:
         raise ValueError(f"command-buffer SIMT resources disagree with target RTL facts: {mismatches}")
 
@@ -1251,19 +1339,21 @@ def _validated_external_kernel_launch(
     if xlen not in (32, 64):
         raise ValueError(f"{kind} requires derived XLEN 32 or 64, got {xlen!r}")
     if geometry["lanes_per_warp"] > xlen:
-        raise ValueError(
-            f"derived lane mask ({geometry['lanes_per_warp']} lanes) does not fit XLEN {xlen}")
+        raise ValueError(f"derived lane mask ({geometry['lanes_per_warp']} lanes) does not fit XLEN {xlen}")
     if model.base_isa_family() != f"riscv{xlen}":
-        raise ValueError(
-            f"SIMT launch base ISA {model.base_isa_family()!r} disagrees with derived XLEN {xlen}")
+        raise ValueError(f"SIMT launch base ISA {model.base_isa_family()!r} disagrees with derived XLEN {xlen}")
 
     def _encoding(role: str) -> dict[str, int]:
         op = model.sfu_op(role)
         opcode, funct3 = op.get("opcode"), op.get("funct3")
-        if (not isinstance(opcode, int) or isinstance(opcode, bool)
-                or not 0 <= opcode < (1 << 7)
-                or not isinstance(funct3, int) or isinstance(funct3, bool)
-                or not 0 <= funct3 < (1 << 3)):
+        if (
+            not isinstance(opcode, int)
+            or isinstance(opcode, bool)
+            or not 0 <= opcode < (1 << 7)
+            or not isinstance(funct3, int)
+            or isinstance(funct3, bool)
+            or not 0 <= funct3 < (1 << 3)
+        ):
             raise ValueError(f"invalid derived {role.upper()} encoding: {op}")
         return {"opcode": opcode, "funct3": funct3}
 
@@ -1280,8 +1370,7 @@ def _validated_external_kernel_launch(
             raise ValueError("simt_all_warps currently requires exactly one RTL core")
         resolved["wspawn"] = _encoding("wspawn")
         wmask = model.special_csr("warp_mask")
-        if (not isinstance(wmask, int) or isinstance(wmask, bool)
-                or not 0 <= wmask < (1 << 12)):
+        if not isinstance(wmask, int) or isinstance(wmask, bool) or not 0 <= wmask < (1 << 12):
             raise ValueError(f"invalid derived warp-mask CSR: {wmask!r}")
         resolved["warp_mask_csr"] = wmask
     return resolved
@@ -1327,8 +1416,7 @@ def _external_kernel_launch_wrapper(
         return ""
     geometry, xlen, tmc = resolved["geometry"], resolved["xlen"], resolved["tmc"]
     if not isinstance(argument_count, int) or not 0 < argument_count <= 8:
-        raise ValueError(
-            f"{resolved['kind']} supports 1..8 pointer ABI arguments, got {argument_count!r}")
+        raise ValueError(f"{resolved['kind']} supports 1..8 pointer ABI arguments, got {argument_count!r}")
     opcode, funct3 = tmc["opcode"], tmc["funct3"]
 
     word_bytes = xlen // 8
@@ -1338,10 +1426,8 @@ def _external_kernel_launch_wrapper(
     if len(param_types) != argument_count:
         raise ValueError("pointer declaration and kernel_abi argument count disagree")
     definition = ", ".join(f"{typ} arg{i}" for i, typ in enumerate(param_types))
-    stores = "\n".join(
-        f'    "{store} a{i}, {i * word_bytes}(t0)\\n"' for i in range(argument_count))
-    loads = "\n".join(
-        f'    "{load} a{i}, {i * word_bytes}(t0)\\n"' for i in range(argument_count))
+    stores = "\n".join(f'    "{store} a{i}, {i * word_bytes}(t0)\\n"' for i in range(argument_count))
+    loads = "\n".join(f'    "{load} a{i}, {i * word_bytes}(t0)\\n"' for i in range(argument_count))
     ra_offset = argument_count * word_bytes
     if resolved["kind"] == "simt_single_warp":
         return f'''static volatile uintptr_t __merlin_simt_call_state[{argument_count + 1}]
@@ -1392,7 +1478,7 @@ __attribute__((naked,noinline,used)) static void __merlin_simt_launch({definitio
     "fence rw, rw\\n"
     "li t1, {warps}\\n"
     "la t2, __merlin_simt_worker\\n"
-    ".insn r {wspawn['opcode']}, {wspawn['funct3']}, 0, x0, t1, t2\\n"
+    ".insn r {wspawn["opcode"]}, {wspawn["funct3"]}, 0, x0, t1, t2\\n"
     "li t1, {mask}\\n"
     ".insn r {opcode}, {funct3}, 0, x0, t1, x0\\n"
     "la t0, __merlin_simt_call_state\\n"
@@ -1410,7 +1496,6 @@ __attribute__((naked,noinline,used)) static void __merlin_simt_launch({definitio
     "{load} ra, {ra_offset}(t0)\\n"
     "ret\\n");
 }}'''
-
 
 
 #: Substrings the plan loop matches on rather than comparing an opcode exactly. The single-matmul plan
@@ -1433,15 +1518,16 @@ def modelled_opcodes() -> frozenset[str]:
     deliberately NOT the whole answer: the plan loop also matches opcodes by SUBSTRING (see
     :data:`_OPCODE_SUBSTRINGS`), so callers asking "is this handled?" must use :func:`models_opcode`."""
     import pathlib
+
     src = pathlib.Path(__file__).read_text(encoding="utf-8")
     out = set()
     for line in src.splitlines():
         t = line.strip()
         for lead in ('if op == "', 'elif op == "'):
             if t.startswith(lead):
-                out.add(t[len(lead):].split('"', 1)[0])
-        if t.startswith('if op in ('):
-            for part in t[len('if op in ('):].split(")", 1)[0].split(","):
+                out.add(t[len(lead) :].split('"', 1)[0])
+        if t.startswith("if op in ("):
+            for part in t[len("if op in (") :].split(")", 1)[0].split(","):
                 part = part.strip().strip('"').strip("'")
                 if part:
                     out.add(part)
@@ -1470,7 +1556,7 @@ def why_no_operands(cb: dict) -> str:
     # the promoted package emits exactly the same opcodes and grades. The agent spent its round
     # permuting opcodes, which is where the message sent it.
     _refs: list[tuple[str, str]] = []
-    for c in (cb.get("commands") or []):
+    for c in cb.get("commands") or []:
         for slot, val in (c.get("operands") or {}).items():
             if isinstance(val, str) and val:
                 _refs.append((slot, val))
@@ -1478,28 +1564,34 @@ def why_no_operands(cb: dict) -> str:
         if not have:
             # Both absent: the stimulus is the earlier obligation, and the two causes must stay
             # distinguishable -- collapsing them is what produced the wrong blame in the first place.
-            return ("the runner attached no canonical_inputs for this capsule, so there are no operand "
-                    "values to bind even once the buffer declares its tensors")
+            return (
+                "the runner attached no canonical_inputs for this capsule, so there are no operand "
+                "values to bind even once the buffer declares its tensors"
+            )
         names = sorted({val for _slot, val in _refs})
         # Says BOTH things, because the block is empty for two different reasons and the fix differs.
         # A backend whose slots hold real names just has to declare them. One that put SHAPES in the
         # slots ('16x16', 'tensor<16x16xf32>') is guessing the format, and telling it to declare
         # '16x16' as a tensor sends it further down that path -- so the message also states what a slot
         # holds. Naming the offending values is what lets the reader tell which case it is in.
-        return (f"the command buffer declares NO tensors: it declares no `tensors` map, so none of its "
-                f"operand names resolve to a buffer. Its commands reference {names}. An operand slot "
-                f"holds the NAME of a tensor declared in `tensors` (e.g. \"Y0\"), not a shape, a type "
-                f"or a dimension list. Declare each one there with a `shape`, a `dtype` and a `role` "
-                f"(\"input\", \"weight\" or \"output\"); the opcodes themselves are supported")
+        return (
+            f"the command buffer declares NO tensors: it declares no `tensors` map, so none of its "
+            f"operand names resolve to a buffer. Its commands reference {names}. An operand slot "
+            f'holds the NAME of a tensor declared in `tensors` (e.g. "Y0"), not a shape, a type '
+            f"or a dimension list. Declare each one there with a `shape`, a `dtype` and a `role` "
+            f'("input", "weight" or "output"); the opcodes themselves are supported'
+        )
     if not have:
         return "the runner attached no canonical_inputs for this capsule's golden"
 
     if unmodelled:
-        return (f"this reference harness does not model opcode(s) {sorted(set(unmodelled))} "
-                f"(it names {sorted(modelled_opcodes())} and matches anything containing "
-                f"{list(_OPCODE_SUBSTRINGS)}) — a TOOLING gap, not a defect in the submitted artifact; "
-                f"the command buffer declares its operands and carries "
-                f"{'canonical operands' if have else 'NO canonical operands'}")
+        return (
+            f"this reference harness does not model opcode(s) {sorted(set(unmodelled))} "
+            f"(it names {sorted(modelled_opcodes())} and matches anything containing "
+            f"{list(_OPCODE_SUBSTRINGS)}) — a TOOLING gap, not a defect in the submitted artifact; "
+            f"the command buffer declares its operands and carries "
+            f"{'canonical operands' if have else 'NO canonical operands'}"
+        )
     # An operand slot holds a TENSOR NAME that must resolve against the cb's declared tensors. A backend
     # still discovering the format often puts something else there -- a shape, a type, a dimension list --
     # and every one of those reads downstream as "the shapes could not be reduced", which points at the
@@ -1507,53 +1599,71 @@ def why_no_operands(cb: dict) -> str:
     # value, because that is the fixable thing.
     declared = set(cb.get("tensors") or {})
     referenced: list[tuple[str, str]] = []
-    for c in (cb.get("commands") or []):
+    for c in cb.get("commands") or []:
         for slot, val in (c.get("operands") or {}).items():
             if isinstance(val, str) and val:
                 referenced.append((slot, val))
     unresolved = [(slot, val) for slot, val in referenced if val not in declared]
     if referenced and not declared:
         shown = sorted({f"{slot}={val!r}" for slot, val in referenced})[:6]
-        return (f"the command buffer declares NO tensors, so no operand name resolves to a buffer. Its "
-                f"commands reference {shown}{' ...' if len(referenced) > 6 else ''}. Each operand slot "
-                f"holds the NAME of a tensor declared in the cb's `tensors` map (e.g. \"Y0\"), not a "
-                f"shape, a type, or a dimension list")
+        return (
+            f"the command buffer declares NO tensors, so no operand name resolves to a buffer. Its "
+            f"commands reference {shown}{' ...' if len(referenced) > 6 else ''}. Each operand slot "
+            f'holds the NAME of a tensor declared in the cb\'s `tensors` map (e.g. "Y0"), not a '
+            f"shape, a type, or a dimension list"
+        )
     if unresolved:
         shown = sorted({f"{slot}={val!r}" for slot, val in unresolved})[:6]
-        return (f"operand name(s) {shown}{' ...' if len(unresolved) > 6 else ''} do not resolve to any "
-                f"tensor the command buffer declares (it declares {sorted(declared)[:8]}). An operand slot "
-                f"holds a declared tensor NAME, not a shape or a type")
-    return (f"operand shapes could not be reduced to the 1-D/2-D form this reference harness builds "
-            f"(opcodes {sorted(set(ops))} were all modelled)")
+        return (
+            f"operand name(s) {shown}{' ...' if len(unresolved) > 6 else ''} do not resolve to any "
+            f"tensor the command buffer declares (it declares {sorted(declared)[:8]}). An operand slot "
+            f"holds a declared tensor NAME, not a shape or a type"
+        )
+    return (
+        f"operand shapes could not be reduced to the 1-D/2-D form this reference harness builds "
+        f"(opcodes {sorted(set(ops))} were all modelled)"
+    )
 
-def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
-                          result_page: bool = False,
-                          compact_expected: dict[str, Any] | None = None,
-                          compact_policy: dict[str, Any] | None = None,
-                          compact_symbol_tag: str | None = None,
-                          compact_result_page: bool = False,
-                          host_dump_outputs: bool = False,
-                          host_dump_done_marker: bool = True) -> Harness | None:
+
+def external_main_from_cb(
+    cb: dict,
+    *,
+    kernel_symbol: str,
+    model,
+    result_page: bool = False,
+    compact_expected: dict[str, Any] | None = None,
+    compact_policy: dict[str, Any] | None = None,
+    compact_symbol_tag: str | None = None,
+    compact_result_page: bool = False,
+    host_dump_outputs: bool = False,
+    host_dump_done_marker: bool = True,
+) -> Harness | None:
     """The object-kernel analogue of :func:`program_from_cb`: derive the operands from the cb and render the
     EXTERN-kernel harness ``main`` (to be compiled to ``main.o`` and fork-free-linked against the MLIR
     ``kernel.o``). None when the operands aren't available (fail-safe)."""
     from . import muon_mx_abi as _mxabi
+
     if _mxabi.is_native_mx_cb(cb):
-        raise _mxabi.NativeMxAbiError(
-            "native MX GEMM is a digest-bound full program, not an external pointer kernel")
+        raise _mxabi.NativeMxAbiError("native MX GEMM is a digest-bound full program, not an external pointer kernel")
     derived = args_from_cb(cb)
     if derived is None:
         return None
     in_args, out_args = derived
-    return build_external_kernel_main(in_args, out_args, kernel_symbol=kernel_symbol, model=model,
-                                      result_page=result_page, compact_expected=compact_expected,
-                                      compact_policy=compact_policy,
-                                      compact_symbol_tag=compact_symbol_tag,
-                                      compact_result_page=compact_result_page,
-                                      host_dump_outputs=host_dump_outputs,
-                                      host_dump_done_marker=host_dump_done_marker,
-                                      launch=(cb.get("kernel_abi") or {}).get("launch"),
-                                      resource_claims=cb.get("resources"))
+    return build_external_kernel_main(
+        in_args,
+        out_args,
+        kernel_symbol=kernel_symbol,
+        model=model,
+        result_page=result_page,
+        compact_expected=compact_expected,
+        compact_policy=compact_policy,
+        compact_symbol_tag=compact_symbol_tag,
+        compact_result_page=compact_result_page,
+        host_dump_outputs=host_dump_outputs,
+        host_dump_done_marker=host_dump_done_marker,
+        launch=(cb.get("kernel_abi") or {}).get("launch"),
+        resource_claims=cb.get("resources"),
+    )
 
 
 def program_from_cb(cb: dict, kernel_fn_src: str, model, *, result_page: bool = False) -> str | None:
@@ -1563,6 +1673,7 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model, *, result_page: bool = 
     # A compiler-native MX program already owns its operand staging. Validate that it is bound to this
     # exact semantic ABI before the caller compiles it, and refuse any legacy golden/reference fields.
     from . import muon_mx_abi as _mxabi
+
     if _mxabi.is_native_mx_cb(cb):
         _mxabi.bind_native_program(cb, kernel_fn_src)
         if "int main" not in kernel_fn_src:
@@ -1572,10 +1683,11 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model, *, result_page: bool = 
     # A block-scaled MX matmul (fp8/fp6/fp4): the emit entrypoint left a placeholder; bake the self-contained
     # MX-Gemmini co-model kernel from the golden-provided operand codes + block scales the runner attached.
     from . import muon_mx_codegen as _mx
+
     if _mx.is_mx_cb(cb):
         mxops = cb.get("mx_operands")
         if not mxops:
-            return None                       # fail closed: no MX operands (e.g. a masked hidden golden)
+            return None  # fail closed: no MX operands (e.g. a masked hidden golden)
         return _mx.emit_mx_kernel(mxops, _mx.mx_output_name(cb))
     if "int main" in kernel_fn_src:
         return None
@@ -1583,5 +1695,11 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model, *, result_page: bool = 
     if derived is None:
         return None
     in_args, out_args = derived
-    return build_program(kernel_fn_src, in_args, out_args, kernel_symbol=_kernel_symbol(kernel_fn_src),
-                         model=model, result_page=result_page)
+    return build_program(
+        kernel_fn_src,
+        in_args,
+        out_args,
+        kernel_symbol=_kernel_symbol(kernel_fn_src),
+        model=model,
+        result_page=result_page,
+    )

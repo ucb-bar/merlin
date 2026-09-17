@@ -18,6 +18,7 @@ raises :class:`UnsupportedConstruct` instead of being skipped, and the counting-
 Voyager's own eager ops assert (every wait matched by a prior signal on the same slot) is re-checked
 while replaying, so a trace that could not have executed is refused rather than returned.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,8 +28,18 @@ from pathlib import Path
 from typing import Any
 
 __all__ = [
-    "Box", "Copy", "FusedCompute", "PrimCall", "Ref", "SemaphoreViolation", "TensorOp", "Trace",
-    "UnsupportedConstruct", "Wait", "load_model", "replay",
+    "Box",
+    "Copy",
+    "FusedCompute",
+    "PrimCall",
+    "Ref",
+    "SemaphoreViolation",
+    "TensorOp",
+    "Trace",
+    "UnsupportedConstruct",
+    "Wait",
+    "load_model",
+    "replay",
 ]
 
 #: proto3 JSON omits a field at its default. For ``Memory.level`` the default enum value is IMMEDIATE,
@@ -194,6 +205,7 @@ def load_model(path: str | Path) -> dict[str, Any]:
 
 # --- decoding the JSON form ----------------------------------------------------------------------
 
+
 def _ints(values: Sequence[Any] | None) -> tuple[int, ...]:
     return tuple(int(v) for v in (values or ()))
 
@@ -206,18 +218,33 @@ def _box(raw: Mapping[str, Any]) -> Box:
     else:
         level = str(memory.get("level", _DEFAULT_LEVEL)).removeprefix(_LEVEL_PREFIX)
         address = int(memory.get("address", 0))
-    return Box(node=str(raw["node"]), shape=_ints(raw.get("shape")), dtype=str(raw.get("dtype", "")),
-               level=level, address=address, bank_count=int(raw.get("bank_count", 1) or 1),
-               bank_stride=int(raw.get("bank_stride_bytes", 0) or 0))
+    return Box(
+        node=str(raw["node"]),
+        shape=_ints(raw.get("shape")),
+        dtype=str(raw.get("dtype", "")),
+        level=level,
+        address=address,
+        bank_count=int(raw.get("bank_count", 1) or 1),
+        bank_stride=int(raw.get("bank_stride_bytes", 0) or 0),
+    )
 
 
 _BINARY = {
-    "add": lambda a, b: a + b, "sub": lambda a, b: a - b, "mul": lambda a, b: a * b,
-    "floordiv": lambda a, b: a // b, "mod": lambda a, b: a % b,
-    "eq": lambda a, b: a == b, "ne": lambda a, b: a != b, "lt": lambda a, b: a < b,
-    "le": lambda a, b: a <= b, "gt": lambda a, b: a > b, "ge": lambda a, b: a >= b,
-    "and_": lambda a, b: bool(a) and bool(b), "or_": lambda a, b: bool(a) or bool(b),
-    "sym_max": max, "sym_min": min,
+    "add": lambda a, b: a + b,
+    "sub": lambda a, b: a - b,
+    "mul": lambda a, b: a * b,
+    "floordiv": lambda a, b: a // b,
+    "mod": lambda a, b: a % b,
+    "eq": lambda a, b: a == b,
+    "ne": lambda a, b: a != b,
+    "lt": lambda a, b: a < b,
+    "le": lambda a, b: a <= b,
+    "gt": lambda a, b: a > b,
+    "ge": lambda a, b: a >= b,
+    "and_": lambda a, b: bool(a) and bool(b),
+    "or_": lambda a, b: bool(a) or bool(b),
+    "sym_max": max,
+    "sym_min": min,
 }
 #: Operand keyword pairs a binary scalar op may carry: ATen-style ``input``/``other``, or the
 #: ``a``/``b`` the emitter writes for the sym_* ops.
@@ -262,12 +289,22 @@ class _Replayer:
             declared = self.allocations[node]
             # The window's box is the allocation under the window's shape; banking comes from the
             # declaration when the window omits it.
-            box = Box(node, box.shape or declared.shape, box.dtype or declared.dtype, box.level,
-                      box.address, box.bank_count if "bank_count" in box_raw else declared.bank_count,
-                      box.bank_stride if "bank_stride_bytes" in box_raw else declared.bank_stride)
-        return Ref(box=box, offsets=tuple(int(self.scalar(o)) for o in raw.get("offsets", ())),
-                   sizes=_ints(raw.get("sizes")), strides=_ints(raw.get("strides")),
-                   output_shape=_ints(raw.get("output_shape")))
+            box = Box(
+                node,
+                box.shape or declared.shape,
+                box.dtype or declared.dtype,
+                box.level,
+                box.address,
+                box.bank_count if "bank_count" in box_raw else declared.bank_count,
+                box.bank_stride if "bank_stride_bytes" in box_raw else declared.bank_stride,
+            )
+        return Ref(
+            box=box,
+            offsets=tuple(int(self.scalar(o)) for o in raw.get("offsets", ())),
+            sizes=_ints(raw.get("sizes")),
+            strides=_ints(raw.get("strides")),
+            output_shape=_ints(raw.get("output_shape")),
+        )
 
     def argument(self, raw: Mapping[str, Any]) -> Any:
         if "tensor_box" in raw:
@@ -285,9 +322,12 @@ class _Replayer:
         raise UnsupportedConstruct(f"argument form not modelled: {sorted(raw)}")
 
     def call(self, prim: Mapping[str, Any]) -> PrimCall:
-        return PrimCall(name=str(prim.get("name", "")), target=str(prim.get("target", "")),
-                        args=tuple(self.argument(a) for a in prim.get("args", ())),
-                        kwargs={k: self.argument(v) for k, v in prim.get("kwargs", {}).items()})
+        return PrimCall(
+            name=str(prim.get("name", "")),
+            target=str(prim.get("target", "")),
+            args=tuple(self.argument(a) for a in prim.get("args", ())),
+            kwargs={k: self.argument(v) for k, v in prim.get("kwargs", {}).items()},
+        )
 
     # semaphores -------------------------------------------------------------------------------
     def signal(self, sem: Ref, count: int) -> None:
@@ -322,8 +362,7 @@ class _Replayer:
         else:
             raise UnsupportedConstruct(f"operation {name!r} has no modelled op_type: {sorted(op)}")
 
-    def prim(self, prim: Mapping[str, Any], outputs: Sequence[Mapping[str, Any]],
-             commit: str | None) -> None:
+    def prim(self, prim: Mapping[str, Any], outputs: Sequence[Mapping[str, Any]], commit: str | None) -> None:
         target = str(prim.get("target", ""))
         kwargs = prim.get("kwargs", {})
         if target in _DECLARATIONS:
@@ -364,24 +403,29 @@ class _Replayer:
                 linear //= radix
             digits.reverse()
             if len(outputs) != len(digits):
-                raise UnsupportedConstruct(
-                    f"delinearize_index over basis {basis} binds {len(outputs)} outputs")
+                raise UnsupportedConstruct(f"delinearize_index over basis {basis} binds {len(outputs)} outputs")
             for out, digit in zip(outputs, digits):
                 self.env[str(out["name"])] = digit
             return
         call = self.call(prim)
         if target == "voyager::async_copy":
             kw = call.kwargs
-            copy = Copy(name=call.name, src=kw["src"], dst=kw["dst"], indices=tuple(kw["indices"]),
-                        sizes=tuple(kw["sizes"]), semaphore=kw["semaphore"],
-                        post_count=int(kw.get("post_count", 1) if kw.get("post_count") is not None else 1),
-                        dims=tuple(kw["dims"]) if kw.get("dims") else None,
-                        strides=tuple(kw["strides"]) if kw.get("strides") else None,
-                        transposed=bool(kw.get("transposed") or False),
-                        pad=tuple(kw["pad"]) if kw.get("pad") else None,
-                        pad_value=kw.get("pad_value"),
-                        count=tuple(kw["count"]) if kw.get("count") else None,
-                        path=tuple(self.path))
+            copy = Copy(
+                name=call.name,
+                src=kw["src"],
+                dst=kw["dst"],
+                indices=tuple(kw["indices"]),
+                sizes=tuple(kw["sizes"]),
+                semaphore=kw["semaphore"],
+                post_count=int(kw.get("post_count", 1) if kw.get("post_count") is not None else 1),
+                dims=tuple(kw["dims"]) if kw.get("dims") else None,
+                strides=tuple(kw["strides"]) if kw.get("strides") else None,
+                transposed=bool(kw.get("transposed") or False),
+                pad=tuple(kw["pad"]) if kw.get("pad") else None,
+                pad_value=kw.get("pad_value"),
+                count=tuple(kw["count"]) if kw.get("count") else None,
+                path=tuple(self.path),
+            )
             self.events.append(copy)
             self.signal(copy.semaphore, copy.post_count)
             return
@@ -399,22 +443,36 @@ class _Replayer:
             raise UnsupportedConstruct(f"scalar op binds {len(outputs)} outputs")
         self.env[str(outputs[0]["name"])] = value
 
-    def fused(self, name: str, op: Mapping[str, Any], commit: str | None,
-              dependencies: tuple[Ref, ...] = (), post: Ref | None = None) -> None:
+    def fused(
+        self,
+        name: str,
+        op: Mapping[str, Any],
+        commit: str | None,
+        dependencies: tuple[Ref, ...] = (),
+        post: Ref | None = None,
+    ) -> None:
         chain = tuple(self.call(p) for p in op["fused"].get("op_list", ()))
         if not chain:
             raise UnsupportedConstruct(f"fused operation {name!r} has an empty op_list")
-        destinations = tuple(self.ref(out["destination"]) for out in op.get("outputs", ())
-                             if "destination" in out)
+        destinations = tuple(self.ref(out["destination"]) for out in op.get("outputs", ()) if "destination" in out)
         # proto3 JSON omits an enum at its default: `LoopIndex` value 0 is LOOP_FX, so an FX bound
         # arrives with no "loop" key at all (same trap as Memory.level, restored in `_box`).
         tiling = tuple(
-            tuple((str(b.get("loop", _DEFAULT_LOOP)), int(b.get("bound", 0)))
-                  for b in level.get("loop_bounds", ()))
-            for level in (op.get("tiling") or {}).get("level_tilings", ()))
-        self.events.append(FusedCompute(name=name, chain=chain, destinations=destinations,
-                                        tiling=tiling, commit=commit, dependencies=dependencies,
-                                        post=post, path=tuple(self.path)))
+            tuple((str(b.get("loop", _DEFAULT_LOOP)), int(b.get("bound", 0))) for b in level.get("loop_bounds", ()))
+            for level in (op.get("tiling") or {}).get("level_tilings", ())
+        )
+        self.events.append(
+            FusedCompute(
+                name=name,
+                chain=chain,
+                destinations=destinations,
+                tiling=tiling,
+                commit=commit,
+                dependencies=dependencies,
+                post=post,
+                path=tuple(self.path),
+            )
+        )
 
     def loop(self, name: str, loop: Mapping[str, Any], outputs: Sequence[Mapping[str, Any]]) -> None:
         if "for_loop" in loop:
@@ -445,13 +503,13 @@ class _Replayer:
         else:
             raise UnsupportedConstruct(f"loop {name!r} kind not modelled: {sorted(loop)}")
         if len(outputs) != len(values):
-            raise UnsupportedConstruct(f"loop {name!r} has {len(values)} carried values but "
-                                       f"{len(outputs)} outputs")
+            raise UnsupportedConstruct(f"loop {name!r} has {len(values)} carried values but {len(outputs)} outputs")
         for out, value in zip(outputs, values):
             self.env[str(out["name"])] = value
 
-    def _iterate(self, name: str, iteration: int, region: Mapping[str, Any],
-                 iter_names: list[str], values: list[Any]) -> list[Any]:
+    def _iterate(
+        self, name: str, iteration: int, region: Mapping[str, Any], iter_names: list[str], values: list[Any]
+    ) -> list[Any]:
         self.env.update(zip(iter_names, values))
         self.path.append((name, iteration))
         try:
@@ -460,8 +518,9 @@ class _Replayer:
         finally:
             self.path.pop()
         if len(yields) != len(iter_names):
-            raise UnsupportedConstruct(f"loop {name!r} body yields {len(yields)} values for "
-                                       f"{len(iter_names)} carried arguments")
+            raise UnsupportedConstruct(
+                f"loop {name!r} body yields {len(yields)} values for {len(iter_names)} carried arguments"
+            )
         return yields
 
     def cond(self, cond: Mapping[str, Any], outputs: Sequence[Mapping[str, Any]]) -> None:
@@ -520,11 +579,14 @@ def replay(model: Mapping[str, Any], *, check_semaphores: bool = True) -> Trace:
         replayer.run(ops[begin:end])
         loops = [str(op["name"]) for op in ops[begin:end] if "loop" in op]
         if len(replayer.events) > first:
-            layers.append((loops[0] if loops else str(ops[begin]["name"]), first,
-                           len(replayer.events)))
+            layers.append((loops[0] if loops else str(ops[begin]["name"]), first, len(replayer.events)))
     boxes = replayer.allocations
-    return Trace(inputs=tuple(_box(b) for b in model.get("inputs", ())),
-                 parameters=tuple(_box(b) for b in model.get("parameters", ())),
-                 outputs=tuple(_box(b) for b in model.get("outputs", ())),
-                 allocations=boxes, events=replayer.events, semaphores=replayer.semaphores,
-                 layers=layers)
+    return Trace(
+        inputs=tuple(_box(b) for b in model.get("inputs", ())),
+        parameters=tuple(_box(b) for b in model.get("parameters", ())),
+        outputs=tuple(_box(b) for b in model.get("outputs", ())),
+        allocations=boxes,
+        events=replayer.events,
+        semaphores=replayer.semaphores,
+        layers=layers,
+    )

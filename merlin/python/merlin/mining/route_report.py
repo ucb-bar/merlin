@@ -13,6 +13,7 @@ Usage:
   merlin-cca-route --divergences out/artifacts/kernel-mining/rvv/<run>/divergences.yaml
   merlin-cca-route --json                  # machine-readable
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,12 +34,20 @@ def _ladder_for(axis: str, backend: str) -> dict:
 
 def _load_divergences(path: str) -> list[Divergence]:
     import yaml
+
     doc = yaml.safe_load(open(path, encoding="utf-8")) or []
     rows = doc.get("divergences", doc) if isinstance(doc, dict) else doc
     out = []
     for r in rows:
-        out.append(Divergence(axis=r["axis"], expert=r.get("expert"), ours=r.get("ours"),
-                              backend=r.get("backend", "rvv"), evidence=list(r.get("evidence", []))))
+        out.append(
+            Divergence(
+                axis=r["axis"],
+                expert=r.get("expert"),
+                ours=r.get("ours"),
+                backend=r.get("backend", "rvv"),
+                evidence=list(r.get("evidence", [])),
+            )
+        )
     return out
 
 
@@ -46,20 +55,35 @@ def _regions_view() -> list[dict]:
     """The full compiler-region registry: every region + its registrable edit-points (the 'where do I
     change the compiler, and how do I add a new edit-point' map — so the agent never searches)."""
     from merlin.kernels import regions as R
+
     out = []
     for key, r in R.REGIONS.items():
-        out.append({
-            "region": key, "phase": r.phase, "title": r.title, "modules": list(r.modules),
-            "cca_axes": list(r.cca_axes),
-            "edit_points": [{"kind": ep.kind, "seam": ep.seam, "file": ep.file,
-                             "how_to_add": ep.how_to_add, "forkable_now": ep.forkable_now,
-                             "registry": ep.registry} for ep in r.edit_points],
-        })
+        out.append(
+            {
+                "region": key,
+                "phase": r.phase,
+                "title": r.title,
+                "modules": list(r.modules),
+                "cca_axes": list(r.cca_axes),
+                "edit_points": [
+                    {
+                        "kind": ep.kind,
+                        "seam": ep.seam,
+                        "file": ep.file,
+                        "how_to_add": ep.how_to_add,
+                        "forkable_now": ep.forkable_now,
+                        "registry": ep.registry,
+                    }
+                    for ep in r.edit_points
+                ],
+            }
+        )
     return out
 
 
 def _print_regions(views: list[dict]) -> None:
     from merlin.kernels import regions as R
+
     print("== compiler regions by phase (registrable edit-points; GAP = no clean seam yet) ==")
     for phase in R.phases():
         pv = [v for v in views if v["phase"] == phase]
@@ -80,9 +104,16 @@ def _route_view(d: Divergence) -> dict:
     view = {"axis": d.axis, "expert": d.expert, "ours": d.ours, "routed": a is not None}
     if a is not None:
         loc = ac.seam_location(a.target_seam)
-        view.update({"action_class": a.action_class, "target_seam": a.target_seam,
-                     "seam_file": loc["seam_file"], "seam_kind": loc["seam_kind"],
-                     "needs_new_code": loc["needs_new_code"], "forkable_now": a.forkable_now})
+        view.update(
+            {
+                "action_class": a.action_class,
+                "target_seam": a.target_seam,
+                "seam_file": loc["seam_file"],
+                "seam_kind": loc["seam_kind"],
+                "needs_new_code": loc["needs_new_code"],
+                "forkable_now": a.forkable_now,
+            }
+        )
     view["ladder"] = ac.escalation_ladder(d.axis, d.backend)
     return view
 
@@ -107,8 +138,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--backend", default="rvv", help="target backend (default: rvv)")
     ap.add_argument("--axis", help="show the full escalation ladder for one axis (e.g. compute.epilogue)")
     ap.add_argument("--divergences", help="a divergences.yaml (list, or {divergences: [...]}) to route")
-    ap.add_argument("--regions", action="store_true",
-                    help="list the compiler-region registry (all editable regions + how to extend each)")
+    ap.add_argument(
+        "--regions",
+        action="store_true",
+        help="list the compiler-region registry (all editable regions + how to extend each)",
+    )
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     args = ap.parse_args(argv)
 
@@ -131,8 +165,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"backend": args.backend, "axes": views}, indent=2))
         return 0
 
-    print(f"== compiler-modification routes for backend '{args.backend}' "
-          "(* = cheapest that fires; ladder = weakest -> strongest) ==")
+    print(
+        f"== compiler-modification routes for backend '{args.backend}' "
+        "(* = cheapest that fires; ladder = weakest -> strongest) =="
+    )
     for v in views:
         _print_axis(v)
     return 0

@@ -12,6 +12,7 @@ Knobs consumed:
                         -> appends `lowering_strategy = "<v>"` to lower_contraction (the lever that
                         recovers fused vfmacc: outerproduct -> vector.fma -> llvm.fmuladd -> vfmacc)
 """
+
 from __future__ import annotations
 
 import copy
@@ -57,8 +58,7 @@ def _op_block(op: str, tile: list[int], vector: list[int], i: int) -> str:
 
 def _pattern_line(name: str, contraction_strategy: str | None) -> str:
     if name == "lower_contraction" and contraction_strategy:
-        return (f"      transform.apply_patterns.vector.lower_contraction "
-                f'lowering_strategy = "{contraction_strategy}"')
+        return f'      transform.apply_patterns.vector.lower_contraction lowering_strategy = "{contraction_strategy}"'
     return f"      transform.apply_patterns.vector.{name}"
 
 
@@ -132,15 +132,20 @@ def _with_hygiene(feats: list[str]) -> list[str]:
     byte-identical control lowering.
     """
     from ..llvmlower.selfcopy import FEATURE as _SELF_COPY
+
     return feats if _SELF_COPY in feats else [*feats, _SELF_COPY]
 
 
 def _recipe(spec) -> list[str]:
     """The micro-kernel recipe proper (no hygiene) — one feature naming this point in the space."""
     from ..kernels.microkernel import VL_DYNAMIC, UnsupportedAxis
-    from ..llvmlower.impr_features import (ensure_v3_kblocked_microkernel, ensure_v3_microkernel,
-                                            ensure_v3_scalable_microkernel,
-                                            ensure_v3_unrolled_microkernel)
+    from ..llvmlower.impr_features import (
+        ensure_v3_kblocked_microkernel,
+        ensure_v3_microkernel,
+        ensure_v3_scalable_microkernel,
+        ensure_v3_unrolled_microkernel,
+    )
+
     if spec.vl_strategy == VL_DYNAMIC:
         # VL-AGNOSTIC: a scalable N register block, so the emitted loop sizes to the vector length
         # the hardware reports (vsetvli against VLMAX) instead of a compile-time width the backend
@@ -155,17 +160,21 @@ def _recipe(spec) -> list[str]:
         # asked for dynamic VL -- the "credited a change that never happened" failure the
         # UnsupportedAxis contract exists to prevent.
         if spec.unroll_m or spec.pack or spec.k_block:
-            raise UnsupportedAxis("rvv: vl_strategy='dynamic' does not compose with "
-                                  "unroll_m/pack/k_block yet (each replaces the schedule); emit one "
-                                  "composed recipe to combine them.")
+            raise UnsupportedAxis(
+                "rvv: vl_strategy='dynamic' does not compose with "
+                "unroll_m/pack/k_block yet (each replaces the schedule); emit one "
+                "composed recipe to combine them."
+            )
         return [ensure_v3_scalable_microkernel(int(spec.MR), int(spec.NR), int(spec.KC))]
     if spec.k_block:
         # REAL cache blocking of the reduction (k_block is the genuine reduction-blocking lever;
         # bare KC-tuning on the default recipe is INERT and PRUNED from proposal — see
         # kernels.microkernel.PRUNED_AXES. This path stays RESOLVABLE so a package/test may pin it).
         if spec.unroll_m or spec.pack:
-            raise UnsupportedAxis("rvv: k_block does not compose with unroll_m/pack yet (each "
-                                  "replaces the schedule); emit one composed recipe to combine them.")
+            raise UnsupportedAxis(
+                "rvv: k_block does not compose with unroll_m/pack yet (each "
+                "replaces the schedule); emit one composed recipe to combine them."
+            )
         return [ensure_v3_kblocked_microkernel(int(spec.MR), int(spec.NR), int(spec.KC))]
     if spec.unroll_m:
         # M held as MR INDEPENDENT accumulators (tile M by 1 + unroll the M loop by MR) instead of a
@@ -173,18 +182,25 @@ def _recipe(spec) -> list[str]:
         # structurally wrong (MR sequential K-loops, B-reuse=1, ~2.4x slower), so `unroll_m` is PRUNED
         # from proposal (kernels.microkernel.PRUNED_AXES). Kept RESOLVABLE for tests/pins only.
         if spec.pack:
-            raise UnsupportedAxis("rvv: unroll_m + pack are not composed yet (each replaces the "
-                                  "schedule); emit one composed recipe before enabling both.")
+            raise UnsupportedAxis(
+                "rvv: unroll_m + pack are not composed yet (each replaces the "
+                "schedule); emit one composed recipe before enabling both."
+            )
         return [ensure_v3_unrolled_microkernel(int(spec.MR), int(spec.NR), int(spec.KC))]
     if spec.pack:
-        from ..llvmlower.impr_features import known, register, ImprFeature, vfmacc_packed_schedule
+        from ..llvmlower.impr_features import ImprFeature, known, register, vfmacc_packed_schedule
+
         nm = f"vfmacc_packed_{spec.MR}_{spec.NR}_{spec.KC}"
         if nm not in known():
-            register(ImprFeature(
-                name=nm, action_class="PASS",
-                description=f"operand-packed micro-kernel (MR={spec.MR}, NR={spec.NR}, KC={spec.KC})",
-                edit_schedule=(lambda _t, _s=spec: vfmacc_packed_schedule(_s.MR, _s.NR, _s.KC)),
-                schedule_replace=True))
+            register(
+                ImprFeature(
+                    name=nm,
+                    action_class="PASS",
+                    description=f"operand-packed micro-kernel (MR={spec.MR}, NR={spec.NR}, KC={spec.KC})",
+                    edit_schedule=(lambda _t, _s=spec: vfmacc_packed_schedule(_s.MR, _s.NR, _s.KC)),
+                    schedule_replace=True,
+                )
+            )
         return [nm]
     return [ensure_v3_microkernel(int(spec.MR), int(spec.NR), int(spec.KC))]
 
@@ -230,8 +246,7 @@ def _rvv_blocking_lowers(MR: int, NR: int, M: int, N: int) -> bool:
     return int(MR) == 1 and int(NR) <= int(N)
 
 
-def _rvv_best_block(MR_cap: int, NR_cap: int,
-                    extents: "list[tuple[int, int]]") -> tuple[int, int]:
+def _rvv_best_block(MR_cap: int, NR_cap: int, extents: "list[tuple[int, int]]") -> tuple[int, int]:
     """Largest legal ``(MR, NR)`` for EVERY contraction in ``extents`` (list of (M, N) pairs).
 
     Derived from the knob space, never from a shape table: the requested ``(MR_cap, NR_cap)`` is an
@@ -243,21 +258,24 @@ def _rvv_best_block(MR_cap: int, NR_cap: int,
     Measured cost of the two runner-up shapes at 128^3 f32 (spike instret, both legal there):
     ``(4, 16)`` 1,065,000; ``(4, 8)`` 1,465,000; ``(1, 16)`` 1,465,000 — i.e. giving up either half
     of the block costs ~38%, and the area ranking picks whichever half survives."""
-    from ..kernels.microkernel import largest_divisor_at_most
-    from math import gcd
     from functools import reduce
+    from math import gcd
+
+    from ..kernels.microkernel import largest_divisor_at_most
+
     if not extents:
         return int(MR_cap), int(NR_cap)
     gM = reduce(gcd, [m for m, _ in extents])
     gN = reduce(gcd, [n for _, n in extents])
     minN = min(n for _, n in extents)
-    cands = {(largest_divisor_at_most(gM, MR_cap), largest_divisor_at_most(gN, NR_cap)),
-             (1, largest_divisor_at_most(gN, NR_cap)),
-             (1, min(int(NR_cap), minN)),          # the rank-1 masked-N escape
-             (1, 1)}                               # always legal (never masks anything)
-    legal = [(mr, nr) for (mr, nr) in cands
-             if all(_rvv_blocking_lowers(mr, nr, m, n) for m, n in extents)]
-    if not legal:                                  # unreachable while (1, 1) is a candidate
+    cands = {
+        (largest_divisor_at_most(gM, MR_cap), largest_divisor_at_most(gN, NR_cap)),
+        (1, largest_divisor_at_most(gN, NR_cap)),
+        (1, min(int(NR_cap), minN)),  # the rank-1 masked-N escape
+        (1, 1),
+    }  # always legal (never masks anything)
+    legal = [(mr, nr) for (mr, nr) in cands if all(_rvv_blocking_lowers(mr, nr, m, n) for m, n in extents)]
+    if not legal:  # unreachable while (1, 1) is a candidate
         return 1, 1
     return max(legal, key=lambda b: (b[0] * b[1], b[1]))
 
@@ -278,28 +296,28 @@ def _rvv_microkernel_shape_policy(spec, shapes) -> list[str]:
     have no per-op-class arm), so an unrealized axis stays an honest divergence, never a silent one.
     """
     from ..kernels.microkernel import VL_FIXED
+
     if spec.vl_strategy != VL_FIXED or spec.unroll_m or spec.pack or spec.k_block:
         return _rvv_microkernel_resolver(spec)
     from ..llvmlower.impr_features import ensure_v3_perop_microkernel
+
     blocks: dict[str, tuple[int, int]] = {}
     for op in _RVV_BLOCKED_OPS:
-        ext = [(s.parallel[-2], s.parallel[-1]) for s in shapes
-               if s.op == op and len(s.parallel) >= 2]
+        ext = [(s.parallel[-2], s.parallel[-1]) for s in shapes if s.op == op and len(s.parallel) >= 2]
         blocks[op] = _rvv_best_block(int(spec.MR), int(spec.NR), ext)
     mm, bmm = blocks["linalg.matmul"], blocks["linalg.batch_matmul"]
     if mm == bmm == (int(spec.MR), int(spec.NR)):
-        return _rvv_microkernel_resolver(spec)     # nothing to adapt -> byte-identical realization
-    return _with_hygiene([ensure_v3_perop_microkernel(mm[0], mm[1], bmm[0], bmm[1],
-                                                      int(spec.KC))])
+        return _rvv_microkernel_resolver(spec)  # nothing to adapt -> byte-identical realization
+    return _with_hygiene([ensure_v3_perop_microkernel(mm[0], mm[1], bmm[0], bmm[1], int(spec.KC))])
 
 
-def microkernel_features(mk: dict[str, Any], target: str = "rvv",
-                         shapes: "Any" = ()) -> list[str]:
+def microkernel_features(mk: dict[str, Any], target: str = "rvv", shapes: "Any" = ()) -> list[str]:
     """Resolve a ``microkernel`` knob block to ``target``'s realization (target-agnostic dispatch).
 
     ``shapes`` (a sequence of ``kernels.microkernel.ContractionShape``) opts into the SHAPE-AWARE
     resolution; with the default empty sequence the realization is byte-identical to before."""
     from ..kernels.microkernel import MicrokernelSpec, resolve_for_shapes
+
     return list(resolve_for_shapes(target, MicrokernelSpec.from_knobs(mk), shapes))
 
 
@@ -310,10 +328,7 @@ def render_schedule(knobs: dict[str, Any]) -> str:
     TARGET-AGNOSTIC space (see :func:`microkernel_features` / ``kernels.microkernel``) to this target's
     realization, whose ``edit_schedule`` replaces the schedule and whose ``edit_pipeline`` adds the
     residency/scalarize stage at build time."""
-    blocks = "".join(
-        _op_block(m["op"], m["tile"], m["vector"], i)
-        for i, m in enumerate(knobs.get("op_match", []))
-    )
+    blocks = "".join(_op_block(m["op"], m["tile"], m["vector"], i) for i, m in enumerate(knobs.get("op_match", [])))
     cstrat = knobs.get("contraction_strategy")
     patterns = "\n".join(_pattern_line(p, cstrat) for p in knobs.get("lowering_patterns", []))
     return (
@@ -321,7 +336,7 @@ def render_schedule(knobs: dict[str, Any]) -> str:
         "  transform.named_sequence @__transform_main(%arg0: !transform.any_op "
         "{transform.readonly}) {\n"
         f"{blocks}"
-        "    %f = transform.structured.match ops{[\"func.func\"]} in %arg0 : "
+        '    %f = transform.structured.match ops{["func.func"]} in %arg0 : '
         "(!transform.any_op) -> !transform.any_op\n"
         "    transform.apply_patterns to %f {\n"
         f"{patterns}\n"
@@ -332,10 +347,19 @@ def render_schedule(knobs: dict[str, Any]) -> str:
     )
 
 
-def mint_fork(parent: "RvvPackage | str | Path", overrides: dict[str, Any], *,
-              version: int, depth: int, timestamp: str, source_evidence: list[str],
-              lever: str, target: str = "rvv", out_root: str | Path = "out/artifacts/targets",
-              generated_by_agent: bool = False) -> Path:
+def mint_fork(
+    parent: "RvvPackage | str | Path",
+    overrides: dict[str, Any],
+    *,
+    version: int,
+    depth: int,
+    timestamp: str,
+    source_evidence: list[str],
+    lever: str,
+    target: str = "rvv",
+    out_root: str | Path = "out/artifacts/targets",
+    generated_by_agent: bool = False,
+) -> Path:
     """Mint a versioned fork from ``parent`` with ``overrides`` applied to its knobs.
 
     ``lever`` in {knob, lowering_pattern, llvm_requirement}; ``source_evidence`` is the mined
@@ -355,8 +379,7 @@ def mint_fork(parent: "RvvPackage | str | Path", overrides: dict[str, Any], *,
         "lever": lever,
         "generated_by_agent": generated_by_agent,
     }
-    return write_fork(out_root, target, run_id, schedule_text=schedule_text,
-                      knobs=knobs, lineage=lineage)
+    return write_fork(out_root, target, run_id, schedule_text=schedule_text, knobs=knobs, lineage=lineage)
 
 
 # Register RVV's realization of the target-agnostic micro-kernel space at import. Other targets
@@ -364,6 +387,7 @@ def mint_fork(parent: "RvvPackage | str | Path", overrides: dict[str, Any], *,
 # expresses expert-kernel granularity for any compilation target.
 def _register_rvv_microkernel_resolver() -> None:
     from ..kernels.microkernel import register_resolver, register_shape_policy
+
     register_resolver("rvv", _rvv_microkernel_resolver)
     register_shape_policy("rvv", _rvv_microkernel_shape_policy)
 

@@ -5,6 +5,7 @@ final low-precision output, and the DRAM traffic for the baseline (weight moved 
 The ratio ``intermediate_i32_bytes / final_output_bytes`` is the precision-pressure signal
 that justifies ``accumulator_commit``.
 """
+
 from __future__ import annotations
 
 from merlin.design_pressure import region as R
@@ -45,10 +46,8 @@ def metric_memory(region: dict) -> dict:
         "weight_bytes": weight_bytes,
         "input_bytes_step": input_bytes_step,
         # Baseline moves the weight from DRAM every step; resident moves it once.
-        "dram_traffic_bytes_baseline": (weight_bytes + input_bytes_step
-                                        + final_output_bytes_step) * steps,
-        "dram_traffic_bytes_resident": (weight_bytes
-                                        + (input_bytes_step + final_output_bytes_step) * steps),
+        "dram_traffic_bytes_baseline": (weight_bytes + input_bytes_step + final_output_bytes_step) * steps,
+        "dram_traffic_bytes_resident": (weight_bytes + (input_bytes_step + final_output_bytes_step) * steps),
     }
 
 

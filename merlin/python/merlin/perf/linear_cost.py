@@ -19,6 +19,7 @@ kind is declared in the artifact as a fold onto the priced event, with a scale t
 DATAPATH ELEMENT WIDTHS read from the target's RTL facts. The ratio is never written down here; when it
 cannot be derived, a prediction that needs it raises :class:`CostModelUnavailable` naming why.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,8 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["CostModelUnavailable", "LinearCostModel", "cost_model_artifact", "datapath_bits",
-           "fit_linear"]
+__all__ = ["CostModelUnavailable", "LinearCostModel", "cost_model_artifact", "datapath_bits", "fit_linear"]
 
 #: A target's cost model lives in ``<targets>/<target>/cost_model/``: the fitted ``coefficients.json``
 #: (const, coeff, error, meta -- what calibration writes) and the declared ``vocabulary.json`` (the
@@ -64,16 +64,15 @@ def datapath_bits(target: str, datapath: str) -> int:
     try:
         body = rtl_facts.load_facts(target)
     except Exception as exc:  # noqa: BLE001 - an unreadable fact bundle is a refusal, and says so
-        raise CostModelUnavailable(
-            f"RTL facts for {target!r} did not load ({type(exc).__name__}: {exc})") from exc
+        raise CostModelUnavailable(f"RTL facts for {target!r} did not load ({type(exc).__name__}: {exc})") from exc
     facts = body.get("facts") or body
     for row in facts.get("datapaths") or []:
         if isinstance(row, Mapping) and row.get("name") == datapath:
             bits = dtype_bits(row.get("dtype"))
             if not bits:
                 raise CostModelUnavailable(
-                    f"datapath {datapath!r} of {target!r} has dtype {row.get('dtype')!r}, whose width "
-                    "is not derivable")
+                    f"datapath {datapath!r} of {target!r} has dtype {row.get('dtype')!r}, whose width is not derivable"
+                )
             return bits
     raise CostModelUnavailable(f"RTL facts for {target!r} declare no {datapath!r} datapath")
 
@@ -96,8 +95,7 @@ class LinearCostModel:
     def load(cls, path: str | Path) -> "LinearCostModel":
         """A bare coefficient file: its keys are the vocabulary (sorted) and it declares no folds."""
         d = json.loads(Path(path).read_text(encoding="utf-8"))
-        return cls(const=d["const"], coeff=d["coeff"],
-                   error=d.get("error", {}), meta=d.get("meta", {}))
+        return cls(const=d["const"], coeff=d["coeff"], error=d.get("error", {}), meta=d.get("meta", {}))
 
     @classmethod
     def for_target(cls, target: str) -> "LinearCostModel":
@@ -110,7 +108,8 @@ class LinearCostModel:
         if artifact is None:
             raise CostModelUnavailable(
                 f"no calibrated cost model for target {target!r} "
-                f"(expected <targets>/{target}/{MODEL_DIR}/{COEFFICIENTS})")
+                f"(expected <targets>/{target}/{MODEL_DIR}/{COEFFICIENTS})"
+            )
         model = cls.load(artifact)
         model.target = target
         vocab_path = artifact.with_name(VOCABULARY)
@@ -121,13 +120,13 @@ class LinearCostModel:
             unfitted = [e for e in model.events if e not in model.coeff]
             if unfitted:
                 raise CostModelUnavailable(
-                    f"{target!r} declares priced event(s) {unfitted} that its calibration never fitted")
+                    f"{target!r} declares priced event(s) {unfitted} that its calibration never fitted"
+                )
         return model
 
     def save(self, path: str | Path) -> None:
         """Write the fitted part only; the vocabulary is declared by the target, not by a fit."""
-        doc: dict[str, Any] = {"const": self.const, "coeff": self.coeff, "error": self.error,
-                               "meta": self.meta}
+        doc: dict[str, Any] = {"const": self.const, "coeff": self.coeff, "error": self.error, "meta": self.meta}
         Path(path).write_text(json.dumps(doc, indent=1), encoding="utf-8")
 
     def priced_events(self) -> tuple[str, ...]:
@@ -147,11 +146,13 @@ class LinearCostModel:
         ratio = spec.get("datapath_bits_ratio") if isinstance(spec, Mapping) else None
         if not isinstance(ratio, Sequence) or isinstance(ratio, str) or len(ratio) != 2:
             raise CostModelUnavailable(
-                f"fold {event!r} declares no derivable scale (expected datapath_bits_ratio: [num, den])")
+                f"fold {event!r} declares no derivable scale (expected datapath_bits_ratio: [num, den])"
+            )
         if not self.target:
             raise CostModelUnavailable(
                 f"fold {event!r} is scaled by RTL datapath widths, but this model was loaded without a "
-                "target to read them from (use LinearCostModel.for_target)")
+                "target to read them from (use LinearCostModel.for_target)"
+            )
         num, den = (str(part) for part in ratio)
         scale = datapath_bits(self.target, num) / datapath_bits(self.target, den)
         self._scales[event] = scale
@@ -173,9 +174,14 @@ class LinearCostModel:
         return c, c * self.error.get("mape", 0.0)
 
 
-def fit_linear(rows: Sequence[Mapping[str, Any]], events: Sequence[str], *,
-               meta: Mapping[str, Any] | None = None,
-               folds: Mapping[str, dict] | None = None, target: str = "") -> LinearCostModel:
+def fit_linear(
+    rows: Sequence[Mapping[str, Any]],
+    events: Sequence[str],
+    *,
+    meta: Mapping[str, Any] | None = None,
+    folds: Mapping[str, dict] | None = None,
+    target: str = "",
+) -> LinearCostModel:
     """Relative-error-weighted least squares over calibration rows ``{"events": {...}, "cycles": n}``.
 
     Weighting by 1/cycles minimizes MAPE (what callers act on), so tiny runs are not swamped by large
@@ -193,4 +199,8 @@ def fit_linear(rows: Sequence[Mapping[str, Any]], events: Sequence[str], *,
         const=float(coef[0]),
         coeff={e: float(coef[i + 1]) for i, e in enumerate(events)},
         error={"mape": float(ape.mean()), "max_abs_pct": float(ape.max()), "n_points": len(b)},
-        meta=dict(meta or {}), events=tuple(events), folds=dict(folds or {}), target=target)
+        meta=dict(meta or {}),
+        events=tuple(events),
+        folds=dict(folds or {}),
+        target=target,
+    )

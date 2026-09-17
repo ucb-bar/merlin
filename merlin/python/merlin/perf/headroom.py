@@ -25,6 +25,7 @@ and their busy cycles added (see :func:`~merlin.perf.decompose.busy_by_kind`). T
 conservative direction -- it never invents a pair -- and the choice is recorded on every result in
 ``grouping``.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
@@ -66,8 +67,9 @@ class Composition(str, Enum):
     PARTIAL = "partial"
 
 
-def resource_groups(source: ActivitySource,
-                    grouping: Mapping[str, str] | None = None) -> tuple[dict[str, int], dict[str, ResourceKind], str]:
+def resource_groups(
+    source: ActivitySource, grouping: Mapping[str, str] | None = None
+) -> tuple[dict[str, int], dict[str, ResourceKind], str]:
     """Collapse a source's engines into the groups that may run concurrently.
 
     Returns ``(busy_by_group, kind_by_group, rationale)``. With no explicit ``grouping`` the default
@@ -83,8 +85,7 @@ def resource_groups(source: ActivitySource,
             key = r.kind.value
             busy[key] = busy.get(key, 0) + r.busy_cycles
             kinds[key] = r.kind
-        return busy, kinds, ("by resource kind (same-kind engines assumed to contend; no port "
-                             "evidence supplied)")
+        return busy, kinds, ("by resource kind (same-kind engines assumed to contend; no port evidence supplied)")
     unmapped = sorted(r.name for r in source.engines if r.name not in grouping)
     if unmapped:
         raise ValueError(f"{source.workload}: grouping does not cover engine(s) {unmapped}")
@@ -110,8 +111,7 @@ class ConcurrencyTraits:
 
     @property
     def satisfied(self) -> bool:
-        return (self.n_groups >= 2 and self.independent_ports is True
-                and self.explicit_completion is True)
+        return self.n_groups >= 2 and self.independent_ports is True and self.explicit_completion is True
 
     @property
     def missing(self) -> tuple[str, ...]:
@@ -126,16 +126,18 @@ class ConcurrencyTraits:
 
     def as_traits(self) -> tuple[Trait, ...]:
         return (
-            Trait("concurrency_capable_groups", self.n_groups >= 2,
-                  evidence=f"{self.n_groups} engine group(s)"),
+            Trait("concurrency_capable_groups", self.n_groups >= 2, evidence=f"{self.n_groups} engine group(s)"),
             Trait("independent_ports", self.independent_ports, evidence=self.evidence),
             Trait("explicit_completion", self.explicit_completion),
         )
 
 
-def concurrency_traits(sources: Sequence[ActivitySource] = (), *,
-                       manifest: Mapping[str, Any] | None = None,
-                       grouping: Mapping[str, str] | None = None) -> ConcurrencyTraits:
+def concurrency_traits(
+    sources: Sequence[ActivitySource] = (),
+    *,
+    manifest: Mapping[str, Any] | None = None,
+    grouping: Mapping[str, str] | None = None,
+) -> ConcurrencyTraits:
     """Derive the concurrency traits from measured activity, with the manifest as corroboration.
 
     ``independent_ports`` is established when a single workload shows **two engine groups of
@@ -160,26 +162,34 @@ def concurrency_traits(sources: Sequence[ActivitySource] = (), *,
     declared = len(manifest.get("compute_units") or ()) if manifest is not None else 0
     if best_groups >= 2 and len(kinds_seen) >= 2:
         ports: bool | None = True
-        evidence = (f"a single workload shows {best_groups} engine groups of "
-                    f"{len(kinds_seen)} distinct kinds ({sorted(k.value for k in kinds_seen)}) "
-                    f"carrying work; the manifest declares {declared} compute unit(s)")
+        evidence = (
+            f"a single workload shows {best_groups} engine groups of "
+            f"{len(kinds_seen)} distinct kinds ({sorted(k.value for k in kinds_seen)}) "
+            f"carrying work; the manifest declares {declared} compute unit(s)"
+        )
     else:
         ports = None
-        evidence = (f"observed {best_groups} active engine group(s) spanning "
-                    f"{len(kinds_seen)} kind(s); the manifest declares {declared} compute unit(s). "
-                    f"Distinct ports were not established -- declaring a unit is not observing it.")
+        evidence = (
+            f"observed {best_groups} active engine group(s) spanning "
+            f"{len(kinds_seen)} kind(s); the manifest declares {declared} compute unit(s). "
+            f"Distinct ports were not established -- declaring a unit is not observing it."
+        )
 
     completion: bool | None = None
     stated = {s.completion_observable for s in sources}
     if stated and None not in stated:
         completion = all(stated)
-    return ConcurrencyTraits(n_groups=best_groups, independent_ports=ports,
-                             explicit_completion=completion, evidence=evidence)
+    return ConcurrencyTraits(
+        n_groups=best_groups, independent_ports=ports, explicit_completion=completion, evidence=evidence
+    )
 
 
-def composition_operator(sources: Sequence[ActivitySource] = (), *,
-                         observed_overlap_cycles: Mapping[str, int] | None = None,
-                         tolerance: float = 0.05) -> tuple[Composition, float] | Unavailable:
+def composition_operator(
+    sources: Sequence[ActivitySource] = (),
+    *,
+    observed_overlap_cycles: Mapping[str, int] | None = None,
+    tolerance: float = 0.05,
+) -> tuple[Composition, float] | Unavailable:
     """Derive how this target's resource times compose. **Never defaults to ``max``.**
 
     ``observed_overlap_cycles`` maps workload -> cycles in which two or more engine groups were
@@ -196,27 +206,39 @@ def composition_operator(sources: Sequence[ActivitySource] = (), *,
         return Unavailable("composition operator", ("at least one activity source",))
     if observed_overlap_cycles is None:
         partitioned = [s.workload for s in sources if s.partitioned]
-        detail = ("the activity buckets partition the timeline, so they report zero overlap by "
-                  f"construction and cannot settle this ({len(partitioned)} of {len(sources)} "
-                  "workloads)") if partitioned else "no overlap observation supplied"
-        return Unavailable("composition operator",
-                           ("an overlap observation independent of the activity buckets",), detail)
+        detail = (
+            (
+                "the activity buckets partition the timeline, so they report zero overlap by "
+                f"construction and cannot settle this ({len(partitioned)} of {len(sources)} "
+                "workloads)"
+            )
+            if partitioned
+            else "no overlap observation supplied"
+        )
+        return Unavailable(
+            "composition operator", ("an overlap observation independent of the activity buckets",), detail
+        )
 
     available = 0
     realised = 0
     for s in sources:
         if s.workload not in observed_overlap_cycles:
-            return Unavailable("composition operator",
-                               (f"an overlap observation for workload {s.workload!r}",),
-                               "UNKNOWN propagates: one unobserved workload leaves the corpus "
-                               "operator unestablished rather than partially derived")
+            return Unavailable(
+                "composition operator",
+                (f"an overlap observation for workload {s.workload!r}",),
+                "UNKNOWN propagates: one unobserved workload leaves the corpus "
+                "operator unestablished rather than partially derived",
+            )
         busy, _, _ = resource_groups(s)
         vals = sorted(busy.values(), reverse=True)
         available += vals[1] if len(vals) > 1 else 0
         realised += int(observed_overlap_cycles[s.workload])
     if available == 0:
-        return Unavailable("composition operator", ("a workload where two groups are both busy",),
-                           "no pair has any overlappable time, so the operator is unobservable")
+        return Unavailable(
+            "composition operator",
+            ("a workload where two groups are both busy",),
+            "no pair has any overlappable time, so the operator is unobservable",
+        )
     eta = realised / available
     if eta <= tolerance:
         return Composition.SUM, eta
@@ -264,11 +286,14 @@ class WorkloadHeadroom:
         return bool(self.best and self.best.is_upper_bound)
 
 
-def headroom(source: ActivitySource, *,
-             traits: ConcurrencyTraits | None = None,
-             manifest: Mapping[str, Any] | None = None,
-             grouping: Mapping[str, str] | None = None,
-             observed_overlap_cycles: int | None = None) -> WorkloadHeadroom | Unavailable:
+def headroom(
+    source: ActivitySource,
+    *,
+    traits: ConcurrencyTraits | None = None,
+    manifest: Mapping[str, Any] | None = None,
+    grouping: Mapping[str, str] | None = None,
+    observed_overlap_cycles: int | None = None,
+) -> WorkloadHeadroom | Unavailable:
     """Overlap headroom for one workload: ``min(T_a, T_b)`` over every concurrency-capable pair.
 
     ``observed_overlap_cycles`` is the overlap the workload already realises. Left ``None`` the
@@ -276,8 +301,7 @@ def headroom(source: ActivitySource, *,
     because assuming zero overlap manufactures headroom exactly where a well-scheduled program has
     none.
     """
-    tr = traits if traits is not None else concurrency_traits([source], manifest=manifest,
-                                                              grouping=grouping)
+    tr = traits if traits is not None else concurrency_traits([source], manifest=manifest, grouping=grouping)
     if not tr.satisfied:
         return Unavailable("concurrency headroom", tr.missing, tr.evidence)
 
@@ -285,18 +309,26 @@ def headroom(source: ActivitySource, *,
     names = sorted(busy)
     pairs: list[PairHeadroom] = []
     for i, a in enumerate(names):
-        for b in names[i + 1:]:
+        for b in names[i + 1 :]:
             ceiling = min(busy[a], busy[b])
             realised = 0 if observed_overlap_cycles is None else int(observed_overlap_cycles)
             saving = max(0, ceiling - realised)
-            pairs.append(PairHeadroom(
-                a=a, b=b, busy_a=busy[a], busy_b=busy[b], saving_cycles=saving,
-                saving_share=saving / source.total_cycles if source.total_cycles else 0.0,
-                is_upper_bound=observed_overlap_cycles is None))
+            pairs.append(
+                PairHeadroom(
+                    a=a,
+                    b=b,
+                    busy_a=busy[a],
+                    busy_b=busy[b],
+                    saving_cycles=saving,
+                    saving_share=saving / source.total_cycles if source.total_cycles else 0.0,
+                    is_upper_bound=observed_overlap_cycles is None,
+                )
+            )
     pairs.sort(key=lambda p: (-p.saving_cycles, p.a, p.b))
     best = pairs[0] if pairs and pairs[0].saving_cycles > 0 else None
-    return WorkloadHeadroom(workload=source.workload, total_cycles=source.total_cycles,
-                            pairs=tuple(pairs), grouping=rationale, best=best)
+    return WorkloadHeadroom(
+        workload=source.workload, total_cycles=source.total_cycles, pairs=tuple(pairs), grouping=rationale, best=best
+    )
 
 
 @dataclass(frozen=True)
@@ -334,12 +366,15 @@ class CorpusHeadroom:
         return any(w.is_upper_bound for w in self.workloads.values())
 
 
-def corpus_headroom(sources: Iterable[ActivitySource], *,
-                    only: Iterable[str] | None = None,
-                    traits: ConcurrencyTraits | None = None,
-                    manifest: Mapping[str, Any] | None = None,
-                    grouping: Mapping[str, str] | None = None,
-                    observed_overlap_cycles: Mapping[str, int] | None = None) -> CorpusHeadroom:
+def corpus_headroom(
+    sources: Iterable[ActivitySource],
+    *,
+    only: Iterable[str] | None = None,
+    traits: ConcurrencyTraits | None = None,
+    manifest: Mapping[str, Any] | None = None,
+    grouping: Mapping[str, str] | None = None,
+    observed_overlap_cycles: Mapping[str, int] | None = None,
+) -> CorpusHeadroom:
     """:func:`headroom` over a corpus. ``only`` restricts it to a named subset.
 
     The subset matters: summed over *every* workload the number includes ones where overlap is not
@@ -348,8 +383,7 @@ def corpus_headroom(sources: Iterable[ActivitySource], *,
     """
     keep = None if only is None else set(only)
     sources = [s for s in sources if keep is None or s.workload in keep]
-    tr = traits if traits is not None else concurrency_traits(sources, manifest=manifest,
-                                                              grouping=grouping)
+    tr = traits if traits is not None else concurrency_traits(sources, manifest=manifest, grouping=grouping)
     ok: dict[str, WorkloadHeadroom] = {}
     bad: dict[str, Unavailable] = {}
     for s in sources:

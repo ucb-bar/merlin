@@ -1,4 +1,5 @@
 """Host-owned immutable CFG facts shared by independent emitted-program audits."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -30,8 +31,9 @@ class _IntervalDominanceInfo:
     whole-model CFGs while keeping the same improper-dominance query (`a` dominates itself).
     """
 
-    def __init__(self, entry: Any, successors: Mapping[Any, tuple[Any, ...]],
-                 predecessors: Mapping[Any, frozenset[Any]]):
+    def __init__(
+        self, entry: Any, successors: Mapping[Any, tuple[Any, ...]], predecessors: Mapping[Any, frozenset[Any]]
+    ):
         seen = {entry}
         postorder: list[Any] = []
         stack: list[tuple[Any, Any]] = [(entry, iter(successors[entry]))]
@@ -103,9 +105,12 @@ class _IntervalDominanceInfo:
         return left is not right and self.dominates(left, right)
 
 
-def _dominance(blocks: tuple[Any, ...], block_set: frozenset[Any],
-               successors: Mapping[Any, tuple[Any, ...]],
-               predecessors: Mapping[Any, frozenset[Any]]) -> Any:
+def _dominance(
+    blocks: tuple[Any, ...],
+    block_set: frozenset[Any],
+    successors: Mapping[Any, tuple[Any, ...]],
+    predecessors: Mapping[Any, frozenset[Any]],
+) -> Any:
     """Use the linear-space index for valid reachable CFGs; preserve xDSL on unreachable CFGs."""
     if not blocks:
         return None
@@ -123,6 +128,7 @@ def _dominance(blocks: tuple[Any, ...], block_set: frozenset[Any],
         # Unreachable inputs are refused by both audits. Retain xDSL's relation so any additional
         # diagnostics remain byte-for-byte compatible with the legacy path.
         from xdsl.irdl.dominance import DominanceInfo
+
         return DominanceInfo(blocks[0].parent_region())
     return _IntervalDominanceInfo(blocks[0], successors, predecessors)
 
@@ -148,10 +154,10 @@ def prepare_host_cfg(function: Any) -> PreparedHostCFG:
         blocks=blocks,
         block_set=block_set,
         successors=MappingProxyType(successors),
-        predecessors=MappingProxyType({block: frozenset(rows)
-                                       for block, rows in predecessors.items()}),
-        dominance=_dominance(blocks, block_set, successors, {
-            block: frozenset(rows) for block, rows in predecessors.items()}),
+        predecessors=MappingProxyType({block: frozenset(rows) for block, rows in predecessors.items()}),
+        dominance=_dominance(
+            blocks, block_set, successors, {block: frozenset(rows) for block, rows in predecessors.items()}
+        ),
     )
 
 
@@ -160,8 +166,8 @@ def require_prepared_host_cfg(function: Any, prepared: PreparedHostCFG) -> Prepa
     if prepared.function is not function:
         raise ValueError("prepared host CFG belongs to a different function object")
     live_blocks = tuple(function.body.blocks)
-    if (len(live_blocks) != len(prepared.blocks)
-            or any(live is not retained for live, retained in zip(
-                live_blocks, prepared.blocks, strict=True))):
+    if len(live_blocks) != len(prepared.blocks) or any(
+        live is not retained for live, retained in zip(live_blocks, prepared.blocks, strict=True)
+    ):
         raise ValueError("prepared host CFG block identity changed after construction")
     return prepared

@@ -9,6 +9,7 @@ The other half is the capability report: the ops the bridge SAW versus the ops i
 that compiles is only trustworthy if those two sets account for each other, and the report is what
 makes that checkable after the fact rather than a claim.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

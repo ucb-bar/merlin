@@ -21,6 +21,7 @@ Three things this refuses to do, because each would make the prior look more inf
 The ledger path is injected or read from the environment — never a literal, since the corpus lives
 outside this repo and is pinned separately.
 """
+
 from __future__ import annotations
 
 import json
@@ -46,6 +47,7 @@ _COUNTED_OUTCOMES = ("improved", "regressed", "correct_no_gain", "incorrect", "c
 @dataclass(frozen=True)
 class StrategyEvidence:
     """What the corpus measured about one strategy."""
+
     strategy: str
     attempts: int
     improved: int
@@ -66,6 +68,7 @@ class OutcomePrior:
     that decides how far these rates generalize, and a prior that hides its denominator invites a
     reader to apply it to the whole corpus.
     """
+
     by_strategy: dict[str, StrategyEvidence]
     total_attempts: int
     total_improved: int
@@ -88,8 +91,7 @@ class OutcomePrior:
 
     @property
     def unlabelled_rate(self) -> float | None:
-        return ((self.unlabelled_improved / self.unlabelled_attempts)
-                if self.unlabelled_attempts else None)
+        return (self.unlabelled_improved / self.unlabelled_attempts) if self.unlabelled_attempts else None
 
     def coverage_problems(self, *, tolerance: float = 0.25) -> tuple[str, ...]:
         """Why these rates may not describe the corpus they came from.
@@ -104,14 +106,18 @@ class OutcomePrior:
         if self.unlabelled_attempts and total:
             share = self.unlabelled_attempts / total
             if share >= 0.05:
-                out.append(f"{self.unlabelled_attempts}/{total} attempts ({share:.1%}) carry NO "
-                           f"strategy label and contribute to no per-strategy rate")
+                out.append(
+                    f"{self.unlabelled_attempts}/{total} attempts ({share:.1%}) carry NO "
+                    f"strategy label and contribute to no per-strategy rate"
+                )
         lab, unlab = self.base_rate, self.unlabelled_rate
         if lab is not None and unlab is not None and lab > 0:
             if abs(unlab - lab) / lab >= tolerance:
-                out.append(f"labelled attempts improve at {lab:.1%} but unlabelled ones at "
-                           f"{unlab:.1%} — the labelled set is NOT a random sample, so these rates "
-                           f"are conditional on having a label, not properties of the corpus")
+                out.append(
+                    f"labelled attempts improve at {lab:.1%} but unlabelled ones at "
+                    f"{unlab:.1%} — the labelled set is NOT a random sample, so these rates "
+                    f"are conditional on having a label, not properties of the corpus"
+                )
         return tuple(out)
 
     def rate_for(self, strategy: str | None, *, min_attempts: int = 5) -> float | None:
@@ -129,17 +135,22 @@ class OutcomePrior:
         return ev.rate
 
     def to_dict(self) -> dict[str, Any]:
-        return {"source": self.source, "total_attempts": self.total_attempts,
-                "total_improved": self.total_improved, "base_rate": self.base_rate,
-                "corpus_base_rate": self.corpus_base_rate,
-                "unlabelled_attempts": self.unlabelled_attempts,
-                "unlabelled_improved": self.unlabelled_improved,
-                "unlabelled_rate": self.unlabelled_rate,
-                "coverage_problems": list(self.coverage_problems()),
-                "unusable_rows": self.unusable_rows,
-                "strategies": {k: {"attempts": v.attempts, "improved": v.improved,
-                                   "rate": round(v.rate, 4), "outcomes": v.outcomes}
-                               for k, v in sorted(self.by_strategy.items())}}
+        return {
+            "source": self.source,
+            "total_attempts": self.total_attempts,
+            "total_improved": self.total_improved,
+            "base_rate": self.base_rate,
+            "corpus_base_rate": self.corpus_base_rate,
+            "unlabelled_attempts": self.unlabelled_attempts,
+            "unlabelled_improved": self.unlabelled_improved,
+            "unlabelled_rate": self.unlabelled_rate,
+            "coverage_problems": list(self.coverage_problems()),
+            "unusable_rows": self.unusable_rows,
+            "strategies": {
+                k: {"attempts": v.attempts, "improved": v.improved, "rate": round(v.rate, 4), "outcomes": v.outcomes}
+                for k, v in sorted(self.by_strategy.items())
+            },
+        }
 
 
 def ledger_path(explicit: str | Path | None = None) -> Path | None:
@@ -151,8 +162,7 @@ def ledger_path(explicit: str | Path | None = None) -> Path | None:
     return Path(env) if env else None
 
 
-def load_outcome_prior(path: str | Path | None = None, *,
-                       strategy_key: str = "strategy_num") -> OutcomePrior | None:
+def load_outcome_prior(path: str | Path | None = None, *, strategy_key: str = "strategy_num") -> OutcomePrior | None:
     """Read a JSONL transform ledger into an :class:`OutcomePrior`. None when no ledger is named or
     the named one does not exist -- a missing corpus is not a corpus of zero attempts."""
     p = ledger_path(path)
@@ -189,27 +199,35 @@ def load_outcome_prior(path: str | Path | None = None, *,
         if outcome == IMPROVED:
             improved_total += 1
     by_strategy = {
-        s: StrategyEvidence(strategy=s, attempts=sum(o.values()),
-                            improved=o.get(IMPROVED, 0), outcomes=dict(o))
-        for s, o in counts.items()}
-    return OutcomePrior(by_strategy=by_strategy, total_attempts=total,
-                        total_improved=improved_total, source=str(p), unusable_rows=unusable,
-                        unlabelled_attempts=unlabelled, unlabelled_improved=unlabelled_improved)
+        s: StrategyEvidence(strategy=s, attempts=sum(o.values()), improved=o.get(IMPROVED, 0), outcomes=dict(o))
+        for s, o in counts.items()
+    }
+    return OutcomePrior(
+        by_strategy=by_strategy,
+        total_attempts=total,
+        total_improved=improved_total,
+        source=str(p),
+        unusable_rows=unusable,
+        unlabelled_attempts=unlabelled,
+        unlabelled_improved=unlabelled_improved,
+    )
 
 
-def prior_fn_from(prior: OutcomePrior | None,
-                  strategy_of: Callable[[Any], str | None],
-                  *, min_attempts: int = 5) -> Callable[[Any], float | None]:
+def prior_fn_from(
+    prior: OutcomePrior | None, strategy_of: Callable[[Any], str | None], *, min_attempts: int = 5
+) -> Callable[[Any], float | None]:
     """Adapt an :class:`OutcomePrior` into the ``prior_fn`` the beam's selector consumes.
 
     ``strategy_of(proposal) -> strategy label | None`` is the DECLARED correspondence between this
     compiler's actions and the ledger's strategies. It is a parameter because no derivation exists:
     inferring it from prose would produce a confident mapping nobody measured.
     """
+
     def fn(proposal: Any) -> float | None:
         if prior is None:
             return None
         return prior.rate_for(strategy_of(proposal), min_attempts=min_attempts)
+
     return fn
 
 
@@ -221,6 +239,7 @@ def family_strategy_map(pairs: Iterable[tuple[str, str]]) -> Callable[[Any], str
         action = getattr(proposal, "action", None)
         fam = getattr(action, "action_family", "") if action is not None else ""
         return table.get(str(fam)) if fam else None
+
     return strategy_of
 
 
@@ -247,6 +266,7 @@ INERT = "inert"
 @dataclass(frozen=True)
 class SeamEvidence:
     """What our own runs measured about one seam, on both axes."""
+
     seam: str
     #: cheap axis — the action was applied and the emitted code was checked against its promise
     promise_checked: int = 0
@@ -287,7 +307,7 @@ def classify_node(node: dict) -> str | None:
         return "incorrect"
     speedup = node.get("speedup")
     if speedup is None:
-        return None                      # never measured: evidence about nothing
+        return None  # never measured: evidence about nothing
     parent = node.get("parent_speedup")
     if node.get("margin_improved"):
         return IMPROVED
@@ -307,12 +327,12 @@ def seam_evidence_from_nodes(nodes: Iterable[dict]) -> dict[str, SeamEvidence]:
         seams = node.get("applied_seams") or []
         if not seams:
             continue
-        seam = str(seams[-1])            # the action THIS node added on top of its parent
+        seam = str(seams[-1])  # the action THIS node added on top of its parent
         b = acc.setdefault(seam, {})
         outcome = classify_node(node)
         if outcome == INERT:
             b["inert"] = b.get("inert", 0) + 1
-            continue                     # applied nothing: evidence about neither axis
+            continue  # applied nothing: evidence about neither axis
         step = node.get("search_step") or {}
         if step:
             if step.get("promise_checkable"):
@@ -330,8 +350,7 @@ def seam_evidence_from_nodes(nodes: Iterable[dict]) -> dict[str, SeamEvidence]:
     return {s: SeamEvidence(seam=s, **v) for s, v in acc.items()}
 
 
-def landing_prior_fn(evidence: dict[str, SeamEvidence], *, min_attempts: int = 3
-                     ) -> Callable[[Any], float | None]:
+def landing_prior_fn(evidence: dict[str, SeamEvidence], *, min_attempts: int = 3) -> Callable[[Any], float | None]:
     """A ``prior_fn`` over the CHEAP axis: how reliably an action lands what it promises.
 
     This is the prior a hardware-poor loop can actually afford to build, because every candidate ever
@@ -339,6 +358,7 @@ def landing_prior_fn(evidence: dict[str, SeamEvidence], *, min_attempts: int = 3
     different question from "will it help" — and an action that reliably does nothing is worth
     de-ranking long before a board is involved.
     """
+
     def fn(proposal: Any) -> float | None:
         action = getattr(proposal, "action", None)
         seam = getattr(action, "target_seam", None) if action is not None else None
@@ -346,4 +366,5 @@ def landing_prior_fn(evidence: dict[str, SeamEvidence], *, min_attempts: int = 3
         if ev is None or ev.promise_checked < min_attempts:
             return None
         return ev.landing_rate
+
     return fn

@@ -28,6 +28,7 @@ The node set below describes *merlin's own* generation pipeline (manifest → ev
 layers, plus the compiler-side nodes the design's DAG names). It contains no target facts: nodes are
 roles, and the unit-specific ones are named for their role in the delta rather than for any target.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -36,8 +37,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-__all__ = ["ArtifactGraph", "Node", "ReuseMeasurement", "TargetDelta", "UNKNOWN_HASH",
-           "changed_from_hashes", "content_hashes", "pipeline_graph"]
+__all__ = [
+    "ArtifactGraph",
+    "Node",
+    "ReuseMeasurement",
+    "TargetDelta",
+    "UNKNOWN_HASH",
+    "changed_from_hashes",
+    "content_hashes",
+    "pipeline_graph",
+]
 
 #: Recorded for a node whose sources could not be read. Never compares equal to itself as "unchanged":
 #: :func:`changed_from_hashes` treats it as changed on both sides.
@@ -71,8 +80,9 @@ class ArtifactGraph:
         table: dict[str, Node] = {}
         for node in nodes:
             if node.name in table:
-                raise ValueError(f"duplicate node {node.name!r}; a redefinition would silently replace "
-                                 "one set of edges with another")
+                raise ValueError(
+                    f"duplicate node {node.name!r}; a redefinition would silently replace one set of edges with another"
+                )
             table[node.name] = node
         graph = cls(nodes=table)
         problems = graph.problems()
@@ -162,8 +172,7 @@ class ArtifactGraph:
 
     def topo_order(self) -> tuple[str, ...]:
         """Inputs before consumers. Ties broken by name so the order is reproducible."""
-        indegree = {n: len({d for d in node.inputs if d in self.nodes})
-                    for n, node in self.nodes.items()}
+        indegree = {n: len({d for d in node.inputs if d in self.nodes}) for n, node in self.nodes.items()}
         consumers = self.consumers()
         ready = sorted(n for n, d in indegree.items() if d == 0)
         out: list[str] = []
@@ -224,8 +233,7 @@ def content_hashes(graph: ArtifactGraph, root: "str | Path") -> dict[str, str]:
                 parts = []
                 break
             parts.append(f"{rel}:{got}")
-        out[name] = (hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
-                     if parts else UNKNOWN_HASH)
+        out[name] = hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest() if parts else UNKNOWN_HASH
     return out
 
 
@@ -269,8 +277,10 @@ class TargetDelta:
         """The changed nodes plus everything downstream of them — what must be regenerated."""
         unknown = self.changed - set(graph.nodes)
         if unknown:
-            raise ValueError(f"delta names nodes absent from the graph: {sorted(unknown)}; refusing to "
-                             "compute an invalidation set that silently ignores them")
+            raise ValueError(
+                f"delta names nodes absent from the graph: {sorted(unknown)}; refusing to "
+                "compute an invalidation set that silently ignores them"
+            )
         return frozenset(self.changed) | graph.downstream(self.changed)
 
     def reused(self, graph: ArtifactGraph, relevant: Iterable[str]) -> frozenset[str]:
@@ -296,32 +306,43 @@ class ReuseMeasurement:
     relevant: tuple[str, ...]
 
     @classmethod
-    def of(cls, delta: TargetDelta, graph: ArtifactGraph,
-           relevant: Iterable[str]) -> "ReuseMeasurement":
+    def of(cls, delta: TargetDelta, graph: ArtifactGraph, relevant: Iterable[str]) -> "ReuseMeasurement":
         rel = frozenset(relevant)
         if not rel:
-            raise ValueError("the relevant set is empty, so a reuse ratio would have no denominator; "
-                             "name the nodes that were in play")
+            raise ValueError(
+                "the relevant set is empty, so a reuse ratio would have no denominator; "
+                "name the nodes that were in play"
+            )
         unknown = rel - set(graph.nodes)
         if unknown:
             # A node the graph does not have cannot be invalidated, so it would land in `reused` and
             # enlarge the denominator at the same time -- inflating the ratio from both ends.
             raise ValueError(f"relevant set names nodes absent from the graph: {sorted(unknown)}")
         inv = delta.invalidated(graph)
-        return cls(label=delta.label, changed=tuple(sorted(delta.changed)),
-                   invalidated=tuple(sorted(inv)), reused=tuple(sorted(rel - inv)),
-                   relevant=tuple(sorted(rel)))
+        return cls(
+            label=delta.label,
+            changed=tuple(sorted(delta.changed)),
+            invalidated=tuple(sorted(inv)),
+            reused=tuple(sorted(rel - inv)),
+            relevant=tuple(sorted(rel)),
+        )
 
     @property
     def reuse_ratio(self) -> float:
         return len(self.reused) / len(self.relevant)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"label": self.label, "reuse_ratio": round(self.reuse_ratio, 4),
-                "n_relevant": len(self.relevant), "n_reused": len(self.reused),
-                "n_invalidated": len(self.invalidated),
-                "changed": list(self.changed), "invalidated": list(self.invalidated),
-                "reused": list(self.reused), "relevant": list(self.relevant)}
+        return {
+            "label": self.label,
+            "reuse_ratio": round(self.reuse_ratio, 4),
+            "n_relevant": len(self.relevant),
+            "n_reused": len(self.reused),
+            "n_invalidated": len(self.invalidated),
+            "changed": list(self.changed),
+            "invalidated": list(self.invalidated),
+            "reused": list(self.reused),
+            "relevant": list(self.relevant),
+        }
 
 
 # ---------------------------------------------------------------------------------------------
@@ -343,13 +364,13 @@ _EMIT_LAYER_PLAN = {
 
 #: The four synthesized plans, each with the module that synthesizes it.
 _PLAN_NODES = {
-    "dialect_plan": ("synthesize/dialect_plan.py",
-                     "the compiler dialect the target's ops are expressed in"),
-    "runtime_adapter_plan": ("synthesize/runtime_adapter_plan.py",
-                             "how the generated runtime adapter talks to the target"),
+    "dialect_plan": ("synthesize/dialect_plan.py", "the compiler dialect the target's ops are expressed in"),
+    "runtime_adapter_plan": (
+        "synthesize/runtime_adapter_plan.py",
+        "how the generated runtime adapter talks to the target",
+    ),
     "zephyr_plan": ("synthesize/zephyr_plan.py", "the board/OS module for the target"),
-    "llvm_extension_plan": ("synthesize/llvm_extension_plan.py",
-                            "the backend extension description"),
+    "llvm_extension_plan": ("synthesize/llvm_extension_plan.py", "the backend extension description"),
 }
 
 
@@ -368,52 +389,100 @@ def pipeline_graph() -> ArtifactGraph:
     claim in the design doc is what breaks, and a test says so.
     """
     nodes: list[Node] = [
-        Node("source_manifest", "evidence", (),
-             (f"{_PY}/targetgen/ingest",),
-             "where the target's own sources were read from"),
-        Node("hardware_evidence", "evidence", ("source_manifest",),
-             (f"{_PY}/targetgen/evidence", f"{_PY}/targetgen/rtl"),
-             "facts extracted from the target's RTL and headers"),
-        Node("capability_contract", "contract", ("hardware_evidence",),
-             (f"{_PY}/targetgen/synthesize/target_contract.py",
-              f"{_PY}/targetgen/compute_units.py"),
-             "what the target can do, as data the compiler reads"),
+        Node(
+            "source_manifest",
+            "evidence",
+            (),
+            (f"{_PY}/targetgen/ingest",),
+            "where the target's own sources were read from",
+        ),
+        Node(
+            "hardware_evidence",
+            "evidence",
+            ("source_manifest",),
+            (f"{_PY}/targetgen/evidence", f"{_PY}/targetgen/rtl"),
+            "facts extracted from the target's RTL and headers",
+        ),
+        Node(
+            "capability_contract",
+            "contract",
+            ("hardware_evidence",),
+            (f"{_PY}/targetgen/synthesize/target_contract.py", f"{_PY}/targetgen/compute_units.py"),
+            "what the target can do, as data the compiler reads",
+        ),
     ]
     for plan, (module, why) in _PLAN_NODES.items():
-        nodes.append(Node(plan, "plan", ("hardware_evidence", "capability_contract"),
-                          (f"{_PY}/targetgen/{module}",), why))
+        nodes.append(
+            Node(plan, "plan", ("hardware_evidence", "capability_contract"), (f"{_PY}/targetgen/{module}",), why)
+        )
     for layer, (plan, module) in _EMIT_LAYER_PLAN.items():
-        nodes.append(Node(f"emit_{layer.replace('-', '_')}", "emit", (plan,),
-                          (f"{_PY}/targetgen/{module}",),
-                          f"the {layer} artifacts written for the target"))
+        nodes.append(
+            Node(
+                f"emit_{layer.replace('-', '_')}",
+                "emit",
+                (plan,),
+                (f"{_PY}/targetgen/{module}",),
+                f"the {layer} artifacts written for the target",
+            )
+        )
     nodes += [
-        Node("capability_routing", "compiler", ("capability_contract",),
-             (f"{_PY}/targetgen/routing.py",),
-             "which unit each demand is routed to"),
-        Node("unit_lowering", "compiler", ("capability_contract", "dialect_plan"),
-             (f"{_PY}/llvmlower/perop_blocks.py",),
-             "lowering a tagged contraction onto the added unit"),
-        Node("unit_codegen", "compiler", ("unit_lowering",),
-             (f"{_PY}/kernels/opu_kernel.py",),
-             "the emitted microkernel for the added unit"),
-        Node("unit_cca", "compiler", ("unit_codegen",),
-             (f"{_PY}/kernels/cca.py", f"{_PY}/kernels/action_catalog.py"),
-             "the compiler-capability actions the unit exposes"),
-        Node("unit_certification", "test", ("unit_codegen",),
-             (f"{_PY}/kernels/opu_cert.py", f"{_PY}/kernels/opu_corpus.py"),
-             "the numerical acceptance surface for the unit"),
+        Node(
+            "capability_routing",
+            "compiler",
+            ("capability_contract",),
+            (f"{_PY}/targetgen/routing.py",),
+            "which unit each demand is routed to",
+        ),
+        Node(
+            "unit_lowering",
+            "compiler",
+            ("capability_contract", "dialect_plan"),
+            (f"{_PY}/llvmlower/perop_blocks.py",),
+            "lowering a tagged contraction onto the added unit",
+        ),
+        Node(
+            "unit_codegen",
+            "compiler",
+            ("unit_lowering",),
+            (f"{_PY}/kernels/opu_kernel.py",),
+            "the emitted microkernel for the added unit",
+        ),
+        Node(
+            "unit_cca",
+            "compiler",
+            ("unit_codegen",),
+            (f"{_PY}/kernels/cca.py", f"{_PY}/kernels/action_catalog.py"),
+            "the compiler-capability actions the unit exposes",
+        ),
+        Node(
+            "unit_certification",
+            "test",
+            ("unit_codegen",),
+            (f"{_PY}/kernels/opu_cert.py", f"{_PY}/kernels/opu_corpus.py"),
+            "the numerical acceptance surface for the unit",
+        ),
         # --- roots the delta must not reach ---------------------------------------------------
-        Node("parent_schedule", "parent", (),
-             (f"{_PY}/llvmlower/impr_features.py",),
-             "the certified parent package's schedule, reused literally"),
-        Node("generic_lowering", "parent", (),
-             (f"{_PY}/llvmlower/passes_quant_int.py",),
-             "the target-independent integer lowering"),
-        Node("runtime_board_support", "parent", (),
-             (f"{_PY}/runtime/boards.py", "merlin/runtime/baremetal"),
-             "board bring-up and the bare-metal harness"),
-        Node("elementwise_path", "parent", (),
-             (f"{_PY}/runtime/tensor.py",),
-             "the elementwise/epilogue path"),
+        Node(
+            "parent_schedule",
+            "parent",
+            (),
+            (f"{_PY}/llvmlower/impr_features.py",),
+            "the certified parent package's schedule, reused literally",
+        ),
+        Node(
+            "generic_lowering",
+            "parent",
+            (),
+            (f"{_PY}/llvmlower/passes_quant_int.py",),
+            "the target-independent integer lowering",
+        ),
+        Node(
+            "runtime_board_support",
+            "parent",
+            (),
+            (f"{_PY}/runtime/boards.py", "merlin/runtime/baremetal"),
+            "board bring-up and the bare-metal harness",
+        ),
+        Node("elementwise_path", "parent", (), (f"{_PY}/runtime/tensor.py",), "the elementwise/epilogue path"),
     ]
     return ArtifactGraph.of(nodes)

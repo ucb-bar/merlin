@@ -19,6 +19,7 @@ plausibility. Nothing here names a target: the field vocabulary is the emitted A
 below the way a completion opcode vocabulary is declared, and a program using none of it yields
 UNKNOWN rather than a pressure of zero.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -51,8 +52,8 @@ def peak_live_tiles(instructions: object) -> dict[str, Any]:
     if not rows:
         return {"status": UNKNOWN, "reason": "the program declares no instructions"}
 
-    defs: dict[int, int] = {}          # address -> index where it became live
-    last_use: dict[int, int] = {}      # address -> index of its final consumer
+    defs: dict[int, int] = {}  # address -> index where it became live
+    last_use: dict[int, int] = {}  # address -> index of its final consumer
     seen_any = False
     for index, row in enumerate(rows):
         payload = _decoded(row)
@@ -67,10 +68,14 @@ def peak_live_tiles(instructions: object) -> dict[str, Any]:
                 seen_any = True
                 last_use[value] = index
     if not seen_any:
-        return {"status": UNKNOWN,
-                "reason": ("no instruction declares an operand-tile address in the ABI vocabulary, "
-                           "so this program's tile pressure cannot be read"),
-                "vocabulary": {"defines": list(DEFINES), "consumes": list(CONSUMES)}}
+        return {
+            "status": UNKNOWN,
+            "reason": (
+                "no instruction declares an operand-tile address in the ABI vocabulary, "
+                "so this program's tile pressure cannot be read"
+            ),
+            "vocabulary": {"defines": list(DEFINES), "consumes": list(CONSUMES)},
+        }
 
     end = len(rows) - 1
     intervals = [(start, last_use.get(address, end)) for address, start in defs.items()]
@@ -78,9 +83,13 @@ def peak_live_tiles(instructions: object) -> dict[str, Any]:
     for index in range(len(rows)):
         live = sum(1 for start, stop in intervals if start <= index <= stop)
         peak = max(peak, live)
-    return {"status": "counted", "peak_live_tiles": peak, "tiles": len(intervals),
-            "instructions": len(rows),
-            "basis": "peak operand tiles simultaneously live between definition and final use"}
+    return {
+        "status": "counted",
+        "peak_live_tiles": peak,
+        "tiles": len(intervals),
+        "instructions": len(rows),
+        "basis": "peak operand tiles simultaneously live between definition and final use",
+    }
 
 
 def pressure_of(trace: object) -> dict[str, Any]:
@@ -96,8 +105,10 @@ def pressure_of(trace: object) -> dict[str, Any]:
     if not isinstance(rows, Sequence):
         return {"status": UNKNOWN, "reason": "the trace declares no instruction list"}
     classes = {str(r.get("class") or "") for r in rows if isinstance(r, Mapping)}
-    for blocking, why in (("UNKNOWN", "the decoder could not read a command"),
-                          ("LOOP_WS", "a loop makes the static command list differ from what ran")):
+    for blocking, why in (
+        ("UNKNOWN", "the decoder could not read a command"),
+        ("LOOP_WS", "a loop makes the static command list differ from what ran"),
+    ):
         if blocking in classes:
             return {"status": UNKNOWN, "reason": why, "blocking_class": blocking}
     return peak_live_tiles(rows)

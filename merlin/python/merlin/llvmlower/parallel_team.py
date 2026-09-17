@@ -17,13 +17,13 @@ The mapping fails closed: pre/post region counts must agree exactly, and unprice
 use the full requested team.  Empty features leave the pass manager unsplit and the emitted
 module byte-identical to the existing path.
 """
+
 from __future__ import annotations
 
 import json
 import subprocess
 import tempfile
 from pathlib import Path
-
 
 FEATURE_PREFIX = "parallel_team_cost_"
 
@@ -40,10 +40,9 @@ def work_of(features) -> int | None:
     if not names:
         return None
     if len(names) != 1:
-        raise ValueError(f"{len(names)} parallel-team policies named at once ({names}); a build "
-                         "has one team policy")
+        raise ValueError(f"{len(names)} parallel-team policies named at once ({names}); a build has one team policy")
     try:
-        work = int(names[0][len(FEATURE_PREFIX):])
+        work = int(names[0][len(FEATURE_PREFIX) :])
     except ValueError as exc:
         raise ValueError(f"invalid parallel-team feature {names[0]!r}") from exc
     if work < 1:
@@ -68,16 +67,19 @@ def ensure_registered(work_per_thread: int) -> str:
 
     name = feature_name(work_per_thread)
     if name not in known():
-        register(ImprFeature(
-            name=name,
-            action_class="HEURISTIC",
-            description=(
-                "Cost-derived OpenMP dispatch width: serialize regions cheaper than one worker "
-                f"unit ({int(work_per_thread)} lane-operations), otherwise emit an explicit "
-                "num_threads operand rounded through 2/4/... up to parallel_harts. Implements "
-                "the per-dispatch width policy used by persistent inference runtimes; default "
-                "off and hardware-calibrated."),
-        ))
+        register(
+            ImprFeature(
+                name=name,
+                action_class="HEURISTIC",
+                description=(
+                    "Cost-derived OpenMP dispatch width: serialize regions cheaper than one worker "
+                    f"unit ({int(work_per_thread)} lane-operations), otherwise emit an explicit "
+                    "num_threads operand rounded through 2/4/... up to parallel_harts. Implements "
+                    "the per-dispatch width policy used by persistent inference runtimes; default "
+                    "off and hardware-calibrated."
+                ),
+            )
+        )
     return name
 
 
@@ -179,7 +181,7 @@ def _parallel_team_apply(ctx, module):
 '''
 
 
-STAGE_SRC = r'''
+STAGE_SRC = r"""
 _PARALLEL_TEAM_WORK = int(sys.argv[11]) if len(sys.argv) > 11 else 0
 _PARALLEL_TEAM_CAP = int(sys.argv[12]) if len(sys.argv) > 12 else 0
 if bool(_PARALLEL_TEAM_WORK) != bool(_PARALLEL_TEAM_CAP):
@@ -191,7 +193,7 @@ if _PARALLEL_TEAM_WORK:
     _POST_OPENMP_STAGES = [("parallel_team_apply", _parallel_team_apply)]
 else:
     _POST_OPENMP_STAGES = []
-'''
+"""
 
 
 def apply_for_test(mlir_text: str, work_per_thread: int, max_team: int) -> tuple[str, dict]:
@@ -206,8 +208,9 @@ def apply_for_test(mlir_text: str, work_per_thread: int, max_team: int) -> tuple
         "import json, sys\n"
         "from torch_mlir import ir\n"
         "from torch_mlir.passmanager import PassManager\n"
-        + grain_prelude + RUNNER_PRELUDE +
-        "_PARALLEL_TEAM_WORK = int(sys.argv[2])\n"
+        + grain_prelude
+        + RUNNER_PRELUDE
+        + "_PARALLEL_TEAM_WORK = int(sys.argv[2])\n"
         "_PARALLEL_TEAM_CAP = int(sys.argv[3])\n"
         "ctx = ir.Context()\n"
         "with open(sys.argv[1]) as f: module = ir.Module.parse(f.read(), ctx)\n"
@@ -216,12 +219,17 @@ def apply_for_test(mlir_text: str, work_per_thread: int, max_team: int) -> tuple
         "_parallel_team_apply(ctx, module)\n"
         "print('MERLIN_TEAM ' + json.dumps({'plan': _PT_PLAN}))\n"
         "print('MERLIN_MODULE_BEGIN')\n"
-        "print(module.operation)\n", encoding="utf-8")
+        "print(module.operation)\n",
+        encoding="utf-8",
+    )
     proc = subprocess.run(
         [str(m2m_python()), str(script), str(src), str(int(work_per_thread)), str(int(max_team))],
-        capture_output=True, text=True, timeout=120)
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
     if proc.returncode != 0:
         raise RuntimeError(f"parallel-team test rewrite failed:\n{proc.stdout}\n{proc.stderr}")
     record = next(line for line in proc.stdout.splitlines() if line.startswith("MERLIN_TEAM "))
     module = proc.stdout.split("MERLIN_MODULE_BEGIN\n", 1)[1]
-    return module, json.loads(record[len("MERLIN_TEAM "):])
+    return module, json.loads(record[len("MERLIN_TEAM ") :])

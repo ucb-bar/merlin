@@ -12,12 +12,14 @@ runner-owned harness (:func:`muon_harness.args_from_cb`) feeds. The kernel is pl
 pointer operands (loads → multiply-accumulate → stores); the SIMT warps/barriers are the runtime BSP's, so
 the kernel carries no scheduling. fp32 epilogues supported: ``relu`` and ``bias_add``.
 """
+
 from __future__ import annotations
 
 from typing import Any, Mapping
 
-from .muon_codegen import _plan
 from merlin.runtime.commandbuffer import materialize_inputs
+
+from .muon_codegen import _plan
 
 
 class MuonMlirCodegenError(RuntimeError):
@@ -29,15 +31,15 @@ def _matmul_loop_nest(w: str, l: str, o: str, m: int, k: int, n: int, epi: list,
     applied to each accumulator before the store. Loop induction vars + the k-accumulator are carried as
     block arguments (the llvm-dialect phi form). All indices/consts are SSA ops (no nested exprs)."""
     epi_lines: list[str] = []
-    for stage in (epi or []):
+    for stage in epi or []:
         if stage == "relu":
-            epi_lines.append('    %__z = llvm.mlir.constant(0.000000e+00 : f32) : f32')
+            epi_lines.append("    %__z = llvm.mlir.constant(0.000000e+00 : f32) : f32")
             epi_lines.append('    %__rc = llvm.fcmp "ogt" %acc_k, %__z : f32')
-            epi_lines.append('    %acc_e = llvm.select %__rc, %acc_k, %__z : i1, f32')
+            epi_lines.append("    %acc_e = llvm.select %__rc, %acc_k, %__z : i1, f32")
         elif stage in ("bias_add", "bias") and bias is not None:
-            epi_lines.append(f'    %__bp = llvm.getelementptr %{bias}[%ni] : (!llvm.ptr, i64) -> !llvm.ptr, f32')
-            epi_lines.append('    %__bv = llvm.load %__bp : !llvm.ptr -> f32')
-            epi_lines.append('    %acc_e = llvm.fadd %acc_k, %__bv : f32')
+            epi_lines.append(f"    %__bp = llvm.getelementptr %{bias}[%ni] : (!llvm.ptr, i64) -> !llvm.ptr, f32")
+            epi_lines.append("    %__bv = llvm.load %__bp : !llvm.ptr -> f32")
+            epi_lines.append("    %acc_e = llvm.fadd %acc_k, %__bv : f32")
     acc_final = "%acc_e" if epi_lines else "%acc_k"
     epi_block = ("\n".join(epi_lines) + "\n") if epi_lines else ""
     return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
@@ -653,14 +655,18 @@ def _softcap_loop_nest(x: str, o: str, n: int, cap: float) -> str:
     llvm.return"""
 
 
-def _attention_full_nest(q: str, k: str, v: str, o: str, m: int, d: int, n: int, dv: int,
-                         scale: float, causal: bool) -> str:
+def _attention_full_nest(
+    q: str, k: str, v: str, o: str, m: int, d: int, n: int, dv: int, scale: float, causal: bool
+) -> str:
     """Causal scaled dot-product attention ``Y = softmax(scale * Q@K^T + causal_mask) @ V`` (fp32). Three
     stages over a scratch score buffer S[m,n]: (1) S=scale*Q@Kᵀ with S[i,j]=-inf for j>i when causal,
     (2) row-softmax in place (inline poly-exp), (3) Y=S@V. One alloca (S)."""
     sf = f"{float(scale):.8e}"
-    mask_line = ("    %qgt = llvm.icmp \"sgt\" %qnj, %qmi : i64\n"
-                 "    %qsel = llvm.select %qgt, %ninf, %qsc : i1, f32\n") if causal else ""
+    mask_line = (
+        ('    %qgt = llvm.icmp "sgt" %qnj, %qmi : i64\n    %qsel = llvm.select %qgt, %ninf, %qsc : i1, f32\n')
+        if causal
+        else ""
+    )
     qstore = "%qsel" if causal else "%qsc"
     return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
     %c1 = llvm.mlir.constant(1 : i64) : i64
@@ -810,7 +816,9 @@ def _rope_setup(p: str, m: int, d: int) -> str:
         f"    %{p}ifc{i} = llvm.mlir.constant({invf[i]:.8e} : f32) : f32\n"
         f"    %{p}ifi{i} = llvm.mlir.constant({i} : i64) : i64\n"
         f"    %{p}ifp{i} = llvm.getelementptr %{p}IF[%{p}ifi{i}] : (!llvm.ptr, i64) -> !llvm.ptr, f32\n"
-        f"    llvm.store %{p}ifc{i}, %{p}ifp{i} : f32, !llvm.ptr" for i in range(d))
+        f"    llvm.store %{p}ifc{i}, %{p}ifp{i} : f32, !llvm.ptr"
+        for i in range(d)
+    )
     return f"""    %{p}cM = llvm.mlir.constant({m} : i64) : i64
     %{p}cD = llvm.mlir.constant({d} : i64) : i64
     %{p}cHalf = llvm.mlir.constant({half} : i64) : i64
@@ -898,8 +906,7 @@ def _matmul_rope_nest(x: str, w: str, y: str, m: int, k: int, n: int) -> str:
     return f"{prelude}\n{stage_m}\n{stage_o}\n  ^end:\n    llvm.return"
 
 
-def _conv_im2col_matmul_nest(x: str, w: str, y: str, oc: int, k: int, p: int,
-                             src_offsets: list[int]) -> str:
+def _conv_im2col_matmul_nest(x: str, w: str, y: str, oc: int, k: int, p: int, src_offsets: list[int]) -> str:
     """Fused im2col-conv ``Y[o,q] = sum_k W[o,k] * X[src(k,q)]`` (fp32), the reference lowering of a
     ``convolution_im2col_matmul`` region. The im2col gather is a compile-time source-index table (one X
     flat offset per (k, patch) position, baked into an ``i64`` alloca), so no im2col buffer is materialized:
@@ -909,7 +916,9 @@ def _conv_im2col_matmul_nest(x: str, w: str, y: str, oc: int, k: int, p: int,
         f"    %sc{i} = llvm.mlir.constant({src_offsets[i]} : i64) : i64\n"
         f"    %si{i} = llvm.mlir.constant({i} : i64) : i64\n"
         f"    %sp{i} = llvm.getelementptr %SRC[%si{i}] : (!llvm.ptr, i64) -> !llvm.ptr, i64\n"
-        f"    llvm.store %sc{i}, %sp{i} : i64, !llvm.ptr" for i in range(sz))
+        f"    llvm.store %sc{i}, %sp{i} : i64, !llvm.ptr"
+        for i in range(sz)
+    )
     return f"""    %c0 = llvm.mlir.constant(0 : i64) : i64
     %c1 = llvm.mlir.constant(1 : i64) : i64
     %cO = llvm.mlir.constant({oc} : i64) : i64
@@ -1219,14 +1228,14 @@ def emit_kernel_mlir(
     if not target:
         raise MuonMlirCodegenError("emit_kernel_mlir needs a target (arg or cb['target'])")
     if (selection_contract is None) != (hardware_contract is None):
-        raise MuonMlirCodegenError(
-            "semantic family selection needs both selection_contract and hardware_contract")
+        raise MuonMlirCodegenError("semantic family selection needs both selection_contract and hardware_contract")
     selected_family = None
     if selection_contract is not None and hardware_contract is not None:
         from .muon_kernel_selection import (
             KernelSelectionContractError,
             select_command_buffer_family,
         )
+
         try:
             selection = select_command_buffer_family(cb, hardware_contract, selection_contract)
         except KernelSelectionContractError as exc:
@@ -1236,15 +1245,11 @@ def emit_kernel_mlir(
         cb.setdefault("params", {})["kernel_family_selection"] = selection.to_dict()
         selected_family = selection.selected_family
         if selected_family is None:
-            raise MuonMlirCodegenError(
-                "semantic kernel family selection refused every declared strategy")
-        if selected_family not in {
-                "kernels/bias_add", "kernels/layernorm", "kernels/gemm_mxgemmini"}:
-            raise MuonMlirCodegenError(
-                f"selected family {selected_family!r} has no registered Muon MLIR emitter")
+            raise MuonMlirCodegenError("semantic kernel family selection refused every declared strategy")
+        if selected_family not in {"kernels/bias_add", "kernels/layernorm", "kernels/gemm_mxgemmini"}:
+            raise MuonMlirCodegenError(f"selected family {selected_family!r} has no registered Muon MLIR emitter")
     if (actual_tensors is not None or model_quantization is not None) and selected_family is None:
-        raise MuonMlirCodegenError(
-            "native MX operands require contract-driven semantic family selection")
+        raise MuonMlirCodegenError("native MX operands require contract-driven semantic family selection")
 
     # The first compiler-native MX family emits a complete co-model program rather than LLVM dialect:
     # the custom mesh instructions and its operand staging live below the stock LLVM boundary.  Unlike
@@ -1253,10 +1258,14 @@ def emit_kernel_mlir(
     if selected_family == "kernels/gemm_mxgemmini":
         from . import muon_mx_abi as _mxabi
         from . import muon_mx_codegen as _mx
+
         try:
             _mxabi.attach_native_mxfp8_gemm_abi(
-                cb, actual_tensors=actual_tensors, model_quantization=model_quantization,
-                selected_family=selected_family)
+                cb,
+                actual_tensors=actual_tensors,
+                model_quantization=model_quantization,
+                selected_family=selected_family,
+            )
             return _mx.emit_native_mxfp8_kernel(cb)
         except _mxabi.NativeMxAbiError as exc:
             raise MuonMlirCodegenError(f"cannot emit native MX GEMM: {exc}") from exc
@@ -1269,10 +1278,13 @@ def emit_kernel_mlir(
     # NOT present at this emit-time entrypoint). Emit a NON-MLIR placeholder so the oracle's is_mlir_artifact
     # routes to the C++ program path, where program_from_cb bakes the real self-contained MX kernel.
     from . import muon_mx_codegen as _mx
+
     if _mx.is_mx_cb(cb):
-        return (f"// muon-reference MX placeholder for {sym}: the self-contained MX-Gemmini kernel is baked\n"
-                f"// from the cb's mx_operands in program_from_cb (operands are not available at this "
-                f"emit entrypoint).\n")
+        return (
+            f"// muon-reference MX placeholder for {sym}: the self-contained MX-Gemmini kernel is baked\n"
+            f"// from the cb's mx_operands in program_from_cb (operands are not available at this "
+            f"emit entrypoint).\n"
+        )
 
     # ---- non-matmul SIMT ops (attention scores, rmsnorm) -----------------------------------------
     by_op: dict[str, list] = {}
@@ -1327,7 +1339,8 @@ def emit_kernel_mlir(
     if (_WHOLE_OPS & by_op.keys()) and (_MATMUL_OPS & by_op.keys()):
         raise MuonMlirCodegenError(
             f"reference emitter does not support a fused op class "
-            f"({sorted(_WHOLE_OPS & by_op.keys())} + matmul); single-op or single matmul commit only")
+            f"({sorted(_WHOLE_OPS & by_op.keys())} + matmul); single-op or single matmul commit only"
+        )
 
     if "ATTENTION_FULL" in by_op:
         cmd = by_op["ATTENTION_FULL"][0]
@@ -1367,10 +1380,12 @@ def emit_kernel_mlir(
         attrs = cmd.get("attributes", {}) or {}
         combine = attrs.get("combine", "add")
         if combine not in ("add", "mul"):
-            raise MuonMlirCodegenError(f"VECTOR_MAP combine {combine!r} not supported by the reference "
-                                       f"emitter (transcendental-free add/mul only)")
+            raise MuonMlirCodegenError(
+                f"VECTOR_MAP combine {combine!r} not supported by the reference "
+                f"emitter (transcendental-free add/mul only)"
+            )
         a, dst = o.get("lhs"), o.get("dst")
-        if "scalar" in attrs and o.get("rhs") is None:            # compile-time scalar map A <op> c
+        if "scalar" in attrs and o.get("rhs") is None:  # compile-time scalar map A <op> c
             if not (a and dst):
                 raise MuonMlirCodegenError("scalar VECTOR_MAP needs operands lhs/dst")
             ta = env.get(a)
@@ -1389,21 +1404,21 @@ def emit_kernel_mlir(
         if ta is None or tb is None:
             raise MuonMlirCodegenError(f"VECTOR_MAP operands {a}/{b} not materialized")
         arg_decl = ", ".join(f"%{x}: !llvm.ptr" for x in (a, b, dst))
-        if ta.shape == tb.shape:                                     # equal-shape elementwise
+        if ta.shape == tb.shape:  # equal-shape elementwise
             n = 1
             for d in ta.shape:
                 n *= d
             nest = _elementwise_loop_nest(a, b, dst, n, combine)
-        elif len(ta.shape) == 2 and tb.shape == (ta.shape[1],):      # row broadcast B[n] over A[m,n]
+        elif len(ta.shape) == 2 and tb.shape == (ta.shape[1],):  # row broadcast B[n] over A[m,n]
             if selection_contract is not None and selected_family != "kernels/bias_add":
-                raise MuonMlirCodegenError(
-                    "row-broadcast add was not selected as the qualified bias-add strategy")
+                raise MuonMlirCodegenError("row-broadcast add was not selected as the qualified bias-add strategy")
             m, n = ta.shape
             nest = _broadcast_row_loop_nest(a, b, dst, m, n, combine)
         else:
             raise MuonMlirCodegenError(
                 f"VECTOR_MAP supports equal-shape or a row-broadcast rhs B[n] over A[m,n]; "
-                f"got {a}{tuple(ta.shape)} / {b}{tuple(tb.shape)}")
+                f"got {a}{tuple(ta.shape)} / {b}{tuple(tb.shape)}"
+            )
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
     if "RMSNORM" in by_op and len(by_op["RMSNORM"]) == 2:
@@ -1416,7 +1431,7 @@ def emit_kernel_mlir(
             raise MuonMlirCodegenError("chained RMSNORM needs gamma/src/dst on both")
         r, c = _shape2(env, x)
         eps = float((c0.get("attributes", {}) or {}).get("eps", 1e-5))
-        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (g1, g2, x, y))   # weight-first ABI
+        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (g1, g2, x, y))  # weight-first ABI
         nest = _double_rmsnorm_nest(g1, g2, x, y, r, c, eps)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
@@ -1446,7 +1461,7 @@ def emit_kernel_mlir(
         b2, k2, n = tw.shape
         if b2 != batch or k2 != k:
             raise MuonMlirCodegenError(f"batched matmul dim mismatch: {a_nm}{ta.shape} @ {w}{tw.shape}")
-        arg_decl = ", ".join(f"%{x}: !llvm.ptr" for x in (w, a_nm, dst))   # weight-first ABI
+        arg_decl = ", ".join(f"%{x}: !llvm.ptr" for x in (w, a_nm, dst))  # weight-first ABI
         nest = _batched_matmul_loop_nest(a_nm, w, dst, batch, m, k, n)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
@@ -1489,8 +1504,13 @@ def emit_kernel_mlir(
             raise MuonMlirCodegenError("CONV needs operands src/weight/dst")
         oc, kk, pp = attrs.get("o"), attrs.get("k"), attrs.get("p")
         src_offsets = attrs.get("src_offsets")
-        if not (isinstance(oc, int) and isinstance(kk, int) and isinstance(pp, int)
-                and isinstance(src_offsets, list) and len(src_offsets) == kk * pp):
+        if not (
+            isinstance(oc, int)
+            and isinstance(kk, int)
+            and isinstance(pp, int)
+            and isinstance(src_offsets, list)
+            and len(src_offsets) == kk * pp
+        ):
             raise MuonMlirCodegenError("CONV needs integer o/k/p and a k*p src_offsets table")
         arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (w, x, dst))
         nest = _conv_im2col_matmul_nest(x, w, dst, oc, kk, pp, [int(s) for s in src_offsets])
@@ -1521,7 +1541,7 @@ def emit_kernel_mlir(
                 raise MuonMlirCodegenError(f"GEGLU operand {nm!r} is not a 2-D materialized leaf")
         m, k = env[x].shape
         _, n = env[wg].shape
-        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (wg, wu, x, dst))   # weight-first ABI
+        arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in (wg, wu, x, dst))  # weight-first ABI
         nest = _geglu_nest(x, wg, wu, dst, m, k, n)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
 
@@ -1558,12 +1578,14 @@ def emit_kernel_mlir(
         if mm0 is None or mm1 is None:
             raise MuonMlirCodegenError("chained matmul: a commit has no source matmul")
         if mm1["operands"]["lhs"] != c0["operands"]["dst"]:
-            raise MuonMlirCodegenError("reference MLIR emitter supports a single matmul commit or a "
-                                       "2-matmul chain (second consuming the first); got two unrelated commits")
+            raise MuonMlirCodegenError(
+                "reference MLIR emitter supports a single matmul commit or a "
+                "2-matmul chain (second consuming the first); got two unrelated commits"
+            )
         a_nm = mm0["operands"]["lhs"]
         w1 = resident_source.get(mm0["operands"]["rhs"], mm0["operands"]["rhs"])
         w2 = resident_source.get(mm1["operands"]["rhs"], mm1["operands"]["rhs"])
-        y = c1["operands"]["dst"]                           # the output is produced, not materialized
+        y = c1["operands"]["dst"]  # the output is produced, not materialized
         for nm in (a_nm, w1, w2):
             if nm not in env or len(env[nm].shape) != 2:
                 raise MuonMlirCodegenError(f"chained matmul operand {nm!r} is not a 2-D materialized leaf")
@@ -1572,7 +1594,7 @@ def emit_kernel_mlir(
         k2b, n = env[w2].shape
         if env[w1].shape[0] != k or k2b != k2:
             raise MuonMlirCodegenError("chained matmul inner dimensions do not agree")
-        arg_names = [w1, w2, a_nm, y]                       # weights first, then input, then output
+        arg_names = [w1, w2, a_nm, y]  # weights first, then input, then output
         arg_decl = ", ".join(f"%{a}: !llvm.ptr" for a in arg_names)
         nest = _chained_matmul_loop_nest(a_nm, w1, w2, y, m, k, k2, n)
         return f"module {{\n  llvm.func @{sym}({arg_decl}) {{\n{nest}\n  }}\n}}\n"
@@ -1581,8 +1603,9 @@ def emit_kernel_mlir(
         raise MuonMlirCodegenError(f"reference MLIR emitter supports a single matmul commit, got {len(commits)}")
     # Only the 2-D leaves (matmul operands + output) index into the m/k/n loop math; a 1-D leaf (a
     # length-n bias vector) is consumed by the bias_add epilogue, indexed by column — do NOT reject it.
-    shapes: dict[str, tuple[int, int]] = {name: (t.shape[0], t.shape[1])
-                                          for name, t in env.items() if len(t.shape) == 2}
+    shapes: dict[str, tuple[int, int]] = {
+        name: (t.shape[0], t.shape[1]) for name, t in env.items() if len(t.shape) == 2
+    }
 
     commit = commits[0]
     ops = commit.get("operands", {})

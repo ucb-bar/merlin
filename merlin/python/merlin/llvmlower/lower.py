@@ -5,6 +5,7 @@ linalg-on-tensors text
   → upstream MLIR pipeline + translation (model2MLIR venv, torch-mlir wheel)
   → clang-23 codegen (x86 host .so / rv64gcv object).
 """
+
 from __future__ import annotations
 
 import os as _os
@@ -12,21 +13,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 from .codegen import build_host_shared, compile_ll
-from .passes_xdsl import preprocess_text
-from .pipeline import lower_to_llvm_ir
+from .concat_dps import ensure_registered as _register_concat_dps
 
 # Registering here, and not in `impr_features` itself, keeps the epilogue-fusion stage's definition
 # next to the pass list it edits while still making the NAME resolvable: this module is what every
 # whole-model backend imports to lower, so by the time a feature set is normalized for a lowering the
 # entry exists. Idempotent, so a second import is a no-op.
 from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
-from .transpose_maps import ensure_registered as _register_fold_weight_transpose
-from .prov_cse import ensure_registered as _register_cse_through_provenance
-from .concat_dps import ensure_registered as _register_concat_dps
 from .im2col_pack import ensure_registered as _register_im2col_panel_pack
-from .broadcast_fold import ensure_registered as _register_fold_broadcast_into_generic
 from .named_broadcast_fold import ensure_registered as _register_named_broadcast_fold
+from .passes_xdsl import preprocess_text
+from .pipeline import lower_to_llvm_ir
+from .prov_cse import ensure_registered as _register_cse_through_provenance
+from .transpose_maps import ensure_registered as _register_fold_weight_transpose
 
 _register_epilogue_fusion()
 _register_fold_weight_transpose()
@@ -46,14 +47,20 @@ class LowerResult:
     riscv_obj: Path | None = None
 
 
-def lower_model(mlir_text: str, workdir: str | Path,
-                targets: tuple[str, ...] = ("host",), textual: bool = False,
-                vectorize: bool = False, transform_schedule: str | None = None,
-                hoist_static_allocs: bool = True, parallel: bool = False,
-                features: "frozenset[str] | None" = None,
-                parallel_harts: int | None = None,
-                parallel_chunks: "list | None" = None,
-                static_arena: bool | None = None) -> LowerResult:
+def lower_model(
+    mlir_text: str,
+    workdir: str | Path,
+    targets: tuple[str, ...] = ("host",),
+    textual: bool = False,
+    vectorize: bool = False,
+    transform_schedule: str | None = None,
+    hoist_static_allocs: bool = True,
+    parallel: bool = False,
+    features: "frozenset[str] | None" = None,
+    parallel_harts: int | None = None,
+    parallel_chunks: "list | None" = None,
+    static_arena: bool | None = None,
+) -> LowerResult:
     """Lower MLIR text end to end; emit per-target artifacts in ``workdir``.
 
     ``textual=True`` uses the pure-text preprocessing (no xDSL round-trip) —
@@ -80,18 +87,24 @@ def lower_model(mlir_text: str, workdir: str | Path,
 
     if textual:
         from .passes_xdsl import preprocess_text_textual
+
         upstream_text, stats = preprocess_text_textual(mlir_text)
     else:
         upstream_text, stats = preprocess_text(mlir_text)
     (work / "model.upstream.mlir").write_text(upstream_text, encoding="utf-8")
 
     try:
-        ll_text = lower_to_llvm_ir(upstream_text, workdir=work, vectorize=vectorize,
-                                   transform_schedule=transform_schedule,
-                                   hoist_static_allocs=hoist_static_allocs,
-                                   parallel=parallel, features=features,
-                                   parallel_harts=parallel_harts,
-                                   parallel_chunks=parallel_chunks)
+        ll_text = lower_to_llvm_ir(
+            upstream_text,
+            workdir=work,
+            vectorize=vectorize,
+            transform_schedule=transform_schedule,
+            hoist_static_allocs=hoist_static_allocs,
+            parallel=parallel,
+            features=features,
+            parallel_harts=parallel_harts,
+            parallel_chunks=parallel_chunks,
+        )
     except Exception as exc:
         # A module MLIR refuses to PARSE fails before any pass, and the reader's dump names a line
         # number in a machine-written module — not the captured layer that produced it. The commonest
@@ -99,12 +112,13 @@ def lower_model(mlir_text: str, workdir: str | Path,
         # indexing map; `window_maps.explain` names the op, the dims and the layer. Diagnosis only,
         # run once the lowering has already failed, and it re-raises the original error either way.
         from .window_maps import explain as _explain_window_maps
+
         note = _explain_window_maps(upstream_text)
         if note is None:
             raise
-        try:                                    # keep the caller's except-clause working
+        try:  # keep the caller's except-clause working
             enriched = type(exc)(f"{exc}\n\n{note}")
-        except Exception:                       # noqa: BLE001 -- an exotic constructor: keep the original
+        except Exception:  # noqa: BLE001 -- an exotic constructor: keep the original
             raise exc
         raise enriched from exc
     if static_arena is None:
@@ -116,6 +130,7 @@ def lower_model(mlir_text: str, workdir: str | Path,
         # `lower_model_file` and then compiles the `.ll` it gets back. With the flag off nothing runs
         # and the `.ll` is byte-identical to the frozen baseline.
         from .arena_bind import bind_arena
+
         ll_text, arena_report = bind_arena(ll_text)
         stats["static_arena"] = arena_report.to_dict()
     # MLIR's C wrapper expands each memref pointer into the implementation's flattened descriptor
@@ -124,6 +139,7 @@ def lower_model(mlir_text: str, workdir: str | Path,
     # boundary by ABI width before any target compiles the module.  This is model- and target-agnostic
     # and preserves both public symbols; see llvmlower.ciface_inline.
     from .ciface_inline import inline_wide_ciface_implementations
+
     ll_text, ciface_inline_report = inline_wide_ciface_implementations(ll_text)
     stats["ciface_boundary_inline"] = ciface_inline_report
     ll_path = work / "model.ll"
@@ -137,20 +153,31 @@ def lower_model(mlir_text: str, workdir: str | Path,
     return result
 
 
-def lower_model_file(mlir_path: str | Path, workdir: str | Path,
-                     targets: tuple[str, ...] = ("host",),
-                     textual: bool = False, vectorize: bool = False,
-                     transform_schedule: str | None = None,
-                     hoist_static_allocs: bool = True,
-                     parallel: bool = False,
-                     features: "frozenset[str] | None" = None,
-                     parallel_harts: int | None = None,
-                     parallel_chunks: "list | None" = None,
-                     static_arena: bool | None = None) -> LowerResult:
-    return lower_model(Path(mlir_path).read_text(encoding="utf-8"), workdir, targets,
-                       textual=textual, vectorize=vectorize,
-                       transform_schedule=transform_schedule,
-                       hoist_static_allocs=hoist_static_allocs,
-                       parallel=parallel, features=features,
-                       parallel_harts=parallel_harts, parallel_chunks=parallel_chunks,
-                       static_arena=static_arena)
+def lower_model_file(
+    mlir_path: str | Path,
+    workdir: str | Path,
+    targets: tuple[str, ...] = ("host",),
+    textual: bool = False,
+    vectorize: bool = False,
+    transform_schedule: str | None = None,
+    hoist_static_allocs: bool = True,
+    parallel: bool = False,
+    features: "frozenset[str] | None" = None,
+    parallel_harts: int | None = None,
+    parallel_chunks: "list | None" = None,
+    static_arena: bool | None = None,
+) -> LowerResult:
+    return lower_model(
+        Path(mlir_path).read_text(encoding="utf-8"),
+        workdir,
+        targets,
+        textual=textual,
+        vectorize=vectorize,
+        transform_schedule=transform_schedule,
+        hoist_static_allocs=hoist_static_allocs,
+        parallel=parallel,
+        features=features,
+        parallel_harts=parallel_harts,
+        parallel_chunks=parallel_chunks,
+        static_arena=static_arena,
+    )

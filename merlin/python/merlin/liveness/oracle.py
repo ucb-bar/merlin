@@ -6,6 +6,7 @@ A :class:`Program` is a thin container of whatever representations the caller ha
 consumes what it needs and fails closed (``UNKNOWN``) on what is absent, so a partial program still yields
 a useful, honest report.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -23,19 +24,19 @@ class Program:
     """The representations available for one program under assessment (all optional)."""
 
     name: str | None = None
-    trace: dict | None = None                # decoded RoCC instruction_trace (rocc_decode.to_dict)
-    rv32_text: bytes | None = None           # self-hosted kernel .text bytes (for transcodability)
-    has_htif: bool | None = None             # image audit: a .htif section present?
-    has_tohost: bool | None = None           # image audit: a tohost symbol present?
-    hostless: bool | None = None             # delivery substrate has no fesvr host?
-    address_model: str | None = None         # harness DRAM addressing convention (pointer_args/…)
-    dram_bytes: int | None = None            # DRAM window size, when the caller can supply it
-    dram_window_why: str | None = None       # provenance of that window (or of why it is not derivable)
+    trace: dict | None = None  # decoded RoCC instruction_trace (rocc_decode.to_dict)
+    rv32_text: bytes | None = None  # self-hosted kernel .text bytes (for transcodability)
+    has_htif: bool | None = None  # image audit: a .htif section present?
+    has_tohost: bool | None = None  # image audit: a tohost symbol present?
+    hostless: bool | None = None  # delivery substrate has no fesvr host?
+    address_model: str | None = None  # harness DRAM addressing convention (pointer_args/…)
+    dram_bytes: int | None = None  # DRAM window size, when the caller can supply it
+    dram_window_why: str | None = None  # provenance of that window (or of why it is not derivable)
     # delivery/build context (not RTL-derivable — the caller who chose the substrate/compile path supplies it):
-    declared_vlen: int | None = None         # VLEN the build declared (VECTOR_MAX_LEN / -march zvl)
-    hw_vlen: int | None = None               # the target board's hardware VLEN (bits); None = non-vector
-    uses_medany: bool | None = None          # does the chosen compile path build with -mcmodel=medany?
-    image_span_bytes: int | None = None      # linked image symbol span (for the medany window check)
+    declared_vlen: int | None = None  # VLEN the build declared (VECTOR_MAX_LEN / -march zvl)
+    hw_vlen: int | None = None  # the target board's hardware VLEN (bits); None = non-vector
+    uses_medany: bool | None = None  # does the chosen compile path build with -mcmodel=medany?
+    image_span_bytes: int | None = None  # linked image symbol span (for the medany window check)
 
 
 def assess(program: Program, target: str) -> LivenessReport:
@@ -46,9 +47,12 @@ def assess(program: Program, target: str) -> LivenessReport:
     if program.trace is not None:
         report.extend(funct_legality(program.trace, facts))
         findings, peaks = simulate(
-            program.trace, facts,
-            address_model=program.address_model, dram_bytes=program.dram_bytes,
-            dram_window_why=program.dram_window_why)
+            program.trace,
+            facts,
+            address_model=program.address_model,
+            dram_bytes=program.dram_bytes,
+            dram_window_why=program.dram_window_why,
+        )
         report.extend(findings)
         report.resource_peaks = peaks
 
@@ -56,8 +60,7 @@ def assess(program: Program, target: str) -> LivenessReport:
         report.extend(untranscodable_op(program.rv32_text, target))
 
     if program.hostless is not None or program.has_htif is not None or program.has_tohost is not None:
-        report.extend(host_assist(
-            hostless=program.hostless, has_htif=program.has_htif, has_tohost=program.has_tohost))
+        report.extend(host_assist(hostless=program.hostless, has_htif=program.has_htif, has_tohost=program.has_tohost))
 
     # vector-length + medany rules are delivery/build-context checks (VLEN and medany are substrate/compile
     # properties, not RTL facts), so both sides come from the caller-supplied Program. Each is a no-op unless

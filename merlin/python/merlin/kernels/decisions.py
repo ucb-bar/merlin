@@ -21,6 +21,7 @@ record of it.
 The ladder is therefore ENFORCED, not documented: :meth:`DecisionRecord.problems` refuses a status
 whose evidence does not support it.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -96,8 +97,7 @@ class DecisionRecord:
             out.append("a hypothesis must name the CCA axis it acts on, or nothing can test it")
         if rung == STATUSES.index("validated_policy"):
             if self.control is None:
-                out.append("a validated policy needs a matched control: a delta against nothing is "
-                           "not a delta")
+                out.append("a validated policy needs a matched control: a delta against nothing is not a delta")
             if self.delta_vs_control is None or self.measured_cycles is None:
                 out.append("a validated policy needs a MEASURED result, not an expectation")
             if self.measurement_authority is None:
@@ -111,6 +111,7 @@ class DecisionRecord:
 
     def to_dict(self) -> dict[str, Any]:
         from dataclasses import asdict
+
         d = asdict(self)
         d["problems"] = list(self.problems())
         return d

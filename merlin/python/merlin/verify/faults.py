@@ -13,6 +13,7 @@ quietly dropped.
 The operators mutate IR, never text, so they cannot accidentally produce something unparseable and
 score a spurious "detection".
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ from typing import Any, Callable
 @dataclass(frozen=True)
 class Fault:
     """One seeded defect."""
+
     name: str
     summary: str
     mutate: Callable[[Any], None]
@@ -39,6 +41,7 @@ def _block(module):
 
 
 # --- numeric faults: the arithmetic changes, the op sequence does not -----------------------------
+
 
 def _miswired_commit(module) -> None:
     commits = _func_ops(module, "interface.commit")
@@ -58,6 +61,7 @@ def _dropped_activation(module) -> None:
 
 
 # --- structural faults: the op sequence changes, the arithmetic may not ---------------------------
+
 
 def _dropped_evict(module) -> None:
     for op in _func_ops(module, "interface.resident_evict"):
@@ -120,30 +124,46 @@ def _commit_after_reuse(module) -> None:
 
 
 CORPUS: tuple[Fault, ...] = (
-    Fault("miswired_commit",
-          "the second commit reads the first accumulator (duplicated / mis-wired commit)",
-          _miswired_commit, expected=("formal", "dynamic")),
-    Fault("swapped_matmul_operands",
-          "A @ W emitted as W @ A",
-          _swapped_operands, expected=("formal", "dynamic")),
-    Fault("dropped_activation",
-          "the second matmul reuses the first activation (an input is dropped)",
-          _dropped_activation, expected=("formal", "dynamic")),
-    Fault("dropped_evict",
-          "the resident weight is never evicted (leaked residency)",
-          _dropped_evict, expected=("static",)),
-    Fault("evict_before_last_use",
-          "the weight is evicted while a later matmul still uses it (use-after-evict)",
-          _evict_before_last_use, expected=("static",)),
-    Fault("duplicate_pack",
-          "the weight is packed twice, so the proven reuse never happens",
-          _duplicate_pack, expected=("static",)),
-    Fault("duplicate_commit",
-          "the same accumulator is committed twice (commit-once violated)",
-          _duplicate_commit, expected=("static",)),
-    Fault("commit_after_reuse",
-          "the accumulator is read by a later matmul before its commit (commit-after-reuse)",
-          _commit_after_reuse, expected=("static",)),
+    Fault(
+        "miswired_commit",
+        "the second commit reads the first accumulator (duplicated / mis-wired commit)",
+        _miswired_commit,
+        expected=("formal", "dynamic"),
+    ),
+    Fault("swapped_matmul_operands", "A @ W emitted as W @ A", _swapped_operands, expected=("formal", "dynamic")),
+    Fault(
+        "dropped_activation",
+        "the second matmul reuses the first activation (an input is dropped)",
+        _dropped_activation,
+        expected=("formal", "dynamic"),
+    ),
+    Fault(
+        "dropped_evict", "the resident weight is never evicted (leaked residency)", _dropped_evict, expected=("static",)
+    ),
+    Fault(
+        "evict_before_last_use",
+        "the weight is evicted while a later matmul still uses it (use-after-evict)",
+        _evict_before_last_use,
+        expected=("static",),
+    ),
+    Fault(
+        "duplicate_pack",
+        "the weight is packed twice, so the proven reuse never happens",
+        _duplicate_pack,
+        expected=("static",),
+    ),
+    Fault(
+        "duplicate_commit",
+        "the same accumulator is committed twice (commit-once violated)",
+        _duplicate_commit,
+        expected=("static",),
+    ),
+    Fault(
+        "commit_after_reuse",
+        "the accumulator is read by a later matmul before its commit (commit-after-reuse)",
+        _commit_after_reuse,
+        expected=("static",),
+    ),
 )
 
 
@@ -190,13 +210,22 @@ def _cb_drop_requant(cb) -> None:
 
 #: Seeded faults over an emitted command buffer. Each takes the buffer dict and mutates it in place.
 CB_CORPUS: tuple[Fault, ...] = (
-    Fault("cb_swapped_matmul_operands",
-          "the backend emitted W @ A where the program specified A @ W",
-          _cb_swap_matmul_operands, expected=("compilation",)),
-    Fault("cb_crosswire_commit",
-          "the second commit reads the first accumulator (a duplicated result)",
-          _cb_crosswire_commit, expected=("compilation",)),
-    Fault("cb_narrow_output",
-          "the readout saturates to i8 where the program declared a wider output",
-          _cb_narrow_output, expected=("compilation",)),
+    Fault(
+        "cb_swapped_matmul_operands",
+        "the backend emitted W @ A where the program specified A @ W",
+        _cb_swap_matmul_operands,
+        expected=("compilation",),
+    ),
+    Fault(
+        "cb_crosswire_commit",
+        "the second commit reads the first accumulator (a duplicated result)",
+        _cb_crosswire_commit,
+        expected=("compilation",),
+    ),
+    Fault(
+        "cb_narrow_output",
+        "the readout saturates to i8 where the program declared a wider output",
+        _cb_narrow_output,
+        expected=("compilation",),
+    ),
 )

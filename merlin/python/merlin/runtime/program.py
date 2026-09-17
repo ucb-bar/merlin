@@ -26,6 +26,7 @@ placement core (``arena_plan.pack_disjoint``) but derives liveness from the ``ma
 the build emits rather than from a dispatch DAG.
 Default-off and additive — the existing monolithic/outlined paths are untouched.
 """
+
 from __future__ import annotations
 
 import json
@@ -46,28 +47,28 @@ PROGRAM_ABI_VERSION = "0.1"
 
 @dataclass
 class KernelEntry:
-    id: str                              # stable kernel id (== dispatch symbol)
-    symbol: str                          # compiled C symbol the replay invokes
-    roots: list[str] = field(default_factory=list)   # fused root op names (provenance)
-    capability: str = "scalar"           # required target capability (scalar|rvv|gemmini|simt|...)
+    id: str  # stable kernel id (== dispatch symbol)
+    symbol: str  # compiled C symbol the replay invokes
+    roots: list[str] = field(default_factory=list)  # fused root op names (provenance)
+    capability: str = "scalar"  # required target capability (scalar|rvv|gemmini|simt|...)
     # Model-layer provenance carried from the dispatch node's ``prov.*`` (see the outliner). The
     # SAME key the cross-compiler compare (ExecuTorch↔Merlin) and the section slicer join on. ``role``
     # is intentionally NOT stored here — it is derived from ``fqn`` downstream (``dse_guidance``) to
     # keep ``runtime`` free of an analysis-layer import (``dse_guidance`` already imports ``runtime``).
-    region_id: str = ""                  # prov.region_id (e.g. "matmul_3")
-    fqn: str = ""                        # prov.fqn (deepest nn.Module path, e.g. "blocks.0.attn.q")
+    region_id: str = ""  # prov.region_id (e.g. "matmul_3")
+    fqn: str = ""  # prov.fqn (deepest nn.Module path, e.g. "blocks.0.attn.q")
 
 
 @dataclass
 class MerlinProgram:
     abi_version: str
     entry: str
-    dispatch: DispatchProgram            # the DAG (buffers, nodes, args, results)
-    memory_plan: MemoryPlan              # static arena + offsets
-    kernels: dict[str, KernelEntry]      # symbol -> KernelEntry
-    capabilities: list[str]              # capabilities this program requires of a target
-    parallel: dict[int, dict] = field(default_factory=dict)   # node index -> {mode, grid, ...}
-    opcodes: list[str] = field(default_factory=list)          # namespaced opcode set used
+    dispatch: DispatchProgram  # the DAG (buffers, nodes, args, results)
+    memory_plan: MemoryPlan  # static arena + offsets
+    kernels: dict[str, KernelEntry]  # symbol -> KernelEntry
+    capabilities: list[str]  # capabilities this program requires of a target
+    parallel: dict[int, dict] = field(default_factory=dict)  # node index -> {mode, grid, ...}
+    opcodes: list[str] = field(default_factory=list)  # namespaced opcode set used
     # Optional because the legacy program ABI remains byte-identical unless the production compiler
     # explicitly elects the global-plan path.  ``shadow`` mode can therefore analyse a model without
     # changing the command buffer that executes it; ``emit`` attaches the exact plan lowering consumed.
@@ -98,9 +99,11 @@ class MerlinProgram:
     def stats(self) -> dict[str, Any]:
         d = self.dispatch
         return {
-            "n_nodes": len(d.nodes), "n_dispatches": d.n_dispatches,
+            "n_nodes": len(d.nodes),
+            "n_dispatches": d.n_dispatches,
             "n_views": sum(1 for n in d.nodes if n.kind == "view"),
-            "n_buffers": len(d.buffers), "n_kernels": len(self.kernels),
+            "n_buffers": len(d.buffers),
+            "n_kernels": len(self.kernels),
             "arena_bytes": self.memory_plan.arena_bytes,
             "arena_reuse_factor": self.memory_plan.stats.get("reuse_factor"),
             "mallocs_eliminated": self.memory_plan.stats.get("n_intermediate_buffers"),
@@ -110,10 +113,14 @@ class MerlinProgram:
         }
 
 
-def build_program(dispatch: DispatchProgram, *, capability: str = "rvv",
-                  abi_version: str = PROGRAM_ABI_VERSION,
-                  global_plan: GlobalPlan | None = None,
-                  global_plan_emitter: GlobalPlanEmitter | None = None) -> MerlinProgram:
+def build_program(
+    dispatch: DispatchProgram,
+    *,
+    capability: str = "rvv",
+    abi_version: str = PROGRAM_ABI_VERSION,
+    global_plan: GlobalPlan | None = None,
+    global_plan_emitter: GlobalPlanEmitter | None = None,
+) -> MerlinProgram:
     """Assemble a :class:`MerlinProgram` from a dispatch program: plan the arena, build the kernel
     table from the dispatch nodes, and tag the required capability. The opcode set is the distinct
     node ops (namespaced as needed by a target adapter); v1 parallel annotation is empty (the replay
@@ -125,8 +132,11 @@ def build_program(dispatch: DispatchProgram, *, capability: str = "rvv",
             raise ValueError("cannot attach invalid global plan: " + "; ".join(problems))
     if global_plan_emitter is not None and global_plan is None:
         raise ValueError("a global-plan emitter requires a selected global plan")
-    emission = (emit_global_plan(dispatch, global_plan, global_plan_emitter)
-                if global_plan is not None and global_plan_emitter is not None else None)
+    emission = (
+        emit_global_plan(dispatch, global_plan, global_plan_emitter)
+        if global_plan is not None and global_plan_emitter is not None
+        else None
+    )
     # An emitter changes the program that is actually replayed. Without one, attaching a plan is
     # explicitly shadow analysis and preserves the legacy dispatch byte-for-byte.
     if emission is not None:
@@ -144,9 +154,21 @@ def build_program(dispatch: DispatchProgram, *, capability: str = "rvv",
             prov = node.prov or {}
             roots = [prov[k] for k in ("prov.op", "prov.name") if k in prov]
             kernels[node.op] = KernelEntry(
-                id=node.op, symbol=node.op, roots=roots, capability=capability,
-                region_id=prov.get("prov.region_id", ""), fqn=prov.get("prov.fqn", ""))
+                id=node.op,
+                symbol=node.op,
+                roots=roots,
+                capability=capability,
+                region_id=prov.get("prov.region_id", ""),
+                fqn=prov.get("prov.fqn", ""),
+            )
     return MerlinProgram(
-        abi_version=abi_version, entry=dispatch.entry, dispatch=dispatch, memory_plan=mem,
-        kernels=kernels, capabilities=[capability], opcodes=sorted(opcodes),
-        global_plan=global_plan, global_plan_emission=emission)
+        abi_version=abi_version,
+        entry=dispatch.entry,
+        dispatch=dispatch,
+        memory_plan=mem,
+        kernels=kernels,
+        capabilities=[capability],
+        opcodes=sorted(opcodes),
+        global_plan=global_plan,
+        global_plan_emission=emission,
+    )

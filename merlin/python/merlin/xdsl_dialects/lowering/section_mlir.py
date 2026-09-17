@@ -12,6 +12,7 @@ inputs. Compile the whole model once; emit + run just the section you care about
 This is the MLIR analogue of ``slice_program`` (same keep-set logic, on SSA use-def instead of the
 flat buffer table); the two agree on which kernels a section contains.
 """
+
 from __future__ import annotations
 
 from .._common import HAS_XDSL
@@ -97,8 +98,7 @@ def emit_section_module(outlined_module, region_ids, *, entry: str = "forward"):
     seen_o: set[int] = set()
     for op in kept_ops:
         for r in op.results:
-            used_outside = id(r) in ret_vals or any(idx_of.get(id(u.operation)) not in keep
-                                                    for u in r.uses)
+            used_outside = id(r) in ret_vals or any(idx_of.get(id(u.operation)) not in keep for u in r.uses)
             if used_outside and id(r) not in seen_o:
                 seen_o.add(id(r))
                 outputs.append(r)
@@ -112,9 +112,9 @@ def emit_section_module(outlined_module, region_ids, *, entry: str = "forward"):
         for old, new in zip(op.results, clone.results):
             vmap[old] = new
     new_block.add_op(ReturnOp(*[vmap[o] for o in outputs]))
-    section_fn = FuncOp(entry, FunctionType.from_lists([v.type for v in boundary],
-                                                       [o.type for o in outputs]),
-                        Region([new_block]))
+    section_fn = FuncOp(
+        entry, FunctionType.from_lists([v.type for v in boundary], [o.type for o in outputs]), Region([new_block])
+    )
 
     # Carry only the kernel funcs the section actually calls (clone so they detach cleanly).
     called = {_callee_symbol(op) for op in kept_ops if isinstance(op, CallOp)}

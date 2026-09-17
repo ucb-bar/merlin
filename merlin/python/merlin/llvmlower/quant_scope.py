@@ -11,18 +11,20 @@ The rule contains no framework op names, model names, shapes, or target facts.  
 backend consuming the normalized linalg contract.  Unsupported/opaque producer chains are refused,
 never guessed to be quantized.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 FEATURE = "respect_captured_quantization_scope"
 
-_LAYOUT_ONLY = frozenset({
-    "linalg.transpose",
-    "tensor.cast",
-    "tensor.collapse_shape",
-    "tensor.expand_shape",
-    "tensor.extract_slice",
-})
+_LAYOUT_ONLY = frozenset(
+    {
+        "linalg.transpose",
+        "tensor.cast",
+        "tensor.collapse_shape",
+        "tensor.expand_shape",
+        "tensor.extract_slice",
+    }
+)
 
 
 def _owner(value):
@@ -81,15 +83,18 @@ def ensure_registered() -> str:
     from .impr_features import ImprFeature, known, register
 
     if FEATURE not in known():
-        register(ImprFeature(
-            name=FEATURE,
-            action_class="HEURISTIC",
-            description=(
-                "Honor the capture's quantization reach: run integer lowering only for linalg "
-                "contractions whose input traces through layout-only views to a "
-                "quant_ext.dequantize producer, and leave conv/nonlinear approximation passes off. "
-                "This prevents the compiler from silently widening a Linear-only TorchAO recipe "
-                "to BMMs, convs and activations. Structure-driven, frontend/target/model independent; "
-                "default-off and full-output gated."),
-        ))
+        register(
+            ImprFeature(
+                name=FEATURE,
+                action_class="HEURISTIC",
+                description=(
+                    "Honor the capture's quantization reach: run integer lowering only for linalg "
+                    "contractions whose input traces through layout-only views to a "
+                    "quant_ext.dequantize producer, and leave conv/nonlinear approximation passes off. "
+                    "This prevents the compiler from silently widening a Linear-only TorchAO recipe "
+                    "to BMMs, convs and activations. Structure-driven, frontend/target/model independent; "
+                    "default-off and full-output gated."
+                ),
+            )
+        )
     return FEATURE

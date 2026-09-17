@@ -15,10 +15,10 @@ Fail-closed (``not_run_is_not_pass``): a fail / not_run / absent ExecuTorch resu
 ``status='not_measured'`` with a concrete reason — never a fabricated number and never another cell's
 number (e.g. an int8 cell never borrows the fp32 wall).
 """
+
 from __future__ import annotations
 
 import json
-
 from pathlib import Path
 
 from merlin.baselines import aggregate as _agg
@@ -34,28 +34,36 @@ _DTYPE_TO_VARIANT = {"fp32": "fp32", "int8": "int8", "fp16": "fp16"}
 # --- comparability labels: the in-runtime XNNPACK GEMM arm vs the true external system ----------
 XNNPACK_KERNELS_LABEL = (
     "xnnpack_kernels = XNNPACK GEMM microkernel ROUTED INSIDE OUR runtime (four-way arm; shares our "
-    "loader/arena/dispatch — only the GEMM is XNNPACK's, NOT a standalone external system)")
+    "loader/arena/dispatch — only the GEMM is XNNPACK's, NOT a standalone external system)"
+)
 EXECUTORCH_LABEL = (
     "executorch = ExecuTorch + XNNPACK delegate — the TRUE external whole-model system (its OWN "
     "runtime executes the entire model; portable/scalar kernels run everything the partitioner can't "
-    "delegate)")
+    "delegate)"
+)
 
 # --- per-dtype comparability: same storage dtype is NECESSARY but not SUFFICIENT for a fair compare.
 # Each cell carries this so the report states, per dtype, exactly what is matched and what is NOT.
 _DTYPE_COMPARABILITY = {
-    "fp32": ("fp32-vs-fp32: storage AND accumulate both f32 on both sides — a direct wall + cos "
-             "compare is like-for-like. External arms available: xnnpack_kernels (in-runtime GEMM "
-             "swap) AND executorch (whole-system)."),
-    "int8": ("int8-vs-int8 (W8A8): storage matched; quantization is applied in model2MLIR (NOT "
-             "Merlin) and BOTH sides consume the same int8 export + integer golden (gate tier T1, "
-             "golden_w8a8.npy). BUT there is NO in-runtime XNNPACK-kernel-swap arm for int8 (the "
-             "four-way is f32-only — k1.py rejects int8 for xnnpack/openblas backends), so the only "
-             "external int8 reference is ExecuTorch(+XNNPACK qd8) as a WHOLE SYSTEM, not a clean "
-             "single-kernel head-to-head."),
-    "fp16": ("fp16-vs-fp16: storage matched (f16) but ACCUMULATE-ASYMMETRIC — XNNPACK f16 GEMM "
-             "accumulates in f16, ours emits vfwmacc.vf (f32 accumulate). Same nominal dtype, "
-             "DIFFERENT compute precision: a raw cos/speed compare is caveated, not a like-for-like "
-             "numeric match. (No fp16 external result measured yet either.)"),
+    "fp32": (
+        "fp32-vs-fp32: storage AND accumulate both f32 on both sides — a direct wall + cos "
+        "compare is like-for-like. External arms available: xnnpack_kernels (in-runtime GEMM "
+        "swap) AND executorch (whole-system)."
+    ),
+    "int8": (
+        "int8-vs-int8 (W8A8): storage matched; quantization is applied in model2MLIR (NOT "
+        "Merlin) and BOTH sides consume the same int8 export + integer golden (gate tier T1, "
+        "golden_w8a8.npy). BUT there is NO in-runtime XNNPACK-kernel-swap arm for int8 (the "
+        "four-way is f32-only — k1.py rejects int8 for xnnpack/openblas backends), so the only "
+        "external int8 reference is ExecuTorch(+XNNPACK qd8) as a WHOLE SYSTEM, not a clean "
+        "single-kernel head-to-head."
+    ),
+    "fp16": (
+        "fp16-vs-fp16: storage matched (f16) but ACCUMULATE-ASYMMETRIC — XNNPACK f16 GEMM "
+        "accumulates in f16, ours emits vfwmacc.vf (f32 accumulate). Same nominal dtype, "
+        "DIFFERENT compute precision: a raw cos/speed compare is caveated, not a like-for-like "
+        "numeric match. (No fp16 external result measured yet either.)"
+    ),
 }
 
 
@@ -64,7 +72,8 @@ def dtype_comparability(dtype: str) -> str:
     Same storage dtype is necessary but not sufficient (fp16 accumulate asymmetry; int8 has no
     in-runtime kernel-swap arm). Unknown dtype fails loud rather than implying a clean match."""
     return _DTYPE_COMPARABILITY.get(
-        dtype, f"UNKNOWN dtype {dtype!r}: no comparability contract — do NOT assume a like-for-like match")
+        dtype, f"UNKNOWN dtype {dtype!r}: no comparability contract — do NOT assume a like-for-like match"
+    )
 
 
 def _collect(root: Path) -> list:
@@ -86,13 +95,17 @@ def gate_basis(model: str) -> str:
     "semantic (gated against the model's captured trained-weight golden)", and there are no trained
     weights."""
     if _bundle.golden_unreproducible(model):
-        return ("lowering-exactness (random-init model whose golden is UNREPRODUCIBLE: cos measures "
-                "framework-vs-eager-torch on THIS seeded instantiation, NOT a semantic match against "
-                "trained weights)")
+        return (
+            "lowering-exactness (random-init model whose golden is UNREPRODUCIBLE: cos measures "
+            "framework-vs-eager-torch on THIS seeded instantiation, NOT a semantic match against "
+            "trained weights)"
+        )
     if _bundle.weights_are_random_init(model):
-        return ("lowering-exactness (random-init but REPRODUCIBLE weights: the golden is reachable "
-                "and the cos is a real framework-vs-eager-torch agreement, but the weights are not "
-                "trained, so it says nothing about the model's semantics)")
+        return (
+            "lowering-exactness (random-init but REPRODUCIBLE weights: the golden is reachable "
+            "and the cos is a real framework-vs-eager-torch agreement, but the weights are not "
+            "trained, so it says nothing about the model's semantics)"
+        )
     return "semantic (gated against the model's captured trained-weight golden)"
 
 
@@ -102,12 +115,16 @@ def _result_caveats(model: str) -> str:
     ExecuTorch kernel defect -- surfacing this stops a false 'ET is numerically wrong' read."""
     notes = []
     if model in _bundle.K1_RAM_INFEASIBLE:
-        notes.append("model is K1 RAM-infeasible whole-model (7B-class VLA vs the 3.8GB board), so any "
-                     "whole-model wall/cos is from a RAM-constrained or truncated run, not trustworthy")
+        notes.append(
+            "model is K1 RAM-infeasible whole-model (7B-class VLA vs the 3.8GB board), so any "
+            "whole-model wall/cos is from a RAM-constrained or truncated run, not trustworthy"
+        )
     if _bundle.golden_unreproducible(model):
-        notes.append("random-init model: a semantic cos vs the captured golden is meaningless (the gate "
-                     "should be lowering-exactness); a low cos here is a golden-provenance artifact, "
-                     "NOT an ET numerical defect")
+        notes.append(
+            "random-init model: a semantic cos vs the captured golden is meaningless (the gate "
+            "should be lowering-exactness); a low cos here is a golden-provenance artifact, "
+            "NOT an ET numerical defect"
+        )
     return (" [CAVEAT: " + "; ".join(notes) + "]") if notes else ""
 
 
@@ -125,21 +142,23 @@ def _not_measured_reason(model: str, variant: str, rows: list) -> str:
             # simply absent. That is not a neutral outcome and it must not read as one.
             terms = []
             if r.cos_threshold is not None and r.cos is not None:
-                terms.append(f"cos {r.cos:.6g} {'>=' if r.cos >= r.cos_threshold else '<'} "
-                             f"{r.cos_threshold:g}")
+                terms.append(f"cos {r.cos:.6g} {'>=' if r.cos >= r.cos_threshold else '<'} {r.cos_threshold:g}")
             if r.rel_threshold is not None and r.rel is not None:
-                terms.append(f"rel {r.rel:.6g} {'<=' if r.rel <= r.rel_threshold else '>'} "
-                             f"{r.rel_threshold:g}")
+                terms.append(f"rel {r.rel:.6g} {'<=' if r.rel <= r.rel_threshold else '>'} {r.rel_threshold:g}")
             if terms:
                 detail += " (" + ", ".join(terms) + ")"
-            return (f"latest executorch {variant} = fail against ITS OWN declared bar{detail}"
-                    f"{_result_caveats(model)}. No ratio is published for this cell — note that "
-                    "this suppresses a LOSS as readily as a win, so read the absence as missing "
-                    "evidence, not as parity.")
+            return (
+                f"latest executorch {variant} = fail against ITS OWN declared bar{detail}"
+                f"{_result_caveats(model)}. No ratio is published for this cell — note that "
+                "this suppresses a LOSS as readily as a win, so read the absence as missing "
+                "evidence, not as parity."
+            )
         return f"latest executorch {variant} = {r.status()}{detail}{_result_caveats(model)}"
     if model in _bundle.K1_RAM_INFEASIBLE:
-        return (f"no executorch {variant} result; {model} is K1 RAM-infeasible whole-model (7B-class "
-                "VLA exceeds the 3.8 GB board) -> honest not_run, never a false fit")
+        return (
+            f"no executorch {variant} result; {model} is K1 RAM-infeasible whole-model (7B-class "
+            "VLA exceeds the 3.8 GB board) -> honest not_run, never a false fit"
+        )
     return f"no executorch {variant} result under {_BASELINE_TREE} (board run not yet performed)"
 
 
@@ -161,17 +180,21 @@ def bundle_mismatch_reason(ours_bundle_id: str, ref_bundle_id: str) -> str | Non
     """
     if not ours_bundle_id or not ref_bundle_id:
         missing = [n for n, v in (("ours", ours_bundle_id), ("reference", ref_bundle_id)) if not v]
-        return (f"bundle identity UNKNOWN for {' and '.join(missing)}: cannot verify the two "
-                "measurements are on the same capture, and (model, dtype) does not determine it "
-                "(_full is a different model from _consistent, not a smaller capture of it). "
-                "Re-measure with bundle_id recorded on both sides.")
+        return (
+            f"bundle identity UNKNOWN for {' and '.join(missing)}: cannot verify the two "
+            "measurements are on the same capture, and (model, dtype) does not determine it "
+            "(_full is a different model from _consistent, not a smaller capture of it). "
+            "Re-measure with bundle_id recorded on both sides."
+        )
     if ours_bundle_id != ref_bundle_id:
         eq = layout_equivalence(ours_bundle_id, ref_bundle_id)
         if eq is not None:
-            return None          # declared, and the caller must record `eq` in the artifact
-        return (f"bundle MISMATCH: ours measured on {ours_bundle_id!r}, the reference on "
-                f"{ref_bundle_id!r}. These are different models, not different runs of one -- a ratio "
-                "between them is not a speedup. Re-measure both on one bundle.")
+            return None  # declared, and the caller must record `eq` in the artifact
+        return (
+            f"bundle MISMATCH: ours measured on {ours_bundle_id!r}, the reference on "
+            f"{ref_bundle_id!r}. These are different models, not different runs of one -- a ratio "
+            "between them is not a speedup. Re-measure both on one bundle."
+        )
     return None
 
 
@@ -185,7 +208,7 @@ def layout_equivalence(ours_bundle_id: str, ref_bundle_id: str) -> dict | None:
     ours WITH the transposes while theirs are hoisted out of the measured region compares the
     accounting, not the compilers -- which is the same error as timing a warm loop against a
     cold-amortized average.
-    
+
     DERIVED FROM THE ARTIFACT, never a name rule: the derived bundle ships
     ``bundle.rewrites.json`` naming its ``source_bundle`` and the per-argument soundness argument
     (each hoisted transpose is its argument's SOLE consumer, and the stored bytes are asserted equal
@@ -201,7 +224,7 @@ def layout_equivalence(ours_bundle_id: str, ref_bundle_id: str) -> dict | None:
     try:
         rewrites = (json.loads(rec.read_text(encoding="utf-8")) or {}).get("rewrites") or []
     except (OSError, ValueError):
-        return None              # unreadable provenance is not a licence to compare
+        return None  # unreadable provenance is not a licence to compare
     for r in rewrites:
         if not isinstance(r, dict):
             continue
@@ -209,12 +232,17 @@ def layout_equivalence(ours_bundle_id: str, ref_bundle_id: str) -> dict | None:
             continue
         if str(r.get("name") or "") not in _LAYOUT_ONLY_REWRITES:
             continue
-        return {"kind": "layout_only", "rewrite": r.get("name"),
-                "source_bundle": r.get("source_bundle"),
-                "soundness": r.get("soundness"),
-                "note": ("comparable ONLY because both sides do their weight layout once outside "
-                         "the timed window -- ExecuTorch at delegate init, ours at build time. "
-                         "Record both one-time costs beside any ratio taken across this.")}
+        return {
+            "kind": "layout_only",
+            "rewrite": r.get("name"),
+            "source_bundle": r.get("source_bundle"),
+            "soundness": r.get("soundness"),
+            "note": (
+                "comparable ONLY because both sides do their weight layout once outside "
+                "the timed window -- ExecuTorch at delegate init, ours at build time. "
+                "Record both one-time costs beside any ratio taken across this."
+            ),
+        }
     return None
 
 
@@ -234,7 +262,7 @@ QUANT_RECIPE_LABELS = {
     "pt2e_qs8": "PT2E static per-tensor activation quant (XNNPACK qs8)",
     "pt2e_qd8": "PT2E per-channel weights + dynamic per-row activation quant (XNNPACK qd8)",
     "torchao_sym_per_token_w8a8": "Merlin passes_quant_int: TorchAO symmetric per-token "
-                                  "activations (-127/127, eps=1e-5) + per-channel weights",
+    "activations (-127/127, eps=1e-5) + per-channel weights",
 }
 
 #: Recipe names that denote THE SAME ARITHMETIC and may therefore be compared.
@@ -276,16 +304,20 @@ def accuracy_reference_mismatch_reason(ours_ref: str, ref_ref: str) -> str | Non
     """
     if not ours_ref or not ref_ref:
         missing = [n for n, v in (("ours", ours_ref), ("reference", ref_ref)) if not v]
-        return (f"accuracy reference UNKNOWN for {' and '.join(missing)}: a cos/rel does not say "
-                "what it was scored against, and int8-vs-host-int8 and int8-vs-fp32 are different "
-                "questions (the latter includes quantization error). Record the reference on both "
-                "sides and re-score.")
+        return (
+            f"accuracy reference UNKNOWN for {' and '.join(missing)}: a cos/rel does not say "
+            "what it was scored against, and int8-vs-host-int8 and int8-vs-fp32 are different "
+            "questions (the latter includes quantization error). Record the reference on both "
+            "sides and re-score."
+        )
     if ours_ref != ref_ref:
-        return (f"accuracy reference MISMATCH: ours scored against {ours_ref!r} "
-                f"({ACCURACY_REFERENCE_LABELS.get(ours_ref, 'unknown reference')}), the reference "
-                f"against {ref_ref!r} ({ACCURACY_REFERENCE_LABELS.get(ref_ref, 'unknown reference')}). "
-                "These measure different things and cannot be ordered -- neither side is 'more "
-                "accurate' than the other on these numbers.")
+        return (
+            f"accuracy reference MISMATCH: ours scored against {ours_ref!r} "
+            f"({ACCURACY_REFERENCE_LABELS.get(ours_ref, 'unknown reference')}), the reference "
+            f"against {ref_ref!r} ({ACCURACY_REFERENCE_LABELS.get(ref_ref, 'unknown reference')}). "
+            "These measure different things and cannot be ordered -- neither side is 'more "
+            "accurate' than the other on these numbers."
+        )
     return None
 
 
@@ -301,22 +333,24 @@ def quant_recipe_mismatch_reason(ours_recipe: str, ref_recipe: str) -> str | Non
     """
     if not ours_recipe or not ref_recipe:
         missing = [n for n, v in (("ours", ours_recipe), ("reference", ref_recipe)) if not v]
-        return (f"quantization recipe UNKNOWN for {' and '.join(missing)}: dtype does not determine "
-                "it (weight_only / pt2e_qs8 / pt2e_qd8 are three different computations, and "
-                "weight_only is not int8 compute at all -- its dequant const-folds to an fp32 GEMM). "
-                "Re-measure with quant_recipe recorded on both sides.")
-    same = ours_recipe == ref_recipe or any(
-        {ours_recipe, ref_recipe} <= fam for fam in QUANT_RECIPE_EQUIVALENT)
+        return (
+            f"quantization recipe UNKNOWN for {' and '.join(missing)}: dtype does not determine "
+            "it (weight_only / pt2e_qs8 / pt2e_qd8 are three different computations, and "
+            "weight_only is not int8 compute at all -- its dequant const-folds to an fp32 GEMM). "
+            "Re-measure with quant_recipe recorded on both sides."
+        )
+    same = ours_recipe == ref_recipe or any({ours_recipe, ref_recipe} <= fam for fam in QUANT_RECIPE_EQUIVALENT)
     if not same:
-        return (f"quantization recipe MISMATCH: ours ran {ours_recipe!r} "
-                f"({QUANT_RECIPE_LABELS.get(ours_recipe, 'unknown recipe')}), the reference ran "
-                f"{ref_recipe!r} ({QUANT_RECIPE_LABELS.get(ref_recipe, 'unknown recipe')}). A ratio "
-                "between two different quantization schemes measures the schemes, not the compilers.")
+        return (
+            f"quantization recipe MISMATCH: ours ran {ours_recipe!r} "
+            f"({QUANT_RECIPE_LABELS.get(ours_recipe, 'unknown recipe')}), the reference ran "
+            f"{ref_recipe!r} ({QUANT_RECIPE_LABELS.get(ref_recipe, 'unknown recipe')}). A ratio "
+            "between two different quantization schemes measures the schemes, not the compilers."
+        )
     return None
 
 
-def executorch_cell(model: str, dtype: str, *, root: Path | None = None,
-                    ours_bundle_id: str | None = None) -> dict:
+def executorch_cell(model: str, dtype: str, *, root: Path | None = None, ours_bundle_id: str | None = None) -> dict:
     """The ExecuTorch column for a ``(model, dtype)`` cell — structured + honestly labeled.
 
     Returns a dict always carrying ``executorch_status`` (``measured`` | ``not_measured``),
@@ -333,15 +367,13 @@ def executorch_cell(model: str, dtype: str, *, root: Path | None = None,
     """
     root = root or repo_root()
     variant = _DTYPE_TO_VARIANT.get(dtype, dtype)
-    rows = [r for r in _collect(root)
-            if r.framework == "executorch" and r.model == model and r.variant == variant]
+    rows = [r for r in _collect(root) if r.framework == "executorch" and r.model == model and r.variant == variant]
     passing = [r for r in rows if r.status() == "pass" and r.e2e_wall_ns]
     basis = gate_basis(model)
     if passing:
         r = passing[0]
         ref_bundle = getattr(r, "bundle_id", "") or ""
-        mismatch = (bundle_mismatch_reason(ours_bundle_id, ref_bundle)
-                    if ours_bundle_id is not None else None)
+        mismatch = bundle_mismatch_reason(ours_bundle_id, ref_bundle) if ours_bundle_id is not None else None
         if mismatch is not None:
             return {
                 "executorch_status": "not_measured",
@@ -382,7 +414,14 @@ def executorch_cell(model: str, dtype: str, *, root: Path | None = None,
         # arm was held to. The two gates have different shapes (ours adds argmax and a per-element
         # term and carries no aggregate rel bound at the fp32 tier), so "both passed" never means
         # "both cleared the same test" and the row must not imply it.
-        "ref_accuracy_bar": ({"cos_threshold": rows[0].cos_threshold,
-                              "rel_threshold": rows[0].rel_threshold,
-                              "cos": rows[0].cos, "rel": rows[0].rel} if rows else None),
+        "ref_accuracy_bar": (
+            {
+                "cos_threshold": rows[0].cos_threshold,
+                "rel_threshold": rows[0].rel_threshold,
+                "cos": rows[0].cos,
+                "rel": rows[0].rel,
+            }
+            if rows
+            else None
+        ),
     }

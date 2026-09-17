@@ -33,17 +33,25 @@ saturates either way, because `bound` exceeds the integer range and the clamp is
 NOT AN APPROXIMATION. `roundeven` is IEEE round-to-nearest-even, which is what `math.roundeven`,
 `numpy.rint`, and the Gemmini header's `ROUND_NEAR_EVEN` all compute; ties go to even in every case.
 """
+
 from __future__ import annotations
 
 import struct
 
-__all__ = ["MAGIC", "MAX_BOUND", "MANTISSA_MASK", "MANTISSA_BIAS",
-           "roundeven_to_int_bounded", "quantize_affine", "bound_is_usable"]
+__all__ = [
+    "MAGIC",
+    "MAX_BOUND",
+    "MANTISSA_MASK",
+    "MANTISSA_BIAS",
+    "roundeven_to_int_bounded",
+    "quantize_affine",
+    "bound_is_usable",
+]
 
 #: `1.5 * 2**23`. Adding it to a float in `[-2**21, 2**21]` lands the sum in `[2**23, 2**24)`.
 MAGIC = 12582912.0
 #: The largest pre-clamp bound for which the identity holds.
-MAX_BOUND = 2097152.0                    # 2**21
+MAX_BOUND = 2097152.0  # 2**21
 MANTISSA_MASK = 0x7FFFFF
 MANTISSA_BIAS = 1 << 22
 
@@ -72,8 +80,9 @@ def roundeven_to_int_bounded(x: float, *, bound: float = MAX_BOUND) -> int:
     return (_bits(y) & MANTISSA_MASK) - MANTISSA_BIAS
 
 
-def quantize_affine(x: float, inv_scale: float, zero_point: int,
-                    qmin: int, qmax: int, *, bound: float = MAX_BOUND) -> int:
+def quantize_affine(
+    x: float, inv_scale: float, zero_point: int, qmin: int, qmax: int, *, bound: float = MAX_BOUND
+) -> int:
     """``clamp(roundeven(x * inv_scale) + zero_point, qmin, qmax)`` through the cheap construction.
 
     Reciprocal-FIRST, matching TorchAO's specified order (see ``lower_quant_ext``): ``x * (1/scale)``
@@ -82,8 +91,7 @@ def quantize_affine(x: float, inv_scale: float, zero_point: int,
     """
     if not bound_is_usable(bound, qmin, qmax):
         raise ValueError(f"bound {bound} cannot preserve round-then-clamp for [{qmin}, {qmax}]")
-    return min(max(roundeven_to_int_bounded(_f32(_f32(x) * _f32(inv_scale)), bound=bound)
-                   + zero_point, qmin), qmax)
+    return min(max(roundeven_to_int_bounded(_f32(_f32(x) * _f32(inv_scale)), bound=bound) + zero_point, qmin), qmax)
 
 
 def _f32(value: float) -> float:

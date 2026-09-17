@@ -4,6 +4,7 @@ The target supplies its existing completion contract. The shared proof checks ac
 and CFG, not a compiler's claim that a wait is redundant. Device completion and host-write visibility
 are separate obligations: distinct tensor names alone never establish physical non-aliasing.
 """
+
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
@@ -36,13 +37,16 @@ def _host_category(op):
     return category
 
 
-def qualify_relative_completion_delta(*, previous_analysis: Mapping[str, Any] | None,
-                                     current_analysis: Mapping[str, Any],
-                                     previous_artifacts: Mapping[str, Any] | None,
-                                     current_artifacts: Mapping[str, Any],
-                                     contract: CompletionContract,
-                                     timeout_seconds: float = 30,
-                                     max_artifact_bytes: int = 2_000_000) -> dict[str, Any]:
+def qualify_relative_completion_delta(
+    *,
+    previous_analysis: Mapping[str, Any] | None,
+    current_analysis: Mapping[str, Any],
+    previous_artifacts: Mapping[str, Any] | None,
+    current_artifacts: Mapping[str, Any],
+    contract: CompletionContract,
+    timeout_seconds: float = 30,
+    max_artifact_bytes: int = 2_000_000,
+) -> dict[str, Any]:
     """Reuse retained parsed IR, or parse only a small completion-only changed artifact pair.
 
     A terminal exit-wrapper deletion can establish only device-completion redundancy. This API
@@ -55,24 +59,32 @@ def qualify_relative_completion_delta(*, previous_analysis: Mapping[str, Any] | 
     cooperative deadline checks also bound the CFG traversal and structural comparison.
     """
     from collections import Counter
+
     from xdsl.dialects.llvm import LLVM
     from xdsl.irdl.dominance import DominanceInfo
+
     from merlin.frontends.linalg_mlir import make_context, parse_mlir_text
 
     started = monotonic()
-    result = {"schema": "relative_completion_delta_v1",
-              "completion_contract": {"identity": contract.identity, "provenance": dict(contract.provenance)},
-              "device_completion_redundancy": "UNRESOLVED", "host_visibility": "UNRESOLVED",
-              "relative_synchronization_qualified": False,
-              "numerical_equivalence": "NOT_ESTABLISHED", "performance_improvement": "UNMEASURED",
-              "full_model_executed": False, "compiler_invoked": False,
-              "scope_assumptions": ["ordinary captured tensor-buffer ABI",
-                                    "no concurrent external accelerator command issuer"],
-              "scope": "relative completion deletion only; inherited arithmetic and target ABI not requalified"}
+    result = {
+        "schema": "relative_completion_delta_v1",
+        "completion_contract": {"identity": contract.identity, "provenance": dict(contract.provenance)},
+        "device_completion_redundancy": "UNRESOLVED",
+        "host_visibility": "UNRESOLVED",
+        "relative_synchronization_qualified": False,
+        "numerical_equivalence": "NOT_ESTABLISHED",
+        "performance_improvement": "UNMEASURED",
+        "full_model_executed": False,
+        "compiler_invoked": False,
+        "scope_assumptions": [
+            "ordinary captured tensor-buffer ABI",
+            "no concurrent external accelerator command issuer",
+        ],
+        "scope": "relative completion deletion only; inherited arithmetic and target ABI not requalified",
+    }
 
     def finish(status, reason=""):
-        return {**result, "status": status, "reason": reason,
-                "elapsed_seconds": monotonic() - started}
+        return {**result, "status": status, "reason": reason, "elapsed_seconds": monotonic() - started}
 
     def check_time():
         if monotonic() - started > timeout_seconds:
@@ -104,14 +116,20 @@ def qualify_relative_completion_delta(*, previous_analysis: Mapping[str, Any] | 
         before_plan = previous_analysis.get("diagnostics", {}).get("verified_global_plan_emission", {})
         after_plan = current_analysis.get("diagnostics", {}).get("verified_global_plan_emission", {})
         plans_verified = all(
-            plan.get("status") == "verified" and plan.get("candidate_lowered_sha256") == digest
+            plan.get("status") == "verified"
+            and plan.get("candidate_lowered_sha256") == digest
             and plan.get("candidate_command_buffer_sha256") == artifacts.get("candidate_command_buffer_sha256")
-            for plan, digest, artifacts in ((before_plan, before_sha, previous_artifacts),
-                                            (after_plan, after_sha, current_artifacts)))
-        plans_verified = plans_verified and bool(before_plan.get("source_sha256")) and (
-            before_plan.get("source_sha256") == after_plan.get("source_sha256"))
-        result["verified_plan_abi_contract"] = {"bound": plans_verified,
-                                               "before": before_plan, "after": after_plan}
+            for plan, digest, artifacts in (
+                (before_plan, before_sha, previous_artifacts),
+                (after_plan, after_sha, current_artifacts),
+            )
+        )
+        plans_verified = (
+            plans_verified
+            and bool(before_plan.get("source_sha256"))
+            and (before_plan.get("source_sha256") == after_plan.get("source_sha256"))
+        )
+        result["verified_plan_abi_contract"] = {"bound": plans_verified, "before": before_plan, "after": after_plan}
         if not plans_verified:
             return finish("unresolved", "before/after verified plan and ABI contract is not bound")
 
@@ -164,9 +182,12 @@ def qualify_relative_completion_delta(*, previous_analysis: Mapping[str, Any] | 
                 raise ValueError("relative change removes a non-contracted or wrapper operation")
             exit_wrapper = owner(op) == -2
             if owner(op) < 0 and not (
-                exit_wrapper and index == len(before_commands) - 1
-                and len(returns) == 1 and op.next_op is returns[0]
-                and returns[0].next_op is None and not returns[0].successors
+                exit_wrapper
+                and index == len(before_commands) - 1
+                and len(returns) == 1
+                and op.next_op is returns[0]
+                and returns[0].next_op is None
+                and not returns[0].successors
             ):
                 raise ValueError("deleted wrapper is not the terminal exit completion before the sole return")
             completion = before_commands[index - 1]
@@ -189,18 +210,26 @@ def qualify_relative_completion_delta(*, previous_analysis: Mapping[str, Any] | 
                 if category in {"other", "opaque_inline_asm"}:
                     raise ValueError("intervening CFG path has unknown or device-producing effects")
                 host_categories.add(category)
-                pending.extend([current.next_op] if current.next_op is not None else
-                               [block.first_op for block in current.successors])
+                pending.extend(
+                    [current.next_op]
+                    if current.next_op is not None
+                    else [block.first_op for block in current.successors]
+                )
             if not reached:
                 raise ValueError("deleted completion is not reachable from retained completion")
             removed_ops.append(op)
             relied_on_completions.append(completion)
-            details.append({"previous_instruction_index": index, "task_index": owner(op),
-                            "deletion_scope": "terminal_exit_wrapper" if exit_wrapper else "internal_completion",
-                            "retained_completion_index": index - 1,
-                            "retained_completion_dominates": True,
-                            "intervening_host_categories": sorted(host_categories),
-                            "no_intervening_device_issue_on_any_cfg_path": True})
+            details.append(
+                {
+                    "previous_instruction_index": index,
+                    "task_index": owner(op),
+                    "deletion_scope": "terminal_exit_wrapper" if exit_wrapper else "internal_completion",
+                    "retained_completion_index": index - 1,
+                    "retained_completion_dominates": True,
+                    "intervening_host_categories": sorted(host_categories),
+                    "no_intervening_device_issue_on_any_cfg_path": True,
+                }
+            )
         if cursor != len(new_keys) or len(removed_ops) != sum(removed.values()):
             raise ValueError("before/after commands do not differ only by the identified deletions")
         removed_set = set(removed_ops)
@@ -210,8 +239,11 @@ def qualify_relative_completion_delta(*, previous_analysis: Mapping[str, Any] | 
             if detail["deletion_scope"] == "terminal_exit_wrapper":
                 # Return ends this kernel's CFG, not the caller's memory-ordering obligations.
                 # A renderer template or candidate annotation is not bound caller evidence.
-                detail.update(host_visibility="UNRESOLVED", caller_visible_ordering="UNKNOWN",
-                              visibility_reason="terminal exit deletion has no bound caller ordering contract")
+                detail.update(
+                    host_visibility="UNRESOLVED",
+                    caller_visible_ordering="UNKNOWN",
+                    visibility_reason="terminal exit deletion has no bound caller ordering contract",
+                )
                 result["caller_visible_ordering"] = "UNKNOWN"
                 continue
             # A second fence also ordered host writes. Check the resulting program, skipping all
@@ -230,27 +262,38 @@ def qualify_relative_completion_delta(*, previous_analysis: Mapping[str, Any] | 
                 if current not in removed_set and _host_category(current) in {"other", "opaque_inline_asm"}:
                     visibility = False
                     continue
-                pending.extend([current.next_op] if current.next_op is not None else
-                               [block.first_op for block in current.successors])
-            detail.update(host_visibility="verified_by_retained_barrier" if visibility else "UNRESOLVED",
-                          visibility_reason="retained barrier or return precedes later device issue" if visibility else
-                          "later device issue lacks intervening barrier; concrete alias independence is not proved")
+                pending.extend(
+                    [current.next_op]
+                    if current.next_op is not None
+                    else [block.first_op for block in current.successors]
+                )
+            detail.update(
+                host_visibility="verified_by_retained_barrier" if visibility else "UNRESOLVED",
+                visibility_reason="retained barrier or return precedes later device issue"
+                if visibility
+                else "later device issue lacks intervening barrier; concrete alias independence is not proved",
+            )
         for op in removed_ops:
             op.parent.erase_op(op)
         if not before.is_structurally_equivalent(after):
             raise ValueError("complete LLVM differs beyond identified completion deletions")
         check_time()
-        result.update(deleted_completions=details,
-                      complete_ir_equal_after_only_identified_deletions=True,
-                      all_other_memory_ordering_operations_preserved=True,
-                      device_completion_redundancy="verified")
+        result.update(
+            deleted_completions=details,
+            complete_ir_equal_after_only_identified_deletions=True,
+            all_other_memory_ordering_operations_preserved=True,
+            device_completion_redundancy="verified",
+        )
         visible = all(row["host_visibility"] != "UNRESOLVED" for row in details)
         result["host_visibility"] = "verified" if visible else "UNRESOLVED"
         result["relative_synchronization_qualified"] = visible
-        return finish("relative_synchronization_qualified" if visible else "conditional_device_completion_delta_verified",
-                      "only the relative synchronization transformation is qualified" if visible else
-                      "device completion redundancy is proved; caller-visible exit ordering remains unknown"
-                      if "caller_visible_ordering" in result else
-                      "device completion redundancy is proved; missing concrete alias independence prevents full host-visibility qualification")
+        return finish(
+            "relative_synchronization_qualified" if visible else "conditional_device_completion_delta_verified",
+            "only the relative synchronization transformation is qualified"
+            if visible
+            else "device completion redundancy is proved; caller-visible exit ordering remains unknown"
+            if "caller_visible_ordering" in result
+            else "device completion redundancy is proved; missing concrete alias independence prevents full host-visibility qualification",
+        )
     except Exception as error:  # a diagnostic proof failure never turns into implicit qualification
         return finish("unresolved", f"{type(error).__name__}: {error}")

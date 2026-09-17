@@ -23,6 +23,7 @@ Target-neutral by construction: every fact comes from the ledger, which is data,
 a parameter that must MATCH. Cycles are not comparable across designs (the same capsule reads 510
 on one and 317 on another), so a mismatched design is refused rather than approximated.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -33,17 +34,23 @@ import yaml
 
 from merlin.common.paths import merlin_dir
 
-__all__ = ["REFERENCE_LEDGER_NAME", "ReferenceError", "load_references", "find_reference",
-           "find_reference_for_capsule", "structural_gap", "estimate_cycles",
-           "score_against_reference"]
+__all__ = [
+    "REFERENCE_LEDGER_NAME",
+    "ReferenceError",
+    "load_references",
+    "find_reference",
+    "find_reference_for_capsule",
+    "structural_gap",
+    "estimate_cycles",
+    "score_against_reference",
+]
 
 #: The tracked ledger of measured reference points, relative to the merlin package directory.
 REFERENCE_LEDGER_NAME = "contract/perf_reference_targets.yaml"
 
 #: Structural fields compared against a reference, in report order. Each is a count the emitted
 #: command buffer declares, so the comparison needs no simulator.
-_STRUCTURAL_FIELDS = ("commands", "mesh_regions", "host_lane_regions",
-                      "weight_prepack_recipes", "kernel_abi_args")
+_STRUCTURAL_FIELDS = ("commands", "mesh_regions", "host_lane_regions", "weight_prepack_recipes", "kernel_abi_args")
 
 
 class ReferenceError(ValueError):
@@ -59,8 +66,9 @@ def load_references(path: Path | None = None) -> dict[str, Any]:
     return dict(document["references"])
 
 
-def find_reference(model: str, design: str, *, references: Mapping[str, Any] | None = None,
-                   status: str = "achieved") -> tuple[str, dict[str, Any]]:
+def find_reference(
+    model: str, design: str, *, references: Mapping[str, Any] | None = None, status: str = "achieved"
+) -> tuple[str, dict[str, Any]]:
     """The best measured reference for ``model`` on ``design`` -- the FEWEST cycles achieved.
 
     Refuses on a design mismatch instead of falling back to another design's number, because a
@@ -68,29 +76,33 @@ def find_reference(model: str, design: str, *, references: Mapping[str, Any] | N
     """
     table = dict(references) if references is not None else load_references()
     candidates = {
-        name: entry for name, entry in table.items()
-        if isinstance(entry, Mapping) and entry.get("model") == model
+        name: entry
+        for name, entry in table.items()
+        if isinstance(entry, Mapping)
+        and entry.get("model") == model
         and entry.get("status") == status
-        and isinstance((entry.get("measured") or {}).get("whole_model_cycles"), int)}
+        and isinstance((entry.get("measured") or {}).get("whole_model_cycles"), int)
+    }
     if not candidates:
-        known = sorted({str(entry.get("model")) for entry in table.values()
-                        if isinstance(entry, Mapping)})
+        known = sorted({str(entry.get("model")) for entry in table.values() if isinstance(entry, Mapping)})
         raise ReferenceError(
             f"no reference with status {status!r} carries a whole-model cycle count for model "
-            f"{model!r}; the ledger describes {known}")
+            f"{model!r}; the ledger describes {known}"
+        )
     on_design = {name: entry for name, entry in candidates.items() if entry.get("design") == design}
     if not on_design:
         designs = sorted({str(entry.get("design")) for entry in candidates.values()})
         raise ReferenceError(
             f"model {model!r} has references on {designs} but none on design {design!r}; cycles "
-            f"are not comparable across designs, so there is no reference to score against")
+            f"are not comparable across designs, so there is no reference to score against"
+        )
     name = min(on_design, key=lambda key: on_design[key]["measured"]["whole_model_cycles"])
     return name, dict(on_design[name])
 
 
 def find_reference_for_capsule(
-        capsule: str, *, references: Mapping[str, Any] | None = None,
-        status: str = "achieved") -> tuple[str, dict[str, Any]] | None:
+    capsule: str, *, references: Mapping[str, Any] | None = None, status: str = "achieved"
+) -> tuple[str, dict[str, Any]] | None:
     """The reference describing ``capsule``, or ``None`` when nothing measured describes it.
 
     ``None`` rather than a raise, and the caller is expected to RECORD it: an objective with no
@@ -100,10 +112,13 @@ def find_reference_for_capsule(
     """
     table = dict(references) if references is not None else load_references()
     matches = {
-        name: dict(entry) for name, entry in table.items()
-        if isinstance(entry, Mapping) and entry.get("status") == status
+        name: dict(entry)
+        for name, entry in table.items()
+        if isinstance(entry, Mapping)
+        and entry.get("status") == status
         and capsule in (entry.get("capsules") or ())
-        and isinstance((entry.get("measured") or {}).get("whole_model_cycles"), int)}
+        and isinstance((entry.get("measured") or {}).get("whole_model_cycles"), int)
+    }
     if not matches:
         return None
     name = min(matches, key=lambda key: matches[key]["measured"]["whole_model_cycles"])
@@ -149,34 +164,40 @@ def structural_gap(command_buffer: Mapping[str, Any], reference: Mapping[str, An
     if not isinstance(declared, Mapping):
         return {"status": "reference_declares_no_structure", "fields": {}, "matches": None}
     actual = _emitted_structure(command_buffer)
-    fields = {name: {"candidate": actual[name], "reference": int(declared[name]),
-                     "gap": actual[name] - int(declared[name])}
-              for name in _STRUCTURAL_FIELDS if isinstance(declared.get(name), int)}
+    fields = {
+        name: {"candidate": actual[name], "reference": int(declared[name]), "gap": actual[name] - int(declared[name])}
+        for name in _STRUCTURAL_FIELDS
+        if isinstance(declared.get(name), int)
+    }
     opcodes: dict[str, Any] = {}
     if isinstance(declared.get("opcodes"), Mapping):
         census = _opcode_census(command_buffer)
         for opcode, expected in declared["opcodes"].items():
             got = census.get(str(opcode), 0)
-            opcodes[str(opcode)] = {"candidate": got, "reference": int(expected),
-                                    "gap": got - int(expected)}
+            opcodes[str(opcode)] = {"candidate": got, "reference": int(expected), "gap": got - int(expected)}
         for opcode, got in census.items():
             opcodes.setdefault(opcode, {"candidate": got, "reference": 0, "gap": got})
-    unmatched = sorted([name for name, row in fields.items() if row["gap"]]
-                       + [f"opcode:{name}" for name, row in opcodes.items() if row["gap"]])
+    unmatched = sorted(
+        [name for name, row in fields.items() if row["gap"]]
+        + [f"opcode:{name}" for name, row in opcodes.items() if row["gap"]]
+    )
     return {
         "status": "derived",
         "fields": fields,
         "opcodes": opcodes,
         "matches": not unmatched,
         "unmatched": unmatched,
-        "licence": ("a structural match means the candidate emits the same SHAPE of program, not "
-                    "that it runs as fast: the reference's own regression floor shares a "
-                    "byte-identical command buffer with it and ran 29% slower"),
+        "licence": (
+            "a structural match means the candidate emits the same SHAPE of program, not "
+            "that it runs as fast: the reference's own regression floor shares a "
+            "byte-identical command buffer with it and ran 29% slower"
+        ),
     }
 
 
-def estimate_cycles(host_dynamic_operations: int, reference: Mapping[str, Any], *,
-                    baseline_host_dynamic_operations: int | None = None) -> dict[str, Any]:
+def estimate_cycles(
+    host_dynamic_operations: int, reference: Mapping[str, Any], *, baseline_host_dynamic_operations: int | None = None
+) -> dict[str, Any]:
     """Estimated whole-model cycles for a candidate, anchored on the reference's measurement.
 
     The anchor is cycles-per-host-operation from a run that MEASURED both quantities, scaled by the
@@ -208,16 +229,23 @@ def estimate_cycles(host_dynamic_operations: int, reference: Mapping[str, Any], 
         "reference_whole_model_cycles": target,
         "cycles_above_reference": round(estimated) - target,
         "fraction_of_reference": round(estimated / target, 6) if target else None,
-        "licence": ("an estimate, never a measurement -- the anchor is a whole-window average and "
-                    "prices every host operation family identically, so a revision trading integer "
-                    "operations for floating-point ones can improve this number and lose cycles"),
+        "licence": (
+            "an estimate, never a measurement -- the anchor is a whole-window average and "
+            "prices every host operation family identically, so a revision trading integer "
+            "operations for floating-point ones can improve this number and lose cycles"
+        ),
     }
 
 
-def score_against_reference(command_buffer: Mapping[str, Any], *, model: str, design: str,
-                            host_dynamic_operations: int | None = None,
-                            baseline_host_dynamic_operations: int | None = None,
-                            references: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def score_against_reference(
+    command_buffer: Mapping[str, Any],
+    *,
+    model: str,
+    design: str,
+    host_dynamic_operations: int | None = None,
+    baseline_host_dynamic_operations: int | None = None,
+    references: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """The whole gap record for one candidate: which reference, structural distance, cycle distance."""
     name, reference = find_reference(model, design, references=references)
     record: dict[str, Any] = {
@@ -229,8 +257,8 @@ def score_against_reference(command_buffer: Mapping[str, Any], *, model: str, de
     }
     if isinstance(host_dynamic_operations, int):
         record["cycles"] = estimate_cycles(
-            host_dynamic_operations, reference,
-            baseline_host_dynamic_operations=baseline_host_dynamic_operations)
+            host_dynamic_operations, reference, baseline_host_dynamic_operations=baseline_host_dynamic_operations
+        )
     for note in reference.get("caveats") or ():
         record.setdefault("caveats", []).append(str(note))
     return record

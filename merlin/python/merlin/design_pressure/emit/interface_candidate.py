@@ -5,6 +5,7 @@ the hardware and runtime must provide, and the four lowering variants every cand
 under). This entry point keeps the design-pressure calling convention and supplies ``justified_by``
 from it, so both producers emit the same shape instead of two drifting copies of it.
 """
+
 from __future__ import annotations
 
 from typing import Iterable
@@ -21,6 +22,10 @@ def emit_interface_candidate(
     validate: bool = True,
 ) -> dict:
     """Build a schema-shaped interface candidate justified by design pressure + policies."""
-    return _emit(name, interface_ops, interface_types,
-                 justified_by={"design_pressure": design_pressure_name, "policies": list(policies)},
-                 validate=validate)
+    return _emit(
+        name,
+        interface_ops,
+        interface_types,
+        justified_by={"design_pressure": design_pressure_name, "policies": list(policies)},
+        validate=validate,
+    )

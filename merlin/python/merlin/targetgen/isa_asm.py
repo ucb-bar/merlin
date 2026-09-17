@@ -8,6 +8,7 @@ instructions to emit, never reads a golden, and it **refuses rather than emit a 
 mnemonic is undefined, an operand is out of its field's range, or an operand field is non-linear. Pure
 Python bit-ops over the derived model; no target name, no ``re``, no oracle.
 """
+
 from __future__ import annotations
 
 from .isa_model import IsaModel
@@ -23,7 +24,7 @@ def _representable_mask(bits: list[int | None]) -> int:
     rep = 0
     for i, wb in enumerate(bits):
         if isinstance(wb, int) and wb >= 0:
-            rep |= (1 << i)
+            rep |= 1 << i
     return rep
 
 
@@ -33,15 +34,17 @@ def _encode_operand(attr: str, bits: list[int | None], value: int) -> int:
     if value < 0:
         raise AssembleError(f"operand '{attr}'={value} is negative; provide the raw unsigned field value")
     if any(b == -1 for b in bits):
-        raise AssembleError(f"operand '{attr}' maps to a non-linear field; cannot pack it safely — "
-                            "emit this instruction as an explicit .word instead")
+        raise AssembleError(
+            f"operand '{attr}' maps to a non-linear field; cannot pack it safely — "
+            "emit this instruction as an explicit .word instead"
+        )
     if value & ~_representable_mask(bits):
         width = sum(1 for b in bits if isinstance(b, int) and b >= 0)
         raise AssembleError(f"operand '{attr}'={value} does not fit its {width}-bit field")
     word = 0
     for i, wb in enumerate(bits):
         if isinstance(wb, int) and wb >= 0 and (value >> i) & 1:
-            word |= (1 << wb)
+            word |= 1 << wb
     return word
 
 
@@ -79,9 +82,15 @@ def _parse_operands(rest: str) -> dict[str, int | str]:
     return ops
 
 
-def _resolve_symbolic_operands(model: IsaModel, mnemonic: str, operands: dict[str, int | str],
-                               *, instruction_index: int, labels: dict[str, int],
-                               schedule_contract: dict | None) -> dict[str, int]:
+def _resolve_symbolic_operands(
+    model: IsaModel,
+    mnemonic: str,
+    operands: dict[str, int | str],
+    *,
+    instruction_index: int,
+    labels: dict[str, int],
+    schedule_contract: dict | None,
+) -> dict[str, int]:
     """Resolve branch labels from a target-declared PC/immediate-unit contract.
 
     The derived field map knows where an immediate's bits live, but it cannot know whether one decoded
@@ -89,31 +98,37 @@ def _resolve_symbolic_operands(model: IsaModel, mnemonic: str, operands: dict[st
     in target data.  Non-symbolic operands take the existing path unchanged.
     """
     resolved: dict[str, int] = {}
-    rules = (((schedule_contract or {}).get("control_flow") or {}).get("relative_branches") or [])
+    rules = ((schedule_contract or {}).get("control_flow") or {}).get("relative_branches") or []
     for attr, value in operands.items():
         if isinstance(value, int):
             resolved[attr] = value
             continue
         if value not in labels:
             raise AssembleError(f"operand '{attr}' references unknown label '{value}'")
-        matching = [rule for rule in rules if isinstance(rule, dict)
-                    and mnemonic in {str(x) for x in (rule.get("mnemonics") or [])}
-                    and str(rule.get("immediate_operand") or "") == attr]
+        matching = [
+            rule
+            for rule in rules
+            if isinstance(rule, dict)
+            and mnemonic in {str(x) for x in (rule.get("mnemonics") or [])}
+            and str(rule.get("immediate_operand") or "") == attr
+        ]
         if len(matching) != 1:
             raise AssembleError(
                 f"symbolic operand '{attr}={value}' needs exactly one target-declared relative-branch "
-                f"rule for '{mnemonic}' (found {len(matching)})")
+                f"rule for '{mnemonic}' (found {len(matching)})"
+            )
         rule = matching[0]
         bits = rule.get("immediate_bits")
         units = rule.get("decoded_immediate_units_per_instruction")
-        if (not isinstance(bits, int) or bits <= 0 or not isinstance(units, int) or units <= 0):
+        if not isinstance(bits, int) or bits <= 0 or not isinstance(units, int) or units <= 0:
             raise AssembleError(f"relative-branch rule for '{mnemonic}' has invalid immediate units/width")
         displacement = (labels[value] - instruction_index) * units
         lo, hi = -(1 << (bits - 1)), (1 << (bits - 1)) - 1
         if not lo <= displacement <= hi:
             raise AssembleError(
                 f"branch from instruction {instruction_index} to label '{value}' needs displacement "
-                f"{displacement}, outside the declared signed {bits}-bit range [{lo}, {hi}]")
+                f"{displacement}, outside the declared signed {bits}-bit range [{lo}, {hi}]"
+            )
         resolved[attr] = displacement & ((1 << bits) - 1)
     return resolved
 
@@ -167,8 +182,13 @@ def assemble_text(model: IsaModel, text: str, *, schedule_contract: dict | None 
                 words.append(int(rest.strip(), 0) & 0xFFFFFFFF)
             else:
                 operands = _resolve_symbolic_operands(
-                    model, head, _parse_operands(rest), instruction_index=instruction_index,
-                    labels=labels, schedule_contract=schedule_contract)
+                    model,
+                    head,
+                    _parse_operands(rest),
+                    instruction_index=instruction_index,
+                    labels=labels,
+                    schedule_contract=schedule_contract,
+                )
                 words.append(_assemble_one(model, head, operands))
         except AssembleError as e:
             raise AssembleError(f"line {lineno}: {e}") from None
@@ -218,8 +238,7 @@ def assemble_fixed(model: IsaModel, mnemonic: str, operands: dict[str, int] | No
     return word & ((1 << model.inst_width) - 1)
 
 
-def encode_mem_op(model: IsaModel, mnemonic: str, space: str,
-                  operands: dict[str, int] | None = None) -> int:
+def encode_mem_op(model: IsaModel, mnemonic: str, space: str, operands: dict[str, int] | None = None) -> int:
     """Assemble a memory instruction targeting a named ADDRESS SPACE. ``mnemonic`` is the base memory opcode
     (e.g. the target's load/store); ``space`` is a derived address-space name (e.g. global / shared); the
     space's value is placed into the derived address-space selector field, and the rest of ``operands``

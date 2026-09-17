@@ -26,6 +26,7 @@ outcomes -- and only then let a caller refuse on it.
 The operand vocabulary is DERIVED from ``command_buffer_abi.yaml`` at call time, never listed here:
 adding an opcode to the ABI extends this audit with no edit, and no opcode name is baked into code.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -66,10 +67,7 @@ def declared_operands(*, contract: str | Path | None = None) -> dict[str, dict[s
             # Fail closed: an opcode whose operands the ABI does not state is NOT silently
             # treated as unconstrained -- it is absent, and audit() reports it as underivable.
             continue
-        out[str(opcode)] = {
-            str(name): OPTIONAL_MARKER not in str(kind)
-            for name, kind in operands.items()
-        }
+        out[str(opcode)] = {str(name): OPTIONAL_MARKER not in str(kind) for name, kind in operands.items()}
     return out
 
 
@@ -87,12 +85,10 @@ def applies(cb: Any) -> bool:
     commands = cb.get("commands")
     if not isinstance(commands, list):
         return False
-    return all(isinstance(c, dict) and isinstance(c.get("opcode"), str)
-               for c in commands) if commands else True
+    return all(isinstance(c, dict) and isinstance(c.get("opcode"), str) for c in commands) if commands else True
 
 
-def undeclared_opcodes(*, contract: str | Path | None = None,
-                       schema: str | Path | None = None) -> list[str]:
+def undeclared_opcodes(*, contract: str | Path | None = None, schema: str | Path | None = None) -> list[str]:
     """Opcodes the schema admits but the ABI declares no operands for -- OUR specification gap.
 
     MEASURED at the time of writing: 12 of the 25 enumerated opcodes, including ``ATTENTION_FULL``.
@@ -104,8 +100,11 @@ def undeclared_opcodes(*, contract: str | Path | None = None,
 
     from merlin.common.paths import repo_root
 
-    path = Path(schema) if schema is not None else (
-        repo_root() / "merlin" / "contract" / "schemas" / "command_buffer.schema.json")
+    path = (
+        Path(schema)
+        if schema is not None
+        else (repo_root() / "merlin" / "contract" / "schemas" / "command_buffer.schema.json")
+    )
     doc = json.loads(path.read_text(encoding="utf-8"))
     enum = doc["properties"]["commands"]["items"]["properties"]["opcode"].get("enum") or []
     return sorted(set(enum) - set(declared_operands(contract=contract)))
@@ -136,7 +135,8 @@ def audit(cb: Any, *, contract: str | Path | None = None) -> list[str]:
             findings.append(
                 f"{where}: NOT CHECKABLE -- command_buffer_abi.yaml declares no operands for this "
                 f"opcode, so no operand spelling can be required of a submitter. This is a gap in "
-                f"our contract, not a defect in this buffer.")
+                f"our contract, not a defect in this buffer."
+            )
             continue
         operands = command.get("operands")
         if not isinstance(operands, dict):
@@ -150,11 +150,11 @@ def audit(cb: Any, *, contract: str | Path | None = None) -> list[str]:
         missing = sorted(required - given)
         unknown = sorted(given - allowed)
         if missing:
-            findings.append(
-                f"{where}: missing required operand(s) {missing}; the ABI declares {sorted(allowed)}")
+            findings.append(f"{where}: missing required operand(s) {missing}; the ABI declares {sorted(allowed)}")
         if unknown:
             shown = unknown if len(unknown) <= 6 else unknown[:6] + [f"... and {len(unknown) - 6} more"]
             findings.append(
                 f"{where}: {len(unknown)} operand(s) the opcode does not declare: {shown}; "
-                f"the ABI declares {sorted(allowed)}")
+                f"the ABI declares {sorted(allowed)}"
+            )
     return findings

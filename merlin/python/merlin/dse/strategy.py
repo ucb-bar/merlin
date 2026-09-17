@@ -7,6 +7,7 @@ schedule policies, interface features, target, and cost-model overrides it impli
 region's baseline plan and costing the result — so two strategies that differ only in pipeline
 or exposed features are two directly comparable approaches.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -17,8 +18,8 @@ from merlin.common import schemas
 from merlin.common.yaml import load_yaml
 from merlin.dse.cost_model import evaluate_cost
 from merlin.dse.hardware_space import default_cost_model
-from merlin.dse.variants import contract_plans
 from merlin.dse.pipelines.builder import build_pipeline
+from merlin.dse.variants import contract_plans
 from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 
@@ -63,11 +64,16 @@ class Strategy:
 
 def strategy_id(strategy: Strategy) -> str:
     """Stable short hash keyed on the fields that change the compiled result."""
-    key = "|".join([
-        strategy.id, strategy.variant_class, strategy.target, strategy.lowering_pipeline,
-        ",".join(sorted(strategy.interface_features)),
-        ",".join(f"{k}={v}" for k, v in sorted(strategy.overrides().items())),
-    ])
+    key = "|".join(
+        [
+            strategy.id,
+            strategy.variant_class,
+            strategy.target,
+            strategy.lowering_pipeline,
+            ",".join(sorted(strategy.interface_features)),
+            ",".join(f"{k}={v}" for k, v in sorted(strategy.overrides().items())),
+        ]
+    )
     return hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
 
 
@@ -99,33 +105,48 @@ def default_strategies(target: str = DEFAULT_EXAMPLE_TARGET) -> list[Strategy]:
     pre, post = "merlin-contract,merlin-schedule", "interface-lower,toynpu-lower"
     return [
         Strategy(
-            id="opaque_baseline", variant_class="baseline", target=target,
+            id="opaque_baseline",
+            variant_class="baseline",
+            target=target,
             lowering_pipeline=f"{pre},{post}",
-            description="opaque call; pack/load weight every step"),
+            description="opaque call; pack/load weight every step",
+        ),
         Strategy(
-            id="hardware_managed_reuse", variant_class="hardware_managed", target=target,
+            id="hardware_managed_reuse",
+            variant_class="hardware_managed",
+            target=target,
             lowering_pipeline=f"{pre},hw-cache,{post}",
             contract_assumptions=("rhs_immutable_across_region",),
-            description="hardware caches the loaded weight; no exposed residency"),
+            description="hardware caches the loaded weight; no exposed residency",
+        ),
         Strategy(
-            id="resident_sw_visible", variant_class="software_visible", target=target,
+            id="resident_sw_visible",
+            variant_class="software_visible",
+            target=target,
             lowering_pipeline=f"{pre},hoist-pack,make-resident,{post}",
             contract_assumptions=("rhs_immutable_across_region",),
             schedule_policies=("packed_rhs_policy",),
             interface_features=("resident_packed_tensor",),
-            description="expose resident packed RHS to software"),
+            description="expose resident packed RHS to software",
+        ),
         Strategy(
-            id="resident_commit_sw_visible", variant_class="software_visible", target=target,
+            id="resident_commit_sw_visible",
+            variant_class="software_visible",
+            target=target,
             lowering_pipeline=f"{pre},hoist-pack,make-resident,defer-commit,{post}",
             contract_assumptions=("rhs_immutable_across_region",),
             schedule_policies=("packed_rhs_policy", "accumulator_commit_policy"),
             interface_features=("resident_packed_tensor", "accumulator_commit"),
-            description="resident RHS + accumulator commit"),
+            description="resident RHS + accumulator commit",
+        ),
         Strategy(
-            id="oracle", variant_class="oracle", target=target,
+            id="oracle",
+            variant_class="oracle",
+            target=target,
             lowering_pipeline=f"{pre},hoist-pack,make-resident,defer-commit,batch-dispatch,{post}",
             interface_features=("resident_packed_tensor", "accumulator_commit"),
-            description="perfect residency, commit, and dispatch batching"),
+            description="perfect residency, commit, and dispatch batching",
+        ),
     ]
 
 
@@ -139,8 +160,7 @@ _POST = ["interface-lower", "toynpu-lower"]
 _EFFECT_ORDER = ["hw-cache", "hoist-pack", "make-resident", "defer-commit", "batch-dispatch"]
 
 
-def strategy_from_passes(effect_passes, target: str = DEFAULT_EXAMPLE_TARGET,
-                         id: str | None = None) -> Strategy:
+def strategy_from_passes(effect_passes, target: str = DEFAULT_EXAMPLE_TARGET, id: str | None = None) -> Strategy:
     """Assemble a Strategy from a set of effect passes (features/variant_class derived)."""
     chosen = [p for p in _EFFECT_ORDER if p in set(effect_passes)]
     features = tuple(FEATURE_PASSES[p] for p in chosen if p in FEATURE_PASSES)
@@ -154,13 +174,15 @@ def strategy_from_passes(effect_passes, target: str = DEFAULT_EXAMPLE_TARGET,
         variant = "baseline"
     pipeline = ",".join(_PRE + chosen + _POST)
     sid = id or ("strat_" + "_".join(chosen) if chosen else "opaque_baseline")
-    return Strategy(id=sid, variant_class=variant, target=target,
-                    lowering_pipeline=pipeline, interface_features=features)
+    return Strategy(
+        id=sid, variant_class=variant, target=target, lowering_pipeline=pipeline, interface_features=features
+    )
 
 
 def effect_passes(strategy: Strategy) -> list[str]:
     """The effect passes in a strategy's pipeline (drops the structural lowering passes)."""
     from merlin.dse.pipelines.builder import parse_spec
+
     return [p for p in parse_spec(strategy.lowering_pipeline) if p in _EFFECT_ORDER]
 
 
@@ -176,8 +198,7 @@ def behavior_descriptors(strategy: Strategy) -> dict:
         memory = "scratchpad"
     control = "persistent_command_buffer" if "batch-dispatch" in eff else "blocking"
     granularity = "fused_region" if "accumulator_commit" in feats else "tile_op"
-    return {"memory_abstraction": memory, "control_abstraction": control,
-            "granularity": granularity}
+    return {"memory_abstraction": memory, "control_abstraction": control, "granularity": granularity}
 
 
 def from_dict(d: dict) -> Strategy:

@@ -17,11 +17,11 @@ are replaced by their initial operands, while tensor or non-identity carriers ar
 body containing an existing parallel region is also refused so nested OpenMP forks cannot be
 introduced silently.
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
-
 
 PANEL_MARKER_SYMBOL = "__merlin_parallel_panel_marker"
 
@@ -71,8 +71,7 @@ def ensure_marker_declaration(module) -> None:
     for op in module.walk():
         if isinstance(op, FuncOp) and op.sym_name.data == PANEL_MARKER_SYMBOL:
             return
-    module.body.block.add_op(FuncOp(PANEL_MARKER_SYMBOL, ((), ()), Region(),
-                                    visibility="private"))
+    module.body.block.add_op(FuncOp(PANEL_MARKER_SYMBOL, ((), ()), Region(), visibility="private"))
 
 
 # Executed in the model2MLIR venv, which owns the torch-mlir Python bindings.
@@ -211,11 +210,11 @@ def _parallelize_panel_loops(ctx, module):
 # the panel-pack features. Run in the post-bufferization mid window: waiting for the late pre-OpenMP
 # window lets ownership-based deallocation add an i1 recurrence around MR=1 kernels, correctly
 # making the loop non-parallel under the proof above.
-MID_STAGE_SRC = r'''
+MID_STAGE_SRC = r"""
 _PANEL_PARALLEL = len(sys.argv) > 10 and sys.argv[10] == "1"
 if _PANEL_PARALLEL:
     _MID_STAGES.insert(0, ("panel_parallel", _parallelize_panel_loops))
-'''
+"""
 
 
 REPORT_PREFIX = "OK panel_parallel regions "
@@ -232,8 +231,12 @@ def require_complete_report(stdout: str, work: "str | Path") -> dict[str, int]:
         report = {tokens[i]: int(tokens[i + 1]) for i in range(2, len(tokens), 2)}
     except (IndexError, ValueError) as exc:
         raise ValueError(f"malformed panel_parallel report: {lines[0]!r}") from exc
-    if (report.get("regions", 0) < 1 or report.get("rewritten") != report.get("regions") or
-            report.get("refused") != 0 or report.get("nested_parallel") != 0):
+    if (
+        report.get("regions", 0) < 1
+        or report.get("rewritten") != report.get("regions")
+        or report.get("refused") != 0
+        or report.get("nested_parallel") != 0
+    ):
         raise ValueError(f"panel_parallel did not consume every marked carrier: {report}")
     Path(work, REPORT_FILE).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return report

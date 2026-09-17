@@ -21,11 +21,12 @@ Two complementary tools, both consuming HW-agnostic inputs:
 Both are *screening* oracles — fast, conservative, and honest about what they cannot derive
 (``UNKNOWN`` findings are surfaced, never silently dropped) — not cycle-accurate proofs.
 """
+
 from __future__ import annotations
 
-from .report import Finding, LivenessReport, Severity
 from .facts import SiliconFacts, silicon_facts
 from .oracle import Program, assess, persist
+from .report import Finding, LivenessReport, Severity
 
 __all__ = [
     "Finding",

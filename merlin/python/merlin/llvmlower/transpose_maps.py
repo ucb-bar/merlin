@@ -117,6 +117,7 @@ MEASURED (small_llama int8 capture, whole model):
     ``tiers=['fp32', 'w8a8']``, and it still cost 1.09x on the board (numbers above).
   * guarded, it folds 0 of 25 here and the emitted object is byte-identical to the baseline.
 """
+
 from __future__ import annotations
 
 FEATURE = "fold_weight_transpose"
@@ -382,9 +383,7 @@ def run_source() -> str:
     """
     return (
         "import sys\n"
-        "from torch_mlir import ir\n"
-        + RUNNER_PRELUDE
-        + "src_path, out_path = sys.argv[1], sys.argv[2]\n"
+        "from torch_mlir import ir\n" + RUNNER_PRELUDE + "src_path, out_path = sys.argv[1], sys.argv[2]\n"
         "ctx = ir.Context()\n"
         "with open(src_path) as f:\n"
         "    module = ir.Module.parse(f.read(), ctx)\n"
@@ -399,6 +398,7 @@ def run_source() -> str:
 
 def _feature():
     from .impr_features import ImprFeature
+
     return ImprFeature(
         name=FEATURE,
         action_class="PASS",
@@ -425,6 +425,7 @@ def ensure_registered() -> str:
     """Register the feature if it is not already. Idempotent, so importing from several entry
     points is safe. Returns the feature name."""
     from .impr_features import known, register
+
     if FEATURE not in known():
         register(_feature())
     return FEATURE

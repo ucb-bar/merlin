@@ -3,6 +3,7 @@
 Deterministic and LLM-free. ``build`` returns a :class:`BuildResult` and (when ``out`` is
 given) writes the generated target repo to disk.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,17 +11,17 @@ from pathlib import Path
 from typing import Any
 
 from ..common.artifacts import Artifact, write_all, yaml_artifact
-from .ingest import build_manifest
 from .evidence import build_evidence, render_markdown
+from .generate import llvm_plan, mlir_scaffold, runtime_adapter, target_repo, xdsl, zephyr_module
+from .ingest import build_manifest
 from .synthesize import (
-    synthesize_target_contract,
     synthesize_dialect_plan,
-    synthesize_runtime_adapter_plan,
-    synthesize_zephyr_plan,
     synthesize_llvm_extension_plan,
+    synthesize_runtime_adapter_plan,
+    synthesize_target_contract,
+    synthesize_zephyr_plan,
 )
-from .generate import target_repo, xdsl, mlir_scaffold, zephyr_module, runtime_adapter, llvm_plan
-from .validate import validate_plans, render_validation_report
+from .validate import render_validation_report, validate_plans
 
 # Layers that --emit can select. "contract-only" suppresses all of them.
 EMIT_LAYERS = {"xdsl", "mlir", "zephyr", "runtime", "llvm-plan"}
@@ -67,8 +68,13 @@ def build(
 
     # 1. ingest -> manifest ; 2. evidence
     manifest = build_manifest(
-        target_name, source_dir=source_dir, examples_dir=examples_dir,
-        scala_root=scala_root, source_urls=source_urls, branch=branch, commit=commit,
+        target_name,
+        source_dir=source_dir,
+        examples_dir=examples_dir,
+        scala_root=scala_root,
+        source_urls=source_urls,
+        branch=branch,
+        commit=commit,
     )
     evidence = build_evidence(manifest)
 
@@ -92,7 +98,9 @@ def build(
     # 5. reports
     evidence_md = render_markdown(evidence)
     validation_md = render_validation_report(
-        target_name, plans, schema_problems,
+        target_name,
+        plans,
+        schema_problems,
         emit=(["contract-only"] if contract_only else selected),
     )
 
@@ -101,10 +109,18 @@ def build(
     artifacts += target_repo.generate_skeleton(target_name)
     artifacts += target_repo.emit_contracts(plans)
     artifacts += target_repo.emit_docs(evidence_md, validation_md, target_name)
-    artifacts.append(yaml_artifact("contracts/target_source_manifest.yaml", manifest.to_dict(),
-                                   header="Source manifest (target_source_manifest.schema.yaml)."))
-    artifacts.append(yaml_artifact("docs/evidence_index.yaml", evidence.to_index_dict(),
-                                   header="Evidence index (evidence_report.schema.yaml)."))
+    artifacts.append(
+        yaml_artifact(
+            "contracts/target_source_manifest.yaml",
+            manifest.to_dict(),
+            header="Source manifest (target_source_manifest.schema.yaml).",
+        )
+    )
+    artifacts.append(
+        yaml_artifact(
+            "docs/evidence_index.yaml", evidence.to_index_dict(), header="Evidence index (evidence_report.schema.yaml)."
+        )
+    )
 
     if not contract_only:
         if "xdsl" in selected:

@@ -16,13 +16,13 @@ become 361, complete output stays bit-identical, and an interleaved eight-core A
 session medians from 87.74/88.93 ms to 86.86/87.12 ms.  This is a small but repeatable scheduling
 gain; it does not close the much larger single-core code-generation/layout gap.
 """
+
 from __future__ import annotations
 
 import json
 import subprocess
 import tempfile
 from pathlib import Path
-
 
 FEATURE = "coarsen_openmp_regions"
 REPORT_TOKEN = "OK parallel_coarsen original"
@@ -40,24 +40,26 @@ def require_report(stdout: str) -> None:
     except (IndexError, ValueError) as exc:
         raise ValueError(f"malformed coarsening report: {line!r}") from exc
     if original == 0 or merged == 0:
-        raise ValueError(
-            f"coarsen_openmp_regions was named but matched no adjacent regions: {line}")
+        raise ValueError(f"coarsen_openmp_regions was named but matched no adjacent regions: {line}")
 
 
 def ensure_registered() -> str:
     from .impr_features import ImprFeature, known, register
 
     if FEATURE not in known():
-        register(ImprFeature(
-            name=FEATURE,
-            action_class="HEURISTIC",
-            description=(
-                "Merge consecutive canonical omp.parallel regions in one block into one team "
-                "region containing the original ordered worksharing loops. Preserves every "
-                "omp.wsloop barrier while removing redundant fork/join boundaries. Measured on "
-                "K1 LSTMNetVIT W8A8: 780 to 361 static regions and about 1.5% lower eight-core "
-                "latency in an interleaved A/B; default off and model-selected."),
-        ))
+        register(
+            ImprFeature(
+                name=FEATURE,
+                action_class="HEURISTIC",
+                description=(
+                    "Merge consecutive canonical omp.parallel regions in one block into one team "
+                    "region containing the original ordered worksharing loops. Preserves every "
+                    "omp.wsloop barrier while removing redundant fork/join boundaries. Measured on "
+                    "K1 LSTMNetVIT W8A8: 780 to 361 static regions and about 1.5% lower eight-core "
+                    "latency in an interleaved A/B; default off and model-selected."
+                ),
+            )
+        )
     return FEATURE
 
 
@@ -123,12 +125,12 @@ def _parallel_coarsen(ctx, module):
 '''
 
 
-STAGE_SRC = r'''
+STAGE_SRC = r"""
 _PARALLEL_COARSEN = len(sys.argv) > 13 and sys.argv[13] == "1"
 if _PARALLEL_COARSEN:
     _POST_OPENMP_STAGES = [*_POST_OPENMP_STAGES,
                            ("parallel_coarsen", _parallel_coarsen)]
-'''
+"""
 
 
 def apply_for_test(mlir_text: str) -> tuple[str, dict]:
@@ -140,19 +142,17 @@ def apply_for_test(mlir_text: str) -> tuple[str, dict]:
     src.write_text(mlir_text, encoding="utf-8")
     script.write_text(
         "import json, sys\n"
-        "from torch_mlir import ir\n"
-        + RUNNER_PRELUDE +
-        "ctx = ir.Context()\n"
+        "from torch_mlir import ir\n" + RUNNER_PRELUDE + "ctx = ir.Context()\n"
         "with open(sys.argv[1]) as f: module = ir.Module.parse(f.read(), ctx)\n"
         "merged = _parallel_coarsen(ctx, module)\n"
         "print('MERLIN_COARSEN ' + json.dumps({'merged': merged}))\n"
         "print('MERLIN_MODULE_BEGIN')\n"
-        "print(module.operation)\n", encoding="utf-8")
-    proc = subprocess.run(
-        [str(m2m_python()), str(script), str(src)], capture_output=True, text=True, timeout=120)
+        "print(module.operation)\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run([str(m2m_python()), str(script), str(src)], capture_output=True, text=True, timeout=120)
     if proc.returncode != 0:
         raise RuntimeError(f"parallel-coarsen test rewrite failed:\n{proc.stdout}\n{proc.stderr}")
-    record = next(line for line in proc.stdout.splitlines()
-                  if line.startswith("MERLIN_COARSEN "))
+    record = next(line for line in proc.stdout.splitlines() if line.startswith("MERLIN_COARSEN "))
     module = proc.stdout.split("MERLIN_MODULE_BEGIN\n", 1)[1]
-    return module, json.loads(record[len("MERLIN_COARSEN "):])
+    return module, json.loads(record[len("MERLIN_COARSEN ") :])

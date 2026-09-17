@@ -35,6 +35,7 @@ that flatters a reordering. The mask is a target fact and is DERIVED (:func:`fla
 address whose command shows mode-bit evidence while no mask was supplied is carried as UNRESOLVED,
 never stripped by guess and never used raw.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -43,9 +44,17 @@ from typing import Any
 from merlin.perf.deps.liveness import Access, Effects, Instruction
 
 __all__ = [
-    "CONSUMES", "DEFINES", "FLAG_EVIDENCE", "UNRESOLVED_OPERAND_KIND", "WIDTH_FIELD",
-    "effects_of_row", "flag_masks_for", "instructions_and_effects", "program_from_trace",
-    "roles_for", "untracked_files",
+    "CONSUMES",
+    "DEFINES",
+    "FLAG_EVIDENCE",
+    "UNRESOLVED_OPERAND_KIND",
+    "WIDTH_FIELD",
+    "effects_of_row",
+    "flag_masks_for",
+    "instructions_and_effects",
+    "program_from_trace",
+    "roles_for",
+    "untracked_files",
 ]
 
 #: Decoded field -> the on-chip state file it addresses, for fields that DEFINE a value and for
@@ -72,8 +81,7 @@ FLAG_EVIDENCE: Mapping[str, str] = {"accumulate": "acc", "readout": "acc"}
 #: actually produced the value -- and an ordering that hoists the readout above it is scored as
 #: legal and fast. Modelled as DEF_USE, because a command that accumulates also READS what is
 #: already there. A writer with no stager before it is UNRESOLVED, never silently effect-free.
-INHERITS_DESTINATION: Mapping[str, str] = {"COMPUTE_PRELOADED": "PRELOAD",
-                                           "COMPUTE_ACCUMULATE": "PRELOAD"}
+INHERITS_DESTINATION: Mapping[str, str] = {"COMPUTE_PRELOADED": "PRELOAD", "COMPUTE_ACCUMULATE": "PRELOAD"}
 
 #: The operand-resolution verdict meaning the decoder could not establish a value at all. An operand
 #: resolved to an off-chip base is a different, weaker state: it is resolved, and it addresses a file
@@ -101,8 +109,10 @@ def flag_masks_for(target: str) -> dict[str, int]:
     for name in ("ACC_ACCUM", "FULL_C_BIT"):
         value = isa.get(name)
         if not isinstance(value, int) or isinstance(value, bool):
-            raise ValueError(f"target {target!r} does not derive {name}, so the accumulator address "
-                             f"cannot be separated from its mode bits")
+            raise ValueError(
+                f"target {target!r} does not derive {name}, so the accumulator address "
+                f"cannot be separated from its mode bits"
+            )
         bits |= int(value)
     return {"acc": bits}
 
@@ -125,16 +135,19 @@ def roles_for(target: str) -> dict[str, str]:
     # spellings do not match -- joining on the name silently yields no role for anything, which
     # leaves every command its own separation class and refuses every comparison. Join on the
     # selector, which is the identity both were derived from.
-    by_selector = {int(entry.get("funct7")): str((entry or {}).get("role") or "")
-                   for entry in (model.by_mnemonic or {}).values()
-                   if isinstance((entry or {}).get("funct7"), int)}
-    roles = {str(klass): by_selector[int(selector)]
-             for selector, klass in (isa.get("FUNCT_CLASS") or {}).items()
-             if int(selector) in by_selector}
+    by_selector = {
+        int(entry.get("funct7")): str((entry or {}).get("role") or "")
+        for entry in (model.by_mnemonic or {}).values()
+        if isinstance((entry or {}).get("funct7"), int)
+    }
+    roles = {
+        str(klass): by_selector[int(selector)]
+        for selector, klass in (isa.get("FUNCT_CLASS") or {}).items()
+        if int(selector) in by_selector
+    }
     # A configuring command is reported by its SUBTYPE, which shares its parent's selector: a subtype
     # is a narrowing of one command, not a command of its own, so it inherits the parent's role.
-    parent = {klass for selector, klass in (isa.get("FUNCT_CLASS") or {}).items()
-              if int(selector) in by_selector}
+    parent = {klass for selector, klass in (isa.get("FUNCT_CLASS") or {}).items() if int(selector) in by_selector}
     for subtype in (isa.get("CONFIG_SUBTYPE") or {}).values():
         base = next((k for k in parent if str(subtype).startswith(k)), None)
         if base is not None:
@@ -159,14 +172,16 @@ def effects_of_row(row: Mapping[str, Any], *, flag_masks: Mapping[str, int] | No
     unresolved: list[str] = []
 
     if klass in ("", "UNKNOWN"):
-        return Effects(defs=(), uses=(), observed=False,
-                       unresolved=("the decoder could not read this command, so its whole "
-                                   "dependence footprint is unknown",))
+        return Effects(
+            defs=(),
+            uses=(),
+            observed=False,
+            unresolved=("the decoder could not read this command, so its whole dependence footprint is unknown",),
+        )
     for key in _OPERAND_KEYS:
         operand = row.get(key)
         if isinstance(operand, Mapping) and operand.get("kind") == UNRESOLVED_OPERAND_KIND:
-            unresolved.append(f"{key}: the decoder resolved no value, so any address it carries "
-                              f"is invisible")
+            unresolved.append(f"{key}: the decoder resolved no value, so any address it carries is invisible")
 
     flagged = {file for name, file in FLAG_EVIDENCE.items() if name in payload}
     width = _address(payload.get(WIDTH_FIELD))
@@ -183,18 +198,19 @@ def effects_of_row(row: Mapping[str, Any], *, flag_masks: Mapping[str, int] | No
             if file in flagged and mask is None:
                 unresolved.append(
                     f"{name}: the command proves this address carries mode bits, and no mask was "
-                    f"derived for file {file!r}, so its slot cannot be identified")
+                    f"derived for file {file!r}, so its slot cannot be identified"
+                )
                 continue
             observed = True
             base = address & ~int(mask) if mask is not None else address
             span = max(1, width) if (sink is defs and width is not None) else 1
             sink.extend(Access(file, base + i) for i in range(span))
-    return Effects(defs=tuple(defs), uses=tuple(uses), unresolved=tuple(unresolved),
-                   observed=observed)
+    return Effects(defs=tuple(defs), uses=tuple(uses), unresolved=tuple(unresolved), observed=observed)
 
 
-def instructions_and_effects(trace: Any, *, flag_masks: Mapping[str, int] | None = None
-                             ) -> tuple[tuple[Instruction, ...], tuple[Effects, ...]]:
+def instructions_and_effects(
+    trace: Any, *, flag_masks: Mapping[str, int] | None = None
+) -> tuple[tuple[Instruction, ...], tuple[Effects, ...]]:
     """``(instructions, effects)`` for one decoded trace, in issue order.
 
     The command's decoded CLASS is its mnemonic: that is the granularity the direction of its state
@@ -206,16 +222,18 @@ def instructions_and_effects(trace: Any, *, flag_masks: Mapping[str, int] | None
         raise ValueError("the trace declares no instruction list")
     ordered = [r for r in rows if isinstance(r, Mapping)]
     instructions = tuple(
-        Instruction(index=i, mnemonic=str(r.get("class") or ""),
-                    operands={k: v for k, v in _payload(r).items()
-                              if isinstance(v, int) and not isinstance(v, bool)})
-        for i, r in enumerate(ordered))
+        Instruction(
+            index=i,
+            mnemonic=str(r.get("class") or ""),
+            operands={k: v for k, v in _payload(r).items() if isinstance(v, int) and not isinstance(v, bool)},
+        )
+        for i, r in enumerate(ordered)
+    )
     effects = list(effects_of_row(r, flag_masks=flag_masks) for r in ordered)
     return instructions, tuple(_inherit_destinations(instructions, effects))
 
 
-def _inherit_destinations(instructions: "Sequence[Instruction]",
-                          effects: "Sequence[Effects]") -> list[Effects]:
+def _inherit_destinations(instructions: "Sequence[Instruction]", effects: "Sequence[Effects]") -> list[Effects]:
     """Give each command that writes a destination it did not name the one staged for it.
 
     Walked forward so the stager is the nearest preceding one, which is what "preloaded" means. The
@@ -234,21 +252,38 @@ def _inherit_destinations(instructions: "Sequence[Instruction]",
             continue
         inherited = staged.get(stager)
         if not inherited:
-            out.append(Effects(defs=effect.defs, uses=effect.uses, observed=effect.observed,
-                               unresolved=effect.unresolved + (
-                                   f"writes a destination staged by a {stager} command, and no "
-                                   f"{stager} command established one before it",)))
+            out.append(
+                Effects(
+                    defs=effect.defs,
+                    uses=effect.uses,
+                    observed=effect.observed,
+                    unresolved=effect.unresolved
+                    + (
+                        f"writes a destination staged by a {stager} command, and no "
+                        f"{stager} command established one before it",
+                    ),
+                )
+            )
             continue
-        out.append(Effects(defs=tuple(effect.defs) + inherited,
-                           uses=tuple(effect.uses) + inherited,
-                           unresolved=effect.unresolved, observed=True))
+        out.append(
+            Effects(
+                defs=tuple(effect.defs) + inherited,
+                uses=tuple(effect.uses) + inherited,
+                unresolved=effect.unresolved,
+                observed=True,
+            )
+        )
         staged[stager] = inherited
     return out
 
 
-def program_from_trace(trace: Any, *, target: str | None = None,
-                       flag_masks: Mapping[str, int] | None = None,
-                       roles: Mapping[str, str] | None = None):
+def program_from_trace(
+    trace: Any,
+    *,
+    target: str | None = None,
+    flag_masks: Mapping[str, int] | None = None,
+    roles: Mapping[str, str] | None = None,
+):
     """A :class:`merlin.perf.depgraph.Program` over a decoded command trace.
 
     Supply ``target`` to derive the address masks and structural roles from its RTL facts, or supply
@@ -264,7 +299,9 @@ def program_from_trace(trace: Any, *, target: str | None = None,
     if roles is None and target is not None:
         roles = roles_for(target)
     instructions, effects = instructions_and_effects(trace, flag_masks=flag_masks)
-    regions = (depgraph.Region(name="[0,%d)" % len(instructions), start=0,
-                               end=len(instructions), trips=1),) if instructions else ()
-    return depgraph.Program(instructions=instructions, effects=effects, regions=regions,
-                            roles=dict(roles or {}))
+    regions = (
+        (depgraph.Region(name="[0,%d)" % len(instructions), start=0, end=len(instructions), trips=1),)
+        if instructions
+        else ()
+    )
+    return depgraph.Program(instructions=instructions, effects=effects, regions=regions, roles=dict(roles or {}))

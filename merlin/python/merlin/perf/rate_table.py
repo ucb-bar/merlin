@@ -77,6 +77,7 @@ LARGE capsules does not by itself widen the table -- certifying capsules that em
 compute class does. A corpus whose every member lowers to one opcode gives an instrument with one
 reading, however many members it has.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -113,12 +114,19 @@ _PASS = "pass"
 #: directory named `..._hidden` or `_holdout_...` names a holdout capsule in its path. And a public
 #: artifact carries no local absolute paths. Withholding satisfies both, and a caller doing local
 #: diagnosis can still ask for them.
-_PROVENANCE_KEYS = ("where", "source", "sources", "workload", "slowest_from",
-                    "submissions", "submission", "slowest_from_workload")
+_PROVENANCE_KEYS = (
+    "where",
+    "source",
+    "sources",
+    "workload",
+    "slowest_from",
+    "submissions",
+    "submission",
+    "slowest_from_workload",
+)
 
 
-def _redact_rows(rows: "Sequence[Mapping[str, Any]]",
-                 include_provenance: bool) -> list[dict[str, Any]]:
+def _redact_rows(rows: "Sequence[Mapping[str, Any]]", include_provenance: bool) -> list[dict[str, Any]]:
     """Rows with every path- or identity-bearing field dropped unless explicitly requested.
 
     The REASON survives redaction. A refusal that keeps its reason and loses its location still tells
@@ -136,8 +144,11 @@ def program_digest(buffer: Mapping[str, Any]) -> str:
     Commands and tensors only: a run directory differs per run, so hashing the file would count one
     program measured twenty times as twenty programs.
     """
-    body = [[row.get("opcode"), row.get("operands"), row.get("attributes")]
-            for row in (buffer.get("commands") or []) if isinstance(row, Mapping)]
+    body = [
+        [row.get("opcode"), row.get("operands"), row.get("attributes")]
+        for row in (buffer.get("commands") or [])
+        if isinstance(row, Mapping)
+    ]
     payload = {"commands": body, "tensors": buffer.get("tensors")}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
@@ -183,13 +194,18 @@ class ClassRate:
     cycles_max: float
 
     def to_dict(self, *, include_provenance: bool = False) -> dict[str, Any]:
-        out: dict[str, Any] = {"compute_class": self.compute_class,
-                "slowest_macs_per_cycle": self.slowest_macs_per_cycle,
-                "fastest_macs_per_cycle": self.fastest_macs_per_cycle,
-                "n_programs": self.n_programs,
-                "cycles_min": self.cycles_min, "cycles_max": self.cycles_max,
-                "licence": ("an EMPIRICAL bound over the cycle domain stated here; a program outside "
-                            "that domain is not covered by this rate and must not be priced with it")}
+        out: dict[str, Any] = {
+            "compute_class": self.compute_class,
+            "slowest_macs_per_cycle": self.slowest_macs_per_cycle,
+            "fastest_macs_per_cycle": self.fastest_macs_per_cycle,
+            "n_programs": self.n_programs,
+            "cycles_min": self.cycles_min,
+            "cycles_max": self.cycles_max,
+            "licence": (
+                "an EMPIRICAL bound over the cycle domain stated here; a program outside "
+                "that domain is not covered by this rate and must not be priced with it"
+            ),
+        }
         if include_provenance:
             out["slowest_from"] = self.slowest_from
         return out
@@ -228,20 +244,25 @@ class RateTable:
         return tuple(k for k in CE.COMPUTE_CLASSES if k not in priced)
 
     def to_dict(self, *, include_provenance: bool = False) -> dict[str, Any]:
-        return {"target": self.target, "peak_macs_per_cycle": self.peak_macs_per_cycle,
-                "rates": {k: v.to_dict(include_provenance=include_provenance)
-                          for k, v in sorted(self.rates.items())},
-                "n_programs_seen": self.n_programs_seen,
-                "n_classes_rated": len(self.rates),
-                "unpriced_classes": list(self.unpriced_classes),
-                "disagreements": _redact_rows(self.disagreements, include_provenance),
-                "refusals": _redact_rows(self.refusals, include_provenance),
-                "provenance": {
-                    "derived_from": "phase-1 certification runs, via merlin.perf.harvest",
-                    "kind": "trace_derived",
-                    "note": ("contended: other engines were live in the same window, so each rate is "
-                             "an upper bound on how slow this class has been seen to run, never an "
-                             "isolated cost and never promotable to a constant")}}
+        return {
+            "target": self.target,
+            "peak_macs_per_cycle": self.peak_macs_per_cycle,
+            "rates": {k: v.to_dict(include_provenance=include_provenance) for k, v in sorted(self.rates.items())},
+            "n_programs_seen": self.n_programs_seen,
+            "n_classes_rated": len(self.rates),
+            "unpriced_classes": list(self.unpriced_classes),
+            "disagreements": _redact_rows(self.disagreements, include_provenance),
+            "refusals": _redact_rows(self.refusals, include_provenance),
+            "provenance": {
+                "derived_from": "phase-1 certification runs, via merlin.perf.harvest",
+                "kind": "trace_derived",
+                "note": (
+                    "contended: other engines were live in the same window, so each rate is "
+                    "an upper bound on how slow this class has been seen to run, never an "
+                    "isolated cost and never promotable to a constant"
+                ),
+            },
+        }
 
 
 def _run_dirs(roots: Sequence[Path]):
@@ -250,8 +271,9 @@ def _run_dirs(roots: Sequence[Path]):
             yield from sorted(root.rglob(_RESULT_NAME))
 
 
-def observed_programs(target: str, *, authority: Any = None,
-                      roots: Sequence[Path] | None = None) -> tuple[dict[str, Program], list[dict]]:
+def observed_programs(
+    target: str, *, authority: Any = None, roots: Sequence[Path] | None = None
+) -> tuple[dict[str, Program], list[dict]]:
     """``({digest: Program}, refusals)`` over every certification run this target owns.
 
     The tier gate is :mod:`merlin.perf.harvest`'s, applied through the target's declared authority, so
@@ -275,15 +297,20 @@ def observed_programs(target: str, *, authority: Any = None,
             # NOT an error and not silent: a run that certified a capsule without keeping its emitted
             # program is a real gap in the record, and it is the difference between "this program has
             # no measurement" and "this measurement has no program".
-            refusals.append({"what": "emitted program", "where": str(run_dir),
-                             "reason": "the run kept no command buffer, so its cycles cannot be "
-                                       "attributed to a program"})
+            refusals.append(
+                {
+                    "what": "emitted program",
+                    "where": str(run_dir),
+                    "reason": "the run kept no command buffer, so its cycles cannot be attributed to a program",
+                }
+            )
             continue
         try:
             buffer = json.loads(buffer_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
-            refusals.append({"what": "emitted program", "where": str(buffer_path),
-                             "reason": f"{type(exc).__name__}: {exc}"})
+            refusals.append(
+                {"what": "emitted program", "where": str(buffer_path), "reason": f"{type(exc).__name__}: {exc}"}
+            )
             continue
         observations, refused = HV.harvest_capsule_result(result_path, authority=auth)
         refusals.extend(r.to_dict() for r in refused)
@@ -292,13 +319,19 @@ def observed_programs(target: str, *, authority: Any = None,
             if obs.quantity != _TOTAL_CYCLES or obs.unit != _CYCLES_UNIT:
                 continue
             if obs.status and obs.status != _PASS:
-                refusals.append({"what": "cycle count", "where": str(result_path),
-                                 "reason": f"the stage reached status {obs.status!r}; a cycle count "
-                                           f"from a stage that did not compute the declared "
-                                           f"operation is not poolable with one that did"})
+                refusals.append(
+                    {
+                        "what": "cycle count",
+                        "where": str(result_path),
+                        "reason": f"the stage reached status {obs.status!r}; a cycle count "
+                        f"from a stage that did not compute the declared "
+                        f"operation is not poolable with one that did",
+                    }
+                )
                 continue
-            program = found.setdefault(digest, Program(digest=digest, buffer=buffer,
-                                                       workload=obs.workload or run_dir.name))
+            program = found.setdefault(
+                digest, Program(digest=digest, buffer=buffer, workload=obs.workload or run_dir.name)
+            )
             program.measured.add(float(obs.value))
             program.submissions.add(obs.submission)
             program.tiers.add(obs.tier)
@@ -306,9 +339,14 @@ def observed_programs(target: str, *, authority: Any = None,
     return found, refusals
 
 
-def rates_for(target: str, *, peak_macs_per_cycle: float, authority: Any = None,
-              roots: Sequence[Path] | None = None,
-              programs: Mapping[str, Program] | None = None) -> RateTable:
+def rates_for(
+    target: str,
+    *,
+    peak_macs_per_cycle: float,
+    authority: Any = None,
+    roots: Sequence[Path] | None = None,
+    programs: Mapping[str, Program] | None = None,
+) -> RateTable:
     """The slowest measured MACs-per-cycle per compute class, over this target's certified runs.
 
     ``peak_macs_per_cycle`` is the target's DERIVED structural peak and is required: it is what turns
@@ -318,15 +356,21 @@ def rates_for(target: str, *, peak_macs_per_cycle: float, authority: Any = None,
     from merlin.perf import compose_estimate as CE
 
     if not peak_macs_per_cycle or peak_macs_per_cycle <= 0:
-        raise ValueError("rates_for needs the target's derived structural peak; a rate table built "
-                         "on an assumed peak describes a machine nobody has")
+        raise ValueError(
+            "rates_for needs the target's derived structural peak; a rate table built "
+            "on an assumed peak describes a machine nobody has"
+        )
 
     refusals: list[dict[str, Any]] = []
     if programs is None:
         programs, refusals = observed_programs(target, authority=authority, roots=roots)
 
-    table = RateTable(target=str(target), peak_macs_per_cycle=float(peak_macs_per_cycle),
-                      refusals=refusals, n_programs_seen=len(programs))
+    table = RateTable(
+        target=str(target),
+        peak_macs_per_cycle=float(peak_macs_per_cycle),
+        refusals=refusals,
+        n_programs_seen=len(programs),
+    )
     per_class: dict[str, list[tuple[float, str, float]]] = {}
     for program in programs.values():
         if not program.measured:
@@ -337,52 +381,86 @@ def rates_for(target: str, *, peak_macs_per_cycle: float, authority: Any = None,
             # RECORDED AND USED, NEVER AVERAGED. One buffer compiled by two submissions is two
             # programs; the slowest is the conservative evidence and the spread is what a reader
             # needs to judge it.
-            table.disagreements.append({
-                "workload": program.workload, "digest": program.digest[:12],
-                "measured": sorted(program.measured),
-                "submissions": sorted(program.submissions),
-                "used": max(program.measured),
-                "reason": ("one buffer measured several cycle counts -- the buffer is the input to "
-                           "code generation, so these are different emitted programs; the slowest "
-                           "is used and none is averaged")})
+            table.disagreements.append(
+                {
+                    "workload": program.workload,
+                    "digest": program.digest[:12],
+                    "measured": sorted(program.measured),
+                    "submissions": sorted(program.submissions),
+                    "used": max(program.measured),
+                    "reason": (
+                        "one buffer measured several cycle counts -- the buffer is the input to "
+                        "code generation, so these are different emitted programs; the slowest "
+                        "is used and none is averaged"
+                    ),
+                }
+            )
         cycles = program.cycles
         if not cycles or cycles <= 0:
             continue
         klass = CE.cost_class(program.buffer)
         if klass is None:
-            refusals.append({"what": "compute class", "where": program.workload,
-                             "reason": ("the program declares no opcode from the priced vocabulary, "
-                                        "or its work is only a lower bound so its arithmetic density "
-                                        "-- and therefore its cost class -- is UNKNOWN")})
+            refusals.append(
+                {
+                    "what": "compute class",
+                    "where": program.workload,
+                    "reason": (
+                        "the program declares no opcode from the priced vocabulary, "
+                        "or its work is only a lower bound so its arithmetic density "
+                        "-- and therefore its cost class -- is UNKNOWN"
+                    ),
+                }
+            )
             continue
         floor = CE._structural_floor(program.buffer, peak_macs_per_cycle)  # noqa: SLF001 -- one pricer
         if floor.get("status") != CE.DERIVED:
-            refusals.append({"what": "priced work", "where": program.workload,
-                             "reason": str(floor.get("reason") or "the buffer prices no work")})
+            refusals.append(
+                {
+                    "what": "priced work",
+                    "where": program.workload,
+                    "reason": str(floor.get("reason") or "the buffer prices no work"),
+                }
+            )
             continue
         if not floor.get("counts_every_command"):
             # A LOWER-BOUND PRICE MAKES THE RATE LOOK SLOWER THAN IT IS, and a ceiling built from a
             # too-slow rate is too tight -- which is to say, not a ceiling. The asymmetry is why this
             # refuses where the structural floor happily accepts the same program.
-            refusals.append({"what": "priced work", "where": program.workload,
-                             "reason": "some commands have no work-counting rule, so the priced MACs "
-                                       "are a lower bound and the rate derived from them would "
-                                       "understate how fast this class runs"})
+            refusals.append(
+                {
+                    "what": "priced work",
+                    "where": program.workload,
+                    "reason": "some commands have no work-counting rule, so the priced MACs "
+                    "are a lower bound and the rate derived from them would "
+                    "understate how fast this class runs",
+                }
+            )
             continue
         per_class.setdefault(klass, []).append((floor["macs"] / cycles, program.workload, cycles))
 
     for klass, observed in per_class.items():
         rate, workload, _ = min(observed)
         table.rates[klass] = ClassRate(
-            compute_class=klass, slowest_macs_per_cycle=rate, slowest_from=workload,
-            fastest_macs_per_cycle=max(o[0] for o in observed), n_programs=len(observed),
-            cycles_min=min(o[2] for o in observed), cycles_max=max(o[2] for o in observed))
+            compute_class=klass,
+            slowest_macs_per_cycle=rate,
+            slowest_from=workload,
+            fastest_macs_per_cycle=max(o[0] for o in observed),
+            n_programs=len(observed),
+            cycles_min=min(o[2] for o in observed),
+            cycles_max=max(o[2] for o in observed),
+        )
     return table
 
-def holdout_containment(target: str, *, peak_macs_per_cycle: float, authority: Any = None,
-                        roots: Sequence[Path] | None = None,
-                        programs: Mapping[str, Program] | None = None,
-                        include_provenance: bool = False) -> dict[str, Any]:
+
+def holdout_containment(
+    target: str,
+    *,
+    peak_macs_per_cycle: float,
+    authority: Any = None,
+    roots: Sequence[Path] | None = None,
+    programs: Mapping[str, Program] | None = None,
+    include_provenance: bool = False,
+) -> dict[str, Any]:
     """Do rates derived from HALF the programs produce bands containing the other half?
 
     This is the acceptance gate on using a rate table to price anything, and it is the same reasoning
@@ -414,11 +492,20 @@ def holdout_containment(target: str, *, peak_macs_per_cycle: float, authority: A
     undecided: list[dict[str, Any]] = []
     for program in test.values():
         klass = CE.cost_class(program.buffer)
-        band = CE.band(program.buffer, target=target, peak_macs_per_cycle=peak_macs_per_cycle,
-                       slowest_macs_per_cycle=table.rate_for(klass))
+        band = CE.band(
+            program.buffer,
+            target=target,
+            peak_macs_per_cycle=peak_macs_per_cycle,
+            slowest_macs_per_cycle=table.rate_for(klass),
+        )
         if band.get("status") != CE.DERIVED:
-            undecided.append({"workload": program.workload, "compute_class": klass,
-                              "reason": str(band.get("reason") or "band not derived")})
+            undecided.append(
+                {
+                    "workload": program.workload,
+                    "compute_class": klass,
+                    "reason": str(band.get("reason") or "band not derived"),
+                }
+            )
             continue
         if band.get("lower"):
             widths.append(float(band["upper"]) / float(band["lower"]))
@@ -431,23 +518,36 @@ def holdout_containment(target: str, *, peak_macs_per_cycle: float, authority: A
             inside += 1
     decided = below + above + inside
     widths.sort()
-    median_width = (widths[len(widths) // 2] if len(widths) % 2
-                    else (widths[len(widths) // 2 - 1] + widths[len(widths) // 2]) / 2) if widths else None
-    return {"target": target, "peak_macs_per_cycle": peak_macs_per_cycle,
-            "median_band_width": median_width,
-            "width_note": ("CONTAINMENT ALONE IS CHEAP: a band wide enough contains everything, so the "
-                           "width is half the result. A band must be about an order of magnitude to "
-                           "separate anything, and at this width a difference smaller than it is "
-                           "invisible -- which is what the band may not be used to deny"),
-            "n_train": len(train), "n_test": len(test), "n_decided": decided,
-            "contained": inside, "below_floor": below, "above_ceiling": above,
-            "containment_rate": (inside / decided) if decided else None,
-            "n_undecided": len(undecided),
-            # An undecided row names the WORKLOAD it could not decide, and a held-out capsule's name
-            # is an answer key. Redacted on the same terms as the table's own rows.
-            "undecided": _redact_rows(undecided[:20], include_provenance),
-            "rates_used": {k: v.to_dict(include_provenance=include_provenance)
-                           for k, v in sorted(table.rates.items())},
-            "unpriced_classes": list(table.unpriced_classes),
-            "licence": ("a containment rate over programs the rates were NOT derived from; a band "
-                        "may eliminate a candidate and may never certify one")}
+    median_width = (
+        (widths[len(widths) // 2] if len(widths) % 2 else (widths[len(widths) // 2 - 1] + widths[len(widths) // 2]) / 2)
+        if widths
+        else None
+    )
+    return {
+        "target": target,
+        "peak_macs_per_cycle": peak_macs_per_cycle,
+        "median_band_width": median_width,
+        "width_note": (
+            "CONTAINMENT ALONE IS CHEAP: a band wide enough contains everything, so the "
+            "width is half the result. A band must be about an order of magnitude to "
+            "separate anything, and at this width a difference smaller than it is "
+            "invisible -- which is what the band may not be used to deny"
+        ),
+        "n_train": len(train),
+        "n_test": len(test),
+        "n_decided": decided,
+        "contained": inside,
+        "below_floor": below,
+        "above_ceiling": above,
+        "containment_rate": (inside / decided) if decided else None,
+        "n_undecided": len(undecided),
+        # An undecided row names the WORKLOAD it could not decide, and a held-out capsule's name
+        # is an answer key. Redacted on the same terms as the table's own rows.
+        "undecided": _redact_rows(undecided[:20], include_provenance),
+        "rates_used": {k: v.to_dict(include_provenance=include_provenance) for k, v in sorted(table.rates.items())},
+        "unpriced_classes": list(table.unpriced_classes),
+        "licence": (
+            "a containment rate over programs the rates were NOT derived from; a band "
+            "may eliminate a candidate and may never certify one"
+        ),
+    }

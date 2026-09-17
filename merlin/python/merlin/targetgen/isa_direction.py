@@ -46,15 +46,26 @@ declares; the handful of instructions needed to WRITE the initial state is a :cl
 selection made by the caller, at the edge that is legitimately about one target -- the same shape as
 the role selection the layer-scale workload generator takes.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Sequence
 
 __all__ = [
-    "DEF", "USE", "DEF_USE", "UNKNOWN",
-    "DirectionError", "ProbeOps", "ProbeState", "OperandDirection", "DirectionModel",
-    "state_from_debug_result", "shared_bits", "candidate_values", "derive_directions",
+    "DEF",
+    "USE",
+    "DEF_USE",
+    "UNKNOWN",
+    "DirectionError",
+    "ProbeOps",
+    "ProbeState",
+    "OperandDirection",
+    "DirectionModel",
+    "state_from_debug_result",
+    "shared_bits",
+    "candidate_values",
+    "derive_directions",
 ]
 
 #: The operand selects the register the instruction WRITES.
@@ -128,12 +139,13 @@ class ProbeOps:
         missing = sorted({n for n in names if isa.resolve(n) is None})
         if missing:
             raise DirectionError(
-                f"{getattr(isa, 'target', '?')!r} defines no instruction for probe op(s): "
-                f"{', '.join(missing)}")
+                f"{getattr(isa, 'target', '?')!r} defines no instruction for probe op(s): {', '.join(missing)}"
+            )
         if int(self.settle) <= 0:
             raise DirectionError(
                 "the probe settle is zero; on a machine with no interlock that makes every seeded "
-                "state write invisible, and every instruction look as though it writes nothing")
+                "state write invisible, and every instruction look as though it writes nothing"
+            )
 
 
 @dataclass(frozen=True)
@@ -152,8 +164,7 @@ class ProbeState:
     def changed_against(self, other: "ProbeState") -> dict[str, tuple[int, ...]]:
         """``{file: slots that differ}`` -- WHERE the instruction wrote. This is the view a definition
         is derived from, because a definition is a claim about a location."""
-        return {name: tuple(slot for slot, _ in pairs)
-                for name, pairs in self.signature_against(other).items()}
+        return {name: tuple(slot for slot, _ in pairs) for name, pairs in self.signature_against(other).items()}
 
     def signature_against(self, other: "ProbeState") -> dict[str, tuple[tuple[int, Any], ...]]:
         """``{file: ((slot, new value), ...)}`` -- WHERE the instruction wrote AND WHAT it left there.
@@ -215,7 +226,8 @@ def state_from_debug_result(res: Mapping[str, Any]) -> ProbeState:
     if not files:
         raise DirectionError(
             "the oracle read-back publishes no architectural state, so no operand direction is "
-            "observable; this is UNKNOWN for every operand, not an instruction that writes nothing")
+            "observable; this is UNKNOWN for every operand, not an instruction that writes nothing"
+        )
     return ProbeState(files=files)
 
 
@@ -238,14 +250,12 @@ def shared_bits(fields: Mapping[str, Sequence[int | None]]) -> dict[str, frozens
                 owners.setdefault(b, set()).add(attr)
     out: dict[str, frozenset[int]] = {}
     for attr, bits in fields.items():
-        shared = {b for b in bits
-                  if isinstance(b, int) and b >= 0 and len(owners.get(b, ())) > 1}
+        shared = {b for b in bits if isinstance(b, int) and b >= 0 and len(owners.get(b, ())) > 1}
         out[attr] = frozenset(shared)
     return out
 
 
-def candidate_values(fields: Mapping[str, Sequence[int | None]], attr: str,
-                     ladder: Sequence[int]) -> list[int]:
+def candidate_values(fields: Mapping[str, Sequence[int | None]], attr: str, ladder: Sequence[int]) -> list[int]:
     """The values of ``attr`` this encoding can carry WITHOUT disturbing any other operand.
 
     A value is kept when every operand bit it sets maps to a real, linear word bit that ``attr`` does
@@ -281,7 +291,7 @@ class OperandDirection:
 
     mnemonic: str
     operand: str
-    direction: str                    # DEF | USE | DEF_USE | UNKNOWN
+    direction: str  # DEF | USE | DEF_USE | UNKNOWN
     #: The state file the operand indexes, where a definition revealed it. None when not established.
     state_file: str | None
     #: Slots the instruction wrote, per probed operand value -- the evidence for a definition.
@@ -312,12 +322,14 @@ class DirectionModel:
     def defs_of(self, mnemonic: str) -> tuple[str, ...]:
         """Operands this instruction WRITES. Empty for an instruction that was never probed -- callers
         that need the difference between "writes nothing" and "not established" ask :meth:`resolved`."""
-        return tuple(sorted(o for o, d in (self.by_mnemonic.get(mnemonic) or {}).items()
-                            if d.direction in (DEF, DEF_USE)))
+        return tuple(
+            sorted(o for o, d in (self.by_mnemonic.get(mnemonic) or {}).items() if d.direction in (DEF, DEF_USE))
+        )
 
     def uses_of(self, mnemonic: str) -> tuple[str, ...]:
-        return tuple(sorted(o for o, d in (self.by_mnemonic.get(mnemonic) or {}).items()
-                            if d.direction in (USE, DEF_USE)))
+        return tuple(
+            sorted(o for o, d in (self.by_mnemonic.get(mnemonic) or {}).items() if d.direction in (USE, DEF_USE))
+        )
 
     def file_of(self, mnemonic: str, operand: str) -> str | None:
         d = (self.by_mnemonic.get(mnemonic) or {}).get(operand)
@@ -333,8 +345,9 @@ class DirectionModel:
         return bool(ent) and all(d.known for d in ent.values())
 
     def unknown_operands(self) -> tuple[str, ...]:
-        return tuple(sorted(f"{m}.{o}: {d.reason}" for m, ops in self.by_mnemonic.items()
-                            for o, d in ops.items() if not d.known))
+        return tuple(
+            sorted(f"{m}.{o}: {d.reason}" for m, ops in self.by_mnemonic.items() for o, d in ops.items() if not d.known)
+        )
 
     def summary(self) -> dict:
         probed = len(self.by_mnemonic)
@@ -359,10 +372,17 @@ class DirectionModel:
             "summary": self.summary(),
             "refused": dict(self.refused),
             "by_mnemonic": {
-                m: {o: {"direction": d.direction, "state_file": d.state_file,
-                        "written_slots": list(d.written_slots), "reason": d.reason}
-                    for o, d in sorted(ops.items())}
-                for m, ops in sorted(self.by_mnemonic.items())},
+                m: {
+                    o: {
+                        "direction": d.direction,
+                        "state_file": d.state_file,
+                        "written_slots": list(d.written_slots),
+                        "reason": d.reason,
+                    }
+                    for o, d in sorted(ops.items())
+                }
+                for m, ops in sorted(self.by_mnemonic.items())
+            },
         }
 
     def merge(self, other: "DirectionModel") -> "DirectionModel":
@@ -389,23 +409,35 @@ class DirectionModel:
                 mine = slot.get(attr)
                 if mine is None or _STRENGTH[theirs.direction] > _STRENGTH[mine.direction]:
                     slot[attr] = theirs
-        refused = {m: why for m, why in {**dict(other.refused), **dict(self.refused)}.items()
-                   if m not in by}
-        return DirectionModel(target=self.target or other.target, by_mnemonic=by, refused=refused,
-                              provenance=" + ".join(x for x in (self.provenance, other.provenance) if x))
+        refused = {m: why for m, why in {**dict(other.refused), **dict(self.refused)}.items() if m not in by}
+        return DirectionModel(
+            target=self.target or other.target,
+            by_mnemonic=by,
+            refused=refused,
+            provenance=" + ".join(x for x in (self.provenance, other.provenance) if x),
+        )
 
     @classmethod
     def from_json(cls, blob: Mapping[str, Any]) -> "DirectionModel":
         by: dict[str, dict[str, OperandDirection]] = {}
         for m, ops in (blob.get("by_mnemonic") or {}).items():
-            by[m] = {o: OperandDirection(mnemonic=m, operand=o, direction=str(e.get("direction")),
-                                         state_file=e.get("state_file"),
-                                         written_slots=tuple(e.get("written_slots") or ()),
-                                         reason=str(e.get("reason") or ""))
-                     for o, e in ops.items()}
-        return cls(target=str(blob.get("target") or ""), by_mnemonic=by,
-                   refused=dict(blob.get("refused") or {}),
-                   provenance=str(blob.get("provenance") or ""))
+            by[m] = {
+                o: OperandDirection(
+                    mnemonic=m,
+                    operand=o,
+                    direction=str(e.get("direction")),
+                    state_file=e.get("state_file"),
+                    written_slots=tuple(e.get("written_slots") or ()),
+                    reason=str(e.get("reason") or ""),
+                )
+                for o, e in ops.items()
+            }
+        return cls(
+            target=str(blob.get("target") or ""),
+            by_mnemonic=by,
+            refused=dict(blob.get("refused") or {}),
+            provenance=str(blob.get("provenance") or ""),
+        )
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -430,7 +462,8 @@ class _Emitter:
         if "imm" not in fields:
             raise DirectionError(
                 f"the selected stall {self._ops.stall!r} carries no immediate field, so the probe "
-                "cannot hold issue for a measured number of cycles")
+                "cannot hold issue for a measured number of cycles"
+            )
         args["imm"] = int(self._ops.settle if cycles is None else cycles)
         self.emit(self._ops.stall, **args)
 
@@ -461,6 +494,7 @@ class _Emitter:
 
     def kernel_s(self, entry: str = "_start") -> str:
         from merlin.targetgen import isa_asm
+
         lines = [".section .text", f".globl {entry}", f".type {entry},@function", f"{entry}:"]
         for i, (mn, operands) in enumerate(self.items):
             word = isa_asm.assemble_line(self._isa, mn, operands)
@@ -476,8 +510,9 @@ _SENTINEL = (0x1000, 0x11)
 _SENTINEL_ALT = (0x2000, 0x13)
 
 
-def _preamble(isa: Any, ops: ProbeOps, *, scalar_perturb: int | None = None,
-              omit_seed_slot: int | None = None) -> _Emitter:
+def _preamble(
+    isa: Any, ops: ProbeOps, *, scalar_perturb: int | None = None, omit_seed_slot: int | None = None
+) -> _Emitter:
     """Known architectural state: distinct sentinels in the scalar file, then the caller's seeders,
     each followed by a settle so its effect is actually committed before the next one issues.
 
@@ -499,8 +534,14 @@ def _preamble(isa: Any, ops: ProbeOps, *, scalar_perturb: int | None = None,
     return e
 
 
-def _program(isa: Any, ops: ProbeOps, under_test: tuple[str, dict] | None, *,
-             scalar_perturb: int | None = None, omit_seed_slot: int | None = None) -> str:
+def _program(
+    isa: Any,
+    ops: ProbeOps,
+    under_test: tuple[str, dict] | None,
+    *,
+    scalar_perturb: int | None = None,
+    omit_seed_slot: int | None = None,
+) -> str:
     e = _preamble(isa, ops, scalar_perturb=scalar_perturb, omit_seed_slot=omit_seed_slot)
     if under_test is not None:
         e.emit(under_test[0], **under_test[1])
@@ -559,10 +600,14 @@ def _baseline_assignments(isa: Any, mnemonic: str, ladder: Sequence[int]) -> lis
     return out
 
 
-def derive_directions(isa: Any, ops: ProbeOps,
-                      run_probe: "Callable[[str], Mapping[str, Any]]", *,
-                      mnemonics: Sequence[str] | None = None,
-                      progress: "Callable[[str, str], None] | None" = None) -> DirectionModel:
+def derive_directions(
+    isa: Any,
+    ops: ProbeOps,
+    run_probe: "Callable[[str], Mapping[str, Any]]",
+    *,
+    mnemonics: Sequence[str] | None = None,
+    progress: "Callable[[str, str], None] | None" = None,
+) -> DirectionModel:
     """Measure every operand's direction by running the instruction on the target's own oracle.
 
     ``run_probe(kernel_s)`` executes one straight-line probe program and returns the oracle's debug
@@ -603,7 +648,8 @@ def derive_directions(isa: Any, ops: ProbeOps,
     if not reference_res.get("halted"):
         raise DirectionError(
             "the probe PREAMBLE alone did not halt on this oracle, so no instruction can be measured "
-            "against it; fix the preamble (or its budget) before reading any direction")
+            "against it; fix the preamble (or its budget) before reading any direction"
+        )
     reference = state_from_debug_result(reference_res)
 
     names = list(mnemonics) if mnemonics is not None else sorted(isa.by_mnemonic)
@@ -625,9 +671,11 @@ def derive_directions(isa: Any, ops: ProbeOps,
                 failure = f"the probe program could not be run: {type(exc).__name__}: {exc}"
                 continue
             if not base_res.get("halted"):
-                failure = (f"the probe program did not halt "
-                           f"({base_res.get('halt_reason') or 'no reason given'}), so its effect on "
-                           "state cannot be attributed to this instruction")
+                failure = (
+                    f"the probe program did not halt "
+                    f"({base_res.get('halt_reason') or 'no reason given'}), so its effect on "
+                    "state cannot be attributed to this instruction"
+                )
                 continue
             base_state = state_from_debug_result(base_res)
             base_changed = base_state.changed_against(reference)
@@ -639,14 +687,20 @@ def derive_directions(isa: Any, ops: ProbeOps,
                 if len(values) < 2:
                     shared = sorted(shared_bits(fields).get(attr, frozenset()))
                     verdict = OperandDirection(
-                        mnemonic, attr, UNKNOWN, None, reason=(
+                        mnemonic,
+                        attr,
+                        UNKNOWN,
+                        None,
+                        reason=(
                             f"this encoding cannot carry two distinct values of {attr!r} without "
                             f"disturbing an overlapping operand (word bits shared: "
-                            f"{shared or 'none'}), so varying it does not isolate it"))
+                            f"{shared or 'none'}), so varying it does not isolate it"
+                        ),
+                    )
                     best.setdefault(attr, verdict)
                     continue
                 if _STRENGTH.get((best.get(attr) or verdict_none).direction, 0) >= _STRENGTH[DEF]:
-                    continue                       # already established as strongly as it can be
+                    continue  # already established as strongly as it can be
                 trials: list[tuple[int, dict, dict]] = []
                 stopped: str | None = None
                 for value in values:
@@ -658,22 +712,22 @@ def derive_directions(isa: Any, ops: ProbeOps,
                     try:
                         res = run_probe(_program(isa, ops, (mnemonic, variant)))
                     except Exception as exc:  # noqa: BLE001 - a variant we cannot run is evidence lost
-                        stopped = (f"the {attr}={value} variant could not be run: "
-                                   f"{type(exc).__name__}: {exc}")
+                        stopped = f"the {attr}={value} variant could not be run: {type(exc).__name__}: {exc}"
                         break
                     if not res.get("halted"):
-                        stopped = (f"the {attr}={value} variant did not halt "
-                                   f"({res.get('halt_reason') or 'no reason given'})")
+                        stopped = (
+                            f"the {attr}={value} variant did not halt ({res.get('halt_reason') or 'no reason given'})"
+                        )
                         break
                     st = state_from_debug_result(res)
-                    trials.append((value, st.changed_against(reference),
-                                   st.signature_against(reference)))
-                verdict = (OperandDirection(mnemonic, attr, UNKNOWN, None, reason=stopped)
-                           if stopped is not None
-                           else _classify(mnemonic, attr, trials, reference))
+                    trials.append((value, st.changed_against(reference), st.signature_against(reference)))
+                verdict = (
+                    OperandDirection(mnemonic, attr, UNKNOWN, None, reason=stopped)
+                    if stopped is not None
+                    else _classify(mnemonic, attr, trials, reference)
+                )
                 if verdict.direction == USE:
-                    verdict = _attribute_use(isa, ops, run_probe, mnemonic, attr, base_ops,
-                                             verdict, reference, ladder)
+                    verdict = _attribute_use(isa, ops, run_probe, mnemonic, attr, base_ops, verdict, reference, ladder)
                 current = best.get(attr)
                 if current is None or _STRENGTH[verdict.direction] > _STRENGTH[current.direction]:
                     best[attr] = verdict
@@ -688,14 +742,19 @@ def derive_directions(isa: Any, ops: ProbeOps,
     provenance = (
         f"differential probe on the functional oracle: preamble seeds {ops.scalar_seeds} scalar "
         f"sentinel(s) and {len(ops.seeders)} state seeder(s), settle {ops.settle} cycles; "
-        f"observed state files {files}")
-    return DirectionModel(target=str(getattr(isa, "target", "") or ""), by_mnemonic=by_mnemonic,
-                          refused=refused, provenance=provenance)
+        f"observed state files {files}"
+    )
+    return DirectionModel(
+        target=str(getattr(isa, "target", "") or ""), by_mnemonic=by_mnemonic, refused=refused, provenance=provenance
+    )
 
 
-def _classify(mnemonic: str, attr: str,
-              trials: "Sequence[tuple[int, Mapping[str, tuple[int, ...]], Mapping[str, tuple]]]",
-              reference: ProbeState) -> OperandDirection:
+def _classify(
+    mnemonic: str,
+    attr: str,
+    trials: "Sequence[tuple[int, Mapping[str, tuple[int, ...]], Mapping[str, tuple]]]",
+    reference: ProbeState,
+) -> OperandDirection:
     """Decide one operand's direction from the effects its several values produced.
 
     A DEFINITION is the strong reading and needs the strong evidence: for some pair of probed values
@@ -717,41 +776,67 @@ def _classify(mnemonic: str, attr: str,
     than resolved in the flattering direction.
     """
     if not any(sig for _v, _c, sig in trials):
-        return OperandDirection(mnemonic, attr, UNKNOWN, None, reason=(
-            "the instruction changed no observable state at any probed value of this operand, so "
-            "nothing about it is established (the effect may be real and simply unobserved)"))
+        return OperandDirection(
+            mnemonic,
+            attr,
+            UNKNOWN,
+            None,
+            reason=(
+                "the instruction changed no observable state at any probed value of this operand, so "
+                "nothing about it is established (the effect may be real and simply unobserved)"
+            ),
+        )
 
     files = sorted({name for _v, changed, _s in trials for name in changed})
     for file_name in files:
         for i, (v_a, changed_a, _sa) in enumerate(trials):
-            for v_b, changed_b, _sb in trials[i + 1:]:
+            for v_b, changed_b, _sb in trials[i + 1 :]:
                 in_a = set(changed_a.get(file_name, ()))
                 in_b = set(changed_b.get(file_name, ()))
                 if not (v_a in in_a and v_a not in in_b and v_b in in_b and v_b not in in_a):
                     continue
                 direction, note = _read_modify_write(attr, file_name, trials, reference)
                 return OperandDirection(
-                    mnemonic, attr, direction, file_name,
+                    mnemonic,
+                    attr,
+                    direction,
+                    file_name,
                     written_slots=_widest_run(file_name, trials),
-                    reason=(f"the changed slot followed the operand: {attr}={v_a} changed slot {v_a} "
-                            f"of {file_name} and not slot {v_b}, and {attr}={v_b} the reverse{note}"))
+                    reason=(
+                        f"the changed slot followed the operand: {attr}={v_a} changed slot {v_a} "
+                        f"of {file_name} and not slot {v_b}, and {attr}={v_b} the reverse{note}"
+                    ),
+                )
 
     signatures = {tuple(sorted((n, tuple(p)) for n, p in sig.items())) for _v, _c, sig in trials}
     if len(signatures) > 1:
         values = ", ".join(str(v) for v, _c, _s in trials)
         return OperandDirection(
-            mnemonic, attr, USE, None, reason=(
+            mnemonic,
+            attr,
+            USE,
+            None,
+            reason=(
                 f"the instruction's effect differed across {attr} in ({values}) without the written "
-                "slot following it, so the instruction read this operand rather than writing through it"))
+                "slot following it, so the instruction read this operand rather than writing through it"
+            ),
+        )
 
-    return OperandDirection(mnemonic, attr, UNKNOWN, None, reason=(
-        f"the effect was identical at every probed value of {attr}; the probe saw no dependence on "
-        "this operand, which is weaker than establishing that it is unread"))
+    return OperandDirection(
+        mnemonic,
+        attr,
+        UNKNOWN,
+        None,
+        reason=(
+            f"the effect was identical at every probed value of {attr}; the probe saw no dependence on "
+            "this operand, which is weaker than establishing that it is unread"
+        ),
+    )
 
 
-def _widest_run(file_name: str,
-                trials: "Sequence[tuple[int, Mapping[str, tuple[int, ...]], Mapping[str, tuple]]]"
-                ) -> tuple[int, ...]:
+def _widest_run(
+    file_name: str, trials: "Sequence[tuple[int, Mapping[str, tuple[int, ...]], Mapping[str, tuple]]]"
+) -> tuple[int, ...]:
     """The widest run of consecutive slots any probed value wrote, starting at the slot it named.
 
     A definition is not always one slot wide: a result in a format wider than a register lands in a
@@ -772,26 +857,34 @@ def _widest_run(file_name: str,
     return best
 
 
-def _read_modify_write(attr: str, file_name: str,
-                       trials: "Sequence[tuple[int, Mapping[str, tuple[int, ...]], Mapping[str, tuple]]]",
-                       reference: ProbeState) -> tuple[str, str]:
+def _read_modify_write(
+    attr: str,
+    file_name: str,
+    trials: "Sequence[tuple[int, Mapping[str, tuple[int, ...]], Mapping[str, tuple]]]",
+    reference: ProbeState,
+) -> tuple[str, str]:
     """Whether a definition also READS its destination, where the file publishes values to tell."""
     if not reference.value_published(file_name):
-        return DEF, (f"; whether it also reads {file_name} is NOT separable -- the oracle publishes "
-                     "that file as presence only, so the written value cannot be compared")
+        return DEF, (
+            f"; whether it also reads {file_name} is NOT separable -- the oracle publishes "
+            "that file as presence only, so the written value cannot be compared"
+        )
     written: set = set()
     for value, _changed, sig in trials:
         for slot, new in sig.get(file_name, ()):
             if slot == value:
                 written.add(new)
     if len(written) > 1:
-        return DEF_USE, ("; the value written differed between destinations while the sources were "
-                         "held fixed, so the instruction also read what the destination held")
+        return DEF_USE, (
+            "; the value written differed between destinations while the sources were "
+            "held fixed, so the instruction also read what the destination held"
+        )
     return DEF, "; the value written was the same at every destination, so it does not read it"
 
 
-def _perturbation_files(isa: Any, ops: ProbeOps, run_probe: "Callable[[str], Mapping[str, Any]]",
-                        reference: ProbeState, slot: int) -> dict[str, tuple[str, ProbeState]]:
+def _perturbation_files(
+    isa: Any, ops: ProbeOps, run_probe: "Callable[[str], Mapping[str, Any]]", reference: ProbeState, slot: int
+) -> dict[str, tuple[str, ProbeState]]:
     """Which state file each perturbation of ``slot`` moves, and the state the preamble then leaves.
 
     The perturbation NAMES its own file: run the preamble with one slot's content altered, diff it
@@ -820,10 +913,17 @@ def _perturbation_files(isa: Any, ops: ProbeOps, run_probe: "Callable[[str], Map
     return found
 
 
-def _attribute_use(isa: Any, ops: ProbeOps, run_probe: "Callable[[str], Mapping[str, Any]]",
-                   mnemonic: str, attr: str, base_ops: Mapping[str, int],
-                   verdict: OperandDirection, reference: ProbeState,
-                   ladder: Sequence[int]) -> OperandDirection:
+def _attribute_use(
+    isa: Any,
+    ops: ProbeOps,
+    run_probe: "Callable[[str], Mapping[str, Any]]",
+    mnemonic: str,
+    attr: str,
+    base_ops: Mapping[str, int],
+    verdict: OperandDirection,
+    reference: ProbeState,
+    ladder: Sequence[int],
+) -> OperandDirection:
     """Which state FILE a use operand reads -- established by taking that content away.
 
     Knowing an instruction reads an operand is not enough to build a dependence: an edge joins a use
@@ -843,53 +943,100 @@ def _attribute_use(isa: Any, ops: ProbeOps, run_probe: "Callable[[str], Mapping[
     fields = isa.fields_of(mnemonic)
     slot = int(ops.attribution_value)
     if not candidate_values(fields, attr, (slot,)):
-        return OperandDirection(mnemonic, attr, USE, None, written_slots=verdict.written_slots,
-                                reason=verdict.reason + (
-                                    f"; its file was not attributed -- the encoding cannot carry "
-                                    f"{attr}={slot}, the only value distinct from every sibling's"))
+        return OperandDirection(
+            mnemonic,
+            attr,
+            USE,
+            None,
+            written_slots=verdict.written_slots,
+            reason=verdict.reason
+            + (
+                f"; its file was not attributed -- the encoding cannot carry "
+                f"{attr}={slot}, the only value distinct from every sibling's"
+            ),
+        )
     if any(v == slot for k, v in base_ops.items() if k != attr):
-        return OperandDirection(mnemonic, attr, USE, None, written_slots=verdict.written_slots,
-                                reason=verdict.reason + (
-                                    f"; its file was not attributed -- another operand also names "
-                                    f"slot {slot}, so withdrawing that slot perturbs both"))
+        return OperandDirection(
+            mnemonic,
+            attr,
+            USE,
+            None,
+            written_slots=verdict.written_slots,
+            reason=verdict.reason
+            + (
+                f"; its file was not attributed -- another operand also names "
+                f"slot {slot}, so withdrawing that slot perturbs both"
+            ),
+        )
     assignment = dict(base_ops)
     assignment[attr] = slot
     files = _perturbation_files(isa, ops, run_probe, reference, slot)
     runs: dict[str, Any] = {}
-    for tag, kwargs, baseline in (("plain", {}, reference),
-                                  ("scalar", {"scalar_perturb": slot},
-                                   (files.get("scalar") or (None, None))[1]),
-                                  ("seed", {"omit_seed_slot": slot},
-                                   (files.get("seed") or (None, None))[1])):
+    for tag, kwargs, baseline in (
+        ("plain", {}, reference),
+        ("scalar", {"scalar_perturb": slot}, (files.get("scalar") or (None, None))[1]),
+        ("seed", {"omit_seed_slot": slot}, (files.get("seed") or (None, None))[1]),
+    ):
         if baseline is None:
             continue
         try:
             res = run_probe(_program(isa, ops, (mnemonic, assignment), **kwargs))
         except Exception as exc:  # noqa: BLE001
-            return OperandDirection(mnemonic, attr, USE, None, written_slots=verdict.written_slots,
-                                    reason=verdict.reason + (
-                                        f"; its file was not attributed -- the {tag} run failed: "
-                                        f"{type(exc).__name__}: {exc}"))
+            return OperandDirection(
+                mnemonic,
+                attr,
+                USE,
+                None,
+                written_slots=verdict.written_slots,
+                reason=verdict.reason
+                + (f"; its file was not attributed -- the {tag} run failed: {type(exc).__name__}: {exc}"),
+            )
         if not res.get("halted"):
-            return OperandDirection(mnemonic, attr, USE, None, written_slots=verdict.written_slots,
-                                    reason=verdict.reason + (
-                                        f"; its file was not attributed -- the {tag} run did not halt"))
+            return OperandDirection(
+                mnemonic,
+                attr,
+                USE,
+                None,
+                written_slots=verdict.written_slots,
+                reason=verdict.reason + (f"; its file was not attributed -- the {tag} run did not halt"),
+            )
         runs[tag] = state_from_debug_result(res).signature_against(baseline)
 
     hits = [tag for tag in ("scalar", "seed") if tag in runs and runs[tag] != runs["plain"]]
     named = [files[tag][0] for tag in hits if tag in files]
     if len(named) == 1:
-        return OperandDirection(mnemonic, attr, USE, named[0], written_slots=verdict.written_slots,
-                                reason=verdict.reason + (
-                                    f"; withdrawing the content of slot {slot} of {named[0]} changed "
-                                    f"the instruction's effect, so that is the file it reads"))
+        return OperandDirection(
+            mnemonic,
+            attr,
+            USE,
+            named[0],
+            written_slots=verdict.written_slots,
+            reason=verdict.reason
+            + (
+                f"; withdrawing the content of slot {slot} of {named[0]} changed "
+                f"the instruction's effect, so that is the file it reads"
+            ),
+        )
     if len(named) > 1:
-        return OperandDirection(mnemonic, attr, USE, None, written_slots=verdict.written_slots,
-                                reason=verdict.reason + (
-                                    f"; its file was not attributed -- withdrawing slot {slot} of "
-                                    f"more than one file ({', '.join(sorted(named))}) changed the "
-                                    "effect, so the evidence does not separate them"))
-    return OperandDirection(mnemonic, attr, USE, None, written_slots=verdict.written_slots,
-                            reason=verdict.reason + (
-                                f"; its file was not attributed -- withdrawing slot {slot} of any "
-                                "seeded file left the effect unchanged"))
+        return OperandDirection(
+            mnemonic,
+            attr,
+            USE,
+            None,
+            written_slots=verdict.written_slots,
+            reason=verdict.reason
+            + (
+                f"; its file was not attributed -- withdrawing slot {slot} of "
+                f"more than one file ({', '.join(sorted(named))}) changed the "
+                "effect, so the evidence does not separate them"
+            ),
+        )
+    return OperandDirection(
+        mnemonic,
+        attr,
+        USE,
+        None,
+        written_slots=verdict.written_slots,
+        reason=verdict.reason
+        + (f"; its file was not attributed -- withdrawing slot {slot} of any seeded file left the effect unchanged"),
+    )

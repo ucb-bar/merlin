@@ -4,10 +4,11 @@ The trusted build adapter supplies an exact source closure and request pins.
 This module only checks and applies that obligation to an existing policy; it
 does not discover dependencies, authorize an oracle, or execute a command.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -36,6 +37,7 @@ def _overlap(left, right):
 def _coverage_gaps(prefix, surfaces):
     """Reuse the shared one-index-per-call mount visibility implementation."""
     from .bwrap import coverage_gap
+
     return coverage_gap(prefix, surfaces)
 
 
@@ -46,9 +48,11 @@ def _validate_format_data(rows):
     host-selected leaves, with fixed roles and freshly validated content.
     """
     import os
+
     from merlin.common import quant_formats
     from merlin.common.paths import schemas_dir
     from merlin.common.yaml import load_yaml
+
     if os.environ.get(quant_formats._ENV_OVERLAY):
         raise ValueError("build format-data grants do not authorize registry overlays")
     expected = {
@@ -63,9 +67,16 @@ def _validate_format_data(rows):
     schema = load_yaml(expected["numeric_format_schema"])
     fields = schema.get("required_top_level_fields") if isinstance(schema, dict) else None
     raw = load_yaml(expected["numeric_format_registry"])
-    if (not isinstance(fields, list) or not fields or not all(isinstance(x, str) for x in fields)
-            or not isinstance(raw, dict) or set(raw) != {"version", "formats"}
-            or raw["version"] != 1 or not isinstance(raw["formats"], dict) or not raw["formats"]):
+    if (
+        not isinstance(fields, list)
+        or not fields
+        or not all(isinstance(x, str) for x in fields)
+        or not isinstance(raw, dict)
+        or set(raw) != {"version", "formats"}
+        or raw["version"] != 1
+        or not isinstance(raw["formats"], dict)
+        or not raw["formats"]
+    ):
         raise ValueError("format registry/schema structure is invalid")
     for name, entry in raw["formats"].items():
         if not isinstance(name, str) or not isinstance(entry, dict):
@@ -86,6 +97,7 @@ class HostBuildDependencies:
     Tools are pin obligations only: this capability cannot mount tools or data.
     The request and worker must be pinned files appearing in the exact argv.
     """
+
     source_root: str
     namespace_root: str
     argv: tuple[str, ...]
@@ -117,6 +129,7 @@ class HostBuildDependencies:
         """Return a fresh argv; never mutate or cache an extended native policy."""
         from .answer_surfaces import AnswerSurface
         from .bwrap import _mounts
+
         self.revalidate(argv)
         source_root, namespace = _path(self.source_root), _path(self.namespace_root)
         if not source_root.is_dir() or not namespace.is_dir() or namespace == Path("/"):
@@ -124,25 +137,29 @@ class HostBuildDependencies:
         prefix = list(sandbox["command_prefix"])
         if not prefix or Path(prefix[0]).name != "bwrap" or "--clearenv" not in prefix:
             raise ValueError("build extension requires the existing clear-environment bwrap policy")
-        surfaces = [AnswerSurface(str(s.get("label", "answer")), _path(s["path"]),
-                                 s["kind"], str(s.get("origin", "oracle")))
-                    for s in sandbox["answer_surfaces"]]
+        surfaces = [
+            AnswerSurface(str(s.get("label", "answer")), _path(s["path"]), s["kind"], str(s.get("origin", "oracle")))
+            for s in sandbox["answer_surfaces"]
+        ]
         if not surfaces or _coverage_gaps(prefix, surfaces):
             raise ValueError("existing build policy has missing or exposed answer masks")
         mounts = _mounts(prefix)
         # A namespace is an existing import tree, not any filesystem directory
         # named by a flag value. Frozen policies may expose only individual leaves.
-        readonly_destinations = {prefix[i+2] for i, flag in enumerate(prefix[:-2])
-                                 if flag == "--ro-bind" and prefix[i+1] != "/dev/null"}
-        if not any(state == "expose" and dest in readonly_destinations
-                   and namespace in Path(dest).parents for state, _, dest in mounts):
+        readonly_destinations = {
+            prefix[i + 2] for i, flag in enumerate(prefix[:-2]) if flag == "--ro-bind" and prefix[i + 1] != "/dev/null"
+        }
+        if not any(
+            state == "expose" and dest in readonly_destinations and namespace in Path(dest).parents
+            for state, _, dest in mounts
+        ):
             raise ValueError("build destination namespace has no existing readonly source view")
         masks = {str(s.path) for s in surfaces}
         insertion = None
         for i, value in enumerate(prefix):
-            if ((value == "--tmpfs" and i+1 < len(prefix) and prefix[i+1] in masks)
-                    or (value == "--ro-bind" and i+2 < len(prefix)
-                        and prefix[i+1] == "/dev/null" and prefix[i+2] in masks)):
+            if (value == "--tmpfs" and i + 1 < len(prefix) and prefix[i + 1] in masks) or (
+                value == "--ro-bind" and i + 2 < len(prefix) and prefix[i + 1] == "/dev/null" and prefix[i + 2] in masks
+            ):
                 insertion = i
                 break
         if insertion is None:
@@ -177,22 +194,25 @@ class HostBuildDependencies:
                 raise ValueError("build overlay root must be a fresh private directory")
             # A private source snapshot is never copied into public scratch or
             # served writable. Reuse the host's existing missing-leaf merger.
-            if any(state == "expose" and _overlap(private, Path(dest))
-                   for state, _, dest in mounts):
+            if any(state == "expose" and _overlap(private, Path(dest)) for state, _, dest in mounts):
                 raise ValueError("build overlay root overlaps an existing public sandbox view")
             mapped, changed_destinations = list(prefix), []
             for i, option in enumerate(prefix[:-2]):
                 if option != "--ro-bind":
                     continue
-                dest = Path(prefix[i+2])
+                dest = Path(prefix[i + 2])
                 if dest == namespace or namespace in dest.parents:
-                    mapped[i+2] = str(source_root / dest.relative_to(namespace))
-                    changed_destinations.append(i+2)
-            dependency_record = {"shared_source_root": str(source_root), "shared_sources": {
-                str(Path(src).relative_to(source_root)): pin
-                for src, _, pin in (*self.source_grants, *(row[:3] for row in self.format_data))}}
+                    mapped[i + 2] = str(source_root / dest.relative_to(namespace))
+                    changed_destinations.append(i + 2)
+            dependency_record = {
+                "shared_source_root": str(source_root),
+                "shared_sources": {
+                    str(Path(src).relative_to(source_root)): pin
+                    for src, _, pin in (*self.source_grants, *(row[:3] for row in self.format_data))
+                },
+            }
             merged = overlay_builder(mapped, dependency_record, private)
-            base, additions = list(merged[:len(prefix)]), list(merged[len(prefix):])
+            base, additions = list(merged[: len(prefix)]), list(merged[len(prefix) :])
             for index in changed_destinations:
                 base[index] = prefix[index]
             if len(additions) % 3:
@@ -200,8 +220,8 @@ class HostBuildDependencies:
             for i in range(0, len(additions), 3):
                 if additions[i] != "--ro-bind":
                     raise ValueError("host overlay builder returned a non-readonly grant")
-                src = Path(additions[i+2])
-                additions[i+2] = str(namespace / src.relative_to(source_root))
+                src = Path(additions[i + 2])
+                additions[i + 2] = str(namespace / src.relative_to(source_root))
         elif overlay_root is not None:
             raise ValueError("build overlay root has no trusted merger")
         result = [*base[:insertion], *additions, *base[insertion:]]

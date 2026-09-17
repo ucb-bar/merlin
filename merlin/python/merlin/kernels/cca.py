@@ -26,6 +26,7 @@ cross-checks two CCAs (e.g. source-lifted vs asm-lifted) per populated facet fie
 "good reconstruction" validity gate. RVV fills the ``vector`` facet first; other targets add
 their facets + lifters behind this same schema without a rewrite.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -36,12 +37,12 @@ from typing import Any
 @dataclass
 class ComputeFacet:
     op: str | None = None
-    contraction_form: str | None = None      # fused_fma | mul_add | outerproduct | dot | systolic
-    accumulator_dtype: str | None = None      # f32 | i32 | f64 | ...
-    widening: bool | None = None              # i8xi8->i32 widening MAC (vwmacc / array widen)
-    reduction_form: str | None = None         # tree | vredsum | vfredusum | none
-    register_block: tuple | None = None       # (mr, nr) or tile dims
-    epilogue: str | None = None               # requant_narrow | none
+    contraction_form: str | None = None  # fused_fma | mul_add | outerproduct | dot | systolic
+    accumulator_dtype: str | None = None  # f32 | i32 | f64 | ...
+    widening: bool | None = None  # i8xi8->i32 widening MAC (vwmacc / array widen)
+    reduction_form: str | None = None  # tree | vredsum | vfredusum | none
+    register_block: tuple | None = None  # (mr, nr) or tile dims
+    epilogue: str | None = None  # requant_narrow | none
     # SHARED, TARGET-AGNOSTIC accumulator-residency concept. "Does the output accumulator stay in
     # the fastest storage (vector regs / PE array / on-chip buffer) across the WHOLE reduction, and
     # commit ONCE after it?" — the property that distinguishes an expert micro-kernel from a lowering
@@ -71,17 +72,17 @@ class ComputeFacet:
 class VectorFacet:
     sew: int | None = None
     lmul: float | None = None
-    vl_strategy: str | None = None            # vsetvl_loop | vsetivli_fixed
-    tail: str | None = None                   # ta | tu | none
+    vl_strategy: str | None = None  # vsetvl_loop | vsetivli_fixed
+    tail: str | None = None  # ta | tu | none
 
 
 @dataclass
-class MemoryFacet:                             # data-movement / packing (the #1 expert GEMM lever)
+class MemoryFacet:  # data-movement / packing (the #1 expert GEMM lever)
     # How the inner-loop operands are fetched — the packing/layout story the expert wins on (e.g.
     # XNNPACK's goi-prepacked contiguous B panel streamed by pointer-advance vs our strided
     # model-layout gather). "unit_stride" = packed contiguous panels (one vle per K, reused across the
     # MR accumulators); "strided" = vlse model-layout; "indexed" = gather. Lifted from decode.memory.
-    access_pattern: str | None = None          # unit_stride | strided | indexed | none
+    access_pattern: str | None = None  # unit_stride | strided | indexed | none
     # Is one loaded operand panel REUSED across the MR register-block accumulators (the loads/FMA
     # amortization — expert ~1.1, unblocked baseline ~2.0)? True iff the K-loop broadcasts a single
     # vector load across multiple fma accumulators (the .vf register-block idiom).
@@ -96,12 +97,12 @@ class MemoryFacet:                             # data-movement / packing (the #1
     # strategy against the target's declared capacity, so a lowering that overruns is a divergence
     # rather than a mystery.
     capacity_fit: bool | None = None
-    onchip_bytes_required: int | None = None   # METRIC: what the region's working set needs
-    banks_used: int | None = None              # METRIC: distinct on-chip banks the region occupies
-    spill_reason: str | None = None            # why it did not fit: operand | accumulator | both | none
+    onchip_bytes_required: int | None = None  # METRIC: what the region's working set needs
+    banks_used: int | None = None  # METRIC: distinct on-chip banks the region occupies
+    spill_reason: str | None = None  # why it did not fit: operand | accumulator | both | none
     # Folded in from the retired DataflowFacet: bulk movement is data movement, which every target has.
-    dma_pattern: str | None = None             # burst | strided | scatter_gather | none
-    onchip_resident: str | None = None         # which operand stays on chip: a | b | both | none
+    dma_pattern: str | None = None  # burst | strided | scatter_gather | none
+    onchip_resident: str | None = None  # which operand stays on chip: a | b | both | none
 
 
 @dataclass
@@ -118,13 +119,13 @@ class DispatchFacet:
     ``n_dispatches`` is a METRIC (a count, not a choice). The rest are choices a schedule makes.
     """
 
-    n_dispatches: int | None = None            # METRIC: commands issued to the endpoint
-    config_fraction: float | None = None       # METRIC: share of them that only set state
-    descriptor_reuse: bool | None = None       # state set once and inherited, vs re-set per tile
-    loop_offloaded: bool | None = None         # a loop nest handed to the endpoint's own sequencer
-    double_buffered_banks: int | None = None   # distinct on-chip banks alternated across tiles
-    dma_overlap: bool | None = None            # bulk movement issued to overlap with compute
-    dma_issue_to_wait: int | None = None       # METRIC: instructions between a DMA issue and its wait
+    n_dispatches: int | None = None  # METRIC: commands issued to the endpoint
+    config_fraction: float | None = None  # METRIC: share of them that only set state
+    descriptor_reuse: bool | None = None  # state set once and inherited, vs re-set per tile
+    loop_offloaded: bool | None = None  # a loop nest handed to the endpoint's own sequencer
+    double_buffered_banks: int | None = None  # distinct on-chip banks alternated across tiles
+    dma_overlap: bool | None = None  # bulk movement issued to overlap with compute
+    dma_issue_to_wait: int | None = None  # METRIC: instructions between a DMA issue and its wait
 
 
 @dataclass
@@ -138,12 +139,12 @@ class LayoutFacet:
     """
 
     transpose_materialized: bool | None = None  # a transpose written to memory vs folded into access
-    operand_major: str | None = None            # k_major | m_major | n_major
-    prepack_required: bool | None = None        # the endpoint needs an offline-packed operand panel
+    operand_major: str | None = None  # k_major | m_major | n_major
+    prepack_required: bool | None = None  # the endpoint needs an offline-packed operand panel
 
 
 @dataclass
-class EnvelopeFacet:                             # the code AROUND the inner loop (prologue/epilogue)
+class EnvelopeFacet:  # the code AROUND the inner loop (prologue/epilogue)
     """What the compiler emits around the compute loop, as opposed to inside it.
 
     Every other facet describes the inner loop. That left a blind spot: two kernels can agree on
@@ -158,9 +159,9 @@ class EnvelopeFacet:                             # the code AROUND the inner loo
     available, the object's undefined runtime symbols -- never guessed from a source substring.
     """
 
-    calls_in_loop: int | None = None            # call sites inside a loop body (expert GEMM: 0)
+    calls_in_loop: int | None = None  # call sites inside a loop body (expert GEMM: 0)
     runtime_calls: tuple[str, ...] | None = None  # runtime helpers the region calls, e.g. memrefCopy
-    work_ins_per_mac: float | None = None       # METRIC: the N^3 coefficient (hot-loop efficiency)
+    work_ins_per_mac: float | None = None  # METRIC: the N^3 coefficient (hot-loop efficiency)
     overhead_ins_per_output: float | None = None  # METRIC: the N^2 coefficient (per-tile overhead)
 
 
@@ -180,7 +181,7 @@ class SpatialFacet:
 
     pe_rows: int | None = None
     pe_cols: int | None = None
-    dataflow: str | None = None               # ws | os | outer_product
+    dataflow: str | None = None  # ws | os | outer_product
     accumulator_resident: bool | None = None
 
 
@@ -197,11 +198,11 @@ class SimtFacet:
     the schedule makes and therefore candidate levers.
     """
 
-    warps: int | None = None                  # warps cooperating on this region
-    threads_per_warp: int | None = None       # fixed geometry, not a choice
-    smem_resident: bool | None = None         # operand tile staged in shared memory across the reduction
-    barriers_in_loop: int | None = None       # barriers INSIDE the reduction loop (0 = none needed)
-    divergence: str | None = None             # uniform | divergent
+    warps: int | None = None  # warps cooperating on this region
+    threads_per_warp: int | None = None  # fixed geometry, not a choice
+    smem_resident: bool | None = None  # operand tile staged in shared memory across the reduction
+    barriers_in_loop: int | None = None  # barriers INSIDE the reduction loop (0 = none needed)
+    divergence: str | None = None  # uniform | divergent
 
 
 @dataclass
@@ -274,7 +275,7 @@ class CommunicationFacet:
 @dataclass
 class CCA:
     op: str
-    backend: list[str]                         # ["rvv"], or ["npu","rvv"] for a composite region
+    backend: list[str]  # ["rvv"], or ["npu","rvv"] for a composite region
     compute: ComputeFacet = field(default_factory=ComputeFacet)
     vector: VectorFacet | None = None
     memory: MemoryFacet | None = None
@@ -294,7 +295,7 @@ class CCA:
     #: Which QUESTION this CCA answers; see :data:`SCOPES`. Defaults to ``kernel`` because every
     #: lifter that predates this axis lifts one region's inner loop.
     scope: str = "kernel"
-    provenance: dict[str, Any] = field(default_factory=dict)   # level, source, confidence
+    provenance: dict[str, Any] = field(default_factory=dict)  # level, source, confidence
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -311,17 +312,19 @@ class CCA:
         if self.coverage is not None and self.scope != "program":
             out.append(
                 f"coverage is populated at scope {self.scope!r}: 'what fraction of the model is "
-                f"claimed' is not a question a single region can answer")
+                f"claimed' is not a question a single region can answer"
+            )
         return tuple(out)
 
 
 # ---- lifters ------------------------------------------------------------------------
 
+
 def _dominant_vtype(stream) -> tuple[int | None, float | None]:
     hist = stream.vtype_histogram()
     if not hist:
         return None, None
-    top = max(hist.items(), key=lambda kv: kv[1])[0]   # e.g. "e32m2tama"
+    top = max(hist.items(), key=lambda kv: kv[1])[0]  # e.g. "e32m2tama"
     sew = lmul = None
     if top.startswith("e"):
         i = 1
@@ -406,7 +409,7 @@ def _infer_register_block(stream, sew, lmul) -> tuple | None:
         if any(m.startswith(p) for p in _FMA) and i.raw.operands:
             dest = i.raw.operands[0]
             acc_dests_any.add(dest)
-            if m.startswith(("vfmacc.vf", "vmacc.vx")):   # broadcast (register-blocking) form
+            if m.startswith(("vfmacc.vf", "vmacc.vx")):  # broadcast (register-blocking) form
                 acc_dests_vf.add(dest)
     mr = len(acc_dests_vf) or len(acc_dests_any) or None
     # NR = lanes in the accumulator vreg group = VLEN/SEW * LMUL. VLEN is a target constant not in
@@ -436,25 +439,78 @@ def _infer_register_block(stream, sew, lmul) -> tuple | None:
 #: matched, so ``_infer_activation_vectorization`` returned None, no divergence was raised,
 #: ``action_catalog`` was never consulted, and the beam never proposed anything. The lever was
 #: forkable the whole time; the OBSERVATION never happened.
-_MATH_TRANSCENDENTAL = frozenset({
-    "exp", "exp2", "exp10", "expm1", "erf", "erfc", "tanh", "sinh", "cosh", "atanh", "asinh",
-    "acosh", "log", "log2", "log10", "log1p", "pow",
-    # trigonometric -- RoPE. `rem_pio2` is glibc's argument reduction for sin/cos and appears as its
-    # own symbol, so a model can pay for it without any sin/cos call being visible at this call site.
-    "sin", "cos", "tan", "sincos", "asin", "acos", "atan", "atan2", "rem_pio2",
-})
-_MATH_ALGEBRAIC = frozenset({
-    "sqrt", "rsqrt", "cbrt", "hypot",
-    # rounding helpers the trig range reduction leans on. `roundevenf` is the 4th most-called symbol
-    # in the measured K1 binary (175 calls) -- omitting it would under-report the scalar-math share of
-    # exactly the path (RoPE) this axis exists to find.
-    "roundeven", "rint", "nearbyint", "trunc", "floor", "ceil", "round", "fmod", "remainder"})
+_MATH_TRANSCENDENTAL = frozenset(
+    {
+        "exp",
+        "exp2",
+        "exp10",
+        "expm1",
+        "erf",
+        "erfc",
+        "tanh",
+        "sinh",
+        "cosh",
+        "atanh",
+        "asinh",
+        "acosh",
+        "log",
+        "log2",
+        "log10",
+        "log1p",
+        "pow",
+        # trigonometric -- RoPE. `rem_pio2` is glibc's argument reduction for sin/cos and appears as its
+        # own symbol, so a model can pay for it without any sin/cos call being visible at this call site.
+        "sin",
+        "cos",
+        "tan",
+        "sincos",
+        "asin",
+        "acos",
+        "atan",
+        "atan2",
+        "rem_pio2",
+    }
+)
+_MATH_ALGEBRAIC = frozenset(
+    {
+        "sqrt",
+        "rsqrt",
+        "cbrt",
+        "hypot",
+        # rounding helpers the trig range reduction leans on. `roundevenf` is the 4th most-called symbol
+        # in the measured K1 binary (175 calls) -- omitting it would under-report the scalar-math share of
+        # exactly the path (RoPE) this axis exists to find.
+        "roundeven",
+        "rint",
+        "nearbyint",
+        "trunc",
+        "floor",
+        "ceil",
+        "round",
+        "fmod",
+        "remainder",
+    }
+)
 #: compiler soft-float helpers (libgcc/compiler-rt). Not libm, but the same finding: a scalar call
 #: per element. `__extendbfsf2` is bf16->f32, which a widened vector datapath removes outright.
-_MATH_SOFTFLOAT = frozenset({
-    "extendbfsf2", "extendhfsf2", "extendsfdf2", "truncdfsf2", "truncsfhf2", "truncsfbf2",
-    "floatsisf", "floatsidf", "fixsfsi", "fixdfsi", "addsf3", "mulsf3", "divsf3", "subsf3",
-})
+_MATH_SOFTFLOAT = frozenset(
+    {
+        "extendbfsf2",
+        "extendhfsf2",
+        "extendsfdf2",
+        "truncdfsf2",
+        "truncsfhf2",
+        "truncsfbf2",
+        "floatsisf",
+        "floatsidf",
+        "fixsfsi",
+        "fixdfsi",
+        "addsf3",
+        "mulsf3",
+        "divsf3",
+        "subsf3",
+    }
+)
 #: glibc/libgcc name decorations, longest first so `__ieee754_` is stripped before `__`.
 _MATH_PREFIXES = ("__ieee754_", "__kernel_", "__libm_", "__")
 #: Suffixes a math routine's name may carry. Longest first, since the candidate generator tries them
@@ -469,13 +525,29 @@ _MATH_PREFIXES = ("__ieee754_", "__kernel_", "__libm_", "__")
 #: `achieved_residual` came back empty. The gate would have credited a change that never happened.
 _MATH_SUFFIXES = ("_finite", "f128x", "f32x", "f64x", "f128", "f16", "f32", "f64", "_r", "f", "l")
 
-_ACTIVATION_OPS = ("gelu", "silu", "sigmoid", "tanh", "erf", "exp", "softmax",
-                   # The transformer tail that pays for scalar math without being an "activation" in
-                   # the GELU sense. Needed on BOTH sides of the diff: OURS lifts from the libm CALL
-                   # (so the op tag is not required), but the EXPERT has no call -- it IS the vector
-                   # polynomial -- so without its op tag here it lifts as None and no divergence forms.
-                   "rope", "rmsnorm", "layer_norm", "layernorm", "norm",
-                   "sqrt", "rsqrt", "sin", "cos", "tan")
+_ACTIVATION_OPS = (
+    "gelu",
+    "silu",
+    "sigmoid",
+    "tanh",
+    "erf",
+    "exp",
+    "softmax",
+    # The transformer tail that pays for scalar math without being an "activation" in
+    # the GELU sense. Needed on BOTH sides of the diff: OURS lifts from the libm CALL
+    # (so the op tag is not required), but the EXPERT has no call -- it IS the vector
+    # polynomial -- so without its op tag here it lifts as None and no divergence forms.
+    "rope",
+    "rmsnorm",
+    "layer_norm",
+    "layernorm",
+    "norm",
+    "sqrt",
+    "rsqrt",
+    "sin",
+    "cos",
+    "tan",
+)
 #: Mnemonics that transfer control to a NAMED ROUTINE, for symbol extraction. Deliberately separate
 #: from :data:`_CALL_MNEMONICS`, and this separation is the point rather than tidiness.
 #:
@@ -506,9 +578,9 @@ def math_call_kind(symbol: str) -> str | None:
     name = (symbol or "").strip().lower()
     if not name:
         return None
-    for pre in _MATH_PREFIXES:                  # longest-first: __ieee754_ before __
+    for pre in _MATH_PREFIXES:  # longest-first: __ieee754_ before __
         if name.startswith(pre):
-            name = name[len(pre):]
+            name = name[len(pre) :]
             break
     # Candidate stems, LONGEST FIRST, tested in order rather than stripped blindly. Stripping to a
     # fixed point over-strips every stem that itself ends in a suffix letter: `erff` -> `erf` -> `er`,
@@ -521,7 +593,7 @@ def math_call_kind(symbol: str) -> str | None:
                 stem = c[: -len(suf)]
                 if stem not in cands:
                     cands.append(stem)
-    for c in list(cands):                       # one more level: `sqrtf_finite` -> `sqrtf` -> `sqrt`
+    for c in list(cands):  # one more level: `sqrtf_finite` -> `sqrtf` -> `sqrt`
         for suf in _MATH_SUFFIXES:
             if len(c) > len(suf) and c.endswith(suf):
                 stem = c[: -len(suf)]
@@ -552,7 +624,7 @@ def _call_target_symbols(stream) -> list[str]:
             t = str(tok)
             if "<" not in t or ">" not in t:
                 continue
-            sym = t[t.index("<") + 1: t.rindex(">")]
+            sym = t[t.index("<") + 1 : t.rindex(">")]
             # `<sym+0x14>` is a jump WITHIN a routine -- see _TRANSFER_MNEMONICS.
             if "+" in sym or "-" in sym:
                 continue
@@ -602,7 +674,7 @@ def _infer_activation_vectorization(stream, op, *, undefined_symbols=None) -> st
         return None
     if trans_call:
         return "scalar_libm_call"
-    if stream.count("vfmacc", "vfmul", "vfadd") > 0:   # transcendental evaluated as a vector poly
+    if stream.count("vfmacc", "vfmul", "vfadd") > 0:  # transcendental evaluated as a vector poly
         return "vectorized_polynomial"
     return None
 
@@ -611,8 +683,8 @@ def _dominant_tail(stream) -> str | None:
     """The tail policy (ta|tu) of the kernel's dominant vector vtype, read from the decoded vsetvl
     state (VType.tail) — not guessed. None when no vector insn carries a tail token."""
     from collections import Counter
-    c = Counter(i.vtype.tail for i in stream.insns
-                if i.is_vector and i.vtype and i.vtype.tail)
+
+    c = Counter(i.vtype.tail for i in stream.insns if i.is_vector and i.vtype and i.vtype.tail)
     return c.most_common(1)[0][0] if c else None
 
 
@@ -636,16 +708,22 @@ def _lift_memory(stream) -> "MemoryFacet | None":
     unit-stride, A-broadcast) — the memory dimension the CCA used to be blind to. None if no FMA loop.
     Lazy import of decode.memory (which references cca._fma_loop) to avoid an import cycle."""
     from .decode.memory import analyze_memory
+
     m = analyze_memory(stream)
     if m is None:
         return None
-    access = ("unit_stride" if m.unit_stride_only
-              else "indexed" if m.vec_indexed_loads > 0
-              else "strided" if m.vec_strided_loads > 0
-              else "none")
+    access = (
+        "unit_stride"
+        if m.unit_stride_only
+        else "indexed"
+        if m.vec_indexed_loads > 0
+        else "strided"
+        if m.vec_strided_loads > 0
+        else "none"
+    )
     # panel reuse: loads/FMA well below the unblocked ~2.0 => one loaded panel is reused across the MR
     # register-block accumulators (the amortization the expert wins on).
-    reuse = (m.loads_per_fma is not None and m.loads_per_fma < 1.5)
+    reuse = m.loads_per_fma is not None and m.loads_per_fma < 1.5
     a_vf = (m.a_broadcast_per_fma == 0) if m.a_broadcast_per_fma is not None else None
     return MemoryFacet(access_pattern=access, panel_reuse=reuse, a_broadcast_vf=a_vf)
 
@@ -690,7 +768,7 @@ def _lift_envelope(stream, *, undefined_symbols=None) -> "EnvelopeFacet":
         for sp in outer:
             calls_in_loop += stream.count_in(sp, *_CALL_MNEMONICS)
     else:
-        calls_in_loop = None                # loop structure unreadable -> honestly UNKNOWN, not 0
+        calls_in_loop = None  # loop structure unreadable -> honestly UNKNOWN, not 0
     if undefined_symbols is not None:
         undef = {str(x) for x in undefined_symbols}
         escapes = tuple(sorted(undef.intersection(RUNTIME_ESCAPE_SYMBOLS)))
@@ -702,12 +780,13 @@ def _lift_envelope(stream, *, undefined_symbols=None) -> "EnvelopeFacet":
         # very gap this facet exists to expose.
         escapes = ()
     else:
-        escapes = None                      # calls exist but we cannot name them: honestly unknown
+        escapes = None  # calls exist but we cannot name them: honestly unknown
     return EnvelopeFacet(calls_in_loop=calls_in_loop, runtime_calls=escapes)
 
 
-def lift_asm(stream, *, op: str, source: str, backend: str = "rvv",
-             undefined_symbols: "Iterable[str] | None" = None) -> CCA:
+def lift_asm(
+    stream, *, op: str, source: str, backend: str = "rvv", undefined_symbols: "Iterable[str] | None" = None
+) -> CCA:
     """Primary lifter: RVV/vector ``InsnStream`` (from ``decode.rvv``) -> CCA.
 
     Everything is read from the decoded instruction stream + tracked vtype — never guessed from a
@@ -723,9 +802,7 @@ def lift_asm(stream, *, op: str, source: str, backend: str = "rvv",
     # VL strategy: vsetvli (register VL, polymorphic) in a loop = vsetvl_loop; else vsetivli fixed.
     has_setvli = stream.count("vsetvli") > 0
     vl_strategy = "vsetvl_loop" if (has_setvli and stream.has_loop()) else "vsetivli_fixed"
-    contraction = ("fused_fma" if vfmacc > 0
-                   else "mul_add" if (vfmul > 0 and vfadd > 0)
-                   else None)
+    contraction = "fused_fma" if vfmacc > 0 else "mul_add" if (vfmul > 0 and vfadd > 0) else None
     # The expert-win properties, inferred structurally from the InsnStream (the gap the CCA used to
     # be blind to on the RVV path):
     acc_resident = _infer_accumulator_resident(stream)
@@ -733,9 +810,11 @@ def lift_asm(stream, *, op: str, source: str, backend: str = "rvv",
     # NR tracks vsetvlmax exactly when the kernel uses a polymorphic vsetvli VL-loop (VL-adaptive).
     nr_is_vsetvlmax = (vl_strategy == "vsetvl_loop") if contraction == "fused_fma" else None
     return CCA(
-        op=op, backend=[backend],
+        op=op,
+        backend=[backend],
         compute=ComputeFacet(
-            op=op, contraction_form=contraction,
+            op=op,
+            contraction_form=contraction,
             widening=widening,
             accumulator_dtype=_infer_accumulator_dtype(stream, sew),
             reduction_form=("vredsum_tree" if reduce_n > 0 else "none"),
@@ -743,8 +822,7 @@ def lift_asm(stream, *, op: str, source: str, backend: str = "rvv",
             register_block=reg_block,
             accumulator_resident=acc_resident,
             nr_is_vsetvlmax=nr_is_vsetvlmax,
-            activation_vectorization=_infer_activation_vectorization(
-                stream, op, undefined_symbols=undefined_symbols),
+            activation_vectorization=_infer_activation_vectorization(stream, op, undefined_symbols=undefined_symbols),
         ),
         vector=VectorFacet(sew=sew, lmul=lmul, vl_strategy=vl_strategy, tail=_dominant_tail(stream)),
         memory=_lift_memory(stream),
@@ -757,43 +835,65 @@ def lift_source(facts, *, op: str, source: str, backend: str = "rvv") -> CCA:
     """Source-level lift from typed C-intrinsic facts (decode.clang_ast.SourceFacts) — the
     cross-check for the asm lift. Reads decisions from RESOLVED intrinsic types, not substrings."""
     sew, lmul = facts.dominant_vtype()
-    contraction = ("fused_fma" if facts.has("vfmacc", "vmacc", "vfwmacc", "vwmacc")
-                   else "mul_add" if (facts.has("vfmul", "vmul") and facts.has("vfadd", "vadd"))
-                   else None)
+    contraction = (
+        "fused_fma"
+        if facts.has("vfmacc", "vmacc", "vfwmacc", "vwmacc")
+        else "mul_add"
+        if (facts.has("vfmul", "vmul") and facts.has("vfadd", "vadd"))
+        else None
+    )
     return CCA(
-        op=op, backend=[backend],
-        compute=ComputeFacet(op=op, contraction_form=contraction,
-                             widening=facts.has("vwmacc", "vfwmacc") > 0,
-                             reduction_form=("vredsum_tree" if facts.has("vredsum", "vfredusum") else None),
-                             epilogue=("requant_narrow" if facts.has("vnclip", "vfncvt") else None)),
+        op=op,
+        backend=[backend],
+        compute=ComputeFacet(
+            op=op,
+            contraction_form=contraction,
+            widening=facts.has("vwmacc", "vfwmacc") > 0,
+            reduction_form=("vredsum_tree" if facts.has("vredsum", "vfredusum") else None),
+            epilogue=("requant_narrow" if facts.has("vnclip", "vfncvt") else None),
+        ),
         vector=VectorFacet(sew=sew, lmul=lmul) if backend == "rvv" else None,
         provenance={"level": "source_ast", "source": source, "confidence": "medium"},
     )
 
 
-def lift_spatial(op_counts: dict, *, op: str, source: str,
-                 dataflow: str | None = None, pe_rows: int | None = None,
-                 pe_cols: int | None = None, backend: str) -> CCA:
+def lift_spatial(
+    op_counts: dict,
+    *,
+    op: str,
+    source: str,
+    dataflow: str | None = None,
+    pe_rows: int | None = None,
+    pe_cols: int | None = None,
+    backend: str,
+) -> CCA:
     """Spatial/systolic (Gemmini) lifter — fills the SPATIAL facet from decoded accelerator ops
     (e.g. targetgen.rocc.decode counts of preload/compute/mvin/mvout). Keeps the same CCA schema
     so a gemmini region compares against a gemmini expert just like RVV does for vector."""
     return CCA(
-        op=op, backend=[backend],
-        compute=ComputeFacet(op=op, contraction_form="systolic",
-                             accumulator_dtype=op_counts.get("acc_dtype"),
-                             widening=bool(op_counts.get("widening"))),
-        spatial=SpatialFacet(pe_rows=pe_rows, pe_cols=pe_cols, dataflow=dataflow,
-                             accumulator_resident=op_counts.get("acc_resident")),
+        op=op,
+        backend=[backend],
+        compute=ComputeFacet(
+            op=op,
+            contraction_form="systolic",
+            accumulator_dtype=op_counts.get("acc_dtype"),
+            widening=bool(op_counts.get("widening")),
+        ),
+        spatial=SpatialFacet(
+            pe_rows=pe_rows, pe_cols=pe_cols, dataflow=dataflow, accumulator_resident=op_counts.get("acc_resident")
+        ),
         provenance={"level": "asm", "source": source, "confidence": "high"},
     )
 
 
-def lift_npu(engine_ops: list[str], *, op: str, source: str,
-             dma_pattern: str | None = None, backend: str = "npu") -> CCA:
+def lift_npu(
+    engine_ops: list[str], *, op: str, source: str, dma_pattern: str | None = None, backend: str = "npu"
+) -> CCA:
     """NPU lifter — fills the DATAFLOW facet (engine ops + DMA). A region may pair this backend
     with rvv in a composite CCA (backend=['npu','rvv'])."""
     return CCA(
-        op=op, backend=[backend],
+        op=op,
+        backend=[backend],
         compute=ComputeFacet(op=op),
         # `engine_ops` had no home after the fold: it is a LIST of op names, i.e. a coverage question
         # ("which ops reached the engine"), not a per-region property. Its movement half is what
@@ -804,11 +904,17 @@ def lift_npu(engine_ops: list[str], *, op: str, source: str,
     )
 
 
-def lift_asm_roles(decoded, endpoint, *, op: str, source: str,
-                   geometry: dict | None = None,
-                   accumulator_dtype: str | None = None,
-                   widening: bool | None = None,
-                   loop_spans=None) -> CCA:
+def lift_asm_roles(
+    decoded,
+    endpoint,
+    *,
+    op: str,
+    source: str,
+    geometry: dict | None = None,
+    accumulator_dtype: str | None = None,
+    widening: bool | None = None,
+    loop_spans=None,
+) -> CCA:
     """A CCA lifted from a ROLE-tagged instruction stream — the target-agnostic generalization of
     :func:`lift_asm`.
 
@@ -861,7 +967,9 @@ def lift_asm_roles(decoded, endpoint, *, op: str, source: str,
     # --- compute: shared across every engine ---
     resident = _accumulator_resident(decoded, loop_spans)
     compute = ComputeFacet(
-        op=op, accumulator_dtype=accumulator_dtype, widening=widening,
+        op=op,
+        accumulator_dtype=accumulator_dtype,
+        widening=widening,
         contraction_form=geo.get("dataflow"),
         accumulator_resident=resident,
     )
@@ -870,18 +978,26 @@ def lift_asm_roles(decoded, endpoint, *, op: str, source: str,
     spatial = simt = vector = None
     engine = getattr(endpoint, "engine", "")
     if engine == "spatial":
-        spatial = SpatialFacet(pe_rows=geo.get("pe_rows"), pe_cols=geo.get("pe_cols"),
-                               dataflow=geo.get("dataflow"), accumulator_resident=resident)
+        spatial = SpatialFacet(
+            pe_rows=geo.get("pe_rows"),
+            pe_cols=geo.get("pe_cols"),
+            dataflow=geo.get("dataflow"),
+            accumulator_resident=resident,
+        )
     elif engine == "simt":
-        simt = SimtFacet(warps=geo.get("warps"), threads_per_warp=geo.get("threads_per_warp"),
-                         # A barrier inside the reduction loop is the SIMT analogue of a readout
-                         # inside it: both say the engine cannot keep its state across the reduction.
-                         barriers_in_loop=counts.get("sync") if total else None,
-                         smem_resident=resident,
-                         divergence=geo.get("divergence"))
+        simt = SimtFacet(
+            warps=geo.get("warps"),
+            threads_per_warp=geo.get("threads_per_warp"),
+            # A barrier inside the reduction loop is the SIMT analogue of a readout
+            # inside it: both say the engine cannot keep its state across the reduction.
+            barriers_in_loop=counts.get("sync") if total else None,
+            smem_resident=resident,
+            divergence=geo.get("divergence"),
+        )
     elif engine == "vector":
-        vector = VectorFacet(sew=geo.get("sew"), lmul=geo.get("lmul"),
-                             vl_strategy=geo.get("vl_strategy"), tail=geo.get("tail"))
+        vector = VectorFacet(
+            sew=geo.get("sew"), lmul=geo.get("lmul"), vl_strategy=geo.get("vl_strategy"), tail=geo.get("tail")
+        )
 
     # A stream where NOTHING was role-tagged is not a clean lift, it is a lift that saw nothing. The
     # completeness check only applies once at least one role was recognized; otherwise the honest
@@ -892,19 +1008,27 @@ def lift_asm_roles(decoded, endpoint, *, op: str, source: str,
     missing = _roles.missing_contraction_roles(counts) if counts.get("accumulate") else ()
     nothing_seen = not counts
     return CCA(
-        op=op, backend=[getattr(endpoint, "target", "") or "unknown"],
-        compute=compute, spatial=spatial, simt=simt, vector=vector, dispatch=dispatch,
+        op=op,
+        backend=[getattr(endpoint, "target", "") or "unknown"],
+        compute=compute,
+        spatial=spatial,
+        simt=simt,
+        vector=vector,
+        dispatch=dispatch,
         memory=MemoryFacet(dma_pattern="burst" if counts.get("dma") else None),
-        provenance={"level": "asm", "source": source,
-                    # A stream missing a role a complete contraction needs is reported at LOW
-                    # confidence rather than as a clean lift. The measured failure it guards: an audit
-                    # counted accumulates and passed a kernel that never drained its accumulator.
-                    "confidence": "low" if (missing or nothing_seen) else "high",
-                    "no_roles_recognized": nothing_seen,
-                    "endpoint": getattr(endpoint, "name", ""),
-                    "engine": engine,
-                    "role_counts": dict(sorted(counts.items())),
-                    "missing_contraction_roles": list(missing)},
+        provenance={
+            "level": "asm",
+            "source": source,
+            # A stream missing a role a complete contraction needs is reported at LOW
+            # confidence rather than as a clean lift. The measured failure it guards: an audit
+            # counted accumulates and passed a kernel that never drained its accumulator.
+            "confidence": "low" if (missing or nothing_seen) else "high",
+            "no_roles_recognized": nothing_seen,
+            "endpoint": getattr(endpoint, "name", ""),
+            "engine": engine,
+            "role_counts": dict(sorted(counts.items())),
+            "missing_contraction_roles": list(missing),
+        },
     )
 
 
@@ -961,15 +1085,15 @@ def _accumulator_resident(decoded, loop_spans) -> bool | None:
     acc = [d for d in decoded if "accumulate" in (getattr(d, "roles", ()) or ())]
     out = [d for d in decoded if "readout" in (getattr(d, "roles", ()) or ())]
     if not acc:
-        return None                               # the engine was not driven at all
+        return None  # the engine was not driven at all
     if not loop_spans:
         if len(acc) > 1:
             # Fully unrolled: a readout BETWEEN the first and last accumulate means the accumulator
             # round-trips mid-reduction.
             lo, hi = acc[0].index, acc[-1].index
             return not any(lo < d.index < hi for d in out)
-        return None                               # one static accumulate and no spans: undecidable
-    inside = lambda d: any(lo <= d.addr <= hi for lo, hi in loop_spans)   # noqa: E731
+        return None  # one static accumulate and no spans: undecidable
+    inside = lambda d: any(lo <= d.addr <= hi for lo, hi in loop_spans)  # noqa: E731
     return not any(inside(d) for d in out)
 
 
@@ -977,6 +1101,7 @@ def particularities() -> dict:
     """Load the per-target runtime/ABI particularities (bf16 ABI reg class, VLEN, vsetvl
     semantics, fp-contract default) so the comparator can normalize runtime artifacts out."""
     import yaml
+
     p = Path(__file__).resolve().parent / "runtime_particularities.yaml"
     return yaml.safe_load(p.read_text()) if p.is_file() else {}
 
@@ -995,17 +1120,16 @@ def lift_graph(record, *, source: str = "graph", backend: str = "rvv") -> CCA:
     # int8 accumulates in i32 -- without this arm an f16/bf16 record inferred accumulator_dtype
     # None, so the compute.accumulator_dtype axis could never route to the 16-bit datapath.
     is_half = "f16" in dt or "float16" in dt or "bf16" in dt
-    acc = ("i32" if is_int8 else
-           "f32" if (is_half or "f32" in dt or "float32" in dt) else None)
+    acc = "i32" if is_int8 else "f32" if (is_half or "f32" in dt or "float32" in dt) else None
     return CCA(
-        op=op, backend=[backend],
-        compute=ComputeFacet(op=op, accumulator_dtype=acc,
-                             widening=True if (is_int8 or is_half) else None),
-        provenance={"level": "graph", "source": source, "confidence": "medium"})
+        op=op,
+        backend=[backend],
+        compute=ComputeFacet(op=op, accumulator_dtype=acc, widening=True if (is_int8 or is_half) else None),
+        provenance={"level": "graph", "source": source, "confidence": "medium"},
+    )
 
 
-def lift_coverage(model_mlir, claimed_ops, *, op: str = "model", source: str = "coverage",
-                  backend: str = "rvv") -> CCA:
+def lift_coverage(model_mlir, claimed_ops, *, op: str = "model", source: str = "coverage", backend: str = "rvv") -> CCA:
     """Whole-model CCA: how much of the model's work the schedule's ``claimed_ops`` actually covers.
 
     ``claimed_ops`` is the set of contraction op classes the schedule matches (a package's
@@ -1032,8 +1156,12 @@ def lift_coverage(model_mlir, claimed_ops, *, op: str = "model", source: str = "
     module = parse(model_mlir)
     fn = next((o for o in module.walk() if o.name == "func.func"), None)
     if fn is None or not fn.body.blocks:
-        return CCA(op=op, backend=[backend], coverage=CoverageFacet(),
-                   provenance={"level": "coverage", "source": source, "confidence": "low"})
+        return CCA(
+            op=op,
+            backend=[backend],
+            coverage=CoverageFacet(),
+            provenance={"level": "coverage", "source": source, "confidence": "low"},
+        )
     total_macs = claimed_macs = 0
     present: set[str] = set()
     shapes = contraction_shapes(module)
@@ -1048,12 +1176,15 @@ def lift_coverage(model_mlir, claimed_ops, *, op: str = "model", source: str = "
     n_ops = sum(1 for o in fn.body.blocks[0].ops if op_name(o).startswith("linalg."))
     n_contraction = len(shapes)
     return CCA(
-        op=op, backend=[backend],
+        op=op,
+        backend=[backend],
         coverage=CoverageFacet(
             claimed_mac_fraction=(claimed_macs / total_macs) if total_macs else None,
             unclaimed_op_classes=tuple(sorted(present - claimed)),
-            non_contraction_op_fraction=((n_ops - n_contraction) / n_ops) if n_ops else None),
-        provenance={"level": "coverage", "source": source, "confidence": "high"})
+            non_contraction_op_fraction=((n_ops - n_contraction) / n_ops) if n_ops else None,
+        ),
+        provenance={"level": "coverage", "source": source, "confidence": "high"},
+    )
 
 
 def lift_dse(op_shape, *, source: str = "dse") -> CCA:
@@ -1065,13 +1196,15 @@ def lift_dse(op_shape, *, source: str = "dse") -> CCA:
     op = getattr(op_shape, "semantic_class", None) or getattr(op_shape, "op", None) or "unknown"
     mnk = (getattr(op_shape, "M", None), getattr(op_shape, "N", None), getattr(op_shape, "K", None))
     return CCA(
-        op=str(op), backend=[],
+        op=str(op),
+        backend=[],
         compute=ComputeFacet(op=str(op), register_block=mnk if any(mnk) else None),
         provenance={"level": "dse", "source": source, "confidence": "low"},
     )
 
 
 # ---- cross-level agreement (the validity gate) --------------------------------------
+
 
 @dataclass
 class AgreementReport:
@@ -1102,6 +1235,5 @@ def cca_agree(a: CCA, b: CCA) -> AgreementReport:
         for k, (va, vb) in _facet_fields(fa, fb).items():
             compared.append(f"{facet}.{k}")
             if va != vb:
-                diffs.append(f"{facet}.{k}: {a.provenance.get('level')}={va!r} vs "
-                             f"{b.provenance.get('level')}={vb!r}")
+                diffs.append(f"{facet}.{k}: {a.provenance.get('level')}={va!r} vs {b.provenance.get('level')}={vb!r}")
     return AgreementReport(agree=not diffs, disagreements=diffs, compared_fields=compared)

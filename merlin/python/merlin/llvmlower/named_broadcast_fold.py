@@ -9,10 +9,10 @@ producers, runs the pipeline's normal named-op generalization, and then composes
 broadcast's source map into its consumer.  It does not run blanket post-generalization fusion,
 which also absorbs unrelated producers.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
-
 
 FEATURE = "targeted_named_broadcast_fold"
 MARKER = "__merlin_targeted_named_broadcast_fold__"
@@ -144,6 +144,7 @@ _PRE_GENERALIZE_STAGES = ([('targeted_named_broadcast_fold',
 def run_source() -> str:
     """Standalone driver executing the exact stage implementation used by lowering."""
     from .broadcast_fold import RUNNER_PRELUDE as _BROADCAST_PRELUDE
+
     return (
         "import sys\n"
         "from torch_mlir import ir\n"
@@ -167,14 +168,15 @@ def _edit_pipeline(passes: list[str]) -> list[str]:
         return list(passes)
     if anchor not in passes:
         raise ValueError(
-            f"{FEATURE} requires {anchor!r}; without it the after-schedule/pre-generalize seam "
-            "cannot be established")
+            f"{FEATURE} requires {anchor!r}; without it the after-schedule/pre-generalize seam cannot be established"
+        )
     at = passes.index(anchor)
     return [*passes[:at], MARKER, *passes[at:]]
 
 
 def _feature():
     from .impr_features import ImprFeature
+
     return ImprFeature(
         name=FEATURE,
         action_class="PASS",
@@ -186,13 +188,15 @@ def _feature():
             "contractions are outside the match. Accepted on full-output-gated K1 W8A8: launch "
             "medians 135.208 to 130.880 ms at one core (1.033x) and 51.005 to 49.640 ms at eight "
             "cores (1.027x); every launch retained exact SHA adf8308a. Default-off; requires a "
-            "nonzero runner receipt."),
+            "nonzero runner receipt."
+        ),
         edit_pipeline=_edit_pipeline,
     )
 
 
 def ensure_registered() -> str:
     from .impr_features import known, register
+
     if FEATURE not in known():
         register(_feature())
     return FEATURE
@@ -208,9 +212,8 @@ def _exact_census_reports(stdout: str) -> list[tuple[int, int]]:
     for line in stdout.splitlines():
         if not line.startswith(_CENSUS_PREFIX):
             continue
-        fields = line[len(_CENSUS_PREFIX):].split(" ")
-        if (len(fields) == 3 and fields[1] == "mul"
-                and fields[0].isdecimal() and fields[2].isdecimal()):
+        fields = line[len(_CENSUS_PREFIX) :].split(" ")
+        if len(fields) == 3 and fields[1] == "mul" and fields[0].isdecimal() and fields[2].isdecimal():
             reports.append((int(fields[0]), int(fields[2])))
     return reports
 
@@ -220,7 +223,7 @@ def _exact_folded_reports(stdout: str) -> list[int]:
     for line in stdout.splitlines():
         if not line.startswith(_FOLDED_PREFIX):
             continue
-        value = line[len(_FOLDED_PREFIX):]
+        value = line[len(_FOLDED_PREFIX) :]
         if value and value.isdecimal():
             reports.append(int(value))
     return reports
@@ -229,14 +232,14 @@ def _exact_folded_reports(stdout: str) -> list[int]:
 def require_report(stdout: str, work: str | Path) -> dict[str, int]:
     census = _exact_census_reports(stdout)
     folded = _exact_folded_reports(stdout)
-    if (len(census) != 1 or len(folded) != 1 or folded[0] < 1
-            or folded[0] != sum(census[0])):
+    if len(census) != 1 or len(folded) != 1 or folded[0] < 1 or folded[0] != sum(census[0]):
         raise ValueError(
-            "targeted_named_broadcast_fold receipt missing or inconsistent: "
-            f"census={census}, folded={folded}")
+            f"targeted_named_broadcast_fold receipt missing or inconsistent: census={census}, folded={folded}"
+        )
     report = {"add": census[0][0], "mul": census[0][1], "folded": folded[0]}
     Path(work, "named_broadcast_fold_report.txt").write_text(
-        " ".join(f"{key}={value}" for key, value in report.items()) + "\n", encoding="utf-8")
+        " ".join(f"{key}={value}" for key, value in report.items()) + "\n", encoding="utf-8"
+    )
     return report
 
 

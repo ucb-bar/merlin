@@ -22,6 +22,7 @@ The classification is DERIVED, never a per-target list:
                       ``bash`` BY MEASURED DURATION rather than by naming known simulators, so a new
                       target's toolchain lands in the right band with no code change here.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -55,13 +56,36 @@ _READ_TOOLS = frozenset({"read", "read_file", "open_file", "glob", "grep", "ls",
 _WRITE_TOOLS = frozenset({"write", "edit", "multiedit", "write_file", "apply_patch", "notebookedit"})
 _SHELL_TOOLS = frozenset({"bash", "shell", "command_execution", "run_command"})
 #: argv[0] of a shell command that only inspects. Used to split `reading` out of `bash`.
-_READ_EXES = frozenset({"cat", "head", "tail", "less", "grep", "rg", "find", "ls", "stat", "wc",
-                        "file", "diff", "jq", "sed", "awk", "tree", "du", "nl", "od", "xxd"})
+_READ_EXES = frozenset(
+    {
+        "cat",
+        "head",
+        "tail",
+        "less",
+        "grep",
+        "rg",
+        "find",
+        "ls",
+        "stat",
+        "wc",
+        "file",
+        "diff",
+        "jq",
+        "sed",
+        "awk",
+        "tree",
+        "du",
+        "nl",
+        "od",
+        "xxd",
+    }
+)
 
 
 @dataclass
 class Span:
     """One contiguous stretch of one activity, in seconds from the session's first event."""
+
     start_s: float
     end_s: float
     activity: str
@@ -76,8 +100,9 @@ class Span:
 @dataclass
 class Timeline:
     """Spans + token samples + the BASIS, which a caller must check before plotting a time axis."""
-    basis: str                       # "wall_clock" | "unstamped"
-    reason: str = ""                 # why, when basis is not wall_clock
+
+    basis: str  # "wall_clock" | "unstamped"
+    reason: str = ""  # why, when basis is not wall_clock
     spans: list[Span] = field(default_factory=list)
     #: (t_seconds, cumulative_input_tokens, cumulative_output_tokens) at each usage report.
     tokens: list[tuple[float, int, int]] = field(default_factory=list)
@@ -134,6 +159,7 @@ def _stamp(obj: dict) -> float | None:
 def _argv0(command: str) -> str:
     """argv[0] of a shell command, unwrapping a `bash -lc "..."` wrapper. Structural, no regex."""
     import shlex
+
     try:
         toks = shlex.split(command)
     except ValueError:
@@ -281,16 +307,26 @@ def timeline(transcript: Path) -> Timeline:
     # 169 min of tool time inside 43.6 min of wall. Distinct from the union test above, and the two
     # must stay separate -- conflating them rejects genuine background concurrency.
     if worst >= _BURST_TIES:
-        return Timeline(basis="bursty", tokens=tokens, wall_s=wall_est, reason=(
-            f"{worst} tool calls share one end stamp, so the transcript's `arrived_at` marks when the "
-            f"harness READ each event rather than when the tool finished; per-tool durations cannot "
-            f"be derived from this stream."))
+        return Timeline(
+            basis="bursty",
+            tokens=tokens,
+            wall_s=wall_est,
+            reason=(
+                f"{worst} tool calls share one end stamp, so the transcript's `arrived_at` marks when the "
+                f"harness READ each event rather than when the tool finished; per-tool durations cannot "
+                f"be derived from this stream."
+            ),
+        )
 
     if not stamped:
-        return Timeline(basis="unstamped", reason=(
-            f"no event in {transcript.name} carries an `arrived_at` stamp ({total} assistant/user "
-            f"events read), so this run has no measured time axis. Charting it would mean inventing "
-            f"one. The driver must stamp events on arrival for this run to be plottable."))
+        return Timeline(
+            basis="unstamped",
+            reason=(
+                f"no event in {transcript.name} carries an `arrived_at` stamp ({total} assistant/user "
+                f"events read), so this run has no measured time axis. Charting it would mean inventing "
+                f"one. The driver must stamp events on arrival for this run to be plottable."
+            ),
+        )
     spans.sort(key=lambda s: s.start_s)
     wall = max((s.end_s for s in spans), default=0.0)
     return Timeline(basis="wall_clock", spans=spans, tokens=tokens, wall_s=wall)

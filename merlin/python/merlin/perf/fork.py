@@ -36,19 +36,37 @@ The tri-state comes out as :attr:`InvariantCheck.ok` (``True`` / ``False`` / ``N
 Nothing here names a target, a tier, a component or a capsule: the tier order comes from the target's
 own adapter map and the component vocabulary from the submission's own manifest.
 """
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from merlin.targetgen.oracle_schedule import (
-    CHANGED, NO_VERDICT, PASS, UNDETERMINABLE, UNKNOWN, WHOLE_SUBMISSION,
-    CapsuleState, Staleness, Verdict, explain,
+    CHANGED,
+    NO_VERDICT,
+    PASS,
+    UNDETERMINABLE,
+    UNKNOWN,
+    WHOLE_SUBMISSION,
+    CapsuleState,
+    Staleness,
+    Verdict,
+    explain,
 )
 
 __all__ = [
-    "ForkPoint", "HELD", "InvariantCheck", "UNDETERMINABLE", "WEAKENED", "candidate_states",
-    "changed_components", "check_invariants", "fork_from", "fork_from_dict", "requeue",
+    "ForkPoint",
+    "HELD",
+    "InvariantCheck",
+    "UNDETERMINABLE",
+    "WEAKENED",
+    "candidate_states",
+    "changed_components",
+    "check_invariants",
+    "fork_from",
+    "fork_from_dict",
+    "requeue",
 ]
 
 #: The three states of "did the candidate keep what Phase F proved". ``UNDETERMINABLE`` is imported
@@ -94,11 +112,15 @@ class ForkPoint:
         return tuple(sorted(self.invariants.get(capsule, {})))
 
     def to_dict(self) -> dict:
-        return {"digest": self.digest, "components": dict(self.components),
-                "invariants": {c: dict(t) for c, t in self.invariants.items()},
-                "depends_on": {c: list(d) for c, d in self.depends_on.items()},
-                "recorded_at": self.recorded_at, "provenance": self.provenance,
-                "detail": self.detail}
+        return {
+            "digest": self.digest,
+            "components": dict(self.components),
+            "invariants": {c: dict(t) for c, t in self.invariants.items()},
+            "depends_on": {c: list(d) for c, d in self.depends_on.items()},
+            "recorded_at": self.recorded_at,
+            "provenance": self.provenance,
+            "detail": self.detail,
+        }
 
 
 def fork_from_dict(doc: Mapping) -> ForkPoint:
@@ -106,20 +128,26 @@ def fork_from_dict(doc: Mapping) -> ForkPoint:
     return ForkPoint(
         digest=str(doc.get("digest") or ""),
         components={str(k): str(v) for k, v in (doc.get("components") or {}).items()},
-        invariants={str(c): {str(t): str(s) for t, s in (tiers or {}).items()}
-                    for c, tiers in (doc.get("invariants") or {}).items()},
-        depends_on={str(c): tuple(str(x) for x in (d or ()))
-                    for c, d in (doc.get("depends_on") or {}).items()},
+        invariants={
+            str(c): {str(t): str(s) for t, s in (tiers or {}).items()}
+            for c, tiers in (doc.get("invariants") or {}).items()
+        },
+        depends_on={str(c): tuple(str(x) for x in (d or ())) for c, d in (doc.get("depends_on") or {}).items()},
         recorded_at=str(doc.get("recorded_at") or ""),
         provenance=doc.get("provenance"),
-        detail=str(doc.get("detail") or ""))
+        detail=str(doc.get("detail") or ""),
+    )
 
 
-def fork_from(states: Iterable[CapsuleState], *, tier_order: Sequence[str],
-              digest: str | None = None,
-              components: Mapping[str, str] | None = None,
-              provenance: Mapping | None = None,
-              recorded_at: str | None = None) -> ForkPoint:
+def fork_from(
+    states: Iterable[CapsuleState],
+    *,
+    tier_order: Sequence[str],
+    digest: str | None = None,
+    components: Mapping[str, str] | None = None,
+    provenance: Mapping | None = None,
+    recorded_at: str | None = None,
+) -> ForkPoint:
     """Pin the functional submission a performance run is about to fork.
 
     ``states`` are the Phase-F capsules with their verdicts. ``digest`` / ``components`` default to
@@ -134,13 +162,17 @@ def fork_from(states: Iterable[CapsuleState], *, tier_order: Sequence[str],
     seen = {st.digest for st in states if st.digest}
     if digest is None:
         if len(seen) > 1:
-            raise ValueError(f"the capsule states carry {len(seen)} different submission digests "
-                             f"({sorted(seen)}); a fork pins one submission, not a majority")
+            raise ValueError(
+                f"the capsule states carry {len(seen)} different submission digests "
+                f"({sorted(seen)}); a fork pins one submission, not a majority"
+            )
         digest = next(iter(seen), "")
     disagree = sorted({st.name for st in states if st.digest and st.digest != digest})
     if disagree:
-        raise ValueError(f"capsule(s) {disagree} were graded against a different submission than the "
-                         f"one being forked ({digest!r}); their verdicts are not about these bytes")
+        raise ValueError(
+            f"capsule(s) {disagree} were graded against a different submission than the "
+            f"one being forked ({digest!r}); their verdicts are not about these bytes"
+        )
 
     comps: dict[str, str] = dict(components or {})
     if components is None:
@@ -159,13 +191,21 @@ def fork_from(states: Iterable[CapsuleState], *, tier_order: Sequence[str],
 
     if recorded_at is None:
         from merlin.common.artifacts import utc_stamp
+
         recorded_at = utc_stamp()
     n_pass = sum(len(t) for t in invariants.values())
     return ForkPoint(
-        digest=digest, components=comps, invariants=invariants, depends_on=deps,
-        recorded_at=recorded_at, provenance=dict(provenance) if provenance is not None else None,
-        detail=(f"{len(invariants)} functional capsule(s) carrying {n_pass} tier verdict(s) earned "
-                f"by these exact bytes; {len(comps)} component digest(s) recorded"))
+        digest=digest,
+        components=comps,
+        invariants=invariants,
+        depends_on=deps,
+        recorded_at=recorded_at,
+        provenance=dict(provenance) if provenance is not None else None,
+        detail=(
+            f"{len(invariants)} functional capsule(s) carrying {n_pass} tier verdict(s) earned "
+            f"by these exact bytes; {len(comps)} component digest(s) recorded"
+        ),
+    )
 
 
 def changed_components(fork: ForkPoint, components: Mapping[str, str] | None) -> tuple[Staleness, ...]:
@@ -188,9 +228,13 @@ def changed_components(fork: ForkPoint, components: Mapping[str, str] | None) ->
     return tuple(out)
 
 
-def candidate_states(fork: ForkPoint, *, digest: str,
-                     components: Mapping[str, str] | None = None,
-                     verdicts: Mapping[str, Mapping[str, str]] | None = None) -> list[CapsuleState]:
+def candidate_states(
+    fork: ForkPoint,
+    *,
+    digest: str,
+    components: Mapping[str, str] | None = None,
+    verdicts: Mapping[str, Mapping[str, str]] | None = None,
+) -> list[CapsuleState]:
     """The Phase-F capsules as they stand against a Phase-P candidate's bytes.
 
     Each state carries the CANDIDATE's digest and component map as "what is on disk now", and the
@@ -211,17 +255,24 @@ def candidate_states(fork: ForkPoint, *, digest: str,
         for tier, status in ((verdicts or {}).get(name) or {}).items():
             # Re-earned against the candidate's OWN bytes, so it is stamped with them.
             vs[str(tier)] = Verdict(status=str(status), digest=digest, components=dict(comps))
-        out.append(CapsuleState(name=name, digest=digest, verdicts=vs, components=comps,
-                                depends_on=fork.depends_on.get(name)))
+        out.append(
+            CapsuleState(name=name, digest=digest, verdicts=vs, components=comps, depends_on=fork.depends_on.get(name))
+        )
     return out
 
 
-def requeue(fork: ForkPoint, *, digest: str, tier_order: Sequence[str],
-            components: Mapping[str, str] | None = None,
-            verdicts: Mapping[str, Mapping[str, str]] | None = None,
-            cert_tiers: Sequence[str] = (), cert_cover=None,
-            cost_s: Mapping[str, float] | None = None,
-            budget_s: float | None = None) -> dict:
+def requeue(
+    fork: ForkPoint,
+    *,
+    digest: str,
+    tier_order: Sequence[str],
+    components: Mapping[str, str] | None = None,
+    verdicts: Mapping[str, Mapping[str, str]] | None = None,
+    cert_tiers: Sequence[str] = (),
+    cert_cover=None,
+    cost_s: Mapping[str, float] | None = None,
+    budget_s: float | None = None,
+) -> dict:
     """What a Phase-P candidate has to re-prove, and what it demonstrably does not.
 
     Returns :func:`~merlin.targetgen.oracle_schedule.explain`'s report with the fork's own framing
@@ -230,14 +281,22 @@ def requeue(fork: ForkPoint, *, digest: str, tier_order: Sequence[str],
     finished, so ``unchanged`` is reported beside ``queue`` rather than left implicit.
     """
     states = candidate_states(fork, digest=digest, components=components, verdicts=verdicts)
-    report = explain(states, tier_order=list(tier_order), cert_tiers=tuple(cert_tiers),
-                     cert_cover=cert_cover, cost_s=dict(cost_s or {}), budget_s=budget_s)
+    report = explain(
+        states,
+        tier_order=list(tier_order),
+        cert_tiers=tuple(cert_tiers),
+        cert_cover=cert_cover,
+        cost_s=dict(cost_s or {}),
+        budget_s=budget_s,
+    )
     moved = changed_components(fork, components)
     report["fork"] = {"digest": fork.digest, "recorded_at": fork.recorded_at}
     report["components_moved"] = [{"component": s.component, "reason": s.reason} for s in moved]
-    report["scope"] = ("the Phase-F functional capsules only. The performance workload is not a "
-                       "functional capsule, so an edit to the compiler re-proves the small capsules "
-                       "that declared the component it touched, never the large workload")
+    report["scope"] = (
+        "the Phase-F functional capsules only. The performance workload is not a "
+        "functional capsule, so an edit to the compiler re-proves the small capsules "
+        "that declared the component it touched, never the large workload"
+    )
     report["capsules_in_scope"] = list(fork.capsules)
     return report
 
@@ -267,14 +326,20 @@ class InvariantCheck:
         return {HELD: True, WEAKENED: False}.get(self.state)
 
     def to_dict(self) -> dict:
-        return {"state": self.state, "ok": self.ok, "reason": self.reason,
-                "weakened": [list(x) for x in self.weakened],
-                "unproven": [list(x) for x in self.unproven],
-                "held": [list(x) for x in self.held], "missing": list(self.missing)}
+        return {
+            "state": self.state,
+            "ok": self.ok,
+            "reason": self.reason,
+            "weakened": [list(x) for x in self.weakened],
+            "unproven": [list(x) for x in self.unproven],
+            "held": [list(x) for x in self.held],
+            "missing": list(self.missing),
+        }
 
 
-def check_invariants(fork: ForkPoint, states: Iterable[CapsuleState], *,
-                     provenance: Mapping | None = None) -> InvariantCheck:
+def check_invariants(
+    fork: ForkPoint, states: Iterable[CapsuleState], *, provenance: Mapping | None = None
+) -> InvariantCheck:
     """Has this candidate weakened anything Phase F proved?
 
     ``states`` are the candidate's capsules with whatever it has re-earned. Each Phase-F invariant is
@@ -305,9 +370,8 @@ def check_invariants(fork: ForkPoint, states: Iterable[CapsuleState], *,
                 held.append((capsule, tier))
             elif status == UNKNOWN:
                 stale = st.invalidated_by(tier)
-                why = (", ".join(str(s) for s in stale) if stale else NO_VERDICT)
-                unproven.append((capsule, tier,
-                                 f"no verdict for the candidate's bytes ({why})"))
+                why = ", ".join(str(s) for s in stale) if stale else NO_VERDICT
+                unproven.append((capsule, tier, f"no verdict for the candidate's bytes ({why})"))
             else:
                 weakened.append((capsule, tier))
 
@@ -318,26 +382,58 @@ def check_invariants(fork: ForkPoint, states: Iterable[CapsuleState], *,
     prov_note = ""
     if fork.provenance is not None:
         if provenance is None:
-            return InvariantCheck(UNDETERMINABLE, tuple(weakened), tuple(unproven), tuple(held),
-                                  missing,
-                                  reason=("the fork pinned a hardware revision and the candidate "
-                                          "stated none, so its verdicts cannot be shown to be about "
-                                          "the same device"))
+            return InvariantCheck(
+                UNDETERMINABLE,
+                tuple(weakened),
+                tuple(unproven),
+                tuple(held),
+                missing,
+                reason=(
+                    "the fork pinned a hardware revision and the candidate "
+                    "stated none, so its verdicts cannot be shown to be about "
+                    "the same device"
+                ),
+            )
         if dict(provenance) != dict(fork.provenance):
-            return InvariantCheck(UNDETERMINABLE, tuple(weakened), tuple(unproven), tuple(held),
-                                  missing,
-                                  reason=("the candidate was graded on a different hardware revision "
-                                          "than the fork; these verdicts are about two devices"))
+            return InvariantCheck(
+                UNDETERMINABLE,
+                tuple(weakened),
+                tuple(unproven),
+                tuple(held),
+                missing,
+                reason=(
+                    "the candidate was graded on a different hardware revision "
+                    "than the fork; these verdicts are about two devices"
+                ),
+            )
         prov_note = " on the hardware revision the fork pinned"
 
     if weakened:
-        return InvariantCheck(WEAKENED, tuple(weakened), tuple(unproven), tuple(held), missing,
-                              reason=(f"{len(weakened)} Phase-F invariant(s) that passed at the fork "
-                                      f"now fail: {weakened}"))
+        return InvariantCheck(
+            WEAKENED,
+            tuple(weakened),
+            tuple(unproven),
+            tuple(held),
+            missing,
+            reason=(f"{len(weakened)} Phase-F invariant(s) that passed at the fork now fail: {weakened}"),
+        )
     if unproven:
-        return InvariantCheck(UNDETERMINABLE, tuple(weakened), tuple(unproven), tuple(held), missing,
-                              reason=(f"{len(unproven)} Phase-F invariant(s) have no verdict for the "
-                                      "candidate's bytes; not re-proven is not still-holds"))
-    return InvariantCheck(HELD, tuple(weakened), tuple(unproven), tuple(held), missing,
-                          reason=(f"all {len(held)} Phase-F invariant(s) were re-earned by the "
-                                  f"candidate's own bytes{prov_note}"))
+        return InvariantCheck(
+            UNDETERMINABLE,
+            tuple(weakened),
+            tuple(unproven),
+            tuple(held),
+            missing,
+            reason=(
+                f"{len(unproven)} Phase-F invariant(s) have no verdict for the "
+                "candidate's bytes; not re-proven is not still-holds"
+            ),
+        )
+    return InvariantCheck(
+        HELD,
+        tuple(weakened),
+        tuple(unproven),
+        tuple(held),
+        missing,
+        reason=(f"all {len(held)} Phase-F invariant(s) were re-earned by the candidate's own bytes{prov_note}"),
+    )

@@ -11,6 +11,7 @@ quant_ext mapping is driven purely off ``tensor.tensor_type`` and is fully archi
 gguf-py ships under ``third_party/baselines/llama.cpp/gguf-py``; :func:`_gguf` adds it to ``sys.path``
 lazily so importing this module never hard-fails when the vendored tree is absent.
 """
+
 from __future__ import annotations
 
 import sys
@@ -62,9 +63,9 @@ class GgufTensor:
     """One tensor in a GGUF file, classified against the quant-format registry."""
 
     name: str
-    shape: tuple[int, ...]       # GGUF storage order (ne[0] fastest); orient at graph-build time
-    ggml_type: str               # e.g. "Q6_K", "F32"
-    fmt: qf.QuantFormat | None   # canonical format, or None if unsupported
+    shape: tuple[int, ...]  # GGUF storage order (ne[0] fastest); orient at graph-build time
+    ggml_type: str  # e.g. "Q6_K", "F32"
+    fmt: qf.QuantFormat | None  # canonical format, or None if unsupported
     n_elements: int
     _reader_tensor: Any = None
 

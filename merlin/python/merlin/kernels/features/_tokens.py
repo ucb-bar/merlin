@@ -7,6 +7,7 @@ Exo-Py). These helpers tokenize the source into maximal word-character runs
 scraped with patterns). A "word char" is ``[A-Za-z0-9_]`` — exactly the class a regex
 ``\\b`` boundary isolates — so a token here is what ``\\bTOKEN\\b`` used to match.
 """
+
 from __future__ import annotations
 
 from typing import Iterable, Iterator
@@ -41,8 +42,7 @@ def distinct_registers(text: str, prefix: str) -> int:
     """Count DISTINCT ``<prefix><digits>`` register identifiers (e.g. ``vacc0..vacc3`` -> 4).
 
     Structural replacement for the historical ``\\b<prefix>(\\d+)\\b`` set-count."""
-    return len({t for t in identifier_tokens(text)
-                if t.startswith(prefix) and t[len(prefix):].isdigit()})
+    return len({t for t in identifier_tokens(text) if t.startswith(prefix) and t[len(prefix) :].isdigit()})
 
 
 def count_opcode_uses(text: str, opcodes: Iterable[str]) -> int:
@@ -53,8 +53,7 @@ def count_opcode_uses(text: str, opcodes: Iterable[str]) -> int:
     ``\\bmvin[23]\\b|gemmini_extended\\d*_mvin[23]`` alternation."""
     exact = set(opcodes)
     suffixes = tuple(f"_{op}" for op in exact)
-    return sum(1 for t in identifier_tokens(text)
-               if t in exact or t.endswith(suffixes))
+    return sum(1 for t in identifier_tokens(text) if t in exact or t.endswith(suffixes))
 
 
 def match_opcodes(text: str, opcodes: Iterable[str]) -> list[str]:
@@ -95,9 +94,12 @@ def count_loops(text: str) -> int:
             elif idx + 2 < n:
                 _name, name_s, name_e = spans[idx + 1]
                 in_tok, in_s, in_e = spans[idx + 2]
-                if (_is_all_ws(text, e, name_s)
-                        and _is_all_ws(text, name_e, in_s)
-                        and in_tok == "in"
-                        and in_e < len(text) and text[in_e] in _WS):
+                if (
+                    _is_all_ws(text, e, name_s)
+                    and _is_all_ws(text, name_e, in_s)
+                    and in_tok == "in"
+                    and in_e < len(text)
+                    and text[in_e] in _WS
+                ):
                     total += 1
     return total

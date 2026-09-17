@@ -1,12 +1,13 @@
 """One exact trusted raw-engine grant, not a general executable/mount API."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from .build_dependencies import _hash, _path, _overlap, _coverage_gaps
+from .build_dependencies import _coverage_gaps, _hash, _overlap, _path
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,7 @@ class HostExecutableDependencies:
     are revalidation obligations, never implicit grants. The enclosing provider
     owns bounded-work admission, warm/correctness checks and iteration charging.
     """
+
     argv: tuple[str, ...]
     executable_path: str
     artifact_path: str
@@ -26,8 +28,12 @@ class HostExecutableDependencies:
     command_revalidator: Callable
 
     def revalidate(self, argv):
-        if (type(self) is not HostExecutableDependencies or tuple(map(str, argv)) != self.argv
-                or not self.argv or not callable(self.command_revalidator)):
+        if (
+            type(self) is not HostExecutableDependencies
+            or tuple(map(str, argv)) != self.argv
+            or not self.argv
+            or not callable(self.command_revalidator)
+        ):
             raise ValueError("runtime capability belongs to another trusted command")
         pins = dict(self.file_pins)
         if len(pins) != len(self.file_pins):
@@ -52,22 +58,37 @@ class HostExecutableDependencies:
 
     def extend(self, sandbox, argv):
         from .answer_surfaces import AnswerSurface
+
         self.revalidate(argv)
         prefix = list(sandbox["command_prefix"])
         if not prefix or Path(prefix[0]).name != "bwrap" or "--clearenv" not in prefix:
             raise ValueError("runtime engine needs the existing clear-environment policy")
-        surfaces = [AnswerSurface(str(row.get("label", "answer")), _path(row["path"]),
-                    row["kind"], str(row.get("origin", "oracle"))) for row in sandbox["answer_surfaces"]]
+        surfaces = [
+            AnswerSurface(
+                str(row.get("label", "answer")), _path(row["path"]), row["kind"], str(row.get("origin", "oracle"))
+            )
+            for row in sandbox["answer_surfaces"]
+        ]
         engine = _path(self.executable_path)
         if not surfaces or _coverage_gaps(prefix, surfaces):
             raise ValueError("runtime policy has missing or exposed answer masks")
         if any(_overlap(engine, surface.path) for surface in surfaces):
             raise ValueError("runtime engine grant overlaps an answer surface")
         masks = {str(surface.path) for surface in surfaces}
-        insertion = next((i for i, flag in enumerate(prefix)
-            if (flag == "--tmpfs" and i+1 < len(prefix) and prefix[i+1] in masks)
-            or (flag == "--ro-bind" and i+2 < len(prefix) and prefix[i+1] == "/dev/null"
-                and prefix[i+2] in masks)), None)
+        insertion = next(
+            (
+                i
+                for i, flag in enumerate(prefix)
+                if (flag == "--tmpfs" and i + 1 < len(prefix) and prefix[i + 1] in masks)
+                or (
+                    flag == "--ro-bind"
+                    and i + 2 < len(prefix)
+                    and prefix[i + 1] == "/dev/null"
+                    and prefix[i + 2] in masks
+                )
+            ),
+            None,
+        )
         if insertion is None:
             raise ValueError("runtime policy has no explicit answer-mask boundary")
         result = [*prefix[:insertion], "--ro-bind", str(engine), str(engine), *prefix[insertion:]]

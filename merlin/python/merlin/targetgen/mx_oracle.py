@@ -13,11 +13,10 @@ higher tier.
 TARGET-AGNOSTIC: the subject here is the MX *format* (a datapath fact mlc derives from the RTL), not a
 target name. Any target whose contract declares an MX datapath routes its float matmul grade through here.
 """
+
 from __future__ import annotations
 
-_FMT = {"fp8": 0, "mxfp8": 0, "fp8_e4m3": 0,
-        "fp6": 1, "mxfp6": 1, "fp6_e3m2": 1,
-        "fp4": 2, "mxfp4": 2, "fp4_e2m1": 2}
+_FMT = {"fp8": 0, "mxfp8": 0, "fp8_e4m3": 0, "fp6": 1, "mxfp6": 1, "fp6_e3m2": 1, "fp4": 2, "mxfp4": 2, "fp4_e2m1": 2}
 
 
 def mx_reference():
@@ -35,6 +34,7 @@ def mx_reference():
     if not root:
         try:
             from merlin.common.paths import repo_root
+
             env = repo_root() / ".env"
             if env.is_file():
                 for line in env.read_text(encoding="utf-8").splitlines():
@@ -42,7 +42,7 @@ def mx_reference():
                     if sep and key.strip() == "MERLIN_MLC_DIR":
                         root = val.strip()
                         break
-        except Exception:                    # noqa: BLE001 — no repo root / unreadable .env
+        except Exception:  # noqa: BLE001 — no repo root / unreadable .env
             root = None
     if root:
         path = Path(root) / "mlc" / "validate" / "mx_ref.py"
@@ -52,12 +52,13 @@ def mx_reference():
                 mod = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(mod)
                 return mod
-            except Exception:                # noqa: BLE001 — an unloadable reference is "unavailable"
+            except Exception:  # noqa: BLE001 — an unloadable reference is "unavailable"
                 return None
     try:
         from mlc.validate import mx_ref
+
         return mx_ref
-    except Exception:                        # noqa: BLE001
+    except Exception:  # noqa: BLE001
         return None
 
 
@@ -79,13 +80,15 @@ def mx_datapath_available() -> bool:
     """True when the derived MX reference (mlc) is importable in this environment."""
     try:
         import mlc.validate.mx_ref  # noqa: F401
+
         return True
     except Exception:  # noqa: BLE001 — any import failure means the oracle is unavailable
         return False
 
 
-def mx_matmul(a_codes, w_codes, sa_codes, sb_codes, m: int, n: int, k: int,
-              fmt: str = "fp8", lut_a=None, lut_b=None, g: int = 0):
+def mx_matmul(
+    a_codes, w_codes, sa_codes, sb_codes, m: int, n: int, k: int, fmt: str = "fp8", lut_a=None, lut_b=None, g: int = 0
+):
     """Run an MX block-scaled ``A @ W`` on the derived datapath reference and return the ``(m, n)`` bf16
     output decoded to float32 — or ``None`` (fail closed) when mlc is unavailable or ``fmt`` is unknown.
 
@@ -99,7 +102,6 @@ def mx_matmul(a_codes, w_codes, sa_codes, sb_codes, m: int, n: int, k: int,
         return None
     try:
         import numpy as np
-
         from mlc.validate import mx_ref as _mx
     except Exception:  # noqa: BLE001 — mlc absent: no MX oracle in this env, fail closed
         return None
@@ -109,9 +111,12 @@ def mx_matmul(a_codes, w_codes, sa_codes, sb_codes, m: int, n: int, k: int,
     sb = np.asarray(sb_codes, dtype=np.int32).reshape(k // 32, n)
     la = None if lut_a is None else np.asarray(lut_a, dtype=np.uint8)
     lb = None if lut_b is None else np.asarray(lut_b, dtype=np.uint8)
-    bits = np.asarray(_mx.mx_matmul(a, w, sa, sb, m, n, k, fmt=fmt_id, lutA=la, lutB=lb, G=g)
-                      ).reshape(m, n).astype(np.uint32)
-    return (bits << 16).view(np.float32)          # bf16 bits -> float32
+    bits = (
+        np.asarray(_mx.mx_matmul(a, w, sa, sb, m, n, k, fmt=fmt_id, lutA=la, lutB=lb, G=g))
+        .reshape(m, n)
+        .astype(np.uint32)
+    )
+    return (bits << 16).view(np.float32)  # bf16 bits -> float32
 
 
 def grade_matmul(operand_codes: dict, sa_codes, sb_codes, golden_out) -> dict:
@@ -121,14 +126,25 @@ def grade_matmul(operand_codes: dict, sa_codes, sb_codes, golden_out) -> dict:
     codes — not the display-rounded ``decoded`` floats — so the comparison is exact. Returns
     ``{status, exact, max_abs_err}`` or ``{status: 'oracle_unavailable'}`` (fail closed)."""
     import numpy as np
+
     oc = operand_codes
     a = np.array(oc["A_bytes"], dtype=np.uint8).reshape(oc["A_shape"])
     b = np.array(oc["B_bytes"], dtype=np.uint8).reshape(oc["B_shape"])
-    out = mx_matmul(a, b, sa_codes, sb_codes, oc["M"], oc["N"], oc["K"], fmt=oc["fmt"],
-                    lut_a=oc.get("lutA"), lut_b=oc.get("lutB"), g=oc.get("G", 0))
+    out = mx_matmul(
+        a,
+        b,
+        sa_codes,
+        sb_codes,
+        oc["M"],
+        oc["N"],
+        oc["K"],
+        fmt=oc["fmt"],
+        lut_a=oc.get("lutA"),
+        lut_b=oc.get("lutB"),
+        g=oc.get("G", 0),
+    )
     if out is None:
         return {"status": "oracle_unavailable"}
     gold = np.asarray(golden_out, dtype=np.float32)
     exact = bool(np.array_equal(out, gold))
-    return {"status": "pass" if exact else "fail", "exact": exact,
-            "max_abs_err": float(np.max(np.abs(out - gold)))}
+    return {"status": "pass" if exact else "fail", "exact": exact, "max_abs_err": float(np.max(np.abs(out - gold)))}

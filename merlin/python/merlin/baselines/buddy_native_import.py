@@ -23,6 +23,7 @@ Usage (from :mod:`buddy`)::
 It is deliberately import-light at module top so a ``--help`` works even without buddy built; the
 heavy imports happen inside :func:`main`.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -47,9 +48,13 @@ def main(argv=None) -> int:
     ap.add_argument("--variant", default="int8")
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--loader", required=True, help="path to the m2m workloads/<model>/loader.py")
-    ap.add_argument("--registry", default="tosa", choices=["linalg", "tosa"],
-                    help="buddy primary op registry (tosa is buddy's robust default; its linalg "
-                         "registry has an expand_op bug on the LLM graph)")
+    ap.add_argument(
+        "--registry",
+        default="tosa",
+        choices=["linalg", "tosa"],
+        help="buddy primary op registry (tosa is buddy's robust default; its linalg "
+        "registry has an expand_op bug on the LLM graph)",
+    )
     args = ap.parse_args(argv)
 
     out = Path(args.out_dir)
@@ -61,6 +66,7 @@ def main(argv=None) -> int:
     from buddy.compiler.frontend import DynamoCompiler
     from buddy.compiler.graph import GraphDriver
     from buddy.compiler.graph.transform import simply_fuse
+
     if args.registry == "tosa":
         from buddy.compiler.ops import tosa as _reg
     else:
@@ -85,8 +91,7 @@ def main(argv=None) -> int:
         try:
             graphs = dynamo_compiler.importer_by_export(model, *inputs)
         except Exception as e:  # noqa: BLE001
-            print(f"NOTE: importer_by_export failed ({str(e)[:120]}); using dynamo importer",
-                  file=sys.stderr)
+            print(f"NOTE: importer_by_export failed ({str(e)[:120]}); using dynamo importer", file=sys.stderr)
             torch._dynamo.reset()
             graphs = dynamo_compiler.importer(model, *inputs)
     if len(graphs) != 1:

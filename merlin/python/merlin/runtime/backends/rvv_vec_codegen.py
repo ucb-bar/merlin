@@ -9,6 +9,7 @@ simulator, and this kernel.
 This is the NON-matmul family codegen — it shares the harness/oracle plumbing with the matmul
 path but none of its semantics.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -65,9 +66,13 @@ def generate_driver(cb: dict[str, Any], *, mode: str = "explicit") -> str:
         if dst and dst not in leaves and dst not in produced:
             produced.append(dst)
             lines.append(f"static int32_t T_{dst}[{sh[dst]}];")
-    lines += ["", "int main(long hart) {", "  if (hart != 0) { for(;;); }",
-              "  uint64_t c0, c1;",
-              '  asm volatile("csrr %0, mcycle" : "=r"(c0));']
+    lines += [
+        "",
+        "int main(long hart) {",
+        "  if (hart != 0) { for(;;); }",
+        "  uint64_t c0, c1;",
+        '  asm volatile("csrr %0, mcycle" : "=r"(c0));',
+    ]
 
     for cmd in cb.get("commands", []):
         op, ops, attrs = cmd["opcode"], cmd.get("operands", {}), cmd.get("attributes", {})
@@ -121,7 +126,7 @@ def generate_driver(cb: dict[str, Any], *, mode: str = "explicit") -> str:
             "  htif_putc('\\n');",
         ]
     lines += [
-        '  htif_puts("METRIC cycles "); htif_putd((long)(c1 - c0)); htif_putc(\'\\n\');',
+        "  htif_puts(\"METRIC cycles \"); htif_putd((long)(c1 - c0)); htif_putc('\\n');",
         '  htif_puts("DONE\\n");',
         "  htif_exit(0);",
         "  return 0;",

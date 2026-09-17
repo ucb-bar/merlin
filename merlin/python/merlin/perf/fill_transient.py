@@ -26,6 +26,7 @@ Nothing here names a target, an engine, a unit or a design variable. The overlap
 deliberately the same number, so this verdict's eta and theirs are one quantity rather than two that
 share a name.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -33,10 +34,22 @@ from dataclasses import dataclass
 from fractions import Fraction
 
 __all__ = [
-    "IN_FILL_TRANSIENT", "NEVER_SETTLES_IN_RANGE", "PARTITION_FIELDS", "PartitionEvidenceError",
-    "Point", "SATURATED", "SETTLED_AT", "UNDETERMINABLE", "eta_resolution", "marginal_costs",
-    "marginal_settling_depth", "overlap_trend", "partition_kwargs", "point_from_counter_values",
-    "settling_depth", "transient_verdict",
+    "IN_FILL_TRANSIENT",
+    "NEVER_SETTLES_IN_RANGE",
+    "PARTITION_FIELDS",
+    "PartitionEvidenceError",
+    "Point",
+    "SATURATED",
+    "SETTLED_AT",
+    "UNDETERMINABLE",
+    "eta_resolution",
+    "marginal_costs",
+    "marginal_settling_depth",
+    "overlap_trend",
+    "partition_kwargs",
+    "point_from_counter_values",
+    "settling_depth",
+    "transient_verdict",
 ]
 
 #: The cohort's points are all inside the transient: marginal cost still falling, overlap still rising.
@@ -91,44 +104,55 @@ def partition_kwargs(partition) -> dict:
             "no CIRCT counter-partition evidence was supplied, so realised overlap cannot be called "
             f"measured; the target boundary must supply {list(PARTITION_FIELDS)} -- its elaborated "
             "CIRCT HW text, the shipped counter header's event codes, and the two module identities "
-            "that select the counted structures")
+            "that select the counted structures"
+        )
     if not isinstance(partition, Mapping):
         raise PartitionEvidenceError(
             f"the CIRCT counter-partition evidence must be a mapping of {list(PARTITION_FIELDS)}, "
-            f"not a {type(partition).__name__}")
+            f"not a {type(partition).__name__}"
+        )
     # The target boundary reports its own three states. Only "available" carries usable evidence, and
     # an unavailable one is passed through with the target's OWN reason rather than reworded here.
     status = partition.get("status")
     if status is not None and status != "available":
         raise PartitionEvidenceError(
             f"the target reports its CIRCT counter-partition evidence as {str(status)!r}: "
-            + str(partition.get("why") or "no reason was given"))
+            + str(partition.get("why") or "no reason was given")
+        )
     for field in ("hw_text", "module", "counter_module"):
         value = partition.get(field)
         if not isinstance(value, str) or not value.strip():
             raise PartitionEvidenceError(
                 f"the CIRCT counter-partition evidence carries no non-empty {field!r}; without it "
                 "the counter exclusivity proof cannot be attempted, and an unproved partition is "
-                "UNKNOWN overlap rather than zero overlap")
+                "UNKNOWN overlap rather than zero overlap"
+            )
     codes = partition.get("codes")
     if not isinstance(codes, Mapping) or not codes:
         raise PartitionEvidenceError(
             "the CIRCT counter-partition evidence carries no 'codes' mapping of counter name to the "
-            "event code its own header declares; the proof follows those numeric ports into the HW")
+            "event code its own header declares; the proof follows those numeric ports into the HW"
+        )
     for name, code in codes.items():
         if not isinstance(name, str) or not name:
             raise PartitionEvidenceError("an event code is keyed by something other than a name")
         if isinstance(code, bool) or not isinstance(code, int) or code < 0:
             raise PartitionEvidenceError(
-                f"event code for {name!r} is not a non-negative integer, so no port selects it")
+                f"event code for {name!r} is not a non-negative integer, so no port selects it"
+            )
     source = partition.get("source")
     if source is not None and not isinstance(source, str):
         raise PartitionEvidenceError("the partition evidence 'source' must be a string when present")
     from merlin.perf.hw_counters import PROVED_FROM_ARTIFACT  # noqa: PLC0415
 
-    return {"hw_text": str(partition["hw_text"]), "codes": dict(codes),
-            "module": str(partition["module"]), "counter_module": str(partition["counter_module"]),
-            "exclusivity": PROVED_FROM_ARTIFACT, "source": source}
+    return {
+        "hw_text": str(partition["hw_text"]),
+        "codes": dict(codes),
+        "module": str(partition["module"]),
+        "counter_module": str(partition["counter_module"]),
+        "exclusivity": PROVED_FROM_ARTIFACT,
+        "source": source,
+    }
 
 
 @dataclass(frozen=True)
@@ -159,16 +183,27 @@ class Point:
 
     def to_dict(self) -> dict:
         eta = self.eta
-        return {"label": self.label, "axis": self.axis, "cycles": self.cycles,
-                "realised_overlap_cycles": self.realised_overlap,
-                "available_overlap_cycles": self.available_overlap,
-                "eta": None if eta is None else float(eta),
-                "overlap_detail": self.overlap_detail}
+        return {
+            "label": self.label,
+            "axis": self.axis,
+            "cycles": self.cycles,
+            "realised_overlap_cycles": self.realised_overlap,
+            "available_overlap_cycles": self.available_overlap,
+            "eta": None if eta is None else float(eta),
+            "overlap_detail": self.overlap_detail,
+        }
 
 
-def point_from_counter_values(label: str, axis: int, cycles: int, values: Mapping[str, int],
-                              counters, *, partition=None,
-                              exclusivity_declared_by_producer: bool = False) -> Point:
+def point_from_counter_values(
+    label: str,
+    axis: int,
+    cycles: int,
+    values: Mapping[str, int],
+    counters,
+    *,
+    partition=None,
+    exclusivity_declared_by_producer: bool = False,
+) -> Point:
     """A :class:`Point` whose overlap comes from one bracketed run's combination counters.
 
     Delegates to :func:`merlin.perf.hw_counters.eta_from_counters` rather than re-deriving the ratio,
@@ -192,9 +227,10 @@ def point_from_counter_values(label: str, axis: int, cycles: int, values: Mappin
     run, so a partition totalling more than the window it was read in is mixed, corrupt or wrapped, and
     the delegate says so rather than dividing anyway.
     """
-    from merlin.perf.hw_counters import eta_from_counters
-
-    from merlin.perf.hw_counters import DECLARED_BY_PRODUCER  # noqa: PLC0415
+    from merlin.perf.hw_counters import (
+        DECLARED_BY_PRODUCER,  # noqa: PLC0415
+        eta_from_counters,
+    )
 
     if partition is None and exclusivity_declared_by_producer:
         proof = {"exclusivity": DECLARED_BY_PRODUCER, "source": None}
@@ -205,19 +241,29 @@ def point_from_counter_values(label: str, axis: int, cycles: int, values: Mappin
             return Point(label=label, axis=int(axis), cycles=int(cycles), overlap_detail=str(exc))
     reading = eta_from_counters(dict(values), counters, measurement_cycles=int(cycles), **proof)
     if reading.get("state") != "measured":
-        return Point(label=label, axis=int(axis), cycles=int(cycles),
-                     overlap_detail=str(reading.get("why") or "the counter reading is not measured"))
+        return Point(
+            label=label,
+            axis=int(axis),
+            cycles=int(cycles),
+            overlap_detail=str(reading.get("why") or "the counter reading is not measured"),
+        )
     method = str((reading.get("partition_proof") or {}).get("method") or "")
     detail = str(reading.get("note") or "")
     if method == DECLARED_BY_PRODUCER:
         # WHICH RUNG travels with the point, because a reader deciding whether to cite an eta needs
         # to know whether its partition was verified or merely asserted.
-        detail = (f"exclusivity {DECLARED_BY_PRODUCER}: no elaborated artifact verified that these "
-                  f"counters partition busy time. {detail}").strip()
-    return Point(label=label, axis=int(axis), cycles=int(cycles),
-                 realised_overlap=int(reading["realised_cycles"]),
-                 available_overlap=int(reading["available_cycles"]),
-                 overlap_detail=detail)
+        detail = (
+            f"exclusivity {DECLARED_BY_PRODUCER}: no elaborated artifact verified that these "
+            f"counters partition busy time. {detail}"
+        ).strip()
+    return Point(
+        label=label,
+        axis=int(axis),
+        cycles=int(cycles),
+        realised_overlap=int(reading["realised_cycles"]),
+        available_overlap=int(reading["available_cycles"]),
+        overlap_detail=detail,
+    )
 
 
 def _ordered(points: Sequence[Point]) -> list[Point]:
@@ -237,12 +283,19 @@ def marginal_costs(points: Sequence[Point]) -> list[dict]:
         if span <= 0:
             raise ValueError(f"points {earlier.label!r} and {later.label!r} do not advance the axis")
         rate = Fraction(int(later.cycles) - int(earlier.cycles), span)
-        out.append({"from": earlier.label, "to": later.label,
-                    "axis_from": int(earlier.axis), "axis_to": int(later.axis),
-                    "delta_cycles": int(later.cycles) - int(earlier.cycles),
-                    "axis_span": span,
-                    "marginal_cycles_per_axis_unit": float(rate),
-                    "exact_numerator": rate.numerator, "exact_denominator": rate.denominator})
+        out.append(
+            {
+                "from": earlier.label,
+                "to": later.label,
+                "axis_from": int(earlier.axis),
+                "axis_to": int(later.axis),
+                "delta_cycles": int(later.cycles) - int(earlier.cycles),
+                "axis_span": span,
+                "marginal_cycles_per_axis_unit": float(rate),
+                "exact_numerator": rate.numerator,
+                "exact_denominator": rate.denominator,
+            }
+        )
     return out
 
 
@@ -256,16 +309,26 @@ def overlap_trend(points: Sequence[Point]) -> dict:
     ordered = _ordered(points)
     unread = [p.label for p in ordered if p.eta is None]
     if unread:
-        return {"state": UNDETERMINABLE, "unread": unread,
-                "why": (f"{len(unread)} point(s) carry no overlap reading ({unread}); an unread point "
-                        "is UNKNOWN, never zero overlap, and a trend over the rest is a trend of a "
-                        "different cohort"),
-                "eta_by_point": [p.to_dict() for p in ordered]}
+        return {
+            "state": UNDETERMINABLE,
+            "unread": unread,
+            "why": (
+                f"{len(unread)} point(s) carry no overlap reading ({unread}); an unread point "
+                "is UNKNOWN, never zero overlap, and a trend over the rest is a trend of a "
+                "different cohort"
+            ),
+            "eta_by_point": [p.to_dict() for p in ordered],
+        }
     if len(ordered) < 3:
-        return {"state": UNDETERMINABLE, "unread": [],
-                "why": (f"{len(ordered)} point(s): a trend needs at least three, because two points "
-                        "define one step and one step cannot be rising or flattening"),
-                "eta_by_point": [p.to_dict() for p in ordered]}
+        return {
+            "state": UNDETERMINABLE,
+            "unread": [],
+            "why": (
+                f"{len(ordered)} point(s): a trend needs at least three, because two points "
+                "define one step and one step cannot be rising or flattening"
+            ),
+            "eta_by_point": [p.to_dict() for p in ordered],
+        }
     etas = [p.eta for p in ordered]
     # NON-DECREASING, not strictly increasing. Saturation is precisely the case where the last step is
     # zero, so a strict test would report the settled cohort -- the one this verdict must be able to
@@ -273,11 +336,14 @@ def overlap_trend(points: Sequence[Point]) -> dict:
     # goes DOWN says the points are not ordered by how far the machine had filled.
     rising = all(later >= earlier for earlier, later in zip(etas, etas[1:], strict=False))
     last_step = etas[-1] - etas[-2]
-    return {"state": "measured", "unread": [],
-            "monotonically_rising": rising,
-            "still_rising_at_deepest_point": last_step > 0,
-            "final_step": float(last_step),
-            "eta_by_point": [p.to_dict() for p in ordered]}
+    return {
+        "state": "measured",
+        "unread": [],
+        "monotonically_rising": rising,
+        "still_rising_at_deepest_point": last_step > 0,
+        "final_step": float(last_step),
+        "eta_by_point": [p.to_dict() for p in ordered],
+    }
 
 
 def transient_verdict(points: Sequence[Point]) -> dict:
@@ -291,25 +357,30 @@ def transient_verdict(points: Sequence[Point]) -> dict:
     ordered = _ordered(points)
     marginals = marginal_costs(ordered)
     rates = [Fraction(m["exact_numerator"], m["exact_denominator"]) for m in marginals]
-    falling = len(rates) >= 2 and all(
-        later < earlier for earlier, later in zip(rates, rates[1:], strict=False))
+    falling = len(rates) >= 2 and all(later < earlier for earlier, later in zip(rates, rates[1:], strict=False))
     trend = overlap_trend(ordered)
 
     if trend["state"] != "measured":
         state, why = UNDETERMINABLE, trend["why"]
     elif not trend["monotonically_rising"]:
         state = UNDETERMINABLE
-        why = ("realised overlap FALLS somewhere across the cohort, so the points are not ordered by "
-               "how far the machine had filled and 'still filling' is not what they show")
+        why = (
+            "realised overlap FALLS somewhere across the cohort, so the points are not ordered by "
+            "how far the machine had filled and 'still filling' is not what they show"
+        )
     elif trend["still_rising_at_deepest_point"]:
         state = IN_FILL_TRANSIENT
-        why = ("realised overlap is still rising at the deepest point measured, so no point in the "
-               "cohort priced a settled machine: every one of them charged a different degree of "
-               "engine cooperation")
+        why = (
+            "realised overlap is still rising at the deepest point measured, so no point in the "
+            "cohort priced a settled machine: every one of them charged a different degree of "
+            "engine cooperation"
+        )
     else:
         state = SATURATED
-        why = ("realised overlap stopped rising inside the cohort, so its deepest points priced a "
-               "settled machine and a steady-state law is testable on them")
+        why = (
+            "realised overlap stopped rising inside the cohort, so its deepest points priced a "
+            "settled machine and a steady-state law is testable on them"
+        )
 
     return {
         "state": state,
@@ -319,9 +390,10 @@ def transient_verdict(points: Sequence[Point]) -> dict:
             "the marginal cost per axis unit falls strictly across every consecutive interval; an "
             "affine law asserts one constant marginal cost, so this cohort contradicts the FORM "
             "independently of any fit statistic or tolerance"
-            if falling else
-            "the marginal cost per axis unit does not fall strictly across every interval, so the "
-            "affine form is not contradicted by the marginals alone"),
+            if falling
+            else "the marginal cost per axis unit does not fall strictly across every interval, so the "
+            "affine form is not contradicted by the marginals alone"
+        ),
         "n_points": len(ordered),
         "marginals": marginals,
         "overlap": trend,
@@ -341,14 +413,26 @@ def eta_resolution(points: Sequence[Point]) -> list[dict]:
     for earlier, later in zip(ordered, ordered[1:], strict=False):
         avail = [p.available_overlap for p in (earlier, later)]
         if any(a is None or not a for a in avail):
-            out.append({"from": earlier.label, "to": later.label, "resolution": None,
-                        "why": "one of the pair carries no available-overlap reading"})
+            out.append(
+                {
+                    "from": earlier.label,
+                    "to": later.label,
+                    "resolution": None,
+                    "why": "one of the pair carries no available-overlap reading",
+                }
+            )
             continue
         coarsest = min(int(a) for a in avail)
-        out.append({"from": earlier.label, "to": later.label,
-                    "resolution": float(Fraction(1, coarsest)),
-                    "exact_numerator": 1, "exact_denominator": coarsest,
-                    "why": f"eta moves in steps of 1/{coarsest} at the coarser of the two points"})
+        out.append(
+            {
+                "from": earlier.label,
+                "to": later.label,
+                "resolution": float(Fraction(1, coarsest)),
+                "exact_numerator": 1,
+                "exact_denominator": coarsest,
+                "why": f"eta moves in steps of 1/{coarsest} at the coarser of the two points",
+            }
+        )
     return out
 
 
@@ -386,13 +470,22 @@ def settling_depth(points: Sequence[Point], *, band: Fraction, confirming_steps:
 
     ordered = _ordered(points)
     trend = overlap_trend(ordered)
-    declared = {"band": float(band), "band_numerator": band.numerator,
-                "band_denominator": band.denominator,
-                "confirming_steps": int(confirming_steps)}
+    declared = {
+        "band": float(band),
+        "band_numerator": band.numerator,
+        "band_denominator": band.denominator,
+        "confirming_steps": int(confirming_steps),
+    }
     if trend["state"] != "measured":
-        return {"state": UNDETERMINABLE, "why": trend["why"], "declared": declared,
-                "settling_axis": None, "steps": [], "overlap": trend,
-                "marginals": marginal_costs(ordered) if len(ordered) > 1 else []}
+        return {
+            "state": UNDETERMINABLE,
+            "why": trend["why"],
+            "declared": declared,
+            "settling_axis": None,
+            "steps": [],
+            "overlap": trend,
+            "marginals": marginal_costs(ordered) if len(ordered) > 1 else [],
+        }
 
     resolutions = eta_resolution(ordered)
     etas = [p.eta for p in ordered]
@@ -400,18 +493,23 @@ def settling_depth(points: Sequence[Point], *, band: Fraction, confirming_steps:
     for i, (earlier, later) in enumerate(zip(ordered, ordered[1:], strict=False)):
         delta = etas[i + 1] - etas[i]
         res = resolutions[i].get("resolution")
-        steps.append({
-            "from": earlier.label, "to": later.label,
-            "axis_from": int(earlier.axis), "axis_to": int(later.axis),
-            "eta_from": float(etas[i]), "eta_to": float(etas[i + 1]),
-            "eta_step": float(delta),
-            "within_band": bool(delta <= band),
-            "resolution": res,
-            # A band finer than the instrument's own step size cannot separate "settled" from "rose by
-            # the smallest amount this reading can express". Recorded per step, because resolution
-            # improves with depth and the shallow end is where it bites.
-            "band_below_resolution": bool(res is not None and float(band) < res),
-        })
+        steps.append(
+            {
+                "from": earlier.label,
+                "to": later.label,
+                "axis_from": int(earlier.axis),
+                "axis_to": int(later.axis),
+                "eta_from": float(etas[i]),
+                "eta_to": float(etas[i + 1]),
+                "eta_step": float(delta),
+                "within_band": bool(delta <= band),
+                "resolution": res,
+                # A band finer than the instrument's own step size cannot separate "settled" from "rose by
+                # the smallest amount this reading can express". Recorded per step, because resolution
+                # improves with depth and the shallow end is where it bites.
+                "band_below_resolution": bool(res is not None and float(band) < res),
+            }
+        )
 
     n = len(steps)
     settling_index = None
@@ -423,38 +521,46 @@ def settling_depth(points: Sequence[Point], *, band: Fraction, confirming_steps:
             break
 
     deepest = ordered[-1]
-    common = {"declared": declared, "steps": steps, "overlap": trend,
-              "marginals": marginal_costs(ordered),
-              "deepest_axis_measured": int(deepest.axis),
-              "deepest_eta": float(etas[-1]),
-              "final_step": float(etas[-1] - etas[-2]),
-              "unresolvable_steps": [s["from"] + "->" + s["to"] for s in steps
-                                     if s["band_below_resolution"]]}
+    common = {
+        "declared": declared,
+        "steps": steps,
+        "overlap": trend,
+        "marginals": marginal_costs(ordered),
+        "deepest_axis_measured": int(deepest.axis),
+        "deepest_eta": float(etas[-1]),
+        "final_step": float(etas[-1] - etas[-2]),
+        "unresolvable_steps": [s["from"] + "->" + s["to"] for s in steps if s["band_below_resolution"]],
+    }
     if settling_index is None:
         return {
             "state": NEVER_SETTLES_IN_RANGE,
             "settling_axis": None,
-            "why": (f"no axis value in this ladder is followed by {int(confirming_steps)} consecutive "
-                    f"step(s) whose eta rise is within {float(band)}; the deepest point measured is "
-                    f"axis {int(deepest.axis)} at eta {float(etas[-1]):.6g}, still rising by "
-                    f"{float(etas[-1] - etas[-2]):.6g}. The overlap does not settle anywhere in the "
-                    "measured range, which bounds a successor cohort from below rather than supplying "
-                    "it a depth"),
-            **common}
+            "why": (
+                f"no axis value in this ladder is followed by {int(confirming_steps)} consecutive "
+                f"step(s) whose eta rise is within {float(band)}; the deepest point measured is "
+                f"axis {int(deepest.axis)} at eta {float(etas[-1]):.6g}, still rising by "
+                f"{float(etas[-1] - etas[-2]):.6g}. The overlap does not settle anywhere in the "
+                "measured range, which bounds a successor cohort from below rather than supplying "
+                "it a depth"
+            ),
+            **common,
+        }
     settled = ordered[settling_index]
     return {
         "state": SETTLED_AT,
         "settling_axis": int(settled.axis),
         "settling_label": settled.label,
-        "why": (f"from axis {int(settled.axis)} onward every one of the {n - settling_index} remaining "
-                f"step(s) rises by at most {float(band)}, so the machine had finished filling by that "
-                f"depth and a steady-state law is testable at or past it"),
+        "why": (
+            f"from axis {int(settled.axis)} onward every one of the {n - settling_index} remaining "
+            f"step(s) rises by at most {float(band)}, so the machine had finished filling by that "
+            f"depth and a steady-state law is testable at or past it"
+        ),
         "confirmed_by_steps": n - settling_index,
-        **common}
+        **common,
+    }
 
 
-def marginal_settling_depth(points: Sequence[Point], *, relative_band: Fraction,
-                            confirming_steps: int) -> dict:
+def marginal_settling_depth(points: Sequence[Point], *, relative_band: Fraction, confirming_steps: int) -> dict:
     """The shallowest axis value from which the MARGINAL cost per axis unit stops changing.
 
     The companion to :func:`settling_depth`, and the one a successor cohort is actually built on.
@@ -481,15 +587,24 @@ def marginal_settling_depth(points: Sequence[Point], *, relative_band: Fraction,
 
     ordered = _ordered(points)
     marginals = marginal_costs(ordered)
-    declared = {"relative_band": float(relative_band),
-                "relative_band_numerator": relative_band.numerator,
-                "relative_band_denominator": relative_band.denominator,
-                "confirming_steps": int(confirming_steps)}
+    declared = {
+        "relative_band": float(relative_band),
+        "relative_band_numerator": relative_band.numerator,
+        "relative_band_denominator": relative_band.denominator,
+        "confirming_steps": int(confirming_steps),
+    }
     if len(marginals) < 2:
-        return {"state": UNDETERMINABLE, "settling_axis": None, "declared": declared, "steps": [],
-                "marginals": marginals,
-                "why": (f"{len(marginals)} marginal(s): comparing one marginal to the next needs at "
-                        "least two, and one marginal cannot be changing or unchanged")}
+        return {
+            "state": UNDETERMINABLE,
+            "settling_axis": None,
+            "declared": declared,
+            "steps": [],
+            "marginals": marginals,
+            "why": (
+                f"{len(marginals)} marginal(s): comparing one marginal to the next needs at "
+                "least two, and one marginal cannot be changing or unchanged"
+            ),
+        }
 
     rates = [Fraction(m["exact_numerator"], m["exact_denominator"]) for m in marginals]
     steps: list[dict] = []
@@ -498,14 +613,19 @@ def marginal_settling_depth(points: Sequence[Point], *, relative_band: Fraction,
         # A pair of zero marginals is unchanged by construction; guarding it here keeps the ratio
         # from being a division rather than a judgement.
         change = Fraction(0) if scale == 0 else abs(later - earlier) / scale
-        steps.append({
-            "from": marginals[i]["from"], "through": marginals[i]["to"],
-            "to": marginals[i + 1]["to"],
-            "axis_from": marginals[i]["axis_from"], "axis_to": marginals[i + 1]["axis_to"],
-            "marginal_before": float(earlier), "marginal_after": float(later),
-            "relative_change": float(change),
-            "within_band": bool(change <= relative_band),
-        })
+        steps.append(
+            {
+                "from": marginals[i]["from"],
+                "through": marginals[i]["to"],
+                "to": marginals[i + 1]["to"],
+                "axis_from": marginals[i]["axis_from"],
+                "axis_to": marginals[i + 1]["axis_to"],
+                "marginal_before": float(earlier),
+                "marginal_after": float(later),
+                "relative_change": float(change),
+                "within_band": bool(change <= relative_band),
+            }
+        )
 
     n = len(steps)
     index = None
@@ -533,36 +653,52 @@ def marginal_settling_depth(points: Sequence[Point], *, relative_band: Fraction,
             run_len = 0
     window = None
     if best_len:
-        window = {"axis_from": steps[best_start]["axis_from"],
-                  "axis_to": steps[best_start + best_len - 1]["axis_to"],
-                  "steps": best_len,
-                  "closes_before_the_deepest_point": bool(best_start + best_len < n),
-                  "why": ("the marginal cost holds inside the band across this stretch and changes "
-                          "again outside it" if best_start + best_len < n else
-                          "the marginal cost holds inside the band from here to the deepest point")}
+        window = {
+            "axis_from": steps[best_start]["axis_from"],
+            "axis_to": steps[best_start + best_len - 1]["axis_to"],
+            "steps": best_len,
+            "closes_before_the_deepest_point": bool(best_start + best_len < n),
+            "why": (
+                "the marginal cost holds inside the band across this stretch and changes again outside it"
+                if best_start + best_len < n
+                else "the marginal cost holds inside the band from here to the deepest point"
+            ),
+        }
 
     deepest = ordered[-1]
-    common = {"declared": declared, "steps": steps, "marginals": marginals,
-              "deepest_axis_measured": int(deepest.axis),
-              "longest_within_band_window": window,
-              "final_relative_change": steps[-1]["relative_change"]}
+    common = {
+        "declared": declared,
+        "steps": steps,
+        "marginals": marginals,
+        "deepest_axis_measured": int(deepest.axis),
+        "longest_within_band_window": window,
+        "final_relative_change": steps[-1]["relative_change"],
+    }
     if index is None:
         return {
-            "state": NEVER_SETTLES_IN_RANGE, "settling_axis": None,
-            "why": (f"no axis value in this ladder is followed by {int(confirming_steps)} consecutive "
-                    f"marginal comparison(s) agreeing within {float(relative_band)}; at the deepest "
-                    f"point measured (axis {int(deepest.axis)}) consecutive marginals still differ by "
-                    f"{steps[-1]['relative_change']:.6g}. An affine law asserts ONE constant marginal "
-                    "cost, so it is not testable anywhere in this range"),
-            **common}
+            "state": NEVER_SETTLES_IN_RANGE,
+            "settling_axis": None,
+            "why": (
+                f"no axis value in this ladder is followed by {int(confirming_steps)} consecutive "
+                f"marginal comparison(s) agreeing within {float(relative_band)}; at the deepest "
+                f"point measured (axis {int(deepest.axis)}) consecutive marginals still differ by "
+                f"{steps[-1]['relative_change']:.6g}. An affine law asserts ONE constant marginal "
+                "cost, so it is not testable anywhere in this range"
+            ),
+            **common,
+        }
     # The marginal that first holds spans two intervals, and the depth a law becomes testable FROM is
     # the shallow end of the first of them: that is the first point whose cost is already charged at
     # the settled rate.
     settled_axis = steps[index]["axis_from"]
     return {
-        "state": SETTLED_AT, "settling_axis": int(settled_axis),
-        "why": (f"from axis {int(settled_axis)} onward every one of the {n - index} remaining "
-                f"marginal comparison(s) agrees within {float(relative_band)}, so the cost per extra "
-                "axis unit has stopped changing and an affine law is testable at or past that depth"),
+        "state": SETTLED_AT,
+        "settling_axis": int(settled_axis),
+        "why": (
+            f"from axis {int(settled_axis)} onward every one of the {n - index} remaining "
+            f"marginal comparison(s) agrees within {float(relative_band)}, so the cost per extra "
+            "axis unit has stopped changing and an affine law is testable at or past that depth"
+        ),
         "confirmed_by_steps": n - index,
-        **common}
+        **common,
+    }

@@ -32,15 +32,24 @@ Parsing is STRUCTURAL: declaration keys and values are underscore-joined identif
 ``_`` into tokens. No pattern matching, no opcode-style table of known family names, and nothing here
 names a target or a family -- a declaration arrives as a mapping and leaves as a verdict.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 __all__ = [
-    "AnalyzerIdentity", "CAPACITY_CONTRADICTS_DEMAND_EQUAL", "FamilyReach",
-    "ReplicateContract", "UNDECLARED_FIRING_QUANTITY", "analyzer_identity", "capacity_demand",
-    "family_reach", "has_decision_procedure", "replicate_contract", "tokens",
+    "AnalyzerIdentity",
+    "CAPACITY_CONTRADICTS_DEMAND_EQUAL",
+    "FamilyReach",
+    "ReplicateContract",
+    "UNDECLARED_FIRING_QUANTITY",
+    "analyzer_identity",
+    "capacity_demand",
+    "family_reach",
+    "has_decision_procedure",
+    "replicate_contract",
+    "tokens",
 ]
 
 #: The gate asks for at least two of a quantity the comparand's ``demand_equal`` holds fixed.
@@ -55,8 +64,31 @@ _AT, _LEAST = "at", "least"
 _DECLARED = "declared"
 #: Tokens that carry no quantity of their own and so are skipped when reading a capacity or a firing
 #: condition's subject. They are English glue, not part of any name a contract declares.
-_GLUE = frozenset({"a", "an", "the", "any", "each", "of", "per", "and", "or", "its", "their", "one",
-                   "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"})
+_GLUE = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "any",
+        "each",
+        "of",
+        "per",
+        "and",
+        "or",
+        "its",
+        "their",
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+    }
+)
 
 
 def tokens(text: object) -> tuple[str, ...]:
@@ -77,7 +109,7 @@ def _contains(haystack: tuple[str, ...], needle: tuple[str, ...]) -> bool:
     """Is ``needle`` a contiguous subsequence of ``haystack``? Empty needles never match."""
     if not needle or len(needle) > len(haystack):
         return False
-    return any(haystack[i:i + len(needle)] == needle for i in range(len(haystack) - len(needle) + 1))
+    return any(haystack[i : i + len(needle)] == needle for i in range(len(haystack) - len(needle) + 1))
 
 
 def capacity_demand(gate: Mapping | None) -> tuple[str, ...]:
@@ -98,7 +130,7 @@ def _declared_quantity(falsifier: Mapping | None) -> tuple[str, ...]:
     parts = tokens((falsifier or {}).get("fires_when"))
     if _DECLARED not in parts:
         return ()
-    return _normalised(parts[parts.index(_DECLARED) + 1:])
+    return _normalised(parts[parts.index(_DECLARED) + 1 :])
 
 
 #: The one value that may NOT count as its own declaration. ``fires_when`` is the sentence under test;
@@ -146,8 +178,7 @@ def has_decision_procedure(performance: Mapping) -> bool:
 #: Characters a declared analyzer identifier may use.  Checked by MEMBERSHIP rather than by a
 #: pattern: the parts are Python module and function names, and a set test says exactly that without
 #: a regex whose narrowness would silently reject a valid-but-differently-spelled declaration.
-_IDENTIFIER_CHARS = frozenset(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+_IDENTIFIER_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
 
 
 @dataclass(frozen=True)
@@ -179,17 +210,14 @@ def analyzer_identity(performance: Mapping) -> AnalyzerIdentity | None:
     if declared is None or declared == "":
         return None
     if not isinstance(declared, str):
-        raise ValueError(
-            f"a declared acceptance.analyzer must be a string, not {type(declared).__name__}")
+        raise ValueError(f"a declared acceptance.analyzer must be a string, not {type(declared).__name__}")
     body, slash, version = declared.partition("/")
     module, dot, function = body.rpartition(".")
     if not slash or not dot:
-        raise ValueError(
-            f"declared analyzer {declared!r} is not <module>.<function>/<version>")
+        raise ValueError(f"declared analyzer {declared!r} is not <module>.<function>/<version>")
     parts = module.split(".") + [function, version]
     if any(not part or not set(part) <= _IDENTIFIER_CHARS for part in parts):
-        raise ValueError(
-            f"declared analyzer {declared!r} does not name a simple module, function and version")
+        raise ValueError(f"declared analyzer {declared!r} does not name a simple module, function and version")
     return AnalyzerIdentity(declared=declared, module=module, function=function, version=version)
 
 
@@ -242,38 +270,41 @@ def replicate_contract(performance: Mapping) -> ReplicateContract | None:
         identities = declared.get("identities")
         frozen: tuple[str, ...] = ()
         if identities is not None:
-            if (not isinstance(identities, Sequence) or isinstance(identities, str)
-                    or not identities
-                    or any(not isinstance(item, str) or not item for item in identities)):
-                raise ValueError(
-                    "acceptance.replicates.identities must be a non-empty list of names")
+            if (
+                not isinstance(identities, Sequence)
+                or isinstance(identities, str)
+                or not identities
+                or any(not isinstance(item, str) or not item for item in identities)
+            ):
+                raise ValueError("acceptance.replicates.identities must be a non-empty list of names")
             frozen = tuple(str(item) for item in identities)
             if len(set(frozen)) != len(frozen):
                 raise ValueError("acceptance.replicates.identities repeats an identity")
         if declared.get("exact_count") is not None:
-            exact = _positive_count(declared.get("exact_count"),
-                                    where="acceptance.replicates.exact_count")
+            exact = _positive_count(declared.get("exact_count"), where="acceptance.replicates.exact_count")
             if frozen and len(frozen) != exact:
                 raise ValueError(
-                    f"acceptance.replicates freezes {len(frozen)} identities against an "
-                    f"exact_count of {exact}")
-            return ReplicateContract(exact_count=exact, minimum_count=exact, identities=frozen,
-                                     source="acceptance.replicates.exact_count")
+                    f"acceptance.replicates freezes {len(frozen)} identities against an exact_count of {exact}"
+                )
+            return ReplicateContract(
+                exact_count=exact, minimum_count=exact, identities=frozen, source="acceptance.replicates.exact_count"
+            )
         if declared.get("minimum_count") is not None:
-            floor = _positive_count(declared.get("minimum_count"),
-                                    where="acceptance.replicates.minimum_count")
+            floor = _positive_count(declared.get("minimum_count"), where="acceptance.replicates.minimum_count")
             if frozen:
                 raise ValueError(
                     "acceptance.replicates declares a floor and freezes identities; a run cannot "
-                    "both author the schedule and inherit it")
-            return ReplicateContract(exact_count=None, minimum_count=floor, identities=(),
-                                     source="acceptance.replicates.minimum_count")
+                    "both author the schedule and inherit it"
+                )
+            return ReplicateContract(
+                exact_count=None, minimum_count=floor, identities=(), source="acceptance.replicates.minimum_count"
+            )
     band = performance.get("noise_band")
     if isinstance(band, Mapping) and band.get("minimum_replicate_count") is not None:
-        floor = _positive_count(band.get("minimum_replicate_count"),
-                                where="noise_band.minimum_replicate_count")
-        return ReplicateContract(exact_count=None, minimum_count=floor, identities=(),
-                                 source="noise_band.minimum_replicate_count")
+        floor = _positive_count(band.get("minimum_replicate_count"), where="noise_band.minimum_replicate_count")
+        return ReplicateContract(
+            exact_count=None, minimum_count=floor, identities=(), source="noise_band.minimum_replicate_count"
+        )
     return None
 
 
@@ -290,10 +321,13 @@ class FamilyReach:
     notes: tuple[str, ...] = field(default=())
 
     def to_dict(self) -> dict:
-        return {"family": self.family, "satisfiable": self.satisfiable,
-                "decidable_today": self.decidable_today,
-                "obstructions": [dict(o) for o in self.obstructions],
-                "notes": list(self.notes)}
+        return {
+            "family": self.family,
+            "satisfiable": self.satisfiable,
+            "decidable_today": self.decidable_today,
+            "obstructions": [dict(o) for o in self.obstructions],
+            "notes": list(self.notes),
+        }
 
 
 def family_reach(performance: Mapping) -> FamilyReach:
@@ -315,32 +349,44 @@ def family_reach(performance: Mapping) -> FamilyReach:
             # land inside an unrelated capacity by coincidence. Two or more tokens naming the same
             # quantity the capacity asks two of is the contradiction, not a coincidence.
             if len(entry_tokens) >= 2 and _contains(demanded, entry_tokens):
-                obstructions.append({
-                    "rule": CAPACITY_CONTRADICTS_DEMAND_EQUAL,
-                    "detail": (
-                        f"the gate's capacity demands at least two distinct "
-                        f"{'_'.join(demanded)}, while the comparand's demand_equal holds "
-                        f"{entry!r} fixed; no admissible measurement can both vary that quantity "
-                        f"and hold it equal, so the family admits no pair"),
-                })
+                obstructions.append(
+                    {
+                        "rule": CAPACITY_CONTRADICTS_DEMAND_EQUAL,
+                        "detail": (
+                            f"the gate's capacity demands at least two distinct "
+                            f"{'_'.join(demanded)}, while the comparand's demand_equal holds "
+                            f"{entry!r} fixed; no admissible measurement can both vary that quantity "
+                            f"and hold it equal, so the family admits no pair"
+                        ),
+                    }
+                )
 
     quantity = _declared_quantity(performance.get("falsifier"))
     if quantity:
         bags = _declaration_token_bags(performance)
         if not any(_contains(bag, quantity) for bag in bags):
-            obstructions.append({
-                "rule": UNDECLARED_FIRING_QUANTITY,
-                "detail": (
-                    f"the falsifier fires on a {'_'.join(quantity)} it calls declared, and nothing "
-                    f"in this family's declaration carries one; the firing condition cannot be "
-                    f"evaluated, and a falsifier that cannot fire cannot fail"),
-            })
+            obstructions.append(
+                {
+                    "rule": UNDECLARED_FIRING_QUANTITY,
+                    "detail": (
+                        f"the falsifier fires on a {'_'.join(quantity)} it calls declared, and nothing "
+                        f"in this family's declaration carries one; the firing condition cannot be "
+                        f"evaluated, and a falsifier that cannot fire cannot fail"
+                    ),
+                }
+            )
 
     decidable = has_decision_procedure(performance)
     notes: list[str] = []
     if not decidable:
-        notes.append("no acceptance.analyzer is declared, so nothing computes this family's verdict "
-                     "from its rows today; that is a wiring state, not a contradiction")
-    return FamilyReach(family=family, satisfiable=not obstructions,
-                       obstructions=tuple(obstructions), decidable_today=decidable,
-                       notes=tuple(notes))
+        notes.append(
+            "no acceptance.analyzer is declared, so nothing computes this family's verdict "
+            "from its rows today; that is a wiring state, not a contradiction"
+        )
+    return FamilyReach(
+        family=family,
+        satisfiable=not obstructions,
+        obstructions=tuple(obstructions),
+        decidable_today=decidable,
+        notes=tuple(notes),
+    )

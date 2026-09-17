@@ -34,6 +34,7 @@ The distinction the two emitter kinds turn on:
 `reachability` returns the whole matrix rather than a verdict, because the interesting states are
 per-(family, target) and collapsing them loses which half is missing.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -113,28 +114,54 @@ def can_emit(entry: str, target: str) -> Reach:
     ``established`` is False, so a reader can tell "shown not to reach" from "never classified".
     """
     if is_grammar_emitter(entry):
-        return Reach(entry=entry, target=target, can_emit=True, needs_isa=False,
-                     reason="works off the interface grammar, not machine instructions: no ISA needed")
+        return Reach(
+            entry=entry,
+            target=target,
+            can_emit=True,
+            needs_isa=False,
+            reason="works off the interface grammar, not machine instructions: no ISA needed",
+        )
     if drives_target_emitter(entry):
         return Reach(
-            entry=entry, target=target, can_emit=False, needs_isa=False, established=False,
-            reason=("drives the target's own driver emitter through a knob on its signature; whether "
-                    "this target's emitter accepts that knob is a fact about its backend, which is not "
-                    "on the import path, so reach is NOT established here"))
+            entry=entry,
+            target=target,
+            can_emit=False,
+            needs_isa=False,
+            established=False,
+            reason=(
+                "drives the target's own driver emitter through a knob on its signature; whether "
+                "this target's emitter accepts that knob is a fact about its backend, which is not "
+                "on the import path, so reach is NOT established here"
+            ),
+        )
     if not needs_isa_definition(entry):
         return Reach(
-            entry=entry, target=target, can_emit=False, needs_isa=False, established=False,
-            reason=(f"unclassified emitter kind {entry!r}: not a known capsule builder, program "
-                    "generator, or target-emitter driver, so nothing here has checked that it can "
-                    "emit for this target"))
+            entry=entry,
+            target=target,
+            can_emit=False,
+            needs_isa=False,
+            established=False,
+            reason=(
+                f"unclassified emitter kind {entry!r}: not a known capsule builder, program "
+                "generator, or target-emitter driver, so nothing here has checked that it can "
+                "emit for this target"
+            ),
+        )
     try:
         from merlin.perf.workload_gen import machine_facts
+
         machine_facts(target)
-    except Exception as exc:                       # noqa: BLE001 -- the reason is the payload
-        return Reach(entry=entry, target=target, can_emit=False, needs_isa=True,
-                     reason=f"{type(exc).__name__}: {str(exc)[:160]}")
-    return Reach(entry=entry, target=target, can_emit=True, needs_isa=True,
-                 reason="the target's ISA definition resolves, so instructions can be encoded")
+    except Exception as exc:  # noqa: BLE001 -- the reason is the payload
+        return Reach(
+            entry=entry, target=target, can_emit=False, needs_isa=True, reason=f"{type(exc).__name__}: {str(exc)[:160]}"
+        )
+    return Reach(
+        entry=entry,
+        target=target,
+        can_emit=True,
+        needs_isa=True,
+        reason="the target's ISA definition resolves, so instructions can be encoded",
+    )
 
 
 def family_reach(families: dict, targets) -> dict:
@@ -154,7 +181,7 @@ def unreachable_where_admitted(family_gates: dict, families: dict) -> dict[str, 
     for fam, satisfying in family_gates.items():
         satisfying = tuple(satisfying)
         if not satisfying:
-            continue                               # no admitting target: the trait gate's story
+            continue  # no admitting target: the trait gate's story
         entry = families.get(fam)
         if entry is None:
             continue

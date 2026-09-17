@@ -23,6 +23,7 @@ So: merlin decides the blocks (this module, using the measured predicate in
 runner does nothing but look up each contraction's shape and set ``merlin.blk_<MR>x<NR>``. The policy
 stays in one place; the runner carries no policy it could drift from.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -43,9 +44,12 @@ TAG_PREFIX = "merlin.blk_"
 #: arrives as a plain ``linalg.generic`` with a compound-affine input map, and there is no named op to
 #: key on. It is spelled like one so it flows through ``shape_key`` / ``distinct_blocks`` /
 #: ``coverage`` with the contraction classes instead of needing a parallel bookkeeping path.
-_CLASS_TOKEN = {"linalg.matmul": "mm", "linalg.batch_matmul": "bmm",
-                "linalg.conv2d_direct": "conv",
-                "linalg.conv2d_grouped_direct": "gconv"}
+_CLASS_TOKEN = {
+    "linalg.matmul": "mm",
+    "linalg.batch_matmul": "bmm",
+    "linalg.conv2d_direct": "conv",
+    "linalg.conv2d_grouped_direct": "gconv",
+}
 
 #: The DIRECT 2-D convolution contraction: ``out[n,f,oh,ow] += in[n,ci,oh*sh+kh,ow*sw+kw] * w[f,ci,kh,kw]``,
 #: i.e. the form model2MLIR emits when the im2col intermediate would exceed its element budget
@@ -107,8 +111,7 @@ def _even_split(extent: int, harts: int, admits) -> "tuple[int, int] | None":
     return None
 
 
-def parallel_chunk_table(shapes, table: dict[str, tuple[int, int]],
-                         harts: int) -> dict[str, tuple[int, ...]]:
+def parallel_chunk_table(shapes, table: dict[str, tuple[int, int]], harts: int) -> dict[str, tuple[int, ...]]:
     """``{shape_key: forall tile sizes}`` — how the multicore stage may split EACH contraction.
 
     THE INVERSION THIS FIXES. The multicore stage used to split every ``linalg.matmul`` over N with
@@ -148,32 +151,38 @@ def parallel_chunk_table(shapes, table: dict[str, tuple[int, int]],
             continue
         key = shape_key(s.op, par, red)
         blk = table.get(key)
-        if blk is None:                       # unblocked op: nothing to preserve, nothing to tag
+        if blk is None:  # unblocked op: nothing to preserve, nothing to tag
             continue
         mr, nr = int(blk[0]), int(blk[1])
         if s.op == CONV_CLASS:
             # dims (N,F,OH,OW): the register block is (F,OW), not the last two dimensions.
             # OH and N are still legal outer splits but rank after the block axes on a tie.
             f, ow = par[1], par[3]
-            axes = [(1, lambda t: _rvv_blocking_lowers(mr, nr, f, t), 0),
-                    (3, lambda t: _rvv_blocking_lowers(mr, nr, t, ow), 1),
-                    (2, lambda _t: True, 2),
-                    (4, lambda _t: True, 3)]
+            axes = [
+                (1, lambda t: _rvv_blocking_lowers(mr, nr, f, t), 0),
+                (3, lambda t: _rvv_blocking_lowers(mr, nr, t, ow), 1),
+                (2, lambda _t: True, 2),
+                (4, lambda _t: True, 3),
+            ]
         elif s.op == GROUPED_CONV_CLASS:
             # dims (N,G,F/G,OH,OW): G is the best independent split (no operand is shared),
             # followed by the two register-block axes, then spatial/batch outer loops.
             fg, ow = par[2], par[4]
-            axes = [(4, lambda _t: True, 0),
-                    (1, lambda t: _rvv_blocking_lowers(mr, nr, fg, t), 1),
-                    (3, lambda t: _rvv_blocking_lowers(mr, nr, t, ow), 2),
-                    (2, lambda _t: True, 3),
-                    (5, lambda _t: True, 4)]
+            axes = [
+                (4, lambda _t: True, 0),
+                (1, lambda t: _rvv_blocking_lowers(mr, nr, fg, t), 1),
+                (3, lambda t: _rvv_blocking_lowers(mr, nr, t, ow), 2),
+                (2, lambda _t: True, 3),
+                (5, lambda _t: True, 4),
+            ]
         else:
             m, n = par[-2], par[-1]
             # (axis index counted from the END of the parallel dims, admits-predicate, tie rank)
-            axes = [(1, lambda t: _rvv_blocking_lowers(mr, nr, m, t), 0),      # N
-                    (2, lambda t: _rvv_blocking_lowers(mr, nr, t, n), 2)]     # M
-            if len(par) > 2:                  # batch_matmul: B is outside the block entirely
+            axes = [
+                (1, lambda t: _rvv_blocking_lowers(mr, nr, m, t), 0),  # N
+                (2, lambda t: _rvv_blocking_lowers(mr, nr, t, n), 2),
+            ]  # M
+            if len(par) > 2:  # batch_matmul: B is outside the block entirely
                 axes.append((len(par), lambda _t: True, 1))
         best = None
         for back, admits, rank in axes:
@@ -248,9 +257,20 @@ DEFAULT_MR = 1
 #: MLIR element-type tokens -> width in bits. Only the spellings a contraction's ``dtypes`` triple can
 #: carry; an unknown token yields None so the caller FAILS OPEN to the dtype-blind cap rather than
 #: guessing a width (a wrong width would silently pick a wrong N tile).
-_ELEM_BITS = {"i8": 8, "si8": 8, "ui8": 8, "f8E4M3FN": 8, "f8E5M2": 8,
-              "i16": 16, "f16": 16, "bf16": 16,
-              "i32": 32, "f32": 32, "i64": 64, "f64": 64}
+_ELEM_BITS = {
+    "i8": 8,
+    "si8": 8,
+    "ui8": 8,
+    "f8E4M3FN": 8,
+    "f8E5M2": 8,
+    "i16": 16,
+    "f16": 16,
+    "bf16": 16,
+    "i32": 32,
+    "f32": 32,
+    "i64": 64,
+    "f64": 64,
+}
 
 
 def narrowest_elem_bits(dtypes) -> int | None:
@@ -348,6 +368,7 @@ def _lanes_registers(lanes: int, bits: int, vlen: int) -> int:
     above that it is the ladder-rounded group width, because ``vtype`` cannot encode a group of 3.
     """
     from .lmul_group import _ladder_ceil
+
     return max(1, _ladder_ceil((int(lanes) * int(bits)) / int(vlen)))
 
 
@@ -370,8 +391,7 @@ def _operand_group_widths(operand_bits: int, acc_bits: int) -> list[int]:
     return widths or [int(operand_bits)]
 
 
-def mr_cap_for_registers(mr_cap: int, *, vlen: int | None, nr: int, dtypes,
-                         vregs: int | None = None) -> int:
+def mr_cap_for_registers(mr_cap: int, *, vlen: int | None, nr: int, dtypes, vregs: int | None = None) -> int:
     """The M-tile cap this contraction's own block can hold RESIDENT in the vector register file.
 
     THE AXIS THIS EXISTS TO CLOSE. NR has been a derived, per-op quantity since
@@ -415,6 +435,7 @@ def mr_cap_for_registers(mr_cap: int, *, vlen: int | None, nr: int, dtypes,
     already asked for, which is the failure mode this module's history is made of.
     """
     from .lmul_group import RESERVED_VREGS, VREG_COUNT
+
     acc = accum_elem_bits(dtypes)
     operand = narrowest_elem_bits(dtypes)
     if not vlen or acc is None or operand is None or int(nr) <= 0:
@@ -425,8 +446,7 @@ def mr_cap_for_registers(mr_cap: int, *, vlen: int | None, nr: int, dtypes,
     return max(1, (budget - live) // acc_regs)
 
 
-def _solve_block(mr_cap: int, nr_cap: int, pairs, *, mr_vlen: int | None,
-                 dtypes) -> tuple[int, int]:
+def _solve_block(mr_cap: int, nr_cap: int, pairs, *, mr_vlen: int | None, dtypes) -> tuple[int, int]:
     """``(MR, NR)`` for one contraction, with the MR cap DERIVED from its own block when asked.
 
     Two-sided, and it has to be: the register-file bound on MR is a function of the N tile (that is
@@ -442,6 +462,7 @@ def _solve_block(mr_cap: int, nr_cap: int, pairs, *, mr_vlen: int | None,
     """
     from ..mining.from_strategy import _rvv_best_block
     from .lmul_group import LMUL_LADDER
+
     block = _rvv_best_block(mr_cap, nr_cap, pairs)
     if not mr_vlen:
         return block
@@ -454,9 +475,9 @@ def _solve_block(mr_cap: int, nr_cap: int, pairs, *, mr_vlen: int | None,
     return block
 
 
-def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
-                vlen: int | None = None,
-                mr_vlen: int | None = None) -> dict[str, tuple[int, int]]:
+def block_table(
+    shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int, vlen: int | None = None, mr_vlen: int | None = None
+) -> dict[str, tuple[int, int]]:
     """``{shape_key: (MR, NR)}`` — the widest block legal for EACH contraction on its own.
 
     Uses the measured predicate (``_rvv_best_block`` over a single extent pair), so a per-op block is
@@ -501,8 +522,9 @@ def block_table(shapes, *, mr_cap: int = DEFAULT_MR, nr_cap: int,
         # PER-SHAPE N cap: widened for this contraction's own narrowest element width when the board's
         # vlen is known (see nr_cap_for_dtypes). vlen=None -> the caller's cap, unchanged.
         shape_nr_cap = nr_cap_for_dtypes(nr_cap, vlen, getattr(s, "dtypes", ()))
-        mr, nr = _solve_block(mr_cap, shape_nr_cap, [(par[-2], par[-1])],
-                              mr_vlen=mr_vlen, dtypes=getattr(s, "dtypes", ()))
+        mr, nr = _solve_block(
+            mr_cap, shape_nr_cap, [(par[-2], par[-1])], mr_vlen=mr_vlen, dtypes=getattr(s, "dtypes", ())
+        )
         if nr <= 1:
             continue
         out[shape_key(s.op, par, red)] = (int(mr), int(nr))
@@ -569,21 +591,25 @@ def ensure_registered() -> None:
     failure ``impr_features._try_lazy_register`` exists for).
     """
     from .impr_features import ImprFeature, known, register
+
     if CONV_ARM_FEATURE in known():
         return
-    register(ImprFeature(
-        name=CONV_ARM_FEATURE,
-        action_class="PASS",
-        description=(
-            "Tile + vectorize the DIRECT (non-im2col) 2-D convolution: the compound-affine "
-            "linalg.generic model2MLIR emits when the im2col intermediate exceeds its element budget "
-            "(prov.conv_path=direct_contraction). Without this arm that form matches no schedule arm "
-            "and falls to convert-linalg-to-loops, so diverting a conv away from im2col is a pure "
-            "loss and the budget knob (M2M_IM2COL_MAX_ELEMS) is unusable. A REQUEST consumed by "
-            "runtime.backends.zephyr_model.prepare_for_lowering, which prices the conv geometries "
-            "into the per-op block table; with it absent the table, the tags and the schedule are "
-            "byte-identical. NOT MEASURED ON HARDWARE -- static evidence only."),
-    ))
+    register(
+        ImprFeature(
+            name=CONV_ARM_FEATURE,
+            action_class="PASS",
+            description=(
+                "Tile + vectorize the DIRECT (non-im2col) 2-D convolution: the compound-affine "
+                "linalg.generic model2MLIR emits when the im2col intermediate exceeds its element budget "
+                "(prov.conv_path=direct_contraction). Without this arm that form matches no schedule arm "
+                "and falls to convert-linalg-to-loops, so diverting a conv away from im2col is a pure "
+                "loss and the budget knob (M2M_IM2COL_MAX_ELEMS) is unusable. A REQUEST consumed by "
+                "runtime.backends.zephyr_model.prepare_for_lowering, which prices the conv geometries "
+                "into the per-op block table; with it absent the table, the tags and the schedule are "
+                "byte-identical. NOT MEASURED ON HARDWARE -- static evidence only."
+            ),
+        )
+    )
 
 
 def _has_compound_term(results) -> bool:
@@ -593,6 +619,7 @@ def _has_compound_term(results) -> bool:
     the int8 conv and the arm that vectorizes it cannot disagree about what a conv is.
     """
     from xdsl.ir.affine import AffineDimExpr
+
     return any(not isinstance(r, AffineDimExpr) for r in results)
 
 
@@ -628,9 +655,9 @@ def conv_geometry(out_shape, in_shape, w_shape) -> "tuple[int, int] | None":
             return None
         if o == 1:
             if i != k:
-                return None                  # shapes do not pin a stride for a larger input
-            strides.append(1)                 # a single output position pins no stride; 1 is the
-            continue                          # only one that can be wrong about nothing
+                return None  # shapes do not pin a stride for a larger input
+            strides.append(1)  # a single output position pins no stride; 1 is the
+            continue  # only one that can be wrong about nothing
         span = i - k
         if span < 0:
             return None
@@ -658,6 +685,7 @@ def conv_shapes(src, *, with_strides: bool = False) -> "list[Any]":
     from ..common import mlir_query as mq
     from ..kernels.microkernel import ContractionShape
     from ..kernels.shapes import _iterator_types, _shaped, indexing_maps
+
     try:
         module = mq.parse(src)
     except Exception:  # noqa: BLE001
@@ -687,16 +715,24 @@ def conv_shapes(src, *, with_strides: bool = False) -> "list[Any]":
             shape = ContractionShape(
                 op=(CONV_CLASS if len(out) == 4 else GROUPED_CONV_CLASS),
                 parallel=tuple(int(d) for d in out),
-                reduction=tuple(int(d) for d in w[1:]), dtypes=(a_dt, w_dt, out_dt))
+                reduction=tuple(int(d) for d in w[1:]),
+                dtypes=(a_dt, w_dt, out_dt),
+            )
             found.append((shape, geometry) if with_strides else shape)
         except Exception:  # noqa: BLE001
             continue
     return found
 
 
-def conv_block_table(src, features: "Any" = (), *, mr_cap: int = DEFAULT_MR, nr_cap: int,
-                     vlen: int | None = None,
-                     mr_vlen: int | None = None) -> dict[str, tuple[int, int]]:
+def conv_block_table(
+    src,
+    features: "Any" = (),
+    *,
+    mr_cap: int = DEFAULT_MR,
+    nr_cap: int,
+    vlen: int | None = None,
+    mr_vlen: int | None = None,
+) -> dict[str, tuple[int, int]]:
     """``{shape_key: (MR, NR)}`` for the direct convs in ``src`` -- EMPTY unless the arm is requested.
 
     Merges into the same table :func:`block_table` produces, on purpose: the tagger, the
@@ -721,8 +757,7 @@ def conv_block_table(src, features: "Any" = (), *, mr_cap: int = DEFAULT_MR, nr_
         else:
             f, ow = int(s.parallel[1]), int(s.parallel[3])
         shape_nr_cap = nr_cap_for_dtypes(nr_cap, vlen, getattr(s, "dtypes", ()))
-        mr, nr = _solve_block(mr_cap, shape_nr_cap, [(f, ow)],
-                              mr_vlen=mr_vlen, dtypes=getattr(s, "dtypes", ()))
+        mr, nr = _solve_block(mr_cap, shape_nr_cap, [(f, ow)], mr_vlen=mr_vlen, dtypes=getattr(s, "dtypes", ()))
         if strides[1] != 1:
             nr = 1
         if nr <= 1 and mr <= 1:
@@ -746,11 +781,15 @@ def distinct_blocks(table: dict[str, tuple[int, int]]) -> list[tuple[str, int, i
     return sorted(seen, key=lambda t: (t[0], -t[1] * t[2], t[0]))
 
 
-def tag_prepared_mlir(prepared: "Any", table: dict[str, tuple[int, int]], *,
-                      work: "Any" = None,
-                      par_table: "dict[str, tuple[int, ...]] | None" = None,
-                      pair_fuse: bool = False,
-                      pairs_out: "list | None" = None) -> "Any":
+def tag_prepared_mlir(
+    prepared: "Any",
+    table: dict[str, tuple[int, int]],
+    *,
+    work: "Any" = None,
+    par_table: "dict[str, tuple[int, ...]] | None" = None,
+    pair_fuse: bool = False,
+    pairs_out: "list | None" = None,
+) -> "Any":
     """Specialize the contractions and tag them, returning a new ``.mlir`` path.
 
     Done as a PREPROCESSING step rather than a runner splice, which is what makes this cheap and safe:
@@ -782,8 +821,8 @@ def tag_prepared_mlir(prepared: "Any", table: dict[str, tuple[int, int]], *,
         "import sys\n"
         "from torch_mlir import ir\n"
         "from torch_mlir.passmanager import PassManager\n"
-        + runner_rewrite_src(table, par_table, pair_fuse=pair_fuse) +
-        "\nsrc, dst = sys.argv[1], sys.argv[2]\n"
+        + runner_rewrite_src(table, par_table, pair_fuse=pair_fuse)
+        + "\nsrc, dst = sys.argv[1], sys.argv[2]\n"
         "ctx = ir.Context()\n"
         "ctx.allow_unregistered_dialects = True\n"
         "mod = ir.Module.parse(open(src).read(), ctx)\n"
@@ -793,29 +832,42 @@ def tag_prepared_mlir(prepared: "Any", table: dict[str, tuple[int, int]], *,
         "import json\n"
         "with ctx, ir.Location.unknown():\n"
         "    n, hit, untagged = tag_perop_blocks(mod, ctx)\n"
-        + ("    pairs, refused = tag_requant_pairs(mod, ctx)\n"
-           "    print(%r, json.dumps(pairs))\n"
-           "    print(%r, json.dumps(refused))\n" % (_RF_REPORT, _RF_REFUSED)
-           if pair_fuse else "") +
-        "open(dst, 'w').write(str(mod.operation))\n"
+        + (
+            "    pairs, refused = tag_requant_pairs(mod, ctx)\n"
+            "    print(%r, json.dumps(pairs))\n"
+            "    print(%r, json.dumps(refused))\n" % (_RF_REPORT, _RF_REFUSED)
+            if pair_fuse
+            else ""
+        )
+        + "open(dst, 'w').write(str(mod.operation))\n"
         "print('OK perop_blocks tagged', n)\n"
         "print('MERLIN_PEROP_AGREEMENT', json.dumps("
-        "{'hit': sorted(hit), 'untagged': sorted(untagged)}))\n", encoding="utf-8")
-    proc = subprocess.run([str(m2m_python()), str(script), str(prepared), str(out)],
-                          capture_output=True, text=True, timeout=3600)
+        "{'hit': sorted(hit), 'untagged': sorted(untagged)}))\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [str(m2m_python()), str(script), str(prepared), str(out)], capture_output=True, text=True, timeout=3600
+    )
     if proc.returncode != 0 or not out.is_file():
         raise RuntimeError(f"per-op block tagging failed:\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
     _assert_priced_is_tagged(table, proc.stdout)
     if pair_fuse:
         if pairs_out is None:
-            raise ValueError("tag_prepared_mlir(pair_fuse=True) needs pairs_out=: the pair tags it "
-                             "applies are matched by arms generated FROM the returned table, so "
-                             "discarding it would leave every paired contraction claimed by no arm")
+            raise ValueError(
+                "tag_prepared_mlir(pair_fuse=True) needs pairs_out=: the pair tags it "
+                "applies are matched by arms generated FROM the returned table, so "
+                "discarding it would leave every paired contraction claimed by no arm"
+            )
         pairs_out.extend(_parse_reported(proc.stdout, _RF_REPORT, default=[]))
         refused = _parse_reported(proc.stdout, _RF_REFUSED, default={})
-        print(f"[requant_fuse] paired {len(pairs_out)} contraction(s) with their requant epilogue"
-              + (("; unpaired: " + " ".join(f"{k}={v}" for k, v in sorted(refused.items())))
-                 if refused else "; every tagged contraction paired"))
+        print(
+            f"[requant_fuse] paired {len(pairs_out)} contraction(s) with their requant epilogue"
+            + (
+                ("; unpaired: " + " ".join(f"{k}={v}" for k, v in sorted(refused.items())))
+                if refused
+                else "; every tagged contraction paired"
+            )
+        )
     return out
 
 
@@ -834,12 +886,11 @@ def _parse_reported(stdout: str, prefix: str, *, default):
     """
     import json
 
-    line = next((l for l in reversed(stdout.splitlines())
-                 if l.startswith(prefix + " ")), None)
+    line = next((l for l in reversed(stdout.splitlines()) if l.startswith(prefix + " ")), None)
     if line is None:
         return default
     try:
-        return json.loads(line[len(prefix) + 1:])
+        return json.loads(line[len(prefix) + 1 :])
     except ValueError:
         return default
 
@@ -862,15 +913,15 @@ def _assert_priced_is_tagged(table: dict[str, tuple[int, int]], stdout: str) -> 
     """Compare the priced key set against the keys the tagger actually matched."""
     import json
 
-    line = next((l for l in stdout.splitlines()
-                 if l.startswith("MERLIN_PEROP_AGREEMENT ")), None)
+    line = next((l for l in stdout.splitlines() if l.startswith("MERLIN_PEROP_AGREEMENT ")), None)
     if line is None:
         # An older/other tagger that does not report. Say so rather than pass silently -- a guard that
         # cannot run must not look like a guard that ran (this exact shape has burned this repo before).
         raise BlockAgreementError(
             "per-op block tagging did not report its agreement line; cannot verify that every priced "
             "contraction was tagged, and an untagged one lowers to scalar loops without any gate "
-            "noticing. Refusing to continue.")
+            "noticing. Refusing to continue."
+        )
     rep = json.loads(line.split(" ", 1)[1])
     missed = sorted(set(table) - set(rep.get("hit", ())))
     if missed:
@@ -878,7 +929,8 @@ def _assert_priced_is_tagged(table: dict[str, tuple[int, int]], stdout: str) -> 
             f"{len(missed)} contraction(s) were priced by the block policy but not tagged, so they "
             f"would lower to scalar loops: {missed[:8]}"
             + (f" (+{len(missed) - 8} more)" if len(missed) > 8 else "")
-            + f"; the tagger saw these untagged geometries instead: {rep.get('untagged', [])[:8]}")
+            + f"; the tagger saw these untagged geometries instead: {rep.get('untagged', [])[:8]}"
+        )
 
 
 #: The requant-epilogue pairing phase of the tagger, as SOURCE: it runs in the m2m venv over the MLIR
@@ -991,9 +1043,9 @@ def tag_requant_pairs(module, ctx):
 '''
 
 
-def runner_rewrite_src(table: dict[str, tuple[int, int]],
-                       par_table: "dict[str, tuple[int, ...]] | None" = None,
-                       pair_fuse: bool = False) -> str:
+def runner_rewrite_src(
+    table: dict[str, tuple[int, int]], par_table: "dict[str, tuple[int, ...]] | None" = None, pair_fuse: bool = False
+) -> str:
     """Python source for the runner stage that applies ``table`` to the specialized IR.
 
     Carries DATA, not policy: the block decisions were made by :func:`block_table` in merlin, where the
@@ -1013,8 +1065,7 @@ def runner_rewrite_src(table: dict[str, tuple[int, int]],
     # The forall tile per op, carried the same way and for the same reason as the block: it is DATA
     # the policy in `parallel_chunk_table` decided, and the runner only looks it up. Empty (the
     # single-hart default) leaves the tagged module byte-identical to before this existed.
-    par_entries = ",\n    ".join(f"{k!r}: {tuple(int(t) for t in v)!r}"
-                                 for k, v in sorted((par_table or {}).items()))
+    par_entries = ",\n    ".join(f"{k!r}: {tuple(int(t) for t in v)!r}" for k, v in sorted((par_table or {}).items()))
     geometry_src = inspect.getsource(conv_geometry)
     # The requant-epilogue pairing phase, spliced by source for exactly the reason
     # `conv_geometry` is: the predicate that decides which epilogues are fusable must have ONE
@@ -1024,11 +1075,15 @@ def runner_rewrite_src(table: dict[str, tuple[int, int]],
     pair_src = ""
     if pair_fuse:
         from . import requant_fuse as _rf
-        pair_src = ("\n\n_MERLIN_BLK_PREFIX = %r\n_MERLIN_PAR_PREFIX = %r\n_MERLIN_RQ_PREFIX = %r\n"
-                    "_MERLIN_RQ_ROLES = (%r, %r, %r)\n\n"
-                    % (TAG_PREFIX, PAR_TAG_PREFIX, _rf.TAG_PREFIX,
-                       _rf.ROLE_CONTRACTION, _rf.ROLE_FILL, _rf.ROLE_REQUANT)
-                    + inspect.getsource(_rf.merlin_requant_pair) + "\n\n" + _PAIR_PHASE_SRC)
+
+        pair_src = (
+            "\n\n_MERLIN_BLK_PREFIX = %r\n_MERLIN_PAR_PREFIX = %r\n_MERLIN_RQ_PREFIX = %r\n"
+            "_MERLIN_RQ_ROLES = (%r, %r, %r)\n\n"
+            % (TAG_PREFIX, PAR_TAG_PREFIX, _rf.TAG_PREFIX, _rf.ROLE_CONTRACTION, _rf.ROLE_FILL, _rf.ROLE_REQUANT)
+            + inspect.getsource(_rf.merlin_requant_pair)
+            + "\n\n"
+            + _PAIR_PHASE_SRC
+        )
     return f'''
 _MERLIN_BLOCK_TABLE = {{
     {entries}
@@ -1167,6 +1222,7 @@ def tag_perop_blocks(module, ctx):
 {pair_src}
 '''
 
+
 #: Attribute the conv arm puts on the enclosing reduction loop so the vectorize step can find the op
 #: again AFTER the unit-dim fold, which drops the op's own tag. One per distinct block, so two blocks
 #: cannot claim each other's nests.
@@ -1213,21 +1269,20 @@ def _conv_arms(blocks: "list[tuple[str, int, int]]") -> str:
             # Specialization can turn an ordinary convolution into a named op. Normalize it back
             # to the seven-loop generic form before applying the common tiling/folding schedule.
             generalize = (
-                f'    %{h}generic = transform.structured.generalize %{h} '
-                f': (!transform.any_op) -> !transform.any_op\n')
+                f"    %{h}generic = transform.structured.generalize %{h} : (!transform.any_op) -> !transform.any_op\n"
+            )
             tile_target = f"%{h}generic"
         tile_arms.append(
-            f'    %{h} = transform.structured.match attributes{{{tag_for(op, mr, nr)}}} in %arg0 '
-            f': (!transform.any_op) -> !transform.any_op\n'
-            + generalize
-            + f'    %{h}t, %{h}l:{outer_loops} = '
-            f'transform.structured.tile_using_for {tile_target} '
-            f'tile_sizes {outer_tile} : (!transform.any_op) -> '
-            f'({", ".join(["!transform.any_op"] * (outer_loops + 1))})\n'
-            f'    %{h}k, %{h}kl:3 = transform.structured.tile_using_for %{h}t '
-            f'tile_sizes {reduction_tile} : (!transform.any_op) -> '
-            f'({", ".join(["!transform.any_op"] * 4)})\n'
-            f'    transform.annotate %{h}kl#0 "{nest}" : !transform.any_op')
+            f"    %{h} = transform.structured.match attributes{{{tag_for(op, mr, nr)}}} in %arg0 "
+            f": (!transform.any_op) -> !transform.any_op\n" + generalize + f"    %{h}t, %{h}l:{outer_loops} = "
+            f"transform.structured.tile_using_for {tile_target} "
+            f"tile_sizes {outer_tile} : (!transform.any_op) -> "
+            f"({', '.join(['!transform.any_op'] * (outer_loops + 1))})\n"
+            f"    %{h}k, %{h}kl:3 = transform.structured.tile_using_for %{h}t "
+            f"tile_sizes {reduction_tile} : (!transform.any_op) -> "
+            f"({', '.join(['!transform.any_op'] * 4)})\n"
+            f'    transform.annotate %{h}kl#0 "{nest}" : !transform.any_op'
+        )
         sizes = "[" + ", ".join(str(d) for d in (mr, nr) if int(d) != 1) + "]"
         # `transform.foreach`, not a bare `match ... in %handle`: the annotated-nest handle carries ONE
         # payload per conv of this block, and `transform.structured.match` REFUSES a multi-op root
@@ -1235,16 +1290,17 @@ def _conv_arms(blocks: "list[tuple[str, int, int]]") -> str:
         # geometries). foreach re-enters the body once per nest, so the arm scales with the model.
         vec_arms.append(
             f'    %{h}n = transform.structured.match ops{{["scf.for"]}} attributes{{{nest}}} in %arg0 '
-            f': (!transform.any_op) -> !transform.any_op\n'
-            f'    transform.foreach %{h}n : !transform.any_op {{\n'
-            f'    ^bb_{h}(%{h}one: !transform.any_op):\n'
-            f'      transform.apply_patterns to %{h}one {{\n'
-            f'        transform.apply_patterns.linalg.fold_unit_extent_dims_via_slices\n'
-            f'      }} : !transform.any_op\n'
+            f": (!transform.any_op) -> !transform.any_op\n"
+            f"    transform.foreach %{h}n : !transform.any_op {{\n"
+            f"    ^bb_{h}(%{h}one: !transform.any_op):\n"
+            f"      transform.apply_patterns to %{h}one {{\n"
+            f"        transform.apply_patterns.linalg.fold_unit_extent_dims_via_slices\n"
+            f"      }} : !transform.any_op\n"
             f'      %{h}g = transform.structured.match ops{{["linalg.generic"]}} in %{h}one '
-            f': (!transform.any_op) -> !transform.any_op\n'
-            f'      transform.structured.vectorize %{h}g vector_sizes {sizes} : !transform.any_op\n'
-            f'    }}')
+            f": (!transform.any_op) -> !transform.any_op\n"
+            f"      transform.structured.vectorize %{h}g vector_sizes {sizes} : !transform.any_op\n"
+            f"    }}"
+        )
     return "\n".join(tile_arms + vec_arms) + "\n"
 
 
@@ -1258,11 +1314,13 @@ def _requant_fuse_arms(pairs, vec_epilogue: bool = False) -> str:
     if not pairs:
         return ""
     from .requant_fuse import fused_arms
+
     return fused_arms(pairs, vec_epilogue)
 
 
-def schedule_text(table: dict[str, tuple[int, int]], kc: int,
-                  pairs: "list | tuple" = (), vec_epilogue: bool = False) -> str:
+def schedule_text(
+    table: dict[str, tuple[int, int]], kc: int, pairs: "list | tuple" = (), vec_epilogue: bool = False
+) -> str:
     """A v3-style pre-schedule with one tile+vectorize arm PER DISTINCT BLOCK, matched by attribute.
 
     Each arm chains the handle returned by its first ``tile_using_for`` into the K tile rather than
@@ -1284,8 +1342,7 @@ def schedule_text(table: dict[str, tuple[int, int]], kc: int,
     """
     contraction_blocks, conv_blocks = [], []
     for entry in distinct_blocks(table):
-        (conv_blocks if entry[0] in (CONV_CLASS, GROUPED_CONV_CLASS)
-         else contraction_blocks).append(entry)
+        (conv_blocks if entry[0] in (CONV_CLASS, GROUPED_CONV_CLASS) else contraction_blocks).append(entry)
     arms = []
     for i, (op, mr, nr) in enumerate(contraction_blocks):
         h = f"b{i}"
@@ -1295,13 +1352,14 @@ def schedule_text(table: dict[str, tuple[int, int]], kc: int,
         n_loops = 3 if op.endswith("batch_matmul") else 2
         loop_types = ", ".join(["!transform.any_op"] * (n_loops + 1))
         arms.append(
-            f'    %{h} = transform.structured.match attributes{{{tag_for(op, mr, nr)}}} in %arg0 '
-            f': (!transform.any_op) -> !transform.any_op\n'
-            f'    %{h}t, %{h}l:{n_loops} = transform.structured.tile_using_for %{h} tile_sizes {tile} '
-            f': (!transform.any_op) -> ({loop_types})\n'
-            f'    %{h}k, %{h}kl = transform.structured.tile_using_for %{h}t tile_sizes {ktile} '
-            f': (!transform.any_op) -> (!transform.any_op, !transform.any_op)\n'
-            f'    transform.structured.vectorize %{h}k vector_sizes {vec} : !transform.any_op')
+            f"    %{h} = transform.structured.match attributes{{{tag_for(op, mr, nr)}}} in %arg0 "
+            f": (!transform.any_op) -> !transform.any_op\n"
+            f"    %{h}t, %{h}l:{n_loops} = transform.structured.tile_using_for %{h} tile_sizes {tile} "
+            f": (!transform.any_op) -> ({loop_types})\n"
+            f"    %{h}k, %{h}kl = transform.structured.tile_using_for %{h}t tile_sizes {ktile} "
+            f": (!transform.any_op) -> (!transform.any_op, !transform.any_op)\n"
+            f"    transform.structured.vectorize %{h}k vector_sizes {vec} : !transform.any_op"
+        )
     body = "\n".join(arms)
     return f"""\
 module attributes {{transform.with_named_sequence}} {{
@@ -1348,6 +1406,8 @@ def coverage(shapes, table: dict[str, tuple[int, int]]) -> dict[str, Any]:
         total += macs
         if len(par) >= 2 and shape_key(s.op, par, red) in table:
             claimed += macs
-    return {"claimed_mac_fraction": (claimed / total) if total else None,
-            "n_blocks": len(distinct_blocks(table)),
-            "unclaimed": unclaimed_shape_keys(shapes, table)}
+    return {
+        "claimed_mac_fraction": (claimed / total) if total else None,
+        "n_blocks": len(distinct_blocks(table)),
+        "unclaimed": unclaimed_shape_keys(shapes, table),
+    }

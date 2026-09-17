@@ -9,6 +9,7 @@ The route is deliberately rank-2 only.  Weight matmuls have an AOT-transposed,
 row-major ``K x N`` RHS and are the 155 repeated bodies that dominate TinyLlama's
 compile time.  Batched attention contractions stay in Merlin's normal lowering.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,23 +36,23 @@ def _rank2(shape) -> bool:
 def rewrite_prepared_file(prepared: str | Path, work: str | Path) -> passes_opu.OpuRewrite:
     """Route every legal rank-2 W8A8 contraction and record its ABI signatures."""
     return passes_opu.rewrite_prepared_file(
-        prepared, work, select=_rank2, symbol_prefix=SYMBOL_PREFIX,
-        sidecar_name=SIDECAR_NAME)
+        prepared, work, select=_rank2, symbol_prefix=SYMBOL_PREFIX, sidecar_name=SIDECAR_NAME
+    )
 
 
 def load_signatures(work: str | Path) -> dict[str, tuple[int, ...]]:
     return passes_opu.load_sidecar(work, SIDECAR_NAME)
 
 
-def build_object(cc: Path, cflags: list[str], signatures: dict[str, tuple[int, ...]],
-                 work: Path, *, parallel: bool = False) -> Path:
+def build_object(
+    cc: Path, cflags: list[str], signatures: dict[str, tuple[int, ...]], work: Path, *, parallel: bool = False
+) -> Path:
     """Compile one RVV body plus the monomorphic wrappers required by MLIR."""
     if not _SHIM_SRC.is_file():
         raise OutlinedInt8Unavailable(f"outlined INT8 RVV shim not found at {_SHIM_SRC}")
     rank2 = {sym: dims for sym, dims in signatures.items() if len(dims) == 3}
     if len(rank2) != len(signatures):
-        raise OutlinedInt8Unavailable(
-            "outlined INT8 CPU route only supports rank-2 (M,N,K) signatures")
+        raise OutlinedInt8Unavailable("outlined INT8 CPU route only supports rank-2 (M,N,K) signatures")
     work.mkdir(parents=True, exist_ok=True)
 
     wrappers = []
@@ -68,8 +69,7 @@ merlin_memref_2d_i32 {sym}(
 """)
 
     combined = work / "outlined_gemm_i8_combined.c"
-    combined.write_text(_SHIM_SRC.read_text(encoding="utf-8") + "\n" + "".join(wrappers),
-                        encoding="utf-8")
+    combined.write_text(_SHIM_SRC.read_text(encoding="utf-8") + "\n" + "".join(wrappers), encoding="utf-8")
     obj = work / "outlined_gemm_i8_rvv.o"
     flags = [*cflags]
     if parallel:
@@ -77,13 +77,20 @@ merlin_memref_2d_i32 {sym}(
     cmd = [str(cc), *flags, "-c", str(combined), "-o", str(obj)]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0 or not obj.is_file():
-        raise OutlinedInt8Unavailable(
-            f"outlined INT8 RVV compile failed:\ncmd: {' '.join(cmd)}\n{proc.stderr[-2000:]}")
-    (work / "build.json").write_text(json.dumps({
-        "command": cmd,
-        "parallel": bool(parallel),
-        "signatures": {k: list(v) for k, v in sorted(rank2.items())},
-    }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        raise OutlinedInt8Unavailable(f"outlined INT8 RVV compile failed:\ncmd: {' '.join(cmd)}\n{proc.stderr[-2000:]}")
+    (work / "build.json").write_text(
+        json.dumps(
+            {
+                "command": cmd,
+                "parallel": bool(parallel),
+                "signatures": {k: list(v) for k, v in sorted(rank2.items())},
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return obj
 
 

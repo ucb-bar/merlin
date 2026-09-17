@@ -6,6 +6,7 @@ that differs. These feed the action catalog (``action_catalog.py``), which maps 
 compiler change. Comparison is per-facet, so a target only diffs the facets it has (vector for
 RVV, spatial for gemmini, …) — nothing RVV-specific here.
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -16,11 +17,11 @@ from .cca import CCA
 
 @dataclass
 class Divergence:
-    axis: str                 # "compute.contraction_form", "vector.lmul", ...
+    axis: str  # "compute.contraction_form", "vector.lmul", ...
     expert: Any
     ours: Any
     backend: str
-    evidence: list[str] = field(default_factory=list)   # kernel ids justifying the expert value
+    evidence: list[str] = field(default_factory=list)  # kernel ids justifying the expert value
 
 
 def _populated_pairs(fa, fb) -> dict[str, tuple]:
@@ -104,14 +105,14 @@ def compare(expert: CCA, ours: CCA, *, evidence: list[str] | None = None) -> lis
     if es != os_:
         raise ValueError(
             f"refusing to compare a {es!r}-scoped CCA against a {os_!r}-scoped one: the same axis "
-            f"means a different question at each scope, so the differences would not be divergences")
+            f"means a different question at each scope, so the differences would not be divergences"
+        )
     ev = evidence or [expert.provenance.get("source", "expert")]
     backend = (expert.backend or ours.backend or ["?"])[0]
     out: list[Divergence] = []
     for facet in _facet_names():
         for k, (ve, vo) in _populated_pairs(getattr(expert, facet), getattr(ours, facet)).items():
-            out.append(Divergence(axis=f"{facet}.{k}", expert=ve, ours=vo,
-                                  backend=backend, evidence=list(ev)))
+            out.append(Divergence(axis=f"{facet}.{k}", expert=ve, ours=vo, backend=backend, evidence=list(ev)))
 
     # register_block (MR) is the #1 GEMM data-movement decision and the one we were structurally
     # blind to: _populated_pairs only fires when BOTH sides report it, but an UNBLOCKED kernel lifts
@@ -122,10 +123,16 @@ def compare(expert: CCA, ours: CCA, *, evidence: list[str] | None = None) -> lis
         if isinstance(rb, (tuple, list)) and rb and isinstance(rb[0], int):
             return rb[0]
         return 1
+
     emr, omr = _mr(expert), _mr(ours)
     if emr > omr and not any(d.axis == "compute.register_block" for d in out):
-        out.append(Divergence(axis="compute.register_block",
-                              expert=expert.compute.register_block,
-                              ours=(ours.compute.register_block if (ours and ours.compute) else None),
-                              backend=backend, evidence=list(ev)))
+        out.append(
+            Divergence(
+                axis="compute.register_block",
+                expert=expert.compute.register_block,
+                ours=(ours.compute.register_block if (ours and ours.compute) else None),
+                backend=backend,
+                evidence=list(ev),
+            )
+        )
     return out

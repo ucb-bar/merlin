@@ -7,6 +7,7 @@ vs QDQ-fake" is an obvious edit-point (register a pass, toggle/reorder the set) 
 runtime call site. ``apply_quant()`` with the default set runs EXACTLY the historical sequence in the same
 order, so the int8 datapath stays byte-identical — the registry is a seam, not a behavior change.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,24 +19,30 @@ _ORDER = ("contraction_int8", "conv_int8", "softmax_int", "gelu_int", "silu_int"
 
 @dataclass(frozen=True)
 class QuantPass:
-    name: str            # short registry name
-    op_class: str        # contraction | conv | softmax | gelu | silu | rsqrt
-    fn: Callable         # (module) -> int  (count of ops lowered; mutates module in place)
+    name: str  # short registry name
+    op_class: str  # contraction | conv | softmax | gelu | silu | rsqrt
+    fn: Callable  # (module) -> int  (count of ops lowered; mutates module in place)
     description: str
 
 
 def registry() -> dict[str, QuantPass]:
     """The registered int8 quant passes wired to the real ``passes_quant_int`` functions (lazy import —
     that module needs xDSL). Rebuilt per call so a test can monkeypatch the underlying functions."""
-    from .passes_quant_int import (lower_contraction_int8, lower_conv_int8, lower_gelu_int,
-                                   lower_rsqrt_int, lower_silu_int, lower_softmax_int)
+    from .passes_quant_int import (
+        lower_contraction_int8,
+        lower_conv_int8,
+        lower_gelu_int,
+        lower_rsqrt_int,
+        lower_silu_int,
+        lower_softmax_int,
+    )
+
     passes = [
-        QuantPass("contraction_int8", "contraction", lower_contraction_int8,
-                  "matmul/attention -> i8xi8->i32 + requant"),
-        QuantPass("conv_int8", "conv", lower_conv_int8,
-                  "conv2d -> i8xi8->i32 (per-tensor act-quant) + requant"),
-        QuantPass("softmax_int", "softmax", lower_softmax_int,
-                  "softmax exp -> integer I-BERT i-exp (no math.exp)"),
+        QuantPass(
+            "contraction_int8", "contraction", lower_contraction_int8, "matmul/attention -> i8xi8->i32 + requant"
+        ),
+        QuantPass("conv_int8", "conv", lower_conv_int8, "conv2d -> i8xi8->i32 (per-tensor act-quant) + requant"),
+        QuantPass("softmax_int", "softmax", lower_softmax_int, "softmax exp -> integer I-BERT i-exp (no math.exp)"),
         QuantPass("gelu_int", "gelu", lower_gelu_int, "GELU erf -> integer I-BERT i-GELU (no math.erf)"),
         QuantPass("silu_int", "silu", lower_silu_int, "SiLU sigmoid -> integer i-sigmoid"),
         QuantPass("rsqrt_int", "rsqrt", lower_rsqrt_int, "rsqrt -> integer fast-rsqrt"),
@@ -48,11 +55,15 @@ def known() -> tuple[str, ...]:
     return _ORDER
 
 
-def apply_quant(module: Any, passes: "list[str] | None" = None, *,
-                named_contraction: bool = False,
-                prequant_gather: bool = False,
-                report_out: "dict[str, dict] | None" = None,
-                select: "Callable[[Any], bool] | None" = None) -> dict[str, int]:
+def apply_quant(
+    module: Any,
+    passes: "list[str] | None" = None,
+    *,
+    named_contraction: bool = False,
+    prequant_gather: bool = False,
+    report_out: "dict[str, dict] | None" = None,
+    select: "Callable[[Any], bool] | None" = None,
+) -> dict[str, int]:
     """Run the selected int8 quant passes IN CANONICAL ORDER (mutating ``module``). ``passes=None`` runs
     all six = the historical sequence (byte-identical datapath). Returns per-pass lowered-op counts.
 
@@ -86,7 +97,7 @@ def apply_quant(module: Any, passes: "list[str] | None" = None, *,
         fn = reg[n].fn
         kw: dict[str, Any] = {}
         if select is not None:
-            kw["select"] = select          # every pass honors the reach restriction
+            kw["select"] = select  # every pass honors the reach restriction
         # Only the contraction pass takes the flag; passing it to the others would couple every
         # quant pass to a decision that is not theirs to make.
         if named_contraction and n == "contraction_int8":

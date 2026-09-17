@@ -39,29 +39,44 @@ candidates. An initiation interval is not invented here, and a flat per-operatio
 not consulted: a table that conflates an initiation interval with a completion latency prices a
 loop-carried edge wrong in the direction that reads as "the corpus under-delays".
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 from merlin.perf.decompose import UNKNOWN
-from merlin.perf.deps.liveness import (Access, Effects, Instruction, effects_of, liveness,
-                                       pressure, value_ranges)
+from merlin.perf.deps.liveness import Access, Effects, Instruction, effects_of, liveness, pressure, value_ranges
 from merlin.perf.envelope import Composed
 from merlin.perf.headroom import Composition
 
 __all__ = [
-    "Edge", "Dag", "CriticalPath", "IssueModel", "Program", "Region",
+    "Edge",
+    "Dag",
+    "CriticalPath",
+    "IssueModel",
+    "Program",
+    "Region",
     "decode_program",
-    "RAW", "WAR", "WAW", "SEPARATION",
-    "build_dag", "critical_path", "makespan", "to_composed", "demands_of",
-    "probe_issue_model", "program_from_plan", "candidates_for", "analyse_program",
+    "RAW",
+    "WAR",
+    "WAW",
+    "SEPARATION",
+    "build_dag",
+    "critical_path",
+    "makespan",
+    "to_composed",
+    "demands_of",
+    "probe_issue_model",
+    "program_from_plan",
+    "candidates_for",
+    "analyse_program",
 ]
 
-RAW = "raw"          # a consumer reads what a producer wrote
-WAR = "war"          # a writer must not clobber what a reader has not read yet
-WAW = "waw"          # two writers of the same value must keep their order
-SEPARATION = "separation"   # a wait the schedule itself declares, in cycles
+RAW = "raw"  # a consumer reads what a producer wrote
+WAR = "war"  # a writer must not clobber what a reader has not read yet
+WAW = "waw"  # two writers of the same value must keep their order
+SEPARATION = "separation"  # a wait the schedule itself declares, in cycles
 
 
 @dataclass(frozen=True)
@@ -152,8 +167,10 @@ class CriticalPath:
         if self.complete and not self.incomplete:
             return f"{self.cycles:.0f} cycles along {len(self.path)} instruction(s)"
         exposed = ", ".join(f"{k}x{v}" for k, v in sorted(self.exposed.items())) or "none"
-        return (f"AT LEAST {self.cycles:.0f} cycles along {len(self.path)} instruction(s); "
-                f"unpriced separations on the graph: {exposed}")
+        return (
+            f"AT LEAST {self.cycles:.0f} cycles along {len(self.path)} instruction(s); "
+            f"unpriced separations on the graph: {exposed}"
+        )
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -171,11 +188,17 @@ def _separation_class(instruction: Instruction, roles: Mapping[str, str] | None)
     return f"{SEPARATION}.{role or instruction.mnemonic}"
 
 
-def build_dag(instructions: "Sequence[Instruction]", effects: "Sequence[Effects]", *,
-              issue: IssueModel, stall_mnemonic: str, stall_operand: str = "imm",
-              roles: Mapping[str, str] | None = None,
-              resolved_separations: Mapping[str, float] | None = None,
-              memory_conflicts: "Sequence[tuple[int, int, str]]" = ()) -> Dag:
+def build_dag(
+    instructions: "Sequence[Instruction]",
+    effects: "Sequence[Effects]",
+    *,
+    issue: IssueModel,
+    stall_mnemonic: str,
+    stall_operand: str = "imm",
+    roles: Mapping[str, str] | None = None,
+    resolved_separations: Mapping[str, float] | None = None,
+    memory_conflicts: "Sequence[tuple[int, int, str]]" = (),
+) -> Dag:
     """Every real dependence between these instructions, with the separation each one requires.
 
     Edges come from three places and nothing else:
@@ -208,7 +231,7 @@ def build_dag(instructions: "Sequence[Instruction]", effects: "Sequence[Effects]
     last_def: dict[Access, int] = {}
     readers: dict[Access, list[int]] = {}
     edges: list[Edge] = []
-    carried: set[int] = set()          # stalls whose cycles an edge now carries
+    carried: set[int] = set()  # stalls whose cycles an edge now carries
 
     def _sep(src: int, value: Access | None, kind: str) -> Edge:
         cls = _separation_class(instructions[src], roles)
@@ -249,12 +272,22 @@ def build_dag(instructions: "Sequence[Instruction]", effects: "Sequence[Effects]
     # wait twice and makes moving work into a wait shadow save nothing. A stall guarding a producer
     # with no observable definition keeps its cycles as a node, because nothing else is accounting
     # for them -- which is the honest treatment of a wait whose purpose the probe could not see.
-    node_cycles = tuple(0.0 if (instructions[i].mnemonic == stall_mnemonic and i - 1 in carried)
-                        else c for i, c in enumerate(node_cycles))
-    incomplete = tuple(f"[{i}] {ins.mnemonic}: {'; '.join(eff.unresolved)}"
-                       for i, (ins, eff) in enumerate(zip(instructions, effects)) if eff.unresolved)
-    return Dag(instructions=tuple(instructions), effects=tuple(effects), edges=tuple(edges),
-               node_cycles=node_cycles, incomplete=incomplete)
+    node_cycles = tuple(
+        0.0 if (instructions[i].mnemonic == stall_mnemonic and i - 1 in carried) else c
+        for i, c in enumerate(node_cycles)
+    )
+    incomplete = tuple(
+        f"[{i}] {ins.mnemonic}: {'; '.join(eff.unresolved)}"
+        for i, (ins, eff) in enumerate(zip(instructions, effects))
+        if eff.unresolved
+    )
+    return Dag(
+        instructions=tuple(instructions),
+        effects=tuple(effects),
+        edges=tuple(edges),
+        node_cycles=node_cycles,
+        incomplete=incomplete,
+    )
 
 
 def critical_path(dag: Dag) -> CriticalPath:
@@ -296,9 +329,13 @@ def critical_path(dag: Dag) -> CriticalPath:
     while cur is not None:
         path.append(cur)
         cur = from_who[cur]
-    return CriticalPath(cycles=best[end], path=tuple(reversed(path)),
-                        exposed=dag.exposed_classes(), complete=all_known,
-                        incomplete=dag.incomplete)
+    return CriticalPath(
+        cycles=best[end],
+        path=tuple(reversed(path)),
+        exposed=dag.exposed_classes(),
+        complete=all_known,
+        incomplete=dag.incomplete,
+    )
 
 
 def makespan(dag: Dag, order: "Sequence[int]") -> float:
@@ -324,8 +361,9 @@ def makespan(dag: Dag, order: "Sequence[int]") -> float:
             # The ordering violates this dependence. That is not a schedule; refusing is the only
             # honest answer, because pricing an illegal order produces a number that beats every
             # legal one.
-            raise ValueError(f"the proposed order violates a {e.kind} dependence between "
-                             f"instruction {e.src} and {e.dst}")
+            raise ValueError(
+                f"the proposed order violates a {e.kind} dependence between instruction {e.src} and {e.dst}"
+            )
     start = [0.0] * n
     for slot in range(n):
         top = start[slot - 1] + dag.node_cycles[order[slot - 1]] if slot else 0.0
@@ -359,17 +397,22 @@ def to_composed(cycles: float, dag: Dag, *, floor: float | None = None) -> Compo
     in-order and a separation is time during which it issues nothing, so separations add.
     """
     exposed = tuple(sorted(dag.exposed_classes()))
-    return Composed(cycles=UNKNOWN if exposed else float(cycles), partial_cycles=float(cycles),
-                    floor_cycles=float(cycles if floor is None else floor),
-                    operator=Composition.SUM, eta=0.0, overlap_saving=0.0,
-                    unresolved=exposed, workload_fixed_cycles=0)
+    return Composed(
+        cycles=UNKNOWN if exposed else float(cycles),
+        partial_cycles=float(cycles),
+        floor_cycles=float(cycles if floor is None else floor),
+        operator=Composition.SUM,
+        eta=0.0,
+        overlap_saving=0.0,
+        unresolved=exposed,
+        workload_fixed_cycles=0,
+    )
 
 
 # ---------------------------------------------------------------------------------------------------
 # measuring the sequencer
 # ---------------------------------------------------------------------------------------------------
-def probe_issue_model(run_kernel, build_padding, *, tier: str, counts=(4, 64),
-                      stalls=(0, 256)) -> IssueModel:
+def probe_issue_model(run_kernel, build_padding, *, tier: str, counts=(4, 64), stalls=(0, 256)) -> IssueModel:
     """MEASURE what one instruction and one stall unit cost, by differencing two programs.
 
     ``build_padding(n_instructions, stall_cycles) -> kernel source`` emits a program with the given
@@ -392,16 +435,25 @@ def probe_issue_model(run_kernel, build_padding, *, tier: str, counts=(4, 64),
     c_lo_n = run_kernel(build_padding(lo_n, lo_s))
     c_hi_n = run_kernel(build_padding(hi_n, lo_s))
     c_hi_s = run_kernel(build_padding(lo_n, hi_s))
-    for name, value in (("instruction sweep low", c_lo_n), ("instruction sweep high", c_hi_n),
-                        ("stall sweep high", c_hi_s)):
+    for name, value in (
+        ("instruction sweep low", c_lo_n),
+        ("instruction sweep high", c_hi_n),
+        ("stall sweep high", c_hi_s),
+    ):
         if value is None:
             raise ValueError(f"the {name} probe did not halt, so the sequencer's cost is UNKNOWN")
     issue = (float(c_hi_n) - float(c_lo_n)) / max(1, hi_n - lo_n)
     unit = (float(c_hi_s) - float(c_lo_n)) / max(1, hi_s - lo_s)
-    return IssueModel(issue_cycles=issue, stall_unit=unit, tier=tier, provenance=(
-        f"measured on tier {tier}: {hi_n - lo_n} extra instructions cost {c_hi_n - c_lo_n} cycles "
-        f"({issue:.3f}/instruction); {hi_s - lo_s} extra stall units cost {c_hi_s - c_lo_n} cycles "
-        f"({unit:.3f}/unit)"))
+    return IssueModel(
+        issue_cycles=issue,
+        stall_unit=unit,
+        tier=tier,
+        provenance=(
+            f"measured on tier {tier}: {hi_n - lo_n} extra instructions cost {c_hi_n - c_lo_n} cycles "
+            f"({issue:.3f}/instruction); {hi_s - lo_s} extra stall units cost {c_hi_s - c_lo_n} cycles "
+            f"({unit:.3f}/unit)"
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -413,7 +465,7 @@ class Region:
 
     name: str
     start: int
-    end: int                       # exclusive
+    end: int  # exclusive
     trips: int = 1
 
     @property
@@ -487,8 +539,7 @@ def program_from_plan(plan: Any, directions: Any) -> Program:
             raw = operands["imm"]
             signed = raw - (1 << width) if width and raw >= (1 << (width - 1)) else raw
             target = index + signed // scale
-        instructions.append(Instruction(index=index, mnemonic=mnemonic or "", operands=operands,
-                                        branch_target=target))
+        instructions.append(Instruction(index=index, mnemonic=mnemonic or "", operands=operands, branch_target=target))
     effects = tuple(effects_of(i, directions) for i in instructions)
 
     # Regions: the straight-line stretches between loop boundaries. A backward branch at ``b`` to
@@ -499,8 +550,7 @@ def program_from_plan(plan: Any, directions: Any) -> Program:
         cut.add(max(0, target))
         cut.add(min(len(instructions), branch + 1))
     bounds = sorted(c for c in cut if 0 <= c <= len(instructions))
-    regions = tuple(Region(name=f"[{a},{b})", start=a, end=b, trips=1)
-                    for a, b in zip(bounds, bounds[1:]) if b > a)
+    regions = tuple(Region(name=f"[{a},{b})", start=a, end=b, trips=1) for a, b in zip(bounds, bounds[1:]) if b > a)
     roles = {mn: str((ent or {}).get("role") or "") for mn, ent in (isa.by_mnemonic or {}).items()}
     return Program(instructions=tuple(instructions), effects=effects, regions=regions, roles=roles)
 
@@ -510,8 +560,7 @@ def program_from_plan(plan: Any, directions: Any) -> Program:
 # ---------------------------------------------------------------------------------------------------
 def _legal(dag: Dag, order: "Sequence[int]") -> bool:
     position = {index: slot for slot, index in enumerate(order)}
-    return all(position[e.src] < position[e.dst] for e in dag.edges
-               if e.src in position and e.dst in position)
+    return all(position[e.src] < position[e.dst] for e in dag.edges if e.src in position and e.dst in position)
 
 
 def _list_schedule(dag: Dag, indices: "Sequence[int]", *, priority) -> list[int]:
@@ -550,13 +599,13 @@ def _heights(dag: Dag, indices: "Sequence[int]") -> dict[int, float]:
             succs[e.src].append(e)
     height: dict[int, float] = {}
     for i in sorted(indices, reverse=True):
-        height[i] = dag.node_cycles[i] + max((e.weight + height.get(e.dst, 0.0)
-                                              for e in succs[i]), default=0.0)
+        height[i] = dag.node_cycles[i] + max((e.weight + height.get(e.dst, 0.0) for e in succs[i]), default=0.0)
     return height
 
 
-def candidates_for(dag: Dag, indices: "Sequence[int]", *, stall_mnemonic: str,
-                   hoist_role: str | None, roles: Mapping[str, str]) -> dict[str, list[int]]:
+def candidates_for(
+    dag: Dag, indices: "Sequence[int]", *, stall_mnemonic: str, hoist_role: str | None, roles: Mapping[str, str]
+) -> dict[str, list[int]]:
     """The three schedules this ranking is about, each a REORDERING of the same instructions.
 
     They are deliberately the same multiset: identical work asked of every unpriced resource is
@@ -575,40 +624,54 @@ def candidates_for(dag: Dag, indices: "Sequence[int]", *, stall_mnemonic: str,
     out = {"as_emitted": order}
     if hoist_role:
         movement = {i for i in indices if roles.get(dag.instructions[i].mnemonic) == hoist_role}
-        out["movement_hoisted"] = _list_schedule(
-            dag, indices, priority=lambda i: (2.0 if i in movement else 0.0))
+        out["movement_hoisted"] = _list_schedule(dag, indices, priority=lambda i: 2.0 if i in movement else 0.0)
     heights = _heights(dag, indices)
     out["stalls_tightened"] = _list_schedule(dag, indices, priority=lambda i: heights.get(i, 0.0))
     return {k: v for k, v in out.items() if _legal(dag, v)}
 
 
-def _region_report(program: Program, region: Region, *, issue: IssueModel, stall_mnemonic: str,
-                   hoist_role: str | None,
-                   resolved_separations: Mapping[str, float] | None) -> dict:
+def _region_report(
+    program: Program,
+    region: Region,
+    *,
+    issue: IssueModel,
+    stall_mnemonic: str,
+    hoist_role: str | None,
+    resolved_separations: Mapping[str, float] | None,
+) -> dict:
     """The same analysis, restricted to one straight-line region and reported per iteration.
 
     A looped kernel's static instruction list is not its schedule: the body between a backward branch
     and its target runs once per trip, and that body is where a reordering pays off, multiplied. So
     the region is analysed on its own and the report says what ONE iteration costs; multiplying by the
     trip count is the caller's, and is only done where the trip count is actually known."""
-    ins = program.instructions[region.start:region.end]
-    eff = program.effects[region.start:region.end]
+    ins = program.instructions[region.start : region.end]
+    eff = program.effects[region.start : region.end]
     if not ins:
         return {"name": region.name, "instructions": 0}
-    renumbered = tuple(Instruction(index=i, mnemonic=x.mnemonic, operands=x.operands,
-                                   branch_target=None, section=region.name)
-                       for i, x in enumerate(ins))
-    dag = build_dag(renumbered, eff, issue=issue, stall_mnemonic=stall_mnemonic,
-                    roles=program.roles, resolved_separations=resolved_separations)
+    renumbered = tuple(
+        Instruction(index=i, mnemonic=x.mnemonic, operands=x.operands, branch_target=None, section=region.name)
+        for i, x in enumerate(ins)
+    )
+    dag = build_dag(
+        renumbered,
+        eff,
+        issue=issue,
+        stall_mnemonic=stall_mnemonic,
+        roles=program.roles,
+        resolved_separations=resolved_separations,
+    )
     cp = critical_path(dag)
     indices = list(range(len(renumbered)))
-    schedules = candidates_for(dag, indices, stall_mnemonic=stall_mnemonic, hoist_role=hoist_role,
-                               roles=program.roles)
+    schedules = candidates_for(dag, indices, stall_mnemonic=stall_mnemonic, hoist_role=hoist_role, roles=program.roles)
     costs = {name: makespan(dag, order) for name, order in schedules.items()}
     emitted = costs.get("as_emitted")
     best = min(costs.values()) if costs else None
     return {
-        "name": region.name, "start": region.start, "end": region.end, "trips": region.trips,
+        "name": region.name,
+        "start": region.start,
+        "end": region.end,
+        "trips": region.trips,
         "instructions": len(renumbered),
         "as_emitted_cycles": emitted,
         "critical_path_cycles": cp.cycles,
@@ -621,11 +684,17 @@ def _region_report(program: Program, region: Region, *, issue: IssueModel, stall
     }
 
 
-def analyse_program(program: Program, directions: Any, *, issue: IssueModel, stall_mnemonic: str,
-                    hoist_role: str | None = None,
-                    resolved_separations: Mapping[str, float] | None = None,
-                    capacities: Mapping[str, int] | None = None,
-                    measured_cycles: float | None = None) -> dict:
+def analyse_program(
+    program: Program,
+    directions: Any,
+    *,
+    issue: IssueModel,
+    stall_mnemonic: str,
+    hoist_role: str | None = None,
+    resolved_separations: Mapping[str, float] | None = None,
+    capacities: Mapping[str, int] | None = None,
+    measured_cycles: float | None = None,
+) -> dict:
     """Liveness, pressure, the critical path, and the ranking -- for one decoded program.
 
     The report is deliberately verbose about what it could not establish. An unresolved operand, an
@@ -634,9 +703,14 @@ def analyse_program(program: Program, directions: Any, *, issue: IssueModel, sta
     """
     from merlin.perf import differential
 
-    dag = build_dag(program.instructions, program.effects, issue=issue,
-                    stall_mnemonic=stall_mnemonic, roles=program.roles,
-                    resolved_separations=resolved_separations)
+    dag = build_dag(
+        program.instructions,
+        program.effects,
+        issue=issue,
+        stall_mnemonic=stall_mnemonic,
+        roles=program.roles,
+        resolved_separations=resolved_separations,
+    )
     live_in, live_out = liveness(program.instructions, program.effects)
     caps = dict(capacities or program.capacities or {})
     ranges = value_ranges(program.instructions, program.effects, live_out)
@@ -644,8 +718,7 @@ def analyse_program(program: Program, directions: Any, *, issue: IssueModel, sta
 
     cp = critical_path(dag)
     indices = list(range(len(program.instructions)))
-    schedules = candidates_for(dag, indices, stall_mnemonic=stall_mnemonic,
-                               hoist_role=hoist_role, roles=program.roles)
+    schedules = candidates_for(dag, indices, stall_mnemonic=stall_mnemonic, hoist_role=hoist_role, roles=program.roles)
     composed: dict[str, Composed] = {}
     costs: dict[str, float] = {}
     for name, order in schedules.items():
@@ -656,73 +729,133 @@ def analyse_program(program: Program, directions: Any, *, issue: IssueModel, sta
     pairwise = []
     names = sorted(composed)
     for a_i, a in enumerate(names):
-        for b in names[a_i + 1:]:
-            c = differential.compare(composed[a], composed[b], demands_a=demands[a],
-                                     demands_b=demands[b], label_a=a, label_b=b)
-            pairwise.append({"a": a, "b": b, "basis": c.basis, "faster": c.faster,
-                             "delta_cycles": c.delta_cycles, "claim": c.claim()})
+        for b in names[a_i + 1 :]:
+            c = differential.compare(
+                composed[a], composed[b], demands_a=demands[a], demands_b=demands[b], label_a=a, label_b=b
+            )
+            pairwise.append(
+                {
+                    "a": a,
+                    "b": b,
+                    "basis": c.basis,
+                    "faster": c.faster,
+                    "delta_cycles": c.delta_cycles,
+                    "claim": c.claim(),
+                }
+            )
 
     as_emitted = costs.get("as_emitted")
     report: dict = {
         "instructions": len(program.instructions),
-        "issue_model": {"issue_cycles": issue.issue_cycles, "stall_unit": issue.stall_unit,
-                        "tier": issue.tier, "provenance": issue.provenance},
-        "edges": {"total": len(dag.edges),
-                  "by_kind": {k: sum(1 for e in dag.edges if e.kind == k)
-                              for k in (RAW, WAR, WAW)},
-                  "unpriced_by_class": dag.exposed_classes()},
-        "critical_path": {"cycles": cp.cycles, "complete": cp.complete,
-                          "length_instructions": len(cp.path), "claim": cp.claim(),
-                          "exposed": dict(cp.exposed)},
+        "issue_model": {
+            "issue_cycles": issue.issue_cycles,
+            "stall_unit": issue.stall_unit,
+            "tier": issue.tier,
+            "provenance": issue.provenance,
+        },
+        "edges": {
+            "total": len(dag.edges),
+            "by_kind": {k: sum(1 for e in dag.edges if e.kind == k) for k in (RAW, WAR, WAW)},
+            "unpriced_by_class": dag.exposed_classes(),
+        },
+        "critical_path": {
+            "cycles": cp.cycles,
+            "complete": cp.complete,
+            "length_instructions": len(cp.path),
+            "claim": cp.claim(),
+            "exposed": dict(cp.exposed),
+        },
         "as_emitted_cycles": as_emitted,
         "reorder_slack_cycles": (None if as_emitted is None else as_emitted - cp.cycles),
-        "schedules": {name: {"cycles": costs[name],
-                             "delta_vs_as_emitted": (None if as_emitted is None
-                                                     else costs[name] - as_emitted)}
-                      for name in sorted(costs)},
+        "schedules": {
+            name: {
+                "cycles": costs[name],
+                "delta_vs_as_emitted": (None if as_emitted is None else costs[name] - as_emitted),
+            }
+            for name in sorted(costs)
+        },
         "ranking": ranking,
         "pairwise": pairwise,
         "refusals": [c.reason for c in refusals],
-        "pressure": [{"file": p.file, "peak": p.peak, "at": p.at_index, "capacity": p.capacity,
-                      "fits": p.fits, "claim": p.claim()} for p in press],
-        "value_ranges": {"defined": len(ranges),
-                         "escaping": sum(1 for r in ranges if r.escapes),
-                         "never_read": sum(1 for r in ranges if r.last_use is None and not r.escapes),
-                         "max_length": max((r.length for r in ranges), default=0)},
+        "pressure": [
+            {
+                "file": p.file,
+                "peak": p.peak,
+                "at": p.at_index,
+                "capacity": p.capacity,
+                "fits": p.fits,
+                "claim": p.claim(),
+            }
+            for p in press
+        ],
+        "value_ranges": {
+            "defined": len(ranges),
+            "escaping": sum(1 for r in ranges if r.escapes),
+            "never_read": sum(1 for r in ranges if r.last_use is None and not r.escapes),
+            "max_length": max((r.length for r in ranges), default=0),
+        },
         "incomplete_instructions": list(dag.incomplete),
     }
-    regions = [_region_report(program, r, issue=issue, stall_mnemonic=stall_mnemonic,
-                              hoist_role=hoist_role, resolved_separations=resolved_separations)
-               for r in program.regions]
+    regions = [
+        _region_report(
+            program,
+            r,
+            issue=issue,
+            stall_mnemonic=stall_mnemonic,
+            hoist_role=hoist_role,
+            resolved_separations=resolved_separations,
+        )
+        for r in program.regions
+    ]
     report["regions"] = regions
     known_trips = all(r.get("trips") is not None for r in regions)
     report["dynamic_cycles"] = (
-        sum(float(r["trips"]) * float(r["as_emitted_cycles"]) for r in regions
-            if r.get("as_emitted_cycles") is not None) if known_trips else None)
+        sum(
+            float(r["trips"]) * float(r["as_emitted_cycles"]) for r in regions if r.get("as_emitted_cycles") is not None
+        )
+        if known_trips
+        else None
+    )
     report["dynamic_best_cycles"] = (
-        sum(float(r["trips"]) * float(r["best_candidate_cycles"]) for r in regions
-            if r.get("best_candidate_cycles") is not None) if known_trips else None)
+        sum(
+            float(r["trips"]) * float(r["best_candidate_cycles"])
+            for r in regions
+            if r.get("best_candidate_cycles") is not None
+        )
+        if known_trips
+        else None
+    )
     report["dynamic_critical_path_cycles"] = (
-        sum(float(r["trips"]) * float(r["critical_path_cycles"]) for r in regions
-            if r.get("critical_path_cycles") is not None) if known_trips else None)
+        sum(
+            float(r["trips"]) * float(r["critical_path_cycles"])
+            for r in regions
+            if r.get("critical_path_cycles") is not None
+        )
+        if known_trips
+        else None
+    )
     backward = sum(1 for i in program.instructions if i.branches_backward)
     report["loop_carried"] = {
         "backward_branches": backward,
         "modelled": False,
-        "note": ("a dependence that crosses a backward branch -- the accumulate chain above all -- is "
-                 "NOT an edge in this graph. Its separation is UNKNOWN and measured to exceed the "
-                 "naive sum of the published per-operation latencies, so giving it a weight would be "
-                 "fitting rather than deriving. Every per-region number below is therefore a bound on "
-                 "ONE iteration, and the loop-carried separation is an additive term nobody here has "
-                 "measured."),
+        "note": (
+            "a dependence that crosses a backward branch -- the accumulate chain above all -- is "
+            "NOT an edge in this graph. Its separation is UNKNOWN and measured to exceed the "
+            "naive sum of the published per-operation latencies, so giving it a weight would be "
+            "fitting rather than deriving. Every per-region number below is therefore a bound on "
+            "ONE iteration, and the loop-carried separation is an additive term nobody here has "
+            "measured."
+        ),
     }
     if measured_cycles is not None and as_emitted is not None:
         report["measured_cycles"] = measured_cycles
         report["bound_vs_measured"] = {
             "critical_path_over_measured": cp.cycles / measured_cycles if measured_cycles else None,
             "as_emitted_over_measured": as_emitted / measured_cycles if measured_cycles else None,
-            "verdict": ("FALSIFIED: the lower bound exceeds the measurement"
-                        if cp.cycles > measured_cycles else
-                        "consistent: the bound sits below the measurement, as a bound must"),
+            "verdict": (
+                "FALSIFIED: the lower bound exceeds the measurement"
+                if cp.cycles > measured_cycles
+                else "consistent: the bound sits below the measurement, as a bound must"
+            ),
         }
     return report

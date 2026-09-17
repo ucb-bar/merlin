@@ -31,6 +31,7 @@ Nothing is dropped silently. Everything not chosen comes back in the rejection l
 so a generation's unspent proposals stay visible in the run record — a refutation is training signal
 against a 13.45% base rate, and a search that records only what it built over-proposes.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -43,24 +44,33 @@ from ..kernels.action_catalog import lineage_problems
 BAND_MEASURED_HELPS = 0
 BAND_UNMEASURED = 1
 BAND_MEASURED_REFUTED = 2
-BAND_NAMES = {BAND_MEASURED_HELPS: "measured_helps",
-              BAND_UNMEASURED: "unmeasured",
-              BAND_MEASURED_REFUTED: "measured_refuted"}
+BAND_NAMES = {
+    BAND_MEASURED_HELPS: "measured_helps",
+    BAND_UNMEASURED: "unmeasured",
+    BAND_MEASURED_REFUTED: "measured_refuted",
+}
 
 
 @dataclass(frozen=True)
 class Rejection:
     """A proposal this generation did not build, and why. Recorded, never discarded."""
+
     targets: str
-    reason: str                 # illegal_on_parent | over_width
+    reason: str  # illegal_on_parent | over_width
     detail: str
     lever: str = ""
     family: str = ""
     band: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {"targets": self.targets, "reason": self.reason, "detail": self.detail,
-                "lever": self.lever, "family": self.family, "band": self.band}
+        return {
+            "targets": self.targets,
+            "reason": self.reason,
+            "detail": self.detail,
+            "lever": self.lever,
+            "family": self.family,
+            "band": self.band,
+        }
 
 
 def _prior_of(prop, prior_fn: Callable[[Any], float | None] | None) -> float | None:
@@ -106,11 +116,14 @@ def proposal_key(p: Any) -> tuple[str, str]:
     return (_family_of(p), str(getattr(p, "targets", "")))
 
 
-def select_proposals(props: Sequence[Any], *, width: int,
-                     applied_actions: Iterable[Any] = (),
-                     prior_fn: Callable[[Any], float | None] | None = None,
-                     starved_fn: Callable[[Any], int] | None = None,
-                     ) -> tuple[list[Any], list[Rejection]]:
+def select_proposals(
+    props: Sequence[Any],
+    *,
+    width: int,
+    applied_actions: Iterable[Any] = (),
+    prior_fn: Callable[[Any], float | None] | None = None,
+    starved_fn: Callable[[Any], int] | None = None,
+) -> tuple[list[Any], list[Rejection]]:
     """Return ``(chosen, rejected)`` — at most ``width`` forkable proposals, best evidence first and
     diversified by action family, plus every proposal not chosen with its reason.
 
@@ -136,17 +149,22 @@ def select_proposals(props: Sequence[Any], *, width: int,
     forkable = [p for p in props if getattr(p, "forkable", False)]
     applied = list(applied_actions)
     rejected: list[Rejection] = []
-    legal: list[tuple[int, int, str, Any]] = []      # (band, order, family, proposal)
+    legal: list[tuple[int, int, str, Any]] = []  # (band, order, family, proposal)
 
     for order, p in enumerate(forkable):
         action = getattr(p, "action", None)
         if action is not None and applied:
             problems = lineage_problems(applied, action)
             if problems:
-                rejected.append(Rejection(
-                    targets=str(getattr(p, "targets", "")), reason="illegal_on_parent",
-                    detail="; ".join(problems), lever=str(getattr(p, "lever", "")),
-                    family=_family_of(p)))
+                rejected.append(
+                    Rejection(
+                        targets=str(getattr(p, "targets", "")),
+                        reason="illegal_on_parent",
+                        detail="; ".join(problems),
+                        lever=str(getattr(p, "lever", "")),
+                        family=_family_of(p),
+                    )
+                )
                 continue
         band = _band(_prior_of(p, prior_fn))
         # negated so MORE generations of starvation sorts EARLIER, inside the band.
@@ -163,8 +181,7 @@ def select_proposals(props: Sequence[Any], *, width: int,
 
     # Families are visited best-first by their own best candidate, so a family holding a measured
     # winner is not made to wait behind one holding only unmeasured guesses.
-    fam_order = sorted(by_family, key=lambda f: (by_family[f][0][0], by_family[f][0][1],
-                                                 by_family[f][0][2]))
+    fam_order = sorted(by_family, key=lambda f: (by_family[f][0][0], by_family[f][0][1], by_family[f][0][2]))
     chosen: list[Any] = []
     chosen_ids: set[int] = set()
     depth = max((len(v) for v in by_family.values()), default=0)
@@ -182,8 +199,14 @@ def select_proposals(props: Sequence[Any], *, width: int,
 
     for band, starved, order, fam, p in sorted(legal, key=lambda t: (t[0], t[1], t[2])):
         if id(p) not in chosen_ids:
-            rejected.append(Rejection(
-                targets=str(getattr(p, "targets", "")), reason="over_width",
-                detail=f"generation width {width} spent on better-evidenced or more diverse proposals",
-                lever=str(getattr(p, "lever", "")), family=fam, band=BAND_NAMES[band]))
+            rejected.append(
+                Rejection(
+                    targets=str(getattr(p, "targets", "")),
+                    reason="over_width",
+                    detail=f"generation width {width} spent on better-evidenced or more diverse proposals",
+                    lever=str(getattr(p, "lever", "")),
+                    family=fam,
+                    band=BAND_NAMES[band],
+                )
+            )
     return chosen, rejected

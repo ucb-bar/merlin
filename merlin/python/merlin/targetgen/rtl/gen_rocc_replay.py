@@ -8,32 +8,34 @@ replays this into the isolated @Gemmini arc model. Part of #143-a.
 
 CLI: gen_rocc_replay.py <capsule.yaml> <instruction_trace.json> --out replay.json
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
 from pathlib import Path
-from merlin.common.paths import repo_root
 
 import numpy as np
 import yaml
+
+from merlin.common.paths import repo_root
 
 REPO = repo_root()
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
 
 # DRAM layout: give each arg a generous, 4 KB-aligned slab inside the harness's 64 MB buffer.
-ARG_BASE = 0x100000   # 1 MB  # derived-ok: offset inside the harness's own buffer, not a target memory map
+ARG_BASE = 0x100000  # 1 MB  # derived-ok: offset inside the harness's own buffer, not a target memory map
 ARG_STRIDE = 0x40000  # 256 KB per arg
 
 
 def _arg_roles(capsule: dict) -> list[str]:
     """Kernel arg order = inputs (weight/input) then outputs, matching the emitted gemmini_kernel(...)."""
     roles = []
-    for t in (capsule.get("inputs") or []):
+    for t in capsule.get("inputs") or []:
         roles.append(t.get("name") or t.get("role"))
-    for t in (capsule.get("outputs") or []):
+    for t in capsule.get("outputs") or []:
         roles.append(t.get("name") or t.get("role"))
     return roles
 
@@ -52,8 +54,8 @@ def main(argv=None):
     arg_addr = {i: ARG_BASE + i * ARG_STRIDE for i in range(n_args)}
 
     # materialize deterministic input tensor bytes; place at their arg base.
-    leaves = CG.materialize_capsule_leaves(capsule)        # name -> Tensor
-    gold = CG.golden(capsule)                               # name -> nested list (e.g. Y0)
+    leaves = CG.materialize_capsule_leaves(capsule)  # name -> Tensor
+    gold = CG.golden(capsule)  # name -> nested list (e.g. Y0)
     # map arg_index -> tensor by the kernel arg order (inputs then outputs)
     # (we only need input bytes in DRAM; outputs are written by mvout.)
     placements = []
@@ -67,9 +69,16 @@ def main(argv=None):
         # conv2d: the kernel mvin's the IM2COL'd ifm matrix [P, kh*kw*ci], not the raw NHWC IFM —
         # place that (col-padded below). Mirrors capsule_golden's conv path exactly.
         if op in ("conv2d", "conv") and (name == attrs.get("ifm") or t.get("role") == "input"):
-            col = CG.im2col(leaves[name], ci=attrs["ci"], kh=attrs["kh"], kw=attrs["kw"],
-                            stride=attrs["stride"], padding=attrs["padding"],
-                            dilation=attrs["dilation"], layout=attrs.get("layout", "nhwc"))
+            col = CG.im2col(
+                leaves[name],
+                ci=attrs["ci"],
+                kh=attrs["kh"],
+                kw=attrs["kw"],
+                stride=attrs["stride"],
+                padding=attrs["padding"],
+                dilation=attrs["dilation"],
+                layout=attrs.get("layout", "nhwc"),
+            )
             arr = np.asarray(col.data).reshape(col.shape)
         else:
             arr = np.asarray(leaves[name].data if hasattr(leaves[name], "data") else leaves[name])
@@ -89,13 +98,29 @@ def main(argv=None):
                 padded[:, :cols] = img
                 img = padded
             b = img.tobytes()
-            placements.append({"arg_index": i, "name": name, "addr": arg_addr[i],
-                               "bytes_hex": b.hex(), "shape": [rows, cols],
-                               "row_stride": pstride, "dtype": "i8"})
+            placements.append(
+                {
+                    "arg_index": i,
+                    "name": name,
+                    "addr": arg_addr[i],
+                    "bytes_hex": b.hex(),
+                    "shape": [rows, cols],
+                    "row_stride": pstride,
+                    "dtype": "i8",
+                }
+            )
         else:
             b = img.tobytes()  # non-2D (e.g. conv IFM pre-im2col) — placed raw; conv needs im2col image
-            placements.append({"arg_index": i, "name": name, "addr": arg_addr[i],
-                               "bytes_hex": b.hex(), "shape": list(img.shape), "dtype": "i8"})
+            placements.append(
+                {
+                    "arg_index": i,
+                    "name": name,
+                    "addr": arg_addr[i],
+                    "bytes_hex": b.hex(),
+                    "shape": list(img.shape),
+                    "dtype": "i8",
+                }
+            )
 
     # output arg(s): the kernel args after the inputs are the outputs; their names = golden keys
     # (the capsule may not declare `outputs` explicitly — the command buffer's commit dst is the output).
@@ -104,23 +129,28 @@ def main(argv=None):
     if out_names:
         out_names = [t.get("name") or t.get("role") for t in out_names]
     else:
-        out_names = list(gold.keys())   # e.g. ["Y0"]
+        out_names = list(gold.keys())  # e.g. ["Y0"]
     for j, name in enumerate(out_names):
         idx = len(inputs) + j
         g = gold.get(name)
         gflat = np.asarray(g).flatten().astype(np.int64).tolist() if g is not None else None
-        out_specs.append({"arg_index": idx, "name": name, "addr": arg_addr[idx],
-                          "golden_flat": gflat,
-                          "shape": list(np.asarray(g).shape) if g is not None else None})
+        out_specs.append(
+            {
+                "arg_index": idx,
+                "name": name,
+                "addr": arg_addr[idx],
+                "golden_flat": gflat,
+                "shape": list(np.asarray(g).shape) if g is not None else None,
+            }
+        )
 
     # instruction stream: keep funct + rs1/rs2 (const raw, or argbase+offset to resolve at addr)
     insns = []
     for ins in trace["instructions"]:
-        if ins.get("funct") is None:   # FENCE (inline-asm "fence") — model as a fence marker
+        if ins.get("funct") is None:  # FENCE (inline-asm "fence") — model as a fence marker
             insns.append({"class": ins["class"], "funct": None})
             continue
-        insns.append({"class": ins["class"], "funct": ins["funct"],
-                      "rs1": ins.get("rs1"), "rs2": ins.get("rs2")})
+        insns.append({"class": ins["class"], "funct": ins["funct"], "rs1": ins.get("rs1"), "rs2": ins.get("rs2")})
 
     # output layout metadata for a generic readback: rows/cols (from golden), element bytes (i32=4/i8=1
     # from the MVOUT readout), and the DRAM row stride (CONFIG_ST out_stride_bytes; fallback cols*elem).
@@ -142,12 +172,19 @@ def main(argv=None):
     # None (a trace that never carried an opcode cannot be faithfully replayed against a guessed one).
     abi_op = (trace.get("abi") or {}).get("custom_opcode")
     rocc_opcode = int(abi_op, 16) if isinstance(abi_op, str) and abi_op else None
-    spec = {"capsule": capsule.get("name"), "arg_addr": arg_addr,
-            "placements": placements, "outputs": out_specs, "insns": insns,
-            "rocc_opcode": rocc_opcode}
+    spec = {
+        "capsule": capsule.get("name"),
+        "arg_addr": arg_addr,
+        "placements": placements,
+        "outputs": out_specs,
+        "insns": insns,
+        "rocc_opcode": rocc_opcode,
+    }
     Path(a.out).write_text(json.dumps(spec, indent=1))
-    print(f"wrote {a.out}: {len(insns)} insns, {len(placements)} input placements, "
-          f"{len(out_specs)} outputs; arg_addr={arg_addr if len(inputs)+len(capsule.get('outputs') or [])<=3 else '...'}")
+    print(
+        f"wrote {a.out}: {len(insns)} insns, {len(placements)} input placements, "
+        f"{len(out_specs)} outputs; arg_addr={arg_addr if len(inputs) + len(capsule.get('outputs') or []) <= 3 else '...'}"
+    )
     return 0
 
 

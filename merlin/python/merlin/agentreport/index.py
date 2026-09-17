@@ -18,6 +18,7 @@ arm's result to another.
 The arm vocabulary itself is a PARAMETER (:class:`ArmSpec`), because it is declared by the launcher,
 which lives in the experiment tree that library code is not allowed to reach into.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,9 +40,9 @@ UNKNOWN = "UNKNOWN"
 class ArmSpec:
     """One rung of the ladder: its id, the run-id prefix the launcher stamps, and its bundle ids."""
 
-    arm_id: str                       # e.g. "arm4"
-    name: str                         # e.g. "merlin_rtlchecks"
-    prefix: str                       # e.g. "merlincirct"
+    arm_id: str  # e.g. "arm4"
+    name: str  # e.g. "merlin_rtlchecks"
+    prefix: str  # e.g. "merlincirct"
     bundle_ids: tuple[str, ...] = ()  # every bundle id that means this arm
 
 
@@ -56,8 +57,8 @@ class RunRef:
     phase: str
     run_id: str
     arm: str = UNKNOWN
-    arm_source: str = ""              # "bundle_id" | "run_id_prefix" | ""
-    arm_conflict: str = ""            # set when bundle and prefix disagree; both spellings recorded
+    arm_source: str = ""  # "bundle_id" | "run_id_prefix" | ""
+    arm_conflict: str = ""  # set when bundle and prefix disagree; both spellings recorded
     bundle_id: str = ""
     driver: str = ""
     model: str = ""
@@ -73,13 +74,25 @@ class RunRef:
         return f"{self.target}/{self.bench}/{self.run_id}"
 
     def to_dict(self) -> dict:
-        return {"root": str(self.root), "path": str(self.path), "target": self.target,
-                "bench": self.bench, "phase": self.phase, "run_id": self.run_id,
-                "arm": self.arm, "arm_source": self.arm_source, "arm_conflict": self.arm_conflict,
-                "bundle_id": self.bundle_id, "driver": self.driver, "model": self.model,
-                "provider": self.provider, "started_at": self.started_at,
-                "repo_sha": self.repo_sha, "n_rounds": self.n_rounds,
-                "availability": self.availability.to_dict()}
+        return {
+            "root": str(self.root),
+            "path": str(self.path),
+            "target": self.target,
+            "bench": self.bench,
+            "phase": self.phase,
+            "run_id": self.run_id,
+            "arm": self.arm,
+            "arm_source": self.arm_source,
+            "arm_conflict": self.arm_conflict,
+            "bundle_id": self.bundle_id,
+            "driver": self.driver,
+            "model": self.model,
+            "provider": self.provider,
+            "started_at": self.started_at,
+            "repo_sha": self.repo_sha,
+            "n_rounds": self.n_rounds,
+            "availability": self.availability.to_dict(),
+        }
 
 
 def arm_from_prefix(run_id: str, arms: Sequence[ArmSpec]) -> str:
@@ -132,6 +145,7 @@ def _yaml(path: Path) -> dict:
         return {}
     try:
         import yaml
+
         return yaml.safe_load(path.read_text(errors="ignore")) or {}
     except Exception:  # noqa: BLE001 - a malformed side file must not lose the run
         return {}
@@ -168,8 +182,7 @@ def iter_run_dirs(root: Path) -> Iterable[tuple[str, str, Path]]:
                         yield target_dir.name, bench_dir.name, run
 
 
-def build_index(roots: Sequence[Path], arms: Sequence[ArmSpec],
-                phase_map: dict[str, str]) -> list[RunRef]:
+def build_index(roots: Sequence[Path], arms: Sequence[ArmSpec], phase_map: dict[str, str]) -> list[RunRef]:
     """Every run under every root, identified. Never refuses a run -- an unidentifiable one is kept
     with ``arm=UNKNOWN`` so it still counts toward the denominator."""
     out: list[RunRef] = []
@@ -182,26 +195,48 @@ def build_index(roots: Sequence[Path], arms: Sequence[ArmSpec],
                 bundle = str(_yaml(run / "input_bundle_manifest.yaml").get("bundle_id") or "")
             arm, source, conflict = resolve_arm(run.name, bundle, arms)
             transcripts = _round_transcripts(run)
-            ref = RunRef(root=root, path=run, target=target, bench=bench,
-                         phase=_phase_of(bench, phase_map), run_id=run.name,
-                         arm=arm, arm_source=source, arm_conflict=conflict, bundle_id=bundle,
-                         driver=str(env.get("driver") or ""), model=str(env.get("model") or ""),
-                         provider=str(env.get("provider") or ""),
-                         started_at=str(env.get("started_at") or ""),
-                         repo_sha=str(env.get("repo_sha") or ""),
-                         n_rounds=len(transcripts))
+            ref = RunRef(
+                root=root,
+                path=run,
+                target=target,
+                bench=bench,
+                phase=_phase_of(bench, phase_map),
+                run_id=run.name,
+                arm=arm,
+                arm_source=source,
+                arm_conflict=conflict,
+                bundle_id=bundle,
+                driver=str(env.get("driver") or ""),
+                model=str(env.get("model") or ""),
+                provider=str(env.get("provider") or ""),
+                started_at=str(env.get("started_at") or ""),
+                repo_sha=str(env.get("repo_sha") or ""),
+                n_rounds=len(transcripts),
+            )
             if arm == UNKNOWN:
-                ref.availability.set("arm", unavailable(
-                    f"run id {run.name!r} matches no arm prefix and "
-                    f"{'bundle_id ' + bundle if bundle else 'no bundle_id was recorded'}"))
+                ref.availability.set(
+                    "arm",
+                    unavailable(
+                        f"run id {run.name!r} matches no arm prefix and "
+                        f"{'bundle_id ' + bundle if bundle else 'no bundle_id was recorded'}"
+                    ),
+                )
             elif conflict:
-                ref.availability.set("arm", derived(
-                    f"bundle and prefix disagree ({conflict}); the bundle decides because an arm is "
-                    f"its grant set", source=source))
+                ref.availability.set(
+                    "arm",
+                    derived(
+                        f"bundle and prefix disagree ({conflict}); the bundle decides because an arm is its grant set",
+                        source=source,
+                    ),
+                )
             else:
                 ref.availability.set("arm", measured(source))
-            ref.availability.set("transcripts", measured("rounds") if transcripts
-                                 else unavailable("run has no round transcript and no flat transcript"))
+            ref.availability.set(
+                "transcripts",
+                measured("rounds")
+                if transcripts
+                else unavailable("run has no round transcript and no flat transcript"),
+            )
             out.append(ref)
     return out
 

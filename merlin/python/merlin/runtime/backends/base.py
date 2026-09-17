@@ -14,6 +14,7 @@ The per-instance modules keep their current behavior; collapsing their copy-past
 (toolchain resolve / ``OUT/METRIC/DONE`` parse / reference gate) into a shared base is the follow-up
 (and must re-certify the frozen gemmini path byte-for-byte).
 """
+
 from __future__ import annotations
 
 import importlib
@@ -46,9 +47,9 @@ class TargetClass(str, Enum):
     turns into a lookup table for specific hardware. Use :func:`target_class_for` to ask.
     """
 
-    CPU = "cpu"     # a scalar and/or lane (vector) engine — a CPU, with or without SIMD
-    GPU = "gpu"     # a threads-of-control (SIMT) engine, with or without a tensor unit inside it
-    NPU = "npu"     # an array engine (systolic wavefront or outer-product tile) as the outermost unit
+    CPU = "cpu"  # a scalar and/or lane (vector) engine — a CPU, with or without SIMD
+    GPU = "gpu"  # a threads-of-control (SIMT) engine, with or without a tensor unit inside it
+    NPU = "npu"  # an array engine (systolic wavefront or outer-product tile) as the outermost unit
 
 
 def target_class_for(target: str) -> "TargetClass | None":
@@ -61,17 +62,17 @@ def target_class_for(target: str) -> "TargetClass | None":
     """
     try:
         from merlin.kernels import engines as _engines
-    except Exception:                        # noqa: BLE001 — kernels unavailable in this sandbox
+    except Exception:  # noqa: BLE001 — kernels unavailable in this sandbox
         return None
     got = _engines.target_class_for(_engines.engines_for(target))
     return TargetClass(got) if got else None
 
 
 class BackendKind(str, Enum):
-    KERNEL = "kernel"          # compiles+runs one command buffer (spike, gemmini, muon, saturn_vec)
+    KERNEL = "kernel"  # compiles+runs one command buffer (spike, gemmini, muon, saturn_vec)
     WHOLE_MODEL = "whole_model"  # runs a whole captured model (spike_model, zephyr_model)
     MATMUL_ROUTE = "matmul_route"  # routes matmuls to an external/hand GEMM for attribution
-                                   # (xnnpack/openblas/ours on a board; xnnpack on the host)
+    # (xnnpack/openblas/ours on a board; xnnpack on the host)
 
 
 #: Closed vocabulary for SOFTWARE execution capabilities a backend may declare.  These are kept out
@@ -90,7 +91,7 @@ class BackendInfo:
     name: str
     target_class: TargetClass
     kind: BackendKind
-    module: str                  # dotted import path, loaded lazily via get_backend()
+    module: str  # dotted import path, loaded lazily via get_backend()
 
 
 # The registry is populated two ways so the CORE never hardcodes a shipped-accelerator name:
@@ -102,27 +103,32 @@ class BackendInfo:
 #    a new accelerator backend is one ``register`` line in ITS OWN module (or an out-of-tree package
 #    reached via ``MERLIN_TARGET_PATH``), and the core carries no name -> module map for it.
 _REGISTRY: dict[str, BackendInfo] = {
-    "spike":        BackendInfo("spike", TargetClass.CPU, BackendKind.KERNEL,
-                                "merlin.runtime.backends.spike"),
+    "spike": BackendInfo("spike", TargetClass.CPU, BackendKind.KERNEL, "merlin.runtime.backends.spike"),
     # NB: "saturn_vec" is NOT seeded here — it was evicted to its own reference package
     # (merlin/targets/saturn/backend/) and self-registers via plugin discovery (see _ensure_oot_discovered).
-    "spike_model":  BackendInfo("spike_model", TargetClass.CPU, BackendKind.WHOLE_MODEL,
-                                "merlin.runtime.backends.spike_model"),
-    "zephyr_model": BackendInfo("zephyr_model", TargetClass.CPU, BackendKind.WHOLE_MODEL,
-                                "merlin.runtime.backends.zephyr_model"),
+    "spike_model": BackendInfo(
+        "spike_model", TargetClass.CPU, BackendKind.WHOLE_MODEL, "merlin.runtime.backends.spike_model"
+    ),
+    "zephyr_model": BackendInfo(
+        "zephyr_model", TargetClass.CPU, BackendKind.WHOLE_MODEL, "merlin.runtime.backends.zephyr_model"
+    ),
     # matmul-routing attribution backends (CPU-class): route routable matmuls to an external/hand
     # GEMM — the RVV board variants (xnnpack/openblas/ours) + the x86 host xnnpack reference.
-    "xnnpack_board":  BackendInfo("xnnpack_board", TargetClass.CPU, BackendKind.MATMUL_ROUTE,
-                                  "merlin.runtime.backends.xnnpack_board"),
-    "openblas_board": BackendInfo("openblas_board", TargetClass.CPU, BackendKind.MATMUL_ROUTE,
-                                  "merlin.runtime.backends.openblas_board"),
-    "ours_board":     BackendInfo("ours_board", TargetClass.CPU, BackendKind.MATMUL_ROUTE,
-                                  "merlin.runtime.backends.ours_board"),
+    "xnnpack_board": BackendInfo(
+        "xnnpack_board", TargetClass.CPU, BackendKind.MATMUL_ROUTE, "merlin.runtime.backends.xnnpack_board"
+    ),
+    "openblas_board": BackendInfo(
+        "openblas_board", TargetClass.CPU, BackendKind.MATMUL_ROUTE, "merlin.runtime.backends.openblas_board"
+    ),
+    "ours_board": BackendInfo(
+        "ours_board", TargetClass.CPU, BackendKind.MATMUL_ROUTE, "merlin.runtime.backends.ours_board"
+    ),
     "outlined_int8_board": BackendInfo(
-        "outlined_int8_board", TargetClass.CPU, BackendKind.MATMUL_ROUTE,
-        "merlin.runtime.backends.outlined_int8_board"),
-    "xnnpack_host":   BackendInfo("xnnpack_host", TargetClass.CPU, BackendKind.MATMUL_ROUTE,
-                                  "merlin.runtime.backends.xnnpack_host"),
+        "outlined_int8_board", TargetClass.CPU, BackendKind.MATMUL_ROUTE, "merlin.runtime.backends.outlined_int8_board"
+    ),
+    "xnnpack_host": BackendInfo(
+        "xnnpack_host", TargetClass.CPU, BackendKind.MATMUL_ROUTE, "merlin.runtime.backends.xnnpack_host"
+    ),
 }
 
 # Names seeded above (the generic ISA-class instances). Discovery imports every OTHER submodule of this
@@ -226,7 +232,7 @@ def _oot_plugin_modules(key: str = "backend") -> list[tuple[str, Path]]:
         except Exception:  # noqa: BLE001 — skip a package whose contract will not parse
             continue
         rel = plugin.get(key)
-        root = plugin.get("path") or str(info.base)   # reference: base is the package root (no injected path)
+        root = plugin.get("path") or str(info.base)  # reference: base is the package root (no injected path)
         if not rel or not root:
             continue
         path = Path(root) / rel
@@ -260,9 +266,7 @@ def _load_oot_backend(name: str, path: Path, *, ns: str = "merlin._oot_backends"
         return
     if path.is_dir():
         init = path / "__init__.py"
-        spec = importlib.util.spec_from_file_location(
-            modname, init, submodule_search_locations=[str(path)]
-        )
+        spec = importlib.util.spec_from_file_location(modname, init, submodule_search_locations=[str(path)])
     else:
         spec = importlib.util.spec_from_file_location(modname, path)
     if spec is None or spec.loader is None:
@@ -276,7 +280,7 @@ def _load_oot_backend(name: str, path: Path, *, ns: str = "merlin._oot_backends"
         _LOAD_FAILURES[name] = f"{type(exc).__name__}: {exc}"
 
 
-_oot_lock = threading.RLock()   # guards OOT discovery: the sentinel is published only after it completes
+_oot_lock = threading.RLock()  # guards OOT discovery: the sentinel is published only after it completes
 
 
 def _ensure_oot_discovered() -> None:
@@ -297,7 +301,7 @@ def _ensure_oot_discovered() -> None:
     # gemmini arm-4 run: 15 of 20 capsules crashed that way and 5 passed, purely on thread timing -- an
     # agent that had actually solved all 20 graded 5.
     with _oot_lock:
-        if key == _oot_env_seen:          # another thread completed discovery while we waited
+        if key == _oot_env_seen:  # another thread completed discovery while we waited
             return
         for name, path in _oot_backend_modules():
             _load_oot_backend(name, path)
@@ -350,7 +354,8 @@ def harness_build_recipe(target: str) -> HarnessBuildRecipe:
     if factory is None:
         raise NotImplementedError(
             f"backend for target {target!r} declares no harness_build_recipe; it cannot build a "
-            f"runner-owned bare-metal harness. Add one to the backend module if it should.")
+            f"runner-owned bare-metal harness. Add one to the backend module if it should."
+        )
     return factory()
 
 
@@ -367,7 +372,8 @@ def harness_renderer(target: str):
     if render is None:
         raise NotImplementedError(
             f"backend for target {target!r} declares no render_harness; the runner cannot write a "
-            f"harness for it. Add one to the backend module if it should.")
+            f"harness for it. Add one to the backend module if it should."
+        )
     return render
 
 
@@ -430,28 +436,28 @@ def execution_capability_facts(target: str) -> dict[str, dict[str, Any]]:
     if raw is None:
         raw = {}
     if not isinstance(raw, dict):
-        raise TypeError(
-            f"backend {target!r} EXECUTION_CAPABILITIES must be a name -> evidence mapping")
+        raise TypeError(f"backend {target!r} EXECUTION_CAPABILITIES must be a name -> evidence mapping")
     unknown = sorted(set(raw) - set(EXECUTION_CAPABILITIES))
     if unknown:
         raise ValueError(
             f"backend {target!r} declares unknown execution capabilities {unknown}; canonical names "
-            f"are {list(EXECUTION_CAPABILITIES)}")
+            f"are {list(EXECUTION_CAPABILITIES)}"
+        )
     facts: dict[str, dict[str, Any]] = {}
     for name in EXECUTION_CAPABILITIES:
         evidence = raw.get(name)
         if evidence is not None and (not isinstance(evidence, str) or not evidence.strip()):
-            raise ValueError(
-                f"backend {target!r} execution capability {name!r} needs non-empty evidence text")
+            raise ValueError(f"backend {target!r} execution capability {name!r} needs non-empty evidence text")
         supported = evidence is not None
         facts[name] = {
             "satisfied": supported,
             "tier": "backend_declared",
-            "evidence": (f"backend {target!r} ({backend.__name__}) declares: {evidence}"
-                         if supported else
-                         f"backend {target!r} ({backend.__name__}) does not declare this capability"),
-            "missing": ([] if supported else
-                        [f"backend declaration and implementation of {name!r}"]),
+            "evidence": (
+                f"backend {target!r} ({backend.__name__}) declares: {evidence}"
+                if supported
+                else f"backend {target!r} ({backend.__name__}) does not declare this capability"
+            ),
+            "missing": ([] if supported else [f"backend declaration and implementation of {name!r}"]),
         }
     return facts
 
@@ -471,9 +477,14 @@ def _strip_warning_fragments(text: str) -> str:
     return "\n".join(out)
 
 
-def parse_console(text: str, *, error_cls: type[Exception] = RuntimeError,
-                  strip_warnings: bool = False, tolerant_metric: bool = False,
-                  value_parser=int) -> tuple[dict[str, list], dict[str, int]]:
+def parse_console(
+    text: str,
+    *,
+    error_cls: type[Exception] = RuntimeError,
+    strip_warnings: bool = False,
+    tolerant_metric: bool = False,
+    value_parser=int,
+) -> tuple[dict[str, list], dict[str, int]]:
     """Parse the shared ``OUT``/``METRIC``/``DONE`` backend console protocol into (outputs, raw_metrics).
 
     Every backend prints results the same way — ``OUT <name> <rows> <cols> v...`` /
@@ -496,7 +507,7 @@ def parse_console(text: str, *, error_cls: type[Exception] = RuntimeError,
             vals = [value_parser(v) for v in parts[4:]]
             if len(vals) != rows * cols:
                 raise error_cls(f"OUT {name}: expected {rows * cols} values, got {len(vals)}")
-            outputs[name] = [vals[r * cols:(r + 1) * cols] for r in range(rows)]
+            outputs[name] = [vals[r * cols : (r + 1) * cols] for r in range(rows)]
         elif parts[0] == "METRIC":
             if tolerant_metric:
                 try:
@@ -535,19 +546,19 @@ def decode_float_readback(outputs: dict[str, list], dtypes: dict[str, str]) -> d
     Returns a new mapping; the input is not mutated.
     """
     from merlin.runtime import fp8_formats as _ff
+
     decoded: dict[str, list] = {}
     for name, rows in outputs.items():
         fmt = float_format_of(dtypes.get(name, ""))
         flat = [v for row in rows for v in row] if rows and isinstance(rows[0], list) else list(rows)
-        if fmt is None or not flat or not all(
-                isinstance(v, int) and not isinstance(v, bool) for v in flat):
+        if fmt is None or not flat or not all(isinstance(v, int) and not isinstance(v, bool) for v in flat):
             decoded[name] = rows
             continue
         values = [float(v) for v in _ff.codes_to_f32(flat, fmt)]
         if rows and isinstance(rows[0], list):
             out, at = [], 0
             for row in rows:
-                out.append(values[at:at + len(row)])
+                out.append(values[at : at + len(row)])
                 at += len(row)
             decoded[name] = out
         else:

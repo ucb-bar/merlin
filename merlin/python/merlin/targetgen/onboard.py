@@ -21,6 +21,7 @@ TARGET-AGNOSTIC by construction: every routing decision flows from the descripto
 compute-unit ``kind`` through :mod:`merlin.targetgen.families`; there is no ``if target ==`` and no
 per-target branch anywhere below (membership in the generator registry is a generic dict lookup).
 """
+
 from __future__ import annotations
 
 import os
@@ -54,13 +55,14 @@ class OnboardError(RuntimeError):
 @dataclass
 class OnboardResult:
     """The grounded outcome of an onboarding run (what the CLI renders)."""
+
     target: str
     manifest: CapabilityManifest
-    oot_root: Path | None                 # where the manifest was regenerated (None if not regenerated)
-    regenerated: bool                     # True if written via the generator; False if a committed contract
+    oot_root: Path | None  # where the manifest was regenerated (None if not regenerated)
+    regenerated: bool  # True if written via the generator; False if a committed contract
     dtypes: tuple[str, ...]
-    mesh: dict | None                     # {"rows":R,"cols":C} or {"dim":D} or None (no mesh)
-    rtl_notes: list[str] = field(default_factory=list)   # honest provenance/registration lines
+    mesh: dict | None  # {"rows":R,"cols":C} or {"dim":D} or None (no mesh)
+    rtl_notes: list[str] = field(default_factory=list)  # honest provenance/registration lines
 
 
 # --------------------------------------------------------------------------- RTL pointer grounding
@@ -77,10 +79,12 @@ def _resolve_local(pointer: str) -> Path:
 def _mlc_registration_step(target: str) -> str:
     """The exact, honest registration step — mlc owns RTL→arc compilation; merlin only consumes its
     per-target outputs. We name the env var + the directory mlc must produce, without inventing a flag."""
-    return (f"register the RTL with mlc (RTL->arc compilation is mlc's responsibility, not merlin's): "
-            f"point MERLIN_MLC_DIR at an mlc checkout that has compiled this repo so it exposes "
-            f"$MERLIN_MLC_DIR/runs/circt-arc/{target}/outputs — merlin.targetgen.rtl.mlc_bridge then "
-            f"derives ISA/mesh/memory facts from those outputs.")
+    return (
+        f"register the RTL with mlc (RTL->arc compilation is mlc's responsibility, not merlin's): "
+        f"point MERLIN_MLC_DIR at an mlc checkout that has compiled this repo so it exposes "
+        f"$MERLIN_MLC_DIR/runs/circt-arc/{target}/outputs — merlin.targetgen.rtl.mlc_bridge then "
+        f"derives ISA/mesh/memory facts from those outputs."
+    )
 
 
 def _ground_rtl(te: TargetExperiment) -> list[str]:
@@ -96,20 +100,26 @@ def _ground_rtl(te: TargetExperiment) -> list[str]:
             if not te.rtl_repo.startswith(_URL_SCHEMES):
                 raise OnboardError(
                     f"rtl.repo {te.rtl_repo!r} is not a resolvable local path or a recognized remote URL "
-                    f"(expected one of {_URL_SCHEMES}). Refusing to guess the RTL location.")
-            notes.append(f"rtl.repo is a remote URL ({te.rtl_repo}); merlin does not clone/compile RTL — "
-                         + _mlc_registration_step(te.target))
+                    f"(expected one of {_URL_SCHEMES}). Refusing to guess the RTL location."
+                )
+            notes.append(
+                f"rtl.repo is a remote URL ({te.rtl_repo}); merlin does not clone/compile RTL — "
+                + _mlc_registration_step(te.target)
+            )
         else:
             local = _resolve_local(te.rtl_repo)
             if not local.exists():
                 raise OnboardError(
                     f"rtl.repo {te.rtl_repo!r} does not resolve (looked at {local}). Fix the descriptor's "
-                    f"rtl.repo pointer; refusing to onboard against a non-existent RTL location.")
+                    f"rtl.repo pointer; refusing to onboard against a non-existent RTL location."
+                )
             notes.append(f"rtl.repo resolves -> {local}")
             notes.append(_mlc_registration_step(te.target))
     else:
-        notes.append("rtl.repo not set (legacy mode): assuming the RTL is already registered with mlc "
-                     f"under target {te.target!r}.")
+        notes.append(
+            "rtl.repo not set (legacy mode): assuming the RTL is already registered with mlc "
+            f"under target {te.target!r}."
+        )
 
     # Report — never require — how much mlc actually grounds. A SIMT/prototype target legitimately
     # grounds 0/4 static facts (its facts come from the contract, not the arc decoder), so this is
@@ -122,9 +132,11 @@ def _ground_rtl(te: TargetExperiment) -> list[str]:
         # gemmini), simt -> muon, spatial -> the OuterProductUnit state-manifest introspect. The default
         # (no kind resolved for a freshly-onboarding target) is the systolic static path — same as before.
         bundle = _mlc.fact_bundle_for(te.target)
-        notes.append(f"mlc grounds {bundle['n_derived']}/{len(bundle['fields'])} static RTL facts for "
-                     f"{te.target!r} "
-                     f"({'arc model present' if _mlc.arc_available(te.target) else 'no arc model — SIMT/prototype'}).")
+        notes.append(
+            f"mlc grounds {bundle['n_derived']}/{len(bundle['fields'])} static RTL facts for "
+            f"{te.target!r} "
+            f"({'arc model present' if _mlc.arc_available(te.target) else 'no arc model — SIMT/prototype'})."
+        )
     return notes
 
 
@@ -157,7 +169,7 @@ def _regenerate_manifest(target: str, oot_root: Path | None) -> tuple[Path | Non
     """
     if target in _cm.MANIFESTS:
         root = Path(oot_root) if oot_root is not None else target_base(target)
-        _cm.write_oot_target(target, root)   # validates schema + compute_units before writing
+        _cm.write_oot_target(target, root)  # validates schema + compute_units before writing
         return root, True
 
     # No generator entry. Only accept an ALREADY-committed contract (reference/in-tree target); never
@@ -170,7 +182,8 @@ def _regenerate_manifest(target: str, oot_root: Path | None) -> tuple[Path | Non
         f"cannot ground a capability manifest for {target!r}: no generator in "
         f"merlin.targetgen.capability_manifests.MANIFESTS ({sorted(_cm.MANIFESTS)}) and no committed "
         f"target_contract.yaml. Refusing to fabricate a manifest — add a generator entry or commit a "
-        f"contract, then re-run onboard.")
+        f"contract, then re-run onboard."
+    )
 
 
 # --------------------------------------------------------------------------- summary derivation
@@ -182,7 +195,7 @@ def _derive_summary(manifest: CapabilityManifest) -> tuple[tuple[str, ...], dict
         dtypes |= set(_cu.effective(u, units).dtypes)
     mesh = (manifest.contract.get("capabilities") or {}).get("mesh")
     if not mesh:
-        dim = _mlc.discovered_dim(manifest.target)   # may be None (no mesh / mlc absent) — honest
+        dim = _mlc.discovered_dim(manifest.target)  # may be None (no mesh / mlc absent) — honest
         mesh = {"dim": dim} if dim else None
     return tuple(sorted(dtypes)), mesh
 
@@ -202,15 +215,25 @@ def onboard(descriptor: str | Path, *, oot_root: str | Path | None = None) -> On
         try:
             manifest = load_capability_manifest(te.target)
         except Exception as e:  # noqa: BLE001 — surface the spine failure precisely, never swallow it
-            raise OnboardError(f"regenerated manifest for {te.target!r} did not load through the spine: "
-                               f"{type(e).__name__}: {e}") from e
+            raise OnboardError(
+                f"regenerated manifest for {te.target!r} did not load through the spine: {type(e).__name__}: {e}"
+            ) from e
         if manifest.kind not in _families.known_kinds():
-            raise OnboardError(f"{te.target!r}: derived kind {manifest.kind!r} is not a known family "
-                               f"{_families.known_kinds()} — cannot route.")
+            raise OnboardError(
+                f"{te.target!r}: derived kind {manifest.kind!r} is not a known family "
+                f"{_families.known_kinds()} — cannot route."
+            )
         dtypes, mesh = _derive_summary(manifest)
 
-    return OnboardResult(target=te.target, manifest=manifest, oot_root=written_root,
-                         regenerated=regenerated, dtypes=dtypes, mesh=mesh, rtl_notes=rtl_notes)
+    return OnboardResult(
+        target=te.target,
+        manifest=manifest,
+        oot_root=written_root,
+        regenerated=regenerated,
+        dtypes=dtypes,
+        mesh=mesh,
+        rtl_notes=rtl_notes,
+    )
 
 
 def render(result: OnboardResult) -> str:
@@ -225,9 +248,15 @@ def render(result: OnboardResult) -> str:
         lines.append(f"- regenerated at: {result.oot_root}/contracts/target_contract.yaml")
     else:
         lines.append("- source: committed target_contract.yaml (no generator; not regenerated)")
-    mesh = ("none" if result.mesh is None
-            else (f"dim={result.mesh['dim']}" if "dim" in result.mesh
-                  else f"{result.mesh.get('rows')}x{result.mesh.get('cols')}"))
+    mesh = (
+        "none"
+        if result.mesh is None
+        else (
+            f"dim={result.mesh['dim']}"
+            if "dim" in result.mesh
+            else f"{result.mesh.get('rows')}x{result.mesh.get('cols')}"
+        )
+    )
     lines += [
         f"- target       : {m.target}",
         f"- kind         : {m.kind}",
@@ -244,13 +273,16 @@ def render(result: OnboardResult) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
+
     ap = argparse.ArgumentParser(
         prog="merlin-onboard",
         description="Onboard a new accelerator from ONE descriptor: ground its RTL pointer, regenerate "
-                    "the capability manifest, and validate it routes through the capability spine.")
+        "the capability manifest, and validate it routes through the capability spine.",
+    )
     ap.add_argument("descriptor", help="path to the target_experiment.yaml descriptor")
-    ap.add_argument("--oot-root", help="override where the manifest is regenerated "
-                                       "(default: out/artifacts/targets/<target>/)")
+    ap.add_argument(
+        "--oot-root", help="override where the manifest is regenerated (default: out/artifacts/targets/<target>/)"
+    )
     a = ap.parse_args(argv)
     try:
         result = onboard(a.descriptor, oot_root=a.oot_root)

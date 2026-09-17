@@ -42,6 +42,7 @@ links on its own, and the one step that is genuinely the harness's stays the har
 Nothing here knows which device it is building for. The window base, the artifact, the addresses and
 the extents are all read from the device's own derived facts and its package's own output.
 """
+
 from __future__ import annotations
 
 import json
@@ -51,8 +52,15 @@ from pathlib import Path
 
 from .device_build import _ar, _flags, _run  # noqa: PLC2701 -- one toolchain locator per package
 
-__all__ = ["DeviceNativeSeam", "SeamProgram", "SeamTensor", "build_device_native_seam",
-           "emit_host_staging_unit", "seam_emittable", "seam_entry"]
+__all__ = [
+    "DeviceNativeSeam",
+    "SeamProgram",
+    "SeamTensor",
+    "build_device_native_seam",
+    "emit_host_staging_unit",
+    "seam_emittable",
+    "seam_entry",
+]
 
 #: The operand placement this seam IS. A ``device_native`` device whose operands arrive some other way
 #: (pointer arguments it pulls over DMA, say) has a different boundary, and emitting an address
@@ -71,6 +79,7 @@ _OUTPUT_ROLES = frozenset({"output"})
 # the predicate
 # ---------------------------------------------------------------------------------------------
 
+
 def seam_emittable(device: str) -> str | None:
     """Why this device's ``device_native`` seam cannot be emitted, or None when it can.
 
@@ -80,33 +89,45 @@ def seam_emittable(device: str) -> str | None:
     try:
         from merlin.system.derive import link_for
         from merlin.targetgen.target_experiment import load_capability_manifest
+
         endpoint = getattr(load_capability_manifest(device), "endpoint_kind", None)
         link = link_for(device, endpoint)
-    except Exception as exc:                 # noqa: BLE001
-        return (f"{device!r}: its link could not be derived ({type(exc).__name__}), so nothing is "
-                f"known about how the host reaches it")
+    except Exception as exc:  # noqa: BLE001
+        return (
+            f"{device!r}: its link could not be derived ({type(exc).__name__}), so nothing is "
+            f"known about how the host reaches it"
+        )
     if link.command_transport != _SEAM_TRANSPORT:
-        return (f"{device!r} is reached by {link.command_transport!r}, not {_SEAM_TRANSPORT!r}; this "
-                f"path emits a DRAM address contract and that transport's boundary is a different one")
+        return (
+            f"{device!r} is reached by {link.command_transport!r}, not {_SEAM_TRANSPORT!r}; this "
+            f"path emits a DRAM address contract and that transport's boundary is a different one"
+        )
     if link.operand_placement != _SEAM_PLACEMENT:
-        return (f"{device!r} places its operands by {link.operand_placement!r}, not "
-                f"{_SEAM_PLACEMENT!r} ({link.evidence.get('operand_placement', 'no evidence')}); an "
-                f"address contract would stage operands this device does not read from there")
+        return (
+            f"{device!r} places its operands by {link.operand_placement!r}, not "
+            f"{_SEAM_PLACEMENT!r} ({link.evidence.get('operand_placement', 'no evidence')}); an "
+            f"address contract would stage operands this device does not read from there"
+        )
     if link.device_dram_base is None:
-        return (f"{device!r} declares no derivable DRAM window base "
-                f"({link.evidence.get('device_dram_base', 'nothing looked at it')}); the seam IS the "
-                f"address contract, so without the window the host cannot know where to stage an "
-                f"operand and an assumed base is a wrong address that looks like a measurement")
+        return (
+            f"{device!r} declares no derivable DRAM window base "
+            f"({link.evidence.get('device_dram_base', 'nothing looked at it')}); the seam IS the "
+            f"address contract, so without the window the host cannot know where to stage an "
+            f"operand and an assumed base is a wrong address that looks like a measurement"
+        )
     if not link.emitted_artifact:
-        return (f"{device!r} declares no emitted artifact "
-                f"({link.evidence.get('emitted_artifact', 'nothing looked at it')}); the device half "
-                f"of the seam is whatever its package emits, and that is unknown here")
+        return (
+            f"{device!r} declares no emitted artifact "
+            f"({link.evidence.get('emitted_artifact', 'nothing looked at it')}); the device half "
+            f"of the seam is whatever its package emits, and that is unknown here"
+        )
     return None
 
 
 # ---------------------------------------------------------------------------------------------
 # what a seam is made of
 # ---------------------------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class SeamTensor:
@@ -126,9 +147,16 @@ class SeamTensor:
     physical: dict | None = None
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "role": self.role, "dtype": self.dtype, "shape": list(self.shape),
-                "device_address": self.device_address, "window_offset": self.window_offset,
-                "nbytes": self.nbytes, "physical": self.physical}
+        return {
+            "name": self.name,
+            "role": self.role,
+            "dtype": self.dtype,
+            "shape": list(self.shape),
+            "device_address": self.device_address,
+            "window_offset": self.window_offset,
+            "nbytes": self.nbytes,
+            "physical": self.physical,
+        }
 
 
 @dataclass(frozen=True)
@@ -153,9 +181,13 @@ class SeamProgram:
         return tuple(t for t in self.tensors if t.role in _OUTPUT_ROLES)
 
     def to_dict(self) -> dict:
-        return {"entry": self.entry, "signature": self.signature, "extents": list(self.extents),
-                "program_bytes": len(self.image),
-                "tensors": [t.to_dict() for t in self.tensors]}
+        return {
+            "entry": self.entry,
+            "signature": self.signature,
+            "extents": list(self.extents),
+            "program_bytes": len(self.image),
+            "tensors": [t.to_dict() for t in self.tensors],
+        }
 
 
 @dataclass(frozen=True)
@@ -178,11 +210,14 @@ class DeviceNativeSeam:
         return bool(self.programs) and self.host_object is not None
 
     def to_dict(self) -> dict:
-        return {"device": self.device, "window_base": self.window_base,
-                "programs": [p.to_dict() for p in self.programs],
-                "host_source": str(self.host_source) if self.host_source else None,
-                "host_object": str(self.host_object) if self.host_object else None,
-                "skipped": [list(s) for s in self.skipped]}
+        return {
+            "device": self.device,
+            "window_base": self.window_base,
+            "programs": [p.to_dict() for p in self.programs],
+            "host_source": str(self.host_source) if self.host_source else None,
+            "host_object": str(self.host_object) if self.host_object else None,
+            "skipped": [list(s) for s in self.skipped],
+        }
 
     def archive(self, path: str | Path) -> Path | None:
         """Bundle the host object into a static archive the board build links, or None.
@@ -200,7 +235,7 @@ class DeviceNativeSeam:
         out = Path(path)
         out.parent.mkdir(parents=True, exist_ok=True)
         if out.exists():
-            out.unlink()                 # ar appends; a stale member would shadow a rebuilt one
+            out.unlink()  # ar appends; a stale member would shadow a rebuilt one
         r = _run([ar, "rcs", str(out), str(self.host_object)], timeout=300)
         return out if r.returncode == 0 and out.exists() else None
 
@@ -208,6 +243,7 @@ class DeviceNativeSeam:
 # ---------------------------------------------------------------------------------------------
 # reading the address contract
 # ---------------------------------------------------------------------------------------------
+
 
 def seam_entry(signature: str) -> str:
     """A C identifier for one signature's host entries.
@@ -233,15 +269,17 @@ def _nbytes(shape: Sequence[int], dtype: str) -> int:
 
     key = str(dtype)
     if key.startswith("torch."):
-        key = key[len("torch."):]
+        key = key[len("torch.") :]
     if qf.has(key):
         fmt = qf.get(key)
         bits = int(fmt.pack_bits or fmt.element_bits)
     else:
         machine = qf.machine_bits(key)
         if machine is None:
-            raise KeyError(f"cannot size dtype {key!r}: it is neither a registered format "
-                           f"({qf.names()}) nor a machine width; register it rather than assuming")
+            raise KeyError(
+                f"cannot size dtype {key!r}: it is neither a registered format "
+                f"({qf.names()}) nor a machine width; register it rather than assuming"
+            )
         bits = int(machine)
     n = 1
     for d in shape:
@@ -262,32 +300,45 @@ def address_contract(command_buffer: Mapping, *, window_base: int) -> tuple[Seam
     """
     tensors = (command_buffer or {}).get("tensors") or {}
     if not tensors:
-        raise ValueError("the package's command buffer declares no tensors; there is no address "
-                         "contract to honour")
+        raise ValueError("the package's command buffer declares no tensors; there is no address contract to honour")
     out: list[SeamTensor] = []
     for name, spec in tensors.items():
         spec = spec or {}
         addr = spec.get("base")
         if addr is None:
-            raise ValueError(f"tensor {name!r} carries no address; the host cannot stage a tensor "
-                             f"whose address the device program was never told")
+            raise ValueError(
+                f"tensor {name!r} carries no address; the host cannot stage a tensor "
+                f"whose address the device program was never told"
+            )
         addr = int(addr)
         if addr < window_base:
-            raise ValueError(f"tensor {name!r} is addressed at {addr:#x}, below this device's DRAM "
-                             f"window base {window_base:#x}; one of the two is wrong and staging at "
-                             f"a negative offset writes outside the window")
+            raise ValueError(
+                f"tensor {name!r} is addressed at {addr:#x}, below this device's DRAM "
+                f"window base {window_base:#x}; one of the two is wrong and staging at "
+                f"a negative offset writes outside the window"
+            )
         shape = tuple(int(d) for d in (spec.get("shape") or ()))
         dtype = str(spec.get("dtype") or "")
-        out.append(SeamTensor(name=str(name), role=str(spec.get("role") or ""), dtype=dtype,
-                              shape=shape, device_address=addr, window_offset=addr - window_base,
-                              nbytes=_nbytes(shape, dtype), physical=spec.get("physical")))
+        out.append(
+            SeamTensor(
+                name=str(name),
+                role=str(spec.get("role") or ""),
+                dtype=dtype,
+                shape=shape,
+                device_address=addr,
+                window_offset=addr - window_base,
+                nbytes=_nbytes(shape, dtype),
+                physical=spec.get("physical"),
+            )
+        )
     ordered = sorted(out, key=lambda t: t.window_offset)
     for prev, nxt in zip(ordered, ordered[1:]):
         if prev.window_offset + prev.nbytes > nxt.window_offset:
             raise ValueError(
                 f"tensors {prev.name!r} ({prev.window_offset:#x}+{prev.nbytes}) and {nxt.name!r} "
                 f"({nxt.window_offset:#x}) overlap in the device window; staging the second would "
-                f"destroy the first")
+                f"destroy the first"
+            )
     return tuple(out)
 
 
@@ -378,7 +429,7 @@ int {entry}_dispatch(unsigned char *window, const void *const *operands, void *c
 def _image_lines(image: bytes, per_line: int = 12) -> str:
     rows = []
     for i in range(0, len(image), per_line):
-        rows.append("  " + " ".join(f"0x{b:02x}," for b in image[i:i + per_line]))
+        rows.append("  " + " ".join(f"0x{b:02x}," for b in image[i : i + per_line]))
     return "\n".join(rows)
 
 
@@ -387,28 +438,34 @@ def _slot_lines(slots: Sequence[SeamTensor]) -> str:
         # A zero-length array is not C. An entry with no operands on one side still needs the array
         # to exist, and a single zero-byte slot is never iterated because the count is 0.
         return "  { 0u, 0u }  /* none declared */"
-    return "\n".join(f"  {{ {t.window_offset}u, {t.nbytes}u }},   /* {t.name}: {t.dtype}"
-                     f"{list(t.shape)} at {t.device_address:#x} */" for t in slots)
+    return "\n".join(
+        f"  {{ {t.window_offset}u, {t.nbytes}u }},   /* {t.name}: {t.dtype}{list(t.shape)} at {t.device_address:#x} */"
+        for t in slots
+    )
 
 
-def emit_host_staging_unit(device: str, programs: Sequence[SeamProgram], *,
-                           window_base: int) -> str:
+def emit_host_staging_unit(device: str, programs: Sequence[SeamProgram], *, window_base: int) -> str:
     """The host half of the seam, as one C translation unit."""
     parts = [_PREAMBLE.format(device=device, window_base=int(window_base))]
     for prog in programs:
-        parts.append(_ENTRY.format(
-            entry=prog.entry,
-            extents="x".join(str(e) for e in prog.extents) or "unknown extents",
-            image=_image_lines(prog.image),
-            inputs=_slot_lines(prog.inputs),
-            outputs=_slot_lines(prog.outputs),
-            n_in=len(prog.inputs), n_out=len(prog.outputs)))
+        parts.append(
+            _ENTRY.format(
+                entry=prog.entry,
+                extents="x".join(str(e) for e in prog.extents) or "unknown extents",
+                image=_image_lines(prog.image),
+                inputs=_slot_lines(prog.inputs),
+                outputs=_slot_lines(prog.outputs),
+                n_in=len(prog.inputs),
+                n_out=len(prog.outputs),
+            )
+        )
     return "".join(parts)
 
 
 # ---------------------------------------------------------------------------------------------
 # the device half
 # ---------------------------------------------------------------------------------------------
+
 
 def assemble_device_image(source: Path, workdir: Path, *, timeout: int = 900) -> bytes:
     """Assemble a package's emitted device artifact into the bytes the device fetches.
@@ -423,21 +480,19 @@ def assemble_device_image(source: Path, workdir: Path, *, timeout: int = 900) ->
 
     mc, objcopy = mlir_bin("llvm-mc"), mlir_bin("llvm-objcopy")
     if not mc.is_file() or not objcopy.is_file():
-        raise FileNotFoundError(f"stock LLVM assembler absent ({mc} / {objcopy}); set "
-                                f"MERLIN_MLIR_INSTALL")
+        raise FileNotFoundError(f"stock LLVM assembler absent ({mc} / {objcopy}); set MERLIN_MLIR_INSTALL")
     obj, binf = workdir / f"{source.stem}.dev.o", workdir / f"{source.stem}.dev.bin"
-    a = _run([str(mc), "-triple=riscv64", "-filetype=obj", "-o", str(obj), str(source)],
-             timeout=timeout)
+    a = _run([str(mc), "-triple=riscv64", "-filetype=obj", "-o", str(obj), str(source)], timeout=timeout)
     if a.returncode != 0:
         raise ValueError(f"llvm-mc declined the emitted device artifact: {(a.stderr or '')[-300:]}")
-    b = _run([str(objcopy), "-O", "binary", "--only-section=.text", str(obj), str(binf)],
-             timeout=timeout)
+    b = _run([str(objcopy), "-O", "binary", "--only-section=.text", str(obj), str(binf)], timeout=timeout)
     if b.returncode != 0:
         raise ValueError(f"llvm-objcopy: {(b.stderr or '')[-300:]}")
     image = binf.read_bytes()
     if not image:
-        raise ValueError("the emitted device artifact assembled to zero .text bytes; there is no "
-                         "program for the device to fetch")
+        raise ValueError(
+            "the emitted device artifact assembled to zero .text bytes; there is no program for the device to fetch"
+        )
     return image
 
 
@@ -445,16 +500,19 @@ def assemble_device_image(source: Path, workdir: Path, *, timeout: int = 900) ->
 # the build
 # ---------------------------------------------------------------------------------------------
 
-def build_device_native_seam(device: str,
-                             signatures: Mapping[str, Sequence[int]],
-                             *,
-                             package_dir: str | Path,
-                             workdir: str | Path,
-                             operand_dtype: str,
-                             accum_dtype: str,
-                             codegen_target: str = "riscv",
-                             cflags: "Sequence[str] | None" = None,
-                             timeout: int = 900) -> DeviceNativeSeam:
+
+def build_device_native_seam(
+    device: str,
+    signatures: Mapping[str, Sequence[int]],
+    *,
+    package_dir: str | Path,
+    workdir: str | Path,
+    operand_dtype: str,
+    accum_dtype: str,
+    codegen_target: str = "riscv",
+    cflags: "Sequence[str] | None" = None,
+    timeout: int = 900,
+) -> DeviceNativeSeam:
     """Emit one device program plus its address contract per signature, and the host stager for all.
 
     ``signatures`` comes from the offload rewrite, exactly as for
@@ -480,35 +538,41 @@ def build_device_native_seam(device: str,
 
     from merlin.system.derive import link_for
     from merlin.targetgen.target_experiment import load_capability_manifest
+
     link = link_for(device, getattr(load_capability_manifest(device), "endpoint_kind", None))
     window_base = int(link.device_dram_base)
 
     try:
         pkg = load_package(str(package_dir))
-    except Exception as exc:                     # noqa: BLE001
-        return DeviceNativeSeam(device=device, window_base=window_base,
-                                skipped=(("all", f"package unusable: {exc}"),))
+    except Exception as exc:  # noqa: BLE001
+        return DeviceNativeSeam(device=device, window_base=window_base, skipped=(("all", f"package unusable: {exc}"),))
 
     from merlin.compile_cli import _mesh_tile_binding
+
     binding = _mesh_tile_binding(device, operand_dtype, accum_dtype)
 
     programs: list[SeamProgram] = []
     for sym in sorted(signatures):
         key = tuple(int(v) for v in signatures[sym])
         if len(key) not in (3, 4):
-            skipped.append((sym, f"signature {key} has neither 3 nor 4 extents; no kernel shape "
-                                 f"for it"))
+            skipped.append((sym, f"signature {key} has neither 3 nor 4 extents; no kernel shape for it"))
             continue
         # A batched signature is the same device program as its unbatched form -- the batch is a loop
         # over disjoint slices on the host side, not an axis the device sees.
         m, n, k = key[-3:]
-        entry = {"name": sym, "op": "matmul", "kind": "op",
-                 "source_role": "mesh_tile_synthesized",
-                 "source_reference": f"offloaded layer {m}x{k}x{n} for {device}",
-                 "M": m, "K": k, "N": n}
+        entry = {
+            "name": sym,
+            "op": "matmul",
+            "kind": "op",
+            "source_role": "mesh_tile_synthesized",
+            "source_reference": f"offloaded layer {m}x{k}x{n} for {device}",
+            "M": m,
+            "K": k,
+            "N": n,
+        }
         try:
             _capsule, iface = CS.build(entry, binding)
-        except Exception as exc:                 # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             skipped.append((sym, f"interface capsule: {exc}"))
             continue
         stem = work / f"{seam_entry(sym)}"
@@ -528,44 +592,56 @@ def build_device_native_seam(device: str,
         cbf = stem.with_suffix(".contract.json")
         c = run_entrypoint(pkg, "emit_command_buffer", ifc, cbf, timeout=timeout)
         if c.returncode != 0 or not cbf.is_file():
-            skipped.append((sym, f"package emitted no address contract for {m}x{k}x{n}: "
-                                 f"{(c.stderr or '').strip()[:200]}"))
+            skipped.append(
+                (sym, f"package emitted no address contract for {m}x{k}x{n}: {(c.stderr or '').strip()[:200]}")
+            )
             continue
         try:
-            tensors = address_contract(json.loads(cbf.read_text(encoding="utf-8")),
-                                       window_base=window_base)
-        except Exception as exc:                 # noqa: BLE001
+            tensors = address_contract(json.loads(cbf.read_text(encoding="utf-8")), window_base=window_base)
+        except Exception as exc:  # noqa: BLE001
             skipped.append((sym, f"address contract: {exc}"))
             continue
 
         try:
             image = assemble_device_image(art, work, timeout=timeout)
-        except Exception as exc:                 # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             skipped.append((sym, f"device image: {exc}"))
             continue
 
-        programs.append(SeamProgram(entry=seam_entry(sym), signature=sym, extents=key,
-                                    image=image, tensors=tensors))
+        programs.append(SeamProgram(entry=seam_entry(sym), signature=sym, extents=key, image=image, tensors=tensors))
 
     if not programs:
         return DeviceNativeSeam(device=device, window_base=window_base, skipped=tuple(skipped))
 
     host_c = work / "device_seam.c"
-    host_c.write_text(emit_host_staging_unit(device, programs, window_base=window_base),
-                      encoding="utf-8")
+    host_c.write_text(emit_host_staging_unit(device, programs, window_base=window_base), encoding="utf-8")
     contract_p = work / "seam_contract.json"
-    contract_p.write_text(json.dumps(
-        {"device": device, "window_base": window_base,
-         "programs": [p.to_dict() for p in programs]}, indent=2), encoding="utf-8")
+    contract_p.write_text(
+        json.dumps(
+            {"device": device, "window_base": window_base, "programs": [p.to_dict() for p in programs]}, indent=2
+        ),
+        encoding="utf-8",
+    )
 
     host_o = work / "device_seam.o"
-    s = _run([clang(), *_flags(codegen_target, cflags), "-c", str(host_c), "-o", str(host_o)],
-             timeout=timeout)
+    s = _run([clang(), *_flags(codegen_target, cflags), "-c", str(host_c), "-o", str(host_o)], timeout=timeout)
     if s.returncode != 0:
         skipped.append(("host", f"clang: {(s.stderr or '').strip()[:300]}"))
-        return DeviceNativeSeam(device=device, window_base=window_base, programs=tuple(programs),
-                                host_source=host_c, contract_path=contract_p, skipped=tuple(skipped))
+        return DeviceNativeSeam(
+            device=device,
+            window_base=window_base,
+            programs=tuple(programs),
+            host_source=host_c,
+            contract_path=contract_p,
+            skipped=tuple(skipped),
+        )
 
-    return DeviceNativeSeam(device=device, window_base=window_base, programs=tuple(programs),
-                            host_source=host_c, host_object=host_o, contract_path=contract_p,
-                            skipped=tuple(skipped))
+    return DeviceNativeSeam(
+        device=device,
+        window_base=window_base,
+        programs=tuple(programs),
+        host_source=host_c,
+        host_object=host_o,
+        contract_path=contract_p,
+        skipped=tuple(skipped),
+    )

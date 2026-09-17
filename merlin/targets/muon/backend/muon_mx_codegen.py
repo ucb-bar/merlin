@@ -14,6 +14,7 @@ golden's ``operand_codes`` bundle (attached to the cb as ``mx_operands`` by the 
 PUBLIC-capsule reference path (the golden is masked for hidden capsules); it is the known-good baseline, not
 a general compiler capability. See memory ``radiance-launch-tooling-gap``.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -28,6 +29,7 @@ def is_mx_cb(cb: dict) -> bool:
     """True when any operand tensor is a microscaling float (fp8 E4M3/E5M2, fp6 E3M2, fp4 E2M1) — the block
     scaled MX-PE datapath, which needs the co-model kernel rather than the fp32 LLVM-dialect nest."""
     from merlin.common import quant_formats as _qf
+
     for t in (cb.get("tensors") or {}).values():
         dt = str(t.get("dtype", ""))
         # DERIVED: the format registry knows which formats are block-scaled (kind "mx_block", scale
@@ -39,8 +41,9 @@ def is_mx_cb(cb: dict) -> bool:
             _f = _qf.get(dt)
         except Exception:  # noqa: BLE001 — unknown spelling: fall through to the legacy prefixes
             _f = None
-        if _f is not None and (getattr(_f, "kind", None) == "mx_block"
-                               or getattr(getattr(_f, "scale", None), "kind", None) == "block_e8m0"):
+        if _f is not None and (
+            getattr(_f, "kind", None) == "mx_block" or getattr(getattr(_f, "scale", None), "kind", None) == "block_e8m0"
+        ):
             return True
         if dt.startswith("f8E") or dt.startswith("f6E") or dt.startswith("f4E"):
             return True
@@ -83,9 +86,15 @@ def _data_header(mx: dict) -> str:
     a, b = mx["A_bytes"], mx["B_bytes"]
     sa, sb = mx["SA"], mx["SB"]
     gk = _PADW // _GROUP
-    parts = [f"#define MATMUL_M {_PADW}", f"#define MATMUL_K {_PADW}", f"#define MATMUL_N {_PADW}",
-             f"#define MATMUL_GK {gk}", f"#define MATMUL_GN {gk}", ""]
-    if is_fp8:                                             # one byte per element: A[M,K], B[K,N]
+    parts = [
+        f"#define MATMUL_M {_PADW}",
+        f"#define MATMUL_K {_PADW}",
+        f"#define MATMUL_N {_PADW}",
+        f"#define MATMUL_GK {gk}",
+        f"#define MATMUL_GN {gk}",
+        "",
+    ]
+    if is_fp8:  # one byte per element: A[M,K], B[K,N]
         ain = [[0] * _PADW for _ in range(_PADW)]
         for i in range(m):
             for j in range(k):
@@ -96,7 +105,7 @@ def _data_header(mx: dict) -> str:
                 bin_[kk][j] = b[kk * n + j]
         parts.append(_emit2d("uint8_t", "A_in", _PADW, _PADW, ain))
         parts.append(_emit2d("uint8_t", "B_in", _PADW, _PADW, bin_))
-    else:                                                 # sub-byte: A packed [M/2,K] (nibble along M), B [K,N/2]
+    else:  # sub-byte: A packed [M/2,K] (nibble along M), B [K,N/2]
         ah = [[0] * _PADW for _ in range(_PADW // 2)]
         for r in range(m // 2):
             for kk in range(k):
@@ -121,7 +130,7 @@ def _data_header(mx: dict) -> str:
             bs[g][j] = sb[g][j] if j < n else 0x7F
     parts.append(_emit2d("uint8_t", "A_scales_row", gk, _PADW, as_))
     parts.append(_emit2d("uint8_t", "B_scales_col", gk, _PADW, bs))
-    if is_fp6:                                            # one 16-entry palette replicated to every LUT slot
+    if is_fp6:  # one 16-entry palette replicated to every LUT slot
         pa, pb = _pack96(mx["lutA"][0]), _pack96(mx["lutB"][0])
         n_lut = _PADW // 2
         parts.append(_emit2d("uint32_t", "A_lut", n_lut, 3, [pa] * n_lut))
@@ -138,25 +147,36 @@ def _assemble_batched(mx: dict) -> dict:
     if _short_fmt(mx["fmt"]) != "fp8":
         raise MxCodegenError("batched MX packing is implemented for fp8 operands only")
     B, m, h, n = int(mx["B"]), int(mx["M"]), int(mx["H"]), int(mx["N"])
-    md, kd = B * m, B * h                                  # block-diagonal tile dims
+    md, kd = B * m, B * h  # block-diagonal tile dims
     a_bd = [0] * (md * kd)
     b_bd = [0] * (kd * n)
     sa_bd = [[0x7F] * md for _ in range(B)]
     sb_bd = [[0x7F] * n for _ in range(B)]
     for bi, batch in enumerate(mx["batches"]):
         a, w, sa, sb = batch["A_bytes"], batch["W_bytes"], batch["SA"], batch["SB"]
-        for i in range(m):                                # A block at rows bi*m.., cols bi*h..
+        for i in range(m):  # A block at rows bi*m.., cols bi*h..
             for j in range(h):
                 a_bd[(bi * m + i) * kd + (bi * h + j)] = a[i * h + j]
-        for kk in range(h):                               # W block stacked at rows bi*h..
+        for kk in range(h):  # W block stacked at rows bi*h..
             for j in range(n):
                 b_bd[(bi * h + kk) * n + j] = w[kk * n + j]
-        for i in range(m):                                # row scales live in this batch's K-group only
+        for i in range(m):  # row scales live in this batch's K-group only
             sa_bd[bi][bi * m + i] = int(sa[i])
         for j in range(n):
             sb_bd[bi][j] = int(sb[j])
-    return {"fmt": mx["fmt"], "M": md, "N": n, "K": kd, "G": 0,
-            "A_bytes": a_bd, "B_bytes": b_bd, "SA": sa_bd, "SB": sb_bd, "lutA": None, "lutB": None}
+    return {
+        "fmt": mx["fmt"],
+        "M": md,
+        "N": n,
+        "K": kd,
+        "G": 0,
+        "A_bytes": a_bd,
+        "B_bytes": b_bd,
+        "SA": sa_bd,
+        "SB": sb_bd,
+        "lutA": None,
+        "lutB": None,
+    }
 
 
 def _putchars(s: str) -> str:
@@ -180,14 +200,15 @@ _FLASH_ANCHOR = "mu_fence_smem(); BAR_PAD3(); mu_barrier(3, wpb); BAR_PAD3(); MA
 
 def _bf16_code(x: float) -> int:
     import struct
+
     return (struct.unpack("<I", struct.pack("<f", float(x)))[0] >> 16) & 0xFFFF
 
 
 def _emit2d_hex(ctype: str, name: str, dims: str, rows) -> str:
     w = 2 if ctype == "uint8_t" else 4
     body = ",\n".join(
-        "  { " + ", ".join(f"0x{int(v) & (0xFF if w == 2 else 0xFFFF):0{w}x}" for v in r) + " }"
-        for r in rows)
+        "  { " + ", ".join(f"0x{int(v) & (0xFF if w == 2 else 0xFFFF):0{w}x}" for v in r) + " }" for r in rows
+    )
     return f"static const {ctype} {name}{dims} = {{\n{body}\n}};\n\n"
 
 
@@ -197,13 +218,13 @@ def _flash_fp8_fa_data(mx: dict) -> str:
     with zero columns to FA_D so the single-FA_D kernel expresses ``Dv != H`` (only cols 0..Dv-1 graded)."""
     m, h, skv, dv = int(mx["M"]), int(mx["H"]), int(mx["Skv"]), int(mx["Dv"])
     qk, pv = mx["qk_stage"], mx["pv_stage"]
-    a, b, vb = qk["A_bytes"], qk["B_bytes"], pv["B_bytes"]        # Q[M,H], K^T[H,Skv], V[Skv,Dv]
+    a, b, vb = qk["A_bytes"], qk["B_bytes"], pv["B_bytes"]  # Q[M,H], K^T[H,Skv], V[Skv,Dv]
     sa_q, sb_k, sb_v = mx["SA_q"], mx["SB_k"], mx["SB_v"]
     fa_sq, fa_sk, fa_d = m, skv, h
     fa_gk, fa_gkv = h // _GROUP, skv // _GROUP
     a_in = [[a[i * h + j] for j in range(h)] for i in range(m)]
     b_in = [[b[k * skv + n] for n in range(skv)] for k in range(h)]
-    a_scales = [[sa_q[g * m + i] for i in range(m)] for g in range(fa_gk)]      # SA_q laid [H/32][M]
+    a_scales = [[sa_q[g * m + i] for i in range(m)] for g in range(fa_gk)]  # SA_q laid [H/32][M]
     b_scales = [[sb_k[g * skv + n] for n in range(skv)] for g in range(fa_gk)]  # SB_k laid [H/32][Skv]
     v_in = [[(vb[k * dv + j] if j < dv else 0) for j in range(fa_d)] for k in range(skv)]
     v_scales = [[(sb_v[g * dv + j] if j < dv else 0x7F) for j in range(fa_d)] for g in range(fa_gkv)]
@@ -212,17 +233,29 @@ def _flash_fp8_fa_data(mx: dict) -> str:
     # softmax's own scale is set to 1.0 (the att_scale is consumed inside the softcap). Non-softcap
     # capsules keep the softmax scale = bf16(att_scale).
     softmax_scale = 1.0 if softcap is not None else mx["att_scale"]
-    parts = ["#ifndef FA_DATA_H", "#define FA_DATA_H", "#include <stdint.h>", "",
-             f"#define FA_SQ {fa_sq}", f"#define FA_SK {fa_sk}", f"#define FA_D {fa_d}",
-             f"#define FA_GK {fa_gk}", f"#define FA_GKV {fa_gkv}",
-             f"#define FA_BK {fa_sk}", "#define FA_NBLK 1", f"#define FA_GKB {fa_sk // _GROUP}",
-             f"#define FA_SOFTMAX_SCALE_BF16 0x{_bf16_code(softmax_scale):04x}",
-             f"#define FA_DV_REAL {dv}"]
+    parts = [
+        "#ifndef FA_DATA_H",
+        "#define FA_DATA_H",
+        "#include <stdint.h>",
+        "",
+        f"#define FA_SQ {fa_sq}",
+        f"#define FA_SK {fa_sk}",
+        f"#define FA_D {fa_d}",
+        f"#define FA_GK {fa_gk}",
+        f"#define FA_GKV {fa_gkv}",
+        f"#define FA_BK {fa_sk}",
+        "#define FA_NBLK 1",
+        f"#define FA_GKB {fa_sk // _GROUP}",
+        f"#define FA_SOFTMAX_SCALE_BF16 0x{_bf16_code(softmax_scale):04x}",
+        f"#define FA_DV_REAL {dv}",
+    ]
     if softcap is not None:
         cap = float(softcap)
-        parts += [f"#define FA_SOFTCAP_ATT_BF16 0x{_bf16_code(mx['att_scale']):04x}",
-                  f"#define FA_SOFTCAP_2OVERCAP_BF16 0x{_bf16_code(2.0 / cap):04x}",
-                  f"#define FA_SOFTCAP_CAP_BF16 0x{_bf16_code(cap):04x}"]
+        parts += [
+            f"#define FA_SOFTCAP_ATT_BF16 0x{_bf16_code(mx['att_scale']):04x}",
+            f"#define FA_SOFTCAP_2OVERCAP_BF16 0x{_bf16_code(2.0 / cap):04x}",
+            f"#define FA_SOFTCAP_CAP_BF16 0x{_bf16_code(cap):04x}",
+        ]
     parts.append("")
     parts.append(_emit2d_hex("uint8_t", "QK_A_in", "[FA_SQ][FA_D]", a_in))
     parts.append(_emit2d_hex("uint8_t", "QK_B_in", "[FA_D][FA_SK]", b_in))
@@ -243,6 +276,7 @@ def _flash_kernel_dir(subdir: str = "flash_attention_mx_stable"):
     """The on-disk radiance-kernels flash kernel dir (the fused reference we wrap). Fail closed if the
     kernels repo is not reachable in this environment (masked/agentic path) — never a baked default."""
     from . import muon
+
     kd = muon.radiance_kernels_root() / "kernels" / subdir
     if not (kd / "kernel.cpp").is_file():
         raise MxCodegenError(f"flash reference kernel not found: {kd / 'kernel.cpp'}")
@@ -254,7 +288,8 @@ def _flash_out_main(out_name: str) -> str:
     columns of each ``O_GMEM`` row as ``OUT <name> FA_SQ FA_DV_REAL <vals...>`` so the grader compares an
     ``[M][Dv]`` tensor (the padded value columns are skipped)."""
     prefix = _putchars(f"OUT {out_name}")
-    return r'''
+    return (
+        r"""
 extern "C" void vx_putchar(int c);
 namespace {
 inline void _pu(unsigned v){char b[12];int n=0;if(!v){vx_putchar('0');return;}while(v){b[n++]=(char)('0'+v%10u);v/=10u;}while(n)vx_putchar(b[--n]);}
@@ -264,7 +299,9 @@ inline float _bf(unsigned bf){union{unsigned u;float f;}x;x.u=(bf&0xffffu)<<16;r
 static void _flash_print(void*, uint32_t tid, uint32_t th, uint32_t tb){
   if(tid==0 && tb==0){
     volatile uint32_t *O32 = reinterpret_cast<volatile uint32_t*>(O_GMEM);
-    ''' + prefix + r'''
+    """
+        + prefix
+        + r"""
     vx_putchar(' ');_pu(FA_SQ);vx_putchar(' ');_pu(FA_DV_REAL);
     for(int i=0;i<FA_SQ;i++)
       for(int j=0;j<FA_DV_REAL;j++){
@@ -278,7 +315,8 @@ static void _flash_print(void*, uint32_t tid, uint32_t th, uint32_t tb){
   }
 }
 int main(){ mu_schedule(fa_entry, nullptr, 3); mu_schedule(_flash_print, nullptr, 1); return 0; }
-'''
+"""
+    )
 
 
 def _emit_flash_kernel(mx: dict, out_name: str) -> str:
@@ -292,7 +330,8 @@ def _emit_flash_kernel(mx: dict, out_name: str) -> str:
         # not fp4. Fail closed rather than mis-emit a byte-per-element kernel over sub-byte operands.
         raise MxCodegenError(
             f"flash-attention MX wrap is fp8-only; {mx['fmt']!r} (sub-byte fp6/fp4) has no fused "
-            f"flash sibling kernel (flash_attention_mx_fp6 is a matmul-only demo; ...gemma is fp8)")
+            f"flash sibling kernel (flash_attention_mx_fp6 is a matmul-only demo; ...gemma is fp8)"
+        )
     kd = _flash_kernel_dir()
     src = (kd / "kernel.cpp").read_text(encoding="utf-8")
     inc = '#include "include/fa_data.h"'
@@ -303,10 +342,11 @@ def _emit_flash_kernel(mx: dict, out_name: str) -> str:
         raise MxCodegenError("flash kernel.cpp layout changed: scale-pack barrier anchor missing")
     # STRUCTURAL FIX: zero the [FA_SQ][FA_D] SPAD_DEST C-region (== S_SMEM) before the PVF matmul so
     # finalize_O reads (P@V), not (stale_S + P@V). See the fused-flash note above.
-    zero_c = (_FLASH_ANCHOR +
-              "\n    for (uint32_t _zz = tid; _zz < (FA_SQ*FA_D)/2u; _zz += thr)"
-              " reinterpret_cast<__shared uint32_t*>(S_SMEM)[_zz] = 0u;"
-              "\n    mu_fence_smem(); mu_barrier(3, wpb);")
+    zero_c = (
+        _FLASH_ANCHOR + "\n    for (uint32_t _zz = tid; _zz < (FA_SQ*FA_D)/2u; _zz += thr)"
+        " reinterpret_cast<__shared uint32_t*>(S_SMEM)[_zz] = 0u;"
+        "\n    mu_fence_smem(); mu_barrier(3, wpb);"
+    )
     src = src.replace(_FLASH_ANCHOR, zero_c, 1)
     # SOFTCAP: inject cap*tanh(bf16(S*att_scale)/cap) over S_SMEM right after the post-QK barrier and
     # before online_softmax_block (which then runs with scale 1.0). tanh via fexp only (no HW tanh):
@@ -315,7 +355,9 @@ def _emit_flash_kernel(mx: dict, out_name: str) -> str:
         bar2 = "mu_fence_smem(); BAR_PAD2(); mu_barrier(2, wpb); BAR_PAD2(); MARK();  // 3: bar2"
         if bar2 not in src:
             raise MxCodegenError("flash kernel.cpp layout changed: post-QK bar2 anchor missing (softcap)")
-        softcap_loop = bar2 + r"""
+        softcap_loop = (
+            bar2
+            + r"""
     {   // @softcap: S <- cap*tanh(bf16(S*att_scale)/cap); online_softmax then uses scale 1.0.
         // EXACT transcription of radiance-kernels flash_attention_mx_gemma bf16_softcap (the validated
         // Gemma-2 primitive): x=s/cap; e=exp(-2|x|) (nonpositive fexp arg -> stable/precise);
@@ -335,14 +377,17 @@ def _emit_flash_kernel(mx: dict, out_name: str) -> str:
         }
         mu_fence_smem(); mu_barrier(2, wpb);
     }"""
+        )
         src = src.replace(bar2, softcap_loop, 1)
     idx = src.rfind("int main()")
     if idx <= 0:
         raise MxCodegenError("flash kernel.cpp layout changed: main() not found")
     src = src[:idx] + _flash_out_main(out_name)
-    return (f"// mu-extra-include: {kd}\n"
-            f"// @generated fused MX flash-attention reference kernel (fp8); wraps FULL_ATTN2.\n"
-            f"#define FULL_ATTN2\n{src}")
+    return (
+        f"// mu-extra-include: {kd}\n"
+        f"// @generated fused MX flash-attention reference kernel (fp8); wraps FULL_ATTN2.\n"
+        f"#define FULL_ATTN2\n{src}"
+    )
 
 
 def _emit_mx_kernel_program(mx: dict, out_name: str, *, provenance: str) -> str:
@@ -363,10 +408,15 @@ def _emit_mx_kernel_program(mx: dict, out_name: str, *, provenance: str) -> str:
     rows, cols = int(mx["M"]), int(mx["N"])
     data = _data_header(mx)
     # fp8/fp4 leave the LUTs unused -> zeroed placeholders; fp6's header already defines them (uint32[.][3]).
-    lut_decls = "" if is_fp6 else (
-        "static const uint8_t A_lut[64][16] = {0};\n"
-        "static const uint8_t B_lut[64][16] = {0};\n"
-        "static const uint8_t C_lut[64][16] = {0};\n")
+    lut_decls = (
+        ""
+        if is_fp6
+        else (
+            "static const uint8_t A_lut[64][16] = {0};\n"
+            "static const uint8_t B_lut[64][16] = {0};\n"
+            "static const uint8_t C_lut[64][16] = {0};\n"
+        )
+    )
     unify = "static const uint8_t *A_in = &A_in_hw[0][0];" if fmt != "fp8" else ""
     prefix = _putchars(f"OUT {out_name} {rows} {cols}")
     return f"""// @generated self-contained MX {provenance} kernel ({fmt}); drives the MX-Gemmini co-model.
