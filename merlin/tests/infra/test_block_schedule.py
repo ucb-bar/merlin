@@ -23,10 +23,12 @@ def _facts(edge, operand_bytes, operand_depth, accum_bytes, accum_depth, *,
     """A synthetic facts artifact in the shape ``load_facts`` returns."""
     body = {
         "arrays": [{"name": "mesh", "rows": edge, "cols": edge}] if arrays is None else arrays,
-        # Deliberately NOT merlin's role names: the pass must resolve roles by row width, and a fixture
-        # spelled "scratchpad"/"accumulator" would pass whether or not a name lookup crept back in.
+        # STORE names are deliberately not merlin's role names: the pass must resolve stores by row width,
+        # and a fixture spelled "scratchpad"/"accumulator" would pass whether or not a name lookup crept
+        # back in. The accumulate DATAPATH does carry the facts schema's role -- that declaration is the
+        # evidence that results accumulate in the store it fills.
         "datapaths": [{"name": "input", "dtype": operand_dtype, "evidence": "sram_a smem UInt<8>"},
-                      {"name": "sum", "dtype": "i32", "evidence": "sram_b smem SInt<32>"}],
+                      {"name": "accumulator", "dtype": "i32", "evidence": "sram_b smem SInt<32>"}],
     }
     if memories is None:
         # Declared wide-row store FIRST, so a resolver leaning on declaration order picks wrong.
@@ -62,7 +64,7 @@ def test_geometry_is_derived_from_each_targets_own_facts():
 @pytest.mark.parametrize("broken, why", [
     (dict(arrays=[]), "no array geometry"),
     (dict(arrays=[{"name": "mesh", "rows": 16, "cols": 8}]), "not square"),
-    (dict(memories=[{"name": "sram_b", "bytes": 65536, "depth": 512}]), "no accumulator store"),
+    (dict(memories=[{"name": "sram_b", "bytes": 65536, "depth": 512}]), "accumulator is unknown"),
     (dict(memories=[]), "no operand store"),
 ])
 def test_a_geometry_the_facts_cannot_answer_is_refused_not_defaulted(broken, why):
