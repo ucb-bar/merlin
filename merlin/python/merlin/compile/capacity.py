@@ -52,8 +52,13 @@ def _operand_store_bytes(target: str) -> int | None:
        on another. Here the descriptor supplies only the LABEL; the bytes are still read out of the RTL.
        Deliberately not a guess: picking the largest discovered memory would select the INSTRUCTION
        memory on a device whose IMEM (128 KiB) is larger than its operand register file (64 KiB).
-    3. The extracted RTL facts' ``memories`` list, keyed by the role name merlin's own facts schema
-       assigns ("scratchpad" is the schema's operand-store role, not a target's spelling).
+    3. The extracted RTL facts, through :func:`~merlin.targetgen.address_space.operand_store`: the
+       narrowest-row store, accepted only when it was CLASSIFIED against a second store of a different
+       width (``BY_WIDTH``). A sole store is not accepted here, for the same reason as tier 2 refuses to
+       guess: a device's facts can name one extracted memory out of many, and ``capacity_fit`` would then
+       become decidable against an operand store nothing validated. This tier used to look the store up
+       by the name ``"scratchpad"``; every target whose facts use that name has two stores of distinct
+       widths, so the answers are the same there and no longer depend on a spelling.
     """
     from ..targetgen.rtl import mlc_bridge as _mb
     try:
@@ -74,12 +79,13 @@ def _operand_store_bytes(target: str) -> int | None:
     except Exception:  # noqa: BLE001 — no descriptor / no discovery → fall through to facts
         pass
     try:
-        from ..targetgen.rtl import facts as _facts
-        mems = (_facts.load_facts(target).get("facts") or {}).get("memories") or []
+        from ..targetgen import address_space as _as
+        resolved = _as.operand_store(_as.derive_address_space(target))
     except Exception:  # noqa: BLE001 — no facts bundle → capacity unknown, caller falls back
         return None
-    sp = next((m for m in mems if m.get("name") == "scratchpad"), None)
-    nbytes = sp.get("bytes") if sp else None
+    if resolved.store is None or resolved.basis != _as.BY_WIDTH:
+        return None
+    nbytes = resolved.store.nbytes
     return int(nbytes) if nbytes else None
 
 

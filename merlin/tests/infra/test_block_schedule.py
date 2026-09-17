@@ -23,12 +23,15 @@ def _facts(edge, operand_bytes, operand_depth, accum_bytes, accum_depth, *,
     """A synthetic facts artifact in the shape ``load_facts`` returns."""
     body = {
         "arrays": [{"name": "mesh", "rows": edge, "cols": edge}] if arrays is None else arrays,
-        "datapaths": [{"name": "input", "dtype": operand_dtype, "evidence": "scratchpad smem UInt<8>"},
-                      {"name": "accumulator", "dtype": "i32", "evidence": "AccumulatorMem SInt<32>"}],
+        # Deliberately NOT merlin's role names: the pass must resolve roles by row width, and a fixture
+        # spelled "scratchpad"/"accumulator" would pass whether or not a name lookup crept back in.
+        "datapaths": [{"name": "input", "dtype": operand_dtype, "evidence": "sram_a smem UInt<8>"},
+                      {"name": "sum", "dtype": "i32", "evidence": "sram_b smem SInt<32>"}],
     }
     if memories is None:
-        memories = [{"name": "scratchpad", "bytes": operand_bytes, "depth": operand_depth},
-                    {"name": "accumulator", "bytes": accum_bytes, "depth": accum_depth}]
+        # Declared wide-row store FIRST, so a resolver leaning on declaration order picks wrong.
+        memories = [{"name": "sram_b", "bytes": accum_bytes, "depth": accum_depth},
+                    {"name": "sram_a", "bytes": operand_bytes, "depth": operand_depth}]
     body["memories"] = memories
     return {"schema_version": "2.0", "inputs": {}, "facts": body}
 
@@ -59,8 +62,8 @@ def test_geometry_is_derived_from_each_targets_own_facts():
 @pytest.mark.parametrize("broken, why", [
     (dict(arrays=[]), "no array geometry"),
     (dict(arrays=[{"name": "mesh", "rows": 16, "cols": 8}]), "not square"),
-    (dict(memories=[{"name": "accumulator", "bytes": 65536, "depth": 512}]), "no 'scratchpad' store"),
-    (dict(memories=[]), "declare no"),
+    (dict(memories=[{"name": "sram_b", "bytes": 65536, "depth": 512}]), "no accumulator store"),
+    (dict(memories=[]), "no operand store"),
 ])
 def test_a_geometry_the_facts_cannot_answer_is_refused_not_defaulted(broken, why):
     """The failure this repo keeps re-learning: an unmeasurable quantity reported as a plausible

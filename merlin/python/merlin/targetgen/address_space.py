@@ -550,6 +550,101 @@ def _separate_accumulator_space(space: AddressSpace) -> tuple[bool | None, str |
                   "evidence that they share one address space")
 
 
+#: ``RoleResolution.basis`` values -- HOW a store came to hold a role, so a caller can decide what the
+#: resolution licenses. ``BY_WIDTH``: several stores whose row widths are all known and distinct, ranked
+#: by width (the operand store is the narrowest, the accumulator the widest: a separate accumulator space
+#: exists precisely BECAUSE its row holds the wider accumulate type). ``SOLE_STORE``: the facts name one
+#: store, so it is where operands live -- but nothing CLASSIFIED it against another store, and a device
+#: can expose one extracted memory out of many.
+BY_WIDTH = "by_width"
+SOLE_STORE = "sole_store"
+
+
+@dataclass(frozen=True)
+class RoleResolution:
+    """Which store holds one role, how that was decided, and -- when no store does -- why not.
+
+    Exactly one of ``store`` and ``reason`` is set. A resolver that answered ``None`` with no reason would
+    turn a refusal into a silence, and every consumer here refuses by quoting the reason.
+    """
+
+    role: str
+    store: Store | None
+    basis: str | None
+    reason: str | None = None
+
+    def capacity_rows(self, dtype: str | None = None) -> int | None:
+        return self.store.capacity_rows(dtype) if self.store is not None else None
+
+
+def _row_bits(store: Store, dtype: str | None) -> int | None:
+    """A store's row width in BITS at ``dtype`` -- the one scale on which a fixed-byte row and a
+    lane-granular one are comparable. ``None`` when it cannot be measured."""
+    if store.row_bytes:
+        return int(store.row_bytes) * 8
+    per_row = store.elems_per_row(dtype)
+    bits = element_bits(dtype) if dtype else store.element_bits
+    return per_row * bits if (per_row and bits) else None
+
+
+def operand_store(space: AddressSpace, *, dtype: str | None = None) -> RoleResolution:
+    """The store operands live in, chosen by ROW WIDTH, never by name.
+
+    A name is a labelling convention of whichever extractor wrote the facts; row width is a property of
+    the device. Several stores are ranked only when every width is measurable and the narrowest is
+    unique -- an unmeasurable width or a tie is a refusal with its reason, because picking one would be a
+    guess about which memory the device computes from.
+    """
+    role = "operand"
+    if space.stores_status != DERIVED:
+        return RoleResolution(role, None, None, f"the facts' store list is {space.stores_status}")
+    stores = [s for s in space.stores if s.row_bytes or s.row_elems]
+    if not stores:
+        return RoleResolution(role, None, None,
+                              f"none of {[s.name for s in space.stores]} has a derivable row width")
+    if len(stores) == 1:
+        return RoleResolution(role, stores[0], SOLE_STORE)
+    widths = {s.name: _row_bits(s, dtype) for s in stores}
+    unmeasured = sorted(name for name, bits in widths.items() if bits is None)
+    if unmeasured:
+        return RoleResolution(role, None, None,
+                              f"row widths of {unmeasured} are not measurable at dtype {dtype!r}, so "
+                              f"{len(stores)} stores cannot be ranked")
+    narrowest = min(widths.values())
+    tied = sorted(name for name, bits in widths.items() if bits == narrowest)
+    if len(tied) > 1:
+        return RoleResolution(role, None, None,
+                              f"stores {tied} tie at the narrowest row ({narrowest} bits); which one "
+                              "holds operands is not decidable from width")
+    return RoleResolution(role, next(s for s in stores if s.name == tied[0]), BY_WIDTH)
+
+
+def accumulator_store(space: AddressSpace) -> RoleResolution:
+    """The ADDRESSABLE store accumulate results live in, chosen by row width, or why there is none.
+
+    Only where the address space is decided to be separate (``separate_accumulator_space is True``: at
+    least two stores, every row width known, not all equal) -- with one store there is no second region
+    to hold an accumulator, and a width comparison that could not be made is not evidence of one. The
+    widest store answers; a tie at the widest is a refusal.
+    """
+    role = "accumulator"
+    if space.separate_accumulator_space is not True:
+        if space.stores_status == DERIVED and len(space.stores) == 1:
+            why = (f"the facts name one store ({space.stores[0].name!r}); with no second address space "
+                   "there is no addressable accumulator region")
+        else:
+            why = next((u.reason for u in space.unknowns if u.quantity == "separate_accumulator_space"),
+                       f"the facts' store list is {space.stores_status}")
+        return RoleResolution(role, None, None, why)
+    widest = max(s.row_bytes for s in space.stores)
+    tied = sorted(s.name for s in space.stores if s.row_bytes == widest)
+    if len(tied) > 1:
+        return RoleResolution(role, None, None,
+                              f"stores {tied} tie at the widest row ({widest} bytes); which one "
+                              "accumulates is not decidable from width")
+    return RoleResolution(role, next(s for s in space.stores if s.name == tied[0]), BY_WIDTH)
+
+
 def corroborate(target: str, space: AddressSpace | None = None) -> dict:
     """Check the DERIVED row widths and capacities against the SRAM widths mlc discovers in the RTL.
 

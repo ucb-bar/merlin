@@ -90,29 +90,20 @@ def operand_store(target: str, *, dtype: str | None = None):
     how many rows the store holds -- depends on the element in it. Requiring a fixed byte row here
     discarded such a store entirely and reported the target as declaring no operand store at all, so
     its whole memory-mapping axis read `0 / 0 required regimes` over a 128 KiB shared memory.
+
+    The ranking itself is :func:`merlin.targetgen.address_space.operand_store`, which this wraps for
+    callers that want the pair; it refuses (here: ``(None, None)``) on an unmeasurable width or a tie
+    rather than letting declaration order pick.
     """
     try:
         from merlin.targetgen import address_space as AS
         space = AS.derive_address_space(target)
     except Exception:                                          # noqa: BLE001 — unresolvable target
         return None, None
-    stores = [s for s in (getattr(space, "stores", ()) or ())
-              if getattr(s, "row_bytes", None) or getattr(s, "row_elems", None)]
-    if not stores:
+    resolved = AS.operand_store(space, dtype=dtype)
+    if resolved.store is None:
         return None, None
-
-    def _width(s):
-        """Row width in bits at this dtype -- the one scale on which a fixed-byte row and a
-        lane-granular one are comparable."""
-        if getattr(s, "row_bytes", None):
-            return int(s.row_bytes) * 8
-        per_row = s.elems_per_row(dtype)
-        from merlin.targetgen.address_space import element_bits
-        bits = element_bits(dtype) if dtype else s.element_bits
-        return per_row * bits if (per_row and bits) else float("inf")
-
-    store = min(stores, key=_width)
-    return store, store.capacity_rows(dtype)
+    return resolved.store, resolved.capacity_rows(dtype)
 
 
 def _dominant_dtype(capsule_doc: dict) -> str | None:

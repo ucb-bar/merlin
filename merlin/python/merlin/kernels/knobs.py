@@ -388,11 +388,13 @@ def _accumulator_store(space):
     Chosen by row width rather than by name, mirroring ``memory_regime.operand_store`` (which takes the
     narrowest): a separate accumulator space exists precisely BECAUSE its row is wider — it holds the
     accumulate type. Selecting by name would bake one target's spelling into shared code.
+
+    Delegates to :func:`merlin.targetgen.address_space.accumulator_store`, which answers only where the
+    space is decided to be separate and refuses a tie at the widest row -- the looser ``>= 2 stores``
+    test this used to apply would name an accumulator where the address space itself is undecided.
     """
-    stores = [s for s in (getattr(space, "stores", ()) or ()) if getattr(s, "row_bytes", None)]
-    if len(stores) < 2:
-        return None
-    return max(stores, key=lambda s: int(s.row_bytes))
+    from merlin.targetgen.address_space import accumulator_store
+    return accumulator_store(space).store
 
 
 def _tile_knobs(target: str, space, reason: str, store, capacity, roles: frozenset[str],

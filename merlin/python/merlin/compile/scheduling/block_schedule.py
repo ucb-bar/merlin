@@ -62,12 +62,6 @@ BANK_ALIGNED = "bank_aligned"
 CONTIGUOUS = "contiguous"
 PLACEMENTS = (OPPOSITE_END, BANK_ALIGNED, CONTIGUOUS)
 
-#: The store ROLE names merlin's own facts schema assigns; not a target's spelling (see
-#: ``compile/capacity.py``, which reads the same two roles).
-_OPERAND_STORE = "scratchpad"
-_ACCUMULATOR_STORE = "accumulator"
-
-
 class BlockScheduleError(ValueError):
     """A schedule the target's derived facts, the program, or the knobs do not admit."""
 
@@ -99,7 +93,10 @@ class Geometry:
         Refuses rather than defaults on: no array geometry, a non-square array (this weight-stationary
         model has one square block edge, and which edge a rectangular array's block spans is a choice
         no fact here makes), a missing operand or accumulator store, and a store whose row count the
-        facts could not derive.
+        facts could not derive. Stores are resolved to their roles by ROW WIDTH
+        (:func:`~merlin.targetgen.address_space.operand_store`,
+        :func:`~merlin.targetgen.address_space.accumulator_store`), never by the name an extractor
+        happened to give them, and a refusal quotes the resolver's reason.
         """
         if space.array_rows is None or space.array_cols is None:
             raise BlockScheduleError(
@@ -109,17 +106,18 @@ class Geometry:
             raise BlockScheduleError(
                 f"{space.target!r}: a {space.array_rows}x{space.array_cols} array is not square; this "
                 "pass schedules one square block edge and will not choose an edge for you")
-        operand = space.store(_OPERAND_STORE)
-        accumulator = space.store(_ACCUMULATOR_STORE)
-        for name, store in ((_OPERAND_STORE, operand), (_ACCUMULATOR_STORE, accumulator)):
-            if store is None:
+        from merlin.targetgen.address_space import accumulator_store, operand_store
+        resolved = {"operand": operand_store(space), "accumulator": accumulator_store(space)}
+        for role, resolution in resolved.items():
+            if resolution.store is None:
                 raise BlockScheduleError(
-                    f"{space.target!r}: its facts declare no {name!r} store (status "
-                    f"{space.stores_status!r}), so there are no rows to schedule into")
-            if store.total_rows is None:
+                    f"{space.target!r}: no {role} store to schedule into: {resolution.reason}")
+            if resolution.store.total_rows is None:
                 raise BlockScheduleError(
-                    f"{space.target!r}: the row count of its {name!r} store is UNKNOWN "
-                    f"({[u.reason for u in space.unknowns if u.store == name]})")
+                    f"{space.target!r}: the row count of its {role} store "
+                    f"{resolution.store.name!r} is UNKNOWN "
+                    f"({[u.reason for u in space.unknowns if u.store == resolution.store.name]})")
+        operand, accumulator = resolved["operand"].store, resolved["accumulator"].store
         if operand.row_elems is not None and operand.row_elems != space.array_rows:
             raise BlockScheduleError(
                 f"{space.target!r}: its operand row spans {operand.row_elems} elements but its array "
@@ -131,9 +129,11 @@ class Geometry:
                    separate_accumulator_space=bool(space.separate_accumulator_space),
                    sources={"facts": space.sources.get("facts", "derive_address_space"),
                             "block": f"arrays[{space.array_name!r}] edge",
-                            "operand_rows": f"{_OPERAND_STORE}.total_rows",
-                            "operand_bank_rows": f"{_OPERAND_STORE}.depth",
-                            "accumulator_rows": f"{_ACCUMULATOR_STORE}.total_rows"})
+                            "operand_rows": (f"{operand.name}.total_rows (operand store, "
+                                             f"{resolved['operand'].basis})"),
+                            "operand_bank_rows": f"{operand.name}.depth",
+                            "accumulator_rows": (f"{accumulator.name}.total_rows (accumulator store, "
+                                                 f"{resolved['accumulator'].basis})")})
 
 
 @dataclass(frozen=True)

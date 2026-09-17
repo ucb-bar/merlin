@@ -92,7 +92,7 @@ Totals: **~6.8k tracked files**, 16 of them at the repository root. Counts of te
 | &nbsp;&nbsp;&nbsp;&nbsp;`toy_npu/` | ~10 |  | ToyNPU reference target: docs, contracts, examples, generated, tests. |
 | &nbsp;&nbsp;&nbsp;&nbsp;`voyager_accel/` | 1 |  |  |
 | &nbsp;&nbsp;`tests/` | ~1.3k |  | The single pytest suite for merlin: unit + integration across kernels, MLIR/xDSL compilation, DSE, runtime/backends, model bringup, validation. This is the sole `testpaths` entry in `pyproject.toml`.… |
-| &nbsp;&nbsp;&nbsp;&nbsp;`data/` | ~70 |  | Small, checked-in fixture inputs for kernel-mining unit tests. |
+| &nbsp;&nbsp;&nbsp;&nbsp;`data/` | ~80 |  | Small, checked-in fixture inputs for kernel-mining unit tests. |
 | &nbsp;&nbsp;&nbsp;&nbsp;`dse/` | ~150 |  | Tests for the **dse** subsystem: DSE tools (dse / dse_guidance / design_pressure), cost model, search, compare. |
 | &nbsp;&nbsp;&nbsp;&nbsp;`fixtures/` | ~30 |  |  |
 | &nbsp;&nbsp;&nbsp;&nbsp;`gemmini/` | ~60 |  | Tests for the **gemmini** subsystem: Gemmini target: conformance/cert, RTL checks, OOT runner, bench contract. |
