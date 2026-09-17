@@ -1,0 +1,40 @@
+{
+  "model": "lstmnetvit",
+  "dtype": "int8",
+  "cores": 8,
+  "variant": "prequant_all17_v3",
+  "profiled_wall_ms": 51.803625,
+  "attributed_ms": 49.136386904761906,
+  "coverage": 0.9485,
+  "instrumentation_delta": 0.02699,
+  "runtime_shares_reportable": false,
+  "optimizer_ranking_reportable": false,
+  "refusal": "Profiler markers prevent the ordinary sole-use broadcast fold; 4.8625 ms of attributed broadcast intervals are absent from the uninstrumented lowered model.",
+  "release_survivor_followup": {
+    "input_broadcast_to_named_add": 52,
+    "input_broadcast_to_named_mul": 10,
+    "removed_by_existing_fusion": 23,
+    "targeted_fold_receipt": {"add": 31, "mul": 8, "folded": 39},
+    "eight_core_launch_median_control_ms": 51.004926,
+    "eight_core_launch_median_feature_ms": 49.640220,
+    "eight_core_speedup": 1.0274919410,
+    "eight_core_raw_iteration_median_control_ms": 50.912476,
+    "eight_core_raw_iteration_median_feature_ms": 49.540044,
+    "full_output_sha256": "adf8308a7d398cb1767b6655c5fa6e2816563628af70afe8bac7140e5b51a154"
+  },
+  "share_denominator": "attributed op time",
+  "correctness_sha256": "adf8308a",
+  "by_category": [
+    {"category": "contraction", "ms": 14.84896428571428, "share": 0.3021989450403655},
+    {"category": "quantize_requant", "ms": 8.720976190476197, "share": 0.17748509281684746},
+    {"category": "layout_copy", "ms": 8.05658333333334, "share": 0.1639636904713594},
+    {"category": "elementwise", "ms": 5.607559523809534, "share": 0.11412234144684523},
+    {"category": "unclassified:linalg.add", "ms": 4.388119047619048, "share": 0.08930487819798948},
+    {"category": "unclassified_generic", "ms": 3.3506666666666662, "share": 0.06819114871349945},
+    {"category": "quantize_scale_search", "ms": 1.7750416666666664, "share": 0.03612479017041123},
+    {"category": "fill_init", "ms": 1.1764702380952359, "share": 0.02394295372949413},
+    {"category": "alloc", "ms": 0.6375476190476133, "share": 0.012975061033350565},
+    {"category": "unclassified:linalg.mul", "ms": 0.2955595238095239, "share": 0.006015084592654096},
+    {"category": "reduction_softmax", "ms": 0.18085714285714277, "share": 0.0036807171680670625}
+  ]
+}

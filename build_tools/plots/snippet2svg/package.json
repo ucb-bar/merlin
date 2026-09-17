@@ -1,0 +1,22 @@
+{
+  "name": "@merlin/paper-snippet2svg",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic source-to-SVG renderer for Merlin paper figures",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "render:example": "node render.mjs test/fixture.mlir -o ../../../out/artifacts/paper-figures/snippets/example.svg",
+    "update:grammar": "node update-grammar.mjs"
+  },
+  "dependencies": {
+    "shiki": "4.4.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "mlir2svg": "./mlir2svg",
+    "snippet2svg": "./snippet2svg"
+  }
+}

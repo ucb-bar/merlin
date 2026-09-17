@@ -1,0 +1,19 @@
+# Interface mnemonics the canonical PARSER defines but the command-buffer ABI does not document.
+# MAY ONLY SHRINK.
+#
+# Each line is `<mnemonic> <opcode>`. An entry means a capsule can legally contain that op while the
+# contract the graded agent reads (`merlin/contract/command_buffer_abi.yaml`, handed over by
+# `generate_prompt`) states no operands, no attributes and no semantics for it. The agent then has to
+# GUESS the ABI -- and this repo has already measured what that produces: a target's arm invented an
+# instruction encoding because the prompt never named the shipped ISA files.
+#
+# NEVER ADD A LINE. Adding an op to `interface_emit._NAMED_OP_OPERAND_KEYS` without an ABI entry is
+# the drift the single-source design exists to prevent; write the ABI entry in the same change.
+#
+# To clear one: add its `opcodes:` block to command_buffer_abi.yaml (operands, attributes, semantics)
+# and delete the line. Semantics must be DERIVED from the op's builder and golden, not invented.
+attention_qk ATTENTION_QK
+matmul_batched BATCHED_MATMUL
+rmsnorm RMSNORM
+rope ROPE
+softmax SOFTMAX

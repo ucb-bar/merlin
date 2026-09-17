@@ -15,6 +15,58 @@ echo "[pre-commit] artifact layout (staged)…"
 echo "[pre-commit] no-regex (staged)…"
 "$PY" build_tools/scripts/check_no_regex.py --staged
 
+echo "[pre-commit] no-target-name (staged)…"
+"$PY" build_tools/scripts/check_no_target_name.py --staged
+
+echo "[pre-commit] no-assumed-constants (staged)…"
+"$PY" build_tools/scripts/check_no_assumed_constants.py --staged
+
+# Whatever you touch, you format: the staged bytes of every changed .py must be ruff-formatted.
+# The marker gates above judge the same staged bytes, so a reformat that moves a `# target-ok:`
+# off its line fails this very commit rather than the next one.
+echo "[pre-commit] ruff format (staged)…"
+"$PY" build_tools/scripts/check_format.py --staged
+# Whole-tree, not --staged: the register's claim is about the tree as a whole, and a commit that couples a
+# module to a target without declaring it must fail even when the coupling arrives from another file.
+echo "[pre-commit] overfit register (tree)…"
+"$PY" build_tools/scripts/check_overfit_register.py
+
+# Every *_ratchet.txt / *_allowlist.txt is a may-only-shrink ledger; compare the STAGED ledgers to HEAD.
+echo "[pre-commit] ratchets may only shrink (staged)…"
+"$PY" build_tools/scripts/check_ratchets_shrink.py --staged
+
+# Whole-tree: the claim is that ONE definition of the command-buffer epilogue vocabulary reaches the
+# validator, both ABI documents and the dialect verifiers. A commit that edits any one of them must fail
+# even when the drift arrives from a file it did not stage. ~0.2 s.
+echo "[pre-commit] epilogue vocabulary (tree)…"
+"$PY" build_tools/scripts/check_epilogue_vocabulary.py
+
+# Whole-tree, same reason: the claim is that ONE definition of the kernel ABI's argument order reaches
+# every runner-owned harness path. It renders each backend's real harness for a probe buffer of every
+# declared command shape and compares the emitted entry call with the contract's tokens, so a commit
+# that edits either side must fail even when the drift arrives from a file it did not stage. ~0.4 s.
+echo "[pre-commit] kernel ABI argument order (tree)…"
+"$PY" build_tools/scripts/check_kernel_abi_arg_order.py
+
+echo "[pre-commit] no-answer-keys (tracked)…"
+"$PY" build_tools/scripts/check_no_answer_keys.py
+
+# Staged only: this is a public repo, and an absolute path into someone's account is both a
+# disclosure and a default no other clone can follow.
+echo "[pre-commit] no personal paths (staged)…"
+"$PY" build_tools/scripts/check_no_local_paths.py --staged
+
+# Only when the commit stages a file under a bundled corpus (merlin/{schemas,prompts,benchmarks,
+# contract,targets,runtime}) — that is the moment the top-level tree and the wheel bundle part
+# company, and an installed merlin reads the bundle. The comparison itself is never narrowed; a
+# commit that stages none of those is told so and skipped, because the bundle is a build product a
+# concurrent session can leave stale for reasons this commit did not cause.
+echo "[pre-commit] bundled data vs source trees (staged)…"
+"$PY" build_tools/scripts/check_bundled_data.py --staged
+
+echo "[pre-commit] hardware provenance (staged)…"
+"$PY" build_tools/scripts/check_provenance.py --staged
+
 echo "[pre-commit] docs freshness…"
 "$PY" build_tools/scripts/check_docs.py
 

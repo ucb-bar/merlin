@@ -1,0 +1,40 @@
+# Generic in-scope files that named a board, simulator or hardware unit when the substrate check was
+# added (2026-09-14). Known debt, not an allowlist: this list may only SHRINK (check_ratchets_shrink.py
+# holds it). A file leaves when its literal is derived from the BOARDS / SIM_TOOLCHAINS / RTL-facts
+# registry or the target contract. Consumed by: check_no_target_name.py
+build_tools/scripts/check_fact_provenance.py  # cyclotron
+build_tools/scripts/check_repro_env.py  # k1
+build_tools/scripts/harvest_xnnpack_fixtures.py  # k1
+build_tools/scripts/make_delivery.py  # kodiak
+build_tools/scripts/rvv_chia_beam.py  # k1
+merlin/python/merlin/baselines/buddy.py  # spacemit
+merlin/python/merlin/baselines/executorch.py  # spacemit
+merlin/python/merlin/baselines/executorch_session.py  # k1
+merlin/python/merlin/baselines/exo.py  # spacemit
+merlin/python/merlin/baselines/ggml.py  # spacemit
+merlin/python/merlin/baselines/tvm.py  # k1, spacemit
+merlin/python/merlin/compare/executorch_column.py  # k1
+merlin/python/merlin/compare/executorch_packages.py  # k1
+merlin/python/merlin/compare/frozen_environment.py  # k1, spacemit
+merlin/python/merlin/compare/host_experiment.py  # k1
+merlin/python/merlin/compare/paper_ablation_generator.py  # k1
+merlin/python/merlin/compare/paper_attribution.py  # k1
+merlin/python/merlin/compare/paper_measurement_controller.py  # k1
+merlin/python/merlin/compare/paper_merlin_packages.py  # k1
+merlin/python/merlin/compare/paper_merlin_producers.py  # k1
+merlin/python/merlin/compare/paper_model_object_builder.py  # k1
+merlin/python/merlin/compare/study.py  # k1
+merlin/python/merlin/compile_cli.py  # k1
+merlin/python/merlin/llvmlower/opu_shim.py  # k1
+merlin/python/merlin/llvmlower/reduce_vec.py  # k1
+merlin/python/merlin/mining/wholemodel_proposer.py  # k1
+merlin/python/merlin/plotting/cpu_host_beam_figures.py  # k1
+merlin/python/merlin/plotting/cpu_host_experiment_figures.py  # k1
+merlin/python/merlin/plotting/rvv_paper_figures.py  # k1
+merlin/python/merlin/targetgen/capsule_grade.py  # cyclotron
+merlin/python/merlin/targetgen/capsule_runner.py  # cyclotron
+merlin/python/merlin/targetgen/families.py  # opu
+merlin/python/merlin/targetgen/publish.py  # k1
+merlin/python/merlin/targetgen/rtl/facts.py  # opu
+merlin/python/merlin/targetgen/rtl/mlc_bridge.py  # opu
+merlin/python/merlin/targetgen/rtl/spatial_introspect.py  # opu

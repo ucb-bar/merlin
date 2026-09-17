@@ -1,0 +1,75 @@
+# Known generalization-coverage holes, one per line, as target:kind:family.
+#
+# This list MAY ONLY SHRINK. It exists so check_semantic_coverage.py can land on a tree that is not
+# yet clean without blocking every commit -- not as a place to park new findings. Adding a line is a
+# reviewed decision; a NEW finding that is not listed fails the gate.
+#
+# ⚠️ Resolving an entry means producing the missing EVIDENCE or the missing CAPSULE. Deleting a
+# declared family to silence a line makes the number look better by measuring less, which is the exact
+# failure this gate exists to prevent.
+
+# missing_declaration: the target's own evidence shows this family and the contract omits it, which SHRINKS the ARR denominator and flatters recall. Resolve by declaring it, as atlas and gemmini now do.
+mx_gemmini:missing_declaration:elementwise_map
+mx_gemmini:missing_declaration:movement
+# capsule_without_semantic_block: a hand-authored capsule the generator does not emit; it needs the same backfill gemmini's frozen capsules received.
+mx_gemmini:capsule_without_semantic_block:MH0_mxfp8_hidden
+mx_gemmini:capsule_without_semantic_block:MH1_mxfp4_hidden
+mx_gemmini:capsule_without_semantic_block:MH2_mxfp6_hidden
+# unsupported_declaration: radiance declares this family but its facts.json is EMPTY and its compute_units name only matmul/elementwise, so nothing grounds the claim. Resolve by extracting radiance RTL facts (the deriver will then corroborate or refute it), NOT by deleting the family to make the gate green.
+radiance:unsupported_declaration:attention
+# undetermined_declaration: no evidence rung can decide this family for the target. It is excluded from BOTH sides of ARR, so it does not move the score; it stays here until an evidence source exists.
+radiance:undetermined_declaration:movement
+radiance:unsupported_declaration:normalization
+radiance:undetermined_declaration:reduction
+radiance:unsupported_declaration:softmax
+radiance:undetermined_declaration:synchronization
+# no_contract: target has no resolvable contract in this checkout, so nothing can be measured for it. Not a coverage hole -- a missing target package.
+saturn_opu:no_contract:-
+saturn_opu_rvv:no_contract:-
+
+# corpus_contains_unexecutable — capsules in a target's RESOLVED corpus that it structurally cannot
+# execute. Recorded 2026-08-21 after two runs paid for them: they can never pass, and because the agent
+# loop's only early exit is a genuine all_pass, they make all_pass unreachable and turn every run into a
+# fixed-price purchase of its whole round budget (measured: 20 rounds / ~12 h on a suite already complete
+# at round 0). They are now WITHHELD from grading, so this list tracks corpus hygiene, not run damage.
+#
+# The 12 bf16 entries below belong to a float Gemmini configuration; this elaboration declares one integer
+# format (FIRRTL: scratchpad UInt<8>). They are not wrong capsules, they are in the wrong target's
+# resolved corpus -- one target reads the SHARED top-level roots while every other is namespaced under its
+# own name, so anything added there is silently adopted. Relocating cannot fix it: the shared
+# model_slices/ root MIXES in-scope i8 capsules (C0-C7) with these, so the layout cannot express the
+# distinction. Resolve by giving these a target that declares bf16, or by making corpus membership
+# explicit per capsule.
+gemmini:corpus_contains_unexecutable:GC1_depthwise_bf16_pt
+gemmini:corpus_contains_unexecutable:GC2_maxpool_bf16_pt
+gemmini:corpus_contains_unexecutable:GC3_avgpool_bf16_pt
+gemmini:corpus_contains_unexecutable:GC4_global_avg_bf16_pt
+gemmini:corpus_contains_unexecutable:GC5_fused_matmul_bias_bf16_pt
+gemmini:corpus_contains_unexecutable:GC6_bias_add_bf16_pt
+gemmini:corpus_contains_unexecutable:GF1_softmax_bf16_pt
+gemmini:corpus_contains_unexecutable:GF2_attn_full_bf16_pt
+gemmini:corpus_contains_unexecutable:GF3_geglu_bf16_pt
+gemmini:corpus_contains_unexecutable:GF4_add_bf16_pt
+gemmini:corpus_contains_unexecutable:GF5_gelu_bf16_pt
+# rank-limited: a batched/4-D contraction on a target whose declared contraction ranks exclude it.
+atlas:corpus_contains_unexecutable:AF12_gemv_batched_bf16_pt
+radiance:corpus_contains_unexecutable:RP14_patch_embed_bf16_pt
+
+# --- surfaced by regenerating radiance's contract (its on-disk capability_evidence was STALE) ---
+# These two are not new reality; they are pre-existing reality a stale generated artifact was masking.
+# Recorded rather than "fixed" because the obvious fix moves a published denominator the WRONG way.
+#
+# missing_axis: the deriver reports elementwise_map dtypes [int8, mxfp4, mxfp6, mxfp8] that the
+# contract does not declare. Widening the declaration to match would be wrong: the evidence's own
+# `source` is `unit_intent` -- "unit 'simt_cluster' declares op 'elementwise'" -- and that rule
+# attributes a unit's ENTIRE dtype set to EVERY op the unit declares. The simt_cluster's MX dtypes
+# come from its matmul accumulate matrix, so this says the lanes do elementwise on mxfp4 when nothing
+# established that. Resolve by making the derivation per-OP rather than per-UNIT, which will either
+# ground these dtypes or drop them; do NOT resolve by declaring them.
+radiance:missing_axis:elementwise_map
+# unaudited_axis: the contract declares contraction ranks [2, 3] that no rung can confirm -- the
+# evidence ladder decides FAMILIES, not shape axes. Resolve by giving the ladder a rank-deciding rung.
+# ⚠️ Do NOT resolve by deleting the ranks: an empty rank list ADMITS EVERY RANK (`is_eligible` guards
+# the check with `if c.ranks`), so removing them silently widens the axis instead of narrowing it --
+# the same trap that produced the gemmini conv2d denominator bug.
+radiance:unaudited_axis:contraction

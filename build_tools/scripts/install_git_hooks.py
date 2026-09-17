@@ -12,6 +12,7 @@ Per-clone / opt-in — it edits this checkout's .git/config only. Undo with:
 Usage:
   python build_tools/scripts/install_git_hooks.py
 """
+
 from __future__ import annotations
 
 import os
@@ -27,7 +28,7 @@ def main() -> int:
     hooks = ["pre-commit", "commit-msg"]
     missing = [h for h in hooks if not (HOOKS_DIR / h).is_file()]
     if missing:
-        sys.stderr.write(f"missing hook(s): {', '.join(str(HOOKS_DIR/h) for h in missing)}\n")
+        sys.stderr.write(f"missing hook(s): {', '.join(str(HOOKS_DIR / h) for h in missing)}\n")
         return 1
     for h in hooks:
         os.chmod(HOOKS_DIR / h, 0o755)

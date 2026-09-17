@@ -1,0 +1,36 @@
+# Whole-file exemptions for check_no_target_name.py — files still permitted to name a shipped
+# target (gemmini/mx_gemmini/atlas/radiance/saturn/muon/npu_model) in a string literal.
+#
+# Format: one repo-relative path per line (or a directory prefix ending in `/`); text after `#` is
+# the rationale (required). The list only ever SHRINKS. Prefer an inline `# target-ok: <why>` on the
+# exact offending line; a whole-file entry here is for files that are inherently one target's code.
+#
+# The populations below are the target-COUPLED surface that still exists while the core machinery
+# (runner/grader/manifest/registry-resolution — OV1..OV10/OV13) is name-free. Each entry is either a
+# REFERENCE target implementation that names itself (evicted to a published package by OV11 / #98), a
+# reference-target registration/fallback in dev tooling, or a target named only as example help text.
+# As OV11 evicts a reference target, delete its entry. New literals in any OTHER core file are blocked.
+
+# ---------------------------------------------------------------- the gate itself (its own name list)
+build_tools/scripts/check_no_target_name.py                   # defines the target-name set it hunts
+
+# ---------------------------------------------------------------- REFERENCE target implementations (OV11 #98 evicts these to a published package via MERLIN_TARGET_PATH)
+merlin/python/merlin/targetgen/eval/gemmini_dispatcher.py    # gemmini eval dispatcher (reference target)
+merlin/python/merlin/targetgen/eval/saturn_vec_conformance.py # saturn vector conformance (reference target)
+merlin/python/merlin/targetgen/eval/gemmini_suite.py         # gemmini conformance suite (reference target)
+merlin/python/merlin/targetgen/eval/gemmini_conformance.py   # gemmini conformance battery (reference target)
+merlin/python/merlin/targetgen/model_slice_export.py         # gemmini model-slice capsule export (reference target)
+merlin/python/merlin/targetgen/oracle_helpers/npu_emit.py    # npu_model oracle emitter (reference target)
+build_tools/scripts/setup_atlas.py                           # atlas external-repo setup script (reference target)
+build_tools/scripts/probe_gemmini_oracle.py                  # gemmini oracle probe script (reference target)
+
+# ---------------------------------------------------------------- reference-target REGISTRY / catalog (the in-tree target catalog OV11 replaces with MERLIN_TARGET_PATH discovery)
+merlin/python/merlin/kernels/cca_contract.py                 # CCA applicable-backend vocabulary + orphan registry (reference set)
+
+# ---------------------------------------------------------------- reference-target FACTS / package fallback in dev CLIs (gemmini is the reference; the CLI still takes --target)
+merlin/python/merlin/targetgen/capsule_runner.py             # gemmini-capsule-bench SUITE identity (npu_model model_ext fallback removed — model_ext now required from the contract)
+merlin/python/merlin/targetgen/publish.py                    # payload/gate/README shaping branches on the package FAMILY (`if target == "rvv"`, _payload_*); not just README text
+
+# ---------------------------------------------------------------- target named only as EXAMPLE help/description text (no control flow)
+merlin/python/merlin/kernels/regions.py                      # "(gemmini etc.)" in a registry-entry description
+merlin/python/merlin/targetgen/agent/gemmini_kernel_slot.py  # gemmini's own agent slot: libgemmini C API text + its TARGET; geometry derived from RTL facts

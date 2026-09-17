@@ -1,0 +1,165 @@
+{
+ "groups": [
+  {
+   "id": "repo",
+   "paths": [
+    "pyproject.toml",
+    "setup.py",
+    "uv.lock",
+    ".gitignore",
+    ".gitattributes",
+    ".gitmodules",
+    ".github",
+    ".claude",
+    "CLAUDE.md",
+    "README.md",
+    "CONTRIBUTING.md",
+    "NOTICE",
+    ".env.example",
+    "AGENT.md",
+    "CMakeLists.txt",
+    "LICENSE",
+    ".clang-format",
+    ".clang-tidy",
+    "third_party",
+    ".git-blame-ignore-revs"
+   ],
+   "subject": "build(repo): pin toolchain, gate CI and document the conventions",
+   "body": "Repository-level configuration for the target-generalization work.\n\n- pyproject.toml: Python floor raised to 3.12 (the tree uses PEP 701 f-strings), ruff pinned to\n  the 0.16 line with generated benchmark inputs excluded, new console scripts, and the\n  pytest-timeout ceiling.\n- CI (pr-fast.yml): the derive-don't-overfit gates, ledgers that may only shrink, local-path\n  and holdout-name gates, and a docs freshness ratchet. Every build_tools check is either wired\n  or listed with the reason it is not.\n- .claude/ hooks refuse generated writes outside out/ and broad process kills on the shared\n  host.\n- .git-blame-ignore-revs lists the restyle-only commits so blame skips them. On this branch the\n  restyle is folded into the subsystem commits, so the file matters only on the working branch.\n- CLAUDE.md states the conventions the gates enforce: derive target facts instead of hardcoding\n  them, pin hardware revisions, one out/ root, one test suite, durable docs versus reports."
+  },
+  {
+   "id": "tooling",
+   "paths": [
+    "build_tools"
+   ],
+   "subject": "feat(tooling): add the repo gates and the measurement drivers",
+   "body": "build_tools/scripts grows from a handful of helpers into the repository's enforcement and\nmeasurement layer.\n\n- Gates: target names, regex, assumed ISA constants, hardware provenance, fact provenance,\n  holdout names and disjointness, artifact layout, docs freshness, local paths, module size,\n  and a check that every *_ratchet.txt / *_allowlist.txt may only shrink. Each is fail-closed:\n  a gate that cannot read its input reports that instead of passing.\n- Generators: CLI, package, schema and docs-hub references, and a repository map derived from\n  the tracked tree.\n- Drivers for K1 board measurement, cross-framework baselines, FireSim/Zephyr legs, delivery\n  bundles, and plots.\n\nEverything is formatted with ruff 0.16.8."
+  },
+  {
+   "id": "contract",
+   "paths": [
+    "merlin/contract",
+    "merlin/schemas",
+    "merlin/prompts",
+    "merlin/benchmarks"
+   ],
+   "subject": "feat(contract): capsule corpus, hardware pins and experiment ABI",
+   "body": "The versioned, repository-independent contract that out-of-tree target backends are built and\ngraded against.\n\n- capsules/: the generated and hand-authored capsule corpus for atlas, gemmini, mx_gemmini,\n  radiance and saturn_opu -- ISA, layer, model-slice, whole-model and perf capsules -- with\n  per-target profiles. Held-out capsules are counted, never named.\n- hardware_pins.yaml: every external RTL, toolchain and simulator revision a verdict depends on,\n  pinned by full sha and checked against the files actually read.\n- rtl/, external/gsim/, perf_rules/: derived RTL facts, the GSIM engine build recipe, and cost\n  rules.\n- schemas/: target contract, command buffer, capsule and grading schemas.\n- benchmarks/rvv_paper: the frozen study configuration for the RVV paper."
+  },
+  {
+   "id": "common",
+   "paths": [
+    "merlin/python/merlin/common",
+    "merlin/python/merlin/__init__.py",
+    "merlin/python/merlin/AGENT.md",
+    "merlin/python/merlin/agent_trace.py",
+    "merlin/python/merlin/validation",
+    "merlin/python/merlin/_data"
+   ],
+   "subject": "feat(common): shared paths, provenance, digests and storage",
+   "body": "Library-wide helpers so each subsystem stops reimplementing them.\n\n- paths: the out/ root and its runs/artifacts/build subtrees, .env-backed external checkouts.\n- provenance: verify, record and require hardware pins; digest the bytes actually read.\n- digest, jsonio, proc: one implementation each of sha256, canonical JSON hashing and checked\n  subprocess execution.\n- content_store and storage_cli (merlin-storage): hard-linked, content-addressed input closures,\n  and a report and prune tool that reclaims only classes whose safety is a property."
+  },
+  {
+   "id": "targetgen",
+   "paths": [
+    "merlin/python/merlin/targetgen"
+   ],
+   "subject": "feat(targetgen): derive targets from RTL and grade generated backends",
+   "body": "TargetGen becomes target-agnostic: nothing it does is keyed on a target name.\n\n- rtl/: extract structure and ISA facts from the target's own elaboration (CIRCT, FIRRTL census,\n  decoder fan-out), with provenance on every fact and a registry that resolves where each\n  target's RTL lives.\n- The capsule runner, grading and tier promotion run a capsule cheapest-tier-first and keep the\n  certificate bound to the digest of the bytes that earned it.\n- sandbox/: the bwrap sandbox, frozen input closures, and answer-surface derivation for agent\n  runs.\n- rocc/, fixed_format/: decoders and assemblers for RoCC and self-hosted ISAs, derived from the\n  target's facts.\n- Conformance, capability discovery, affordability pricing per simulator engine, and ISA-versus-\n  RTL cross-checking with an errata registry."
+  },
+  {
+   "id": "targets",
+   "paths": [
+    "merlin/targets"
+   ],
+   "subject": "feat(targets): add muon, gemmini_universal, k1_cpu and voyager_accel",
+   "body": "In-tree target definitions -- contracts, backends and tools -- consumed through the target\nregistry.\n\n- muon: the SIMT backend for the radiance accelerator, with its Cyclotron engine binding.\n- gemmini_universal: a sibling of gemmini (never an override) for the universal FPGA build.\n- k1_cpu: the SpacemiT K1 CPU host target.\n- voyager_accel: a draft descriptor for the Voyager accelerator.\n- gemmini: the per-target backend, harness and tools moved out of shared library code."
+  },
+  {
+   "id": "compiler",
+   "paths": [
+    "merlin/python/merlin/compile",
+    "merlin/python/merlin/compile_cli.py",
+    "merlin/python/merlin/compile_core.py",
+    "merlin/python/merlin/llvmlower",
+    "merlin/python/merlin/xdsl_dialects",
+    "merlin/python/merlin/frontends",
+    "merlin/python/merlin/triton",
+    "merlin/python/merlin/rvvgen",
+    "merlin/python/merlin/kernels",
+    "merlin/python/merlin/mining"
+   ],
+   "subject": "feat(compile): whole-model lowering, block scheduling and RVV mining",
+   "body": "The compiler plane from model capture to target binary.\n\n- compile/: helpers split out of compile_cli (bundles, host lane, capacity, mesh execution) and\n  a block scheduler driven by derived geometry.\n- llvmlower/: linalg-to-LLVM whole-model lowering for rv64gcv and host, int8 and requant passes,\n  and per-op profiling.\n- kernels/, mining/: kernel mining and the RVV beam search that forks, builds and measures codegen\n  packages on spike and the K1 board.\n- xdsl_dialects/, frontends/, triton/: target-independent dialects, IR frontends, and a Triton\n  kernel path to a command buffer."
+  },
+  {
+   "id": "runtime",
+   "paths": [
+    "merlin/python/merlin/runtime",
+    "merlin/runtime",
+    "merlin/python/merlin/benchharness",
+    "merlin/python/merlin/system",
+    "merlin/python/merlin/liveness"
+   ],
+   "subject": "feat(runtime): reference runtimes, substrate backends and liveness",
+   "body": "Execution of command buffers and dispatch programs on each substrate.\n\n- runtime/backends: spike, Zephyr on FireSim, and the K1 board backends (ours, OpenBLAS, XNNPACK),\n  resolved through a backend registry rather than by name.\n- Route partitioning: each command buffer identifies exactly one admission route.\n- merlin/runtime: the bare-metal C runtime and its ABI.\n- benchharness/, system/, liveness/: target-parametric benchmark primitives, system derivation,\n  and a liveness oracle tier between functional and RTL."
+  },
+  {
+   "id": "perf",
+   "paths": [
+    "merlin/python/merlin/perf",
+    "merlin/python/merlin/dse",
+    "merlin/python/merlin/dse_guidance",
+    "merlin/python/merlin/design_pressure",
+    "merlin/python/merlin/verify",
+    "merlin/python/merlin/cost_model"
+   ],
+   "subject": "feat(perf): a performance layer that prices what a target permits",
+   "body": "What a target's legal choices cost, derived rather than assumed.\n\n- perf/: archetypes and traits, a performance contract whose terms carry provenance and a validity\n  domain, cycle and movement cost composition, FireSim receipts, and the phase-2 portfolio.\n  perf/deps models the command-stream dependency graph.\n- cost_model/ is removed; its roofline arithmetic now lives in perf.\n- verify/: static (lit/FileCheck) and SMT verification of compiler passes.\n- dse/, dse_guidance/, design_pressure/: the design-space pipeline, reworked on the shared helpers."
+  },
+  {
+   "id": "baselines",
+   "paths": [
+    "merlin/python/merlin/baselines",
+    "merlin/python/merlin/compare",
+    "merlin/python/merlin/plotting",
+    "merlin/python/merlin/agentreport"
+   ],
+   "subject": "feat(baselines): frozen cross-framework comparisons and reports",
+   "body": "External baselines and the comparison driver behind the published numbers.\n\n- baselines/: ExecuTorch, TVM, buddy-mlir, exo, ggml and Voyager harnesses, with toolchains\n  located from their contracts.\n- compare/: a spec-driven comparison whose environment, packages and measurements are frozen and\n  hashed, so a reported cell names the bytes it came from.\n- plotting/, agentreport/: the house plotting style, and regenerable reports over agentic runs."
+  },
+  {
+   "id": "experiments",
+   "paths": [
+    "merlin/experiments"
+   ],
+   "subject": "feat(experiments): unify the capsule bench and add the agent studies",
+   "body": "The per-target capsule_bench_v0 directories (atlas, gemmini, mx_gemmini, radiance and\nsaturn_opu) are replaced by one capsule_bench driven by a per-target descriptor. Adding a target\nis now a descriptor plus data, not a copied harness.\n\nNew experiments, each declaring its status in AGENT.md:\n- agent_recipe_select_v0, cpu_host_compiler_v0, llm_kernel_vs_compiler_v0: agentic compiler\n  studies.\n- performance_contract, gsim_wholemodel: the performance layer's working register and whole-model\n  GSIM runs.\n- voyager_h2h, dataset_accuracy: the head-to-head against the Voyager compiler.\n- agentic_report: regenerable reports over agent runs.\n\ngemmini_perf_bench gains the phase-2 global performance experiment."
+  },
+  {
+   "id": "tests",
+   "paths": [
+    "merlin/tests"
+   ],
+   "subject": "test(suite): one suite, organized by subsystem",
+   "body": "All tests live in merlin/tests, in eight subsystem buckets (kernels, rvv, dse, gemmini,\ntargetgen, ir, runtime, infra), with shared inputs in fixtures/ and data/.\n\nTests whose subject is a particular target carry `pytest.mark.target(...)`, so\n`pytest -m \"not target\"` runs the target-independent suite on its own.\n\nThe infra bucket carries regression tests for the gates themselves -- that each can fail,\nthat it refuses rather than passes when it cannot read its input, and that its ledger may\nonly shrink."
+  },
+  {
+   "id": "docs",
+   "paths": [
+    "docs",
+    "examples"
+   ],
+   "subject": "docs(hub): reference, guides and design notes with drift detection",
+   "body": "docs/ is split into reference/, guides/ and design/. Each file carries front-matter\n(owner, last_verified, code_refs), and a generated hub links them. A freshness gate reports any\ndoc whose code_refs changed after it was last verified.\n\nexamples/ adds end-to-end walkthroughs: a stock Triton kernel to an accelerator command buffer,\nand the gemmelos and kodiak flows."
+  },
+  {
+   "id": "out",
+   "paths": [
+    "out"
+   ],
+   "subject": "chore(out): track the output skeleton and curated reports only",
+   "body": "Generated output lives under one out/ root: runs/, artifacts/ and build/. Only the skeleton\n(AGENT.md, README) and curated reports the layout convention keeps are tracked. Raw run dumps\nand vendored trees committed earlier are untracked here; they stay on disk and are ignored."
+  }
+ ]
+}

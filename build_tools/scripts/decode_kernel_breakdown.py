@@ -16,6 +16,7 @@ bare-metal ELF run_expert_gemm builds, decoded at the ukernel symbol.
 
 Output: a list of per-kernel decode dicts (printed JSON); the .md is written by hand from these.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,10 +26,10 @@ from dataclasses import replace
 from pathlib import Path
 
 from merlin.common.paths import repo_root
+from merlin.kernels import cca
 from merlin.kernels.ceiling_drivers import run_expert_gemm as expert
 from merlin.kernels.decode import rvv
 from merlin.kernels.decode.objdump import tokenize
-from merlin.kernels import cca
 
 REPO = Path(repo_root())
 VLEN = 256  # the mined K1 target VLEN (board is VLEN=256); spike harness ISA is VLEN=128.
@@ -37,10 +38,10 @@ VLEN = 256  # the mined K1 target VLEN (board is VLEN=256); spike harness ISA is
 # (extracted from out/artifacts/recaptures/{openvla,rdt2}_fp32_consistent/model.mlir linalg.matmul ins/outs).
 SHAPES = {
     "cube_64": (64, 64, 64),
-    "openvla_proj_17x192x576": (17, 576, 192),    # 17x192 * 192x576  (attn out / mlp)
-    "openvla_mlp_20x128x512": (20, 512, 128),     # 20x128 * 128x512  (action-head MLP up)
-    "rdt2_attn_28x1024x1024": (28, 1024, 1024),   # workhorse 28x1024 * 1024x1024
-    "rdt2_mlp_28x1024x2816": (28, 2816, 1024),    # MLP up 28x1024 * 1024x2816
+    "openvla_proj_17x192x576": (17, 576, 192),  # 17x192 * 192x576  (attn out / mlp)
+    "openvla_mlp_20x128x512": (20, 512, 128),  # 20x128 * 128x512  (action-head MLP up)
+    "rdt2_attn_28x1024x1024": (28, 1024, 1024),  # workhorse 28x1024 * 1024x1024
+    "rdt2_mlp_28x1024x2816": (28, 2816, 1024),  # MLP up 28x1024 * 1024x2816
 }
 
 OURS_FORKS = (
@@ -52,11 +53,11 @@ OURS_FORKS = (
 
 def _lower_ours_to_obj(features, M, N, K, work: Path):
     """Lower a single f32 matmul (M,N,K) with `features` to model.o, return (obj_path, blocker)."""
-    from merlin.rvvgen import workloads
-    from merlin.rvvgen.registry import load_rvv_package
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.lower import lower_model_file
     from merlin.llvmlower.pipeline import PipelineError
+    from merlin.mining import workloads
+    from merlin.mining.registry import load_rvv_package
     from merlin.runtime.backends import zephyr_model as zm
 
     bundle = workloads.gen_matmul_f32(work / "wl", M=M, N=N, K=K)
@@ -66,18 +67,39 @@ def _lower_ours_to_obj(features, M, N, K, work: Path):
     prepared = zm._prepare_model_mlir(md / "model.mlir", work, int8_compute=pkg.is_int8)
     feats = frozenset(pkg.compiler_features or []) or None
     try:
-        res = lower_model_file(prepared, work / "lower", targets=(), textual=True,
-                               vectorize=True, transform_schedule=pkg.schedule_text,
-                               hoist_static_allocs=False, features=feats)
+        res = lower_model_file(
+            prepared,
+            work / "lower",
+            targets=(),
+            textual=True,
+            vectorize=True,
+            transform_schedule=pkg.schedule_text,
+            hoist_static_allocs=False,
+            features=feats,
+        )
     except PipelineError as e:
         return None, f"vectorized lowering raised: {str(e)[:200]}"
     clang23 = toolchain.clang()
     model_o = work / "model.o"
     try:
-        subprocess.run([str(clang23), "--target=riscv64-unknown-linux-gnu",
-                        "-march=rv64gcv", "-mabi=lp64d", "-O2", "-Wno-override-module",
-                        "-c", str(res.ll_path), "-o", str(model_o)],
-                       capture_output=True, text=True, timeout=300, check=True)
+        subprocess.run(
+            [
+                str(clang23),
+                "--target=riscv64-unknown-linux-gnu",
+                "-march=rv64gcv",
+                "-mabi=lp64d",
+                "-O2",
+                "-Wno-override-module",
+                "-c",
+                str(res.ll_path),
+                "-o",
+                str(model_o),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=True,
+        )
     except subprocess.CalledProcessError as e:
         return None, f"model.o compile failed: {e.stderr[-300:] if e.stderr else e}"
     return model_o, None
@@ -158,7 +180,8 @@ def _analyze(stream, *, op, source):
     nr = _resolve_nr(vec.sew, vec.lmul)
     mr = comp.register_block[0] if comp.register_block else None
     return {
-        "sew": vec.sew, "lmul": vec.lmul,
+        "sew": vec.sew,
+        "lmul": vec.lmul,
         "nr_lanes_vlen256": nr,
         "vl_strategy": vec.vl_strategy,
         "nr_is_vsetvlmax": comp.nr_is_vsetvlmax,
@@ -178,8 +201,7 @@ def main():
     rows = []
 
     # ---- experts (shape-independent ukernel; decode once) ----
-    for src, sym in (("xnnpack", "xnn_f32_gemm_ukernel_1x4v__rvv"),
-                     ("openblas", "openblas_sgemm_kernel")):
+    for src, sym in (("xnnpack", "xnn_f32_gemm_ukernel_1x4v__rvv"), ("openblas", "openblas_sgemm_kernel")):
         spec = expert._experts()[src]
         tmp = Path(tempfile.mkdtemp(prefix="dec_exp_"))
         elf = tmp / f"{src}.riscv"
@@ -189,8 +211,7 @@ def main():
             continue
         stream, n = _decode_symbol(elf, sym)
         a = _analyze(stream, op="matmul", source=f"{src}:{sym}")
-        rows.append({"kernel": src, "shape": "ukernel(shape-indep)", "symbol": sym,
-                     "n_insns": n, "packed": True, **a})
+        rows.append({"kernel": src, "shape": "ukernel(shape-indep)", "symbol": sym, "n_insns": n, "packed": True, **a})
 
     # ---- ours forks x shapes ----
     for run_id, feats in OURS_FORKS:
@@ -198,8 +219,7 @@ def main():
             tmp = Path(tempfile.mkdtemp(prefix="dec_ours_"))
             obj, blk = _lower_ours_to_obj(feats, M, N, K, tmp)
             if blk:
-                rows.append({"kernel": run_id, "shape": sname, "MNK": (M, N, K),
-                             "blocker": blk})
+                rows.append({"kernel": run_id, "shape": sname, "MNK": (M, N, K), "blocker": blk})
                 continue
             # ours model.o: the compute lives in `forward`/`_mlir_ciface_forward`. Scope to it.
             raws = tokenize(obj)
@@ -207,8 +227,9 @@ def main():
             fsym = next((s for s in secs if "forward" in s), None)
             stream, n = _decode_symbol(obj, fsym)
             a = _analyze(stream, op="matmul", source=f"{run_id}:{sname}")
-            rows.append({"kernel": run_id, "shape": sname, "MNK": (M, N, K),
-                         "symbol": fsym, "n_insns": n, "packed": False, **a})
+            rows.append(
+                {"kernel": run_id, "shape": sname, "MNK": (M, N, K), "symbol": fsym, "n_insns": n, "packed": False, **a}
+            )
 
     out = REPO / "artifacts" / "ceiling" / "kernel_breakdown_decode.json"
     out.parent.mkdir(parents=True, exist_ok=True)

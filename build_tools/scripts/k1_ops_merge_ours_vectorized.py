@@ -12,7 +12,9 @@ What it does (measurement-data + doc only):
 
 Idempotent: re-running renames only un-renamed rows and replaces (not duplicates) the poly rows.
 """
+
 from __future__ import annotations
+
 import json
 from pathlib import Path
 
@@ -38,9 +40,11 @@ def main():
             # the OLD ours_vectorized is actually the no-feature (scalar libm) vectorize pass.
             r = dict(r)
             r["source"] = "ours_vectorize_nofeature"
-            r["note"] = ("vectorize=True but NO activation feature -> still scalar libm "
-                         "(erff/expf); the genuine vectorized_transcendental_activation polynomial "
-                         "is the separate ours_vectorized row")
+            r["note"] = (
+                "vectorize=True but NO activation feature -> still scalar libm "
+                "(erff/expf); the genuine vectorized_transcendental_activation polynomial "
+                "is the separate ours_vectorized row"
+            )
         out.append(r)
     # drop any pre-existing renamed/poly duplicates then append fresh poly rows after their nofeature
     final = []
@@ -58,7 +62,8 @@ def main():
     # any poly key not yet placed (defensive)
     for key, r in v2_poly.items():
         if key not in seen_poly:
-            final.append(r); seen_poly.add(key)
+            final.append(r)
+            seen_poly.add(key)
 
     CANON.write_text("\n".join(json.dumps(r) for r in final) + "\n")
     print(f"jsonl: {len(final)} rows; poly rows merged: {sorted(seen_poly)}")
@@ -77,15 +82,21 @@ def main():
 
     lines = []
     lines.append("## GELU / sigmoid — ours-scalar AND ours-vectorized (polynomial) vs XNNPACK\n")
-    lines.append("`ours-vectorized` is the genuine `vectorized_transcendental_activation` feature "
-                 "(compiler-emitted minimax polynomial → vectorized SIMD, NOT a libm call). "
-                 "`ours-vectorize-nofeature` is the prior column (vectorize pass, NO activation "
-                 "feature → still scalar `erff`/`expf` libm). XNNPACK is its hand-written "
-                 "rational/exp-poly RVV kernel. K1 `rdtime`, N=3 min; cos/abs-verified.\n")
-    lines.append("| op | N | XNNPACK | ours-scalar | ours-vectorize-nofeature | "
-                 "ours-vectorized (poly) | poly vs scalar | poly vs XNN |")
-    lines.append("|----|---|---------|-------------|--------------------------|"
-                 "------------------------|----------------|-------------|")
+    lines.append(
+        "`ours-vectorized` is the genuine `vectorized_transcendental_activation` feature "
+        "(compiler-emitted minimax polynomial → vectorized SIMD, NOT a libm call). "
+        "`ours-vectorize-nofeature` is the prior column (vectorize pass, NO activation "
+        "feature → still scalar `erff`/`expf` libm). XNNPACK is its hand-written "
+        "rational/exp-poly RVV kernel. K1 `rdtime`, N=3 min; cos/abs-verified.\n"
+    )
+    lines.append(
+        "| op | N | XNNPACK | ours-scalar | ours-vectorize-nofeature | "
+        "ours-vectorized (poly) | poly vs scalar | poly vs XNN |"
+    )
+    lines.append(
+        "|----|---|---------|-------------|--------------------------|"
+        "------------------------|----------------|-------------|"
+    )
     for op in ("gelu", "sigmoid"):
         for n in (1024, 16384, 262144):
             xn = pick(op, n, "xnnpack")
@@ -94,13 +105,15 @@ def main():
             po = pick(op, n, "ours_vectorized")
             sp_scalar = sp_xn = "—"
             if po and po.get("ticks") and sc and sc.get("ticks"):
-                sp_scalar = f"{sc['ticks']/po['ticks']:.2f}× faster"
+                sp_scalar = f"{sc['ticks'] / po['ticks']:.2f}× faster"
             if po and po.get("ticks") and xn and xn.get("ticks"):
                 ratio = po["ticks"] / xn["ticks"]
-                sp_xn = f"{ratio:.2f}× slower" if ratio >= 1 else f"{1/ratio:.2f}× faster"
+                sp_xn = f"{ratio:.2f}× slower" if ratio >= 1 else f"{1 / ratio:.2f}× faster"
             label = "**" + op.upper() + "**" if n == 1024 else op
-            lines.append(f"| {label} | {n//1024}K | {fmt(xn)} | {fmt(sc)} | {fmt(nf)} | "
-                         f"**{fmt(po)}** | {sp_scalar} | {sp_xn} |")
+            lines.append(
+                f"| {label} | {n // 1024}K | {fmt(xn)} | {fmt(sc)} | {fmt(nf)} | "
+                f"**{fmt(po)}** | {sp_scalar} | {sp_xn} |"
+            )
     block = "\n".join(lines) + "\n"
 
     md = MD.read_text()

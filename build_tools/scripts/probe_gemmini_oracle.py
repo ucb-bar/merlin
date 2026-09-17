@@ -17,6 +17,7 @@ Usage:
   python build_tools/scripts/probe_gemmini_oracle.py --run spike     # + run known-good on spike-gemmini
   python build_tools/scripts/probe_gemmini_oracle.py --run verilator # + run known-good on Verilator RTL
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,8 +39,7 @@ def chipyard() -> Path:
 
 
 def spike_bin() -> Path:
-    return Path(os.environ.get("MERLIN_GEMMINI_SPIKE",
-                               chipyard() / ".conda-env/riscv-tools/bin/spike"))
+    return Path(os.environ.get("MERLIN_GEMMINI_SPIKE", chipyard() / ".conda-env/riscv-tools/bin/spike"))
 
 
 def libgemmini() -> Path:
@@ -47,19 +47,21 @@ def libgemmini() -> Path:
 
 
 def verilator_sim() -> Path:
-    return Path(os.environ.get(
-        "MERLIN_GEMMINI_VERILATOR",
-        chipyard() / "sims/verilator" / f"simulator-chipyard.harness-{VERILATOR_CONFIG}"))
+    return Path(
+        os.environ.get(
+            "MERLIN_GEMMINI_VERILATOR", chipyard() / "sims/verilator" / f"simulator-chipyard.harness-{VERILATOR_CONFIG}"
+        )
+    )
 
 
 def riscv_gcc() -> Path:
-    return Path(os.environ.get("MERLIN_RISCV_GCC",
-                               chipyard() / ".conda-env/riscv-tools/bin/riscv64-unknown-elf-gcc"))
+    return Path(os.environ.get("MERLIN_RISCV_GCC", chipyard() / ".conda-env/riscv-tools/bin/riscv64-unknown-elf-gcc"))
 
 
 def rocc_tests() -> Path:
-    return Path(os.environ.get("MERLIN_GEMMINI_HARNESS_DIR",
-                               chipyard() / "generators/gemmini/software/gemmini-rocc-tests"))
+    return Path(
+        os.environ.get("MERLIN_GEMMINI_HARNESS_DIR", chipyard() / "generators/gemmini/software/gemmini-rocc-tests")
+    )
 
 
 def test_ld() -> Path:
@@ -86,12 +88,12 @@ def status() -> dict:
     spike_ready = spike_bin().is_file()
     verilator_ready = verilator_sim().is_file()
     gcc_ready = riscv_gcc().is_file() and test_ld().is_file()
-    print(f"  L1 spike-gemmini (bootstrap, derived_from_rtl=false): "
-          f"{'available' if spike_ready else 'unavailable'}")
-    print(f"  L2 Verilator RTL (certification, derived_from_rtl=true): "
-          f"{'available' if verilator_ready else 'unavailable'}")
-    print(f"  riscv gcc + test.ld (to compile generated C): "
-          f"{'available' if gcc_ready else 'unavailable'}")
+    print(f"  L1 spike-gemmini (bootstrap, derived_from_rtl=false): {'available' if spike_ready else 'unavailable'}")
+    print(
+        f"  L2 Verilator RTL (certification, derived_from_rtl=true): "
+        f"{'available' if verilator_ready else 'unavailable'}"
+    )
+    print(f"  riscv gcc + test.ld (to compile generated C): {'available' if gcc_ready else 'unavailable'}")
     return {"spike": spike_ready, "verilator": verilator_ready, "gcc": gcc_ready}
 
 
@@ -102,8 +104,7 @@ def run_known_good(which: str, timeout: int) -> int:
         return 2
     if which == "spike":
         env = dict(os.environ)
-        env["LD_LIBRARY_PATH"] = (str(libgemmini().parent) + ":"
-                                  + env.get("LD_LIBRARY_PATH", ""))
+        env["LD_LIBRARY_PATH"] = str(libgemmini().parent) + ":" + env.get("LD_LIBRARY_PATH", "")
         cmd = [str(spike_bin()), "--extension=gemmini", str(elf)]
     else:
         env = dict(os.environ)

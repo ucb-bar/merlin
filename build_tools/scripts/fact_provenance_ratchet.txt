@@ -1,0 +1,19 @@
+# fact-provenance ratchet — pre-existing debt only. THIS LIST MAY ONLY SHRINK.
+#
+# Format:  <repo-relative .py path>::<forbidden source id>   # why this debt is accepted, and what
+#                                                            #  would retire it
+#
+# Scoped per (path, source) ON PURPOSE. A blanket per-file entry would let a module that has already
+# accepted its cyclotron debt silently start reading spike or npu_model without the gate noticing;
+# one module's accepted debt must never excuse another source in the same module, nor the same source
+# in another module. Every entry carries a reason. Adding an entry needs a written rationale; the fix
+# is always "derive the fact from CIRCT/RTL instead", never "widen the list".
+#
+# The way OUT of an entry is one of:
+#   * derive the fact from the elaboration — see merlin/targets/muon/backend/muon_introspect.py, which
+#     was never on this list because the rewrite read lanes/warps/cores/registers/clock/SMEM out of the
+#     FIRRTL port types, the instance hierarchy, the SRAM macro list and the device tree;
+#   * demote the read to a cross-check and annotate it `# fact-source-ok: <why>` on its line;
+#   * delete the code, when nothing calls it.
+
+merlin/python/merlin/dse/hardware_space.py::npu_model          # OPEN: cost_model_from_npu() (L29) turns an npu_model HardwareConfig — offchip_link_width_bits, mxu0_matmul_latency_cycles, vmem_bytes_per_cycle, vmem_size — into a cost-model parameter point. npu_model's own hardware pin says "Not RTL, but a verdict-bearing input". The function is currently UNREFERENCED (no caller anywhere in the repo). Retire by deleting it, or by deriving the same quantities from the target's arc model.

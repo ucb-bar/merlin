@@ -1,0 +1,67 @@
+{
+  "generated": "2026-09-07",
+  "status": "diagnostic",
+  "scope": "SpaceMiT K1, single-core warm inference, INT8 W8A8/qd8 whole-model comparison; lower latency is better",
+  "methods": [
+    {
+      "id": "executorch",
+      "label": "ExecuTorch + XNNPACK"
+    },
+    {
+      "id": "merlin",
+      "label": "Merlin generated"
+    },
+    {
+      "id": "merlin_xnnpack",
+      "label": "Merlin + XNNPACK kernels"
+    }
+  ],
+  "models": [
+    {
+      "model": "LSTMNetVIT",
+      "executorch_ms": 51.943386333333336,
+      "merlin_ms": 130.879523,
+      "merlin_xnnpack_ms": null,
+      "merlin_kind": "measured",
+      "merlin_xnnpack_kind": "blocked",
+      "source": "figures/k1_executorch_status_20260906.json:int8_one_core.models[LSTMNetVIT]",
+      "note": "Accepted full-output Merlin champion. ExecuTorch is the identity-matched N=1/N=4 warm slope."
+    },
+    {
+      "model": "SmallLLaMA",
+      "executorch_ms": 1.880543666666667,
+      "merlin_ms": 2.02735826,
+      "merlin_xnnpack_ms": null,
+      "merlin_kind": "measured",
+      "merlin_xnnpack_kind": "blocked",
+      "source": "Merlin: out/artifacts/measurements/k1_spacemit/small_llama_int8_consistent/mr248_lmul4_interleaved_c1_20260907.json (MR4 median of three full-output launches); ExecuTorch qd8 warm slope derived from out/artifacts/measurements/k1_spacemit/small_llama/cross_framework_v1_20260905T081335Z_b24eeca/baseline_result.json (N=1, total=5.174957 ms) and cross_framework_v1_20260905T081411Z_b24eeca/baseline_result.json (N=4, total=10.816588 ms): (total4-total1)/3",
+      "note": "MR4 is the measured per-model winner over MR2 and MR8; all nine interleaved launches are full-output and bit-exact across arms. Both frameworks use dynamic-activation/per-channel-weight INT8. The peer ratio remains diagnostic because ExecuTorch was captured separately."
+    },
+    {
+      "model": "TinyLLaMA",
+      "executorch_ms": 1179.5629746666668,
+      "merlin_ms": 1235.398572,
+      "merlin_xnnpack_ms": null,
+      "merlin_kind": "measured",
+      "merlin_xnnpack_kind": "blocked",
+      "source": "figures/k1_executorch_status_20260906.json:int8_one_core.models[TinyLlama]",
+      "note": "Full 256k-output run. Merlin is the best of three interleaved launches; ExecuTorch is the fresh identity-matched N=1/N=4 warm slope."
+    },
+    {
+      "model": "SmolVLA",
+      "executorch_ms": 42309.59772433333,
+      "merlin_ms": 120000.0,
+      "merlin_xnnpack_ms": null,
+      "merlin_kind": "lower_bound",
+      "merlin_xnnpack_kind": "blocked",
+      "source": "figures/k1_executorch_status_20260906.json:int8_one_core.models[smolVLA]",
+      "note": "Merlin exceeded the 120 s single-inference deadline; 120000 ms is a lower bound, not a completed measurement. ExecuTorch is an N=1/N=4 warm slope using a recomputed seeded-random fp32 reference."
+    }
+  ],
+  "blocked_backend": {
+    "method": "merlin_xnnpack",
+    "reason": "No W8A8 Merlin+XNNPACK measurement exists: the qd8 board shim is intentionally fail-closed until its dynamic activation quantization, qc8w packing, RVV call ABI, and quantization-aware correctness gate are validated on K1.",
+    "code": "merlin/python/merlin/runtime/backends/xnnpack_board/__init__.py:165"
+  },
+  "comparability": "Diagnostic, not a paired certification set. Model identity and validation are strongest for LSTMNetVIT and TinyLLaMA; SmallLLaMA combines a recorded Merlin result with a separate fresh ExecuTorch pair; SmolVLA uses a timeout lower bound and a seeded-random ExecuTorch reference."
+}

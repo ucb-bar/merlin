@@ -63,7 +63,7 @@ so nothing in the repo uses this today. Adapted, not exercised.
 ## Provenance, and what was deliberately not ported
 
 These files derive from `build_tools/firesim/` in the **deprecated IREE-based merlin** at
-`/scratch2/agustin/merlin` (a different project — see the two-merlins distinction). That tree
+a separate IREE-era checkout (a different project — see the two-merlins distinction). That tree
 targets IREE/VMFB bare-metal; we target a Zephyr application plus merlin's own data-driven C
 runtime. What changed, and what was left behind:
 

@@ -10,13 +10,18 @@ Fails (exit 1) if any of:
   * a TRACKED file has a generated extension (.png/.svg/.pdf/.zip/.jsonl) outside out/artifacts/
     (and not allowlisted);
   * a versioned product dir out/artifacts/<topic>/v*/<leaf>/ is missing manifest.yaml;
-  * a `latest` symlink under out/artifacts/ is absolute or dangling.
+  * a `latest` symlink under out/artifacts/ is absolute or dangling;
+  * (--staged) a newly ADDED file under out/ that .gitignore would ignore, i.e. one that only got
+    in via `git add -f`. A gitignore rule cannot stop a force-add, so this is the only guard for
+    the class: ~1,500 raw run dumps (~200 MB) were force-added under out/artifacts/ in one week
+    before it existed. Track a product by adding a reviewed negation, never by forcing.
 
 Usage:
   check_artifact_layout.py             # full working tree (tracked files)
   check_artifact_layout.py --staged    # only staged files (pre-commit)
   check_artifact_layout.py --stop-hook  # emit Claude Code Stop-hook JSON instead of plain text
 """
+
 from __future__ import annotations
 
 import json
@@ -27,8 +32,19 @@ from pathlib import Path, PurePosixPath
 
 GENERATED_EXTS = {".png", ".svg", ".pdf", ".zip", ".jsonl"}
 # Retired top-level generated roots (consolidated under out/) + legacy forbidden locations.
-FORBIDDEN_ROOTS = ("runs/", "artifacts/", "build/", "output/", "results/",
-                   "selfcheck_out/", "mined_knowledge/", "docs/presentation/")
+FORBIDDEN_ROOTS = (
+    "runs/",
+    "artifacts/",
+    "build/",
+    "output/",
+    "results/",
+    "selfcheck_out/",
+    "mined_knowledge/",
+    "docs/presentation/",
+    "figures/",
+)
+
+
 # Generated OUTPUT dirs that must NOT live inside the source tree (runs/ reports/ = experiment
 # output; case_study/ = dse-guidance generated analysis). They belong under artifacts/ or runs/.
 # (Curated INPUT corpora — benchmarks/*/recaptures*, region_maps, methods/, observability/,
@@ -45,6 +61,8 @@ def _is_forbidden_gen_dir(rel: str) -> bool:
         if top == "benchmarks" and leaf == "case_study":
             return True
     return False
+
+
 # genuinely-tracked source images, if any (verify with `git ls-files '*.png'` before adding).
 ALLOW_TRACKED_GEN: set[str] = {"docs/assets/merlin_transparent.png"}  # project logo (branding, not generated)
 # No blanket exemptions: every tracked path (incl. targetgen_evals) obeys the three-root rule.
@@ -59,16 +77,15 @@ SKIP_PREFIXES: tuple[str, ...] = ()
 # resolve against repo_root() -> the RETIRED top-level root, which no longer exists. This lints for
 # such literals in code so the class can't silently reappear. Only quoted literals with a leading
 # quote are matched (so subscripts like x["artifacts"] are not) and only the retired prefixes.
-_STALE_LITERALS = ('"artifacts/', "'artifacts/", '"runs/', "'runs/",
-                   '"build/generated', "'build/generated")
+_STALE_LITERALS = ('"artifacts/', "'artifacts/", '"runs/', "'runs/", '"build/generated', "'build/generated")
 # Lines that legitimately name a retired-root-shaped literal (NOT a repo-root-relative read):
 #   - run-dir/CWD-relative uses inside experiment sandboxes (shell `runs/${…}`, `.glob("runs/*")`);
 #   - the artifact-layout deny-test, which asserts the retired roots are rejected.
 # Keyed by "<relpath>:<substring that must be on the flagged line>".
 _STALE_LITERAL_ALLOW = {
-    "merlin/tests/infra/test_artifact_layout.py:artifacts/plots/foo.png",   # deny-test fixture
-    "merlin/experiments/gemmini_capsule_bench_v0/scripts/gen_fullsuite_report.py:.glob(\"runs/",
-    "merlin/experiments/gemmini_capsule_bench_v0/scripts/abc_watchdog.sh:runs/${",
+    "merlin/tests/infra/test_artifact_layout.py:artifacts/plots/foo.png",  # deny-test fixture
+    'merlin/experiments/capsule_bench/harness/gen_fullsuite_report.py:.glob("runs/',
+    "merlin/experiments/capsule_bench/harness/abc_watchdog.sh:runs/${",
 }
 
 
@@ -87,8 +104,7 @@ def _stale_path_literals(root: Path, tracked: list[str]) -> list[str]:
         for i, line in enumerate(lines, 1):
             for lit in _STALE_LITERALS:
                 if lit in line and ("out/" + lit[1:]) not in line:
-                    if any(a.startswith(rel + ":") and a.split(":", 1)[1] in line
-                           for a in _STALE_LITERAL_ALLOW):
+                    if any(a.startswith(rel + ":") and a.split(":", 1)[1] in line for a in _STALE_LITERAL_ALLOW):
                         continue
                     out.append(f"stale generated-root literal {lit[1:]!r} (use out/ prefix): {rel}:{i}")
                     break
@@ -96,24 +112,70 @@ def _stale_path_literals(root: Path, tracked: list[str]) -> list[str]:
 
 
 def _repo_root() -> Path:
-    out = subprocess.run(["git", "rev-parse", "--show-toplevel"],
-                         capture_output=True, text=True).stdout.strip()
-    return Path(out) if out else Path.cwd()
+    """The tree this gate is about. FAIL CLOSED -- a wrong root checks the wrong files.
+
+    A failed `git rev-parse` used to fall back to the CWD, so running the gate from anywhere outside a
+    repo silently re-pointed it at some other directory and it examined whatever happened to be there.
+    """
+    got = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True)
+    top = got.stdout.strip()
+    if not top:
+        raise OSError("`git rev-parse --show-toplevel` produced no path")
+    return Path(top)
 
 
 def _tracked(root: Path, staged: bool) -> list[str]:
+    """The work list. `check=True` because an empty list is indistinguishable from a clean tree.
+
+    Reproduced verbatim before this fix:
+    ``GIT_DIR=/nonexistent/x.git check_artifact_layout.py --staged`` printed ``artifact-layout: OK``
+    and exited 0 having examined nothing. See check_no_answer_keys.py, which fixed the same shape
+    first: "we could not look" is not "there is nothing to find".
+    """
     if staged:
         cmd = ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"]
     else:
         cmd = ["git", "ls-files"]
-    out = subprocess.run(cmd, cwd=root, capture_output=True, text=True).stdout
+    out = subprocess.run(cmd, cwd=root, capture_output=True, text=True, check=True).stdout
     return [ln for ln in out.splitlines() if ln.strip()]
+
+
+def _force_added_into_ignored(root: Path) -> list[str]:
+    """Staged ADDITIONS under out/ that the ignore rules would reject if they were not already in
+    the index. `--no-index` asks the rules alone; `check-ignore` exits 1 when nothing is ignored and
+    128 on a real error, so only the latter is a failure to look."""
+    added = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "--diff-filter=A", "--", "out/"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    paths = [ln for ln in added.splitlines() if ln.strip()]
+    if not paths:
+        return []
+    got = subprocess.run(
+        ["git", "check-ignore", "--no-index", "--stdin"],
+        cwd=root,
+        input="\n".join(paths) + "\n",
+        capture_output=True,
+        text=True,
+    )
+    if got.returncode not in (0, 1):
+        raise subprocess.CalledProcessError(got.returncode, got.args, got.stdout, got.stderr)
+    return [
+        f"force-added into an ignored out/ subtree (add a reviewed .gitignore negation instead): {ln}"
+        for ln in got.stdout.splitlines()
+        if ln.strip()
+    ]
 
 
 def check(root: Path, staged: bool) -> list[str]:
     violations: list[str] = []
     tracked = _tracked(root, staged)
     violations.extend(_stale_path_literals(root, tracked))
+    if staged:
+        violations.extend(_force_added_into_ignored(root))
     for rel in tracked:
         if any(rel.startswith(s) for s in SKIP_PREFIXES):
             continue
@@ -121,13 +183,15 @@ def check(root: Path, staged: bool) -> list[str]:
         if any(rel.startswith(r) for r in FORBIDDEN_ROOTS) or _is_forbidden_gen_dir(rel):
             violations.append(f"tracked file under a forbidden root: {rel}")
             continue
-        if (p.suffix.lower() in GENERATED_EXTS and not rel.startswith("out/artifacts/")
-                and rel not in ALLOW_TRACKED_GEN):
+        if p.suffix.lower() in GENERATED_EXTS and not rel.startswith("out/artifacts/") and rel not in ALLOW_TRACKED_GEN:
             violations.append(f"generated file '{rel}' tracked outside out/artifacts/")
     art = root / "out" / "artifacts"
     if art.is_dir():
         for v in art.glob("*/v*"):
-            if not v.is_dir():
+            # `v*` must mean a VERSION level -- v1, v12 -- not merely a directory whose name starts
+            # with the letter. `out/artifacts/probes/verify/` matched the glob and every unit under
+            # it was then reported as a product dir missing a manifest.
+            if not v.is_dir() or not v.name[1:].isdigit():
                 continue
             latest = v / "latest"
             if latest.is_symlink():
@@ -146,12 +210,24 @@ def check(root: Path, staged: bool) -> list[str]:
 def main(argv: list[str]) -> int:
     staged = "--staged" in argv
     stop_hook = "--stop-hook" in argv
-    root = _repo_root()
-    violations = check(root, staged)
+    try:
+        root = _repo_root()
+        violations = check(root, staged)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        reason = (
+            f"artifact-layout: could not list the files to examine ({exc}); NOTHING was "
+            f"examined, which is not the same as clean. Fix the tree/index and re-run."
+        )
+        if stop_hook:
+            print(json.dumps({"decision": "block", "reason": reason}))
+            return 0  # stop-hook signals via JSON, not exit code
+        sys.stderr.write(f"[FAIL] {reason}\n")
+        return 1
     if stop_hook:
         if violations:
-            print(json.dumps({"decision": "block",
-                              "reason": "Artifact-layout violations:\n- " + "\n- ".join(violations)}))
+            print(
+                json.dumps({"decision": "block", "reason": "Artifact-layout violations:\n- " + "\n- ".join(violations)})
+            )
         else:
             print(json.dumps({}))
         return 0  # stop-hook signals via JSON, not exit code

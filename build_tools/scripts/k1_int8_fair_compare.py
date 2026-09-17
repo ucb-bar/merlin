@@ -1,0 +1,969 @@
+#!/usr/bin/env python3
+"""Ours vs ExecuTorch on one int8 model, measured so the ratio actually means something.
+
+Five things have to hold at once for an ours-vs-ExecuTorch int8 number to be citable, and every
+published ratio in this repo so far has broken at least one of them:
+
+1. **Named ARITHMETIC.** ``variant="int8"`` defaults to ExecuTorch's weight-only module swap,
+   whose dequant const-folds into an fp32 const weight that XNNPACK partitions as a normal fp32
+   GEMM — so that cell measures fp32 compute with int8 *storage* and never reaches an int8 ukernel.
+   Merlin uses TorchAO's symmetric per-token recipe; XNNPACK qd8 uses affine activation qparams.
+   This script records both names and refuses to call them bit-identical. It separately reports a
+   whole-system comparison only when both clear the same absolute fp32 quality bar.
+
+2. **The same PROTOCOL.** ExecuTorch's runner has no warmup and averages its cold first execution
+   into ``--num_executions``; merlin's certify path is min-of-n after warmup. On small_llama int8
+   ET's cold inference is 1.62x its warm one. So ET is measured at TWO Ns and the warm cost is the
+   slope, ``total(N) = cold + (N-1)*warm`` — not a single cold shot.
+
+3. **The same BUNDLE.** ``bundle.resolve()`` prefers ``<model>_<variant>_full`` over the truncated
+   ``_consistent``, so two runs of the "same" cell can be two different models.
+
+4. **The same CONDITIONS.** Two beam runs of a byte-identical frozen seed measured 1.9915x apart,
+   and nothing in either artifact could show why. So the arms are INTERLEAVED in one session and the
+   board conditions are read around every one of them: a drifting board then moves both arms
+   together instead of silently landing on one.
+
+5. **A PREDECLARED CONFIDENCE RULE.** Certification alternates adjacent whole-session pairs and
+   requires the one-sided lower confidence bound on ``ExecuTorch / Merlin`` to clear 1.05. Because
+   the harness may inspect the bound after several sample counts, each interim look uses a
+   Bonferroni-adjusted confidence level; stopping on a lucky early look cannot manufacture a win.
+
+Output is a JSON record carrying both walls, both recipes, the bundle, the protocol, and every
+conditions probe. It never computes a ratio it cannot justify — a missing field yields a refusal
+string, not a number.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import time
+from dataclasses import replace
+from pathlib import Path
+from statistics import median
+
+import numpy as np
+
+from merlin.baselines import executorch as et
+from merlin.baselines.bundle import int8_accuracy_bar
+from merlin.common.paths import repo_root
+from merlin.mining import k1
+from merlin.mining.registry import load_rvv_package
+from merlin.perf.paired import paired_speedup_confidence, shared_accuracy_verdict
+from merlin.runtime.backends import zephyr_model as zm
+
+
+def _conditions() -> dict | None:
+    """A board-conditions probe that never aborts the campaign. Unreadable is None (UNKNOWN), which
+    downstream refuses to compare against — it is never silently treated as 'same as before'."""
+    try:
+        return k1.board_conditions()
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
+def _host_conditions() -> dict:
+    """Load on the BUILD host, which decides whether a compile-ceiling refusal is reproducible.
+
+    Our arm's wall comes from the board and is insulated from this. The BUILD does not: tiny_llama's
+    whole-model clang was killed at ~880s while this shared 48-core host sat at load 46.6, so the
+    same command on an idle host may well finish inside the same ceiling. Without this number a
+    compile-timeout refusal reads as a property of the model, and a reader cannot tell whether to
+    retry or to fix something. Unreadable is UNKNOWN, never a comforting default.
+    """
+    out: dict = {}
+    try:
+        out["loadavg_1_5_15"] = list(os.getloadavg())
+    except OSError as e:  # noqa: BLE001
+        out["loadavg_1_5_15"] = None
+        out["loadavg_error"] = f"{type(e).__name__}: {e}"
+    try:
+        out["cpu_count"] = os.cpu_count()
+    except Exception as e:  # noqa: BLE001
+        out["cpu_count"] = None
+        out["cpu_count_error"] = f"{type(e).__name__}: {e}"
+    return out
+
+
+_MERLIN_PY = repo_root() / "merlin" / "python"
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def prepare_ours_binary(
+    model_dir: Path, pkg, work_root: Path, *, parallel_harts: int | None, dump_cap: int | None
+) -> dict:
+    """Build the exact Merlin executable once for every session in a certification campaign."""
+    multi_program = k1._is_multi_program(model_dir)
+    bwork = work_root / "prepared_binary"
+    if multi_program:
+        binary = k1.build_k1_session_binary(
+            model_dir, bwork, pkg, parallel_harts=parallel_harts, fallback_policy="forbid", dump_cap=dump_cap
+        )
+    else:
+        binary = k1.build_k1_binary(
+            model_dir,
+            bwork,
+            pkg,
+            parallel_harts=parallel_harts,
+            fallback_policy="forbid",
+            dump_cap=dump_cap,
+            max_session_steps=1,
+        )
+    return {"binary": str(binary), "work": str(bwork), "multi_program": multi_program}
+
+
+def ours_arm(
+    model_dir: Path,
+    pkg,
+    golden_refs: dict,
+    work_root: Path,
+    *,
+    n: int,
+    warmup: int,
+    iters: int,
+    parallel_harts: int | None = None,
+    dump_cap: int | None = 4096,
+    shared_bar: dict | None = None,
+    prepared: dict | None = None,
+) -> dict:
+    """Our side: n gated launches, each min-of-`iters` after `warmup` untimed.
+
+    The verdict is ``zephyr_model._gate``'s OWN ``ok``, not a threshold re-implemented here. That
+    distinction is the whole of P0.5: `_gate` is two-tier and W8A8-aware (T1 vs a W8A8 reference at
+    cos>0.999 / rel<1e-2 / per-element; T2 vs the fp32 golden at cos>0.99 + argmax), while the flat
+    `cos>0.9999 AND rel<1e-2` that `k1_op_profile` applies is an fp32-strict bar. On the very config
+    this script exists to measure they disagree on identical numbers -- cos=0.9999078512191772,
+    rel=0.014796391526079668 -- and the flat bar rejects a run the principled gate accepts. Copying
+    the flat bar here is exactly the bug this measured on its first launch.
+
+    ``golden_refs`` is a ``{tier: array}`` dict and the TIER KEYS MATTER: passing a W8A8 golden under
+    the "fp32" key grades int8 output by fp32 rules and, worse, hides that the w8a8 tier was never in
+    play. `_gate` reports `tiers` / `tier_ok` for exactly that reason.
+    """
+    from merlin.baselines import rvv_audit as _rvv_audit
+
+    walls, gated, blocker = [], 0, None
+    rvv_cov = None
+    conds = []
+    last_tiers = last_tier_ok = last_cos = last_rel = None
+    last_gate = None
+    ungated_walls: list[int] = []
+    for i in range(n):
+        conds.append(_conditions())
+        try:
+            # EMBED ONE SESSION STEP, NOT THE WHOLE CORPUS. This harness times one input run
+            # repeatedly; it never walks a session trajectory. `c_runtime.generate` otherwise
+            # emits every declared step as C literals -- resnet50 declares 256, which is a
+            # 769,560,668-byte `model_io.h` and ~7 GB of clang RSS for stimulus the measurement
+            # does not use. Step 0 is the graded one (verified: session_inputs[0] == inputs.npz's
+            # first input, session_goldens[0] == golden_w8a8.npy), and the cap truncates the
+            # correctness/quality references alongside the streams so step k still meets
+            # reference k. A bundle declaring no session is unaffected.
+            if prepared is None:
+                res = k1.run_on_k1(
+                    model_dir,
+                    work_root / f"ours_{i}",
+                    pkg,
+                    timeout=1800,
+                    op_profile=False,
+                    iters=iters,
+                    warmup=warmup,
+                    parallel_harts=parallel_harts,
+                    max_session_steps=1,
+                    dump_cap=dump_cap,
+                    fallback_policy="forbid",
+                )
+                object_work = work_root / f"ours_{i}" / "rvv"
+            else:
+                run_env = (
+                    {"MERLIN_SESSION_REPEATS": str(iters), "MERLIN_SESSION_WARMUPS": str(warmup)}
+                    if prepared.get("multi_program")
+                    else {"MERLIN_ITERS": str(iters), "MERLIN_WARMUP": str(warmup)}
+                )
+                object_work = Path(prepared["work"])
+                res = k1.run_binary_on_k1(
+                    model_dir,
+                    object_work,
+                    pkg,
+                    Path(prepared["binary"]),
+                    timeout=1800,
+                    env=run_env,
+                    capture_full_output=dump_cap is None,
+                    parallel_harts=parallel_harts,
+                )
+            g = zm._gate(res["prefix"], golden_refs, min_coverage=1.0 if shared_bar is not None else 0.0)
+            # WHAT FRACTION OF THE OUTPUT THIS SCORE COVERS. The board harness prints at most
+            # MERLIN_DUMP_CAP elements, and _gate truncates the reference to match, so a prefix
+            # score reads exactly like a whole-output one. On tiny_llama that meant grading 4096 of
+            # 256000 logits -- 1.6%, and specifically token 0, the one position W8A8 quantization
+            # destroys for every implementation including the independent reference (torchao itself
+            # scores -0.32 there). It reported cos 0.8925 and looked like a codegen defect; the full
+            # tensor is cos 0.9532, slightly BETTER than the reference's own 0.9487.
+            if not g.get("comparison_complete", True):
+                print(
+                    f"  [ours {i}] PARTIAL OUTPUT: gate compared {g.get('n_compared')} of "
+                    f"{g.get('n_reference')} elements ({g.get('compared_fraction', 0):.1%}) — "
+                    "the cos/rel below are a PREFIX score, NOT the model's accuracy",
+                    flush=True,
+                )
+            shared = shared_accuracy_verdict(g, shared_bar) if shared_bar is not None else None
+            cos, rel = g.get("cos"), g.get("rel")
+            ok = shared["passes"] if shared is not None else g.get("ok")
+            last_gate = {k: v for k, v in g.items() if isinstance(v, (int, float, bool))}
+            last_tiers, last_tier_ok = g.get("tiers"), g.get("tier_ok")
+            last_cos, last_rel = cos, rel
+            if not ok:
+                blocker = (
+                    f"shared accuracy failed: {shared['reason']}"
+                    if shared is not None
+                    else f"gate failed: cos={cos} rel={rel} tiers={g.get('tiers')} tier_ok={g.get('tier_ok')}"
+                )
+                # KEEP THE WALL THE BOARD ALREADY PAID FOR. The ratio still refuses -- an ungated
+                # wall never enters `walls` and so can never reach `min_wall_ns` or a speedup --
+                # but discarding the number entirely means a cell that RAN reports nothing at all.
+                # resnet50_v1_5 does exactly this: it builds, runs, and returns a stable
+                # cos 0.998278 / rel 0.047153 on every launch, and the row came back with no
+                # timing whatsoever while ExecuTorch's 884.774 ms sat measured beside it. This is
+                # the same reasoning as the reference-side fix that kept a paid-for ET wall; our
+                # arm simply never got it. Recorded under a name that cannot be mistaken for a
+                # gated one.
+                ungated_walls.append(res["metrics"]["wall_ns"])
+                print(f"  [ours {i}] NOT_GATED wall_ns={res['metrics']['wall_ns']} {blocker}", flush=True)
+                continue
+            walls.append(res["metrics"]["wall_ns"])
+            gated += 1
+            # IS THIS EVEN VECTORIZED? A transform failure is caught as a whole-model scalar
+            # fallback, which is CORRECT and much slower -- bit-identical numerics with a 5x wall.
+            # Without this the two are indistinguishable from the outside, and the regression gets
+            # attributed to the lever's tiling choice instead of to the lever not surviving lowering.
+            if rvv_cov is None:
+                obj = object_work / "model.o"
+                if obj.is_file():
+                    try:
+                        rep = _rvv_audit.audit_binary(obj)
+                        # The MODEL-level verdict belongs to the compute-bearing symbol, not to a
+                        # list of zero-vector symbols: `_mlir_ciface_forward` only unpacks memref
+                        # descriptors, so it is always vector==0 and is flagged in a build that
+                        # vectorized perfectly as well as in one that did not. Reading a fallback
+                        # off that list misattributed a devectorization of `forward` (0.399 ->
+                        # 0.256) as a whole-model scalar fallback earlier today.
+                        _cs = rep.compute_symbol()
+                        rvv_cov = {
+                            "coverage_overall": rep.coverage_overall,
+                            "vector": rep.vector,
+                            "scalar_compute": rep.scalar_compute,
+                            "compute_symbol": (_cs[0] if _cs else None),
+                            "compute_symbol_coverage": (_cs[1].coverage if _cs else None),
+                            "zero_vector_symbols": sorted(
+                                n for n, sym in rep.by_symbol.items() if sym.is_scalar_fallback
+                            )[:12],
+                        }
+                    except Exception as _e:  # never let a diagnostic break a measurement
+                        rvv_cov = {"error": f"{type(_e).__name__}: {_e}"}
+            print(
+                f"  [ours {i}] wall_ns={res['metrics']['wall_ns']} cos={cos:.7f} rel={rel} "
+                f"tier_ok={g.get('tier_ok')} tiers={g.get('tiers')}",
+                flush=True,
+            )
+        except Exception as e:  # noqa: BLE001
+            blocker = f"{type(e).__name__}: {str(e)[:300]}"
+            print(f"  [ours {i}] BLOCKED — {blocker}", flush=True)
+            break
+    conds.append(_conditions())
+    return {
+        "ok": gated > 0,
+        "n_gated": gated,
+        "walls": walls,
+        "min_wall_ns": min(walls) if walls else None,
+        "median_wall_ns": median(walls) if walls else None,
+        # Ungated walls are kept SEPARATELY and never merged into `walls`, so no ratio can be
+        # computed from one by accident. They exist so a refused cell still says how fast the
+        # thing that ran was.
+        "ungated_walls": ungated_walls,
+        "min_ungated_wall_ns": min(ungated_walls) if ungated_walls else None,
+        # The FULL gate record, not the collapsed pair. `_gate` sets out["rel"] to the W8A8
+        # tier's score when that tier is present, so keeping only ("cos","rel") silently drops
+        # fp32_rel -- the one number comparable with a reference that scored against fp32. That
+        # omission produced a false "ExecuTorch is more accurate" from this very artifact.
+        "gate": dict(last_gate or {}, tiers=last_tiers, tier_ok=last_tier_ok, cos=last_cos, rel=last_rel),
+        # WHICH reference each of our tiers was scored against, so a consumer can tell whether
+        # it may be compared with the other side's number at all.
+        # Derived from the tiers ACTUALLY in play, not a fixed pair. A refused tier (e.g. an
+        # fp32 golden that turned out to be a copy of the W8A8 one) must not appear here
+        # claiming a reference it never had.
+        "accuracy_reference_by_tier": {t: f"capture_golden_{t}" for t in sorted(golden_refs)},
+        "protocol": {"warmup": warmup, "iters": iters, "launches": n, "pick": "min-of-n"},
+        "board_conditions": conds,
+        "blocker": blocker,
+        "shared_accuracy": (shared_accuracy_verdict(last_gate or {}, shared_bar) if shared_bar is not None else None),
+        "dump_cap": dump_cap,
+        # Vector coverage of the code that produced these walls. A wall without it cannot
+        # distinguish "this lever is slow" from "this lever did not survive lowering".
+        "rvv": rvv_cov,
+    }
+
+
+def et_arm(model: str, *, qd8: bool, n_lo: int, n_hi: int, cpu_threads: int | None = None) -> dict:
+    """ExecuTorch at two Ns so the WARM cost is a slope, not a cold shot.
+
+    ``BaselineResult.e2e_wall_ns`` is already normalised per-inference by the producer, so the totals
+    are recovered by multiplying back by N before differencing.
+    """
+    recipe = "pt2e_qd8" if qd8 else "weight_only"
+    out: dict = {"recipe_requested": recipe, "n_lo": n_lo, "n_hi": n_hi, "runs": []}
+    totals: dict[int, float] = {}
+    for n in (n_lo, n_hi):
+        cond_before = _conditions()
+        try:
+            r = et.run_model(
+                model,
+                "int8",
+                qd8=qd8,
+                int8_whole_model=(not qd8) or None,
+                cpu_threads=cpu_threads,
+                num_executions=n,
+                run_board=True,
+                write=True,
+                reuse_export=True,
+            )
+            per_inf = getattr(r, "e2e_wall_ns", None)
+            rec = {
+                "n": n,
+                "status": r.status(),
+                "per_inference_ns": per_inf,
+                "total_ns": (per_inf * n) if per_inf else None,
+                "cos": r.cos,
+                "rel": r.rel,
+                # ExecuTorch's ahead-of-time work lands HERE, not in the execute line every ratio
+                # in this repo is taken against: the XNNPACK delegate prepacks weights into its
+                # blocked layout at delegate init. Whether our offline weight-transpose hoisting
+                # is the honest mirror of that, or an advantage we granted ourselves, is decided
+                # by this number -- which is why it is no longer dropped.
+                "load_ns": getattr(r, "load_ns", None),
+                # WHICH reference this row's cos/rel are against -- REPORTED by the arm that
+                # chose the golden, never assumed here. This was a hardcoded "recomputed_fp32",
+                # justified by a comment about the int8-subgraph/whole-model paths; the qd8 path
+                # does NOT force a recompute, so on the very recipe this harness exists to
+                # compare, the label was false and the mismatch check below could not fire.
+                # Empty = the producer did not record it = UNKNOWN, which the mismatch check
+                # must treat as a refusal rather than as agreement.
+                "accuracy_reference": getattr(r, "accuracy_reference", ""),
+                "quant_recipe": getattr(r, "quant_recipe", ""),
+                "bundle_id": getattr(r, "bundle_id", ""),
+                "gap_reason": r.gap_reason,
+                "board_conditions": {"before": cond_before, "after": _conditions()},
+            }
+            if per_inf:
+                totals[n] = per_inf * n
+        except Exception as e:  # noqa: BLE001
+            rec = {
+                "n": n,
+                "status": "error",
+                "error": f"{type(e).__name__}: {str(e)[:400]}",
+                "board_conditions": {"before": cond_before, "after": _conditions()},
+            }
+        out["runs"].append(rec)
+        print(
+            f"  [et {recipe} N={n}] {json.dumps({k: v for k, v in rec.items() if k != 'board_conditions'})}", flush=True
+        )
+    out["ok"] = bool(len(out["runs"]) == 2 and all(run.get("status") == "pass" for run in out["runs"]))
+    if out["ok"] and n_lo in totals and n_hi in totals and n_hi > n_lo:
+        warm = (totals[n_hi] - totals[n_lo]) / (n_hi - n_lo)
+        out["warm_ns"] = warm
+        out["cold_ns"] = totals[n_lo] - (n_lo - 1) * warm
+        out["cold_over_warm"] = (out["cold_ns"] / warm) if warm else None
+    else:
+        out["warm_ns"] = None
+        out["refusal"] = (
+            "cannot extract a warm slope: need a passing accuracy-gated wall at "
+            "BOTH N values; a "
+            "single-N number is mostly ExecuTorch's cold execution and is not a "
+            "comparand for a warm loop"
+        )
+    return out
+
+
+#: What OUR arm computes, always. Not a function of the reference.
+OURS_QUANT_RECIPE = "torchao_sym_per_token_w8a8"
+#: The reference kind used when the bundle actually provides an independent fp32 tier.
+OURS_ACCURACY_REFERENCE = "capture_golden_fp32"
+
+
+def ours_accuracy_reference(ours: dict) -> str:
+    """Which reference OUR fp32-comparable score was actually taken against, or "" for none.
+
+    The fp32 tier is the only one comparable IN KIND with a reference scored against fp32; our W8A8
+    tier answers a different (tighter) question and must not be ranked against an fp32-scored number.
+
+    A CONSTANT here would lie on exactly the bundles that need the truth most. When a bundle's
+    ``golden.npy`` turns out to be a byte-identical copy of its ``golden_w8a8.npy``, the fp32 tier is
+    refused (it is not an independent reference), so there IS no fp32-scored number on our side --
+    and reporting the constant anyway would pair the reference's genuine fp32 score with a `None` of
+    ours under a label claiming both were fp32. "" routes into the same UNKNOWN refusal the reference
+    side already gets when it fails to record its own basis, which is the honest answer.
+    """
+    return OURS_ACCURACY_REFERENCE if (ours.get("accuracy_reference_by_tier") or {}).get("fp32") else ""
+
+
+def same_rule_both_arms(ours: dict, arm: dict, ours_bundle: str) -> dict:
+    """Both arms' fp32 cos/rel under the same absolute int8 quality bar.
+
+    The two arms are graded by DIFFERENT rules today, and the asymmetry favours the reference.
+    ``baselines.bundle.int8_accuracy_bar`` derives a bar from the model's OWN quantization noise
+    (``rel = max(ABSOLUTE_INT8_REL, QUANT_EXCESS_K * floor_rel)``) and the ExecuTorch arm is held to
+    it; our arm is held to ``zephyr_model._gate``'s ABSOLUTE T1 (cos > 0.999, rel < 1e-2). On
+    tiny_llama that is cos>0.9487 / rel<3.8325 for them against cos>0.999 / rel<0.01 for us -- about
+    380x apart in rel -- so our arm is recorded NOT_GATED at rel 0.177 while their rel 0.106 passes,
+    on a bundle whose own fp32-vs-W8A8 distance dwarfs both numbers.
+
+    That does not make our gate wrong: T1 asks a TIGHTER and different question (did we implement
+    W8A8 the way the reference implementation does) and it should stay tight. But a reader comparing
+    the two cells must be able to see that the verdicts came from different bars, and what our arm
+    scores under the reference's own rule. This is recorded on the REFUSAL path too, because a cell
+    our stricter bar refused is exactly where the difference decides how the row reads.
+    """
+    try:
+        from merlin.baselines.bundle import FP32_TIER_MIN_COS
+
+        cos_thr, rel_thr = FP32_TIER_MIN_COS, None
+        g = ours.get("gate") or {}
+        o_cos, o_rel = g.get("fp32_cos"), g.get("fp32_rel")
+        runs = arm.get("runs") or []
+        e_cos = next((r.get("cos") for r in runs if r.get("cos")), None)
+        e_rel = next((r.get("rel") for r in runs if r.get("rel")), None)
+
+        def _passes(c, r):
+            if c is None or cos_thr is None:
+                return None  # UNKNOWN, never a silent pass
+            return bool(c > cos_thr)
+
+        return {
+            "basis": "absolute shared fp32 int8 quality gate",
+            "cos_threshold": cos_thr,
+            "rel_threshold": rel_thr,
+            "ours": {"cos": o_cos, "rel": o_rel, "passes": _passes(o_cos, o_rel)},
+            "executorch": {"cos": e_cos, "rel": e_rel, "passes": _passes(e_cos, e_rel)},
+            "note": (
+                "same fp32 reference kind and cosine threshold on both arms; relative "
+                "L2 is reported but not gated because the established int8 T2 contract "
+                "is cosine-based (decision/top-1 checks remain model-specific)"
+            ),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "unavailable", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"}
+
+
+def verdict(ours: dict, arm: dict, ours_bundle: str) -> dict:
+    """The ratio, or a concrete refusal. Never a number whose basis cannot be shown."""
+    from merlin.compare.executorch_column import (
+        accuracy_reference_mismatch_reason,
+        bundle_mismatch_reason,
+        layout_equivalence,
+        quant_recipe_mismatch_reason,
+    )
+
+    ours_w = ours.get("min_wall_ns")
+    et_w = arm.get("warm_ns")
+    if not ours_w or not et_w:
+        return {
+            "status": "not_measured",
+            "reason": arm.get("refusal") or ours.get("blocker") or "one arm produced no wall",
+            # A cell our stricter bar refused is exactly where a reader needs to see what the
+            # bar the REFERENCE is judged by would have said about the same numbers.
+            "same_rule_both_arms": same_rule_both_arms(ours, arm, ours_bundle),
+            "ours_ungated_wall_ns": ours.get("min_ungated_wall_ns"),
+        }
+    ref_bundle = next((r.get("bundle_id", "") for r in arm["runs"] if r.get("bundle_id")), "")
+    ref_recipe = next((r.get("quant_recipe", "") for r in arm["runs"] if r.get("quant_recipe")), "")
+    ref_acc = next((r.get("accuracy_reference", "") for r in arm["runs"] if r.get("accuracy_reference")), "")
+    ours_acc = ours_accuracy_reference(ours)
+    shared_quality = same_rule_both_arms(ours, arm, ours_bundle)
+
+    # A deployment comparison may legitimately compare different quantization recipes, but it
+    # may never compare different (or unknown) model bundles or accuracy references. Check those
+    # identities before constructing a numerical deployment result so a refusal cannot contain a
+    # nested object that still says ``status=measured``.
+    why_bundle = bundle_mismatch_reason(ours_bundle, ref_bundle)
+    why_acc = accuracy_reference_mismatch_reason(ours_acc, ref_acc)
+    identity_refusal = why_bundle or why_acc
+    if identity_refusal:
+        return {
+            "status": "not_comparable",
+            "reason": identity_refusal,
+            "deployment_comparison": {
+                "status": "not_comparable",
+                "reason": identity_refusal,
+                "scope": "whole-system warm latency; quantization recipes may differ",
+                "same_fp32_quality_gate": shared_quality,
+            },
+        }
+    # Ours is the merlin int8 datapath by construction (the package is int8) and its recipe name is
+    # a CONSTANT -- never derived from what the reference ran. Deriving it from the comparand is how
+    # a guard ends up comparing the reference against itself: the qd8 arm passed that way once, and
+    # the mismatch check could not have fired on any input. TorchAO symmetric and XNNPACK affine
+    # qd8 are deliberately distinct recipe names; the deployment comparison below uses a shared
+    # fp32 quality gate instead of pretending their intermediate integer codes are identical.
+    # Both guards refuse UNKNOWN as firmly as a mismatch.
+    deployment = {
+        "status": (
+            "measured"
+            if shared_quality.get("ours", {}).get("passes") is True
+            and shared_quality.get("executorch", {}).get("passes") is True
+            else "quality_gate_failed"
+        ),
+        "scope": "whole-system warm latency; quantization recipes differ",
+        "same_fp32_quality_gate": shared_quality,
+    }
+    if deployment["status"] == "measured":
+        deployment.update(speedup=et_w / ours_w, beats_executorch=et_w > ours_w, ours_ns=ours_w, executorch_ns=et_w)
+    why_recipe = quant_recipe_mismatch_reason(OURS_QUANT_RECIPE, ref_recipe)
+    if why_recipe:
+        return {"status": "not_comparable", "reason": why_recipe, "deployment_comparison": deployment}
+    # A speed number without its accuracy is not a result on a quantized datapath -- but an
+    # accuracy number scored against a different reference is not a comparison either. Report the
+    # pair, or refuse it, on the same fail-closed terms as the ratio itself.
+    if why_acc:
+        accuracy = {
+            "status": "not_comparable",
+            "reason": why_acc,
+            "ours": {
+                "reference": ours_acc,
+                "cos": ours.get("gate", {}).get("fp32_cos"),
+                "rel": ours.get("gate", {}).get("fp32_rel"),
+            },
+            "executorch": {
+                "reference": ref_acc,
+                "cos": next((r.get("cos") for r in arm["runs"] if r.get("cos")), None),
+                "rel": next((r.get("rel") for r in arm["runs"] if r.get("rel")), None),
+            },
+        }
+    else:
+        accuracy = {
+            "status": "measured",
+            "reference": ref_acc,
+            "ours_cos": ours.get("gate", {}).get("fp32_cos"),
+            "ours_rel": ours.get("gate", {}).get("fp32_rel"),
+            "executorch_cos": next((r.get("cos") for r in arm["runs"] if r.get("cos")), None),
+            "executorch_rel": next((r.get("rel") for r in arm["runs"] if r.get("rel")), None),
+        }
+    accuracy["same_rule_both_arms"] = same_rule_both_arms(ours, arm, ours_bundle)
+
+    # ExecuTorch's weight prepacking happens at delegate init, OUTSIDE the execute line this ratio
+    # divides. Surfaced beside the ratio so the reader can see what each side did not pay for.
+    load = next((r.get("load_ns") for r in arm["runs"] if r.get("load_ns")), None)
+    # If the bundle check passed only because the two are a DECLARED layout-only pair, say so in the
+    # artifact -- the ratio is legitimate only while both sides do their weight layout once outside
+    # the timed window (theirs at delegate init, ours at build time), and a reader must be able to
+    # see that assumption rather than infer it.
+    _layout_eq = layout_equivalence(ours_bundle, ref_bundle) if ours_bundle != ref_bundle else None
+    return {
+        "status": "measured",
+        "ours_ns": ours_w,
+        "executorch_warm_ns": et_w,
+        "bundle_layout_equivalence": _layout_eq,
+        "ours_over_executorch": ours_w / et_w,
+        "speedup_vs_executorch": et_w / ours_w,
+        "beats_executorch": et_w > ours_w,
+        "executorch_load_ns": load,
+        "accuracy": accuracy,
+    }
+
+
+def _dump_cap(value: str) -> int | None:
+    if value.strip().lower() in ("full", "none"):
+        return None
+    cap = int(value)
+    if cap < 1:
+        raise argparse.ArgumentTypeError("dump cap must be positive or 'full'")
+    return cap
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--model", required=True, help="model name for the ExecuTorch arm (e.g. small_llama)")
+    ap.add_argument("--model-dir", required=True, help="our capture bundle (out/artifacts/recaptures/...)")
+    ap.add_argument("--baseline", required=True, help="our rvv package (out/artifacts/targets/rvv/...)")
+    ap.add_argument(
+        "--features", default=None, help="comma-separated compiler features for OUR arm; omitted = the package's own"
+    )
+    ap.add_argument("--n", type=int, default=3, help="gated launches for our arm")
+    ap.add_argument("--warmup", type=int, default=2)
+    ap.add_argument("--iters", type=int, default=5)
+    ap.add_argument("--et-n-lo", type=int, default=1)
+    ap.add_argument("--et-n-hi", type=int, default=6)
+    ap.add_argument(
+        "--also-weight-only",
+        action="store_true",
+        help="additionally measure ExecuTorch's weight-only recipe as a LABELLED second "
+        "column (it is not int8 compute; kept because it is the historical cell)",
+    )
+    ap.add_argument(
+        "--ref-cpu-threads",
+        type=int,
+        default=None,
+        help="cores the REFERENCE arm may use (its --cpu_threads). Left unset its "
+        "threadpool takes every online CPU -- 8 on this board -- and the count is "
+        "NOT readable from the build flags, so an unpinned ratio silently compares "
+        "our core count against theirs. Pass 1 alongside a 1-core ours arm for a "
+        "per-core comparison, or match it to --parallel-harts.",
+    )
+    ap.add_argument(
+        "--parallel-harts",
+        type=int,
+        default=None,
+        help="cores OUR arm may use (default: 1, single-threaded). The board has 8, and "
+        "the reference is built with pthreadpool ON and a shared XNNPACK "
+        "workspace, so a default run compares our ONE core against however many "
+        "ExecuTorch takes. Recorded on every cell either way, so no ratio is "
+        "readable without knowing the core counts it was taken at.",
+    )
+    ap.add_argument(
+        "--compile-timeout-s",
+        type=int,
+        default=3600,
+        help="ceiling on any single build command for OUR arm. The module default is "
+        "900s, which is a KERNEL budget: a whole-model int8 clang invocation "
+        "exceeds it (tiny_llama's was killed at ~880s), and the cell then reports "
+        "BLOCKED, indistinguishable from a real codegen defect. Sized to the cell "
+        "here so the ceiling is a stated parameter of the run, not an ambient "
+        "constant nobody passed.",
+    )
+    ap.add_argument(
+        "--dump-cap",
+        type=_dump_cap,
+        default=4096,
+        help="output elements used for accuracy, or 'full'; certification requires full",
+    )
+    ap.add_argument(
+        "--certify", action="store_true", help="run alternating paired sessions with full-output shared accuracy"
+    )
+    ap.add_argument("--min-pairs", type=int, default=7)
+    ap.add_argument("--max-pairs", type=int, default=15)
+    ap.add_argument("--confidence-margin", type=float, default=1.05)
+    ap.add_argument("--bootstrap-resamples", type=int, default=10_000)
+    ap.add_argument("--out", default=None)
+    a = ap.parse_args()
+
+    md = Path(a.model_dir)
+    base = load_rvv_package(a.baseline)
+    # A package's own compiler_features ARE part of what it is, so an OMITTED --features means "what
+    # this package was certified with" and an explicitly empty one means the frozen baseline. Same
+    # rule as k1_op_profile; `replace` is how the features actually reach the build (there is no
+    # with_features on the package, and silently dropping them would measure the wrong lowering).
+    feats = (
+        [f.strip() for f in a.features.split(",") if f.strip()]
+        if a.features is not None
+        else list(base.compiler_features or [])
+    )
+    ftag = "base" if not feats else "_".join(sorted(feats))[:40]
+    pkg = replace(base, run_id=f"tr_fair_{ftag}", compiler_features=feats)
+    print(
+        f"[features] {feats or '<baseline>'} ({'from the package' if a.features is None else 'from --features'})",
+        flush=True,
+    )
+    # Same golden rule as k1_op_profile: a W8A8 build graded against the weight-only golden fails
+    # cos for a CORRECT build, which reads as a regression rather than as the wrong reference.
+    # TIER-KEYED references. `_gate` decides which tier carries the verdict from these KEYS, so a
+    # W8A8 golden handed over under "fp32" both grades int8 output by fp32 rules and hides that the
+    # w8a8 tier was never in play -- the failure that cost a multi-hour hunt for a TinyLlama int8
+    # "board bug" that did not exist. Pass both when both exist so T1 (w8a8) and T2 (fp32+argmax)
+    # are live and the derived quantization-excess veto is measurable.
+    refs: dict = {}
+    if pkg.is_int8:
+        w = md / "golden_w8a8.npy"
+        if not w.is_file():
+            raise SystemExit(
+                f"{a.baseline} is int8 but {md.name} ships no golden_w8a8.npy — "
+                "recapture it rather than grading W8A8 output against the weight-only "
+                "golden (a missing w8a8 tier reads as a codegen defect)"
+            )
+        refs["w8a8"] = np.load(w)
+    # A SELF-REFERENTIAL fp32 tier is worse than no fp32 tier. Some bundles ship a golden.npy that
+    # is BYTE-IDENTICAL to golden_w8a8.npy (resnet50_v1_5 is one): the "fp32" reference is then the
+    # W8A8 reference wearing a different filename. Registering it anyway invents a second tier that
+    # can only ever agree with the first, so `_gate` reports a two-tier verdict built from one
+    # measurement, and the derived quantization-excess veto -- whose whole basis is the DISTANCE
+    # between the two goldens -- is computed against a distance of exactly zero. Refuse the tier and
+    # say why, rather than let a duplicated file read as independent corroboration.
+    fp32_note = ""
+    if (md / "golden.npy").is_file():
+        f = np.load(md / "golden.npy")
+        if "w8a8" in refs and np.array_equal(f, refs["w8a8"]):
+            fp32_note = (
+                " [fp32 tier REFUSED: golden.npy is byte-identical to golden_w8a8.npy, so "
+                "it is not an independent fp32 reference — recapture one to restore T2]"
+            )
+        else:
+            refs["fp32"] = f
+    if not refs:
+        raise SystemExit(f"{md} ships no golden to gate against")
+    print(f"[golden] tiers={sorted(refs)}  [bundle] {md.name}{fp32_note}", flush=True)
+
+    shared_bar = None
+    if a.certify:
+        if a.dump_cap is not None:
+            raise SystemExit("--certify requires --dump-cap full")
+        if a.min_pairs < 2 or a.max_pairs < a.min_pairs:
+            raise SystemExit("--certify requires 2 <= --min-pairs <= --max-pairs")
+        if a.confidence_margin <= 1.0:
+            raise SystemExit("--confidence-margin must exceed parity")
+        ours_cores = int(a.parallel_harts) if a.parallel_harts else 1
+        if a.ref_cpu_threads is None or int(a.ref_cpu_threads) != ours_cores:
+            raise SystemExit("--certify requires equal explicit --ref-cpu-threads and ours cores")
+        if "fp32" not in refs:
+            raise SystemExit("--certify requires an independent golden.npy fp32 tier")
+        try:
+            identity = et.et_identity()
+        except Exception as exc:
+            raise SystemExit(f"ExecuTorch identity preflight failed: {exc}") from exc
+        shared_bar = int8_accuracy_bar(md)
+        print(f"[certify] ExecuTorch identity={identity.as_dict()} shared_bar={shared_bar}", flush=True)
+
+    # Key the build tree by the FEATURE SET as well as the bundle. One directory per bundle means
+    # the next run overwrites the emitted object of the last one, and the emitted object is the only
+    # thing that can explain a result: a 5.1x regression whose numerics were bit-identical -- the
+    # signature of a silent scalar fallback -- became un-diagnosable because the control run
+    # launched to attribute it had already replaced the binary that produced it.
+    _feat_key = hashlib.sha256(",".join(sorted(feats or ())).encode()).hexdigest()[:10] if feats else "nofeatures"
+    work = Path(repo_root()) / "out" / "build" / "fair_compare" / md.name / _feat_key
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "FEATURES.txt").write_text("\n".join(sorted(feats or ())) + "\n", encoding="utf-8")
+    print(f"[work] {work}", flush=True)
+
+    # WHAT SOURCE PRODUCED THIS. The commit says which revision is checked out; on a tree several
+    # sessions are editing at once that is not what the compiler READ. A measurement here built from
+    # another session's uncommitted edit and the result was attributed to the feature under test:
+    # a run started at 15:42:18 picked up a quantization fix committed at 15:43:24, so a wall and an
+    # accuracy improvement produced by that fix were both credited to the flag being measured.
+    # Feature-keyed build dirs key on features and codegen_env keys on the environment; neither sees
+    # source state. `source_digest` is over the bytes actually read, so a dirty tree is identifiable
+    # instead of looking pinned.
+    # Bound at import from MERLIN_COMPILE_TIMEOUT_S, so it has to be re-bound after parsing.
+    k1._K1_CMD_TIMEOUT_S = int(a.compile_timeout_s)
+    print(f"[budget] compile ceiling {a.compile_timeout_s}s per build command", flush=True)
+
+    from merlin.common import provenance as _prov
+
+    _src = [
+        _MERLIN_PY / "merlin" / "llvmlower" / "passes_quant_int.py",
+        _MERLIN_PY / "merlin" / "llvmlower" / "impr_features.py",
+        _MERLIN_PY / "merlin" / "llvmlower" / "pipeline.py",
+        _MERLIN_PY / "merlin" / "llvmlower" / "quant_round.py",
+        _MERLIN_PY / "merlin" / "llvmlower" / "roundeven_intrinsic.py",
+        _MERLIN_PY / "merlin" / "llvmlower" / "residual_autovec.py",
+        _MERLIN_PY / "merlin" / "llvmlower" / "quant_passes.py",
+        _MERLIN_PY / "merlin" / "llvmlower" / "quant_scope.py",
+        _MERLIN_PY / "merlin" / "runtime" / "backends" / "zephyr_model.py",
+        _MERLIN_PY / "merlin" / "mining" / "k1.py",
+    ]
+    _src = [q for q in _src if q.is_file()]
+    try:
+        _src_digest = _prov.source_digest(_src)
+    except Exception as _e:  # a provenance stamp must not break a measurement
+        _src_digest = f"UNKNOWN:{type(_e).__name__}"
+    _dirty = sorted(
+        q.name
+        for q in _src
+        if subprocess.run(
+            ["git", "status", "--porcelain", "--", str(q)], cwd=repo_root(), capture_output=True, text=True
+        ).stdout.strip()
+    )
+    if a.certify and _dirty:
+        raise SystemExit(f"--certify requires clean compiler sources; dirty={_dirty}")
+    print(f"[source] digest={_src_digest} dirty={_dirty or 'none'}", flush=True)
+    _host = _host_conditions()
+    print(f"[host] loadavg={_host.get('loadavg_1_5_15')} cpus={_host.get('cpu_count')}", flush=True)
+    rec: dict = {
+        "model": a.model,
+        "ours_bundle": md.name,
+        "package": Path(a.baseline).name,
+        "golden_tiers": sorted(refs),
+        "started": time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
+        # The compiler sources as READ, plus which of them were uncommitted at the time.
+        # A non-empty `dirty` means this number cannot be reproduced from the commit alone.
+        "source_digest": _src_digest,
+        "source_dirty": _dirty,
+        # Load on the BUILD host at the start of the cell. The board wall is insulated from
+        # this; the compile ceiling is not, so a compile-timeout refusal has to be readable
+        # as "the host was saturated" vs "this model cannot be built in that budget".
+        "host": _host_conditions(),
+        "compile_timeout_s": int(a.compile_timeout_s),
+        # Cores each side was allowed. Ours defaults to 1; the reference's runner links
+        # pthreadpool and is built with a shared XNNPACK workspace, so its count is
+        # whatever its threadpool chooses and is NOT controlled here. A ratio taken across
+        # different core counts is a system comparison, not a compiler one, and the row has
+        # to carry enough for a reader to tell which it is looking at.
+        "cores": {
+            "ours": int(a.parallel_harts) if a.parallel_harts else 1,
+            "reference": (
+                int(a.ref_cpu_threads)
+                if a.ref_cpu_threads
+                else "UNKNOWN (pthreadpool default = every online CPU, 8 on this board; not pinned by this run)"
+            ),
+        },
+    }
+
+    if a.certify:
+        print("[certify] building Merlin once; every pair will execute this exact ELF", flush=True)
+        prepared_ours = prepare_ours_binary(md, pkg, work, parallel_harts=a.parallel_harts, dump_cap=a.dump_cap)
+        prepared_path = Path(prepared_ours["binary"])
+        prepared_ours["sha256"] = _sha256_file(prepared_path)
+        prepared_ours["size_bytes"] = prepared_path.stat().st_size
+        rec["prepared_ours"] = prepared_ours
+        pairs = []
+        confidence = None
+        for pair_index in range(a.max_pairs):
+            pair_work = work / f"pair_{pair_index:02d}"
+
+            def run_ours():
+                return ours_arm(
+                    md,
+                    pkg,
+                    refs,
+                    pair_work,
+                    n=1,
+                    warmup=a.warmup,
+                    iters=a.iters,
+                    parallel_harts=a.parallel_harts,
+                    dump_cap=a.dump_cap,
+                    shared_bar=shared_bar,
+                    prepared=prepared_ours,
+                )
+
+            def run_reference():
+                return et_arm(a.model, cpu_threads=a.ref_cpu_threads, qd8=True, n_lo=a.et_n_lo, n_hi=a.et_n_hi)
+
+            if pair_index % 2 == 0:
+                print(f"== pair {pair_index + 1}: ours -> ExecuTorch ==", flush=True)
+                ours, reference = run_ours(), run_reference()
+                order = "ours_then_executorch"
+            else:
+                print(f"== pair {pair_index + 1}: ExecuTorch -> ours ==", flush=True)
+                reference, ours = run_reference(), run_ours()
+                order = "executorch_then_ours"
+            ours_ns = ours.get("median_wall_ns")
+            reference_ns = reference.get("warm_ns")
+            accepted = bool(ours.get("ok") and reference.get("ok") and ours_ns and reference_ns)
+            pairs.append(
+                {
+                    "index": pair_index,
+                    "order": order,
+                    "accepted": accepted,
+                    "ours_ns": ours_ns,
+                    "executorch_ns": reference_ns,
+                    "ours": ours,
+                    "executorch": reference,
+                }
+            )
+            accepted_pairs = [pair for pair in pairs if pair["accepted"]]
+            if len(accepted_pairs) >= 2:
+                # There are (max-min+1) possible looks at the same campaign. Spend alpha equally
+                # across them so early stopping preserves the requested family-wise confidence.
+                looks = a.max_pairs - a.min_pairs + 1
+                adjusted_confidence = 1.0 - (0.05 / looks)
+                confidence = paired_speedup_confidence(
+                    [pair["ours_ns"] for pair in accepted_pairs],
+                    [pair["executorch_ns"] for pair in accepted_pairs],
+                    confidence=adjusted_confidence,
+                    margin=a.confidence_margin,
+                    resamples=a.bootstrap_resamples,
+                )
+            if len(accepted_pairs) >= a.min_pairs and confidence is not None and confidence["passes"]:
+                break
+        accepted_pairs = [pair for pair in pairs if pair["accepted"]]
+        status = (
+            "pass"
+            if confidence is not None and len(accepted_pairs) >= a.min_pairs and confidence["passes"]
+            else "blocked"
+            if len(accepted_pairs) < a.min_pairs
+            else "fail"
+        )
+        rec["paired_sessions"] = pairs
+        rec["certification"] = {
+            "status": status,
+            "required_margin": a.confidence_margin,
+            "min_pairs": a.min_pairs,
+            "max_pairs": a.max_pairs,
+            "sequential_looks": a.max_pairs - a.min_pairs + 1,
+            "familywise_confidence": 0.95,
+            "look_adjustment": "Bonferroni",
+            "accepted_pairs": len(accepted_pairs),
+            "full_output_required": True,
+            "shared_accuracy_bar": shared_bar,
+            "confidence": confidence,
+        }
+        rec["ours"] = pairs[-1]["ours"] if pairs else {}
+        rec["executorch_qd8"] = pairs[-1]["executorch"] if pairs else {}
+        rec["verdict_qd8"] = verdict(rec["ours"], rec["executorch_qd8"], md.name)
+        out = Path(a.out) if a.out else (work / "fair_compare.json")
+        out.write_text(json.dumps(rec, indent=2))
+        print(json.dumps(rec["certification"], indent=2))
+        print(f"[out] {out}")
+        return
+
+    # INTERLEAVED, ours first, so a board that drifts during the session moves both arms rather than
+    # landing the drift entirely on one of them.
+    print("== ours ==", flush=True)
+    rec["ours"] = ours_arm(
+        md, pkg, refs, work, n=a.n, warmup=a.warmup, iters=a.iters, parallel_harts=a.parallel_harts, dump_cap=a.dump_cap
+    )
+    print("== executorch qd8 (affine W8A8 reference) ==", flush=True)
+    rec["executorch_qd8"] = et_arm(a.model, cpu_threads=a.ref_cpu_threads, qd8=True, n_lo=a.et_n_lo, n_hi=a.et_n_hi)
+    if a.also_weight_only:
+        print("== executorch weight-only (LABELLED: not int8 compute) ==", flush=True)
+        rec["executorch_weight_only"] = et_arm(
+            a.model, cpu_threads=a.ref_cpu_threads, qd8=False, n_lo=a.et_n_lo, n_hi=a.et_n_hi
+        )
+    print("== ours (second pass, brackets the ET arms) ==", flush=True)
+    rec["ours_after"] = ours_arm(
+        md,
+        pkg,
+        refs,
+        work,
+        n=a.n,
+        warmup=a.warmup,
+        iters=a.iters,
+        parallel_harts=a.parallel_harts,
+        dump_cap=a.dump_cap,
+    )
+
+    rec["verdict_qd8"] = verdict(rec["ours"], rec["executorch_qd8"], md.name)
+    if a.also_weight_only:
+        rec["verdict_weight_only"] = verdict(rec["ours"], rec["executorch_weight_only"], md.name)
+    # Session drift, measured rather than assumed: if the two ours passes disagree by more than the
+    # board's own noise band, the ET arm between them sat on a moving board and the ratio is suspect.
+    w0, w1 = rec["ours"].get("min_wall_ns"), rec["ours_after"].get("min_wall_ns")
+    if w0 and w1:
+        drift = max(w0, w1) / min(w0, w1)
+        rec["session_drift"] = {
+            "ours_first_ns": w0,
+            "ours_second_ns": w1,
+            "ratio": drift,
+            "within_noise_band": drift <= 1.026,
+            "note": "K1 noise floor >=1.9%, band 2.6%; a larger drift means the "
+            "arms were not measured under one condition",
+        }
+    out = Path(a.out) if a.out else (work / "fair_compare.json")
+    out.write_text(json.dumps(rec, indent=2))
+    print(
+        json.dumps(
+            {k: v for k, v in rec.items() if k in ("verdict_qd8", "verdict_weight_only", "session_drift")}, indent=2
+        )
+    )
+    print(f"[out] {out}")
+
+
+if __name__ == "__main__":
+    sys.exit(main())

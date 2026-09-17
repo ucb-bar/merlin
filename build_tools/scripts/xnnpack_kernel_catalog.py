@@ -11,6 +11,7 @@ convert, pack/transpose, reductions, transcendental primitives with no Merlin op
 
 Run:  .venv/bin/python build_tools/scripts/xnnpack_kernel_catalog.py
 """
+
 from __future__ import annotations
 
 import json
@@ -28,7 +29,7 @@ from merlin.runtime.backends import xnnpack_board as xb  # noqa: E402
 _MAP: dict[str, tuple[str, str]] = {
     "f32-gemm": ("linalg.matmul (f32)", "mapped"),
     "f32-igemm": ("conv-as-matmul (f32)", "mapped"),
-    "f16-gemm": ("matmul (f16)", "expert-only"),      # no f16 codegen path today
+    "f16-gemm": ("matmul (f16)", "expert-only"),  # no f16 codegen path today
     "f16-igemm": ("conv (f16)", "expert-only"),
     "qd8-f32-qc8w-gemm": ("int8 matmul W8A8 (vwmacc)", "mapped"),
     "qd8-f32-qc4w-gemm": ("int4 matmul", "expert-only"),
@@ -39,7 +40,7 @@ _MAP: dict[str, tuple[str, str]] = {
     "qs8-igemm": ("int8 conv-as-matmul", "mapped"),
     "qu8-gemm": ("uint8 matmul", "partial"),
     "qu8-igemm": ("uint8 conv", "partial"),
-    "f32-dwconv": ("depthwise conv (f32)", "partial"),   # Merlin conv path exists; depthwise prim is a gap
+    "f32-dwconv": ("depthwise conv (f32)", "partial"),  # Merlin conv path exists; depthwise prim is a gap
     "f32-dwconv2d-chw": ("depthwise conv chw", "partial"),
     "f32-spmm": ("sparse matmul", "partial"),
     "f32-vgelu": ("gelu activation", "mapped"),
@@ -65,7 +66,7 @@ _MAP: dict[str, tuple[str, str]] = {
     "f32-maxpool": ("maxpool", "expert-only"),
     "f32-avgpool": ("avgpool", "expert-only"),
     "f32-argmaxpool": ("argmaxpool", "expert-only"),
-    "x32-packw": ("weight pack", "expert-only"),        # an internal primitive, not a model op
+    "x32-packw": ("weight pack", "expert-only"),  # an internal primitive, not a model op
     "x32-transposec": ("transpose", "partial"),
 }
 # dtype prefixes that are categorically expert-only for Merlin (no codegen path): f16 + quantized
@@ -95,12 +96,19 @@ def build_catalog(xnn_src: Path) -> dict:
         fam = _family(rel)
         op, status = _classify(fam)
         dtype = fam.split("-")[0]
-        rows.append({"family": fam, "dtype": dtype, "kernel_file": str(rel),
-                     "template": c.suffix == ".in", "merlin_op": op, "status": status})
+        rows.append(
+            {
+                "family": fam,
+                "dtype": dtype,
+                "kernel_file": str(rel),
+                "template": c.suffix == ".in",
+                "merlin_op": op,
+                "status": status,
+            }
+        )
     by_status = Counter(r["status"] for r in rows)
     by_family = Counter(r["family"] for r in rows)
-    return {"n_kernels": len(rows), "by_status": dict(by_status),
-            "n_families": len(by_family), "rows": rows}
+    return {"n_kernels": len(rows), "by_status": dict(by_status), "n_families": len(by_family), "rows": rows}
 
 
 def _write_md(path: Path, cat: dict) -> None:
@@ -109,8 +117,8 @@ def _write_md(path: Path, cat: dict) -> None:
         "# XNNPACK RVV microkernel catalog (Merlin codegen coverage)",
         "",
         f"**{cat['n_kernels']} RVV microkernels** across **{cat['n_families']} families**. "
-        f"mapped={st.get('mapped',0)} · partial={st.get('partial',0)} · "
-        f"expert-only={st.get('expert-only',0)}.",
+        f"mapped={st.get('mapped', 0)} · partial={st.get('partial', 0)} · "
+        f"expert-only={st.get('expert-only', 0)}.",
         "",
         "`mapped` = a Merlin op emits the same computation (head-to-head comparable). "
         "`partial` = Merlin has the op but a known lowering gap. `expert-only` = no Merlin codegen "
@@ -123,8 +131,7 @@ def _write_md(path: Path, cat: dict) -> None:
     ]
     fam_rows: dict[str, dict] = {}
     for r in cat["rows"]:
-        f = fam_rows.setdefault(r["family"], {"dtype": r["dtype"], "op": r["merlin_op"],
-                                              "status": r["status"], "n": 0})
+        f = fam_rows.setdefault(r["family"], {"dtype": r["dtype"], "op": r["merlin_op"], "status": r["status"], "n": 0})
         f["n"] += 1
     order = {"mapped": 0, "partial": 1, "expert-only": 2}
     for fam, f in sorted(fam_rows.items(), key=lambda kv: (order[kv[1]["status"]], kv[0])):
@@ -144,8 +151,7 @@ def main() -> int:
     _write_md(out / "kernel_catalog.md", cat)
     st = cat["by_status"]
     print(f"{cat['n_kernels']} kernels / {cat['n_families']} families -> {out}/kernel_catalog.md")
-    print(f"  mapped={st.get('mapped',0)} partial={st.get('partial',0)} "
-          f"expert-only={st.get('expert-only',0)}")
+    print(f"  mapped={st.get('mapped', 0)} partial={st.get('partial', 0)} expert-only={st.get('expert-only', 0)}")
     return 0
 
 

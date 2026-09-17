@@ -29,6 +29,7 @@ Usage:
   check_doc_paths.py           # list violations
   check_doc_paths.py --check   # exit 1 on any violation (wired into check_structure)
 """
+
 from __future__ import annotations
 
 import os
@@ -84,15 +85,39 @@ RETIRED = [
 ]
 
 # A line naming a retired path only to say it's retired is fine.
-ALLOW_WORDS = ("deprecated", "retired", "gitignored", "recaptures", "regenerable",
-               "not built", "not yet built", "folded into", "replaces", "no longer",
-               "former", "removed to keep", "no standalone",
-               # a line that points at the design note is contextualizing, not misdirecting
-               "docs/design/")
+ALLOW_WORDS = (
+    "deprecated",
+    "retired",
+    "gitignored",
+    "recaptures",
+    "regenerable",
+    "not built",
+    "not yet built",
+    "folded into",
+    "replaces",
+    "no longer",
+    "former",
+    "removed to keep",
+    "no standalone",
+    # a line that points at the design note is contextualizing, not misdirecting
+    "docs/design/",
+)
 
 # Trees we don't scan (generated / vendored / design notes that legitimately name retired paths).
-SKIP_PARTS = {".git", ".venv", "venv", "out", "build", "artifacts", "runs", "output",
-              "third_party", "tmp", "__pycache__", "node_modules"}
+SKIP_PARTS = {
+    ".git",
+    ".venv",
+    "venv",
+    "out",
+    "build",
+    "artifacts",
+    "runs",
+    "output",
+    "third_party",
+    "tmp",
+    "__pycache__",
+    "node_modules",
+}
 
 
 def _doc_files() -> list[Path]:
@@ -100,8 +125,9 @@ def _doc_files() -> list[Path]:
     for base, dirs, files in os.walk(ROOT):
         dirs[:] = [d for d in dirs if d not in SKIP_PARTS]
         for f in files:
-            if f.endswith(".md") and (f == "AGENT.md" or Path(base) == ROOT / "docs"
-                                      or (ROOT / "docs") in Path(base).parents):
+            if f.endswith(".md") and (
+                f == "AGENT.md" or Path(base) == ROOT / "docs" or (ROOT / "docs") in Path(base).parents
+            ):
                 out.append(Path(base) / f)
     return sorted(out)
 
@@ -109,8 +135,11 @@ def _doc_files() -> list[Path]:
 def _load_allow() -> set[str]:
     if not ALLOW_FILE.is_file():
         return set()
-    return {ln.strip() for ln in ALLOW_FILE.read_text(encoding="utf-8").splitlines()
-            if ln.strip() and not ln.startswith("#")}
+    return {
+        ln.strip()
+        for ln in ALLOW_FILE.read_text(encoding="utf-8").splitlines()
+        if ln.strip() and not ln.startswith("#")
+    }
 
 
 def _is_design_note(rel: str) -> bool:
@@ -133,8 +162,9 @@ def scan() -> list[str]:
                 matched = _match_retired(line, needle, pre, post)
                 if matched is None:
                     continue
-                if any(a == f"{rel}:{matched}" or (a.startswith(rel + ":") and a.split(":", 1)[1] in line)
-                       for a in allow):
+                if any(
+                    a == f"{rel}:{matched}" or (a.startswith(rel + ":") and a.split(":", 1)[1] in line) for a in allow
+                ):
                     continue
                 problems.append(f"{rel}:{i}: {msg}")
     return problems
