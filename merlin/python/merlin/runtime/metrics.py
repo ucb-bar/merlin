@@ -3,14 +3,24 @@
 A plain accumulator the simulator updates as it executes a command buffer. ``as_dict``
 emits the common metric vocabulary so results are comparable across targets/backends.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 
 COMMON_METRIC_NAMES = (
-    "cycles", "bytes_moved", "bytes_read", "bytes_written", "command_count",
-    "dispatch_count", "pack_count", "resident_hits", "resident_misses",
-    "evictions", "accumulator_commits", "intermediate_write_bytes",
+    "cycles",
+    "bytes_moved",
+    "bytes_read",
+    "bytes_written",
+    "command_count",
+    "dispatch_count",
+    "pack_count",
+    "resident_hits",
+    "resident_misses",
+    "evictions",
+    "accumulator_commits",
+    "intermediate_write_bytes",
 )
 
 

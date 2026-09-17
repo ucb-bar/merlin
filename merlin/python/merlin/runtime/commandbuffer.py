@@ -8,10 +8,197 @@ explicit inputs mapping can override them.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .tensor import Tensor
+from .tensor import Tensor, pool_out_dims  # noqa: F401  (pool_out_dims re-exported: see its docstring)
+
+#: The attribute names a POOLING epilogue stage reads, and the arity each one must have.
+#:
+#: They ride on the COMMAND's attributes because that is where the hardware carries them: this target
+#: family fuses pooling into the STORE path (``config_st(..., pool_stride, pool_size, pool_out_dim,
+#: porows, pocols, orows, ocols, upad, lpad)``) and into the fused conv loop, so the pool parameters are
+#: configured on the same instruction that reads the accumulator out. By the time an engine reaches the
+#: readout the tensor is a 2-D ``[rows, channels]`` and no conv geometry is in scope, so the extent the
+#: rows unflatten to (``pool_in_dims`` = the ABI's ``orows``/``ocols``) must be declared, not guessed.
+POOL_ATTR_ARITY = {"pool_in_dims": 2, "pool_size": 2, "pool_stride": 2, "pool_padding": 4}
+#: Optional companion: the value a padded cell contributes to the max. No default on purpose -- see
+#: :meth:`Tensor.maxpool2d_rows`.
+POOL_PAD_VALUE_ATTR = "pool_pad_value"
+
+
+def pool_params(attrs: dict[str, Any], *, op: str) -> dict[str, Any]:
+    """Read a pooling epilogue's geometry out of a command's attributes, FAILING CLOSED.
+
+    Every engine that applies a pooling stage (the capsule golden, the reference recomputation and the
+    simulator) parses it through this one function, so they cannot disagree about which attribute names
+    carry the geometry or about what an absent one means. An absent or wrong-arity attribute RAISES and
+    names itself: a pooling stage whose window silently defaulted would return a correctly-shaped tensor
+    of numbers nobody computed, and the integer gate would then enforce it.
+    """
+    out: dict[str, Any] = {}
+    for key, arity in POOL_ATTR_ARITY.items():
+        v = attrs.get(key)
+        if v is None:
+            if key == "pool_padding":                 # the one parameter with a meaningful "none"
+                out[key] = (0, 0, 0, 0)
+                continue
+            raise ValueError(
+                f"{op}: a pooling epilogue stage needs attribute {key!r} "
+                f"({arity} int(s)) and the command does not declare it")
+        if not isinstance(v, (list, tuple)) or len(v) != arity:
+            raise ValueError(
+                f"{op}: pooling attribute {key!r} must be a list of {arity} int(s), got {v!r}")
+        try:
+            out[key] = tuple(int(x) for x in v)
+        except (TypeError, ValueError) as e:
+            raise ValueError(f"{op}: pooling attribute {key!r} has a non-integer entry: {v!r}") from e
+    pv = attrs.get(POOL_PAD_VALUE_ATTR)
+    out["pad_value"] = None if pv is None else int(pv)
+    return out
+
+
+def apply_pool_stage(t: Tensor, stage: str, attrs: dict[str, Any], *, op: str) -> Tensor:
+    """Apply the named pooling stage to ``t``. The single definition all three engines call."""
+    if stage != "maxpool":                            # pragma: no cover - callers dispatch on the name
+        raise ValueError(f"{op}: {stage!r} is not a pooling stage this runtime defines")
+    p = pool_params(attrs, op=op)
+    return t.maxpool2d_rows(in_dims=p["pool_in_dims"], pool_size=p["pool_size"],
+                            pool_stride=p["pool_stride"], pool_padding=p["pool_padding"],
+                            pad_value=p["pad_value"])
+
+
+#: The epilogue stages the command-buffer ABI admits, in the order a COMMIT applies them. This is the
+#: single definition the ABI, its JSON schema and the interface dialect all read, so a stage exists here
+#: or it does not exist. It is NOT a claim that a given target implements one: an engine that does not
+#: RAISES by name, and a target that cannot execute it fails at its oracle. Widening this tuple is a
+#: contract change and needs both an engine that implements the stage and a target rung evidencing it.
+EPILOGUE_STAGES: tuple[str, ...] = ("bias_add", "bias", "requant", "acc_scale", "relu", "maxpool")
+
+#: Set form, for membership tests.
+EPILOGUE_STAGE_SET = frozenset(EPILOGUE_STAGES)
+
+#: The subset of the epilogue that adds a per-column bias, which is the one stage needing an operand
+#: NAME resolved rather than a flag. Kept as its own tuple because a bias dropped in silence leaves
+#: every element off by exactly its column's bias, which reads as a plausible answer.
+BIAS_STAGES = ("bias_add", "bias")
+
+
+@dataclass(frozen=True)
+class BatchedMatmulGeometry:
+    """Shape facts for one rank-N batch of independent matrix contractions.
+
+    ``batch_shape`` is deliberately retained rather than collapsed into one ABI dimension: the
+    command preserves the source tensor's rank, while an engine that executes 2-D kernels may walk
+    its row-major slices using ``batch_count``.
+    """
+
+    batch_shape: tuple[int, ...]
+    batch_count: int
+    m: int
+    k: int
+    n: int
+
+    @property
+    def output_shape(self) -> tuple[int, ...]:
+        return (*self.batch_shape, self.m, self.n)
+
+    @property
+    def lhs_slice_elements(self) -> int:
+        return self.m * self.k
+
+    @property
+    def rhs_slice_elements(self) -> int:
+        return self.k * self.n
+
+    @property
+    def output_slice_elements(self) -> int:
+        return self.m * self.n
+
+    @property
+    def macs(self) -> int:
+        return self.batch_count * self.m * self.k * self.n
+
+
+def batched_matmul_geometry(
+    lhs_shape: Sequence[int] | None,
+    rhs_shape: Sequence[int] | None,
+    dst_shape: Sequence[int] | None,
+    *,
+    op: str = "BATCHED_MATMUL",
+) -> BatchedMatmulGeometry:
+    """Validate ``A[*B,M,K] @ W[*B,K,N] -> Y[*B,M,N]`` and return its geometry.
+
+    There is no broadcasting: both varying operands must carry the same non-empty batch prefix.
+    Flattening that prefix is only an execution detail and follows row-major lexicographic order.
+    Shapes are static and strictly positive so a zero/unknown extent cannot be priced as real work.
+    """
+
+    def normalized(shape: Sequence[int] | None, role: str) -> tuple[int, ...]:
+        if (not isinstance(shape, Sequence) or isinstance(shape, (str, bytes))
+                or any(not isinstance(value, int) or isinstance(value, bool) or value <= 0
+                       for value in shape)):
+            raise ValueError(
+                f"{op}: {role} shape must contain only positive static integers, got {shape!r}")
+        result = tuple(int(value) for value in shape)
+        if len(result) < 3:
+            raise ValueError(f"{op}: {role} must have rank at least 3, got shape {result}")
+        return result
+
+    lhs = normalized(lhs_shape, "operand a")
+    rhs = normalized(rhs_shape, "operand w")
+    lhs_batch, (m, k) = lhs[:-2], lhs[-2:]
+    rhs_batch, (k2, n) = rhs[:-2], rhs[-2:]
+    if lhs_batch != rhs_batch:
+        raise ValueError(
+            f"{op}: operand batch prefixes must match exactly (no broadcasting), got "
+            f"{lhs_batch} and {rhs_batch}")
+    if k != k2:
+        raise ValueError(f"{op}: reduction dimensions do not match, got K={k} and K={k2}")
+    batch_count = 1
+    for extent in lhs_batch:
+        batch_count *= extent
+    geometry = BatchedMatmulGeometry(lhs_batch, batch_count, m, k, n)
+    dst = normalized(dst_shape, "destination")
+    if dst != geometry.output_shape:
+        raise ValueError(
+            f"{op}: destination shape must be {geometry.output_shape}, got {dst}")
+    return geometry
+
+
+def bias_tensor_name(operands: dict[str, Any], attrs: dict[str, Any], *, op: str) -> str:
+    """Name of the bias tensor a ``bias_add``/``bias`` stage consumes. One definition, all engines.
+
+    The name is carried in TWO places in this tree, and both are legitimate:
+
+    * ``attributes["bias"]`` -- what a buffer that came through the interface grammar carries.
+      ``merlin_iface.commit`` declares ``bias`` as a property, so the ingest lands it beside
+      ``epilogue`` in the attributes (see ``interface_emit``/``ir_ingest``).
+    * ``operands["bias"]`` -- what a buffer an emitter built directly carries, because there the
+      bias is a named operand slot like any other (``linalg_lower``, ``runtime_lowering``, and the
+      whole-op ``BIAS_ADD`` whose operand keys the grammar table itself spells ``["src", "bias"]``).
+
+    Reading only one of them is how a bias gets DROPPED IN SILENCE. The reference/simulate engines
+    read only the operands while the golden engine read only the attributes, so on a fused
+    matmul+bias capsule the golden added the bias and the reference did not -- and the capsule
+    failed L0 with every element off by exactly its column's bias, which reads like a rounding or
+    ordering defect rather than a stage that never ran.
+
+    FAIL CLOSED when neither carries a name: a declared stage with no operand is not a no-op, it is
+    an unanswerable command. Skipping it would make two engines that both skip it AGREE on a value
+    neither computed -- the same silent-pass hazard the unknown-stage branches guard against.
+    """
+    for source in (attrs, operands):
+        name = (source or {}).get("bias")
+        if name:
+            return str(name)
+    raise ValueError(
+        f"{op} declares a bias epilogue stage but names no bias tensor in either its operands or "
+        f"its attributes. The stage cannot be executed and is NOT skipped: a dropped bias makes "
+        f"every output element differ from the golden by its own column's bias, which is "
+        f"indistinguishable from an arithmetic defect")
 
 
 def load_command_buffer(path: str | Path) -> dict[str, Any]:
@@ -21,9 +208,86 @@ def load_command_buffer(path: str | Path) -> dict[str, Any]:
 
 REQUIRED_KEYS = ("abi_version", "target", "commands")
 
+#: Opcodes whose readout NARROWS the i32 accumulator into a declared container. Kept beside the
+#: engines that do the narrowing (``simulator``/``reference`` both route these through
+#: ``_narrow_int_readout``; the golden routes them through ``_apply_epilogue``), and asserted equal to
+#: that set by ``merlin/tests/ir/test_readout_dtype_divergence.py`` so the list cannot drift away from
+#: the engines it describes.
+NARROWING_OPCODES = frozenset({"COMMIT", "CONV2D", "BIAS_ADD", "ATTENTION_QK", "ATTENTION_PV"})
+
+
+def whole_program_entry_bindings(cb: Mapping[str, Any]) -> list[str] | None:
+    """Return the source entry operands in their declared positional ABI order.
+
+    A whole-program lowering may deliberately alias an entry argument with a result buffer.  In that
+    case the physical tensor has an ``output`` role but still needs the source stimulus, so tensor roles
+    cannot define the input boundary.  ``global_program_plan.entry_bindings`` is the compiler's explicit
+    source-argument-to-buffer mapping and is therefore authoritative when present.
+
+    ``None`` means the command buffer has no such mapping and a legacy caller may use its old role-based
+    convention.  A present but malformed mapping fails closed: silently falling back would run the right
+    kernel on operands assigned to the wrong pointer slots.
+    """
+    abi = cb.get("kernel_abi")
+    if not isinstance(abi, Mapping) or abi.get("kind") != "whole_program":
+        return None
+    params = cb.get("params")
+    plan = params.get("global_program_plan") if isinstance(params, Mapping) else None
+    if not isinstance(plan, Mapping):
+        return None
+    bindings = plan.get("entry_bindings")
+    if not isinstance(bindings, list) or any(not isinstance(name, str) or not name
+                                             for name in bindings):
+        raise ValueError(
+            "whole-program global_program_plan.entry_bindings must be a list of non-empty tensor "
+            "names in source entry-argument order")
+    duplicates = sorted({name for name in bindings if bindings.count(name) > 1})
+    if duplicates:
+        raise ValueError(
+            "whole-program global_program_plan.entry_bindings repeats physical buffer(s) "
+            f"{duplicates}; distinct source operands cannot be initialized through one pointer")
+    tensors = cb.get("tensors")
+    if not isinstance(tensors, Mapping):
+        raise ValueError(
+            "whole-program global_program_plan.entry_bindings is present but tensors is not a mapping")
+    args = abi.get("args")
+    if not isinstance(args, list):
+        raise ValueError(
+            "whole-program global_program_plan.entry_bindings is present but kernel_abi.args is not a "
+            "list")
+    access_by_name: dict[str, list[Any]] = {}
+    for arg in args:
+        if isinstance(arg, Mapping) and isinstance(arg.get("tensor"), str):
+            access_by_name.setdefault(str(arg["tensor"]), []).append(arg.get("access"))
+    for name in bindings:
+        if name not in tensors:
+            raise ValueError(
+                f"whole-program entry binding {name!r} has no declared tensor buffer")
+        accesses = access_by_name.get(name, [])
+        if len(accesses) != 1:
+            raise ValueError(
+                f"whole-program entry binding {name!r} must occupy exactly one kernel_abi.args slot")
+        if accesses[0] not in ("read", "readwrite"):
+            raise ValueError(
+                f"whole-program entry binding {name!r} must have read or readwrite ABI access, got "
+                f"{accesses[0]!r}")
+    return list(bindings)
+
 
 def validate_command_buffer(cb: dict[str, Any]) -> list[str]:
-    """Return a list of problems (empty == valid)."""
+    """Return a list of problems (empty == valid).
+
+    Beyond the required keys, this catches the one structural error the JSON schema cannot express: an
+    operand slot holds the NAME of a buffer, and the schema types it as a bare string, so a value that
+    names nothing at all still validates. A submission that emitted commands referencing shape strings
+    (``dst: "16x16"``) with no ``tensors`` declared passed schema validation, was told it was valid, and
+    was then rejected downstream for a constraint the contract never stated -- so it spent its session
+    guessing spellings instead of writing a compiler.
+
+    The check is deliberately the weakest one that is certainly true: commands that reference operands
+    need SOMETHING to reference. Names produced by earlier commands (an accumulator, a committed
+    intermediate) are legitimately absent from ``tensors``, so per-name resolution is NOT asserted here --
+    only that a computing command buffer declares at least one buffer to compute over."""
     problems: list[str] = []
     for k in REQUIRED_KEYS:
         if k not in cb:
@@ -31,6 +295,102 @@ def validate_command_buffer(cb: dict[str, Any]) -> list[str]:
     for i, cmd in enumerate(cb.get("commands", [])):
         if "opcode" not in cmd:
             problems.append(f"command {i} missing 'opcode'")
+    cmds = cb.get("commands") or []
+    referenced = sorted({str(v) for c in cmds for v in (c.get("operands") or {}).values()
+                         if isinstance(v, str) and v})
+    # A NARROWING COMMAND MUST DECLARE ITS OUTPUT CONTAINER, BY NAME.
+    #
+    # The attribute is optional in the JSON schema and every engine has a default, so omitting it has
+    # always produced a well-formed buffer that computes SOMETHING. The trouble is which something: the
+    # runtime engines defaulted to `i8` and narrowed on an exact match while the golden defaulted to
+    # `i32` and narrowed any width, and the two disagreed for 77 days -- a correct backend that simply
+    # left the attribute out failed L0 on 85 of 130 capsules, with a message blaming the backend. The
+    # engines agree now, but agreement on a DEFAULT is a weaker guarantee than a declaration: it makes
+    # the buffer's meaning depend on a convention the submission never stated, and the next divergence
+    # would be just as silent as the last.
+    #
+    # So this is reported as a problem rather than defaulted. It names the command index and the
+    # opcode, because the failure this replaces was a numeric mismatch hundreds of lines downstream
+    # with nothing pointing back at the omission. All 421 narrowing ops in the shipped corpus already
+    # declare it, so this states an invariant that already holds rather than imposing a new one.
+    for i, cmd in enumerate(cmds):
+        if str(cmd.get("opcode")) in NARROWING_OPCODES:
+            attrs = cmd.get("attributes") or {}
+            if "output_dtype" not in attrs:
+                problems.append(
+                    f"command {i} ({cmd.get('opcode')}) narrows the accumulator but declares no "
+                    f"'output_dtype'. The attribute decides the readout width, every engine has to "
+                    f"agree about it, and a default is a convention this buffer never stated -- "
+                    f"declare it (e.g. \"i32\" to read the accumulator out whole, \"i8\" to "
+                    f"saturate to a byte)")
+
+    if referenced and not (cb.get("tensors") or {}) and not cb.get("declined"):
+        problems.append(
+            f"commands reference operand name(s) {referenced[:6]}"
+            f"{' ...' if len(referenced) > 6 else ''} but the command buffer declares no 'tensors'. "
+            f"An operand slot holds the NAME of a tensor declared in 'tensors' (e.g. \"Y0\"), not a "
+            f"shape, a type, or a dimension list")
+
+    kernel_abi = cb.get("kernel_abi")
+    if isinstance(kernel_abi, dict) and kernel_abi.get("kind") == "whole_program":
+        args = kernel_abi.get("args")
+        arg_names = [arg.get("tensor") for arg in args if isinstance(arg, dict)] \
+            if isinstance(args, list) else []
+        declared = [name for name, spec in (cb.get("tensors") or {}).items()
+                    if isinstance(spec, dict)]
+        missing = [name for name in declared if name not in arg_names]
+        if missing:
+            problems.append(
+                f"whole-program kernel_abi.args omits declared tensor buffer(s) {missing}; the "
+                f"runner cannot bind an interface buffer that is absent from the pointer boundary")
+        duplicates = sorted({name for name in arg_names if name and arg_names.count(name) > 1})
+        if duplicates:
+            problems.append(
+                f"whole-program kernel_abi.args has duplicate pointer slot(s) for tensor(s) "
+                f"{duplicates}; one declared buffer must occupy exactly one ABI position")
+        undeclared = [name for name in arg_names if name not in (cb.get("tensors") or {})]
+        if undeclared:
+            problems.append(
+                f"whole-program kernel_abi.args names tensor(s) {undeclared} with no declared tensor "
+                f"buffer; the runner never allocates an implicit pointer")
+        access_of = {arg.get("tensor"): arg.get("access") for arg in args
+                     if isinstance(arg, dict)} if isinstance(args, list) else {}
+        unread_inputs = [name for name, spec in (cb.get("tensors") or {}).items()
+                         if isinstance(spec, dict)
+                         and spec.get("role") in ("input", "weight", "bias", "scale")
+                         and access_of.get(name) not in ("read", "readwrite")]
+        if unread_inputs:
+            problems.append(
+                f"whole-program kernel_abi tensor(s) {unread_inputs} have an input-like role but no "
+                f"read access; the runner must supply the declared model stimulus to the kernel")
+        unwritable_results = [name for name, spec in (cb.get("tensors") or {}).items()
+                              if isinstance(spec, dict)
+                              and spec.get("role") in ("output", "intermediate")
+                              and access_of.get(name) not in ("write", "readwrite")]
+        if unwritable_results:
+            problems.append(
+                f"whole-program kernel_abi tensor(s) {unwritable_results} have an output-like role but "
+                f"no write access; the submitted kernel must produce those buffers")
+        bad_outputs = [name for name in (kernel_abi.get("outputs") or [])
+                       if access_of.get(name) not in ("write", "readwrite")]
+        if bad_outputs:
+            problems.append(
+                f"whole-program kernel_abi output tensor(s) {bad_outputs} do not have write access in "
+                f"kernel_abi.args; a reported result must be produced by the submitted kernel")
+        declared_outputs = [name for name, spec in (cb.get("tensors") or {}).items()
+                            if isinstance(spec, dict) and spec.get("role") == "output"]
+        reported_outputs = kernel_abi.get("outputs") or []
+        if set(reported_outputs) != set(declared_outputs):
+            problems.append(
+                f"whole-program kernel_abi must report exactly the declared model outputs "
+                f"{declared_outputs}, got {reported_outputs}; an intermediate is not a substitute for "
+                f"the interface result")
+        derived = harness_derived_tensors(cb)
+        if derived:
+            problems.append(
+                f"whole-program kernel_abi cannot use harness derivation recipe(s) "
+                f"{sorted(set(derived.values()))} for {sorted(derived)}; all model work must execute "
+                f"inside the measured submitted kernel")
     return problems
 
 
@@ -79,6 +439,106 @@ def conv_im2col(ifm: Tensor, *, kh: int, kw: int, ci: int, stride, padding, dila
     return Tensor((N * Ho * Wo, kh * kw * ci), rows, ifm.dtype)
 
 
+#: Every ``params`` key under which a command buffer may DECLARE that one of its tensors is derived
+#: from another by the HARNESS rather than produced by a command. Each entry names its result in
+#: ``target`` and its source in ``source``.
+#:
+#: This tuple exists so the two readers of that declaration cannot drift apart.
+#: :func:`materialize_inputs` BUILDS the derived tensors from it (that is the mechanism's legitimate
+#: job: the reference, the simulator and the device must be handed byte-identical stimulus, or the
+#: numeric comparison between them compares three different inputs), and
+#: :func:`harness_derived_tensors` REPORTS which tensors were built that way, which is what a caller
+#: needs in order to ask whether the emitted program computed its own operands. A key added to the
+#: materializer and not to this tuple would silently become invisible to that question.
+IM2COL_RECIPE_KEY = "im2col_recipes"
+DERIVATION_RECIPE_KEYS: tuple[str, ...] = (IM2COL_RECIPE_KEY,)
+
+
+def harness_derived_tensors(cb: dict[str, Any]) -> dict[str, str]:
+    """``{derived tensor name: the params key that derives it}`` for one command buffer.
+
+    Reads only the ABI's own vocabulary (``params.<recipe key>[].target``), so it is target-agnostic
+    and opcode-agnostic: it answers "which of this buffer's tensors did the HARNESS build, rather
+    than the emitted program", for any endpoint that speaks this ABI. An empty result means every
+    tensor in the buffer is either a declared leaf or produced by a command.
+    """
+    out: dict[str, str] = {}
+    params = cb.get("params") or {}
+    if not isinstance(params, dict):
+        return out
+    for key in DERIVATION_RECIPE_KEYS:
+        for recipe in params.get(key) or ():
+            if not isinstance(recipe, dict):
+                continue
+            name = recipe.get("target")
+            if isinstance(name, str) and name:
+                out[name] = key
+    return out
+
+
+def operand_flow(cb: dict[str, Any]) -> tuple[set[str], set[str]]:
+    """``(names WRITTEN by a command, every name any command REFERENCES)``.
+
+    Answers "did the emitted program compute this tensor, or was it handed to it?". Purely
+    structural — no opcode, dtype or target fact is read.
+
+    A write is recognised BY KEY SPELLING ONLY (:data:`PRODUCING_KEYS`), deliberately without
+    :func:`_produces`' fallback to the named tensor's declared ``role``. That fallback is right for
+    :func:`dataflow_operands`, which is trying to find a buffer's result and must tolerate a
+    destination spelled ``result`` or ``y``. It is wrong here, because a caller asking this question is
+    asking whether a COMMAND produced the tensor, and ``role: output`` on a tensor that appears only in
+    read slots would answer "yes" on the strength of a label the buffer wrote about itself — which is
+    exactly the claim under examination. Read positions and written positions are therefore separated
+    by the ABI's own write-slot vocabulary and by nothing else.
+    """
+    written: set[str] = set()
+    referenced: set[str] = set()
+    for cmd in cb.get("commands") or []:
+        for key, name in (cmd.get("operands") or {}).items():
+            if not isinstance(name, str) or not name:
+                continue
+            referenced.add(name)
+            if key in PRODUCING_KEYS:
+                written.add(name)
+    return written, referenced
+
+
+#: Where a command buffer may declare the inclusive range its deterministic stimulus is drawn from.
+#: ABSENT means the historical default, so every existing buffer materializes byte-identically.
+STIMULUS_RANGE_KEY = "stimulus_range"
+
+#: The historical default. Non-negative, which is exactly why a ReLU capsule could not detect whether
+#: its activation was applied: with weights and inputs both in 0..3 the accumulator is never negative
+#: and ``max(0, x)`` is the identity on every value such a program can produce.
+DEFAULT_STIMULUS_RANGE = (0, 3)
+
+
+def stimulus_range(cb: Mapping[str, Any]) -> tuple[int, int]:
+    """The inclusive ``(lo, hi)`` this buffer's stimulus is drawn from.
+
+    Declared under ``params.stimulus_range``; absent, the historical default. A malformed
+    declaration RAISES rather than falling back, because a silently ignored range would fill one
+    side of a comparison from a different distribution than the other and report the difference as a
+    numeric failure of the datapath.
+    """
+    params = cb.get("params") if isinstance(cb.get("params"), Mapping) else {}
+    declared = params.get(STIMULUS_RANGE_KEY)
+    if declared is None:
+        return DEFAULT_STIMULUS_RANGE
+    if (not isinstance(declared, Sequence) or isinstance(declared, (str, bytes))
+            or len(declared) != 2
+            or any(isinstance(v, bool) or not isinstance(v, int) for v in declared)):
+        raise ValueError(
+            f"{STIMULUS_RANGE_KEY} must be a two-element [lo, hi] of integers, got {declared!r}; a "
+            f"malformed range is refused rather than defaulted, because filling one side of a "
+            f"comparison from a different distribution reports a stimulus difference as a datapath "
+            f"failure")
+    lo, hi = int(declared[0]), int(declared[1])
+    if hi < lo:
+        raise ValueError(f"empty {STIMULUS_RANGE_KEY} [{lo}, {hi}]")
+    return lo, hi
+
+
 def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[str, Tensor]:
     """Create the leaf input tensors declared in the command buffer's ``tensors`` table.
 
@@ -96,6 +556,7 @@ def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None)
         for key in ("dst",):
             if key in ops:
                 produced.add(ops[key])
+    lo, hi = stimulus_range(cb)
     env: dict[str, Tensor] = {}
     for name, spec in cb.get("tensors", {}).items():
         if name in produced:
@@ -105,10 +566,19 @@ def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None)
         if name in inputs:
             flat = _flatten(inputs[name])
             env[name] = Tensor(shape, flat, dtype)
+        elif isinstance(spec.get("data"), (list, tuple)):
+            # VALUES CARRIED ON THE DECLARATION WIN OVER ANY FILL. A caller that has already
+            # materialized this leaf -- from a capsule's own declaration, say -- injects the exact
+            # numbers here, so the device computes on the same bytes the reference did rather than on
+            # a second fill that merely agrees by construction. Agreeing by construction is what
+            # breaks the moment either side's fill parameters change.
+            env[name] = Tensor(shape, _flatten(spec["data"]), dtype)
         else:
-            env[name] = Tensor.deterministic(name, shape, dtype)
-    # additive: overwrite derived im2col activations from their source leaf
-    for r in cb.get("params", {}).get("im2col_recipes", []):
+            env[name] = Tensor.deterministic(name, shape, dtype, lo, hi)
+    # additive: overwrite derived im2col activations from their source leaf. Keyed off the shared
+    # DERIVATION_RECIPE_KEYS so a recipe kind cannot be materialized here while staying invisible to
+    # harness_derived_tensors (which is what decides whether the emitted program owes this gather).
+    for r in cb.get("params", {}).get(IM2COL_RECIPE_KEY, []):
         src = env[r["source"]]
         env[r["target"]] = conv_im2col(
             src, kh=int(r["kh"]), kw=int(r["kw"]), ci=int(r["ci"]),
@@ -117,11 +587,144 @@ def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None)
     return env
 
 
+#: Operand keys that PRODUCE a tensor. This is the command-buffer ABI's own vocabulary (the buffer
+#: declares its ``abi_version``), not a fact about any target — every command-buffer endpoint names its
+#: result with one of these, whatever its opcodes are called. Kept next to :func:`materialize_inputs`,
+#: which uses the same notion of "produced" to decide what is a leaf.
+#: Operand keys that name a WRITE by spelling. Not exhaustive by construction -- the schema lets a
+#: buffer spell its destination `result`, `y`, or anything else -- so :func:`dataflow_operands` also
+#: accepts a key whose tensor DECLARES `role: output`. See `_produces` there.
+PRODUCING_KEYS = ("dst", "out", "output")
+
+
+def _produces(key: str, name: str, tensors: dict) -> bool:
+    """Is this operand position a WRITE?
+
+    By key spelling first, then by the named tensor's declared ``role``. Keying on spelling alone made
+    the binder's reach depend on which words someone had listed: a buffer spelling its destination
+    ``result`` or ``y`` -- both allowed by the schema -- had its output counted as a READ, so no
+    produced tensor was declared and the whole buffer bound to nothing.
+
+    This does NOT reintroduce role as the way to CHOOSE the output; that stays dataflow, for the reason
+    in :func:`dataflow_operands` (a fused buffer declares three ``role: output`` tensors and two are
+    intermediates). Role decides only whether a POSITION writes; dataflow still decides which write is
+    the result.
+    """
+    if key in PRODUCING_KEYS:
+        return True
+    return str((tensors.get(name) or {}).get("role", "")).lower() == "output"
+
+
+def dataflow_operands(cb: dict[str, Any]) -> tuple[list[str], str] | None:
+    """``(leaf_input_names, final_output_name)`` of a command buffer, derived by DATAFLOW alone.
+
+    Target-agnostic and opcode-agnostic by construction: a declared tensor that some command CONSUMES and
+    no command PRODUCES is a leaf input; the last produced tensor that is itself declared is the output;
+    a tensor that is both produced and consumed is an intermediate and is neither. Nothing here reads a
+    target fact, an opcode meaning, or an op-specific shape rule, so it works for any endpoint that
+    speaks this ABI — SIMT, systolic/NPU, or otherwise.
+
+    Why dataflow rather than the declared ``role``: role cannot decide it. Measured on a real fused
+    flash-attention buffer, THREE tensors declare ``role: output`` (``S``, ``P``, ``Y0``) because each is
+    produced by some command, and two of them are intermediates feeding the next stage. Reading roles
+    alone yields three candidate outputs and no way to choose; the dataflow yields exactly ``Q, K, V`` in
+    and ``Y0`` out.
+
+    This is the general case the single-op binders cannot express. A binder that pattern-matches "one
+    matmul" returns ``None`` on a CHAIN, which is what left every fused capsule (attention_qk -> softmax
+    -> matmul -> commit, rmsnorm -> matmul, chained matmuls) unbindable and therefore ungradeable.
+
+    Returns ``None`` when the buffer carries no commands, no declared ``tensors``, or no produced tensor
+    that is declared — i.e. when dataflow genuinely cannot answer, never a guess.
+
+    NOTE ON ORDER: the returned inputs are in first-consumption order (the order the command stream
+    first reads them), which is deterministic and reproducible. It is NOT authoritative for a kernel ABI
+    — the emitted kernel's own signature is. A caller that must match a kernel signature should reorder
+    these by matching declared shapes to that signature rather than trusting this order.
+    """
+    tensors = cb.get("tensors") or {}
+    commands = cb.get("commands") or []
+    if not tensors or not commands:
+        return None
+
+    produced: list[str] = []
+    consumed: list[str] = []
+    for cmd in commands:
+        ops = cmd.get("operands") or {}
+        for key, name in ops.items():
+            if not isinstance(name, str):
+                continue
+            (produced if _produces(key, name, tensors) else consumed).append(name)
+
+    produced_set = set(produced)
+    # leaves, in first-consumption order, de-duplicated
+    seen: set[str] = set()
+    leaves: list[str] = []
+    for name in consumed:
+        if name in produced_set or name in seen or name not in tensors:
+            continue
+        seen.add(name)
+        leaves.append(name)
+
+    # The output is the LAST produced tensor that is DECLARED. An internal accumulator is produced but
+    # not declared (measured: `acc_Y0` is a dst and absent from `tensors`), so walking backwards over the
+    # produced list and taking the first declared hit lands on the committed result rather than on it.
+    out = next((n for n in reversed(produced) if n in tensors), None)
+    if out is None or not leaves:
+        return None
+    return leaves, out
+
+
+def declared_output_dtypes(cb: dict[str, Any]) -> dict[str, str]:
+    """``{tensor name: declared element dtype}`` for every tensor a readback can land in.
+
+    ONE fact, read the way the harness reads it, so the writer and the reader of a buffer cannot
+    disagree about what is in it. A command that names a destination may DECLARE the container its
+    result lands in (``attributes.output_dtype`` — a movement is precisely a container widening, and
+    a commit's readout dtype is not the accumulator's), and that declaration is what a harness sizes
+    the destination buffer from; a tensor that no command re-declares carries its own ``dtype``. The
+    command's declaration wins for exactly the destination it names, which is the same resolution
+    order a target harness applies when it allocates the buffer.
+
+    Target-agnostic: only the buffer's own vocabulary is read (``dst``/``out``/``output`` keys, the
+    ``role`` a tensor declares, the ``output_dtype`` attribute the ABI defines). A buffer with no
+    commands still answers — its declared outputs are its ``role: output`` tensors — which is the
+    case a program that runs entirely on the host lane presents.
+    """
+    tensors = cb.get("tensors") or {}
+    dtypes: dict[str, str] = {}
+    for name, spec in tensors.items():
+        if not isinstance(spec, dict):
+            continue
+        dtype = spec.get("dtype")
+        if dtype:
+            dtypes[str(name)] = str(dtype)
+    for cmd in cb.get("commands") or []:
+        ops = (cmd.get("operands") or {})
+        declared = ((cmd.get("attributes") or {}).get("output_dtype"))
+        if not declared:
+            continue
+        for key, name in ops.items():
+            if isinstance(name, str) and _produces(key, name, tensors) and name in dtypes:
+                dtypes[name] = str(declared)
+    return dtypes
+
+
 def _flatten(nested) -> list[int]:
+    """Flatten a nested list of ANY rank to its scalars, row-major.
+
+    This peeled exactly one level, which is right for a rank-2 operand and silently wrong for a
+    rank-3 one: a batched activation came back as a list of LISTS, and ``Tensor`` then rejected it for
+    having 4 elements where its shape needs 12. That reads as a malformed input rather than as an
+    unsupported rank, which is how a rank the contract admits stays unreachable -- the target contract
+    declares rank-3 contractions legal and nothing downstream could materialize one.
+
+    Recursing costs nothing here and is rank-agnostic, so the next rank does not need another edit.
+    """
     out: list[int] = []
-    if nested and isinstance(nested[0], list):
-        for row in nested:
-            out.extend(row)
-    else:
-        out.extend(nested)
+    for item in nested:
+        if isinstance(item, (list, tuple)):
+            out.extend(_flatten(item))
+        else:
+            out.append(item)
     return out

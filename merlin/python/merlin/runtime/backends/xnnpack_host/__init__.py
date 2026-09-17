@@ -19,16 +19,18 @@ Enable by passing ``kernel_backend="xnnpack"`` to ``dispatch_runtime.run_model``
 ``execute`` (or set ``MERLIN_XNNPACK_HOST=1``). Without it the runtime is byte-for-byte the
 default compiled path.
 """
+
 from __future__ import annotations
 
 import ctypes
 import subprocess
 import threading
 from pathlib import Path
-from merlin.common.paths import work_dir
 from typing import Any
 
 import numpy as np
+
+from merlin.common.paths import work_dir
 
 _HERE = Path(__file__).resolve().parent
 _SHIM_INC = _HERE / "shim"
@@ -65,16 +67,13 @@ def _build_gemm_lib() -> Path:
     so = out_dir / "xnn_gemm_host.so"
     xnn_src = _xnnpack_repo() / "src"
     if not (xnn_src / "f32-gemm" / "gen" / "f32-gemm-4x4-minmax-scalar.c").is_file():
-        raise XnnpackUnavailable(
-            f"XNNPACK source not found under {xnn_src} "
-            "(set MERLIN_XNNPACK_REPO to a checkout)")
+        raise XnnpackUnavailable(f"XNNPACK source not found under {xnn_src} (set MERLIN_XNNPACK_REPO to a checkout)")
     # Rebuild if missing or the shim is newer than the artifact.
-    if so.is_file() and so.stat().st_mtime >= max(_GEMM_SRC.stat().st_mtime,
-                                                   (_SHIM_INC / "src/xnnpack/gemm.h").stat().st_mtime):
+    if so.is_file() and so.stat().st_mtime >= max(
+        _GEMM_SRC.stat().st_mtime, (_SHIM_INC / "src/xnnpack/gemm.h").stat().st_mtime
+    ):
         return so
-    cmd = ["cc", "-O2", "-fPIC", "-shared",
-           "-I", str(_SHIM_INC), "-I", str(xnn_src),
-           str(_GEMM_SRC), "-o", str(so)]
+    cmd = ["cc", "-O2", "-fPIC", "-shared", "-I", str(_SHIM_INC), "-I", str(xnn_src), str(_GEMM_SRC), "-o", str(so)]
     p = subprocess.run(cmd, capture_output=True, text=True)
     if p.returncode != 0 or not so.is_file():
         raise XnnpackUnavailable(f"XNNPACK host GEMM build failed: {p.stderr[-600:]}")

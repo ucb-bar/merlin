@@ -28,10 +28,17 @@ import numpy as np
 from ...common.paths import repo_root
 from ...llvmlower import c_runtime, toolchain
 from ...llvmlower.lower import lower_model_file
+from ..boards import CONSOLE_HTIF, CONSOLE_UART
 from . import spike as _spike  # toolchain paths (gcc/spike/objdump)
+from merlin.common import proc as _proc
 
 RVV_CFLAGS = ["-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany", "-O2",
               "-ffreestanding", "-fno-builtin"]
+
+#: Cross-compilation triple for the clang-built objects. Named because more than one object is built with
+#: it now, and clang defaults to the HOST triple -- so an invocation that forgets this rejects every RISC-V
+#: flag in ``RVV_CFLAGS`` rather than mis-compiling, which is at least loud, but it is a needless failure.
+CLANG_TARGET = "--target=riscv64-unknown-elf"
 
 
 class SpikeModelError(RuntimeError):
@@ -56,54 +63,184 @@ _SPIKE_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "900") or 
 
 
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
-    kw.setdefault("timeout", _SPIKE_CMD_TIMEOUT_S or None)
-    try:
-        proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
-    except subprocess.TimeoutExpired:
-        raise SpikeModelError(f"command timed out after {_SPIKE_CMD_TIMEOUT_S}s "
-                              f"(pathological compile): {' '.join(map(str, cmd))}")
-    if proc.returncode != 0:
-        raise SpikeModelError(f"command failed: {' '.join(map(str, cmd))}\n{proc.stderr}")
-    return proc
+    timeout = kw.pop("timeout", _SPIKE_CMD_TIMEOUT_S or None)
+    return _proc.run_checked(cmd, error=SpikeModelError, timeout=timeout,
+                             timeout_hint=" (pathological compile)", **kw)
 
 
-ARENA_BASE = 0xC0000000           # arena lives here (literal-addressed, in -m memory)
-DRAM_BASE = 0x80000000
+ARENA_BASE = 0xC0000000           # arena lives here (literal-addressed, in -m memory)  # derived-ok: address chosen by this backend's own -m map, not read from a target
+DRAM_BASE = 0x80000000  # derived-ok: RISC-V platform DRAM base used by spike/fesvr; the -m map is passed explicitly
+#: Reserve ahead of the weights blob for everything that is NOT the model's static I/O: code,
+#: rodata, the stack and the runtime's own tables. The model-dependent part (embedded inputs + the
+#: static output buffer) is added on top, from `c_runtime.generate`'s `static_io_bytes`.
+_CODE_RESERVE_FIXED = 64 * 1024 * 1024
 
 
-def _layout(arena_bytes: int, weights_bytes: int) -> dict:
-    """Absolute-address memory map: code@0x80000000, arena@0xC0000000, weights above it.
-    spike -m must span DRAM_BASE .. weights_base + weights_bytes."""
-    weights_base = ARENA_BASE + arena_bytes
-    weights_base = (weights_base + 0xFFFFFFF) & ~0xFFFFFFF          # 256MB align
-    weights_base = max(weights_base, 0x200000000)
-    mem_end = weights_base + weights_bytes
-    mem_bytes = ((mem_end - DRAM_BASE) + 0x3FFFFFFF) & ~0x3FFFFFFF  # round to 1GB
-    return {"arena_base": ARENA_BASE, "weights_base": weights_base, "mem_bytes": mem_bytes}
+def _layout(arena_bytes: int, weights_bytes: int, *, dram_base: int = DRAM_BASE,
+            dram_bytes: int | None = None, code_reserve: int = 64 * 1024 * 1024) -> dict:
+    """Absolute-address memory map for the bare-metal image.
+
+    Default (``dram_bytes=None``) is the historical spike map: code@0x80000000, arena@0xC0000000,
+    weights 256 MB-aligned above it and at least 0x2_0000_0000. spike is told to span it with ``-m``,
+    so "above the DRAM a real board has" costs nothing there.
+
+    On a REAL board it costs everything: an arena at 0xC0000000 and weights at 0x2_0000_0000 are simply
+    not memory, so the image faults on its first activation. Given ``dram_bytes`` the map is packed
+    inside ``[dram_base, dram_base + dram_bytes)`` instead — code first, then the weights blob, then the
+    arena taking the rest — and it FAILS CLOSED if the model does not fit rather than emitting an image
+    that addresses memory the chip does not have.
+    """
+    if dram_bytes is None:
+        weights_base = ARENA_BASE + arena_bytes
+        weights_base = (weights_base + 0xFFFFFFF) & ~0xFFFFFFF      # 256MB align
+        weights_base = max(weights_base, 0x200000000)
+        mem_end = weights_base + weights_bytes
+        mem_bytes = ((mem_end - DRAM_BASE) + 0x3FFFFFFF) & ~0x3FFFFFFF   # round to 1GB
+        return {"arena_base": ARENA_BASE, "weights_base": weights_base, "mem_bytes": mem_bytes}
+
+    align = 1 << 20                                                  # 1 MB is enough for a blob base
+    weights_base = (dram_base + code_reserve + align - 1) & ~(align - 1)
+    arena_base = (weights_base + weights_bytes + align - 1) & ~(align - 1)
+    end = dram_base + dram_bytes
+    if arena_base + arena_bytes > end:
+        raise RuntimeError(
+            f"does not fit: code+static-I/O reserve {code_reserve / 2**20:.0f} MB + weights "
+            f"{weights_bytes / 2**20:.1f} MB + arena {arena_bytes / 2**20:.0f} MB exceeds the board's "
+            f"{dram_bytes / 2**20:.0f} MB at {hex(dram_base)}. Shrink the arena or the model.")
+    return {"arena_base": arena_base, "weights_base": weights_base,
+            "mem_bytes": dram_bytes, "code_reserve": code_reserve}
 
 
 def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None = None,
-          arena_mb: int = 256) -> dict:
-    """Build the whole-model spike ELF. Returns {elf, mem_bytes, weights_base, ...}."""
+          arena_mb: int = 256, *, dram_base: int = DRAM_BASE,
+          dram_bytes: int | None = None, int8_compute: bool = False,
+          features: "frozenset[str] | None" = None, rvv_schedule: str | None = None,
+          cflags_override: list[str] | None = None, vlen: int | None = None,
+          console: str = "htif", sdk_dir: str | Path | None = None,
+          sdk_chip: str | None = None, chip_freq_hz: int | None = None,
+          matrix: "Any | None" = None, matrix_scalar_tile: bool = False,
+          device: "Any | None" = None,
+          stack_bytes: int = 0x40000, op_profile: bool = False,
+          prof_heartbeat_cycles: int = 2_000_000_000,
+          code_reserve: int | None = None) -> dict:
+    """Build the whole-model bare-metal ELF (spike, or any board with no RTOS).
+
+    Returns ``{elf, mem_bytes, weights_base, build_hash, ...}``.
+
+    The lowering arguments mirror ``zephyr_model.build_app`` and all default to the historical
+    behavior, so existing callers are byte-identical: ``int8_compute`` selects the real W8A8 integer
+    datapath, ``features``/``rvv_schedule``/``cflags_override`` let a tuned RVV package drive this path
+    the way it drives the Zephyr one, and ``vlen`` pins ``-march=...zvl<N>b`` to the vector length the
+    image will actually run on. Passing none of them lowers ``model.mlir`` raw — correct only when the
+    caller wants the unprepared module, which is NOT what a delivery wants (measured: raw scored
+    ``cos 0.925`` where the prepared path is bit-exact).
+
+    ``stack_bytes`` is the linker-reserved stack, and it is a SIZING decision rather than a layout
+    constant: the lowering promotes static intermediates to stack ``alloca``s for this target, so the
+    demand follows the model. It matters because nothing checks it -- ``crt.S`` hands each hart a slice
+    and the region immediately below the reserve is ``.bss``/``.data``/``.rodata``/``.htif``, so running
+    out corrupts the allocator's bookkeeping and the HTIF mailbox instead of faulting. The default is
+    the historical 0x40000, so existing callers are byte-identical.
+
+    ``console`` selects the output channel and is a real correctness knob, not a preference. The
+    default ``htif`` needs a **host** servicing ``tohost`` (spike, FireSim, uart_tsi); on bare silicon
+    nothing does, so the image hangs inside its first print before any model work -- looking exactly
+    like a core that never booted. Boards without such a host pass ``console="uart"`` together with
+    ``sdk_dir``/``sdk_chip``, from which the UART, PLL and clock-selector facts are derived (see
+    ``runtime.sdk_facts``); ``chip_freq_hz`` additionally raises the PLL to that frequency the way the
+    vendor SDK's own ``init_test()`` does, and ``None`` leaves the chip on its reset clock.
+
+    ``matrix`` is a :class:`zephyr_model.MatrixRouting` naming the matrix extension and configuration to
+    route contractions to; it is required whenever ``features`` enables the routing feature, and the same
+    object drives both the IR rewrite and the shim object, so the tile edge has one source.
+    ``matrix_scalar_tile`` compiles that shim with the scalar stand-in for the unit instead of its
+    instructions -- which is how the whole model gets graded on a simulator that has no such unit, proving
+    the routing, the packing, the ABI and the epilogue while proving nothing about the datapath.
+
+    ``op_profile`` instruments ``@forward`` with a mark before each top-level op and links the profiler,
+    so the run additionally emits ``PROF <id> <ticks> <hits>`` (``mcycle``, the same counter as
+    ``METRIC cycles``) plus the id->op table beside the image. It is the only way this path can say WHERE
+    its cycles went rather than only how many there were, which is what pricing a compute unit needs. It
+    changes the emitted code, so a profiled image is for measuring per-op cost, never for a cycle count
+    compared against an unprofiled one.
+    """
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
+    from ...llvmlower.weight_prepack import prepare_build_bundle
+    model_dir = prepare_build_bundle(model_dir, work, features)
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
     gcc = _spike.gcc_path()
     ld = gcc.with_name("riscv64-unknown-elf-ld")
     clang = toolchain.clang()
     h, rt = _harness_dir(), _c_runtime_dir()
     arena_bytes = arena_mb * 1024 * 1024
+    prepared_path = model_dir / "model.mlir"
+    vectorize = False
+    # TWO flag sets, because two compilers: the model object is built by CLANG (an RVV package's
+    # cflags are clang flags -- `-fno-vectorize` is not a GCC option and the harness units would fail
+    # to compile with them), while crt.S/htif.c/the generated call are built by the GCC that owns this
+    # bare-metal environment. Only the -march has to agree between them, which is what `vlen` pins.
+    from .zephyr_model import march_with_vlen
+    clang_cflags = list(cflags_override or RVV_CFLAGS)
+    gcc_cflags = list(RVV_CFLAGS)
+    if vlen is not None:
+        clang_cflags = march_with_vlen(clang_cflags, vlen)
+        gcc_cflags = march_with_vlen(gcc_cflags, vlen)
 
-    # 1. lower MLIR -> LLVM IR -> rv64gcv object
-    res = lower_model_file(model_dir / "model.mlir", work / "lower",
-                           targets=(), textual=True)   # produce only the .ll
-    _run([clang, "--target=riscv64-unknown-elf", *RVV_CFLAGS, "-c", res.ll_path,
+    # 1. lower MLIR -> LLVM IR -> rv64gcv object. Parse + lower under IR_LOCK: xDSL's parser is not
+    #    thread-safe and a delivery builds several images in one process (see common.ir_lock).
+    from ...common.ir_lock import IR_LOCK
+    with IR_LOCK:
+        # Preparation is what LIFTS a quantized subclass's inner tensors to `@forward` arguments,
+        # and `c_runtime.generate` (step 2) appends the matching table rows unconditionally. Lowering
+        # the raw module while the table describes two extra arguments is an ABI skew nothing would
+        # report, so a bundle that needs the lift may not take the unprepared branch.
+        from ...llvmlower import qinner as _qinner
+        if not (int8_compute or features or rvv_schedule) and _qinner.plan_for_bundle(prepared_path):
+            raise SpikeModelError(
+                f"{model_dir} carries quant-inner tensors, which are bound by lifting them in "
+                "prepare_for_lowering; build it with int8_compute/features/rvv_schedule so the "
+                "object and the argument table agree")
+        if int8_compute or features or rvv_schedule:
+            from . import zephyr_model as _zm
+            prepared_path, features = _zm.prepare_for_lowering(
+                prepared_path, work, int8_compute=int8_compute, features=features,
+                vlen=vlen, matrix=matrix, device=device)
+            vectorize = True
+        if op_profile:
+            # Instrumented AFTER preparation, so the ids name the ops that actually run -- instrumenting
+            # the raw module would number ops the rewrites go on to split, fuse or route away, and the
+            # table would then resolve PROF lines to the wrong names.
+            from ...llvmlower import op_profile as _op_profile
+            text, prof_table = _op_profile.instrument(Path(prepared_path).read_text())
+            prepared_path = work / "model_prof.mlir"
+            Path(prepared_path).write_text(text)
+            _op_profile.write_table(prof_table, work / "op_profile_table.json")
+        res = lower_model_file(prepared_path, work / "lower", targets=(), textual=True,
+                               vectorize=vectorize, transform_schedule=rvv_schedule,
+                               features=features)   # produce only the .ll
+    # BACKEND-level feature flags, on the MODEL OBJECT ONLY (the GCC-built harness units keep
+    # `gcc_cflags`): a feature like the register-group width is an LLVM backend query no tile size
+    # reaches. Empty features -> the flag list is unchanged, so model.o stays byte-identical.
+    from ...llvmlower.impr_features import apply_cflags as _apply_cflags
+    model_cflags = _apply_cflags(clang_cflags, frozenset(features or frozenset()))
+    _run([clang, CLANG_TARGET, *model_cflags, "-c", res.ll_path,
           "-o", work / "model.o"])
 
     # 2. generate the data-driven runtime artifacts (arg table, call, weights.bin, io)
     cgen = work / "cgen"
-    info = c_runtime.generate(model_dir, cgen, inputs_npz)
-    lay = _layout(arena_bytes, info["weights_bytes"])
+    info = c_runtime.generate(model_dir, cgen, inputs_npz, prepared_dir=work)
+    # The region ahead of the weights blob holds code, the stack, and the harness's STATIC I/O
+    # storage -- and that last term is a property of the model, not a constant: `static float
+    # OUT[MERLIN_OUT_ELEMS]` is 125 MiB of .bss for a 128x256000 logits output, four times what a
+    # 64 MB reserve leaves. Deriving it from `static_io_bytes` is the difference between a correct
+    # map and a link that fails with "section .weights VMA overlaps section .bss", which names
+    # neither the reserve nor the buffer that outgrew it. Only the packed (`dram_bytes`) map uses
+    # this; the spike map puts the blob at 0x2_0000_0000 with nothing in between.
+    reserve = int(code_reserve) if code_reserve else _CODE_RESERVE_FIXED + int(
+        info.get("static_io_bytes", 0))
+    lay = _layout(arena_bytes, info["weights_bytes"], dram_base=dram_base,
+                  dram_bytes=dram_bytes, code_reserve=reserve)
 
     # 3. weights.bin -> binary blob object (placed at the absolute weights address)
     _run([ld, "-r", "-b", "binary", "-o", work / "weights_blob.o", "weights.bin"],
@@ -115,42 +252,178 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
     addr_defs = [f"-DMERLIN_ARENA_BASE_ADDR={hex(lay['arena_base'])}ULL",
                  f"-DMERLIN_ARENA_SIZE_BYTES={hex(arena_bytes)}ULL",
                  f"-DMERLIN_WEIGHTS_BASE_ADDR={hex(lay['weights_base'])}ULL"]
+    # Build identity: the lowered model object plus the weights blob -- what computes the answer --
+    # AND the runtime sources this compiles, printed by the harness as `METRIC build_hash`.
+    #
+    # The runtime half is not bookkeeping. Adding the bare-metal heartbeat to merlin_op_prof.c changed
+    # what the image PRINTS while model.o and weights.bin stayed byte-identical, so the instrumented
+    # image and the silent one reported the SAME build_hash -- and "which binary produced this log?",
+    # the one question this metric exists to answer, could not be answered. The zephyr path already
+    # learned this and folded in its app configuration; this path had the same hole for its C runtime.
+    # `source_digest` is the provenance convention's "bytes actually READ", so a dirty runtime tree
+    # changes the identity even when every commit still looks right.
+    import hashlib as _hashlib
+    from ...common.provenance import source_digest as _source_digest
+    _hh = _hashlib.sha256()
+    for _f in (work / "model.o", cgen / "weights.bin"):
+        _hh.update(_f.read_bytes())
+    _rt_srcs = sorted([*rt.glob("*.c"), *rt.glob("*.h"), *h.glob("*.c"), *h.glob("*.h"),
+                       *h.glob("*.S"), runtime_dir() / "abi/mlir_runtime.c"])
+    _hh.update(_source_digest(_rt_srcs).encode("utf-8"))
+    # The instrumentation switches change the emitted code, so they belong in the identity too.
+    _hh.update(f"op_profile={bool(op_profile)} heartbeat={int(prof_heartbeat_cycles)}".encode("utf-8"))
+    build_hash = _hh.hexdigest()[:12]
+    # Console backend: one of two implementations of the same four-symbol ABI. `uart` needs the
+    # target's own MMIO facts, derived from its SDK headers -- never defaulted, because a wrong
+    # console address produces no output at all, the one failure the far end cannot debug.
+    console_defs: list[str] = []
+    console_src = h / "htif.c"
+    console_facts = None
+    if console == CONSOLE_UART:
+        from ..sdk_facts import derive_uart_console
+        if not sdk_dir or not sdk_chip:
+            raise RuntimeError(
+                "console='uart' needs sdk_dir + sdk_chip: the UART/PLL/clock facts are derived from "
+                "the target SDK's own headers, never hardcoded")
+        console_facts = derive_uart_console(sdk_dir, sdk_chip)
+        console_defs = console_facts.macros(chip_freq_hz=chip_freq_hz)
+        console_src = h / "console_uart.c"
+    elif console != CONSOLE_HTIF:
+        raise RuntimeError(f"unknown console kind {console!r}")
+
+    # The profiler's console is the harness's own four-symbol ABI, so it needs the harness dir on the
+    # include path and the same define the harness is compiled with -- both units must agree, or the
+    # dump call compiles out of one side and leaves an undefined symbol on the other.
+    # A whole-model FireSim run prints nothing until merlin_run returns, so a slow run and a hung one
+    # look identical from outside. The heartbeat interval is in mcycle ticks (the profiler's own clock on
+    # bare metal); at this rig's ~15 Mcyc/s a 2e9 interval is a line every ~2 minutes of simulated time,
+    # which is frequent enough to localise a stall and rare enough that the HTIF round-trips are noise.
+    prof_defs = (["-DMERLIN_PROF_BAREMETAL",
+                  f"-DMERLIN_PROF_HEARTBEAT_CYCLES={int(prof_heartbeat_cycles)}",
+                  "-I", str(h)]
+                 if op_profile else [])
     units = {
         "model_call.o": (cgen / "model_call.c", inc),
         "merlin_model.o": (rt / "merlin_model.c", inc),
-        "model_main.o": (h / "model_main.c", inc + addr_defs),
+        "model_main.o": (h / "model_main.c",
+                         inc + addr_defs + console_defs + prof_defs
+                         + [f'-DMERLIN_BUILD_HASH="{build_hash}"']),
         "mlir_rt.o": (runtime_dir() / "abi/mlir_runtime.c", []),
         "crt.o": (h / "crt.S", []),
-        "htif.o": (h / "htif.c", []),
+        "console.o": (console_src, console_defs),
         "libc_min.o": (h / "libc_min.c", []),
         "malloc.o": (h / "merlin_malloc.c", addr_defs),
     }
+    if op_profile:
+        units["op_prof.o"] = (rt / "merlin_op_prof.c", prof_defs)
     objs = []
     for obj, (src, extra) in units.items():
-        _run([gcc, *RVV_CFLAGS, *extra, "-c", src, "-o", work / obj])
+        _run([gcc, *gcc_cflags, *extra, "-c", src, "-o", work / obj])
         objs.append(work / obj)
     objs += [work / "model.o", work / "weights_blob.o"]
 
+    # 4b. the matrix-unit shim, if any contraction was routed to one. Built from the SIDECAR the rewrite
+    #     wrote rather than from anything passed in: the symbols the module actually calls are the ones
+    #     that must be defined, and a set reconstructed here could drift from them into a link error.
+    #     Compiled with CLANG, like the model object: the `.insn` directives and the vector intrinsics
+    #     want the same toolchain that lowered the model, and only the -march has to agree with GCC's.
+    # 4a-bis. the device objects, if any contraction was offloaded. Driven by the SIDECAR the rewrite
+    #         wrote rather than by anything passed in, for the same reason the matrix shim is: the
+    #         symbols the module actually calls are the ones that must be defined, and a set
+    #         reconstructed here could drift from them into a link error.
+    from ...llvmlower.device_offload import load_sidecar as _load_device_sidecar
+    _dev_side = _load_device_sidecar(work)
+    _dev_sigs = {k: tuple(v) for k, v in (_dev_side.get("signatures") or {}).items()}
+    if _dev_sigs:
+        if device is None:
+            raise RuntimeError(
+                f"{len(_dev_sigs)} device signature(s) were offloaded but no `device=` routing is "
+                "available to build them against; the image would not link")
+        from ...llvmlower.device_build import build_device_objects
+        _dev_dts = {r["symbol"]: tuple(r["dtypes"]) for r in (_dev_side.get("routed") or [])}
+        _dev_build = build_device_objects(
+            device.device, _dev_sigs, _dev_dts, package_dir=device.package_dir,
+            workdir=work / "device", operand_dtype=device.operand_dtype,
+            accum_dtype=device.accum_dtype, codegen_target="riscv",
+            # the SAME ISA the rest of the image is built for -- see device_build._flags
+            cflags=[CLANG_TARGET, *clang_cflags])
+        if not _dev_build.ok:
+            raise RuntimeError(
+                f"device offload produced no linkable objects for {device.device!r}: "
+                f"{_dev_build.skipped}")
+        objs.extend(_dev_build.objects)
+        print(f"[device] linked {len(_dev_build.kernels)} kernel(s) + shim for {device.device}"
+              + (f"; declined: {[w for _s, w in _dev_build.skipped]}" if _dev_build.skipped else ""))
+
+    matrix_build = None
+    from ...llvmlower.passes_opu import load_sidecar as _load_matrix_sidecar
+    matrix_sigs = _load_matrix_sidecar(work)
+    if matrix_sigs:
+        if matrix is None:
+            raise RuntimeError(
+                f"{len(matrix_sigs)} matrix-unit signature(s) were routed but no `matrix=` routing is "
+                "available to build them against; the image would not link")
+        from ...llvmlower import opu_shim
+        matrix_build = opu_shim.build_object(
+            matrix_sigs, work / "matrix", unit=matrix.unit, config=matrix.config,
+            cc=clang, cflags=[CLANG_TARGET, *clang_cflags],
+            scalar_tile=matrix_scalar_tile)
+        objs.append(matrix_build.object_path)
+        print(f"[matrix] linked {len(matrix_sigs)} entry point(s) for {matrix.unit} "
+              f"({matrix.config}, tile edge {matrix_build.tile_edge}, "
+              f"{'SCALAR STAND-IN' if matrix_build.scalar_tile else 'device instructions'}, "
+              f"{matrix_build.scratch_bytes} B pack scratch)")
+
     # 5. link: weights blob at its absolute high address.
     elf = work / "model.elf"
-    _run([gcc, *RVV_CFLAGS, "-nostdlib", "-nostartfiles",
+    _run([gcc, *gcc_cflags, "-nostdlib", "-nostartfiles",
           f"-Wl,--defsym,MERLIN_WEIGHTS_BASE={hex(lay['weights_base'])}",
+          f"-Wl,--defsym,MERLIN_STACK_BYTES={hex(int(stack_bytes))}",
           "-T", h / "model_link.ld", *objs, "-lm", "-o", elf])
-    return {"elf": elf, "mem_bytes": lay["mem_bytes"],
-            "weights_base": lay["weights_base"], **info}
+    return {"elf": elf, "mem_bytes": lay["mem_bytes"], "build_hash": build_hash,
+            "arena_base": lay["arena_base"], "weights_base": lay["weights_base"],
+            # Reported so `run` can be given it. A run at a different vector length than the build
+            # mis-places every scalable-vector spill slot; see run()'s docstring.
+            "vlen": vlen,
+            "console": console, "chip_freq_hz": chip_freq_hz,
+            "console_provenance": dict(console_facts.provenance) if console_facts else {},
+            # The matrix build carries the hardware revision its instructions were derived from, so a
+            # result produced by this ELF can name what it is a result about.
+            "matrix": matrix_build.to_dict() if matrix_build is not None else None, **info}
 
 
 def run(elf: str | Path, harts: int = 1, mem_bytes: int = 1 << 30,
-        isa: str = "rv64gcv_zfh_zvfh", timeout: int = 3600) -> dict[str, Any]:
+        isa: str = "rv64gcv_zfh_zvfh", timeout: int = 3600,
+        vlen: int | None = None) -> dict[str, Any]:
     """Run the ELF on spike; parse the HTIF output. Returns {outputs, metrics, console}.
 
     ``mem_bytes`` must cover 0x80000000 .. weights_base + weights size (use the value
-    returned by :func:`build`)."""
+    returned by :func:`build`).
+
+    ``vlen`` MUST match the vector length the image was BUILT for, and this is not a preference.
+    ``-march=...zvl<N>b`` makes the compiler emit scalable-vector spill slots whose addresses are computed
+    from ``vlenb`` READ AT RUN TIME (`csrr a1, vlenb` then a shift and an add). If the simulator reports a
+    different ``vlenb``, every such slot lands at the wrong offset -- MEASURED on deepjscc int8: a
+    ``vs1r.v`` spill computed as ``sp + 328 + 16*vlenb + 2384`` is 256 bytes off between VLEN 128 and 256,
+    and at the wrong length it writes over the memref descriptors sitting nearby.
+    The bare ``rv64gcv`` in the default ISA string is VLEN=128, so an image built with ``vlen=256`` and run
+    without this argument was silently running at half the declared width; matching them took the same
+    model 602k copies further to 2.37M. Pass the ``vlen`` you passed to :func:`build`, or read it back from
+    that call's result.
+    """
+    if vlen is not None:
+        want = f"zvl{int(vlen)}b"
+        if want not in isa:
+            isa = f"{isa}_{want}"
     cmd = [_spike.spike_path(), f"--isa={isa}", f"-p{harts}",
            f"-m{hex(DRAM_BASE)}:{hex(mem_bytes)}", str(elf)]
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
-                          timeout=timeout)
-    console = proc.stdout + proc.stderr
+    # Capture BYTES and decode leniently. `text=True` raises UnicodeDecodeError on the first invalid byte
+    # and takes the WHOLE console with it -- and an image that is failing is exactly the one that emits
+    # stray bytes, so the log was being destroyed precisely when it was needed. A replacement character in
+    # a garbled region is strictly better than losing every OUT/METRIC/DONE line that preceded it.
+    proc = subprocess.run([str(c) for c in cmd], capture_output=True, timeout=timeout)
+    console = (proc.stdout or b"").decode("utf-8", errors="replace") + \
+              (proc.stderr or b"").decode("utf-8", errors="replace")
     out_line = next((l for l in console.splitlines() if l.startswith("OUT ")), None)
     if out_line is None or "DONE" not in console:
         raise SpikeModelError(f"run did not produce OUT/DONE (rc={proc.returncode}):\n"
@@ -166,7 +439,12 @@ def run(elf: str | Path, harts: int = 1, mem_bytes: int = 1 << 30,
     for l in console.splitlines():
         if l.startswith("METRIC "):
             _, k, v = l.split()
-            metrics[k] = int(v)
+            # Not every metric is a number: `build_hash` is a hex digest. Keeping the string beats
+            # crashing the parse of an otherwise complete run.
+            try:
+                metrics[k] = int(v)
+            except ValueError:
+                metrics[k] = v
         elif l.startswith("ARGMAX "):
             p = l.split()
             argmax = np.array([int(x) for x in p[2:2 + int(p[1])]], dtype=np.int64)
@@ -183,7 +461,10 @@ def build_and_run(model_dir: str | Path, work: str | Path, *, harts: int = 1,
     plus ``rel``/``cos``/``ok`` vs the reference. spike memory is sized automatically."""
     b = build(model_dir, work, arena_mb=arena_mb)
     elf = b["elf"]
-    result = run(elf, harts=harts, mem_bytes=mem_bytes or b["mem_bytes"], timeout=timeout)
+    # The vlen the build used, threaded through so the two cannot disagree. A run at a different vector
+    # length mis-places every scalable-vector spill slot; see run()'s docstring.
+    result = run(elf, harts=harts, mem_bytes=mem_bytes or b["mem_bytes"], timeout=timeout,
+                 vlen=b.get("vlen"))
     if reference is not None:
         ref = np.asarray(reference, dtype=np.float32).ravel()
         pref = result["prefix"]

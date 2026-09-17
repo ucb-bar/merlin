@@ -13,6 +13,7 @@ cross-backend matrix + bare-metal golden-C arm, its verilator/simjob broker). Th
 gemmini experiment as callbacks/extra logic — folding them in would inject target-conditionals into
 the shared driver (the overfit this repo forbids).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -32,16 +33,19 @@ class BenchTargetSpec:
     name: str
     runner: Any
     corpus_root: Path
+    # The RESOLVABLE target name (lowercase, as target_registry/manifest loaders expect) — distinct from
+    # ``name``, which is a display label. Threaded into ``runner.run_capsule(target=...)`` so the shared
+    # driver never relies on a runner-side default target. None only for stub/test runners that ignore it.
+    target: str | None = None
     labels: set[str] | None = None
     # None -> the runner's default contract dir (absolute DEFAULT_CONTRACT_DIR / $MERLIN_CONTRACT_DIR);
     # pass an ABSOLUTE path to override. Avoid CWD-relative strings (break when not run from repo root).
     contract: str | None = None
-    perf_tier: str = "L2"                       # the cycle-accurate timing tier
+    perf_tier: str = "L2"  # the cycle-accurate timing tier
     # extract the target's perf headline (e.g. {"gflops":.., "pct_fp_peak":..} or {"util_pct":..})
     # from that tier's result dict; keys flow straight into the perf row + table.
     perf_fields: Callable[[dict], dict] = field(default=lambda tier: {})
-    peak_note: str = ""                         # one-line description of the peak for report headers
+    peak_note: str = ""  # one-line description of the peak for report headers
 
     def discover(self) -> list[dict]:
-        return self.runner.discover_capsules(str(self.corpus_root), labels=self.labels,
-                                             contract=self.contract)
+        return self.runner.discover_capsules(str(self.corpus_root), labels=self.labels, contract=self.contract)

@@ -83,16 +83,16 @@ static void pack_b(size_t N, size_t K, size_t NR, const float *B, float *w) {
 
 // RESIDENT-WEIGHT pack cache (fairness): B is a model weight, constant across forward passes, so it
 // must be packed ONCE — not on every call inside the timed region. This mirrors the v3 / OpenBLAS /
-// ours ceiling drivers, which all exclude the pack (resident weight). Keyed on the (B,N,K,NR) tuple:
-// the first (cold) forward packs each weight; the timed (warm) passes reuse it, so the measured wall
-// is kernel-only and the v3-vs-XNNPACK comparison is fair. Safe because routed matmuls are
-// activation·weight (B = stable weight pointer); the e2e cosine gate catches any staleness.
+// ours ceiling drivers, which all exclude the pack (resident weight). Keyed on the compiled
+// CALLSITE plus (N,K,NR), not the transient B address: captured quantization/transpose pipelines can
+// materialize a constant logical weight at a different recycled heap address on every invocation.
+// The first (cold) forward packs each callsite's weight; timed warm passes reuse it.
 #define XNN_PACK_CACHE_MAX 512
-static struct { const float *b; size_t N, K, NR; float *w; } g_pack_cache[XNN_PACK_CACHE_MAX];
+static struct { uintptr_t site; size_t N, K, NR; float *w; } g_pack_cache[XNN_PACK_CACHE_MAX];
 static int g_pack_n = 0;
-static float *get_packed_b(const float *B, size_t N, size_t K, size_t NR) {
+static float *get_packed_b(uintptr_t site, const float *B, size_t N, size_t K, size_t NR) {
   for (int i = 0; i < g_pack_n; i++)
-    if (g_pack_cache[i].b == B && g_pack_cache[i].N == N && g_pack_cache[i].K == K &&
+    if (g_pack_cache[i].site == site && g_pack_cache[i].N == N && g_pack_cache[i].K == K &&
         g_pack_cache[i].NR == NR)
       return g_pack_cache[i].w;
   const size_t n_tiles = (N + NR - 1) / NR;
@@ -101,7 +101,7 @@ static float *get_packed_b(const float *B, size_t N, size_t K, size_t NR) {
   if (!w) return NULL;
   pack_b(N, K, NR, B, w);
   if (g_pack_n < XNN_PACK_CACHE_MAX) {
-    g_pack_cache[g_pack_n].b = B; g_pack_cache[g_pack_n].N = N; g_pack_cache[g_pack_n].K = K;
+    g_pack_cache[g_pack_n].site = site; g_pack_cache[g_pack_n].N = N; g_pack_cache[g_pack_n].K = K;
     g_pack_cache[g_pack_n].NR = NR; g_pack_cache[g_pack_n].w = w; g_pack_n++;
   }
   return w;  // resident: never freed (weight lives for the process, like a real pre-pack)
@@ -109,7 +109,7 @@ static float *get_packed_b(const float *B, size_t N, size_t K, size_t NR) {
 
 // The MLIR-ABI entry. Reads M/N/K + base pointers from the three unpacked descriptors, computes
 // the GEMM through the RVV ukernel, and returns the (filled) C descriptor by value.
-merlin_memref_2d_f32 merlin_xnn_gemm_f32(
+merlin_memref_2d_f32 merlin_xnn_gemm_f32_site(uintptr_t site,
     float *a_alloc, float *a_aligned, intptr_t a_off, intptr_t a_s0, intptr_t a_s1,
     intptr_t a_st0, intptr_t a_st1,
     float *b_alloc, float *b_aligned, intptr_t b_off, intptr_t b_s0, intptr_t b_s1,
@@ -139,7 +139,7 @@ merlin_memref_2d_f32 merlin_xnn_gemm_f32(
   const size_t NR = __riscv_vsetvlmax_e32m4();  // f32 lanes at LMUL=4 (VLEN-dependent)
   // Resident-weight pack: packed ONCE per distinct weight (excluded from the timed/warm path),
   // matching v3's pack-free accumulator-resident timing scope — a fair kernel-vs-kernel comparison.
-  float *w = get_packed_b(B, N, K, NR);
+  float *w = get_packed_b(site, B, N, K, NR);
   if (!w) { memset(C, 0, M * N * sizeof(float)); return ret; }
 
   struct xnn_f32_default_params params;  // 1x4v takes the (empty) default params

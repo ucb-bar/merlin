@@ -12,14 +12,16 @@ simulator backend is held to.
 Toolchain resolution: ``MERLIN_CHIPYARD`` (default ``/path/to/chipyard``),
 or explicit ``MERLIN_RISCV_GCC`` / ``MERLIN_SPIKE`` overrides.
 """
+
 from __future__ import annotations
 
 import os
 import subprocess
 import tempfile
 from pathlib import Path
-from merlin.common.paths import runtime_dir
 from typing import Any
+
+from merlin.common.paths import runtime_dir
 
 from ...common import paths as _paths
 from ...common.paths import repo_root
@@ -63,12 +65,10 @@ def harness_dir() -> Path:
 
 def available() -> bool:
     """True when the toolchain, spike, and the harness are all present."""
-    return (gcc_path().is_file() and spike_path().is_file()
-            and all((harness_dir() / f).is_file() for f in HARNESS_FILES))
+    return gcc_path().is_file() and spike_path().is_file() and all((harness_dir() / f).is_file() for f in HARNESS_FILES)
 
 
-def compile_command_buffer(cb: dict[str, Any], workdir: str | Path,
-                           harts: int = 4) -> Path:
+def compile_command_buffer(cb: dict[str, Any], workdir: str | Path, harts: int = 4) -> Path:
     """Generate the driver and compile the bare-metal ELF; returns the ELF path."""
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
@@ -78,14 +78,22 @@ def compile_command_buffer(cb: dict[str, Any], workdir: str | Path,
     h = harness_dir()
     cmd = [
         str(gcc_path()),
-        "-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany",
-        "-O2", "-fno-tree-vectorize", "-ffreestanding",
-        "-nostdlib", "-nostartfiles",
-        "-I", str(h),
-        "-T", str(h / "link.ld"),
+        "-march=rv64gcv",
+        "-mabi=lp64d",
+        "-mcmodel=medany",
+        "-O2",
+        "-fno-tree-vectorize",
+        "-ffreestanding",
+        "-nostdlib",
+        "-nostartfiles",
+        "-I",
+        str(h),
+        "-T",
+        str(h / "link.ld"),
         *(str(h / f) for f in HARNESS_FILES),
         str(main_c),
-        "-o", str(elf),
+        "-o",
+        str(elf),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -93,20 +101,19 @@ def compile_command_buffer(cb: dict[str, Any], workdir: str | Path,
     return elf
 
 
-def run_elf(elf: str | Path, harts: int = 4, isa: str = DEFAULT_ISA,
-            timeout: int = 300) -> str:
+def run_elf(elf: str | Path, harts: int = 4, isa: str = DEFAULT_ISA, timeout: int = 300) -> str:
     """Run the ELF on spike; returns raw console output."""
     cmd = [str(spike_path()), f"--isa={isa}", f"-p{harts}", str(elf)]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0:
-        raise SpikeError(
-            f"spike exited {proc.returncode}:\n{proc.stdout}\n{proc.stderr}")
+        raise SpikeError(f"spike exited {proc.returncode}:\n{proc.stdout}\n{proc.stderr}")
     return proc.stdout
 
 
 def parse_output(text: str) -> tuple[dict[str, list], dict[str, int]]:
     """Parse the OUT/METRIC/DONE console into (outputs, raw metrics) — shared protocol parser."""
     from .base import parse_console
+
     return parse_console(text, error_cls=SpikeError)
 
 
@@ -119,9 +126,9 @@ def normalize_metrics(raw: dict[str, int]) -> dict[str, int]:
     return metrics
 
 
-def run_command_buffer(cb: dict[str, Any], harts: int = 4,
-                       workdir: str | Path | None = None,
-                       isa: str = DEFAULT_ISA) -> dict[str, Any]:
+def run_command_buffer(
+    cb: dict[str, Any], harts: int = 4, workdir: str | Path | None = None, isa: str = DEFAULT_ISA
+) -> dict[str, Any]:
     """Compile + run a command buffer on spike and gate on reference equality.
 
     Returns {outputs, metrics, raw_metrics, correct, elf, console}.
