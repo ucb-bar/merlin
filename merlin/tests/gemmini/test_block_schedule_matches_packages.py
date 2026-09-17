@@ -9,7 +9,7 @@ and never modified.
 
 Two properties make that claim hold off this working copy:
 
-* **The geometry is derived, not typed.** The pass is run on ``Geometry.from_address_space`` of the
+* **The geometry is derived, not typed.** The pass is run on ``geometry_from_address_space`` of the
   target's own facts, and that geometry is checked against the constants each package baked in
   (``DIM``, ``SPAD_ROWS``, ``SPAD_BANK_ROWS``, ``ACC_ROWS``). A literal geometry here would let the
   derivation drift away from 18 frozen packages while every cell stayed green.
@@ -35,10 +35,27 @@ import sys
 import pytest
 
 from merlin.common.paths import artifacts_dir, merlin_dir, runs_dir
-from merlin.compile.scheduling import (BANK_ALIGNED, CONTIGUOUS, Compute, ConvContraction, Contraction,
-                                       Geometry, Knobs, LHS, Load, NEST, Preload, ROLE, Store, WEIGHT,
-                                       BlockScheduleError, schedule_contraction, schedule_convolution,
-                                       schedule_interface_program)
+from merlin.compile.scheduling import (
+    BANK_ALIGNED,
+    CONTIGUOUS,
+    LHS,
+    NEST,
+    ROLE,
+    WEIGHT,
+    BlockScheduleError,
+    Compute,
+    Contraction,
+    ConvContraction,
+    Geometry,
+    Knobs,
+    Load,
+    Preload,
+    Store,
+    geometry_from_address_space,
+    schedule_contraction,
+    schedule_convolution,
+    schedule_interface_program,
+)
 from merlin.targetgen.address_space import derive_address_space
 
 TARGET = "gemmini"
@@ -145,7 +162,7 @@ def _conv_json() -> str:
 
 
 def _geometry() -> Geometry:
-    return Geometry.from_address_space(derive_address_space(TARGET))
+    return geometry_from_address_space(derive_address_space(TARGET))
 
 
 def _golden() -> dict:

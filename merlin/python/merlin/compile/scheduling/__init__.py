@@ -40,6 +40,7 @@ from .block_schedule import (
     schedule_convolution,
     schedule_interface_program,
 )
+from .derive import geometry_from_address_space
 
 __all__ = [
     "AXES",
@@ -48,6 +49,7 @@ __all__ = [
     "M",
     "N",
     "execute",
+    "geometry_from_address_space",
     "schedule_convolution",
     "BANK_ALIGNED",
     "CONTIGUOUS",

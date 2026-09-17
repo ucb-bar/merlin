@@ -205,13 +205,13 @@ def test_the_real_targets_accumulators_are_what_their_facts_say(target, kind):
 
 
 def test_the_schedule_pass_refuses_an_in_datapath_accumulator_by_name():
-    from merlin.compile.scheduling import BlockScheduleError, Geometry
+    from merlin.compile.scheduling import BlockScheduleError, geometry_from_address_space
 
     space = AS.derive_address_space("atlas")
     if space.stores_status != AS.DERIVED:
         pytest.skip("no derived store list for atlas in this checkout")
     with pytest.raises(BlockScheduleError, match="in_datapath"):
-        Geometry.from_address_space(space)
+        geometry_from_address_space(space)
 
 
 # ---------------------------------------------------------------------------- declared counts

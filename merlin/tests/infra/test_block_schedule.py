@@ -9,12 +9,39 @@ earlier load overwrote never leaves the pass.
 """
 from __future__ import annotations
 
+import itertools
+
+import numpy as np
 import pytest
 
-from merlin.compile.scheduling import (BANK_ALIGNED, CONTIGUOUS, Compute, Contraction, Geometry,
-                                       Knobs, LHS, Load, NEST, OPPOSITE_END, Preload, ROLE, Store,
-                                       WEIGHT, BlockScheduleError, check_residency,
-                                       schedule_contraction, schedule_interface_program)
+from merlin.compile.scheduling import (
+    AXES,
+    BANK_ALIGNED,
+    CONTIGUOUS,
+    LHS,
+    NEST,
+    OPPOSITE_END,
+    ROLE,
+    WEIGHT,
+    BlockScheduleError,
+    Compute,
+    Contraction,
+    ConvContraction,
+    Geometry,
+    K,
+    Knobs,
+    Load,
+    M,
+    N,
+    Preload,
+    Store,
+    check_residency,
+    execute,
+    geometry_from_address_space,
+    schedule_contraction,
+    schedule_convolution,
+    schedule_interface_program,
+)
 from merlin.targetgen.address_space import derive_address_space
 
 
@@ -39,7 +66,7 @@ def _facts(edge, operand_bytes, operand_depth, accum_bytes, accum_depth, *,
 
 
 def _geometry(name, **kwargs):
-    return Geometry.from_address_space(derive_address_space(name, facts=_facts(**kwargs)))
+    return geometry_from_address_space(derive_address_space(name, facts=_facts(**kwargs)))
 
 
 #: Two devices, deliberately unlike each other: different block edge, store size and bank depth.
@@ -250,11 +277,6 @@ def test_an_unknown_knob_value_is_refused(bad):
 
 # --------------------------------------------------------------------------- loop order + execution
 
-import itertools
-
-import numpy as np
-
-from merlin.compile.scheduling import AXES, K, M, N, execute
 
 ORDERS = list(itertools.permutations(AXES))
 
@@ -333,7 +355,6 @@ def test_execution_catches_a_schedule_that_drains_the_wrong_accumulator_block():
 
 # ------------------------------------------------------------------------------------ convolution
 
-from merlin.compile.scheduling import ConvContraction, schedule_convolution
 
 
 def _conv_reference(ifm, weight, conv):
@@ -425,3 +446,12 @@ def test_the_adapter_schedules_a_conv_command_and_refuses_pooling():
     pooled = {**conv, "attributes": {**conv["attributes"], "epilogue": ["maxpool"]}}
     with pytest.raises(BlockScheduleError, match="maxpool"):
         schedule_interface_program(tensors, [pack, pooled], geometry, Knobs())
+
+
+def test_the_pass_module_imports_nothing_from_merlin_so_a_backend_can_vendor_it():
+    """Generated backends may not depend on merlin at run time and copy this module verbatim instead; the
+    package integrity scan rejects any merlin import, so a stray one here would fail every such package."""
+    from merlin.compile.scheduling import block_schedule
+    from merlin.targetgen.oot_runner import _py_imports_merlin
+    with open(block_schedule.__file__, encoding="utf-8") as handle:
+        assert _py_imports_merlin(handle.read()) is None

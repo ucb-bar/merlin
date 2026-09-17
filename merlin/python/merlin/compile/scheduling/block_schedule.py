@@ -27,6 +27,10 @@ Everything about the device is derived. Block edge, store rows, bank depth and t
 come from :func:`merlin.targetgen.address_space.derive_address_space`, i.e. from that target's own RTL
 facts; a quantity the facts cannot answer is a refusal (:class:`BlockScheduleError`), never a default.
 
+This module imports nothing from merlin, so a generated backend that may not depend on merlin at run time
+can VENDOR it byte for byte and run the pass itself (``tests/infra`` pins that). Deriving a
+:class:`Geometry` from a target's facts is :func:`merlin.compile.scheduling.derive.geometry_from_address_space`.
+
 Every schedule is checked before it is returned (:func:`check_residency`): a load may not overwrite a
 block some later compute still expects to read. That check is what makes an aggressive knob value SAFE
 to offer -- when two regions overlap, one order can be correct (the overwrite lands after the last
@@ -96,74 +100,6 @@ class Geometry:
     accumulator_rows: int
     separate_accumulator_space: bool
     sources: dict[str, str] = field(default_factory=dict)
-
-    @classmethod
-    def from_address_space(cls, space: Any) -> "Geometry":
-        """Derive from :class:`~merlin.targetgen.address_space.AddressSpace`, or refuse.
-
-        Refuses rather than defaults on: no array geometry, a non-square array (this weight-stationary
-        model has one square block edge, and which edge a rectangular array's block spans is a choice
-        no fact here makes), a missing operand or accumulator store, and a store whose row count the
-        facts could not derive. Stores are resolved to their roles by ROW WIDTH
-        (:func:`~merlin.targetgen.address_space.operand_store`,
-        :func:`~merlin.targetgen.address_space.accumulator_store`), never by the name an extractor
-        happened to give them, and a refusal quotes the resolver's reason.
-        """
-        if space.array_rows is None or space.array_cols is None:
-            raise BlockScheduleError(
-                f"{space.target!r}: no array geometry in its facts, so there is no block edge to "
-                f"schedule in (unknowns: {list(space.unknown_quantities())})"
-            )
-        if space.array_rows != space.array_cols:
-            raise BlockScheduleError(
-                f"{space.target!r}: a {space.array_rows}x{space.array_cols} array is not square; this "
-                "pass schedules one square block edge and will not choose an edge for you"
-            )
-        from merlin.targetgen.address_space import ADDRESSABLE, accumulator_kind, operand_store
-
-        kind = accumulator_kind(space)
-        resolved = {"operand": operand_store(space), "accumulator": kind}
-        if resolved["operand"].store is None:
-            raise BlockScheduleError(
-                f"{space.target!r}: no operand store to schedule into: {resolved['operand'].reason}"
-            )
-        if kind.kind != ADDRESSABLE:
-            # An accumulator inside the compute element is a real design, not a defect in the facts --
-            # but this pass addresses accumulator ROWS, and such an accumulator has none to address.
-            raise BlockScheduleError(
-                f"{space.target!r}: its accumulator is {kind.kind} ({kind.reason}); this pass schedules "
-                "into an addressable accumulator store"
-            )
-        for role, resolution in resolved.items():
-            if resolution.store.total_rows is None:
-                raise BlockScheduleError(
-                    f"{space.target!r}: the row count of its {role} store "
-                    f"{resolution.store.name!r} is UNKNOWN "
-                    f"({[u.reason for u in space.unknowns if u.store == resolution.store.name]})"
-                )
-        operand, accumulator = resolved["operand"].store, resolved["accumulator"].store
-        if operand.row_elems is not None and operand.row_elems != space.array_rows:
-            raise BlockScheduleError(
-                f"{space.target!r}: its operand row spans {operand.row_elems} elements but its array "
-                f"edge is {space.array_rows}; a block cannot be one row wide and another edge tall"
-            )
-        return cls(
-            block=space.array_rows,
-            operand_rows=operand.total_rows,
-            operand_bank_rows=operand.depth,
-            accumulator_rows=accumulator.total_rows,
-            separate_accumulator_space=bool(space.separate_accumulator_space),
-            sources={
-                "facts": space.sources.get("facts", "derive_address_space"),
-                "block": f"arrays[{space.array_name!r}] edge",
-                "operand_rows": (f"{operand.name}.total_rows (operand store, {resolved['operand'].basis})"),
-                "operand_bank_rows": f"{operand.name}.depth",
-                "accumulator_rows": (
-                    f"{accumulator.name}.total_rows (addressable accumulator "
-                    f"linked to datapath {kind.datapath!r}, {kind.dtype})"
-                ),
-            },
-        )
 
 
 @dataclass(frozen=True)
@@ -296,8 +232,10 @@ class Preload:
     accumulate: bool
     rows: int
     cols: int
-    #: Rows the weight block itself spans (the contraction depth of this step), which is what the
-    #: residency check reads -- not ``rows``, the streamed row count the accumulator block takes.
+    #: Rows the weight block spans (the reduction depth of this step) -- set whether or not this preload
+    #: makes a block resident, because a target's preload word carries the depth either way. The
+    #: residency check reads it only when ``weight_row`` is set; ``rows`` is the streamed row count the
+    #: accumulator block takes.
     weight_rows: int | None = None
 
 
@@ -631,7 +569,7 @@ def _schedule_nest(
                         kk > 0,
                         rows,
                         cols,
-                        k_depth(kk) if fresh else None,
+                        k_depth(kk),
                     ),
                     Compute(streamed.row, (mi, kk), rows, k_depth(kk), fresh, streamed.gather),
                 ]
