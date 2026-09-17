@@ -1062,6 +1062,35 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
     v1.setdefault("interfaces", []).append(build_features)
     sourced.append(f"elaborated_features({build_features['status']})")
 
+    # WHO THESE FACTS ARE ABOUT, inside the body -- not only in ``inputs``. A pin is matched to a target
+    # by what its body DECLARES (``facts._facts_declares`` reads ``facts.target``), never by the
+    # directory it sits in, so a body without this key can be matched to no target at all. The
+    # FIRRTL-census path already stamps it (``introspect.py``: ``body.setdefault("target", target)``);
+    # this path did not.
+    v1.setdefault("target", target)
+    # WHICH ELABORATION they describe. The census path records this as ``source`` (the config it read,
+    # e.g. GemminiRocketConfig, with the .fir it came from). Where the census did not run, these facts
+    # were extracted from a cached HW dialect and NOTHING said which configuration that dialect is of --
+    # so the artifact could not be attributed to a device, which is the repo's hardware-provenance rule
+    # exactly inverted. The target's own descriptor names it (``rtl.elaboration``), so record that,
+    # under its own ``kind`` so a DECLARED elaboration is never read as a census-DERIVED one. Undeclared
+    # stays absent: an unattributable artifact says so rather than naming a config nobody verified.
+    if not v1.get("source"):
+        try:
+            declared = V1.declared_rtl_source(target)
+            v1["source"] = {
+                "kind": "declared_elaboration",
+                "config": declared.config,
+                "generator": declared.generator,
+                "root": str(declared.root),
+                "declared_by": str(declared.origin),
+                "note": ("the elaboration this target's own descriptor names; the facts here were "
+                         "extracted from the HW dialect cached for it, and this records WHICH "
+                         "configuration that dialect is of -- it is not a second extraction of it"),
+            }
+        except Exception:  # noqa: BLE001 — undeclared/unresolvable: leave `source` absent, never guess
+            pass
+
     return {
         "schema_version": "2.0",
         "generator": {
