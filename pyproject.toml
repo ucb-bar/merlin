@@ -6,9 +6,12 @@ build-backend = "setuptools.build_meta"
 name = "merlin"
 version = "0.0.1"
 description = "Compiler-centered framework for HW/SW abstraction exploration"
-# >=3.11: the `telemetry` extra's sibling `aet` (via [tool.uv.sources]) requires >=3.11, and it enters
-# the universal resolution, so a >=3.10 floor made every `uv sync` fail. The runtime venv is 3.13.
-requires-python = ">=3.11"
+# >=3.12 because the CODE needs it, not as a preference: five modules use PEP 701 f-strings --
+# reused outer quotes, escapes, and line breaks inside replacement fields -- which are a SyntaxError
+# before 3.12, so an install on 3.11 would have failed at import. The floor said >=3.11 (raised from
+# >=3.10 because the `telemetry` extra's sibling `aet` enters the universal resolution) and nothing
+# checked it against the syntax actually written. Dev venvs are 3.12/3.13; CI is 3.13.
+requires-python = ">=3.12"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [{ name = "UCB-BAR" }]
@@ -154,12 +157,17 @@ cache_dir = "out/build/cache/mypy"
 
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+# Must track requires-python above; a test holds the two together. Pinned at py310 while the code
+# was 3.12, ruff reported seven working PEP 701 f-strings as INVALID SYNTAX -- a linter calling live
+# code broken is how a linter stops being read -- and the floor itself was wrong in the same way.
+target-version = "py312"
 exclude = ["third_party", "out", ".venv"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
-ignore = ["F821", "UP038"]
+# F821: the xDSL/MLIR dialect classes resolve names at registration time.
+# (UP038 was listed here until 2026-09-16; ruff removed the rule, so ignoring it did nothing.)
+ignore = ["F821"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["merlin"]
