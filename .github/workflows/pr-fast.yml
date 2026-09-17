@@ -49,6 +49,28 @@ jobs:
         run: uv run python build_tools/scripts/check_ratchets_shrink.py --base "${{ github.event.pull_request.base.sha || github.event.before }}"
       - name: docs freshness ratchet (no NEW drift behind code_refs)
         run: uv run python build_tools/scripts/check_docs_freshness.py --ratchet
+      # Seven more gates shipped with a ledger, a docstring and no caller: measured 2026-09-16,
+      # 15 of 34 check_*.py ran in no hook, no Stop-hook and no workflow. A gate nobody runs is
+      # worse than no gate, because it reads as coverage -- check_no_holdout_names was one of them,
+      # and it had been failing on a tracked ratchet that named two held-out capsules outright.
+      - name: no-holdout-names gate (a holdout's name is an answer key)
+        run: uv run python build_tools/scripts/check_no_holdout_names.py
+      - name: holdout-disjointness gate (hidden set disjoint from public)
+        run: uv run python build_tools/scripts/check_holdout_disjointness.py
+      - name: contract-copies gate (the two copies of the experiment ABI must agree)
+        run: uv run python build_tools/scripts/check_contract_copies.py
+      - name: fact-provenance gate (a hardware fact derives from RTL, not from prose)
+        run: uv run python build_tools/scripts/check_fact_provenance.py
+      - name: opcode-documentation gate (every accepted op has ABI semantics)
+        run: uv run python build_tools/scripts/check_opcode_documentation.py
+      - name: mesh-assertion gate (a capsule hardware admits must assert must_accelerate)
+        run: uv run python build_tools/scripts/check_mesh_assertion_not_weakened.py
+      - name: defect-reach gate (could the corpus exhibit a known external defect)
+        run: uv run python build_tools/scripts/check_defect_reach.py
+      # Advisory: ~60s, and it prices a cohort rather than asserting a property of this diff.
+      - name: cert-affordability report (advisory)
+        continue-on-error: true
+        run: uv run python build_tools/scripts/check_cert_affordability.py
       # These three existed with their own ledgers but ran nowhere.
       - name: route-partition gate
         run: uv run python build_tools/scripts/check_route_partition.py --fail-on-violation

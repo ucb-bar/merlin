@@ -30,13 +30,14 @@ from __future__ import annotations
 
 import argparse
 import collections
+import hashlib
 import json
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
 
-from merlin.common.paths import repo_root, runs_dir            # noqa: E402
+from merlin.common.paths import merlin_dir, repo_root, runs_dir  # noqa: E402
 from merlin.runtime.route_partition import (                   # noqa: E402
     ROUTE_ACCEPT, ROUTE_DECLINE, ROUTE_VIOLATION, VIOLATION_KINDS, route_of)
 
@@ -69,8 +70,35 @@ def target_of(path: Path, targets: list[str]) -> str:
     return UNATTRIBUTED
 
 
+def _holdout_names() -> frozenset[str]:
+    """Held-out capsule names, DISCOVERED from the hidden corpora rather than listed.
+
+    Same source `check_no_holdout_names` reads: `merlin/contract/capsules/hidden` plus each target's
+    own `<target>/hidden`. A target that grows a holdout corpus tomorrow is covered without an edit
+    here, which is the only way a rule like this stays true.
+    """
+    root = merlin_dir() / "contract" / "capsules"
+    names: set[str] = set()
+    for hidden in [root / "hidden", *sorted(root.glob("*/hidden"))]:
+        if hidden.is_dir():
+            names.update(d.name for d in hidden.iterdir() if d.is_dir())
+    return frozenset(names)
+
+
+_HOLDOUTS = _holdout_names()
+
+
 def _debt(target: str, kind: str, item: str) -> str:
-    """One ratchet key. Same ``<target> <axis>:<item>`` shape the conformance ratchet uses."""
+    """One ratchet key. Same ``<target> <axis>:<item>`` shape the conformance ratchet uses.
+
+    A held-out capsule is keyed by DIGEST. This ledger is tracked and public, and knowing which
+    shapes are graded privately is most of the advantage the holdout exists to deny -- two entries
+    here named one outright, and `check_no_holdout_names` (which would have said so) was wired to no
+    hook and no workflow. The debt stays auditable: same target, same kind, same count, one entry
+    per capsule that can still only shrink.
+    """
+    if item in _HOLDOUTS:
+        item = "holdout:" + hashlib.sha256(item.encode("utf-8")).hexdigest()[:12]
     return f"{target} {kind}:{item}"
 
 
