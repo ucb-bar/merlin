@@ -8,6 +8,7 @@ The matrix is deliberately honest: ``not_built`` / ``not_run`` cells show the ga
 could read as "fine", and every cell carries its RVV coverage so a fast-but-scalar result can't be
 mistaken for a fast-and-vectorized one.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -57,12 +58,12 @@ def _cell(r: BaselineResult | None) -> str:
     # cycle-estimate, so a passing cell always shows a real latency rather than "?".
     if r.e2e_wall_ns:
         ms = r.e2e_wall_ns / 1e6
-        lat = f"{ms:.0f}ms" if ms < 10000 else f"{ms/1000:.1f}s"
+        lat = f"{ms:.0f}ms" if ms < 10000 else f"{ms / 1000:.1f}s"
     elif r.e2e_cycles:
-        lat = f"{r.e2e_cycles/1e6:.1f}Mc"
+        lat = f"{r.e2e_cycles / 1e6:.1f}Mc"
     else:
         lat = "?"
-    cov = f"{100*r.rvv_coverage_overall:.0f}%RVV" if r.rvv_coverage_overall is not None else "?RVV"
+    cov = f"{100 * r.rvv_coverage_overall:.0f}%RVV" if r.rvv_coverage_overall is not None else "?RVV"
     return f"pass {lat} {cov}"
 
 
@@ -101,20 +102,39 @@ def render_markdown(results: list[BaselineResult]) -> str:
 
 
 def render_csv(results: list[BaselineResult]) -> str:
-    cols = ["framework", "model", "variant", "status", "e2e_cycles", "e2e_wall_ns",
-            "cos", "rel", "rvv_coverage_overall", "n_scalar_fallbacks", "gap_reason"]
+    cols = [
+        "framework",
+        "model",
+        "variant",
+        "status",
+        "e2e_cycles",
+        "e2e_wall_ns",
+        "cos",
+        "rel",
+        "rvv_coverage_overall",
+        "n_scalar_fallbacks",
+        "gap_reason",
+    ]
     rows = [",".join(cols)]
     for r in sorted(results, key=lambda x: (x.model, x.variant, x.framework)):
-        rows.append(",".join(str(v) for v in [
-            r.framework, r.model, r.variant, r.status(),
-            r.e2e_cycles if r.e2e_cycles is not None else "",
-            r.e2e_wall_ns if r.e2e_wall_ns is not None else "",
-            r.cos if r.cos is not None else "",
-            r.rel if r.rel is not None else "",
-            r.rvv_coverage_overall if r.rvv_coverage_overall is not None else "",
-            len(r.scalar_fallbacks),
-            (r.gap_reason or "").replace(",", ";"),
-        ]))
+        rows.append(
+            ",".join(
+                str(v)
+                for v in [
+                    r.framework,
+                    r.model,
+                    r.variant,
+                    r.status(),
+                    r.e2e_cycles if r.e2e_cycles is not None else "",
+                    r.e2e_wall_ns if r.e2e_wall_ns is not None else "",
+                    r.cos if r.cos is not None else "",
+                    r.rel if r.rel is not None else "",
+                    r.rvv_coverage_overall if r.rvv_coverage_overall is not None else "",
+                    len(r.scalar_fallbacks),
+                    (r.gap_reason or "").replace(",", ";"),
+                ]
+            )
+        )
     return "\n".join(rows)
 
 
@@ -131,17 +151,16 @@ def main() -> None:
     from merlin.common.paths import artifacts_dir
 
     ap = argparse.ArgumentParser(description="Cross-framework K1-RVV matrix (merlin vs baselines)")
-    ap.add_argument("--measurements", default=None,
-                    help="measurements root (default artifacts/measurements/k1_spacemit)")
+    ap.add_argument(
+        "--measurements", default=None, help="measurements root (default artifacts/measurements/k1_spacemit)"
+    )
     args = ap.parse_args()
 
-    root = Path(args.measurements) if args.measurements else \
-        artifacts_dir() / "measurements" / "k1_spacemit"
+    root = Path(args.measurements) if args.measurements else artifacts_dir() / "measurements" / "k1_spacemit"
     results = dedupe_latest(collect_dir(root))
     md, csv = render_markdown(results), render_csv(results)
 
-    prod = new_product("compare", version=1,
-                       notes="cross-framework K1-RVV matrix (deduped latest executed per cell)")
+    prod = new_product("compare", version=1, notes="cross-framework K1-RVV matrix (deduped latest executed per cell)")
     (prod.path / "matrix.md").write_text(md)
     (prod.path / "matrix.csv").write_text(csv)
     prod.add_artifact("matrix.md")

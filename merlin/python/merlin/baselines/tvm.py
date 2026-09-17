@@ -54,6 +54,7 @@ Honesty (``not_run_is_not_pass``): a model that will not export/import/compile i
 result with a specific ``gap_reason``; a built-but-unrun model (board down / won't fit K1 RAM) is
 ``not_run`` with a reason. We NEVER fabricate a cos/rel or a cycle count.
 """
+
 from __future__ import annotations
 
 import json
@@ -67,7 +68,7 @@ from merlin.baselines import k1_exec, profile, rvv_audit
 from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallback
 from merlin.common import artifacts
 from merlin.common.paths import build_dir, repo_root
-from merlin.rvvgen import k1
+from merlin.mining import k1
 
 FRAMEWORK = "tvm"
 
@@ -88,8 +89,7 @@ TVM_TARGET_CONFIG: dict = {
     "mabi": "lp64d",
     "num-cores": 8,
 }
-TVM_TARGET = ("llvm -mtriple=riscv64-unknown-linux-gnu "
-              "-mattr=+m,+f,+d,+c,+v,+zvl256b -mcpu=generic-rv64 -mabi=lp64d")
+TVM_TARGET = "llvm -mtriple=riscv64-unknown-linux-gnu -mattr=+m,+f,+d,+c,+v,+zvl256b -mcpu=generic-rv64 -mabi=lp64d"
 
 
 def _env_path(name: str, default: Path) -> Path:
@@ -123,8 +123,7 @@ def m2m_python() -> Path | None:
 # repo (``<model>_capture/.venv``) that CAN torch-load the model; we prep those venvs with the TVM
 # python deps (onnx/decorator/attrs/...) so the same driver can run there. Override the base dir
 # with ``MERLIN_CAPTURE_VENVS_ROOT``.
-_CAPTURE_VENVS_ROOT = Path(os.environ.get("MERLIN_CAPTURE_VENVS_ROOT",
-                                         "/path/to"))
+_CAPTURE_VENVS_ROOT = Path(os.environ.get("MERLIN_CAPTURE_VENVS_ROOT", "/path/to"))
 _MODEL_CAPTURE_VENV = {"smolvla": "smolvla_capture", "bitvla": "bitvla_capture", "pi05": "openpi"}
 
 
@@ -152,8 +151,9 @@ def tvm_available() -> bool:
 
 def tvm_commit() -> str:
     try:
-        r = subprocess.run(["git", "-C", str(_TVM_SRC), "describe", "--tags", "--always"],
-                           capture_output=True, text=True, timeout=15)
+        r = subprocess.run(
+            ["git", "-C", str(_TVM_SRC), "describe", "--tags", "--always"], capture_output=True, text=True, timeout=15
+        )
         return r.stdout.strip() if r.returncode == 0 else ""
     except Exception:  # noqa: BLE001
         return ""
@@ -188,6 +188,7 @@ def golden_path(b: _bundle.CaptureBundle) -> Path:
 
 # --- workload cfg (mirror the capture recipe so the golden is reproducible) ---------------------
 
+
 def _workload_env(model: str, *, full: bool = False) -> dict[str, str]:
     """The loader env for a workload so the exported instance matches the golden.
 
@@ -202,6 +203,7 @@ def _workload_env(model: str, *, full: bool = False) -> dict[str, str]:
     for cand in list(wdir.glob("*.toml")):
         try:
             import tomllib
+
             data = tomllib.loads(cand.read_text())
         except Exception:  # noqa: BLE001
             continue
@@ -222,7 +224,7 @@ class TVMError(RuntimeError):
 
 # --- the m2m-venv driver: torch.export -> Relax -> (tune) -> RVV .so ----------------------------
 
-_DRIVER_TEMPLATE = r'''
+_DRIVER_TEMPLATE = r"""
 import json, os, sys, traceback
 import numpy as np
 
@@ -247,7 +249,11 @@ try:
     emit(stage="torch_imported", torch=torch.__version__)
 
     # 1. Reproduce the seeded capture instance (== workloads/capture_consistent.py).
-    workloads = os.path.join(os.environ["MERLIN_MODEL2MLIR"], "workloads")
+    # BOTH spellings: `.env` sets MERLIN_M2M_DIR, this module was written against MERLIN_MODEL2MLIR.
+    # `bundle.m2m_root()` is the one resolver that already accepts either (plus the .env file itself),
+    # so reading os.environ directly here is what turned a configured checkout into a bare KeyError.
+    from .bundle import model2mlir_root
+    workloads = os.path.join(str(model2mlir_root()), "workloads")
     sys.path.insert(0, os.path.join(workloads, model))
     sys.path.insert(0, workloads)
     from loader import get_model_and_inputs  # type: ignore
@@ -445,7 +451,7 @@ except Exception as e:  # noqa: BLE001
     OUT["traceback"] = traceback.format_exc()[-2000:]
     emit(ok=False)
     sys.exit(1)
-'''
+"""
 
 
 @dataclass
@@ -460,16 +466,19 @@ class CompileResult:
     raw: dict
 
 
-def compile_model(b: _bundle.CaptureBundle, work: Path, *, cross: bool = True,
-                  tune: bool = False, timeout: int = 3600) -> CompileResult:
+def compile_model(
+    b: _bundle.CaptureBundle, work: Path, *, cross: bool = True, tune: bool = False, timeout: int = 3600
+) -> CompileResult:
     """Export+import+compile a bundle in the driver venv; return the .so + host correctness.
 
     The driver venv is the model-specific capture venv when one exists (it carries the model's
     framework deps, e.g. lerobot / the BitNet transformers fork), else the m2m venv."""
     m2m = driver_python(b.model)
     if m2m is None:
-        raise TVMError("no driver venv python found (set MERLIN_MODEL2MLIR / capture venv) — cannot "
-                       "drive torch.export + TVM Relax import")
+        raise TVMError(
+            "no driver venv python found (set MERLIN_MODEL2MLIR / capture venv) — cannot "
+            "drive torch.export + TVM Relax import"
+        )
     work.mkdir(parents=True, exist_ok=True)
     driver = work / "tvm_compile_driver.py"
     driver.write_text(_DRIVER_TEMPLATE)
@@ -486,29 +495,30 @@ def compile_model(b: _bundle.CaptureBundle, work: Path, *, cross: bool = True,
     ld = os.pathsep.join([libdir, os.environ.get("LD_LIBRARY_PATH", "")]).strip(os.pathsep)
     pypath = os.pathsep.join([str(tvm_python_path()), os.environ.get("PYTHONPATH", "")])
     env = dict(os.environ)
-    env.update({
-        "PYTHONPATH": pypath,
-        "TVM_LIBRARY_PATH": libdir,
-        "LD_LIBRARY_PATH": ld,
-        "MERLIN_MODEL2MLIR": str(_bundle.model2mlir_root()),
-        "MERLIN_TVM_MODEL": b.model,
-        "MERLIN_TVM_VARIANT": b.variant,
-        "MERLIN_TVM_BUNDLE": str(b.root),
-        "MERLIN_TVM_WORK": str(work),
-        "MERLIN_TVM_TARGET": json.dumps(TVM_TARGET_CONFIG),
-        "MERLIN_TVM_CROSS_CC": cross_cc,
-        "MERLIN_TVM_STATUS": str(status),
-        "MERLIN_TVM_GOLDEN": str(golden_path(b)),
-        "MERLIN_TVM_TUNE": "1" if tune else "0",
-    })
+    env.update(
+        {
+            "PYTHONPATH": pypath,
+            "TVM_LIBRARY_PATH": libdir,
+            "LD_LIBRARY_PATH": ld,
+            "MERLIN_MODEL2MLIR": str(_bundle.model2mlir_root()),
+            "MERLIN_TVM_MODEL": b.model,
+            "MERLIN_TVM_VARIANT": b.variant,
+            "MERLIN_TVM_BUNDLE": str(b.root),
+            "MERLIN_TVM_WORK": str(work),
+            "MERLIN_TVM_TARGET": json.dumps(TVM_TARGET_CONFIG),
+            "MERLIN_TVM_CROSS_CC": cross_cc,
+            "MERLIN_TVM_STATUS": str(status),
+            "MERLIN_TVM_GOLDEN": str(golden_path(b)),
+            "MERLIN_TVM_TUNE": "1" if tune else "0",
+        }
+    )
     # For a full-fidelity ``_full`` recapture, load the REAL/native architecture (bundle.full_env),
     # not the TOML truncation defaults — otherwise we export a truncated model but gate vs the full
     # golden. Detected by the resolved bundle dir suffix.
     _is_full = b.root.name.endswith("_full")
     env.update(_workload_env(b.model, full=_is_full))
 
-    proc = subprocess.run([str(m2m), str(driver)], capture_output=True, text=True,
-                          timeout=timeout, env=env)
+    proc = subprocess.run([str(m2m), str(driver)], capture_output=True, text=True, timeout=timeout, env=env)
     raw: dict = {}
     if status.is_file():
         try:
@@ -519,15 +529,31 @@ def compile_model(b: _bundle.CaptureBundle, work: Path, *, cross: bool = True,
         raw = {"stage": "no_status", "error": (proc.stderr or proc.stdout)[-600:]}
     so = work / "model_tvm.so"
     ok = bool(raw.get("ok")) and so.is_file()
-    note = " ".join(x for x in (raw.get("onnx", ""), raw.get("tuned", ""), raw.get("quant", ""),
-                                raw.get("host_note", ""), raw.get("error", "")) if x)
-    return CompileResult(ok=ok, so_path=(so if so.is_file() else None),
-                         host_cos=raw.get("host_cos"), host_rel=raw.get("host_rel"),
-                         gold_cos=raw.get("gold_cos"),
-                         stage=str(raw.get("stage", "?")), note=str(note)[:400], raw=raw)
+    note = " ".join(
+        x
+        for x in (
+            raw.get("onnx", ""),
+            raw.get("tuned", ""),
+            raw.get("quant", ""),
+            raw.get("host_note", ""),
+            raw.get("error", ""),
+        )
+        if x
+    )
+    return CompileResult(
+        ok=ok,
+        so_path=(so if so.is_file() else None),
+        host_cos=raw.get("host_cos"),
+        host_rel=raw.get("host_rel"),
+        gold_cos=raw.get("gold_cos"),
+        stage=str(raw.get("stage", "?")),
+        note=str(note)[:400],
+        raw=raw,
+    )
 
 
 # --- RVV audit ----------------------------------------------------------------------------------
+
 
 def _region_of_symbol(sym: str) -> str:
     s = sym.lower()
@@ -544,21 +570,38 @@ def _region_of_symbol(sym: str) -> str:
 
 # TVM names its fused compute kernels tvmgen_default_fused_*. libc / CRT / the TVM runtime shims are
 # not model kernels — ignore them when listing scalar fallbacks.
-_AUDIT_IGNORE = ("_start", "abort", "frame_dummy", "register_tm", "__do_global",
-                 "printf", "memcpy", "memset", "malloc", "free", "__tvm", "TVM",
-                 "call_packed", "deregister", "_init", "_fini", "plt")
+_AUDIT_IGNORE = (
+    "_start",
+    "abort",
+    "frame_dummy",
+    "register_tm",
+    "__do_global",
+    "printf",
+    "memcpy",
+    "memset",
+    "malloc",
+    "free",
+    "__tvm",
+    "TVM",
+    "call_packed",
+    "deregister",
+    "_init",
+    "_fini",
+    "plt",
+)
 
 
 def audit_so(so: Path) -> tuple[float | None, list[ScalarFallback], dict]:
     """RVV-audit the emitted TVM ``.so``. Returns (coverage_overall, fallbacks, per-symbol dict)."""
     report = rvv_audit.audit_binary(so)
     fallbacks = [
-        ScalarFallback(symbol=sym, reason="TVM emitted scalar (no RVV in kernel)",
-                       region=_region_of_symbol(sym))
+        ScalarFallback(symbol=sym, reason="TVM emitted scalar (no RVV in kernel)", region=_region_of_symbol(sym))
         for sym in report.scalar_fallback_symbols(ignore=_AUDIT_IGNORE)
     ]
-    by_symbol = {n: {"vector": sc.vector, "scalar_compute": sc.scalar_compute,
-                     "coverage": sc.coverage} for n, sc in report.by_symbol.items()}
+    by_symbol = {
+        n: {"vector": sc.vector, "scalar_compute": sc.scalar_compute, "coverage": sc.coverage}
+        for n, sc in report.by_symbol.items()
+    }
     return report.coverage_overall, fallbacks, by_symbol
 
 
@@ -566,14 +609,32 @@ def audit_so(so: Path) -> tuple[float | None, list[ScalarFallback], dict]:
 
 # The full model2MLIR corpus. int8 is attempted first (the coordinator's priority + the K1's native
 # datapath); fp32 is the fallback / where int8 isn't captured.
-ALL_MODELS = ("tiny_llama", "small_llama", "bitvla", "openvla", "rdt2", "rdt",
-              "molmoact", "groot_n1d7", "xr0", "pi05", "smolvla")
+ALL_MODELS = (
+    "tiny_llama",
+    "small_llama",
+    "bitvla",
+    "openvla",
+    "rdt2",
+    "rdt",
+    "molmoact",
+    "groot_n1d7",
+    "xr0",
+    "pi05",
+    "smolvla",
+)
 DEFAULT_MODELS = ALL_MODELS
 
 
-def run_model(model: str, variant: str = "int8", *, work_root: Path | None = None,
-              write: bool = True, run_board: bool | None = None, cross: bool = True,
-              tune: bool | None = None) -> BaselineResult:
+def run_model(
+    model: str,
+    variant: str = "int8",
+    *,
+    work_root: Path | None = None,
+    write: bool = True,
+    run_board: bool | None = None,
+    cross: bool = True,
+    tune: bool | None = None,
+) -> BaselineResult:
     """Run one (model, variant) through the TVM arm end-to-end and return a BaselineResult.
 
     Re-runnable: with the board down it produces a ``not_run`` result that still carries the built
@@ -582,13 +643,27 @@ def run_model(model: str, variant: str = "int8", *, work_root: Path | None = Non
     if tune is None:
         tune = os.environ.get("MERLIN_TVM_TUNE", "0") == "1"
     cos_thr, rel_thr = _bundle.tolerance(model)
-    res = BaselineResult(framework=FRAMEWORK, model=model, variant=variant,
-                         substrate="k1_spacemit", cos_threshold=cos_thr, rel_threshold=rel_thr,
-                         march=k1.K1_MARCH, toolchain="tvm-v0.19.0(llvm18)+spacemit-clang",
-                         framework_commit=tvm_commit(), timestamp=artifacts.utc_stamp(),
-                         notes=("tuning=" + ("metaschedule" if tune else "default-relax-build")))
+    res = BaselineResult(
+        framework=FRAMEWORK,
+        model=model,
+        variant=variant,
+        substrate="k1_spacemit",
+        cos_threshold=cos_thr,
+        rel_threshold=rel_thr,
+        march=k1.K1_MARCH,
+        toolchain="tvm-v0.19.0(llvm18)+spacemit-clang",
+        framework_commit=tvm_commit(),
+        timestamp=artifacts.utc_stamp(),
+        notes=("tuning=" + ("metaschedule" if tune else "default-relax-build")),
+    )
 
     b = resolve_bundle(model, variant)
+    # WHICH bundle this measurement is on. Part of the measurement, not metadata: resolve()
+    # prefers <model>_<variant>_full over the older TRUNCATED _consistent when both exist, so
+    # two runs of the "same" (model, variant) can be two different models. A ratio taken across
+    # that difference is not a speedup, and `compare.executorch_column.bundle_mismatch_reason`
+    # refuses one unless BOTH sides record this.
+    res.bundle_id = b.root.name
     gold = golden_path(b)
     if not gold.is_file():
         res.gap_reason = f"golden missing: neither golden_w8a8.npy nor golden.npy under {b.root}"
@@ -597,8 +672,11 @@ def run_model(model: str, variant: str = "int8", *, work_root: Path | None = Non
         res.gap_reason = f"torch loader missing: {b.torch_loader} absent (TVM imports from torch)"
         return _finish(res, model, variant, write)
     if not tvm_available():
-        why = ("TVM shared lib not built under build/baselines/tvm (run cmake+ninja)"
-               if not tvm_built() else "model2MLIR venv (torch) not found")
+        why = (
+            "TVM shared lib not built under build/baselines/tvm (run cmake+ninja)"
+            if not tvm_built()
+            else "model2MLIR venv (torch) not found"
+        )
         res.gap_reason = f"TVM arm unavailable: {why}"
         return _finish(res, model, variant, write)
 
@@ -655,10 +733,12 @@ def run_model(model: str, variant: str = "int8", *, work_root: Path | None = Non
         # Distinguish "the caller did not ask for a board run" from "the board is unreachable" — both
         # are not_run, but blaming an unset MERLIN_K1_HOST when the board is up and run_board=False was
         # explicit writes a FALSE reason into the record. The gap string is the product here.
-        why = ("board run not requested (run_board=False)" if run_board is False
-               else "K1 board unavailable (MERLIN_K1_HOST unset / unreachable)")
-        res.gap_reason = (f"{why} — RVV .so built and audited, "
-                          "host-VM correctness recorded; on-silicon timing pending")
+        why = (
+            "board run not requested (run_board=False)"
+            if run_board is False
+            else "K1 board unavailable (MERLIN_K1_HOST unset / unreachable)"
+        )
+        res.gap_reason = f"{why} — RVV .so built and audited, host-VM correctness recorded; on-silicon timing pending"
 
     res.board_vlenb = k1_exec.board_vlenb()
     return _finish(res, model, variant, write)
@@ -676,8 +756,7 @@ _BOARD_RPC_PORT = int(os.environ.get("MERLIN_TVM_RPC_PORT", "9193"))
 
 def rv64_runtime_built() -> bool:
     """True iff the riscv64 TVM runtime + tvm_rpc are cross-built (the on-board execution deps)."""
-    return ((_RV64_RUNTIME_DIR / "libtvm_runtime.so").is_file()
-            and (_RV64_RUNTIME_DIR / "tvm_rpc").is_file())
+    return (_RV64_RUNTIME_DIR / "libtvm_runtime.so").is_file() and (_RV64_RUNTIME_DIR / "tvm_rpc").is_file()
 
 
 # m2m-venv driver: deploy the riscv64 runtime, start a persistent tvm_rpc server on the board,
@@ -687,7 +766,7 @@ def rv64_runtime_built() -> bool:
 # an ssh whose stdin is a never-closing FIFO (a plain nohup/setsid over ssh dies); the work dir is
 # on tmpfs (board /root is often full); and the relax VM over RPC needs set_input/invoke_stateful/
 # get_outputs (the direct ``vm["main"](*args)`` closure call mis-marshals remote NDArrays). Fail-closed.
-_RPC_RUN_TEMPLATE = r'''
+_RPC_RUN_TEMPLATE = r"""
 import json, os, subprocess, sys, time
 import numpy as np
 
@@ -786,7 +865,7 @@ finally:
         fifo and os.path.exists(fifo) and os.remove(fifo)
     except Exception:
         pass
-'''
+"""
 
 
 def board_runner_bin() -> Path:
@@ -800,16 +879,25 @@ _BOARD_LOCAL_DIR = "/root/tvm_local"  # board SD (~8G free) — big const-folded
 def _dl_dtype(dt) -> tuple[int, int]:
     """numpy dtype -> DLDataType (code, bits). TVM bool == UInt(1)."""
     import numpy as _np
+
     dt = _np.dtype(dt)
-    table = {_np.float32: (2, 32), _np.float64: (2, 64), _np.int64: (0, 64),
-             _np.int32: (0, 32), _np.int8: (0, 8), _np.uint8: (1, 8), _np.bool_: (1, 1)}
+    table = {
+        _np.float32: (2, 32),
+        _np.float64: (2, 64),
+        _np.int64: (0, 64),
+        _np.int32: (0, 32),
+        _np.int8: (0, 8),
+        _np.uint8: (1, 8),
+        _np.bool_: (1, 1),
+    }
     if dt.type not in table:
         raise ValueError(f"unmapped input dtype {dt}")
     return table[dt.type]
 
 
-def _run_board_local(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work: Path,
-                     *, iters: int = 10, timeout: int = 1800) -> bool:
+def _run_board_local(
+    res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work: Path, *, iters: int = 10, timeout: int = 1800
+) -> bool:
     """Run the module BOARD-LOCALLY (no tvm_rpc): scp the .so + cross-built runner + inputs to the
     board SD, run the relax VM locally over plain ssh, pull the output, gate cos/rel vs torch_ref.
 
@@ -817,19 +905,31 @@ def _run_board_local(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, wo
     is the flaky part, not board RAM). Returns True iff it produced a gated on-board result.
     """
     import numpy as np
+
     runner = board_runner_bin()
     rt = _RV64_RUNTIME_DIR / "libtvm_runtime.so"
     if not runner.is_file() or not rt.is_file():
-        res.gap_reason = ("board-local runner/libtvm_runtime.so not cross-built "
-                          "(tvm_board/build_board_runner.sh); on-board pending")
+        res.gap_reason = (
+            "board-local runner/libtvm_runtime.so not cross-built (tvm_board/build_board_runner.sh); on-board pending"
+        )
         return False
     ref = work / "torch_ref.npy"
     if not ref.is_file():
         res.gap_reason = "torch_ref.npy missing (needed to gate the on-board output)"
         return False
     host = k1.K1_HOST
-    ssh = ["ssh", "-i", k1.K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
-           "-o", "ConnectTimeout=10", host]
+    ssh = [
+        "ssh",
+        "-i",
+        k1.K1_SSH_KEY,
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "ConnectTimeout=10",
+        host,
+    ]
     scp = ["scp", "-i", k1.K1_SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no"]
     bdir = _BOARD_LOCAL_DIR
 
@@ -851,61 +951,73 @@ def _run_board_local(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, wo
 
     try:
         subprocess.run(ssh + [f"mkdir -p {bdir}/inputs"], capture_output=True, timeout=60)
-        for src, dst in [(rt, "libtvm_runtime.so"), (runner, "board_runner"),
-                         (so, "model.so"), (manifest, "manifest.txt")]:
-            r = subprocess.run(scp + [str(src), f"{host}:{bdir}/{dst}"], capture_output=True,
-                               timeout=timeout, text=True)
+        for src, dst in [
+            (rt, "libtvm_runtime.so"),
+            (runner, "board_runner"),
+            (so, "model.so"),
+            (manifest, "manifest.txt"),
+        ]:
+            r = subprocess.run(
+                scp + [str(src), f"{host}:{bdir}/{dst}"], capture_output=True, timeout=timeout, text=True
+            )
             if r.returncode:
                 res.gap_reason = f"board scp {dst} failed: {r.stderr[:150]}"
                 return False
         for i in range(len(keys)):
-            subprocess.run(scp + [str(indir / f"in{i}.bin"), f"{host}:{bdir}/inputs/in{i}.bin"],
-                           capture_output=True, timeout=600)
+            subprocess.run(
+                scp + [str(indir / f"in{i}.bin"), f"{host}:{bdir}/inputs/in{i}.bin"], capture_output=True, timeout=600
+            )
         subprocess.run(ssh + [f"chmod +x {bdir}/board_runner"], capture_output=True, timeout=30)
-        cmd = (f"cd {bdir} && LD_LIBRARY_PATH={bdir} ./board_runner model.so manifest.txt inputs "
-               f"out.bin {iters}")
+        cmd = f"cd {bdir} && LD_LIBRARY_PATH={bdir} ./board_runner model.so manifest.txt inputs out.bin {iters}"
         rr = subprocess.run(ssh + [cmd], capture_output=True, timeout=timeout, text=True)
         stderr = rr.stderr or ""
         if rr.returncode != 0:
             res.ran = False
-            res.gap_reason = ("board-LOCAL run failed (rc=%d): %s"
-                              % (rr.returncode, stderr.strip().splitlines()[-1][:200] if stderr.strip() else "?"))
+            res.gap_reason = "board-LOCAL run failed (rc=%d): %s" % (
+                rr.returncode,
+                stderr.strip().splitlines()[-1][:200] if stderr.strip() else "?",
+            )
             return True  # a real, characterized on-board attempt (honest not_run reason recorded)
         # pull output + meta
-        subprocess.run(scp + [f"{host}:{bdir}/out.bin", str(work / "board_out.bin")],
-                       capture_output=True, timeout=120)
-        subprocess.run(scp + [f"{host}:{bdir}/out.bin.meta", str(work / "board_out.meta")],
-                       capture_output=True, timeout=60)
+        subprocess.run(scp + [f"{host}:{bdir}/out.bin", str(work / "board_out.bin")], capture_output=True, timeout=120)
+        subprocess.run(
+            scp + [f"{host}:{bdir}/out.bin.meta", str(work / "board_out.meta")], capture_output=True, timeout=60
+        )
         meta = (work / "board_out.meta").read_text().split()
         code, bits, ndim = int(meta[0]), int(meta[1]), int(meta[2])
-        shape = [int(x) for x in meta[3:3 + ndim]]
-        npdt = {(2, 32): np.float32, (2, 64): np.float64, (0, 64): np.int64,
-                (0, 32): np.int32}[(code, bits)]
+        shape = [int(x) for x in meta[3 : 3 + ndim]]
+        npdt = {(2, 32): np.float32, (2, 64): np.float64, (0, 64): np.int64, (0, 32): np.int32}[(code, bits)]
         out = np.fromfile(work / "board_out.bin", dtype=npdt).reshape(shape)
         e2e_ns = None
         for line in stderr.splitlines():
             if line.startswith("E2E_NS"):
                 e2e_ns = int(float(line.split()[1]))
         tref = np.load(ref).astype(np.float64).ravel()
-        a = out.astype(np.float64).ravel()[:tref.size]
-        gg = tref[:a.size]
+        a = out.astype(np.float64).ravel()[: tref.size]
+        gg = tref[: a.size]
         d = (np.linalg.norm(a) * np.linalg.norm(gg)) or 1.0
         res.ran = True
         res.cos = float(np.dot(a, gg) / d)
         res.rel = float(np.linalg.norm(a - gg) / (np.linalg.norm(gg) or 1.0))
         res.e2e_wall_ns = e2e_ns
         if e2e_ns:
-            res.regions = [RegionProfile(name="other", wall_ns=e2e_ns,
-                                         rvv_coverage=res.rvv_coverage_overall,
-                                         note="whole-model relax VM (board-LOCAL, no tvm_rpc, wall)")]
+            res.regions = [
+                RegionProfile(
+                    name="other",
+                    wall_ns=e2e_ns,
+                    rvv_coverage=res.rvv_coverage_overall,
+                    note="whole-model relax VM (board-LOCAL, no tvm_rpc, wall)",
+                )
+            ]
         return True
     except subprocess.TimeoutExpired:
         res.ran = False
         res.gap_reason = f"board-LOCAL run timed out after {timeout}s (large .so load/exec)"
         return True
     finally:
-        subprocess.run(ssh + [f"rm -rf {bdir}/model.so {bdir}/inputs {bdir}/out.bin* 2>/dev/null"],
-                       capture_output=True, timeout=30)
+        subprocess.run(
+            ssh + [f"rm -rf {bdir}/model.so {bdir}/inputs {bdir}/out.bin* 2>/dev/null"], capture_output=True, timeout=30
+        )
 
 
 def _run_on_board(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work: Path) -> None:
@@ -930,14 +1042,18 @@ def _run_on_board(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work:
     so_gb = so.stat().st_size / 1e9 if so.is_file() else 0.0
     if so_gb > 3.0:
         res.ran = False
-        res.gap_reason = (f"exported .so {so_gb:.1f}G exceeds K1 usable RAM (~3.4G) — on-board run is "
-                          f"a fit gap (RVV .so built + audited + host-VM correctness recorded)")
+        res.gap_reason = (
+            f"exported .so {so_gb:.1f}G exceeds K1 usable RAM (~3.4G) — on-board run is "
+            f"a fit gap (RVV .so built + audited + host-VM correctness recorded)"
+        )
         return
     if not rv64_runtime_built():
         res.ran = False
-        res.gap_reason = ("riscv64 TVM runtime/tvm_rpc not cross-built under build/baselines/tvm-rv64 "
-                          "(RVV .so built + audited + host-VM correctness recorded; on-silicon run "
-                          "pending the runtime cross-build)")
+        res.gap_reason = (
+            "riscv64 TVM runtime/tvm_rpc not cross-built under build/baselines/tvm-rv64 "
+            "(RVV .so built + audited + host-VM correctness recorded; on-silicon run "
+            "pending the runtime cross-build)"
+        )
         return
     # PREFER the board-LOCAL runner: it loads the module + runs the relax VM on the board directly,
     # bypassing tvm_rpc (whose session dies with ``kShutdown`` on large-``.so`` uploads — the RPC
@@ -956,13 +1072,17 @@ def _run_on_board(res: BaselineResult, so: Path, b: _bundle.CaptureBundle, work:
         res.cos = info.get("cos")
         res.rel = info.get("rel")
         if res.e2e_wall_ns:
-            res.regions = [RegionProfile(name="other", wall_ns=res.e2e_wall_ns,
-                                         rvv_coverage=res.rvv_coverage_overall,
-                                         note="whole-model relax VM (on-board, direct RPC, wall)")]
+            res.regions = [
+                RegionProfile(
+                    name="other",
+                    wall_ns=res.e2e_wall_ns,
+                    rvv_coverage=res.rvv_coverage_overall,
+                    note="whole-model relax VM (on-board, direct RPC, wall)",
+                )
+            ]
     else:
         res.ran = False
-        res.gap_reason = res.gap_reason or (
-            "on-board RPC run not completed: " + str(info.get("error", ""))[:220])
+        res.gap_reason = res.gap_reason or ("on-board RPC run not completed: " + str(info.get("error", ""))[:220])
 
 
 def _rpc_run_driver(so: Path, b: _bundle.CaptureBundle, work: Path, *, timeout: int = 600) -> tuple[bool, dict]:
@@ -990,27 +1110,28 @@ def _rpc_run_driver(so: Path, b: _bundle.CaptureBundle, work: Path, *, timeout: 
     so_bytes = so.stat().st_size if so.is_file() else 0
     board_workdir = "/root/tvm_work" if so_bytes > 1_500_000_000 else _BOARD_RPC_WORKDIR
     env = dict(os.environ)
-    env.update({
-        "PYTHONPATH": os.pathsep.join([str(tvm_python_path()), os.environ.get("PYTHONPATH", "")]),
-        "TVM_LIBRARY_PATH": libdir,
-        "LD_LIBRARY_PATH": os.pathsep.join([libdir, os.environ.get("LD_LIBRARY_PATH", "")]).strip(os.pathsep),
-        "MERLIN_RPC_SO": str(so),
-        "MERLIN_RPC_HOST": host,
-        "MERLIN_RPC_PORT": str(_BOARD_RPC_PORT),
-        "MERLIN_RPC_INPUTS": str(b.inputs),
-        "MERLIN_RPC_REF": str(work / "torch_ref.npy"),
-        "MERLIN_RPC_RTDIR": str(_RV64_RUNTIME_DIR),
-        "MERLIN_RPC_BOARDDIR": _BOARD_RPC_DIR,
-        "MERLIN_RPC_WORKDIR": board_workdir,
-        "MERLIN_RPC_TMP": str(work),
-        "MERLIN_RPC_SSH_KEY": k1.K1_SSH_KEY,
-        "MERLIN_RPC_SSH_HOST": k1.K1_HOST,
-        "MERLIN_RPC_STATUS": str(status),
-    })
+    env.update(
+        {
+            "PYTHONPATH": os.pathsep.join([str(tvm_python_path()), os.environ.get("PYTHONPATH", "")]),
+            "TVM_LIBRARY_PATH": libdir,
+            "LD_LIBRARY_PATH": os.pathsep.join([libdir, os.environ.get("LD_LIBRARY_PATH", "")]).strip(os.pathsep),
+            "MERLIN_RPC_SO": str(so),
+            "MERLIN_RPC_HOST": host,
+            "MERLIN_RPC_PORT": str(_BOARD_RPC_PORT),
+            "MERLIN_RPC_INPUTS": str(b.inputs),
+            "MERLIN_RPC_REF": str(work / "torch_ref.npy"),
+            "MERLIN_RPC_RTDIR": str(_RV64_RUNTIME_DIR),
+            "MERLIN_RPC_BOARDDIR": _BOARD_RPC_DIR,
+            "MERLIN_RPC_WORKDIR": board_workdir,
+            "MERLIN_RPC_TMP": str(work),
+            "MERLIN_RPC_SSH_KEY": k1.K1_SSH_KEY,
+            "MERLIN_RPC_SSH_HOST": k1.K1_HOST,
+            "MERLIN_RPC_STATUS": str(status),
+        }
+    )
     timed_out = False
     try:
-        subprocess.run([str(m2m), str(driver)], capture_output=True, text=True,
-                       timeout=timeout, env=env)
+        subprocess.run([str(m2m), str(driver)], capture_output=True, text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired:
         timed_out = True  # the run itself may have SUCCEEDED (status written) before a slow teardown
     if not status.is_file():
@@ -1031,17 +1152,22 @@ def _finish(res: BaselineResult, model: str, variant: str, write: bool) -> Basel
     return res
 
 
-def run_all(models=DEFAULT_MODELS, variant: str = "int8", *, write: bool = True,
-            tune: bool | None = None) -> list[BaselineResult]:
+def run_all(
+    models=DEFAULT_MODELS, variant: str = "int8", *, write: bool = True, tune: bool | None = None
+) -> list[BaselineResult]:
     """Run the TVM arm over the model set (int8 by default)."""
     out = []
     for m in models:
         try:
             out.append(run_model(m, variant, write=write, tune=tune))
         except Exception as e:  # noqa: BLE001 - one model must never sink the batch
-            r = BaselineResult(framework=FRAMEWORK, model=m, variant=variant,
-                               gap_reason=f"runner exception: {str(e)[:200]}",
-                               timestamp=artifacts.utc_stamp())
+            r = BaselineResult(
+                framework=FRAMEWORK,
+                model=m,
+                variant=variant,
+                gap_reason=f"runner exception: {str(e)[:200]}",
+                timestamp=artifacts.utc_stamp(),
+            )
             if write:
                 try:
                     md = artifacts.new_measurement("k1_spacemit", m, "cross_framework")
@@ -1056,22 +1182,23 @@ def _main(argv=None) -> int:
     import argparse
 
     ap = argparse.ArgumentParser(description="TVM (Apache TVM v0.19.0 / Relax) K1-RVV baseline arm")
-    ap.add_argument("models", nargs="*", default=list(DEFAULT_MODELS),
-                    help="models to run (default: the full corpus)")
+    ap.add_argument("models", nargs="*", default=list(DEFAULT_MODELS), help="models to run (default: the full corpus)")
     ap.add_argument("--variant", default="int8", help="int8 (default) | fp32 | fp8")
     ap.add_argument("--tune", action="store_true", help="MetaSchedule autotune (needs K1 RPC)")
     ap.add_argument("--no-write", action="store_true", help="do not write BaselineResult artifacts")
-    ap.add_argument("--no-cross", action="store_true",
-                    help="build a host (x86) .so instead of cross-linking rv64gcv (debug only)")
+    ap.add_argument(
+        "--no-cross", action="store_true", help="build a host (x86) .so instead of cross-linking rv64gcv (debug only)"
+    )
     args = ap.parse_args(argv)
     out = []
     for m in tuple(args.models):
-        out.append(run_model(m, args.variant, write=not args.no_write, cross=not args.no_cross,
-                             tune=args.tune))
+        out.append(run_model(m, args.variant, write=not args.no_write, cross=not args.no_cross, tune=args.tune))
     for r in out:
-        cov = f"{100*r.rvv_coverage_overall:.0f}%RVV" if r.rvv_coverage_overall is not None else "?RVV"
-        print(f"{r.model}/{r.variant}: {r.status():10s} {cov} "
-              f"fallbacks={len(r.scalar_fallbacks)} cos={r.cos} {r.gap_reason}")
+        cov = f"{100 * r.rvv_coverage_overall:.0f}%RVV" if r.rvv_coverage_overall is not None else "?RVV"
+        print(
+            f"{r.model}/{r.variant}: {r.status():10s} {cov} "
+            f"fallbacks={len(r.scalar_fallbacks)} cos={r.cos} {r.gap_reason}"
+        )
     return 0
 
 

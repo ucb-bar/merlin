@@ -8,11 +8,22 @@ runner (:mod:`.executorch`, in merlin's venv) turns into per-region ``RegionProf
 ``role_from_fqn``) for the region×framework compare. Dependency-light on merlin (argv in, JSON out),
 mirroring ``_et_export``.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+
+# THIS SCRIPT SHADOWS THE PACKAGE IT NEEDS. It lives in ``merlin/baselines/``, which also contains
+# ``executorch.py`` (merlin's OWN ExecuTorch arm), and Python puts a script's own directory first on
+# sys.path. So ``from executorch.devtools import Inspector`` below resolved to that sibling module,
+# which then failed importing merlin (absent from the ET venv) -- i.e. this helper could never run,
+# and the whole per-op ExecuTorch timing path was unreachable. Drop our own directory before any
+# executorch import; being argv-in/JSON-out, we need nothing from it.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path[:] = [p for p in sys.path if p and os.path.abspath(p) != _HERE] or [p for p in sys.path if p]
 
 
 def _clean_module_path(raw: str) -> str | None:
@@ -67,7 +78,7 @@ def _event_wall_ns(event) -> float | None:
     for attr in ("p50", "median", "avg", "mean"):
         v = getattr(pd, attr, None)
         if isinstance(v, (int, float)):
-            return float(v) * 1e6            # Inspector default target scale is ms -> ns
+            return float(v) * 1e6  # Inspector default target scale is ms -> ns
     raw = getattr(pd, "raw", None)
     if raw:
         vals = [float(x) for x in raw if isinstance(x, (int, float))]
@@ -96,8 +107,7 @@ def inspect_etdump(etdump_path: str, etrecord_path: str | None) -> list[dict]:
             row["wall_ns"] += wall
             row["n_events"] += 1
             row["delegated"] = row["delegated"] or delegated
-    return sorted(({**r, "wall_ns": int(r["wall_ns"])} for r in agg.values()),
-                  key=lambda r: -r["wall_ns"])
+    return sorted(({**r, "wall_ns": int(r["wall_ns"])} for r in agg.values()), key=lambda r: -r["wall_ns"])
 
 
 def main() -> int:
@@ -109,8 +119,10 @@ def main() -> int:
     regions = inspect_etdump(args.etdump, args.etrecord or None)
     with open(args.out, "w") as fh:
         json.dump(regions, fh, indent=2)
-    print("ET_REGIONS_JSON " + json.dumps({"out": args.out, "n_regions": len(regions),
-                                           "total_wall_ns": sum(r["wall_ns"] for r in regions)}))
+    print(
+        "ET_REGIONS_JSON "
+        + json.dumps({"out": args.out, "n_regions": len(regions), "total_wall_ns": sum(r["wall_ns"] for r in regions)})
+    )
     return 0
 
 

@@ -6,34 +6,153 @@ report a coverage fraction + an explicit list of compute-bearing symbols that fe
 That per-region RVV% and fallback table is what every :class:`~merlin.baselines.contract.BaselineResult`
 carries, so scalar fallback is recorded rather than averaged away.
 
-Pure-stdlib + regex; the classifier operates on disassembly *text*, so it is unit-testable without a
-board or even a binary (feed it a fixture ``.s``/objdump dump).
+Pure-stdlib and **structural**: the classifier operates on disassembly *text*, so it is unit-testable
+without a board or even a binary (feed it a fixture ``.s``/objdump dump). Lines are taken apart with
+``str.partition`` + index walks rather than regex — the objdump line shape differs between GNU and
+LLVM (see :func:`_insn_mnemonic`) and a pattern narrow enough for one silently drops the other, which
+is exactly how a vector-heavy binary gets reported as 0% RVV.
+
+Why not pyelftools: the unit of measurement here is a *decoded instruction attributed to a symbol*,
+which only the disassembler produces. pyelftools would supply symbol addresses (which the objdump
+``<sym>:`` headers already carry) and no instruction stream, so it would replace nothing; it is also
+not a declared dependency of this repo and is not installed. The ``decode/`` package parses a
+different thing (RoCC/custom-opcode traces), not rv64gcv disassembly.
 """
 from __future__ import annotations
 
-import re
 import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# RVV instructions are the only base-RISC-V mnemonics that start with 'v' followed by a letter
-# (vsetvli/vsetivli, vle*/vse*, vadd/vfmacc/vmul/vredsum/vmv/…). Scalar float ops start with 'f',
-# integer/branch/mem ops never start with 'v'. So `^v[a-z]` is a sound RVV detector for rv64gcv.
-_RVV_RE = re.compile(r"^v[a-z][a-z0-9._]*$")
+_HEX = frozenset("0123456789abcdef")        # objdump emits lowercase hex, as the old `[0-9a-f]` assumed
+_LOWER = frozenset("abcdefghijklmnopqrstuvwxyz")
+_MNEMONIC_CHARS = _LOWER | frozenset("0123456789._")      # the old mnemonic tail `[a-z0-9._]`
 
-# Scalar *compute* mnemonics (the denominator for coverage). Excludes pure control-flow / jumps /
-# nops / fences, which are neither vector nor "work we could have vectorized".
-_SCALAR_COMPUTE_RE = re.compile(
-    r"^(f[a-z]|add|addi|addw|addiw|sub|subw|mul|mulw|mulh|div|divw|divu|rem|remu|"
-    r"and|andi|or|ori|xor|xori|sll|slli|sllw|srl|srli|srlw|sra|srai|sraw|slt|slti|sltu|"
-    r"l[bhwd]|lbu|lhu|lwu|s[bhwd]|fl[wd]|fs[wd]|neg|not|mv|sext|zext)",
-)
+# Scalar *compute* mnemonic prefixes (the denominator for coverage). Excludes pure control-flow /
+# jumps / nops / fences, which are neither vector nor "work we could have vectorized".
+#
+# The old detector was a PREFIX regex (`re.match`, no `$`):
+#   ^(f[a-z]|add|addi|addw|addiw|sub|subw|mul|mulw|mulh|div|divw|divu|rem|remu|and|andi|or|ori|
+#     xor|xori|sll|slli|sllw|srl|srli|srlw|sra|srai|sraw|slt|slti|sltu|
+#     l[bhwd]|lbu|lhu|lwu|s[bhwd]|fl[wd]|fs[wd]|neg|not|mv|sext|zext)
+# Because it matched a PREFIX, most alternatives were redundant longer spellings of a shorter one
+# already listed: `add` subsumes addi/addw/addiw, `sub` subsumes subw, `mul` subsumes mulw/mulh,
+# `div` subsumes divw/divu, `rem` subsumes remu, `and` subsumes andi, `or` subsumes ori, `xor`
+# subsumes xori, `sll`/`srl`/`sra`/`slt` subsume their i/w/u forms, `l[bhwd]` subsumes lbu/lhu/lwu,
+# and `f[a-z]` subsumes fl[wd]/fs[wd]. The tuple below is that alternation with the redundancy folded
+# out, so it accepts EXACTLY the same set of mnemonics.
+_SCALAR_COMPUTE_PREFIXES = ("add", "sub", "mul", "div", "rem", "and", "or", "xor",
+                            "sll", "srl", "sra", "slt", "neg", "not", "mv", "sext", "zext")
+_LOAD_STORE_WIDTHS = frozenset("bhwd")      # the old `l[bhwd]` / `s[bhwd]` character classes
 
-# objdump line:  "   1013c:\t02008557          \tvsetvli\ta0,a1,e32,m1,ta,ma"
-_INSN_LINE = re.compile(r"^\s*[0-9a-f]+:\s+[0-9a-f ]+\t([a-z][a-z0-9._]*)")
-# symbol header:  "0000000000010120 <merlin_gemm_f32_0>:"
-_SYM_LINE = re.compile(r"^[0-9a-f]+\s+<([^>]+)>:")
+
+def _is_rvv(mnemonic: str) -> bool:
+    """RVV instructions are the only base-RISC-V mnemonics that start with 'v' followed by a letter
+    (vsetvli/vsetivli, vle*/vse*, vadd/vfmacc/vmul/vredsum/vmv/...). Scalar float ops start with 'f',
+    integer/branch/mem ops never start with 'v'.
+
+    The old detector was ``^v[a-z][a-z0-9._]*$``. Its tail was already guaranteed by the line parser
+    (which only ever yields mnemonics over that alphabet), so "'v' + a lowercase letter" is the whole
+    test. Checked against a live spike ELF disassembly: ``vmv.v.i`` / ``vsetvli`` / ``vle64.v`` count
+    as vector; ``li`` / ``fld`` / ``sd`` / ``ret`` do not.
+    """
+    return len(mnemonic) >= 2 and mnemonic[0] == "v" and mnemonic[1] in _LOWER
+
+
+def _is_scalar_compute(mnemonic: str) -> bool:
+    """Scalar arithmetic / load / store mnemonics — the coverage denominator (see the prefix table)."""
+    if len(mnemonic) < 2:
+        return False
+    if mnemonic[0] == "f" and mnemonic[1] in _LOWER:                # f[a-z] : every scalar FP op
+        return True
+    if mnemonic[0] in "ls" and mnemonic[1] in _LOAD_STORE_WIDTHS:   # l[bhwd] / s[bhwd]
+        return True
+    return mnemonic.startswith(_SCALAR_COMPUTE_PREFIXES)
+
+
+def _insn_mnemonic(line: str) -> str | None:
+    r"""The mnemonic of one objdump instruction line, or ``None`` when the line is not one.
+
+    Both disassemblers we accept put the mnemonic after the TAB that terminates the raw-bytes
+    column, but they space the prefix differently. These are REAL lines, captured by disassembling a
+    live spike ELF built from the saturn ``vec-igemm`` benchmark (shown as ``repr()`` so the tabs are
+    visible)::
+
+        GNU  riscv64-unknown-elf-objdump -d : '    80002000:\t5e003057          \tvmv.v.i\tv0,0'
+        LLVM llvm-objdump -d                : '80002000: 5e003057     \tvmv.v.i\tv0, 0x0'
+
+    The old pattern was ``^\s*[0-9a-f]+:\s+[0-9a-f ]+\t([a-z][a-z0-9._]*)`` — optional leading
+    whitespace, a lowercase-hex address, ':', at least one whitespace character, a run of
+    hex-digits-and-spaces (the raw-bytes column), a TAB, then the mnemonic. The walk below
+    reproduces that acceptance exactly. A TAB cannot appear inside the ``[0-9a-f ]+`` run, so that
+    run always ends at the very TAB the pattern requires: there is nothing for the old regex's
+    backtracking to explore and a single left-to-right scan is equivalent.
+
+    Still REFUSED, exactly as before: a ``--no-show-raw-insn`` dump (no bytes column). That is a
+    fail-closed refusal, never a silent zero — such a dump yields no instructions at all, so
+    ``coverage_overall`` comes back ``None`` (unknown) rather than 0.0.
+    """
+    addr, sep, tail = line.partition(":")
+    if not sep:
+        return None
+    stripped = addr.lstrip()
+    if addr[:len(addr) - len(stripped)].strip():        # `^\s*` : the lead must be pure whitespace
+        return None
+    if not stripped or any(c not in _HEX for c in stripped):        # `[0-9a-f]+`
+        return None
+    ws_end = 0
+    while ws_end < len(tail) and tail[ws_end].isspace():            # the `\s+` run
+        ws_end += 1
+    if ws_end == 0:
+        return None
+    # `\s+` is greedy but backtracks, and a SPACE belongs to `[0-9a-f ]+` too: when the bytes
+    # column is spaces-only the old pattern took one space for `\s+` and let `[0-9a-f ]+` absorb
+    # the rest. Walking the split point from longest to shortest reproduces that search order.
+    for start in range(ws_end, 0, -1):
+        j = start
+        while j < len(tail) and (tail[j] in _HEX or tail[j] == " "):    # `[0-9a-f ]+` (>= 1)
+            j += 1
+        # Shortening THIS run can never help: it would end on a hex/space character, and the
+        # pattern requires a TAB right there. So only the `\s+` split point needs backtracking.
+        if j == start or j >= len(tail) or tail[j] != "\t":  # ... terminated by the TAB
+            continue
+        rest = tail[j + 1:]
+        if not rest or rest[0] not in _LOWER:           # `[a-z]`
+            continue
+        k = 1
+        while k < len(rest) and rest[k] in _MNEMONIC_CHARS:  # `[a-z0-9._]*`
+            k += 1
+        return rest[:k]
+    return None
+
+
+def _symbol_name(line: str) -> str | None:
+    r"""The symbol of an objdump symbol header, or ``None`` when the line is not one.
+
+    Real line, byte-identical from GNU objdump and llvm-objdump on the live spike ELF::
+
+        '0000000080000000 <_start>:'
+
+    The old pattern was ``^[0-9a-f]+\s+<([^>]+)>:`` — lowercase hex from column 0 (no leading
+    whitespace allowed), whitespace, then a non-empty ``<name>`` immediately followed by ':'. Since
+    ``[^>]+`` cannot span a '>', the first '>' is always the closing one and ``partition('>')`` is
+    exact.
+    """
+    i = 0
+    while i < len(line) and line[i] in _HEX:            # `^[0-9a-f]+`
+        i += 1
+    if i == 0:
+        return None
+    j = i
+    while j < len(line) and line[j].isspace():          # `\s+` (at least one)
+        j += 1
+    if j == i or j >= len(line) or line[j] != "<":
+        return None
+    name, sep, rest = line[j + 1:].partition(">")       # `<([^>]+)>` then ':'
+    if not sep or not name or not rest.startswith(":"):
+        return None
+    return name
 
 
 @dataclass
@@ -43,6 +162,18 @@ class SymbolCoverage:
     scalar_compute: int = 0    # scalar arithmetic/mem instruction count
     total: int = 0             # every decoded instruction (incl. control flow)
 
+    # --- the FOUR-WAY MIX. `scalar_compute` above folds scalar-int and scalar-float together, which
+    # is right for the coverage denominator and wrong for attribution: "13.3% of retired instructions
+    # are RVV and 17.8% are scalar f32" is a very different finding from "31% scalar", and the second
+    # cannot be derived from the first. That four-way split has been cited from this repo with NO
+    # committed producer -- the method survived only as a project note (spike -g, then map PCs with
+    # llvm-objdump) -- so any such figure was unreproducible. These are that producer, and they are
+    # SUBSETS of the fields above, never a reinterpretation of them: scalar_int + scalar_float ==
+    # scalar_compute, and vsetvl <= vector.
+    scalar_int: int = 0        # scalar integer arithmetic / load / store
+    scalar_float: int = 0      # scalar FP (f[a-z]*), the bucket that was invisible
+    vsetvl: int = 0            # vsetvli / vsetivli — vector CONFIGURATION, not vector work
+
     @property
     def coverage(self) -> float | None:
         """Fraction of *compute* instructions that are vector (None if no compute in this symbol)."""
@@ -51,7 +182,19 @@ class SymbolCoverage:
 
     @property
     def is_scalar_fallback(self) -> bool:
-        """A compute-bearing symbol with zero vector instructions = a scalar fallback."""
+        """A compute-bearing symbol with zero vector instructions = a scalar fallback.
+
+        TRUE AT SYMBOL SCOPE, AND A FALSE ALARM AT MODEL SCOPE. Plenty of symbols have no
+        vectorizable work to begin with: ``_mlir_ciface_forward`` unpacks memref descriptors and
+        calls ``forward``, so it is always ``vector == 0`` and always flagged -- in a build that
+        vectorized perfectly as well as one that did not. Reading a model-level "we fell back to
+        scalar" off this predicate is wrong, and it produced exactly that misreading today: a
+        devectorization of ``forward`` (coverage 0.399 -> 0.256) was reported as a whole-model
+        scalar fallback because the wrapper appeared in the list either way.
+
+        For a model-level verdict, compare the COVERAGE of the compute-bearing symbol against the
+        same symbol in a reference build. :meth:`AuditReport.compute_symbol` finds it.
+        """
         return self.vector == 0 and self.scalar_compute > 0
 
 
@@ -67,6 +210,82 @@ class AuditReport:
     @property
     def scalar_compute(self) -> int:
         return sum(s.scalar_compute for s in self.by_symbol.values())
+
+    @property
+    def total(self) -> int:
+        """Every decoded instruction, control flow included -- the denominator the four-way
+        ``instruction_mix`` uses, and deliberately NOT the compute-only one ``coverage_overall`` uses."""
+        return sum(s.total for s in self.by_symbol.values())
+
+    @property
+    def scalar_int(self) -> int:
+        return sum(s.scalar_int for s in self.by_symbol.values())
+
+    @property
+    def scalar_float(self) -> int:
+        return sum(s.scalar_float for s in self.by_symbol.values())
+
+    @property
+    def vsetvl(self) -> int:
+        return sum(s.vsetvl for s in self.by_symbol.values())
+
+    def instruction_mix(self, *, ignore: tuple[str, ...] = ()) -> dict[str, float | int]:
+        """The FOUR-WAY instruction mix as fractions of every decoded instruction, plus the counts.
+
+        This is the committed producer for a figure that has been cited from this repo without one.
+        Two things it is deliberate about:
+
+        * the denominator is ``total`` -- EVERY decoded instruction, control flow included -- not
+          ``vector + scalar_compute``. ``coverage_overall`` uses the latter and answers a different
+          question ("of the compute, how much is vector"); reporting a mix against a compute-only
+          denominator would inflate every share and is not what "% of retired instructions" means.
+        * ``vsetvl`` is broken out of ``vector`` rather than added beside it. A ``vsetvli`` is vector
+          CONFIGURATION, not vector work, and counting it as vector work is how a loop that reconfigures
+          every iteration reads as well-vectorized. It is reported as a subset so both readings are
+          available and neither is implied.
+
+        ``ignore`` skips symbols by substring, which matters on a LINKED ELF: libc's internals are
+        real instructions but not the model's, and they drown the signal (the same reason
+        ``kernels.escape_audit`` scopes escapes to the functions the model object defines).
+        """
+        keep = [sc for name, sc in self.by_symbol.items()
+                if not any(g in name for g in ignore)]
+        total = sum(sc.total for sc in keep)
+        vec = sum(sc.vector for sc in keep)
+        cfg = sum(sc.vsetvl for sc in keep)
+        si = sum(sc.scalar_int for sc in keep)
+        sf = sum(sc.scalar_float for sc in keep)
+        other = total - vec - si - sf          # control flow, fences, csr, anything unclassified
+        out: dict[str, float | int] = {
+            "total": total, "vector": vec, "vsetvl": cfg,
+            "scalar_int": si, "scalar_float": sf, "other": other,
+        }
+        if total:
+            out |= {"vector_frac": vec / total, "vsetvl_frac": cfg / total,
+                    "scalar_int_frac": si / total, "scalar_float_frac": sf / total,
+                    "other_frac": other / total}
+        return out
+
+    def compute_symbol(self) -> "tuple[str, SymbolCoverage] | None":
+        """The symbol carrying the most compute — the one a model-level verdict belongs to.
+
+        Chosen by measured weight rather than by name, so it keeps working when the emitted entry
+        point is renamed or a target emits a differently-shaped wrapper. Returns None for a report
+        with no compute at all, which is itself the honest answer rather than a zero.
+        """
+        best = None
+        for name, sym in self.by_symbol.items():
+            # Skip ASSEMBLER-LOCAL labels. `.Lpcrel_hiN` and friends are not functions, they are
+            # local anchors the assembler emits, and they absorb the bulk of the instruction stream
+            # -- picking by raw weight selects one of those and gives an answer that moves in the
+            # WRONG direction (0.464 on a build measured 4x slower vs 0.440 on the fast one). The
+            # rule is structural, not a name guess: a leading "." marks a local label in ELF asm.
+            if name.startswith("."):
+                continue
+            weight = sym.vector + sym.scalar_compute
+            if weight and (best is None or weight > best[1].vector + best[1].scalar_compute):
+                best = (name, sym)
+        return best
 
     @property
     def coverage_overall(self) -> float | None:
@@ -93,20 +312,26 @@ def classify_disasm(text: str, *, source: str = "<text>") -> AuditReport:
     cur = SymbolCoverage(symbol="<none>")
     report.by_symbol[cur.symbol] = cur
     for line in text.splitlines():
-        m_sym = _SYM_LINE.match(line)
-        if m_sym:
-            name = m_sym.group(1)
+        name = _symbol_name(line)
+        if name is not None:
             cur = report.by_symbol.setdefault(name, SymbolCoverage(symbol=name))
             continue
-        m = _INSN_LINE.match(line)
-        if not m:
+        mnem = _insn_mnemonic(line)
+        if mnem is None:
             continue
-        mnem = m.group(1)
         cur.total += 1
-        if _RVV_RE.match(mnem):
+        if _is_rvv(mnem):
             cur.vector += 1
-        elif _SCALAR_COMPUTE_RE.match(mnem):
+            if mnem.startswith("vsetvl") or mnem.startswith("vsetivl"):
+                cur.vsetvl += 1
+        elif _is_scalar_compute(mnem):
             cur.scalar_compute += 1
+            # `_is_scalar_compute` already accepts f[a-z] as "every scalar FP op"; reuse that exact
+            # test rather than restating it, so the two can never disagree about a mnemonic.
+            if mnem[0] == "f" and mnem[1] in _LOWER:
+                cur.scalar_float += 1
+            else:
+                cur.scalar_int += 1
     # drop the placeholder bucket if it stayed empty
     if report.by_symbol.get("<none>") and report.by_symbol["<none>"].total == 0:
         report.by_symbol.pop("<none>", None)
@@ -122,7 +347,7 @@ def _objdump() -> str | None:
     would fabricate a false ~0% RVV coverage. ``llvm-objdump`` decodes the V extension correctly, so
     we prefer it everywhere (toolchain bin first, then PATH). GNU objdump remains a last resort.
     """
-    from merlin.rvvgen import k1
+    from merlin.mining import k1
     root = k1._toolchain_root()
     cands = ("llvm-objdump", "riscv64-unknown-linux-gnu-objdump", "objdump")
     if root:

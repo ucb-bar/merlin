@@ -44,7 +44,8 @@ from merlin.baselines import bundle, k1_exec, profile, rvv_audit
 from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallback
 from merlin.common.artifacts import new_measurement
 from merlin.common.paths import repo_root
-from merlin.rvvgen import k1
+from merlin.mining import k1
+from merlin.common import proc as _proc
 
 FRAMEWORK = "exo"
 MARCH = "rv64gcv"
@@ -542,9 +543,7 @@ def autotune_autosched_nblock(work: Path, *, shape=(8, 512, 512),
 
 
 def _run(cmd: list[str]) -> None:
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
-    if r.returncode != 0:
-        raise RuntimeError(f"cmd failed: {' '.join(cmd)}\n{r.stdout[-800:]}\n{r.stderr[-800:]}")
+    _proc.run_checked(cmd, error=RuntimeError, timeout=600, wrap_timeout=False, tail=800)
 
 
 def _parse_out(stdout: str) -> np.ndarray | None:
@@ -650,6 +649,10 @@ def run(model: str = "tiny_llama", variant: str = "fp32", *, autotune: bool = Tr
 
     # fp32 tiny_llama capture is the legacy-named 'tiny_consistent' dir; resolve then fall back.
     b = bundle.resolve(model, variant)
+    # WHICH bundle this measurement is on -- see compare.executorch_column.bundle_mismatch_reason:
+    # resolve() prefers <model>_<variant>_full over the older TRUNCATED _consistent, so two runs
+    # of the "same" cell can be two different models and a ratio across them is not a speedup.
+    res.bundle_id = b.root.name
     if not b.mlir.is_file() and model == "tiny_llama" and variant == "fp32":
         from merlin.common.artifacts import recaptures_dir
         alt = recaptures_dir() / "tiny_consistent"

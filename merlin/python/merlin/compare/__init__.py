@@ -9,6 +9,7 @@ an existing tool:
   figures     (paper-styled PNGs; reuse scripts/plot_paper_style palette/helpers)
   report      (compare.md dashboard + deterministic manifest.yaml)
 """
+
 from __future__ import annotations
 
 from .driver import run

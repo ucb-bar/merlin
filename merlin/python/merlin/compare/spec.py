@@ -1,16 +1,17 @@
 """Target-agnostic comparison SPEC — the single source of truth a ``merlin-compare`` run is driven by.
 
 A spec names the comparison POINTS (``configs``), the ``workloads`` (whole-model names and/or
-isolated GEMM shapes), the ``target`` (``k1`` implemented; ``spike``/``gemmini``/``npu`` are seams),
+isolated GEMM shapes), the ``target`` (the board substrate the ingest layer measures is implemented;
+``spike``/``npu`` and every registry-discovered dialect target are seams),
 and the measurement ``metric``/``reps``. Nothing here is RVV-specific; the RVV/K1 mapping lives in
 the ingest layer. Parsing is total and validating so a malformed spec fails loud, not silent.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-
 
 # The comparison-point kinds. A config is EITHER an "ours" feature-set, OR a kernel backend
 # (xnnpack/openblas), OR an EXTERNAL baseline framework (its own end-to-end compiler/runtime), OR
@@ -23,9 +24,48 @@ _KERNEL_BACKENDS = ("xnnpack", "openblas")
 _EXTERNAL_FRAMEWORKS = ("tvm", "executorch", "buddy", "exo", "ggml")
 _BASELINE = "baseline"
 
-# Targets we know about. Only k1 is implemented in v1; the rest are declared seams.
-_TARGETS = ("k1", "spike", "gemmini", "npu")
-_IMPLEMENTED_TARGETS = ("k1",)
+# Platform execution SUBSTRATES that are not dialect targets under merlin/targets/ (a board or a
+# simulator seam, not a registered dialect) — kept first-class so existing callers keep working. The
+# dialect targets are DISCOVERED from the target registry and unioned in at parse time, so a newly
+# registered dialect becomes comparable with no edit here. Only the substrate the ingest layer can
+# measure is implemented (see :func:`implemented_targets`); every other known target is a seam.
+_SEAM_SUBSTRATES = ("spike", "npu")
+
+
+def implemented_targets() -> tuple[str, ...]:
+    """The substrates this comparison can actually measure: exactly the ones its ingest path drives.
+
+    Live measurement (``empirical.prime_board_cache``) and the cached tables it ingests both come from
+    the board adapter :mod:`merlin.mining.k1`, so the implemented set is that adapter's declared
+    substrate label -- read from it rather than restated, so a spec can never name a target the ingest
+    layer would then measure on a different device."""
+    from merlin.mining import k1 as board
+
+    return (board.SUBSTRATE,)
+
+
+def default_target() -> str:
+    """The target a spec that names none compares on: the one implemented substrate. With more than
+    one implemented there is no honest default, so the spec must name its target."""
+    implemented = implemented_targets()
+    if len(implemented) != 1:
+        raise ValueError(f"spec names no target and {len(implemented)} are implemented ({implemented}); name one")
+    return implemented[0]
+
+
+def _known_targets() -> tuple[str, ...]:
+    """The comparable target set: the platform substrates above unioned with the dialect targets the
+    registry discovers (curated in-tree targets + any ``MERLIN_TARGET_PATH`` packages). A registry
+    import/discovery failure degrades to the platform substrates alone (never fatal)."""
+    discovered: tuple[str, ...] = ()
+    try:
+        from merlin.targetgen.target_registry import all_targets
+
+        discovered = tuple(all_targets())
+    except Exception:
+        discovered = ()
+    return tuple(sorted(set(implemented_targets()) | set(_SEAM_SUBSTRATES) | set(discovered)))
+
 
 _METRICS = ("wall", "instret")
 
@@ -39,6 +79,7 @@ class Config:
     compiler_features: for ``ours`` configs, the feature-set (informational here; the ingest layer
         maps the spec name to the cached JSON key). For non-ours, empty.
     """
+
     name: str
     kind: str
     compiler_features: tuple[str, ...] = ()
@@ -65,7 +106,8 @@ class Config:
         else:
             raise ValueError(
                 f"unknown config '{name}': must be 'baseline', one of {_KERNEL_BACKENDS}, "
-                f"one of {_EXTERNAL_FRAMEWORKS}, or start with '{_OURS_PREFIX}'")
+                f"one of {_EXTERNAL_FRAMEWORKS}, or start with '{_OURS_PREFIX}'"
+            )
         return Config(name=name, kind=kind, compiler_features=feats)
 
 
@@ -73,9 +115,10 @@ class Config:
 class Workload:
     """A workload to compare over: a whole-model (``kind='model'``, e.g. ``openvla``) or an isolated
     GEMM shape (``kind='gemm'``, ``gemm:64`` -> M=N=K=64, or ``gemm:17x192x576``)."""
-    name: str          # the spec token, e.g. "openvla" or "gemm:64"
-    kind: str          # "model" | "gemm"
-    mnk: tuple[int, int, int] | None = None   # for gemm
+
+    name: str  # the spec token, e.g. "openvla" or "gemm:64"
+    kind: str  # "model" | "gemm"
+    mnk: tuple[int, int, int] | None = None  # for gemm
 
     @staticmethod
     def parse(raw: str) -> "Workload":
@@ -98,7 +141,7 @@ class Workload:
 class Spec:
     configs: tuple[Config, ...]
     workloads: tuple[Workload, ...]
-    target: str = "k1"
+    target: str = field(default_factory=default_target)
     metric: str = "wall"
     reps: int = 5
     label: str = "compare"
@@ -115,13 +158,15 @@ class Spec:
             raise ValueError("spec must list at least one 'configs' entry")
         if not wls:
             raise ValueError("spec must list at least one 'workloads' entry")
-        target = raw.get("target", "k1")
-        if target not in _TARGETS:
-            raise ValueError(f"unknown target '{target}'; known: {_TARGETS}")
-        if target not in _IMPLEMENTED_TARGETS:
+        target = raw["target"] if "target" in raw else default_target()
+        known = _known_targets()
+        if target not in known:
+            raise ValueError(f"unknown target '{target}'; known: {known}")
+        implemented = implemented_targets()
+        if target not in implemented:
             raise ValueError(
-                f"target '{target}' is a declared seam but not implemented in v1 "
-                f"(implemented: {_IMPLEMENTED_TARGETS})")
+                f"target '{target}' is a declared seam but not implemented in v1 (implemented: {implemented})"
+            )
         metric = raw.get("metric", "wall")
         if metric not in _METRICS:
             raise ValueError(f"unknown metric '{metric}'; known: {_METRICS}")
@@ -138,6 +183,7 @@ class Spec:
     @staticmethod
     def from_yaml(path: str | Path) -> "Spec":
         import yaml
+
         return Spec.parse(yaml.safe_load(Path(path).read_text()))
 
     def to_dict(self) -> dict:
@@ -147,13 +193,10 @@ class Spec:
             "metric": self.metric,
             "reps": self.reps,
             "configs": [
-                {"name": c.name, "kind": c.kind,
-                 "compiler_features": list(c.compiler_features)}
-                for c in self.configs
+                {"name": c.name, "kind": c.kind, "compiler_features": list(c.compiler_features)} for c in self.configs
             ],
             "workloads": [
-                {"name": w.name, "kind": w.kind, "mnk": list(w.mnk) if w.mnk else None}
-                for w in self.workloads
+                {"name": w.name, "kind": w.kind, "mnk": list(w.mnk) if w.mnk else None} for w in self.workloads
             ],
             "notes": dict(self.notes),
         }

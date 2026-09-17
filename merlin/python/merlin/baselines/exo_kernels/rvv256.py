@@ -7,9 +7,10 @@ blocks the reduction/lane dimension by 8 and the emitted C fills a full 256-bit 
 The C templates use the standard ``__riscv_*`` vector intrinsics with a runtime ``vl``; the
 SpacemiT clang (``-march=rv64gcv``) lowers them to ``vsetvli`` + ``vle32``/``vse32``/``vfmacc``.
 """
+
 from __future__ import annotations
 
-from exo import Memory, DRAM, instr
+from exo import DRAM, Memory, instr
 from exo.core.memory import MemGenError
 
 _W = 8  # f32 lanes in one m1 register at VLEN=256
@@ -38,7 +39,7 @@ class RVV256(Memory):
         if shape:
             if not all(s.isdecimal() and int(s) > 0 for s in shape):
                 raise MemGenError(f"{srcinfo}: cannot allocate a variable number of RVV registers")
-            return f'vfloat32m1_t {new_name}[{"][".join(map(str, shape))}];'
+            return f"vfloat32m1_t {new_name}[{']['.join(map(str, shape))}];"
         return f"vfloat32m1_t {new_name};"
 
     @classmethod
@@ -135,8 +136,10 @@ def rvv256_vfmacc_vv(dst: [f32][8] @ RVV256, lhs: [f32][8] @ RVV256, rhs: [f32][
         dst[i] += lhs[i] * rhs[i]
 
 
-@instr("*{dst_data} += __riscv_vfmv_f_s_f32m1_f32("
-       "__riscv_vfredusum_vs_f32m1_f32m1({src_data}, __riscv_vfmv_v_f_f32m1(0.0f, {vl}), {vl}));")
+@instr(
+    "*{dst_data} += __riscv_vfmv_f_s_f32m1_f32("
+    "__riscv_vfredusum_vs_f32m1_f32m1({src_data}, __riscv_vfmv_v_f_f32m1(0.0f, {vl}), {vl}));"
+)
 def rvv256_vredsum(dst: f32 @ DRAM, src: [f32][8] @ RVV256, vl: size):
     # dst += sum_i src[i]  (horizontal lane-reduce of the 8-wide partial sum into the scalar acc)
     assert stride(src, 0) == 1
@@ -187,7 +190,7 @@ class RVV256_I16(Memory):
         if shape:
             if not all(s.isdecimal() and int(s) > 0 for s in shape):
                 raise MemGenError(f"{srcinfo}: cannot allocate a variable number of RVV registers")
-            return f'vint16m1_t {new_name}[{"][".join(map(str, shape))}];'
+            return f"vint16m1_t {new_name}[{']['.join(map(str, shape))}];"
         return f"vint16m1_t {new_name};"
 
     @classmethod
@@ -226,7 +229,7 @@ class RVV256_I32(Memory):
         if shape:
             if not all(s.isdecimal() and int(s) > 0 for s in shape):
                 raise MemGenError(f"{srcinfo}: cannot allocate a variable number of RVV registers")
-            return f'vint32m2_t {new_name}[{"][".join(map(str, shape))}];'
+            return f"vint32m2_t {new_name}[{']['.join(map(str, shape))}];"
         return f"vint32m2_t {new_name};"
 
     @classmethod
@@ -282,8 +285,7 @@ def rvv256_vst_i32(dst: [i32][16] @ DRAM, src: [i32][16] @ RVV256_I32, vl: size)
 
 
 @instr("{dst_data} = __riscv_vwmacc_vx_i32m2({dst_data}, (int16_t){lhs_data}, {rhs_data}, {vl});")
-def rvv256_vwmacc_vx(dst: [i32][16] @ RVV256_I32, lhs: [ui16][1] @ DRAM, rhs: [ui16][16] @ RVV256_I16,
-                     vl: size):
+def rvv256_vwmacc_vx(dst: [i32][16] @ RVV256_I32, lhs: [ui16][1] @ DRAM, rhs: [ui16][16] @ RVV256_I16, vl: size):
     # dst[o] += (i32)lhs[0] * (i32)rhs[o]  — widening MAC: i16 scalar x i16 vector -> i32 accumulate
     assert stride(dst, 0) == 1
     assert stride(rhs, 0) == 1

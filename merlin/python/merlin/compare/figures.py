@@ -10,6 +10,7 @@ data (not the hardcoded paths) and saves into the ``compare_<ts>/`` dir. Three v
 Degrades gracefully: a model with no baseline cell is skipped from the speedup view; gemm-only specs
 get the gemm bar instead. matplotlib is optional — absence is reported, not fatal.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -23,6 +24,7 @@ def _load_style():
     """Import merlin.plotting.plot_paper_style for its palette + helpers (no side effects on import)."""
     try:
         from merlin.plotting import plot_paper_style as mod
+
         return mod
     except Exception:
         return None
@@ -33,8 +35,14 @@ def _have_mpl() -> bool:
 
 
 _DEFAULT_PALETTE = {
-    "INK": "#2b2b2b", "SALMON": "#cf8b7d", "SAGE": "#9bb08a", "STEEL": "#6f93b0",
-    "GOLD": "#e7c25c", "CREAM": "#f5f1e6", "CARD_EC": "#33312b", "V3": "#b8742a",
+    "INK": "#2b2b2b",
+    "SALMON": "#cf8b7d",
+    "SAGE": "#9bb08a",
+    "STEEL": "#6f93b0",
+    "GOLD": "#e7c25c",
+    "CREAM": "#f5f1e6",
+    "CARD_EC": "#33312b",
+    "V3": "#b8742a",
 }
 
 
@@ -53,18 +61,19 @@ def _config_color(name: str, kind: str, pal: dict) -> str:
         return pal["STEEL"]
     if name == "openblas":
         return pal["SAGE"]
-    return pal["V3"]   # ours
+    return pal["V3"]  # ours
 
 
-def render(spec, measurements: dict[tuple[str, str], Measurement], ccas: dict[str, Any],
-           out_dir: Path) -> list[str]:
+def render(spec, measurements: dict[tuple[str, str], Measurement], ccas: dict[str, Any], out_dir: Path) -> list[str]:
     """Render the three views into out_dir. Returns the list of written PNG basenames."""
     out_dir = Path(out_dir)
     if not _have_mpl():
         (out_dir / "FIGURES_SKIPPED.txt").write_text(
-            "matplotlib not installed; figures skipped (install merlin[kernels-plots]).\n")
+            "matplotlib not installed; figures skipped (install merlin[kernels-plots]).\n"
+        )
         return []
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import numpy as np
@@ -82,7 +91,7 @@ def render(spec, measurements: dict[tuple[str, str], Measurement], ccas: dict[st
         m = measurements.get((cfg_name, wl_name))
         if m is None or m.status != "measured" or not m.value:
             return None
-        return m.value / 1e9   # ns -> s
+        return m.value / 1e9  # ns -> s
 
     # ---- FIG 1: all configs incl. baseline, absolute wall (log) ----
     if wls:
@@ -98,9 +107,16 @@ def render(spec, measurements: dict[tuple[str, str], Measurement], ccas: dict[st
             ys = [val_s(cfg.name, w.name) or 0 for w in wls]
             if any(y > 0 for y in ys):
                 any_bar = True
-            ax.bar(x + (i - (nser - 1) / 2) * bw, ys, bw * 0.9,
-                   color=_config_color(cfg.name, cfg.kind, pal),
-                   edgecolor=pal["CARD_EC"], linewidth=0.8, label=cfg.name, zorder=3)
+            ax.bar(
+                x + (i - (nser - 1) / 2) * bw,
+                ys,
+                bw * 0.9,
+                color=_config_color(cfg.name, cfg.kind, pal),
+                edgecolor=pal["CARD_EC"],
+                linewidth=0.8,
+                label=cfg.name,
+                zorder=3,
+            )
         ax.set_yscale("log")
         ax.set_xticks(x)
         ax.set_xticklabels([w.name for w in wls], fontsize=10)
@@ -131,14 +147,20 @@ def render(spec, measurements: dict[tuple[str, str], Measurement], ccas: dict[st
                 base = val_s("baseline", w.name)
                 cur = val_s(cfg.name, w.name)
                 ys.append(base / cur if (base and cur) else np.nan)
-            ax.bar(x + (i - (nser - 1) / 2) * bw, ys, bw * 0.9,
-                   color=_config_color(cfg.name, cfg.kind, pal),
-                   edgecolor=pal["CARD_EC"], linewidth=0.8, label=cfg.name, zorder=3)
+            ax.bar(
+                x + (i - (nser - 1) / 2) * bw,
+                ys,
+                bw * 0.9,
+                color=_config_color(cfg.name, cfg.kind, pal),
+                edgecolor=pal["CARD_EC"],
+                linewidth=0.8,
+                label=cfg.name,
+                zorder=3,
+            )
         ax.set_xticks(x)
         ax.set_xticklabels([w.name for w in speed_wls], fontsize=10)
         ax.set_ylabel("speedup vs baseline (x) — higher = faster")
-        ax.set_title("(2) Zoomed contest: ours vs experts (no baseline)",
-                     loc="left", color=pal["INK"], pad=8)
+        ax.set_title("(2) Zoomed contest: ours vs experts (no baseline)", loc="left", color=pal["INK"], pad=8)
         ax.legend(fontsize=8)
         ax.grid(True, axis="y", ls=":", alpha=0.35)
         fig.tight_layout()
@@ -156,13 +178,11 @@ def render(spec, measurements: dict[tuple[str, str], Measurement], ccas: dict[st
         names = [c.name for c in configs]
         ys = [val_s(c.name, rep.name) or 0 for c in configs]
         colors = [_config_color(c.name, c.kind, pal) for c in configs]
-        bars = ax.bar(range(len(configs)), ys, color=colors,
-                      edgecolor=pal["CARD_EC"], linewidth=0.8, zorder=3)
+        bars = ax.bar(range(len(configs)), ys, color=colors, edgecolor=pal["CARD_EC"], linewidth=0.8, zorder=3)
         ax.set_xticks(range(len(configs)))
         ax.set_xticklabels(names, rotation=20, ha="right", fontsize=9)
         ax.set_ylabel(f"wall on {rep.name} (s) — lower = faster")
-        ax.set_title("(3) Perf + structural form (vfmacc / accumulator)",
-                     loc="left", color=pal["INK"], pad=8)
+        ax.set_title("(3) Perf + structural form (vfmacc / accumulator)", loc="left", color=pal["INK"], pad=8)
         for i, cfg in enumerate(configs):
             cca = ccas.get(cfg.name)
             tag = "scalar/baseline"
@@ -172,8 +192,7 @@ def render(spec, measurements: dict[tuple[str, str], Measurement], ccas: dict[st
                 form = ".vf" if vf else (".vv" if vv else "?")
                 resid = "resident" if cca.compute.accumulator_resident else "spilled"
                 tag = f"{form}/{resid}"
-            ax.text(i, (ys[i] if ys[i] else 0), tag, ha="center", va="bottom",
-                    fontsize=7.5, color=pal["INK"])
+            ax.text(i, (ys[i] if ys[i] else 0), tag, ha="center", va="bottom", fontsize=7.5, color=pal["INK"])
         ax.grid(True, axis="y", ls=":", alpha=0.35)
         fig.tight_layout()
         fig.savefig(out_dir / "fig3_perf_util.png", dpi=150, bbox_inches="tight")

@@ -8,23 +8,31 @@ Orchestration (all five layers REUSE existing tools; this module is glue only):
   4. FIGURES    — figures.render (reuse plot_paper_style palette/helpers)        -> PNGs
   5. REPORT     — report.write_report + write_manifest                           -> compare.md + manifest.yaml
 """
+
 from __future__ import annotations
 
 import time
 from pathlib import Path
+
 from merlin.common.paths import repo_root
 
+from ..common.paths import artifacts_dir
 from . import attribution, empirical, figures, report, structural
 from .spec import Spec
-from ..common.paths import artifacts_dir
 
 
 def _repo_root() -> Path:
     return repo_root()
 
 
-def run(spec: Spec, *, out_root: Path | None = None, run_board: bool = False,
-        root: Path | None = None, ts: str | None = None) -> Path:
+def run(
+    spec: Spec,
+    *,
+    out_root: Path | None = None,
+    run_board: bool = False,
+    root: Path | None = None,
+    ts: str | None = None,
+) -> Path:
     """Execute a full compare run; return the artifact directory."""
     root = root or _repo_root()
     out_root = Path(out_root) if out_root else (artifacts_dir() / "compare")
@@ -51,8 +59,15 @@ def run(spec: Spec, *, out_root: Path | None = None, run_board: bool = False,
     figs = figures.render(spec, measurements, ccas, out_dir)
 
     # 5. REPORT + MANIFEST
-    report.write_report(out_dir, spec=spec, measurements=measurements, ccas=ccas,
-                        attrs=attrs, figures=figs, root=root, gap_axes=gap_axes)
-    report.write_manifest(out_dir, spec=spec, measurements=measurements, ccas=ccas,
-                         figures=figs, root=root)
+    report.write_report(
+        out_dir,
+        spec=spec,
+        measurements=measurements,
+        ccas=ccas,
+        attrs=attrs,
+        figures=figs,
+        root=root,
+        gap_axes=gap_axes,
+    )
+    report.write_manifest(out_dir, spec=spec, measurements=measurements, ccas=ccas, figures=figs, root=root)
     return out_dir

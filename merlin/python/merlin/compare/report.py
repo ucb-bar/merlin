@@ -5,6 +5,7 @@ divergences + routed compiler actions) + figure references.
 ``manifest.yaml`` = spec + git commit + source JSONs + figure list (deterministic; a re-run over the
 same cached sources at the same commit reproduces the same manifest sans timestamp).
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -18,8 +19,8 @@ from .empirical import Measurement
 def _git_commit(root: Path) -> str:
     try:
         return subprocess.check_output(
-            ["git", "-C", str(root), "rev-parse", "HEAD"],
-            text=True, stderr=subprocess.DEVNULL).strip()
+            ["git", "-C", str(root), "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
+        ).strip()
     except Exception:
         return "unknown"
 
@@ -32,8 +33,7 @@ def _fmt_wall(m: Measurement) -> str:
 
 def measured_table_md(spec, measurements: dict[tuple[str, str], Measurement]) -> str:
     cfgs = [c.name for c in spec.configs]
-    lines = ["| workload | " + " | ".join(cfgs) + " |",
-             "|" + "---|" * (len(cfgs) + 1)]
+    lines = ["| workload | " + " | ".join(cfgs) + " |", "|" + "---|" * (len(cfgs) + 1)]
     for w in spec.workloads:
         cells = []
         for cn in cfgs:
@@ -51,8 +51,10 @@ def measured_table_md(spec, measurements: dict[tuple[str, str], Measurement]) ->
 
 
 def cca_table_md(ccas: dict[str, Any]) -> str:
-    lines = ["| config | contraction | acc_resident | nr_is_vsetvlmax | sew/lmul | vfmacc(.vf/.vv) |",
-             "|---|---|---|---|---|---|"]
+    lines = [
+        "| config | contraction | acc_resident | nr_is_vsetvlmax | sew/lmul | vfmacc(.vf/.vv) |",
+        "|---|---|---|---|---|---|",
+    ]
     for name, cca in ccas.items():
         if cca is None:
             lines.append(f"| {name} | (no vector matmul decode — scalar/baseline) | | | | |")
@@ -63,7 +65,8 @@ def cca_table_md(ccas: dict[str, Any]) -> str:
         vv = cca.provenance.get("fma_loop_vfmacc_vv")
         lines.append(
             f"| {name} | {c.contraction_form} | {c.accumulator_resident} | {c.nr_is_vsetvlmax} | "
-            f"{v.sew if v else '?'}/{v.lmul if v else '?'} | vf={vf}, vv={vv} |")
+            f"{v.sew if v else '?'}/{v.lmul if v else '?'} | vf={vf}, vv={vv} |"
+        )
     return "\n".join(lines)
 
 
@@ -73,12 +76,14 @@ def attribution_md(attrs: list[Attribution]) -> str:
     blocks = []
     for a in attrs:
         m = a.measured
-        verdict = ("BEATS" if m["ours_faster"] else f"{m['pct_of_expert']}% of")
-        head = (f"### {a.workload}: `{a.ours_config}` vs `{a.expert_config}` — "
-                f"ours {verdict} expert")
-        rows = [head, "",
-                f"- measured: ours={m['ours_value']/1e9:.4f}s, expert={m['expert_value']/1e9:.4f}s, "
-                f"ratio(ours/expert)={m['ratio_ours_over_expert']:.2f}x"]
+        verdict = "BEATS" if m["ours_faster"] else f"{m['pct_of_expert']}% of"
+        head = f"### {a.workload}: `{a.ours_config}` vs `{a.expert_config}` — ours {verdict} expert"
+        rows = [
+            head,
+            "",
+            f"- measured: ours={m['ours_value'] / 1e9:.4f}s, expert={m['expert_value'] / 1e9:.4f}s, "
+            f"ratio(ours/expert)={m['ratio_ours_over_expert']:.2f}x",
+        ]
         if a.divergences:
             rows.append("- structural divergences (expert vs ours):")
             for d in a.divergences:
@@ -87,11 +92,11 @@ def attribution_md(attrs: list[Attribution]) -> str:
             rows.append("- routed compiler actions:")
             for act in a.actions:
                 fk = "forkable-now" if act.forkable_now else "deferred"
-                rows.append(f"    - [{act.action_class}] `{act.target_seam}` ({fk}) — "
-                            f"{act.expected_effect}")
+                rows.append(f"    - [{act.action_class}] `{act.target_seam}` ({fk}) — {act.expected_effect}")
         if a.unrouted:
-            rows.append("- unrouted divergences (surfaced, not dropped): "
-                        + ", ".join(f"`{d.axis}`" for d in a.unrouted))
+            rows.append(
+                "- unrouted divergences (surfaced, not dropped): " + ", ".join(f"`{d.axis}`" for d in a.unrouted)
+            )
         for n in a.notes:
             rows.append(f"- note: {n}")
         blocks.append("\n".join(rows))
@@ -113,31 +118,36 @@ def region_alignment_md(alignments) -> str:
     averaged into a whole-model number."""
     if not alignments:
         return "_No aligned regions (per-region profiles not present on either side)._"
-    head = ("| region | role | Merlin wall | ExecuTorch wall | ours/ET | Merlin cos | ET cos | presence |\n"
-            "|---|---|---|---|---|---|---|---|")
+    head = (
+        "| region | role | Merlin wall | ExecuTorch wall | ours/ET | Merlin cos | ET cos | presence |\n"
+        "|---|---|---|---|---|---|---|---|"
+    )
     rows = [head]
     for a in alignments:
         label = a.fqn or a.key
         ratio = f"{a.wall_ratio:.2f}×" if a.wall_ratio is not None else "—"
         flag = "" if a.presence == "both" else " ⚠️"
-        rows.append(f"| `{label}` ({a.label}) | {a.role or '—'} | {_ns(a.ours_wall_ns)} | "
-                    f"{_ns(a.expert_wall_ns)} | {ratio} | {_cos(a.ours_cos)} | {_cos(a.expert_cos)} | "
-                    f"{a.presence}{flag} |")
+        rows.append(
+            f"| `{label}` ({a.label}) | {a.role or '—'} | {_ns(a.ours_wall_ns)} | "
+            f"{_ns(a.expert_wall_ns)} | {ratio} | {_cos(a.ours_cos)} | {_cos(a.expert_cos)} | "
+            f"{a.presence}{flag} |"
+        )
     only = [a for a in alignments if a.presence != "both"]
     if only:
-        rows += ["", f"> ⚠️ {len(only)} region(s) present on only one side — delegation/vectorization "
-                 "heterogeneity a whole-model number hides; compared where both exist, flagged otherwise."]
+        rows += [
+            "",
+            f"> ⚠️ {len(only)} region(s) present on only one side — delegation/vectorization "
+            "heterogeneity a whole-model number hides; compared where both exist, flagged otherwise.",
+        ]
     return "\n".join(rows)
 
 
-def write_report(out_dir: Path, *, spec, measurements, ccas, attrs, figures,
-                 root: Path, gap_axes: set[str]) -> Path:
+def write_report(out_dir: Path, *, spec, measurements, ccas, attrs, figures, root: Path, gap_axes: set[str]) -> Path:
     out_dir = Path(out_dir)
     parts = [
         f"# merlin-compare — {spec.label}",
         "",
-        f"target=`{spec.target}` · metric=`{spec.metric}` · reps={spec.reps} · "
-        f"commit=`{_git_commit(root)[:12]}`",
+        f"target=`{spec.target}` · metric=`{spec.metric}` · reps={spec.reps} · commit=`{_git_commit(root)[:12]}`",
         "",
         "> v1 INGESTS already-measured host/board data (no new board run). "
         "Static CCA decode gives the RANKING of structural factors, not exact cycle fractions "
@@ -174,6 +184,7 @@ def write_report(out_dir: Path, *, spec, measurements, ccas, attrs, figures,
 
 def write_manifest(out_dir: Path, *, spec, measurements, ccas, figures, root: Path) -> Path:
     import yaml
+
     out_dir = Path(out_dir)
     sources = sorted({m.source for m in measurements.values() if m.source})
     decode_src = "out/artifacts/ceiling/kernel_breakdown_decode.json"
@@ -187,10 +198,15 @@ def write_manifest(out_dir: Path, *, spec, measurements, ccas, figures, root: Pa
             "source": m.source,
         }
     cca_provenance = {
-        name: (None if cca is None
-               else {"decode_kernel": cca.provenance.get("decode_kernel"),
-                     "decode_shape": cca.provenance.get("decode_shape"),
-                     "source": cca.provenance.get("source")})
+        name: (
+            None
+            if cca is None
+            else {
+                "decode_kernel": cca.provenance.get("decode_kernel"),
+                "decode_shape": cca.provenance.get("decode_shape"),
+                "source": cca.provenance.get("source"),
+            }
+        )
         for name, cca in ccas.items()
     }
     manifest = {

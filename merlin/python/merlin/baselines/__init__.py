@@ -13,6 +13,7 @@ Shared building blocks (per-framework runners live in ``baselines/<framework>.py
   * :mod:`.contract`   — the ``BaselineResult`` schema (not_run_is_not_pass; scalar fallback labeled)
   * :mod:`.aggregate`  — collect results -> framework × model matrix (markdown/CSV)
 """
+
 from __future__ import annotations
 
 from merlin.baselines.contract import (
