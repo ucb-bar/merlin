@@ -15,7 +15,7 @@ unchecked-subprocess-input build_tools/scripts/k1_int8_fair_compare.py:main
 unchecked-subprocess-input build_tools/scripts/k1_intrinsic_microkernel.py:_objdump_vsetvli
 unchecked-subprocess-input merlin/python/merlin/verify/evaluate.py:_ver
 unchecked-subprocess-input merlin/python/merlin/verify/evaluate.py:_write_product
-self-comparison merlin/python/merlin/dse_guidance/insight_mining.py:2575:art_names == art_names
+self-comparison merlin/python/merlin/dse_guidance/insight_mining.py:3937:art_names == art_names
 always-empty-field build_tools/scripts/check_docs_freshness.py:drift
 always-empty-field merlin/python/merlin/dse_guidance/contract.py:dse_knobs
 always-empty-field merlin/python/merlin/dse_guidance/mapspace.py:roles

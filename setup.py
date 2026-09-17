@@ -9,6 +9,7 @@ the wheel. The canonical copies stay put (in-repo tooling + ``data_path()``'s ch
 them directly); the bundle is what ``pip install merlin`` resolves via ``importlib.resources`` when
 no checkout is present. Single source of truth, refreshed on every build — no committed duplicate.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -20,8 +21,9 @@ from setuptools.command.build_py import build_py
 _ROOT = Path(__file__).resolve().parent
 _PKG = _ROOT / "merlin" / "python" / "merlin"
 # canonical (top-level) -> bundled (inside the package)
-_BUNDLE = {kind: _PKG / "_data" / kind
-           for kind in ("schemas", "prompts", "benchmarks", "contract", "targets", "runtime")}
+_BUNDLE = {
+    kind: _PKG / "_data" / kind for kind in ("schemas", "prompts", "benchmarks", "contract", "targets", "runtime")
+}
 
 # Per-tree exclusions from the bundle:
 #  - benchmarks: the heavy capture corpora (``recaptures*`` — model.mlir/safetensors, tens of MB and
@@ -37,8 +39,7 @@ _BUNDLE = {kind: _PKG / "_data" / kind
 #    `check_no_answer_keys._is_answer_key` remains the authority on what an answer surface IS;
 #    merlin/tests/infra/test_wheel_excludes_answer_keys.py holds these two in agreement against the
 #    real tree, so this list cannot silently fall behind it.
-_EXCLUDE = {"benchmarks": ("recaptures",), "targets": ("rtl_facts",),
-            "contract": ("hidden", "golden")}
+_EXCLUDE = {"benchmarks": ("recaptures",), "targets": ("rtl_facts",), "contract": ("hidden", "golden")}
 #: Name SUFFIXES excluded per tree. Needed because the holdout SPECIFICATION sidecar is named for its
 #: target (`radiance.hidden.yaml`), so no prefix rule reaches it -- and a holdout's op, dtype and exact
 #: shape is itself an answer. `expected_instruction_coverage.yaml` is here for the same reason: the
@@ -56,11 +57,14 @@ def _ignore_for(kind: str):
     suffixes = _EXCLUDE_SUFFIXES.get(kind, ())
 
     def _ignore(_dir: str, names: list[str]) -> set[str]:
-        return {n for n in names
-                if n == "__pycache__"
-                or n.endswith(_CODE_SUFFIXES)
-                or any(n.startswith(p) for p in prefixes)
-                or any(n.endswith(x) for x in suffixes)}
+        return {
+            n
+            for n in names
+            if n == "__pycache__"
+            or n.endswith(_CODE_SUFFIXES)
+            or any(n.startswith(p) for p in prefixes)
+            or any(n.endswith(x) for x in suffixes)
+        }
 
     return _ignore
 
