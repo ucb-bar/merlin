@@ -18,16 +18,24 @@ Deliberately NOT in the certifiable set (documented divergences, not oversights)
         (an interface-level change), outside the i8-matmul certification scope; the non-
         transposed WS path is already certified. Deferred by design.
 """
+
 from __future__ import annotations
 
 from typing import Any
 
-DIM = 16
+DIM = 16  # derived-ok: default workload shape for this reference suite; callers pass m/k/n
 
 
-def workload(reuse: int = 1, epilogue: tuple[str, ...] = (), *,
-             m: int = DIM, k: int = DIM, n: int = DIM,
-             output_dtype: str = "i32", acc_scale: float = 1.0) -> dict[str, Any]:
+def workload(
+    reuse: int = 1,
+    epilogue: tuple[str, ...] = (),
+    *,
+    m: int = DIM,
+    k: int = DIM,
+    n: int = DIM,
+    output_dtype: str = "i32",
+    acc_scale: float = 1.0,
+) -> dict[str, Any]:
     """One resident weight W reused across ``reuse`` matmuls; each commit applies ``epilogue``.
 
     ``output_dtype`` selects the Gemmini readout: ``i32`` = full-i32 (no scale), ``i8`` =
@@ -35,32 +43,29 @@ def workload(reuse: int = 1, epilogue: tuple[str, ...] = (), *,
     applied on the i8 readout (epilogue must contain ``acc_scale``)."""
     tensors: dict[str, Any] = {"W": {"shape": [k, n], "dtype": "i8", "role": "weight"}}
     commands: list[dict] = [
-        {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"},
-         "attributes": {"layout": "packed_rhs"}},
+        {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {"layout": "packed_rhs"}},
     ]
     for i in range(reuse):
         a, acc, y = f"A{i}", f"acc{i}", f"Y{i}"
         tensors[a] = {"shape": [m, k], "dtype": "i8", "role": "input"}
-        commands.append({"opcode": "MATMUL_RESIDENT",
-                         "operands": {"lhs": a, "rhs": "W_res", "dst": acc}})
+        commands.append({"opcode": "MATMUL_RESIDENT", "operands": {"lhs": a, "rhs": "W_res", "dst": acc}})
         attrs: dict[str, Any] = {"epilogue": list(epilogue), "output_dtype": output_dtype}
         if "acc_scale" in epilogue:
             attrs["acc_scale"] = acc_scale
-        commands.append({"opcode": "COMMIT", "operands": {"src": acc, "dst": y},
-                         "attributes": attrs})
+        commands.append({"opcode": "COMMIT", "operands": {"src": acc, "dst": y}, "attributes": attrs})
     commands.append({"opcode": "EVICT", "operands": {"handle": "W_res"}})
-    return {"abi_version": "0.1", "target": "gemmini", "backend": "verilator",
-            "tensors": tensors, "commands": commands}
+    return {"abi_version": "0.1", "target": "gemmini", "backend": "verilator", "tensors": tensors, "commands": commands}
 
 
 # name -> (builder, one-line description). Certifiable (bit-exact) rungs only.
 RUNGS = {
     "C0": (lambda: workload(reuse=1, epilogue=()), "matmul only, i32 (single 16-tile)"),
     "C1": (lambda: workload(reuse=1, epilogue=("relu",)), "matmul + relu, i32"),
-    "C4": (lambda: workload(reuse=1, epilogue=(), m=32, k=32, n=32),
-           "multi-tile 32x32x32 (K-accumulation, no padding)"),
-    "C4e": (lambda: workload(reuse=1, epilogue=(), m=16, k=24, n=20),
-            "edge shapes 16x24x20 (zero-padding K,N)"),
+    "C4": (
+        lambda: workload(reuse=1, epilogue=(), m=32, k=32, n=32),
+        "multi-tile 32x32x32 (K-accumulation, no padding)",
+    ),
+    "C4e": (lambda: workload(reuse=1, epilogue=(), m=16, k=24, n=20), "edge shapes 16x24x20 (zero-padding K,N)"),
     "C5": (lambda: workload(reuse=4, epilogue=()), "reuse-4 (one resident W)"),
 }
 
@@ -69,15 +74,24 @@ RUNGS = {
 # (which uses full-i32 readout) is unaffected; these are certified via the MLIR-faithful path.
 # Q2 uses a non-power-of-two scale to stress the float multiply (not just an exponent shift).
 QUANT_RUNGS = {
-    "Q0":  (lambda: workload(reuse=1, epilogue=("acc_scale",), output_dtype="i8", acc_scale=1.0 / 16),
-            "matmul -> acc_scale(1/16) -> i8 (scaled+clamped readout)"),
-    "Q1":  (lambda: workload(reuse=1, epilogue=("acc_scale", "relu"), output_dtype="i8", acc_scale=1.0 / 16),
-            "matmul -> acc_scale(1/16) -> relu -> i8 (quantized linear+relu)"),
-    "Q2":  (lambda: workload(reuse=1, epilogue=("acc_scale",), output_dtype="i8", acc_scale=0.013),
-            "matmul -> acc_scale(0.013, non-pow2) -> i8 (float-multiply stress)"),
-    "Q1t": (lambda: workload(reuse=1, epilogue=("acc_scale", "relu"), output_dtype="i8",
-                             acc_scale=1.0 / 16, m=32, k=32, n=32),
-            "tiled 32x32x32 -> acc_scale(1/16) -> relu -> i8 (multi-tile quantized layer)"),
+    "Q0": (
+        lambda: workload(reuse=1, epilogue=("acc_scale",), output_dtype="i8", acc_scale=1.0 / 16),
+        "matmul -> acc_scale(1/16) -> i8 (scaled+clamped readout)",
+    ),
+    "Q1": (
+        lambda: workload(reuse=1, epilogue=("acc_scale", "relu"), output_dtype="i8", acc_scale=1.0 / 16),
+        "matmul -> acc_scale(1/16) -> relu -> i8 (quantized linear+relu)",
+    ),
+    "Q2": (
+        lambda: workload(reuse=1, epilogue=("acc_scale",), output_dtype="i8", acc_scale=0.013),
+        "matmul -> acc_scale(0.013, non-pow2) -> i8 (float-multiply stress)",
+    ),
+    "Q1t": (
+        lambda: workload(
+            reuse=1, epilogue=("acc_scale", "relu"), output_dtype="i8", acc_scale=1.0 / 16, m=32, k=32, n=32
+        ),
+        "tiled 32x32x32 -> acc_scale(1/16) -> relu -> i8 (multi-tile quantized layer)",
+    ),
 }
 
 

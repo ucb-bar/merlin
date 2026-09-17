@@ -3,7 +3,7 @@
 Mirrors abc-testing's runtime: invoke ``claude -p ... --model opus`` headless (local auth, no
 API key), with a cache-buster nonce so repeats don't pollute each other, capture the full
 transcript, and parse the final text + token usage. The LLM proposes into a typed slot; the
-deterministic gate (see kernel_slot) disposes.
+deterministic gate (see gemmini_kernel_slot) disposes.
 """
 from __future__ import annotations
 

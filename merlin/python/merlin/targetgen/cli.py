@@ -11,6 +11,7 @@
 
 Deterministic, no LLM calls.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -65,8 +66,11 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--examples-dir", default=None)
     b.add_argument("--scala-root", default=None)
     b.add_argument("--out", default=None, help="output directory for the generated repo")
-    b.add_argument("--emit", default=",".join(pipeline.DEFAULT_EMIT),
-                   help="comma list of layers: xdsl,mlir,zephyr,runtime,llvm-plan or contract-only")
+    b.add_argument(
+        "--emit",
+        default=",".join(pipeline.DEFAULT_EMIT),
+        help="comma list of layers: xdsl,mlir,zephyr,runtime,llvm-plan or contract-only",
+    )
     b.set_defaults(func=_cmd_build)
 
     i = sub.add_parser("inspect", help="validate a generated target repo")

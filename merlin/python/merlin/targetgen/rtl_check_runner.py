@@ -2,9 +2,11 @@
 
 Ties the deterministic RTL facts + the FileCheck compiler to a candidate capsule run:
 
-  1. render the decoded RoCC trace to a canonical text (counts + ABI + per-instruction lines),
+  1. render the endpoint's emitted stream to a canonical text — a RoCC target's decoded trace (counts +
+     ABI + per-instruction lines) or a self-hosted target's decoded kernel instruction stream,
   2. compile the FileCheck assertions for the capsule (:mod:`rtl_check_compiler`),
-  3. invoke the **FileCheck LLVM binary** over (i) the gemmini-dialect MLIR and (ii) the rendered trace,
+  3. invoke the **FileCheck LLVM binary** over that rendered decode of the target's ACTUAL emitted
+     commands/instructions (never the agent's dialect MLIR — its op mnemonics are un-derivable per run),
   4. additionally run the Python :func:`rtl_checks.screen` for numeric bounds FileCheck can't express
      (scratchpad/accumulator capacity, multi-matmul tile lower bound),
 
@@ -23,7 +25,6 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import shutil
 import subprocess
 import tempfile
@@ -37,6 +38,7 @@ from . import rtl_checks as RC
 from .rtl.facts import load_facts
 from .corpora import capsule_corpus_roots
 from merlin.common.paths import ext_path, repo_root
+from merlin.common.facts_view import interface as _facts_interface
 
 _REPO = repo_root()
 # RTL facts are the generated artifact (regenerated from the RTL on demand by load_facts); the
@@ -47,6 +49,7 @@ _FILECHECK_CANDIDATES = [
     f"{ext_path("chipyard")}/.conda-env/riscv-tools/bin/FileCheck",
 ]
 _COMPUTE_CLASSES = {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"}
+_MVIN_CLASSES = {"MVIN", "MVIN2", "MVIN3"}
 
 
 def find_filecheck() -> str | None:
@@ -72,7 +75,7 @@ def _facts_sha(facts_rec: dict) -> str:
     return s
 
 
-def compiled_checks(facts_rec: dict, capsule: dict, target: str = "gemmini") -> dict:
+def compiled_checks(facts_rec: dict, capsule: dict, target: str) -> dict:
     """Memoized :func:`rtl_check_compiler.compile_checks`, keyed by (capsule name, facts sha, target)."""
     key = (capsule.get("name") or "?", _facts_sha(facts_rec), target)
     c = _COMPILED_CACHE.get(key)
@@ -82,21 +85,16 @@ def compiled_checks(facts_rec: dict, capsule: dict, target: str = "gemmini") -> 
     return c
 
 
-_OPFORM_RE = re.compile(r"=\s*gemmini\.\w+|gemmini\.(res_pack|matmul|commit|evict)\b")
-
-
-def _is_op_form(mlir: str) -> bool:
-    """True when the gemmini dialect is emitted as real ops (`%x = gemmini.<op> ...`), vs the
-    attribute-encoded `gemmini.program = [...]` form the op-name FileCheck patterns don't apply to."""
-    return bool(_OPFORM_RE.search(mlir)) and "gemmini.program" not in mlir
-
-
 def _legal_funct(facts_rec: dict) -> set[int]:
+    """The RTL-derived legal RoCC funct set, or empty when the facts carry no decode table. Fail-closed:
+    an EMPTY set means "legality not derivable" (the caller renders ILLEGAL_FUNCT_COUNT as unknown and the
+    compiler omits the ILLEGAL_FUNCT_COUNT assertion) — never a baked gemmini funct block substituted for a
+    target whose decoder we could not read."""
     facts = facts_rec.get("facts", facts_rec)
     for i in (facts.get("interfaces") or []):
         if i.get("name") == "funct_decode_table":
             return set(i.get("legal_funct") or [])
-    return set(range(0, 26))  # RTL-derived default
+    return set()
 
 
 def render_trace(trace: dict, facts_rec: dict) -> str:
@@ -105,27 +103,128 @@ def render_trace(trace: dict, facts_rec: dict) -> str:
     hist: dict[str, int] = {}
     for i in instrs:
         hist[i.get("class")] = hist.get(i.get("class"), 0) + 1
-    n_mvin = hist.get("MVIN", 0)
+    n_mvin = sum(hist.get(c, 0) for c in _MVIN_CLASSES)
     n_mvout = hist.get("MVOUT", 0)
     n_compute = sum(hist.get(c, 0) for c in _COMPUTE_CLASSES)
     legal = _legal_funct(facts_rec)
-    n_illegal = sum(1 for i in instrs
-                    if isinstance(i.get("funct"), int) and i["funct"] not in legal)
+    # legality is only computable when the RTL facts carry the legal set; else render '-' (unknown) so a
+    # missing decode table is NOT silently treated as "every funct illegal" (and the compiler omits the
+    # matching ILLEGAL_FUNCT_COUNT assertion) — fail-closed, not a gemmini default.
+    illegal_str = (str(sum(1 for i in instrs
+                           if isinstance(i.get("funct"), int) and i["funct"] not in legal))
+                   if legal else "-")
     abi = trace.get("abi") or {}
-    custom = abi.get("custom_opcode", "0x7b")
-    funct3 = abi.get("funct3", "0x3")
+    custom = abi.get("custom_opcode", "-")
+    funct3 = abi.get("funct3", "-")
     L = [f"# {CC.RENDER_SCHEMA}",
          f"ABI custom={custom} funct3={funct3}",
          f"MVIN_COUNT {n_mvin}",
          f"MVOUT_COUNT {n_mvout}",
          f"COMPUTE_COUNT {n_compute}",
-         f"ILLEGAL_FUNCT_COUNT {n_illegal}",
+         f"ILLEGAL_FUNCT_COUNT {illegal_str}",
          f"COMPUTE_PRESENT {'yes' if n_compute else 'no'}",
          f"MVIN_PRESENT {'yes' if n_mvin else 'no'}"]
     for i in instrs:
         f = i.get("funct")
         L.append(f"INSTR {i.get('index')} {i.get('class')} funct={f if f is not None else '-'}")
     return "\n".join(L) + "\n"
+
+
+def _parse_words(kernel_text: str) -> list[int]:
+    """Parse the ``.word``/``.insn`` instruction values out of an assembled kernel — STRUCTURED, no regex.
+    Per line: drop ``#``/``//`` comments, tokenize on whitespace, and if the first token is a ``.word`` or
+    ``.insn`` directive take its first integer operand (``0x…`` or decimal). Non-directive lines (labels,
+    ``.text``/``.globl``, ``ret``) are skipped."""
+    words: list[int] = []
+    for raw in kernel_text.splitlines():
+        line = raw.split("#", 1)[0].split("//", 1)[0].strip()
+        if not line:
+            continue
+        toks = line.replace(",", " ").split()
+        if not toks or toks[0] not in (".word", ".insn"):
+            continue
+        for t in toks[1:]:
+            try:
+                words.append(int(t, 16) if t.lower().startswith("0x") else int(t))
+                break
+            except ValueError:
+                continue
+    return words
+
+
+def _legal_opcodes(facts_rec: dict) -> tuple[set[int], int] | None:
+    """(legal decode-value set, field width) DERIVED from the RTL/ISA decode facts, or None if the target
+    ships none. The width is inferred from the largest legal value (the extractor's icmp-eq field), so the
+    legality test compares the emitted instruction's low-``width`` bits — the field the hardware decoder
+    actually matches. No target literals: the set + width both come from the discovered facts."""
+    facts = facts_rec.get("facts", facts_rec)
+    dt = _facts_interface(facts, "funct_decode_table")
+    vals = set((dt or {}).get("legal_funct") or [])
+    if not vals:
+        return None
+    width = max(vals).bit_length()
+    return vals, width
+
+
+def render_kernel_decode(kernel_text: str, facts_rec: dict, taxonomy: dict | None = None) -> str:
+    """Canonical text the KERNEL FileCheck lines are matched against — a decode of the emitted self-hosted
+    kernel's `.word`/`.insn` instruction stream. Two layers, both fully DERIVED (no target literals):
+
+    * LEGALITY — each word's low-``width`` decode field vs the RTL-discovered legal-opcode set
+      (``ILLEGAL_OPCODE_COUNT`` = what the hardware decoder would reject).
+    * CLASS DECODE — when a taxonomy is given, each word is classified into its SEMANTIC class using the
+      per-op decode signatures (fixed_mask/fixed_value from the ISA def's own encoder). This exposes what a
+      matmul kernel actually emitted (e.g. VADD instead of the MXU matmul), which legality alone misses —
+      a ``CLASS_PRESENT <c>`` line per class actually emitted lets the checks assert the required classes.
+
+    This is the static RTL/ISA-structural signal (no Verilog run, beyond spike/npu_model's functional
+    output). Everything comes from ``facts_rec`` + the derived ``taxonomy``."""
+    from . import isa_taxonomy as IT
+    words = _parse_words(kernel_text)
+    lo = _legal_opcodes(facts_rec)
+    legal, width = (lo if lo else (set(), 0))
+    mask = (1 << width) - 1 if width else 0
+    n_illegal = 0
+    lines = []
+    present: list[str] = []
+    counts: dict[str, int] = {}
+    zeroops: dict[str, int] = {}                          # per-class count of all-zero-operand instructions
+    for idx, w in enumerate(words):
+        matches = IT.classify(w, taxonomy) if taxonomy else []
+        classes = [c for c, _m in matches]
+        # LEGALITY = "the decoder accepts this instruction". With the derived per-op decode signatures the
+        # authoritative test is that the word matches SOME op's opcode/funct bits (classify non-empty) —
+        # robust to operand values. Only when no taxonomy is available do we fall back to the coarse
+        # low-width membership in the discovered legal-value set.
+        if taxonomy:
+            ok = bool(matches)
+            field = w
+        else:
+            field = w & mask if mask else w
+            ok = (field in legal) if legal else True
+        if not ok:
+            n_illegal += 1
+        for c, fmask in matches:
+            if c not in present:
+                present.append(c)
+            counts[c] = counts.get(c, 0) + 1
+            if (w & (~fmask & 0xFFFFFFFF)) == 0:          # operand payload (bits outside the fixed opcode/funct)
+                zeroops[c] = zeroops.get(c, 0) + 1
+        cls_s = "|".join(classes) if classes else ("-" if taxonomy else "?")
+        lines.append(f"INSTR {idx} word=0x{w:08x} opcode={field} legal={'yes' if ok else 'no'} class={cls_s}")
+    # legality is determinable only with a taxonomy (per-op decode signatures) OR a discovered legal set;
+    # with neither, render '-' (unknown) instead of 0 so a target we could not ground is NOT vacuously
+    # passed — the compiler correspondingly omits the ILLEGAL_OPCODE_COUNT assertion (fail-closed).
+    determinable = bool(taxonomy) or bool(legal)
+    L = [f"# {CC.RENDER_SCHEMA}",
+         f"EMPTY_KERNEL {'yes' if not words else 'no'}",
+         f"INSTR_COUNT {len(words)}",
+         f"LEGAL_OPCODE_SET_SIZE {len(legal)}",
+         f"ILLEGAL_OPCODE_COUNT {n_illegal if determinable else '-'}"]
+    L += [f"CLASS_PRESENT {c}" for c in present]
+    L += [f"CLASS_COUNT {c} {counts[c]}" for c in present]              # for the mesh-tiling count check
+    L += [f"CLASS_ZEROOPS {c} {zeroops.get(c, 0)}" for c in present]    # for the field-sanity (base≠0) check
+    return "\n".join(L + lines) + "\n"
 
 
 def run_filecheck(fc: str, check_text: str, input_text: str,
@@ -158,65 +257,78 @@ def _load_capsule(name: str, index: dict[str, Path]) -> dict | None:
 
 
 def screen_run(run_capsule_dir: Path, facts_rec: dict, index: dict[str, Path],
-               fc: str | None, write: bool = False, target: str = "gemmini") -> dict | None:
-    """Run the full RTL-check suite (FileCheck dialect+trace + Python numeric screen) on one run dir.
+               fc: str | None, write: bool = False, *, target: str) -> dict | None:
+    """Run the full RTL-check suite (FileCheck trace/kernel + Python numeric screen) on one run dir.
 
-    ``target`` selects the check family: a RoCC target (gemmini) gets the dialect+trace FileCheck; a
-    non-RoCC target (atlas/npu_model — no ``funct_decode_table``) drops those in ``compile_checks`` and
-    the verdict rides the target-agnostic Python numeric screen. Defaults to gemmini (byte-identical)."""
+    ``target`` selects the check family by DERIVED endpoint: a RoCC command-ISA target (endpoint
+    ``inline_asm_insn``) gets the TRACE FileCheck over its decoded RoCC stream; a self-hosted-ISA target
+    (``external_backend``) gets the KERNEL opcode-legality FileCheck over its emitted instruction stream.
+    Both check the target's actual emitted commands; the Python numeric screen adds capacity bounds."""
     gen = run_capsule_dir / "generated"
     trace_p = gen / "instruction_trace.json"
-    dialect_p = gen / "lowered.target.mlir"
+    kernel_p = gen / "kernel.S"
+    capsule = _load_capsule(_capsule_name_for(run_capsule_dir), index)
+    compiled = compiled_checks(facts_rec, capsule or {}, target)
+
+    # SELF-HOSTED-ISA (external_backend, e.g. atlas): no RoCC instruction_trace — the graded artifact is
+    # the emitted kernel.S. Run the kernel opcode-LEGALITY FileCheck (every emitted opcode ∈ the RTL/ISA
+    # legal set) over its rendered decode. This is the RTL-grounded, no-Verilog structural check for a
+    # self-hosted target, fully derived from facts_rec. Verdict rides this check.
+    if compiled.get("kernel") is not None:
+        if not kernel_p.is_file():
+            return None
+        res = {"capsule": (capsule or {}).get("name") or run_capsule_dir.name,
+               "filecheck": {}, "screen": None}
+        from . import isa_taxonomy as IT
+        tax = IT.taxonomy_for_target(target)             # DERIVED at run time; {} if unavailable
+        decode_txt = render_kernel_decode(kernel_p.read_text(), facts_rec, tax)
+        if fc:
+            # KERNEL = order-independent -DAG (legality, coverage, tiling, field-sanity); KERNELORDER =
+            # the ordered first-occurrence class sequence. Disjoint vocabularies, one FileCheck pass.
+            ok, diag = run_filecheck(fc, compiled["kernel"], decode_txt, ["KERNEL", "KORDER"])
+            res["filecheck"]["kernel"] = {"ok": ok, "diag": diag}
+            res["verdict"] = "reject" if ok is False else "ok"
+        else:
+            res["verdict"] = "ok"
+        res["kernel_decode"] = decode_txt
+        if write:
+            (run_capsule_dir / "rtl_checks.json").write_text(json.dumps(res, indent=2))
+        return res
+
     if not trace_p.is_file():
         return None
     trace = json.loads(trace_p.read_text())
-    capsule = _load_capsule(_capsule_name_for(run_capsule_dir), index)
-    compiled = compiled_checks(facts_rec, capsule or {}, target)
     res: dict[str, Any] = {"capsule": (capsule or {}).get("name") or run_capsule_dir.name,
                            "filecheck": {}, "screen": None}
 
-    if fc:
-        trace_txt = render_trace(trace, facts_rec) if compiled["trace"] else None
-        # The agent legitimately emits >1 MLIR surface form: op-form (`%x = gemmini.<op> ...`) and an
-        # attribute-encoded form (`gemmini.program = [...]`). The op-name patterns only apply to op-form;
-        # on other forms the DIALECT check is SKIPPED (honest), not failed — the format-agnostic TRACE
-        # check over the decoded RoCC stream carries the structural verdict either way.
-        mlir = dialect_p.read_text() if (compiled["dialect"] and dialect_p.is_file()) else None
-        dialect_runnable = mlir is not None and _is_op_form(mlir)
-
-        if compiled["trace"] and dialect_runnable:
-            # FAST PATH: one FileCheck pass over the concatenated input (dialect MLIR ++ trace text). The
-            # two check vocabularies are DISJOINT (gemmini.* ops vs *_COUNT/ABI/INSTR trace tokens), so a
-            # combined --check-prefixes=DIALECT,TRACE run cannot cross-match. If it passes, both prefixes
-            # matched. Only on failure do we re-run the two separately to ATTRIBUTE it — DIALECT is
-            # advisory, TRACE bears the verdict — so the verdict site below is preserved bit-for-bit.
-            combined_checks = compiled["dialect"] + "\n" + compiled["trace"]
-            combined_input = f"{mlir}\n; ---rtlcheck-trace-region---\n{trace_txt}"
-            ok, _ = run_filecheck(fc, combined_checks, combined_input, ["DIALECT", "TRACE"])
-            if ok:
-                res["filecheck"]["trace"] = {"ok": True, "diag": ""}
-                res["filecheck"]["dialect"] = {"ok": True, "diag": ""}
-            else:
-                okt, dt = run_filecheck(fc, compiled["trace"], trace_txt, "TRACE")
-                okd, dd = run_filecheck(fc, compiled["dialect"], mlir, "DIALECT")
-                res["filecheck"]["trace"] = {"ok": okt, "diag": dt}
-                res["filecheck"]["dialect"] = {"ok": okd, "diag": dd}
-        else:
-            if compiled["trace"]:
-                ok, diag = run_filecheck(fc, compiled["trace"], trace_txt, "TRACE")
-                res["filecheck"]["trace"] = {"ok": ok, "diag": diag}
-            if mlir is not None and not dialect_runnable:
-                res["filecheck"]["dialect"] = {"ok": None, "skipped": "non-op-form MLIR"}
+    if fc and compiled["trace"]:
+        # The structural verdict rides the format-agnostic TRACE FileCheck over the DECODED RoCC stream —
+        # the target's actual emitted commands. We do NOT FileCheck the agent's dialect MLIR: its op
+        # mnemonics are invented per generated OOT dialect (no derivation source), and corroboration
+        # against 383 real agent runs showed op-name patterns over lowered.target.mlir false-fail on
+        # several legal MLIR surface forms while the decoded trace never did. The trace is canonical.
+        trace_txt = render_trace(trace, facts_rec)
+        ok, diag = run_filecheck(fc, compiled["trace"], trace_txt, "TRACE")
+        res["filecheck"]["trace"] = {"ok": ok, "diag": diag}
     # Python numeric/lower-bound checks (capacity, multi-matmul tile bound) the RTL facts feed.
     rc_facts = CC._facts_to_rc(facts_rec)
-    rep = RC.screen(trace, capsule, rc_facts)
+    # The package's OWN emitted command buffer: the declaration that binds each kernel argument to a
+    # declared tensor, which the encoded-field-intent check needs. Absent -> that check reports skipped
+    # with that reason (never a pass); a malformed one is treated the same way.
+    cb_p = gen / "command_buffer.json"
+    command_buffer = None
+    if cb_p.is_file():
+        try:
+            cb_loaded = json.loads(cb_p.read_text())
+            command_buffer = cb_loaded if isinstance(cb_loaded, dict) else None
+        except (ValueError, OSError):
+            command_buffer = None
+    rep = RC.screen(trace, capsule, rc_facts, target=target, command_buffer=command_buffer)
     res["screen"] = rep.to_dict()
 
-    # VERDICT rides only the format-agnostic, RTL-grounded checks: the TRACE FileCheck (over the decoded
-    # RoCC stream) + the Python numeric screen. The DIALECT FileCheck is ADVISORY-only (still reported as
-    # feedback) — corroboration against 383 real agent runs showed the agent emits several legal MLIR
-    # surface forms, so op-name patterns over lowered.target.mlir false-fail on passing code. The decoded
-    # trace is canonical and format-independent, so it never had a false positive.
+    # VERDICT rides the format-agnostic, RTL-grounded checks: the TRACE FileCheck (over the decoded RoCC
+    # stream — the target's actual emitted commands) + the Python numeric screen. The decoded trace is
+    # canonical and format-independent, so it never false-positives on a legal MLIR surface form.
     fc_fail = (res["filecheck"].get("trace") or {}).get("ok") is False
     res["verdict"] = "reject" if (fc_fail or rep.verdict == "reject") else (
         "warn" if rep.verdict == "warn" else "ok")
@@ -235,10 +347,29 @@ def _capsule_name_for(d: Path) -> str:
     return d.name
 
 
-def prescreen(run_capsule_dir: Path) -> dict | None:
-    """Opt-in cost gate: compile+run the RTL checks; caller may skip the oracle on verdict=='reject'."""
-    facts = load_facts("gemmini")
-    return screen_run(Path(run_capsule_dir), facts, _capsule_index(), find_filecheck(), write=False)
+def _target_of_run(run_capsule_dir: Path) -> str:
+    """DERIVE the target a capsule run belongs to from its own ``run_manifest.yaml`` (the runner stamps
+    ``target`` there). No gemmini default: a run dir without a recorded target is a loud error, so a
+    caller that omits ``target`` still screens against the run's ACTUAL target, never an assumed one."""
+    mf = Path(run_capsule_dir) / "run_manifest.yaml"
+    doc = yaml.safe_load(mf.read_text()) if mf.is_file() else None
+    target = (doc or {}).get("target") if isinstance(doc, dict) else None
+    if not target:
+        raise ValueError(f"cannot derive target for {run_capsule_dir}: no 'target' in run_manifest.yaml; "
+                         "pass target= explicitly")
+    return str(target)
+
+
+def prescreen(run_capsule_dir: Path, target: str | None = None) -> dict | None:
+    """Opt-in cost gate: compile+run the RTL checks; caller may skip the oracle on verdict=='reject'.
+
+    ``target`` selects the facts + check family. When omitted it is DERIVED from the run's own
+    ``run_manifest.yaml`` (:func:`_target_of_run`) — never defaulted to gemmini — so a legacy caller that
+    passes only the run dir still screens against that run's actual target."""
+    target = target or _target_of_run(Path(run_capsule_dir))
+    facts = load_facts(target)
+    return screen_run(Path(run_capsule_dir), facts, _capsule_index(), find_filecheck(),
+                      write=False, target=target)
 
 
 def iter_run_dirs(root: Path):
@@ -252,6 +383,8 @@ def iter_run_dirs(root: Path):
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", help="a capsule run dir or a runs/ tree")
+    ap.add_argument("--target", required=True,
+                    help="target whose RTL facts + check family to screen")
     ap.add_argument("--write", action="store_true", help="write rtl_checks.json beside capsule_result.json")
     ap.add_argument("--quantify", action="store_true",
                     help="summarize how many runs the pre-screen would reject (oracle skips)")
@@ -259,11 +392,11 @@ def main(argv: list[str] | None = None) -> int:
     fc = find_filecheck()
     if not fc:
         print("WARNING: FileCheck binary not found; running Python screen only")
-    facts = load_facts("gemmini")
+    facts = load_facts(a.target)
     index = _capsule_index()
     rejects = warns = oks = n = 0
     for d in sorted(iter_run_dirs(Path(a.root))):
-        r = screen_run(d, facts, index, fc, write=a.write)
+        r = screen_run(d, facts, index, fc, write=a.write, target=a.target)
         if r is None:
             continue
         n += 1

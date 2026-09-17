@@ -1,6 +1,6 @@
 """Verify a decoded RoCC instruction trace against a capsule's expected coverage.
 
-Given a trace from :mod:`merlin.targetgen.rocc_decode` and a capsule's ``expected`` block, assert:
+Given a trace from :mod:`merlin.targetgen.rocc.decode` and a capsule's ``expected`` block, assert:
 
 * all required instruction classes appear; all forbidden classes are absent;
 * the legal ordering invariants hold (FLUSH/FENCE bracketing, config-before-use,
@@ -18,6 +18,7 @@ from typing import Any
 
 _COMPUTE = {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"}
 _CONFIG = {"CONFIG_EX", "CONFIG_LD", "CONFIG_ST"}
+_MVIN = {"MVIN", "MVIN2", "MVIN3"}
 
 
 def _classes(trace: dict) -> list[str]:
@@ -32,8 +33,58 @@ def _first_index(classes: list[str], target: set[str] | str) -> int | None:
     return None
 
 
-def check(trace: dict, expected: dict, cb: dict | None = None) -> dict:
-    """Validate ``trace`` against capsule ``expected`` (+ optional command buffer)."""
+def drives_accelerator(trace: dict) -> bool:
+    """The one oracle-INDEPENDENT anti-cheese floor: did the kernel actually drive the accelerator?
+
+    A custom-opcode instruction is one the target's RTL decoder claimed — recorded with a non-null
+    ``funct`` (a plain memory ``fence`` and any non-custom asm carry ``funct=None``). This counts even
+    instructions we could not sub-classify (``UNKNOWN`` with a ``funct``): the point is only that the
+    kernel emitted the accelerator's ISA rather than computing on the host and moving a result. It is
+    fully derived (no class-name literals) and stays true for any target — the *only* thing ``trace_check``
+    gates on; every other finding is advisory (correctness is the numeric + RTL oracle, and the hidden
+    golden precludes faking an answer)."""
+    return any(i.get("funct") is not None for i in trace.get("instructions", []))
+
+
+def dram_address_findings(trace: dict, address_model: str) -> list[str]:
+    """Advisory DRAM-address provenance findings, parameterized by the HARNESS'S address model so it is
+    correct for any target (never a per-target literal):
+
+    * ``pointer_args`` — the harness passes each operand buffer as a POINTER argument (e.g. a RoCC
+      bare-metal harness), so a memory-movement instruction's DRAM address MUST derive from a kernel
+      argument (the decoder resolves it to ``argbase``); a baked literal (``const``) will not match the
+      runtime buffer the harness allocated. Flagged.
+    * ``fixed_preload`` — the harness PRELOADS each operand at a declared canonical base, so the correct
+      DRAM address IS that constant; a baked ``const`` is expected, not an error. (Not flagged here; a
+      value-vs-declared-base check belongs to that oracle's own path.)
+
+    ``dram`` is the decoder's DERIVED memory-address operand (present exactly on the instructions the
+    target's semantic roles mark as memory movement), and ``kind`` is the decoder's existing operand
+    provenance — so this reads only the agent's OWN emitted operands (no golden), and generalizes by the
+    address model, not by hardcoding an instruction class or a target."""
+    if address_model != "pointer_args":
+        return []
+    out: list[str] = []
+    for i in trace.get("instructions", []):
+        dram = (i.get("decoded") or {}).get("dram")
+        if isinstance(dram, dict) and dram.get("kind") == "const":
+            out.append(
+                f"instruction #{i.get('index')} ({i.get('class')}) uses a BAKED DRAM address "
+                f"({dram.get('raw')}): the harness passes each operand as a POINTER argument, so derive "
+                f"the DRAM address from the matching kernel argument (ptrtoint of the arg) — a baked "
+                f"literal cannot match the buffer the runtime allocated.")
+    return out
+
+
+def check(trace: dict, expected: dict, cb: dict | None = None,
+          address_model: str | None = None) -> dict:
+    """Validate ``trace`` against capsule ``expected`` (+ optional command buffer).
+
+    The returned ``violations`` are ADVISORY diagnostics — instruction-class coverage, ordering, and
+    declared-mode checks that help the author, but do NOT decide pass/fail. The verdict is the oracle
+    (numerics + L2/L3 RTL, which execute the actual emitted stream); an instruction we cannot classify
+    (``UNKNOWN``) is our decoder's limit, not the backend's defect, so it is reported, never gated on.
+    The sole gating signal derived here is :func:`drives_accelerator` (anti-cheese)."""
     violations: list[str] = []
     ins = trace.get("instructions", [])
     classes = _classes(trace)
@@ -61,7 +112,7 @@ def check(trace: dict, expected: dict, cb: dict | None = None) -> dict:
             violations.append("trace does not close with a FENCE")
     if "FLUSH" in present:
         flush_i = classes.index("FLUSH")
-        first_work = _first_index(classes, _COMPUTE | {"MVIN", "MVOUT"})
+        first_work = _first_index(classes, _COMPUTE | _MVIN | {"MVOUT"})
         if first_work is not None and flush_i > first_work:
             violations.append("FLUSH appears after the first MVIN/MVOUT/COMPUTE")
 
@@ -73,7 +124,7 @@ def check(trace: dict, expected: dict, cb: dict | None = None) -> dict:
                 violations.append(f"{cfg} appears after first {label}")
 
     _before("CONFIG_EX", _COMPUTE | {"PRELOAD"}, "PRELOAD/COMPUTE")
-    _before("CONFIG_LD", {"MVIN"}, "MVIN")
+    _before("CONFIG_LD", _MVIN, "MVIN")
     _before("CONFIG_ST", {"MVOUT"}, "MVOUT")
 
     # preload/compute pairing: every COMPUTE must be immediately preceded by a PRELOAD
@@ -111,19 +162,17 @@ def check(trace: dict, expected: dict, cb: dict | None = None) -> dict:
             violations.append("mode k_accumulate declared but no accumulate-onto PRELOAD / "
                               "COMPUTE_ACCUMULATE found")
     if modes.get("resident_reuse"):
-        # reuse = >=2 compute groups (MVOUTs) but weights loaded into the resident region once.
+        # reuse = >=2 compute groups (MVOUTs) but the resident region written ONCE.
         n_mvout = classes.count("MVOUT")
-        n_cfg_ex = classes.count("CONFIG_EX")
         if n_mvout < 2:
             violations.append("mode resident_reuse declared but <2 output commits (no reuse visible)")
-        if n_cfg_ex != 1:
-            violations.append(f"mode resident_reuse: expected a single weight-stationary config, "
-                              f"saw {n_cfg_ex} CONFIG_EX")
+        violations += _residency_findings(ins)
+        violations += _stale_mode_config_findings(ins)
     if modes.get("movement"):
         bad = present & _COMPUTE | (present & {"PRELOAD"})
         if bad:
             violations.append(f"mode movement declared but compute instructions present: {sorted(bad)}")
-        if "MVIN" not in present or "MVOUT" not in present:
+        if not present & _MVIN or "MVOUT" not in present:
             violations.append("mode movement declared but trace lacks MVIN/MVOUT")
 
     # 5. optional cross-validation against the command buffer tile geometry
@@ -133,7 +182,115 @@ def check(trace: dict, expected: dict, cb: dict | None = None) -> dict:
         except Exception as e:  # never let cross-check crash the verifier
             violations.append(f"tile cross-check error (non-fatal): {e}")
 
+    # advisory DRAM-address provenance (parameterized by the harness address model; no-op if unknown)
+    if address_model:
+        violations += dram_address_findings(trace, address_model)
+
     return {"status": "pass" if not violations else "fail", "violations": violations}
+
+
+def residency_findings(trace: dict) -> list[str]:
+    """Find exact redundant reloads without requiring a capsule to declare residency mode.
+
+    ``check`` keeps mode conformance conditional on the capsule contract.  Whole-program performance
+    diagnosis has a different question: does the emitted stream visibly re-materialize a value that
+    is still live on chip?  The underlying detector already answers that from decoded source,
+    destination and extent identities, so expose it directly instead of duplicating or weakening it in
+    the performance harness.  An empty result proves only that this exact defect was not observed; it
+    is not proof that every profitable value remained resident.
+    """
+    if not isinstance(trace, dict):
+        raise TypeError("trace must be a mapping")
+    instructions = trace.get("instructions", [])
+    if not isinstance(instructions, list):
+        raise TypeError("trace instructions must be a list")
+    return _residency_findings(instructions)
+
+
+def _operand_identity(value) -> tuple:
+    """A hashable identity for one decoded operand reference, compared structurally.
+
+    The decoder resolves a memory operand to either a constant or an argument-relative reference; both
+    forms compare exactly. No field layout is read here -- the decoder already did that from the target's
+    own RTL facts, which is the only place it may be done.
+    """
+    if isinstance(value, dict):
+        return ("ref", value.get("kind"), value.get("raw"),
+                value.get("arg_index"), value.get("offset"))
+    return ("lit", value)
+
+
+def _residency_findings(ins: list[dict]) -> list[str]:
+    """Under a declared residency mode: was the resident region written ONCE, or re-loaded per use?
+
+    THE CHECK THIS REPLACES TESTED A PROXY AND HAD DRIFTED FROM ITS OWN COMMENT. It read
+    ``n_cfg_ex != 1`` beneath the words "weights loaded into the resident region once" -- but a
+    CONFIG_EX count is not a statement about the resident region, and nothing counted the loads. On
+    A6_resident_reuse that reported one redundant config while the weight was ALSO being moved in twice,
+    and nothing said so; suppressing the config alone would have turned the capsule green with the
+    reload intact. A capsule that passes while the property it exists to prove is absent is worse than
+    one that fails.
+
+    Stated directly, and checked from the DECODER'S OWN derived fields rather than from raw operand
+    bits: an on-chip destination that is written again from the same source, with nothing having
+    overwritten it in between, was not resident -- the program re-materialized what it claimed to keep.
+    Tracking the live contents per destination is what makes the "in between" precise: a genuine
+    re-load after the slot was reused for something else is not flagged, because the slot no longer held
+    that source.
+
+    Both fields come from the decode, so this stays correct for any target whose ISA the decoder can
+    read: ``spad_addr`` (the on-chip destination) and ``dram`` (the source reference), plus the tile
+    extent, since the same source at a different extent is a different transfer.
+    """
+    live: dict[Any, tuple] = {}
+    reloads: list[tuple[int, Any]] = []
+    for index, instruction in enumerate(ins):
+        if instruction.get("class") not in _MVIN:
+            continue
+        decoded = instruction.get("decoded") or {}
+        destination = decoded.get("spad_addr")
+        if destination is None:
+            continue                      # this decoder cannot see the destination: say nothing
+        content = (_operand_identity(decoded.get("dram")),
+                   decoded.get("rows"), decoded.get("cols"))
+        if live.get(destination) == content:
+            reloads.append((index, destination))
+        live[destination] = content
+    if not reloads:
+        return []
+    where = ", ".join(f"#{i} -> on-chip {addr}" for i, addr in reloads[:4])
+    return [f"mode resident_reuse: {len(reloads)} redundant load(s) rewrite an on-chip destination "
+            f"that already held that exact source ({where}), so the region was NOT resident -- it was "
+            f"re-materialized per use"]
+
+
+def _stale_mode_config_findings(ins: list[dict]) -> list[str]:
+    """A weight-stationary program configures the execution mode once; re-issuing it changes nothing.
+
+    Narrowly scoped ON PURPOSE. This is the surviving half of the original check's intent -- the
+    execution-mode config is part of what "weight-stationary" means, so re-issuing it belongs to this
+    mode's verdict. Redundant LOAD/STORE configs do NOT: they are ordinary config hoisting, no capsule
+    declares them, and folding them in here would fail a residency capsule for an unrelated property.
+
+    A mode config carries no address, so identical operand payloads mean an identical configuration and
+    the repeat is provably inert -- no scratchpad state can make it matter, which is exactly why this
+    can be decided on the payload while a transfer cannot.
+    """
+    active: tuple | None = None
+    repeats: list[int] = []
+    for index, instruction in enumerate(ins):
+        if instruction.get("class") != "CONFIG_EX":
+            continue
+        payload = (_operand_identity(instruction.get("rs1")),
+                   _operand_identity(instruction.get("rs2")))
+        if active == payload:
+            repeats.append(index)
+        active = payload
+    if not repeats:
+        return []
+    return [f"mode resident_reuse: {len(repeats)} execution-mode config(s) re-issue the configuration "
+            f"already active (at {', '.join('#' + str(i) for i in repeats[:4])}); a weight-stationary "
+            f"program configures the mode once and reuses it"]
 
 
 def _ceil16(x: int) -> int:
@@ -159,7 +316,49 @@ def _check_tiles(classes: list[str], cb: dict, violations: list[str]) -> None:
     M = lhs["shape"][0]
     N = wsrc["shape"][1]
     Mt, Nt = _ceil16(M) // 16, _ceil16(N) // 16
-    exp_mvout = Mt * Nt
+    # A fused pooling store retains all Mt row tiles as one spatial plane, then issues one MVOUT for
+    # each channel tile. Counting one store per compute tile would diagnose the required retained-plane
+    # schedule as missing stores (GP1 is Mt=2, Nt=2 but correctly has two, not four, MVOUTs).
+    commits = [c for c in cmds if c.get("opcode") == "COMMIT"]
+    pooled = len(commits) == 1 and "maxpool" in (
+        (commits[0].get("attributes") or {}).get("epilogue") or [])
+    exp_mvout = Nt if pooled else Mt * Nt
     got = classes.count("MVOUT")
     if got != exp_mvout:
-        violations.append(f"MVOUT count {got} != expected Mt*Nt={exp_mvout} (M={M},N={N})")
+        basis = "Nt for retained-plane maxpool" if pooled else "Mt*Nt"
+        violations.append(f"MVOUT count {got} != expected {basis}={exp_mvout} (M={M},N={N})")
+
+    # SYNCHRONISATION MUST NOT SCALE WITH TILES. A capacity-safe schedule that fences after every
+    # output tile is numerically correct and catastrophically slow: measured on a 1024x1024 QK slice,
+    # 4,096 fences for 4,096 tiles, and with twelve batch slices across repeated attention layers the
+    # FPGA appeared stalled. Batching the synchronisation -- one fence before the kernel, the
+    # reservation station ordering the intervening scratchpad and accumulator hazards, one
+    # load-bearing fence at the end so output DMA completes before the CPU reads -- took the same
+    # kernel to two, with identical arithmetic, tiling, addresses and commands.
+    #
+    # The invariant is SCALING, not a fixed budget: a schedule may legitimately carry a small constant
+    # number of fences, and hard-coding "at most two" would refuse shapes nobody has looked at. What
+    # can never be right is one fence per tile, so that is what this names.
+    tiles = Mt * Nt
+    flushes = classes.count("FLUSH")
+    if tiles >= 2 and flushes >= tiles:
+        violations.append(
+            f"FLUSH count {flushes} scales with the {tiles} output tile(s) (Mt={Mt}, Nt={Nt}): "
+            "synchronisation is issued per tile rather than batched around the kernel")
+
+    # THE DATAFLOW IS CONFIGURED ONCE, NOT PER TILE. An expert-generated reference kernel for this
+    # accelerator issues its five `config_*` commands once, before any loop, and then runs a tight
+    # mvin/preload/compute body with the accumulator resident across every reduction step. A schedule
+    # that reconfigures the execution mode per output tile pays that command on every tile and buys
+    # nothing: CONFIG_EX selects the dataflow, which does not vary between tiles of one matmul.
+    #
+    # Scoped to CONFIG_EX deliberately. CONFIG_LD and CONFIG_ST carry strides that a schedule may
+    # legitimately vary per tile, and these findings become REFUSALS through the emission guard -- so
+    # a false positive costs a candidate. CONFIG_EX is the one whose "issue once" semantics are
+    # unambiguous, and `_check_resident_reuse` already treats a second CONFIG_EX as a defect for the
+    # resident case; this generalises only that part.
+    configs = classes.count("CONFIG_EX")
+    if tiles >= 2 and configs >= tiles:
+        violations.append(
+            f"CONFIG_EX count {configs} scales with the {tiles} output tile(s) (Mt={Mt}, Nt={Nt}): "
+            "the dataflow is reconfigured per tile rather than once for the kernel")

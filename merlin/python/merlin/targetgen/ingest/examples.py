@@ -3,6 +3,7 @@
 Lists the kinds of artifacts that demonstrate how a target is programmed: MLIR, C/headers,
 assembly, JSON/YAML configs. Deterministic, read-only.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

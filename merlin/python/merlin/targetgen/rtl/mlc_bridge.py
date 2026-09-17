@@ -24,18 +24,24 @@ RTL repo mlc knows (gemmini, atlas, otbn, muon, nvdla, rocket, ...).
 """
 from __future__ import annotations
 
+import copy
 import os
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 
-_DEFAULT_MLC = "/scratch2/agustin/mvp-lhwir/modeling"
-
-
 def mlc_dir() -> Path | None:
-    """The mlc package root from ``.env MERLIN_MLC_DIR`` (default the current sibling checkout), or None
-    if it does not contain an ``mlc/`` package."""
+    """The mlc package root from ``.env MERLIN_MLC_DIR``, or None if unset / not an mlc checkout.
+
+    mlc lives outside this repo and has no in-tree fallback. There used to be a hardcoded default
+    pointing at one machine's checkout, which meant every other clone silently resolved a path that
+    does not exist and reported "no mlc" for the wrong reason -- indistinguishable from an unset
+    variable. Callers already handle None by skipping the mlc-derived facts.
+    """
     from ...common.paths import env
-    d = env("MERLIN_MLC_DIR") or _DEFAULT_MLC
+    d = env("MERLIN_MLC_DIR")
+    if not d:
+        return None
     p = Path(d).expanduser()
     return p if (p / "mlc").is_dir() else None
 
@@ -101,6 +107,36 @@ def matmul_reuse_prediction(M: int, N: int, K: int, *, dim: int, capacity_bytes:
 # (artifact_paths/discovered_memory_map/discover_opcode_set/per-target runs/circt-arc/<target>), so the
 # same code plugs any HW RTL repo mlc knows (gemmini, atlas, otbn, muon, nvdla, rocket, ...).
 
+_ARC_TARGET_CACHE: dict[str, str] = {}
+
+
+def _arc_target(target: str) -> str:
+    """The mlc arc/fingerprint key for a merlin ``target``. A composite/aliased target — e.g. a SIMT SoC
+    whose bit-exact arc model mlc registers under the embedding cluster's name, not the merlin-facing
+    name — declares ``arc_target`` in its ``contracts/residual.yaml``; every other target maps to itself.
+    DERIVED from the residual (no target-name literal here), fail-closed to the target itself when there
+    is no residual / no alias. Applied ONLY on the ORACLE path — ``arc_available`` / ``arc_core`` (the
+    bit-exact model) and the program-oracle cosim lookups, plus the SIMT fact delegation in
+    :func:`_simt_fact_bundle`. It is deliberately NOT applied to the structural-fact discovery
+    (``core_hw_mlir`` / ``discovered_dim`` / ``discovered_memory_map`` / ``discovered_memories``): a SIMT
+    SoC must not inherit the embedding cluster's systolic geometry as if it were its own RoCC mesh (that
+    would fabricate spatial levers). The merlin-facing identity (corpus, contract, suite, results) stays
+    the original ``target`` everywhere. The residual is a plain YAML side-input, so this never triggers
+    manifest derivation (which would re-enter the mlc boundary through this resolver)."""
+    if target in _ARC_TARGET_CACHE:
+        return _ARC_TARGET_CACHE[target]
+    alias = target
+    try:
+        from ..capability_manifests import _load_residual
+        declared = (_load_residual(target) or {}).get("arc_target")
+        if isinstance(declared, str) and declared:
+            alias = declared
+    except Exception:  # noqa: BLE001 — no residual / no alias ⇒ identity
+        alias = target
+    _ARC_TARGET_CACHE[target] = alias
+    return alias
+
+
 def core_hw_mlir(target: str) -> Path | None:
     """The version-matched CORE HW dialect (the module carrying the command decoder) for ANY target,
     from mlc's per-target arc outputs (``runs/circt-arc/<target>/outputs``). Prefers ``*_core_hw.mlir``
@@ -113,6 +149,124 @@ def core_hw_mlir(target: str) -> Path | None:
     return next((p for p in cands if p.exists() and ".generic." not in p.name), None)
 
 
+#: Where the mlc arc-model registry lives: ``merlin/contract/arc_models.yaml`` (bundled with the rest of
+#: the contract tree). What merlin knows about each model mlc builds -- the kind of a model with no
+#: capability manifest, the file its encoding fact is written to -- is DATA there, keyed by the arc key.
+ARC_MODELS_FILE: tuple[str, ...] = ("contract", "arc_models.yaml")
+_ARC_MODELS_SCHEMA_VERSION = 1
+_ARC_MODEL_FIELDS = frozenset({"kind", "isa_encoding"})
+
+
+class ArcModelRegistryError(RuntimeError):
+    """The arc-model registry is missing or malformed. Raised, never read as empty: an empty registry
+    would make every model look like one with no kind and no encoding fact, which reads as a finding."""
+
+
+_ARC_MODELS_CACHE: dict[str, dict[str, dict]] = {}
+
+
+def load_arc_models(path: str | Path | None = None) -> dict[str, dict]:
+    """The arc-model registry as ``{arc_key: {field: value}}``.
+
+    Fails closed on a missing file, a wrong ``schema_version``, an unknown field, a ``kind`` no family
+    profile declares, or an ``isa_encoding`` that is not a bare file name. ``path`` defaults to
+    :data:`ARC_MODELS_FILE` resolved through ``common.paths.data_path`` (the checkout's tree, else the copy
+    bundled in the wheel)."""
+    from ...common.paths import data_path
+    p = Path(path) if path is not None else data_path(*ARC_MODELS_FILE)
+    key = str(p)
+    if key in _ARC_MODELS_CACHE:
+        return _ARC_MODELS_CACHE[key]
+    if not p.is_file():
+        raise ArcModelRegistryError(f"no arc-model registry at {p}; mlc arc models are declared in "
+                                    f"merlin/{'/'.join(ARC_MODELS_FILE)}")
+    import yaml
+    raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict) or not isinstance(raw.get("arc_models"), dict):
+        raise ArcModelRegistryError(f"{p}: expected a mapping with an `arc_models:` mapping of key -> fields")
+    if raw.get("schema_version") != _ARC_MODELS_SCHEMA_VERSION:
+        raise ArcModelRegistryError(f"{p}: schema_version {raw.get('schema_version')!r}, this loader reads "
+                                    f"{_ARC_MODELS_SCHEMA_VERSION}")
+    from ..families import known_kinds
+    out: dict[str, dict] = {}
+    for name, entry in raw["arc_models"].items():
+        where = f"{p}: arc model {name!r}"
+        if not isinstance(name, str) or not isinstance(entry, dict):
+            raise ArcModelRegistryError(f"{where}: an entry is `<arc key>: {{field: value, ...}}`")
+        unknown = sorted(set(entry) - _ARC_MODEL_FIELDS)
+        if unknown:
+            raise ArcModelRegistryError(f"{where}: unknown field(s) {unknown}; known: "
+                                        f"{sorted(_ARC_MODEL_FIELDS)}")
+        kind = entry.get("kind")
+        if kind is not None and kind not in known_kinds():
+            raise ArcModelRegistryError(f"{where}: kind {kind!r} is not a known compute-unit kind "
+                                        f"{sorted(known_kinds())}")
+        isa = entry.get("isa_encoding")
+        if isa is not None and (not isinstance(isa, str) or not isa or Path(isa).name != isa):
+            raise ArcModelRegistryError(f"{where}: isa_encoding {isa!r} must be a bare file name under the "
+                                        f"model's arc outputs directory")
+        out[name] = dict(entry)
+    _ARC_MODELS_CACHE[key] = out
+    return out
+
+
+def arc_model(arc_key: str) -> dict:
+    """The registry entry for one mlc arc key, or ``{}`` when the registry does not list it."""
+    return dict(load_arc_models().get(arc_key) or {})
+
+
+def isa_encoding_artifact(target: str) -> tuple[Path | None, str]:
+    """``(path, reason)`` for the encoding-fact file ``target``'s arc model declares.
+
+    The file lives under ``runs/circt-arc/<arc key>/outputs/`` and its name comes from the model's
+    ``isa_encoding`` entry in the arc-model registry. The arc key is the ORACLE-path alias
+    (:func:`_arc_target`), because the encoding is the aliased CORE's own ISA (a SIMT SoC's decoder is the
+    embedded core's), unlike structural geometry. ``path`` is None, with ``reason`` naming what is missing,
+    when mlc is unresolvable or the model declares no encoding fact: no file name is ever guessed."""
+    d = mlc_dir()
+    if d is None:
+        return None, "MERLIN_MLC_DIR unset/invalid (no mlc/ package), so no arc outputs are resolvable"
+    key = _arc_target(target)
+    name = arc_model(key).get("isa_encoding")
+    if not name:
+        return None, (f"arc model {key!r} declares no `isa_encoding` in merlin/{'/'.join(ARC_MODELS_FILE)}, "
+                      f"so {target!r} has no encoding fact to read")
+    return d / "runs" / "circt-arc" / key / "outputs" / str(name), "declared"
+
+
+def isa_encoding_for(target: str) -> dict | None:
+    """The mlc-derived instruction-ENCODING fact (``{inst_width, fields, opcodes, provenance}``) for a
+    target: the field bit-ranges + opcode table the mlc ``isa_encoding`` pass recovers from the target's
+    RTL decoder, read from the file :func:`isa_encoding_artifact` resolves. Returns the parsed fact, or
+    None when mlc / the declaration / the cache is absent — an honest fallback the caller degrades on,
+    never a guessed encoding."""
+    p, _why = isa_encoding_artifact(target)
+    if p is None or not p.is_file():
+        return None
+    try:
+        import json
+        fact = json.loads(p.read_text())
+        return fact if isinstance(fact, dict) and fact.get("fields") else None
+    except Exception:  # noqa: BLE001 — unreadable/garbled cache ⇒ honest None
+        return None
+
+
+def mx_mmio_for(target: str) -> dict | None:
+    """The target's MX-Gemmini accelerator MMIO command ABI (``{ctrl_base, reg_offsets, inst_word, funct,
+    sf_mem, gpu_dram_offset, dim, group, config_ex, bounds, loop_ws, mxquant_config_mvout, read_smem}``) —
+    the memory-mapped RoCC command surface a Muon SIMT kernel pushes to drive the block-scaled matmul PE.
+    This is an ABI the RTL decoder cannot ground (like gemmini's ``encoding`` residual), so it is declared,
+    header-derived + human-reviewed, in the target's ``contracts/residual.yaml`` under ``mx_mmio``. Returns
+    the parsed fact, or None when the target ships no MX MMIO contract — an honest fallback the emitter/harness
+    degrade on (the mxfp8 op is unsupported), never a guessed base/opcode."""
+    try:
+        from ..capability_manifests import _load_residual
+        fact = (_load_residual(target) or {}).get("mx_mmio")
+        return fact if isinstance(fact, dict) and fact.get("ctrl_base") is not None else None
+    except Exception:  # noqa: BLE001 — no residual / unreadable ⇒ honest None
+        return None
+
+
 def opu_artifact_paths(target: str) -> dict | None:
     """Resolved ``{hw, man, so}`` artifact paths for a SPATIAL/OPU target via mlc's per-target
     fingerprint map — which knows the two-level ``runs/circt-arc/<family>/<config>/outputs`` layout the
@@ -121,15 +275,44 @@ def opu_artifact_paths(target: str) -> dict | None:
     the target is not a known mlc arc target — an honest fallback, never a guessed path.
 
     Only mlc's lightweight ``discover.fingerprint`` is imported (pure pathlib; no circt binary), so OPU
-    fact extraction works even when the full ``mlc_available`` gate (circt-opt built) is not met."""
+    fact extraction works even when the full ``mlc_available`` gate (circt-opt built) is not met — and
+    mlc is imported by-path for this call only (context-managed) so it grounds even when mlc is a sibling
+    checkout rather than a pip-installed package."""
     d = mlc_dir()
     if d is None:
         return None
     try:
-        from mlc.discover.fingerprint import artifact_paths
-        return {k: Path(v) for k, v in artifact_paths(target, base=d).items()}
+        with _mlc_importable(d):
+            from mlc.discover.fingerprint import artifact_paths
+            return {k: Path(v) for k, v in artifact_paths(target, base=d).items()}
     except Exception:  # noqa: BLE001 — unknown target / mlc layout skew ⇒ honest unavailable
         return None
+
+
+def compute_unit_dtypes(target: str) -> dict | None:
+    """Per-compute-unit INPUT dtype map ``{unit_name: [dtype, ...]}`` for ANY target, DERIVED structurally
+    from the RTL facts by mlc's GENERAL datapath-dtype extractor
+    (:func:`mlc.discover.datapath_dtypes.compute_unit_dtypes_detail` — typed MAC-mesh/FPU + spatial OPU
+    families, no per-target ``if``). This is the general lift of the OPU-only dtype code that grounded
+    only saturn_opu; it reproduces that same value (``saturn_opu -> [int8, fp8_e4m3, fp8_e5m2]``) and also
+    grounds gemmini (``[int8]``) / atlas (``[fp8_e4m3]``) / an FPU core (``[fp16, f32, f64]``).
+
+    Returns ``None`` — an honest fallback the caller degrades to the existing behavior on — when mlc is
+    unresolvable OR the extractor reports the target's facts carry no derivable compute datapath
+    (``supported=False``); never a fabricated dtype. mlc is imported by-path for this call only
+    (context-managed; never a global sys.path insert that would flip ``mlc_available`` process-wide)."""
+    d = mlc_dir()
+    if d is None:
+        return None
+    try:
+        with _mlc_importable(d):
+            from mlc.discover.datapath_dtypes import compute_unit_dtypes_detail
+            detail = compute_unit_dtypes_detail(target, base=d)
+    except Exception:  # noqa: BLE001 — mlc absent / layout skew ⇒ honest unavailable, never a guess
+        return None
+    if not detail.get("supported"):
+        return None
+    return {u["unit"]: u["dtypes"] for u in detail.get("units", [])}
 
 
 def discover_legal_opcodes(target: str, *, opcode_width: int | None = None) -> dict:
@@ -277,7 +460,7 @@ def semantic_roles(target: str) -> dict:
         # Regenerate the roles cache on demand ONLY where the probe is possible (a live arc model). A
         # SIMT/prototype target with no arc keeps the honest-empty path below — never auto-regen where
         # impossible, never crash the bundle if the probe fails.
-        if arc_available(target):
+        if _arc_model_present(target):
             try:
                 derive_and_cache_roles(target)
             except Exception as e:  # noqa: BLE001 — a failed probe is honest-unavailable, never a crash/guess
@@ -471,7 +654,7 @@ def fine_roles(target: str) -> dict:
         return {"roles": {}, "fine_derived": {}, "source": None, "derived": False, "reason": "MERLIN_MLC_DIR unset"}
     cache = d / "runs" / "circt-arc" / target / "outputs" / "discovered_fine_roles.json"
     if not cache.is_file():
-        if arc_available(target):
+        if _arc_model_present(target):
             try:
                 derive_fine_roles(target)
             except Exception as e:  # noqa: BLE001 — a failed probe is honest-unavailable, never a crash/guess
@@ -732,6 +915,28 @@ def discovered_dim(target: str) -> int | None:
         return None
 
 
+def discovered_mesh(target: str) -> dict | None:
+    """The target's compute-mesh record as DISCOVERED from the RTL — geometry plus the corroboration that
+    makes it a fact rather than a ranking: which module holds the grid, which element is replicated and how
+    many times (summed across CIRCT's structural variants), and the multiply/add/register counts of the
+    multiply-accumulate idiom the recognizer confirmed.
+
+    Callers must prefer this over :func:`discovered_dim`. A bare DIM cannot be refuted by whoever reads it
+    downstream, and an unrefutable number is exactly how a SIMT cluster came to publish a 17x17 mesh that
+    was 289 flip-flops in a divide/sqrt unit. None when the target has no mesh / mlc is unavailable.
+    Target-agnostic."""
+    if mlc_dir() is None:
+        return None
+    try:
+        with _mlc_cwd():
+            _ensure_interface_cache(target)
+            from mlc.discover.cache import load_interface
+            mesh = load_interface(target).get("mesh")
+            return dict(mesh) if isinstance(mesh, dict) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def discovered_memories(target: str) -> list[dict] | None:
     """The target's SRAM banks (name/depth/row_bytes), DISCOVERED from the RTL by mlc. Target-agnostic."""
     if mlc_dir() is None:
@@ -919,7 +1124,7 @@ def spatial_effect_roles(target: str) -> dict:
     if not cache.is_file():
         # Regenerate on demand ONLY where the probe is possible (a live arc model). A no-arc target keeps
         # the honest-empty path below — never auto-regen where impossible, never crash the bundle.
-        if arc_available(target):
+        if _arc_model_present(target):
             try:
                 with _mlc_cwd():
                     from mlc.discover.opu_roles import derive_and_cache_opu_roles
@@ -983,25 +1188,24 @@ def crosscheck_op_categories(target: str) -> list[str]:
     return disagreements
 
 
-# mlc arc targets merlin has no committed capability manifest for yet (their facts come from the arc
-# artifacts, not an in-tree contract): map target id -> compute-unit kind so fact_bundle_for can route
-# them by KIND without a per-target branch in the dispatch itself. Additive; never consulted for a
-# target that has a manifest (that wins).
-_ARC_TARGET_KINDS: dict[str, str] = {
-    "saturn_opu_mxv256d128": "spatial",
-    "saturn_opu_v128d64": "spatial",
-}
+def _arc_model_kind(target: str) -> str | None:
+    """The kind the arc-model registry declares for a model merlin reaches under ``target``'s own name.
+
+    Consulted only for a target with no capability manifest (an arc-only target, whose facts come from
+    the arc artifacts rather than an in-tree contract), so fact_bundle_for can route it by KIND without a
+    per-target branch. None when the registry lists no kind for it."""
+    return arc_model(target).get("kind")
 
 
 def _resolve_kind(target: str) -> str | None:
     """The compute-unit ``kind`` for ``target``: its capability manifest's kind when one is committed/
-    regenerated, else the known arc-target map, else None (caller defaults to the systolic static path).
-    Never fabricates a kind."""
+    regenerated, else the kind the arc-model registry declares for it, else None (caller defaults to the
+    systolic static path). Never fabricates a kind."""
     try:
         from ..target_experiment import load_capability_manifest
         return load_capability_manifest(target).kind
     except Exception:  # noqa: BLE001 — no manifest yet (fresh/arc-only target) ⇒ fall through
-        return _ARC_TARGET_KINDS.get(target)
+        return _arc_model_kind(target)
 
 
 def fact_bundle_for(target: str) -> dict:
@@ -1019,56 +1223,354 @@ def fact_bundle_for(target: str) -> dict:
 
     All branches return the uniform ``{target, method, fields, n_derived}`` shape, so consumers
     (onboarding, prompt rendering) read ``n_derived`` uniformly. A kind that does not resolve degrades to
-    the systolic static path — exactly the pre-existing behavior."""
+    the systolic static path — exactly the pre-existing behavior.
+
+    MEMOIZED in-memory per target: the extraction (circt-opt on the target's ``hw.mlir`` / mlc discovery)
+    is deterministic for a given target within a process but costs ~seconds, so it ran redundantly on
+    every call (dominating test time — re-discovery per test). It now runs ONCE per target and later
+    calls return a deep COPY (mutation-safe: no caller can poison the cache). The cache lives only in
+    process memory — nothing is written to disk, so nothing is committed. Call
+    :func:`clear_fact_bundle_cache` if a process regenerates a target's RTL facts and must re-read."""
+    if target not in _FACT_BUNDLE_CACHE:
+        _FACT_BUNDLE_CACHE[target] = _fact_bundle_uncached(target)
+    return copy.deepcopy(_FACT_BUNDLE_CACHE[target])
+
+
+#: In-memory (process-lifetime) cache for :func:`fact_bundle_for`. Never persisted — purely a
+#: within-run memo so repeated extraction (tests, prompt rendering) doesn't re-run circt/mlc.
+_FACT_BUNDLE_CACHE: dict[str, dict] = {}
+
+
+def clear_fact_bundle_cache() -> None:
+    """Drop the in-memory fact-bundle memo (use after regenerating a target's RTL facts in-process)."""
+    _FACT_BUNDLE_CACHE.clear()
+
+
+def _resolve_kinds(target: str) -> tuple[str, ...]:
+    """EVERY compute-unit kind the target declares, primary first, deduped.
+
+    The set, not a primary. A hybrid runs one extractor per datapath family, and selecting a single
+    kind extracted facts for half its silicon: a SIMT cluster embedding a systolic mesh resolved to
+    ``simt``, ran the config introspect, and never looked at the mesh -- so the mesh geometry, the
+    on-chip capacities and the legal opcodes were all absent for hardware that has them.
+
+    Primary first so single-unit targets are unchanged and a hybrid's headline kind is still its
+    outermost unit."""
+    try:
+        from ..target_experiment import _primary_kind, load_capability_manifest
+        from .. import compute_units as _cu
+        units = _cu.compute_units(load_capability_manifest(target).contract)
+    except Exception:  # noqa: BLE001 — no manifest yet (fresh/arc-only target) ⇒ the arc-declared kind
+        k = _arc_model_kind(target)
+        return (k,) if k else ()
+    if not units:
+        return ()
+    return tuple(dict.fromkeys([_primary_kind(units)] + [u.kind for u in units]))
+
+
+def compute_unit_kinds(target: str) -> tuple[str, ...]:
+    """EVERY compute-unit kind ``target`` declares, primary first — the public reading of the kind set.
+
+    The routing axis for anything that must serve a hybrid honestly (fact extraction, the compute-element
+    read): a caller given only the PRIMARY kind extracts facts for half the silicon. Empty when no kind
+    resolves, which is a caller's cue to say so rather than to assume one."""
+    return _resolve_kinds(target)
+
+
+def _extractors_for(target: str) -> tuple[str, ...]:
+    """The fact extractors this target needs, in kind order, deduped."""
     from ..families import family_profile, known_kinds
-    kind = _resolve_kind(target)
-    extractor = family_profile(kind).fact_extractor if kind in known_kinds() else "circt_static"
-    if extractor == "opu":
+    kinds = _resolve_kinds(target)
+    if not kinds:
+        return ("circt_static",)
+    out = [family_profile(k).fact_extractor if k in known_kinds() else "circt_static" for k in kinds]
+    return tuple(dict.fromkeys(out))
+
+
+def _run_extractor(name: str, target: str) -> dict:
+    if name == "opu":
         return spatial_fact_bundle(target)
-    if extractor == "simt_config":
+    if name == "simt_config":
         return _simt_fact_bundle(target)
     return target_fact_bundle(target)
+
+
+def _merge_fact_bundles(bundles: list[dict], extractors: tuple[str, ...] = ()) -> dict:
+    """Union several extractors' bundles into one ``{target, method, fields, n_derived}``.
+
+    Field collisions are resolved by EVIDENCE, never by extractor precedence: a derived value beats an
+    undrived one, and two extractors that both derive a field and DISAGREE keep both readings under
+    ``conflicts`` rather than letting the first-listed datapath silently win. A hybrid whose two halves
+    report different mesh geometries has a real problem, and a merge that hides it converts that problem
+    into a wrong number nobody can trace."""
+    head = bundles[0]
+    fields: dict = {}
+    conflicts: list[dict] = []
+    for b in bundles:
+        for name, rec in (b.get("fields") or {}).items():
+            prev = fields.get(name)
+            if prev is None or (not prev.get("derived") and rec.get("derived")):
+                fields[name] = rec
+                continue
+            if (prev.get("derived") and rec.get("derived")
+                    and prev.get("value") != rec.get("value")):
+                conflicts.append({"field": name, "kept": prev, "also": rec})
+    out = {
+        "target": head.get("target"),
+        "method": " + ".join(dict.fromkeys(str(b.get("method")) for b in bundles if b.get("method"))),
+        "kind": head.get("kind"),
+        "fields": fields,
+        "n_derived": sum(1 for r in fields.values() if r.get("derived")),
+    }
+    if len(bundles) > 1:
+        # Only stamped on a genuine hybrid, so a single-datapath bundle stays byte-identical. Taken
+        # from the extractors that actually ran, not from each bundle's `kind` -- the static CIRCT
+        # bundle does not carry one, so reading it back yields None for the half that has no label.
+        out["extractors"] = list(extractors) or [str(b.get("kind")) for b in bundles]
+    if conflicts:
+        out["conflicts"] = conflicts
+    return out
+
+
+def _fact_bundle_uncached(target: str) -> dict:
+    """The un-memoized extraction (see :func:`fact_bundle_for`)."""
+    extractors = _extractors_for(target)
+    if len(extractors) == 1:
+        return _run_extractor(extractors[0], target)
+    return _merge_fact_bundles([_run_extractor(e, target) for e in extractors], extractors)
+def render_simt_fact_bundle(target: str, bundle: dict | None = None) -> str:
+    """Render a SIMT fact bundle as an agent-facing ISA brief (Markdown).
+
+    The systolic renderer asks three systolic-shaped questions — legal opcodes (a RoCC funct decode), mesh
+    DIM, operand/accumulator capacity — none of which a SIMT core has. Routing a SIMT target through it
+    printed "unavailable" three times and a nonsensical "5/4 fields grounded" header while the bundle
+    held every fact the agent needs (execution geometry, register budget, shared-memory capacity, FP
+    datapath, and the core's own instruction encoding + classes). An arm told its ISA facts are
+    unavailable cannot derive its lowering from them, which is the whole point of the RTL-checks arm.
+
+    Every line is DERIVED from the bundle and carries its provenance; an underived field is stated as
+    unavailable, never invented. Field-driven, so a SIMT introspect that grows a fact surfaces it here
+    without editing this function.
+    """
+    b = bundle or _simt_fact_bundle(target)
+    f = b.get("fields") or {}
+    n_total = len(f) or 1
+    lines = [f"# Target ISA facts: {b.get('target', target)}",
+             f"_Derived by {b.get('method')}. {b.get('n_derived', 0)}/{n_total} fields grounded; "
+             f"ungrounded = unavailable, not guessed._", ""]
+    if b.get("rtl_present") is False:
+        lines += ["> RTL module hierarchy was not present for this extraction: geometry comes from the "
+                  "target's own config + ISA docs. Treat the encoding/classes as authoritative and the "
+                  "geometry as declared-not-elaborated.", ""]
+
+    #: (bundle field, heading, the sub-keys worth surfacing) — the SIMT analog of the systolic triple.
+    _SHAPE = (
+        ("simt", "Execution geometry",
+         ("lanes_per_warp", "warps_per_core", "cores", "threads_per_core")),
+        ("registers", "Register budget", ("arch_max", "compiler_limit", "config")),
+        ("shared_memory", "Shared memory", ("bytes_per_cluster",)),
+        ("fp_datapath", "FP datapath",
+         ("dtype", "flop_per_fma", "peak_flops_per_cycle", "clock_hz", "peak_gflops")),
+        ("isa", "Instruction encoding",
+         ("encoding_bits", "max_src_operands", "max_dst_operands", "predicated_execution",
+          "address_spaces")),
+    )
+    for key, heading, subkeys in _SHAPE:
+        spec = f.get(key) or {}
+        val = spec.get("value")
+        if not spec.get("derived") or not isinstance(val, dict):
+            lines.append(f"- **{heading}**: unavailable")
+            continue
+        shown = ", ".join(f"{k}={val[k]}" for k in subkeys if val.get(k) is not None)
+        lines.append(f"- **{heading}**: {shown or 'derived (no scalar fields)'}")
+        if key == "isa":
+            classes = list(val.get("instruction_classes") or [])
+            if classes:
+                lines.append(f"  - **instruction classes** ({len(classes)}): `{classes}`")
+        ev = val.get("evidence") or spec.get("evidence")
+        if ev:
+            lines.append(f"  - source: {spec.get('source')} — {ev}")
+    return "\n".join(lines) + "\n"
 
 
 def render_fact_bundle_for(target: str, bundle: dict | None = None) -> str:
     """KIND-routed sibling of :func:`fact_bundle_for` for RENDERING — the render half of the same seam.
 
     Routes ``target``'s kind to the matching bundle renderer: ``opu`` (spatial) ->
-    :func:`render_spatial_fact_bundle`; everything else (systolic/vector/scalar ``circt_static``, and the
-    default when no kind resolves) -> :func:`render_fact_bundle`. SIMT has no dedicated renderer today, so
-    it degrades honestly through the systolic renderer (TODO: a muon brief renderer). BYTE-IDENTICAL to
-    :func:`render_fact_bundle` for gemmini and every current ``circt_static`` caller — the same reasoning
-    as ``fact_bundle_for``: gemmini resolves ``kind='systolic'`` -> ``fact_extractor='circt_static'`` ->
-    the ``return render_fact_bundle(...)`` fall-through, on the same ``bundle`` object."""
-    from ..families import family_profile, known_kinds
+    :func:`render_spatial_fact_bundle`; ``simt`` -> :func:`render_simt_fact_bundle`; everything else
+    (systolic/vector/scalar ``circt_static``, and the default when no kind resolves) ->
+    :func:`render_fact_bundle`. BYTE-IDENTICAL to :func:`render_fact_bundle` for gemmini and every current
+    ``circt_static`` caller — the same reasoning as ``fact_bundle_for``: gemmini resolves
+    ``kind='systolic'`` -> ``fact_extractor='circt_static'`` -> the ``return render_fact_bundle(...)``
+    fall-through, on the same ``bundle`` object."""
+    # Routes on the extractor SET, so a hybrid that has a spatial tile still gets the tile brief; `kind`
+    # is resolved separately for the SIMT branch below, which is a kind and not an extractor.
     kind = _resolve_kind(target)
-    extractor = family_profile(kind).fact_extractor if kind in known_kinds() else "circt_static"
-    if extractor == "opu":
+    if "opu" in _extractors_for(target):
         return render_spatial_fact_bundle(target, bundle)
+    if kind == "simt":
+        return render_simt_fact_bundle(target, bundle)
     return render_fact_bundle(target, bundle)
 
 
+#: Registry of SIMT RTL introspects, keyed by the introspect's DECLARED identity (its ``TARGET``) — the
+#: fact-extraction analog of the runtime backend registry and the capsule_runner sim-oracle registry. A
+#: SIMT introspect must expose ``TARGET`` + ``build_facts()``. The reference Muon introspect registers
+#: itself (below); a SECOND SIMT core registers its own introspect via :func:`register_simt_introspect`
+#: (in-tree, or from its out-of-tree package at import) so :func:`_simt_fact_bundle` resolves it WITHOUT
+#: editing this dispatch — the seam that keeps SIMT fact extraction from bottoming out at one core.
+_SIMT_INTROSPECTS: dict = {}
+
+
+def register_simt_introspect(module) -> None:
+    """Register a SIMT RTL introspect (must expose ``TARGET`` + ``build_facts()``). Idempotent."""
+    _SIMT_INTROSPECTS[module.TARGET] = module
+
+
+def _register_declared_simt_introspects() -> None:
+    """Register every SIMT introspect a target contract DECLARES, without naming any target here.
+
+    A target contributes its introspect as data: ``plugin.simt_introspect: <plugin.backend>:<attribute>``
+    names an attribute of its own registered backend package, resolved through the backend registry, so
+    nothing is imported a second time under another name. This keeps the on-demand guarantee the old
+    hardcoded fallback gave (it fires whenever the registry is empty, independent of discovery order, so
+    the SIMT introspection a composite target relies on cannot silently go missing) while core carries no
+    SIMT target's name. A declaration that does not resolve registers nothing and the fact bundle says so.
+    """
+    try:
+        from .. import target_registry as _tr
+        from ..plugins import ATTR_SEP
+        from ...runtime.backends import base as _bk
+        names = _tr.all_targets()
+    except Exception:  # noqa: BLE001 — no registry, no declared introspect; _simt_fact_bundle reports it
+        return
+    for name in names:
+        try:
+            plugin = _tr.resolve(name).plugin()
+        except Exception:  # noqa: BLE001 — a contract that will not parse declares nothing usable
+            continue
+        ref = plugin.get("simt_introspect")
+        if not isinstance(ref, str) or ATTR_SEP not in ref:
+            continue
+        module_ref, _, attr = ref.partition(ATTR_SEP)
+        if module_ref != plugin.get("backend"):
+            continue  # only the target's own registered backend package is consulted
+        try:
+            register_simt_introspect(getattr(_bk.get_backend(name), attr))
+        except Exception:  # noqa: BLE001 — unresolvable declaration: register nothing, report honestly
+            continue
+
+
+def _resolve_simt_introspect(target: str):
+    """The registered SIMT introspect whose declared identity matches ``target``'s arc alias, or None.
+    Serves by the ARC-target alias (not the merlin name): a composite SIMT target (e.g. radiance) whose
+    RTL IS the introspect's config (RadianceCluster) resolves to that introspect via ``_arc_target``."""
+    if not _SIMT_INTROSPECTS:
+        _register_declared_simt_introspects()
+    return _SIMT_INTROSPECTS.get(_arc_target(target))
+
+
+#: The three states a SIMT introspect may declare for a fact block. ``derived`` is the ONLY one that
+#: makes ``derived: True`` in the bundle; ``absent`` (the input is not on this machine) and
+#: ``undeterminable`` (the input is present but carries no sound reading) both mean "not a fact".
+_DERIVED_STATE = "derived"
+
+
+def _simt_field(name: str, block: dict | None, source: str | None) -> dict:
+    """Adapt ONE fact block from a SIMT introspect to the bundle field shape.
+
+    ``derived`` is read from the block's own DECLARED ``state``, never from the block merely existing.
+    That distinction is the bug this replaced: the old expression was ``"derived": name in f``, so a
+    block of baked default values — the Muon introspect published ``lanes_per_warp=16,
+    warps_per_core=8, cores=2, threads_per_core=128`` from ``cfg.get("num_lanes", 16)`` defaults after
+    its config path resolved to a placeholder that exists on no machine — arrived here stamped
+    ``derived: True`` and was rendered to the agent as a grounded RTL fact. Key presence proves the
+    extractor RAN; it proves nothing about whether it READ anything.
+
+    An introspect that declares no ``state`` is treated as NOT derived and says so, rather than being
+    granted the benefit of the doubt: fail closed, per the repo's derive-or-report rule.
+    """
+    if not isinstance(block, dict):
+        return {"value": None, "derived": False, "source": source,
+                "evidence": f"introspect emitted no {name!r} fact block"}
+    state = block.get("state")
+    if state is None:
+        return {"value": block, "derived": False, "source": source,
+                "evidence": (f"{name!r} block declares no `state` — cannot be counted as derived "
+                             f"(introspect contract: state in derived/absent/undeterminable). "
+                             f"{block.get('evidence') or ''}").strip()}
+    return {"value": block, "derived": state == _DERIVED_STATE, "state": state, "source": source,
+            "evidence": block.get("evidence")}
+
+
 def _simt_fact_bundle(target: str) -> dict:
-    """Adapt the SIMT (Muon) RTL introspect to the uniform fact-bundle shape. Muon is the sole SIMT
-    introspect today (muon_introspect reads RadianceMuonConfig), so a non-muon simt target is reported
-    honestly rather than mis-attributed to muon's geometry."""
-    if target != "muon":
+    """Adapt the SIMT RTL introspect to the uniform fact-bundle shape. The introspect is resolved from
+    the registry by the target's declared identity, so a SIMT target no registered introspect serves is
+    reported honestly rather than mis-attributed to another core's geometry. Keys on that declared
+    identity, never a literal target name."""
+    intro = _resolve_simt_introspect(target)
+    if intro is None:
+        served = sorted(_SIMT_INTROSPECTS)
         fields = {"simt": {"value": None, "derived": False, "source": None,
-                           "evidence": f"no SIMT RTL introspect for {target!r} (muon-specific today)"}}
-        return {"target": target, "method": "SIMT RTL introspect (muon-specific)",
+                           "evidence": f"no SIMT RTL introspect serves {target!r} "
+                                       f"(registered: {served})"}}
+        return {"target": target,
+                "method": f"SIMT RTL introspect (registered: {served})",
                 "kind": "simt", "fields": fields, "n_derived": 0}
-    from . import muon_introspect
-    facts = muon_introspect.build_facts()
+    facts = intro.build_facts()
     f = facts.get("facts", {})
     present = facts.get("inputs", {}).get("rtl_present", False)
-    fields = {name: {"value": f.get(name), "derived": name in f,
-                     "source": facts.get("generator", {}).get("name"),
-                     "evidence": (f.get(name) or {}).get("evidence")}
+    fields = {name: _simt_field(name, f.get(name),
+                                facts.get("generator", {}).get("name"))
               for name in ("simt", "registers", "shared_memory", "fp_datapath", "isa")}
     return {"target": target,
-            "method": facts.get("generator", {}).get("method", "muon RTL introspect"),
+            "method": facts.get("generator", {}).get("method", f"{getattr(intro, 'TARGET', 'SIMT')} RTL introspect"),
             "kind": "simt", "rtl_present": present, "fields": fields,
             "n_derived": sum(1 for v in fields.values() if v["derived"])}
+
+
+def simt_facts(target: str) -> dict:
+    """SIMT self-hosted-ISA facts adapted to the ``facts.json`` body shape, so the generic manifest
+    deriver (:func:`merlin.targetgen.capability_manifests.derive_manifest`) grounds ``endpoint_kind``
+    from them like any other RTL facts. Delegates to the SIMT RTL introspect (``muon_introspect``, via
+    the arc-target alias); the core's OWN instruction encoding is surfaced as a ``self_hosted_isa``
+    interface (its ``encoding_bits`` + ``instruction_classes``) — the SIMT analog of a decode table.
+    Returns ``{}`` when no SIMT introspect serves the target (honest — the deriver then falls back to the
+    family default, never a fabricated endpoint)."""
+    bundle = _simt_fact_bundle(target)
+    fields = bundle.get("fields") or {}
+
+    def _derived(name: str) -> dict:
+        """The field's value ONLY when the introspect declared it derived — otherwise ``{}``.
+
+        Guards the manifest deriver against the failure this function was itself party to: it used to
+        read every field's value unconditionally, so a bundle whose fields were baked defaults (see
+        :func:`_simt_field`) grounded ``capabilities.simt`` and the SMEM capacity in the manifest,
+        which is how a placeholder config path ended up as a published hardware capability."""
+        rec = fields.get(name) or {}
+        return (rec.get("value") or {}) if rec.get("derived") else {}
+
+    isa = _derived("isa")
+    if not isa.get("encoding_bits"):
+        return {}
+    itf = {"name": "self_hosted_isa",
+           "encoding_bits": isa.get("encoding_bits"),
+           "instruction_classes": list(isa.get("instruction_classes") or []),
+           "source": bundle.get("method")}
+    body: dict = {"interfaces": [itf], "source": bundle.get("method"), "target": target}
+    # SIMT execution geometry (lanes/warp, warps, cores) + shared-memory CAPACITY, read out of the
+    # ELABORATION by the introspect — surfaced so the manifest deriver grounds capabilities.simt / the
+    # SMEM capacity instead of a residual literal. No memory-map BASE here (not recoverable from the op
+    # graph — stays residue). Taken through _derived(), so a block the introspect could not read is
+    # simply absent from the manifest rather than grounding a capability on a number nobody measured.
+    simt = _derived("simt")
+    if isinstance(simt.get("lanes_per_warp"), int):
+        body["simt"] = {k: simt[k] for k in ("lanes_per_warp", "warps_per_core", "cores")
+                        if isinstance(simt.get(k), int)}
+    smem = _derived("shared_memory")
+    if isinstance(smem.get("bytes_per_cluster"), int):
+        body["memories"] = [{"name": "shared_memory", "bytes": smem["bytes_per_cluster"]}]
+    return {"schema_version": "simt-facts/v0", "facts": body}
 
 
 def _main(argv: list[str] | None = None) -> int:
@@ -1089,21 +1591,105 @@ if __name__ == "__main__":
 
 
 @contextmanager
-def _mlc_cwd():
-    """mlc resolves its ``runs/...`` arc artifacts by paths RELATIVE to its own root, so its cosim +
-    discovery entry points run with CWD = the mlc dir."""
-    d = mlc_dir()
-    prev = os.getcwd()
-    if d is not None:
-        os.chdir(d)
+def _mlc_importable(d=None):
+    """Make ``mlc`` importable for the duration of THIS call ONLY, by inserting its dir on ``sys.path``
+    iff ``mlc`` is not already importable (restored on exit). Deliberately NOT a global/module-level
+    insert: a permanent insert flips :func:`mlc_available` True process-wide and un-skips the heavy
+    mlc-gated tests (a known regression). This lets a machine with mlc as an external sibling checkout
+    (resolved via ``MERLIN_MLC_DIR``, not pip-installed) still import mlc's pure-Python discovery — the
+    same context-managed pattern as ``program_oracle._mlc_importable``.
+
+    Restoring ``sys.path`` alone is NOT enough: the modules imported inside the block stay cached in
+    ``sys.modules``, so ``import mlc`` (and thus :func:`mlc_available`) would keep succeeding process-wide
+    afterward, re-introducing the exact un-skip regression this context manager exists to avoid. So when
+    WE made mlc importable, we also drop the ``mlc`` modules loaded during the block on exit, leaving the
+    interpreter in its pre-call state (a truly scoped import)."""
+    import importlib.util
+    import sys
+    d = d if d is not None else mlc_dir()
+    added = None
+    before: frozenset[str] = frozenset()
+    if d is not None and importlib.util.find_spec("mlc") is None:
+        added = str(d)
+        sys.path.insert(0, added)
+        before = frozenset(sys.modules)
     try:
         yield
     finally:
-        os.chdir(prev)
+        if added is not None:
+            try:
+                sys.path.remove(added)
+            except ValueError:
+                pass
+            # Drop mlc modules loaded during the block so ``import mlc`` does not keep resolving from the
+            # module cache after the path entry is gone (which would flip mlc_available() True process-wide).
+            for name in [n for n in sys.modules if n == "mlc" or n.startswith("mlc.")]:
+                if name not in before:
+                    del sys.modules[name]
+
+
+#: Serializes :func:`_mlc_cwd`. The working directory and ``sys.path`` are PROCESS-global, but capsules
+#: are graded on a ThreadPoolExecutor — so two threads entering this block interleave their chdirs, and
+#: the first to leave restores the repo cwd out from under the one still inside. mlc then cannot resolve
+#: its own ``runs/...`` artifacts and reports the arc model as ABSENT: a correct submission grades
+#: ``incomplete`` on "mlc arc model unavailable", intermittently and only under parallel grading (the
+#: worse tail is the loser restoring LAST, leaving every later thread with the wrong cwd). Reentrant so a
+#: nested entry on the same thread does not deadlock.
+_MLC_CWD_LOCK = threading.RLock()
+
+
+@contextmanager
+def _mlc_cwd():
+    """mlc resolves its ``runs/...`` arc artifacts by paths RELATIVE to its own root, so its cosim +
+    discovery entry points run with CWD = the mlc dir. Also CONTEXT-INSERT the mlc dir on ``sys.path`` so
+    ``import mlc`` resolves even when the process's ``sys.path`` no longer carries the cwd (``''``) entry —
+    mlc is not pip-installed, so without this the import relied on cwd-relative resolution and broke inside
+    a process that rewrote ``sys.path`` (e.g. the capsule-bench driver's xdsl setup), silently failing the
+    arc oracle preflight. The insert is context-managed (removed on exit), NOT global: a permanent insert
+    flips ``mlc_available()`` process-wide and un-skips heavy tests.
+
+    Held under :data:`_MLC_CWD_LOCK`: cwd/``sys.path`` are process state, and the grader runs capsules on
+    threads, so concurrent entries must not interleave (see the lock's note)."""
+    import sys
+    with _MLC_CWD_LOCK:
+        d = mlc_dir()
+        prev = os.getcwd()
+        ds = str(d) if d is not None else None
+        inserted = False
+        if d is not None:
+            os.chdir(d)
+            if ds not in sys.path:
+                sys.path.insert(0, ds)
+                inserted = True
+        try:
+            yield
+        finally:
+            os.chdir(prev)
+            if inserted:
+                try:
+                    sys.path.remove(ds)
+                except ValueError:
+                    pass
 
 
 def arc_available(target: str) -> bool:
     """True iff mlc has a prebuilt arc model (.so/.o) + state manifest for ``target`` (any target)."""
+    if mlc_dir() is None:
+        return False
+    try:
+        with _mlc_cwd():
+            from mlc.runtime.backend import available
+            return bool(available(_arc_target(target)))
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _arc_model_present(target: str) -> bool:
+    """Un-aliased structural check: does mlc register an arc model under THIS EXACT target name? Structural
+    consumers (the RoCC role / mesh probes) gate on this, NOT the oracle-aliased :func:`arc_available` — a
+    composite SIMT target (radiance) must not borrow the embedding cluster's arc for structural role
+    derivation (that would fabricate systolic roles it does not have); its oracle still reaches muon via
+    the alias, but its structural profile stays honestly empty."""
     if mlc_dir() is None:
         return False
     try:
@@ -1129,22 +1715,34 @@ def arc_core(target: str):
     :func:`arc_run_command_buffer` for the agnostic high-level path."""
     require_mlc()
     if not arc_available(target):
-        raise RuntimeError(f"mlc arc model absent for target {target!r} (runs/circt-arc/{target})")
+        raise RuntimeError(f"mlc arc model absent for target {target!r} (runs/circt-arc/{_arc_target(target)})")
+    at = _arc_target(target)
     with _mlc_cwd():
-        _ensure_interface_cache(target)
+        _ensure_interface_cache(at)
         from mlc.backends.cosim_core import CosimCore
         from mlc.discover.fingerprint import artifact_paths
-        p = artifact_paths(target)
+        p = artifact_paths(at)
         d = mlc_dir()
         return CosimCore(str((d / p["so"]).resolve()), str((d / p["man"]).resolve()))
 
 
-def arc_run_command_buffer(cb: dict) -> dict:
-    """Answer a merlin command buffer on the RTL-derived arc model — target-AGNOSTIC (mlc infers the
-    target/config from the command buffer). Returns mlc's backend contract ``{outputs, metrics, correct,
-    oracle, ...}`` where ``metrics`` carries the RTL's internal counts (cycles, bytes_moved,
-    resident_hits, accumulator_commits, ...) — verilator-level state without verilator, for ANY target."""
+def arc_run_command_buffer(cb: dict, target: str | None = None) -> dict:
+    """Answer a merlin command buffer on the RTL-derived arc model for ``target``. Returns mlc's backend
+    contract ``{outputs, metrics, correct, oracle, ...}`` where ``metrics`` carries the RTL's internal
+    counts (cycles, bytes_moved, resident_hits, accumulator_commits, ...) — verilator-level state without
+    verilator, for ANY target.
+
+    The target is PASSED, not inferred. mlc's ``run_command_buffer`` routes on its ``target`` argument and
+    defaults it to one specific accelerator, so omitting it silently answered every other target's buffer
+    on the wrong model: a saturn_opu buffer reached the systolic cosim and died on its
+    dims-divisible-by-DIM assertion. Falls back to the buffer's own ``target`` field, and raises rather
+    than letting a default stand in.
+    """
     require_mlc()
+    t = target or cb.get("target")
+    if not t:
+        raise ValueError("arc_run_command_buffer needs a target: pass one, or declare it in the "
+                         "command buffer — the oracle must never fall back to a default model")
     with _mlc_cwd():
         from mlc.runtime.backend import run_command_buffer
-        return run_command_buffer(cb)
+        return run_command_buffer(cb, target=_arc_target(str(t)))

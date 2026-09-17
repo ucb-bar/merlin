@@ -8,10 +8,12 @@ uses ``mlir-translate`` from it to take a package's lowered LLVM-dialect MLIR to
 All paths are overridable by ``MERLIN_MLIR_INSTALL``. The matching ``clang-23`` (same LLVM 23) is
 reused from :mod:`merlin.llvmlower.toolchain`.
 """
+
 from __future__ import annotations
 
 import os
 from pathlib import Path
+
 from merlin.common.paths import repo_root
 
 # repo root = .../merlin (this file: merlin/python/merlin/targetgen/contract/toolchain.py)
@@ -41,10 +43,12 @@ def mlir_cmake_dir() -> Path:
 
 def available() -> bool:
     """True iff the install exposes the tools + cmake export an OOT C++ package needs."""
-    return (mlir_bin("mlir-opt").is_file()
-            and mlir_bin("mlir-translate").is_file()
-            and mlir_bin("mlir-tblgen").is_file()
-            and (mlir_cmake_dir() / "MLIRConfig.cmake").is_file())
+    return (
+        mlir_bin("mlir-opt").is_file()
+        and mlir_bin("mlir-translate").is_file()
+        and mlir_bin("mlir-tblgen").is_file()
+        and (mlir_cmake_dir() / "MLIRConfig.cmake").is_file()
+    )
 
 
 def require() -> Path:
@@ -53,5 +57,6 @@ def require() -> Path:
         raise RuntimeError(
             f"MLIR install not found/usable at {mlir_install()} "
             f"(expected bin/mlir-opt|mlir-translate|mlir-tblgen + lib/cmake/mlir/MLIRConfig.cmake). "
-            f"Build it (Phase 0) or set MERLIN_MLIR_INSTALL.")
+            f"Build it (Phase 0) or set MERLIN_MLIR_INSTALL."
+        )
     return mlir_install()

@@ -8,7 +8,9 @@ Produces `evidence_report.md` and `evidence_index.yaml`.
 ## What belongs here
 
 - File discovery + short summaries (filename / first-lines based).
-- Per-target concept keyword tables and the detection that cites supporting files.
+- The concept-detection logic that cites supporting files. The per-target keyword *vocabulary* is
+  DATA, not a core literal: it lives in `<target-dir>/evidence_concepts.yaml` (loaded via
+  `rtl.facts.target_base`), so `report.py` carries no per-target names.
 
 ## What does not belong here
 
@@ -30,4 +32,5 @@ Produces `evidence_report.md` and `evidence_index.yaml`.
 
 ## Notes for future agents
 
-- Extend `CONCEPT_KEYWORDS` per target rather than adding bespoke parsing.
+- To teach a target new concepts, add rows to its `evidence_concepts.yaml` rather than adding
+  bespoke parsing or a per-target branch in `report.py`.

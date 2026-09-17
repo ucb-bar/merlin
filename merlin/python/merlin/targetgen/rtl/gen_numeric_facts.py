@@ -12,11 +12,14 @@ outputs. Same line as facts.json / the encoder. RTL-derived ⇒ CIRCT-arm-only.
 
 Usage: python -m merlin.targetgen.rtl.gen_numeric_facts [--facts <facts.json>] [--out numeric_facts.py]
 """
+
 from __future__ import annotations
-import argparse, json
+
+import argparse
+import json
 from pathlib import Path
 
-from .facts import load_facts
+from .facts import facts_body, load_facts
 
 _TMPL = '''"""GENERATED from RTL facts by gen_numeric_facts — numeric-SHAPE sanity (NOT a numeric oracle)."""
 from __future__ import annotations
@@ -36,8 +39,10 @@ def check_numeric_shapes(cb: dict) -> list[str]:
     for i, c in enumerate(cb.get("commands", [])):
         op = c.get("opcode", "")
         attrs = c.get("attributes", {{}}) or {{}}
-        # accumulator-producing ops should accumulate at ACC_DTYPE width
-        if "MATMUL" in op or "COMPUTE" in op:
+        # accumulator-producing ops should accumulate at ACC_DTYPE width. Fail-closed: when the RTL facts
+        # did not ground the accumulator width (ACC_WIDTH_BITS is None), SKIP this check rather than
+        # assume one — a numeric-shape finding must never rest on a defaulted width.
+        if ("MATMUL" in op or "COMPUTE" in op) and ACC_WIDTH_BITS:
             dst = (c.get("operands", {{}}) or {{}}).get("dst")
             dt = (tensors.get(dst, {{}}) or {{}}).get("dtype")
             if dt and _bits(dt) and _bits(dt) < ACC_WIDTH_BITS:
@@ -52,31 +57,68 @@ def check_numeric_shapes(cb: dict) -> list[str]:
     return findings
 
 def _bits(dt: str):
-    import re
-    m = re.search(r"(\\d+)", dt or "")
-    return int(m.group(1)) if m else None
+    # first contiguous run of digits in the dtype token (i8->8, bf16->16, f8E4M3FN->8) — structural, no regex
+    digits = ""
+    for ch in (dt or ""):
+        if ch.isdigit():
+            digits += ch
+        elif digits:
+            break
+    return int(digits) if digits else None
 '''
 
 
 def generate(facts: dict) -> str:
-    f = facts["facts"]
+    # A numeric-shape checker is derived from datapath/memory facts and never reads an opcode, so it
+    # must NOT demand a decode table: requiring one refused targets whose facts fully sufficed.
+    f = facts_body(facts, str(facts.get("target") or "target"), needs="a numeric-shape checker")
     dps = {d["name"]: d for d in f.get("datapaths", [])}
     acc = next((m for m in f.get("memories", []) if m.get("name") == "accumulator"), {})
-    acc_bits = acc.get("lane_bits") or 32
-    return _TMPL.format(input_dtype=dps.get("input", {}).get("dtype", "i8"),
-                        acc_dtype=dps.get("accumulator", {}).get("dtype", "i32"),
-                        acc_bits=acc_bits)
+    # DERIVE every value from the target's RTL facts; when a fact is absent, emit ``None`` and let the
+    # generated checker FAIL CLOSED (skip that check) — NEVER substitute a per-target default. The old
+    # ``or 32`` / ``"i8"`` / ``"i32"`` fallbacks silently handed any target whose facts lacked datapaths
+    # gemmini's numeric-shape rules (the derive-vs-overfit cardinal-rule violation this repo forbids).
+    acc_dtype = dps.get("accumulator", {}).get("dtype")
+    # Two RTL facts can ground the accumulation width, and the memory one is not always extracted: some
+    # targets' memory facts carry only bytes/depth. The accumulator DATAPATH dtype (e.g. "i32", evidence
+    # "AccumulatorMem SInt<32>") carries the same width, so read it as the second source rather than
+    # defaulting. This is still derivation -- both values come from the target's own facts. When NEITHER
+    # is present the width stays None and the generated checker fail-closed SKIPS the narrow-accumulator
+    # rule, which is the honest outcome; a baked "or 32" here silently handed every target gemmini's
+    # accumulator width, the derive-vs-overfit violation this file exists to avoid.
+    acc_bits = acc.get("lane_bits") or _dtype_bits(acc_dtype)
+    return _TMPL.format(input_dtype=dps.get("input", {}).get("dtype"), acc_dtype=acc_dtype, acc_bits=acc_bits)
+
+
+def _dtype_bits(dtype: str | None) -> int | None:
+    """Width in bits from a dtype token's first contiguous digit run (i8->8, bf16->16, f8E4M3FN->8).
+    Structural and integer-only: no regex (repo rule), and an unparseable token yields None, never a
+    guess."""
+    digits = ""
+    for ch in str(dtype or ""):
+        if ch.isdigit():
+            digits += ch
+        elif digits:
+            break
+    return int(digits) if digits else None
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--facts", default=None, help="facts.json (default: regenerate gemmini from RTL)")
+    ap.add_argument("--facts", default=None, help="facts.json (default: regenerate the target's facts from RTL)")
+    ap.add_argument("--target", default=None, help="target whose RTL facts to regenerate when --facts is omitted")
     ap.add_argument("--out", default="")
     a = ap.parse_args(argv)
-    facts = json.loads(Path(a.facts).read_text()) if a.facts else load_facts("gemmini")
+    if a.facts:
+        facts = json.loads(Path(a.facts).read_text())
+    elif a.target:
+        facts = load_facts(a.target)
+    else:
+        ap.error("provide --facts <facts.json> or --target <name> to regenerate the facts from RTL")
     code = generate(facts)
     if a.out:
-        Path(a.out).write_text(code); print(f"wrote {a.out} ({len(code.splitlines())} lines)")
+        Path(a.out).write_text(code)
+        print(f"wrote {a.out} ({len(code.splitlines())} lines)")
     else:
         print(code)
     return 0

@@ -14,8 +14,11 @@ ANTI-CHEAT: contains only the contract-fixed input/output formats + textbook gen
 funct table, no goldens, no target-specific op lowering. Identical for every arm that's allowed it. The
 agent authors every target lowering (and, for the merlin arm, the ISA encoding).
 """
-from .iface import parse_interface          # noqa: F401
-from .cmdbuf import CommandBufferBuilder     # noqa: F401
-from . import transforms                     # noqa: F401
-from . import verify                         # noqa: F401  (C++-MLIR-verifier-equivalent for the Python path)
+
+from . import (
+    transforms,  # noqa: F401
+    verify,  # noqa: F401  (C++-MLIR-verifier-equivalent for the Python path)
+)
+from .cmdbuf import CommandBufferBuilder  # noqa: F401
+from .iface import parse_interface  # noqa: F401
 from .verify import validate, verify_module  # noqa: F401

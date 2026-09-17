@@ -8,9 +8,11 @@ must be explicitly re-masked on top. This module ENUMERATES that set from the ta
 descriptor + a single DECLARED oracle/grader registry — never a per-target hand-list — so a new target
 gets a correct, complete mask from its ``target_experiment.yaml`` with zero copied policy.
 
-The set has six origins, all derived:
-  * ``golden``        — every ``golden.yaml`` under the declared capsule corpus + its sibling corpora
-  * ``hidden``        — the hidden-capsule dir (the corpus's ``hidden/`` sibling)
+The set has seven origins, all derived:
+  * ``golden``        — every golden and expected grading-coverage file under the capsule corpora
+  * ``weight``        — externalized model weights (the private inputs from which model goldens derive)
+  * ``hidden``        — the hidden-capsule dir (the corpus's ``hidden/`` sibling) + the holdout
+                        SPECIFICATION sidecars (``capsules/profiles/*.hidden.yaml``)
   * ``prior_backend`` — the reference exemplars the descriptor's ``answer_surfaces.prior_backends`` names
   * ``oracle``        — the reference/simulator/runtime-backend modules (the DECLARED registry below)
   * ``grader``        — the decoder/grader/golden-gen modules (the DECLARED registry below)
@@ -20,6 +22,7 @@ The set has six origins, all derived:
 NOT masked (the historical cheat gap — a hard-coded path that left the memory dir unmasked — is exactly
 this class of bug, and this assertion closes it).
 """
+
 from __future__ import annotations
 
 import os
@@ -35,66 +38,122 @@ from merlin.targetgen.target_experiment import TargetExperiment
 # Reading the oracle gives a route to the true reference/simulator; reading the grader lets the agent
 # reverse-engineer the decoder/golden-gen instead of deriving from public facts. Neither arm may see them.
 ORACLE_MODULES: tuple[str, ...] = (
-    "merlin/python/merlin/runtime/reference.py",     # the numerical reference oracle
-    "merlin/python/merlin/runtime/simulator.py",     # the functional simulator oracle
-    "merlin/python/merlin/runtime/backends",         # the callable oracle backends (a route to the oracle)
+    "merlin/python/merlin/runtime/reference.py",  # the numerical reference oracle
+    "merlin/python/merlin/runtime/simulator.py",  # the functional simulator oracle
+    "merlin/python/merlin/runtime/backends",  # the callable oracle backends (a route to the oracle)
+    # The per-target oracle adapters (L2/L3/L4 routing) + the RTL-model bridge they call. Reading these
+    # hands the agent the DRAM ABI (base/layout/stacking) and readback convention it is supposed to DERIVE
+    # from the public contract + RTL facts — the arm-4 answer_access leak this registry must close.
+    "merlin/python/merlin/targetgen/program_oracle.py",  # external_backend program oracle (atlas L2/L3/L4)
+    "merlin/python/merlin/targetgen/muon_oracles.py",  # SIMT/Muon oracle adapters (radiance)
+    "merlin/python/merlin/targetgen/heavy_oracles.py",  # heavy (cycle-accurate) oracle adapters
+    "merlin/python/merlin/targetgen/rtl/mlc_bridge.py",  # mlc arc cosim + DRAM readback (the oracle bridge)
 )
 GRADER_MODULES: tuple[str, ...] = (
-    "merlin/python/merlin/targetgen/rocc_decode.py",     # raw command-trace decoder (grader internal)
-    "merlin/python/merlin/targetgen/trace_check.py",     # trace gate
-    "merlin/python/merlin/targetgen/capsule_grade.py",   # the grader
+    "merlin/python/merlin/targetgen/rocc/decode.py",  # raw command-trace decoder (grader internal)
+    "merlin/python/merlin/targetgen/trace_check.py",  # trace gate
+    "merlin/python/merlin/targetgen/capsule_grade.py",  # the grader
     "merlin/python/merlin/targetgen/capsule_golden.py",  # golden generation
     "merlin/python/merlin/targetgen/capsule_runner.py",  # the tier runner
-    "merlin/python/merlin/targetgen/oot_runner.py",       # the OOT build+grade driver
+    "merlin/python/merlin/targetgen/capsule_dram.py",  # the DRAM preload/layout (input/output ABI the oracle expects)
+    "merlin/python/merlin/targetgen/oot_runner.py",  # the OOT build+grade driver
     "merlin/python/merlin/targetgen/coverage_report.py",  # coverage grading
 )
 # Oracle-callable helper SUBPATHS that live INSIDE otherwise-allowed authoring tool dirs (the merlin-arm
 # leak): reading them gives a callable route to the oracle. These are relative fragments, matched by the
 # transcript audit (they are excised from the workspace copy by the deny-wins sub-path logic, not a
 # separate filesystem mask). Declared here so there is ONE source of oracle identity.
-ORACLE_CALLABLE_SUBPATHS: tuple[str, ...] = (
-    "runtime_adapter", "xdsl_dialects/lowering", "lowering/pipeline")
+ORACLE_CALLABLE_SUBPATHS: tuple[str, ...] = ("runtime_adapter", "xdsl_dialects/lowering/pipeline")
 
 
 @dataclass(frozen=True)
 class AnswerSurface:
     """One answer-bearing path the sandbox must hide, with how it is masked."""
-    label: str          # human label for diagnostics
-    path: Path          # absolute host path
-    kind: str           # "file" -> /dev/null overlay ; "dir" -> tmpfs
-    origin: str         # golden | hidden | prior_backend | oracle | grader | memory | example
+
+    label: str  # human label for diagnostics
+    path: Path  # absolute host path
+    kind: str  # "file" -> /dev/null overlay ; "dir" -> tmpfs
+    origin: str  # golden | weight | hidden | prior_backend | oracle | grader | memory | example
 
 
 def experimenter_memory_dir() -> Path:
     """The experimenter's Claude Code memory dir for THIS repo. Claude Code slugifies the project path
     by replacing ``/`` with ``-``; deriving it from the CURRENT repo (never hard-coding) is what keeps
     the mask honest across repo moves — a stale hard-coded slug is precisely the past cheat gap."""
-    return Path(os.path.expanduser(
-        f"~/.claude/projects/{str(repo_root()).replace('/', '-')}/memory"))
+    return Path(os.path.expanduser(f"~/.claude/projects/{str(repo_root()).replace('/', '-')}/memory"))
 
 
 def golden_files(te: TargetExperiment) -> list[Path]:
-    """Every ``golden.yaml`` the agent must not read — globbed from the DECLARED corpus + its sibling
-    corpora (never a hard-coded ``isa/layers/model_slices`` list) + the example command buffer. This is
-    the parity-preserving replacement for the old hand-rolled ``answer_files()``."""
+    """Every golden/expected-grading file the agent must not read. Globbed recursively (any nesting
+    depth) from the DECLARED corpus + its sibling corpora AND the whole capsule tree — so a run never sees
+    a DEEPER-nested capsule's or ANOTHER target's golden (both escaped the old one-level ``*/golden.yaml``
+    glob) — plus every example expected-output. Generic: no hard-coded ``isa/layers/model_slices`` list and
+    no per-capsule literal. This is the parity-preserving replacement for the old hand-rolled
+    ``answer_files()``."""
     files: list[Path] = []
-    corpora = [te.capsule_corpus] if te.capsule_corpus else []
     root = repo_root()
+    corpora = [te.capsule_corpus] if te.capsule_corpus else []
     corpora += [root / rel.rstrip("/") for rel in te.corpus_siblings()]
+    # The full capsule tree, in addition to the declared corpus: masks nested + other-target goldens the
+    # declared one-level glob would miss (e.g. capsules/<target>/isa/<capsule>/golden.yaml). rglob only
+    # matches only grading artifacts — capsule INPUTS (loader, linalg/interface MLIR, spec) stay visible.
+    corpora.append(root / "merlin/contract/capsules")
     for corpus in corpora:
         if corpus and corpus.is_dir():
-            files += sorted(corpus.glob("*/golden.yaml"))
-    ex = root / "merlin/contract/examples/expected_command_buffer_g0.json"
-    if ex.exists():
-        files.append(ex)
+            files += sorted(corpus.rglob("golden.*"))
+            # Instruction-coverage expectations are used by the grader in the same way as numerical
+            # goldens. Exposing them tells the agent the exact command mix it must synthesize, so they
+            # are an answer surface even though their filename does not begin with ``golden``.
+            files += sorted(corpus.rglob("expected_instruction_coverage.yaml"))
+    # Every example expected-output (``expected_command_buffer_g0/g1/g2…`` and any ``expected_*`` artifact),
+    # not just the single ``_g0`` literal that used to be masked.
+    ex_dir = root / "merlin/contract/examples"
+    if ex_dir.is_dir():
+        files += sorted(ex_dir.rglob("expected_*"))
     # de-dup while preserving order
     seen: set[Path] = set()
     out: list[Path] = []
     for f in files:
-        if f.exists() and f not in seen:
+        if f.is_file() and f not in seen:
             seen.add(f)
             out.append(f)
     return out
+
+
+def weight_files(te: TargetExperiment) -> list[Path]:
+    """Every externalized capsule-weight file the agent must not read.
+
+    Whole-model weights remain available to the operator-side grader and are copied into the immutable
+    bundle snapshot, but exposing their values to the bring-up agent exposes the private model instance
+    from which its withheld golden was computed.  Sweep the complete capsule tree, just as
+    :func:`golden_files` does, so broad contract grants cannot leak another target's model weights.
+    Both the safetensors blob and an optional manifest are covered by suffix, with no per-model list.
+    """
+    caps_root = repo_root() / "merlin/contract/capsules"
+    if not caps_root.is_dir():
+        return []
+    files = [*caps_root.rglob("*.safetensors"), *caps_root.rglob("*.safetensors.manifest.json")]
+    return sorted({path for path in files if path.is_file()})
+
+
+def _evicted_oracle_modules() -> list[Path]:
+    """Reference-target BACKENDS + sim-oracles evicted to their own packages (OV11) are oracle ROUTES too
+    — the SIMT cyclotron oracle now lives in the muon package (``muon_oracles`` inside its backend), and a
+    reference backend is the 'answer' codegen. DERIVE their host paths from the plugin registry (the same
+    discovery the runtime uses) rather than a per-target literal, so the mask FOLLOWS the eviction instead
+    of the now-stale in-tree paths in ORACLE_MODULES. Best-effort: if the registry is unavailable there is
+    simply nothing extra to mask (the stem audit still covers the evicted names)."""
+    paths: list[Path] = []
+    try:
+        from merlin.runtime.backends import base as _bk
+
+        for key in ("backend", "sim_oracle"):
+            for _name, p in _bk._oot_plugin_modules(key):
+                if p.exists():
+                    paths.append(p)
+    except Exception:  # noqa: BLE001 — no registry -> nothing extra to mask
+        pass
+    return paths
 
 
 def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
@@ -104,15 +163,46 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
     root = repo_root()
     out: list[AnswerSurface] = []
 
+    examples_dir = root / "merlin/contract/examples"
     for g in golden_files(te):
-        origin = "example" if g.name.endswith(".json") else "golden"
+        origin = "example" if examples_dir in g.parents else "golden"
         out.append(AnswerSurface(f"{origin}:{g.relative_to(root)}", g, "file", origin))
+    for weights in weight_files(te):
+        out.append(AnswerSurface(f"weight:{weights.relative_to(root)}", weights, "file", "weight"))
 
+    # Mask EVERY hidden-capsule dir under the capsule tree, not only THIS target's declared one. The bundle
+    # grants the frozen ABI (``merlin/contract/``) broadly, which re-exposes the SHARED
+    # ``capsules/hidden`` set and any OTHER target's ``<t>/hidden`` — a radiance run could otherwise read
+    # the shared/atlas hidden capsules (a held-out answer surface; the ``CANARY_HIDDEN`` marker caught
+    # exactly this). Mirrors :func:`golden_files`' whole-tree sweep that masks cross-target/nested goldens.
+    #
+    # Measured on saturn_opu before the fix: the hidden GOLDENS were masked (they are enumerated
+    # file-by-file above, so answer VALUES never leaked), but the hidden capsule DIRECTORIES stayed
+    # listable and their ``capsule.yaml`` inputs readable from all three merlin-family bundles and not
+    # from raw_baseline — so the held-out set was enumerable for three of four arms, which both weakens
+    # the hidden grade as a generalization check and makes a merlin-vs-baseline hidden comparison
+    # asymmetric. Derived by walking, so a new target's hidden dir is covered the day it appears.
+    hidden_dirs: set[Path] = set()
     hidden_rel = te.hidden_corpus()
     if hidden_rel:
-        hp = root / hidden_rel.rstrip("/")
+        hidden_dirs.add(root / hidden_rel.rstrip("/"))
+    caps_root = root / "merlin/contract/capsules"
+    if caps_root.is_dir():
+        hidden_dirs.update(d for d in caps_root.rglob("hidden") if d.is_dir())
+    for hp in sorted(hidden_dirs):
         if hp.is_dir():
-            out.append(AnswerSurface("hidden-capsules", hp, "dir", "hidden"))
+            out.append(AnswerSurface(f"hidden-capsules:{hp.relative_to(root)}", hp, "dir", "hidden"))
+
+    # The holdout SPECIFICATION, not just its directory. A capsule's op + dtype + exact shape is an
+    # answer to the generalization question even when the golden values stay masked, and the spec used
+    # to live in the tracked ``profiles/<target>.yaml`` inside the same broad ``merlin/contract/`` grant.
+    # It now lives in an untracked ``profiles/<target>.hidden.yaml`` sidecar; masking it here as well
+    # means a checkout that still carries one (or a target that grows a new sidecar) is covered without
+    # relying on .gitignore. Derived by glob, never a per-target hand-list.
+    prof_dir = caps_root / "profiles"
+    if prof_dir.is_dir():
+        for hp in sorted(prof_dir.glob("*.hidden.yaml")):
+            out.append(AnswerSurface(f"hidden-spec:{hp.relative_to(root)}", hp, "file", "hidden"))
 
     tgt_root = artifacts_dir() / "targets" / te.target
     for name in te.prior_backends:
@@ -123,13 +213,13 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
     for rel in ORACLE_MODULES:
         p = root / rel
         if p.exists():
-            out.append(AnswerSurface(f"oracle:{Path(rel).name}", p,
-                                     "dir" if p.is_dir() else "file", "oracle"))
+            out.append(AnswerSurface(f"oracle:{Path(rel).name}", p, "dir" if p.is_dir() else "file", "oracle"))
+    for p in _evicted_oracle_modules():  # OV11: oracle/backend routes relocated to target packages
+        out.append(AnswerSurface(f"oracle:{p.name}", p, "dir" if p.is_dir() else "file", "oracle"))
     for rel in GRADER_MODULES:
         p = root / rel
         if p.exists():
-            out.append(AnswerSurface(f"grader:{Path(rel).name}", p,
-                                     "dir" if p.is_dir() else "file", "grader"))
+            out.append(AnswerSurface(f"grader:{Path(rel).name}", p, "dir" if p.is_dir() else "file", "grader"))
 
     mem = experimenter_memory_dir()
     if mem.is_dir():
@@ -138,23 +228,119 @@ def answer_surfaces(te: TargetExperiment) -> list[AnswerSurface]:
     return out
 
 
+# ------------------------------------------------------------------ the audit's hit VOCABULARY
+# The transcript audit records every suspicious event, but only some of them mean the agent actually
+# SAW withheld content. Both the audit that produces the hits and every downstream gate that consumes
+# them (the perf campaign's fail-closed boundary) must agree on which is which, so the vocabulary is
+# declared ONCE here rather than duplicated per consumer -- a gate that re-derives the split by hand
+# is exactly how "no hits at all" became the accidental bar and disqualified conformant rounds.
+#
+# ADVISORY -- the protection WORKED (or nothing was read at all); these are recorded for visibility:
+#   blocked_probe   the mask returned nothing / an error, so no withheld bytes reached the agent
+#   recon_probe     a path-LISTING search that surfaced no answer path (filenames, not content)
+#   owned_read      the read resolves inside this run's agent-authored submission tree
+#   granted_read    the read target is a file the arm's own bundle GRANTS
+#   pattern_mention the withheld token appeared as a search PATTERN, not as a path being read
+# VIOLATION -- withheld content reached the agent, or agent code routes to the oracle:
+#   path_read       a content read of a withheld path that returned data
+#   oracle_use      agent-authored code imports/calls a denied oracle module
+AUDIT_ADVISORY_KINDS: frozenset[str] = frozenset(
+    {"blocked_probe", "recon_probe", "owned_read", "granted_read", "pattern_mention"}
+)
+AUDIT_VIOLATION_KINDS: frozenset[str] = frozenset({"path_read", "oracle_use"})
+
+
+def audit_hit_is_violation(hit: object) -> bool:
+    """True iff this audit hit means withheld content actually reached the agent.
+
+    FAIL CLOSED: anything that is not a well-formed hit carrying a kind from
+    :data:`AUDIT_ADVISORY_KINDS` counts as a violation. A new hit kind is therefore disqualifying
+    until it is deliberately declared advisory here -- never silently waved through.
+    """
+    if not isinstance(hit, dict):
+        return True
+    return hit.get("kind") not in AUDIT_ADVISORY_KINDS
+
+
+# ------------------------------------------------------- oracle IDENTITY as importable module names
+def module_name_for(rel_path: str) -> str | None:
+    """Dotted python module name for a repo-relative path inside the importable ``merlin`` package.
+
+    ``merlin/python/merlin/runtime/reference.py`` -> ``merlin.runtime.reference``;
+    ``merlin/python/merlin/verify/`` -> ``merlin.verify``. Returns ``None`` for a path that is not
+    importable (a contract dir, an artifact, a target data file), so callers can ignore it.
+    """
+    rel = str(rel_path).strip().strip("/")
+    prefix = "merlin/python/"
+    if not rel.startswith(prefix):
+        return None
+    rel = rel[len(prefix) :]
+    if rel.endswith(".py"):
+        rel = rel[:-3]
+    parts = [seg for seg in rel.split("/") if seg and seg != "__init__"]
+    if not parts or parts[0] != "merlin":
+        return None
+    return ".".join(parts)
+
+
+def declared_oracle_modules() -> tuple[str, ...]:
+    """The DECLARED oracle registry as dotted module names -- the harness-level identity of "the
+    oracle", independent of any bundle. Importing one of these is oracle USE for EVERY arm, even if
+    some bundle's grant list were to name it."""
+    return tuple(dict.fromkeys(m for m in (module_name_for(rel) for rel in ORACLE_MODULES) if m))
+
+
+def module_matches(module: str, prefix: str) -> bool:
+    """True iff dotted ``module`` IS ``prefix`` or lives underneath it."""
+    return module == prefix or module.startswith(prefix + ".")
+
+
 # --------------------------------------------------------------------------- transcript-audit tokens
 def audit_tokens(te: TargetExperiment) -> dict[str, tuple[str, ...]]:
     """The path-fragment tokens the transcript audit flags as answer/grader/oracle READS — DERIVED from
     the same declared registry + descriptor as the filesystem mask, so there is one source of truth (no
-    parallel hand-list to drift). ``answer`` = goldens/hidden/oracle-modules/prior-backends/grader-private;
-    ``grader`` = grader-module stems; ``oracle_subpath`` = the oracle-callable helper subpaths."""
-    answer: list[str] = ["golden.yaml", "expected_command_buffer"]
-    hidden_rel = te.hidden_corpus()
-    if hidden_rel:
-        # e.g. "capsules/hidden" — the trailing two path components identify the hidden set
-        answer.append("/".join(Path(hidden_rel.rstrip("/")).parts[-2:]))
+    parallel hand-list to drift). ``answer`` = goldens/weights/hidden/oracle-modules/prior-backends/
+    grader-private; ``grader`` = grader-module stems; ``oracle_subpath`` = the oracle-callable helper
+    subpaths."""
+    answer: list[str] = [
+        "golden.yaml",
+        "expected_command_buffer",
+        "expected_instruction_coverage.yaml",
+    ]
+    # A token for EVERY hidden-capsule dir (this target's + the shared one + any other target's), matching
+    # the filesystem mask above — the trailing two path components identify each hidden set (e.g.
+    # "radiance/hidden", "capsules/hidden", "atlas/hidden"). A read of any is an answer surface.
+    _hidden_rels = []
+    if te.hidden_corpus():
+        _hidden_rels.append(te.hidden_corpus().rstrip("/"))
+    _caps = repo_root() / "merlin/contract/capsules"
+    if _caps.is_dir():
+        _hidden_rels += [d.relative_to(repo_root()).as_posix() for d in _caps.rglob("hidden") if d.is_dir()]
+    for _hr in _hidden_rels:
+        answer.append("/".join(Path(_hr).parts[-2:]))
+    # ...and the holdout SPECIFICATION sidecars, matching the filesystem mask. The ".hidden.yaml"
+    # suffix identifies every one of them, so a new target's sidecar is covered the day it appears.
+    if (_caps / "profiles").is_dir():
+        answer.append(".hidden.yaml")
+    # Weight filenames are legitimately DECLARED in agent-visible capsule YAML/MLIR. A bare
+    # ``.safetensors`` token would therefore accuse an agent that greps its public interface of reading
+    # the private blob. Qualify by category/capsule/file: a real path read still matches, while a public
+    # declaration containing only ``capsule.weights.safetensors`` does not.
+    for _weights in weight_files(te):
+        answer.append("/".join(_weights.parts[-3:]))
     for rel in ORACLE_MODULES:
         # "merlin/runtime/reference" etc. — drop the merlin/python prefix + the .py suffix
-        frag = rel[len("merlin/python/"):] if rel.startswith("merlin/python/") else rel
+        frag = rel[len("merlin/python/") :] if rel.startswith("merlin/python/") else rel
         answer.append(frag[:-3] if frag.endswith(".py") else frag)
     answer += list(te.prior_backends)
+    # Evicted oracle/backend routes, tokenised as "<target>/<route>" rather than by bare stem. Most of
+    # these live in a directory literally named `backend`, so a stem token is the generic word "backend"
+    # — which substring-matches innocuous granted paths (mlir_oot_backend_contract.yaml, any *_backend_*
+    # doc) and flags them as answer reads. A transcript audit that cries wolf on the contract the agent is
+    # required to read is worse than no audit: the next real leak reads as more noise.
+    for _p in _evicted_oracle_modules():
+        _stem = _p.stem if not _p.name.endswith(".py") else _p.name[:-3]
+        answer.append(f"{_p.parent.name}/{_stem}" if _p.parent.name else _stem)
     answer.append("grader_private")
     grader = tuple(Path(rel).stem for rel in GRADER_MODULES)
-    return {"answer": tuple(dict.fromkeys(answer)), "grader": grader,
-            "oracle_subpath": ORACLE_CALLABLE_SUBPATHS}
+    return {"answer": tuple(dict.fromkeys(answer)), "grader": grader, "oracle_subpath": ORACLE_CALLABLE_SUBPATHS}

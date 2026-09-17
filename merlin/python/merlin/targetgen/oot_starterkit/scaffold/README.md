@@ -24,6 +24,11 @@ b = CommandBufferBuilder(target=model["target"], backend="my_oot")
 b.write(output_json)
 ```
 
+For large whole-model analysis, optionally declare `emit_analysis_bundle`. Its argv should combine
+your existing command-buffer and target-artifact flags, write the buffer to `{output_json}`, and
+print the target artifact on stdout. The host then runs one compiler process instead of repeating
+the lowering pipeline for the two artifacts; older packages retain the two-command fallback.
+
 Recommended (no-CIRCT structural pre-screen): give your dialect ops **strong IRDL verifiers** (operand
 ranks, tile-to-DIM, legal attrs) so malformed IR is caught at construction, before you run a sim.
 

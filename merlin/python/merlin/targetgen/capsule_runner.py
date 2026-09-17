@@ -7,9 +7,9 @@ on top:
     L0  independent numeric golden   (capsule_golden vs reference(cb))   -- catches a wrong cb
     L1  reference(cb) == simulate(cb)                                    -- cb internal consistency
     trace  rocc_decode(lowered.llvm.mlir) + trace_check(expected, cb)    -- instruction coverage
-    L2  spike      oracle == golden == reference == simulate
-    L3  verilator  oracle == golden == reference == simulate  (cycle-accurate, RTL)
-    L4  VCS        (config-gated adapter; see vcs/firesim adapters)
+    L2  model      oracle == golden == reference == simulate   (spike, or an RTL-DERIVED model)
+    L3  elaborated RTL, cycle-accurate -- VCS | GSIM | Verilator, whichever is available (in that
+        cost order; they agree cycle-for-cycle, so the tier records WHICH engine answered)
     L5  FireSim    (config-gated adapter)
 
 The integrity backbone: a **mandatory** tier (one listed in the capsule's ``required_oracle_tiers``)
@@ -24,7 +24,12 @@ from __future__ import annotations
 import dataclasses
 import datetime as _dt
 import json
+import os
+import sys
+import threading
+import time
 import traceback as _traceback
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -32,22 +37,36 @@ import yaml
 
 from aet.core.run_paths import RunPaths
 
+from . import tier_policy as _tier_policy
+
+# Most capsules the suite will run SERIALLY to price the tier ladder before fanning out. Small:
+# the loop stops as soon as a capsule prices nothing new, and this only bounds the pathological
+# case where each early capsule is refuted by a different tier.
+_CALIBRATION_CAP = 3
+
 from . import capsule_golden as CG
-from . import rocc_decode as RD
+from ..runtime import commandbuffer as _CB
+from ..runtime.backends import base as _backends_mod
+from .rocc import decode as RD
 from . import trace_check as TCK
 from .contract import compile as oot_compile
 from .contract import schemas
 # shared, target-agnostic capsule I/O (also re-exported: callers use CR.discover_capsules/load_capsule)
-from .capsule_common import (_cat, _flat, discover_capsules, load_capsule,  # noqa: F401
+from .capsule_common import (NOT_MEASURED_STATUSES, _cat, _flat,  # noqa: F401
+                             discover_capsules, load_capsule,
                              make_run_paths, run_entrypoints)
-from .oot_runner import (CertFailure, Package, build_package, integrity_scan,
-                         load_package, run_entrypoint)
+from .oot_runner import (INFRASTRUCTURE_PLANE, BackendDeclined, CertFailure, InfraCategory,
+                         InfraFailure, Package, build_package, integrity_scan, load_package,
+                         run_entrypoint)
 
 SUITE = "gemmini-capsule-bench"
 CONTRACT_VERSION = "0.1"
 
-# tier -> simulator name understood by runtime.backends.gemmini / adapters
-_TIER_SIM = {"L2": "spike", "L3": "verilator", "L4": "vcs", "L5": "firesim"}
+# tier -> simulator name understood by the gemmini backend / adapters
+#: Tier -> the sim a target CONVENTIONALLY runs there. L3 names the elaborated-RTL class rather than one
+#: binary: vcs, gsim and verilator all answer at that fidelity and the engine is picked by availability
+#: (see ``program_oracle.select_rtl_engine``), so the result records which one ran.
+_TIER_SIM = {"L2": "spike", "L3": "elaborated_rtl", "L4": "vcs", "L5": "firesim"}
 _RTL_TIERS = {"L3", "L4", "L5"}
 
 
@@ -57,6 +76,11 @@ class TierResult:
     status: str                       # pass | fail | skipped | unavailable
     mandatory: bool
     reason: str | None = None
+    cache_unavailable: str = ""        # why this tier's certificate could not even be LOOKED UP.
+                                      # Distinct from a lookup that missed: both used to render as an
+                                      # absence, which is how a certificate cache that had never once
+                                      # fired for two of three targets went unnoticed. Rides the
+                                      # result so a reader sees it without re-deriving anything.
     cycles: int | None = None
     derived_from_rtl: bool = False
     cycle_accurate: bool = False
@@ -64,9 +88,121 @@ class TierResult:
     timing: dict | None = None        # {build_s, sim_active_s, oracle_wait_s} — active vs waiting
     gflops: float | None = None       # perf (SIMT); None -> omitted so systolic output is unchanged
     pct_fp_peak: float | None = None
+    timing_observations: list | None = None
+                                      # FINER TIMING THE ORACLE COULD ACTUALLY SEE: a list of
+                                      # {quantity, value, unit, concurrent, note} entries (per-unit
+                                      # busy, per-op latency, per-cycle activity). Every functional
+                                      # run already executes on a real oracle, and discarding what it
+                                      # timed throws away calibration evidence the run already paid
+                                      # for. An adapter with NO timing capability emits nothing here
+                                      # — not the key, not a list of zeros, because "not reported"
+                                      # and "cost nothing" are different facts. None -> omitted, so
+                                      # an adapter that carries none is byte-identical to before.
+    counters: dict | None = None      # COUNTS the oracle reported alongside the cycle total — bytes
+                                      # moved, reuse hits, commits. Deliberately NOT `utilization`:
+                                      # those are fractions of a cycle window and these are integers
+                                      # of a different kind, and filing a byte count under a name
+                                      # that means "fraction of time" is how a number gets read as
+                                      # something it is not. A model that computes these and an
+                                      # adapter that drops them are indistinguishable downstream,
+                                      # which is what happened: the arc oracle has reported movement
+                                      # and residency counts all along and the adapter returned only
+                                      # cycles. None -> omitted, so a target reporting none is
+                                      # byte-identical to before.
+    utilization: dict | None = None   # WHERE THE TIME WENT, as fractions of the oracle's own cycle
+                                      # window (warp occupancy, per-unit busy, memory conflicts).
+                                      # Latency says a kernel is slow; this says why, which is the
+                                      # difference between an actionable result and a number. Shape is
+                                      # the target's to define; None -> omitted, so a target whose
+                                      # oracle reports no counters is byte-identical to before.
+    oracle_ceiling: dict | None = None
+                                      # WHY THIS TIER WAS NOT BOUGHT, when a per-capsule oracle-tier
+                                      # ceiling declined it: the cap, where it came from (declared /
+                                      # derived from measured cost / unpriced), the budget that set it,
+                                      # the `extends` sibling the claim rests on, and the affordability
+                                      # calculation. A capped tier is ALWAYS recorded -- `skipped` with
+                                      # this block -- never omitted: a tier with no record is not
+                                      # evidence, and an absent key is what made two model capsules read
+                                      # as though they had never been graded.
+                                      # See merlin.targetgen.tier_policy.oracle_ceiling.
     not_applicable: bool = False      # tier honestly N/A for this capsule's datatype (e.g. the integer
                                       # L0/L1 floor on a float datapath) — a legitimate skip, not a
                                       # not_run_is_not_pass violation (unlike an unavailable RTL oracle)
+    budget_deferred: bool = False     # tier APPLIED and was DELIBERATELY NOT PAID FOR: this capsule is
+                                      # outside the derived covering set and the certify budget is gone.
+                                      # Never a pass, never a fail — the capsule was screened, not
+                                      # certified, and it says so by name.
+    fidelity: str | None = None       # WHAT THE ORACLE ACTUALLY WAS, in the oracle's own words:
+                                      # elaborated_rtl | rtl_derived_model | functional_model. The tier
+                                      # NAME cannot carry this — one target's L3 is Verilator and
+                                      # another's is a model — so a reader of the record could not tell
+                                      # a hardware verdict from a model one.
+
+    concurrency: dict | None = None   # WHAT ELSE THE HOST WAS DOING WHILE THIS WAS MEASURED --
+                                      # {workers, nproc, load_avg, serial}, stamped at the moment of
+                                      # measurement. CYCLES are concurrency-invariant (verified:
+                                      # identical serial and at 16 workers); WALL TIMES are not (the
+                                      # same query measured 3.7 s serial and 23.4 s at 16 workers, a
+                                      # 6.3x spread). So every ``timing`` block is only interpretable
+                                      # next to the concurrency it was taken at, and a block without
+                                      # one is not comparable with any other. Absent -> the run
+                                      # predates the stamp; see merlin.perf.observations.
+                                      # concurrency_of, which marks that rather than assuming it.
+    submission: dict | None = None    # WHICH SUBMISSION these numbers are about, stated rather than
+                                      # inferred from where the file sits. Cycles are a property of
+                                      # the submission, not of the capsule: the SAME capsule has
+                                      # measured 1090 / 3078 / 8889 across three submissions of one
+                                      # task, an 8.2x spread on identical inputs. A path heuristic
+                                      # that mis-keys them pools three different programs into one
+                                      # "latency", so the field is explicit and the heuristic becomes
+                                      # the fallback it should always have been.
+    timing_capability: dict | None = None
+                                      # WHAT THE INSTRUMENT COULD AND COULD NOT SEE, beside the
+                                      # observations it produced: which units went unread, whether
+                                      # its buckets partition the timeline, its alias accounting, and
+                                      # everything it refused. An unread signal is UNMEASURED, never
+                                      # zero, and this is where that distinction is recorded.
+
+    engine: str | None = None         # WHICH SIMULATOR ANSWERED, as a first-class field.
+                                      # It was recorded nowhere: the only trace of it was the `evidence`
+                                      # FILENAME (`<engine>_console.log`), so telling a GSIM cert from a
+                                      # Verilator one meant string-parsing a path, and every consumer
+                                      # that did not (the verdict, the perf ledger, cert_cost) simply
+                                      # could not see which engine produced the seconds it was fitting.
+                                      # A cert tier is a fidelity, not a simulator -- which is exactly
+                                      # why the simulator has to be written down.
+    engine_selection: dict | None = None
+                                      # HOW that engine was chosen and what it was chosen OVER, from
+                                      # `rtl_engine_policy.select`: {engine, fidelity, reason,
+                                      # passed_over, considered}. Falling back to the slow engine was
+                                      # SILENT -- the run recorded a cert and not the fact that the fast
+                                      # one was unavailable, so nobody learned there was anything to fix.
+    sim_provenance: dict | None = None
+                                      # WHICH BUILD of that simulator: binary digest, and the build
+                                      # receipt binding it to an RTL revision when one exists. A result
+                                      # that claims a hardware verdict must record which hardware
+                                      # revision it came from, and a prebuilt simulator binary is the
+                                      # one input to that verdict nothing else in the record identifies.
+    console_log: str | None = None    # The sim console FILE (name under the capsule's artifacts dir) and
+    console_bytes: int | None = None  # its size. `evidence` already names it, but only by convention;
+                                      # a perf-tuning pass reading these records should not have to
+                                      # reconstruct the filename to find the log it needs.
+
+    carried: dict | None = None       # THIS TIER WAS NOT EXECUTED IN THIS RUN. Present only on a record
+                                      # whose verdict was CARRIED from an earlier execution of the same
+                                      # program on the same instrument (merlin.targetgen.tier_cache):
+                                      # it names the execution identity and instrument digest the
+                                      # verdict was earned under, when, and by which run. A reused
+                                      # certificate reported as a fresh measurement is not a saving, it
+                                      # is a false claim about what this run did -- so the record says
+                                      # so, and `to_dict` additionally stamps `measured_now: false` on
+                                      # a carried record and `true` on every executed one, so the
+                                      # distinction survives into anything that reads only the JSON.
+    toolchain: str | None = None      # WHICH PROGRAM was graded, as reported by the adapter. A block-
+                                      # scaled MX capsule is graded on the harness's own reference MX
+                                      # kernel rather than the submission, so a pass there measures the
+                                      # fixture. Recording it keeps a score decomposable instead of
+                                      # silently overstating the backend by the size of the MX set.
 
     def to_dict(self) -> dict:
         d = {"status": self.status, "mandatory": self.mandatory,
@@ -74,14 +210,126 @@ class TierResult:
              "cycles": self.cycles, "derived_from_rtl": self.derived_from_rtl,
              "cycle_accurate": self.cycle_accurate, "evidence": self.evidence,
              "timing": self.timing}
+        if self.cache_unavailable:
+            d["cache_unavailable"] = self.cache_unavailable
         if self.not_applicable:
             d["not_applicable"] = True
+        if self.budget_deferred:
+            d["budget_deferred"] = True
+        if self.oracle_ceiling:
+            d["oracle_ceiling"] = dict(self.oracle_ceiling)
+        if self.fidelity:
+            d["fidelity"] = self.fidelity
         # perf fields ride the result ONLY when populated (SIMT) — keeps systolic output byte-identical.
         if self.gflops is not None:
             d["gflops"] = self.gflops
         if self.pct_fp_peak is not None:
             d["pct_fp_peak"] = self.pct_fp_peak
+        if self.counters:
+            d["counters"] = dict(self.counters)
+        if self.utilization:
+            d["utilization"] = dict(self.utilization)
+        if self.timing_observations:
+            d["timing_observations"] = list(self.timing_observations)
+        if self.timing_capability:
+            d["timing_capability"] = dict(self.timing_capability)
+        # Concurrency and submission ride the record ONLY when they were established. An absent
+        # field is "unrecorded", which is the honest state for every run taken before the stamp
+        # existed; a defaulted one would be a claim.
+        if self.concurrency:
+            d["concurrency"] = dict(self.concurrency)
+        if self.submission:
+            d["submission"] = dict(self.submission)
+        # unchanged. This is what separates "the submission passed" from "the harness fixture passed":
+        # a block-scaled MX capsule is graded on the reference MX kernel, not the submitted backend.
+        if self.toolchain:
+            d["toolchain"] = self.toolchain
+        # SIMULATOR TELEMETRY. Omitted when unset, so a record from an adapter that reports none is
+        # byte-identical to before; present, it is what a perf-tuning pass reads to know which engine
+        # produced these cycles and seconds, which build of it, and where its console went.
+        if self.engine:
+            d["engine"] = self.engine
+        if self.engine_selection:
+            d["engine_selection"] = dict(self.engine_selection)
+        if self.sim_provenance:
+            d["sim_provenance"] = dict(self.sim_provenance)
+        if self.console_log:
+            d["console_log"] = self.console_log
+        if self.console_bytes is not None:
+            d["console_bytes"] = self.console_bytes
+        # WAS THIS MEASURED NOW? Stamped on EVERY record, not only on a carried one: a reader that has
+        # to infer "measured" from the ABSENCE of a key cannot tell a fresh record from one written by
+        # a version that did not know about carrying. Both states are asserted.
+        d["measured_now"] = self.carried is None
+        if self.carried:
+            d["carried"] = dict(self.carried)
         return d
+
+
+def concurrency_stamp(workers: int | None = None) -> dict:
+    """What else the host was doing at the moment of measurement.
+
+    Taken at measurement time, not at suite start: load average moves, and a stamp that describes the
+    machine an hour ago describes nothing. ``workers`` is the fan-out this suite was told to use;
+    ``None`` means the caller did not state one (a direct :func:`run_capsule` call), and it stays
+    ``None`` rather than being guessed at 1 -- other processes share this host.
+
+    Why this exists at all: cycle counts are concurrency-invariant and wall times are not, by a
+    measured factor of 6.3x. Every wall number in a ``timing`` block is uninterpretable without it,
+    and 22,845 blocks already on disk have to be read as "concurrency unrecorded" because it did not
+    exist when they were written. They are NOT retro-labelled: the concurrency they ran at is gone.
+    """
+    try:
+        load = round(os.getloadavg()[0], 2)
+    except (OSError, AttributeError):                          # no load average on this platform
+        load = None
+    return {"workers": None if workers is None else int(workers),
+            "nproc": os.cpu_count(),
+            "load_avg": load,
+            "serial": None if workers is None else bool(int(workers) <= 1),
+            "sampled": "at the adapter's return, so the load average covers the measurement itself"}
+
+
+def _graded_program(res: Any, package_dir: "str | Path") -> "str | None":
+    """WHICH PROGRAM produced this tier's cycle count, or ``None`` when it cannot be established.
+
+    Only an adapter that BUILT AND RAN AN ELF from the package under grade may claim the submission,
+    and ``res["elf"]`` is that evidence. A tier graded on a harness fixture -- a block-scaled capsule
+    runs the harness's own reference kernel, not the submission -- returns ``None`` and stays
+    UNATTRIBUTED. Defaulting the other way is what let a fixture's pass travel as a submission's, in
+    the recorded run that scored 40/40 with nine of the forty measuring the fixture.
+
+    The path is RESOLVED to match :func:`submission_identity`, which records the resolved package on
+    every tier record. Comparing an unresolved string against a resolved one makes
+    ``comparand.attribute`` return OTHER_PROGRAM -- a FALSE claim about a different program, strictly
+    worse than the UNATTRIBUTED it replaces.
+    """
+    if not isinstance(res, dict) or not res.get("elf"):
+        return None
+    pkg = Path(package_dir)
+    return str(pkg.resolve()) if pkg.exists() else str(pkg)
+
+
+def submission_identity(package_dir: "str | Path", *, run_id: str | None = None) -> dict:
+    """WHICH SUBMISSION a measurement belongs to, stated explicitly.
+
+    The harvest layer has had to infer this from where a file sits (the parent of the nearest
+    enclosing ``runs`` directory), and a path heuristic mis-keys as soon as a layout changes -- which
+    pools incomparable programs into one series. The package directory is the submission and is known
+    here for certain, so it is recorded; the campaign labels (run id, arm, round) are supplied by
+    whichever harness is driving, through the environment, and are ``None`` when nothing supplied
+    them rather than being reconstructed from a guess.
+    """
+    pkg = Path(package_dir)
+    env = os.environ
+    ident = {
+        "package": str(pkg.resolve()) if pkg.exists() else str(pkg),
+        "run_id": run_id or env.get("MERLIN_SUBMISSION_RUN_ID") or None,
+        "arm": env.get("MERLIN_SUBMISSION_ARM") or None,
+        "round": env.get("MERLIN_SUBMISSION_ROUND") or None,
+    }
+    ident["stated"] = sorted(k for k, v in ident.items() if k != "package" and v)
+    return ident
 
 
 # An oracle adapter: (cb, llvm_text, workdir, timeout) -> {outputs, cycles, oracle, console}
@@ -90,14 +338,442 @@ class OracleUnavailable(Exception):
     pass
 
 
-def _spike_verilator_adapter(sim: str) -> Callable:
+# The failure plane for "the endpoint RAN the submitted artifact and it never reached the ISA's
+# halt/terminate instruction inside the budget". It gets a plane of its own because the alternative —
+# folding it into ``oracle_unavailable`` — tells an agent its grader is missing when in fact its program
+# hangs, and those imply opposite actions ("wait for infra" vs "emit the halt"). Measured cost of the
+# collapse: ten rounds of a conformant agent shown "mandatory tier L# did not run (unavailable)" while
+# every tier record already carried "program did not halt within N instructions". Target-agnostic — any
+# endpoint that executes a program can produce it.
+DID_NOT_HALT_PLANE = "program_did_not_halt"
+
+
+def _clip(msg: str, budget: int) -> str:
+    """Clip a long exception to ``budget`` chars KEEPING BOTH ENDS -- the head names the failure, the tail
+    usually carries the operand/shape specifics.
+
+    A bare ``msg[-budget:]`` throws the head away, and the head is where the diagnosis lives. Measured:
+    the muon operand-binding error is one long sentence whose useful half is first ("could not derive
+    harness operands: <which of three cases>") and whose second half is fixed advisory prose. Tail-only
+    clipping rendered five radiance capsules as `cyclotron crash: es (outputs: ['Y0'])` -- the real cause
+    truncated to the last two letters of "shapes" -- and they read as unexplained infra failures across
+    many runs while the message that would have named them was being discarded every time.
+    """
+    msg = str(msg)
+    if len(msg) <= budget:
+        return msg
+    head = budget * 2 // 3                                   # bias to the head: that is the diagnosis
+    tail = budget - head - 5
+    return f"{msg[:head]} […] {msg[-tail:]}" if tail > 0 else msg[:budget]
+
+
+def _readback_refusal(exc: BaseException) -> BaseException | None:
+    """The ``ReadbackIntegrityError`` in ``exc``'s cause/context chain, if any.
+
+    The refusal is raised deep in a target's oracle and re-wrapped on the way out (the muon oracle
+    raises ``MuonError(str(exc)) from exc``; ``oot_runner`` wraps again). Only the TYPE survives that
+    intact, so the chain is walked structurally -- matching the message would break the first time
+    the wording changed, which is exactly the class of defect this whole path exists to stop.
+    """
+    try:
+        from merlin.common.readback_integrity import ReadbackIntegrityError
+    except ImportError:  # pragma: no cover - module always present in this tree
+        return None
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if isinstance(cur, ReadbackIntegrityError):
+            return cur
+        cur = cur.__cause__ or cur.__context__
+    return None
+
+
+def _is_readback_refusal(exc: BaseException) -> bool:
+    return _readback_refusal(exc) is not None
+
+
+def _readback_refusal_detail(exc: BaseException) -> str:
+    found = _readback_refusal(exc)
+    return str(found) if found is not None else str(exc)
+
+
+def _range_check_bounds(msg: str):
+    """(index, size) from a C++ ``_M_range_check`` abort, or (None, None).
+
+    libstdc++ spells it ``__n (which is 1024) >= this->size() (which is 1024)``. Parsed STRUCTURALLY --
+    no regex in library code (build_tools/scripts/check_no_regex.py) -- by splitting on the literal
+    ``(which is `` marker, which is what libstdc++ emits. Returns None rather than guessing when the
+    shape does not match, so a changed message degrades to the generic crash text instead of inventing
+    a bound.
+    """
+    if "_M_range_check" not in msg and "out_of_range" not in msg:
+        return None, None
+    marker = "(which is "
+    parts = msg.split(marker)
+    if len(parts) < 3:
+        return None, None
+    vals = []
+    for chunk in parts[1:3]:
+        head = chunk.partition(")")[0].strip()
+        if not head.isdigit():
+            return None, None
+        vals.append(int(head))
+    return vals[0], vals[1]
+
+
+def _out_of_range_reason(sim: str, idx, size) -> str:
+    """Actionable text for an on-chip out-of-bounds index, naming the index and the limit."""
+    return (f"the emitted kernel indexed an on-chip resource OUT OF BOUNDS on {sim}: index {idx} with "
+            f"size {size} (valid 0..{size - 1}). This is a kernel address/tiling bug, not a simulator "
+            f"fault -- the simulator aborted because the access is illegal. Check every scratchpad and "
+            f"accumulator address against the capacities your package compiles against (the ISA header's "
+            f"ACC_ROWS and BANK_NUM x BANK_ROWS), including the last tile of a partial or odd-tail shape, "
+            f"which is where a one-past-the-end row typically comes from.")
+
+
+def _did_not_halt_reason(msg: str) -> str:
+    """The tier ``reason`` for a program that ran to the cap without halting."""
+    return f"did not halt (ran to the cycle cap): {msg[-240:]}"
+
+
+def _did_not_halt_failure(msg: str) -> "CertFailure":
+    """The agent-facing failure for a program that ran to the cap without halting — one construction
+    shared by every endpoint, so the verdict reads identically however the endpoint reported it."""
+    return CertFailure(DID_NOT_HALT_PLANE, _cat("TIMEOUT"),
+                       f"{msg}; the emitted kernel never reached the ISA's halt/terminate "
+                       "instruction — emit it as the final instruction on every control path (see the "
+                       "program-termination contract). Numerics are never checked until the program "
+                       "halts.")
+
+
+def _readout_epilogue_capabilities(target: str):
+    """Return a backend's readout declaration, or ``None`` when it has none.
+
+    Some out-of-tree targets are executed exclusively through a bespoke oracle adapter and therefore
+    have no same-named runtime backend.  Absence is the documented ``unavailable`` state for this
+    advisory gate; allowing :func:`get_backend`'s ``KeyError`` to escape instead turns every capsule for
+    such a target into a runner crash before its oracle can start.
+    """
+    try:
+        backend = _backends_mod.get_backend(target)
+    except KeyError:
+        return None
+    reader = getattr(backend, "readout_epilogue_capability", None)
+    return reader() if callable(reader) else None
+
+
+def _spike_verilator_adapter(sim: str, target: str, selection: dict | None = None) -> Callable:
+    """Adapter for one declared chipyard sim engine. ``selection`` is the engine-policy record that
+    CHOSE this engine — carried into the result so the tier can record not just which simulator answered
+    but what it was chosen over and why. The choice was previously made, printed once to a log nobody
+    keeps, and then discarded; a cert that ran on the slow engine because the fast one was missing looked
+    exactly like one that ran on the slow engine because it was the only one."""
     def run(cb, llvm_text, workdir, timeout):
-        from ..runtime.backends import gemmini as gem
-        if not gem.available(sim):
+        from ..runtime.backends import base as _backends
+        backend = _backends.get_backend(target)
+        if not backend.available(sim):
             raise OracleUnavailable(f"{sim} not available")
-        return oot_compile.run_on_oracle(cb, llvm_text, simulator=sim,
-                                         workdir=workdir, timeout=timeout)
+        res = oot_compile.run_on_oracle(cb, llvm_text, simulator=sim, target=target,
+                                        workdir=workdir, timeout=timeout)
+        if selection and isinstance(res.get("oracle"), dict):
+            res["oracle"]["selection"] = dict(selection)
+        return res
     return run
+
+
+def _cb_with_leaf_values(cb: dict) -> dict:
+    """A copy of ``cb`` whose leaf tensors carry their operand VALUES inline.
+
+    The command-buffer schema declares a leaf by shape/dtype/role only — values are materialized from
+    the declaration, which is how the reference, the simulator and the device harness all end up
+    computing on the same stimulus. The mlc arc backend instead indexes ``tensors[name]["data"]``, so
+    handing it the raw cb raised ``KeyError: 'data'`` and every capsule failed its RTL tier as a
+    ``tool_crash`` (27/28 in both arms of the first saturn_opu agent runs, an infra verdict wearing an
+    agent verdict's clothes — the preflight said "mlc arc oracle available", which was true of the
+    module and false of the grade).
+
+    Materializing here through the SAME ``materialize_inputs`` the numeric floor uses is the load-bearing
+    part: values invented separately for the RTL tier would make it disagree with L0/L1 on stimulus and
+    report a mismatch that is really a stimulus difference.
+    """
+    import copy
+
+    from merlin.runtime.commandbuffer import materialize_inputs
+
+    out = copy.deepcopy(cb)
+    leaves = materialize_inputs(cb)
+    tensors = out.setdefault("tensors", {})
+    for name, spec in tensors.items():
+        if name in leaves and "data" not in spec:
+            spec["data"] = list(leaves[name].data)
+    # A resident handle (RES_PACK dst) is a LAYOUT alias of its source, not a new value — which is
+    # exactly how the reference interpreter reads it. The arc backend resolves a matmul's operand names
+    # straight against the tensor table, so without the alias entry it raised KeyError on the handle.
+    # Only RES_PACK is aliased; any other producer stays absent so the backend fails loudly rather than
+    # grading against a value this translation invented.
+    for cmd in out.get("commands") or []:
+        if cmd.get("opcode") != "RES_PACK":
+            continue
+        ops = cmd.get("operands") or {}
+        src, dst = ops.get("src"), ops.get("dst")
+        if src in tensors and dst and dst not in tensors:
+            tensors[dst] = {**tensors[src], "resident_of": src}
+    return out
+
+
+
+# ---------------------------------------------------------------------------------------------------
+# CARRYING A CERTIFICATE INSTEAD OF RE-BUYING IT
+# ---------------------------------------------------------------------------------------------------
+# The cert tier is 94.7% of a grade's oracle wall (measured: 44.4 min over 76 capsules against 2.53 min
+# of screen over 82, on merlincirct_g4p1_20260905 round 5), and a converged submission re-pays it every
+# post-turn grade for capsules whose emitted program has not changed a byte since the last one certified
+# it. The policy, the key and every fail-closed rule live in `merlin.targetgen.tier_cache`; what lives
+# here is only the two moments the ladder touches it -- ask before running a tier, tell after running one.
+#
+# Two properties are load-bearing and are enforced HERE rather than trusted:
+#
+#  * THE EXECUTABLE MUST BE THIS RUN'S. The identity is the ELF's bytes, and the ELF is built into the
+#    run's `generated/` directory by the first oracle adapter that needs one. A run directory REUSED from
+#    an earlier grade already holds that earlier grade's ELF -- so consulting the cache before anything
+#    in this run has built one would key the lookup on a stale artifact and could carry a verdict for a
+#    program the current compiler no longer emits. That is the one direction a cache must never fail in,
+#    so a stale executable is REMOVED before the ladder starts (`_clear_stale_executable`) and no tier is
+#    consulted until one has actually executed in this run.
+#  * THE FIRST TIER THE LADDER EXECUTES IS ALWAYS PAID FOR. It follows from the above with no rule of its
+#    own: that tier's adapter is what builds the executable, so nothing can be carried until it has run.
+#    `tier_policy.tier_order` decides which tier that is -- on a calibrated target it is the screen, which
+#    is where the saving wants it (the cheap tier re-runs, the expensive one is carried). Tier semantics
+#    are unchanged either way: a carry copies a tier's verdict onto the SAME tier, so a screen still may
+#    eliminate and still may never certify.
+
+
+def _clear_stale_executable(generated) -> None:
+    """Remove an executable left in this run directory by an EARLIER grade.
+
+    Run directories are reused (a shape-keyed model dir, a re-graded runs root). Every consumer that
+    content-addresses "the program this capsule ran" -- the tier cache here, `tier_promote`'s execution
+    digest, `oot_runner`'s artifact identity -- reads that file, and a leftover from a previous grade
+    answers all of them with the wrong program. Removing it costs nothing: the adapter that needs one
+    rebuilds it, deterministically, from this run's own lowering.
+    """
+    from . import build_cache as _BC
+    from . import elf_lanes as _EL
+    try:
+        (Path(generated) / _EL.PACKAGE_ELF_NAME).unlink()
+    except OSError:                      # absent (the normal case) or not removable: nothing to reuse
+        pass
+    # The build cache's key marker asserts "this directory holds the build for that key". A directory
+    # whose executable has just been deleted asserts nothing, so the marker goes with it -- otherwise a
+    # reused run directory could answer THIS grade's first compile out of a PREVIOUS grade's leftovers
+    # without the store ever being consulted. Rebuilding from the store is still free when the bytes
+    # match; what must not survive is the claim.
+    _BC.forget(generated)
+
+
+#: Suffix by which an oracle DECLARES the bytes it executed, for a target that runs no linked ELF.
+#: Not every accelerator is reached through one: a self-hosted-ISA target assembles a word stream in
+#: its model's own venv and executes that, so there is no file for an ELF scan to find and its verdict
+#: could never be content-addressed -- 84% of one such target's simulation is spent re-running programs
+#: byte-identical to a previous grade's (12,376 s of 14,821 s on disk). An adapter that writes what it
+#: ran here becomes carryable; one that does not is exactly as it was.
+PROGRAM_ARTIFACT_SUFFIX = ".program"
+
+
+def run_executables(generated) -> tuple:
+    """Everything this run EXECUTED in ``generated``, as paths, sorted by name.
+
+    DERIVED FROM THE BYTES, NOT FROM A NAME. The operator build path emits one ELF under a known name,
+    and the certificate identity used to assume it -- which silently excluded every target whose grade
+    links a differently-named executable, or more than one. Measured: one target's grade leaves
+    ``kernel.radiance.elf``, ``kernel.radiance.layout.elf`` and ``kernel.soc.elf``, so the assumed name
+    never existed and the cache could not fire for it at all, indistinguishably from having nothing to
+    carry.
+
+    Two kinds count, and the second is why this is not called ``elf_files``. An ELF identifies itself
+    -- the four magic bytes are the format's own, not any target's fact, so asking each file what it is
+    needs no per-target table. A target that executes no ELF instead DECLARES what it ran, by writing
+    those bytes under :data:`PROGRAM_ARTIFACT_SUFFIX`; nothing is inferred on its behalf, because
+    guessing which of a directory's files was the program is the one mistake a certificate identity
+    may not make.
+
+    The whole directory is walked rather than short-circuiting on the known name: a target may produce
+    both, and listing fifteen files costs nothing next to being wrong about what ran.
+    """
+    from . import elf_lanes as _EL
+    root = Path(generated)
+    found = []
+    try:
+        for path in sorted(root.iterdir()):
+            try:
+                if not path.is_file():
+                    continue
+                if path.name == _EL.PACKAGE_ELF_NAME or path.name.endswith(PROGRAM_ARTIFACT_SUFFIX):
+                    found.append(path)
+                elif path.open("rb").read(4) == b"\x7fELF":
+                    found.append(path)
+            except OSError:
+                continue
+    except OSError:
+        return ()
+    return tuple(found)
+
+
+def _tier_certificate_key(capsule_name: str, tier: str, *, target, generated, shas, from_rtl: bool):
+    """``(execution identity, instrument digest, refusal reason)`` for one (capsule, tier).
+
+    The identity is ``None`` whenever either half cannot be established -- no executable yet, a
+    hardware pin nobody could resolve, a grading-path file missing, an RTL tier whose engine is
+    undecidable. Every one of those makes the tier re-run, and every one now carries a REASON: they
+    were all spelled ``None``, which a caller can only render as "nothing was carried", and that is
+    how a cache which had never once fired for two of three targets went unnoticed.
+    """
+    from . import tier_cache as _TC
+    executables = run_executables(generated)
+    identity = _TC.execution_identity(target=target, executables=executables, toolchain_shas=shas)
+    if identity is None:
+        return None, None, _TC.execution_identity_reason(
+            target=target, executables=executables, toolchain_shas=shas)
+    instrument = _TC.instrument_digest(target, tier, rtl_tier=from_rtl)
+    if instrument is None:
+        return None, None, (f"the instrument for tier {tier} could not be established (the grading "
+                            f"path, or the elaborated-RTL engine that would answer it today)")
+    return identity, instrument, ""
+
+
+def stamp_cache_refusals(tiers: dict, refusals: dict) -> None:
+    """Move a ladder's cache refusals onto the tier records they belong to.
+
+    DEFERRED, not written at refusal time: a tier whose certificate could not be looked up goes on to
+    EXECUTE, and that execution replaces its record -- so stamping when the refusal happens is undone
+    by the very verdict that proves the tier ran.
+
+    Module-level rather than a closure over the ladder because a closure cannot be tested, and two
+    mutations that disabled this entirely went unnoticed for precisely that reason.
+    """
+    for tier, why in (refusals or {}).items():
+        record = (tiers or {}).get(tier)
+        if record is None or not why:
+            continue
+        if not getattr(record, "cache_unavailable", ""):
+            record.cache_unavailable = str(why)
+
+
+def carried_tier_result(capsule_name: str, tier: str, mandatory: bool, *, target, generated, shas,
+                        from_rtl: bool):
+    """A verdict this run may CARRY for ``tier``, as a TierResult, or ``None`` to execute the tier.
+
+    The returned record is the stored one with the act of measurement stripped out: no wall-clock
+    ``timing``, no ``concurrency`` (nothing was measured now, and copying a duration forward would be a
+    fabricated measurement), and no ``evidence``/console pointers (those name files in the run that
+    earned it, not in this one -- they move into the ``carried`` block, where a reader can see where
+    they live instead of dereferencing a path that is not here). ``cycles`` are kept: a cycle count is a
+    property of the program and the device, which is exactly what the key pins, and it is
+    concurrency-invariant where a wall time is not.
+
+    ``mandatory`` is TODAY's, never the stored one. Whether a tier is required is a property of the
+    capsule being graded now.
+
+    Returns ``(result_or_None, refusal_reason)``. An empty reason means the question was ASKED and
+    missed, which is ordinary; a non-empty one means it could not be asked at all, which is the state
+    that used to be invisible.
+    """
+    from . import tier_cache as _TC
+    identity, instrument, why = _tier_certificate_key(capsule_name, tier, target=target,
+                                                      generated=generated, shas=shas, from_rtl=from_rtl)
+    if identity is None:
+        return None, why
+    hit = _TC.lookup(capsule_name, tier, identity, instrument)
+    if hit is None:
+        return None, ""            # asked and missed: the ordinary case, and not a defect
+    stored = dict(hit.get("tier_result") or {})
+    carried = _TC.carried_block(hit)
+    carried["earned_evidence"] = {k: stored.pop(k) for k in _TC.ARTIFACTS_OF_THE_EARNING_RUN
+                                  if k in stored} or None
+    names = {f.name for f in dataclasses.fields(TierResult)}
+    # `submission` is deliberately NOT carried: `_finalize_capsule_result` stamps THIS run's submission
+    # on any record that lacks one, and a cycle count earned by a byte-identical executable is a true
+    # statement about both submissions. Which package physically earned it stays in the carried block.
+    fixed = {"tier", "status", "mandatory", "carried", "timing", "concurrency", "submission"}
+    kwargs = {k: v for k, v in stored.items() if k in names and k not in fixed}
+    kwargs["derived_from_rtl"] = bool(stored.get("derived_from_rtl", from_rtl))
+    stored_reason = kwargs.pop("reason", None)
+    return TierResult(tier, str(hit.get("status")), mandatory,
+                      reason=("verdict carried: this tier was NOT executed in this run; the same "
+                              "executable was already certified at this tier on this instrument"
+                              + (f" ({stored_reason})" if stored_reason else "")),
+                      carried=carried, **kwargs), ""
+
+
+def record_tier_certificate(capsule_name: str, tier: str, result: "TierResult", *, target, generated,
+                            shas, from_rtl: bool, run_id: str | None = None) -> None:
+    """Store an EXECUTED tier verdict so a later grade need not re-buy it. Never raises.
+
+    Recording is best-effort by construction: a cache that can fail a grade is worse than no cache. It
+    is also silent about a miss on purpose -- there is nothing to say when the identity cannot be
+    established, because the only consequence is that the tier runs again.
+    """
+    try:
+        from . import tier_cache as _TC
+        identity, instrument, _why = _tier_certificate_key(capsule_name, tier, target=target,
+                                                           generated=generated, shas=shas,
+                                                           from_rtl=from_rtl)
+        if identity is None:
+            return
+        _TC.record(capsule_name, tier, identity, instrument, status=result.status,
+                   tier_result=result.to_dict(), run_id=run_id)
+    except Exception:  # noqa: BLE001 -- a cache write may never gate a grade
+        return
+
+
+def suppressed_tier_result(tier: str, mandatory: bool, failed_tier: str, *, from_rtl: bool = False):
+    """The TierResult for a tier the ladder did NOT run because a mandatory tier already failed.
+
+    ``skipped``, never ``fail``. ``not_run_is_not_pass`` treats a recorded ``fail`` as evidence the capsule
+    was certified at that tier and found wrong; a tier that never executed has no such evidence, and
+    fabricating one would put a cycle-accurate verdict on a capsule no RTL ever saw.
+    """
+    return TierResult(tier, "skipped", mandatory,
+                      reason=(f"not run: mandatory tier {failed_tier} already failed, so this deeper tier "
+                              f"could not change the verdict and was not worth its cost"),
+                      derived_from_rtl=from_rtl)
+
+def _epilogue_stages_ignored(prepared: dict, res: dict, target: str, mlc_bridge) -> set[str]:
+    """Which declared commit-epilogue stages this arc model demonstrably IGNORES (empty set if none).
+
+    Deduced, not declared: run the same buffer again with the epilogue stripped and compare. Identical
+    outputs while a stage was declared means the model answered with the pre-epilogue accumulator. Found
+    on the first agent runs of a command-buffer OPU target, where the model applies the matmul but not the
+    commit stage, so seven epilogue capsules scored numerically "wrong" against a reference that was
+    right — a model gap presented as an agent failure. The caller turns this into an UNAVAILABLE tier
+    (unknown, not failed); a tier that quietly failed instead would teach the agent to break its epilogue.
+
+    Probing per buffer rather than per target keeps it geometry-free: the shapes are the ones already
+    being graded, and only a buffer that actually declares a stage pays the second run.
+    """
+    import copy
+
+    stages: set[str] = set()
+    for cmd in prepared.get("commands") or []:
+        if cmd.get("opcode") != "COMMIT":
+            continue
+        attrs = cmd.get("attributes") or {}
+        stages.update(str(x) for x in (attrs.get("epilogue") or []))
+    if not stages:
+        return set()
+
+    stripped = copy.deepcopy(prepared)
+    for cmd in stripped.get("commands") or []:
+        if cmd.get("opcode") == "COMMIT":
+            (cmd.setdefault("attributes", {}))["epilogue"] = []
+    try:
+        plain = mlc_bridge.arc_run_command_buffer(stripped, target)
+    except Exception:  # noqa: BLE001 — the probe must never turn a working tier into a failure
+        return set()
+    if (res.get("outputs") or {}) == (plain.get("outputs") or {}):
+        return stages
+    return set()
 
 
 def mlc_arc_adapter(target: str) -> Callable:
@@ -109,9 +785,23 @@ def mlc_arc_adapter(target: str) -> Callable:
         from .rtl import mlc_bridge
         if not mlc_bridge.arc_available(target):
             raise OracleUnavailable(f"mlc arc model unavailable for target {target!r}")
-        res = mlc_bridge.arc_run_command_buffer(cb)
+        prepared = _cb_with_leaf_values(cb)
+        res = mlc_bridge.arc_run_command_buffer(prepared, target)
+        ignored = _epilogue_stages_ignored(prepared, res, target, mlc_bridge)
+        if ignored:
+            raise OracleUnavailable(
+                f"the arc model for {target!r} does not model the commit epilogue "
+                f"{sorted(ignored)}: it returned identical outputs with the epilogue declared and "
+                f"stripped, so its answer is the pre-epilogue accumulator and cannot grade this "
+                f"capsule (the hardware does apply it — this is a gap in the model, not in the RTL)")
+        _metrics = dict(res.get("metrics") or {})
+        # The model reports movement and residency counts beside the cycle total; keeping only
+        # `cycles` threw away the direct feedback for the levers a scheduler actually has on this
+        # kind of target (how many bytes moved, how often an operand stayed resident).
+        _counters = {k: v for k, v in _metrics.items() if k != "cycles" and v is not None}
         return {"outputs": res.get("outputs"),
-                "cycles": (res.get("metrics") or {}).get("cycles"),
+                "cycles": _metrics.get("cycles"),
+                "counters": _counters or None,
                 "oracle": res.get("oracle"), "console": ""}
     return run
 
@@ -129,47 +819,584 @@ def _endpoint_of(target: str) -> tuple[str | None, str | None]:
         return None, None
 
 
-def oracle_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict[str, Callable]:
+def _bespoke_sim_via(target: str) -> str:
+    """Recover a target's DECLARED bespoke-sim engine from its contract's ``runner.sim_via`` block — the
+    sim engine is a declared target fact, NOT inferred from a hardcoded ``{spike,verilator} -> chipyard``
+    map. A target that ships the chipyard spike/verilator tiers declares ``sim_via: chipyard``; an arc-only
+    target declares none and reads back as ``""``. Lets :func:`oracle_adapters` self-route when a caller
+    omits ``sim_via``. The harness passes the descriptor's authoritative ``toolchain.sim_via`` explicitly;
+    when it doesn't (a standalone preflight/validator), we fall back to the contract's ``runner.sim_via``
+    and then to the descriptor's ``toolchain.sim_via`` — so a SIMT target's ``cyclotron`` engine resolves
+    even without a contract, instead of mis-defaulting to the arc path (which would false-green the
+    preflight)."""
+    try:
+        from .target_experiment import load_capability_manifest
+        via = str(((load_capability_manifest(target).contract.get("runner") or {})).get("sim_via") or "")
+        if via:
+            return via
+    except Exception:  # noqa: BLE001 — no contract; fall through to the descriptor
+        pass
+    try:
+        from .target_experiment import load_target_experiment
+        from merlin.common.paths import merlin_dir
+        p = merlin_dir() / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml"
+        if p.is_file():
+            return str(getattr(load_target_experiment(p), "sim_via", "") or "")
+    except Exception:  # noqa: BLE001 — no descriptor -> no bespoke sim (arc-default)
+        pass
+    return ""
+
+
+def chipyard_l3_selection(target: str) -> dict:
+    """Which elaborated-RTL engine certifies ``target`` on the chipyard sim, and what it was chosen over.
+
+    Routed through :mod:`rtl_engine_policy` rather than naming a binary, for the reason that module was
+    written: a tier index is a FIDELITY, not a simulator, and binding ``L3 = verilator`` made the choice
+    invisible and unchangeable. The program-oracle path already selects this way; the chipyard path did
+    not, so on a chipyard target the policy never ran at all and a faster engine could not be adopted
+    without editing this function.
+
+    The probe is the backend's own availability check. A backend that does not know an engine RAISES
+    (measured: ``available('gsim')`` -> ``GemminiError: unknown simulator 'gsim'``), which the policy
+    records as a reason rather than treating as a crash -- so an engine this target cannot run is
+    reported as passed-over WITH why, and the day it can run it is selected with no change here.
+    """
+    from ..runtime.backends import base as _backends
+    from . import rtl_engine_policy as _pol
+
+    backend = _backends.get_backend(target)
+
+    def _probe(engine: str):
+        def run() -> tuple[bool, str]:
+            # A backend MAY answer with its own sentence via ``<engine>_status() -> (ok, reason)``. That
+            # is the whole difference between a readable selection record and an unreadable one: "gsim
+            # reports unavailable" does not distinguish a binary nobody has built yet from one that was
+            # REFUSED because its build receipt describes different bytes, and only the backend knows
+            # which. The attribute name is DERIVED from the engine, so a backend opts in by defining it
+            # and no shared code learns an engine or a target name.
+            detail = getattr(backend, f"{engine}_status", None)
+            if callable(detail):
+                ok, why = detail()
+                return bool(ok), str(why or "")
+            ok = bool(backend.available(engine))       # may raise; the policy records that as a reason
+            return (ok, f"{engine} reports available for {target!r}" if ok
+                    else f"{engine} reports unavailable for {target!r}")
+        return run
+
+    return _pol.select(target, {e: _probe(e) for e in _pol.ENGINE_PRIORITY})
+
+
+def describe_l3_engine(target: str, sim_via: str | None = None) -> dict:
+    """Which elaborated-RTL engine would certify ``target`` right now, what it was chosen OVER, and why
+    each passed-over engine could not run — routed exactly the way :func:`oracle_adapters` routes.
+
+    THE POINT IS THE REPORT, not the choice. The policy has always chosen correctly; what was missing is
+    that the choice reached nobody. A run that certified on Verilator because the fast engine was absent
+    produced the same artifact as one that certified on Verilator because it is the only engine there is,
+    and no readiness output, verdict or record distinguished them — so a whole class of "why is this
+    taking 45 minutes a capsule" had no answer anywhere. This returns the answer in one shape whatever
+    the target's routing, including the failure shape: ``{"available": False, "reason": ...}``.
+    """
+    _ensure_sim_oracles_discovered()
+    if sim_via is None:
+        sim_via = _bespoke_sim_via(target)
+    try:
+        if sim_via == "chipyard":
+            sel = chipyard_l3_selection(target)
+        else:
+            so = _SIM_ORACLES.get(sim_via or "")
+            if so is not None and so.l3_selection is not None:
+                sel = so.l3_selection(target)          # the bespoke sim owns its own engine choice
+            elif so is not None and so.exclusive:
+                return {"available": False, "target": target, "sim_via": sim_via or "",
+                        "reason": (f"the {sim_via!r} sim oracle owns this target's cert tier and reports "
+                                   f"no engine selection")}
+            else:
+                from .program_oracle import select_rtl_engine
+                sel = select_rtl_engine(target)
+    except Exception as exc:  # noqa: BLE001 — "no engine" is an ANSWER here, not a crash
+        return {"available": False, "target": target, "sim_via": sim_via or "",
+                "reason": f"{type(exc).__name__}: {exc}"}
+    from . import rtl_engine_policy as _pol
+    out = dict(sel)
+    out.update({"available": True, "target": target, "sim_via": sim_via or "",
+                "summary": _pol.describe(sel)})
+    return out
+
+
+def _sim_engine_adapters(sim_via: str, target: str) -> dict[str, Callable]:
+    """The concrete oracle adapters a DECLARED sim ENGINE provides (additive registry, mirroring
+    ``sandbox.toolchain.SIM_TOOLCHAINS``): ``chipyard`` elaborates spike (L2) + an elaborated-RTL engine
+    (L3) chosen by :func:`chipyard_l3_selection`. An unknown/absent engine contributes none (the arc RTL
+    tier still carries the grade). A new bespoke sim registers one branch here — the engine name is
+    DERIVED from the target's contract, never assumed."""
+    if sim_via == "chipyard":
+        adapters: dict[str, Callable] = {"L2": _spike_verilator_adapter("spike", target)}
+        try:
+            sel = chipyard_l3_selection(target)
+        except Exception as exc:  # noqa: BLE001 — no elaborated-RTL engine: NO L3, never a silent demotion
+            # Reported, not substituted. A tier that cannot run must come back absent; resolving it to
+            # the model tier below is how a functional result gets read as an RTL certification.
+            print(f"[oracle] {target}: no elaborated-RTL engine for L3 — {exc}", flush=True)
+            return adapters
+        # The selection is RECORDED, not carried in this dict: every key here is a TIER name and every
+        # value a callable (`min(full)` picks the fastest tier, and tier filters compare keys against a
+        # capsule's declared tiers), so a metadata entry would be read as a tier.
+        from . import rtl_engine_policy as _pol
+        print(f"[oracle] {target} L3 engine: {_pol.describe(sel)}", flush=True)
+        adapters["L3"] = _spike_verilator_adapter(sel["engine"], target, selection=sel)
+        return adapters
+    return {}
+
+
+@dataclass(frozen=True)
+class _SimOracle:
+    """A DECLARED bespoke simulator's oracle contribution, keyed by the sim-ENGINE name a target's
+    contract/descriptor declares (``sim_via``) — the same additive-registry pattern as
+    :func:`_sim_engine_adapters` and ``sandbox.toolchain.SIM_TOOLCHAINS``, so the shared dispatch below
+    never branches on a literal engine name.
+
+    ``exclusive`` engines grade the emitted kernel ELF DIRECTLY and REPLACE the arc/program-oracle default
+    entirely — a self-hosted SIMT core (cyclotron) must not be graded by the arc command-buffer path,
+    which would grade the wrong artifact. Non-exclusive engines are ADDITIVE: their higher-fidelity tiers
+    layer on top of the arc default (chipyard: spike L2 / verilator L3 over the arc L3). A new bespoke sim
+    registers ONE entry here + ships its adapter module; the dispatch is unchanged."""
+    adapters: Callable[[str], dict]                 # target -> {tier: adapter}
+    available: Callable[[str], tuple[bool, str]]    # target -> (ok, reason) pre-spend probe
+    exclusive: bool                                 # replaces (True) vs augments (False) the arc default
+    has_memmap: bool = False                        # exposes an SoC memory map (DRAM base derivable from the build)
+    is_compile_based: bool = False                  # lowers the kernel via an oracle-side compile toolchain (smoke-testable)
+    l3_selection: Callable[[str], dict] | None = None
+    #: target -> the rtl_engine_policy selection record for this sim's cert tier, when it has a CHOICE
+    #: of elaborated-RTL engine to make. Optional: a sim with exactly one engine has nothing to report.
+    #: It exists so :func:`describe_l3_engine` can ask the PLUGIN which engine it picked instead of
+    #: reaching into a named backend — the same eviction the adapters and the availability probe already
+    #: went through, for the same reason: a shared code path that knows one sim's backend by name is a
+    #: shared code path a second sim cannot be added to without editing it.
+
+
+def _chipyard_available(target: str) -> tuple[bool, str]:
+    """chipyard (gemmini/mx-gemmini): the loop-tier spike binary carries GO; the mlc arc model is the
+    fallback gold tier when spike is absent. Preserves the prior gemmini availability semantics exactly."""
+    from .rtl import mlc_bridge
+    arc_ok = mlc_bridge.arc_available(target)
+    try:
+        from ..runtime.backends import base as _bk
+        _gem = _bk.get_backend(target)  # resolve THIS target's backend (chipyard spike availability)
+        spike_ok = bool(_gem.available("spike"))
+    except Exception:  # noqa: BLE001 — an unimportable backend is honestly unavailable
+        spike_ok = False
+    if spike_ok:
+        return True, f"{target!r}: chipyard spike oracle available (loop tier)"
+    if arc_ok:
+        return True, f"{target!r}: chipyard sim absent but mlc arc oracle available (fallback)"
+    return False, f"{target!r}: neither the chipyard spike sim nor the mlc arc oracle is available"
+
+
+#: DECLARED bespoke-sim oracle registry, keyed by sim ENGINE (``sim_via``) — the seam that keeps oracle
+#: routing target-name-free (a new sim engine registers here; the dispatch below is untouched). The
+#: ``cyclotron`` (self-hosted SIMT) oracle is NOT hardcoded here: it is DISCOVERED from the muon reference
+#: package's ``plugin.sim_oracle`` (merlin/targets/muon/sim_oracle.py), which calls
+#: :func:`register_sim_oracle` at import via :func:`_ensure_sim_oracles_discovered` — the same eviction as
+#: the muon runtime backend. Radiance grades on that discovered cyclotron oracle.
+_SIM_ORACLES: dict[str, _SimOracle] = {
+    "chipyard": _SimOracle(lambda t: _sim_engine_adapters("chipyard", t), _chipyard_available,
+                           exclusive=False, has_memmap=True, is_compile_based=True),
+}
+
+
+def sim_oracle_caps(sim_via: str | None):
+    """The registered :class:`_SimOracle` for a sim engine (its capability flags), or None. The
+    contract-routed way for other layers (e.g. runtime_build) to ask 'does this sim expose a memory
+    map / a compile toolchain?' without branching on the engine NAME. Runs plugin discovery first so a
+    target-contributed engine is visible."""
+    _ensure_sim_oracles_discovered()
+    return _SIM_ORACLES.get(sim_via or "")
+
+
+def register_sim_oracle(sim_via: str, *, adapters: Callable[[str], dict],
+                        available: Callable[[str], tuple[bool, str]], exclusive: bool,
+                        has_memmap: bool = False, is_compile_based: bool = False,
+                        l3_selection: "Callable[[str], dict] | None" = None) -> None:
+    """Register a bespoke-sim oracle under its ``sim_via`` engine name (idempotent) — the public seam a
+    NEW simulator uses to plug into oracle routing without editing :func:`oracle_adapters` /
+    :func:`oracle_available`. ``exclusive=True`` replaces the arc/program default (a self-hosted SIMT
+    core graded on its own kernel ELF); ``exclusive=False`` layers additive tiers on top of the arc
+    default (a chipyard-style sim). See :class:`_SimOracle`."""
+    _SIM_ORACLES[sim_via] = _SimOracle(adapters=adapters, available=available, exclusive=exclusive,
+                                       has_memmap=has_memmap, is_compile_based=is_compile_based,
+                                       l3_selection=l3_selection)
+
+
+_sim_oracle_env_seen: str | None = None
+_sim_oracle_lock = threading.Lock()
+
+
+def _ensure_sim_oracles_discovered() -> None:
+    """Load any bespoke-sim oracle a target contributes via its contract ``plugin.sim_oracle`` — a module
+    that calls :func:`register_sim_oracle` at import — through the SAME OOT/reference plugin discovery the
+    runtime backends use. This is what WIRES the registry: a new target adds its oracle as DATA (a plugin
+    path in its contract), never a core edit to the ``_SIM_ORACLES`` literal. Re-scans only when
+    ``MERLIN_TARGET_PATH`` changes; registration is idempotent, so repeated scans are harmless.
+
+    THREAD-SAFE (double-checked locking): the ``_sim_oracle_env_seen`` marker is published only AFTER the
+    discovery loop has registered every plugin oracle, under a lock. A grade fans capsules across worker
+    threads that each call this; the old code set the marker BEFORE discovering, so a second thread could
+    observe "already scanned" and race past with e.g. cyclotron not yet registered — collapsing an
+    exclusive-sim target to the external_backend program-oracle path (the spurious 'no runner.model_ext'
+    crash). Under the lock the first caller finishes registering before any other proceeds."""
+    global _sim_oracle_env_seen
+    import os
+    key = os.environ.get("MERLIN_TARGET_PATH", "")
+    if key == _sim_oracle_env_seen:                 # fast path: already discovered for this env
+        return
+    with _sim_oracle_lock:
+        if key == _sim_oracle_env_seen:             # re-check under lock (another thread may have finished)
+            return
+        try:
+            from ..runtime.backends import base as _bk
+            for name, path in _bk._oot_plugin_modules("sim_oracle"):
+                _bk._load_oot_backend(name, path, ns="merlin._oot_sim_oracles")
+        except Exception:  # noqa: BLE001 — discovery is best-effort; a broken plugin must not break routing
+            pass
+        _sim_oracle_env_seen = key                  # publish ONLY after every plugin oracle is registered
+
+
+def oracle_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:
     """The oracle adapters per tier for a target. The mlc ARC model is the DEFAULT RTL tier (works for
     ANY mlc target, no bespoke sim); a target that DECLARES a bespoke sim (``sim_via``) additionally gets
     its higher-fidelity sim tiers (chipyard -> spike L2 / verilator L3), preserving the gemmini path.
 
     A self-hosted-ISA target (``endpoint_kind == external_backend``, e.g. atlas) is graded by the generic
-    PROGRAM oracle (assemble the emitted kernel via the target's own assembler -> its mlc cosim) instead of
-    the command_buffer arc path — routed from the contract, no target-name branch."""
+    PROGRAM oracle (assemble the emitted `.word`/`.insn` kernel with STOCK LLVM -> its mlc cosim) instead
+    of the command_buffer arc path — routed from the contract, no target-name branch.
+
+    ``sim_via=None`` (unspecified) is self-resolved from the target's contract via :func:`_bespoke_sim_via`
+    so a bare ``oracle_adapters(target)`` is fully contract-routed — never a silent gemmini default. An
+    explicit ``""`` (arc-only, e.g. atlas) is honored as-is and NOT re-resolved.
+
+    Routing order is DELIBERATE: a declared EXCLUSIVE bespoke sim (a self-hosted SIMT core, ``sim_via=
+    cyclotron``) takes precedence over the ``external_backend`` program-oracle default. A SIMT core's
+    endpoint is ALSO ``external_backend`` (it emits a kernel, not ``.insn``), but its kernel ELF must be
+    graded by its own sim — the arc-cosim program oracle grades the wrong artifact for it. So the sim
+    engine is resolved first; only when no exclusive sim is declared does the endpoint select the oracle."""
+    _ensure_sim_oracles_discovered()                                # wire any target-contributed plugin.sim_oracle
+    if sim_via is None:                                              # unspecified -> derive from contract
+        sim_via = _bespoke_sim_via(target)
+    so = _SIM_ORACLES.get(sim_via)
+    if so is not None and so.exclusive:                             # self-hosted SIMT: replaces arc/program default
+        return so.adapters(target)
     endpoint_kind, model_ext = _endpoint_of(target)
     if endpoint_kind == "external_backend":
-        from .program_oracle import program_oracle_adapter
-        return {"L3": program_oracle_adapter(target, model_ext=model_ext or "npu_model")}
+        # Self-hosted-ISA program oracle. ``model_ext`` (the model project that lays out operands + owns
+        # the fp8/bf16 dtypes) is REQUIRED from the contract — no ``npu_model`` literal fallback; a target
+        # that declares none cannot be program-graded, so we fail closed with an actionable message rather
+        # than silently defaulting to one target's model. The DERIVED LADDER here is exactly what mlc
+        # provides for an assembled program: a FAST FUNCTIONAL tier (L2 — the model's high-level core, pure
+        # Python, no arc .so; the per-round loop tier) and the cycle-exact cosim program-runner (L3 — the
+        # gold checkpoint), both resolved by target via mlc inside program_oracle. Each tier guards with
+        # its own try/except (OracleUnavailable) so an absent runner reads back as ``unavailable``, never
+        # fabricated; the REQUIRED/gold tier stays the cosim (L3) — the functional tier is ADDITIVE.
+        if not model_ext:
+            raise ValueError(
+                f"external_backend target {target!r}: contract declares no runner.model_ext — the program "
+                f"oracle needs the model project to lay out operands; set runner.model_ext in the contract")
+        from .program_oracle import (program_functional_adapter, program_oracle_adapter,
+                                      program_verilator_adapter)
+        # A tier index is a FIDELITY, not a simulator: L2 is the model tier, L3 is elaborated RTL. The
+        # arc cosim is a model compiled FROM the RTL (`rtl_derived_model`, `derived_from_rtl: False`), so
+        # it sits at L2 — it used to sit at L3, which on every other target means elaborated RTL, and
+        # that collision is how a model result gets read as an RTL certification.
+        adapters = {"L2": program_oracle_adapter(target, model_ext=model_ext)}
+        # L3: the elaborated-RTL engine, chosen by availability (vcs > gsim > verilator) in
+        # program_oracle.select_rtl_engine. None when the target registers no engine -> no L3, reported
+        # unavailable rather than silently resolved to the model tier below it.
+        rtl = program_verilator_adapter(target, model_ext=model_ext)
+        if rtl is not None:
+            adapters["L3"] = rtl
+        return adapters
     adapters: dict[str, Callable] = {"L3": mlc_arc_adapter(target)}   # arc default (RTL-derived)
-    if sim_via == "chipyard":                                         # optional bespoke sim (gemmini)
-        adapters["L2"] = _spike_verilator_adapter("spike")
-        adapters["L3"] = _spike_verilator_adapter("verilator")
+    if so is not None:                                               # optional ADDITIVE bespoke sim (chipyard)
+        adapters.update(so.adapters(target))
     return adapters
 
 
+def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str]:
+    """Probe whether the target's REQUIRED grading oracle can actually run RIGHT NOW — BEFORE an agent
+    run spends anything. Target-agnostic, routed from the contract exactly like :func:`oracle_adapters`:
+
+      * ``external_backend`` (self-hosted-ISA program oracle, e.g. atlas) -> the mlc arc cosim AND the
+        model venv must BOTH be present (the emitted program is assembled/laid-out in the model venv and
+        run on the arc cosim);
+      * ``command_buffer`` / arc-default target -> the mlc arc model must be present;
+      * a DECLARED bespoke sim (``sim_via == "chipyard"``, e.g. gemmini) -> its fastest loop-tier sim
+        (spike) binary must be available (else the arc tier, if present, still carries the grade).
+
+    Returns ``(ok, reason)``. ``ok is False`` means grading would only ever emit ``oracle_unavailable``:
+    a real (gradeable) run must NOT be launched on it — the sanctioned way to proceed without an oracle
+    is an EXPLICIT structure-only smoke (``--no-oracle``). This is the preflight the launcher + the
+    GO/NO_GO validator share so a run that cannot be graded aborts before spending tokens.
+
+    Routing order mirrors :func:`oracle_adapters` exactly: a declared EXCLUSIVE bespoke sim
+    (``sim_via == "cyclotron"``, a self-hosted SIMT core) is probed FIRST and takes precedence over the
+    ``external_backend`` program-oracle default (a SIMT core's endpoint is also external_backend, but the
+    arc command-buffer path grades the wrong artifact for it, so arc_available must NOT false-green it)."""
+    from .rtl import mlc_bridge
+    _ensure_sim_oracles_discovered()                  # wire any target-contributed plugin.sim_oracle
+    if sim_via is None:
+        sim_via = _bespoke_sim_via(target)
+    so = _SIM_ORACLES.get(sim_via)
+    if so is not None and so.exclusive:               # self-hosted SIMT: its own sim carries the grade
+        return so.available(target)
+    endpoint_kind, model_ext = _endpoint_of(target)
+    if endpoint_kind == "external_backend":
+        if not mlc_bridge.arc_available(target):
+            return False, (f"external_backend target {target!r}: mlc arc cosim unavailable "
+                           f"(set MERLIN_MLC_DIR and build the arc model)")
+        if not model_ext:
+            return False, (f"external_backend target {target!r}: contract declares no runner.model_ext — "
+                           f"cannot resolve the model-venv oracle")
+        from .program_oracle import OracleUnavailable as _PU
+        from .program_oracle import _model_venv_python
+        try:
+            _model_venv_python(model_ext)
+        except _PU as e:
+            return False, f"external_backend target {target!r}: {e}"
+        return True, (f"external_backend program oracle available (mlc arc cosim + model venv {model_ext!r})")
+    # command_buffer / arc-default target (+ an optional ADDITIVE declared bespoke sim, e.g. chipyard).
+    # Dispatch through the sim-oracle REGISTRY rather than naming sims here, so a target contributes its
+    # own oracle without editing this function.
+    if so is not None:
+        return so.available(target)
+    if mlc_bridge.arc_available(target):
+        # "Present" is not "usable": ANSWER a buffer before promising a grade. A target whose arc model
+        # imported fine still failed every capsule as a tool_crash because the adapter's input contract
+        # was unmet (leaf values, resident aliases, the target argument) — two full agent runs spent
+        # against an oracle that could not grade. The probe closes exactly that gap.
+        live_ok, live_why = _arc_answers_a_buffer(target)
+        if live_ok:
+            return True, f"{target!r}: mlc arc oracle available ({live_why})"
+        return False, f"{target!r}: mlc arc model present but cannot grade — {live_why}"
+    return False, (f"{target!r}: mlc arc model unavailable (set MERLIN_MLC_DIR and build the arc model)")
+
+
+def _arc_answers_a_buffer(target: str) -> tuple[bool, str]:
+    """Run one minimal command buffer through the arc adapter and check it reproduces the reference.
+
+    The buffer is built from DERIVED geometry (the target's own tile edge) in the same schema an agent
+    emits, so the probe exercises the real translation path rather than a special case. A mismatch or a
+    raise is reported as "cannot grade" with the reason — never swallowed, since a swallowed probe would
+    restore the false green it exists to remove.
+    """
+    from merlin.runtime.reference import reference_outputs
+    from .corpus_spec import _tile_dim
+    from .target_experiment import load_capability_manifest
+    try:
+        contract = load_capability_manifest(target).contract
+    except Exception:  # noqa: BLE001 — no manifest: _tile_dim falls back to the RTL facts / mesh default
+        contract = {}
+    tile = _tile_dim(target, contract)
+    cb = {
+        "abi_version": "0.1", "target": target,
+        "tensors": {
+            "probe_w": {"shape": [tile, tile], "dtype": "i8", "role": "weight"},
+            "probe_a": {"shape": [tile, tile], "dtype": "i8", "role": "input"},
+            "probe_y": {"shape": [tile, tile], "dtype": "i32", "role": "output"},
+        },
+        "commands": [
+            {"opcode": "RES_PACK", "operands": {"src": "probe_w", "dst": "probe_w_res"},
+             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT",
+             "operands": {"lhs": "probe_a", "rhs": "probe_w_res", "dst": "probe_acc"}},
+            {"opcode": "COMMIT", "operands": {"src": "probe_acc", "dst": "probe_y"},
+             "attributes": {"epilogue": [], "output_dtype": "i32"}},
+        ],
+    }
+    try:
+        got = (mlc_arc_adapter(target)(cb, "", None, 120).get("outputs") or {})
+    except Exception as e:  # noqa: BLE001 — includes OracleUnavailable: either way it cannot grade
+        return False, f"a {tile}x{tile} probe buffer raised {type(e).__name__}: {str(e)[-200:]}"
+    want = reference_outputs(cb)
+    if not got:
+        return False, f"a {tile}x{tile} probe buffer produced no outputs"
+    if any(got.get(k) != v for k, v in want.items()):
+        return False, (f"a {tile}x{tile} probe buffer disagreed with the reference — the model answers, "
+                       "but not with this buffer's result")
+    return True, f"answered a {tile}x{tile} probe buffer matching the reference"
+
+
+def _full_ladder_enabled() -> bool:
+    """Whether a mandatory tier failure completes the ladder before failing the capsule.
+
+    ON by default: a GRADE must be able to say what every declared tier thought, and a tier with no
+    record is not evidence. The cost is real -- a failing capsule now pays the tiers ordered after the
+    one that refuted it -- so a fast iteration loop can turn it off with MERLIN_FULL_LADDER=0. Never
+    turn it off for a run whose numbers will be quoted.
+    """
+    import os
+    return (os.environ.get("MERLIN_FULL_LADDER", "1") or "1").strip().lower() not in ("0", "false", "no")
+
+
+def codegen_smoke(target: str) -> tuple[bool | None, str]:
+    """Pre-spend check that the target's OWN compiler backend can emit a RUNNABLE kernel — the codegen
+    analogue of :func:`runtime_build.compiler_smoke` (which validates the *oracle's* compile toolchain).
+    ``oracle_available`` proves we can GRADE; this proves we can PRODUCE the artifact being graded, so a
+    broken emit path is a NO_GO before a paid run tool-crashes on every capsule.
+
+    Target-agnostic, dispatched purely on derived facts: a target whose ISA model is FIXED-FORMAT (a 64-bit
+    re-encoded ISA that needs the transcode path) and whose reference sim is cyclotron drives the FULL
+    fork-free build the live run uses — stock clang -> derived transcode -> stock assemble -> fork-free link
+    (BSP regenerated from source) -> reference sim -> assert the computed result — so the exact pipeline is
+    exercised offline and a live run never debugs it. Any other target returns n/a (the oracle-side
+    compiler_smoke covers a compile-based backend)."""
+    # TRI-STATE, and the middle value is the point. True = the smoke RAN and passed. False = it RAN and
+    # FAILED (a NO_GO; the caller refuses to launch). None = it did NOT run — this target's emit path is
+    # not covered, or a dependency is absent. None must never be spelled True: a check that could not run
+    # reporting success is a recurring failure class here, and it is how `merlincirct_gemarm4_codex3`
+    # recorded `codegen_ok: true` on a submission an independent regrade scored 1/23. The caller gates on
+    # `is False` so an n/a still launches, and the artifact records null so nothing downstream can read a
+    # skipped check as evidence.
+    # PREREQUISITE FIRST, AND IT FAILS CLOSED.
+    #
+    # Everything below early-returns `True, "n/a (…)"` for a target whose emit path this smoke does not
+    # cover. That is right for a smoke that does not APPLY — but the fork-free path's ISA model is not a
+    # smoke, it is a prerequisite: if the backend cannot build it, every capsule fails to compile and the
+    # run grades nothing.
+    #
+    # The two are resolved by DIFFERENT paths, which is how this hid. `isa_model_for_target` (consulted
+    # below) succeeded and reported "not fixed-format" -> n/a -> codegen_ok: true, while the compile path's
+    # `_model_for` reads the mlc-derived encoding fact and returned None. Measured: a radiance run spent
+    # 101 minutes flat at 6/39 — the six MX fixtures, which need no oracle at all — with every real capsule
+    # `incomplete: no derived ISA encoding fact for target 'radiance'`, because MERLIN_MLC_DIR was unset.
+    # codegen_smoke said codegen_ok: true for all 101 of those minutes.
+    if _bespoke_sim_via(target) == "cyclotron":
+        try:
+            from ..runtime.backends import base as _bk0
+            _bk0.get_backend("muon").muon._model_for(target)
+        except Exception as e:  # noqa: BLE001 — the prerequisite is missing; that is a NO_GO, not an n/a
+            return False, (f"the fork-free emit path cannot build its ISA model for {target!r}: "
+                           f"{str(e)[-160:]}. Every capsule would fail to compile and the run would "
+                           f"grade only capsules needing no oracle. Derive the encoding fact / set "
+                           f"MERLIN_MLC_DIR before spending.")
+
+    # A target may own a compile-and-run backend that is wholly different from the fixed-format path
+    # below (including a command-buffer compiler exposed through an inline-insn endpoint). Let that
+    # backend provide the production smoke instead of declaring the check inapplicable. The hook is
+    # deliberately optional: an arc-only target has no emitted native artifact to smoke.
+    # A hook that exists but raises/returns a malformed result is a BROKEN smoke and therefore fails
+    # closed; otherwise a typo here could turn the exact pre-spend proof into another silent skip.
+    try:
+        from ..runtime.backends import base as _bk_cb
+        backend = _bk_cb.get_backend(target)
+    except Exception:  # noqa: BLE001 — no target-owned backend hook; the fixed-format path may still apply
+        backend = None
+    hook = getattr(backend, "preflight_codegen_smoke", None)
+    if hook is not None:
+        if not callable(hook):
+            return False, (f"backend for {target!r} exposes a non-callable "
+                           "preflight_codegen_smoke")
+        try:
+            result = hook(target=target)
+        except Exception as e:  # noqa: BLE001 — the production emit path failed its pre-spend probe
+            return False, (f"production codegen smoke raised {type(e).__name__}: "
+                           f"{str(e)[-200:]}")
+        if (not isinstance(result, tuple) or len(result) != 2
+                or not isinstance(result[0], bool) or not isinstance(result[1], str)):
+            return False, (f"backend for {target!r} returned a malformed "
+                           "preflight_codegen_smoke result")
+        return result
+    try:
+        from .isa_model import isa_model_for_target
+        if not isa_model_for_target(target).is_fixed_format():
+            return None, "n/a (ISA is not fixed-format — no fork-free re-encode smoke for this emit path)"
+    except Exception as e:  # noqa: BLE001 — no derived model -> nothing to smoke here
+        return None, f"n/a (no fixed-format ISA model: {str(e)[-120:]})"
+    if _bespoke_sim_via(target) != "cyclotron":
+        return None, "n/a (fixed-format ISA but no cyclotron reference sim declared for the fork-free smoke)"
+    try:
+        from ..runtime.backends import base as _bk
+        _muon = _bk.get_backend("muon")   # the evicted SIMT reference backend, resolved via discovery
+    except Exception as e:  # noqa: BLE001
+        return None, f"n/a (fork-free backend unimportable: {str(e)[-120:]})"
+    if not _muon.available("cyclotron"):
+        # cyclotron absence is already reported by oracle_available; not this gate's job to double-block.
+        return None, "n/a (reference sim absent — oracle_available reports this separately)"
+    # a self-contained, relocation-free kernel: derives its own inputs, prints via inline MMIO, guarded to
+    # one thread so the byte stream is clean. C[i]=A[i]+B[i] with A[i]=i+1, B[i]=10(i+1) -> 11,22,...,88.
+    kernel = ("#include <stdint.h>\n"
+              "static inline uint32_t hid(void){uint32_t r;__asm__ volatile(\"csrr %0,0xF14\":\"=r\"(r));return r;}\n"
+              "static inline void pc(char c){*(volatile char*)0xFF080000u=c;}\n"
+              "static inline void ph(uint32_t v){for(int i=7;i>=0;--i){uint32_t n=(v>>(i*4))&0xF;"
+              "pc(n<10?(char)('0'+n):(char)('a'+n-10));}}\n"
+              "int main(void){volatile uint32_t A[8],B[8],C[8];"
+              "for(int i=0;i<8;i++){A[i]=(uint32_t)(i+1);B[i]=(uint32_t)(10*(i+1));}"
+              "for(int i=0;i<8;i++)C[i]=A[i]+B[i];"
+              "if(hid()==0){for(int i=0;i<8;i++){ph(C[i]);pc('\\n');}}return 0;}\n")
+    import tempfile as _tf
+    with _tf.TemporaryDirectory() as td:
+        try:
+            elf = _muon.compile_kernel_forkfree(kernel, td, target=target)   # BSP regenerated from source
+            console, _cyc, _ = _muon.run_elf(str(elf), simulator="cyclotron", timeout=180)
+        except Exception as e:  # noqa: BLE001 — a broken emit path is exactly what this gate must catch
+            return False, f"fork-free codegen smoke failed: {type(e).__name__}: {str(e)[-200:]}"
+    want = ["0000000b", "00000016", "00000021", "0000002c",
+            "00000037", "00000042", "0000004d", "00000058"]
+    missing = [w for w in want if w not in console]
+    if missing:
+        return False, (f"fork-free kernel ran but produced the wrong result (missing {missing}); "
+                       f"console tail: {console[-200:]!r}")
+    return True, f"fork-free codegen emits a runnable kernel with the correct result on the {target!r} reference sim"
+
+
+def _resolve_oracle_adapters(target: str) -> dict[str, Callable]:
+    """Contract-routed adapter set for ``target`` — the ``run_capsule`` default when a caller passes no
+    adapters. Calls the module :func:`oracle_adapters` (self-resolving sim_via) so an unrouted grade goes
+    to the target's OWN endpoint oracle (external_backend->program_oracle, chipyard->spike/verilator,
+    else arc), NEVER the gemmini-hardcoded :func:`default_adapters`. (Named to dodge the ``run_capsule``
+    parameter that shadows ``oracle_adapters`` in that function's local scope.)"""
+    return oracle_adapters(target)
+
+
 def default_adapters() -> dict[str, Callable]:
-    """Back-compat default (gemmini): L2/L3 via the chipyard contract oracle. New callers should use
-    :func:`oracle_adapters` with the target's ``sim_via`` (arc default + optional bespoke sim)."""
-    return {"L2": _spike_verilator_adapter("spike"),
-            "L3": _spike_verilator_adapter("verilator")}
+    """Back-compat gemmini-only default (L2/L3 spike/verilator). DO NOT use as an unrouted fallback — a
+    non-gemmini target would be mis-graded. New callers use :func:`oracle_adapters` (self-routing) or
+    :func:`_resolve_oracle_adapters`. Retained only for the explicitly-gemmini perf-bench script."""
+    # target-ok: this function IS the explicitly-single-target back-compat entry point (see the
+    # docstring); the name is its subject, not an assumption leaking into a shared path.
+    return {"L2": _spike_verilator_adapter("spike", "gemmini"),
+            "L3": _spike_verilator_adapter("verilator", "gemmini")}
 
 
-def qa_loop_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict[str, Callable]:
+def qa_loop_adapters(target: str, sim_via: str | None = None, *,
+                     declared_tiers: set[str] | None = None) -> dict[str, Callable]:
     """The FAST per-round QA-loop oracle set for ``target`` — resolved from :func:`oracle_adapters`, never
-    hardwired. It keeps ONLY the lowest (fastest) RTL oracle tier and reserves the slower cycle-accurate
-    tiers for the bounded checkpoint (:func:`qa_checkpoint_adapters`). This is a tier-order distinction, not
-    a per-target one: a chipyard target's fastest tier is spike (L2) so verilator (L3) is held back; an
-    arc/mlc target's single RTL-derived tier (L3) is already fast, so IT is the loop tier. No target-name
-    branch — a new accelerator's loop gate falls out of its declared ``sim_via`` with no edit here."""
+    hardwired. It keeps ONE tier (the fastest) and reserves the slower cycle-accurate tiers for the bounded
+    checkpoint (:func:`qa_checkpoint_adapters`). This is a tier-order distinction, not a per-target one; no
+    target-name branch — a new accelerator's loop gate falls out of its declared ``sim_via`` with no edit.
+
+    ``declared_tiers`` is the set of tiers the CORPUS BEING GRADED lists in ``required_oracle_tiers``.
+    When given, the loop tier is the fastest endpoint tier that the corpus actually declares — so the
+    per-round gate always rides a tier the capsule asked for. This matters where an endpoint exposes an
+    ADDITIVE cheaper tier below its declared gold tier: picking the merely-fastest tier there makes the
+    loop enforce a gate the capsule never declared (and, when that cheap tier's runner misbehaves, every
+    capsule fails on it while the declared tier passes). Returns ``{}`` — fail closed, never a
+    substitute — when the endpoint reaches none of the declared tiers; the caller reports that.
+
+    Omitting ``declared_tiers`` keeps the legacy "fastest available tier" behavior for callers that have
+    no corpus in hand."""
     full = oracle_adapters(target, sim_via)
     if not full:
         return {}
+    if declared_tiers:
+        cand = sorted(t for t in full if t in declared_tiers)
+        if not cand:
+            return {}
+        return {cand[0]: full[cand[0]]}
     lowest = min(full)                       # tier keys sort lexically (L2 < L3 < L4 …): lowest == fastest
     return {lowest: full[lowest]}
 
 
-def qa_checkpoint_adapters(target: str = "gemmini", sim_via: str | None = None) -> dict[str, Callable]:
+def qa_checkpoint_adapters(target: str, sim_via: str | None = None) -> dict[str, Callable]:
     """The cycle-accurate QA CHECKPOINT oracle set for ``target`` = its full oracle ladder from
     :func:`oracle_adapters` (chipyard: spike L2 + verilator L3; arc/mlc: the RTL-derived arc model). This
     is the higher-fidelity barrier run once the fast loop (:func:`qa_loop_adapters`) has converged — not
@@ -180,6 +1407,12 @@ def qa_checkpoint_adapters(target: str = "gemmini", sim_via: str | None = None) 
 
 
 def _exact_match(a: dict, b: dict) -> bool:
+    # NO OUTPUTS IS NOT A MATCH. `all(...)` over an empty mapping is vacuously True, so two empty
+    # output sets used to compare EXACTLY EQUAL -- a kernel that stored nothing, graded against a
+    # reference that recorded nothing, read as bit-exact. Same shape as the empty-cohort verdict and
+    # the vacuous readiness GO: the absence of evidence presenting itself as evidence. Fail closed.
+    if not a or not b:
+        return False
     if set(a) != set(b):
         return False
     return all(_flat(a[k]) == _flat(b[k]) for k in a)
@@ -207,6 +1440,578 @@ def _match_by_policy(a: dict, b: dict, policy: dict | None) -> bool:
     return True
 
 
+def _dtype_has_no_datapath(region, cmap, _el) -> tuple[bool, str]:
+    """Is the region's operand dtype absent from EVERY capability this target declares?
+
+    This is the ONLY hard structural fact in an eligibility verdict, and so the only ground on which a
+    capsule may be withheld from a suite. If no datapath holds the operand format, no arrangement of the
+    program puts it on the device.
+
+    The other two axes of the verdict are NOT hard, and both have cost us a real capability:
+
+    * **family** — families compose. Attention on a systolic array is a contraction plus a transposing
+      movement, so "no capability for family X" is not proof the device cannot do X. Measured: a float
+      target PASSED two capsules its contract calls ineligible on family grounds.
+    * **rank** — rank is the one thing a compiler exists to change. A rank-4 convolution reaches a
+      rank-2 mesh through im2col, and this compiler ships that lowering
+      (``convolution_im2col_matmul``). Measured: ``RP14_patch_embed_bf16_pt`` was withheld as
+      "rank 4 not in contraction legal ranks [2, 3]" while the lowering that turns it into a rank-2
+      contraction sat unused in the tree.
+
+    Compares through eligibility's OWN alias-aware check, never string equality: a contract spells the
+    format ``int8`` while a capsule region reports ``i8``, and a raw ``!=`` reads a native-dtype capsule
+    as having no datapath at all.
+    """
+    dt = getattr(region, "in_dtype", None)
+    all_dtypes = tuple({x for cap in cmap.values() for x in (getattr(cap, "dtypes", ()) or ())})
+    if dt is None or not all_dtypes or _el._dtype_ok(dt, all_dtypes):
+        return False, ""
+    return True, f"operand dtype {dt!r} is in no capability this target declares"
+
+
+def _forbids_the_mesh(capsule: dict) -> bool:
+    """Whether this capsule's whole purpose is NOT to be accelerated.
+
+    Shared by the suite's withholding rule and the gate's denominator, because those two drifting apart
+    is a defect this module has already paid for once: they ran different tests, and a capsule the
+    suite graded and scored was silently absent from the gate that decided whether a whole-model
+    capstone could launch. One predicate, used by both.
+
+    Such a capsule declares ``forbid: [on_mesh]`` -- it exists to prove the compiler leaves work on the
+    host -- so the absent datapath that would withhold any other capsule is its PREMISE. Withholding it
+    deletes the only test of the negative lane.
+    """
+    return "on_mesh" in {str(x) for x in ((capsule.get("lanes") or {}).get("forbid") or ())}
+
+
+def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], list[dict]]:
+    """Partition op capsules into (to grade, not-gradeable-on-this-target).
+
+    Ineligibility is decided by the target's OWN declared capability, so this adds no new judgement --
+    it acts on the verdict :mod:`eligibility` already computes. Fails OPEN in every uncertain case
+    (no capability map, an undetermined verdict, any exception): a capsule is only withheld when the
+    contract positively says the family/dtype/rank is not supported. Withholding on doubt would let a
+    suite shrink itself into a better score, which is the opposite of the point.
+    """
+    try:
+        from . import coverage_report as _cr, eligibility as _el
+        cmap = _el.capability_map_for_target(target)
+    except Exception:                                     # noqa: BLE001 - never block a grade
+        return op_caps, []
+    if not cmap:
+        return op_caps, []
+    keep, withheld = [], []
+    for c in op_caps:
+        try:
+            region = _cr._capsule_region(c)
+            v = _el.is_eligible(region, cmap)
+        except Exception:                                 # noqa: BLE001
+            keep.append(c); continue
+        if getattr(v, "undetermined", False) or getattr(v, "eligible", True):
+            keep.append(c); continue
+        # WITHHOLD ONLY ON A HARD STRUCTURAL FACT: an operand dtype or rank that appears in NO declared
+        # capability at all. Then no datapath on the device can hold the operands and no composition can
+        # rescue it, whatever family the op belongs to -- which also covers a capsule whose family our
+        # taxonomy cannot name (pooling, whole-model), where withholding on the family verdict alone
+        # would drop it for OUR ignorance rather than the hardware's limits.
+        #
+        # A merely UNDECLARED FAMILY is graded. Families compose -- attention on a systolic array is a
+        # contraction plus a transposing movement -- so "no capability for family X" is not proof the
+        # device cannot do X. Measured: a float target PASSED two capsules its contract calls ineligible
+        # on family grounds; withholding those would have hidden a contract under-declaration, which is a
+        # finding we want, not noise to suppress.
+        # Compare dtypes through eligibility's OWN alias-aware check, never by string equality: the
+        # contract spells the format `int8` while a capsule region reports `i8`, so a raw `!=` reads a
+        # native-dtype capsule as having no datapath at all and withholds it for a spelling difference.
+        # See :func:`_dtype_has_no_datapath` for why the dtype is the only hard fact here, and why
+        # family and rank must not withhold. State the fact that ACTUALLY triggered withholding:
+        # eligibility's own reason describes its FAMILY verdict, which would send someone to fix the
+        # taxonomy when the hardware is the constraint.
+        dtype_absent, why = _dtype_has_no_datapath(region, cmap, _el)
+        if not dtype_absent:
+            keep.append(c); continue
+        # A CAPSULE THAT FORBIDS THE MESH IS ASKING FOR EXACTLY THIS, so withholding it deletes the
+        # test. The rule above is "no datapath can hold these operands, so do not ask the device to
+        # certify this arithmetic" -- sound for a capsule that WANTS to be accelerated. A host-lane
+        # capsule wants the opposite: it declares `forbid: [on_mesh]` and exists to prove the compiler
+        # leaves the work on the host, and the absent datapath is its premise rather than its problem.
+        # Withheld, the negative lane is never graded, and an axis that derives such capsules produces
+        # nothing while looking like it ran -- the exact silence this corpus is built to prevent. The
+        # forbid IS gradeable: a decoded accelerator instruction violates it.
+        if _forbids_the_mesh(c):
+            keep.append(c); continue
+        withheld.append({
+            "capsule": c.get("name"), "kind": c.get("kind"), "label": c.get("label"),
+            "status": "not_graded", "ineligible": True,
+            "failure": {"plane": "capability", "category": "NOT_GRADED",
+                        "detail": f"not graded on this target: {why} "
+                                  f"(eligibility also reports: {getattr(v, 'reason', '') or 'ineligible'})"},
+        })
+    return keep, withheld
+
+
+def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
+    """Whether a graded op-capsule result belongs in the whole-model gate's denominator.
+
+    True unless the capsule is provably ineligible -- and "provably" means the SAME hard structural fact
+    that :func:`_split_ineligible` uses to withhold a capsule from the suite: no declared capability
+    holds its operand dtype. Fails OPEN whenever that cannot be decided.
+
+    These two ran different tests and disagreed. This read the raw ``is_eligible`` verdict, so a capsule
+    whose FAMILY the taxonomy cannot name was dropped from the gate denominator while the suite graded
+    it and counted it in the score. Measured on gemmini: ``C7_attention_qk_i8`` (declared
+    ``op: attention_qk``, which the taxonomy maps to the ``attention`` composite) was excluded here,
+    lifting the gate fraction from 18/23 = 0.78 to 18/22 = 0.82 and launching a whole-model capstone
+    that should have deferred -- a five-and-a-half-hour simulation inside a four-hour round. Meanwhile
+    the identical computation spelled ``op: matmul`` (``C5_attention_qk_matmul``) counted normally.
+    One test, used by both, or the suite and its gate are scoring different corpora.
+    """
+    name = result.get("capsule")
+    cap = next((c for c in capsules if c.get("name") == name), None)
+    if cap is None:
+        return True
+    try:
+        from . import coverage_report as _cr, eligibility as _el
+        cmap = _el.capability_map_for_target(target)
+        if not cmap:
+            return True
+        region = _cr._capsule_region(cap)
+        verdict = _el.is_eligible(region, cmap)
+    except Exception:                                     # noqa: BLE001 - a gate must not crash a grade
+        return True
+    if getattr(verdict, "undetermined", False) or getattr(verdict, "eligible", True):
+        return True
+    if _forbids_the_mesh(cap):
+        return True
+    dtype_absent, _why = _dtype_has_no_datapath(region, cmap, _el)
+    return not dtype_absent
+
+
+
+
+def _engine_token(oracle_kind: str | None) -> str | None:
+    """The elaborated-RTL ENGINE named inside an oracle kind, or None.
+
+    An adapter reports a kind like ``rtl_gsim`` / ``rtl_verilator`` / ``rtl_gsim_<something>``; the
+    engine is one token inside it. Read STRUCTURALLY (split on the separator, test membership against
+    the policy's own declared engine vocabulary) rather than by pattern — a pattern that is slightly too
+    narrow silently reports "no engine" for a conformant spelling, which here would mean a cert whose
+    engine is unrecorded, i.e. the exact thing this field exists to prevent.
+    """
+    tokens = {t for part in str(oracle_kind or "").split("_") for t in part.split("-")}
+    from . import rtl_engine_policy as _pol
+    for engine in _pol.ENGINE_PRIORITY:
+        if engine in tokens:
+            return engine
+    return None
+
+
+def _sim_telemetry(oracle_meta, ev_name: str) -> dict:
+    """The simulator-identity fields for a TierResult, from what the adapter reported.
+
+    Kept as ONE extractor because the three tier paths that build a TierResult must not disagree about
+    what a record says the engine was — and because a field only some paths populate is worse than one
+    none of them do: a consumer reads the absence as "verilator", never as "unrecorded".
+    """
+    kind = _oracle_kind(oracle_meta) or ev_name
+    declared = oracle_meta.get("engine") if isinstance(oracle_meta, dict) else None
+    # The adapter's OWN word first. Deriving the engine from the kind string works and is the fallback,
+    # but an adapter that states its engine outright is the authority on which one it ran -- the same
+    # rule `derived_from_rtl` already follows, for the same reason.
+    out: dict = {"engine": str(declared) if declared else (_engine_token(kind) or kind)}
+    if isinstance(oracle_meta, dict):
+        if isinstance(oracle_meta.get("selection"), dict):
+            out["engine_selection"] = dict(oracle_meta["selection"])
+        if isinstance(oracle_meta.get("provenance"), dict):
+            out["sim_provenance"] = dict(oracle_meta["provenance"])
+    return out
+
+
+def _record_console(paths, name: str, console) -> tuple[str | None, int | None]:
+    """Write a sim console to the capsule's artifacts dir and return ``(filename, bytes)``.
+
+    One writer for all three tier paths, which each open-coded the same two lines and none of which
+    recorded the SIZE. Size is not decoration: a console is how an RTL verdict is read, and "the marker
+    is absent" and "the console was truncated before the marker" are the same bytes to a reader who
+    cannot tell how much there was.
+    """
+    if console is None:
+        return None, None
+    text = str(console)
+    fname = f"{name}_console.log"
+    (paths.artifacts_dir / fname).write_text(text, encoding="utf-8")
+    return fname, len(text.encode("utf-8"))
+
+
+def _oracle_kind(oracle_meta) -> str | None:
+    """A filesystem-safe name for the engine an adapter reports, or ``None`` when it reports none.
+
+    Adapters return either a rich ``{"kind": ..., "derived_from_rtl": ...}`` dict or a bare provenance
+    string. Both carry the engine's identity; the contract's static ``tier_sim`` map does not, because a
+    backend may substitute a different RTL-derived engine at runtime. ``None`` means "the oracle did not
+    say", and the caller keeps the declared name -- never a guess.
+    """
+    kind = oracle_meta.get("kind") if isinstance(oracle_meta, dict) else oracle_meta
+    if not isinstance(kind, str) or not kind.strip():
+        return None
+    safe = "".join(ch if (ch.isalnum() or ch in "-_") else "_" for ch in kind.strip())
+    return safe or None
+
+#: Which AGGREGATE execution counter answers for which routing-plan lane, and in which record. Aggregate
+#: counters are the middle rung of the evidence ladder below: weaker than the ordered dispatch ledger,
+#: stronger than a routing plan. This is the only place a lane name is bound to a counter, and a lane
+#: absent from it is never silently promoted -- it falls to whatever weaker evidence exists.
+#: The routing plan's own key for "executed on the accelerator". Named here rather than inline so the
+#: lane vocabulary has one home; it is a lane name, never a target name.
+_ACCELERATOR_LANE = "on_mesh"
+
+_LANE_COUNTERS: dict[str, tuple[str, str]] = {
+    "on_mesh": ("mesh", "matmul_layers_on_mesh"),
+    "scalar_rvv_lane": ("host", "kernels_ran"),
+}
+
+
+
+def forbids_accelerator(capsule: dict) -> bool:
+    """Does this capsule declare that work must NOT reach the accelerator?"""
+    return _ACCELERATOR_LANE in [str(x) for x in ((capsule.get("lanes") or {}).get("forbid") or ())]
+
+
+def accelerator_lane_violated(capsule: dict, trace) -> bool:
+    """True only when a forbidding capsule's emitted stream DECODES accelerator instructions.
+
+    The asymmetry here is the whole reason this is sound on a path that owns no execution record. A
+    decoded accelerator instruction proves work went there. Its ABSENCE proves nothing: the decoder
+    recognizes the ``.insn r`` form, so a ``.word``-encoded kernel that does drive the device decodes as
+    silent, and reading that silence as "the host carried it" would hand a forbidding capsule a free
+    pass. Violated, or unmeasured -- never satisfied.
+    """
+    from . import trace_check as _TCK
+
+    if not forbids_accelerator(capsule):
+        return False
+    try:
+        return bool(_TCK.drives_accelerator(trace))
+    except Exception:                              # noqa: BLE001 -- an undecodable trace measures nothing
+        return False
+
+
+#: Evidence rungs that record something that ACTUALLY RAN, as opposed to ``"routing_plan"``, which
+#: records only what the router intended. Exported because :mod:`merlin.targetgen.capsule_grade`
+#: judges a lane report against it: when the two ends kept their own copies of this vocabulary they
+#: drifted, and the consumer compared a per-lane MAPPING against a bare string -- a test that could
+#: never pass, reported to the submission as a malformed report it did not produce.
+WHOLE_PROGRAM_COMPLETION_EVIDENCE = "whole_program_exact_completion_with_source_bound_cfg"
+EXECUTED_LANE_EVIDENCE: tuple[str, ...] = (
+    "dynamic_dispatch_ledger", "execution", WHOLE_PROGRAM_COMPLETION_EVIDENCE)
+
+
+def whole_program_completion_lane_report(
+        capsule: dict, command_buffer: dict, *, global_plan_proof: dict,
+        numeric: dict, tiers: dict, decoded_trace: dict | None) -> dict | None:
+    """Credit compulsory mixed-program tasks only after the complete ELF actually passes.
+
+    A compiler plan alone remains intent and earns nothing.  This evidence rung requires all three
+    independent pieces: the host's source/ABI/CFG verifier proved every task occurs on every returning
+    path; a mandatory oracle observed that complete kernel return with the exact semantic output; and
+    the decoded artifact contains accelerator work before an ``on_mesh`` task is credited.  The task
+    list is bound into ``global_plan_proof.plan_digest``, so this function never accepts an unverified
+    free-standing lane claim.
+    """
+    lanes = capsule.get("lanes") or {}
+    required = [str(x) for x in (lanes.get("require") or [])]
+    forbidden = [str(x) for x in (lanes.get("forbid") or [])]
+    if not required and not forbidden:
+        return None
+    if ((command_buffer.get("kernel_abi") or {}).get("kind") != "whole_program"
+            or numeric.get("status") != "pass"
+            or global_plan_proof.get("status") != "verified"
+            or (global_plan_proof.get("control_flow") or {}).get("status") != "verified"):
+        return None
+
+    def _tier_passed(value) -> bool:
+        status = value.get("status") if isinstance(value, dict) else getattr(value, "status", None)
+        mandatory = (value.get("mandatory") if isinstance(value, dict)
+                     else getattr(value, "mandatory", False))
+        return bool(mandatory and status == "pass")
+
+    if not any(_tier_passed(value) for value in tiers.values()):
+        return None
+    tasks = (((command_buffer.get("params") or {}).get("global_program_plan") or {}).get("tasks") or [])
+    emitted = global_plan_proof.get("emitted_operations_by_task") or {}
+    if (not isinstance(tasks, list) or not tasks
+            or any(not isinstance(row, dict) for row in tasks)):
+        return None
+    completed: list[int] = []
+    lane_counts: dict[str, int] = {}
+    for row in tasks:
+        ident, kind = row.get("task_index"), row.get("kind")
+        count = emitted.get(ident, emitted.get(str(ident), 0))
+        if (isinstance(ident, bool) or not isinstance(ident, int)
+                or isinstance(count, bool) or not isinstance(count, int) or count <= 0
+                or kind not in ("contraction", "host")):
+            return None
+        completed.append(ident)
+        lane = _ACCELERATOR_LANE if kind == "contraction" else "scalar_rvv_lane"
+        lane_counts[lane] = lane_counts.get(lane, 0) + 1
+
+    # A claimed contraction task is not enough: the actual lowered artifact must carry accelerator
+    # work. Absence is unmeasured because the decoder does not recognize every possible spelling.
+    if lane_counts.get(_ACCELERATOR_LANE):
+        try:
+            if decoded_trace is None or not TCK.drives_accelerator(decoded_trace):
+                lane_counts.pop(_ACCELERATOR_LANE, None)
+        except Exception:                       # noqa: BLE001 -- decoder uncertainty earns no credit
+            lane_counts.pop(_ACCELERATOR_LANE, None)
+
+    observed = sorted(lane for lane in {*required, *forbidden} if lane_counts.get(lane, 0) > 0)
+    known_task_lanes = {_ACCELERATOR_LANE, "scalar_rvv_lane"}
+    evidence = {
+        lane: (WHOLE_PROGRAM_COMPLETION_EVIDENCE
+               if lane in observed or (lane in forbidden and lane in known_task_lanes)
+               else "unmeasured")
+        for lane in (*required, *forbidden)
+    }
+    report = {
+        "required": required,
+        "observed": observed,
+        "unexercised": [lane for lane in required if lane not in observed],
+        "evidence": evidence,
+        "completed_tasks": completed,
+        "task_lane_counts": dict(sorted(lane_counts.items())),
+        "global_plan_proof": {
+            key: global_plan_proof.get(key)
+            for key in ("schema", "source_sha256", "plan_digest", "candidate_lowered_sha256")
+            if global_plan_proof.get(key) is not None
+        },
+        "judged_by": WHOLE_PROGRAM_COMPLETION_EVIDENCE,
+        "host_contractions_ran": None,
+    }
+    if forbidden:
+        report["forbidden"] = forbidden
+        report["violated"] = [lane for lane in forbidden if lane in observed]
+        unmeasured = [lane for lane in forbidden if evidence[lane] == "unmeasured"]
+        if unmeasured:
+            report["unmeasured_forbidden"] = unmeasured
+    # A caller-supplied report tells the finalizer that this path OWNS the verdict. Hand it over only
+    # when this rung judged every declaration; a partial report would suppress the finalizer's
+    # LANE_CONTRACT_NOT_EVALUATED refusal.
+    if report["unexercised"] or report.get("unmeasured_forbidden"):
+        return None
+    return report
+
+
+def lane_report(capsule: dict, routing_plan: dict | None,
+                mesh_execution: dict | None = None,
+                host_execution: dict | None = None,
+                lane_execution: dict | None = None) -> dict | None:
+    """Verify an INTEROP capsule's declared lanes against what the compiler actually DID.
+
+    Returns ``None`` when the capsule declares neither ``lanes.require`` nor ``lanes.forbid``.
+
+    THE EVIDENCE LADDER, strongest first. Each lane is judged on the best evidence available FOR THAT
+    LANE, and the rung it was judged on is reported per lane -- a single label for the whole report had
+    to lie about at least one of them.
+
+    1. ``dispatch_ledger`` -- the ordered, runner-owned record of COMPLETED calls, each naming its lane.
+       This is the only evidence that can prove a negative: if the ledger exists, a lane it does not
+       name carried nothing, full stop. It is also the only rung with an open vocabulary, because the
+       lane names come from the runtime's own entries rather than from anything written here.
+    2. aggregate per-lane counters -- ``lane_execution`` (supplied by whoever ran the model, and able to
+       name lanes this module has never heard of) then :data:`_LANE_COUNTERS` over the two legacy
+       records. Real execution, but a total rather than a sequence.
+    3. the routing plan -- INTENT ONLY. ``plan["on_mesh"]`` lists the ops the router ASSIGNED to the
+       mesh; whether they ran there is a different fact. Measured on one submission: 15 matmuls assigned
+       to the mesh, 15 host fallbacks at run time. A plan can satisfy a *required* lane only with the
+       caveat recorded, and can never satisfy a *forbidden* one.
+
+    Two shapes this must not fall into, both of which produced a hollow pass on the first capsule to use
+    it:
+
+    * **Not every key of the plan is a lane.** The plan also carries ``n_mesh_ops``, ``n_scalar_ops``,
+      ``mesh_matmul_extents`` and ``note``; scanning it for truthy keys reported those as lanes that
+      "carried work". A lane entry is a MAPPING of op -> count, so only dict-valued keys are lanes.
+    * **A FORBIDDEN LANE IS JUDGED ONLY ON EXECUTION.** "The router planned no work here" is not "the
+      compiler put no work here", and a negative assertion is exactly where plan-only evidence is most
+      dangerous: absence of a plan entry is the DEFAULT state, so believing it would make the assertion
+      vacuously true for free. A forbidden lane with no execution evidence is neither violated nor
+      satisfied -- it is unmeasured, and reported as such.
+
+    ``in_contract_vector_scalar`` is the lane this ladder is built for. The dispatch runtime has one
+    device branch and executes those ops on the host ``.so``, so no rung above the plan can speak for it
+    yet, and it stays plan-evidenced rather than being quietly promoted alongside the lanes that can be
+    measured. When the runtime learns to name it in the ledger, it acquires evidence with no edit here.
+    """
+    _lanes_decl = capsule.get("lanes") or {}
+    req = [str(x) for x in (_lanes_decl.get("require") or [])]
+    forbid = [str(x) for x in (_lanes_decl.get("forbid") or [])]
+    both = sorted(set(req) & set(forbid))
+    if both:
+        raise ValueError(f"capsule lanes {both} are both required and forbidden; one of the two "
+                         f"assertions can never hold")
+    if not req and not forbid:
+        return None
+    plan = routing_plan or {}
+    planned = {k for k, v in plan.items() if isinstance(v, dict) and v}
+    me = mesh_execution or {}
+    he = host_execution or {}
+
+    def _measured(value) -> int | None:
+        """A real count, or None for 'nobody could tell'. ``UNKNOWN`` is a sentinel, not a number."""
+        if value is None or isinstance(value, str):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    # rung 1 -- completed calls, by lane
+    ledger = me.get("dispatch_ledger")
+    has_ledger = isinstance(ledger, list)
+    ledger_counts: dict[str, int] = {}
+    if has_ledger:
+        for e in ledger:
+            if isinstance(e, dict) and e.get("status") == "pass" and e.get("lane"):
+                ln = str(e["lane"])
+                ledger_counts[ln] = ledger_counts.get(ln, 0) + 1
+    # The ledger speaks for the lanes it names AND for the lanes the runtime is known to log; reading a
+    # silent zero for any OTHER lane would assert a negative the ledger never measured.
+    ledger_scope = (set(ledger_counts) | set(_LANE_COUNTERS)) if has_ledger else set()
+
+    # rung 2 -- aggregate counters, caller-supplied first
+    _records = {"mesh": me, "host": he}
+    agg = {lane: _measured(_records.get(rec, {}).get(key))
+           for lane, (rec, key) in _LANE_COUNTERS.items()}
+    for lane, value in (lane_execution or {}).items():
+        agg[str(lane)] = _measured(value)
+
+    # A PLAN NEVER CREDITS A LANE. Only the executed rungs can put a lane in `carried`: an assignment is
+    # not a completed call, and a lane the plan merely names must not be able to authorize itself. What
+    # the plan still buys is the distinction between "measured, and nothing ran" and "nobody measured" --
+    # both leave the lane unexercised, but only the second is reported in `plan_only_lanes`, which the
+    # grader turns into `incomplete` rather than `fail`.
+    evidence: dict[str, str] = {}
+    carried: set[str] = set()
+    for ln in sorted({*req, *forbid}):
+        if ln in ledger_scope:
+            evidence[ln], n = "dynamic_dispatch_ledger", ledger_counts.get(ln, 0)
+        elif agg.get(ln) is not None:
+            evidence[ln], n = "execution", int(agg[ln])
+        else:
+            evidence[ln], n = "routing_plan", 0
+        if n > 0:
+            carried.add(ln)
+
+    unexercised = [ln for ln in req if ln not in carried]
+    violated = [ln for ln in forbid if evidence.get(ln) in EXECUTED_LANE_EVIDENCE and ln in carried]
+    unmeasured_forbid = [ln for ln in forbid if evidence.get(ln) not in EXECUTED_LANE_EVIDENCE]
+    out = {"required": req, "observed": sorted(carried), "unexercised": unexercised,
+           "evidence": {ln: evidence[ln] for ln in (*req, *forbid)},
+           # Contractions apart from kernels: the host lane is mostly norms and activations, so a bare
+           # kernel count is satisfied by any model at all. Reported rather than gated -- a capsule may
+           # legitimately put only elementwise work on the host.
+           "host_contractions_ran": _measured(he.get("contractions_ran"))}
+    if forbid:
+        out["forbidden"] = forbid
+        out["violated"] = violated
+        if unmeasured_forbid:
+            out["unmeasured_forbidden"] = unmeasured_forbid
+    plan_only = [ln for ln in req if evidence[ln] == "routing_plan"]
+    if plan_only:
+        out["caveat"] = (f"no execution accounting was recorded for {plan_only}, so those lanes report "
+                         f"what the router PLANNED, not what ran; a lane can appear here and still have "
+                         f"executed nothing")
+        out["plan_only_lanes"] = plan_only
+    return out
+
+
+def dispatch_boundary_report(mesh_execution: dict | None) -> dict:
+    """Classify the *executed* host/accelerator sequence from the runtime ledger."""
+    from . import boundary as _bd
+
+    ledger = (mesh_execution or {}).get("dispatch_ledger")
+    if not isinstance(ledger, list):
+        return {"status": "missing", "boundary": _bd.UNKNOWN, "contains": [],
+                "detail": "runner-owned dynamic dispatch ledger is missing"}
+    sequence: list[str] = []
+    unresolved = 0
+    for entry in ledger:
+        lane = entry.get("lane") if isinstance(entry, dict) else None
+        if lane == "on_mesh":
+            sequence.append(_bd.ACCEL)
+        elif lane in ("scalar_rvv_lane", "host_fallback", "mesh_unavailable"):
+            sequence.append(_bd.HOST)
+        else:
+            unresolved += 1
+    segs = _bd.segments(sequence)
+    return {"status": "pass" if sequence and not unresolved else "fail",
+            "boundary": _bd.classify_sequence(sequence),
+            "contains": sorted(_bd.patterns_in_sequence(sequence)),
+            "n_dynamic_calls": len(ledger),
+            "n_accel_calls": sum(x == _bd.ACCEL for x in sequence),
+            "n_host_calls": sum(x == _bd.HOST for x in sequence),
+            "n_unresolved": unresolved,
+            "accel_segments": sum(k == _bd.ACCEL for k, _ in segs),
+            "host_segments": sum(k == _bd.HOST for k, _ in segs),
+            "detail": "derived only from completed calls in the runner-owned dispatch ledger"}
+
+def _absent_outputs(nrep: dict) -> list[str]:
+    """Outputs the kernel DECLARED (present in the interface/golden) but never wrote — or wrote at the
+    wrong length — extracted from :func:`capsule_golden.compare`'s ``per_output``. These structural
+    failures are the ones that read as ``mismatch_count > 0`` while ``max_abs_error == 0`` and
+    ``first_mismatch is None`` (there is no value to diff — the bytes were never produced), a
+    self-contradictory signal unless the missing output is named. Reveals no golden VALUE: only the
+    identity of a declared output, which the agent already holds in the interface it was handed."""
+    po = nrep.get("per_output") or {}
+    return [nm for nm, d in po.items()
+            if isinstance(d, dict) and d.get("status") == "fail"
+            and str(d.get("reason", "")).startswith(("missing", "length"))]
+
+
+def _unwritten_output_detail(nrep: dict, sim_name: str) -> str | None:
+    """A precise detail when a declared output was READ BACK but holds one constant value, else None.
+
+    Sibling of :func:`_absent_output_detail`, for the case that one misses: there the output key is
+    absent from the readback; here it is present and uniformly the buffer's untouched fill, so the
+    generic "does not compute the declared operation" is technically true and useless. Measured cost of
+    not having this: twelve capsules reported ``functional_mismatch`` for six consecutive rounds with
+    ``observed: 0.0`` and ``max_rel_error: 1.0``, while the mismatch COUNT was a function of the
+    golden's zero distribution rather than of the kernel -- so the number could not move no matter what
+    was emitted, and the agent spent six rounds tuning numerics against an unwritable signal.
+
+    Reveals no golden value: only that the observed side is constant, which the agent can compute from
+    its own readback."""
+    names = nrep.get("outputs_never_written") or []
+    if not names:
+        return None
+    po = nrep.get("per_output") or {}
+    got = {n: (po.get(n) or {}).get("observed_constant") for n in names}
+    shown = ", ".join(f"{n} (all {got[n]})" for n in names)
+    return (f"on {sim_name}, output(s) {shown} came back as a SINGLE CONSTANT value while the expected "
+            f"result varies — the store never landed, so what was compared is the buffer's untouched "
+            f"fill, not a computed result. This is a WRITEBACK failure, not a numeric one: the mismatch "
+            f"count here is set by the reference's own value distribution and will NOT move if you only "
+            f"change arithmetic. Decode your emitted artifact and confirm the result is actually stored "
+            f"to this output's base address (and that any DMA/commit is awaited before readback).")
+
+
+def _absent_output_detail(nrep: dict, sim_name: str, expected: dict, observed: dict) -> str | None:
+    """A precise failure detail when the kernel dropped a declared output, else None. Turns the baffling
+    "1024 mismatches, 0 error" into "you never wrote Y1" — the exact class of silent no-op the generic
+    hint tells the agent to hunt for. Target-agnostic; no answer key crosses this boundary."""
+    absent = _absent_outputs(nrep)
+    if not absent:
+        return None
+    n_decl = len(expected)
+    n_written = sum(1 for k in expected if k in (observed or {}))
+    return (f"on {sim_name}, your emitted artifact never wrote output(s) {', '.join(absent)} — "
+            f"declared in the interface (a commit op) but ABSENT from the observed DRAM readback "
+            f"(your kernel produced {n_written} of {n_decl} declared outputs). This is a DROPPED or "
+            f"mis-addressed store, NOT a value error (max_abs_error is 0 because those bytes were never "
+            f"produced). Decode your OWN emitted artifact and confirm every declared output gets a store "
+            f"to its base address.")
+
+
 def _default_config(target: str, suite: str, dtype: str):
     """The implicit gemmini/systolic RunnerConfig — the exact constants run_capsule used before it took a
     config, so a call with config=None is byte-identical to the pre-collapse behavior."""
@@ -217,12 +2022,1754 @@ def _default_config(target: str, suite: str, dtype: str):
                         perf_fields=(), trace_gate="rocc_insn")
 
 
+def _config_for_target(target: str, suite: str | None, dtype: str):
+    """The per-target RunnerConfig, DERIVED from the target's capability manifest (endpoint /
+    trace_gate / 4th-output / tiers all come from the contract) — so a non-gemmini target is graded by
+    ITS config, never the gemmini default. An atlas (external_backend) run gets trace_gate=None +
+    kernel.S, so the RoCC trace gate is correctly skipped. Falls back to the implicit gemmini/systolic
+    constants only when no manifest resolves (raw/test targets)."""
+    try:
+        from .runner_config import runner_config_from_manifest
+        from .target_experiment import load_capability_manifest
+        return runner_config_from_manifest(load_capability_manifest(target))
+    except Exception:  # noqa: BLE001 — no resolvable manifest -> legacy default
+        return _default_config(target, suite or f"{target}-capsule-bench", dtype)
+
+
+def suite_for(target: str, *, dtype: str = "i8xi8_i32") -> str:
+    """The suite path segment ``run_capsule`` writes results under for this target (``cfg.suite``).
+
+    Any reader that re-globs the on-disk ``capsule_result.json`` MUST resolve the suite through this,
+    NOT the module-level ``SUITE`` literal ('gemmini-capsule-bench'): ``run_capsule`` lays results at
+    ``<runs_root>/runs/<cfg.suite>/<capsule>/`` where ``cfg.suite`` is the TARGET's own suite
+    (e.g. 'atlas-capsule-bench'). Using the gemmini literal made the atlas self-check glob an empty
+    gemmini dir and report ``n_capsules: 0`` on every call — the agent's feedback loop went blind while
+    the in-memory grade was correct. Derived from the target's RunnerConfig, so it stays target-agnostic."""
+    return _config_for_target(target, None, dtype).suite
+
+
+def _encoding_divergence_hint(trace_check_res: dict | None, independent_float: bool,
+                              cb: dict | None = None, capsule: dict | None = None,
+                              trace: dict | None = None) -> str:
+    """A mandatory hardware/oracle tier failed while the cheap tiers already passed (numeric fails raise
+    earlier), so the defect is in the emitted hardware artifact, NOT the command buffer. Return a
+    target-agnostic localization hint so the failure is never an opaque 'oracle != golden' — plus the first
+    concrete artifact finding if the decoder produced any (gemmini). For a float/oracle-only target (atlas,
+    no cheap trace decode) the generic hint still fires. This is what makes the np12r class localizable on
+    EVERY endpoint: it names WHERE to look (the artifact encoding), not just THAT hardware disagreed.
+
+    When the decoded trace + command buffer are available, an ADVISORY, FAIL-CLOSED cross-check
+    (:mod:`divergence_localizer`) is run first: it diffs the decoded config fields against the agent's OWN
+    command buffer + capsule spec and, if it can derive a concrete divergence, names the FIRST op+field
+    (never a golden value, never a fix). The oracle stays the arbiter; a field it cannot anchor is simply
+    not flagged, so the generic hint always still fires underneath."""
+    concrete = ""
+    if trace is not None:
+        try:
+            from . import divergence_localizer as _DL
+            concrete = _DL.format_finding(_DL.localize(cb, capsule, trace))
+        except Exception:  # noqa: BLE001 — the localizer is advisory; never let it break the failure path
+            concrete = ""
+    findings = (trace_check_res or {}).get("violations") or []
+    if independent_float:
+        hint = (" Decode your OWN emitted artifact (the disassembler / instruction_trace.json) and verify "
+                "every op fires with the operands you intend — a config/compute op that silently no-ops "
+                "produces wrong output only on hardware, never in a cheap check.")
+    else:
+        hint = (" The command-buffer tiers (numeric + trace) PASSED, so the divergence is in your "
+                "emit_target_artifact hardware encoding — some field the command buffer cannot carry (a "
+                "config scale, an accumulate/dataflow bit, a readout dtype, a DRAM address). Decode your OWN "
+                "emitted artifact (the disassembler / instruction_trace.json) and check each op's operands "
+                "against your intent.")
+    if findings:
+        hint += f" Your own artifact check also flagged: {findings[0]}"
+    # The concrete cross-check (when derivable) is the most actionable line — lead with it.
+    return (concrete + hint) if concrete else hint
+
+
+def _unexercised_note(unexercised: list[str], exercised: dict) -> dict:
+    """``{tier: why it did not run}`` for the declared tiers a whole-model grade did not exercise.
+
+    Reported as a bare LIST, this read as "we skipped three of the four tiers this capsule declares",
+    which is indistinguishable from a grade that cut corners. The actual reason is structural: a model
+    capsule is graded by the whole-model compile+verify path against its golden, plus the mesh oracle --
+    it never enters the per-op tier ladder, and the cheap tiers of that ladder (emit/structure,
+    command-buffer reference equality, functional sim of a command buffer) have no whole-model analogue
+    to run. A tier that is inapplicable and a tier that was skipped deserve different words.
+    """
+    ran = set(exercised)
+    return {t: ("no whole-model analogue: this tier grades a per-op command buffer, which a model "
+                "capsule does not produce — the model is graded end to end against its golden")
+            for t in unexercised if t not in ran}
+
+
+def _rtl_tiers_of(target: str | None) -> frozenset[str]:
+    """The tiers this target counts as RTL-derived, from its capability manifest. Fails soft to an empty
+    set so the caller falls back to the capsule's own declaration rather than guessing a tier name."""
+    if not target:
+        return frozenset()
+    try:
+        from .runner_config import runner_config_from_manifest
+        from .target_experiment import load_capability_manifest
+        return frozenset(runner_config_from_manifest(load_capability_manifest(target)).rtl_tiers)
+    except Exception:                                    # noqa: BLE001 — unresolvable manifest
+        return frozenset()
+
+
+def _numeric_when_not_accelerated(st, gate, verify: dict, cos: float, engine: str,
+                                  measured_on: str) -> dict:
+    """The numeric verdict for a model capsule that will NOT be reported as a pass.
+
+    The whole-model gate runs BEFORE the acceleration checks, so by the time one of those rejects the
+    capsule the arithmetic has already been measured -- and was being overwritten with
+    ``not_compared``, which reads as "we do not know" when in fact we do. That erased the one thing a
+    reader most needs from a failing capstone: whether the compiler got the model RIGHT and merely ran it
+    in the wrong place, or got it wrong as well. Those call for completely different work.
+
+    ``measured_on`` is carried explicitly so the number can never be mistaken for an accelerator result;
+    the capsule verdict stays ``fail`` in every caller."""
+    return {"status": ("pass" if (st == "verified" and gate) else "fail"),
+            "engine": engine,
+            "gate": verify or None,
+            "cos": (cos if cos else None),
+            "measured_on": measured_on,
+            "note": ("arithmetic only -- this capsule is NOT a pass; see the failure block for what "
+                     "disqualified it. A correct number computed on the wrong lane is still not an "
+                     "accelerator result."),
+            "model_status": st}
+
+
+def _numeric_not_compared(engine: str, measured_on: str, verify: dict | None,
+                          detail: str) -> dict:
+    """The numeric block for a verdict where NOTHING WAS COMPARED against the accelerator.
+
+    The single home for this status, deliberately: it is the honest answer when no declared tier ran,
+    and the wrong one everywhere a number does exist -- a measured mismatch reported as `not_compared`
+    hides a real defect behind an absence. Every path that DID measure reports its verdict through
+    :func:`_numeric_when_not_accelerated` instead."""
+    return {"status": "not_compared", "engine": engine, "measured_on": measured_on,
+            "gate": verify or None, "detail": detail}
+
+
+def rtl_tiers_of(target: str | None) -> frozenset[str]:
+    """Public accessor for the tiers ``target``'s capability manifest counts as RTL-derived.
+
+    Callers outside this module (experiment harnesses that must RECORD which tiers a verdict could
+    have been cited at, so a reader can re-derive the decision without the manifest in hand) were
+    reaching for the private spelling; give them a supported one rather than growing that habit.
+    """
+    return _rtl_tiers_of(target)
+
+
+def model_citable_rtl_tier(declared: "list[str] | tuple[str, ...]", target: str | None) -> str | None:
+    """The ONE tier a whole-model capsule can be CITED at on ``target``, or ``None`` if there is none.
+
+    A model capsule never enters the tier ladder: :func:`_model_tier_map` synthesises its tier block
+    from the model's own layer accounting and emits exactly ONE execution tier -- the LAST declared
+    tier the target's capability manifest counts as RTL. Everything else a capsule declares is either
+    not_applicable (L0/L1 interpret a command buffer a whole model does not have) or simply never
+    emitted, so an admission gate that demands, say, ``L2 == "pass"`` on a target whose RTL tiers begin
+    at L3 reads ``None`` on a FLAWLESS run and refuses it unconditionally. That is exactly what an
+    Arm-4 performance campaign hit: every full-model admission failed before a perf cell ever ran.
+
+    Callers that gate on a citable hardware verdict must ask for this tier by derivation rather than
+    writing one down, and must FAIL CLOSED on ``None`` -- a target/declaration pair with no RTL tier
+    has no citable whole-model verdict to admit, and the non-RTL fallback ``_model_tier_map`` uses to
+    keep a refusal attributable is a label, not a hardware claim.
+    """
+    rtl = [t for t in declared if t in _rtl_tiers_of(target)]
+    return rtl[-1] if rtl else None
+
+
+def _screen_tiers_of(target: str | None) -> tuple[tuple[str, str], ...]:
+    """The (tier, sim) pairs BELOW this target's RTL tiers -- the cheap functional screens, in order.
+
+    Derived from the target's own ``tier_sim`` map minus its declared ``rtl_tiers``, so it is the
+    contract that names the screen, never a "spike" literal here. A target that declares no cheap tier
+    (an adapter-supplied ladder with an empty ``tier_sim``) yields ``()`` and the caller must then say
+    the screen is UNAVAILABLE rather than invent one.
+    """
+    if not target:
+        return ()
+    try:
+        from .runner_config import runner_config_from_manifest
+        from .target_experiment import load_capability_manifest
+        cfg = runner_config_from_manifest(load_capability_manifest(target))
+    except Exception:                                    # noqa: BLE001 — unresolvable manifest
+        return ()
+    return tuple((t, cfg.tier_sim[t]) for t in cfg.oracle_tiers
+                 if t not in cfg.rtl_tiers and t in cfg.tier_sim)
+
+
+def _model_tier_map(declared: list[str], target: str | None, model_exec: dict | None,
+                    ) -> "dict[str, TierResult]":
+    """The tier block for a WHOLE-MODEL capsule, derived from the model's OWN layer accounting.
+
+    A model capsule used to carry no tier block at all on most paths -- the derivation ran only when
+    per-tile verification was present, and every fail-closed branch returned before it. So a capsule
+    could report a verdict beside `tiers: {}`, which is how a suite reads N/N while nothing was
+    certified. The tests that pin this read `tiers[<rtl tier>]["status"]`, so it must exist on EVERY
+    path, including the ones that refuse.
+
+    L0/L1 interpret a COMMAND BUFFER. A whole model has none, so they are honestly not_applicable --
+    a legitimate skip, not a tier that failed to run.
+
+    The RTL tier reads the model's own counters, and the four cases are deliberately distinct:
+
+      * layers ran and none fell back  -> pass
+      * no layer ran at all            -> skipped   (the target never ran this model)
+      * some layer fell back           -> fail      (a hole in the claim, not a rounding error)
+      * counters absent                -> unavailable (nobody could tell; absent must never read as 0)
+    """
+    tiers: dict[str, TierResult] = {}
+    for t in declared:
+        if t in ("L0", "L1"):
+            tiers[t] = TierResult(t, "skipped", True, not_applicable=True,
+                                  reason="a whole model has no command buffer to interpret")
+    _rtl = model_citable_rtl_tier(declared, target)
+    tier = _rtl if _rtl is not None else (declared[-1] if declared else None)
+    if tier is None or tier in tiers:
+        return tiers
+    on = (model_exec or {}).get("matmul_layers_on_mesh")
+    fb = (model_exec or {}).get("matmul_layers_host_fallback")
+    if on is None:
+        tiers[tier] = TierResult(tier, "unavailable", True,
+                                 reason="no mesh execution counters were reported, so whether this "
+                                        "model's layers ran on the accelerator is UNKNOWN")
+    elif int(fb or 0) > 0:
+        tiers[tier] = TierResult(tier, "fail", True,
+                                 reason=f"{int(fb)} matmul layer(s) fell back to the host kernel")
+    elif int(on) == 0:
+        tiers[tier] = TierResult(tier, "skipped", True,
+                                 reason="no matmul layer executed on the accelerator")
+    else:
+        tiers[tier] = TierResult(tier, "pass", True,
+                                 reason=f"{int(on)} matmul layer(s) executed on the accelerator")
+    return tiers
+
+
+def model_budget_seconds() -> float | None:
+    """Wall-clock ceiling for ONE whole-model capsule, or ``None`` for unlimited (the default).
+
+    Unlimited is the right default for an operator certification run: a whole model on a
+    cycle-accurate oracle legitimately takes hours, and a ceiling that silently truncates it would
+    hide coverage rather than buy anything. It is the WRONG default inside an agent loop's per-round
+    gate, which is why the loop sets one explicitly.
+
+    The ``timeout`` threaded through this file is a PER-STEP subprocess ceiling. A whole-model grade
+    makes many such calls, so their sum is unbounded and a step timeout can never bound the capsule.
+    MEASURED (2026-08-29, gemmini arm-4 calibration ``merlincirct_defcal1``): the agent round finished
+    in 40 min, the capstone then ran 5 h 30 m past the round's own 4 h timeout, wrote not one byte into
+    its run directory, and the round never graded. Its own step timeout was 900 s.
+    """
+    raw = os.environ.get("MERLIN_MODEL_BUDGET_S", "").strip()
+    if not raw:
+        return None
+    try:
+        v = float(raw)
+    except ValueError:
+        return None
+    return v if v > 0 else None
+
+
+#: The self-protection a budgeted child runs BEFORE anything else: ask the kernel to SIGKILL it when
+#: its parent goes away. Kept as a string prefix, not a function, because a function would have to be
+#: imported -- and importing merlin takes seconds, during which the child is unprotected. A parent
+#: killed inside that window orphans it, which is measured, not hypothetical.
+_CHILD_GUARD = (
+    "import ctypes,os,signal,sys;"
+    "ctypes.CDLL('libc.so.6').prctl(1, signal.SIGKILL);"          # PR_SET_PDEATHSIG
+    "os.getppid()==1 and os._exit(1);"                            # already orphaned: no signal coming
+)
+
+#: Child entry for a budgeted whole-model grade: protect first, then delegate to ``main``.
+_CHILD_PREAMBLE = _CHILD_GUARD + (
+    "__import__('merlin.targetgen.capsule_runner', fromlist=['main']).main(sys.argv[1:])"
+)
+
+
+def _die_with_parent() -> None:
+    """Ask the kernel to SIGKILL this process when its parent goes away.
+
+    The budgeted whole-model grade runs in its OWN SESSION so the parent can kill the process group
+    when the ceiling expires. That protects against a grade overrunning; it does nothing when the
+    PARENT is killed, because the parent's cleanup never runs. MEASURED (2026-08-30): stopping a
+    regrade left the model-grade child and its Verilator alive on a shared host, reparented to init,
+    with nothing left that knew to reap them.
+
+    Set from inside the CHILD rather than through ``preexec_fn``: the parent grades capsules on a
+    ThreadPoolExecutor, and ``preexec_fn`` is documented as unsafe in a threaded process. The cost is a
+    small race -- the parent could die during interpreter startup -- which the getppid() re-check
+    below closes.
+    """
+    try:
+        import ctypes
+        import signal as _sig
+        ppid = os.getppid()
+        PR_SET_PDEATHSIG = 1
+        ctypes.CDLL("libc.so.6", use_errno=True).prctl(PR_SET_PDEATHSIG, _sig.SIGKILL)
+        if os.getppid() != ppid:            # already reparented: the signal will never come
+            os._exit(1)
+    except Exception:                       # noqa: BLE001 — a best-effort safeguard, never a blocker
+        pass
+
+
+def _descendants(pid: int) -> list[int]:
+    """Every live descendant of *pid*, deepest first, read from /proc.
+
+    Must be collected BEFORE any signal is sent: once a process is orphaned its parent link is gone.
+    A process GROUP is not enough. MEASURED (2026-08-30): a budgeted whole-model grade's Verilator
+    child had called ``setsid`` of its own, so it sat in neither the grade child's group nor its
+    session; ``killpg`` reaped the python and left the simulator running with PPID 1, holding a core
+    on a shared host.
+    """
+    kids: dict[int, list[int]] = {}
+    try:
+        entries = list(Path("/proc").iterdir())
+    except OSError:
+        return []
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            # /proc/<pid>/stat is "pid (comm) state ppid ..."; comm may itself contain spaces and
+            # parentheses, so split after the LAST ')' rather than on whitespace from the left.
+            ppid = int((entry / "stat").read_text().rpartition(")")[2].split()[1])
+        except (OSError, ValueError, IndexError):
+            continue
+        kids.setdefault(ppid, []).append(int(entry.name))
+    out: list[int] = []
+    frontier = list(kids.get(pid, ()))
+    while frontier:
+        out.extend(frontier)
+        frontier = [g for p in frontier for g in kids.get(p, ())]
+    out.reverse()                                  # deepest generation first
+    return out
+
+
+def _running(pid: int) -> bool:
+    """True while *pid* is a live process. A ZOMBIE is not: it has exited and merely awaits a wait(),
+    so ``/proc/<pid>`` still exists and a liveness check written that way waits out its whole grace."""
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text().rpartition(")")[2].split()[0]
+    except (OSError, IndexError):
+        return False
+    return state != "Z"
+
+
+def _kill_tree(pid: int, *, grace: float = 5.0) -> None:
+    """SIGTERM then SIGKILL *pid* and every descendant it had when we looked."""
+    import signal as _signal
+    victims = _descendants(pid) + [pid]
+    for sig in (_signal.SIGTERM, _signal.SIGKILL):
+        for victim in victims:
+            try:
+                os.kill(victim, sig)
+            except OSError:                        # already gone, or not ours
+                pass
+        try:                                       # and the group, for anything spawned since the scan
+            os.killpg(os.getpgid(pid), sig)
+        except OSError:
+            pass
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            if not any(_running(v) for v in victims):
+                return
+            time.sleep(0.1)
+
+
+def _grade_model_capsule(capsule: dict, *, target: str | None = None, timeout: int,
+                         package_dir: str | Path | None = None,
+                         budget_s: float | None = None) -> dict:
+    """Serialize whole-model grades whose nested mesh artifacts use shared global run paths.
+
+    ``compile_model`` currently keys ``mesh_run`` and ``mesh_verify`` artifacts by layer shape/index,
+    not by the outer capsule/submission.  Two processes can therefore overwrite the exact LLVM/ELF and
+    oracle evidence the other is still producing.  A cross-process target lock makes those artifacts
+    single-writer until the paths themselves gain an outer-grade namespace.  This deliberately slows
+    only model capsules; ordinary op/slice grading remains parallel.
+    """
+    import fcntl
+    import tempfile
+
+    safe_target = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in str(target or "none"))
+    lock_root = Path(tempfile.gettempdir()) / f"merlin-model-grade-locks-{os.getuid()}"
+    lock_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    lock_path = lock_root / f"{safe_target}.lock"
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        result = _grade_model_capsule_unlocked(
+            capsule, target=target, timeout=timeout, package_dir=package_dir, budget_s=budget_s)
+        result["model_grade_serialization"] = {
+            "scope": f"target:{target}",
+            "reason": "nested mesh_run/mesh_verify artifact paths are shape/index keyed",
+        }
+        return result
+
+
+def _grade_model_capsule_unlocked(capsule: dict, *, target: str | None = None, timeout: int,
+                                  package_dir: str | Path | None = None,
+                                  budget_s: float | None = None) -> dict:
+    """Grade a whole-model capsule, under a wall-clock budget when one is set.
+
+    ``budget_s`` (default: :func:`model_budget_seconds`) is a ceiling on the CAPSULE, not on a step.
+    Exceeding it is reported as ``budget_exhausted`` with the elapsed time: a budget that ran out is
+    the absence of evidence, so it is neither a pass nor a fail of the submission and sits in neither
+    side of the score (see ``NOT_MEASURED_STATUSES``). With no budget the grade runs inline, exactly
+    as before.
+
+    A budgeted grade runs in a CHILD PROCESS in its own session. Two reasons, both load-bearing: an
+    in-process call cannot be interrupted (this runs on a ThreadPool worker, so signals are out), and
+    the grade spawns oracle subprocesses (verilator, spike) that must die with it -- killing only the
+    direct child leaves them competing for the CPU the next capsule needs. A plain subprocess rather
+    than ``multiprocessing``: ``spawn`` re-imports the caller's ``__main__`` (the harness entry points
+    are scripts, so that re-runs them) and ``fork`` is unsafe from a thread.
+    """
+    budget = model_budget_seconds() if budget_s is None else budget_s
+    if not budget or budget <= 0:
+        return _grade_model_capsule_inline(capsule, target=target, timeout=timeout,
+                                           package_dir=package_dir)
+
+    import subprocess as _sp
+    import tempfile as _tf
+
+    def _stopped(detail: str, status: str = "incomplete", **extra) -> dict:
+        return {"capsule": capsule["name"], "kind": "model", "label": capsule.get("label"),
+                "contract_version": CONTRACT_VERSION, "status": status, **extra,
+                "failure": {"plane": "model", "category": "NOT_RUN_IS_NOT_PASS", "detail": detail}}
+
+    with _tf.TemporaryDirectory(prefix="model_grade_") as _td:
+        spec_p, out_p = Path(_td) / "spec.json", Path(_td) / "result.json"
+        spec_p.write_text(json.dumps({"capsule": capsule, "target": target, "timeout": timeout,
+                                      "package_dir": str(package_dir) if package_dir else None}),
+                          encoding="utf-8")
+        # `-c` rather than `-m`: the preamble sets PR_SET_PDEATHSIG in the first milliseconds, before
+        # importing merlin. Importing first leaves a multi-second window in which the child is
+        # unprotected, and a parent killed inside that window orphans it -- measured, and the reason
+        # this is a preamble and not a call at the top of main().
+        cmd = [sys.executable, "-c", _CHILD_PREAMBLE,
+               "--model-grade", str(spec_p), "--model-grade-out", str(out_p)]
+        started = time.monotonic()
+        _child_env = dict(os.environ)
+        # A budgeted model grade runs in another interpreter, so the parent's ContextVar cannot carry
+        # the capsule attribution into it. The pass recorder already accepts this explicit environment
+        # fallback; set it on the child only so concurrent model grades cannot cross-attribute calls.
+        if _child_env.get("MERLIN_PASS_LOG"):
+            _child_env["MERLIN_PASS_LOG_CAPSULE"] = str(capsule["name"])
+            _child_env["MERLIN_PASS_LOG_REQUIREMENTS"] = json.dumps(
+                list(capsule.get("pass_requirements") or []))
+        proc = _sp.Popen(cmd, stdout=_sp.PIPE, stderr=_sp.STDOUT, text=True,
+                         env=_child_env, start_new_session=True)
+        try:
+            tail = (proc.communicate(timeout=budget)[0] or "")[-2000:]
+        except _sp.TimeoutExpired:
+            elapsed = time.monotonic() - started
+            _kill_tree(proc.pid)
+            try:
+                proc.wait(timeout=10)
+            except _sp.TimeoutExpired:
+                pass
+            # `budget_exhausted`, not `incomplete`: nothing about the submission was measured, so it
+            # belongs in neither bucket. Scoring it as a failure would make all_pass unreachable and
+            # cost an agent loop its only early exit -- see NOT_MEASURED_STATUSES.
+            return _stopped(
+                f"whole-model grade exceeded its {budget:.0f}s budget (ran {elapsed:.0f}s) and was "
+                f"stopped. Raise MERLIN_MODEL_BUDGET_S, or clear it for no ceiling, to grade it. "
+                f"NOT a verdict on the submission.",
+                status="budget_exhausted", model_budget_s=budget, elapsed_s=round(elapsed, 1))
+        if not out_p.is_file():
+            return _stopped(f"whole-model grade process exited {proc.returncode} without a "
+                            f"result: {tail[-400:]}")
+        try:
+            return json.loads(out_p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return _stopped(f"whole-model grade result unreadable: {type(exc).__name__}: {exc}")
+
+
+def _resolve_model_host_lane(target: str, dtype: str):
+    """Return ``(experiment, package_path, identity)`` for targeted whole-model compilation.
+
+    Kept as a small seam because descriptor resolution, package-content validation and datatype
+    compatibility are one fail-closed decision; callers must not independently recreate part of it.
+    """
+    from .corpora import descriptor_path
+    from .target_experiment import load_target_experiment
+
+    descriptor = descriptor_path(target)
+    if not descriptor.is_file():
+        raise ValueError(f"target {target!r} has no experiment descriptor at {descriptor}")
+    experiment = load_target_experiment(descriptor)
+    if experiment.target != target:
+        raise ValueError(
+            f"descriptor {descriptor} names target {experiment.target!r}, not {target!r}")
+    snapshot_repo, snapshot_identity = _verified_model_host_lane_snapshot()
+    # SELECT the lane by dtype, rather than validating whichever single lane the descriptor happened to
+    # declare. The cross-check below already refused a mismatch, so a target needing two precisions had
+    # no way to express it and simply failed for one of them; the matrix makes the selection the
+    # descriptor's to state, and the check below stays as the belt-and-braces that catches a package
+    # whose knobs drifted from the profile it is filed under.
+    package, identity = experiment.resolve_host_lane(root=snapshot_repo, dtype=dtype)
+    if snapshot_identity is not None:
+        identity["run_snapshot"] = snapshot_identity
+
+    # An explicit package bypasses compile_rvv's datatype-aware default selection. Reject a known
+    # cross-datatype substitution: otherwise an int8 model with an fp32 package sets
+    # ``int8_compute=False`` and the numeric outcome is about a different host program. Dtypes such as
+    # fp8 deliberately have no scalar strategy; compile_rvv derives their scalar lane from captured IR,
+    # so only a strategy it can decide here is gated here.
+    from .. import compile_cli as _compile_cli
+    expected_strategy = _compile_cli._DTYPE_STRATEGY.get(dtype)
+    if expected_strategy is not None and identity["dtype_strategy"] != expected_strategy:
+        raise ValueError(
+            f"descriptor host package declares dtype_strategy={identity['dtype_strategy']!r}, but "
+            f"model compile_dtype={dtype!r} requires {expected_strategy!r}")
+    return experiment, package, identity
+
+
+_MODEL_HOST_SNAPSHOT_ROOT_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT"
+_MODEL_HOST_SNAPSHOT_REQUIRED_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_REQUIRED"
+
+
+def _verified_model_host_lane_snapshot() -> tuple[Path | None, dict[str, Any] | None]:
+    """Return the verified run-snapshot repo root used for host-lane grading.
+
+    A bwrap experiment sets ``*_REQUIRED`` and points ``*_ROOT`` at its host-only
+    ``bundle_inputs`` directory. The aggregate was recomputed immediately before export; resolving and
+    hashing the declared host package below joins the bytes mounted for the agent to the bytes passed
+    into ``compile_model``. Using the live worktree instead would let a post-launch edit change only the
+    grader's compiler.
+
+    Callers outside the bwrap experiment remain compatible: with neither variable set, the descriptor
+    resolves against the live repository exactly as before. A declared/required snapshot never falls
+    back to that path.
+    """
+    raw_required = os.environ.get(_MODEL_HOST_SNAPSHOT_REQUIRED_ENV, "").strip().lower()
+    if raw_required not in ("", "0", "false", "no", "off", "1", "true", "yes", "on"):
+        raise ValueError(
+            f"{_MODEL_HOST_SNAPSHOT_REQUIRED_ENV} has invalid boolean value {raw_required!r}")
+    required = raw_required in ("1", "true", "yes", "on")
+    raw_root = os.environ.get(_MODEL_HOST_SNAPSHOT_ROOT_ENV, "").strip()
+    if not raw_root:
+        if required:
+            raise ValueError(
+                f"bwrap model grading requires {_MODEL_HOST_SNAPSHOT_ROOT_ENV}; no verified run "
+                "snapshot was provided")
+        return None, None
+
+    lexical_root = Path(raw_root)
+    if not lexical_root.is_absolute() or lexical_root.is_symlink():
+        raise ValueError(
+            f"{_MODEL_HOST_SNAPSHOT_ROOT_ENV} must name a non-symlink absolute directory")
+    try:
+        root = lexical_root.resolve(strict=True)
+    except OSError as exc:
+        raise ValueError(f"model host-lane run snapshot is missing at {lexical_root}") from exc
+    marker = root / "snapshot.json"
+    if not root.is_dir() or marker.is_symlink() or not marker.is_file():
+        raise ValueError(f"model host-lane run snapshot is incomplete or unsafe at {root}")
+    try:
+        manifest = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"model host-lane run snapshot marker is unreadable at {marker}") from exc
+    if not isinstance(manifest, dict) or manifest.get("version") != 2:
+        raise ValueError("model host-lane run snapshot marker has an unsupported format")
+
+    # Setup/resume has already recomputed this aggregate through verify_bundle_snapshot before it is
+    # exported. Preserve that run identity here, while HostLane.resolve below independently hashes the
+    # exact (small) compiler package before and after compilation. Re-hashing an entire bundle here would
+    # read its LLVM toolchain twice for every capstone and add no host-package evidence.
+    digest = manifest.get("content_sha256")
+    n_files = manifest.get("n_files")
+    n_bytes = manifest.get("n_bytes")
+    if (not isinstance(digest, str) or len(digest) != 64 or digest != digest.lower() or
+            any(ch not in "0123456789abcdef" for ch in digest) or
+            not isinstance(n_files, int) or n_files < 1 or
+            not isinstance(n_bytes, int) or n_bytes < 1):
+        raise ValueError("model host-lane run snapshot marker has invalid aggregate identity")
+
+    repo = root / "repo"
+    if repo.is_symlink() or not repo.is_dir():
+        raise ValueError(f"model host-lane run snapshot has no safe repository payload at {repo}")
+    resolved_repo = repo.resolve(strict=True)
+    if root not in resolved_repo.parents:
+        raise ValueError(f"model host-lane run snapshot repository escapes {root}")
+    return resolved_repo, {
+        "root": str(root),
+        "repo_root": str(resolved_repo),
+        "content_sha256": digest,
+        "n_files": n_files,
+        "n_bytes": n_bytes,
+        "version": 2,
+        "source_repo": manifest.get("repo"),
+    }
+
+
+def _model_asset(capsule_root: Path, declared: object, role: str) -> Path:
+    """Resolve one declared model-capsule asset without permitting aliases or escapes."""
+    if not isinstance(declared, str) or not declared.strip():
+        raise ValueError(f"model capsule does not declare its {role} asset")
+    rel = Path(declared)
+    if rel.is_absolute() or ".." in rel.parts:
+        raise ValueError(f"model capsule {role} path must stay inside the capsule: {declared!r}")
+    lexical = capsule_root / rel
+    if lexical.is_symlink() or not lexical.is_file():
+        raise ValueError(f"model capsule {role} asset is missing or a symlink: {declared!r}")
+    resolved = lexical.resolve(strict=True)
+    if capsule_root not in resolved.parents:
+        raise ValueError(f"model capsule {role} asset escapes its frozen directory: {declared!r}")
+    return resolved
+
+
+def _file_identity(path: Path) -> dict[str, Any]:
+    import hashlib
+
+    h = hashlib.sha256()
+    size = 0
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1024 * 1024), b""):
+            size += len(block)
+            h.update(block)
+    return {"sha256": h.hexdigest(), "size_bytes": size}
+
+
+def _content_identity(files: dict[str, Path], *, root: Path | None = None) -> dict[str, Any]:
+    """Stable identity of a role-keyed set; paths do not participate in its content hash."""
+    import hashlib
+
+    artifacts = {}
+    for role, path in sorted(files.items()):
+        rel = str(path.relative_to(root)) if root is not None else path.name
+        artifacts[role] = {"path": rel, **_file_identity(path)}
+    canonical = json.dumps(artifacts, sort_keys=True, separators=(",", ":")).encode()
+    return {"version": 1, "content_sha256": hashlib.sha256(canonical).hexdigest(),
+            "artifacts": artifacts, "missing": []}
+
+
+def _write_deterministic_npz(path: Path, arrays: dict[str, Any]) -> None:
+    """Write an np.load-compatible archive whose bytes do not contain wall-clock timestamps."""
+    import io
+    import zipfile
+
+    import numpy as np
+
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
+        for name, array in sorted(arrays.items()):
+            payload = io.BytesIO()
+            np.save(payload, np.ascontiguousarray(array), allow_pickle=False)
+            member = zipfile.ZipInfo(f"{name}.npy", date_time=(1980, 1, 1, 0, 0, 0))
+            member.compress_type = zipfile.ZIP_STORED
+            member.external_attr = 0o100444 << 16
+            archive.writestr(member, payload.getvalue())
+
+
+def _numpy_dtype(dtype: str):
+    import numpy as np
+
+    dtypes = {"f64": np.float64, "f32": np.float32, "f16": np.float16,
+              "i64": np.int64, "i32": np.int32, "i16": np.int16, "i8": np.int8,
+              "i1": np.int8}
+    if dtype not in dtypes:
+        # A bf16 array cannot be reconstructed from decoded YAML values without an explicit bit-level
+        # representation.  Guessing by casting to f32 would make the runtime consume different bytes.
+        raise ValueError(f"capsule runtime-bundle adapter cannot losslessly encode dtype {dtype!r}")
+    return dtypes[dtype]
+
+
+def _model_runtime_bundle(capsule: dict, *, timeout: int):
+    """Context manager yielding a read-only capture bundle made only from frozen capsule assets.
+
+    The model capsule intentionally exposes a linalg interface, external weights and an independent
+    golden instead of a live model2MLIR capture directory.  Whole-model execution needs the equivalent
+    runtime files.  This adapter reconstructs those files deterministically, validates their ABI against
+    the capsule's frozen loader via torch.export, and checks every source/bundle digest both before and
+    after compilation.  It never resolves ``out/artifacts/recaptures`` and never captures/downloads a
+    model.
+    """
+    import contextlib
+    import shutil
+    import subprocess
+    import tempfile
+
+    import numpy as np
+
+    @contextlib.contextmanager
+    def _materialized():
+        raw_root = capsule.get("__dir__")
+        if not raw_root:
+            raise ValueError("model capsule has no frozen source directory")
+        lexical_root = Path(raw_root)
+        if lexical_root.is_symlink() or not lexical_root.is_dir():
+            raise ValueError("model capsule source directory is missing or a symlink")
+        root = lexical_root.resolve(strict=True)
+        op_attrs = (capsule.get("operation") or {}).get("attributes") or {}
+        ref = capsule.get("pytorch_ref") or {}
+
+        interface_names = [str(x) for x in
+                           (capsule.get("linalg_mlir"), capsule.get("interface_mlir")) if x]
+        if not interface_names or len(set(interface_names)) != 1:
+            raise ValueError(
+                "model capsule linalg_mlir/interface_mlir declarations are absent or inconsistent")
+        interface = _model_asset(root, interface_names[0], "linalg interface")
+        loader = _model_asset(root, ref.get("loader"), "PyTorch loader")
+        weights = _model_asset(root, op_attrs.get("weights"), "external weights")
+        manifest_name = op_attrs.get("weights_manifest")
+        manifest_asset = (_model_asset(root, manifest_name, "capture-time weight manifest")
+                          if manifest_name else None)
+        dependency_name = op_attrs.get("loader_dependencies")
+        dependency_root = None
+        if dependency_name:
+            dependency_lexical = root / str(dependency_name)
+            if (Path(str(dependency_name)).is_absolute() or ".." in Path(str(dependency_name)).parts or
+                    dependency_lexical.is_symlink() or not dependency_lexical.is_dir()):
+                raise ValueError("model loader dependency tree must be a real capsule-local directory")
+            dependency_root = dependency_lexical.resolve(strict=True)
+            if root not in dependency_root.parents:
+                raise ValueError("model loader dependency tree must stay inside the capsule")
+        golden_yaml = _model_asset(root, "golden.yaml", "independent golden")
+        capsule_yaml = _model_asset(root, "capsule.yaml", "capsule declaration")
+        source_files = {"capsule_declaration": capsule_yaml, "loader": loader,
+                        "linalg_interface": interface, "external_weights": weights,
+                        "independent_golden": golden_yaml}
+        if manifest_asset is not None:
+            source_files["capture_manifest"] = manifest_asset
+        if dependency_root is not None:
+            for dependency in sorted(dependency_root.rglob("*.py")):
+                if dependency.is_symlink() or not dependency.is_file():
+                    raise ValueError("model loader dependency source is missing or a symlink")
+                source_files[f"loader_dependency::{dependency.relative_to(dependency_root)}"] = dependency
+        source_before = _content_identity(source_files, root=root)
+
+        golden_doc = yaml.safe_load(golden_yaml.read_text(encoding="utf-8"))
+        if not isinstance(golden_doc, dict):
+            raise ValueError("model capsule golden.yaml is not a mapping")
+        prov = golden_doc.get("oracle_provenance") or {}
+        if prov.get("pytorch_source") != loader.name or prov.get("linalg_mlir") != interface.name:
+            raise ValueError("golden provenance does not name the capsule's declared loader/interface")
+        input_specs = list(capsule.get("inputs") or [])
+        input_names = [str(x.get("name")) for x in input_specs]
+        output_names = [str(x) for x in (op_attrs.get("outs") or [])]
+        if not output_names:
+            output_names = [str(op_attrs.get("out") or "")]
+        declared_order = list(op_attrs.get("arg_order") or [])
+        golden_order = list(prov.get("arg_order") or [])
+        if declared_order != input_names + output_names or golden_order != declared_order:
+            raise ValueError("capsule/golden argument order is inconsistent")
+        golden_inputs = prov.get("inputs") or {}
+        outputs = golden_doc.get("outputs") or {}
+        if set(golden_inputs) != set(input_names) or set(outputs) != set(output_names):
+            raise ValueError("capsule golden input/output names do not exactly match its declaration")
+
+        from ..common.mlir_query import forward_signature
+        from ..llvmlower.weights_pack import load_safetensors_header
+
+        signature, output_signature = forward_signature(interface)
+        header, _payload = load_safetensors_header(weights)
+        if len(signature) != len(header) + len(input_names):
+            raise ValueError(
+                f"interface has {len(signature)} arguments but frozen weights+inputs account for "
+                f"{len(header)}+{len(input_names)}")
+        if len(output_signature) != len(output_names):
+            raise ValueError(
+                f"capsule declares {len(output_names)} outputs but interface returns "
+                f"{len(output_signature)}")
+
+        arrays: dict[str, np.ndarray] = {}
+        first_input = len(signature) - len(input_names)
+        for offset, (decl, name) in enumerate(zip(input_specs, input_names)):
+            shape, dtype = signature[first_input + offset]
+            source = golden_inputs[name]
+            if list(decl.get("shape") or []) != list(shape) or list(source.get("shape") or []) != list(shape):
+                raise ValueError(f"frozen input {name!r} shape disagrees with the interface")
+            if str(decl.get("dtype") or "") != dtype:
+                raise ValueError(
+                    f"frozen input {name!r} declares dtype {decl.get('dtype')!r} but the executable "
+                    f"interface requires {dtype!r}")
+            decoded = source.get("decoded")
+            if decoded is None:
+                raise ValueError(f"frozen input {name!r} has no decoded row-major values")
+            array = np.asarray(decoded, dtype=_numpy_dtype(dtype))
+            if array.size != int(np.prod(shape, dtype=np.int64)):
+                raise ValueError(f"frozen input {name!r} element count disagrees with its shape")
+            arrays[f"in{offset}"] = np.ascontiguousarray(array.reshape(shape))
+
+        output_arrays: dict[str, np.ndarray] = {}
+        for output_name, (out_shape, out_dtype) in zip(output_names, output_signature, strict=True):
+            output_array = np.asarray(outputs[output_name], dtype=_numpy_dtype(out_dtype))
+            if output_array.size != int(np.prod(out_shape, dtype=np.int64)):
+                raise ValueError(
+                    f"frozen golden {output_name!r} element count disagrees with interface shape")
+            output_arrays[output_name] = np.ascontiguousarray(output_array.reshape(out_shape))
+
+        temp = Path(tempfile.mkdtemp(prefix="merlin_frozen_capsule_bundle_"))
+        bundle = temp / "bundle"
+        bundle.mkdir(mode=0o700)
+        try:
+            shutil.copyfile(interface, bundle / "model.mlir")
+            shutil.copyfile(weights, bundle / "weights.safetensors")
+            # The linalg's prov.weights_file is capsule-relative and remains byte-identical.  Keep an
+            # alias with that declared name instead of rewriting incompatible/unproven IR.
+            shutil.copyfile(weights, bundle / weights.name)
+            _write_deterministic_npz(bundle / "inputs.npz", arrays)
+            with (bundle / "golden.npy").open("wb") as fh:
+                np.save(fh, output_arrays[output_names[0]], allow_pickle=False)
+            _write_deterministic_npz(bundle / "goldens.npz", output_arrays)
+            (bundle / "output_order.json").write_text(
+                json.dumps(output_names, separators=(",", ":")), encoding="utf-8")
+            if manifest_asset is not None:
+                shutil.copyfile(manifest_asset, bundle / "weights.safetensors.manifest.json")
+
+            from .capsule_source import _m2m_python
+
+            torch_python = _m2m_python()
+            worker = Path(__file__).with_name("_capsule_bundle_worker.py").resolve(strict=True)
+            if not torch_python.is_file():
+                raise ValueError(f"torch interpreter unavailable for frozen loader validation: {torch_python}")
+            request = {
+                "loader": str(loader), "weights": str(weights),
+                "inputs_npz": str(bundle / "inputs.npz"),
+                "golden_npy": str(bundle / "golden.npy"),
+                "signature": [{"shape": list(shape), "dtype": dtype}
+                              for shape, dtype in signature],
+                "output_signature": [{"shape": list(shape), "dtype": dtype}
+                                     for shape, dtype in output_signature],
+                "goldens_npz": str(bundle / "goldens.npz"),
+                "output_order": output_names,
+                "torch_seed": int(op_attrs.get("torch_seed", 0)),
+                "numeric_policy": capsule.get("numeric_policy") or {},
+            }
+            if manifest_asset is not None:
+                request["captured_manifest"] = str(manifest_asset)
+            if dependency_root is not None:
+                request["loader_dependencies"] = str(dependency_root)
+            request_path = temp / "request.json"
+            request_path.write_text(json.dumps(request, sort_keys=True), encoding="utf-8")
+            env = dict(os.environ)
+            # The worker has no hub code path.  These additionally force common model clients offline
+            # if a future frozen loader imports one; an attempted checkout must fail, not mutate inputs.
+            env.update({"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
+                        "HF_DATASETS_OFFLINE": "1", "WANDB_MODE": "offline"})
+            run = subprocess.run([str(torch_python), str(worker), "--request", str(request_path)],
+                                 cwd=str(root), env=env, capture_output=True, text=True,
+                                 timeout=max(30, min(int(timeout), 300)))
+            marker = "__CAPSULE_BUNDLE_ABI__ "
+            line = next((ln[len(marker):] for ln in run.stdout.splitlines()
+                         if ln.startswith(marker)), None)
+            if run.returncode != 0 or line is None:
+                detail = (run.stderr or run.stdout or "no diagnostic")[-1200:]
+                raise ValueError(
+                    f"frozen loader/weights/interface/golden validation failed (rc={run.returncode}): "
+                    f"{detail}")
+            report = json.loads(line)
+            if (report.get("loader_sha256") != source_before["artifacts"]["loader"]["sha256"] or
+                    report.get("weights_sha256") !=
+                    source_before["artifacts"]["external_weights"]["sha256"]):
+                raise ValueError("loader or weights changed while the export ABI was being validated")
+            manifest = report.get("manifest")
+            order = report.get("input_order")
+            if not isinstance(manifest, dict) or set(manifest) != {str(i) for i in range(len(signature))}:
+                raise ValueError("loader validator returned an incomplete forward-argument manifest")
+            if not isinstance(order, dict) or sorted(order.values()) != list(range(len(input_names))):
+                raise ValueError("loader validator returned an invalid input order")
+            if manifest_asset is None:
+                (bundle / "weights.safetensors.manifest.json").write_text(
+                    json.dumps(manifest, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+            (bundle / "input_order.json").write_text(
+                json.dumps(order, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+
+            bundle_files = {p.name: p for p in bundle.iterdir() if p.is_file()}
+            bundle_before = _content_identity(bundle_files)
+            source_after_materialize = _content_identity(source_files, root=root)
+            if source_after_materialize["content_sha256"] != source_before["content_sha256"]:
+                raise ValueError("frozen capsule assets changed while constructing the runtime bundle")
+            for path in bundle_files.values():
+                path.chmod(0o444)
+            bundle.chmod(0o555)
+            provenance = {
+                "version": 2 if manifest_asset is not None else 1,
+                "source": source_before,
+                "bundle": bundle_before,
+                "construction": ("frozen_capsule_assets_v2" if manifest_asset is not None
+                                 else "frozen_capsule_assets_v1"),
+                "interface_reused_byte_exact": True,
+                "live_recapture_used": False,
+                "network_or_model_checkout_used": False,
+                "validation": {k: report.get(k) for k in
+                               ("torch_export", "capture_manifest_validated", "golden_validated",
+                                "golden_value_replay", "weights_validated_exact",
+                                "loader_input_count")},
+                "tool": {"worker_sha256": _file_identity(worker)["sha256"],
+                         "python": report.get("python"),
+                         "python_version": report.get("python_version"),
+                         "torch_version": report.get("torch_version")},
+            }
+
+            def verify_unchanged() -> None:
+                source_after = _content_identity(source_files, root=root)
+                bundle_after = _content_identity(bundle_files)
+                if source_after["content_sha256"] != source_before["content_sha256"]:
+                    raise ValueError("frozen capsule assets changed during whole-model compilation")
+                if bundle_after["content_sha256"] != bundle_before["content_sha256"]:
+                    raise ValueError("constructed runtime bundle changed during whole-model compilation")
+
+            yield bundle, provenance, verify_unchanged
+        finally:
+            if bundle.exists():
+                bundle.chmod(0o700)
+                for path in bundle.iterdir():
+                    if path.is_file() and not path.is_symlink():
+                        path.chmod(0o600)
+            shutil.rmtree(temp, ignore_errors=True)
+
+    return _materialized()
+
+
+def _grade_model_capsule_inline(capsule: dict, *, target: str | None = None, timeout: int,
+                                package_dir: str | Path | None = None) -> dict:
+    """Grade a whole-model (kind == "model") capsule end to end via the target-aware whole-model flow
+    (``compile_model``): route each op across the target's compute units (matmul/systolic -> the mesh, the
+    rest -> the vector/scalar lane), compile the functional whole model (the scalar/RVV reference,
+    numerically correct across every op), and gate its output vs the model's golden — attaching the per-op
+    mesh-routing plan for the target. ``MERLIN_MODEL_GRADE_RUN`` selects ``host`` (default; x86 dispatch
+    runtime) or ``spike``. Honestly reports ``incomplete`` when the whole-model toolchain (m2m venv /
+    clang-23) is absent — never a silent pass."""
+    import os
+    from pathlib import Path as _P
+    attrs = (capsule.get("operation") or {}).get("attributes") or {}
+    model, dtype = attrs.get("model"), attrs.get("compile_dtype", "fp32")
+    # Which lane executes the model. The default was the host dispatch runtime unconditionally, so a
+    # capsule that DEMANDS acceleration was graded on a lane that cannot provide it and passed anyway.
+    # Derive it instead: a capsule whose semantic block asserts must_accelerate runs on the mesh lane,
+    # everything else keeps the host lane. The env var still overrides, for a deliberate diagnostic run.
+    _sem = capsule.get("semantic") or {}
+    # WHICH LANE THE MODEL RUNS ON. must_accelerate implies the mesh lane. So does an interop capsule
+    # that REQUIRES on_mesh: it withholds must_accelerate on purpose (host work is the behaviour under
+    # test), but running it on the host lane means the mesh never executes and its own lane requirement
+    # becomes unverifiable -- which is exactly how the first such capsule passed while executing nothing
+    # on the accelerator.
+    _req_lanes = [str(x) for x in ((capsule.get("lanes") or {}).get("require") or [])]
+    # THE TARGET'S OWN MESH IS THE ORACLE WHENEVER WE HAVE A TARGET. This used to key on the capsule's
+    # must_accelerate / required lanes, which left a capsule declaring neither graded on the HOST even
+    # when a target was named -- and merlin's x86 dispatch runtime is OUR compiler, so however well it
+    # does it is evidence about us, never about the submission. Keying on the target subsumes both
+    # declarations: a capsule demanding acceleration on a target with no mesh has nothing to run on
+    # either way. The env var still overrides for a deliberate diagnostic run.
+    run_where = os.environ.get("MERLIN_MODEL_GRADE_RUN") or ("mesh" if target else "host")
+    _ = _req_lanes  # still read below by the lane report
+    # MESH VERIFICATION IS THE CAPSULE'S DEMAND, NOT AN OPERATOR'S OPT-IN. It EXECUTES each mesh-routed
+    # matmul as a single systolic tile on the target's real mesh oracle (compile_model mesh_verify),
+    # which is the only evidence that the matmul layers run ON the mesh rather than that a routing plan
+    # was produced.
+    #
+    # It used to be off unless an env var said otherwise, because the oracle build/run is heavy. The
+    # cost is real; the default was still wrong. A capsule that declares `must_accelerate`, or that
+    # names `on_mesh` in `lanes.require`, is asking for exactly this evidence -- and without it the tier
+    # ladder below has nothing to record, so the capstone reports a verdict backed by the functional
+    # lane alone. That is `capstone-graded-tiles-not-the-model` with the accelerator left out entirely.
+    # Derive the default from what the capsule demands; the env var still overrides in BOTH directions,
+    # for a deliberate diagnostic run. The wall-clock cost is bounded by MERLIN_MODEL_BUDGET_S.
+    _demands_mesh = bool(_sem.get("must_accelerate")) or "on_mesh" in _req_lanes
+    _mv_env = os.environ.get("MERLIN_MESH_VERIFY", "").strip().lower()
+    mesh_verify = (_mv_env in ("1", "true", "yes", "on")) if _mv_env else _demands_mesh
+    result: dict = {"capsule": capsule["name"], "kind": "model", "label": capsule.get("label"),
+                    "operation": {"op": "model", "model": model, "dtype": dtype, "run": run_where,
+                                  "target": target},
+                    "contract_version": CONTRACT_VERSION}
+    if not model:
+        result.update(status="incomplete",
+                      failure={"plane": "model", "category": "RUNNER_CRASH",
+                               "detail": "model capsule missing operation.attributes.model"})
+        return result
+
+    # The target submission and the scalar/vector host lane are TWO compiler packages. The former is
+    # threaded below as ``mesh_package``; the latter is frozen experiment infrastructure and MUST come
+    # from this target's descriptor. Passing None used ``default_package`` (the currently certified RVV
+    # champion), which could differ from the package granted read-only to the agent. The resulting
+    # boundary/interop verdict then depended on a compiler the experiment neither declared nor exposed.
+    _host_package = None
+    _host_identity = None
+    _host_experiment = None
+    if target:
+        try:
+            _host_experiment, _host_package, _host_identity = _resolve_model_host_lane(target, dtype)
+            result["host_lane"] = _host_identity
+        except Exception as e:  # noqa: BLE001 — an unpinned host compiler cannot produce a verdict
+            result.update(status="incomplete",
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"frozen host lane unavailable: {type(e).__name__}: "
+                                             f"{str(e)[:300]}"})
+            return result
+    # The captured linalg (visible grounding) drives the per-op mesh routing when present. Read the name
+    # the CAPSULE DECLARES -- every model capsule ships `linalg_mlir: capsule.interface.mlir`, while this
+    # looked only for `capsule.linalg.mlir`, so it never found one. `linalg_mlir` was therefore always
+    # None, `compile_model`'s `if target and linalg_mlir:` never fired, and the routing plan, the coverage
+    # certificate AND the mesh verification were all skipped on every whole-model capsule ever graded --
+    # silently, because a skipped block leaves no trace in the result.
+    linalg_mlir = None
+    linalg_path = None
+    cdir = capsule.get("__dir__")
+    if cdir:
+        for _name in (capsule.get("linalg_mlir"), capsule.get("interface_mlir"), "capsule.linalg.mlir"):
+            if not _name:
+                continue
+            lp = _P(cdir) / str(_name)
+            if lp.is_file():
+                linalg_path = lp
+                linalg_mlir = lp.read_text(encoding="utf-8")
+                break
+    if target and cdir:
+        # The declaration-side composition is derived independently from the capsule interface.  Later
+        # the model check compares it with the runtime ledger, so M2's A->H->A seam cannot be credited
+        # from a static routing plan and M3's must-accelerate claim cannot pass on synthesized tiles alone.
+        from . import boundary as _boundary
+        result["boundary_expectation"] = _boundary.profile_capsule(cdir, target).to_dict()
+    from ..xdsl_dialects.lowering.passes import MODEL_BOUNDARY_CAPSTONE
+    _requires_boundary_plane = MODEL_BOUNDARY_CAPSTONE in (
+        capsule.get("pass_requirements") or ())
+    if _requires_boundary_plane and linalg_path is None:
+        result.update(status="incomplete",
+                      failure={"plane": "pass_obligations", "category": "NOT_RUN_IS_NOT_PASS",
+                               "detail": "model capsule has no readable declared linalg/interface module; "
+                                         "the production boundary passes cannot be exercised"})
+        return result
+    try:
+        # This is the production, in-process boundary plane: outline the REAL model, materialize and
+        # verify its dispatch DAG, partition it, and attach the C ABI. It is deliberately separate from
+        # the OOT package's four subprocess stages, which run below on each mesh tile. A pass-obligation
+        # failure is structural and blocks the capsule before expensive oracle work.
+        if _requires_boundary_plane:
+            from ..frontends.linalg_mlir import parse_mlir_file
+            from ..xdsl_dialects.lowering.passes import run_dialect_plane
+            _plane = run_dialect_plane(parse_mlir_file(linalg_path), n_harts=1)
+            result["pass_obligations"] = _plane.stats
+
+        from ..compile_cli import compile_model
+        # `dtype` is the capsule's compile_dtype (an RVV compile mode). The capsule ALSO declares the
+        # exact datapath format in operation.attributes.dtype -- pass that for routing so a demand is
+        # matched against the unit's declared format rather than against a compile-mode token.
+        _attrs = (capsule.get("operation") or {}).get("attributes") or {}
+        # THE PACKAGE UNDER TEST MUST REACH THE MESH ORACLE. `run_capsule` is handed the submission
+        # being graded, but this function never took it and called `compile_model(package=None)`, so a
+        # whole-model capsule was compiled and mesh-verified against the DEFAULT path -- not against the
+        # submission. Every whole-model number that resulted (numeric verdict, layers-on-mesh accounting,
+        # tile certification) was therefore a statement about the reference flow, not about the backend
+        # the capsule was supposed to be judging. Measured: mesh verification reported
+        # `n_tiles: 0, reason: "no default OOT backend package for target"` while a perfectly good
+        # submission sat in the caller's hand.
+        #
+        # It goes to `mesh_package` (the OOT ACCELERATOR backend that certifies tiles), while `package`
+        # is the independently frozen RVV host lane -- two things that a single name would conflate.
+        _pkg = str(package_dir) if package_dir else None
+        _host_package_arg = str(_host_package) if _host_package is not None else None
+        # A model capsule is itself the frozen capture.  Resolving a same-named live recapture here
+        # let mutable operator state choose the program/golden after launch (and made capsule-local
+        # models impossible to run at all).  Materialize the exact runtime ABI from the declared,
+        # digest-bound capsule assets and forbid compile_model's recapture resolver on this path.
+        with _model_runtime_bundle(capsule, timeout=timeout) as (
+                _capture_bundle, _bundle_provenance, _verify_bundle_unchanged):
+            result["model_runtime_bundle"] = _bundle_provenance
+            out = compile_model(model, dtype, target=target, run=run_where, verify=True,
+                                package=_host_package_arg,
+                                auto_capture=False, timeout=timeout, linalg_mlir=linalg_mlir,
+                                mesh_verify=mesh_verify, mesh_package=_pkg,
+                                routing_dtype=_attrs.get("dtype"),
+                                capture_bundle=_capture_bundle)
+            _verify_bundle_unchanged()
+    except SystemExit as e:                                   # toolchain/bundle unavailable — honest skip
+        result.update(status="incomplete",
+                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                               "detail": f"whole-model compile/run unavailable: {str(e)[:300]}"})
+        return result
+    except Exception as e:  # noqa: BLE001
+        result.update(status="incomplete",
+                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                               "detail": f"whole-model grade error: {type(e).__name__}: {str(e)[:300]}"})
+        return result
+    # Detect drift across the compile, not only before it. For a bwrap run this re-verifies the same
+    # immutable snapshot aggregate and resolves the package inside its repo payload; it NEVER switches
+    # to the live worktree. Direct/non-bwrap grading retains its live-tree pre/post check.
+    if _host_experiment is not None and _host_identity is not None:
+        try:
+            _snapshot_repo_after, _snapshot_after = _verified_model_host_lane_snapshot()
+            _snapshot_before = _host_identity.get("run_snapshot")
+            if (_snapshot_before is None) != (_snapshot_after is None):
+                raise ValueError("model host-lane run snapshot context changed during grading")
+            if _snapshot_before is not None:
+                if (_snapshot_after.get("root") != _snapshot_before.get("root") or
+                        _snapshot_after.get("content_sha256") !=
+                        _snapshot_before.get("content_sha256")):
+                    result["host_lane_snapshot_after"] = _snapshot_after
+                    raise ValueError("model host-lane run snapshot changed during grading")
+            # RE-RESOLVE THE SAME LANE, not the default one. The check below compares package digests
+            # before and after; resolving a different profile would compare two different packages and
+            # report drift that never happened (or, worse, miss real drift by comparing the wrong pair)
+            # the moment a target declares more than one precision.
+            _, _host_after = _host_experiment.resolve_host_lane(
+                root=_snapshot_repo_after, dtype=dtype)
+        except Exception as e:  # noqa: BLE001
+            result.update(status="incomplete",
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"frozen host lane became unreadable during grading: "
+                                             f"{type(e).__name__}: {str(e)[:300]}"})
+            return result
+        if _host_after["package_sha256"] != _host_identity["package_sha256"]:
+            result.update(status="incomplete", host_lane_after=_host_after,
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": "frozen host-lane package changed during grading "
+                                             f"({_host_identity['package_sha256'][:12]} -> "
+                                             f"{_host_after['package_sha256'][:12]}); refusing a "
+                                             "mixed-compiler verdict"})
+            return result
+    st, gate = out.get("status"), (out.get("verify") or {}).get("gate_ok")
+    engine = f"merlin-compile model --target {target} --run {run_where} --verify"
+    if out.get("routing_plan") is not None:                   # per-op mesh routing for the target
+        result["routing_plan"] = out["routing_plan"]
+    if out.get("coverage_certificate") is not None:           # ARR certificate (numerator×independent oracle)
+        result["coverage_certificate"] = out["coverage_certificate"]
+    # THE PLACEMENT SURFACE, carried into the verdict rather than left in the compile output. It runs in
+    # SHADOW -- routing is the authority -- so this is reported, not gated. But two facts only it can
+    # state were computed and read by nothing:
+    #
+    #   `n_emulated`  -- ops the host took in a format it cannot natively carry. The numeric gate hides
+    #                    these completely: emulated arithmetic gets the right answer slowly, so a capsule
+    #                    passes while the model runs on a datapath nobody chose.
+    #   `divergence`  -- where placement and routing disagree. Flipping placement to authority is only
+    #                    defensible once that set is empty, and until it is reported nobody can tell.
+    if out.get("placement") is not None:
+        _pl = out["placement"]
+        result["placement"] = _pl
+        _n_emul = _pl.get("n_emulated")
+        if isinstance(_n_emul, int) and _n_emul > 0:
+            result.setdefault("advisories", []).append(
+                {"plane": "placement", "category": "EMULATED_ON_HOST", "n": _n_emul,
+                 "detail": f"{_n_emul} op(s) were placed on the host in a format it cannot natively "
+                           f"carry; the numeric gate cannot see this, because emulated arithmetic is "
+                           f"correct and merely slow"})
+    if out.get("mesh_execution") is not None:                 # THIS MODEL's layers: on-mesh vs host
+        result["mesh_execution"] = out["mesh_execution"]
+    if out.get("mesh_tile_verification") is not None:         # synthesized tiles of the routed shapes
+        result["mesh_tile_verification"] = out["mesh_tile_verification"]
+    if result.get("mesh_execution") is not None:
+        result["boundary_execution"] = dispatch_boundary_report(result["mesh_execution"])
+        _lane = lane_report(capsule, result.get("routing_plan"), result["mesh_execution"])
+        if _lane is not None:
+            result["lane_report"] = _lane
+    # A quantized whole model diverges from the fp32 golden BY DESIGN (int8/fp8 rounding). When the strict
+    # gate rejects it only on that expected drop, accept it if the cosine similarity to the golden still
+    # clears a quant floor (MERLIN_MODEL_QUANT_COS, default 0.90) — reasonable quantization error is a pass,
+    # a gross codegen defect (cosine below the floor / structural mismatch) is still a fail.
+    _v = out.get("verify") or {}
+    _cos = max(float(_v.get("fp32_cos", 0.0)), float(_v.get("w8a8_cos", 0.0)))
+    _quant = dtype in ("int8", "i8", "fp8", "fp8_e4m3")
+    _quant_floor = float(os.environ.get("MERLIN_MODEL_QUANT_COS", "0.90") or "0.90")
+
+    # A HOST RUN NEVER PASSES A MODEL CAPSULE, and never fails one either. It is merlin's own x86
+    # dispatch runtime -- our compiler -- so however well or badly it does, it is evidence about US and
+    # not about the submission. Reporting its mismatch as the capsule's `fail` attributes a defect in
+    # our reference to a backend that never executed; reporting its match as `pass` is how a suite reads
+    # N/N while the submitted backend never ran. So the diagnostic is RECORDED and the verdict WITHHELD.
+    # No provenance stamp rides a withheld verdict: it makes no hardware claim to attribute.
+    if run_where == "host":
+        result["host_reference"] = {"status": st, "gate": _v, "engine": engine,
+                                    "note": "merlin's own dispatch runtime — a diagnostic, never an "
+                                            "oracle for a submitted backend"}
+        result.update(status="not_gradeable_no_oracle",
+                      numeric=_numeric_not_compared(
+                          engine, "host_reference", _v,
+                          "the whole model ran on merlin's host dispatch runtime; the numeric verdict "
+                          "is withheld because that is our compiler, not the target"),
+                      failure={"plane": "not_gradeable_no_oracle",
+                               "category": "NOT_GRADEABLE_NO_ORACLE",
+                               "detail": f"no target mesh ran this model (run={run_where}); a host "
+                                         f"reference cannot certify a submitted backend"})
+        result.pop("provenance", None)
+        return result
+    # FAIL CLOSED ON AN UNEXERCISED TIER. A whole-model capsule declares required_oracle_tiers like any
+    # other, but this function never entered the tier ladder, so those tiers were dead metadata and a
+    # capsule could report `pass` with `tiers == {}` -- a verdict backed by no oracle at all. Worse, the
+    # functional gate here is the HOST x86 run unless mesh execution was requested, so "pass" could mean
+    # "the CPU computed the model correctly", which is not a statement about the accelerator.
+    #
+    # Record what actually ran, and refuse to call it a pass when nothing the capsule DECLARED ran. The
+    # accelerator evidence is `mesh_tile_verification` (per-tile on-mesh certification); a routing plan is
+    # a plan, not an execution, and is never counted as a tier.
+    declared = [str(x) for x in (capsule.get("required_oracle_tiers") or [])]
+    mesh_exec = out.get("mesh_tile_verification") or {}
+    model_exec = out.get("mesh_execution") or {}
+    n_tiles = int(mesh_exec.get("n_tiles") or 0) if isinstance(mesh_exec, dict) else 0
+    # Set BEFORE the fail-closed branches below, every one of which returns early: a refusal must still
+    # say which tier refused it, and this block used to be attached only on the success path.
+    _model_tiers = _model_tier_map(declared, target, model_exec)
+    result["tiers"] = {k: v.to_dict() for k, v in _model_tiers.items()}
+    exercised: dict[str, str] = {}
+    # THE LANE CONTRACT IS EVALUATED UNCONDITIONALLY. It used to sit inside `if n_tiles:` below, so a
+    # capsule whose tile verification produced nothing -- no mesh_verify, no default OOT package, an
+    # unavailable oracle -- had its declared lanes never checked at all, and `result["lane_report"]`
+    # was simply absent. A capsule that names lanes is asserting composition; not looking is not the
+    # same as looking and finding it satisfied.
+    #
+    # An interop capsule states the lanes it requires -- the routing plan's OWN keys (`on_mesh`,
+    # `in_contract_vector_scalar`, `scalar_rvv_lane`) -- and passes only when EVERY named lane actually
+    # carried work. Such a capsule withholds `must_accelerate` on purpose: host-lane work is the
+    # behaviour under test, so "no host fallback" would be the wrong bar and would fail the exact thing
+    # the capsule exists to prove.
+    _lane_rep = lane_report(capsule, result.get("routing_plan"), model_exec,
+                            out.get("host_execution"))
+    _lane_ok = True
+    if _lane_rep is not None:
+        result["lane_report"] = _lane_rep
+        _lane_ok = not _lane_rep["unexercised"]
+        # A LANE EVIDENCED ONLY BY THE PLAN IS NOT EVIDENCE. Passing on it would repeat, on the host
+        # side, precisely the defect already fixed on the mesh side: 15 matmuls assigned to the mesh and
+        # 15 host fallbacks at run time. `incomplete` rather than `fail` -- nothing about the submission
+        # was disproved, we simply did not measure it.
+        # A FORBIDDEN LANE THAT CARRIED WORK IS A FAIL, not an incomplete: this was measured, and the
+        # compiler accelerated a family the target's manifest does not admit. That is as much a defect
+        # as failing to accelerate an admitted one.
+        if _lane_rep.get("violated"):
+            _lane_ok = False
+            result.update(status="fail",
+                          failure={"plane": "model", "category": "ACCELERATED_A_FORBIDDEN_LANE",
+                                   "detail": f"capsule forbids lane(s) {_lane_rep['violated']} but work "
+                                             f"executed there; this target's capability manifest does "
+                                             f"not admit this capsule's family, so the compiler must "
+                                             f"route it to the host lane"})
+            return result
+        # A forbidden lane nobody measured is UNMEASURED, never satisfied. Absence of a routing-plan
+        # entry is the default state, so accepting it would make the negative assertion vacuously true.
+        if _lane_rep.get("unmeasured_forbidden"):
+            result.update(status="incomplete",
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"capsule forbids lane(s) "
+                                             f"{_lane_rep['unmeasured_forbidden']} but no execution "
+                                             f"accounting was recorded for them; a routing plan cannot "
+                                             f"establish that nothing ran"})
+            return result
+        if _lane_ok and _lane_rep.get("plan_only_lanes"):
+            result.update(status="incomplete",
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"capsule requires lane(s) "
+                                             f"{_lane_rep['plan_only_lanes']} but only the ROUTING PLAN "
+                                             f"reports them; no execution accounting was recorded, so "
+                                             f"whether work reached those lanes is unmeasured"})
+            return result
+    if n_tiles:
+        # The verdict comes from the per-tile COUNTS. Reading a boolean `ok` key -- which this dict does
+        # not carry -- made every on-mesh execution record "fail", including one where all 15 layers
+        # passed on the oracle. A tile that was unavailable or unsynthesizable is NOT a pass either, so
+        # the tier passes only when every tile is accounted for and every one of them passed.
+        _passed = int(mesh_exec.get("n_passed") or 0)
+        _failed = int(mesh_exec.get("n_failed") or 0)
+        _unavail = int(mesh_exec.get("n_unavailable") or 0)
+        _unsynth = int(mesh_exec.get("n_unsynthesizable") or 0)
+        _ok = mesh_exec.get("ok")
+        _tile_ok = bool(_ok) if _ok is not None else (
+            _failed == 0 and _unavail == 0 and _unsynth == 0 and _passed == n_tiles)
+
+        # THE MODEL'S OWN LAYERS DECIDE A MODEL CAPSULE'S TIER, not tiles of its shapes. Certifying a
+        # synthesized tile proves the SHAPE is runnable; the capstone is a claim about THIS model, and
+        # the two came apart once already -- a run with all 15 layers on the host reported "15 of 15
+        # tiles passed". When the model ran the mesh lane, its own per-layer accounting must agree:
+        # every routed layer on the accelerator, none fallen back. A host-lane model run has no such
+        # accounting and is left to the tile record alone.
+        _model_ok = True
+        if model_exec:
+            _on = model_exec.get("matmul_layers_on_mesh")
+            _model_ok = (_on is not None and int(_on) > 0
+                         and not int(model_exec.get("matmul_layers_host_fallback") or 0))
+        # INTEROP capsules invert one half of that. A capsule may DECLARE that its point is composition
+        # across lanes -- part of the model on the accelerator, the rest on the scalar/vector lane the
+        # target also owns -- in which case "no host fallback" is the wrong bar: it would fail the exact
+        # behaviour under test. Such a capsule names the lanes it requires, and passes only when EVERY
+        # named lane actually carried work.
+        #
+        # The lane names are the routing plan's OWN keys (`on_mesh`, `in_contract_vector_scalar`,
+        # `scalar_rvv_lane`), so this asserts against what the compiler reported rather than a vocabulary
+        # invented here; a capsule naming a lane the plan does not report fails closed with that lane
+        # named, which is the actionable direction.
+
+        # WHICH tier the mesh oracle corresponds to, DERIVED from the target's own declared RTL tiers.
+        # This was `[x for x in declared if x not in ("L0", "L1")]` with an `"L3"` fallback -- three tier
+        # -name literals standing in for a fact the manifest already carries, which names the wrong tier
+        # confidently on any target whose ladder differs (atlas grades at L3+L4, not L3).
+        _rtl = [t for t in declared if t in _rtl_tiers_of(target)]
+        _tier = _rtl[-1] if _rtl else (declared[-1] if declared else None)
+        if _tier:
+            exercised[_tier] = "pass" if (_tile_ok and _model_ok and _lane_ok) else "fail"
+    # WHOSE COMPILER PASSED. When the runtime had to discharge a contract obligation the target backend
+    # owes -- residency tiling for `capacity_fit` -- the verdict is about runtime+backend together, and
+    # saying so is the difference between "this compiler handles a 512x512 layer" and "this layer ran".
+    _delegated = (model_exec or {}).get("capacity_fit_delegated_to_runtime") or []
+    if _delegated:
+        # If ANY delegated layer was tiled from the backend's DECLARED tile rather than from a capacity
+        # limit, this verdict rests on the runtime having driven a loop nest the backend does not have.
+        # That is a different claim and the score reports it as one (`backend_coverage`).
+        _tb = sorted({str(d.get("tiled_by")) for d in _delegated if d.get("tiled_by")})
+        result["contract_obligations"] = {
+            "capacity_fit": {
+                "discharged_by": "merlin runtime (host-side residency tiling)",
+                "tiled_by": ("declared_primitive_tile" if "declared_primitive_tile" in _tb
+                             else (_tb[0] if _tb else None)),
+                "n_layers": len(_delegated), "layers": _delegated[:8],
+                "detail": ("the target backend did not satisfy capacity_fit at these extents; the "
+                           "runtime split them so the model could run. This verdict is evidence about "
+                           "the runtime AND the backend, not about the backend alone."),
+            }
+        }
+    # Overlay the per-tile verdict where one exists; the counter-derived map is the floor.
+    for _t, _s in exercised.items():
+        base = _model_tiers.get(_t)
+        _model_tiers[_t] = TierResult(_t, _s, True, reason=(base.reason if base else None))
+    result["tiers"] = {k: v.to_dict() for k, v in _model_tiers.items()}
+    # The tile record, kept beside the verdict as the SEPARATE and weaker evidence it is: it speaks about
+    # synthesized tiles of this model's shapes, never about the model.
+    if mesh_exec:
+        result["tile_evidence"] = {"n_tiles": n_tiles, "n_passed": mesh_exec.get("n_passed"),
+                                   "note": "synthesized tiles OF THIS MODEL'S SHAPES — evidence that the "
+                                           "shapes run, not that this model ran"}
+    result["op_coverage"] = {"note": "the op-pass fraction this capsule was gated on is OP COVERAGE, "
+                                     "not a verdict on the model"}
+    unexercised = [x for x in declared if x not in exercised]
+
+    # ORDER MATTERS: the SPECIFIC cause is reported before the generic consequence. Layers falling back
+    # to the host now also drag the tier verdict down (the model, not its tiles, decides it), so leaving
+    # the failed-tier branch first turned "2 of 37 layers fell back" into a bare FUNCTIONAL_MISMATCH --
+    # true, and useless. The fallback check runs first so the result names what to fix.
+    # MUST_ACCELERATE IS ABOUT THIS MODEL, NOT ABOUT TILES OF ITS SHAPES. Certifying a synthesized tile
+    # proves the shape is runnable; it says nothing about whether the model's own layer reached the
+    # device. Measured: atlas routed 15 matmul layers and the dispatch runtime fell back to the host
+    # kernel on all 15, while the tile record read "15 of 15 passed" -- so a run with ZERO layers on the
+    # accelerator reported `pass` with `lane: mesh`, which is exactly the CPU-only pass this flag exists
+    # to forbid. The two records now live under separate keys and this checks the model one.
+    if (capsule.get("semantic") or {}).get("must_accelerate") and model_exec:
+        _on = model_exec.get("matmul_layers_on_mesh")
+        _fb = int(model_exec.get("matmul_layers_host_fallback") or 0)
+        if _on is None:
+            result.update(status="incomplete",
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": "capsule declares must_accelerate but the run recorded no "
+                                             "per-layer mesh accounting; cannot confirm the model "
+                                             "reached the accelerator"})
+            return result
+        # AN UNMEASURED LAYER IS NOT A FALLEN-BACK LAYER. When the oracle could not tell us whether the
+        # mesh runs a layer, the honest verdict is `incomplete` (NOT_RUN_IS_NOT_PASS), not a compiler
+        # failure -- the same rule the tier ladder already applies one level up. Measured: a whole model
+        # whose every layer the mesh executes correctly reported "15 of 15 fell back" because the
+        # simulator timed out at its per-layer budget, and that number failed must_accelerate.
+        _unavail = int(model_exec.get("matmul_layers_oracle_unavailable") or 0)
+        if int(_on) == 0 and _unavail and not _fb:
+            result.update(status="incomplete",
+                          numeric=_numeric_when_not_accelerated(
+                              st, gate, _v, _cos, engine, measured_on="host_lane_unmeasured"),
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"the mesh oracle could not measure {_unavail} of this "
+                                             f"model's matmul layer(s) (timed-out or unreachable "
+                                             f"simulator), so whether they run on the {target} mesh is "
+                                             f"UNKNOWN -- not a fallback, and not evidence about the "
+                                             f"backend. Re-run with an oracle that completes."})
+            return result
+        if int(_on) == 0 and not _fb and not n_tiles:
+            # NOTHING RAN AT ALL -- no certified tile and no layer of the model itself. That is not a
+            # fallback (nothing was claimed and then missed); it is the absence of a run, and the
+            # difference matters: a fallback is evidence about the backend's reach, an empty record is
+            # evidence about nothing. Withheld, never failed.
+            result.update(status="incomplete",
+                          numeric=_numeric_not_compared(engine, run_where, _v, "nothing was compared ON THE ACCELERATOR: no declared tier ran, so the host-side number is not a verdict about this backend. A comparison that did not happen is not a passing comparison."),
+                          failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "detail": f"neither a certified tile nor a single matmul layer of "
+                                             f"this model executed on the {target} mesh, so there is no "
+                                             f"verdict to report either way"})
+            return result
+        # AN ELIGIBLE REGION THE ROUTER DECLINED IS A COMPILER DEFECT, and until now nothing gated on it:
+        # the coverage certificate counted `false_fallback` and no verdict ever read the count. This is a
+        # claim about the router's own CHOICE -- the region's family and dtype are admitted by the
+        # target's manifest and it was left on the host anyway -- so plan-derived evidence is the right
+        # evidence for it, unlike the execution questions elsewhere in this file.
+        #
+        # Gated only for a capsule that DEMANDS acceleration. An interop capsule withholds
+        # `must_accelerate` precisely because host work is the behaviour under test, and failing it for
+        # declining a region would fail the thing it exists to prove.
+        _cert = result.get("coverage_certificate") or {}
+        _false_fb = _cert.get("false_fallback_count")
+        if isinstance(_false_fb, int) and _false_fb > 0:
+            result.update(status="fail",
+                          numeric=_numeric_when_not_accelerated(
+                              st, gate, _v, _cos, engine, measured_on="host_lane_fallback"),
+                          failure={"plane": "model", "category": "FALLBACK_ON_ELIGIBLE_REGION",
+                                   "detail": f"{_false_fb} region(s) this target's capability manifest "
+                                             f"ADMITS were routed to the host anyway; the capsule "
+                                             f"declares must_accelerate, so declining work the hardware "
+                                             f"can take is a compiler defect, not a placement choice"})
+            return result
+        if int(_on) == 0 or _fb:
+            result.update(status="fail",
+                          numeric=_numeric_when_not_accelerated(
+                              st, gate, _v, _cos, engine, measured_on="host_lane_fallback"),
+                          failure={"plane": "model", "category": "FALLBACK_ON_ELIGIBLE_REGION",
+                                   "detail": f"capsule declares must_accelerate but only {_on} matmul "
+                                             f"layer(s) executed on the {target} mesh and {_fb} fell back "
+                                             f"to the host kernel; the numeric gate therefore measures "
+                                             f"the HOST, not the accelerator"})
+            return result
+
+    # A tier that RAN AND FAILED is not a pass, whatever the host-side numeric gate says. The guard below
+    # only refuses the case where nothing ran at all, so a failing accelerator tier still reported
+    # `status: pass` beside `tiers: {L3: fail}` -- the two halves of the same result contradicting each
+    # other, with the flattering half being the one anybody reads.
+    # Counter-derived failures gate too. Reading only the per-tile record let a model with three layers
+    # fallen back report `pass` beside `tiers: {L2: fail}` -- the two halves of one result contradicting
+    # each other, with the flattering half being the one anybody reads.
+    _failed_tiers = sorted({t for t, v in exercised.items() if v != "pass"}
+                           | {k for k, v in _model_tiers.items() if v.status == "fail"})
+    if _failed_tiers:
+        result.update(status="fail",
+                      numeric=_numeric_when_not_accelerated(
+                          st, gate, _v, _cos, engine, measured_on=run_where),
+                      failure={"plane": "model", "category": "FUNCTIONAL_MISMATCH",
+                               "detail": f"declared oracle tier(s) {_failed_tiers} RAN and did not pass "
+                                         f"(on-mesh execution: {mesh_exec.get('n_passed')} of "
+                                         f"{n_tiles} tile(s) passed, {mesh_exec.get('n_failed')} failed, "
+                                         f"{mesh_exec.get('n_unavailable')} unavailable, "
+                                         f"{mesh_exec.get('n_unsynthesizable')} unsynthesizable); a "
+                                         f"whole-model verdict cannot be a pass over a failing tier"})
+        if unexercised:
+            result["tiers_unexercised"] = _unexercised_note(unexercised, exercised)
+        return result
+
+    # A tier the model's own counters resolved COUNTS as exercised. Keying this only on the per-tile
+    # record made every run without tile verification report `incomplete`, including one whose layers
+    # demonstrably ran on the mesh.
+    _counter_ran = {k for k, v in _model_tiers.items() if v.status in ("pass", "fail")}
+    if declared and not exercised and not _counter_ran:
+        # Same reasoning as the branches above: the arithmetic WAS measured before we got here, so report
+        # it. The verdict stays `incomplete` -- no declared tier ran, and a number alone is not a tier.
+        result.update(status="incomplete",
+                      numeric=_numeric_not_compared(engine, run_where, _v, "nothing was compared ON THE ACCELERATOR: no declared tier ran, so the host-side number is not a verdict about this backend. A comparison that did not happen is not a passing comparison."),
+                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                               "detail": f"declares required oracle tiers {declared} and ran NONE of them "
+                                         f"(the functional gate here is the {run_where} reference, not the "
+                                         f"accelerator); a whole-model verdict backed by no declared tier "
+                                         f"is reported UNKNOWN, never a pass"})
+        return result
+
+    if st == "verified" and gate:
+        # A whole-model PASS must carry the strength of the gate that produced it. The numeric gate has
+        # a per-element ceiling for exactly the failure aggregates hide (a single element 1209% wrong at
+        # cos 0.9999986), but its cosine-only tier bypasses that ceiling for regression outputs which
+        # cannot meet it. Both are legitimate passes; they are not the same claim, and "certified" read
+        # off `status` alone erases the difference.
+        _v = out.get("verify") or {}
+        _guarded = _v.get("per_element_guarded")
+        # A PASS EARNED ON THE TARGET IS A HARDWARE CLAIM, so it must say which tree produced it. A
+        # result attributed to the wrong revision is worse than no result, because it gets cited.
+        try:
+            from ..common import provenance as _prov
+            result["provenance"] = _prov.record(extra={"target": target, "run": run_where})
+        except Exception as _pe:                            # noqa: BLE001 - never block a verdict
+            result["provenance"] = {"status": "UNKNOWN", "detail": f"{type(_pe).__name__}: {_pe}"}
+        result.update(status="pass",
+                      numeric={"status": "pass", "engine": engine, "gate": _v,
+                               "gate_tier": _v.get("tier_ok"),
+                               "per_element_guarded": _guarded,
+                               "evidence": ("per-element-guarded" if _guarded else
+                                            "AGGREGATE ONLY — the cosine-only tier carried this "
+                                            "verdict; no per-element bound was applied")})
+        if unexercised:
+            result["tiers_unexercised"] = _unexercised_note(unexercised, exercised)
+    elif _quant and st == "run_mismatch" and _cos >= _quant_floor:
+        result.update(status="pass",
+                      numeric={"status": "pass", "engine": engine, "gate": _v,
+                               "quant_tolerance": {"cos": _cos, "floor": _quant_floor, "dtype": dtype}},
+                      note=(f"quantized ({dtype}) whole-model output within quant tolerance of the fp32 "
+                            f"golden (cos {_cos:.4f} >= floor {_quant_floor}); the drop vs fp32 is expected "
+                            f"quantization error, not a codegen defect."))
+    elif st == "not_run":
+        result.update(status="incomplete",
+                      failure={"plane": "model", "category": "NOT_RUN_IS_NOT_PASS",
+                               "detail": out.get("reason", "whole-model run toolchain unavailable")})
+    else:
+        result.update(status="fail",
+                      numeric={"status": "fail", "engine": engine, "gate": out.get("verify"),
+                               "model_status": st},
+                      failure={"plane": "model", "category": "FUNCTIONAL_MISMATCH",
+                               "detail": f"the whole model did not verify (status={st}, gate_ok={gate})"})
+    return result
+
+
+def _merge_match_policy(force: dict | None, capsule: dict | None) -> dict | None:
+    """Combine a target's ``force_match_policy`` with the capsule's declared ``numeric_policy`` so neither's
+    tolerance is silently discarded. The compare MODE comes from the force policy (a float/SIMT target
+    grades with tolerance even for an integer-policy capsule); ``atol``/``rtol`` take the LOOSER (max) of
+    the two present values — a capsule's bf16-appropriate tolerance is honoured, and the tight global
+    default still applies where the capsule declares none. Returns the other policy unchanged when one side
+    is absent."""
+    if not force:
+        return capsule
+    if not capsule:
+        return force
+    merged = dict(force)
+    for k in ("atol", "rtol"):
+        vals = [float(p[k]) for p in (force, capsule) if p.get(k) is not None]
+        if vals:
+            merged[k] = max(vals)
+    return merged
+
+
+def _finalize_capsule_result(*, name: str, capsule: dict, status: str, failure: dict | None,
+                             tiers: dict, trace_check_res: dict, numeric: dict, required,
+                             no_oracle: bool, eff_target: str, paths, run_id: str, cfg,
+                             contract=None, executability: dict | None = None,
+                             epilogue_applicability: dict | None = None,
+                             declined: dict | None = None, extra: dict | None = None,
+                             submission: dict | None = None) -> dict:
+    """Turn a graded capsule's parts into its result row, and write it.
+
+    Lifted VERBATIM out of :func:`run_capsule`, whose tail this was, for two reasons.
+
+    The MODEL capsule path finalizes separately, so every rule enforced here -- a mandatory tier that
+    did not run cannot yield a pass, a screened capsule is not a pass, a capsule with no runnable
+    required tier does not pass on our own command-buffer interpretation alone -- applied to ISA
+    capsules and silently did not apply to model ones.
+
+    And the behaviour becomes testable directly, on the row this returns, instead of only through a
+    full graded run. Pinning it to a source line inside `run_capsule` is testing where code lives
+    rather than what it does, which is how that assertion broke when the block last moved.
+
+    Pure with respect to grading: it decides `status`/`failure` from what it is handed and never
+    re-runs an oracle. Its side effects are the artifacts the row implies -- capsule_result.json and
+    the run manifest -- plus a self-validation warning."""
+    # Imported here, as run_capsule did: this module's import of .provenance is deferred to call time.
+    from .provenance import toolchain_shas
+
+    # not_run_is_not_pass: a mandatory tier that did not pass closed (unavailable/skipped/absent) makes
+    # the capsule incomplete — never a silent pass. A tier that is honestly N/A for this capsule's
+    # datatype (``not_applicable``; the integer L0/L1 floor on a float datapath) is the ONE exception —
+    # a legitimate skip like a dropped RoCC gate, not a missing oracle. An unavailable/absent RTL oracle
+    # is never not_applicable, so it still fails closed here.
+    # A DECLARED LANE CONTRACT THAT NOTHING EVALUATED IS NOT A SATISFIED ONE. `lane_report` runs only on
+    # the whole-model path, which owns a routing plan and an execution record; the op tier ladder owns
+    # neither, so a capsule of any other kind that declared `lanes` had its assertion silently ignored.
+    # Measured: the corpus's only NEGATIVE lane assertion -- `forbid: [on_mesh]` on a host-only slice --
+    # was never once evaluated, which made ACCELERATED_A_FORBIDDEN_LANE unreachable for it. A submission
+    # could accelerate the family the target's manifest does not admit and still pass the capsule
+    # written to catch exactly that.
+    #
+    # The operator path CAN prove the negative half, from the artifact it already produces: the linked
+    # ELF is the complete set of instructions the program can execute, so a scan of its executable
+    # sections for this target's DERIVED accelerator opcode settles "no work reached the accelerator"
+    # whatever spelling the backend used -- including the `.word`/`.insn` datum the IR-level decoder
+    # reads as silence. It settles nothing in the positive direction (an instruction present in a
+    # binary is not one that ran), so a REQUIRED lane stays unmeasured here and its capsule stays
+    # incomplete. See `merlin.targetgen.elf_lanes`.
+    #
+    # `incomplete`, never `fail`, for what is left unmeasured: nothing about the submission was
+    # disproved. We simply did not measure the one thing this capsule exists to assert, and an
+    # unmeasured assertion must not read as a pass.
+    _decl_lanes = capsule.get("lanes") or {}
+    if _decl_lanes.get("require") or _decl_lanes.get("forbid"):
+        from . import elf_lanes as _EL
+
+        _lane_rep = (extra or {}).get("lane_report")
+        # A report the CALLER supplied comes from a path that owns evidence this one cannot see (the
+        # whole-model dispatch ledger), and its quality is judged where that evidence lives
+        # (`capsule_grade`). This rule remains about the ABSENCE of an evaluation. Only the report built
+        # HERE is held to `unjudged_lanes`, because here we know exactly how thin the evidence is.
+        _from_caller = _lane_rep is not None
+        if _lane_rep is None:
+            try:
+                _lane_rep = _EL.lane_report_from_elf(
+                    capsule, paths.generated / _EL.PACKAGE_ELF_NAME, target=eff_target)
+            except Exception as _le:  # noqa: BLE001 -- our scanner's limit is not the submission's defect
+                _lane_rep = None
+                import sys as _sys
+                _sys.stderr.write(f"WARNING: linked-ELF lane scan failed (unmeasured): {_le}\n")
+            # A self-hosted target executes a descriptor-declared word stream rather than a linked ELF.
+            # If the ELF path could not settle the negative assertion, use the exact ``.program`` bytes
+            # the oracle recorded. Exactly one declaration is required; ambiguity stays unmeasured.
+            if _EL.unjudged_lanes(_lane_rep, _decl_lanes):
+                _programs = sorted(Path(paths.generated).glob(f"*{PROGRAM_ARTIFACT_SUFFIX}"))
+                if len(_programs) == 1:
+                    try:
+                        _program_rep = _EL.lane_report_from_declared_program(
+                            capsule, _programs[0], target=eff_target)
+                        if (len(_EL.unjudged_lanes(_program_rep, _decl_lanes))
+                                < len(_EL.unjudged_lanes(_lane_rep, _decl_lanes))):
+                            _lane_rep = _program_rep
+                    except Exception as _pe:  # noqa: BLE001 -- scanner limits are not submission defects
+                        import sys as _sys
+                        _sys.stderr.write(
+                            f"WARNING: declared-program lane scan failed (unmeasured): {_pe}\n")
+            if _lane_rep is not None:
+                extra = {**(extra or {}), "lane_report": _lane_rep}
+        _unjudged = [] if _from_caller else _EL.unjudged_lanes(_lane_rep, _decl_lanes)
+        if _lane_rep is not None and _lane_rep.get("violated"):
+            # DISPROVED, so this is a fail and not an `incomplete`: the emitted binary carries
+            # instructions for a lane the capsule forbids. Same category name the whole-model path uses
+            # for the same defect, so one grep finds both.
+            _scan = _lane_rep.get("elf_scan") or _lane_rep.get("program_scan") or {}
+            _artifact_kind = ("linked executable" if _lane_rep.get("elf_scan") is not None
+                              else "oracle-declared program")
+            _identity = (_scan.get("opcode_source") or
+                         "the target's discovered mesh-compute ISA role")
+            status = "fail"
+            failure = {"plane": "lanes", "category": "ACCELERATED_A_FORBIDDEN_LANE",
+                       "detail": (f"capsule forbids lane(s) {_lane_rep['violated']}, and the "
+                                  f"{_artifact_kind} carries {_scan.get('n_hits')} instruction(s) "
+                                  f"identified by {_identity}. This "
+                                  f"target's capability manifest does not admit this capsule's family, "
+                                  f"so the compiler must leave it on the host lane.")}
+        elif status == "pass" and (_lane_rep is None or _unjudged):
+            status = "incomplete"
+            if failure is None:
+                failure = {"plane": "lanes", "category": "LANE_CONTRACT_NOT_EVALUATED",
+                           "detail": (f"capsule declares lanes {dict(_decl_lanes)}; lane(s) {_unjudged} "
+                                      f"were not measured on this path. A required lane needs evidence "
+                                      f"that something RAN, which only the whole-model path's dispatch "
+                                  f"ledger carries; a forbidden lane also accepts a complete linked-ELF "
+                                  f"or oracle-declared program scan. Grade it as kind=model, or provide "
+                                  f"one of those complete executable artifacts")}
+
+    if status == "pass" and any(getattr(t, "budget_deferred", False) for t in tiers.values()):
+        # SCREENED, NOT CERTIFIED. Distinct from `incomplete` (something that should have run did not)
+        # and from `pass` (it certified). The capsule cleared the cheap screen and the expensive tier was
+        # deliberately not bought, because a capsule in the covering set already certifies the axes this
+        # one exercises. Excluded from the pass/fail denominators and reported by name — the one thing it
+        # must never do is read as a pass.
+        _def = sorted(t for t, r in tiers.items() if getattr(r, "budget_deferred", False))
+        status = "screened_only"
+        failure = {"plane": "budget", "category": "SCREENED_NOT_CERTIFIED",
+                   "tier": _def[0] if _def else None,
+                   "detail": (f"passed the screen tier; certify tier(s) {', '.join(_def)} not purchased "
+                              f"(outside the derived covering set, certify budget exhausted). This is "
+                              f"NOT a verdict on this capsule.")}
+    if status == "pass":
+        for tier in required:
+            tr = tiers.get(tier)
+            if tr is not None and getattr(tr, "not_applicable", False):
+                continue
+            if tr is None or tr.status in ("unavailable", "skipped"):
+                if no_oracle:
+                    # Explicit --no-oracle STRUCTURE-ONLY smoke: NO numeric oracle was requested this run,
+                    # so a mandatory numeric tier that did not run is NOT a fixable failure — it is
+                    # honestly NOT GRADEABLE. Record a DISTINCT status/plane so the agent is not handed a
+                    # phantom `oracle_unavailable` "fix this" signal it can never satisfy. INTEGRITY: this
+                    # is NEVER reported as a pass — the numeric verdict is simply withheld. The
+                    # not_run_is_not_pass gate for GRADED (oracle-present) runs is the `else` branch below,
+                    # unchanged; keep no_oracle False for every real grade.
+                    status = "not_gradeable_no_oracle"
+                    if failure is None:
+                        failure = {"plane": "not_gradeable_no_oracle",
+                                   "category": "NOT_GRADEABLE_NO_ORACLE",
+                                   "detail": f"numeric oracle unavailable this run (--no-oracle): "
+                                             f"mandatory tier {tier} not graded — structural tiers "
+                                             f"(L0/L1/trace) only"}
+                else:
+                    status = "incomplete"
+                    if failure is None:
+                        # The tier's OWN reason is the only actionable half of this message, and it was
+                        # being dropped. Measured on a self-hosted-ISA target: every capsule carried
+                        # "program did not halt within N instructions" while the agent was shown only
+                        # "mandatory tier L# did not run (unavailable)". Ten rounds of a fully conformant
+                        # model went into feedback naming nothing it could fix; effort decayed each round.
+                        # An oracle that is ABSENT and a program that RAN AND HUNG are different events;
+                        # when the tier reported a reason, that reason leads.
+                        _why = (getattr(tr, "reason", None) or "").strip() if tr else ""
+                        _st = tr.status if tr else "absent"
+                        failure = {"plane": "oracle_unavailable", "category": "NOT_RUN_IS_NOT_PASS",
+                                   "tier": tier, "tier_status": _st, "tier_reason": _why or None,
+                                   "detail": (f"{_why} (mandatory tier {tier}, status {_st})" if _why
+                                              else f"mandatory tier {tier} did not run ({_st})")}
+                break
+
+    # Fail-open guard (complements the loop above, which never fires for an EMPTY/all-N/A required set):
+    # a capsule that declares no runnable oracle requirement must NOT grade 'pass' on the L0/L1 command-
+    # buffer interpretation alone — that is our own engine, not an independent oracle. A real grade
+    # (not --no-oracle) requires at least one runnable, non-N/A required tier to have certified it.
+    if status == "pass" and not no_oracle:
+        ran_required = [t for t in required
+                        if tiers.get(t) is not None
+                        and not getattr(tiers[t], "not_applicable", False)
+                        and tiers[t].status == "pass"]
+        if not ran_required:
+            status = "incomplete"
+            if failure is None:
+                # When the phase capped a DECLARED tier away, name it: "this phase cannot reach the tier
+                # your capsule requires" is a configuration fact the operator can fix, and it is a
+                # different statement from "the oracle is missing". The materializer records the dropped
+                # declared tiers on the capsule precisely so this message can be specific.
+                _unreach = capsule.get("unreachable_required_oracle_tiers") or []
+                _ceil = capsule.get("oracle_tier_ceiling")
+                failure = {"plane": "declared_tier_unreachable" if _unreach else "oracle_unavailable",
+                           "category": "NOT_RUN_IS_NOT_PASS",
+                           "unreachable_required_oracle_tiers": sorted(_unreach) or None,
+                           "detail": (
+                               f"this capsule declares required oracle tier(s) {sorted(_unreach)} that "
+                               f"this phase cannot reach (ceiling {_ceil}); the tiers it can reach "
+                               f"({sorted(required)}) are not applicable to this capsule's datapath, so "
+                               f"nothing certified it. Refusing to substitute a tier the capsule never "
+                               f"declared." if _unreach else
+                               f"no runnable required oracle tier certified this capsule "
+                               f"(required={sorted(required)}) — refusing to pass on the L0/L1 "
+                               f"command-buffer interpretation alone")}
+
+    # STAMP THE SUBMISSION ON EVERY TIER RECORD before it is serialised. Stated here, once, rather
+    # than left for a reader to infer from the file's path: cycles are a property of the submission,
+    # and a path heuristic that mis-keys two submissions of one capsule pools an 8.2x spread into a
+    # single "latency". A record that already carries one keeps it.
+    if submission:
+        for _r in tiers.values():
+            if getattr(_r, "submission", None) is None:
+                _r.submission = dict(submission)
+    result = {
+        "capsule": name, "kind": capsule.get("kind"), "label": capsule.get("label"),
+        "status": status, "contract_version": CONTRACT_VERSION,
+        "tiers": {t: r.to_dict() for t, r in tiers.items()},
+        "trace_check": trace_check_res, "numeric": numeric,
+        "failure": failure, "toolchain_shas": toolchain_shas(eff_target),
+    }
+    # WHICH TIERS THIS RUN ACTUALLY EXECUTED, and which it carried from an earlier certification of the
+    # same executable on the same instrument. Emitted on EVERY result, including one where nothing was
+    # carried: a saving and a lie differ only in whether the reuse is stated, and a reader must never
+    # have to infer "freshly measured" from the absence of a block. See merlin.targetgen.tier_cache.
+    from . import tier_cache as _TC
+    result["tier_reuse"] = _TC.reuse_block(result["tiers"])
+    # Advisory RTL-executability smoke (never a gate): record it as its own field when one ran, so a
+    # reader sees the RTL-legality backstop verdict without it ever touching the pass/fail status.
+    if executability:
+        result["executability"] = executability
+    # Whether the target's readout applied every epilogue stage the program declared. Recorded even
+    # when the answer is "not checked": an absent key reads as "this axis does not apply", which is
+    # the same shape as the defect -- a declared activation that silently never happened.
+    if epilogue_applicability:
+        result["epilogue_applicability"] = epilogue_applicability
+    # The refusal rides the result BY NAME AND SHAPE, so the round feedback can quote what was declined
+    # rather than reporting a numeric mismatch on a program that was never emitted.
+    if declined:
+        result["declined"] = declined
+    # Caller-supplied evidence (the whole-model path attaches its routing plan and mesh counters).
+    # Merged AFTER status and failure are decided, and with setdefault so it can never overwrite an
+    # authoritative field: a routing plan is something a reader interprets, never an input to the
+    # verdict it is reported alongside.
+    for _k, _v in (extra or {}).items():
+        result.setdefault(_k, _v)
+    (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2),
+                                                        encoding="utf-8")
+    _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=cfg.target, suite=cfg.suite)
+    try:
+        schemas.validate(result, "capsule_result", contract=contract)
+    except schemas.ContractViolation as e:
+        import sys
+        sys.stderr.write(f"WARNING: capsule_result self-validation failed: {e}\n")
+    return result
+
+
 def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path,
                 run_id: str | None = None, contract: str | Path | None = None,
                 oracle_adapters: dict[str, Callable] | None = None,
                 pkg: Package | None = None, timeout: int = 600,
-                target: str = "gemmini", suite: str | None = None, dtype: str = "i8xi8_i32",
-                config=None, perf_extractor: Callable | None = None) -> dict:
+                target: str | None = None, suite: str | None = None, dtype: str = "i8xi8_i32",
+                config=None, perf_extractor: Callable | None = None,
+                no_oracle: bool = False, workers: int | None = None,
+                adapter_managed_tiers: tuple[str, ...] = ()) -> dict:
     """Run one capsule through the package; write artifacts; return a capsule_result dict.
 
     ``config`` (a :class:`runner_config.RunnerConfig`) supplies the per-target grading knobs — the
@@ -232,33 +3779,172 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
     equality uses the capsule's ``numeric_policy`` (exact for integer, tolerance for float). ``perf_extractor``
     (cb -> flops) feeds the SIMT gflops/pct_fp_peak. ``oracle_adapters`` is the per-target oracle set: the
     L0/L1 math floor always runs; RTL tiers grade only if an adapter is present + available (arc or a
-    bespoke sim), else honestly ``unavailable`` — arc is never assumed."""
+    bespoke sim), else honestly ``unavailable`` — arc is never assumed.
+
+    ``adapter_managed_tiers`` opts specific adapters out of the general tier-certificate lookup.
+    Such adapters own stronger execution evidence or a scoped measurement cache that a carried
+    tier verdict cannot supply. They must be invoked even for previously certified bytes. The
+    default keeps ordinary grading's reuse policy unchanged; this is per-call, never a global switch.
+
+    ``workers`` is the fan-out the CALLER is running this capsule inside; it is recorded on every
+    measured tier (:func:`concurrency_stamp`). Cycle counts do not move with it, wall times move by
+    up to 6.3x, so a ``timing`` block without it cannot be compared with any other run's. ``None`` (a
+    direct call) records "not stated" rather than assuming serial -- this host is shared."""
     from ..runtime.reference import reference_outputs
     from ..runtime.simulator import simulate
-    from .eval.gemmini_suite import toolchain_shas
+    from .provenance import toolchain_shas
 
-    cfg = config or _default_config(target, suite or f"{target}-capsule-bench", dtype)
-    # L1/oracle output equality uses the capsule's numeric_policy (integer -> exact), unless the config
-    # forces one (a float/SIMT target grades its oracle output with tolerance regardless of the capsule).
-    policy = cfg.force_match_policy or capsule.get("numeric_policy")
+    # The effective target comes from the config (authoritative — cfg.target drives the run) when one is
+    # supplied, else the explicit ``target`` argument. If NEITHER is given we refuse to run rather than
+    # silently defaulting to gemmini (the OV2 rule: no core path silently operates on gemmini).
+    eff_target = config.target if config is not None else target
+    if eff_target is None:
+        raise ValueError("run_capsule requires a target (or a config carrying one); "
+                         "no default target is assumed")
+    cfg = config or _config_for_target(eff_target, suite, dtype)
+    # L1/oracle output equality uses the capsule's numeric_policy (integer -> exact). A float/SIMT target
+    # ALSO declares a force_match_policy (a global float tolerance) so an integer-policy capsule is still
+    # graded with tolerance — but the global force must NOT DISCARD the capsule's OWN declared tolerance:
+    # a bf16 / low-precision capsule legitimately declares a looser atol/rtol than the global f32 default,
+    # and letting the tight global override it makes a CONFORMANT kernel unpassable (RP3). Merge: keep the
+    # force policy's compare MODE, take the LOOSER (max) atol/rtol per field.
+    policy = _merge_match_policy(cfg.force_match_policy, capsule.get("numeric_policy"))
     name = capsule["name"]
     run_id = run_id or f"{name}"
-    adapters = oracle_adapters if oracle_adapters is not None else default_adapters()
+    # An unrouted grade (oracle_adapters=None) resolves to the TARGET'S OWN endpoint oracle from the
+    # contract — never the gemmini-hardcoded default_adapters (which silently mis-graded atlas as a
+    # torch-mlir lowering, run_lowering.py, and crashed). `{}` stays honest no-oracle (L0/L1/trace only).
+    adapters = oracle_adapters if oracle_adapters is not None else _resolve_oracle_adapters(eff_target)
+    if set(adapter_managed_tiers) - set(adapters or {}):
+        raise ValueError("adapter-managed tiers require supplied oracle adapters")
     required = set(capsule.get("required_oracle_tiers", []))
 
     paths = make_run_paths(runs_root, run_id, suite=cfg.suite, target=cfg.target,
                            dtype=cfg.dtype, benchmark=name)
 
+    # Whole-model capsule: graded end to end by compiling the captured model through the merlin
+    # whole-model flow (compile_rvv) and gating vs its golden — NOT the per-op tier ladder. Write the
+    # same capsule_result.json shape so downstream reporting is uniform.
+    if capsule.get("kind") == "model":
+        # LEAVE A TRACE BEFORE THE LONG PART. A whole-model grade can legitimately run for hours, and
+        # with nothing written until it finishes an operator cannot tell a working run from a wedged
+        # one -- which is exactly how a 5h30m stall was read as progress. Written first, so the run
+        # directory says what started, when, and under what ceiling.
+        _budget = model_budget_seconds()
+        paths.run_path.mkdir(parents=True, exist_ok=True)
+        (paths.run_path / "model_grade_started.json").write_text(json.dumps({
+            "capsule": name, "started_at": _dt.datetime.now(_dt.timezone.utc).isoformat(),
+            "model_budget_s": _budget, "step_timeout_s": timeout,
+            "note": "whole-model capsule; absent capsule_result.json means it is still running or "
+                    "was killed",
+        }, indent=2), encoding="utf-8")
+        result = _grade_model_capsule(capsule, target=eff_target, timeout=timeout,
+                                      package_dir=package_dir, budget_s=_budget)
+        # A whole model is compiled as many buffers, not one, so there is no single command buffer to
+        # price it from. Say that explicitly rather than leaving the keys off: a performance consumer
+        # reading an absent key concludes the compute axis does not apply, and would then attribute
+        # this row's cycles to nothing at all.
+        from merlin.perf.work_volume import command_buffer_evidence as _cb_evidence
+        _mw, _ma = _cb_evidence(None, compiler_provenance="whole-model compilation (no single "
+                                                          "command buffer)")
+        result.setdefault("work_volume", _mw)
+        result.setdefault("command_buffer_artifact", _ma)
+        (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+        # Persist the ARR coverage certificate as its own durable artifact (not only inside
+        # capsule_result.json) so the report/grader can read it back per compilation.
+        cert = result.get("coverage_certificate")
+        if cert is not None:
+            paths.generated.mkdir(parents=True, exist_ok=True)
+            (paths.generated / "coverage_certificate.json").write_text(
+                json.dumps(cert, indent=2), encoding="utf-8")
+        return result
+
     tiers: dict[str, TierResult] = {}
     trace_check_res = {"status": "skipped", "violations": []}
+    # THE PROGRAM WHOSE CYCLES ARE BEING REPORTED, kept out here so the result can carry it even when
+    # the run never got as far as producing one. A performance consumer prices a member from this
+    # buffer; if the key were simply absent whenever the entrypoints failed, an unpriceable member
+    # would be indistinguishable from one that needs no pricing. See the finalize call below.
+    cb: dict | None = None
+    decoded_trace: dict | None = None            # kept for the advisory divergence localizer (D2)
+    whole_program = False
     numeric = {"status": "skipped"}
+    executability: dict = {}                      # advisory RTL-executability smoke result(s), by tier
+    epilogue_applicability: dict = {}             # did the readout apply what the program declared?
     failure: dict | None = None
+    declined: dict | None = None                  # the backend's STATED refusal ({reason, shape, op})
     status = "pass"
 
     try:
         # shared front half: build + the 4 contract entrypoints (parse/target/cb/artifact), validated.
         pkg, cb, llvm_text = run_entrypoints(pkg, package_dir, capsule, paths, contract=contract,
                                              timeout=timeout, fourth_output_name=cfg.fourth_output_name)
+
+        # ONE DECLARED STIMULUS RANGE, READ BY ALL THREE SIDES. The golden materializes from the
+        # capsule (capsule_golden.materialize_capsule_leaves) while the reference interpreter and the
+        # device harness materialize from the command buffer (commandbuffer.materialize_inputs), and
+        # they agreed only because both used the same hardcoded default. Propagating the capsule's own
+        # declaration into the buffer is what lets a capsule choose a range at all -- and a capsule
+        # that needs one is not hypothetical: with the default 0..3 every operand is non-negative, so
+        # an accumulator is never negative and a fused ReLU is the identity on every value the program
+        # can produce. B1_linear_relu_i8 passes whether or not its activation is applied.
+        #
+        # A capsule that declares nothing leaves the buffer untouched, so every existing capsule's
+        # stimulus, golden and emitted harness are byte-identical.
+        _stim_lo, _stim_hi = CG.capsule_stimulus_range(capsule)
+        if (_stim_lo, _stim_hi) != _CB.DEFAULT_STIMULUS_RANGE:
+            cb.setdefault("params", {})[_CB.STIMULUS_RANGE_KEY] = [_stim_lo, _stim_hi]
+
+        # A PERFORMANCE MEMBER MUST EMIT THE TRANSFORMATION ITS CYCLES ARE ATTRIBUTED TO.
+        #
+        # The ABI lets a buffer declare an operand the HARNESS derives from another (a conv's im2col
+        # gather). That is legitimate for STIMULUS -- reference, simulator and device must be handed one
+        # byte-identical tensor -- and it is untouched for a functional capsule, which is answering
+        # whether the arithmetic is right. It is NOT legitimate for a member whose verdict is a cycle
+        # count: the gather then costs the emitted program nothing, so the lowering that would perform it
+        # never appears in what is measured and the task contract's own rule ("a lever that does not
+        # change the emitted code is inert by definition") makes it unreachable as a lever.
+        #
+        # Scoped by the capsule's own `performance` block, so it fires for every performance member and
+        # for no functional one; and derived from that block's PRESENCE rather than from a declared
+        # field, so it cannot be switched off by editing a capsule. An obligation this build cannot
+        # evaluate is refused too -- never silently satisfied. Judged HERE, right after the compiler's
+        # own entrypoints and before the golden and the oracle ladder: a member measuring a program
+        # that never did the work is refused before anything is spent measuring it.
+        from merlin.perf import lowering_obligation as _LOB
+        _lowering = _LOB.assess(capsule, cb)
+        if _lowering.get("status") in _LOB.REFUSING_STATUSES:
+            raise CertFailure("lowering_obligation", _cat("PROTOCOL_VIOLATION"),
+                              str(_lowering.get("detail")))
+
+        # AN EPILOGUE THE READOUT DOES NOT APPLY IS A WRONG ANSWER, NOT A MISSED OPTIMIZATION.
+        #
+        # Measured: a capsule declaring `output_dtype='i32' epilogue=['relu']` returned 126 of 256
+        # outputs negative (min -85), which is the raw accumulator, while the command-buffer numeric
+        # floor and trace both passed -- the compiler's intent was right and the device discarded the
+        # activation. Judged here for the same reason as the obligation above: before anything is
+        # spent grading a program that computes something other than what it declares.
+        #
+        # The rule is target-independent and lives in merlin.verify; the CAPABILITY is the target's
+        # own declaration. A backend that declares no readouts leaves the check UNAVAILABLE rather
+        # than refusing every capsule -- an undeclared target is not a broken one, and the reason is
+        # recorded so "not checked" never reads as "checked and fine".
+        from merlin.verify import epilogue_applicability as _EPI
+        _declared = _readout_epilogue_capabilities(eff_target)
+        if _declared:
+            _epi = _EPI.assess(cb, [_EPI.ReadoutCapability(
+                str(r["selector"]), frozenset(str(x) for x in r.get("applies") or ()),
+                str(r.get("evidence") or "")) for r in _declared])
+            epilogue_applicability = _epi.to_dict()
+            if _epi.refusing:
+                raise CertFailure("epilogue_applicability", _cat("PROTOCOL_VIOLATION"),
+                                  str(_epi.detail))
+        else:
+            epilogue_applicability = {
+                "schema": "merlin_epilogue_applicability_v1", "status": "unavailable",
+                "detail": (f"target {eff_target!r} declares no readout epilogue capability, so "
+                           f"whether its readouts apply a declared stage cannot be established"),
+                "refusing": False}
 
         # --- golden + L0/L1 -----------------------------------------------------------------
         # The golden is the INDEPENDENT oracle's answer. For an integer capsule (gemmini / exact_int /
@@ -268,8 +3954,103 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # is READ from golden.yaml — resolved by policy+source, never a target name.
         capsule_dir = capsule.get("__dir__")
         independent_float = CG.is_independent_float_golden(capsule, capsule_dir)
+        whole_program = ((cb.get("kernel_abi") or {}).get("kind") == "whole_program")
+        # Both cases require the same evidence shape for different reasons.  A float program cannot be
+        # interpreted by the integer command-buffer engines; a whole-program kernel deliberately uses
+        # its command list as the ACCELERATOR projection, while scalar-host regions live only in the
+        # submitted ELF.  In either case the complete ELF must be run and compared directly with the
+        # capsule's independent semantic golden.  This is stricter than inventing fake commands for host
+        # work: no command projection can pass the kernel, and no harness-side arithmetic contributes to
+        # the answer.
+        direct_oracle_golden = independent_float or whole_program
         gsource = CG.golden_source(capsule, capsule_dir)
         gold = CG.golden(capsule, capsule_dir)
+        # A linalg-on-tensors reference lowering names its output positionally ("out"); the readback base +
+        # golden compare are keyed by the capsule's DECLARED output name (the merlin_iface grammar already
+        # names it via the commit op). Rename the sole output leaf to the declared name so preload, kernel,
+        # readback, and golden all agree on one name+address. Scoped to linalg_positional cbs (no-op else).
+        if cb.get("operand_naming") == "positional" or cb.get("interface") == "linalg_positional":
+            _outnm = ((capsule.get("operation") or {}).get("attributes") or {}).get("out")
+            _outs = [n for n, s in (cb.get("tensors") or {}).items() if s.get("role") == "output"]
+            if _outnm and len(_outs) == 1 and _outs[0] != _outnm:
+                _old = _outs[0]
+                cb["tensors"][_outnm] = cb["tensors"].pop(_old)
+                cb["outputs"] = [_outnm if o == _old else o for o in cb.get("outputs", [])]
+                cb["arg_order"] = [_outnm if a == _old else a for a in cb.get("arg_order", [])]
+                for _c in cb.get("commands", []):
+                    for _k, _v in (_c.get("operands") or {}).items():
+                        if _v == _old:
+                            _c["operands"][_k] = _outnm
+
+        # A program-oracle (self-hosted-ISA) target must run its emitted kernel on the SAME operands the
+        # independent golden used. Attach the capsule's canonical leaf-input bytes (golden.yaml raws) to
+        # the cb's leaf tensors so the program oracle preloads them by cb-declared base (AW5). Keyed by
+        # name; a no-op for integer capsules (no recorded raws) and for adapters that ignore the field.
+        _raws = CG.canonical_input_raws(capsule, capsule_dir)
+        if _raws:
+            import base64 as _b64
+            for _tname, _tspec in (cb.get("tensors") or {}).items():
+                if _tspec.get("role") in ("input", "weight", "bias") and _tname in _raws:
+                    _tspec["preload_b64"] = _b64.b64encode(_raws[_tname]).decode()
+
+        # Attach the golden's DECODED operand values so a self-hosted kernel harness (the fork-free SIMT
+        # path) can embed them and run the emitted kernel on the SAME operands the independent golden used.
+        # Generic + additive: empty for integer capsules, ignored by adapters that grade the command buffer.
+        # A block-scaled MX capsule's operands (quantized codes + corpus-seeded E8M0 block scales) live only
+        # in the golden and cannot be rebuilt from the decoded floats — attach them so the reference MX
+        # kernel can bake them. Public-capsule reference path (masked for hidden); a no-op for non-MX goldens.
+        _mxops = CG.mx_operands(capsule, capsule_dir)
+        if _mxops:
+            cb["mx_operands"] = _mxops
+
+        _vals = CG.canonical_input_values(capsule, capsule_dir)
+        if whole_program and not independent_float:
+            # A recomputed integer golden is defined over deterministic leaf materialization, even if
+            # a historical golden.yaml also happens to record a DIFFERENT decoded operand payload.
+            # Whole-program lowering may rename leaves positionally (A0 -> arg0), so attach the exact
+            # semantic stimulus before re-keying it below; otherwise the harness materializes from the
+            # new positional names and evaluates the right program on different data.
+            _vals = CG.materialized_input_values(capsule)
+        elif not _vals and whole_program:
+            # Complete-kernel adapters always need an explicit semantic stimulus. This fallback covers
+            # an independent golden whose format carries no decoded input table.
+            _vals = CG.materialized_input_values(capsule)
+        if _vals:
+            cb["canonical_inputs"] = _vals
+            # POSITIONAL FALLBACK for interface grammars whose operands are UNNAMED. The merlin_iface
+            # grammar names each leaf (``name = "X"``) so the by-name attach above matches; the
+            # linalg-on-tensors grammar has positional ``func.func @forward`` args (``%0``, ``%1`` …), so a
+            # lowering names its leaves positionally and NONE match the canonical keys (the capsule's
+            # arg_order). When no canonical key is a cb tensor name, re-key by POSITION: the capsule's
+            # arg_order and the cb's non-output leaves are both in @forward-argument order, so zip them.
+            _tensors = cb.get("tensors") or {}
+            if not (set(_vals) & set(_tensors)):
+                from merlin.runtime.commandbuffer import whole_program_entry_bindings as _entry_bindings
+                _leaves = _entry_bindings(cb)
+                if _leaves is None:
+                    _leaves = [n for n, s in _tensors.items()
+                               if s.get("role") in ("input", "weight", "bias")]
+                _ordered = list(_vals.values())
+                if len(_leaves) == len(_ordered):
+                    cb["canonical_inputs"] = dict(zip(_leaves, _ordered))
+                    if _raws:
+                        import base64 as _b64
+                        for _leaf, _rb in zip(_leaves, list(_raws.values())):
+                            _tensors[_leaf]["preload_b64"] = _b64.b64encode(_rb).decode()
+
+        # Stamp the HARNESS-owned canonical DRAM layout onto every cb tensor (inputs+output), matched by
+        # name. The agent's kernel was told these exact addresses (see the emit contract), so preload,
+        # kernel, and readback all agree on one address map — the harness never trusts the agent to have
+        # invented a base (the command_buffer schema forbids declaring one), and the output tensor now
+        # always has a base to read back from. Target-agnostic: pure shape x dtype (see capsule_dram).
+        from . import capsule_dram as _dram
+        from .dram_facts import dram_base_for
+        # Place any harness-assigned canonical base INSIDE the target's DRAM region [dram_base, +size):
+        # a self-hosted-ISA target maps DRAM at a nonzero region base (derived from its facts; 0 for a
+        # 0-based target like gemmini, keeping the base at DEFAULT_BASE unchanged), and the L2 oracle
+        # relocates by that same base — so a submission that omits a base still grades against a layout
+        # the model can index. Bases the agent DECLARED are left untouched (inject_bases only fills gaps).
+        _dram.inject_bases(cb, capsule, base=dram_base_for(eff_target) + _dram.DEFAULT_BASE)
 
         if independent_float:
             # The integer reference/simulate engines cannot execute a float (fp8/bf16) datapath, so the
@@ -280,8 +4061,9 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # incomplete (only an unavailable/absent RTL oracle does).
             ref = sim = None
             numeric = {"status": "skipped", "policy": policy.get("compare"), "golden_source": gsource,
-                       "note": "integer reference/simulate N/A for float datapath; graded vs independent "
-                               "golden at RTL oracle"}
+                       "note": "integer reference/simulate N/A for a float datapath; correctness is graded "
+                               "by running your artifact on the RTL oracle and checking it computes the "
+                               "declared operation within tolerance"}
             tiers["L0"] = TierResult(
                 "L0", "skipped", mandatory="L0" in required, not_applicable=True,
                 reason="integer reference not applicable to float datapath; graded vs independent "
@@ -289,12 +4071,34 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             tiers["L1"] = TierResult(
                 "L1", "skipped", mandatory="L1" in required, not_applicable=True,
                 reason="integer simulate not applicable to float datapath")
+        elif whole_program:
+            # The command list remains available for structural checks, accelerator work accounting,
+            # and decoded-trace correspondence.  It is not a semantic model of the CPU regions between
+            # accelerator calls.  Calling reference_outputs here would materialize those intermediates
+            # as unrelated deterministic leaves and compare a different program.  Correctness is gated
+            # below by executing the complete submitted ELF at every required device tier.
+            ref = sim = None
+            numeric = {
+                "status": "skipped", "policy": policy.get("compare"),
+                "golden_source": gsource,
+                "note": ("command-buffer reference/simulate are inapplicable to an explicitly declared "
+                         "whole-program kernel: its command list projects accelerator regions only; "
+                         "correctness is graded by executing the complete submitted ELF and comparing "
+                         "its declared outputs with the capsule golden"),
+            }
+            tiers["L0"] = TierResult(
+                "L0", "skipped", mandatory="L0" in required, not_applicable=True,
+                reason="command-buffer reference cannot interpret scalar regions of a whole-program ELF")
+            tiers["L1"] = TierResult(
+                "L1", "skipped", mandatory="L1" in required, not_applicable=True,
+                reason="command-buffer simulate cannot execute scalar regions of a whole-program ELF")
         else:
             # Interpreting the AGENT's command buffer (reference/simulate) can fail if the cb is
-            # structurally invalid — e.g. a MATMUL operand with rank != 2 because conv2d was not lowered
-            # to a 2D im2col matmul. That is the agent's bug, NOT a harness crash: report it as a
-            # gradeable command_buffer failure with an actionable reason (so the agent gets feedback and
-            # both arms are scored identically) instead of letting it become a RUNNER_CRASH.
+            # structurally invalid for the reference interpreter's op/shape model. That is the agent's
+            # bug, NOT a harness crash: report it as a gradeable command_buffer failure (so the agent gets
+            # feedback and both arms are scored identically) instead of a RUNNER_CRASH. The reason reports
+            # the ACTUAL exception rather than asserting one hardcoded cause — the interpreter models a
+            # fixed op vocabulary, so an unmodeled op/operand-shape/name is one of several possible causes.
             try:
                 ref = reference_outputs(cb)
                 sim = simulate(cb)["outputs"]
@@ -302,21 +4106,29 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 raise CertFailure(
                     "command_buffer", _cat("STRUCTURAL_INVARIANT_VIOLATION"),
                     f"command buffer could not be interpreted by reference/simulate "
-                    f"({type(ce).__name__}: {ce}); check operand ranks/shapes — a MATMUL operand likely "
-                    f"has the wrong rank (expected 2D; conv2d must be lowered to a 2D im2col matmul)"
+                    f"({type(ce).__name__}: {ce}); check operand ranks/shapes and that each command's op "
+                    f"is one the reference interpreter models (e.g. a windowed op lowered to a 2D matmul)"
                 ) from ce
             nrep = CG.compare(gold, ref, capsule["numeric_policy"], golden_source=gsource)
             numeric = {"status": nrep["status"], "policy": nrep["policy"],
                        "max_abs_diff": nrep["max_abs_error"], "max_rel_error": nrep["max_rel_error"],
-                       "mismatch_count": nrep["mismatch_count"], "first_mismatch": nrep["first_mismatch"]}
+                       "mismatch_count": nrep["mismatch_count"], "first_mismatch": nrep["first_mismatch"],
+                       # same DROPPED-store surfacing as the float path (see _absent_outputs): a missing
+                       # declared output is reported distinctly, never as a phantom 0-magnitude mismatch.
+                       "per_output": nrep.get("per_output", {}),
+                       "missing_outputs": _absent_outputs(nrep)}
             CG.write_numeric_report(paths.generated / "numeric_report.yaml", nrep)
             tiers["L0"] = TierResult("L0", "pass" if nrep["status"] == "pass" else "fail",
                                      mandatory="L0" in required or True,
-                                     reason=None if nrep["status"] == "pass" else "golden != reference(cb)",
+                                     reason=(None if nrep["status"] == "pass"
+                                             else "your command buffer does not compute the declared operation"),
                                      evidence="numeric_report.yaml")
             if nrep["status"] != "pass":
+                _absent_cb = (_absent_output_detail(nrep, "command_buffer", gold, ref)
+                              or _unwritten_output_detail(nrep, "command_buffer"))
                 raise CertFailure("numeric_golden", _cat("FUNCTIONAL_MISMATCH"),
-                                  f"golden != reference(cb): {nrep['first_mismatch']}")
+                                  _absent_cb or ("your command buffer does not compute the declared operation "
+                                  f"(first divergence at index={(nrep['first_mismatch'] or {}).get('index')})"))
 
             l1_ok = _match_by_policy(ref, sim, policy)
             tiers["L1"] = TierResult("L1", "pass" if l1_ok else "fail", mandatory=True,
@@ -330,40 +4142,380 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # RoCC trace and checks instruction coverage. A SIMT/other target (trace_gate=None) has no analog
         # and skips it — the L0/L1 math floor + the oracle tiers carry the verdict either way.
         if cfg.trace_gate == "rocc_insn":
-            trace = RD.decode_text(llvm_text, source=str(paths.generated / cfg.fourth_output_name))
-            schemas.validate(trace, "instruction_trace", contract=contract)
+            trace = RD.decode_text(llvm_text, source=str(paths.generated / cfg.fourth_output_name),
+                                   target=eff_target)
+            decoded_trace = trace                # hand to the advisory localizer on an oracle divergence
+            # Validating OUR OWN decoder's output must never crash the capsule before the oracle runs: a
+            # schema hiccup (e.g. the manifest maps a funct to a class the enum lacks) is our tooling's
+            # limitation, not the backend's defect — record it and continue, not a pre-oracle RUNNER_CRASH.
+            try:
+                schemas.validate(trace, "instruction_trace", contract=contract)
+            except schemas.ContractViolation as _sv:
+                import sys as _sys
+                _sys.stderr.write(f"WARNING: instruction_trace self-validation failed (advisory): {_sv}\n")
             (paths.generated / "instruction_trace.json").write_text(
                 json.dumps(trace, indent=2), encoding="utf-8")
-            trace_check_res = TCK.check(trace, capsule.get("expected", {}), cb=cb)
-            if trace_check_res["status"] != "pass":
+            # Advisory silicon-liveness screen (HW-agnostic): would this emitted stream stall/fault on real
+            # silicon? It uses only the target's OWN derived facts (scratchpad/accumulator capacity, address
+            # map, ISA legality) + this decoded trace, never a target literal, and — like trace_check — is
+            # advisory: it writes liveness_report.json for the author and never gates or crashes the capsule.
+            try:
+                from merlin.liveness import Program as _LProg, assess as _lassess
+                from .dram_facts import dram_window_for
+                _lname = capsule.get("id") or capsule.get("name") or "kernel"
+                # THE DRAM WINDOW IS A DERIVABLE FACT AND WAS NEVER HANDED OVER. The screen's address-map
+                # check bounds a movement transaction against [base, base+size); nothing supplied `size`,
+                # so EVERY report — including targets whose green card ships `start ~ end` — recorded
+                # `dram-window-unknown` and the upper bound went unchecked. The window comes from the
+                # target's OWN memory map (never a board default: fabricating a size would manufacture
+                # false unmapped-address faults), and stays UNKNOWN with its reason named when the target
+                # ships no map.
+                _dwin = dram_window_for(eff_target)   # (base, size_bytes | None, provenance_why)
+                _lrep = _lassess(_LProg(name=_lname, trace=trace, address_model="pointer_args",
+                                        dram_bytes=_dwin[1], dram_window_why=_dwin[2]), eff_target)
+                (paths.generated / "liveness_report.json").write_text(
+                    json.dumps(_lrep.to_dict(), indent=2), encoding="utf-8")
+            except Exception as _le:  # noqa: BLE001 — advisory: our screener's limit is not the backend's defect
+                import sys as _sys
+                _sys.stderr.write(f"WARNING: liveness screen failed (advisory): {_le}\n")
+            # trace_check is ADVISORY: instruction-class coverage / ordering / UNKNOWN are diagnostics
+            # for the author, NOT the verdict. Correctness is decided by the numeric + L2/L3 RTL oracle
+            # below (which EXECUTE the actual emitted stream), and the hidden golden precludes faking an
+            # answer — so an instruction our decoder cannot yet classify must never fail a conformant
+            # backend (the old gate short-circuited before the RTL oracle even ran).
+            # The RoCC/inline-asm bare-metal harness passes each operand buffer as a POINTER argument, so
+            # its address model is pointer_args: DRAM addresses must derive from the kernel's args, not be
+            # baked. (A fixed-preload oracle — e.g. the program oracle — would pass "fixed_preload"; the
+            # model is the harness's, derivable per oracle, not a target literal.)
+            trace_check_res = TCK.check(trace, capsule.get("expected", {}), cb=cb,
+                                        address_model="pointer_args")
+            # Anti-cheese floor (must drive the accelerator) is the ONE trace-derived gate — but ONLY where
+            # the RTL oracle will NOT run to prove it. When a required oracle tier executes the emitted
+            # stream on real hardware, THAT is the spelling-independent anti-cheese (a host-computed fake
+            # produces wrong output on RTL); the decoder-shaped floor only recognizes the `.insn r` form, so
+            # gating on it here would false-fail a conformant `.word`-encoded kernel before the oracle.
+            if (no_oracle or not required) and not TCK.drives_accelerator(trace):
                 raise CertFailure("trace_check", _cat("PROTOCOL_VIOLATION"),
-                                  f"trace_check failed: {trace_check_res['violations']}")
+                                  "no accelerator instructions emitted — the kernel did not drive the "
+                                  "target's ISA (compute must happen on the device; correctness cannot "
+                                  "come from the host).")
+
+            # A FORBIDDEN ACCELERATOR LANE, judged on the one thing this path can prove. `lane_report`
+            # needs a routing plan and an execution record, which only the whole-model path owns, so an
+            # op or model-slice capsule forbidding the accelerator had no verdict at all (see
+            # LANE_CONTRACT_NOT_EVALUATED).
+            #
+            # The asymmetry is deliberate and is the whole reason this is sound here. A DECODED
+            # accelerator instruction proves work went there: that is a violation, and it is a fail. Its
+            # ABSENCE proves nothing -- the decoder recognizes the `.insn r` form, so a `.word`-encoded
+            # kernel that does drive the device decodes as silent. Reading that silence as "the host
+            # carried it" would hand a forbidding capsule a free pass, which is exactly the shape of
+            # vacuous evidence this contract exists to refuse. So: violated, or unmeasured. Never
+            # satisfied.
+            if accelerator_lane_violated(capsule, trace):
+                # PROTOCOL_VIOLATION is the enum member this is: the emitted stream broke a contract the
+                # capsule declared. `_cat` would silently resolve an unknown name to RUNNER_CRASH, which
+                # would report a compiler defect as a harness crash, so the plane carries the lane
+                # vocabulary and the category stays one the enum actually has.
+                raise CertFailure("lanes", _cat("PROTOCOL_VIOLATION"),
+                                  f"capsule forbids lane {_ACCELERATOR_LANE!r} and the emitted stream "
+                                  f"decodes accelerator instructions; this target's capability manifest "
+                                  f"does not admit this capsule's family, so the compiler must leave it "
+                                  f"on the host lane.")
 
         # --- oracle tiers -------------------------------------------------------------------
-        for tier in cfg.oracle_tiers:
+        # Run every tier the config declares (tier_sim ladder) OR an injected adapter provides — so a
+        # target whose RTL tier is supplied by an adapter rather than a static tier_sim (atlas: arc L3,
+        # empty tier_sim) still runs, while gemmini's declared ladder is unchanged. The L0/L1 math floor
+        # is handled above (reference/simulate), NOT here. Sorted for a stable L2<..<L5 ladder order.
+        # program_oracle (the external_backend adapters) raises its OWN OracleUnavailable, a RuntimeError
+        # that is a DIFFERENT class from this module's OracleUnavailable(Exception) — unrelated by mro. If
+        # we catch only the local one, an honest "oracle unavailable" from the program oracle (missing
+        # assembler / model venv / cosim import) falls through to the generic handler and is mislabeled a
+        # TOOL_CRASH, so the unavailable->incomplete / not_gradeable_no_oracle path never fires for atlas.
+        # Catch BOTH so unavailability is honest for every endpoint.
+        from .program_oracle import OracleUnavailable as _POUnavailable
+        # An endpoint that RAN the program and watched it never halt reports a VERDICT, not an absent
+        # oracle. It is raised as a SUBCLASS of the unavailable exception (so every fail-closed handler
+        # still works) and must therefore be caught FIRST, or it collapses back into "the oracle did not
+        # run" — which is what left a whole agent run with nothing it could act on.
+        from .program_oracle import ProgramDidNotHalt as _PODidNotHalt
+        # The muon (SIMT/cyclotron/VCS) adapters raise their OWN MuonUnavailable — a THIRD unrelated class.
+        # The VCS RTL difftest is honest-unavailable (WIP upstream: the DPI ELF path is not wired for arbitrary
+        # corpus kernels), so it raises MuonUnavailable; without catching it here that honest unavailability
+        # falls through to the generic handler and is mislabeled a TOOL_CRASH (an agent FAIL) instead of
+        # firing the unavailable -> not_gradeable_no_oracle path — the same bug the program-oracle catch above
+        # fixed for atlas. Catch it too so an unavailable RTL oracle is honest for the SIMT endpoint as well.
+        # The muon backend was evicted to its own reference package; resolve its MuonUnavailable via the
+        # registry (get_backend), and simply skip it if the SIMT backend is not present in this env — an
+        # absent backend cannot raise it, so there is nothing to catch.
+        try:
+            from ..runtime.backends import base as _bk
+            _muon_unavail = (_bk.get_backend("muon").MuonUnavailable,)
+        except Exception:  # noqa: BLE001 — SIMT backend absent -> no MuonUnavailable to catch
+            _muon_unavail = ()
+        _ORACLE_UNAVAILABLE = (OracleUnavailable, _POUnavailable) + _muon_unavail
+        # Tiers the CAPSULE declares cannot corroborate a result for this target (see
+        # corpus_spec._inapplicable_tiers). A tier whose model disagrees with the RTL about the machine
+        # itself — not about precision — grades a correct kernel as wrong on every capsule, so running it
+        # produces a permanent red the agent can neither fix nor learn from. It is reported the way L0/L1
+        # already are for a float datapath: skipped + not_applicable, carrying the declared reason. It is
+        # never reported as a pass, and a REQUIRED tier can never be declared inapplicable (that raises at
+        # generation time), so this cannot be used to switch off a failing mandatory oracle.
+        _inapplicable = capsule.get("inapplicable_oracle_tiers") or {}
+        # CHEAPEST MEASURED TIER FIRST, not lexicographic. The ladder aborts on the first mandatory
+        # tier that refutes a capsule, so the ORDER decides what a failing capsule costs -- and sorting
+        # by name meant one target paid its arc cosim before reaching the cheaper Verilator tier
+        # (⚠️ the 24.5 s / 0.29 s pair quoted here and below is a THROUGHPUT figure measured under 16-way
+        # parallelism, not a latency. Measured serially over 42 samples 2026-08-29: arc median 3.68 s,
+        # Verilator median 0.276 s, both linear in halt cycles (3.63 vs 0.255 ms/cyc) with no build step.
+        # The ordering conclusion is unchanged -- 0.276 < 3.68 either way -- but anything PRICED off
+        # 24.5 s is wrong by 6.3x. See docs/design/performance_budget_unit.md.)
+        # that refutes the same capsules (measured: 12 of 12, identical signature). See tier_policy.
+        _available_tiers = set(cfg.oracle_tiers) | set(adapters or {})
+        _execution_ceiling = capsule.get("oracle_tier_ceiling")
+        if _execution_ceiling is not None:
+            # A materialized phase view is allowed to make LESS fidelity reachable than the endpoint
+            # can provide.  Filter BEFORE cost ordering: unknown-first calibration would otherwise pick
+            # an available L3 adapter ahead of the intended L2 search oracle and silently spend GSIM.
+            # Tier names are fidelity indices, so only the canonical L<number> form has an ordering.
+            def _fidelity_index(value: object) -> int | None:
+                spelling = str(value).upper()
+                return int(spelling[1:]) if spelling.startswith("L") and spelling[1:].isdigit() else None
+
+            _ceiling_index = _fidelity_index(_execution_ceiling)
+            if _ceiling_index is None:
+                raise ValueError(
+                    f"invalid oracle_tier_ceiling {_execution_ceiling!r} for capsule {name!r}; "
+                    "expected a fidelity tier such as L2")
+            _tier_indices = {t: _fidelity_index(t) for t in _available_tiers}
+            _bad_tiers = sorted(t for t, index in _tier_indices.items() if index is None)
+            if _bad_tiers:
+                raise ValueError(
+                    f"cannot apply oracle_tier_ceiling {_execution_ceiling!r} to non-fidelity "
+                    f"tier name(s) {_bad_tiers} for capsule {name!r}")
+            _available_tiers = {t for t, index in _tier_indices.items()
+                                if index is not None and index <= _ceiling_index}
+        _tier_seq = _tier_policy.tier_order(str(cfg.target or target or ""), _available_tiers)
+        _screen_tier = _tier_seq[0] if _tier_seq else None
+        # When set, a mandatory tier failure does not abort the ladder: the remaining tiers still run and
+        # record, and the FIRST failure is raised once the loop completes. Costs the later tiers on a
+        # failing capsule, which is the price of being able to say what every tier thought.
+        _complete_ladder = _full_ladder_enabled()
+        _first_cert_failure: "CertFailure | None" = None
+        # THE EXECUTABLE THIS LADDER MEASURES MUST BE THIS RUN'S. See the note above
+        # `_clear_stale_executable`: a reused run directory holds the previous grade's ELF, and every
+        # consumer that content-addresses "the program this capsule ran" would answer with it.
+        _clear_stale_executable(paths.generated)
+        # Resolved once per capsule and only if a tier ever asks: `toolchain_shas` walks every hardware
+        # pin the target declares, and the ladder would otherwise repeat that per tier.
+        _shas_memo: dict = {}
+
+        def _pin_shas():
+            if "v" not in _shas_memo:
+                _shas_memo["v"] = toolchain_shas(eff_target)
+            return _shas_memo["v"]
+
+        _cache_refusals: dict = {}       # tier -> why its certificate could not even be looked up
+        _executed_here = False           # has ANY tier actually run in this process, for this capsule?
+
+        def _stamp_cache_refusals() -> None:
+            stamp_cache_refusals(tiers, _cache_refusals)
+        for tier in _tier_seq:
             mand = tier in required
-            adapter = adapters.get(tier)
+            # THE SCREEN IS ALWAYS PAID FOR; the tiers above it are what a budget can decline. A capsule
+            # inside the derived covering set is never declined -- that is what the cover is for.
+            if tier != _screen_tier:
+                _may, _why = _tier_policy.may_certify(str(cfg.target or target or ""), capsule)
+                if not _may:
+                    tiers[tier] = TierResult(tier, "skipped", mand, reason=_why,
+                                             budget_deferred=True,
+                                             derived_from_rtl=tier in cfg.rtl_tiers)
+                    continue
+            if tier in _inapplicable and not mand:
+                tiers[tier] = TierResult(tier, "skipped", mand, not_applicable=True,
+                                         reason=str(_inapplicable[tier]),
+                                         derived_from_rtl=tier in cfg.rtl_tiers)
+                continue
+            adapter = (adapters or {}).get(tier)
             if adapter is None:
                 if mand:
-                    tiers[tier] = TierResult(tier, "unavailable", True,
-                                             reason=f"no adapter for {tier} ({cfg.tier_sim[tier]})",
-                                             derived_from_rtl=tier in cfg.rtl_tiers)
+                    # FAIL CLOSED on the DECLARED tier, and name it. Never substitute another tier and
+                    # report its verdict as the declared one — a grade that silently rides a tier the
+                    # capsule never asked for is not the grade the capsule specified.
+                    tiers[tier] = TierResult(
+                        tier, "unavailable", True,
+                        reason=(f"this capsule declares required oracle tier {tier} "
+                                f"({cfg.tier_sim.get(tier, 'no sim declared')}) but this phase supplies "
+                                f"no adapter for it; reachable tiers here: "
+                                f"{sorted(adapters or {}) or 'none'}"),
+                        derived_from_rtl=tier in cfg.rtl_tiers)
                 continue
+            # DO NOT RE-BUY A CERTIFICATE FOR BYTES THAT HAVE NOT CHANGED. Asked only once a tier has
+            # actually executed in this run, because that is what guarantees the executable on disk is
+            # this run's and not a previous grade's (see `_clear_stale_executable`). The lookup fails
+            # closed on every ambiguity, and a hit is reported AS a carry -- never as a measurement.
+            if _executed_here and tier not in adapter_managed_tiers:
+                _carried, _why_not = carried_tier_result(name, tier, mand, target=eff_target,
+                                                         generated=paths.generated, shas=_pin_shas(),
+                                                         from_rtl=tier in cfg.rtl_tiers)
+                if _carried is not None:
+                    tiers[tier] = _carried
+                    continue
+                if _why_not:
+                    # The question could not be ASKED -- distinct from asking and missing, and the
+                    # distinction is the whole point: unrecorded, the two read identically.
+                    _cache_refusals[tier] = _why_not
             import time as _time
             _adapter_t0 = _time.perf_counter()
+            def _failed_adapter_timing() -> dict:
+                """Wall is measurable even when an adapter raises before returning its phase split.
+
+                Build/sim/wait remain unknown rather than fabricated zeroes.  Previously every timeout,
+                trap, did-not-halt, and oracle-unavailable result discarded even its measured wall time,
+                making the most expensive L-tier attempts disappear from experiment accounting.
+                """
+                return {"build_s": None, "sim_active_s": None, "oracle_wait_s": None,
+                        "adapter_wall_s": round(_time.perf_counter() - _adapter_t0, 3),
+                        "partial": True,
+                        "unavailable_reason": "adapter raised before returning the phase timing split"}
             try:
-                res = adapter(cb, llvm_text, paths.generated, timeout)
-            except OracleUnavailable as e:
-                tiers[tier] = TierResult(tier, "unavailable", mand, reason=str(e),
-                                         derived_from_rtl=tier in cfg.rtl_tiers)
-                continue
-            except Exception as e:  # adapter crash is a real failure for that tier
-                tiers[tier] = TierResult(tier, "fail", mand,
-                                         reason=f"{cfg.tier_sim[tier]} crash: {str(e)[-300:]}",
-                                         derived_from_rtl=tier in cfg.rtl_tiers)
+                # Keep the compiler-owned command buffer canonical. The expected
+                # answer is private runner-to-oracle state, so attach it only to
+                # the shallow per-call view passed to an adapter. Besides avoiding
+                # later serialization leakage, this keeps trusted golden changes
+                # out of submitted-kernel build identities.
+                oracle_cb = dict(cb)
+                oracle_cb["_oracle_expected_outputs"] = gold
+                oracle_cb["_oracle_numeric_policy"] = policy
+                # A frozen post-search stage carries the exact cycle count measured for THIS capsule at
+                # its sealed predecessor tier. Pass it only on the private runner-to-oracle view: it is
+                # observation-budget provenance, not compiler input and not part of the submitted CB.
+                _stage = capsule.get("evaluation_stage") or {}
+                _l2_cycles = (_stage.get("predecessor_l2_cycles")
+                              if isinstance(_stage, dict) else None)
+                if _l2_cycles is not None:
+                    if (not isinstance(_l2_cycles, int) or isinstance(_l2_cycles, bool)
+                            or _l2_cycles <= 0):
+                        raise ValueError(
+                            "evaluation_stage.predecessor_l2_cycles must be a positive integer")
+                    oracle_cb["_oracle_l2_cycles"] = _l2_cycles
+                    _cycle_policy = _stage.get("cycle_budget")
+                    if not isinstance(_cycle_policy, dict):
+                        raise ValueError(
+                            "evaluation_stage with predecessor cycles requires cycle_budget policy")
+                    oracle_cb["_oracle_gsim_cycle_policy"] = dict(_cycle_policy)
+                res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
+            except _PODidNotHalt as e:
+                # The oracle RAN and returned a verdict: the program never halted. That is the AGENT's
+                # bug, not a missing oracle — record it as a tier FAIL (not "unavailable") so the
+                # not_run_is_not_pass path never relabels it, and fail the capsule on the named
+                # did-not-halt plane. MUST precede the _ORACLE_UNAVAILABLE clause below: this is a
+                # subclass of it, and being caught there is exactly what hid the diagnosis.
+                tiers[tier] = TierResult(tier, "fail", mand, reason=_did_not_halt_reason(str(e)),
+                                         derived_from_rtl=tier in cfg.rtl_tiers,
+                                         timing=_failed_adapter_timing(),
+                                         concurrency=concurrency_stamp(workers))
                 if mand:
-                    raise CertFailure(cfg.tier_sim[tier], _cat("TOOL_CRASH"),
-                                      f"{cfg.tier_sim[tier]} invocation failed: {str(e)[-400:]}") from e
+                    raise _did_not_halt_failure(str(e)) from e
+                continue
+            except _ORACLE_UNAVAILABLE as e:
+                tiers[tier] = TierResult(tier, "unavailable", mand, reason=str(e),
+                                         derived_from_rtl=tier in cfg.rtl_tiers,
+                                         timing=_failed_adapter_timing(),
+                                         concurrency=concurrency_stamp(workers))
+                continue
+            except Exception as e:  # adapter raised — classify: a non-terminating program is the AGENT's
+                # FIFTH CASE, and the only one that runs the OTHER way. The four below all rescue a
+                # verdict that WAS the agent's from an infra-shaped label. This one rescues the agent
+                # from a verdict that was never measured: `readback_integrity` refuses a buffer whose
+                # every Nth word came back exactly zero while the rest carried data -- a transport
+                # defect, not an arithmetic result -- BEFORE any value is compared. The kernel may be
+                # perfectly correct. Recorded as `fail` it reads as a numeric defect the agent must
+                # chase, and MEASURED 2026-09-09 it cost radiance three capsules that had already
+                # passed L2 with zero mismatches, all three landing as `tool_crash` / plane
+                # `verilator` -- naming a simulator that had not crashed.
+                # Detected by walking the exception chain for the refusal type, never by matching its
+                # message: the adapters re-wrap it (`raise MuonError(str(exc)) from exc`, then
+                # `raise ... from e` again), so the TYPE is what survives, not the spelling.
+                if _is_readback_refusal(e):
+                    _detail = _readback_refusal_detail(e)
+                    tiers[tier] = TierResult(
+                        tier, "unavailable", mand,
+                        reason=(f"readback refused before comparison: {_clip(_detail, 300)}"),
+                        derived_from_rtl=tier in cfg.rtl_tiers,
+                        timing=_failed_adapter_timing(),
+                        concurrency=concurrency_stamp(workers))
+                    if mand:
+                        raise InfraFailure(
+                            INFRASTRUCTURE_PLANE, InfraCategory.READBACK_TRANSPORT_REFUSED,
+                            f"the device readback was refused on structural grounds before any value "
+                            f"was compared, so NOTHING about this kernel was measured: {_detail} "
+                            f"This is a transport/harness fault, NOT a defect in the graded "
+                            f"submission -- the kernel may be correct.") from e
+                    continue
+                # bug (it ran to the cycle cap), a TIMEOUT fail, NOT a tool_crash. Mislabeling it
+                # 'tool_crash' read as an infra problem the agent couldn't fix — so it never emitted the
+                # ISA's halt instruction and every round failed identically (the atlas flat-0/11 wall).
+                _sim = cfg.tier_sim.get(tier, tier)
+                _msg = str(e)
+                _did_not_halt = "did not halt" in _msg
+                # A program that RAN on the sim but FAULTED at runtime (the bare-metal fail/trap banner
+                # fired: "*** FAILED ***") is the AGENT's kernel bug — an illegal instruction or an
+                # out-of-range memory access (e.g. an MVIN/MVOUT DRAM address of 0, or a baked address that
+                # ignores the passed pointers / declared DRAM layout) — NOT an infra tool_crash. Classify it
+                # as a functional fault with actionable feedback; mislabeling it tool_crash reads as an
+                # unfixable infra problem and wastes every round (the atlas flat-0/11 pattern).
+                _trapped = ("*** FAILED ***" in _msg) and not _did_not_halt
+                # THIRD CASE, same lesson as the two above. A simulator that aborts with a C++
+                # std::out_of_range / _M_range_check is reporting the AGENT indexing an on-chip resource
+                # one past its end -- the sim dies instead of returning a verdict, so it surfaces as an
+                # infra `tool_crash` carrying only a C++ backtrace. MEASURED 2026-09-08: an arm hit this
+                # 8 times across several grades and never fixed it, because "terminate called after
+                # throwing an instance of 'std::out_of_range'" names neither the resource, nor the index,
+                # nor the limit. No other arm triggered it, so it read as that arm being broken rather
+                # than as an unreadable diagnostic. Parse the bound out and say what was exceeded.
+                _oob_idx, _oob_size = _range_check_bounds(_msg)
+                _oob = _oob_idx is not None
+                # A link failure is likewise the agent's build defect (its emitted object/driver does not
+                # link), not infra -- and the ld error is the whole diagnostic, so it must not be clipped
+                # to the same short budget as a generic crash.
+                _link_failed = "link failed" in _msg and not _did_not_halt
+                tiers[tier] = TierResult(
+                    tier, "fail", mand,
+                    reason=(_did_not_halt_reason(_msg) if _did_not_halt
+                            else f"kernel faulted at runtime: {_clip(_msg, 260)}" if _trapped
+                            else _out_of_range_reason(_sim, _oob_idx, _oob_size) if _oob
+                            else f"the emitted package did not LINK (your build defect, not the "
+                                 f"simulator's): {_clip(_msg, 600)}" if _link_failed
+                            else f"{_sim} crash: {_clip(_msg, 300)}"),
+                    derived_from_rtl=tier in cfg.rtl_tiers,
+                    timing=_failed_adapter_timing(),
+                    concurrency=concurrency_stamp(workers))
+                if mand:
+                    if _did_not_halt:
+                        raise _did_not_halt_failure(_msg) from e
+                    if _trapped:
+                        raise CertFailure(_sim, _cat("FUNCTIONAL_MISMATCH"),
+                                          "the emitted kernel RAN but FAULTED on "
+                                          f"{_sim} (a trap — an illegal instruction or an out-of-range "
+                                          "memory access — before producing output). Check that every "
+                                          "memory-movement instruction uses a valid, in-range DRAM address "
+                                          "(derive it from the passed pointer args / the declared DRAM "
+                                          f"layout, never a baked 0 or a guessed address): {_clip(_msg, 300)}") from e
+                    # Same reclassification on the MANDATORY path, or the actionable reason built above
+                    # is thrown away and the agent sees TOOL_CRASH again.
+                    if _oob:
+                        raise CertFailure(_sim, _cat("FUNCTIONAL_MISMATCH"),
+                                          _out_of_range_reason(_sim, _oob_idx, _oob_size)) from e
+                    if _link_failed:
+                        raise CertFailure(_sim, _cat("FUNCTIONAL_MISMATCH"),
+                                          "the emitted package did not LINK, so nothing could be run. "
+                                          "This is a defect in what your compiler emitted (a missing or "
+                                          "duplicate symbol, or an object built against the wrong ABI), "
+                                          f"not a simulator fault: {_clip(_msg, 600)}") from e
+                    raise CertFailure(_sim, _cat("TOOL_CRASH"),
+                                      f"{_sim} invocation failed: {_clip(_msg, 400)}") from e
                 continue
             _adapter_wall = _time.perf_counter() - _adapter_t0
             # Split active (build + sim) vs waiting (queue/FPGA slot). Adapters that route through a
@@ -376,50 +4528,247 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 _acct = (_tm.get("build_s") or 0.0) + (_tm.get("sim_active_s") or 0.0)
                 _tm["oracle_wait_s"] = round(max(0.0, _adapter_wall - _acct), 3)
             _tm["adapter_wall_s"] = round(_adapter_wall, 3)
-            if independent_float:
-                # Float grade: the RTL program-oracle output vs the INDEPENDENT golden.yaml (tolerance_float).
-                # There is no integer reference/simulate to cross-check against — this comparison IS the
-                # numeric verdict, recorded as the honest numeric report + evidence.
+            # STAMPED HERE, at the moment of measurement -- not at suite start. The load average this
+            # reads is the one covering the adapter call whose wall time sits beside it.
+            _conc = concurrency_stamp(workers)
+            _tier_policy.record_cost(str(cfg.target or target or ""), tier, _adapter_wall)
+            if tier != _screen_tier:
+                _tier_policy.note_spend(str(cfg.target or target or ""), _adapter_wall)
+            if res.get("executability") is not None:
+                # ADVISORY executability smoke: a bounded-cycle RTL-legality check (does a cyclotron(L2)-
+                # passing ELF at least RUN on the real Verilator RTL — boots, no trap, MX PE accepts a
+                # command), the RTL-grounding backstop for the non-RTL-certified perf oracle. It does NOT
+                # numeric-grade and NEVER blocks: recorded as a NON-mandatory tier + an ``executability``
+                # field, and — because it is never in ``required`` — it is not_run_is_not_pass-exempt by
+                # construction. A slow/flaky RTL smoke must not fail a capsule whose L2 grade passed, so
+                # its verdict (legal/illegal) is informational only; ``mand`` is ignored here on purpose.
+                ex = res["executability"]
+                executability[tier] = ex
+                _sim_name = _oracle_kind(res.get("oracle")) or cfg.tier_sim.get(tier) or tier
+                _clog, _cbytes = _record_console(paths, _sim_name, res.get("console"))
+                _tel = _sim_telemetry(res.get("oracle"), _sim_name)
+                tiers[tier] = TierResult(
+                    tier, "pass" if ex.get("legal") else "fail", mandatory=False,
+                    reason=ex.get("reason"), cycles=ex.get("cycles"), derived_from_rtl=True,
+                    evidence=f"{_sim_name}_console.log", timing=_tm, not_applicable=True,
+                    concurrency=_conc, console_log=_clog, console_bytes=_cbytes, **_tel)
+                continue
+            if res.get("completion_only"):
+                # An RTL cert that ran the emitted kernel to completion but cannot surface its outputs
+                # for an independent numeric check (e.g. the Muon Verilator harness $finish-races the
+                # UART flush). It certifies RTL COMPLETION + cycle-accurate cycles; CORRECTNESS is the
+                # mandatory functional tier's job. It is NEVER allowed to stand in for a mandatory tier
+                # (a required tier must verify output) — there it degrades to honest-unavailable.
+                _sim_name = cfg.tier_sim.get(tier) or tier
+                if mand:
+                    tiers[tier] = TierResult(
+                        tier, "unavailable", mand,
+                        reason="RTL cert ran to completion but cannot surface outputs for a mandatory "
+                               "correctness check (use the functional tier as the required gate)",
+                        cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers, timing=_tm,
+                        toolchain=_graded_program(res, package_dir),
+                        concurrency=_conc)
+                    continue
+                _cg = _cp = None
+                _cu: dict | None = None
+                if perf_extractor is not None:
+                    _cperf = perf_extractor(cb, res) or {}
+                    _cg, _cp = _cperf.get("gflops"), _cperf.get("pct_fp_peak")
+                    _cu = {k: v for k, v in _cperf.items()
+                           if k not in ("gflops", "pct_fp_peak", "flops")} or None
+                _sim_name = _oracle_kind(res.get("oracle")) or _sim_name
+                _clog, _cbytes = _record_console(paths, _sim_name, res.get("console"))
+                _tel = _sim_telemetry(res.get("oracle"), _sim_name)
+                tiers[tier] = TierResult(
+                    tier, "pass", mand,
+                    reason="RTL completion + cycle-accurate perf cert (correctness gated by the "
+                           "required functional tier)",
+                    cycles=res.get("cycles"), derived_from_rtl=tier in cfg.rtl_tiers,
+                    toolchain=_graded_program(res, package_dir),
+                    cycle_accurate=tier in cfg.rtl_tiers, evidence=f"{_sim_name}_console.log",
+                    timing=_tm, gflops=_cg, pct_fp_peak=_cp, utilization=_cu,
+                    timing_observations=res.get("timing_observations"),
+                    counters=res.get("counters"),
+                    timing_capability=res.get("timing_capability"), concurrency=_conc,
+                    console_log=_clog, console_bytes=_cbytes, **_tel)
+                continue
+            onboard_numeric = res.get("numeric_verdict")
+            onrep = None
+            if onboard_numeric is not None:
+                # Some RTL SoCs cannot route accelerator console bytes to the
+                # host. Their trusted carrier grades a declared coherent result
+                # page and exports PASS/FAIL as a retained PC symbol instead.
+                # Do not fabricate `outputs` from the expected values: the
+                # carrier's explicit verdict is the evidence.
+                okt = onboard_numeric.get("status") == "pass"
+                if direct_oracle_golden and (mand or numeric.get("status") == "skipped"):
+                    _onboard_policy = onboard_numeric.get("policy", policy)
+                    if isinstance(_onboard_policy, dict):
+                        _onboard_policy = _onboard_policy.get("compare", "exact_int")
+                    numeric = {
+                        "status": "pass" if okt else "fail",
+                        "policy": _onboard_policy,
+                        "golden_source": gsource,
+                        "elements_checked": onboard_numeric.get("elements_checked"),
+                        "witness": onboard_numeric.get("witness"),
+                        "max_abs_diff": None,
+                        "max_rel_error": None,
+                        "mismatch_count": 0 if okt else None,
+                        "first_mismatch": None,
+                        "per_output": {},
+                        "missing_outputs": [],
+                    }
+            elif direct_oracle_golden:
+                # Direct full-program grade: oracle output vs the capsule's semantic golden.  For float
+                # this is the independent golden.yaml; for an explicit whole-program integer kernel it
+                # is the independently recomputed operation golden.  In both cases the measured answer
+                # comes only from the submitted ELF -- never from harness-side model arithmetic.
                 onrep = CG.compare(gold, res["outputs"], policy, golden_source=gsource)
                 okt = onrep["status"] == "pass"
-                numeric = {"status": onrep["status"], "policy": onrep["policy"],
-                           "golden_source": gsource, "max_abs_diff": onrep["max_abs_error"],
-                           "max_rel_error": onrep["max_rel_error"],
-                           "mismatch_count": onrep["mismatch_count"],
-                           "first_mismatch": onrep["first_mismatch"]}
-                CG.write_numeric_report(paths.generated / "numeric_report.yaml", onrep)
+                # The numeric verdict must ride the MANDATORY/gold tier, not an additive one: otherwise an
+                # additive tier later in the ladder (e.g. an approximate or unbuilt model) would overwrite
+                # the authoritative numeric. Record from a mandatory tier, or from the first tier to run if
+                # none has set it yet.
+                if mand or numeric.get("status") == "skipped":
+                    numeric = {"status": onrep["status"], "policy": onrep["policy"],
+                               "golden_source": gsource, "max_abs_diff": onrep["max_abs_error"],
+                               "max_rel_error": onrep["max_rel_error"],
+                               "mismatch_count": onrep["mismatch_count"],
+                               "first_mismatch": onrep["first_mismatch"],
+                               # carry the per-output breakdown + the DROPPED-store list through to
+                               # capsule_result.json so the agent (and the self-check, which reads this
+                               # dict) sees WHICH output failed and WHY — a missing store otherwise reads
+                               # as mismatch_count>0 with max_abs_error==0, a self-contradictory signal.
+                               "per_output": onrep.get("per_output", {}),
+                               "missing_outputs": _absent_outputs(onrep)}
+                    CG.write_numeric_report(paths.generated / "numeric_report.yaml", onrep)
             else:
                 okt = _match_by_policy(res["outputs"], gold, policy) \
                     and _match_by_policy(res["outputs"], ref, policy) \
                     and _match_by_policy(res["outputs"], sim, policy)
-            sim_name = cfg.tier_sim[tier]
+            # tier_sim is a display LABEL; a tier supplied by an adapter (atlas arc L3) may have no static
+            # label, so fall back to the adapter's oracle-provenance string, else the tier name.
+            sim_name = cfg.tier_sim.get(tier) or (
+                res.get("oracle") if isinstance(res.get("oracle"), str) else None) or tier
             # SIMT perf headline (gflops / % of peak) when a perf extractor is supplied; None (systolic)
             # leaves the fields off the TierResult so the output stays byte-identical.
             _gflops = _pct_peak = None
+            _util: dict | None = None
             if perf_extractor is not None:
                 _perf = perf_extractor(cb, res) or {}
                 _gflops = _perf.get("gflops")
                 _pct_peak = _perf.get("pct_fp_peak")
-            _mismatch_reason = (f"{sim_name} oracle != independent golden ({gsource})" if independent_float
-                                else f"{sim_name} oracle != golden==reference==simulate")
-            # ``oracle`` may be a rich dict (gemmini spike/verilator: {derived_from_rtl, ...}) OR a plain
-            # provenance string (the arc / program cosim returns e.g. "atlas-arc-arcilator-cosim"); default
-            # to the tier's RTL classification when it doesn't declare derived_from_rtl.
+                # Everything the extractor returned beyond the two headline numbers is utilization
+                # detail. Taken as the remainder rather than a fixed list so a target can report the
+                # counters ITS oracle actually has, without this shared runner naming any of them.
+                _util = {k: v for k, v in _perf.items()
+                         if k not in ("gflops", "pct_fp_peak", "flops")} or None
+            # Engineer framing (no "golden"): the emitted artifact, run on the RTL, does not compute the
+            # declared operation. There is no answer key handed to the agent — the reference is the op's
+            # own definition, which the agent can reproduce from the declared inputs. The appended
+            # _encoding_divergence_hint adds that the cheap tiers agreed, so the defect is in the encoding.
+            # A DROPPED declared output (kernel never wrote it) gets a precise, distinct detail so the
+            # agent isn't left with the baffling "N mismatches, 0 error" of a store that never fired.
+            # A store that never landed is named precisely, in BOTH of its shapes: the output missing
+            # from the readback entirely (_absent_output_detail) and the output read back as a single
+            # untouched constant (_unwritten_output_detail). Without the second, a writeback failure is
+            # reported as a numeric mismatch whose count cannot move -- measured at six wasted rounds.
+            _absent_detail = ((_absent_output_detail(onrep, sim_name, gold, res["outputs"])
+                               or _unwritten_output_detail(onrep, sim_name))
+                              if direct_oracle_golden and onrep is not None else None)
+            _mismatch_reason = _absent_detail or (
+                f"on {sim_name}, your emitted artifact does not compute the declared operation within tolerance"
+                if policy.get("compare") == "tolerance_float"
+                else f"on {sim_name}, your emitted artifact does not compute the declared operation")
+            # ``oracle`` may be a rich dict ({kind, derived_from_rtl, fidelity}) OR a plain provenance
+            # string; default to the tier's RTL classification only when it doesn't declare
+            # derived_from_rtl. THE ORACLE'S OWN WORD OUTRANKS THE TIER NAME: an RTL-DERIVED model that
+            # happens to land on the tier named L3 is not RTL certification, and classifying by name
+            # credited it as such on every target whose L3 is not Verilator.
             _oracle_meta = res.get("oracle")
             _derived_from_rtl = (_oracle_meta.get("derived_from_rtl", tier in cfg.rtl_tiers)
                                  if isinstance(_oracle_meta, dict) else (tier in cfg.rtl_tiers))
+            _fidelity = _oracle_meta.get("fidelity") if isinstance(_oracle_meta, dict) else None
+            # NAME THE EVIDENCE AFTER THE ORACLE THAT PRODUCED IT. ``sim_name`` comes from the contract's
+            # static ``tier_sim`` map, which cannot know that a faster RTL-derived engine replaced the
+            # declared one at runtime (the muon backend swaps GSIM in for Verilator whenever its emu is
+            # configured). The console was then written to ``verilator_console.log`` by an engine that is
+            # not Verilator -- a certification filed under the wrong tool's name, which is the same defect
+            # as reporting a score without the tier that produced it. Same rule as ``derived_from_rtl``
+            # above: the oracle's own word outranks the declared name.
+            _ev_name = _oracle_kind(_oracle_meta) or sim_name
+            _clog, _cbytes = _record_console(paths, _ev_name, res.get("console"))
+            _tel = _sim_telemetry(_oracle_meta, _ev_name)
             tiers[tier] = TierResult(
                 tier, "pass" if okt else "fail", mand,
                 reason=None if okt else _mismatch_reason,
                 cycles=res.get("cycles"), derived_from_rtl=_derived_from_rtl,
-                cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{sim_name}_console.log",
-                timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak)
-            if res.get("console") is not None:
-                (paths.artifacts_dir / f"{sim_name}_console.log").write_text(
-                    res["console"], encoding="utf-8")
-            if not okt:
-                raise CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"), _mismatch_reason)
+                toolchain=_graded_program(res, package_dir),
+                cycle_accurate=(tier in cfg.rtl_tiers and okt), evidence=f"{_ev_name}_console.log",
+                timing=_tm, gflops=_gflops, pct_fp_peak=_pct_peak, utilization=_util,
+                timing_observations=res.get("timing_observations"),
+                counters=res.get("counters"),
+                timing_capability=res.get("timing_capability"), fidelity=_fidelity,
+                concurrency=_conc, console_log=_clog, console_bytes=_cbytes, **_tel)
+            # THIS TIER WAS PAID FOR; write down what it bought, against the bytes and the instrument
+            # that produced it, so the next grade need not buy it again. Only a pass is stored (a
+            # failure is what an agent acts on and is re-run for its detail); never raises.
+            _executed_here = True
+            record_tier_certificate(name, tier, tiers[tier], target=eff_target,
+                                    generated=paths.generated, shas=_pin_shas(),
+                                    from_rtl=tier in cfg.rtl_tiers, run_id=run_id)
+            # Only a MANDATORY/gold tier mismatch fails the capsule. An ADDITIVE lower-fidelity tier
+            # (one not in required_oracle_tiers — e.g. a fast functional model with known approximation
+            # gaps) records its fail in the tiers dict but must NOT abort: aborting here would pre-empt the
+            # required RTL oracle that follows in the sorted ladder — the same "a cheaper check short-
+            # circuits the authoritative oracle" class we fixed on the trace side, here on the oracle side.
+            if not okt and mand:
+                _cf = CertFailure(sim_name, _cat("FUNCTIONAL_MISMATCH"),
+                                  _mismatch_reason + _encoding_divergence_hint(
+                                      trace_check_res, direct_oracle_golden,
+                                      cb=cb, capsule=capsule, trace=decoded_trace))
+                # COMPLETE THE LADDER, then fail. Raising here aborts the loop, so every tier ordered
+                # AFTER the refuting one is left with no record at all -- not "skipped", absent. Measured
+                # on atlas: 11 of 26 capsules carried an L4 fail and NO L3 entry, 1 the reverse, because
+                # tier_order runs the cheaper Verilator tier before the arc cosim. A tier with no record
+                # is not evidence (`not_run_is_not_pass`), and it makes "these 12 failed" unanswerable at
+                # the other tier -- which is exactly what you need when the shared defect is fixed.
+                # The capsule still fails, on the FIRST refuting plane; only the remaining tiers now run.
+                if _first_cert_failure is None:
+                    _first_cert_failure = _cf
+                if not _complete_ladder:
+                    # The opt-out still records: a tier the ladder declined to run says `skipped`,
+                    # with the reason, never `fail` and never nothing at all.
+                    for _later in _tier_seq[_tier_seq.index(tier) + 1:]:
+                        if _later not in tiers:
+                            tiers[_later] = suppressed_tier_result(
+                                _later, _later in required, tier,
+                                from_rtl=_later in cfg.rtl_tiers)
+                    _stamp_cache_refusals()
+                    raise _cf
 
+        _stamp_cache_refusals()
+        if _first_cert_failure is not None:
+            raise _first_cert_failure
+
+    except BackendDeclined as bd:
+        # A STATED REFUSAL IS NOT A WRONG ANSWER. It is still not a pass -- the capsule stays in the
+        # denominator, uncertified -- but recording it as a numeric mismatch told the agent its
+        # arithmetic was wrong about a program it had never emitted, and no feedback could say which
+        # shapes it had declined.
+        status = "declined"
+        declined = bd.to_dict()
+        failure = {"plane": "backend_declined", "category": "DECLINED", "detail": bd.reason}
+    except InfraFailure as inf:
+        # The harness could not stage this capsule's declared inputs, so NOTHING about the submission was
+        # measured. `fail` would be a lie in the agent's direction and `pass` a lie in ours; this is the
+        # third thing, and it is excluded from the pass/fail denominators (NOT_MEASURED_STATUSES) while
+        # `capsule_grade.grade` refuses to call the run gradeable at all. Caught BEFORE CertFailure
+        # because InfraFailure IS one -- the handler order is the whole mechanism, and with the narrower
+        # clause absent a staging outage was recorded as 31 of 33 structurally invalid SUBMISSIONS.
+        status = "infrastructure_fault"
+        cat = inf.category.value if hasattr(inf.category, "value") else str(inf.category)
+        failure = {"plane": inf.plane, "category": cat, "detail": inf.detail}
     except CertFailure as cf:
         status = "fail"
         cat = cf.category.value if hasattr(cf.category, "value") else str(cf.category)
@@ -430,44 +4779,70 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                    "detail": f"{type(e).__name__}: {e}",
                    "traceback": _traceback.format_exc()}
 
-    # not_run_is_not_pass: a mandatory tier that did not pass closed (unavailable/skipped/absent) makes
-    # the capsule incomplete — never a silent pass. A tier that is honestly N/A for this capsule's
-    # datatype (``not_applicable``; the integer L0/L1 floor on a float datapath) is the ONE exception —
-    # a legitimate skip like a dropped RoCC gate, not a missing oracle. An unavailable/absent RTL oracle
-    # is never not_applicable, so it still fails closed here.
-    if status == "pass":
-        for tier in required:
-            tr = tiers.get(tier)
-            if tr is not None and getattr(tr, "not_applicable", False):
-                continue
-            if tr is None or tr.status in ("unavailable", "skipped"):
-                status = "incomplete"
-                if failure is None:
-                    failure = {"plane": "oracle_unavailable", "category": "NOT_RUN_IS_NOT_PASS",
-                               "detail": f"mandatory tier {tier} did not run "
-                                         f"({tr.status if tr else 'absent'})"}
-                break
+    # WHAT WORK THIS RESULT'S CYCLES BOUGHT, said by the result itself. A performance consumer
+    # attributes a member's cycles to a compute axis it derives from the emitted command buffer, and
+    # it needs both halves: the counted work AND the raw buffer under the digest they agree on, so it
+    # can recount the program and refuse the pair when the two disagree. Emitted for EVERY graded
+    # capsule, including one whose entrypoints never produced a buffer -- that case carries an
+    # explicit UNKNOWN (`exact_macs: null` plus the counter's refusals), never a zero and never an
+    # absent key. An absent key reads as "no compute axis applies here"; a zero reads as "this
+    # program does no work", which on a perf bench means "infinitely fast". Both are lies.
+    from merlin.perf.work_volume import command_buffer_evidence as _cb_evidence
+    _work_volume, _cb_artifact = _cb_evidence(
+        cb, compiler_provenance="submission command-buffer contract entrypoint")
+    _lane_extra: dict[str, Any] = {}
+    if whole_program and cb is not None and (
+            (capsule.get("lanes") or {}).get("require")
+            or (capsule.get("lanes") or {}).get("forbid")):
+        try:
+            import hashlib as _hashlib
+            from merlin.benchharness import hash_tree as _hash_tree
+            from merlin.perf.compiler_plan_evidence import verify_compiler_global_plan
 
-    result = {
-        "capsule": name, "kind": capsule.get("kind"), "label": capsule.get("label"),
-        "status": status, "contract_version": CONTRACT_VERSION,
-        "tiers": {t: r.to_dict() for t, r in tiers.items()},
-        "trace_check": trace_check_res, "numeric": numeric,
-        "failure": failure, "toolchain_shas": toolchain_shas(),
-    }
-    (paths.run_path / "capsule_result.json").write_text(json.dumps(result, indent=2),
-                                                        encoding="utf-8")
-    _write_run_manifest(paths, run_id, name, status, tiers, capsule, target=cfg.target, suite=cfg.suite)
-    try:
-        schemas.validate(result, "capsule_result", contract=contract)
-    except schemas.ContractViolation as e:
-        import sys
-        sys.stderr.write(f"WARNING: capsule_result self-validation failed: {e}\n")
-    return result
+            _source_name = capsule.get("linalg_mlir") or capsule.get("interface_mlir")
+            _source_path = Path(str(capsule.get("__dir__") or "")) / str(_source_name or "")
+            _candidate_digest = _hash_tree(Path(package_dir)).get("sha256")
+            if not isinstance(_candidate_digest, str):
+                raise ValueError("whole-program package has no content identity")
+            _plan_proof = verify_compiler_global_plan(
+                source_text=_source_path.read_text(encoding="utf-8"),
+                lowered_text=llvm_text, command_buffer=cb,
+                candidate_sha256=_candidate_digest,
+                command_buffer_sha256=_hashlib.sha256(json.dumps(
+                    cb, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest())
+            _lane_extra["global_plan_verification"] = _plan_proof
+            _completed_lane_report = whole_program_completion_lane_report(
+                capsule, cb, global_plan_proof=_plan_proof, numeric=numeric,
+                tiers=tiers, decoded_trace=decoded_trace)
+            if _completed_lane_report is not None:
+                _lane_extra["lane_report"] = _completed_lane_report
+        except Exception as _lane_exc:  # noqa: BLE001 -- missing proof stays unmeasured, never passes
+            _lane_extra["global_plan_verification"] = {
+                "status": "UNKNOWN",
+                "reason": ("whole-program lane proof unavailable: "
+                           f"{type(_lane_exc).__name__}: {_lane_exc}"),
+            }
+    # THE MOVEMENT AXIS, counted over the SAME buffer. An operational intensity is work over traffic,
+    # and the two halves must come from one emitted program or the ratio describes neither -- so this
+    # rides beside the work total under the artifact digest they share. Emitted for every graded
+    # capsule for the same reason the work total is: an absent key reads as "no movement axis applies",
+    # a zero reads as "this program moved no data", and on a roofline that means infinite intensity.
+    from merlin.perf.movement_volume import movement_evidence as _mv_evidence
+    _movement_volume = _mv_evidence(
+        cb, compiler_provenance="submission command-buffer contract entrypoint")
+    return _finalize_capsule_result(
+        submission=submission_identity(package_dir, run_id=run_id),
+        name=name, capsule=capsule, status=status, failure=failure, tiers=tiers,
+        trace_check_res=trace_check_res, numeric=numeric, required=required,
+        no_oracle=no_oracle, eff_target=eff_target, paths=paths, run_id=run_id,
+        cfg=cfg, contract=contract, executability=executability,
+        epilogue_applicability=epilogue_applicability, declined=declined,
+        extra={"work_volume": _work_volume, "command_buffer_artifact": _cb_artifact,
+               "movement_volume": _movement_volume, **_lane_extra})
 
 
 def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,
-                        tiers: dict, capsule: dict, *, target: str = "gemmini",
+                        tiers: dict, capsule: dict, *, target: str,
                         suite: str | None = None) -> None:
     manifest = {
         "schema_version": "1.0", "project": "merlin", "suite": suite or f"{target}-capsule-bench",
@@ -492,12 +4867,29 @@ def _write_run_manifest(paths: RunPaths, run_id: str, name: str, status: str,
 
 
 
-def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str | Path,
+def run_suite(*args, **kwargs) -> list[dict]:
+    """One grade, one set of hardware revisions — then :func:`_run_suite`.
+
+    A grade is a single measurement event, so every capsule in it must be attributed to the same
+    checkout revisions; observing them per capsule allows two capsules in one grade to disagree, and
+    costs four ``git`` subprocesses each (one of them ``status --porcelain`` over a tree with a large
+    ignored output directory). Measured on a 2-capsule grade before this: 3.9 s in ``git`` and 6.6 s
+    re-parsing the pin registry, out of 20.6 s total. The suite runner owns the measurement, so it is
+    the right place to open the scope — a library function opening one would cache beyond the event it
+    describes.
+    """
+    from ..common import provenance as PROV
+    with PROV.observation_scope():
+        return _run_suite(*args, **kwargs)
+
+
+def _run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str | Path,
               contract: str | Path | None = None,
               oracle_adapters: dict[str, Callable] | None = None,
               timeout: int = 600, max_workers: int = 1,
-              target: str = "gemmini", suite: str | None = None, dtype: str = "i8xi8_i32",
-              config=None, perf_extractor: Callable | None = None) -> list[dict]:
+              target: str | None = None, suite: str | None = None, dtype: str = "i8xi8_i32",
+              config=None, perf_extractor: Callable | None = None,
+              no_oracle: bool = False) -> list[dict]:
     """Run many capsules through one package (building/integrity-scanning it once).
 
     ``max_workers > 1`` fans the (independent) per-capsule runs out across a ThreadPoolExecutor — each
@@ -505,25 +4897,203 @@ def run_suite(capsules: list[dict], package_dir: str | Path, *, runs_root: str |
     one-time build, so concurrent simulator instances (verilator/VCS) don't collide. Mirrors
     :func:`heavy_oracles.run_vcs_parallel`. ``max_workers == 1`` preserves the original sequential order.
     """
+    # RESOLVE THE RUNS ROOT HERE, while this is still single-threaded. Resolving it per-capsule is not
+    # enough: some capsule paths enter a context that chdirs the process (mlc resolves its arc artifacts
+    # relative to its own root), and a relative root resolved inside that window becomes an absolute path
+    # under the WRONG tree. Measured: of 26 op capsules run with 8 workers, 18 wrote their entire run
+    # directory into the mlc checkout. The suite still scored -- the results are returned in memory --
+    # but the trace collection reads from this root, so those 18 capsules contributed no coverage, and a
+    # sibling project's tree acquired 18 stray run trees.
+    # Same treatment for every OTHER relative path this suite carries into a worker thread. The runs
+    # root was only the first one to show: the package directory is re-opened per capsule, and inside a
+    # chdir window it raises FileNotFoundError on a directory that is plainly there -- which the runner
+    # records as a RUNNER_CRASH, i.e. as though the submission were broken. Measured: the same 18 of 26
+    # capsules that misplaced their run dirs also "crashed" this way, and since an errored capsule is in
+    # neither the pass nor the fail bucket, they silently left the gate denominator -- the whole-model
+    # capstone then cleared its 0.8 gate on 7/8 instead of on 26 capsules.
+    runs_root = str(Path(runs_root).resolve())
+    package_dir = str(Path(package_dir).resolve())
+    if contract is not None and Path(contract).exists():
+        contract = str(Path(contract).resolve())
     pkg = load_package(package_dir, contract=contract)
     integrity_scan(pkg)
     build_package(pkg)
 
-    def _one(cap: dict) -> dict:
-        return run_capsule(cap, package_dir, runs_root=runs_root, run_id=cap["name"],
-                           contract=contract, oracle_adapters=oracle_adapters,
-                           pkg=pkg, timeout=timeout, target=target, suite=suite, dtype=dtype,
-                           config=config, perf_extractor=perf_extractor)
+    # Pass evidence is opt-in through MERLIN_PASS_LOG. When enabled, install before any capsule work and
+    # attribute in-process calls to the capsule that caused them. Package entrypoints remain subprocesses
+    # and are certified by the mandatory manifest-command contract; this recorder covers only Merlin's
+    # production whole-model boundary plane.
+    _pass_recorder = None
+    if os.environ.get("MERLIN_PASS_LOG"):
+        from ..xdsl_dialects.lowering import passes as _pass_recorder
+        _pass_recorder.install_pass_recorder()
 
-    if max_workers <= 1:
-        return [_one(cap) for cap in capsules]
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=max_workers) as ex:
-        return list(ex.map(_one, capsules))  # order preserved by ex.map
+    def _one(cap: dict, workers: int = 1) -> dict:
+        # ``workers`` is what THIS capsule ran inside, not what the suite was configured for: the
+        # calibration head is serial by construction, and recording the suite's max_workers for it
+        # would describe contention its numbers never saw.
+        if _pass_recorder is None:
+            return run_capsule(cap, package_dir, runs_root=runs_root, run_id=cap["name"],
+                               contract=contract, oracle_adapters=oracle_adapters,
+                               pkg=pkg, timeout=timeout, target=target, suite=suite, dtype=dtype,
+                               config=config, perf_extractor=perf_extractor, no_oracle=no_oracle,
+                               workers=workers)
+        with _pass_recorder.pass_run_context(
+                str(cap["name"]), cap.get("pass_requirements") or ()):
+            return run_capsule(cap, package_dir, runs_root=runs_root, run_id=cap["name"],
+                               contract=contract, oracle_adapters=oracle_adapters,
+                               pkg=pkg, timeout=timeout, target=target, suite=suite, dtype=dtype,
+                               config=config, perf_extractor=perf_extractor, no_oracle=no_oracle,
+                               workers=workers)
+
+    def _run_all(caps: list[dict]) -> list[dict]:
+        if max_workers <= 1 or not caps:
+            return [_one(c) for c in caps]
+        # CALIBRATE BEFORE FANNING OUT. Tier order is learned from observed cost, and a worker that
+        # starts before any tier has a price runs the ladder in the arbitrary order -- so a wide fan-out
+        # means the ENTIRE first wave pays the expensive tier. Measured with 8 workers: 7 of the 12
+        # refutable capsules paid the 24.5 s tier before the 0.29 s one had ever been priced, 171 s of a
+        # 614 s suite, against a floor of ~444 s. Running the head serially bounds that to one or two.
+        #
+        # Self-terminating rather than a fixed count: keep going only while a capsule PRICES A TIER
+        # nothing had priced before, and stop the moment one teaches us nothing new. A capsule that is
+        # refuted early prices only the tier that refuted it, which is exactly why one capsule is not
+        # always enough -- and why a hard cap still bounds the worst case.
+        head: list[dict] = []
+        seen = set(_tier_policy.priced_tiers(target or ""))
+        i = 0
+        while i < len(caps) and i < _CALIBRATION_CAP:
+            _r = _one(caps[i])
+            head.append(_r)
+            i += 1
+            # A capsule that PASSED ran every mandatory tier, so every tier now has a price and there is
+            # nothing left to learn -- stop immediately rather than spending a second serial capsule.
+            # This matters on a target whose ladder was ALREADY in cost order: it gains nothing from the
+            # reordering and pays the whole serial head, and measured that way the head cost more
+            # wall-clock (1074s -> 1195s) than the reordering saved. One passing capsule is enough.
+            if _r.get("status") == "pass":
+                break
+            now = set(_tier_policy.priced_tiers(target or ""))
+            if now == seen:
+                break
+            seen = now
+        rest = caps[i:]
+        if not rest:
+            return head
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_workers) as ex:
+            _n = min(max_workers, len(rest))
+            return head + list(ex.map(lambda c: _one(c, _n), rest))
+
+    # A whole-model (kind == "model") capsule is the GATED capstone: it is scheduled only after the op
+    # suite proves itself (its ``gate.after_op_pass_fraction`` of the graded op capsules passed). Grade the
+    # op capsules first; if no model capsule is present this is exactly the original single-pass behavior.
+    from .capsule_source import model_gate_satisfied
+    op_caps = [c for c in capsules if c.get("kind") != "model"]
+    model_caps = [c for c in capsules if c.get("kind") == "model"]
+
+    # DO NOT GRADE what this target provably cannot do. A capsule outside the contract's declared
+    # capability can never pass, so grading it (a) spends oracle time on a foregone conclusion, (b)
+    # misdirects the agent onto unreachable work, and (c) -- the expensive one -- makes ``all_pass``
+    # UNREACHABLE, which disables the loop's early exit and turns every run into a fixed-price purchase
+    # of its full round budget. Measured: an int8 target scored 22/22 on everything it declares at round
+    # 00, then ran 20 rounds because 15 out-of-scope capsules kept all_pass false; a float target had 9
+    # reachable failures and burned the same 20 rounds with 4 out-of-scope capsules doing the same thing.
+    #
+    # They are NOT dropped -- silently shrinking a suite is how a target scores better than it deserves.
+    # Each is reported as ``not_graded`` with the derived reason, counted in neither numerator nor
+    # denominator, and visible in the result list.
+    op_caps, ungradeable = _split_ineligible(op_caps, target)
+    # CERTIFY THE COVERING SET FIRST. The derived cover is the fewest capsules whose declared axes span
+    # every axis the eligible corpus declares, so a run that is interrupted, times out, or exhausts a
+    # certify budget still has every axis represented rather than a lexicographic prefix. Computed over
+    # the ELIGIBLE capsules only -- spending the cover on a capsule the hardware cannot execute buys
+    # nothing (measured: including the ineligible ones inflated one target's cover from 6 to 17).
+    _cover = set(_tier_policy.covering_set(op_caps))
+    for _c in op_caps:
+        _c["_covering"] = _c.get("name") in _cover
+    op_caps = sorted(op_caps, key=lambda c: (not c.get("_covering"), str(c.get("name"))))
+    if _cover:
+        print(f"  tier plan: {len(_cover)}/{len(op_caps)} eligible capsule(s) form the derived covering "
+              f"set (certified first); budget="
+              f"{_tier_policy.budget_seconds() or 'unlimited'}", flush=True, file=sys.stderr)
+    op_results = _run_all(op_caps) + ungradeable
+    if ungradeable:
+        print(f"  {len(ungradeable)} capsule(s) NOT GRADED — outside this target's declared capability: "
+              f"{', '.join(r['capsule'] for r in ungradeable[:6])}"
+              f"{' ...' if len(ungradeable) > 6 else ''}", flush=True, file=sys.stderr)
+    if not model_caps:
+        return op_results
+    # The gate fraction is over what the HARDWARE CAN DO, not over everything graded. A capsule the
+    # target provably cannot accelerate must not be able to block the whole-model capsules behind it.
+    # Measured: an int8 systolic target graded 12 bf16 capsules its contract declares no capability for
+    # ("input dtype 'bf16' not in contraction formats ['int8']"). They can never pass, so the best
+    # reachable fraction was 23/35 = 0.66 against a 0.8 gate -- the whole-model capsules were
+    # MATHEMATICALLY unreachable, and nothing said so. Excluding the ineligible makes the gate mean
+    # "the ops this device can do are working", which is what it was for.
+    # WHAT COUNTS AS GRADED, for the gate. Previously only pass/fail, which quietly excluded every
+    # capsule that ERRORED -- and an error is not evidence the op suite works, it is the absence of
+    # evidence. Measured: 18 of 26 op capsules died with a runner crash and left the denominator with
+    # them, so the whole-model capstone cleared its 0.8 gate on the surviving 7/8 = 0.88 while two
+    # thirds of the suite had not run. `not_graded` (the hardware cannot) and `gated` (not yet
+    # attempted) stay excluded; those are the two the exclusion was FOR. This matches the definition
+    # the score itself already uses for its denominator.
+    # `screened_only` joins the two existing exclusions for the same reason they are excluded: the
+    # capsule was not measured against the certifying tier, deliberately and by name, so it is neither
+    # evidence for nor against. Unlike an ERROR (which used to slip out of here unexplained), this is an
+    # opt-in choice whose coverage is guaranteed by the covering set and whose members are listed.
+    graded = [r for r in op_results
+              if r.get("status") not in NOT_MEASURED_STATUSES]
+    eligible = [r for r in graded if _gate_counts(r, capsules, target)]
+    denom = eligible or graded          # fall back rather than divide by zero if nothing is classifiable
+    frac = (sum(1 for r in denom if r.get("status") == "pass") / len(denom)) if denom else 0.0
+    if len(eligible) != len(graded):
+        print(f"  model gate: {len(graded) - len(eligible)} graded op capsule(s) excluded from the gate "
+              f"denominator as ineligible for this target (the hardware declares no capability for them)",
+              flush=True, file=sys.stderr)
+    # SAY IT WHEN THE GATE GOT CHEAPER. Under a certify budget the denominator is what was CERTIFIED, not
+    # what exists, so a capstone can clear 0.8 on the covering set alone. That is the intended trade --
+    # the cover spans every declared axis -- but a gate satisfied by 6 capsules instead of 23 is a
+    # different statement, and it has to be printed next to the number rather than inferred.
+    _screened = [r for r in op_results if r.get("status") == "screened_only"]
+    if _screened:
+        print(f"  model gate: denominator is the {len(denom)} CERTIFIED capsule(s); "
+              f"{len(_screened)} more passed the screen and were not certified "
+              f"(outside the covering set, budget exhausted) — the gate fraction {frac:.2f} is over "
+              f"what was certified, not over the whole suite", flush=True, file=sys.stderr)
+    model_results = []
+    for c in model_caps:
+        if model_gate_satisfied(c, frac):
+            model_results.append(_one(c))
+        else:
+            thr = (c.get("gate") or {}).get("after_op_pass_fraction")
+            model_results.append({
+                "capsule": c["name"], "kind": "model", "label": c.get("label"), "status": "gated",
+                "failure": {"plane": "gate", "category": "GATED",
+                            "detail": f"whole-model capsule deferred: op pass fraction {frac:.2f} "
+                                      f"< gate {thr}"}})
+    return op_results + model_results
 
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
+    # The child half of a BUDGETED whole-model grade (see _grade_model_capsule). Parsed before the
+    # normal arguments because it shares none of them: the whole invocation is one spec file in and
+    # one result file out, so the parent can kill the process group without losing what it knows.
+    _av = list(sys.argv[1:] if argv is None else argv)
+    if "--model-grade" in _av:
+        sub = argparse.ArgumentParser(add_help=False)
+        sub.add_argument("--model-grade", required=True)
+        sub.add_argument("--model-grade-out", required=True)
+        sa, _ = sub.parse_known_args(_av)
+        _die_with_parent()
+        spec = json.loads(Path(sa.model_grade).read_text(encoding="utf-8"))
+        res = _grade_model_capsule_inline(spec["capsule"], target=spec.get("target"),
+                                          timeout=int(spec["timeout"]),
+                                          package_dir=spec.get("package_dir"))
+        Path(sa.model_grade_out).write_text(json.dumps(res, indent=2), encoding="utf-8")
+        return 0
+
     ap = argparse.ArgumentParser(description="capsule_bench_v0 runner")
     ap.add_argument("--package", required=True)
     ap.add_argument("--capsule", help="path to a single capsule dir")
@@ -531,20 +5101,43 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--labels", default="public,dev", help="comma-separated label filter")
     ap.add_argument("--runs-root", default="out/runs/capsule_bench")
     ap.add_argument("--contract", default="merlin/contract")
+    ap.add_argument("--target", required=True, help="target to grade (its config/oracle are derived)")
     ap.add_argument("--timeout", type=int, default=600)
     a = ap.parse_args(argv)
 
+    if not a.capsule and not a.capsules_root:
+        ap.error("one of --capsule or --capsules-root is required")
+    labels = None
     if a.capsule:
         caps = [load_capsule(a.capsule, contract=a.contract)]
     else:
         labels = set(a.labels.split(",")) if a.labels else None
         caps = discover_capsules(a.capsules_root, labels=labels, contract=a.contract)
+    # AN EMPTY COHORT IS NOT A PASS. `npass == len(results)` is vacuously true at zero, so a root that
+    # matched nothing printed "0/0 pass" and exited 0 -- byte-identical to a suite that ran and passed.
+    # Measured: a capsules root built from symlinked capsule dirs discovers nothing, because
+    # `discover_capsules` walks with `rglob`, which does not descend into symlinked directories. The run
+    # reported success without grading a single capsule. Refuse the verdict instead, and say which of
+    # the two reasons it was so the caller does not have to guess.
+    if not caps:
+        where = a.capsule or a.capsules_root
+        why = (f" at label(s) {sorted(labels)}" if labels else "")
+        print(f"no capsule discovered under {str(where)!r}{why} -- refusing to report a verdict over "
+              f"an empty cohort (capsule discovery does not descend into symlinked directories)",
+              file=sys.stderr)
+        return 2
     results = run_suite(caps, a.package, runs_root=a.runs_root, contract=a.contract,
-                        timeout=a.timeout)
+                        timeout=a.timeout, target=a.target)
     npass = sum(1 for r in results if r["status"] == "pass")
     for r in results:
         print(f"  [{r['status']:10s}] {r['capsule']}")
     print(f"\n{npass}/{len(results)} pass")
+    # Same fail-closed reasoning one level down: capsules were discovered but the suite returned no
+    # row for any of them, so nothing was measured and there is no verdict to report.
+    if not results:
+        print(f"{len(caps)} capsule(s) discovered but the suite returned no result row -- "
+              f"nothing was measured", file=sys.stderr)
+        return 2
     return 0 if npass == len(results) else 1
 
 

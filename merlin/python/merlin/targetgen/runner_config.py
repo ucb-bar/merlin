@@ -6,6 +6,7 @@ captures exactly those, built from a target's :class:`CapabilityManifest`, so th
 reads a config instead of module constants. Pure data — no runner/oracle imports — so it is unit-testable
 without the heavy toolchain.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -23,15 +24,16 @@ ENDPOINT_ARTIFACT: dict[str, str] = {
 @dataclass(frozen=True)
 class RunnerConfig:
     """The grading knobs that vary by target (everything else in the runner is shared)."""
+
     target: str
     suite: str
     dtype: str
-    fourth_output_name: str            # the 4th-entrypoint output filename
-    tier_sim: dict[str, str]           # tier -> sim name (e.g. {L2: spike, L3: verilator})
-    rtl_tiers: frozenset[str]          # which tiers count as RTL-derived
-    oracle_tiers: tuple[str, ...]      # the tier loop order (sorted tier_sim keys)
-    perf_fields: tuple[str, ...]       # perf metrics to extract ((): cycles only)
-    trace_gate: str | None             # trace-gate plugin name (e.g. "rocc_insn") or None
+    fourth_output_name: str  # the 4th-entrypoint output filename
+    tier_sim: dict[str, str]  # tier -> sim name (e.g. {L2: spike, L3: verilator})
+    rtl_tiers: frozenset[str]  # which tiers count as RTL-derived
+    oracle_tiers: tuple[str, ...]  # the tier loop order (sorted tier_sim keys)
+    perf_fields: tuple[str, ...]  # perf metrics to extract ((): cycles only)
+    trace_gate: str | None  # trace-gate plugin name (e.g. "rocc_insn") or None
     # Optional override for the L1/oracle output-equality policy. None -> use the capsule's numeric_policy
     # (integer capsules -> exact). A float target (SIMT) sets {compare: float, atol: ...} so its
     # oracle-output comparison is tolerant regardless of the per-capsule policy.

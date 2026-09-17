@@ -3,6 +3,7 @@
 Read-only, deterministic, stdlib-only. These exist so evidence collection stays honest:
 we read text and list files by suffix, we do not attempt to "understand" arbitrary RTL.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -8,7 +8,6 @@ merlin-rtl-introspect: extract structure-only facts from elaborated RTL (CIRCT/F
 
 - `circt_introspect.py` — merlin-rtl circt-introspect (v2) — deterministic RTL fact extraction via the CIRCT HW dialect.
 - `extract_module.py` — Extract a self-contained hw.module subtree (transitive closure) from a large CIRCT HW-dialect file.
-- `gen_arc_ports.py` — Generate a C header of port offsets/widths from an arcilator --state-file JSON.
 - `gen_iface_irdl.py` — Single-source IRDL bridge for the `merlin_iface` contract dialect.
 - `gen_isa_module.py` — CIRCT facts -> generated, RTL-derived ISA encoder module (the 'moat').
 - `gen_muon_digest.py` — Render muon_facts.json -> MUON_DIGEST.md (the Muon analog of gen_rtl_digest.py).

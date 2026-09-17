@@ -8,6 +8,7 @@ L4 VCS runs capsules with parallel ``simv`` instances (one per capsule, bounded 
 bundles many ELFs into one queued FPGA session to amortize the per-run infra setup; if the queue is
 busy the caller can re-schedule the bundle later rather than block.
 """
+
 from __future__ import annotations
 
 import os
@@ -15,80 +16,151 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable
 
+from merlin.common.paths import ext_path, target_env_name
+
 from .capsule_runner import OracleUnavailable
 from .contract import compile as oot_compile
-from merlin.common.paths import ext_path
-
-# Default Gemmini VCS sim (overridable via MERLIN_GEMMINI_SIMV / MERLIN_SATURN_SIMV).
-_DEFAULT_VCS = f"{ext_path("chipyard")}/sims/vcs/simv-chipyard.harness-RadianceGemminiOnlyConfig"
 
 
-def gemmini_simv() -> Path | None:
-    for env in ("MERLIN_GEMMINI_SIMV", "MERLIN_SATURN_SIMV"):
-        v = os.environ.get(env)
-        if v and Path(v).is_file():
-            return Path(v)
-    p = Path(_DEFAULT_VCS)
-    return p if p.is_file() else None
+def simv_env_name(target: str) -> str:
+    """The variable that points at ``target``'s prebuilt VCS simv: ``MERLIN_<TARGET>_SIMV``.
+
+    DERIVED from the target name, so each target's existing variable keeps working and a newly registered
+    target gets its own with no edit here -- and a target is never handed the simv another one's variable
+    names.
+    """
+    return target_env_name(target, "SIMV")
+
+
+def vcs_simv(target: str) -> Path | None:
+    """``target``'s VCS simv, or None when none is reachable (the caller reports unavailable).
+
+    Resolution: ``MERLIN_<TARGET>_SIMV`` (an explicit binary), then the chipyard VCS build of the design
+    the target DECLARES -- its capability manifest's ``runtime.rtl_sim_config`` --
+    at ``<chipyard>/sims/vcs/simv-chipyard.harness-<config>``. A target that declares no config and sets
+    no variable has no simv; no default SoC config is substituted.
+    """
+    explicit = os.environ.get(simv_env_name(target))
+    if explicit and Path(explicit).is_file():
+        return Path(explicit)
+    from .runtime_build import rtl_sim_config
+
+    cfg = rtl_sim_config(target)
+    if not cfg:
+        return None
+    try:
+        chipyard = ext_path("chipyard")
+    except KeyError:  # no chipyard checkout configured: nothing to find, not an error
+        return None
+    simv = chipyard / "sims" / "vcs" / f"simv-chipyard.harness-{cfg}"
+    return simv if simv.is_file() else None
 
 
 # ------------------------------------------------------------------ L4 VCS
-def vcs_available() -> bool:
-    return gemmini_simv() is not None
+def vcs_available(target: str) -> bool:
+    return vcs_simv(target) is not None
 
 
-def vcs_adapter() -> Callable:
+def vcs_adapter(target: str) -> Callable:
     """capsule_runner oracle adapter for L4 (VCS RTL). Honest-unavailable when no simv."""
+
     def run(cb, llvm_text, workdir, timeout):
         import subprocess
         import time
-        from merlin.runtime.backends import gemmini as gem
-        simv = gemmini_simv()
+
+        from merlin.runtime.backends import base as _bk
+
+        gem = _bk.get_backend("gemmini")  # target-ok: reference RoCC/VCS oracle reuses gemmini ELF-build + parse_output
+        simv = vcs_simv(target)
         if simv is None:
-            raise OracleUnavailable("VCS simv not found (set MERLIN_GEMMINI_SIMV)")
+            raise OracleUnavailable(
+                f"VCS simv not found for {target!r} (set {simv_env_name(target)}, or build the chipyard "
+                f"VCS sim of its declared runtime.rtl_sim_config)"
+            )
         _t0 = time.perf_counter()
-        elf = oot_compile.compile_lowered_to_elf(cb, llvm_text, workdir)
+        elf = oot_compile.compile_lowered_to_elf(cb, llvm_text, workdir, target=target)
         _t1 = time.perf_counter()
         try:
-            proc = subprocess.run([str(simv), str(elf)], capture_output=True, text=True,
-                                  timeout=timeout, cwd=str(simv.parent))
+            proc = subprocess.run(
+                [str(simv), str(elf)], capture_output=True, text=True, timeout=timeout, cwd=str(simv.parent)
+            )
         except subprocess.TimeoutExpired as e:
             raise OracleUnavailable(f"VCS simv timed out after {timeout}s") from e
         _t2 = time.perf_counter()
         console = proc.stdout
         outputs, raw = gem.parse_output(console)
+        # Same float readback decode the shared oracle path applies: this adapter builds the ELF
+        # through `compile_lowered_to_elf` and so gets the same harness, which prints a float
+        # destination buffer as its stored bit pattern. Decoding it here keeps this tier's verdict
+        # comparable with L2/L3's instead of comparing raw words against a float golden.
+        from merlin.runtime.commandbuffer import declared_output_dtypes
+
+        outputs = _bk.decode_float_readback(outputs, declared_output_dtypes(cb))
         # The ELF is independently validated at L2/L3 in the same run; if the available VCS sim
         # crashes or yields no DONE marker on it, that is a VCS/config incompatibility in this
         # environment, not a backend defect -> honest unavailable (never a fabricated pass).
         if proc.returncode != 0 or "DONE" not in console:
             raise OracleUnavailable(
-                f"VCS simv ({simv.name}) incompatible with the bare-metal Gemmini ELF "
+                f"VCS simv ({simv.name}) incompatible with the bare-metal {target} ELF "
                 f"(rc={proc.returncode}); ELF is L2/L3-validated. stderr/stdout tail: "
-                f"{(proc.stderr or console)[-300:]}")
-        return {"outputs": outputs, "raw_metrics": raw, "cycles": raw.get("cycles"),
-                "oracle": {"kind": "rtl_vcs", "derived_from_rtl": True}, "console": console,
-                "timing": {"build_s": round(_t1 - _t0, 3), "sim_active_s": round(_t2 - _t1, 3),
-                           "oracle_wait_s": 0.0}}
+                f"{(proc.stderr or console)[-300:]}"
+            )
+        return {
+            "outputs": outputs,
+            "raw_metrics": raw,
+            "cycles": raw.get("cycles"),
+            "oracle": {"kind": "rtl_vcs", "derived_from_rtl": True},
+            "console": console,
+            "timing": {"build_s": round(_t1 - _t0, 3), "sim_active_s": round(_t2 - _t1, 3), "oracle_wait_s": 0.0},
+        }
+
     return run
 
 
-def run_vcs_parallel(capsules: list[dict], package_dir: str | Path, *, runs_root: str | Path,
-                     contract: str | Path | None = None, max_workers: int = 4,
-                     timeout: int = 3600) -> list[dict]:
-    """Run the corpus through VCS with parallel simv instances (one per capsule)."""
+def run_vcs_parallel(
+    capsules: list[dict],
+    package_dir: str | Path,
+    *,
+    runs_root: str | Path,
+    contract: str | Path | None = None,
+    max_workers: int = 4,
+    timeout: int = 3600,
+    target: str,
+) -> list[dict]:
+    """Run the corpus through VCS with parallel simv instances (one per capsule).
+
+    ``target`` is required and threaded into each per-capsule run so the grade uses that target's config
+    (no silent gemmini default)."""
     from . import capsule_runner as CR
-    if not vcs_available():
-        return [{"capsule": c["name"], "status": "incomplete",
-                 "failure": {"plane": "vcs", "category": "NOT_RUN_IS_NOT_PASS",
-                             "detail": "VCS simv unavailable"}} for c in capsules]
+
+    if not vcs_available(target):
+        return [
+            {
+                "capsule": c["name"],
+                "status": "incomplete",
+                "failure": {"plane": "vcs", "category": "NOT_RUN_IS_NOT_PASS", "detail": "VCS simv unavailable"},
+            }
+            for c in capsules
+        ]
     pkg = CR.load_package(package_dir, contract=contract)
-    CR.integrity_scan(pkg); CR.build_package(pkg)
-    adapters = {"L4": vcs_adapter()}
+    CR.integrity_scan(pkg)
+    CR.build_package(pkg)
+    adapters = {"L4": vcs_adapter(target)}
 
     def one(cap):
-        c = dict(cap); c["required_oracle_tiers"] = ["L0", "L1", "L4"]
-        return CR.run_capsule(c, package_dir, runs_root=runs_root, run_id=f"{cap['name']}_vcs",
-                              contract=contract, oracle_adapters=adapters, pkg=pkg, timeout=timeout)
+        c = dict(cap)
+        c["required_oracle_tiers"] = ["L0", "L1", "L4"]
+        return CR.run_capsule(
+            c,
+            package_dir,
+            runs_root=runs_root,
+            run_id=f"{cap['name']}_vcs",
+            contract=contract,
+            oracle_adapters=adapters,
+            pkg=pkg,
+            timeout=timeout,
+            target=target,
+        )
 
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         return list(ex.map(one, capsules))
@@ -96,18 +168,19 @@ def run_vcs_parallel(capsules: list[dict], package_dir: str | Path, *, runs_root
 
 # ------------------------------------------------------------------ L5 FireSim
 def firesim_root() -> Path | None:
-    r = os.environ.get("FIRESIM_ROOT", f"{ext_path("chipyard")}/sims/firesim")
+    r = os.environ.get("FIRESIM_ROOT", f"{ext_path('chipyard')}/sims/firesim")
     return Path(r) if Path(r).is_dir() else None
 
 
 def firesim_queue_alive() -> bool:
     """Best-effort check that the shared FireSim queue daemon is reachable."""
-    q = Path(os.environ.get("FIRESIM_QUEUE", f"{ext_path("firesim_queue")}"))
+    q = Path(os.environ.get("FIRESIM_QUEUE", f"{ext_path('firesim_queue')}"))
     return q.is_dir() and (q / "daemon.pid").is_file()
 
 
-def firesim_adapter() -> Callable:
+def firesim_adapter(target: str) -> Callable:
     """L5 adapter. FireSim bare-metal ELF replay is config-gated; honest-unavailable otherwise."""
+
     def run(cb, llvm_text, workdir, timeout):
         if firesim_root() is None:
             raise OracleUnavailable("FIRESIM_ROOT not found")
@@ -116,25 +189,46 @@ def firesim_adapter() -> Callable:
         # Building the ELF is always safe; the actual FPGA replay path for a bare-metal Gemmini
         # ELF is environment-specific and gated. Until a verified bare-metal FireSim replay hook is
         # wired, report unavailable rather than fabricate a result.
-        oot_compile.compile_lowered_to_elf(cb, llvm_text, workdir)
-        raise OracleUnavailable("FireSim bare-metal Gemmini replay hook not wired in this env")
+        oot_compile.compile_lowered_to_elf(cb, llvm_text, workdir, target=target)
+        raise OracleUnavailable(f"FireSim bare-metal {target} replay hook not wired in this env")
+
     return run
 
 
-def run_firesim_bundled(capsules: list[dict], package_dir: str | Path, *, runs_root: str | Path,
-                        contract: str | Path | None = None, timeout: int = 3600) -> dict:
+def run_firesim_bundled(
+    capsules: list[dict],
+    package_dir: str | Path,
+    *,
+    runs_root: str | Path,
+    contract: str | Path | None = None,
+    timeout: int = 3600,
+) -> dict:
     """Bundle ELFs into one queued FPGA session. Returns a status dict; honest unavailable.
 
     When the FPGA/queue is unreachable, returns ``{"status": "unavailable", "retry": True}`` so the
     caller can re-schedule the bundle later instead of blocking.
     """
     if firesim_root() is None:
-        return {"status": "unavailable", "reason": "FIRESIM_ROOT not found", "retry": False,
-                "not_run_is_not_pass": True, "capsules": [c["name"] for c in capsules]}
+        return {
+            "status": "unavailable",
+            "reason": "FIRESIM_ROOT not found",
+            "retry": False,
+            "not_run_is_not_pass": True,
+            "capsules": [c["name"] for c in capsules],
+        }
     if not firesim_queue_alive():
-        return {"status": "unavailable", "reason": "FPGA queue busy/unreachable", "retry": True,
-                "not_run_is_not_pass": True, "capsules": [c["name"] for c in capsules]}
+        return {
+            "status": "unavailable",
+            "reason": "FPGA queue busy/unreachable",
+            "retry": True,
+            "not_run_is_not_pass": True,
+            "capsules": [c["name"] for c in capsules],
+        }
     # A real bundled replay would build all ELFs then run them back-to-back in one session.
-    return {"status": "unavailable", "reason": "bare-metal FireSim replay hook not wired",
-            "retry": False, "not_run_is_not_pass": True,
-            "capsules": [c["name"] for c in capsules]}
+    return {
+        "status": "unavailable",
+        "reason": "bare-metal FireSim replay hook not wired",
+        "retry": False,
+        "not_run_is_not_pass": True,
+        "capsules": [c["name"] for c in capsules],
+    }

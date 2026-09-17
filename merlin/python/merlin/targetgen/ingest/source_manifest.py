@@ -3,6 +3,7 @@
 Validates against ``merlin/schemas/target_source_manifest.schema.yaml``. Source URLs are
 recorded but not fetched; only local directories/files are read downstream.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -30,6 +31,7 @@ class SourceManifest:
     def to_dict(self) -> dict[str, Any]:
         """Return a schema-shaped mapping (validated against target_source_manifest schema)."""
         from merlin.common.schemas import validate_or_raise
+
         d = {
             "target_name": self.target_name,
             "source_dirs": list(self.source_dirs),
