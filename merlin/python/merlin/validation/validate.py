@@ -4,6 +4,7 @@ Thin layer over :mod:`merlin.common.schemas`: it checks required top-level keys 
 readable, path-prefixed diagnostics. This is intentionally lightweight (the schemas are not
 formal JSON Schema yet) but enough to keep the cross-workstream artifacts honest.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

@@ -15,6 +15,7 @@ can contribute formats without editing this tree.
 
 This module is dependency-light (stdlib + the shared YAML/schema helpers) and side-effect free.
 """
+
 from __future__ import annotations
 
 import os
@@ -33,9 +34,7 @@ _ENV_OVERLAY = "MERLIN_QUANT_FORMATS"
 #: Allowed ``kind`` values. ``float_ieee``/``fp_ocp`` elements carry an exp/mantissa split;
 #: ``mx_block``/``nvfp4`` are block-scaled floats whose *element* also carries exp/mantissa;
 #: ``int_affine``/``packed_sub_byte`` are integers (optionally sub-byte packed).
-KINDS: frozenset[str] = frozenset(
-    {"float_ieee", "int_affine", "fp_ocp", "packed_sub_byte", "mx_block", "nvfp4"}
-)
+KINDS: frozenset[str] = frozenset({"float_ieee", "int_affine", "fp_ocp", "packed_sub_byte", "mx_block", "nvfp4"})
 
 #: Kinds whose *element* is a float with an explicit exponent/mantissa split.
 _FLOAT_ELEMENT_KINDS: frozenset[str] = frozenset({"float_ieee", "fp_ocp", "mx_block", "nvfp4"})
@@ -153,10 +152,16 @@ def _validate_entry(name: str, d: dict[str, Any]) -> None:
     if kind in _FLOAT_ELEMENT_KINDS:
         if not isinstance(exp, int) or not isinstance(mant, int):
             raise ValueError(f"quant format {name!r}: {kind} requires int exp_bits + mant_bits")
-        # A self-describing float element: sign + exponent + mantissa fills the element width.
-        if 1 + exp + mant != bits:
+        # A self-describing float element: sign + exponent + mantissa fills the element width. The
+        # sign bit is counted only when the element HAS one -- an unsigned float element (the OCP
+        # E8M0 block-scale type, whose name ends FNU for "finite, no sign, unsigned") spends all
+        # eight of its bits on the exponent. Hardcoding the sign bit made that format unregisterable,
+        # which pushed its width back into hand-written per-module tables -- the second copy this
+        # registry exists to retire. Every signed format is unaffected.
+        sign_bits = 1 if bool(d.get("signed", True)) else 0
+        if sign_bits + exp + mant != bits:
             raise ValueError(
-                f"quant format {name!r}: 1 + exp_bits({exp}) + mant_bits({mant}) "
+                f"quant format {name!r}: {sign_bits} (sign) + exp_bits({exp}) + mant_bits({mant}) "
                 f"!= element_bits({bits})"
             )
     elif exp is not None or mant is not None:
@@ -247,6 +252,53 @@ def names() -> list[str]:
 
 def by_kind(kind: str) -> list[QuantFormat]:
     return [f for f in registry().values() if f.kind == kind]
+
+
+def machine_bits(token: str) -> int | None:
+    """Bit width for a PLAIN machine scalar spelling (``i8`` / ``i32`` / ``f32`` / ``int8``), else None.
+
+    These are deliberately NOT registry entries: an accumulator width is a machine type, not a way of
+    encoding a quantized value, and the registry describes the latter. Parsed structurally (known prefix
+    + decimal width) rather than pattern-matched, and a spelling this does not recognize returns None so
+    the caller fails closed instead of assuming a width. Note this rejects MLIR's float spellings
+    (``f8E4M3FN``) on purpose — those name a registry format and resolve through :func:`get`.
+    """
+    for prefix in ("float", "uint", "int", "f", "u", "i"):
+        if token.startswith(prefix):
+            suffix = token[len(prefix) :]
+            if suffix.isdigit():
+                return int(suffix)
+    return None
+
+
+def storage_bits(dtype: str) -> int:
+    """Element storage width, without any capsule address-layout dependency.
+
+    Packed formats use their declared packed width; plain machine spellings
+    are parsed structurally. Scale-plane placement is NOT part of this width.
+    The historical capsule helper delegates here, preserving its exceptions.
+    """
+    key = str(dtype)
+    if key.startswith("torch."):
+        key = key[len("torch.") :]
+    if has(key):
+        fmt = get(key)
+        return int(fmt.pack_bits or fmt.element_bits)
+    bits = machine_bits(key)
+    if bits is None:
+        raise KeyError(
+            f"capsule_dram: cannot size dtype {dtype!r} — it is neither a format registered in "
+            f"merlin/schemas/quant_formats.registry.yaml ({names()}) nor a machine width; "
+            f"register the format rather than assuming a width"
+        )
+    return bits
+
+
+def is_element_dtype(token: str) -> bool:
+    """True if ``token`` names an element type this tooling can reason about — a registered format (by
+    canonical name or alias) or a plain machine width. The vocabulary check for artifacts that declare a
+    dtype as data (capsules, contracts), so none of them has to carry its own copy of the list."""
+    return has(token) or machine_bits(token) is not None
 
 
 def from_torchao(scheme_name: str) -> QuantFormat | None:

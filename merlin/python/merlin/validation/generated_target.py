@@ -5,6 +5,7 @@ its five plan artifacts, an evidence report, the per-layer directories (xdsl/run
 llvm/tests), and AGENT.md coverage. This is the logic behind
 ``build_tools/scripts/check_generated_target.py`` and the ``targetgen inspect`` command.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

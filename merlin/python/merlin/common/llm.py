@@ -7,6 +7,7 @@ uses the Anthropic API when an SDK + ``ANTHROPIC_API_KEY`` are available (fallin
 deterministic synthesis on any error). Output is advisory; the deterministic artifacts remain
 the source of truth.
 """
+
 from __future__ import annotations
 
 import os
@@ -31,8 +32,8 @@ def complete(prompt: str, max_tokens: int = 400) -> str | None:
     try:
         client = anthropic.Anthropic()
         msg = client.messages.create(
-            model=_MODEL, max_tokens=max_tokens,
-            messages=[{"role": "user", "content": prompt}])
+            model=_MODEL, max_tokens=max_tokens, messages=[{"role": "user", "content": prompt}]
+        )
         parts = [b.text for b in msg.content if getattr(b, "type", None) == "text"]
         return "".join(parts).strip() or None
     except Exception:
@@ -41,42 +42,46 @@ def complete(prompt: str, max_tokens: int = 400) -> str | None:
 
 def _deterministic_summary(table: dict[str, dict], policies: list[str]) -> str:
     """Synthesize a narrative from the motif table without any external call."""
-    rows = sorted(table.items(),
-                  key=lambda kv: (-len(kv[1].get("sources", [])), -kv[1].get("kernels", 0)))
+    rows = sorted(table.items(), key=lambda kv: (-len(kv[1].get("sources", [])), -kv[1].get("kernels", 0)))
     cross = [(m, d) for m, d in rows if len(d.get("sources", [])) >= 2]
     single = [(m, d) for m, d in rows if len(d.get("sources", [])) == 1]
     lines: list[str] = []
     if cross:
-        top = ", ".join(f"`{m}` ({d['kernels']} kernels, {len(d['sources'])} sources)"
-                        for m, d in cross[:4])
+        top = ", ".join(f"`{m}` ({d['kernels']} kernels, {len(d['sources'])} sources)" for m, d in cross[:4])
         lines.append(
             f"{len(cross)} motifs recur across two or more sources — the strongest abstraction "
             f"signal. The most broadly attested are {top}. Motifs seen in independent toolchains "
             f"(XNNPACK, Autocomp, Exo, Triton) are unlikely to be source-specific tricks and are "
-            f"the best candidates for compiler-visible abstractions.")
+            f"the best candidates for compiler-visible abstractions."
+        )
     if single:
         names = ", ".join(f"`{m}`" for m, _ in single[:4])
         lines.append(
             f"{len(single)} motifs appear in a single source ({names}…); these promote only on "
             f"volume and should be read as target-specific patterns pending corroboration from a "
-            f"second source.")
+            f"second source."
+        )
     if policies:
-        lines.append(f"{len(policies)} policy rules were emitted: {', '.join(policies)}. Each is "
-                     f"a candidate, not a proven heuristic — see the held-out validation section.")
+        lines.append(
+            f"{len(policies)} policy rules were emitted: {', '.join(policies)}. Each is "
+            f"a candidate, not a proven heuristic — see the held-out validation section."
+        )
     return " ".join(lines)
 
 
 def _anthropic_summary(table: dict[str, dict], policies: list[str]) -> str | None:
     """Try a real LLM summary; return None if the SDK/key is unavailable or the call fails."""
-    rows = "\n".join(f"- {m}: {d.get('kernels', 0)} kernels, "
-                     f"sources={sorted(d.get('sources', []))}" for m, d in table.items())
+    rows = "\n".join(
+        f"- {m}: {d.get('kernels', 0)} kernels, sources={sorted(d.get('sources', []))}" for m, d in table.items()
+    )
     prompt = (
         "You are a compiler researcher. Below is a table of optimization MOTIFS mined from "
         "many kernels, with how many kernels exhibit each and which independent sources. "
         "In 4-6 sentences, identify which motifs are the strongest candidates to become "
         "compiler abstractions and why, emphasizing cross-source recurrence over raw count. "
         "Do not invent facts beyond the table.\n\n"
-        f"Motifs:\n{rows}\n\nEmitted policies: {', '.join(policies)}")
+        f"Motifs:\n{rows}\n\nEmitted policies: {', '.join(policies)}"
+    )
     return complete(prompt, max_tokens=400)
 
 

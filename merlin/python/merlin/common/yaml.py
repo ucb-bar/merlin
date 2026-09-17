@@ -4,6 +4,7 @@ TargetGen emits YAML artifacts that must be byte-stable across runs (so diffs ar
 meaningful and tests are reproducible). ``dump_yaml`` therefore sorts keys and disables
 PyYAML's line-wrapping and aliasing. Stdlib + PyYAML only.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

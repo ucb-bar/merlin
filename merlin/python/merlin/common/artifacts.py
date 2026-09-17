@@ -5,6 +5,7 @@ itself under a base directory. Generators return lists of artifacts; the pipelin
 them. Keeping this explicit makes generation deterministic and easy to test (you can
 inspect the artifacts without touching the filesystem).
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -70,7 +71,9 @@ def git_sha7(root: Path | None = None) -> str:
     try:
         out = subprocess.run(
             ["git", "-C", str(root or repo_root()), "rev-parse", "--short=7", "HEAD"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         ).stdout.strip()
         return out or "nogit"
     except Exception:
@@ -92,10 +95,10 @@ def _unique_dir(base: Path, name: str) -> Path:
 class RunHandle:
     """Everything a caller needs after start_run(): paths, aet logger, artifact store, provenance."""
 
-    spec: object          # aet RunSpec
-    paths: object         # aet RunPaths (.run_path/.logs/.metrics/.artifacts_dir/.generated/...)
-    logger: object        # aet EvalRunLogger
-    store: object         # aet ArtifactStore
+    spec: object  # aet RunSpec
+    paths: object  # aet RunPaths (.run_path/.logs/.metrics/.artifacts_dir/.generated/...)
+    logger: object  # aet EvalRunLogger
+    store: object  # aet ArtifactStore
     run_id: str
     run_dir: Path
     git_sha: str
@@ -143,9 +146,16 @@ def start_run(
     if run_id is None:
         run_id = f"{ts}_{method}_seed{seed:03d}_{sha}"
     spec = RunSpec(
-        project=project, suite=eff_suite, method=method, seed=seed, run_id=run_id,
-        project_root=root, tracking_mode=tracking_mode, target=target,
-        repo_initial_commit=sha, extra=dict(extra or {}),
+        project=project,
+        suite=eff_suite,
+        method=method,
+        seed=seed,
+        run_id=run_id,
+        project_root=root,
+        tracking_mode=tracking_mode,
+        target=target,
+        repo_initial_commit=sha,
+        extra=dict(extra or {}),
     )
     paths = RunPaths.from_spec(spec, run_id)
     if paths.run_path.exists():  # collision guard (parallel same-second + same-sha arms)
@@ -155,13 +165,27 @@ def start_run(
     for attr in make_subdirs:
         getattr(paths, attr).mkdir(parents=True, exist_ok=True)
     logger = EvalRunLogger.start(
-        project=project, suite=eff_suite, target=target or "", method=method,
-        seed=seed, run_id=run_id, run_path=paths.run_path, tracking_mode=tracking_mode,
+        project=project,
+        suite=eff_suite,
+        target=target or "",
+        method=method,
+        seed=seed,
+        run_id=run_id,
+        run_path=paths.run_path,
+        tracking_mode=tracking_mode,
     )
     logger.write_run_record({"git_sha": sha, "timestamp": ts, **(extra or {})})
     store = ArtifactStore(paths.run_path, run_id)
-    return RunHandle(spec=spec, paths=paths, logger=logger, store=store,
-                     run_id=run_id, run_dir=paths.run_path, git_sha=sha, timestamp=ts)
+    return RunHandle(
+        spec=spec,
+        paths=paths,
+        logger=logger,
+        store=store,
+        run_id=run_id,
+        run_dir=paths.run_path,
+        git_sha=sha,
+        timestamp=ts,
+    )
 
 
 def finish_run(h: RunHandle, status: str, summary: dict | None = None) -> None:
@@ -250,11 +274,29 @@ def new_product(
     if update_latest:
         link = vdir / "latest"
         tmp = vdir / f".latest.{os.urandom(3).hex()}"
-        os.symlink(pdir.name, tmp)   # RELATIVE target
-        os.replace(tmp, link)        # atomic repoint
-    return ProductDir(path=pdir, manifest_path=pdir / "manifest.yaml", run_id=pdir.name,
-                      topic=generator, version=version, git_sha=sha, timestamp=ts,
-                      target=target, sources=sources, notes=notes, _artifacts=[])
+        os.symlink(pdir.name, tmp)  # RELATIVE target
+        os.replace(tmp, link)  # atomic repoint
+    prod = ProductDir(
+        path=pdir,
+        manifest_path=pdir / "manifest.yaml",
+        run_id=pdir.name,
+        topic=generator,
+        version=version,
+        git_sha=sha,
+        timestamp=ts,
+        target=target,
+        sources=sources,
+        notes=notes,
+        _artifacts=[],
+    )
+    # WRITE THE MANIFEST NOW, not when the producer finishes. `check_artifact_layout` scans
+    # `out/artifacts/*/v*` on disk regardless of --staged (by design -- that is where reports live),
+    # so a product dir without one fails the gate for EVERY session on this shared tree, for as long
+    # as the producer runs. A long campaign or a killed run left exactly that, twice in one day.
+    # Callers still call `write_manifest()` again at the end to record the artifacts they added;
+    # this one is the placeholder that keeps the window closed.
+    prod.write_manifest()
+    return prod
 
 
 # ---- measurements: artifacts/measurements/<substrate>/<model>/<experiment>_v<ver>_<TS>_<sha7>/ ----
@@ -286,9 +328,15 @@ class MeasurementDir:
 
     def write_manifest(self) -> Path:
         manifest = {
-            "run_id": self.run_id, "timestamp": self.timestamp, "git_sha": self.git_sha,
-            "substrate": self.substrate, "model": self.model, "experiment": self.experiment,
-            "version": self.version, "artifacts": sorted(self._artifacts or []), "notes": self.notes,
+            "run_id": self.run_id,
+            "timestamp": self.timestamp,
+            "git_sha": self.git_sha,
+            "substrate": self.substrate,
+            "model": self.model,
+            "experiment": self.experiment,
+            "version": self.version,
+            "artifacts": sorted(self._artifacts or []),
+            "notes": self.notes,
         }
         self.manifest_path.write_text(dump_yaml(manifest), encoding="utf-8")
         return self.manifest_path
@@ -323,11 +371,21 @@ def new_measurement(
     if update_latest:
         link = base / f"{experiment}_latest"
         tmp = base / f".{experiment}_latest.{os.urandom(3).hex()}"
-        os.symlink(mdir.name, tmp)   # RELATIVE target (bwrap-safe)
+        os.symlink(mdir.name, tmp)  # RELATIVE target (bwrap-safe)
         os.replace(tmp, link)
-    return MeasurementDir(path=mdir, manifest_path=mdir / "manifest.yaml", run_id=mdir.name,
-                          substrate=substrate, model=model, experiment=experiment,
-                          version=version, git_sha=sha, timestamp=ts, notes=notes, _artifacts=[])
+    return MeasurementDir(
+        path=mdir,
+        manifest_path=mdir / "manifest.yaml",
+        run_id=mdir.name,
+        substrate=substrate,
+        model=model,
+        experiment=experiment,
+        version=version,
+        git_sha=sha,
+        timestamp=ts,
+        notes=notes,
+        _artifacts=[],
+    )
 
 
 # ---- caches & recaptures: artifacts/cache/<ns>/, artifacts/recaptures/ -----

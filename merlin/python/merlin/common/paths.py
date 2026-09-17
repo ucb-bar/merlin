@@ -4,6 +4,7 @@ Small, dependency-light helpers so the rest of the package never hard-codes layo
 assumptions. Honors ``MERLIN_REPO_ROOT`` for installed/relocated checkouts; otherwise
 resolves the repo root relative to this source file.
 """
+
 from __future__ import annotations
 
 import os
@@ -27,6 +28,26 @@ def merlin_dir() -> Path:
     return repo_root() / "merlin"
 
 
+def resolve_grant(rel: str) -> Path:
+    """Resolve a bundle-convention grant path string to an absolute host path.
+
+    Grant paths in target descriptors / bundle manifests are repo-root-relative by convention, with
+    one documented shorthand: a leading ``experiments/...`` (and other in-``merlin/`` trees) "resolves
+    under ``merlin/``" — i.e. the ``merlin/`` prefix may be elided. This resolver honors that: it prefers
+    ``<repo>/<rel>`` when that exists, else falls back to ``<repo>/merlin/<rel>`` when THAT exists, else
+    returns ``<repo>/<rel>`` (the caller's existence check then treats it as missing). Keeps the sandbox
+    binder (``bwrap``) and the workspace assembler in lockstep so a granted path is never silently
+    dropped by one but honored by the other.
+    """
+    root = repo_root() / rel
+    if root.exists():
+        return root
+    under_merlin = merlin_dir() / rel
+    if under_merlin.exists():
+        return under_merlin
+    return root
+
+
 def data_path(*parts: str) -> Path:
     """Resolve bundled read-only package data (``schemas/``, ``prompts/``, …).
 
@@ -42,6 +63,7 @@ def data_path(*parts: str) -> Path:
         return cand
     try:
         import importlib.resources as _ir
+
         base = _ir.files("merlin").joinpath("_data", *rel.parts)
         # normally-installed (unzipped) wheel -> a real filesystem path
         return Path(str(base))
@@ -105,6 +127,10 @@ def runtime_dir() -> Path:
 #     three subdirs (runs/ artifacts/ build/). These helpers are the SINGLE source of truth for the
 #     root names — callers must never hard-code the literal strings. Honors ``MERLIN_OUT_ROOT`` for
 #     relocated/installed checkouts (mirrors ``MERLIN_REPO_ROOT``). ---
+#: The single generated-output root name. Callers never spell it; they call the helpers below.
+_OUT_ROOT_NAME = "out"
+
+
 def work_dir() -> Path:
     """Return the writable WORK root for ephemeral scratch (``tmp/`` build scratch, calibration
     intermediates, external baseline checkouts) — ``<repo>`` in-repo, honoring ``MERLIN_WORK_DIR``.
@@ -124,7 +150,22 @@ def out_dir() -> Path:
     env = os.environ.get("MERLIN_OUT_ROOT")
     if env:
         return Path(env)
-    return repo_root() / "out"
+    return repo_root() / _OUT_ROOT_NAME
+
+
+def tracked_out_dir() -> Path:
+    """The REPO-anchored ``<repo>/out`` — deliberately ignoring ``MERLIN_OUT_ROOT``.
+
+    ``out/`` is the generated-output root and is redirectable, but a few files under it are TRACKED,
+    reviewed inputs rather than output: the generated targets' ``contracts/`` (their capability
+    manifest and residual). Resolving those through the redirectable root means a run with
+    ``MERLIN_OUT_ROOT`` pointed elsewhere — a test, a worktree, a relocated checkout — cannot see a
+    declaration that is committed to the repository, and a policy declaration that disappears when an
+    env var moves is not a fact about the target.
+
+    Use :func:`out_dir` for everything generated. Use this ONLY to read a tracked file under ``out/``.
+    """
+    return repo_root() / _OUT_ROOT_NAME
 
 
 def runs_dir() -> Path:
@@ -174,6 +215,19 @@ def env(key: str, default: str | None = None) -> str | None:
     return os.environ.get(key) or _dotenv().get(key) or default
 
 
+def target_env_name(target: str, what: str) -> str:
+    """The per-target environment variable name ``MERLIN_<TARGET>_<WHAT>``.
+
+    One spelling for every per-target override (a target's Verilator binary is
+    ``MERLIN_<TARGET>_VERILATOR``, its VCS simv ``MERLIN_<TARGET>_SIMV``), DERIVED from the target name
+    so a newly registered target gets its variable with no edit to shared code. It is the same convention
+    ``build_tools/scripts/check_repro_env.py`` and the sandbox toolchain already spell inline.
+    """
+    if not target or not what:
+        raise ValueError(f"target_env_name needs a target and a suffix, got {target!r}, {what!r}")
+    return f"MERLIN_{target.upper()}_{what.upper()}"
+
+
 def ext_path(name: str) -> Path:
     """Resolve an external, machine-specific dependency location by short key.
 
@@ -184,8 +238,6 @@ def ext_path(name: str) -> Path:
     key = f"MERLIN_EXT_{name.upper()}"
     val = os.environ.get(key) or _dotenv().get(key)
     if not val:
-        known = sorted(k[len("MERLIN_EXT_"):].lower() for k in _dotenv() if k.startswith("MERLIN_EXT_"))
-        raise KeyError(
-            f"external path {name!r} unset — set {key} in .env (copy .env.example). Known: {known}"
-        )
+        known = sorted(k[len("MERLIN_EXT_") :].lower() for k in _dotenv() if k.startswith("MERLIN_EXT_"))
+        raise KeyError(f"external path {name!r} unset — set {key} in .env (copy .env.example). Known: {known}")
     return Path(val)
