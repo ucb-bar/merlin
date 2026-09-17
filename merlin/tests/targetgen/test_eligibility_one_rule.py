@@ -13,6 +13,7 @@ past a 0.8 gate. The whole-model capstone launched and ran a cycle-accurate simu
 inside a 4 h round. The identical computation spelled `op: matmul` (`C5_attention_qk_matmul`) counted
 normally and passed at the RTL tier.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,39 +44,52 @@ def _corpus(root: Path) -> list[dict]:
 
 # --------------------------------------------------------------- one rule, two callers
 
-@pytest.mark.parametrize("target,root", [
-    ("gemmini", PUBLIC), ("atlas", CONTRACT / "atlas"), ("radiance", CONTRACT / "radiance"),
-])
+
+@pytest.mark.parametrize(
+    "target,root",
+    [
+        ("gemmini", PUBLIC),
+        ("atlas", CONTRACT / "atlas"),
+        ("radiance", CONTRACT / "radiance"),
+    ],
+)
 def test_the_suite_and_the_gate_agree_on_every_capsule(target, root):
     caps = _corpus(root)
     ops = [c for c in caps if c.get("kind") != "model"]
     if not ops:
         pytest.skip(f"no op capsules under {root}")
     kept = {c["name"] for c in CR._split_ineligible(list(ops), target)[0]}
-    disagree = [c["name"] for c in ops
-                if (c["name"] in kept)
-                != CR._gate_counts({"capsule": c["name"], "status": "fail"}, caps, target)]
+    disagree = [
+        c["name"]
+        for c in ops
+        if (c["name"] in kept) != CR._gate_counts({"capsule": c["name"], "status": "fail"}, caps, target)
+    ]
     assert disagree == [], (
         "the suite grades these and the gate does not count them (or vice versa) — the score and the "
-        "gate are then measuring different corpora")
+        "gate are then measuring different corpora"
+    )
 
 
 def test_only_an_absent_operand_dtype_is_a_hard_fact():
     """Family and rank must never withhold: families compose, and rank is what a compiler changes."""
-    cmap = _el.capability_map_for_target("gemmini")            # int8 contraction/elementwise/movement
+    cmap = _el.capability_map_for_target("gemmini")  # int8 contraction/elementwise/movement
     from merlin.targetgen.eligibility import RegionDescriptor as RD
 
     absent, why = CR._dtype_has_no_datapath(
-        RD(source="x", op="matmul", family="contraction", in_dtype="bf16"), cmap, _el)
+        RD(source="x", op="matmul", family="contraction", in_dtype="bf16"), cmap, _el
+    )
     assert absent and "bf16" in why
 
-    for region in (RD(source="x", op="sdpa", family="attention", in_dtype="i8"),   # undeclared family
-                   RD(source="x", op="conv2d", family="contraction", in_dtype="i8", rank=4)):  # rank
+    for region in (
+        RD(source="x", op="sdpa", family="attention", in_dtype="i8"),  # undeclared family
+        RD(source="x", op="conv2d", family="contraction", in_dtype="i8", rank=4),
+    ):  # rank
         absent, _ = CR._dtype_has_no_datapath(region, cmap, _el)
         assert not absent, "only a dtype with no datapath is hard; family and rank are not"
 
 
 # --------------------------------------------------------------- a piece is not the pattern
+
 
 def test_the_qk_and_pv_pieces_are_contractions():
     assert sf.from_op("attention_qk") == "contraction"
@@ -120,8 +134,7 @@ def test_the_same_computation_classifies_the_same_way_however_it_is_spelled():
 def test_every_qk_capsule_of_every_target_is_eligible():
     """The same mislabel shipped in four capsules across three targets — fixed once, checked here."""
     seen = 0
-    for target, root in (("gemmini", PUBLIC), ("atlas", CONTRACT / "atlas"),
-                         ("radiance", CONTRACT / "radiance")):
+    for target, root in (("gemmini", PUBLIC), ("atlas", CONTRACT / "atlas"), ("radiance", CONTRACT / "radiance")):
         cmap = _el.capability_map_for_target(target)
         for c in _corpus(root):
             if (c.get("operation") or {}).get("op") not in ("attention_qk", "attention_pv"):
@@ -131,11 +144,13 @@ def test_every_qk_capsule_of_every_target_is_eligible():
             assert region.family == "contraction", c["name"]
             v = _el.is_eligible(region, cmap)
             assert v.eligible or "dtype" in (v.reason or ""), (
-                f"{c['name']} on {target}: {v.reason} — a QK piece may only be refused on its DTYPE")
+                f"{c['name']} on {target}: {v.reason} — a QK piece may only be refused on its DTYPE"
+            )
     assert seen >= 4, f"expected the known QK capsules, found {seen}"
 
 
 # ------------------------------------------------------- the rank a contract admits must be the one it loads
+
 
 def test_the_batched_contraction_rank_is_admitted_on_the_path_that_actually_loads():
     """A rank the target can execute must not be declared away, and the fix must land on the LIVE copy.
@@ -153,18 +168,19 @@ def test_the_batched_contraction_rank_is_admitted_on_the_path_that_actually_load
 
     Rank 5 is checked alongside so this cannot pass by admitting everything.
     """
-    from merlin.targetgen.eligibility import (RegionDescriptor, capability_map_for_target,
-                                              is_eligible)
+    from merlin.targetgen.eligibility import RegionDescriptor, capability_map_for_target, is_eligible
 
     caps = capability_map_for_target("gemmini")
 
     def verdict(rank):
-        region = RegionDescriptor(source="t", op="matmul", in_dtype="int8", weight_dtype="int8",
-                                  rank=rank, m=16, k=32, n=16)
+        region = RegionDescriptor(
+            source="t", op="matmul", in_dtype="int8", weight_dtype="int8", rank=rank, m=16, k=32, n=16
+        )
         return is_eligible(region, caps)
 
     assert verdict(3).eligible, (
         "a batched contraction is ineligible, so every rank-3 region is refused before the device "
-        f"rewrite sees it: {verdict(3).reason}")
+        f"rewrite sees it: {verdict(3).reason}"
+    )
     assert verdict(2).eligible and verdict(4).eligible
     assert not verdict(5).eligible, "admitting every rank would make this assertion vacuous"

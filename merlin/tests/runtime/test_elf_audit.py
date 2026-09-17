@@ -6,6 +6,7 @@ because each failure is silent: a segment past DRAM boots into nothing, a missin
 loader never sees output or the exit request (it reports a timeout), and an image with no vector
 instructions is a "result" that measured the scalar fallback.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -17,9 +18,12 @@ def _an_elf():
     """Any locally built Zephyr ELF, else skip — these tests audit a real artifact."""
     import glob
     import os
-    c = sorted(glob.glob("/tmp/*/build/zephyr/zephyr.elf")
-               + glob.glob("/tmp/merlin_compile_*/build/zephyr/zephyr.elf"),
-               key=os.path.getmtime, reverse=True)
+
+    c = sorted(
+        glob.glob("/tmp/*/build/zephyr/zephyr.elf") + glob.glob("/tmp/merlin_compile_*/build/zephyr/zephyr.elf"),
+        key=os.path.getmtime,
+        reverse=True,
+    )
     if not c:
         pytest.skip("no Zephyr ELF built in this environment")
     return c[0]
@@ -81,5 +85,5 @@ def test_the_report_serialises_for_a_delivery_package():
     d = rep.to_dict()
     import json
 
-    json.dumps(d)                     # must be JSON-serialisable to ship next to the binary
+    json.dumps(d)  # must be JSON-serialisable to ship next to the binary
     assert d["board"] == "chipyard_kodiak" and "facts" in d and "segments" in d

@@ -7,6 +7,7 @@ no reporting at all. Likewise the layout convention names three roots and a clos
 but only TRACKED files are linted — and generated output is gitignored by design, so the convention
 held in the index and drifted freely underneath it.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -51,8 +52,7 @@ def test_a_run_and_a_product_are_both_priced_as_one_experiment(rooted):
     _unit(rooted / "artifacts" / "perf-bench" / "a-target" / "campaign_a", ("results.json", 4000))
 
     groups = SC.experiment_costs()
-    assert set(groups) == {_g("runs", "a-target", "capsule-bench"),
-                           _g("artifacts", "perf-bench", "a-target")}
+    assert set(groups) == {_g("runs", "a-target", "capsule-bench"), _g("artifacts", "perf-bench", "a-target")}
     assert groups[_g("runs", "a-target", "capsule-bench")]["units"] == 1
     assert groups[_g("artifacts", "perf-bench", "a-target")]["bytes"] == 4000
 
@@ -144,7 +144,8 @@ def test_every_declared_concern_carries_a_purpose():
     assert concerns, "the storage contract declares no concerns"
     for name, purpose in concerns.items():
         assert isinstance(purpose, str) and len(purpose.split()) >= 3, (
-            f"{name!r} is declared without saying what it holds")
+            f"{name!r} is declared without saying what it holds"
+        )
 
 
 def test_the_convention_document_and_the_contract_agree():
@@ -177,11 +178,9 @@ def test_every_fold_source_is_undeclared():
     for entry in SC.contract().get("folds") or []:
         parts = str(entry["from"]).split("/")
         if len(parts) > 1 and parts[0] == "artifacts":
-            assert parts[1] not in declared, (
-                f"{entry['from']!r} is folded away and declared at the same time")
+            assert parts[1] not in declared, f"{entry['from']!r} is folded away and declared at the same time"
         else:
-            assert parts[0] not in SC.out_roots(), (
-                f"{entry['from']!r} folds away one of the three declared roots")
+            assert parts[0] not in SC.out_roots(), f"{entry['from']!r} folds away one of the three declared roots"
 
 
 def test_only_a_group_written_both_ways_is_reported_as_drift(rooted):

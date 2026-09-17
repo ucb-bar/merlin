@@ -11,7 +11,8 @@ import importlib.util
 from merlin.common.paths import repo_root
 
 _spec = importlib.util.spec_from_file_location(
-    "_harvest", repo_root() / "build_tools" / "scripts" / "harvest_xnnpack_fixtures.py")
+    "_harvest", repo_root() / "build_tools" / "scripts" / "harvest_xnnpack_fixtures.py"
+)
 _h = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_h)
 

@@ -7,6 +7,7 @@ relu mode. Mode coverage over the derived corpus therefore measured nothing, and
 hand-authored capsule was structurally unmatchable by anything the synthesizer could produce, which is
 what blocked retiring the hand corpus.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -34,9 +35,20 @@ def _modes(entry):
     return (cap.get("expected") or {}).get("modes")
 
 
-_BASE = {"cat": "isa", "kind": "isa", "op": "matmul", "M": 16, "K": 16, "N": 16,
-         "lhs": "A", "weight": "W", "out": "Y", "label": "public",
-         "source_role": "derived_sweep", "source_reference": "probe"}
+_BASE = {
+    "cat": "isa",
+    "kind": "isa",
+    "op": "matmul",
+    "M": 16,
+    "K": 16,
+    "N": 16,
+    "lhs": "A",
+    "weight": "W",
+    "out": "Y",
+    "label": "public",
+    "source_role": "derived_sweep",
+    "source_reference": "probe",
+}
 
 
 def test_the_synthesizer_emits_no_empty_modes_override():

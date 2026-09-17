@@ -11,6 +11,7 @@ attempt:
   * the tag must name the OP CLASS, or a batch_matmul arm (4 tile sizes) matches rank-2 matmul ops and
     the schedule dies with "too many tiles provided, expected at most 3 found 4".
 """
+
 from __future__ import annotations
 
 import inspect
@@ -33,8 +34,7 @@ class _S:
 
 def test_each_contraction_gets_its_own_block():
     """A wide op and a narrow op in the SAME class must not be clamped to one block."""
-    shapes = [_S("linalg.batch_matmul", (6, 1500, 1500), (64,)),
-              _S("linalg.batch_matmul", (6, 8, 64), (64,))]
+    shapes = [_S("linalg.batch_matmul", (6, 1500, 1500), (64,)), _S("linalg.batch_matmul", (6, 8, 64), (64,))]
     t = pb.block_table(shapes, nr_cap=16)
     blocks = {v for v in t.values()}
     assert (1, 16) in blocks, f"the 1500-wide op must get the full N tile: {t}"
@@ -43,13 +43,11 @@ def test_each_contraction_gets_its_own_block():
 
 def test_a_one_lane_op_is_left_out_not_forced_on_the_class():
     """An N=1 op has no multi-lane block; it must drop out ALONE, not take its class with it."""
-    shapes = [_S("linalg.batch_matmul", (6, 1500, 1500), (64,)),
-              _S("linalg.batch_matmul", (6, 1, 1), (64,))]
+    shapes = [_S("linalg.batch_matmul", (6, 1500, 1500), (64,)), _S("linalg.batch_matmul", (6, 1, 1), (64,))]
     t = pb.block_table(shapes, nr_cap=16)
     cov = pb.coverage(shapes, t)
     assert len(t) == 1, "the N=1 op must be excluded"
-    assert cov["claimed_mac_fraction"] > 0.999, (
-        f"the wide op must still be claimed; got {cov['claimed_mac_fraction']}")
+    assert cov["claimed_mac_fraction"] > 0.999, f"the wide op must still be claimed; got {cov['claimed_mac_fraction']}"
     assert len(cov["unclaimed"]) == 1
 
 
@@ -65,8 +63,8 @@ def test_mr_defaults_to_one_but_the_cap_is_a_cap_not_a_pin():
     still returning MR=1 where no clean M-tile exists.
     """
     assert pb.DEFAULT_MR == 1
-    shapes = [_S("linalg.matmul", (64, 256), (288,))]      # M=64 admits MR=4
-    assert set(pb.block_table(shapes, nr_cap=16).values()) == {(1, 16)}          # default unchanged
+    shapes = [_S("linalg.matmul", (64, 256), (288,))]  # M=64 admits MR=4
+    assert set(pb.block_table(shapes, nr_cap=16).values()) == {(1, 16)}  # default unchanged
     assert set(pb.block_table(shapes, mr_cap=4, nr_cap=16).values()) == {(4, 16)}  # cap honoured
     # ...and a shape with no clean M-tile is NOT forced up to the cap
     odd = [_S("linalg.matmul", (17, 256), (288,))]
@@ -85,6 +83,7 @@ def test_the_whole_model_backend_offers_the_measured_mr_cap():
     import inspect
 
     from merlin.runtime.backends import zephyr_model as zm
+
     assert zm.perop_mr_cap() == 4
     prep = inspect.getsource(zm.prepare_for_lowering)
     assert "mr_cap=mr_cap" in prep, "block_table must be called with the MR cap"
@@ -102,8 +101,8 @@ def test_the_schedule_emits_one_arm_per_block_with_the_right_rank():
     t = {"linalg.matmul:64x256:288": (1, 16), "linalg.batch_matmul:6x1500x1500:64": (1, 8)}
     s = pb.schedule_text(t, 16)
     assert s.count("transform.structured.match attributes{") == 2
-    assert "tile_sizes [1, 16, 0]" in s          # matmul: 3 tile sizes
-    assert "tile_sizes [1, 1, 8, 0]" in s        # batch_matmul: 4 tile sizes
+    assert "tile_sizes [1, 16, 0]" in s  # matmul: 3 tile sizes
+    assert "tile_sizes [1, 1, 8, 0]" in s  # batch_matmul: 4 tile sizes
     assert s.count("transform.structured.vectorize") == 2
 
 
@@ -140,11 +139,14 @@ def test_an_empty_table_claims_nothing_and_says_so():
     assert pb.coverage(shapes, t)["claimed_mac_fraction"] == 0.0
 
 
-@pytest.mark.parametrize("bundle,expect_claimed", [
-    ("whisper_tiny_int8_full", 0.999),      # was 0.659 per op CLASS
-    ("spectformer_int8_full", 0.999),
-    ("deepjscc_int8_full", 0.999),
-])
+@pytest.mark.parametrize(
+    "bundle,expect_claimed",
+    [
+        ("whisper_tiny_int8_full", 0.999),  # was 0.659 per op CLASS
+        ("spectformer_int8_full", 0.999),
+        ("deepjscc_int8_full", 0.999),
+    ],
+)
 def test_real_bundles_are_fully_claimed_per_op(bundle, expect_claimed):
     """The headline: per-op blocking claims essentially every MAC of every captured workload."""
     from merlin.common.artifacts import recaptures_dir
@@ -180,7 +182,8 @@ def test_the_block_does_not_move_with_the_hart_count():
         assert pb.block_table(shapes, nr_cap=16), "every one of these blocks alone"
     assert "harts" not in inspect.signature(pb.block_table).parameters, (
         "block_table must not take a hart count: a block that moves with the thread count is what "
-        "made the two arms incomparable")
+        "made the two arms incomparable"
+    )
 
 
 def test_the_derived_split_keeps_every_chunk_legal_for_the_block_it_was_given():
@@ -194,10 +197,12 @@ def test_the_derived_split_keeps_every_chunk_legal_for_the_block_it_was_given():
         def __init__(self, op, par, red):
             self.op, self.parallel, self.reduction = op, par, red
 
-    shapes = [S("linalg.matmul", (736, 16), (15,)),
-              S("linalg.matmul", (1, 512), (128,)),
-              S("linalg.matmul", (1, 3), (128,)),        # M=1, N=3: nothing splits
-              S("linalg.batch_matmul", (32, 8, 345), (72,))]
+    shapes = [
+        S("linalg.matmul", (736, 16), (15,)),
+        S("linalg.matmul", (1, 512), (128,)),
+        S("linalg.matmul", (1, 3), (128,)),  # M=1, N=3: nothing splits
+        S("linalg.batch_matmul", (32, 8, 345), (72,)),
+    ]
     table = pb.block_table(shapes, mr_cap=4, nr_cap=16)
     par = pb.parallel_chunk_table(shapes, table, 8)
     assert par, "a model of this shape must have SOMETHING to split"
@@ -215,7 +220,8 @@ def test_the_derived_split_keeps_every_chunk_legal_for_the_block_it_was_given():
             assert extents[axis] // t <= 8, "never more chunks than harts"
             extents[axis] = t
         assert _rvv_blocking_lowers(mr, nr, extents[-2], extents[-1]), (
-            f"{key}: the split leaves a tile the block ({mr}, {nr}) cannot lower")
+            f"{key}: the split leaves a tile the block ({mr}, {nr}) cannot lower"
+        )
     # The op nothing can split stays OUT of the table rather than being split illegally.
     assert pb.shape_key("linalg.matmul", (1, 3), (128,)) not in par
 
@@ -241,7 +247,7 @@ def test_an_unblocked_contraction_is_never_split():
     from merlin.llvmlower import perop_blocks as pb
 
     class S:
-        op, parallel, reduction = "linalg.matmul", (8, 1), (16,)     # N=1: no multi-lane block
+        op, parallel, reduction = "linalg.matmul", (8, 1), (16,)  # N=1: no multi-lane block
 
     shapes = [S()]
     table = pb.block_table(shapes, mr_cap=4, nr_cap=16)
@@ -272,7 +278,8 @@ def test_the_split_tag_and_the_schedule_arm_are_generated_from_one_table():
         # will actually join, not a second copy of the formatting
         assert repr(tuple(int(t) for t in tiles)) in runner
     assert "num_threads" not in sched, (
-        "the derived split must use tile_sizes: num_threads leaves a ceil() tile the block masks")
+        "the derived split must use tile_sizes: num_threads leaves a ceil() tile the block masks"
+    )
 
 
 def test_batch_matmul_blocks_are_unaffected_by_the_hart_count():
@@ -302,8 +309,7 @@ def test_the_block_cap_follows_the_boards_vector_length():
     dominant ops became e32,m2 and e16,m1 (whole registers) and the total vector-op count fell 1202 ->
     1122, and the result stayed bit-exact on spike at VLEN=512 (tier_ok=w8a8, cos 1.0, max_rel 0.0).
     """
-    from merlin.runtime.backends.zephyr_model import (_PEROP_NR_CAP, _PEROP_NR_CAP_REF_VLEN,
-                                                      perop_nr_cap)
+    from merlin.runtime.backends.zephyr_model import _PEROP_NR_CAP, _PEROP_NR_CAP_REF_VLEN, perop_nr_cap
 
     # Scales UP only, so nothing already measured moves as a side effect: the champion was tuned at
     # the reference width and keeps its value there and below.
@@ -339,30 +345,31 @@ def test_the_vector_length_reaches_the_block_table():
 # like a bad block but is an untagged build". Hence: hard failure.
 # ---------------------------------------------------------------------------------------
 
+
 def test_a_priced_but_untagged_contraction_is_a_hard_failure():
     table = {"linalg.matmul:64x256:288": (1, 16), "linalg.matmul:32x32:32": (4, 16)}
-    stdout = ('OK perop_blocks tagged 1\n'
-              'MERLIN_PEROP_AGREEMENT {"hit": ["linalg.matmul:64x256:288"], '
-              '"untagged": ["linalg.matmul:31x32:32"]}\n')
+    stdout = (
+        "OK perop_blocks tagged 1\n"
+        'MERLIN_PEROP_AGREEMENT {"hit": ["linalg.matmul:64x256:288"], '
+        '"untagged": ["linalg.matmul:31x32:32"]}\n'
+    )
     with pytest.raises(pb.BlockAgreementError) as e:
         pb._assert_priced_is_tagged(table, stdout)
     assert "linalg.matmul:32x32:32" in str(e.value)
-    assert "scalar" in str(e.value)                      # says what the consequence IS
-    assert "linalg.matmul:31x32:32" in str(e.value)      # ...and what the tagger saw instead
+    assert "scalar" in str(e.value)  # says what the consequence IS
+    assert "linalg.matmul:31x32:32" in str(e.value)  # ...and what the tagger saw instead
 
 
 def test_full_agreement_passes():
     table = {"linalg.matmul:64x256:288": (1, 16)}
-    pb._assert_priced_is_tagged(
-        table, 'MERLIN_PEROP_AGREEMENT {"hit": ["linalg.matmul:64x256:288"], "untagged": []}\n')
+    pb._assert_priced_is_tagged(table, 'MERLIN_PEROP_AGREEMENT {"hit": ["linalg.matmul:64x256:288"], "untagged": []}\n')
 
 
 def test_a_guard_that_cannot_run_must_not_report_success():
     """The repo's recurring failure: a check that could not run reported SUCCESS. If the tagger emits
     no agreement line, the guard has no evidence and must refuse -- not pass."""
     with pytest.raises(pb.BlockAgreementError) as e:
-        pb._assert_priced_is_tagged({"linalg.matmul:64x256:288": (1, 16)},
-                                    "OK perop_blocks tagged 1\n")
+        pb._assert_priced_is_tagged({"linalg.matmul:64x256:288": (1, 16)}, "OK perop_blocks tagged 1\n")
     assert "cannot verify" in str(e.value)
 
 
@@ -382,6 +389,7 @@ def test_the_tagger_reports_both_sides_of_the_agreement():
 # see the element width because `_rvv_best_block` discarded ContractionShape.dtypes.
 # ---------------------------------------------------------------------------------------
 
+
 def test_the_n_cap_widens_for_narrow_elements_and_never_narrows():
     # e8 on a 256-bit unit needs 32 elements to fill one register; e32 already fills two at 16.
     assert pb.nr_cap_for_dtypes(16, 256, ("i8", "i8", "i32")) == 32
@@ -400,15 +408,13 @@ def test_an_unreadable_dtype_falls_back_to_the_blind_cap_rather_than_guessing():
     assert pb.narrowest_elem_bits(("not_a_type",)) is None
     assert pb.nr_cap_for_dtypes(16, 256, ()) == 16
     assert pb.nr_cap_for_dtypes(16, 256, ("not_a_type", "x", "y")) == 16
-    assert pb.nr_cap_for_dtypes(16, None, ("i8", "i8", "i32")) == 16   # no vlen -> unchanged
+    assert pb.nr_cap_for_dtypes(16, None, ("i8", "i8", "i32")) == 16  # no vlen -> unchanged
 
 
 def test_block_table_without_vlen_is_byte_identical_to_the_dtype_blind_behaviour():
     """The widening is opt-in: omitting vlen must not move a single block."""
-    shapes = [_S("linalg.matmul", (64, 256), (288,)),
-              _S("linalg.batch_matmul", (6, 1500, 1500), (64,))]
-    assert (pb.block_table(shapes, mr_cap=4, nr_cap=16)
-            == pb.block_table(shapes, mr_cap=4, nr_cap=16, vlen=None))
+    shapes = [_S("linalg.matmul", (64, 256), (288,)), _S("linalg.batch_matmul", (6, 1500, 1500), (64,))]
+    assert pb.block_table(shapes, mr_cap=4, nr_cap=16) == pb.block_table(shapes, mr_cap=4, nr_cap=16, vlen=None)
 
 
 def test_the_widened_cap_reaches_the_chosen_block_for_an_int8_contraction():
@@ -417,7 +423,7 @@ def test_the_widened_cap_reaches_the_chosen_block_for_an_int8_contraction():
     i8 = [_S("linalg.matmul", (64, 256), (288,), dtypes=("i8", "i8", "i32"))]
     f32 = [_S("linalg.matmul", (64, 256), (288,), dtypes=("f32", "f32", "f32"))]
     assert set(pb.block_table(i8, mr_cap=4, nr_cap=16, vlen=256).values()) == {(4, 32)}
-    assert set(pb.block_table(i8, mr_cap=4, nr_cap=16).values()) == {(4, 16)}      # opt-in only
+    assert set(pb.block_table(i8, mr_cap=4, nr_cap=16).values()) == {(4, 16)}  # opt-in only
     assert set(pb.block_table(f32, mr_cap=4, nr_cap=16, vlen=256).values()) == {(4, 16)}
 
 
@@ -465,7 +471,7 @@ def test_the_n_fill_measurement_is_recorded_with_BOTH_signs():
 
     desc = F.get(PEROP_NR_FILL_NAME).description
     assert "1.160x faster" in desc and "1.196x slower" in desc
-    assert "m4" in desc and "m8" in desc          # the mechanism, not just the numbers
+    assert "m4" in desc and "m8" in desc  # the mechanism, not just the numbers
     assert "search knob, not a default" in desc
 
 
@@ -541,7 +547,7 @@ def test_the_nr_ladder_brackets_the_plain_cap_without_duplicating_it():
 
     caps = {F.parse_perop_nr_sentinel(name) for name in F.PEROP_NR_LADDER}
     assert caps == {2, 4, 8, 32}
-    assert 16 not in caps                 # plain perop_register_block already means the default 16
+    assert 16 not in caps  # plain perop_register_block already means the default 16
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -581,16 +587,17 @@ def test_the_derived_mr_cap_fails_OPEN_to_the_callers_cap():
     assert pb.mr_cap_for_registers(4, vlen=256, nr=16, dtypes=()) == 4
     assert pb.mr_cap_for_registers(4, vlen=256, nr=16, dtypes=("x", "y", "z")) == 4
     assert pb.mr_cap_for_registers(4, vlen=256, nr=0, dtypes=("i8", "i8", "i32")) == 4
-    assert pb.accum_elem_bits(("i8", "i8", "i32")) == 32     # the OUT type, not the narrowest
+    assert pb.accum_elem_bits(("i8", "i8", "i32")) == 32  # the OUT type, not the narrowest
     assert pb.accum_elem_bits(()) is None
 
 
 def test_block_table_without_mr_vlen_is_byte_identical():
     """The derivation is opt-in: omitting ``mr_vlen`` must not move a single block."""
-    shapes = [_S("linalg.matmul", (64, 256), (288,), dtypes=("i8", "i8", "i32")),
-              _S("linalg.batch_matmul", (6, 1500, 1500), (64,), dtypes=("f32", "f32", "f32"))]
-    assert (pb.block_table(shapes, mr_cap=4, nr_cap=16)
-            == pb.block_table(shapes, mr_cap=4, nr_cap=16, mr_vlen=None))
+    shapes = [
+        _S("linalg.matmul", (64, 256), (288,), dtypes=("i8", "i8", "i32")),
+        _S("linalg.batch_matmul", (6, 1500, 1500), (64,), dtypes=("f32", "f32", "f32")),
+    ]
+    assert pb.block_table(shapes, mr_cap=4, nr_cap=16) == pb.block_table(shapes, mr_cap=4, nr_cap=16, mr_vlen=None)
 
 
 def test_the_derived_cap_reaches_the_chosen_block_and_stays_a_cap():
@@ -612,9 +619,12 @@ def test_the_derived_cap_is_per_op_not_one_number_for_the_model():
     a reason that is NOT gcd(M) clipping a shared cap -- their N tiles differ, so their rows cost
     different numbers of registers."""
     i8 = ("i8", "i8", "i32")
-    table = pb.block_table([_S("linalg.matmul", (64, 256), (576,), dtypes=i8),
-                            _S("linalg.matmul", (64, 49), (1024,), dtypes=i8)],
-                           mr_cap=4, nr_cap=16, mr_vlen=256)
+    table = pb.block_table(
+        [_S("linalg.matmul", (64, 256), (576,), dtypes=i8), _S("linalg.matmul", (64, 49), (1024,), dtypes=i8)],
+        mr_cap=4,
+        nr_cap=16,
+        mr_vlen=256,
+    )
     by_nr = {nr: mr for mr, nr in table.values()}
     assert len(by_nr) == 2, table
     assert by_nr[16] != by_nr[7], "a narrower N tile leaves room for MORE accumulator rows"
@@ -669,12 +679,13 @@ def test_the_mr_fill_knob_is_registered_at_import_and_ranked():
     from merlin.llvmlower.impr_features import PEROP_MR_FILL_NAME
     from merlin.mining.wholemodel_proposer import RANKED_LEVERS, _composes
 
-    code = ("import json\n"
-            "from merlin.llvmlower import impr_features as F\n"
-            "print(json.dumps(F.PEROP_MR_FILL_NAME in F.known()))\n")
+    code = (
+        "import json\n"
+        "from merlin.llvmlower import impr_features as F\n"
+        "print(json.dumps(F.PEROP_MR_FILL_NAME in F.known()))\n"
+    )
     env = {"PYTHONPATH": str(merlin_dir() / "python"), "PATH": "/usr/bin:/bin"}
-    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                       cwd=repo_root(), env=env)
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=repo_root(), env=env)
     assert r.returncode == 0, r.stderr[-2000:]
     assert json.loads(r.stdout.strip().splitlines()[-1]) is True
 

@@ -4,6 +4,7 @@ Gated on a real capture with weights (the committed prov-only corpus has no weig
 assembled section is a well-formed, self-contained "model" directory the whole-model K1 build consumes
 — exercised without touching the board (the on-board run is validated separately).
 """
+
 from __future__ import annotations
 
 import json
@@ -16,7 +17,8 @@ from merlin.xdsl_dialects import _common
 _CAP = repo_root() / "out/artifacts/recaptures/small_consistent"
 pytestmark = pytest.mark.skipif(
     not _common.HAS_XDSL or not (_CAP / "model.mlir").is_file(),
-    reason="small_consistent capture (with weights) not present")
+    reason="small_consistent capture (with weights) not present",
+)
 
 
 def test_section_bundle_is_a_valid_buildable_model_dir(tmp_path):
@@ -29,27 +31,32 @@ def test_section_bundle_is_a_valid_buildable_model_dir(tmp_path):
     summary = build_section_bundle(str(_CAP), {"matmul_0"}, out)
 
     # a self-contained section "model" directory the K1 build (build_k1_binary) consumes unchanged.
-    for f in ("model.mlir", "weights.safetensors", "weights.safetensors.manifest.json",
-              "inputs.npz", "input_order.json"):
+    for f in (
+        "model.mlir",
+        "weights.safetensors",
+        "weights.safetensors.manifest.json",
+        "inputs.npz",
+        "input_order.json",
+    ):
         assert (out / f).is_file(), f
 
     text = (out / "model.mlir").read_text()
-    assert "func.func @forward(" in text and text.count("func.call") == 1   # exactly the one section kernel
+    assert "func.func @forward(" in text and text.count("func.call") == 1  # exactly the one section kernel
 
     man = json.loads((out / "weights.safetensors.manifest.json").read_text())
     assert len(man) == summary["n_boundary_args"]
     # every boundary arg is classified (weight -> param carried in the section safetensors; else input).
     assert summary["n_weights"] + summary["n_inputs"] == summary["n_boundary_args"]
-    load_safetensors_header(out / "weights.safetensors")                    # section safetensors parses
+    load_safetensors_header(out / "weights.safetensors")  # section safetensors parses
 
     z = np.load(out / "inputs.npz")
     assert len(z.files) == summary["n_inputs"]
-    assert summary["output_shape"]                                          # the section produces an output
+    assert summary["output_shape"]  # the section produces an output
 
 
 def test_bad_region_id_fails_closed(tmp_path):
-    from merlin.xdsl_dialects.lowering.outline import OutlineError
     from merlin.mining.section_build import build_section_bundle
+    from merlin.xdsl_dialects.lowering.outline import OutlineError
 
     with pytest.raises((OutlineError, ValueError)):
         build_section_bundle(str(_CAP), {"no_such_region"}, tmp_path / "nope")
@@ -58,6 +65,7 @@ def test_bad_region_id_fails_closed(tmp_path):
 def _k1_up() -> bool:
     try:
         from merlin.mining import k1
+
         return k1.available()
     except Exception:  # noqa: BLE001
         return False
@@ -86,7 +94,7 @@ def test_section_runs_correctly_on_k1_board(tmp_path):
     res = k1.run_on_k1(str(sec), str(tmp_path / "work"), pkg, timeout=900)
     board = np.asarray(_parse_console(res.get("console", ""), 0)["prefix"], dtype=np.float32).ravel()
 
-    r = ref[:len(board)]
+    r = ref[: len(board)]
     cos = float(np.dot(board, r) / (np.linalg.norm(board) * np.linalg.norm(r) + 1e-30))
     rel = float(np.max(np.abs(board - r)) / (np.max(np.abs(r)) + 1e-30))
     assert cos > 0.9999 and rel < 1e-3, f"K1 section output diverged: cos={cos}, rel={rel}"

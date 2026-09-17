@@ -13,6 +13,7 @@ Three things are pinned here, and the first is the one that makes the rest worth
 3. **The bundle adapter does not stamp "derived" on a block that was never read.** ``_simt_fact_bundle``
    used to compute ``"derived": name in f`` — key presence, not provenance.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -106,8 +107,7 @@ def _scan(gate, tmp_path, source: str, rel: str) -> list[dict]:
 
 def test_a_fact_producer_reading_a_forbidden_source_is_caught(gate, tmp_path):
     """THE failing case. Without this the gate is decoration."""
-    found = _scan(gate, tmp_path, _BAD_CYCLOTRON,
-                  "merlin/python/merlin/targetgen/rtl/fake_introspect.py")
+    found = _scan(gate, tmp_path, _BAD_CYCLOTRON, "merlin/python/merlin/targetgen/rtl/fake_introspect.py")
     assert [f["source"] for f in found] == ["cyclotron"], found
     assert found[0]["kind"] == "violation"
     assert "fact" in found[0]["why_fact"]
@@ -118,8 +118,7 @@ def test_a_fact_producer_reading_an_arc_model_is_not_caught(gate, tmp_path):
 
     Told apart from ``npu_model`` by what the artifact IS (a ``circt-arc`` product), never by whether
     the word "model" appears — both spellings read like "the model"."""
-    found = _scan(gate, tmp_path, _GOOD_ARC,
-                  "merlin/python/merlin/targetgen/rtl/fake_arc_introspect.py")
+    found = _scan(gate, tmp_path, _GOOD_ARC, "merlin/python/merlin/targetgen/rtl/fake_arc_introspect.py")
     assert found == [], found
 
 
@@ -139,7 +138,7 @@ def test_a_grader_running_spike_for_a_verdict_is_not_caught(gate, tmp_path):
 def test_an_inline_cross_check_annotation_demotes_a_hit(gate, tmp_path):
     src = _BAD_CYCLOTRON.replace(
         'cfg = env("MERLIN_MUON_CONFIG")',
-        'cfg = env("MERLIN_MUON_CONFIG")  # fact-source-ok: compared against the derived value only')
+        'cfg = env("MERLIN_MUON_CONFIG")  # fact-source-ok: compared against the derived value only')  # fmt: skip
     found = _scan(gate, tmp_path, src, "merlin/python/merlin/targetgen/rtl/fake_introspect.py")
     assert [f["kind"] for f in found] == ["cross_check"], found
 
@@ -157,16 +156,14 @@ def test_the_ratchet_is_scoped_per_source_so_one_debt_cannot_excuse_another(gate
 def test_every_ratchet_entry_is_a_finding_the_gate_actually_produces(gate):
     """A ratchet entry the scan can never emit is worse than no entry: it reads as accounted-for debt
     while the gate is blind to it. Every entry must correspond to a live finding."""
-    live = {(f["path"], f["source"]) for f in gate.findings()
-            if f["kind"] in ("violation", "ratcheted")}
+    live = {(f["path"], f["source"]) for f in gate.findings() if f["kind"] in ("violation", "ratcheted")}
     stale = set(gate.load_ratchet()) - live
     assert not stale, f"ratchet entries the gate no longer produces (delete them): {sorted(stale)}"
 
 
 def test_the_repo_has_no_unratcheted_fact_provenance_violation(gate):
     viol = [f for f in gate.findings() if f["kind"] == "violation"]
-    assert not viol, "\n".join(f"{f['path']}:{f['lineno']} [{f['source']}] {f['literal']!r}"
-                               for f in viol)
+    assert not viol, "\n".join(f"{f['path']}:{f['lineno']} [{f['source']}] {f['literal']!r}" for f in viol)
 
 
 def test_the_gate_json_mode_is_machine_readable(gate, capsys):
@@ -178,7 +175,7 @@ def test_the_gate_json_mode_is_machine_readable(gate, capsys):
 def test_fail_on_any_actually_fails_while_the_default_reports(gate):
     """Reporting-only by default; the failing behaviour is opt-in and must really fail."""
     assert gate.main([]) == 0
-    assert gate.main(["--fail-on-any"]) == 1     # the ratcheted debt is real and non-empty
+    assert gate.main(["--fail-on-any"]) == 1  # the ratcheted debt is real and non-empty
 
 
 # --------------------------------------------------------------------------------------------
@@ -187,6 +184,7 @@ def test_fail_on_any_actually_fails_while_the_default_reports(gate):
 @pytest.fixture(scope="module")
 def introspect():
     from merlin.runtime.backends.base import get_backend
+
     return get_backend("muon").muon_introspect
 
 
@@ -238,9 +236,9 @@ def test_geometry_is_read_out_of_the_elaboration_when_it_is_present(introspect):
         pytest.skip("MERLIN_CHIPYARD resolves, but the elaboration tree is not present")
     prov = facts["facts"]["simt"]["provenance"]
     assert prov["lanes_per_warp"]["state"] == "derived"
-    assert "tmask" in prov["lanes_per_warp"]["evidence"]        # one mask bit per lane
+    assert "tmask" in prov["lanes_per_warp"]["evidence"]  # one mask bit per lane
     assert prov["warps_per_core"]["state"] == "derived"
-    assert "perWarp" in prov["warps_per_core"]["evidence"]      # one counter set per warp
+    assert "perWarp" in prov["warps_per_core"]["evidence"]  # one counter set per warp
     assert prov["cores"]["state"] == "derived"
     assert "instance tree" in prov["cores"]["evidence"]
     assert facts["facts"]["simt"]["state"] == "derived"
@@ -248,6 +246,7 @@ def test_geometry_is_read_out_of_the_elaboration_when_it_is_present(introspect):
     # the state lived only in `provenance`, so the block carried no top-level `state` and the SIMT
     # renderer printed "Execution geometry: unavailable" over a fully derived geometry.
     from merlin.targetgen.rtl import mlc_bridge
+
     assert "Execution geometry**: lanes_per_warp=" in mlc_bridge.render_fact_bundle_for("muon")
     # Shared-memory capacity summed from the RTL's OWN SRAM macros, not a 128*1024 literal.
     smem = facts["facts"]["shared_memory"]

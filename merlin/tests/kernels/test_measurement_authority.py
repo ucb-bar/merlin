@@ -6,15 +6,23 @@ derivable per-target fact". That is fine for one target and wrong for five: a ta
 substrate silently yields no number, and a number read off the wrong substrate is worse than none
 because it gets cited.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from merlin.kernels import measurement as M
 
-_DECL = {"measurement": {"cycles_from": "spike", "wall_from": "k1",
-                         "cycles_tier": "functional", "wall_tier": "silicon",
-                         "speed_of_light": "sol", "citable_tier": "rtl"}}
+_DECL = {
+    "measurement": {
+        "cycles_from": "spike",
+        "wall_from": "k1",
+        "cycles_tier": "functional",
+        "wall_tier": "silicon",
+        "speed_of_light": "sol",
+        "citable_tier": "rtl",
+    }
+}
 
 
 class TestUndeclaredIsUnknownNotDefault:
@@ -43,7 +51,7 @@ class TestTheAuthoritativeSubstrateWins:
         """The measured trap: more than one substrate emits `cycles` while only one is authoritative,
         the other being a timer-derived ESTIMATE. Picking by field name gets the estimate."""
         a = M.authority_for("t", _DECL)
-        ms = [{"target": "k1", "cycles": 999}]          # authoritative substrate absent
+        ms = [{"target": "k1", "cycles": 999}]  # authoritative substrate absent
         assert M.pick(ms, a, "cycles") == (None, None)
 
     def test_wall_time_has_its_own_authority(self):
@@ -52,8 +60,9 @@ class TestTheAuthoritativeSubstrateWins:
         assert M.pick(ms, a, "wall") == (500, "k1")
 
     def test_a_target_with_no_wall_authority_reports_the_gap(self):
-        a = M.authority_for("t", {"measurement": {"cycles_from": "cyclotron", "wall_from": None,
-                                                  "speed_of_light": "sol"}})
+        a = M.authority_for(
+            "t", {"measurement": {"cycles_from": "cyclotron", "wall_from": None, "speed_of_light": "sol"}}
+        )
         assert any("no wall-time authority" in g for g in a.gaps())
         assert M.pick([{"target": "k1", "wall_ns": 1}], a, "wall") == (None, None)
 
@@ -128,6 +137,7 @@ class TestEveryRegisteredTargetDeclaresAnAuthority:
 
     def test_all_six_declare(self):
         from merlin.kernels import measurement as M
+
         undeclared = [t for t in self.TARGETS if not M.authority_for(t).declared]
         assert not undeclared, f"no measurement authority declared for {undeclared}"
 
@@ -136,6 +146,7 @@ class TestEveryRegisteredTargetDeclaresAnAuthority:
         Calling that `rtl` because it is the most expensive tier the target has would claim a
         fidelity the substrate does not provide."""
         from merlin.kernels import measurement as M
+
         a = M.authority_for("atlas")
         assert a.cycles_tier == "cycle_model" and a.citable_tier == "cycle_model"
 
@@ -143,6 +154,7 @@ class TestEveryRegisteredTargetDeclaresAnAuthority:
         """A `speed_of_light` NAME that nothing computes makes attainment look declared while it is
         UNKNOWN. radiance and atlas declare null and say so in `gaps()`."""
         from merlin.kernels import measurement as M
+
         for t in ("radiance", "atlas"):
             a = M.authority_for(t)
             assert a.speed_of_light is None
@@ -152,6 +164,7 @@ class TestEveryRegisteredTargetDeclaresAnAuthority:
 class TestAttainmentPicksByAuthorityNotByFieldName:
     def test_the_authoritative_substrate_wins_over_the_first_entry(self):
         from merlin.kernels import measurement as M
+
         auth = M.MeasurementAuthority(target="t", cycles_from="spike", declared=True)
         meas = [{"target": "k1", "cycles": 999}, {"target": "spike", "cycles": 42}]
         assert M.pick(meas, auth, "cycles") == (42, "spike")
@@ -160,6 +173,7 @@ class TestAttainmentPicksByAuthorityNotByFieldName:
         """NEGATIVE CASE: the authoritative substrate did not report, and another one did. The answer
         is UNKNOWN, not the other one's number."""
         from merlin.kernels import measurement as M
+
         auth = M.MeasurementAuthority(target="t", cycles_from="spike", declared=True)
         assert M.pick([{"target": "k1", "cycles": 999}], auth, "cycles") == (None, None)
 
@@ -178,6 +192,7 @@ class TestDeclarationSurvivesARedirectedOutRoot:
 
     def test_generated_targets_still_declare_under_a_redirected_out_root(self, monkeypatch, tmp_path):
         from merlin.kernels import measurement as meas
+
         monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "elsewhere"))
         for target in ("rvv", "radiance", "atlas"):
             auth = meas.authority_for(target)
@@ -187,6 +202,7 @@ class TestDeclarationSurvivesARedirectedOutRoot:
     def test_the_fallback_records_which_file_answered(self, monkeypatch, tmp_path):
         """Provenance, not just a value: a reader must never have to infer which file was believed."""
         from merlin.kernels import measurement as meas
+
         assert meas.authority_for("rvv").source == "capability_manifest"
         monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "elsewhere"))
         assert meas.authority_for("rvv").source == "tracked_contract"
@@ -195,6 +211,7 @@ class TestDeclarationSurvivesARedirectedOutRoot:
         """Two different facts. Collapsing them sends the reader to argue about a target's contract
         when the actual problem is that nothing could be read."""
         from merlin.kernels import measurement as meas
+
         auth = meas.authority_for("no_such_target_anywhere")
         assert not auth.declared
         assert auth.lookup_error
@@ -204,6 +221,7 @@ class TestDeclarationSurvivesARedirectedOutRoot:
     def test_a_descriptor_with_no_measurement_block_is_undeclared_not_a_lookup_error(self):
         """The genuine 'declares nothing' case must keep saying exactly that."""
         from merlin.kernels import measurement as meas
+
         auth = meas.authority_for("t", descriptor={"compute_units": []})
         assert not auth.declared and auth.lookup_error is None
         assert "no measurement authority declared" in auth.gaps()[0]
@@ -213,11 +231,15 @@ class TestDeclarationSurvivesARedirectedOutRoot:
         returns wall=None for every fork, `speedup` and `attainment_vs_expert` are None everywhere,
         and the beam has nothing to rank by."""
         from pathlib import Path
+
         from merlin.kernels.compare import RvvFingerprint
         from merlin.mining.beam import _score
+
         monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "elsewhere"))
-        result = {"correctness": {"gate_ok": True},
-                  "measurement": [{"target": "k1", "cycles": 500_000, "wall_ns": 112_500}]}
+        result = {
+            "correctness": {"gate_ok": True},
+            "measurement": [{"target": "k1", "cycles": 500_000, "wall_ns": 112_500}],
+        }
         curated = RvvFingerprint.from_curated("void f(){}", {"op": "matmul"}, "curated")
         sc = _score(result, Path(tmp_path / "absent"), curated, {"op": "matmul"}, target="rvv")
         assert sc["k1_wall_ns"] == 112_500
@@ -229,10 +251,14 @@ class TestDeclarationSurvivesARedirectedOutRoot:
         whichever substrate that OTHER target declares and attributes the number to this run. An
         unnamed target must be UNKNOWN."""
         from pathlib import Path
+
         from merlin.kernels.compare import RvvFingerprint
         from merlin.mining.beam import _score
-        result = {"correctness": {"gate_ok": True},
-                  "measurement": [{"target": "k1", "cycles": 500_000, "wall_ns": 112_500}]}
+
+        result = {
+            "correctness": {"gate_ok": True},
+            "measurement": [{"target": "k1", "cycles": 500_000, "wall_ns": 112_500}],
+        }
         curated = RvvFingerprint.from_curated("void f(){}", {"op": "matmul"}, "curated")
         sc = _score(result, Path(tmp_path / "absent"), curated, {"op": "matmul"})
         assert sc["k1_wall_ns"] is None and sc["wall_from"] is None

@@ -1,12 +1,13 @@
 """K10: broken packages must fail closed, with the expected plane + FailureCategory."""
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 from pathlib import Path
 
 import pytest
 import yaml
 
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.targetgen.oot_runner import certify
 
 REPO = repo_root()

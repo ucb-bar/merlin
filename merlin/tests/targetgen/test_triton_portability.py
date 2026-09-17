@@ -15,6 +15,7 @@ default contract, so asking for an out-of-tree or misspelled target quietly lowe
 and simulating correctly. That failure is invisible without a test that asks for a target which does
 not exist.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -81,7 +82,8 @@ def test_each_target_lowers_to_its_own_dialect(descents):
         dialects[name] = {op.split(".", 1)[0] for op in ops}
         assert len(dialects[name]) == 1, f"{name} mixed dialects: {ops}"
     assert len({frozenset(v) for v in dialects.values()}) == len(dialects), (
-        f"two targets produced the same dialect, so portability is untested: {dialects}")
+        f"two targets produced the same dialect, so portability is untested: {dialects}"
+    )
 
 
 def test_every_target_produces_a_command_buffer_naming_itself(descents):

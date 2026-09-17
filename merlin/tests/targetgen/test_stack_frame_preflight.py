@@ -1,4 +1,5 @@
 """A target-bound LLVM object is admitted only with fresh, bounded static-stack evidence."""
+
 from __future__ import annotations
 
 import hashlib
@@ -7,20 +8,25 @@ from pathlib import Path
 
 import pytest
 
-from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
 from merlin.targetgen.contract import compile as compiler
+from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
 
 
 def _recipe(*, budget: int = 4096, policy: bool = True) -> HarnessBuildRecipe:
     stack = KernelStackFramePolicy("fixture_entry", budget) if policy else None
     return HarnessBuildRecipe(
-        compiler=Path("/fixture/cc"), include_roots=(), support_sources=(),
-        link_script=Path("/fixture/link.ld"), load_address=0,
-        cflags=("-march=rv64gc",), error_cls=ValueError, kernel_stack_frame=stack)
+        compiler=Path("/fixture/cc"),
+        include_roots=(),
+        support_sources=(),
+        link_script=Path("/fixture/link.ld"),
+        load_address=0,
+        cflags=("-march=rv64gc",),
+        error_cls=ValueError,
+        kernel_stack_frame=stack,
+    )
 
 
-def _object_build(tmp_path, monkeypatch, report: str | None, *, budget: int = 4096,
-                  stale: str | None = None):
+def _object_build(tmp_path, monkeypatch, report: str | None, *, budget: int = 4096, stale: str | None = None):
     from merlin.llvmlower import codegen, pipeline
     from merlin.runtime.backends import base
 
@@ -45,15 +51,14 @@ def _object_build(tmp_path, monkeypatch, report: str | None, *, budget: int = 40
 
 def test_target_bound_object_records_hash_bound_static_frame(tmp_path, monkeypatch):
     obj, calls = _object_build(
-        tmp_path, monkeypatch,
-        f"{tmp_path}/kernel.ll:helper\t32\tstatic\n"
-        f"{tmp_path}/kernel.ll:fixture_entry\t384\tstatic\n")
+        tmp_path,
+        monkeypatch,
+        f"{tmp_path}/kernel.ll:helper\t32\tstatic\n{tmp_path}/kernel.ll:fixture_entry\t384\tstatic\n",
+    )
 
     assert obj == tmp_path / "kernel.o"
-    assert calls == [(tmp_path / "kernel.ll", tmp_path / "kernel.o", "riscv",
-                      ("-march=rv64gc", "-fstack-usage"))]
-    canonical_report = (
-        "kernel.ll:helper\t32\tstatic\nkernel.ll:fixture_entry\t384\tstatic\n")
+    assert calls == [(tmp_path / "kernel.ll", tmp_path / "kernel.o", "riscv", ("-march=rv64gc", "-fstack-usage"))]
+    canonical_report = "kernel.ll:helper\t32\tstatic\nkernel.ll:fixture_entry\t384\tstatic\n"
     assert (tmp_path / "kernel.su").read_text() == canonical_report
     receipt = json.loads((tmp_path / "kernel.stack_frame.json").read_text())
     assert receipt == {
@@ -74,15 +79,17 @@ def test_target_bound_object_records_hash_bound_static_frame(tmp_path, monkeypat
     }
 
 
-@pytest.mark.parametrize(("report", "message"), [
-    (None, "no regular stack-usage report"),
-    ("not a report\n", "three tab-separated fields"),
-    ("kernel.ll:fixture_entry\t64\tdynamic\n", "dynamic allocation"),
-    ("kernel.ll:other_entry\t64\tstatic\n", "0 rows for entrypoint"),
-    ("other.ll:fixture_entry\t64\tstatic\n", "names source"),
-])
-def test_target_bound_object_fails_closed_on_unproven_report(
-        tmp_path, monkeypatch, report, message):
+@pytest.mark.parametrize(
+    ("report", "message"),
+    [
+        (None, "no regular stack-usage report"),
+        ("not a report\n", "three tab-separated fields"),
+        ("kernel.ll:fixture_entry\t64\tdynamic\n", "dynamic allocation"),
+        ("kernel.ll:other_entry\t64\tstatic\n", "0 rows for entrypoint"),
+        ("other.ll:fixture_entry\t64\tstatic\n", "names source"),
+    ],
+)
+def test_target_bound_object_fails_closed_on_unproven_report(tmp_path, monkeypatch, report, message):
     with pytest.raises(ValueError, match=message):
         _object_build(tmp_path, monkeypatch, report)
     receipt = json.loads((tmp_path / "kernel.stack_frame.json").read_text())
@@ -93,17 +100,13 @@ def test_target_bound_object_fails_closed_on_unproven_report(
 
 def test_stale_sidecar_is_removed_before_compile(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="no regular stack-usage report"):
-        _object_build(
-            tmp_path, monkeypatch, None,
-            stale="kernel.ll:fixture_entry\t64\tstatic\n")
+        _object_build(tmp_path, monkeypatch, None, stale="kernel.ll:fixture_entry\t64\tstatic\n")
     assert not (tmp_path / "kernel.su").exists()
 
 
 def test_oversized_frame_is_rejected_with_numeric_receipt(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="exceeding the target-declared 4096-byte budget by 1"):
-        _object_build(
-            tmp_path, monkeypatch,
-            "kernel.ll:fixture_entry\t4097\tstatic\n")
+        _object_build(tmp_path, monkeypatch, "kernel.ll:fixture_entry\t4097\tstatic\n")
     receipt = json.loads((tmp_path / "kernel.stack_frame.json").read_text())
     assert receipt["status"] == "rejected"
     assert receipt["frame_bytes"] == 4097
@@ -166,8 +169,7 @@ def _repairable_build(tmp_path, monkeypatch, *, frames, budget=4096, llvm=_OVERS
         calls.append(source.name)
         output.write_bytes(b"fixture object " + source.name.encode())
         frame = sizes.pop(0)
-        output.with_suffix(".su").write_text(
-            f"{source}:fixture_entry\t{frame}\tstatic\n", encoding="utf-8")
+        output.with_suffix(".su").write_text(f"{source}:fixture_entry\t{frame}\tstatic\n", encoding="utf-8")
         return output
 
     monkeypatch.setattr(codegen, "compile_ll", compile_ll)
@@ -217,8 +219,12 @@ def test_a_repair_that_STILL_does_not_fit_raises_the_ORIGINAL_refusal(tmp_path, 
 def test_an_oversized_frame_with_NOTHING_BINDABLE_is_rejected_unchanged(tmp_path, monkeypatch):
     """No alloca to move means no repair is available, and the refusal must stand."""
     with pytest.raises(ValueError, match="budget by 12416"):
-        _repairable_build(tmp_path, monkeypatch, frames=[16512],
-                          llvm="; fixture\ndefine void @fixture_entry(ptr %0) {\n  ret void\n}\n")
+        _repairable_build(
+            tmp_path,
+            monkeypatch,
+            frames=[16512],
+            llvm="; fixture\ndefine void @fixture_entry(ptr %0) {\n  ret void\n}\n",
+        )
     receipt = json.loads((tmp_path / "kernel.stack_frame.json").read_text())
     assert receipt["status"] == "rejected" and receipt["repair"] is None
     assert not (tmp_path / "kernel.arena.ll").exists()

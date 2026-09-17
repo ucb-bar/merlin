@@ -7,6 +7,7 @@ neither. Filing atlas as "an NPU" and giving it one facet leaves 62% of its engi
 undescribed. So the invariants here are about never collapsing the set, and about the three
 vocabularies for "what kind of machine is this" being one relationship rather than three opinions.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -20,7 +21,7 @@ class TestTheMappingIsTotalBothWays:
     def test_every_compute_unit_kind_has_a_facet_decision(self):
         from merlin.targetgen.compute_units import KINDS
 
-        E.check_covers_kinds(KINDS)          # raises with the missing/stale names if not
+        E.check_covers_kinds(KINDS)  # raises with the missing/stale names if not
 
     def test_a_new_kind_with_no_mapping_is_refused(self):
         # The failure mode this prevents: a kind is added to KINDS, nothing here mentions it, and it
@@ -55,10 +56,14 @@ class TestTheSetIsNeverCollapsed:
     def test_a_hybrid_reports_every_engine_it_has(self):
         from merlin.targetgen.compute_units import compute_units
 
-        units = compute_units({"compute_units": [
-            {"name": "cluster", "kind": "simt", "contains": ["mesh"]},
-            {"name": "mesh", "kind": "systolic"},
-        ]})
+        units = compute_units(
+            {
+                "compute_units": [
+                    {"name": "cluster", "kind": "simt", "contains": ["mesh"]},
+                    {"name": "mesh", "kind": "systolic"},
+                ]
+            }
+        )
         assert E.engines_of_units(units) == frozenset({"simt", "systolic"})
 
     def test_composition_adds_engines_and_never_removes_them(self):
@@ -66,10 +71,14 @@ class TestTheSetIsNeverCollapsed:
         # would describe a hybrid as whichever half happened to be outermost.
         from merlin.targetgen.compute_units import compute_units
 
-        units = compute_units({"compute_units": [
-            {"name": "cluster", "kind": "simt", "contains": ["mesh"]},
-            {"name": "mesh", "kind": "systolic"},
-        ]})
+        units = compute_units(
+            {
+                "compute_units": [
+                    {"name": "cluster", "kind": "simt", "contains": ["mesh"]},
+                    {"name": "mesh", "kind": "systolic"},
+                ]
+            }
+        )
         got = E.engines_of_units(units)
         assert "systolic" in got, "the contained mesh disappeared"
         # ...and the facet view follows the whole set, so the hybrid gets BOTH facets.
@@ -145,7 +154,8 @@ class TestFacetsFollowEngines:
         from merlin.kernels.cca_contract import FACET_CLASSES
 
         assert E.ENGINE_FACETS <= set(FACET_CLASSES), (
-            f"engine facets {sorted(E.ENGINE_FACETS - set(FACET_CLASSES))} are not in the CCA schema")
+            f"engine facets {sorted(E.ENGINE_FACETS - set(FACET_CLASSES))} are not in the CCA schema"
+        )
 
     def test_every_cca_facet_is_declared_engine_scoped_or_agnostic(self):
         # The decision a new facet must not skip. Defaulting an unclassified facet to agnostic would
@@ -177,7 +187,8 @@ class TestFacetsFollowEngines:
         for tag in sorted(tags & set(FACET_CLASSES)):
             assert tag in classified, (
                 f"{tag!r} is used as a FIELD_REGISTRY family tag and is a CCA facet, but the engine "
-                f"model classifies it as neither engine-scoped nor agnostic")
+                f"model classifies it as neither engine-scoped nor agnostic"
+            )
 
     def test_the_lane_facet_is_still_target_tagged_not_family_tagged(self):
         # Records a KNOWN gap rather than asserting the end state. vector.* is an ENGINE facet but its
@@ -187,10 +198,10 @@ class TestFacetsFollowEngines:
         # above and this one goes away.
         from merlin.kernels.cca_contract import FIELD_REGISTRY
 
-        vector_tags = {b for k, s in FIELD_REGISTRY.items() if s.axis.startswith("vector.")
-                       for b in s.backends}
+        vector_tags = {b for k, s in FIELD_REGISTRY.items() if s.axis.startswith("vector.") for b in s.backends}
         assert "vector" not in vector_tags, (
-            "vector.* is now family-tagged -- good: delete this test and rely on the one above")
+            "vector.* is now family-tagged -- good: delete this test and rely on the one above"
+        )
 
     def test_scalar_is_not_an_engine_facet(self):
         # A scalar core is the code AROUND the loop (EnvelopeFacet's subject), and that facet is

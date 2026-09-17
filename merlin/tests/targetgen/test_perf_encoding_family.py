@@ -10,6 +10,7 @@ operand encodings, so the cost of the encoding choice is isolated from everythin
 DECLARED and blocked, carrying its full claim contract and naming what is missing, because "blocked with
 a reason" and "absent" are different states and only one of them is honest here.
 """
+
 from __future__ import annotations
 
 import sys
@@ -23,6 +24,7 @@ sys.path.insert(0, str(repo_root() / "merlin" / "contract" / "capsules"))
 
 _PERF = merlin_dir() / "contract" / "capsules" / "profiles" / "_perf.yaml"
 
+
 def _ladder_levels() -> set[str]:
     """Every level the ladder names, READ from the generator's own vocabulary.
 
@@ -31,11 +33,13 @@ def _ladder_levels() -> set[str]:
     passing while the new rung sat empty.
     """
     import generate_corpus as GC
+
     return set(GC._PERFORMANCE_LEVELS)
 
 
 def _template() -> dict:
     import generate_corpus as GC
+
     return GC.load_profile("gemmini").get("_performance_template") or {}
 
 
@@ -79,8 +83,21 @@ def test_the_boundary_rung_is_blocked_with_its_reason_rather_than_absent():
     assert (perf.get("emitter") or {}).get("knobs", {}).get("needs"), "say what is missing"
 
 
-_DTYPE_TOKENS = {"int8", "i8", "bf16", "fp8_e4m3", "fp8_e5m2", "mxfp4", "mxfp6", "mxfp8",
-                 "fp16", "f16", "fp32", "f32", "i32"}
+_DTYPE_TOKENS = {
+    "int8",
+    "i8",
+    "bf16",
+    "fp8_e4m3",
+    "fp8_e5m2",
+    "mxfp4",
+    "mxfp6",
+    "mxfp8",
+    "fp16",
+    "f16",
+    "fp32",
+    "f32",
+    "i32",
+}
 
 
 def _declared_values(node):
@@ -109,8 +126,10 @@ def test_the_template_declares_no_dtype():
 
 # ------------------------------------------------------------------ the encoding family itself
 
+
 def _expanded(target: str):
     import generate_corpus as GC
+
     from merlin.targetgen import corpus_spec as CSPEC
     from merlin.targetgen.corpora import descriptor_path
     from merlin.targetgen.target_experiment import load_target_experiment
@@ -138,9 +157,9 @@ def test_the_encoding_family_compares_two_of_the_targets_own_encodings(target):
     groups: dict[str, set] = {}
     for e in members:
         assert e["operand_dtype"] in declared, (
-            f"{e['name']} uses {e['operand_dtype']!r}, which {target} does not declare")
-        groups.setdefault(str((e.get("comparison_group") or {}).get("name")), set()).add(
-            e["operand_dtype"])
+            f"{e['name']} uses {e['operand_dtype']!r}, which {target} does not declare"
+        )
+        groups.setdefault(str((e.get("comparison_group") or {}).get("name")), set()).add(e["operand_dtype"])
     for name, encs in groups.items():
         assert len(encs) == 2, f"group {name} compares {encs}, which is not two encodings"
 
@@ -183,17 +202,20 @@ def test_a_group_reduced_to_one_member_is_dropped_rather_than_shipped():
     import generate_corpus as GC
 
     entries = [
-        {"name": "X0", "comparison_group": {"name": "g", "role": "a"},
-         "performance": {"family": "PG"}},
-        {"name": "X1", "comparison_group": {"name": "g", "role": "b"},
-         "performance": {"family": "PG"}},
-        {"name": "Y0", "comparison_group": {"name": "lonely", "role": "a"},
-         "performance": {"family": "PG"}},
+        {"name": "X0", "comparison_group": {"name": "g", "role": "a"}, "performance": {"family": "PG"}},
+        {"name": "X1", "comparison_group": {"name": "g", "role": "b"}, "performance": {"family": "PG"}},
+        {"name": "Y0", "comparison_group": {"name": "lonely", "role": "a"}, "performance": {"family": "PG"}},
     ]
     # The pruning walks `generated`, so drive it through a profile with no sweeps and pre-made members.
-    kept = [e for e in entries
-            if sum(1 for o in entries
-                   if (o.get("comparison_group") or {}).get("name")
-                   == (e.get("comparison_group") or {}).get("name")) >= 2]
+    kept = [
+        e
+        for e in entries
+        if sum(
+            1
+            for o in entries
+            if (o.get("comparison_group") or {}).get("name") == (e.get("comparison_group") or {}).get("name")
+        )
+        >= 2
+    ]
     assert [e["name"] for e in kept] == ["X0", "X1"]
     assert hasattr(GC, "expand_sweeps")

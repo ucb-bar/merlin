@@ -16,6 +16,7 @@ Three properties, each of which the repo has been bitten by the absence of:
   is the failure mode this repo keeps re-encountering; `--fail-on-unverified` must spell it the same
   way `--fail-on-dead` already does.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -45,20 +46,33 @@ def _gate():
 @pytest.fixture(autouse=True)
 def _no_ambient_logs(monkeypatch):
     """An outer audit or a live capsule run must not change what these tests measure."""
-    for var in (PS.PASS_LOG_ENV, PS.PASS_LOG_CAPSULE_ENV, PS.PASS_LOG_REQUIREMENTS_ENV,
-                PS.VERIFY_LOG_ENV):
+    for var in (PS.PASS_LOG_ENV, PS.PASS_LOG_CAPSULE_ENV, PS.PASS_LOG_REQUIREMENTS_ENV, PS.VERIFY_LOG_ENV):
         monkeypatch.delenv(var, raising=False)
 
 
-def _verdict(monkeypatch, path, item, *, verdict, method=None, target="target-under-test",
-             capsule="capsule-under-test", evidence=None):
+def _verdict(
+    monkeypatch,
+    path,
+    item,
+    *,
+    verdict,
+    method=None,
+    target="target-under-test",
+    capsule="capsule-under-test",
+    evidence=None,
+):
     """Write one verdict through the real recorder — never by hand-rolling the JSON."""
     monkeypatch.setenv(PS.VERIFY_LOG_ENV, str(path))
-    PS.record_verification(item.name,
-                           requirement_class=(item.required_by or (PS.UNKNOWN,))[0],
-                           method=method or PS.METHOD_FILECHECK, verdict=verdict,
-                           target=target, capsule=capsule,
-                           evidence=evidence or {}, provenance={"tool": "test"})
+    PS.record_verification(
+        item.name,
+        requirement_class=(item.required_by or (PS.UNKNOWN,))[0],
+        method=method or PS.METHOD_FILECHECK,
+        verdict=verdict,
+        target=target,
+        capsule=capsule,
+        evidence=evidence or {},
+        provenance={"tool": "test"},
+    )
     monkeypatch.delenv(PS.VERIFY_LOG_ENV, raising=False)
 
 
@@ -74,8 +88,7 @@ def _reach(monkeypatch, path, item):
     the ledger.
     """
     monkeypatch.setenv(PS.PASS_LOG_ENV, str(path))
-    PS._append({"kind": PS._LOG_INSTALL, "passes": {p.name: "instrumented" for p in CATALOG},
-                "pid": 0, "t": 0.0})
+    PS._append({"kind": PS._LOG_INSTALL, "passes": {p.name: "instrumented" for p in CATALOG}, "pid": 0, "t": 0.0})
     with PS.pass_run_context("capsule-under-test", item.required_by):
         PS.record_invocation(item.name, effect=PS.EFFECT_CHANGED, evidence={"subject_before": None})
     monkeypatch.delenv(PS.PASS_LOG_ENV, raising=False)
@@ -83,10 +96,17 @@ def _reach(monkeypatch, path, item):
 
 # --- the log itself -------------------------------------------------------------------------------
 
+
 def test_verdict_round_trips_with_the_fields_that_make_it_citable(tmp_path, monkeypatch):
     log = tmp_path / "verify.jsonl"
-    _verdict(monkeypatch, log, SUBJECT, verdict=PS.VERDICT_VERIFIED, method=PS.METHOD_SMT,
-             evidence={"shape": {"m": 2, "k": 2, "n": 2}, "solver_status": "unsat"})
+    _verdict(
+        monkeypatch,
+        log,
+        SUBJECT,
+        verdict=PS.VERDICT_VERIFIED,
+        method=PS.METHOD_SMT,
+        evidence={"shape": {"m": 2, "k": 2, "n": 2}, "solver_status": "unsat"},
+    )
 
     rec = json.loads(log.read_text(encoding="utf-8").strip())
     assert rec["kind"] == PS._LOG_VERDICT
@@ -108,15 +128,15 @@ def test_verdict_round_trips_with_the_fields_that_make_it_citable(tmp_path, monk
     assert row["requirement_classes"] == [SUBJECT.required_by[0]]
     # Every other catalogued pass is `unverified`, not silently absent: the gate's whole job is to
     # name the passes nobody checked, and it can only do that if they appear in the report.
-    assert {report["per_pass"][p.name]["status"] for p in CATALOG if p is not SUBJECT} \
-        == {"unverified"}
+    assert {report["per_pass"][p.name]["status"] for p in CATALOG if p is not SUBJECT} == {"unverified"}
 
 
 def test_a_missing_target_is_recorded_unknown_rather_than_defaulted(tmp_path, monkeypatch):
     """The formal layer validates a target-independent plane; it must not borrow a target name."""
     monkeypatch.setenv(PS.VERIFY_LOG_ENV, str(tmp_path / "verify.jsonl"))
-    PS.record_verification(SUBJECT.name, requirement_class=SUBJECT.required_by[0],
-                           method=PS.METHOD_SMT, verdict=PS.VERDICT_VERIFIED)
+    PS.record_verification(
+        SUBJECT.name, requirement_class=SUBJECT.required_by[0], method=PS.METHOD_SMT, verdict=PS.VERDICT_VERIFIED
+    )
     rec = json.loads((tmp_path / "verify.jsonl").read_text(encoding="utf-8").strip())
     assert rec["target"] == PS.UNKNOWN
 
@@ -125,11 +145,13 @@ def test_a_verdict_outside_the_vocabulary_raises_even_with_recording_off():
     """A typo that only surfaces once someone enables the log is a typo that ships."""
     assert PS.verify_log_path() is None
     with pytest.raises(ValueError):
-        PS.record_verification(SUBJECT.name, requirement_class=SUBJECT.required_by[0],
-                               method=PS.METHOD_SMT, verdict="passed")
+        PS.record_verification(
+            SUBJECT.name, requirement_class=SUBJECT.required_by[0], method=PS.METHOD_SMT, verdict="passed"
+        )
     with pytest.raises(ValueError):
-        PS.record_verification(SUBJECT.name, requirement_class=SUBJECT.required_by[0],
-                               method="eyeball", verdict=PS.VERDICT_VERIFIED)
+        PS.record_verification(
+            SUBJECT.name, requirement_class=SUBJECT.required_by[0], method="eyeball", verdict=PS.VERDICT_VERIFIED
+        )
 
 
 def test_solver_unknown_is_not_a_pass():
@@ -144,38 +166,51 @@ def test_refutation_dominates_and_keeps_its_counterexample(tmp_path, monkeypatch
     log = tmp_path / "verify.jsonl"
     _verdict(monkeypatch, log, SUBJECT, verdict=PS.VERDICT_VERIFIED)
     _verdict(monkeypatch, log, SUBJECT, verdict=PS.VERDICT_VERIFIED, method=PS.METHOD_SMT)
-    _verdict(monkeypatch, log, SUBJECT, verdict=PS.VERDICT_REFUTED, method=PS.METHOD_SMT,
-             evidence={"model": "a0 = 1, w0 = 0"})
+    _verdict(
+        monkeypatch,
+        log,
+        SUBJECT,
+        verdict=PS.VERDICT_REFUTED,
+        method=PS.METHOD_SMT,
+        evidence={"model": "a0 = 1, w0 = 0"},
+    )
 
     row = PS.verification_report(CATALOG, logs=[log])["per_pass"][SUBJECT.name]
     assert row["status"] == PS.VERDICT_REFUTED
     assert row["verdicts"] == {PS.VERDICT_VERIFIED: 2, PS.VERDICT_REFUTED: 1}
     # A refutation nobody can reproduce gets argued away rather than fixed.
-    assert any(e["verdict"] == PS.VERDICT_REFUTED and e["evidence"]["model"]
-               for e in row["evidence"])
+    assert any(e["verdict"] == PS.VERDICT_REFUTED and e["evidence"]["model"] for e in row["evidence"])
 
 
 def test_an_abstraction_is_recorded_but_is_not_verification(tmp_path, monkeypatch):
     """A check that could not be grounded is reported, never counted as a pass."""
     log = tmp_path / "verify.jsonl"
-    _verdict(monkeypatch, log, SUBJECT, verdict=PS.VERDICT_ABSTRACTED,
-             evidence={"reason": "the literal is not derivable from this target's facts"})
-    assert PS.verification_report(CATALOG, logs=[log])["per_pass"][SUBJECT.name]["status"] \
-        == PS.VERDICT_ABSTRACTED
+    _verdict(
+        monkeypatch,
+        log,
+        SUBJECT,
+        verdict=PS.VERDICT_ABSTRACTED,
+        evidence={"reason": "the literal is not derivable from this target's facts"},
+    )
+    assert PS.verification_report(CATALOG, logs=[log])["per_pass"][SUBJECT.name]["status"] == PS.VERDICT_ABSTRACTED
 
 
 def test_a_verdict_against_an_uncatalogued_name_is_surfaced(tmp_path, monkeypatch):
     """Evidence aimed at a renamed pass stops counting, which looks exactly like never running it."""
     log = tmp_path / "verify.jsonl"
     monkeypatch.setenv(PS.VERIFY_LOG_ENV, str(log))
-    PS.record_verification("merlin-pass-that-was-renamed", requirement_class=PS.HOST_SEAM,
-                           method=PS.METHOD_FILECHECK, verdict=PS.VERDICT_VERIFIED)
+    PS.record_verification(
+        "merlin-pass-that-was-renamed",
+        requirement_class=PS.HOST_SEAM,
+        method=PS.METHOD_FILECHECK,
+        verdict=PS.VERDICT_VERIFIED,
+    )
     monkeypatch.delenv(PS.VERIFY_LOG_ENV, raising=False)
-    assert PS.verification_report(CATALOG, logs=[log])["unknown_passes"] == \
-        ["merlin-pass-that-was-renamed"]
+    assert PS.verification_report(CATALOG, logs=[log])["unknown_passes"] == ["merlin-pass-that-was-renamed"]
 
 
 # --- the gate -------------------------------------------------------------------------------------
+
 
 def test_absent_verify_log_cannot_decide_and_exits_two(capsys):
     """Mirrors --fail-on-dead verbatim: unmeasured is never spelled the same way as clean."""
@@ -194,18 +229,30 @@ def test_a_verify_log_without_an_invocation_log_still_cannot_decide(tmp_path, mo
 def test_refuted_fails_hard_even_when_ratcheted(tmp_path, monkeypatch, capsys):
     """A ratchet accepts evidence we do not have yet; it may never accept a disproof."""
     verify = tmp_path / "verify.jsonl"
-    _verdict(monkeypatch, verify, SUBJECT, verdict=PS.VERDICT_REFUTED, method=PS.METHOD_SMT,
-             evidence={"model": "a0 = 1, w0 = 0"})
+    _verdict(
+        monkeypatch,
+        verify,
+        SUBJECT,
+        verdict=PS.VERDICT_REFUTED,
+        method=PS.METHOD_SMT,
+        evidence={"model": "a0 = 1, w0 = 0"},
+    )
     gate = _gate()
 
     # Every ratchet spelling that could plausibly be tried, including the one the unverified axis
     # legitimately uses for this same pass. None of them may silence a refutation.
     ratchet = tmp_path / "ratchet.txt"
-    ratchet.write_text("\n".join([
-        gate._debt(SUBJECT.name, "no-static-or-formal-verdict", "verification"),
-        gate._debt(SUBJECT.name, PS.VERDICT_REFUTED, "verification"),
-        gate._debt(SUBJECT.name, "no-capsule-runs-it", "exercise"),
-    ]) + "\n", encoding="utf-8")
+    ratchet.write_text(
+        "\n".join(
+            [
+                gate._debt(SUBJECT.name, "no-static-or-formal-verdict", "verification"),
+                gate._debt(SUBJECT.name, PS.VERDICT_REFUTED, "verification"),
+                gate._debt(SUBJECT.name, "no-capsule-runs-it", "exercise"),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     rc = gate.main(["--verify-log", str(verify), "--ratchet", str(ratchet)])
     assert rc == 1, "a refutation must fail with no flag and no ratchet relief"
@@ -238,8 +285,7 @@ def test_reached_but_unverified_is_reported_and_is_ratchetable(tmp_path, monkeyp
     assert found["unverified"][0]["exercise"].startswith("exercised")
 
     ratchet = tmp_path / "ratchet.txt"
-    ratchet.write_text(gate._debt(OTHER.name, "no-static-or-formal-verdict", "verification") + "\n",
-                       encoding="utf-8")
+    ratchet.write_text(gate._debt(OTHER.name, "no-static-or-formal-verdict", "verification") + "\n", encoding="utf-8")
     assert gate.main(args + ["--ratchet", str(ratchet)]) == 0
 
 

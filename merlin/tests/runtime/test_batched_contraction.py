@@ -19,6 +19,7 @@ two and each one fails in a way that does not look like "rank three is unsupport
 Every operand in the perf corpus is rank-2, so none of this was reachable from a shipped capsule and a
 revert of the contract line would be invisible. That is what these tests are for.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -37,25 +38,29 @@ EXPECTED = [[[4, 5], [10, 11]], [[3, 1], [0, 2]]]
 
 # Four distinct matrices under a two-dimensional [2, 2] batch prefix. Distinct values make both
 # flattening axes observable; a rank-4 implementation that only advances the outermost index fails.
-A4 = [[A0[0], A0[1]],
-      [[[2, 0, 0], [0, 2, 0]], [[0, 0, 1], [1, 1, 1]]]]
-W4 = [[W[0], W[1]],
-      [[[1, 2], [3, 4], [5, 6]], [[1, 0], [0, 1], [2, 3]]]]
-EXPECTED4 = [[EXPECTED[0], EXPECTED[1]],
-             [[[2, 4], [6, 8]], [[2, 3], [3, 4]]]]
+A4 = [[A0[0], A0[1]], [[[2, 0, 0], [0, 2, 0]], [[0, 0, 1], [1, 1, 1]]]]
+W4 = [[W[0], W[1]], [[[1, 2], [3, 4], [5, 6]], [[1, 0], [0, 1], [2, 3]]]]
+EXPECTED4 = [[EXPECTED[0], EXPECTED[1]], [[[2, 4], [6, 8]], [[2, 3], [3, 4]]]]
 
 
 def _command_buffer():
     return {
-        "abi_version": "0.1", "target": "gemmini", "version": "0.1", "params": {},
+        "abi_version": "0.1",
+        "target": "gemmini",
+        "version": "0.1",
+        "params": {},
         "tensors": {
             "A0": {"role": "input", "shape": [2, 2, 3], "dtype": "i8"},
             "W": {"role": "weight", "shape": [2, 3, 2], "dtype": "i8"},
             "Y0": {"role": "output", "shape": [2, 2, 2], "dtype": "i32"},
         },
-        "commands": [{"opcode": "BATCHED_MATMUL",
-                      "operands": {"a": "A0", "w": "W", "dst": "Y0"},
-                      "attributes": {"batch": 2, "output_dtype": "i32"}}],
+        "commands": [
+            {
+                "opcode": "BATCHED_MATMUL",
+                "operands": {"a": "A0", "w": "W", "dst": "Y0"},
+                "attributes": {"batch": 2, "output_dtype": "i32"},
+            }
+        ],
         "outputs": ["Y0"],
     }
 
@@ -69,14 +74,18 @@ def test_a_rank_three_operand_materializes_with_every_element():
     assert env["A0"].data == [1, 2, 3, 4, 5, 6, 1, 0, 1, 0, 1, 0]
 
 
-@pytest.mark.parametrize("nested,flat", [
-    ([1, 2, 3], [1, 2, 3]),
-    ([[1, 2], [3, 4]], [1, 2, 3, 4]),
-    ([[[1], [2]], [[3], [4]]], [1, 2, 3, 4]),
-])
+@pytest.mark.parametrize(
+    "nested,flat",
+    [
+        ([1, 2, 3], [1, 2, 3]),
+        ([[1, 2], [3, 4]], [1, 2, 3, 4]),
+        ([[[1], [2]], [[3], [4]]], [1, 2, 3, 4]),
+    ],
+)
 def test_flattening_is_rank_agnostic(nested, flat):
     """Ranks one and two must keep flattening exactly as before; rank three must now work too."""
     from merlin.runtime.commandbuffer import _flatten
+
     assert _flatten(nested) == flat
 
 
@@ -160,7 +169,9 @@ def test_an_undeclared_destination_is_unknown_not_free_work_or_traffic():
 
 def test_reference_resolves_a_reused_accumulator_in_program_order():
     cb = {
-        "abi_version": "0.1", "target": "test", "params": {},
+        "abi_version": "0.1",
+        "target": "test",
+        "params": {},
         "tensors": {
             "A1": {"role": "input", "shape": [1, 2], "dtype": "i8"},
             "A2": {"role": "input", "shape": [1, 2], "dtype": "i8"},
@@ -170,11 +181,17 @@ def test_reference_resolves_a_reused_accumulator_in_program_order():
         },
         "commands": [
             {"opcode": "MATMUL", "operands": {"lhs": "A1", "rhs": "W", "dst": "acc"}},
-            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y1"},
-             "attributes": {"epilogue": [], "output_dtype": "i32"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc", "dst": "Y1"},
+                "attributes": {"epilogue": [], "output_dtype": "i32"},
+            },
             {"opcode": "MATMUL", "operands": {"lhs": "A2", "rhs": "W", "dst": "acc"}},
-            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y2"},
-             "attributes": {"epilogue": [], "output_dtype": "i32"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc", "dst": "Y2"},
+                "attributes": {"epilogue": [], "output_dtype": "i32"},
+            },
         ],
         "outputs": ["Y1", "Y2"],
     }
@@ -186,7 +203,7 @@ def test_reference_resolves_a_reused_accumulator_in_program_order():
 
 def test_operands_over_different_batches_refuse_rather_than_guess():
     cb = _command_buffer()
-    cb["tensors"]["W"]["shape"] = [3, 3, 2]          # three batches against the activation's two
+    cb["tensors"]["W"]["shape"] = [3, 3, 2]  # three batches against the activation's two
     work = WV.work_from_command_buffer(cb)
     assert work.is_lower_bound
     assert any("batched-matmul" in reason for reason in work.refusals), work.refusals

@@ -1,4 +1,5 @@
 """Instruction-level capabilities stay data-driven across self-hosted targets."""
+
 from __future__ import annotations
 
 import pytest
@@ -62,7 +63,10 @@ def test_contract_records_only_discovered_scalar_memory_operations():
     # The outer record is intentionally generic: RVV instructions and target-dialect ops can use the
     # same domain/dialect/operation/status/effects envelope. Scalar memory is one semantic facet within it.
     assert {k: by_name["ADD"][k] for k in ("domain", "dialect", "operation")} == {
-        "domain": "instruction", "dialect": "synthetic.isa", "operation": "ADD"}
+        "domain": "instruction",
+        "dialect": "synthetic.isa",
+        "operation": "ADD",
+    }
     assert by_name["LD8"]["effects"] == ["movement"]
     assert by_name["LD8"]["semantics"] == {
         "kind": "memory",
@@ -86,38 +90,47 @@ def test_contract_records_only_discovered_scalar_memory_operations():
 
 
 def test_target_dialect_and_machine_instructions_share_one_operation_envelope():
-    dialect = derive_dialect_operation_contract({
-        "dialect_name": "synthetic",
-        "ops": [{"name": "matmul"}, {"name": "copy"}],
-    })
+    dialect = derive_dialect_operation_contract(
+        {
+            "dialect_name": "synthetic",
+            "ops": [{"name": "matmul"}, {"name": "copy"}],
+        }
+    )
     machine = derive_isa_operation_contract(_taxonomy(), dialect="synthetic")
 
     merged = merge_operation_contracts(dialect, machine)
-    identities = {(op["domain"], op["dialect"], op["operation"])
-                  for op in merged["operations"]}
+    identities = {(op["domain"], op["dialect"], op["operation"]) for op in merged["operations"]}
 
     assert ("dialect", "synthetic", "matmul") in identities
     assert ("instruction", "synthetic", "LD8") in identities
-    assert all(set(("domain", "dialect", "operation", "status", "evidence")) <= set(op)
-               for op in merged["operations"])
+    assert all(set(("domain", "dialect", "operation", "status", "evidence")) <= set(op) for op in merged["operations"])
 
 
 def test_memory_address_units_can_differ_across_dialects_and_render_explicitly():
-    dialect = derive_dialect_operation_contract({
-        "dialect_name": "synthetic",
-        "ops": [{
-            "name": "vector_load",
-            "effects": ["movement"],
-            "semantics": {
-                "kind": "memory", "scope": "vector", "direction": "load",
-                "address_space": "local_mem", "address_unit_bytes": 4,
-                "addressing": {
-                    "mode": "base_plus_immediate", "base_operand": "rs1",
-                    "offset_operand": "imm", "offset_scale": 32,
-                },
-            },
-        }],
-    })
+    dialect = derive_dialect_operation_contract(
+        {
+            "dialect_name": "synthetic",
+            "ops": [
+                {
+                    "name": "vector_load",
+                    "effects": ["movement"],
+                    "semantics": {
+                        "kind": "memory",
+                        "scope": "vector",
+                        "direction": "load",
+                        "address_space": "local_mem",
+                        "address_unit_bytes": 4,
+                        "addressing": {
+                            "mode": "base_plus_immediate",
+                            "base_operand": "rs1",
+                            "offset_operand": "imm",
+                            "offset_scale": 32,
+                        },
+                    },
+                }
+            ],
+        }
+    )
     machine = derive_isa_operation_contract(_taxonomy(), dialect="synthetic")
 
     merged = merge_operation_contracts(dialect, machine)
@@ -134,14 +147,21 @@ def test_memory_address_units_can_differ_across_dialects_and_render_explicitly()
 
 def test_behavioral_observation_can_mark_one_declared_operation_unsupported():
     declared = derive_isa_operation_contract(_taxonomy(), dialect="synthetic.isa")
-    observed = merge_operation_observations(declared, [{
-        "domain": "instruction", "dialect": "synthetic.isa", "operation": "ST8",
-        "status": "unsupported",
-        "evidence": {
-            "kind": "rtl_preflight",
-            "detail": "store retired but addressed byte did not change",
-        },
-    }])
+    observed = merge_operation_observations(
+        declared,
+        [
+            {
+                "domain": "instruction",
+                "dialect": "synthetic.isa",
+                "operation": "ST8",
+                "status": "unsupported",
+                "evidence": {
+                    "kind": "rtl_preflight",
+                    "detail": "store retired but addressed byte did not change",
+                },
+            }
+        ],
+    )
 
     by_name = {op["operation"]: op for op in observed["operations"]}
     assert by_name["LD8"]["status"] == "unknown"
@@ -152,24 +172,45 @@ def test_behavioral_observation_can_mark_one_declared_operation_unsupported():
 def test_observation_cannot_invent_an_operation_or_status():
     declared = derive_isa_operation_contract(_taxonomy(), dialect="synthetic.isa")
     with pytest.raises(ValueError, match="not declared"):
-        merge_operation_observations(declared, [{
-            "domain": "instruction", "dialect": "synthetic.isa", "operation": "NOPE",
-            "status": "supported",
-        }])
+        merge_operation_observations(
+            declared,
+            [
+                {
+                    "domain": "instruction",
+                    "dialect": "synthetic.isa",
+                    "operation": "NOPE",
+                    "status": "supported",
+                }
+            ],
+        )
     with pytest.raises(ValueError, match="status"):
-        merge_operation_observations(declared, [{
-            "domain": "instruction", "dialect": "synthetic.isa", "operation": "LD8",
-            "status": "flaky",
-        }])
+        merge_operation_observations(
+            declared,
+            [
+                {
+                    "domain": "instruction",
+                    "dialect": "synthetic.isa",
+                    "operation": "LD8",
+                    "status": "flaky",
+                }
+            ],
+        )
 
 
 def test_prompt_surfaces_unsupported_ops_as_a_codegen_prohibition():
     declared = derive_isa_operation_contract(_taxonomy(), dialect="synthetic.isa")
-    observed = merge_operation_observations(declared, [{
-        "domain": "instruction", "dialect": "synthetic.isa", "operation": "ST8",
-        "status": "unsupported",
-        "evidence": {"kind": "rtl_preflight", "detail": "no memory effect"},
-    }])
+    observed = merge_operation_observations(
+        declared,
+        [
+            {
+                "domain": "instruction",
+                "dialect": "synthetic.isa",
+                "operation": "ST8",
+                "status": "unsupported",
+                "evidence": {"kind": "rtl_preflight", "detail": "no memory effect"},
+            }
+        ],
+    )
 
     text = scalar_memory_prompt_block({"operation_capabilities": observed})
 
@@ -186,23 +227,33 @@ def test_manifest_joins_compute_unit_dialect_and_discovered_isa(monkeypatch):
     monkeypatch.setattr(isa_taxonomy, "taxonomy_for_target", lambda target: _taxonomy())
     residual = {
         "version": "0.1",
-        "compute_units": [{
-            "name": "unit", "kind": "vector", "ops": ["matmul"], "dtypes": ["fp32"],
-        }],
+        "compute_units": [
+            {
+                "name": "unit",
+                "kind": "vector",
+                "ops": ["matmul"],
+                "dtypes": ["fp32"],
+            }
+        ],
         "operation_capabilities": {
             "version": 1,
             "operations": [],
-            "observations": [{
-                "domain": "instruction", "dialect": "syntheticcore", "operation": "ST8",
-                "status": "unsupported",
-                "evidence": {"kind": "rtl_preflight", "detail": "no memory effect"},
-            }],
+            "observations": [
+                {
+                    "domain": "instruction",
+                    "dialect": "syntheticcore",
+                    "operation": "ST8",
+                    "status": "unsupported",
+                    "evidence": {"kind": "rtl_preflight", "detail": "no memory effect"},
+                }
+            ],
         },
     }
 
     manifest = cm.derive_manifest({"target": "synthetic_core", "kind": "vector"}, {}, residual=residual)
-    by_id = {(op["domain"], op["dialect"], op["operation"]): op
-             for op in manifest["operation_capabilities"]["operations"]}
+    by_id = {
+        (op["domain"], op["dialect"], op["operation"]): op for op in manifest["operation_capabilities"]["operations"]
+    }
 
     assert ("dialect", "syntheticcore", "matmul") in by_id
     assert ("instruction", "syntheticcore", "LD8") in by_id

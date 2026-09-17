@@ -25,9 +25,10 @@ def _specs() -> list[str]:
 
 
 def _spec(target: str) -> dict:
-    return yaml.safe_load(
-        (merlin_dir() / "contract/capsules/conformance" / f"{target}.yaml").read_text(
-            encoding="utf-8")) or {}
+    return (
+        yaml.safe_load((merlin_dir() / "contract/capsules/conformance" / f"{target}.yaml").read_text(encoding="utf-8"))
+        or {}
+    )
 
 
 class TestGrammarCannotClaimAShapeItCannotExpress:
@@ -48,15 +49,17 @@ class TestGrammarCannotClaimAShapeItCannotExpress:
             '  %W = merlin_iface.tensor {name = "W", role = "weight"} : tensor<16x16xi8>\n'
             '  %A0 = merlin_iface.tensor {name = "A0", role = "input"} : tensor<16x16xi8>\n'
             '  %R = merlin_iface.resident_pack %W {layout = "packed_rhs"} :'
-            ' (tensor<16x16xi8>) -> !merlin_iface.resident\n'
-            '  %acc = merlin_iface.matmul %A0, %R :'
-            ' (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n'
+            " (tensor<16x16xi8>) -> !merlin_iface.resident\n"
+            "  %acc = merlin_iface.matmul %A0, %R :"
+            " (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n"
             '  %Y0 = merlin_iface.commit %acc {name = "Y0", epilogue = [], output_dtype = "i32"} :'
-            ' (!merlin_iface.acc<i32>) -> tensor<16x16xi32>\n}\n')
+            " (!merlin_iface.acc<i32>) -> tensor<16x16xi32>\n}\n"
+        )
         prof = B.profile_iface_text(text)
         assert prof.kind in (B.A, B.A_A, B.UNKNOWN), prof.kind
         assert not (set(prof.contains) & set(self._HOST_SHAPES)), (
-            "the iface grammar carries no host computation, so it cannot contain a host seam")
+            "the iface grammar carries no host computation, so it cannot contain a host seam"
+        )
 
     @pytest.mark.parametrize("target", _specs())
     def test_no_shipped_iface_capsule_claims_a_host_shape(self, target):
@@ -75,7 +78,8 @@ class TestGrammarCannotClaimAShapeItCannotExpress:
                 claimed = set(prof.contains) & set(self._HOST_SHAPES)
                 assert not claimed, (
                     f"{cy.parent.name} is a merlin_iface capsule claiming host shape(s) "
-                    f"{sorted(claimed)}, which that grammar cannot express")
+                    f"{sorted(claimed)}, which that grammar cannot express"
+                )
 
 
 class TestSynthesisIsReproducible:
@@ -88,9 +92,17 @@ class TestSynthesisIsReproducible:
         if not tracked.is_file():
             pytest.skip(f"{target} has no synthesized entries yet")
         proc = subprocess.run(
-            [sys.executable, str(repo_root() / "build_tools/scripts/synth_capsule_corpus.py"),
-             "--target", target, "--check"],
-            capture_output=True, text=True, timeout=300)
+            [
+                sys.executable,
+                str(repo_root() / "build_tools/scripts/synth_capsule_corpus.py"),
+                "--target",
+                target,
+                "--check",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
         assert proc.returncode == 0, f"{target} synth file has drifted:\n{proc.stdout}{proc.stderr}"
 
     @pytest.mark.parametrize("target", _specs())

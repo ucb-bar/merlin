@@ -29,8 +29,8 @@ def _mesh(target: str, bundle: str, tok: str) -> int:
 
 
 def test_the_compile_token_routes_nothing_but_the_exact_name_routes_everything():
-    assert _mesh("atlas", "small_llama_fp8_consistent", "fp8") == 0          # the bug
-    assert _mesh("atlas", "small_llama_fp8_consistent", "fp8_e4m3") == 19    # the fix
+    assert _mesh("atlas", "small_llama_fp8_consistent", "fp8") == 0  # the bug
+    assert _mesh("atlas", "small_llama_fp8_consistent", "fp8_e4m3") == 19  # the fix
 
 
 def test_gemmini_is_unaffected():
@@ -50,18 +50,17 @@ def test_e5m2_never_routes_onto_an_e4m3_unit():
     """The negative guard. An `fp8 -> fp8_e4m3` alias would have made this route, silently computing
     with the wrong exponent bias -- which is why the registry omits that alias and we thread the exact
     name instead."""
-    d = [R.OpDemand(op="matmul", in_fmt="fp8_e5m2", weight_fmt="fp8_e5m2",
-                    site="matmul", m=8, n=128, k=128)]
+    d = [R.OpDemand(op="matmul", in_fmt="fp8_e5m2", weight_fmt="fp8_e5m2", site="matmul", m=8, n=128, k=128)]
     assert len(R.route_plan(d, "atlas").get("mesh") or []) == 0
 
 
 def test_a_capsule_declares_both_tokens():
     """The fix relies on the exact name being present in the capsule; assert it is."""
     import yaml
-    p = (pathlib.Path(repo_root())
-         / "merlin/contract/capsules/atlas/model/M0_small_llama_atlas/capsule.yaml")
+
+    p = pathlib.Path(repo_root()) / "merlin/contract/capsules/atlas/model/M0_small_llama_atlas/capsule.yaml"
     if not p.is_file():
         pytest.skip("atlas model capsule not on disk")
     attrs = (yaml.safe_load(p.read_text())["operation"] or {}).get("attributes") or {}
-    assert attrs.get("dtype") == "fp8_e4m3"      # exact registry name -> routing
-    assert attrs.get("compile_dtype") == "fp8"   # compile mode -> compile_rvv
+    assert attrs.get("dtype") == "fp8_e4m3"  # exact registry name -> routing
+    assert attrs.get("compile_dtype") == "fp8"  # compile mode -> compile_rvv

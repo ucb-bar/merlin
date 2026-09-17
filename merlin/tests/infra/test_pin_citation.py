@@ -10,6 +10,7 @@ record was wrong about the sha; both were wrong about what the sha meant.
 FORMS -- one positive case per state, each asserting the string a claim would carry, plus the registry
 fact that a declared local edit stays declared.
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -26,7 +27,8 @@ PIN_DIGEST = "b" * 64
 def _registry(tmp_path):
     """A two-pin registry on disk: a coarse pin that COVERS a nested one, as the real one is shaped."""
     p = tmp_path / "pins.yaml"
-    p.write_text(textwrap.dedent(f"""
+    p.write_text(
+        textwrap.dedent(f"""
         version: 1
         pins:
           outer:
@@ -36,25 +38,28 @@ def _registry(tmp_path):
             requires_paths: [src/a.scala]
             covers: [inner]
           inner:
-            commit: "{'2' * 40}"
+            commit: "{"2" * 40}"
             root_env: SOME_ROOT
             path: gen/outer/sw
             requires_paths: [include/h.h]
-        """).lstrip(), encoding="utf-8")
+        """).lstrip(),
+        encoding="utf-8",
+    )
     return p
 
 
-def _verification(*, sources=(), covered=(), commit=PINNED_SHA, present=True, pin_name="outer",
-                  drift=()):
+def _verification(*, sources=(), covered=(), commit=PINNED_SHA, present=True, pin_name="outer", drift=()):
     return P.Verification(
         pin=pin_name,
         observed=P.Observation(path="/nowhere", commit=commit, present=present),
-        drift=tuple(drift), sources=tuple(sources), covered=tuple(covered))
+        drift=tuple(drift),
+        sources=tuple(sources),
+        covered=tuple(covered),
+    )
 
 
 def _status(rel, status, *, digest=EDIT_DIGEST, reason="because"):
-    return P.SourceStatus(pin="outer", rel=rel, status=status, digest=digest,
-                          pinned_digest=PIN_DIGEST, reason=reason)
+    return P.SourceStatus(pin="outer", rel=rel, status=status, digest=digest, pinned_digest=PIN_DIGEST, reason=reason)
 
 
 def test_all_read_paths_pinned_cites_the_bare_commit(tmp_path):
@@ -101,8 +106,7 @@ def test_a_checkout_off_its_pin_says_which_revision_it_is_actually_on(tmp_path):
 
 def test_a_covered_pin_is_folded_into_the_citation(tmp_path):
     """A nested surface a claim rests on may not drop out of the sentence the claim is written in."""
-    inner = _verification(pin_name="inner", commit="2" * 40,
-                          sources=[_status("include/h.h", P.OFF_PIN)])
+    inner = _verification(pin_name="inner", commit="2" * 40, sources=[_status("include/h.h", P.OFF_PIN)])
     got = _verification(sources=[_status("src/a.scala", P.PINNED, digest=PIN_DIGEST)], covered=[inner])
     cited = P.citation(got, path=_registry(tmp_path))
     assert cited.startswith(f"outer {PINNED_SHA} (pinned); ")
@@ -117,8 +121,7 @@ def test_record_embeds_the_citation_beside_the_verification():
     """
     # `ok` is driven by drift, not by the per-file verdicts, so a real off-pin verification carries
     # both -- mirrored here, because a test that let the two disagree would assert nothing.
-    got = _verification(sources=[_status("src/a.scala", P.OFF_PIN)],
-                        drift=["src/a.scala is OFF-PIN"])
+    got = _verification(sources=[_status("src/a.scala", P.OFF_PIN)], drift=["src/a.scala is OFF-PIN"])
     rec = P.record(pins={"outer": got})
     assert rec["all_pins_ok"] is False
     assert "plus these bytes: src/a.scala@" in rec["pin_citations"]["outer"]
@@ -140,14 +143,16 @@ def test_pins_declaring_a_local_edit_keep_it_declared():
             assert len(digest) == 64, f"{name}: local_edits[{rel}] is not a sha256"
             assert rel in declared.requires_paths, (
                 f"{name}: declares a local edit for {rel!r} but does not read it, so the digest is "
-                "never compared and the declaration means nothing")
+                "never compared and the declaration means nothing"
+            )
             if declared.nested_in:
                 # A nested checkout's HEAD can itself be off the pin, and then `git status` answers a
                 # question with the wrong subject: a file can be clean-vs-HEAD and still be the wrong
                 # revision's bytes. Only a content check is right in both directions there.
                 assert declared.checks_content, (
                     f"{name}: is nested and declares a local edit for {rel!r} but does not check "
-                    "content, so the edit is compared against a HEAD that may itself be off the pin")
+                    "content, so the edit is compared against a HEAD that may itself be off the pin"
+                )
 
 
 @pytest.mark.parametrize("form", ["(pinned)", "plus these bytes", "UNDETERMINABLE"])

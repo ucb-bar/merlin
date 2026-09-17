@@ -1,4 +1,5 @@
 """Unit tests for the design-pressure metrics on small hand-built regions."""
+
 from merlin.design_pressure import region as R
 from merlin.design_pressure.metrics.lifetimes import metric_lifetimes
 from merlin.design_pressure.metrics.memory import metric_memory
@@ -11,14 +12,24 @@ def _region(epilogue=False, reuse=8):
     ops = ["matmul"] + (["bias_add", "requant", "relu"] if epilogue else [])
     tensors = {
         "A": {"shape": [4, 256], "dtype": "i8", "lifetime": "single_use"},
-        "W": {"shape": [256, 64], "dtype": "i8", "mutable": False,
-              "lifetime": "reused_across_region", "reuse_count": reuse},
+        "W": {
+            "shape": [256, 64],
+            "dtype": "i8",
+            "mutable": False,
+            "lifetime": "reused_across_region",
+            "reuse_count": reuse,
+        },
         "Y": {"shape": [4, 64], "dtype": "i8", "lifetime": "single_use"},
     }
     if epilogue:
         tensors["bias"] = {"shape": [64], "dtype": "i32", "mutable": False}
-    return {"name": "t", "ops": ops, "op_sequence": ops, "tensors": tensors,
-            "reuse": {"rhs_reuse_count": reuse, "rhs_mutable": False}}
+    return {
+        "name": "t",
+        "ops": ops,
+        "op_sequence": ops,
+        "tensors": tensors,
+        "reuse": {"rhs_reuse_count": reuse, "rhs_mutable": False},
+    }
 
 
 def test_shapes_mnk_and_epilogue():

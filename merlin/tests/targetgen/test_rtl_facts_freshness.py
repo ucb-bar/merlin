@@ -1,4 +1,5 @@
 """CIRCT facts cache identity must bind feature claims to exact extractor and RTL bytes."""
+
 from __future__ import annotations
 
 import hashlib
@@ -24,13 +25,17 @@ def _record(fir: Path) -> dict:
             "extractor_sha256": _sha256(extractor),
             "fir_sha256": digest,
         },
-        "facts": {"interfaces": [{
-            "name": "elaborated_rtl_features",
-            "status": "derived",
-            "features": {"max_pool": True},
-            "source": str(fir),
-            "source_sha256": digest,
-        }]},
+        "facts": {
+            "interfaces": [
+                {
+                    "name": "elaborated_rtl_features",
+                    "status": "derived",
+                    "features": {"max_pool": True},
+                    "source": str(fir),
+                    "source_sha256": digest,
+                }
+            ]
+        },
     }
 
 

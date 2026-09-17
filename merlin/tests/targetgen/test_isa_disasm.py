@@ -2,11 +2,12 @@
 instruction classes. Hermetic: a synthetic 2-op model (a matmul + a load), assembled with isa_asm and decoded
 back — proving the encode/decode pair round-trips and illegal words + coverage gaps surface. No real target.
 """
+
 from __future__ import annotations
 
-from merlin.targetgen.isa_model import IsaModel
 from merlin.targetgen import isa_asm as A
 from merlin.targetgen import isa_disasm as D
+from merlin.targetgen.isa_model import IsaModel
 
 
 def _sig(opcode: int, fields: dict) -> tuple[int, int]:
@@ -14,7 +15,7 @@ def _sig(opcode: int, fields: dict) -> tuple[int, int]:
     for bits in fields.values():
         for b in bits:
             if isinstance(b, int) and b >= 0:
-                variable |= (1 << b)
+                variable |= 1 << b
     mask = (~variable) & 0xFFFFFFFF
     return mask, opcode & mask
 
@@ -25,13 +26,16 @@ def _model() -> IsaModel:
     mm_mask, mm_val = _sig(0x2B, mm_fields)
     ld_mask, ld_val = _sig(0x03, ld_fields)
     by_mnem = {
-        "MatMul": {"class": "MatMul", "role": "matmul", "fixed_mask": mm_mask, "fixed_value": mm_val,
-                   "fields": mm_fields},
-        "Load": {"class": "Load", "role": "memory", "fixed_mask": ld_mask, "fixed_value": ld_val,
-                 "fields": ld_fields},
+        "MatMul": {
+            "class": "MatMul",
+            "role": "matmul",
+            "fixed_mask": mm_mask,
+            "fixed_value": mm_val,
+            "fields": mm_fields,
+        },
+        "Load": {"class": "Load", "role": "memory", "fixed_mask": ld_mask, "fixed_value": ld_val, "fields": ld_fields},
     }
-    return IsaModel(target="fake", by_mnemonic=by_mnem,
-                    roles={"matmul": ["MatMul"], "memory": ["Load"]})
+    return IsaModel(target="fake", by_mnemonic=by_mnem, roles={"matmul": ["MatMul"], "memory": ["Load"]})
 
 
 def test_disassemble_round_trips_encode():

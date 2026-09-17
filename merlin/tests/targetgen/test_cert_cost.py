@@ -11,6 +11,7 @@ a capsule pays for existing, and ~0.06 s per operand element on top, so the floo
 ~1900 elements while today's capsules are 256-512. The corpus is paying nearly the whole cost of a
 certification to exercise a 16x16 tile.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -99,12 +100,12 @@ def test_the_size_metric_is_the_largest_operand_and_tolerates_a_symbolic_dim():
     """Chosen by measurement, not argument: across the gemmini runs the largest single operand
     predicts cost better than total operand elements, and declared OUTPUT elements is degenerate
     because a capsule records its inputs and not its result shape."""
-    assert CC.capsule_elements({"inputs": [
-        {"name": "A0", "shape": [16, 32]}, {"name": "W", "shape": [32, 64]}]}) == 2048
+    assert (
+        CC.capsule_elements({"inputs": [{"name": "A0", "shape": [16, 32]}, {"name": "W", "shape": [32, 64]}]}) == 2048
+    )
     assert CC.capsule_elements({"inputs": []}) == 0
     # A symbolic dim makes THAT operand unmeasurable, not the capsule.
-    assert CC.capsule_elements({"inputs": [
-        {"name": "A0", "shape": ["?", 32]}, {"name": "W", "shape": [8, 8]}]}) == 64
+    assert CC.capsule_elements({"inputs": [{"name": "A0", "shape": ["?", 32]}, {"name": "W", "shape": [8, 8]}]}) == 64
 
 
 def test_the_fit_predicts_capsules_it_has_never_seen():
@@ -137,7 +138,7 @@ def test_the_fit_predicts_capsules_it_has_never_seen():
 
     errors = []
     for i in range(len(points)):
-        held = _line(points[:i] + points[i + 1:])
+        held = _line(points[:i] + points[i + 1 :])
         if held is None:
             continue
         intercept, slope = held
@@ -146,9 +147,11 @@ def test_the_fit_predicts_capsules_it_has_never_seen():
     assert errors
     assert statistics.median(errors) < 0.35, (
         f"the cost model no longer predicts held-out capsules (median error "
-        f"{statistics.median(errors):.0%}); sizing against it would be guessing")
+        f"{statistics.median(errors):.0%}); sizing against it would be guessing"
+    )
     assert sum(1 for e in errors if e <= 0.5) >= 0.8 * len(errors), (
-        "fewer than four in five held-out capsules land within 50% of prediction")
+        "fewer than four in five held-out capsules land within 50% of prediction"
+    )
 
 
 # --- which ENGINE produced the second ---------------------------------------------------------------
@@ -159,19 +162,17 @@ def test_the_fit_predicts_capsules_it_has_never_seen():
 # engine's cost. The per-capsule record carries `engine`; the reshaping into `by_tier` used to drop it,
 # so the mixture was not merely unhandled, it was invisible.
 
+
 def test_the_engine_survives_the_reshaping_into_a_by_tier_block():
-    doc = {"tiers": {"L3": {"cycle_accurate": True, "engine": "gsim",
-                            "timing": {"sim_active_s": 3.31}}}}
+    doc = {"tiers": {"L3": {"cycle_accurate": True, "engine": "gsim", "timing": {"sim_active_s": 3.31}}}}
     assert CC._per_tier_from_result(doc)["L3"]["engine"] == "gsim"
 
 
 def test_the_engine_rides_in_the_basis_so_a_mixed_fit_is_visible():
     """The basis is the string every caller already keeps beside the number, which makes this readable
     off the fit's own sources rather than requiring a new channel."""
-    fast = {"by_tier": {"L3": {"cycle_accurate": True, "engine": "gsim",
-                               "sim_active_s": 3.31}}}
-    slow = {"by_tier": {"L3": {"cycle_accurate": True, "engine": "verilator",
-                               "sim_active_s": 86.83}}}
+    fast = {"by_tier": {"L3": {"cycle_accurate": True, "engine": "gsim", "sim_active_s": 3.31}}}
+    slow = {"by_tier": {"L3": {"cycle_accurate": True, "engine": "verilator", "sim_active_s": 86.83}}}
     _s_fast, basis_fast = CC._cycle_accurate_seconds(fast)
     _s_slow, basis_slow = CC._cycle_accurate_seconds(slow)
     assert basis_fast.endswith("@gsim")
@@ -194,6 +195,7 @@ def test_a_sample_with_no_recorded_engine_still_yields_a_basis():
 # 3.31 s, Verilator 86.83 s), so a fit that mixes them prices a capsule at neither engine's cost.
 # ---------------------------------------------------------------------------------------------
 
+
 def _result(dirpath, capsule, seconds, engine=None):
     """One capsule_result.json declaring a cycle-accurate L3 tier, optionally naming its engine."""
     import json
@@ -203,8 +205,7 @@ def _result(dirpath, capsule, seconds, engine=None):
     tier = {"timing": {"sim_active_s": seconds}, "cycle_accurate": True, "derived_from_rtl": True}
     if engine is not None:
         tier["engine"] = engine
-    (d / "capsule_result.json").write_text(
-        json.dumps({"capsule": capsule, "tiers": {"L3": tier}}), encoding="utf-8")
+    (d / "capsule_result.json").write_text(json.dumps({"capsule": capsule, "tiers": {"L3": tier}}), encoding="utf-8")
 
 
 def test_one_capsule_on_two_engines_keeps_both_samples(tmp_path):
@@ -236,27 +237,26 @@ def test_an_engine_recorded_only_in_the_EVIDENCE_filename_still_separates_the_bu
     sources coexist on disk today they agree on every one of the 758 records that carry both."""
     import json
 
-    for name, evidence, seconds in (("C3", "verilator_console.log", 90.0),
-                                    ("C4", "rtl_verilator_console.log", 92.0),
-                                    ("C5", "rtl_gsim_console.log", 4.0),
-                                    ("C6", None, 7.0)):
+    for name, evidence, seconds in (
+        ("C3", "verilator_console.log", 90.0),
+        ("C4", "rtl_verilator_console.log", 92.0),
+        ("C5", "rtl_gsim_console.log", 4.0),
+        ("C6", None, 7.0),
+    ):
         d = tmp_path / name
         d.mkdir()
-        tier = {"timing": {"sim_active_s": seconds}, "cycle_accurate": True,
-                "derived_from_rtl": True}
+        tier = {"timing": {"sim_active_s": seconds}, "cycle_accurate": True, "derived_from_rtl": True}
         if evidence:
             tier["evidence"] = evidence
-        (d / "capsule_result.json").write_text(
-            json.dumps({"capsule": name, "tiers": {"L3": tier}}), encoding="utf-8")
+        (d / "capsule_result.json").write_text(json.dumps({"capsule": name, "tiers": {"L3": tier}}), encoding="utf-8")
 
     recs = CC._timing_records("t", root=tmp_path)
-    assert set(recs) == {("C3", "verilator"), ("C4", "verilator"), ("C5", "gsim"),
-                         ("C6", CC.UNKNOWN_ENGINE)}, (
-        "two spellings of one engine must be one bucket, and a record naming none stays unattributed")
+    assert set(recs) == {("C3", "verilator"), ("C4", "verilator"), ("C5", "gsim"), ("C6", CC.UNKNOWN_ENGINE)}, (
+        "two spellings of one engine must be one bucket, and a record naming none stays unattributed"
+    )
 
 
-def test_a_mixture_recoverable_only_from_the_EVIDENCE_is_still_reported_as_a_mixture(tmp_path,
-                                                                                     monkeypatch):
+def test_a_mixture_recoverable_only_from_the_EVIDENCE_is_still_reported_as_a_mixture(tmp_path, monkeypatch):
     """THE LIVE PATH. The element fit is the one that sizes capsules today, and its callers pass no
     ``engine=``. It read the ``engine`` field and nothing else, so a history whose engines are only
     recoverable from the console name reported ``mixed_engines is False`` -- a two-engine mixture that
@@ -266,20 +266,34 @@ def test_a_mixture_recoverable_only_from_the_EVIDENCE_is_still_reported_as_a_mix
 
     sizes = {}
     for i in range(CC._MIN_SAMPLES + 1):
-        for tag, evidence, seconds in (("s", "verilator_console.log", 100.0 + 50 * i),
-                                       ("f", "rtl_gsim_console.log", 1.0 + i)):
+        for tag, evidence, seconds in (
+            ("s", "verilator_console.log", 100.0 + 50 * i),
+            ("f", "rtl_gsim_console.log", 1.0 + i),
+        ):
             name = f"{tag}{i}"
             sizes[name] = 100 * (i + 1)
             d = tmp_path / name
             d.mkdir()
-            (d / "capsule_result.json").write_text(json.dumps({"capsule": name, "tiers": {"L3": {
-                "timing": {"sim_active_s": seconds}, "cycle_accurate": True,
-                "derived_from_rtl": True, "evidence": evidence}}}), encoding="utf-8")
+            (d / "capsule_result.json").write_text(
+                json.dumps(
+                    {
+                        "capsule": name,
+                        "tiers": {
+                            "L3": {
+                                "timing": {"sim_active_s": seconds},
+                                "cycle_accurate": True,
+                                "derived_from_rtl": True,
+                                "evidence": evidence,
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
     fit = _fit(tmp_path, monkeypatch, sizes)
     assert fit is not None
     assert fit.engines == ("gsim", "verilator")
-    assert fit.mixed_engines is True, (
-        "a fit averaging two engines 50x apart reported itself as single-engine")
+    assert fit.mixed_engines is True, "a fit averaging two engines 50x apart reported itself as single-engine"
     assert _fit(tmp_path, monkeypatch, sizes, engine="gsim").mixed_engines is False
 
 
@@ -336,5 +350,4 @@ def test_an_unattributed_history_fits_exactly_as_it_did_before(tmp_path, monkeyp
     assert unfiltered.n_samples == CC._MIN_SAMPLES + 1
     assert unfiltered.engines == (CC.UNKNOWN_ENGINE,)
     assert unfiltered.mixed_engines is False
-    assert (explicit.intercept_s, explicit.per_element_s) == (unfiltered.intercept_s,
-                                                              unfiltered.per_element_s)
+    assert (explicit.intercept_s, explicit.per_element_s) == (unfiltered.intercept_s, unfiltered.per_element_s)

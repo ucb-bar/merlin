@@ -9,6 +9,7 @@ absent-measurement-reads-as-a-pass bug: the agent's own `echo $?`, the conforman
 shape-coverage gate all consume that exit code, so on any target whose grader printed a diagnostic the
 self-check reported clean no matter what the capsules did.
 """
+
 from __future__ import annotations
 
 import json

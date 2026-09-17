@@ -13,6 +13,7 @@ this file pins:
 The bucket vocabulary is mlc's ``compute / dma / stall / control / host``, cross-checked against the
 real thing when mlc is importable and reported as "did not run" when it is not.
 """
+
 from __future__ import annotations
 
 import functools
@@ -66,11 +67,17 @@ def _sources():
     out = []
     for name, body in _suite()["kernels"].items():
         arc = body["arc"]
-        out.append(activity_from_busy(
-            name, arc["truth"],
-            {"dma": arc["dma_busy"], "mxu": arc["mxu"], "vpu": arc["vpu"], "none": arc["none"]},
-            BUCKET_KINDS, partitioned=True, completion_observable=True,
-            provenance="per-cycle activity decomposition from the cycle-accurate model"))
+        out.append(
+            activity_from_busy(
+                name,
+                arc["truth"],
+                {"dma": arc["dma_busy"], "mxu": arc["mxu"], "vpu": arc["vpu"], "none": arc["none"]},
+                BUCKET_KINDS,
+                partitioned=True,
+                completion_observable=True,
+                provenance="per-cycle activity decomposition from the cycle-accurate model",
+            )
+        )
     return out
 
 
@@ -92,8 +99,10 @@ def test_the_five_buckets_are_exactly_mlcs():
 
 
 def test_kinds_that_decide_a_bucket_do_and_kinds_that_do_not_refuse():
-    assert buckets_from_kinds({"a": ResourceKind.COMPUTE, "b": ResourceKind.MOVEMENT},
-                              fixed_bucket="control") == {"a": "compute", "b": "dma"}
+    assert buckets_from_kinds({"a": ResourceKind.COMPUTE, "b": ResourceKind.MOVEMENT}, fixed_bucket="control") == {
+        "a": "compute",
+        "b": "dma",
+    }
     with pytest.raises(ValueError, match="does not decide a bucket"):
         buckets_from_kinds({"x": ResourceKind.OTHER}, fixed_bucket="control")
     with pytest.raises(ValueError, match="not one of"):
@@ -141,8 +150,15 @@ def test_every_bucket_is_present_even_at_zero_cycles():
 def test_a_component_list_missing_a_bucket_is_rejected_at_construction():
     from merlin.perf.attribution import Attribution, GapComponent
 
-    one = GapComponent(bucket="compute", measured_cycles=0, structural_cycles=UNKNOWN,
-                       gap_cycles=UNKNOWN, evidence_kind="assumed", family=UNKNOWN, rationale="")
+    one = GapComponent(
+        bucket="compute",
+        measured_cycles=0,
+        structural_cycles=UNKNOWN,
+        gap_cycles=UNKNOWN,
+        evidence_kind="assumed",
+        family=UNKNOWN,
+        rationale="",
+    )
     with pytest.raises(ValueError, match="every bucket plus the residual"):
         Attribution(workload="w", total_cycles=0, components=(one,), partitioned=True)
 
@@ -160,10 +176,8 @@ def test_a_partitioned_source_reports_that_overlap_is_not_derivable_from_it():
 
 
 def _dma_peak() -> Peak:
-    samples = [(k["arc"]["reads"] + k["arc"]["writes"], k["arc"]["dma_busy"])
-               for k in _suite()["kernels"].values()]
-    return Peak.observed_ceiling("dma", samples, unit="beats",
-                                 provenance="per-cycle activity decomposition")
+    samples = [(k["arc"]["reads"] + k["arc"]["writes"], k["arc"]["dma_busy"]) for k in _suite()["kernels"].values()]
+    return Peak.observed_ceiling("dma", samples, unit="beats", provenance="per-cycle activity decomposition")
 
 
 def _envelope_for(name: str):
@@ -186,28 +200,52 @@ def _envelope_for(name: str):
     arc = entry["arc"]
 
     beats = arc["reads"] + arc["writes"]
-    times = [resource_time(
-        ResourceDemand("dma", ResourceKind.MOVEMENT, beats, "beats", basis=Basis.MOVED,
-                       provenance="measured read/write beats"), _dma_peak())]
+    times = [
+        resource_time(
+            ResourceDemand(
+                "dma", ResourceKind.MOVEMENT, beats, "beats", basis=Basis.MOVED, provenance="measured read/write beats"
+            ),
+            _dma_peak(),
+        )
+    ]
     busy = compose_unit_busy(entry["op_stream"], roles, fill, delay)
-    times.append(ResourceTime(
-        resource="mxu", kind=ResourceKind.COMPUTE,
-        cycles=UNKNOWN if busy.cycles is None else float(busy.cycles), unit="cycles",
-        basis=Basis.MOVED, fixed_cycles=fill, evidence_kind="structural_bound",
-        provenance=f"fill={fill} plus the delays the program schedules",
-        reason="" if busy.cycles is not None else busy.reason))
+    times.append(
+        ResourceTime(
+            resource="mxu",
+            kind=ResourceKind.COMPUTE,
+            cycles=UNKNOWN if busy.cycles is None else float(busy.cycles),
+            unit="cycles",
+            basis=Basis.MOVED,
+            fixed_cycles=fill,
+            evidence_kind="structural_bound",
+            provenance=f"fill={fill} plus the delays the program schedules",
+            reason="" if busy.cycles is not None else busy.reason,
+        )
+    )
     vops = sum(1 for fam, _m, _i in entry["op_stream"] if fam == "Vector")
-    times.append(resource_time(
-        ResourceDemand("vpu", ResourceKind.COMPUTE, vops, "ops", basis=Basis.MOVED,
-                       provenance="program op stream"),
-        Peak.unknown("vpu", "ops",
-                     "its module refuses (31/31 outputs cyclic) and the op-count demand proxy is "
-                     "refuted by a workload that issues seven and is charged zero cycles",
-                     provenance="rtl timing walk + activity decomposition")))
-    times.append(ResourceTime(
-        resource="none", kind=ResourceKind.FIXED, cycles=float(suite["_meta"]["reset_cycles"]),
-        unit="cycles", basis=Basis.MOVED, evidence_kind="measured",
-        provenance="reset_cycles declared by the measurement source"))
+    times.append(
+        resource_time(
+            ResourceDemand("vpu", ResourceKind.COMPUTE, vops, "ops", basis=Basis.MOVED, provenance="program op stream"),
+            Peak.unknown(
+                "vpu",
+                "ops",
+                "its module refuses (31/31 outputs cyclic) and the op-count demand proxy is "
+                "refuted by a workload that issues seven and is charged zero cycles",
+                provenance="rtl timing walk + activity decomposition",
+            ),
+        )
+    )
+    times.append(
+        ResourceTime(
+            resource="none",
+            kind=ResourceKind.FIXED,
+            cycles=float(suite["_meta"]["reset_cycles"]),
+            unit="cycles",
+            basis=Basis.MOVED,
+            evidence_kind="measured",
+            provenance="reset_cycles declared by the measurement source",
+        )
+    )
     return envelope(name, times, operator=Composition.SUM, eta=0.0)
 
 
@@ -252,20 +290,23 @@ def test_the_movement_gap_names_a_family_only_when_the_amplification_split_resol
     from merlin.perf.amplification import amplification as amplify
     from merlin.perf.decompose import Trait
 
-    trait = Trait("explicit_data_movement", True,
-                  evidence="the program issues movement commands under compiler control")
+    trait = Trait(
+        "explicit_data_movement", True, evidence="the program issues movement commands under compiler control"
+    )
     # A tiny payload inside a large fixed command block: granularity 40.96x vs redundancy 2x.
-    mostly_granule = amplify(MovementObservation(
-        workload="matmul", moved_bytes=8192, useful_bytes=100, transfers=2, provenance="synthetic"),
-        trait=trait)
+    mostly_granule = amplify(
+        MovementObservation(workload="matmul", moved_bytes=8192, useful_bytes=100, transfers=2, provenance="synthetic"),
+        trait=trait,
+    )
     # Eight commands carrying a payload one command could hold: redundancy 8x vs granularity 1x.
-    mostly_refetch = amplify(MovementObservation(
-        workload="matmul", moved_bytes=8192, useful_bytes=4096, transfers=8, provenance="synthetic"),
-        trait=trait)
-    got_granule = attribute(src, buckets=_buckets(), envelope=env,
-                            amplification=mostly_granule).component("dma")
-    got_refetch = attribute(src, buckets=_buckets(), envelope=env,
-                            amplification=mostly_refetch).component("dma")
+    mostly_refetch = amplify(
+        MovementObservation(
+            workload="matmul", moved_bytes=8192, useful_bytes=4096, transfers=8, provenance="synthetic"
+        ),
+        trait=trait,
+    )
+    got_granule = attribute(src, buckets=_buckets(), envelope=env, amplification=mostly_granule).component("dma")
+    got_refetch = attribute(src, buckets=_buckets(), envelope=env, amplification=mostly_refetch).component("dma")
     assert got_granule.family is OptimizationFamily.TRANSFER_GRANULARITY
     assert "amortizes away" in got_granule.rationale
     assert got_refetch.family is OptimizationFamily.TRANSFER_REDUNDANCY
@@ -281,8 +322,7 @@ def test_a_stall_family_needs_a_headroom_result_and_a_positive_saving():
     assert is_unknown(bare.family), "a partition cannot settle whether these cycles overlap"
 
     head = headroom(src, traits=concurrency_traits(sources))
-    with_head = attribute(src, buckets=buckets, envelope=_envelope_for("matmul"),
-                          headroom=head).component("stall")
+    with_head = attribute(src, buckets=buckets, envelope=_envelope_for("matmul"), headroom=head).component("stall")
     assert with_head.family is OptimizationFamily.OVERLAP
     assert "158" in with_head.rationale
     assert "upper bound" in with_head.rationale
@@ -314,22 +354,37 @@ def test_the_corpus_bucket_shares_reproduce_the_measured_split():
 class TestActivityFromCounterReadings:
     """The hop that let a whole-model run's counters reach the attribution map."""
 
-    HEADER = "\n".join((
-        "#define MAIN_LD_CYCLES 1", "#define MAIN_ST_CYCLES 2", "#define MAIN_EX_CYCLES 3",
-        "#define MAIN_LD_ST_CYCLES 4", "#define MAIN_LD_EX_CYCLES 5",
-        "#define MAIN_ST_EX_CYCLES 6", "#define MAIN_LD_ST_EX_CYCLES 7",
-    ))
+    HEADER = "\n".join(
+        (
+            "#define MAIN_LD_CYCLES 1",
+            "#define MAIN_ST_CYCLES 2",
+            "#define MAIN_EX_CYCLES 3",
+            "#define MAIN_LD_ST_CYCLES 4",
+            "#define MAIN_LD_EX_CYCLES 5",
+            "#define MAIN_ST_EX_CYCLES 6",
+            "#define MAIN_LD_ST_EX_CYCLES 7",
+        )
+    )
     KINDS = {"EX": "compute", "LD": "movement", "ST": "movement"}
-    FULL = {"MAIN_LD_CYCLES": 30_000_000, "MAIN_ST_CYCLES": 8_000_000,
-            "MAIN_EX_CYCLES": 20_000_000, "MAIN_LD_ST_CYCLES": 400_000,
-            "MAIN_LD_EX_CYCLES": 200_000, "MAIN_ST_EX_CYCLES": 50_000,
-            "MAIN_LD_ST_EX_CYCLES": 9_625}
+    FULL = {
+        "MAIN_LD_CYCLES": 30_000_000,
+        "MAIN_ST_CYCLES": 8_000_000,
+        "MAIN_EX_CYCLES": 20_000_000,
+        "MAIN_LD_ST_CYCLES": 400_000,
+        "MAIN_LD_EX_CYCLES": 200_000,
+        "MAIN_ST_EX_CYCLES": 50_000,
+        "MAIN_LD_ST_EX_CYCLES": 9_625,
+    }
     WINDOW = 1_383_906_735
 
     def _source(self, readings=None):
         return A.activity_from_counter_readings(
-            readings if readings is not None else self.FULL, workload="w",
-            total_cycles=self.WINDOW, header_text=self.HEADER, kind_of=self.KINDS)
+            readings if readings is not None else self.FULL,
+            workload="w",
+            total_cycles=self.WINDOW,
+            header_text=self.HEADER,
+            kind_of=self.KINDS,
+        )
 
     def test_a_complete_partition_yields_engines_plus_the_host_residue(self):
         src = self._source()
@@ -349,8 +404,7 @@ class TestActivityFromCounterReadings:
     def test_the_residual_is_exactly_the_overlap_overcount(self):
         """A non-zero residual here is interpretable, not noise: it is the double-charged overlap."""
         src = self._source()
-        buckets = A.buckets_from_kinds({r.name: r.kind for r in src.resources},
-                                       fixed_bucket="host")
+        buckets = A.buckets_from_kinds({r.name: r.kind for r in src.resources}, fixed_bucket="host")
         att = A.attribute(src, buckets=buckets)
         residual = next(c for c in att.components if c.bucket == A.RESIDUAL)
         # A pair counter is charged to both its engines (once extra); the triple to all three (twice).
@@ -359,8 +413,7 @@ class TestActivityFromCounterReadings:
 
     def test_the_host_bucket_carries_the_cycles_no_engine_claimed(self):
         src = self._source()
-        buckets = A.buckets_from_kinds({r.name: r.kind for r in src.resources},
-                                       fixed_bucket="host")
+        buckets = A.buckets_from_kinds({r.name: r.kind for r in src.resources}, fixed_bucket="host")
         att = A.attribute(src, buckets=buckets)
         host = next(c for c in att.components if c.bucket == "host")
         assert host.measured_cycles == self.WINDOW - sum(self.FULL.values())
@@ -381,23 +434,31 @@ class TestActivityFromCounterReadings:
     def test_a_header_that_derives_no_complete_partition_is_refused(self):
         with pytest.raises(ValueError, match="does not derive a complete occupancy partition"):
             A.activity_from_counter_readings(
-                {"MAIN_LD_CYCLES": 1}, workload="w", total_cycles=10,
-                header_text="#define MAIN_LD_CYCLES 1", kind_of={"LD": "movement"})
+                {"MAIN_LD_CYCLES": 1},
+                workload="w",
+                total_cycles=10,
+                header_text="#define MAIN_LD_CYCLES 1",
+                kind_of={"LD": "movement"},
+            )
 
     def test_an_undeclared_engine_kind_is_refused_never_read_off_the_name(self):
         with pytest.raises(ValueError, match="no kind for unit|stated no kind"):
             A.activity_from_counter_readings(
-                self.FULL, workload="w", total_cycles=self.WINDOW, header_text=self.HEADER,
-                kind_of={"EX": "compute", "LD": "movement"})   # ST undeclared
+                self.FULL,
+                workload="w",
+                total_cycles=self.WINDOW,
+                header_text=self.HEADER,
+                kind_of={"EX": "compute", "LD": "movement"},
+            )  # ST undeclared
 
     def test_families_stay_UNKNOWN_without_an_envelope_rather_than_reporting_no_gap(self):
         src = self._source()
-        buckets = A.buckets_from_kinds({r.name: r.kind for r in src.resources},
-                                       fixed_bucket="host")
+        buckets = A.buckets_from_kinds({r.name: r.kind for r in src.resources}, fixed_bucket="host")
         att = A.attribute(src, buckets=buckets)
         busy = {c.bucket: c for c in att.components if c.measured_cycles > 0}
         assert busy, "the fixture must have non-empty buckets or this proves nothing"
         for bucket, component in busy.items():
-            assert not isinstance(component.family, A.OptimizationFamily) \
-                or component.family is not A.OptimizationFamily.NONE, (
-                f"{bucket} reported NONE with no structural bound; unbounded must be UNKNOWN")
+            assert (
+                not isinstance(component.family, A.OptimizationFamily)
+                or component.family is not A.OptimizationFamily.NONE
+            ), f"{bucket} reported NONE with no structural bound; unbounded must be UNKNOWN"

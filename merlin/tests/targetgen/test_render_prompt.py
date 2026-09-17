@@ -2,24 +2,28 @@
 so a target's prompt is generated, never hand-authored. The invariant: for a fixed (experiment, arm),
 two targets' prompts differ ONLY in the derived slots — the shared skeleton is byte-identical.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.targetgen.target_experiment import load_target_experiment, load_capability_manifest
-from merlin.targetgen.generate_prompt import render_prompt, prompt_slots
+from merlin.targetgen.generate_prompt import prompt_slots, render_prompt
+from merlin.targetgen.target_experiment import load_capability_manifest, load_target_experiment
 
 _GEM = "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
 _RAD = "merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml"
 
 _SHARED_BLOCKS = [
     "non-exempt out-of-tree MLIR target backend",
-    "never author a compute kernel",                       # compiler-not-kernel
+    "never author a compute kernel",  # compiler-not-kernel
     "Compute must be compiler-GENERATED, never an authored/library kernel",
     "integrity_exempt: false",
     "qa/verdict.json",
     "Final status line",
-    "parse", "lower_interface_to_target", "emit_command_buffer", "emit_target_artifact",
+    "parse",
+    "lower_interface_to_target",
+    "emit_command_buffer",
+    "emit_target_artifact",
     "emit_analysis_bundle",
 ]
 
@@ -99,10 +103,10 @@ def _canonicalize(p: str, s: dict) -> str:
     for val, tok in ((s["kernel_symbol"], "KSYM"), (s["tool_stem"], "TOOL"), (s["target"], "T")):
         p = p.replace(val, tok)
     p = p.replace(s["endpoint_desc"], "ENDPOINT")
-    p = p.replace(s["grading_model"], "GRADING")   # float-vs-integer grading model is a derived slot
+    p = p.replace(s["grading_model"], "GRADING")  # float-vs-integer grading model is a derived slot
     out, in_facts, in_endpoint = [], False, False
     for ln in p.splitlines():
-        if ln.startswith("## "):                   # section boundary: re-decide whether we're in a dropped one
+        if ln.startswith("## "):  # section boundary: re-decide whether we're in a dropped one
             in_endpoint = any(ln.startswith(h) for h in _ENDPOINT_SECTIONS)
         if ln.startswith("## Target ISA facts"):
             in_facts = True

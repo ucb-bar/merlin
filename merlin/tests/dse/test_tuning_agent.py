@@ -2,45 +2,60 @@
 renderable ForkProposals, drops unknown override keys, degrades gracefully, and plugs into run_beam
 as a drop-in for the deterministic gap-router (reusing the mock-certify pattern from
 test_rvv_beam.py)."""
+
 import json
 import os
 
-from merlin.mining.tuning_agent import propose_forks_llm, build_prompt, prompt_path
-from merlin.mining.from_strategy import render_schedule
-from merlin.mining.beam import run_beam
-from merlin.mining import load_rvv_package
 from merlin.kernels.knobs import ForkProposal
+from merlin.mining import load_rvv_package
+from merlin.mining.beam import run_beam
+from merlin.mining.from_strategy import render_schedule
+from merlin.mining.tuning_agent import build_prompt, prompt_path, propose_forks_llm
 
 # Reuse the divergences + mock-certify from the beam test (replicated, kept identical).
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 HAND_V0 = os.path.join(ROOT, "out/artifacts/targets", "rvv", "hand_v0")
 
-_DIVS = ["lmul_class: expert='m4' vs ours='m2'",
-         "fma_form: expert='vf' vs ours=None",
-         "vl_strategy: expert='vsetvl_loop' vs ours='vsetivli_fixed'"]
+_DIVS = [
+    "lmul_class: expert='m4' vs ours='m2'",
+    "fma_form: expert='vf' vs ours=None",
+    "vl_strategy: expert='vsetvl_loop' vs ours='vsetivli_fixed'",
+]
 
 
 def _mock_certify(*, package_dir, model_dir, runs_root, run_id, targets, baseline_run_dir):
     pkg = load_rvv_package(package_dir)
     n = pkg.op_match[0]["vector"][-2] if pkg.op_match else 8
-    return {"correctness": {"gate_ok": True},
-            "measurement": [{"target": "spike", "cycle_accurate": False, "cycles": 4_000_000 // n}],
-            "structural_match": min(0.95, 0.45 + 0.02 * n),
-            "divergences": _DIVS}
+    return {
+        "correctness": {"gate_ok": True},
+        "measurement": [{"target": "spike", "cycle_accurate": False, "cycles": 4_000_000 // n}],
+        "structural_match": min(0.95, 0.45 + 0.02 * n),
+        "divergences": _DIVS,
+    }
 
 
 def _mock_llm_good(prompt):
     """A well-behaved agent reply: widen N x2 (renderable), an unknown knob (must be dropped),
     and a non-actionable suggestion (empty overrides -> work-item)."""
-    return json.dumps([
-        {"overrides": {"op_match": [{"op": "linalg.matmul", "tile": [4, 16, 1],
-                                     "vector": [4, 16, 1]}]},
-         "rationale": "widen N tile/vector x2 toward higher LMUL", "targets": "lmul_class"},
-        {"overrides": {"contraction_strategy": "outerproduct", "frobnicate": 7},
-         "rationale": "try outerproduct lowering", "targets": "fma_form"},
-        {"overrides": {}, "rationale": "vsetvl-loop needs a scalable-vector lowering path",
-         "targets": "vl_strategy"},
-    ])
+    return json.dumps(
+        [
+            {
+                "overrides": {"op_match": [{"op": "linalg.matmul", "tile": [4, 16, 1], "vector": [4, 16, 1]}]},
+                "rationale": "widen N tile/vector x2 toward higher LMUL",
+                "targets": "lmul_class",
+            },
+            {
+                "overrides": {"contraction_strategy": "outerproduct", "frobnicate": 7},
+                "rationale": "try outerproduct lowering",
+                "targets": "fma_form",
+            },
+            {
+                "overrides": {},
+                "rationale": "vsetvl-loop needs a scalable-vector lowering path",
+                "targets": "vl_strategy",
+            },
+        ]
+    )
 
 
 def test_prompt_artifact_exists_and_renders():
@@ -79,9 +94,15 @@ def test_unknown_override_keys_are_dropped_with_note():
 
 def test_bad_op_match_is_clamped_out():
     pkg = load_rvv_package(HAND_V0)
-    bad = json.dumps([{"overrides": {"op_match": [{"op": "linalg.matmul", "tile": [4, 8],
-                                                   "vector": [4, 8, 1]}]},
-                       "rationale": "mismatched lengths", "targets": "lmul_class"}])
+    bad = json.dumps(
+        [
+            {
+                "overrides": {"op_match": [{"op": "linalg.matmul", "tile": [4, 8], "vector": [4, 8, 1]}]},
+                "rationale": "mismatched lengths",
+                "targets": "lmul_class",
+            }
+        ]
+    )
     props = propose_forks_llm(_DIVS, pkg.knobs, llm_fn=lambda _p: bad)
     # the only override is invalid -> dropped -> non-actionable work-item, not a forkable knob.
     assert len(props) == 1 and not props[0].forkable
@@ -101,13 +122,24 @@ def test_plugs_into_run_beam(tmp_path):
     """The headline: run_beam(proposer=propose_forks_llm) works unchanged — the LLM proposer is a
     drop-in for the deterministic gap-router. Bind the mock llm_fn via a closure (the beam calls
     proposer(divergences, knobs) with no kwargs)."""
+
     def llm_proposer(divergences, knobs):
         return propose_forks_llm(divergences, knobs, llm_fn=_mock_llm_good)
 
-    out = run_beam(HAND_V0, model_dir=tmp_path / "wl", curated_text="", op_key={"op": "gemm"},
-                   runs_root=tmp_path / "runs", out_root=tmp_path / "gen",
-                   width=2, depth=2, top_k=1, timestamp="t",
-                   certify_fn=_mock_certify, proposer=llm_proposer)
+    out = run_beam(
+        HAND_V0,
+        model_dir=tmp_path / "wl",
+        curated_text="",
+        op_key={"op": "gemm"},
+        runs_root=tmp_path / "runs",
+        out_root=tmp_path / "gen",
+        width=2,
+        depth=2,
+        top_k=1,
+        timestamp="t",
+        certify_fn=_mock_certify,
+        proposer=llm_proposer,
+    )
     seed = next(n for n in out["nodes"] if n["lever"] == "seed")
     # the widen-N fork the agent proposed should win (higher N -> higher mock structural_match).
     assert out["best"]["structural_match"] >= seed["structural_match"]

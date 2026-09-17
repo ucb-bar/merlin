@@ -9,6 +9,7 @@ These tests pin the two properties that make the resolution worth trusting: it i
 role rather than a naming convention, and every artifact is verified against its digest before the set
 is returned. Each refusal is exercised, because a resolver that cannot fail is worth nothing.
 """
+
 from __future__ import annotations
 
 import copy
@@ -57,16 +58,20 @@ def test_a_role_no_artifact_claims_is_refused_by_name(registry):
 
 def test_a_digest_that_disagrees_with_the_bytes_refuses_the_whole_set(registry):
     """Four good pins and one lie is the wrong-device hazard, so the set fails rather than degrades."""
+
     def mutate(arts):
         arts["gemmini_gsim_emulator"]["digest"] = "0" * 64
+
     with pytest.raises(EnginePinsUnavailable, match="does not match its declared digest"):
         engine_pins(TARGET, registry=_mutated(registry, mutate))
 
 
 def test_two_artifacts_claiming_one_role_is_refused_rather_than_tie_broken(registry):
     """Picking one would make the capture describe an engine chosen by sort order."""
+
     def mutate(arts):
         arts["gemmini_gsim_emulator_copy"] = dict(arts["gemmini_gsim_emulator"])
+
     with pytest.raises(EnginePinsUnavailable, match="claim it"):
         engine_pins(TARGET, registry=_mutated(registry, mutate))
 
@@ -74,6 +79,7 @@ def test_two_artifacts_claiming_one_role_is_refused_rather_than_tie_broken(regis
 def test_an_artifact_with_no_declared_digest_would_certify_itself(registry):
     def mutate(arts):
         arts["gemmini_verilator_firrtl"]["digest"] = ""
+
     with pytest.raises(EnginePinsUnavailable, match="certify itself"):
         engine_pins(TARGET, registry=_mutated(registry, mutate))
 
@@ -83,4 +89,5 @@ def test_roles_are_declared_not_read_out_of_the_artifact_name(registry):
     arts = prov.load_artifacts()
     firrtl = [n for n, a in arts.items() if a.target == TARGET and a.role == "gsim_firrtl"]
     assert firrtl == ["gemmini_gsim_model_serialclk"], (
-        "the gsim FIRRTL is found by its DECLARED role; its name states a configuration, not a role")
+        "the gsim FIRRTL is found by its DECLARED role; its name states a configuration, not a role"
+    )

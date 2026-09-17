@@ -18,6 +18,7 @@ All three gaps are now closed (``conv2d``'s own semantics are covered by ``test_
 so the falsifiers here probe with a mnemonic nobody will ever implement: naming a real gap makes a
 check like this expire the moment that gap closes, taking its subject with it.
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -31,14 +32,14 @@ from merlin.runtime.tensor import Tensor
 from merlin.targetgen.contract import interface_emit as IE
 from merlin.targetgen.contract.schemas import contract_dir
 
-_MOVEMENT = textwrap.dedent('''\
+_MOVEMENT = textwrap.dedent("""\
     module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
       %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<16x16xi8>
       %Y0 = merlin_iface.movement %X {name = "Y0", semantic = "mvin_mvout", output_dtype = "i32"} : (tensor<16x16xi8>) -> tensor<16x16xi32>
     }
-    ''')
+    """)
 
-_FLASH = textwrap.dedent('''\
+_FLASH = textwrap.dedent("""\
     module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
       %Q = merlin_iface.tensor {name = "Q", role = "input"} : tensor<16x32xf8E4M3FN>
       %K = merlin_iface.tensor {name = "K", role = "input"} : tensor<32x32xf8E4M3FN>
@@ -47,9 +48,9 @@ _FLASH = textwrap.dedent('''\
       %P = merlin_iface.softmax %S {name = "P", axis = 1 : i64} : (tensor<16x32xbf16>) -> tensor<16x32xbf16>
       %Y0 = merlin_iface.attention_pv %P, %V {name = "Y0", output_dtype = "bf16"} : (tensor<16x32xbf16>, tensor<32x16xf8E4M3FN>) -> tensor<16x16xbf16>
     }
-    ''')
+    """)
 
-_RESIDENCY = textwrap.dedent('''\
+_RESIDENCY = textwrap.dedent("""\
     module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
       %W = merlin_iface.tensor {name = "W", role = "weight"} : tensor<16x16xi8>
       %A0 = merlin_iface.tensor {name = "A0", role = "input"} : tensor<16x16xi8>
@@ -58,7 +59,7 @@ _RESIDENCY = textwrap.dedent('''\
       %Y0 = merlin_iface.commit %acc0 {name = "Y0", epilogue = [], output_dtype = "i32"} : (!merlin_iface.acc<i32>) -> tensor<16x16xi32>
       merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()
     }
-    ''')
+    """)
 
 
 def _iface_capsules():
@@ -68,7 +69,7 @@ def _iface_capsules():
     for p in sorted(root.rglob("*.interface.mlir")):
         try:
             text = p.read_text(encoding="utf-8")
-        except OSError:                       # an un-readable holdout dir is not this test's subject
+        except OSError:  # an un-readable holdout dir is not this test's subject
             continue
         if "merlin_iface." in text:
             out.append((p, text))
@@ -90,7 +91,7 @@ class TestFailClosed:
         # what the three conv capsules did: resident_pack + evict survived and only the compute
         # vanished. The probe mnemonic here is deliberately one nobody will implement, because naming
         # a real gap makes the falsifier expire the moment that gap closes.
-        partial = textwrap.dedent('''\
+        partial = textwrap.dedent("""\
             module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
               %IFM = merlin_iface.tensor {name = "IFM", role = "input"} : tensor<8x8xi8>
               %W = merlin_iface.tensor {name = "W", role = "weight"} : tensor<8x8xi8>
@@ -98,7 +99,7 @@ class TestFailClosed:
               %Y0 = merlin_iface.not_an_op_in_any_grammar %IFM, %W_res {name = "Y0", output_dtype = "i32"} : (tensor<8x8xi8>, !merlin_iface.resident) -> tensor<8x8xi32>
               merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()
             }
-            ''')
+            """)
         with pytest.raises(IE.InterfaceGrammarError, match="not_an_op_in_any_grammar"):
             IE.parse_interface_mlir(partial)
 
@@ -120,13 +121,15 @@ class TestFailClosed:
         # Failing closed is only an improvement if it fails on real defects. A header printed across
         # lines is still a header; reading `merlin_iface.version = "0.1"` as an op would refuse a
         # perfectly conformant module, which is as unhelpful as the silent drop it replaces.
-        wrapped = ('module attributes {\n'
-                   '  merlin_iface.version = "0.1",\n'
-                   '  merlin_iface.target = "t",\n'
-                   '  merlin_iface.abi_version = "0.1"} {\n'
-                   '  %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<4x4xi8>\n'
-                   '  %Y0 = merlin_iface.movement %X {name = "Y0"} : (tensor<4x4xi8>) -> tensor<4x4xi8>\n'
-                   '}\n')
+        wrapped = (
+            "module attributes {\n"
+            '  merlin_iface.version = "0.1",\n'
+            '  merlin_iface.target = "t",\n'
+            '  merlin_iface.abi_version = "0.1"} {\n'
+            '  %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<4x4xi8>\n'
+            '  %Y0 = merlin_iface.movement %X {name = "Y0"} : (tensor<4x4xi8>) -> tensor<4x4xi8>\n'
+            "}\n"
+        )
         assert IE.undefined_op_mnemonics(wrapped) == []
         cb = IE.parse_interface_mlir(wrapped)
         assert cb["target"] == "t"
@@ -142,11 +145,14 @@ class TestFailClosed:
 
 
 class TestEveryOpReachesTheCommandList:
-    @pytest.mark.parametrize("text,expected", [
-        (_RESIDENCY, ["RES_PACK", "MATMUL_RESIDENT", "COMMIT", "EVICT"]),
-        (_MOVEMENT, ["MOVEMENT"]),
-        (_FLASH, ["ATTENTION_QK", "SOFTMAX", "ATTENTION_PV"]),
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            (_RESIDENCY, ["RES_PACK", "MATMUL_RESIDENT", "COMMIT", "EVICT"]),
+            (_MOVEMENT, ["MOVEMENT"]),
+            (_FLASH, ["ATTENTION_QK", "SOFTMAX", "ATTENTION_PV"]),
+        ],
+    )
     def test_opcodes_in_program_order(self, text, expected):
         assert [c["opcode"] for c in IE.parse_interface_mlir(text)["commands"]] == expected
 
@@ -187,9 +193,9 @@ class TestEveryOpReachesTheCommandList:
         assert not dropped, f"ops silently dropped: {dropped}"
         # Nothing in the shipped corpus should still be unreadable. If a future capsule introduces a
         # mnemonic the grammar lacks, this names it rather than letting the capsule read short.
-        assert not raised, ("capsules the frozen grammar cannot read: "
-                            + str({str(p): IE.undefined_op_mnemonics(p.read_text(encoding="utf-8"))
-                                   for p in raised}))
+        assert not raised, "capsules the frozen grammar cannot read: " + str(
+            {str(p): IE.undefined_op_mnemonics(p.read_text(encoding="utf-8")) for p in raised}
+        )
 
 
 class TestSimulatorSemantics:
@@ -197,18 +203,25 @@ class TestSimulatorSemantics:
         # The golden engine defines `movement` as `src.to_list()`. The capsule's whole point is that
         # the data survives the trip bit-for-bit, so a clamp or a requantize here would be a wrong
         # answer that still looks numerically plausible.
-        cb = {"abi_version": "0.1", "target": "t",
-              "tensors": {"X": {"shape": [4, 5], "dtype": "i8", "role": "input"}},
-              "commands": [{"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y0"},
-                            "attributes": {"output_dtype": "i32"}}],
-              "outputs": ["Y0"]}
+        cb = {
+            "abi_version": "0.1",
+            "target": "t",
+            "tensors": {"X": {"shape": [4, 5], "dtype": "i8", "role": "input"}},
+            "commands": [
+                {"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y0"}, "attributes": {"output_dtype": "i32"}}
+            ],
+            "outputs": ["Y0"],
+        }
         got = simulate(cb)["outputs"]["Y0"]
         assert got == Tensor.deterministic("X", (4, 5), "i8").to_list()
 
     def test_movement_needs_a_source(self):
-        cb = {"abi_version": "0.1", "target": "t",
-              "tensors": {"X": {"shape": [4, 5], "dtype": "i8", "role": "input"}},
-              "commands": [{"opcode": "MOVEMENT", "operands": {"dst": "Y0"}, "attributes": {}}]}
+        cb = {
+            "abi_version": "0.1",
+            "target": "t",
+            "tensors": {"X": {"shape": [4, 5], "dtype": "i8", "role": "input"}},
+            "commands": [{"opcode": "MOVEMENT", "operands": {"dst": "Y0"}, "attributes": {}}],
+        }
         with pytest.raises(SimulationError, match="MOVEMENT"):
             simulate(cb)
 
@@ -216,23 +229,35 @@ class TestSimulatorSemantics:
         # Sibling of ATTENTION_QK, which contracts the trailing head dim of BOTH operands (so it
         # transposes K). PV does not: p is [m, s] and v is [s, d]. Matching the golden engine's
         # `p.matmul(v)` exactly is what keeps the functional tier from disagreeing with the oracle.
-        cb = {"abi_version": "0.1", "target": "t",
-              "tensors": {"P": {"shape": [4, 6], "dtype": "i8", "role": "input"},
-                          "V": {"shape": [6, 3], "dtype": "i8", "role": "input"}},
-              "commands": [{"opcode": "ATTENTION_PV",
-                            "operands": {"p": "P", "v": "V", "dst": "Y0"},
-                            "attributes": {"output_dtype": "i32"}}],
-              "outputs": ["Y0"]}
-        want = (Tensor.deterministic("P", (4, 6), "i8")
-                .matmul(Tensor.deterministic("V", (6, 3), "i8")).to_list())
+        cb = {
+            "abi_version": "0.1",
+            "target": "t",
+            "tensors": {
+                "P": {"shape": [4, 6], "dtype": "i8", "role": "input"},
+                "V": {"shape": [6, 3], "dtype": "i8", "role": "input"},
+            },
+            "commands": [
+                {
+                    "opcode": "ATTENTION_PV",
+                    "operands": {"p": "P", "v": "V", "dst": "Y0"},
+                    "attributes": {"output_dtype": "i32"},
+                }
+            ],
+            "outputs": ["Y0"],
+        }
+        want = Tensor.deterministic("P", (4, 6), "i8").matmul(Tensor.deterministic("V", (6, 3), "i8")).to_list()
         assert simulate(cb)["outputs"]["Y0"] == want
 
     def test_attention_pv_rejects_a_key_count_mismatch(self):
-        cb = {"abi_version": "0.1", "target": "t",
-              "tensors": {"P": {"shape": [4, 6], "dtype": "i8", "role": "input"},
-                          "V": {"shape": [5, 3], "dtype": "i8", "role": "input"}},
-              "commands": [{"opcode": "ATTENTION_PV",
-                            "operands": {"p": "P", "v": "V", "dst": "Y0"}, "attributes": {}}]}
+        cb = {
+            "abi_version": "0.1",
+            "target": "t",
+            "tensors": {
+                "P": {"shape": [4, 6], "dtype": "i8", "role": "input"},
+                "V": {"shape": [5, 3], "dtype": "i8", "role": "input"},
+            },
+            "commands": [{"opcode": "ATTENTION_PV", "operands": {"p": "P", "v": "V", "dst": "Y0"}, "attributes": {}}],
+        }
         with pytest.raises(SimulationError, match="ATTENTION_PV"):
             simulate(cb)
 
@@ -253,8 +278,7 @@ class TestContractDeclaresTheNewOps:
         assert {"MOVEMENT", "ATTENTION_PV"} <= set(abi["opcodes"])
 
     def test_the_interface_contract_maps_both_mnemonics(self):
-        spec = yaml.safe_load(
-            (contract_dir() / "interface_dialect_contract.yaml").read_text(encoding="utf-8"))
+        spec = yaml.safe_load((contract_dir() / "interface_dialect_contract.yaml").read_text(encoding="utf-8"))
         mapped = {op["name"]: op.get("maps_to") for op in spec["dialect"]["required_ops"]}
         assert mapped.get("merlin_iface.movement") == "MOVEMENT"
         assert mapped.get("merlin_iface.attention_pv") == "ATTENTION_PV"
@@ -262,8 +286,7 @@ class TestContractDeclaresTheNewOps:
     def test_every_contract_op_is_one_the_parser_defines(self):
         # The contract and the parser are two statements of the same grammar; if they can disagree,
         # the document an agent reads stops being evidence about the tool it will actually hit.
-        spec = yaml.safe_load(
-            (contract_dir() / "interface_dialect_contract.yaml").read_text(encoding="utf-8"))
+        spec = yaml.safe_load((contract_dir() / "interface_dialect_contract.yaml").read_text(encoding="utf-8"))
         defined = IE.defined_mnemonics()
         for op in spec["dialect"]["required_ops"]:
             mnem = op["name"].split("merlin_iface.", 1)[-1]

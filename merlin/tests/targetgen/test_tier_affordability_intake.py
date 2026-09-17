@@ -10,6 +10,7 @@ is a gap in what the runner recorded, the other is an absence of evidence.
 These tests pin the distinction, and pin that it is DIAGNOSTIC ONLY -- the verdict stays ``UNKNOWN``
 in every case, because a record missing half its pair is still not something that can be fitted.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,10 +24,13 @@ def _result(tmp_path, name, tier="L3", *, seconds, cycles):
     """One capsule_result.json carrying a single cycle-accurate tier record."""
     d = tmp_path / name
     d.mkdir(parents=True, exist_ok=True)
-    rec = {"cycle_accurate": True, "engine": "gsim", "cycles": cycles,
-           "timing": {"sim_active_s": seconds, "adapter_wall_s": 1.0}}
-    (d / "capsule_result.json").write_text(
-        json.dumps({"capsule": name, "tiers": {tier: rec}}), encoding="utf-8")
+    rec = {
+        "cycle_accurate": True,
+        "engine": "gsim",
+        "cycles": cycles,
+        "timing": {"sim_active_s": seconds, "adapter_wall_s": 1.0},
+    }
+    (d / "capsule_result.json").write_text(json.dumps({"capsule": name, "tiers": {tier: rec}}), encoding="utf-8")
 
 
 @pytest.fixture(autouse=True)
@@ -51,7 +55,8 @@ def test_records_present_but_seconds_missing_is_not_no_records(tmp_path):
     a = CC.affordability("t", "L3", budget_s=600.0, roots=roots)
     assert a.verdict == CC.UNKNOWN, "diagnostic only: half a pair still cannot be fitted"
     assert "no cycle-accurate run on disk" not in a.reason, (
-        "this is the false statement the change exists to remove; the disk is not empty")
+        "this is the false statement the change exists to remove; the disk is not empty"
+    )
     assert "1501" not in a.reason and "8 cycle-accurate record" in a.reason
     assert "sim_active_s" in a.reason, "the refusal must name the field that was missing"
 

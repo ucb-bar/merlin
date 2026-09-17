@@ -14,6 +14,7 @@ only way that proves anything: by reproducing the failure and demanding a refusa
 
 Every assertion here fails if its fix is reverted. Verified by mutation, not by inspection.
 """
+
 from __future__ import annotations
 
 import json
@@ -60,8 +61,14 @@ def _run(name: str, args: list[str], *, broken_git: bool = False) -> subprocess.
         # gate checks the status.
         env["GIT_DIR"] = "/nonexistent/x.git"
         env.pop("GIT_WORK_TREE", None)
-    return subprocess.run([sys.executable, str(_script(name)), *args],
-                          cwd=repo_root(), capture_output=True, text=True, env=env, timeout=300)
+    return subprocess.run(
+        [sys.executable, str(_script(name)), *args],
+        cwd=repo_root(),
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=300,
+    )
 
 
 @pytest.mark.parametrize("gate", _GIT_FED_GATES)
@@ -70,10 +77,11 @@ def test_an_unreadable_work_list_is_a_refusal_not_a_pass(gate: str):
     got = _run(gate, ["--staged"], broken_git=True)
     combined = got.stdout + got.stderr
     assert got.returncode != 0, (
-        f"{gate} exited 0 with an unreadable index -- it examined NOTHING and reported success:\n"
-        f"{combined}")
+        f"{gate} exited 0 with an unreadable index -- it examined NOTHING and reported success:\n{combined}"
+    )
     assert "not the same as clean" in combined, (
-        f"{gate} failed, but without saying that nothing was examined:\n{combined}")
+        f"{gate} failed, but without saying that nothing was examined:\n{combined}"
+    )
 
 
 @pytest.mark.parametrize("gate", _STOP_HOOK_GATES)
@@ -111,7 +119,8 @@ def test_staged_provenance_scans_the_untracked_reports_it_exists_for():
         pytest.skip("no verdict-claiming reports on this host; nothing to establish")
     assert n_staged >= n_bare, (
         f"--staged checked {n_staged} verdict-claiming report(s) but the bare run found {n_bare}; "
-        f"the untracked `out/` scan is exactly what --staged must not skip")
+        f"the untracked `out/` scan is exactly what --staged must not skip"
+    )
 
 
 def test_the_mesh_gate_exit_code_reflects_its_finding_without_a_flag():
@@ -121,8 +130,8 @@ def test_the_mesh_gate_exit_code_reflects_its_finding_without_a_flag():
     """
     got = _run("check_mesh_assertion_not_weakened.py", ["--no-ratchet"])
     assert got.returncode != 0, (
-        "the mesh gate reported findings and exited 0 with no ratchet applied:\n"
-        + got.stdout[-2000:])
+        "the mesh gate reported findings and exited 0 with no ratchet applied:\n" + got.stdout[-2000:]
+    )
     assert _run("check_mesh_assertion_not_weakened.py", ["--no-ratchet", "--advisory"]).returncode == 0
 
 
@@ -136,9 +145,11 @@ def test_the_mesh_gate_resolves_the_default_target_not_a_corpus_category():
     got = _run("check_mesh_assertion_not_weakened.py", ["--json", "--no-ratchet"])
     rep = json.loads(got.stdout)["report"]
     assert rep["unresolved_targets"] == {}, (
-        f"unresolved: {sorted(rep['unresolved_targets'])} -- a corpus category is not a target")
+        f"unresolved: {sorted(rep['unresolved_targets'])} -- a corpus category is not a target"
+    )
     assert rep["n_admitted_capsules_checked"] > 400, (
-        f"only {rep['n_admitted_capsules_checked']} capsules examined; the blind gate saw 199")
+        f"only {rep['n_admitted_capsules_checked']} capsules examined; the blind gate saw 199"
+    )
 
 
 @pytest.mark.parametrize("flag", ["--staged", "--stop-hook"])
@@ -148,12 +159,12 @@ def test_contract_copies_reads_the_flags_it_advertises(flag: str):
     got = _run("check_contract_copies.py", [flag])
     assert got.returncode == 0 and plain.returncode == 0, (plain.stderr, got.stderr)
     assert got.stdout != plain.stdout, (
-        f"{flag} produced byte-identical output to no flag at all, which is what a dead argparse "
-        f"destination looks like")
+        f"{flag} produced byte-identical output to no flag at all, which is what a dead argparse destination looks like"
+    )
     if flag == "--stop-hook":
-        json.loads(got.stdout.strip())      # stdout must be JSON ONLY in hook mode
+        json.loads(got.stdout.strip())  # stdout must be JSON ONLY in hook mode
     else:
-        assert got.stdout.strip() == ""     # pre-commit mode: same checks, no success chatter
+        assert got.stdout.strip() == ""  # pre-commit mode: same checks, no success chatter
 
 
 # --- artifact-layout: both git calls, individually --------------------------------------------------
@@ -161,8 +172,10 @@ def test_contract_copies_reads_the_flags_it_advertises(flag: str):
 # whichever one still raises stops the run -- so it cannot tell which fix is in place. These two pin
 # each call on its own, which is what a mutation table needs to be honest.
 
+
 def _layout_gate():
     import importlib.util
+
     spec = importlib.util.spec_from_file_location("_layout_gate", _script("check_artifact_layout.py"))
     mod = importlib.util.module_from_spec(spec)
     sys.modules["_layout_gate"] = mod

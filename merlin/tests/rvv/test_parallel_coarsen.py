@@ -23,7 +23,7 @@ def test_every_feature_specific_runner_carries_the_coarsening_stage():
 
 
 def test_adjacent_regions_merge_but_intervening_work_splits_runs():
-    module, report = apply_for_test(r'''module {
+    module, report = apply_for_test(r"""module {
       func.func private @side_effect()
       func.func @forward(%buf: memref<1xi64>) {
         %c0 = arith.constant 0 : i64
@@ -61,7 +61,7 @@ def test_adjacent_regions_merge_but_intervening_work_splits_runs():
         }
         return
       }
-    }''')
+    }""")
     assert report == {"merged": 1}
     assert module.count("omp.parallel") == 2
     assert module.count("omp.wsloop") == 3
@@ -69,7 +69,7 @@ def test_adjacent_regions_merge_but_intervening_work_splits_runs():
 
 
 def test_noncanonical_parallel_operands_fail_closed():
-    module, report = apply_for_test(r'''module {
+    module, report = apply_for_test(r"""module {
       func.func private @side_effect()
       func.func @forward() {
         %c2 = arith.constant 2 : i32
@@ -83,7 +83,7 @@ def test_noncanonical_parallel_operands_fail_closed():
         }
         return
       }
-    }''')
+    }""")
     assert report == {"merged": 0}
     assert module.count("omp.parallel") == 2
 
@@ -91,6 +91,7 @@ def test_noncanonical_parallel_operands_fail_closed():
 def test_named_build_requires_a_nonempty_runner_report():
     require_report("OK parallel_coarsen original 3 merged 2 groups 1 remaining 1")
     import pytest
+
     with pytest.raises(ValueError, match="did not execute"):
         require_report("")
     with pytest.raises(ValueError, match="matched no adjacent"):

@@ -8,6 +8,7 @@ Three ways of getting "best" wrong are pinned here, because each produces a conf
 a tie reported as a winner by recency, a short sweep's smaller total read as faster, and a cell the
 sweep never paid for read as zero cycles.
 """
+
 from __future__ import annotations
 
 import sys
@@ -22,18 +23,29 @@ import extract_best_candidate as EX  # noqa: E402
 
 
 def _cell(capsule, base, cand, *, measured=True, comparable=True):
-    return {"family": "PK", "capsule": capsule, "measured": measured, "comparable": comparable,
-            "baseline_gsim_cycles": base if measured else None,
-            "candidate_gsim_cycles": cand if measured else None}
+    return {
+        "family": "PK",
+        "capsule": capsule,
+        "measured": measured,
+        "comparable": comparable,
+        "baseline_gsim_cycles": base if measured else None,
+        "candidate_gsim_cycles": cand if measured else None,
+    }
 
 
 def _row(call, cells, sha):
     cs = EX._measured_cells({"cells": cells})
-    return {"document": f"d{call}", "round": 0, "call": call, "candidate_sha256": sha,
-            "members": EX._member_key(cs), "n_members": len(cs),
-            "baseline_total_cycles": sum(c["baseline_gsim_cycles"] for c in cs),
-            "candidate_total_cycles": sum(c["candidate_gsim_cycles"] for c in cs),
-            "snapshot": None}
+    return {
+        "document": f"d{call}",
+        "round": 0,
+        "call": call,
+        "candidate_sha256": sha,
+        "members": EX._member_key(cs),
+        "n_members": len(cs),
+        "baseline_total_cycles": sum(c["baseline_gsim_cycles"] for c in cs),
+        "candidate_total_cycles": sum(c["candidate_gsim_cycles"] for c in cs),
+        "snapshot": None,
+    }
 
 
 def test_a_cell_the_sweep_never_paid_for_is_not_a_zero():
@@ -44,8 +56,9 @@ def test_a_cell_the_sweep_never_paid_for_is_not_a_zero():
 
 def test_a_document_predating_the_measured_field_still_counts():
     """Absence of the key means the schema predates the early stop, not that nothing ran."""
-    old = [{"family": "PK", "capsule": "a", "comparable": True,
-            "baseline_gsim_cycles": 100, "candidate_gsim_cycles": 90}]
+    old = [
+        {"family": "PK", "capsule": "a", "comparable": True, "baseline_gsim_cycles": 100, "candidate_gsim_cycles": 90}
+    ]
     assert len(EX._measured_cells({"cells": old})) == 1
 
 

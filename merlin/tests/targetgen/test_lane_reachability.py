@@ -16,6 +16,7 @@ is a mesh kind, and it could not have been passed by any submission.
 The guard belongs at generation time, where the author can still fix it, not in a run where it fails
 forever and reads as a compiler deficiency.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -38,7 +39,8 @@ def test_a_mesh_only_target_cannot_offer_the_in_contract_lane():
     lanes = reachable_lanes_on([_Unit("mesh", "systolic"), _Unit("simt", "simt")])
     assert "on_mesh" in lanes
     assert "in_contract_vector_scalar" not in lanes, (
-        "no declared unit is a non-mesh kind, so the router has nothing to put on that lane")
+        "no declared unit is a non-mesh kind, so the router has nothing to put on that lane"
+    )
 
 
 def test_a_target_with_a_non_mesh_unit_offers_it():
@@ -148,10 +150,12 @@ def test_every_materialized_lane_declaration_is_reachable_on_its_target(target):
     ]
     assert not offenders, (
         "materialized capsule(s) requiring an unreachable lane -- unpassable by any submission:\n  "
-        + "\n  ".join(offenders))
+        + "\n  ".join(offenders)
+    )
 
 
 # --- the host lane is a declared fact, not an assumption ---------------------------------------------
+
 
 def test_the_host_lane_is_not_added_unconditionally():
     """It used to be. A target declaring no host at all still offered `scalar_rvv_lane`, so a capsule
@@ -226,10 +230,8 @@ def test_a_self_hosted_verdict_from_a_stub_is_not_the_same_claim_as_one_from_rtl
     assertion, so the two cases must not collapse into one verdict."""
     from merlin.targetgen.routing import facts_are_extracted, host_board_gap
 
-    extracted = [t for t in ("gemmini", "atlas", "radiance", "saturn_opu")
-                 if facts_are_extracted(t) is True]
-    asserted = [t for t in ("gemmini", "atlas", "radiance", "saturn_opu")
-                if facts_are_extracted(t) is False]
+    extracted = [t for t in ("gemmini", "atlas", "radiance", "saturn_opu") if facts_are_extracted(t) is True]
+    asserted = [t for t in ("gemmini", "atlas", "radiance", "saturn_opu") if facts_are_extracted(t) is False]
     if not extracted or not asserted:
         pytest.skip("this checkout does not carry both an extracted and a stub facts artifact")
 
@@ -238,4 +240,5 @@ def test_a_self_hosted_verdict_from_a_stub_is_not_the_same_claim_as_one_from_rtl
         gap = host_board_gap(target)
         if gap is not None:
             assert "ASSERTED" in gap or "UNKNOWN" in gap, (
-                f"{target} rests on declared facts; its gap must say which kind of doubt applies")
+                f"{target} rests on declared facts; its gap must say which kind of doubt applies"
+            )

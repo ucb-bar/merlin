@@ -6,6 +6,7 @@ same capture bundle -- emitted two different binaries (210dbfe9a01c44aa vs 2efd8
 compiler ran under, and the lowering path reads a couple of dozen MERLIN_* variables, several of
 which steer codegen directly.
 """
+
 from __future__ import annotations
 
 from merlin.llvmlower import codegen_env as ce
@@ -42,8 +43,7 @@ def test_capture_is_by_prefix_so_a_new_variable_cannot_be_silently_missed():
     assert 'PREFIX = "MERLIN_"' in src
     assert "name.startswith(PREFIX)" in src
     # a variable this module has never heard of is still captured
-    assert ce.snapshot({"MERLIN_SOMETHING_INVENTED_TOMORROW": "1"}) == {
-        "MERLIN_SOMETHING_INVENTED_TOMORROW": "1"}
+    assert ce.snapshot({"MERLIN_SOMETHING_INVENTED_TOMORROW": "1"}) == {"MERLIN_SOMETHING_INVENTED_TOMORROW": "1"}
 
 
 def test_differences_names_the_set_vs_unset_case():
@@ -59,6 +59,7 @@ def test_differences_names_the_set_vs_unset_case():
 
 def test_the_beam_and_the_runner_both_record_it():
     from merlin.common.paths import merlin_dir
+
     base = merlin_dir() / "python" / "merlin" / "mining"
     for name in ("beam.py", "runner.py"):
         src = (base / name).read_text()

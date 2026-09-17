@@ -10,6 +10,7 @@ That matters more here than almost anywhere: this is the check that exists to st
 reaching the granted tree, and a real leak of exactly that kind was found in this corpus — a
 generalization result measured against readable specs had to be withdrawn.
 """
+
 from __future__ import annotations
 
 import os

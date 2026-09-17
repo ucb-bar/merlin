@@ -19,6 +19,7 @@ integer reference, not against Radiance RTL. Its own contract is `status: protot
 `requires_human_review: true`, and the SIMT emitter its cyclotron/Verilator oracles need is not on
 this branch.
 """
+
 from __future__ import annotations
 
 import json
@@ -56,8 +57,7 @@ def arms():
     bridged = to_linalg(source.make_ttir(spec), spec)
     out = {"bridged": bridged}
     for name, path in (("radiance", RADIANCE_PACKAGE), ("gemmini", GEMMINI_PACKAGE)):
-        out[name] = compile_core.compile_core_mlir(
-            bridged.module, target_package=_package(path)).staged
+        out[name] = compile_core.compile_core_mlir(bridged.module, target_package=_package(path)).staged
     return out
 
 
@@ -77,8 +77,9 @@ def test_the_package_loads_in_isolation_and_derives_its_warp_width():
     # elaborated from, and the window is kept under its own name. See docs/design/target_kernel_anatomy.
     assert capabilities["resident_storage_bytes"] == 128 * 1024
     assert capabilities["smem_aperture_bytes"] == 1 << 19
-    assert capabilities["resident_storage_bytes"] < capabilities["smem_aperture_bytes"], \
+    assert capabilities["resident_storage_bytes"] < capabilities["smem_aperture_bytes"], (
         "a capacity equal to its address window means the two facts have been conflated again"
+    )
 
 
 def test_an_incoherent_contract_is_refused_rather_than_defaulted():
@@ -112,10 +113,12 @@ def test_the_command_buffer_names_radiance_and_matches_an_independent_reference(
     assert outputs == reference_outputs(cb)
 
     tensors = materialize_inputs(cb)
-    packed = {c["operands"]["dst"]: c["operands"]["src"]
-              for c in cb["commands"] if c["opcode"] == "RES_PACK"}
-    lhs_of = {c["operands"]["dst"]: (c["operands"]["lhs"], c["operands"]["rhs"])
-              for c in cb["commands"] if c["opcode"].startswith("MATMUL")}
+    packed = {c["operands"]["dst"]: c["operands"]["src"] for c in cb["commands"] if c["opcode"] == "RES_PACK"}
+    lhs_of = {
+        c["operands"]["dst"]: (c["operands"]["lhs"], c["operands"]["rhs"])
+        for c in cb["commands"]
+        if c["opcode"].startswith("MATMUL")
+    }
     for commit in [c for c in cb["commands"] if c["opcode"] == "COMMIT"]:
         lhs, rhs = lhs_of[commit["operands"]["src"]]
         activation = np.array(tensors[lhs].to_list(), dtype=np.int64)
@@ -160,14 +163,14 @@ def test_the_frontend_contributed_nothing_target_specific(arms):
     for word in ("lanes_per_warp", "simt", "scratchpad", "systolic", "shared_tensor"):
         assert word not in code_text, (
             f"the frontend now has code naming {word!r} — that is target structure, and it belongs "
-            "below the convergence point")
+            "below the convergence point"
+        )
 
 
 def test_both_accelerators_descend_from_one_identical_module(arms):
     """The input to both descents is the same object — so any difference below is Merlin's."""
     bridged = arms["bridged"]
-    again = to_linalg(source.make_ttir(K.repeated_rhs_matmul_spec()),
-                      K.repeated_rhs_matmul_spec())
+    again = to_linalg(source.make_ttir(K.repeated_rhs_matmul_spec()), K.repeated_rhs_matmul_spec())
     assert again.text == bridged.text
     assert text(arms["radiance"].input_module) == text(arms["gemmini"].input_module)
     assert text(arms["radiance"].interface_module) == text(arms["gemmini"].interface_module)
@@ -204,20 +207,21 @@ def test_the_two_accelerators_really_are_different_shapes(arms):
     gemmini = {op.name for op in arms["gemmini"].target_module.walk()}
     assert not (radiance & gemmini) - {"builtin.module", "func.func", "func.return"}
     # Same target-independent ABI out the far end, though — that is what makes them comparable.
-    assert ([c["opcode"] for c in arms["radiance"].command_buffer["commands"]]
-            == [c["opcode"] for c in arms["gemmini"].command_buffer["commands"]])
+    assert [c["opcode"] for c in arms["radiance"].command_buffer["commands"]] == [
+        c["opcode"] for c in arms["gemmini"].command_buffer["commands"]
+    ]
 
 
 def test_the_two_command_buffers_differ_only_in_the_target_name(arms):
     """The runtime ABI is target-independent, so the payload must be identical."""
+
     def normalized(cb):
         out = json.loads(json.dumps(cb, sort_keys=True))
         out.pop("target", None)
         out.pop("backend", None)
         return out
 
-    assert normalized(arms["radiance"].command_buffer) == normalized(
-        arms["gemmini"].command_buffer)
+    assert normalized(arms["radiance"].command_buffer) == normalized(arms["gemmini"].command_buffer)
 
 
 def test_the_elementwise_arm_reaches_radiances_vector_lanes():
@@ -233,8 +237,7 @@ def test_the_elementwise_arm_reaches_radiances_vector_lanes():
     spec = K.vector_add_i32_spec()
     bridged = to_linalg(source.make_ttir(spec), spec)
 
-    radiance = compile_core.compile_core_mlir(
-        bridged.module, target_package=_package(RADIANCE_PACKAGE))
+    radiance = compile_core.compile_core_mlir(bridged.module, target_package=_package(RADIANCE_PACKAGE))
     assert radiance.route.kind == "staged"
     for module in radiance.staged.modules():
         module.verify()
@@ -245,6 +248,5 @@ def test_the_elementwise_arm_reaches_radiances_vector_lanes():
     assert [c["opcode"] for c in cb["commands"]] == ["VECTOR_MAP"]
     assert simulate(cb)["outputs"] == reference_outputs(cb)
 
-    gemmini_route = compile_core.choose_route(
-        bridged.module, target_package=_package(GEMMINI_PACKAGE))
+    gemmini_route = compile_core.choose_route(bridged.module, target_package=_package(GEMMINI_PACKAGE))
     assert gemmini_route.kind == "llvm", "coverage stopped being read per target"

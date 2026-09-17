@@ -3,6 +3,7 @@
 Offline: a ``file://`` git repo is built in a tmp dir as the stand-in ``<target>-mlir`` repo, so no
 network is touched. The target name is synthetic (``fixturenpu``) — the mechanism is target-agnostic.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -26,7 +27,8 @@ def _make_target_repo(root: Path, *, name: str = "fixturenpu", with_contract: bo
     if with_contract:
         (root / "contracts").mkdir()
         (root / "contracts" / "target_contract.yaml").write_text(
-            f"name: {name}\nfamily: tensor_resident\nplugin:\n  backend: backend\n", encoding="utf-8")
+            f"name: {name}\nfamily: tensor_resident\nplugin:\n  backend: backend\n", encoding="utf-8"
+        )
     else:
         (root / "README.md").write_text("no contract here\n", encoding="utf-8")
     _git(["add", "-A"], root)

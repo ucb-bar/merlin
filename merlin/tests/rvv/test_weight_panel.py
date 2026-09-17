@@ -6,6 +6,7 @@ the packed blob's shapes, and what `c_runtime.generate` would build its argument
 two that make the lever honest: with the feature off the emitted `.ll` is byte-identical, and with it
 on every refusal is counted rather than silently skipped.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -31,20 +32,24 @@ def _toolchain_available() -> bool:
 def _prepared(work: Path, feats):
     from merlin.runtime.backends.zephyr_model import prepare_for_lowering
 
-    return prepare_for_lowering(BUNDLE / "model.mlir", work, int8_compute=True,
-                                features=frozenset(feats), harts=1, vlen=256)
+    return prepare_for_lowering(
+        BUNDLE / "model.mlir", work, int8_compute=True, features=frozenset(feats), harts=1, vlen=256
+    )
 
 
 # ---------------------------------------------------------------------------------------------
 # 1. the record: a layout chain replays and inverts
 # ---------------------------------------------------------------------------------------------
 
+
 def test_replay_and_invert_round_trip():
     """The chain the IR rewrite elided is REPLAYED on the bytes, so the two cannot disagree unless
     replay and invert do. A permutation composed with its inverse is the identity, per step kind."""
-    steps = (WP.LayoutStep("transpose", perm=(1, 0), in_shape=(7, 5), out_shape=(5, 7)),
-             WP.LayoutStep("expand", groups=((0,), (1, 2)), in_shape=(5, 7), out_shape=(5, 7, 1)),
-             WP.LayoutStep("collapse", groups=((0, 1), (2,)), in_shape=(5, 7, 1), out_shape=(35, 1)))
+    steps = (
+        WP.LayoutStep("transpose", perm=(1, 0), in_shape=(7, 5), out_shape=(5, 7)),
+        WP.LayoutStep("expand", groups=((0,), (1, 2)), in_shape=(5, 7), out_shape=(5, 7, 1)),
+        WP.LayoutStep("collapse", groups=((0, 1), (2,)), in_shape=(5, 7, 1), out_shape=(35, 1)),
+    )
     a = np.arange(35, dtype=np.int8).reshape(7, 5)
     b = WP.replay(a, steps)
     assert b.shape == (35, 1)
@@ -54,11 +59,18 @@ def test_replay_and_invert_round_trip():
 def test_pack_bytes_is_the_layout_the_kernel_reads():
     """`Bp[no][k][ni] == B[k][no*NR + ni]`, spelled out independently of the packer."""
     k, n, nr = 6, 8, 4
-    stored = np.arange(n * k, dtype=np.int8).reshape(n, k)          # [N][K], as captures store it
-    a = WP.PackedArg(arg=0, orig_shape=(n, k), elem="i8",
-                     steps=(WP.LayoutStep("transpose", perm=(1, 0),
-                                          in_shape=(n, k), out_shape=(k, n)),),
-                     m=4, k=k, n=n, mr=4, nr=nr)
+    stored = np.arange(n * k, dtype=np.int8).reshape(n, k)  # [N][K], as captures store it
+    a = WP.PackedArg(
+        arg=0,
+        orig_shape=(n, k),
+        elem="i8",
+        steps=(WP.LayoutStep("transpose", perm=(1, 0), in_shape=(n, k), out_shape=(k, n)),),
+        m=4,
+        k=k,
+        n=n,
+        mr=4,
+        nr=nr,
+    )
     packed = WP.pack_bytes(stored, a)
     assert packed.shape == (n // nr, k, nr)
     b = stored.T
@@ -72,7 +84,9 @@ def test_line_touch_model_needs_a_line_width_and_reports_both_sides():
     """`line_bytes` is a target fact the caller supplies; there is no default to be wrong about."""
     a = WP.PackedArg(arg=0, orig_shape=(64, 32), elem="i8", steps=(), m=8, k=32, n=64, mr=4, nr=16)
     with pytest.raises(TypeError):
-        WP.line_touch_model([a], )                                  # line_bytes is keyword-REQUIRED
+        WP.line_touch_model(
+            [a],
+        )  # line_bytes is keyword-REQUIRED
     m = WP.line_touch_model([a], line_bytes=64)["total"]
     # one fresh line per k-step before; a contiguous panel after
     assert m["line_touches_before"] == 2 * (64 // 16) * 32
@@ -85,6 +99,7 @@ def test_line_touch_model_needs_a_line_width_and_reports_both_sides():
 # 2. the feature resolves, and it refuses to run without the block request
 # ---------------------------------------------------------------------------------------------
 
+
 def test_feature_resolves_by_name_in_a_fresh_process():
     """`impr_features` must resolve the name in a child that imported nothing else -- the lowering
     runs in one, and `wholemodel_proposer._composes` swallows the KeyError for an unregistered name
@@ -95,10 +110,16 @@ def test_feature_resolves_by_name_in_a_fresh_process():
     from merlin.common.paths import merlin_dir
 
     out = subprocess.run(
-        [sys.executable, "-c",
-         "from merlin.llvmlower.impr_features import get;"
-         f"f = get({WP.FEATURE!r}); print(f.name)"],
-        cwd=str(Path(merlin_dir()).parent), capture_output=True, text=True, timeout=300)
+        [
+            sys.executable,
+            "-c",
+            f"from merlin.llvmlower.impr_features import get;f = get({WP.FEATURE!r}); print(f.name)",
+        ],
+        cwd=str(Path(merlin_dir()).parent),
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == WP.FEATURE
 
@@ -115,6 +136,7 @@ def test_named_without_the_block_request_is_refused(tmp_path):
 # 3. the pack itself, on a real int8 capture
 # ---------------------------------------------------------------------------------------------
 
+
 @pytest.mark.skipif(not _toolchain_available(), reason="m2m venv / clang not configured")
 @pytest.mark.skipif(not (BUNDLE / "model.mlir").is_file(), reason="int8 capture bundle absent")
 def test_every_weight_packs_and_the_argument_types_change(tmp_path):
@@ -127,8 +149,8 @@ def test_every_weight_packs_and_the_argument_types_change(tmp_path):
 
     sig = parse_forward_signature(prepared)
     for a in args:
-        assert a.n % a.nr == 0                                      # never padded
-        assert list(sig[a.arg][0]) == list(a.packed_shape), a.arg   # the MAPS moved, not just bytes
+        assert a.n % a.nr == 0  # never padded
+        assert list(sig[a.arg][0]) == list(a.packed_shape), a.arg  # the MAPS moved, not just bytes
         assert list(sig[a.arg][0]) != list(a.orig_shape), a.arg
 
 
@@ -202,6 +224,7 @@ def test_the_stock_bundle_is_refused_by_the_abi_guard(tmp_path):
 # 4. numerics + the frozen baseline -- whole model, host-side
 # ---------------------------------------------------------------------------------------------
 
+
 def _build_arm(work: Path, feats):
     from merlin.llvmlower.codegen import build_host_shared
     from merlin.llvmlower.passes_xdsl import preprocess_text_textual
@@ -211,9 +234,16 @@ def _build_arm(work: Path, feats):
     prepared, concrete = _prepared(work, feats)
     upstream, _ = preprocess_text_textual(prepared.read_text(encoding="utf-8"))
     ll = work / "model.ll"
-    ll.write_text(lower_to_llvm_ir(upstream, workdir=work, vectorize=True,
-                                   transform_schedule=RVV_TRANSFORM_SCHEDULE,
-                                   features=frozenset(concrete or ())), encoding="utf-8")
+    ll.write_text(
+        lower_to_llvm_ir(
+            upstream,
+            workdir=work,
+            vectorize=True,
+            transform_schedule=RVV_TRANSFORM_SCHEDULE,
+            features=frozenset(concrete or ()),
+        ),
+        encoding="utf-8",
+    )
     return prepared, ll, build_host_shared(ll, work / "model_host.so")
 
 
@@ -252,9 +282,14 @@ def _run_fresh(runner: Path, so: Path, bundle: Path, ref: Path, dst: Path, pad: 
     from merlin.common.paths import merlin_dir
 
     env = dict(os.environ, MERLIN_AB_PAD="X" * pad)
-    r = subprocess.run([sys.executable, str(runner), str(so), str(bundle), str(ref), str(dst)],
-                       cwd=str(Path(merlin_dir()).parent), env=env,
-                       capture_output=True, text=True, timeout=1800)
+    r = subprocess.run(
+        [sys.executable, str(runner), str(so), str(bundle), str(ref), str(dst)],
+        cwd=str(Path(merlin_dir()).parent),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=1800,
+    )
     assert r.returncode == 0, r.stderr[-2000:]
     return json.loads(r.stdout.strip().splitlines()[-1])
 
@@ -277,8 +312,7 @@ def test_whole_model_output_is_bit_identical_and_gates(tmp_path):
     shapes: dict[str, str] = {}
     lls: dict[str, str] = {}
     outs: dict[str, np.ndarray] = {}
-    for name, feats in (("off", ["perop_register_block"]),
-                        ("on", ["perop_register_block", WP.FEATURE])):
+    for name, feats in (("off", ["perop_register_block"]), ("on", ["perop_register_block", WP.FEATURE])):
         work = tmp_path / name
         prepared, ll, so = _build_arm(work, feats)
         lls[name] = hashlib.sha256(ll.read_bytes()).hexdigest()
@@ -344,6 +378,7 @@ def test_the_b_operand_pointer_advance_becomes_the_panel_width(tmp_path):
 # 5. the storage refusals, proven by MUTATION -- a check that cannot fail reports success
 # ---------------------------------------------------------------------------------------------
 
+
 def _tiny_bundle(tmp_path: Path, *, header: dict, manifest: dict, payload: bytes) -> Path:
     import struct
 
@@ -357,20 +392,28 @@ def _tiny_bundle(tmp_path: Path, *, header: dict, manifest: dict, payload: bytes
 
 
 def _arg(i: int, name_shape=(4, 4)) -> WP.PackedArg:
-    return WP.PackedArg(arg=i, orig_shape=name_shape, elem="i8",
-                        steps=(WP.LayoutStep("transpose", perm=(1, 0),
-                                             in_shape=name_shape, out_shape=name_shape[::-1]),),
-                        m=4, k=4, n=4, mr=4, nr=2)
+    return WP.PackedArg(
+        arg=i,
+        orig_shape=name_shape,
+        elem="i8",
+        steps=(WP.LayoutStep("transpose", perm=(1, 0), in_shape=name_shape, out_shape=name_shape[::-1]),),
+        m=4,
+        k=4,
+        n=4,
+        mr=4,
+        nr=2,
+    )
 
 
 def test_two_arguments_naming_one_tensor_are_refused(tmp_path):
     """`mining/section_build` dedups weights by NAME, so two `@forward` arguments CAN name one
     tensor. Packing it for one packs it for the other underneath."""
-    d = _tiny_bundle(tmp_path, header={"w": {"dtype": "I8", "shape": [4, 4],
-                                             "data_offsets": [0, 16]}},
-                     manifest={"0": {"weight": "w", "shape": [4, 4]},
-                               "1": {"weight": "w", "shape": [4, 4]}},
-                     payload=bytes(range(16)))
+    d = _tiny_bundle(
+        tmp_path,
+        header={"w": {"dtype": "I8", "shape": [4, 4], "data_offsets": [0, 16]}},
+        manifest={"0": {"weight": "w", "shape": [4, 4]}, "1": {"weight": "w", "shape": [4, 4]}},
+        payload=bytes(range(16)),
+    )
     problems = WP.pack_problems(d, [_arg(0), _arg(1)])
     assert any("named by BOTH" in p for p in problems), problems
 
@@ -378,13 +421,15 @@ def test_two_arguments_naming_one_tensor_are_refused(tmp_path):
 def test_an_aliased_byte_range_is_refused(tmp_path):
     """Two DISTINCT names can index overlapping bytes (a tied head, an aliased view). Rewriting one
     rewrites the other's data underneath it."""
-    d = _tiny_bundle(tmp_path, header={"w1": {"dtype": "I8", "shape": [4, 4],
-                                              "data_offsets": [0, 16]},
-                                       "w2": {"dtype": "I8", "shape": [4, 4],
-                                              "data_offsets": [8, 24]}},
-                     manifest={"0": {"weight": "w1", "shape": [4, 4]},
-                               "1": {"weight": "w2", "shape": [4, 4]}},
-                     payload=bytes(range(24)))
+    d = _tiny_bundle(
+        tmp_path,
+        header={
+            "w1": {"dtype": "I8", "shape": [4, 4], "data_offsets": [0, 16]},
+            "w2": {"dtype": "I8", "shape": [4, 4], "data_offsets": [8, 24]},
+        },
+        manifest={"0": {"weight": "w1", "shape": [4, 4]}, "1": {"weight": "w2", "shape": [4, 4]}},
+        payload=bytes(range(24)),
+    )
     problems = WP.pack_problems(d, [_arg(0), _arg(1)])
     assert any("share bytes" in p for p in problems), problems
 
@@ -392,11 +437,12 @@ def test_an_aliased_byte_range_is_refused(tmp_path):
 def test_a_stubbed_weight_is_refused(tmp_path):
     """A quantized-subclass weight is STUBBED in the manifest and has no safetensors entry at all;
     packing only the manifest shape would describe a permutation nobody performed."""
-    d = _tiny_bundle(tmp_path, header={"w1": {"dtype": "I8", "shape": [4, 4],
-                                              "data_offsets": [0, 16]}},
-                     manifest={"0": {"weight": "w1", "shape": [4, 4]},
-                               "1": {"weight": "gone", "shape": [4, 4], "stub": True}},
-                     payload=bytes(range(16)))
+    d = _tiny_bundle(
+        tmp_path,
+        header={"w1": {"dtype": "I8", "shape": [4, 4], "data_offsets": [0, 16]}},
+        manifest={"0": {"weight": "w1", "shape": [4, 4]}, "1": {"weight": "gone", "shape": [4, 4], "stub": True}},
+        payload=bytes(range(16)),
+    )
     assert WP.storage_gate(d)(1, (4, 4)) == "refused_stub_weight"
     assert WP.storage_gate(d)(0, (4, 4)) is None
     assert WP.storage_gate(d)(9, (4, 4)) == "refused_no_manifest_weight"

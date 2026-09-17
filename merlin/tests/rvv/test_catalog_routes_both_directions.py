@@ -15,6 +15,7 @@ lifted CCA said so on every generation of two searches::
 and our MR=4 variant measured 1.61x SLOWER than the default, which is what that looks like from
 outside.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -78,4 +79,5 @@ def test_the_experts_own_mr_is_in_the_search_space():
     """A ladder that cannot express the expert's number cannot converge on it. The int8 tile ladder
     began at MR=2 while the expert uses MR=1."""
     from merlin.llvmlower.impr_features import MRPAD_INT8_TILES
+
     assert any("_mr1_" in n for n in MRPAD_INT8_TILES), "the expert's MR=1 is not searchable"

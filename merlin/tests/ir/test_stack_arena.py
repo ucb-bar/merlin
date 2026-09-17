@@ -20,6 +20,7 @@ else rests on -- that a module with nothing bindable comes back BYTE-IDENTICAL, 
 the compiler apply this only to a frame it has measured over budget and leave every already-fitting
 build exactly as it was.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -29,13 +30,15 @@ from merlin.llvmlower.stack_arena import StackArenaError, bind_stack_arena
 
 
 def _module(body: str, *, entry: str = "k", args: str = "ptr %0") -> str:
-    return "\n".join([
-        "; ModuleID = 'test'",
-        f"define void @{entry}({args}) {{",
-        *body.strip("\n").split("\n"),
-        "}",
-        "",
-    ])
+    return "\n".join(
+        [
+            "; ModuleID = 'test'",
+            f"define void @{entry}({args}) {{",
+            *body.strip("\n").split("\n"),
+            "}",
+            "",
+        ]
+    )
 
 
 class TestItMovesWhatItCanProve:
@@ -53,15 +56,13 @@ class TestItMovesWhatItCanProve:
         assert f"@{SA.STACK_ARENA_SYMBOL} = internal global" in out
 
     def test_the_arena_is_zeroinitialized_so_it_lands_in_bss(self):
-        out, _ = bind_stack_arena(_module("  %1 = alloca i8, i64 8, align 8\n  ret void"),
-                                  entry_symbol="k")
+        out, _ = bind_stack_arena(_module("  %1 = alloca i8, i64 8, align 8\n  ret void"), entry_symbol="k")
         line = next(l for l in out.split("\n") if l.startswith("@" + SA.STACK_ARENA_SYMBOL))
         assert "internal global" in line and "zeroinitializer" in line
 
     def test_the_original_alloca_is_recorded_in_the_rewritten_line(self):
         """A reader of the IR must be able to see what the slot used to be."""
-        out, _ = bind_stack_arena(_module("  %1 = alloca i16, i64 50, align 64\n  ret void"),
-                                  entry_symbol="k")
+        out, _ = bind_stack_arena(_module("  %1 = alloca i16, i64 50, align 64\n  ret void"), entry_symbol="k")
         gep = next(l for l in out.split("\n") if "getelementptr" in l)
         assert "was `alloca i16, i64 50, align 64`" in gep and "100 bytes" in gep
 
@@ -87,9 +88,11 @@ class TestItMovesWhatItCanProve:
         assert "align 128" in arena, "the arena must be at least as aligned as its strictest slot"
 
     def test_slots_never_overlap(self):
-        text = _module("\n".join(
-            [f"  %{i} = alloca i8, i64 {7 * i + 1}, align {1 << (i % 4)}" for i in range(1, 40)]
-            + ["  ret void"]))
+        text = _module(
+            "\n".join(
+                [f"  %{i} = alloca i8, i64 {7 * i + 1}, align {1 << (i % 4)}" for i in range(1, 40)] + ["  ret void"]
+            )
+        )
         out, report = bind_stack_arena(text, entry_symbol="k")
         assert report.n_bound == 39
         placed = []
@@ -198,11 +201,21 @@ orphan:
         assert "not one this pass can size" in report.refusals[0]["reason"]
 
     def test_every_known_element_width_is_correct(self):
-        for name, width in (("i8", 1), ("i16", 2), ("i32", 4), ("i64", 8), ("half", 2),
-                            ("bfloat", 2), ("float", 4), ("double", 8), ("ptr", 8)):
+        for name, width in (
+            ("i8", 1),
+            ("i16", 2),
+            ("i32", 4),
+            ("i64", 8),
+            ("half", 2),
+            ("bfloat", 2),
+            ("float", 4),
+            ("double", 8),
+            ("ptr", 8),
+        ):
             assert SA.element_bytes_of(name) == width
             _, report = bind_stack_arena(
-                _module(f"  %1 = alloca {name}, i64 10, align 8\n  ret void"), entry_symbol="k")
+                _module(f"  %1 = alloca {name}, i64 10, align 8\n  ret void"), entry_symbol="k"
+            )
             assert report.moved_bytes == width * 10, name
 
     def test_a_RECURSIVE_entrypoint_is_refused_outright(self):
@@ -227,8 +240,7 @@ orphan:
 class TestTheReportIsSelfDescribing:
     def test_it_states_the_non_reentrancy_it_introduces(self):
         """A contract change must travel with the transform, not live in a commit message."""
-        _, report = bind_stack_arena(
-            _module("  %1 = alloca i8, i64 8, align 8\n  ret void"), entry_symbol="k")
+        _, report = bind_stack_arena(_module("  %1 = alloca i8, i64 8, align 8\n  ret void"), entry_symbol="k")
         block = report.to_dict()
         assert "NOT reentrant" in block["reentrancy"]
         assert block["schema"] == "merlin_stack_arena_bind_v1"
@@ -251,6 +263,7 @@ loop:
     def test_the_symbol_is_distinct_from_the_heap_arenas(self):
         """Both passes may run; one symbol would silently overlay two different sets of storage."""
         from merlin.llvmlower.arena_bind import ARENA_SYMBOL
+
         assert SA.STACK_ARENA_SYMBOL != ARENA_SYMBOL
 
 
@@ -259,8 +272,15 @@ class TestTheRealSmolVLAModule:
 
     def _llvm(self):
         from merlin.common.paths import artifacts_dir
-        path = (artifacts_dir() / "perf-bench" / "gemmini"
-                / "smolvla_flow_denoise_bundle_20260908" / "compiler" / "kernel.ll")
+
+        path = (
+            artifacts_dir()
+            / "perf-bench"
+            / "gemmini"
+            / "smolvla_flow_denoise_bundle_20260908"
+            / "compiler"
+            / "kernel.ll"
+        )
         if not path.is_file():
             pytest.skip("no emitted smolvla kernel.ll in this tree")
         return path.read_text(encoding="utf-8")
@@ -301,4 +321,5 @@ class TestTheRealSmolVLAModule:
             largest = max(largest, SA.element_bytes_of(elem) * count)
         assert largest > 65536, (
             "if the largest allocation fits the budget, byte reuse WOULD be a candidate fix and "
-            "this module's refusal to share needs re-arguing")
+            "this module's refusal to share needs re-arguing"
+        )

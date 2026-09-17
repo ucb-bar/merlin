@@ -18,6 +18,7 @@ unrelated TargetGen work before the frontend existed, and the tree is developed 
 at once, so a concurrent agent's TargetGen commit would report as a Triton violation. Attribution
 has no baseline to keep up to date and stays correct however the tree is shared.
 """
+
 from __future__ import annotations
 
 import ast
@@ -89,8 +90,9 @@ def test_package_exists_with_a_docstring():
     """The package is the thing under guard; a missing docstring also breaks gen_package_docs."""
     init = PKG / "__init__.py"
     assert init.is_file(), "merlin/python/merlin/triton/__init__.py is missing"
-    assert ast.get_docstring(ast.parse(init.read_text(encoding="utf-8"))), \
+    assert ast.get_docstring(ast.parse(init.read_text(encoding="utf-8"))), (
         "merlin.triton needs a module docstring (module_index.md is generated from it)"
+    )
 
 
 def test_no_target_name_literals_anywhere_in_the_frontend():
@@ -104,7 +106,8 @@ def test_no_target_name_literals_anywhere_in_the_frontend():
             offenders[str(path.relative_to(REPO))] = sorted(hits)
     assert not offenders, (
         "target-name literals in merlin.triton (INV-2) — thread the target through as a "
-        f"parameter from the contract instead: {offenders}")
+        f"parameter from the contract instead: {offenders}"
+    )
 
 
 def test_no_target_specific_imports():
@@ -144,7 +147,8 @@ def test_no_regex_in_the_frontend():
                 offenders.append(str(path.relative_to(REPO)))
     assert not offenders, (
         "`import re` in merlin.triton — parse TTIR structurally (tokenizer / xDSL IR), because a "
-        f"regex line-matcher silently drops valid-but-differently-spelled input: {sorted(set(offenders))}")
+        f"regex line-matcher silently drops valid-but-differently-spelled input: {sorted(set(offenders))}"
+    )
 
 
 def test_the_schemas_were_never_widened_for_the_triton_work():
@@ -171,8 +175,7 @@ def test_the_schemas_were_never_widened_for_the_triton_work():
     """
     if not (REPO / ".git").exists():
         pytest.skip("not a git checkout")
-    anchor = _git("log", "--diff-filter=A", "--format=%H", "--",
-                  "merlin/python/merlin/triton/__init__.py").splitlines()
+    anchor = _git("log", "--diff-filter=A", "--format=%H", "--", "merlin/python/merlin/triton/__init__.py").splitlines()
     if not anchor:
         pytest.skip("merlin.triton not committed yet — nothing to attribute")
 
@@ -183,12 +186,12 @@ def test_the_schemas_were_never_widened_for_the_triton_work():
     for sha in _git("log", "--format=%H", f"{anchor[-1]}^..HEAD", "--", *TRITON_PATHS).splitlines():
         if not sha:
             continue
-        touched = [ln for ln in _git("show", "--format=", "--name-only", sha,
-                                     "--", *schemas).splitlines() if ln]
+        touched = [ln for ln in _git("show", "--format=", "--name-only", sha, "--", *schemas).splitlines() if ln]
         if touched:
             straddling[sha[:8]] = sorted(touched)
 
     assert not straddling, (
         "a commit touching the Triton frontend also widened a schema (INV-3). A general capability "
         "never needs one; a Triton- or target-specific carve-out is what this forbids: "
-        f"{straddling}")
+        f"{straddling}"
+    )

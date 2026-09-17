@@ -6,6 +6,7 @@ several names when this was written. Re-pointing each name at one store object r
 removing anything, but it also makes the file read-only and makes its MODE shared, which is exactly
 the property a mode-verified freeze depends on. Both halves are pinned here.
 """
+
 from __future__ import annotations
 
 import os
@@ -20,8 +21,7 @@ from merlin.common import storage_cli as SC
 @pytest.fixture
 def rooted(tmp_path, monkeypatch):
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
-    monkeypatch.setenv("MERLIN_BUNDLE_CAS",
-                       str(tmp_path / "out" / "artifacts" / "cache" / CS.NAMESPACE))
+    monkeypatch.setenv("MERLIN_BUNDLE_CAS", str(tmp_path / "out" / "artifacts" / "cache" / CS.NAMESPACE))
     (tmp_path / "out" / "artifacts" / "cache").mkdir(parents=True)
     declared = dict(SC.contract(), scan_roots=[])
     monkeypatch.setattr(SC, "contract", lambda: declared)
@@ -117,9 +117,6 @@ def test_small_files_are_below_the_threshold(rooted):
     assert _inode(first) != _inode(second)
 
 
-
-
-
 def test_adopt_reports_only_the_bytes_it_actually_freed(rooted):
     """Two names for one inode free nothing when the first is adopted -- the bytes go when the last
     name does. Counting the size at each name would report the saving once per name."""
@@ -181,8 +178,7 @@ def test_explicit_paths_override_the_default_roots(rooted):
     second = _write(rooted / "artifacts" / "delivery" / "b" / "w.bin", body)
     elsewhere = _write(rooted / "artifacts" / "probes" / "c" / "w.bin", body)
 
-    assert SC.main(["dedup", str(rooted / "artifacts" / "delivery"),
-                    "--min-bytes", "1024", "--apply"]) == 0
+    assert SC.main(["dedup", str(rooted / "artifacts" / "delivery"), "--min-bytes", "1024", "--apply"]) == 0
 
     assert _inode(first) == _inode(second)
     assert _inode(elsewhere) != _inode(first), "a path outside the named roots was touched"

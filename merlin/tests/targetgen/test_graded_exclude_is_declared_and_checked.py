@@ -11,6 +11,7 @@ from becoming a way to hide failures:
   2. an exclusion that matches NO capsule raises, because the failure mode of a stale or mistyped name is
      a silently WIDER graded set, which is exactly the wall-clock blowout the knob exists to prevent.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -29,8 +30,9 @@ def _corpus(tmp_path, names):
         d = root / n
         d.mkdir(parents=True)
         (d / "capsule.yaml").write_text(
-            yaml.safe_dump({"name": n, "kind": "op", "label": "public",
-                            "required_oracle_tiers": ["L2"]}), encoding="utf-8")
+            yaml.safe_dump({"name": n, "kind": "op", "label": "public", "required_oracle_tiers": ["L2"]}),
+            encoding="utf-8",
+        )
         (d / "capsule.interface.mlir").write_text("// iface\n", encoding="utf-8")
     return root
 
@@ -108,7 +110,9 @@ def test_radiance_search_and_evaluation_cohorts_are_staged_and_disjoint():
     roots = [te.capsule_corpus] + [repo_root() / s for s in te.corpus_siblings()]
     docs = {
         d.name: yaml.safe_load((d / "capsule.yaml").read_text())
-        for r in roots for d in r.glob("*") if (d / "capsule.yaml").is_file()
+        for r in roots
+        for d in r.glob("*")
+        if (d / "capsule.yaml").is_file()
     }
 
     search = set(te.graded_include)

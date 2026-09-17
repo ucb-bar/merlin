@@ -6,21 +6,28 @@ looked complete. A short arena does not raise at plan time; it corrupts the heap
 arbitrarily far from the cause, and the numbers may still come out right on the run that happens to
 fit. Nothing consumes ``plan_arena`` yet, so these are the tests that have to exist BEFORE it is wired.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.xdsl_dialects.lowering.arena_plan import (ARENA_ALIGN, ArenaPlanError, _align_up,
-                                                      _buf_bytes, _elem_bytes, plan_arena)
+from merlin.xdsl_dialects.lowering.arena_plan import (
+    ARENA_ALIGN,
+    ArenaPlanError,
+    _align_up,
+    _buf_bytes,
+    _elem_bytes,
+    plan_arena,
+)
 from merlin.xdsl_dialects.lowering.dispatch_program import Buffer, DispatchProgram, Node
 
-DYNAMIC = -9223372036854775808          # MLIR ShapedType::kDynamic
+DYNAMIC = -9223372036854775808  # MLIR ShapedType::kDynamic
 
 
 def _prog(buffers, nodes, results, args=()):
-    return DispatchProgram(entry="forward", args=list(args),
-                           buffers={b.id: b for b in buffers}, nodes=list(nodes),
-                           results=list(results))
+    return DispatchProgram(
+        entry="forward", args=list(args), buffers={b.id: b for b in buffers}, nodes=list(nodes), results=list(results)
+    )
 
 
 def _chain(n_intermediates: int, shape=(64, 64), dtype="f32"):
@@ -40,6 +47,7 @@ def _chain(n_intermediates: int, shape=(64, 64), dtype="f32"):
 
 # ---- the fail-open cases ------------------------------------------------------------------
 
+
 def test_a_dynamic_dimension_is_refused_not_sized_as_one_element():
     """The retired behavior mapped any non-positive extent to 1, so tensor<?x768xf32> planned as 768
     elements: plan reports success, arena is short by the real extent."""
@@ -47,8 +55,11 @@ def test_a_dynamic_dimension_is_refused_not_sized_as_one_element():
         _buf_bytes([DYNAMIC, 768], "f32")
     assert "dynamic extent" in str(e.value)
     # and it must reach plan_arena, not be swallowed there
-    prog = _prog([Buffer(id="t", shape=[DYNAMIC, 768], dtype="f32", kind="intermediate")],
-                 [Node(kind="dispatch", op="op", inputs=[], outputs=["t"])], [])
+    prog = _prog(
+        [Buffer(id="t", shape=[DYNAMIC, 768], dtype="f32", kind="intermediate")],
+        [Node(kind="dispatch", op="op", inputs=[], outputs=["t"])],
+        [],
+    )
     with pytest.raises(ArenaPlanError):
         plan_arena(prog)
 
@@ -77,14 +88,20 @@ def test_every_offset_and_the_arena_total_are_aligned_to_what_the_allocator_give
     exactly the bug that shows up as wrong numbers on silicon and nowhere in simulation."""
     # sizes that are deliberately NOT multiples of 64
     prog = _prog(
-        [Buffer(id="a", shape=[3], dtype="i8", kind="arg", arg_index=0),
-         Buffer(id="t0", shape=[7], dtype="i8", kind="intermediate"),
-         Buffer(id="t1", shape=[13], dtype="f32", kind="intermediate"),
-         Buffer(id="r", shape=[5], dtype="i8", kind="intermediate")],
-        [Node(kind="dispatch", op="o0", inputs=["a"], outputs=["t0"]),
-         Node(kind="dispatch", op="o1", inputs=["a", "t0"], outputs=["t1"]),
-         Node(kind="dispatch", op="o2", inputs=["t0", "t1"], outputs=["r"])],
-        ["r"], args=[0])
+        [
+            Buffer(id="a", shape=[3], dtype="i8", kind="arg", arg_index=0),
+            Buffer(id="t0", shape=[7], dtype="i8", kind="intermediate"),
+            Buffer(id="t1", shape=[13], dtype="f32", kind="intermediate"),
+            Buffer(id="r", shape=[5], dtype="i8", kind="intermediate"),
+        ],
+        [
+            Node(kind="dispatch", op="o0", inputs=["a"], outputs=["t0"]),
+            Node(kind="dispatch", op="o1", inputs=["a", "t0"], outputs=["t1"]),
+            Node(kind="dispatch", op="o2", inputs=["t0", "t1"], outputs=["r"]),
+        ],
+        ["r"],
+        args=[0],
+    )
     plan = plan_arena(prog)
     assert plan.offsets, "nothing was planned"
     for bid, off in plan.offsets.items():
@@ -95,6 +112,7 @@ def test_every_offset_and_the_arena_total_are_aligned_to_what_the_allocator_give
 
 
 # ---- the property the planner exists for -------------------------------------------------
+
 
 def test_live_buffers_never_overlap():
     """The correctness property, checked directly: two buffers whose live ranges intersect must not
@@ -109,7 +127,7 @@ def test_live_buffers_never_overlap():
             first_def.setdefault(b, i)
     placed = [(b, plan.offsets[b], plan.sizes[b]) for b in plan.offsets]
     for i, (bi, oi, si) in enumerate(placed):
-        for bj, oj, sj in placed[i + 1:]:
+        for bj, oj, sj in placed[i + 1 :]:
             overlaps_bytes = oi < oj + sj and oj < oi + si
             live_i = (first_def.get(bi, 0), last_use.get(bi, first_def.get(bi, 0)))
             live_j = (first_def.get(bj, 0), last_use.get(bj, first_def.get(bj, 0)))
@@ -125,7 +143,7 @@ def test_a_straight_line_chain_reuses_one_slot_instead_of_n():
         plan = plan_arena(_chain(n))
         assert plan.arena_bytes <= 2 * one, (n, plan.arena_bytes, one)
         assert plan.stats["reuse_factor"] >= 1.0
-        assert plan.stats["n_intermediate_buffers"] == n      # the result is excluded
+        assert plan.stats["n_intermediate_buffers"] == n  # the result is excluded
 
 
 def test_results_and_args_stay_out_of_the_arena():

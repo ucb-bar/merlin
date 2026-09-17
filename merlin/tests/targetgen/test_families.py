@@ -4,6 +4,7 @@ Guards that the registry stays aligned with the canonical KINDS taxonomy, that e
 valid, and that the fork-free `.insn` path is the default wherever a command ISA exists (the
 no-forked-toolchain rule) — so a new accelerator of a known kind routes by kind, never by name.
 """
+
 from __future__ import annotations
 
 import pytest

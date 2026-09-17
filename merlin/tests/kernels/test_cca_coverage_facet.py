@@ -7,6 +7,7 @@ few percent of peak (measured: spectformer 0.40 MAC/cycle, deepjscc 0.22, lstmne
 ~8 for a VLEN=128 int8 vwmacc datapath). These tests pin that the facet SEES the loss and that the
 catalog ROUTES it, because an unrouted loss is one the mining loop can never propose a fix for.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -36,7 +37,7 @@ def test_a_fully_claimed_model_reports_no_loss():
 
 def test_an_unclaimed_class_is_reported_with_its_mac_weight():
     """Declining a class must show up as BOTH the class name and the share of MACs it took with it."""
-    cov = lift_coverage(_MM, set()).coverage           # nothing claimed
+    cov = lift_coverage(_MM, set()).coverage  # nothing claimed
     assert cov.unclaimed_op_classes == ("linalg.matmul",)
     assert cov.claimed_mac_fraction == pytest.approx(0.0)
 
@@ -61,12 +62,11 @@ def test_macs_are_weighted_not_counted():
     """
     try:
         cov = lift_coverage(src, {"linalg.matmul"}).coverage
-    except Exception:                                  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pytest.skip("this xDSL build cannot parse a bare linalg.batch_matmul")
     if cov.claimed_mac_fraction is None or not cov.unclaimed_op_classes:
         pytest.skip("batch_matmul not classified by this build's shape observer")
-    assert cov.claimed_mac_fraction > 0.99, (
-        f"MACs must be weighted, not counted: got {cov.claimed_mac_fraction}")
+    assert cov.claimed_mac_fraction > 0.99, f"MACs must be weighted, not counted: got {cov.claimed_mac_fraction}"
 
 
 def test_unmeasurable_ir_degrades_instead_of_guessing():
@@ -81,11 +81,14 @@ def test_contraction_generics_are_not_reported_as_unclaimed():
     assert "linalg.generic" not in cov.unclaimed_op_classes
 
 
-@pytest.mark.parametrize("axis,expert,ours", [
-    ("coverage.unclaimed_op_classes", (), ("linalg.batch_matmul",)),
-    ("coverage.claimed_mac_fraction", 1.0, 0.659),
-    ("coverage.non_contraction_op_fraction", 0.1, 0.882),
-])
+@pytest.mark.parametrize(
+    "axis,expert,ours",
+    [
+        ("coverage.unclaimed_op_classes", (), ("linalg.batch_matmul",)),
+        ("coverage.claimed_mac_fraction", 1.0, 0.659),
+        ("coverage.non_contraction_op_fraction", 0.1, 0.882),
+    ],
+)
 def test_every_coverage_loss_routes_to_a_compiler_seam(axis, expert, ours):
     """THE point of the facet: a loss the loop cannot route to a seam is a loss it cannot fix."""
     action = route(Divergence(axis, expert, ours, "rvv", ["measured"]))
@@ -97,8 +100,11 @@ def test_coverage_axes_are_levers_bound_by_the_bijection():
     """Capture- and exposure-completeness: each coverage axis is a LEVER with a route and a region."""
     from merlin.kernels import regions
 
-    for axis in ("coverage.claimed_mac_fraction", "coverage.unclaimed_op_classes",
-                 "coverage.non_contraction_op_fraction"):
+    for axis in (
+        "coverage.claimed_mac_fraction",
+        "coverage.unclaimed_op_classes",
+        "coverage.non_contraction_op_fraction",
+    ):
         assert cc.FIELD_REGISTRY[axis].classification == cc.LEVER
         assert axis in cc.routed_axes("rvv"), f"{axis} is a LEVER with no route"
         assert regions.region_for_axis(axis) is not None, f"{axis} has no governing region"

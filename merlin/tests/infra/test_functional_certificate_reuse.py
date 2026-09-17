@@ -7,6 +7,7 @@ already requires to equal the tuning certificate's. So reuse is admissible exact
 match, and this pins that it is checked rather than assumed: a root left behind by an interrupted
 run, or one built against a different engine, must force a rebuild.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,24 +25,22 @@ class _Source:
 
     def __init__(self, target="gemmini", pins=None):
         self.target = target
-        self.pins = pins or {name: {"sha256": f"{i:064x}"}
-                             for i, name in enumerate(_required_pins())}
+        self.pins = pins or {name: {"sha256": f"{i:064x}"} for i, name in enumerate(_required_pins())}
 
 
 def _required_pins():
     import perf_gsim_gate as GATE
+
     return list(GATE.REQUIRED_PINS)
 
 
 def _root(tmp_path, *, pins, completion=True, target="gemmini", name="r"):
     root = tmp_path / name
     root.mkdir()
-    certificate = {"schema_version": 1, "target": target, "members": [],
-                   "pins": pins, "unresolved": []}
+    certificate = {"schema_version": 1, "target": target, "members": [], "pins": pins, "unresolved": []}
     (root / "functional-certificate.abc.json").write_text(json.dumps(certificate), encoding="utf-8")
     if completion:
-        (root / "completion.abc.json").write_text(json.dumps({"status": "complete"}),
-                                                  encoding="utf-8")
+        (root / "completion.abc.json").write_text(json.dumps({"status": "complete"}), encoding="utf-8")
     return root
 
 

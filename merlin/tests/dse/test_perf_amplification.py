@@ -14,6 +14,7 @@ The second target has the trait (explicit DMA + a software-managed scratchpad, d
 manifest and RTL facts) but no byte evidence -- so the failure is named as *evidence*, not as
 *trait*, and the two stay distinguishable.
 """
+
 from __future__ import annotations
 
 import functools
@@ -97,25 +98,33 @@ def _observations():
     def commands(name: str, direction: str) -> int:
         # Structural count over the op stream: a movement op's mnemonic is dotted
         # `<engine>.<action>.<channel>`, so the action is field 1. No pattern matching.
-        return sum(1 for unit, mnemonic, _ in kernels[name]["op_stream"]
-                   if unit == "Dma" and mnemonic.split(".")[1] == direction)
+        return sum(
+            1
+            for unit, mnemonic, _ in kernels[name]["op_stream"]
+            if unit == "Dma" and mnemonic.split(".")[1] == direction
+        )
 
     out = []
     for name, operands in OPERANDS.items():
         arc = kernels[name]["arc"]
         useful, splat = useful_bytes(operands)
         # A command that carried no beats moved nothing; count only directions that moved data.
-        transfers = ((commands(name, "load") if arc["reads"] else 0)
-                     + (commands(name, "store") if arc["writes"] else 0))
-        out.append(MovementObservation(
-            workload=name,
-            moved_bytes=moved_bytes_from_beats(arc["reads"] + arc["writes"], beat_bytes),
-            useful_bytes=useful, transfers=transfers, broadcast_bytes=splat,
-            provenance="measured bus beats x the RTL-derived data-port width"))
+        transfers = (commands(name, "load") if arc["reads"] else 0) + (commands(name, "store") if arc["writes"] else 0)
+        out.append(
+            MovementObservation(
+                workload=name,
+                moved_bytes=moved_bytes_from_beats(arc["reads"] + arc["writes"], beat_bytes),
+                useful_bytes=useful,
+                transfers=transfers,
+                broadcast_bytes=splat,
+                provenance="measured bus beats x the RTL-derived data-port width",
+            )
+        )
     return out
 
 
 # --- the hand-derived fixtures -------------------------------------------------------------------
+
 
 def test_moved_bytes_are_measured_beats_times_the_port_width():
     suite = _suite()
@@ -130,12 +139,15 @@ def test_useful_bytes_exclude_broadcast_splats():
     assert splat == 2048, "the splats are reported, not silently dropped"
 
 
-@pytest.mark.parametrize(("workload", "expected"), [
-    ("matmul", 16.0),
-    ("smolvla_rms_norm", 24.0),
-    ("smolvla_gelu_tanh", 28.0),
-    ("smolvla_elementwise_add", 2.0),
-])
+@pytest.mark.parametrize(
+    ("workload", "expected"),
+    [
+        ("matmul", 16.0),
+        ("smolvla_rms_norm", 24.0),
+        ("smolvla_gelu_tanh", 28.0),
+        ("smolvla_elementwise_add", 2.0),
+    ],
+)
 def test_amplification_ratios_match_the_hand_derived_values(workload, expected):
     result = corpus_amplification(_observations(), trait=_first_target_trait())
     assert round(result.workloads[workload].ratio, 2) == expected
@@ -196,6 +208,7 @@ def test_a_single_command_cannot_derive_its_own_granule():
 
 # --- the anti-overfit gate: a second target of a different archetype ------------------------------
 
+
 @functools.cache
 def _second_target():
     cm = pytest.importorskip("merlin.targetgen.capability_manifests")
@@ -220,15 +233,17 @@ def test_second_target_has_the_trait_but_no_byte_evidence_so_the_failure_names_e
     trait = movement_trait(manifest, facts)
     # Its published performance data is cycles and MACs; the operand shapes are known but nobody
     # counted the bytes that crossed the bus.
-    known_shapes = useful_bytes((
-        TensorOperand("a", 16 * 16, 1.0),
-        TensorOperand("b", 16 * 16, 1.0),
-        TensorOperand("c", 16 * 16, 4.0, is_output=True),
-    ))[0]
+    known_shapes = useful_bytes(
+        (
+            TensorOperand("a", 16 * 16, 1.0),
+            TensorOperand("b", 16 * 16, 1.0),
+            TensorOperand("c", 16 * 16, 4.0, is_output=True),
+        )
+    )[0]
     assert known_shapes == 1536
     result = amplification(
-        MovementObservation("G00_single_tile", moved_bytes=0, useful_bytes=known_shapes),
-        trait=trait)
+        MovementObservation("G00_single_tile", moved_bytes=0, useful_bytes=known_shapes), trait=trait
+    )
     assert isinstance(result, Unavailable)
     assert "moved bytes" in " ".join(result.missing)
     assert "explicit" not in " ".join(result.missing), "the trait holds; only the measurement is absent"

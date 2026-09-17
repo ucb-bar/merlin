@@ -12,6 +12,7 @@ emit — extracted from the census function's own source via ``ast``, never rest
 list. Add a role to the census without pinning its family and this fails; invent a key that is not a
 real role (an overfit) and this fails too.
 """
+
 from __future__ import annotations
 
 import ast
@@ -19,7 +20,7 @@ import ast
 from merlin.common.paths import merlin_dir
 from merlin.targetgen import semantic_families as SF
 
-_CENSUS = (merlin_dir() / "python/merlin/targetgen/oracle_helpers/isa_introspect.py")
+_CENSUS = merlin_dir() / "python/merlin/targetgen/oracle_helpers/isa_introspect.py"
 
 
 def _census_roles() -> set[str]:
@@ -31,13 +32,12 @@ def _census_roles() -> set[str]:
     concept, not a role, and counting it would make this test demand a family for a non-role. No regex,
     no hand-copied list: the census source is the source of truth."""
     tree = ast.parse(_CENSUS.read_text(encoding="utf-8"))
-    fn = next(n for n in ast.walk(tree)
-              if isinstance(n, ast.FunctionDef) and n.name == "_role_for_pattern")
+    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_role_for_pattern")
 
     def returned(expr: ast.expr) -> set[str]:
         if isinstance(expr, ast.Constant) and isinstance(expr.value, str):
             return {expr.value}
-        if isinstance(expr, ast.IfExp):                      # both arms, never the test
+        if isinstance(expr, ast.IfExp):  # both arms, never the test
             return returned(expr.body) | returned(expr.orelse)
         return set()
 
@@ -62,7 +62,8 @@ def test_every_census_role_is_pinned_or_declared_plumbing():
     assert not unpinned, (
         f"role(s) {sorted(unpinned)} come out of the structural census but pin to no semantic family, "
         f"so a target evidencing only those reads as having no capability. Pin them in "
-        f"_ISA_ROLE_FAMILY, or add them to _PLUMBING with a reason.")
+        f"_ISA_ROLE_FAMILY, or add them to _PLUMBING with a reason."
+    )
 
 
 def test_no_key_is_invented_beyond_the_census():
@@ -71,7 +72,8 @@ def test_no_key_is_invented_beyond_the_census():
     invented = set(SF.ISA_ROLE_FAMILY) - roles
     assert not invented, (
         f"_ISA_ROLE_FAMILY keys {sorted(invented)} are not roles the structural census can emit — that "
-        f"is a per-target mnemonic leaking into shared code, not a derived role.")
+        f"is a per-target mnemonic leaking into shared code, not a derived role."
+    )
 
 
 def test_every_role_maps_to_a_declared_family():
@@ -115,19 +117,18 @@ def test_reduction_is_not_claimed_from_the_census():
 def test_a_conditional_licence_needs_its_required_family_present():
     """``acc_readout_scaled`` alone proves a fused requant exists, NOT a standalone elementwise unit."""
     assert SF.families_from_roles(["acc_readout_scaled"]) == frozenset()
-    assert SF.families_from_roles(["acc_readout_scaled", "matmul"]) == frozenset(
-        {"contraction", "elementwise_map"})
+    assert SF.families_from_roles(["acc_readout_scaled", "matmul"]) == frozenset({"contraction", "elementwise_map"})
 
 
 def test_the_map_is_the_one_the_capability_ladder_uses():
     """One table, not two: a duplicate here already drifted from the ladder inside a single session."""
     from merlin.targetgen import capability_derive as CD
+
     assert CD._ROLE_FAMILY is SF.ISA_ROLE_FAMILY
 
 
 def test_families_from_roles_drops_plumbing_and_dedupes():
-    fams = SF.families_from_roles(
-        ["matmul", "weight_load", "scalar", "tensor_compute_unary", "bogus"])
+    fams = SF.families_from_roles(["matmul", "weight_load", "scalar", "tensor_compute_unary", "bogus"])
     assert fams == frozenset({"contraction", "elementwise_map"})
     assert SF.families_from_roles([]) == frozenset()
     assert SF.families_from_roles(None) == frozenset()
@@ -135,7 +136,6 @@ def test_families_from_roles_drops_plumbing_and_dedupes():
 
 def test_no_target_name_appears_in_the_mapping():
     """The cardinal rule, asserted where it would most plausibly be broken."""
-    blob = " ".join([*SF.ISA_ROLE_FAMILY,
-                     *(f for f, _ in SF.ISA_ROLE_FAMILY.values())]).lower()
+    blob = " ".join([*SF.ISA_ROLE_FAMILY, *(f for f, _ in SF.ISA_ROLE_FAMILY.values())]).lower()
     for token in ("atlas", "gemmini", "radiance", "muon", "saturn", "opu", "mxu", "npu"):
         assert token not in blob, f"{token!r} leaked into the shared role->family mapping"

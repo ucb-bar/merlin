@@ -9,6 +9,7 @@ So the differential test below is not a nicety: it pins concrete inputs into the
 asserts the encoded output differs from what the reference actually produced, and requires ``unsat``.
 Any disagreement is an encoder bug until proven otherwise.
 """
+
 from __future__ import annotations
 
 import copy
@@ -20,7 +21,8 @@ from merlin.verify.tools import find_mlir_tool
 
 pytestmark = pytest.mark.skipif(
     not (HAS_XDSL and HAS_Z3 and find_mlir_tool("mlir-translate")),
-    reason="needs the verify extra (xdsl + z3) and mlir-translate")
+    reason="needs the verify extra (xdsl + z3) and mlir-translate",
+)
 
 
 def _pair(m=2, k=2, n=2, reuse=2):
@@ -32,6 +34,7 @@ def _pair(m=2, k=2, n=2, reuse=2):
 
 
 # -- the differential check -------------------------------------------------------------------
+
 
 def test_the_encoder_agrees_with_the_reference_simulator_on_concrete_inputs():
     """Pin the symbolic leaves to real values; the encoded outputs must equal the simulator's.
@@ -52,7 +55,7 @@ def test_the_encoder_agrees_with_the_reference_simulator_on_concrete_inputs():
     from merlin.verify.smt_semantics import Encoder
 
     _, cb, _ = _pair()
-    concrete = materialize_inputs(cb, None)          # the same values the simulator will run on
+    concrete = materialize_inputs(cb, None)  # the same values the simulator will run on
     golden = simulate(cb)["outputs"]
 
     blk = Block()
@@ -90,22 +93,26 @@ def test_the_encoder_agrees_with_the_reference_simulator_on_concrete_inputs():
         smt.AssertOp(term)
         smt.YieldOp()
 
-    verdict = check_module(builtin.ModuleOp([SolverOp.from_region(Region([blk]))]),
-                           timeout_ms=120_000)
+    verdict = check_module(builtin.ModuleOp([SolverOp.from_region(Region([blk]))]), timeout_ms=120_000)
     assert verdict.status == "unsat", (
         f"the SMT encoding disagrees with merlin.runtime.simulate on concrete inputs "
         f"(status={verdict.status}, model={verdict.model_values}). Treat this as an ENCODER bug: a "
-        f"validator that disagrees with its own oracle refutes correct backends.")
+        f"validator that disagrees with its own oracle refutes correct backends."
+    )
 
 
 # -- fail-closed behaviour --------------------------------------------------------------------
 
-@pytest.mark.parametrize("opcode,expect", [
-    ("SOFTMAX", "computes in float"),          # the reference itself is float here
-    ("LAYERNORM", "no branch in the reference"),  # in the schema enum, unimplemented upstream
-    ("CONV2D", "gap in THIS encoder"),         # encodable in principle, not built
-    ("NOT_AN_OPCODE", "no definition for"),    # genuinely unknown
-])
+
+@pytest.mark.parametrize(
+    "opcode,expect",
+    [
+        ("SOFTMAX", "computes in float"),  # the reference itself is float here
+        ("LAYERNORM", "no branch in the reference"),  # in the schema enum, unimplemented upstream
+        ("CONV2D", "gap in THIS encoder"),  # encodable in principle, not built
+        ("NOT_AN_OPCODE", "no definition for"),  # genuinely unknown
+    ],
+)
 def test_an_unencodable_opcode_raises_and_says_WHICH_class(opcode, expect):
     """Silently skipping a command changes what the query is about, without saying so.
 
@@ -130,19 +137,21 @@ def test_the_opcode_classes_are_disjoint_and_cover_the_schema_enum():
     import json
 
     from merlin.common.paths import merlin_dir
-    from merlin.verify.cb_semantics import (DEFERRED_OPCODES, ENCODABLE_OPCODES,
-                                            FLOAT_ONLY_OPCODES, NO_NUMERIC_EFFECT,
-                                            UNIMPLEMENTED_OPCODES)
+    from merlin.verify.cb_semantics import (
+        DEFERRED_OPCODES,
+        ENCODABLE_OPCODES,
+        FLOAT_ONLY_OPCODES,
+        NO_NUMERIC_EFFECT,
+        UNIMPLEMENTED_OPCODES,
+    )
 
-    classes = [ENCODABLE_OPCODES, FLOAT_ONLY_OPCODES, UNIMPLEMENTED_OPCODES,
-               frozenset(DEFERRED_OPCODES)]
+    classes = [ENCODABLE_OPCODES, FLOAT_ONLY_OPCODES, UNIMPLEMENTED_OPCODES, frozenset(DEFERRED_OPCODES)]
     for i, a in enumerate(classes):
-        for b in classes[i + 1:]:
+        for b in classes[i + 1 :]:
             assert not (a & b), f"opcode in two classes at once: {sorted(a & b)}"
     assert NO_NUMERIC_EFFECT <= ENCODABLE_OPCODES, "a no-effect opcode must still be encodable"
 
-    schema = json.loads(
-        (merlin_dir() / "contract" / "schemas" / "command_buffer.schema.json").read_text())
+    schema = json.loads((merlin_dir() / "contract" / "schemas" / "command_buffer.schema.json").read_text())
 
     def _find_enum(node):
         if isinstance(node, dict):
@@ -161,11 +170,11 @@ def test_the_opcode_classes_are_disjoint_and_cover_the_schema_enum():
 
     enum = _find_enum(schema)
     assert enum, "could not locate the opcode enum; this test would be vacuous"
-    unclassified = (enum - ENCODABLE_OPCODES - FLOAT_ONLY_OPCODES - UNIMPLEMENTED_OPCODES
-                    - set(DEFERRED_OPCODES))
+    unclassified = enum - ENCODABLE_OPCODES - FLOAT_ONLY_OPCODES - UNIMPLEMENTED_OPCODES - set(DEFERRED_OPCODES)
     assert not unclassified, (
         f"schema opcodes in no named class: {sorted(unclassified)} — they would abstain with an "
-        f"unhelpful 'unknown' instead of saying why")
+        f"unhelpful 'unknown' instead of saying why"
+    )
 
 
 def test_a_float_epilogue_stage_abstains_and_never_passes():
@@ -193,6 +202,7 @@ def test_res_pack_with_a_scale_operand_abstains():
 
 # -- the overflow side condition --------------------------------------------------------------
 
+
 def test_the_overflow_bound_is_derived_not_assumed():
     """The reference accumulates in unbounded ints; this encoder wraps. The bound is where they agree.
 
@@ -201,7 +211,7 @@ def test_the_overflow_bound_is_derived_not_assumed():
     """
     from merlin.verify.cb_semantics import safe_k_bound
 
-    assert safe_k_bound(8, 32) == 131071          # (2**31 - 1) // 2**14
+    assert safe_k_bound(8, 32) == 131071  # (2**31 - 1) // 2**14
     assert safe_k_bound(16, 32) == 1
     # narrower accumulators leave less headroom, and the bound must fall, never rise
     assert safe_k_bound(8, 16) < safe_k_bound(8, 32)
@@ -237,12 +247,23 @@ def _null_encoder():
         return Encoder()
 
 
-@pytest.mark.parametrize("mutate,label", [
-    (lambda cb: [c["attributes"].__setitem__("output_dtype", "i16")
-                 for c in cb["commands"] if c["opcode"] == "COMMIT"], "output_dtype i16"),
-    (lambda cb: [c["attributes"].__setitem__("output_dtype", "u8")
-                 for c in cb["commands"] if c["opcode"] == "COMMIT"], "output_dtype u8"),
-])
+@pytest.mark.parametrize(
+    "mutate,label",
+    [
+        (
+            lambda cb: [
+                c["attributes"].__setitem__("output_dtype", "i16") for c in cb["commands"] if c["opcode"] == "COMMIT"
+            ],
+            "output_dtype i16",
+        ),
+        (
+            lambda cb: [
+                c["attributes"].__setitem__("output_dtype", "u8") for c in cb["commands"] if c["opcode"] == "COMMIT"
+            ],
+            "output_dtype u8",
+        ),
+    ],
+)
 def test_the_encoder_tracks_the_engine_on_readout_variants(mutate, label):
     """The differential test above only ever saw a DECLARED i32, so it could not see this.
 
@@ -269,7 +290,7 @@ def test_the_encoder_tracks_the_engine_on_readout_variants(mutate, label):
     from merlin.verify.smt_ops import SolverOp
     from merlin.verify.smt_semantics import Encoder
 
-    _, cb, _ = _pair(m=4, k=64, n=4)          # K large enough that the accumulator leaves i8 range
+    _, cb, _ = _pair(m=4, k=64, n=4)  # K large enough that the accumulator leaves i8 range
     cb = copy.deepcopy(cb)
     mutate(cb)
     concrete = materialize_inputs(cb, None)
@@ -304,11 +325,11 @@ def test_the_encoder_tracks_the_engine_on_readout_variants(mutate, label):
         smt.AssertOp(term)
         smt.YieldOp()
 
-    verdict = check_module(builtin.ModuleOp([SolverOp.from_region(Region([blk]))]),
-                           timeout_ms=180_000)
+    verdict = check_module(builtin.ModuleOp([SolverOp.from_region(Region([blk]))]), timeout_ms=180_000)
     assert verdict.status == "unsat", (
         f"with {label} the encoder disagrees with merlin.runtime.simulate "
-        f"(status={verdict.status}). The encoder must MIRROR the engine, whatever it says.")
+        f"(status={verdict.status}). The encoder must MIRROR the engine, whatever it says."
+    )
 
 
 def test_the_encoders_default_matches_the_engines_default():
@@ -331,10 +352,12 @@ def test_the_encoders_default_matches_the_engines_default():
         assert f'attrs.get("output_dtype", "{_COMMIT_DEFAULT_DTYPE}")' in src, (
             f"the encoder defaults an absent output_dtype to {_COMMIT_DEFAULT_DTYPE!r} but "
             f"{module.__name__} does not; an encoder that disagrees with the engine it mirrors "
-            f"refutes correct backends")
+            f"refutes correct backends"
+        )
 
 
 # -- spellings the buffer is allowed to use, and spellings nobody defined ----------------------
+
 
 def test_an_op_spelled_combine_abstains_instead_of_silently_meaning_add():
     """`op: "identity"` must not be read as an ADDITION, which is what the default used to do.
@@ -351,11 +374,15 @@ def test_an_op_spelled_combine_abstains_instead_of_silently_meaning_add():
     _, cb, _ = _pair()
     cb = copy.deepcopy(cb)
     src = next(t for t, s in cb["tensors"].items() if (s or {}).get("role") == "input")
-    cb["commands"] = [{"opcode": "VECTOR_MAP",
-                       # both operands present: the silent-add reading is REACHABLE here, so this
-                       # test fails loudly if the default is ever restored
-                       "operands": {"lhs": src, "rhs": src, "dst": "vm_out"},
-                       "attributes": {"op": "identity"}}]
+    cb["commands"] = [
+        {
+            "opcode": "VECTOR_MAP",
+            # both operands present: the silent-add reading is REACHABLE here, so this
+            # test fails loudly if the default is ever restored
+            "operands": {"lhs": src, "rhs": src, "dst": "vm_out"},
+            "attributes": {"op": "identity"},
+        }
+    ]
     e = CommandBufferEncoder(_null_encoder(), cb)
     e.declare_leaves()
     with pytest.raises(UnsupportedSemantics, match="op='identity'"):
@@ -375,7 +402,8 @@ def test_the_contract_sanctioned_src_spelling_is_accepted_for_movement():
 
     contract = (merlin_dir() / "contract" / "mlir_oot_backend_contract.yaml").read_text()
     assert "`src` (or `lhs`)" in contract, (
-        "the contract no longer sanctions the src/lhs alias; this test is now asserting invention")
+        "the contract no longer sanctions the src/lhs alias; this test is now asserting invention"
+    )
 
     _, cb, _ = _pair()
     base = copy.deepcopy(cb)
@@ -384,15 +412,14 @@ def test_the_contract_sanctioned_src_spelling_is_accepted_for_movement():
     outs = []
     for key in ("src", "lhs"):
         b = copy.deepcopy(base)
-        b["commands"] = [{"opcode": "MOVEMENT",
-                          "operands": {key: src, "dst": "mv_out"},
-                          "attributes": {}}]
+        b["commands"] = [{"opcode": "MOVEMENT", "operands": {key: src, "dst": "mv_out"}, "attributes": {}}]
         e = CommandBufferEncoder(_null_encoder(), b)
         e.declare_leaves()
         outs.append(e.run())
 
     assert outs[0].keys() == outs[1].keys(), (
-        "the two contract-sanctioned spellings of the movement source produced different outputs")
+        "the two contract-sanctioned spellings of the movement source produced different outputs"
+    )
 
 
 def test_comparing_a_narrow_output_against_a_wide_one_does_not_kill_the_query():
@@ -464,4 +491,4 @@ def test_the_opcodes_that_legitimately_carry_op_are_not_refused():
 
     e = CommandBufferEncoder(_null_encoder(), {"tensors": {}, "commands": []})
     for opcode in ("VREDUCE", "VECTOR_MAP"):
-        e._refuse_unmodelled_step(0, opcode, {"op": "sum"})      # must not raise
+        e._refuse_unmodelled_step(0, opcode, {"op": "sum"})  # must not raise

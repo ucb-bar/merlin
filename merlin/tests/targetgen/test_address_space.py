@@ -17,6 +17,7 @@ address space at all) are DERIVED from the target's own geometry and datapath wi
 against the SRAM widths mlc reads out of the RTL, and that everything not derivable stays UNKNOWN --
 distinguishably from "declared absent", and never as a zero.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -32,7 +33,7 @@ from merlin.targetgen.address_space import (
 )
 from merlin.targetgen.rtl import facts as rtl_facts
 
-TARGET = "gemmini"          # the one target whose RTL facts ship in-tree; the numbers below are its RTL
+TARGET = "gemmini"  # the one target whose RTL facts ship in-tree; the numbers below are its RTL
 
 
 def _space(target: str = TARGET):
@@ -45,6 +46,7 @@ def _space(target: str = TARGET):
 
 
 # ------------------------------------------------------------------ the derivation, against real RTL
+
 
 def test_the_row_width_is_derived_from_geometry_times_datapath_never_declared():
     """16 bytes is not a constant anyone typed: it is the array's column edge in the datapath's element.
@@ -99,11 +101,14 @@ def test_the_accumulator_is_a_separate_address_space():
 
 # ------------------------------------------------- absent vs undeterminable, and never a measured zero
 
+
 def _artifact(memories, *, arrays=(("mesh", 16, 16),), datapaths=(("input", "i8", "scratchpad smem"),)):
     """A synthetic facts artifact in the shape ``load_facts`` returns, so the semantics below are pinned
     without depending on which target happens to have been extracted in this checkout."""
-    body = {"arrays": [{"name": n, "rows": r, "cols": c} for n, r, c in arrays],
-            "datapaths": [{"name": n, "dtype": d, "evidence": e} for n, d, e in datapaths]}
+    body = {
+        "arrays": [{"name": n, "rows": r, "cols": c} for n, r, c in arrays],
+        "datapaths": [{"name": n, "dtype": d, "evidence": e} for n, d, e in datapaths],
+    }
     if memories is not None:
         body["memories"] = memories
     return {"schema_version": "2.0", "inputs": {}, "facts": body}
@@ -188,8 +193,10 @@ def test_an_ambiguous_array_leaves_the_row_unknown():
     assumption wearing a derivation's clothes."""
     sp = derive_address_space(
         "t_two_arrays",
-        facts=_artifact([{"name": "scratchpad", "bytes": 4096, "depth": 64}],
-                        arrays=(("mesh", 16, 16), ("other", 8, 8))))
+        facts=_artifact(
+            [{"name": "scratchpad", "bytes": 4096, "depth": 64}], arrays=(("mesh", 16, 16), ("other", 8, 8))
+        ),
+    )
     assert sp.array_cols is None
     assert sp.store("scratchpad").row_bytes is None
     assert any(u.quantity == "row_elems" and "2 arrays" in u.reason for u in sp.unknowns)
@@ -198,8 +205,7 @@ def test_an_ambiguous_array_leaves_the_row_unknown():
 def test_a_residue_is_reported_rather_than_rounded_away():
     """A store whose rows do not divide into banks of the declared depth withholds the bank count and
     keeps the residue: rounding it would invent an addressing scheme the hardware does not have."""
-    sp = derive_address_space(
-        "t_residue", facts=_artifact([{"name": "scratchpad", "bytes": 1600, "depth": 64}]))
+    sp = derive_address_space("t_residue", facts=_artifact([{"name": "scratchpad", "bytes": 1600, "depth": 64}]))
     st = sp.store("scratchpad")
     assert st.row_bytes == 16 and st.total_rows == 100
     assert st.banks is None and st.bank_residue_rows == 36
@@ -210,8 +216,11 @@ def test_a_sub_byte_datapath_will_not_guess_whether_the_row_packs():
     """Whether an SRAM packs two 4-bit elements into a byte or pads each to one is a wiring fact the
     facts do not carry, and the two answers differ by the packing factor. Refused, not halved."""
     sp = derive_address_space(
-        "t_packed", facts=_artifact([{"name": "scratchpad", "bytes": 4096, "depth": 64}],
-                                    datapaths=(("input", "mxfp4", "scratchpad smem"),)))
+        "t_packed",
+        facts=_artifact(
+            [{"name": "scratchpad", "bytes": 4096, "depth": 64}], datapaths=(("input", "mxfp4", "scratchpad smem"),)
+        ),
+    )
     st = sp.store("scratchpad")
     assert st.element_bits == 4, "the width itself is known; only the row layout is not"
     assert st.row_bytes is None and st.total_rows is None and st.banks is None
@@ -220,12 +229,13 @@ def test_a_sub_byte_datapath_will_not_guess_whether_the_row_packs():
 
 # ---------------------------------------------------------------------------- rows, not element counts
 
+
 def test_working_set_rows_is_the_row_the_backend_addresses():
     """The 512x512 weight tile the aborting lowering held resident is EXACTLY the whole store: 512 rows of
     512 int8 = 32 rows each = 16384 rows against 16384. That equality is the abort, stated as an
     obligation instead of as a simulator message."""
     sp = _space()
-    st = min(sp.stores, key=lambda s: s.row_bytes)          # the narrow-row operand store
+    st = min(sp.stores, key=lambda s: s.row_bytes)  # the narrow-row operand store
     assert st.working_set_rows((512, 512), "int8") == st.total_rows == 16384
     assert st.working_set_rows((16, 512), "int8") + st.working_set_rows((512, 512), "int8") > st.total_rows
 
@@ -238,7 +248,7 @@ def test_row_accounting_and_element_accounting_only_agree_on_whole_rows():
     sp = _space()
     st = min(sp.stores, key=lambda s: s.row_bytes)
     per_row = st.elems_per_row("int8")
-    assert st.working_set_rows((32, per_row * 2), "int8") == 32 * 2      # whole rows: the two agree
+    assert st.working_set_rows((32, per_row * 2), "int8") == 32 * 2  # whole rows: the two agree
     ragged = st.working_set_rows((32, per_row + 1), "int8")
     assert ragged == 32 * 2, "a partial row is still a whole row"
     assert ragged * per_row > 32 * (per_row + 1), "row accounting must exceed the element count here"

@@ -1,4 +1,5 @@
 """An explicit incomplete seal stops spend without pretending the functional run converged."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -22,17 +23,13 @@ def _loop():
 
 def test_operator_seal_is_resume_only_and_rejects_the_legacy_progress_path():
     loop = _loop()
-    loop._validate_seal_current_request(
-        seal_current=False, resume=False, legacy_continuous=False)
-    loop._validate_seal_current_request(
-        seal_current=True, resume=True, legacy_continuous=False)
+    loop._validate_seal_current_request(seal_current=False, resume=False, legacy_continuous=False)
+    loop._validate_seal_current_request(seal_current=True, resume=True, legacy_continuous=False)
 
     with pytest.raises(RuntimeError, match="requires --resume"):
-        loop._validate_seal_current_request(
-            seal_current=True, resume=False, legacy_continuous=False)
+        loop._validate_seal_current_request(seal_current=True, resume=False, legacy_continuous=False)
     with pytest.raises(RuntimeError, match="certified --schedule"):
-        loop._validate_seal_current_request(
-            seal_current=True, resume=True, legacy_continuous=True)
+        loop._validate_seal_current_request(seal_current=True, resume=True, legacy_continuous=True)
 
 
 def test_operator_seal_runs_official_grade_but_can_never_report_formal_completion():

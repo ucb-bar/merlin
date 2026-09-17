@@ -10,6 +10,7 @@ from both brokers and the round grade, so a capsule's cert tier is enqueued when
 in either mode. These tests pin that separation too, so nobody later "fixes" continuous mode by moving
 promotion onto the round boundary.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -53,6 +54,7 @@ def test_the_flag_exists_and_defaults_to_continuous():
             break
     # the parser is built inside main(); assert on the source instead, which is what ships
     import inspect
+
     src = inspect.getsource(loop.main)
     assert '"--schedule"' in src
     assert 'default="continuous"' in src, "the certified continuous schedule must be the default"
@@ -74,8 +76,15 @@ def test_effective_run_shape_and_feedback_health_are_claim_bearing():
     import inspect
 
     src = inspect.getsource(loop.main)
-    for field in ("schedule", "session_mode", "max_wall_s", "round_timeout_s",
-                  "grade_interval_s", "selfcheck_protocol", "launcher_argv"):
+    for field in (
+        "schedule",
+        "session_mode",
+        "max_wall_s",
+        "round_timeout_s",
+        "grade_interval_s",
+        "selfcheck_protocol",
+        "launcher_argv",
+    ):
         assert f'"{field}"' in src
     assert '"run_config": _run_config' in src
     assert 'qa_summary["feedback_health"] = feedback_health' in src
@@ -127,8 +136,9 @@ def test_a_declared_wall_budget_still_ends_the_l3_fix_loop():
     loop = _mod("run_baseline_qa_loop")
     assert loop._l3_barrier_decision(False, rnd=7, max_rounds=7) == "budget"
     src = (HARNESS / "run_baseline_qa_loop.py").read_text(encoding="utf-8")
-    assert "_cap, _budget_reason = rnd, \"max_wall_s\"" in src, (
-        "the L3 fix loop no longer honours --max-wall-s; a continuous run can outlive its declared budget")
+    assert '_cap, _budget_reason = rnd, "max_wall_s"' in src, (
+        "the L3 fix loop no longer honours --max-wall-s; a continuous run can outlive its declared budget"
+    )
 
 
 def test_promotion_is_not_coupled_to_the_schedule():
@@ -150,6 +160,7 @@ def test_promotion_is_not_coupled_to_the_schedule():
 # MEASURED (merlincirct_defcal1, 2026-08-29): the agent round finished in 40 min, the capstone then
 # ran 5h30m -- past the round's own 4h --round-timeout -- and the round never graded. --qa-timeout is
 # a PER-STEP subprocess cap, so a grade that makes many such calls is not bounded by it.
+
 
 def test_the_model_budget_defaults_to_the_qa_timeout():
     """Derived, not invented: the capstone may cost at most what the operator already said one grading

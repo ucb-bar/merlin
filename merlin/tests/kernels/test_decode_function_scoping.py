@@ -14,6 +14,7 @@ These tests pin both halves of the fix: support-function loops are excluded from
 selection (fail-safe — an object that is only a helper still reports its structure), and a span never
 reaches across a function boundary into its neighbour.
 """
+
 from __future__ import annotations
 
 from merlin.kernels import cca
@@ -43,8 +44,8 @@ _HELPER_ONLY = """\
 
 def test_innermost_loop_skips_the_compiler_support_helper():
     s = rvv.decode_text(_TWO_FUNCS)
-    assert sorted(s.loop_spans()) == [(0, 0xC), (0x10, 0x18)]   # both back-edges are decoded...
-    assert s.kernel_loop_spans() == [(0, 0xC)]                  # ...only one is model compute
+    assert sorted(s.loop_spans()) == [(0, 0xC), (0x10, 0x18)]  # both back-edges are decoded...
+    assert s.kernel_loop_spans() == [(0, 0xC)]  # ...only one is model compute
     assert s.innermost_loop() == (0, 0xC), "the K-loop, not the deallocator's tighter loop"
     assert s.count_in(s.innermost_loop(), "vfmacc.vf") == 1
 
@@ -60,7 +61,7 @@ def test_span_does_not_reach_into_the_neighbouring_function():
     """A range that straddles two adjacent functions is confined to the one the span belongs to
     (anchored on its back-edge), so a loop-scoped count can never mix two bodies."""
     s = rvv.decode_text(_TWO_FUNCS)
-    straddling = (8, 0x18)                      # tail of <forward> .. end of <dealloc_helper>
+    straddling = (8, 0x18)  # tail of <forward> .. end of <dealloc_helper>
     addrs = [i.raw.addr for i in s.insns_in(straddling)]
     assert addrs == [0x10, 0x14, 0x18], "must not pull in <forward>'s instructions at 0x8"
 

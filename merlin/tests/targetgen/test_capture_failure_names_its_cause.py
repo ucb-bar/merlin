@@ -14,6 +14,7 @@ The two failure conditions were also collapsed into one message. A non-zero retu
 worker died; a missing meta.json after rc=0 means it exited cleanly and produced no capture. Those
 license different next steps.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,9 +25,7 @@ from merlin.targetgen.capsule_source import _stderr_cause
 def test_the_last_traceback_wins_over_trailing_warnings():
     """The exact shape of the defect: a real error followed by a wall of warnings."""
     warnings = "UserWarning: flat_weights are not part of a single contiguous chunk\n" * 60
-    err = ("Traceback (most recent call last):\n"
-           '  File "loader.py", line 3\n'
-           "ValueError: the actual fault\n")
+    err = 'Traceback (most recent call last):\n  File "loader.py", line 3\nValueError: the actual fault\n'
     got = _stderr_cause(err + warnings)
     assert "last traceback" in got
     assert "ValueError: the actual fault" in got
@@ -62,8 +61,8 @@ def test_the_excerpt_is_bounded():
 def test_the_two_failure_conditions_are_distinguished_in_the_message():
     """A worker that died and one that produced nothing are different problems."""
     from merlin.common.paths import repo_root
-    src = (repo_root() / "merlin" / "python" / "merlin" / "targetgen"
-           / "capsule_source.py").read_text(encoding="utf-8")
+
+    src = (repo_root() / "merlin" / "python" / "merlin" / "targetgen" / "capsule_source.py").read_text(encoding="utf-8")
     assert "worker exited non-zero" in src
     assert "wrote no meta.json" in src
 
@@ -90,10 +89,13 @@ def test_a_worker_verdict_is_reported_from_meta_not_from_stderr(tmp_path, monkey
 
     from merlin.targetgen import capsule_source as CS
 
-    payload = {"ok": True, "opaque": 44, "scheme": "int8_dyn_act_int8_weight",
-               "opaque_detail": {"torchao_quantize_affine_default_1": 6,
-                                 "torchao_choose_qparams_affine_default_1": 6},
-               "input_abi": []}
+    payload = {
+        "ok": True,
+        "opaque": 44,
+        "scheme": "int8_dyn_act_int8_weight",
+        "opaque_detail": {"torchao_quantize_affine_default_1": 6, "torchao_choose_qparams_affine_default_1": 6},
+        "input_abi": [],
+    }
 
     class _Proc:
         returncode = 3
@@ -113,8 +115,7 @@ def test_a_worker_verdict_is_reported_from_meta_not_from_stderr(tmp_path, monkey
     loader = tmp_path / "loader.py"
     loader.write_text("# loader\n", encoding="utf-8")
     try:
-        src.capture_loader(loader, "i8", workdir=tmp_path / "cap",
-                           scheme="int8_dyn_act_int8_weight")
+        src.capture_loader(loader, "i8", workdir=tmp_path / "cap", scheme="int8_dyn_act_int8_weight")
     except CS.M2MUnavailable as exc:
         msg = str(exc)
     else:
@@ -126,8 +127,7 @@ def test_a_worker_verdict_is_reported_from_meta_not_from_stderr(tmp_path, monkey
     assert "_flat_weights" not in msg, "the stderr warnings must not be the reported cause"
 
 
-def test_a_semantically_normalizable_capture_reaches_the_shared_zero_opaque_gate(
-        tmp_path, monkeypatch):
+def test_a_semantically_normalizable_capture_reaches_the_shared_zero_opaque_gate(tmp_path, monkeypatch):
     """The real failure seam: the worker returns rc=3 for two TorchAO affine placeholders.
 
     Their semantics are recoverable from the module's own types and quantization provenance.  The
@@ -139,7 +139,7 @@ def test_a_semantically_normalizable_capture_reaches_the_shared_zero_opaque_gate
 
     from merlin.targetgen import capsule_source as CS
 
-    raw = '''builtin.module attributes {prov.quantization = "int8_dyn_act_int8_weight"} {
+    raw = """builtin.module attributes {prov.quantization = "int8_dyn_act_int8_weight"} {
   func.func private @torchao_choose_qparams_affine_default(tensor<1x32xf32>) -> tensor<1xf32>
   func.func private @torchao_quantize_affine_default(tensor<1x32xf32>, tensor<1xf32>) -> tensor<1x32xi8>
   func.func @forward(%x: tensor<1x32xf32>) -> tensor<1x32xi8> {
@@ -147,7 +147,7 @@ def test_a_semantically_normalizable_capture_reaches_the_shared_zero_opaque_gate
     %q = func.call @torchao_quantize_affine_default(%x, %s) : (tensor<1x32xf32>, tensor<1xf32>) -> tensor<1x32xi8>
     func.return %q : tensor<1x32xi8>
   }
-}'''
+}"""
     payload = {
         "ok": True,
         "opaque": 2,
@@ -182,17 +182,18 @@ def test_a_semantically_normalizable_capture_reaches_the_shared_zero_opaque_gate
     loader = tmp_path / "loader.py"
     loader.write_text("# loader\n", encoding="utf-8")
 
-    art = src.capture_loader(loader, "i8", workdir=tmp_path / "cap",
-                             scheme="int8_dyn_act_int8_weight")
+    art = src.capture_loader(loader, "i8", workdir=tmp_path / "cap", scheme="int8_dyn_act_int8_weight")
 
     assert art.meta["opaque"] == 0
     receipt = art.meta["capture_normalization"]
     assert receipt["raw_opaque_detail"] == payload["opaque_detail"]
     assert receipt["remaining_opaque_detail"] == {}
-    assert receipt["normalizers"] == [{
-        "identity": "merlin.frontends.capture_normalization.torchao_affine/v1",
-        "rewrites": 2,
-    }]
+    assert receipt["normalizers"] == [
+        {
+            "identity": "merlin.frontends.capture_normalization.torchao_affine/v1",
+            "rewrites": 2,
+        }
+    ]
     assert "func.call @torchao" not in art.linalg_mlir
     assert "linalg.generic" in art.linalg_mlir
 
@@ -204,13 +205,13 @@ def test_capture_normalization_refuses_a_stale_worker_census():
         normalize_capture_mlir,
     )
 
-    raw = '''builtin.module {
+    raw = """builtin.module {
   func.func private @unknown(tensor<4xf32>) -> tensor<4xf32>
   func.func @forward(%x: tensor<4xf32>) -> tensor<4xf32> {
     %y = func.call @unknown(%x) : (tensor<4xf32>) -> tensor<4xf32>
     func.return %y : tensor<4xf32>
   }
-}'''
+}"""
     try:
         normalize_capture_mlir(raw, reported_opaque={"different": 1})
     except CaptureNormalizationError as exc:

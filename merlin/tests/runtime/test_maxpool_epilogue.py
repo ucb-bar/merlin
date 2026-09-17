@@ -17,6 +17,7 @@ So the contract pinned here is two-sided:
   this code picked would be a target fact invented in library code, and the integer gate would then
   enforce arithmetic nobody chose.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -33,21 +34,22 @@ def _commit_cb(*, M, K, N, pool: dict | None, epilogue=("maxpool",)):
     attrs: dict = {"epilogue": list(epilogue), "output_dtype": "i32"}
     attrs.update(pool or {})
     return {
-        "abi_version": "0.1", "target": "t",
-        "tensors": {"W": {"shape": [K, N], "dtype": "i8", "role": "weight"},
-                    "A0": {"shape": [M, K], "dtype": "i8", "role": "input"},
-                    "Y0": {"shape": [M, N], "dtype": "i32", "role": "output"}},
+        "abi_version": "0.1",
+        "target": "t",
+        "tensors": {
+            "W": {"shape": [K, N], "dtype": "i8", "role": "weight"},
+            "A0": {"shape": [M, K], "dtype": "i8", "role": "input"},
+            "Y0": {"shape": [M, N], "dtype": "i32", "role": "output"},
+        },
         "commands": [
-            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "Wr"},
-             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "Wr"}, "attributes": {"layout": "packed_rhs"}},
             {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "Wr", "dst": "acc0"}},
             {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"}, "attributes": attrs},
         ],
     }
 
 
-_POOL_2x2 = {"pool_in_dims": [4, 4], "pool_size": [2, 2], "pool_stride": [2, 2],
-             "pool_padding": [0, 0, 0, 0]}
+_POOL_2x2 = {"pool_in_dims": [4, 4], "pool_size": [2, 2], "pool_stride": [2, 2], "pool_padding": [0, 0, 0, 0]}
 
 
 class TestTheEnginesAgree:
@@ -66,8 +68,7 @@ class TestTheEnginesAgree:
         """Recompute the expected value from the Tensor primitives directly, so this asserts the
         arithmetic rather than that two callers of one function agree."""
         cb = _commit_cb(M=TILE, K=TILE, N=TILE, pool=_POOL_2x2)
-        acc = (Tensor.deterministic("A0", (TILE, TILE), "i8")
-               .matmul(Tensor.deterministic("W", (TILE, TILE), "i8")))
+        acc = Tensor.deterministic("A0", (TILE, TILE), "i8").matmul(Tensor.deterministic("W", (TILE, TILE), "i8"))
         # window 0 of row-plane 0: rows 0,1 x cols 0,1 of the 4x4 plane -> flat rows 0, 1, 4, 5.
         want_col0 = max(acc.data[r * TILE + 0] for r in (0, 1, 4, 5))
         assert reference_outputs(cb)["Y0"][0][0] == want_col0
@@ -113,8 +114,7 @@ class TestItFailsClosed:
         """The identity element of a max over a padded cell is a datapath property (-inf
         mathematically, commonly 0 in a store path). Choosing one silently would be a full tensor of
         plausible wrong numbers."""
-        cb = _commit_cb(M=TILE, K=TILE, N=TILE,
-                        pool={**_POOL_2x2, "pool_padding": [1, 1, 1, 1]})
+        cb = _commit_cb(M=TILE, K=TILE, N=TILE, pool={**_POOL_2x2, "pool_padding": [1, 1, 1, 1]})
         with pytest.raises(ValueError, match="pad_value"):
             reference_outputs(cb)
 
@@ -125,23 +125,37 @@ class TestTheFusedConvPath:
     @staticmethod
     def _conv_cb(*, H=8, W=8, ci=4, kh=3, kw=3, co=TILE, pool_in_dims=(6, 6)):
         return {
-            "abi_version": "0.1", "target": "t",
-            "tensors": {"IFM": {"shape": [1, H, W, ci], "dtype": "i8", "role": "input"},
-                        "Wt": {"shape": [kh * kw * ci, co], "dtype": "i8", "role": "weight"},
-                        "Y0": {"shape": [9, co], "dtype": "i32", "role": "output"}},
-            "commands": [{"opcode": "CONV2D",
-                          "operands": {"ifm": "IFM", "weight": "Wt", "dst": "Y0"},
-                          "attributes": {"kernel": [kh, kw, ci, co], "stride": [1, 1],
-                                         "padding": [0, 0, 0, 0], "dilation": [1, 1],
-                                         "layout": "nhwc", "epilogue": ["maxpool"],
-                                         "output_dtype": "i32",
-                                         "pool_in_dims": list(pool_in_dims), "pool_size": [2, 2],
-                                         "pool_stride": [2, 2], "pool_padding": [0, 0, 0, 0]}}],
+            "abi_version": "0.1",
+            "target": "t",
+            "tensors": {
+                "IFM": {"shape": [1, H, W, ci], "dtype": "i8", "role": "input"},
+                "Wt": {"shape": [kh * kw * ci, co], "dtype": "i8", "role": "weight"},
+                "Y0": {"shape": [9, co], "dtype": "i32", "role": "output"},
+            },
+            "commands": [
+                {
+                    "opcode": "CONV2D",
+                    "operands": {"ifm": "IFM", "weight": "Wt", "dst": "Y0"},
+                    "attributes": {
+                        "kernel": [kh, kw, ci, co],
+                        "stride": [1, 1],
+                        "padding": [0, 0, 0, 0],
+                        "dilation": [1, 1],
+                        "layout": "nhwc",
+                        "epilogue": ["maxpool"],
+                        "output_dtype": "i32",
+                        "pool_in_dims": list(pool_in_dims),
+                        "pool_size": [2, 2],
+                        "pool_stride": [2, 2],
+                        "pool_padding": [0, 0, 0, 0],
+                    },
+                }
+            ],
         }
 
     def test_the_conv_pools_its_own_output_plane(self):
         got = simulate(self._conv_cb())["outputs"]["Y0"]
-        assert (len(got), len(got[0])) == (9, TILE)          # 6x6 -> 3x3 at 2x2/2
+        assert (len(got), len(got[0])) == (9, TILE)  # 6x6 -> 3x3 at 2x2/2
 
     def test_a_pool_extent_that_disagrees_with_the_conv_geometry_is_rejected(self):
         """The golden sees only the flat product and has to trust the declaration; if the two ever

@@ -8,6 +8,7 @@ The last class runs the real prepared spectformer module, because the only forms
 the int8 rewrite actually produces — a contraction that has become a `linalg.generic` with `(i8, i8, i32)`
 operands and is not renamed back to `linalg.matmul` until later in the pipeline.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -44,16 +45,20 @@ builtin.module {
 """
 
 #: The same shape in f32 — legal linalg, illegal on an int8 unit.
-_F32_MM = _INT8_MM.replace("xi8>", "xf32>").replace("xi32>", "xf32>").replace(
-    "%x: i8, %y: i8, %acc: i32", "%x: f32, %y: f32, %acc: f32").replace(
-    "arith.extsi %x : i8 to i32", "arith.mulf %x, %x : f32").replace(
-    "arith.extsi %y : i8 to i32", "arith.mulf %y, %y : f32").replace(
-    "arith.muli %xe, %ye : i32", "arith.mulf %xe, %ye : f32").replace(
-    "arith.addi %acc, %m : i32", "arith.addf %acc, %m : f32").replace(
-    "%z = arith.constant 0 : i32", "%z = arith.constant 0.0 : f32").replace(
-    "ins(%z : i32)", "ins(%z : f32)").replace("linalg.yield %s : i32", "linalg.yield %s : f32")
+_F32_MM = (
+    _INT8_MM.replace("xi8>", "xf32>")
+    .replace("xi32>", "xf32>")
+    .replace("%x: i8, %y: i8, %acc: i32", "%x: f32, %y: f32, %acc: f32")
+    .replace("arith.extsi %x : i8 to i32", "arith.mulf %x, %x : f32")
+    .replace("arith.extsi %y : i8 to i32", "arith.mulf %y, %y : f32")
+    .replace("arith.muli %xe, %ye : i32", "arith.mulf %xe, %ye : f32")
+    .replace("arith.addi %acc, %m : i32", "arith.addf %acc, %m : f32")
+    .replace("%z = arith.constant 0 : i32", "%z = arith.constant 0.0 : f32")
+    .replace("ins(%z : i32)", "ins(%z : f32)")
+    .replace("linalg.yield %s : i32", "linalg.yield %s : f32")
+)
 
-_ALL = lambda _s: True                                              # noqa: E731
+_ALL = lambda _s: True  # noqa: E731
 
 
 def _module(text: str):
@@ -92,25 +97,26 @@ class TestWhatItRefuses:
         # slice. What must never happen is the batch being folded into the tile, which would compute
         # something the hardware never promised -- so the signature has to keep it as a separate leading
         # extent and the tile extents have to stay the LAST two.
-        text = _INT8_MM.replace(
-            "affine_map<(d0, d1, d2) -> (d0, d2)>,\n                                          "
-            "affine_map<(d0, d1, d2) -> (d2, d1)>,\n                                          "
-            "affine_map<(d0, d1, d2) -> (d0, d1)>",
-            "affine_map<(d0, d1, d2, d3) -> (d0, d1, d3)>,\n                                          "
-            "affine_map<(d0, d1, d2, d3) -> (d0, d3, d2)>,\n                                          "
-            "affine_map<(d0, d1, d2, d3) -> (d0, d1, d2)>").replace(
-            '["parallel", "parallel", "reduction"]',
-            '["parallel", "parallel", "parallel", "reduction"]').replace(
-            "tensor<64x32xi8>", "tensor<4x64x32xi8>").replace(
-            "tensor<32x16xi8>", "tensor<4x32x16xi8>").replace(
-            "tensor<64x16xi32>", "tensor<4x64x16xi32>")
+        text = (
+            _INT8_MM.replace(
+                "affine_map<(d0, d1, d2) -> (d0, d2)>,\n                                          "
+                "affine_map<(d0, d1, d2) -> (d2, d1)>,\n                                          "
+                "affine_map<(d0, d1, d2) -> (d0, d1)>",
+                "affine_map<(d0, d1, d2, d3) -> (d0, d1, d3)>,\n                                          "
+                "affine_map<(d0, d1, d2, d3) -> (d0, d3, d2)>,\n                                          "
+                "affine_map<(d0, d1, d2, d3) -> (d0, d1, d2)>",
+            )
+            .replace('["parallel", "parallel", "reduction"]', '["parallel", "parallel", "parallel", "reduction"]')
+            .replace("tensor<64x32xi8>", "tensor<4x64x32xi8>")
+            .replace("tensor<32x16xi8>", "tensor<4x32x16xi8>")
+            .replace("tensor<64x16xi32>", "tensor<4x64x16xi32>")
+        )
         mod = _module(text)
         found = PO.routable_contractions(mod)
         assert found, "a batched int8 contraction is routable now that the callee can loop the batch"
         rewrite = PO.rewrite_contractions_to_opu(mod, select=lambda _sh: True)
         (sig,) = rewrite.signatures.values()
-        assert tuple(sig) == (4, 64, 16, 32), \
-            "the batch must stay a leading extent, with M and N the last two"
+        assert tuple(sig) == (4, 64, 16, 32), "the batch must stay a leading extent, with M and N the last two"
         (routed,) = rewrite.routed
         assert (routed.batch, routed.m, routed.n, routed.k) == (4, 64, 16, 32)
 
@@ -135,29 +141,34 @@ class TestWhatItRefuses:
     def test_an_init_that_is_not_a_fill_at_all_is_declined(self):
         # Fail closed: an init this cannot recognise might carry live values. Being wrong in this direction
         # leaves a contraction on the vector path, which is merely slower.
-        mod = _module(_INT8_MM.replace(
-            "%f = linalg.fill ins(%z : i32) outs(%e : tensor<64x16xi32>) -> tensor<64x16xi32>",
-            "%f = tensor.empty() : tensor<64x16xi32>"))
+        mod = _module(
+            _INT8_MM.replace(
+                "%f = linalg.fill ins(%z : i32) outs(%e : tensor<64x16xi32>) -> tensor<64x16xi32>",
+                "%f = tensor.empty() : tensor<64x16xi32>",
+            )
+        )
         assert PO.routable_contractions(mod) == []
 
     def test_zero_initialised_rejects_a_block_argument_init(self):
         # A contraction accumulating into a function argument has an init whose `owner` is a Block rather
         # than an Operation; reaching for `.name` on it would raise instead of declining.
-        mod = _module(_INT8_MM.replace(
-            "func.func @forward(%a: tensor<64x32xi8>, %b: tensor<32x16xi8>) -> tensor<64x16xi32> {",
-            "func.func @forward(%a: tensor<64x32xi8>, %b: tensor<32x16xi8>, "
-            "%c: tensor<64x16xi32>) -> tensor<64x16xi32> {").replace(
-            "outs(%f : tensor<64x16xi32>) {", "outs(%c : tensor<64x16xi32>) {"))
+        mod = _module(
+            _INT8_MM.replace(
+                "func.func @forward(%a: tensor<64x32xi8>, %b: tensor<32x16xi8>) -> tensor<64x16xi32> {",
+                "func.func @forward(%a: tensor<64x32xi8>, %b: tensor<32x16xi8>, "
+                "%c: tensor<64x16xi32>) -> tensor<64x16xi32> {",
+            ).replace("outs(%f : tensor<64x16xi32>) {", "outs(%c : tensor<64x16xi32>) {")
+        )
         assert PO.routable_contractions(mod) == []
 
 
 class TestWhatItEmits:
     def test_a_caller_can_supply_a_distinct_symbol_namespace(self):
         mod = _module(_INT8_MM)
-        got = PO.rewrite_contractions_to_opu(
-            mod, select=_ALL, symbol_prefix="merlin_outlined_gemm_i8")
+        got = PO.rewrite_contractions_to_opu(mod, select=_ALL, symbol_prefix="merlin_outlined_gemm_i8")
         assert tuple(got.signatures) == ("merlin_outlined_gemm_i8_0",)
         from merlin.xdsl_dialects._common import text as to_text
+
         assert "func.call @merlin_outlined_gemm_i8_0" in to_text(mod)
 
     def test_the_contraction_becomes_a_call_to_the_kernel(self):
@@ -165,6 +176,7 @@ class TestWhatItEmits:
         got = PO.rewrite_contractions_to_opu(mod, select=_ALL)
         assert got.count == 1
         from merlin.xdsl_dialects._common import text as to_text
+
         out = to_text(mod)
         assert f"{PO.SYMBOL_PREFIX}_0" in out
         assert "linalg.generic" not in out, "the contraction itself must be gone"
@@ -189,7 +201,8 @@ class TestWhatItEmits:
       %s2 = arith.addi %acc2, %m2 : i32
       linalg.yield %s2 : i32
     } -> tensor<8x16xi32>
-    func.return %r : tensor<64x16xi32>""")
+    func.return %r : tensor<64x16xi32>""",
+        )
         mod = _module(two)
         got = PO.rewrite_contractions_to_opu(mod, select=_ALL)
         assert got.count == 2
@@ -197,9 +210,10 @@ class TestWhatItEmits:
 
     def test_repeated_shapes_share_one_symbol(self):
         # spectformer calls the same two shapes 12 times each; 12 callees would be 12 copies of a kernel.
-        mod = _module(_INT8_MM.replace(
-            "func.return %r : tensor<64x16xi32>",
-            """%e2 = tensor.empty() : tensor<64x16xi32>
+        mod = _module(
+            _INT8_MM.replace(
+                "func.return %r : tensor<64x16xi32>",
+                """%e2 = tensor.empty() : tensor<64x16xi32>
     %f2 = linalg.fill ins(%z : i32) outs(%e2 : tensor<64x16xi32>) -> tensor<64x16xi32>
     %r2 = linalg.generic {indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d2)>,
                                            affine_map<(d0, d1, d2) -> (d2, d1)>,
@@ -214,7 +228,9 @@ class TestWhatItEmits:
       %s2 = arith.addi %acc2, %m2 : i32
       linalg.yield %s2 : i32
     } -> tensor<64x16xi32>
-    func.return %r : tensor<64x16xi32>"""))
+    func.return %r : tensor<64x16xi32>""",
+            )
+        )
         got = PO.rewrite_contractions_to_opu(mod, select=_ALL)
         assert got.count == 2 and len(got.signatures) == 1
 
@@ -225,6 +241,7 @@ class TestWhatItEmits:
         mod = _module(_INT8_MM)
         got = PO.rewrite_contractions_to_opu(mod, select=_ALL)
         from merlin.xdsl_dialects._common import text as to_text
+
         raw = to_text(mod)
         assert "bufferization.access" not in raw
         assert PO.unpatched_declarations(raw, got) == tuple(got.signatures)
@@ -235,6 +252,7 @@ class TestWhatItEmits:
         mod = _module(_INT8_MM)
         got = PO.rewrite_contractions_to_opu(mod, select=_ALL)
         from merlin.xdsl_dialects._common import text as to_text
+
         fixed = PO.patch_declaration_arg_attrs(to_text(mod), got)
         assert fixed.count('bufferization.access = "read"') == 2
         assert fixed.count('bufferization.access = "write"') == 1
@@ -244,6 +262,7 @@ class TestWhatItEmits:
         mod = _module(_INT8_MM)
         got = PO.rewrite_contractions_to_opu(mod, select=_ALL)
         from merlin.xdsl_dialects._common import text as to_text
+
         fixed = PO.patch_declaration_arg_attrs(to_text(mod), got)
         assert "tensor<64x32xi8>" in fixed and "tensor<32x16xi8>" in fixed
         assert "-> tensor<64x16xi32>" in fixed
@@ -252,33 +271,37 @@ class TestWhatItEmits:
         mod = _module(_INT8_MM)
         got = PO.rewrite_contractions_to_opu(mod, select=_ALL)
         from merlin.xdsl_dialects._common import text as to_text
+
         once = PO.patch_declaration_arg_attrs(to_text(mod), got)
         twice = PO.patch_declaration_arg_attrs(once, got)
         # Applying it again must not double-annotate; the arg list no longer splits into 3 bare types.
-        assert twice.count('bufferization.access') == once.count('bufferization.access')
+        assert twice.count("bufferization.access") == once.count("bufferization.access")
 
     def test_the_declaration_is_private(self):
         mod = _module(_INT8_MM)
         PO.rewrite_contractions_to_opu(mod, select=_ALL)
         from merlin.xdsl_dialects._common import text as to_text
+
         assert "private" in to_text(mod)
 
     def test_the_signature_records_m_n_k(self):
         mod = _module(_INT8_MM)
         got = PO.rewrite_contractions_to_opu(mod, select=_ALL)
-        (sym, mnk), = got.signatures.items()
+        ((sym, mnk),) = got.signatures.items()
         assert mnk == (64, 16, 32)
         r = got.routed[0]
         assert (r.m, r.n, r.k) == (64, 16, 32) and r.symbol == sym
 
     def test_the_report_serialises(self):
         import json
+
         mod = _module(_INT8_MM)
         json.dumps(PO.rewrite_contractions_to_opu(mod, select=_ALL).to_dict())
 
 
-_PREPARED = Path("out/artifacts/target-evolution/saturn_opu/v1/latest/prepared/"
-                 "spectformer_int8_full/model.prepared.mlir")
+_PREPARED = Path(
+    "out/artifacts/target-evolution/saturn_opu/v1/latest/prepared/spectformer_int8_full/model.prepared.mlir"
+)
 
 
 @pytest.mark.skipif(not _PREPARED.is_file(), reason=f"needs the prepared capture at {_PREPARED}")
@@ -288,6 +311,7 @@ class TestOnTheRealPreparedModel:
     @pytest.fixture(scope="class")
     def prepared(self):
         from merlin.frontends.linalg_mlir import parse_mlir_file
+
         return parse_mlir_file(_PREPARED)
 
     def test_it_finds_exactly_the_census_count(self, prepared):
@@ -306,6 +330,7 @@ class TestOnTheRealPreparedModel:
 
     def test_a_tile_filling_selector_splits_the_work_dominant_shapes_out(self, prepared):
         from merlin.frontends.linalg_mlir import parse_mlir_file
+
         mod = parse_mlir_file(_PREPARED)
         got = PO.rewrite_contractions_to_opu(mod, select=lambda s: min(s.parallel) >= 32)
         # 41 of 106: the matmul/im2col families that can fill a 32-edge tile. This selector reads MIN OF
@@ -320,6 +345,7 @@ class TestOnTheRealPreparedModel:
         # over slices and says nothing about how full a tile each slice makes. At the device's edge of
         # 64 that adds attention's QK^T and attn.V — 11.89% of the model's runtime — to the 41.
         from merlin.frontends.linalg_mlir import parse_mlir_file
+
         mod = parse_mlir_file(_PREPARED)
         got = PO.rewrite_contractions_to_opu(mod, select=PO.tile_filling_selector(64))
         assert got.count == 57
@@ -329,6 +355,7 @@ class TestOnTheRealPreparedModel:
 
     def test_the_dominant_shapes_are_among_the_signatures(self, prepared):
         from merlin.frontends.linalg_mlir import parse_mlir_file
+
         mod = parse_mlir_file(_PREPARED)
         got = PO.rewrite_contractions_to_opu(mod, select=lambda s: min(s.parallel) >= 32)
         mnks = set(got.signatures.values())
@@ -356,12 +383,11 @@ class TestTheFileSeam:
         prepared = tmp_path / "model.prepared.mlir"
         prepared.write_text(_INT8_MM, encoding="utf-8")
         got = PO.rewrite_prepared_file(
-            prepared, tmp_path, select=_ALL,
-            symbol_prefix="merlin_outlined_gemm_i8", sidecar_name="outlined.json")
+            prepared, tmp_path, select=_ALL, symbol_prefix="merlin_outlined_gemm_i8", sidecar_name="outlined.json"
+        )
         assert got.count == 1
         assert not (tmp_path / PO.SIDECAR_NAME).exists()
-        assert PO.load_sidecar(tmp_path, "outlined.json") == {
-            "merlin_outlined_gemm_i8_0": (64, 16, 32)}
+        assert PO.load_sidecar(tmp_path, "outlined.json") == {"merlin_outlined_gemm_i8_0": (64, 16, 32)}
 
     def test_nothing_selected_leaves_the_module_byte_identical(self, tmp_path):
         # The module is only rewritten when something moved, so an enabled-but-declining build cannot
@@ -389,6 +415,7 @@ class TestTheTileFillingSelector:
         # A threshold baked in would be right on one configuration of the unit and wrong on every other.
         class _S:
             parallel, reduction = (16, 64), (32,)
+
         assert PO.tile_filling_selector(16)(_S()) is True
         assert PO.tile_filling_selector(32)(_S()) is False
 
@@ -399,9 +426,11 @@ class TestTheTileFillingSelector:
 
 def _int8_mm(m: int, n: int, k: int) -> str:
     """`_INT8_MM` at an arbitrary shape, so a routing rule can be tested at the extents that shipped."""
-    return (_INT8_MM.replace("tensor<64x32xi8>", f"tensor<{m}x{k}xi8>")
-                    .replace("tensor<32x16xi8>", f"tensor<{k}x{n}xi8>")
-                    .replace("tensor<64x16xi32>", f"tensor<{m}x{n}xi32>"))
+    return (
+        _INT8_MM.replace("tensor<64x32xi8>", f"tensor<{m}x{k}xi8>")
+        .replace("tensor<32x16xi8>", f"tensor<{k}x{n}xi8>")
+        .replace("tensor<64x16xi32>", f"tensor<{m}x{n}xi32>")
+    )
 
 
 class TestTheRoutingRuleIsRecorded:

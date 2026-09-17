@@ -16,6 +16,7 @@ but to prove that each way the calibration could FABRICATE a number is closed:
 
 Every trace here is written out cycle by cycle so the expected counts are checkable by hand.
 """
+
 from __future__ import annotations
 
 import json
@@ -35,9 +36,7 @@ TWO_ENGINE_CONTRACT = {
         {"name": "eng_b", "kind": "vector", "dtypes": ["int8"], "ops": ["add"]},
     ]
 }
-ONE_ENGINE_CONTRACT = {
-    "compute_units": [{"name": "eng_a", "kind": "systolic", "dtypes": ["int8"], "ops": ["matmul"]}]
-}
+ONE_ENGINE_CONTRACT = {"compute_units": [{"name": "eng_a", "kind": "systolic", "dtypes": ["int8"], "ops": ["matmul"]}]}
 THREE_ENGINE_CONTRACT = {
     "compute_units": [
         {"name": "eng_a", "kind": "systolic", "dtypes": ["int8"], "ops": ["matmul"]},
@@ -53,9 +52,15 @@ def _bits(pattern: str) -> list[str]:
 
 
 def _trace(name, columns, binding, *, ports=(), states=(), **kw) -> CAL.MechanismTrace:
-    return CAL.MechanismTrace(capsule=name, columns=columns, binding=binding,
-                              port_columns=tuple(ports), state_columns=tuple(states),
-                              completion_observable=kw.pop("completion_observable", True), **kw)
+    return CAL.MechanismTrace(
+        capsule=name,
+        columns=columns,
+        binding=binding,
+        port_columns=tuple(ports),
+        state_columns=tuple(states),
+        completion_observable=kw.pop("completion_observable", True),
+        **kw,
+    )
 
 
 # --------------------------------------------------------------------------- idle calibration
@@ -64,8 +69,9 @@ def _trace(name, columns, binding, *, ports=(), states=(), **kw) -> CAL.Mechanis
 def test_idle_encoding_is_derived_from_a_paired_port_not_assumed():
     """A state register paired cycle-exactly with a busy port pins the encoding. No constant assumed."""
     # port high on cycles 1,2; the state register holds '7' on exactly the cycles the port is low.
-    tr = _trace("c", {"p": _bits("0110"), "s": ["7", "3", "3", "7"]},
-                {"p": "eng_a", "s": "eng_b"}, ports=("p",), states=("s",))
+    tr = _trace(
+        "c", {"p": _bits("0110"), "s": ["7", "3", "3", "7"]}, {"p": "eng_a", "s": "eng_b"}, ports=("p",), states=("s",)
+    )
     got = CAL.calibrate_idle([tr])
     assert got.idle_value == "7"
     assert got.basis == CAL.IDLE_DERIVED
@@ -75,8 +81,9 @@ def test_idle_encoding_is_derived_from_a_paired_port_not_assumed():
 def test_unpaired_state_column_is_unreadable_not_idle():
     """The 76.7%->46.2% bug, closed. No port varies, so nothing pins the encoding and the column is
     reported unreadable rather than contributing zero busy cycles."""
-    tr = _trace("c", {"p": _bits("0000"), "s": ["0", "1", "1", "0"]},
-                {"p": "eng_a", "s": "eng_b"}, ports=("p",), states=("s",))
+    tr = _trace(
+        "c", {"p": _bits("0000"), "s": ["0", "1", "1", "0"]}, {"p": "eng_a", "s": "eng_b"}, ports=("p",), states=("s",)
+    )
     idle = CAL.calibrate_idle([tr])
     assert idle.idle_value is None and idle.basis == CAL.IDLE_UNESTABLISHED
     hot, unreadable = CAL.busy_vectors(tr, idle)
@@ -90,8 +97,9 @@ def test_unpaired_state_column_is_unreadable_not_idle():
 
 def test_producer_declared_idle_value_is_stamped_not_promoted():
     """A producer's declaration is an acceptable INPUT and is never quoted as a measurement."""
-    tr = _trace("c", {"p": _bits("0000"), "s": ["0", "1", "1", "0"]},
-                {"p": "eng_a", "s": "eng_b"}, ports=("p",), states=("s",))
+    tr = _trace(
+        "c", {"p": _bits("0000"), "s": ["0", "1", "1", "0"]}, {"p": "eng_a", "s": "eng_b"}, ports=("p",), states=("s",)
+    )
     got = CAL.calibrate_idle([tr], declared_idle_value="0")
     assert got.idle_value == "0" and got.basis == CAL.IDLE_DECLARED
     assert "DECLARED, not derived" in got.detail
@@ -100,10 +108,20 @@ def test_producer_declared_idle_value_is_stamped_not_promoted():
 def test_idle_calibration_is_corpus_wide_not_per_trace():
     """A program that leaves the paired unit constant must not withdraw a calibration the rest of the
     corpus established -- per-trace calibration dropped the busiest unit exactly where it mattered."""
-    pinning = _trace("pins", {"p": _bits("0110"), "s": ["7", "3", "3", "7"]},
-                     {"p": "eng_a", "s": "eng_b"}, ports=("p",), states=("s",))
-    silent = _trace("silent", {"p": _bits("0000"), "s": ["7", "7", "7", "7"]},
-                    {"p": "eng_a", "s": "eng_b"}, ports=("p",), states=("s",))
+    pinning = _trace(
+        "pins",
+        {"p": _bits("0110"), "s": ["7", "3", "3", "7"]},
+        {"p": "eng_a", "s": "eng_b"},
+        ports=("p",),
+        states=("s",),
+    )
+    silent = _trace(
+        "silent",
+        {"p": _bits("0000"), "s": ["7", "7", "7", "7"]},
+        {"p": "eng_a", "s": "eng_b"},
+        ports=("p",),
+        states=("s",),
+    )
     assert CAL.calibrate_idle([pinning, silent]).idle_value == "7"
     assert CAL.calibrate_idle([silent]).idle_value is None
 
@@ -116,8 +134,13 @@ def _overlapping_trace(name="cap_overlap"):
 
     busy_a=4, busy_b=4 -> available = second-largest = 4; realised = 2; eta = 0.5.
     """
-    return _trace(name, {"a": _bits("11110000"), "b": _bits("00111100")},
-                  {"a": "eng_a", "b": "eng_b"}, ports=("a", "b"), work="w1")
+    return _trace(
+        name,
+        {"a": _bits("11110000"), "b": _bits("00111100")},
+        {"a": "eng_a", "b": "eng_b"},
+        ports=("a", "b"),
+        work="w1",
+    )
 
 
 def test_eta_overlap_split_and_busy_are_measured_on_a_real_pair():
@@ -137,10 +160,14 @@ def test_eta_overlap_split_and_busy_are_measured_on_a_real_pair():
 
 def test_pair_cell_is_calibrated_and_names_the_run_it_would_spend_the_tier_on():
     cheap = _overlapping_trace("cheap")
-    dear = _trace("dear", {"a": _bits("1" * 40 + "0" * 40), "b": _bits("0" * 20 + "1" * 40 + "0" * 20)},
-                  {"a": "eng_a", "b": "eng_b"}, ports=("a", "b"), work="w1")
-    rec = CAL.calibrate(target="t", contract=TWO_ENGINE_CONTRACT, traces=[dear, cheap],
-                        points_per_cell=1)
+    dear = _trace(
+        "dear",
+        {"a": _bits("1" * 40 + "0" * 40), "b": _bits("0" * 20 + "1" * 40 + "0" * 20)},
+        {"a": "eng_a", "b": "eng_b"},
+        ports=("a", "b"),
+        work="w1",
+    )
+    rec = CAL.calibrate(target="t", contract=TWO_ENGINE_CONTRACT, traces=[dear, cheap], points_per_cell=1)
     pair = [c for c in rec["calibration_set"]["cells"] if c["axis"] == CAL.ENGINE_PAIR_AXIS]
     assert len(pair) == 1 and pair[0]["key"] == "eng_a|eng_b"
     assert pair[0]["state"] == CAL.CALIBRATED
@@ -150,8 +177,9 @@ def test_pair_cell_is_calibrated_and_names_the_run_it_would_spend_the_tier_on():
 def test_one_live_engine_refuses_eta_and_does_not_report_zero():
     """The zero this whole module exists to prevent: arithmetic from a vector that could not have
     shown overlap, indistinguishable from a machine that genuinely serialises."""
-    tr = _trace("solo", {"a": _bits("11110000"), "b": _bits("00000000")},
-                {"a": "eng_a", "b": "eng_b"}, ports=("a", "b"))
+    tr = _trace(
+        "solo", {"a": _bits("11110000"), "b": _bits("00000000")}, {"a": "eng_a", "b": "eng_b"}, ports=("a", "b")
+    )
     rec = CAL.calibrate(target="t", contract=TWO_ENGINE_CONTRACT, traces=[tr])
     cap = rec["capsules"][0]
     assert cap["eta"]["state"] == CAL.UNKNOWN
@@ -162,9 +190,13 @@ def test_one_live_engine_refuses_eta_and_does_not_report_zero():
 
 
 def test_engine_the_instrument_did_not_read_refuses_the_reading():
-    tr = _trace("partial", {"a": _bits("11110000"), "b": _bits("00111100")},
-                {"a": "eng_a", "b": "eng_b"}, ports=("a", "b"),
-                unmeasured_units=("eng_c",))
+    tr = _trace(
+        "partial",
+        {"a": _bits("11110000"), "b": _bits("00111100")},
+        {"a": "eng_a", "b": "eng_b"},
+        ports=("a", "b"),
+        unmeasured_units=("eng_c",),
+    )
     rec = CAL.calibrate(target="t", contract=TWO_ENGINE_CONTRACT, traces=[tr])
     cap = rec["capsules"][0]
     assert cap["eta"]["state"] == CAL.UNKNOWN
@@ -173,8 +205,7 @@ def test_engine_the_instrument_did_not_read_refuses_the_reading():
 
 def test_column_bound_to_an_undeclared_engine_voids_the_reading():
     """The trace and the contract then disagree about what the device IS; the column is not reassigned."""
-    tr = _trace("bad", {"a": _bits("1100"), "z": _bits("0011")},
-                {"a": "eng_a", "z": "not_declared"}, ports=("a", "z"))
+    tr = _trace("bad", {"a": _bits("1100"), "z": _bits("0011")}, {"a": "eng_a", "z": "not_declared"}, ports=("a", "z"))
     rec = CAL.calibrate(target="t", contract=TWO_ENGINE_CONTRACT, traces=[tr])
     cap = rec["capsules"][0]
     assert cap["eta"]["state"] == CAL.UNKNOWN
@@ -186,9 +217,12 @@ def test_column_bound_to_an_undeclared_engine_voids_the_reading():
 def test_a_signal_counted_beside_its_sub_signals_does_not_manufacture_overlap():
     """204 fabricated overlap cycles on one measured design. Subsumption is inside the same declared
     engine, so it folds; nesting across declared engines is structure and must not."""
-    tr = _trace("nested",
-                {"unit": _bits("11110000"), "half": _bits("11000000"), "b": _bits("00000110")},
-                {"unit": "eng_a", "half": "eng_a", "b": "eng_b"}, ports=("unit", "half", "b"))
+    tr = _trace(
+        "nested",
+        {"unit": _bits("11110000"), "half": _bits("11000000"), "b": _bits("00000110")},
+        {"unit": "eng_a", "half": "eng_a", "b": "eng_b"},
+        ports=("unit", "half", "b"),
+    )
     rec = CAL.calibrate(target="t", contract=TWO_ENGINE_CONTRACT, traces=[tr])
     cap = rec["capsules"][0]
     assert "half" in cap["joint"]["subsumed_columns"], "a sub-signal of the same engine must fold"
@@ -201,9 +235,12 @@ def test_eta_above_one_is_reported_not_clipped():
     the top pair's ceiling."""
     # a busy 0-3, b busy 0-1, c busy 2-3 -> every cycle 0..3 has two engines busy.
     # busy = a:4 b:2 c:2 -> available = 2 (second largest); realised = 4 -> eta = 2.0
-    tr = _trace("disjoint",
-                {"a": _bits("111100"), "b": _bits("110000"), "c": _bits("001100")},
-                {"a": "eng_a", "b": "eng_b", "c": "eng_c"}, ports=("a", "b", "c"))
+    tr = _trace(
+        "disjoint",
+        {"a": _bits("111100"), "b": _bits("110000"), "c": _bits("001100")},
+        {"a": "eng_a", "b": "eng_b", "c": "eng_c"},
+        ports=("a", "b", "c"),
+    )
     rec = CAL.calibrate(target="t", contract=THREE_ENGINE_CONTRACT, traces=[tr])
     cap = rec["capsules"][0]
     assert cap["eta"]["value"] == pytest.approx(2.0)
@@ -231,10 +268,10 @@ def test_engine_axis_operator_is_measured_and_the_kind_axis_refusal_is_recorded(
 def test_one_unreadable_run_leaves_the_corpus_operator_unestablished():
     """UNKNOWN propagates, the way composition_operator propagates it: dropping the unmeasurable run
     would reweight the corpus towards whatever happened to be measurable."""
-    solo = _trace("solo", {"a": _bits("11110000"), "b": _bits("00000000")},
-                  {"a": "eng_a", "b": "eng_b"}, ports=("a", "b"))
-    rec = CAL.calibrate(target="t", contract=TWO_ENGINE_CONTRACT,
-                        traces=[_overlapping_trace(), solo])
+    solo = _trace(
+        "solo", {"a": _bits("11110000"), "b": _bits("00000000")}, {"a": "eng_a", "b": "eng_b"}, ports=("a", "b")
+    )
+    rec = CAL.calibrate(target="t", contract=TWO_ENGINE_CONTRACT, traces=[_overlapping_trace(), solo])
     comp = rec["composition"]
     assert comp["engine_axis"]["operator"]["state"] == CAL.UNKNOWN
     assert comp["runs_without_a_reading"] == ["solo"]
@@ -251,8 +288,9 @@ def test_single_engine_target_reports_the_pair_axis_uncalibratable():
 
 
 def test_unobservable_half_makes_the_pair_uncalibratable_and_names_the_half():
-    tr = _trace("c", {"a": _bits("1100"), "s": ["0", "1", "1", "0"]},
-                {"a": "eng_a", "s": "eng_b"}, ports=("a",), states=("s",))
+    tr = _trace(
+        "c", {"a": _bits("1100"), "s": ["0", "1", "1", "0"]}, {"a": "eng_a", "s": "eng_b"}, ports=("a",), states=("s",)
+    )
     rec = CAL.calibrate(target="t", contract=TWO_ENGINE_CONTRACT, traces=[tr])
     pair = [c for c in rec["calibration_set"]["cells"] if c["axis"] == CAL.ENGINE_PAIR_AXIS][0]
     assert pair["state"] == CAL.UNCALIBRATABLE
@@ -260,16 +298,17 @@ def test_unobservable_half_makes_the_pair_uncalibratable_and_names_the_half():
 
 
 def test_regime_cells_take_the_extremes_and_flag_a_single_point_cell():
-    regimes = {"capacity_rows": 1000,
-               "by_regime": {"fits_double": ["small", "mid", "big"], "spills": ["huge"]}}
-    by_capsule = {"small": {"regime": "fits_double", "rows": 4},
-                  "mid": {"regime": "fits_double", "rows": 200},
-                  "big": {"regime": "fits_double", "rows": 480},
-                  "huge": {"regime": "spills", "rows": 4000}}
-    rec = CAL.calibrate(target="t", contract=TWO_ENGINE_CONTRACT, traces=[],
-                        corpus_regimes=regimes, regime_by_capsule=by_capsule)
-    cells = {c["key"]: c for c in rec["calibration_set"]["cells"]
-             if c["axis"] == CAL.MEMORY_REGIME_AXIS}
+    regimes = {"capacity_rows": 1000, "by_regime": {"fits_double": ["small", "mid", "big"], "spills": ["huge"]}}
+    by_capsule = {
+        "small": {"regime": "fits_double", "rows": 4},
+        "mid": {"regime": "fits_double", "rows": 200},
+        "big": {"regime": "fits_double", "rows": 480},
+        "huge": {"regime": "spills", "rows": 4000},
+    }
+    rec = CAL.calibrate(
+        target="t", contract=TWO_ENGINE_CONTRACT, traces=[], corpus_regimes=regimes, regime_by_capsule=by_capsule
+    )
+    cells = {c["key"]: c for c in rec["calibration_set"]["cells"] if c["axis"] == CAL.MEMORY_REGIME_AXIS}
     assert cells["fits_double"]["capsules"] == ["small", "big"], "the ENDS of the regime, not the mid"
     assert cells["spills"]["state"] == CAL.CALIBRATED
     assert "EXTRAPOLATION" in cells["spills"]["why"]
@@ -281,8 +320,9 @@ def test_regime_cells_take_the_extremes_and_flag_a_single_point_cell():
 
 
 def test_undrivable_capacity_yields_one_uncalibratable_regime_cell():
-    rec = CAL.calibrate(target="t", contract=TWO_ENGINE_CONTRACT, traces=[],
-                        corpus_regimes={"capacity_rows": None, "by_regime": {}})
+    rec = CAL.calibrate(
+        target="t", contract=TWO_ENGINE_CONTRACT, traces=[], corpus_regimes={"capacity_rows": None, "by_regime": {}}
+    )
     cells = [c for c in rec["calibration_set"]["cells"] if c["axis"] == CAL.MEMORY_REGIME_AXIS]
     assert len(cells) == 1 and cells[0]["state"] == CAL.UNCALIBRATABLE
     assert "no operand-store capacity" in cells[0]["why"]
@@ -319,8 +359,7 @@ def test_detected_but_undeclared_control_fsms_are_reported():
     the whole measurement among the 12 dropped. The inventory widens the engine set, never narrows it."""
     tr = _trace("c", {"x/state_a": _bits("1100")}, {"x/state_a": "eng_a"}, ports=("x/state_a",))
     regs = [_Reg("X", "state_a", 3, True), _Reg("Y", "state_b"), _Reg("Z", "state_c")]
-    inv = CAL.engine_inventory(TWO_ENGINE_CONTRACT, [tr], CAL.calibrate_idle([tr]),
-                               fsm_registers=regs)
+    inv = CAL.engine_inventory(TWO_ENGINE_CONTRACT, [tr], CAL.calibrate_idle([tr]), fsm_registers=regs)
     d = inv.to_dict()
     assert d["n_detected"] == 3
     assert sorted(d["detected_undeclared"]) == ["Y.state_b", "Z.state_c"]
@@ -355,9 +394,11 @@ def test_unknown_cannot_be_constructed_without_a_reason():
 
 
 def test_every_record_this_module_emits_passes_its_own_audit():
-    for contract, traces in ((TWO_ENGINE_CONTRACT, [_overlapping_trace()]),
-                             (ONE_ENGINE_CONTRACT, []),
-                             (TWO_ENGINE_CONTRACT, [])):
+    for contract, traces in (
+        (TWO_ENGINE_CONTRACT, [_overlapping_trace()]),
+        (ONE_ENGINE_CONTRACT, []),
+        (TWO_ENGINE_CONTRACT, []),
+    ):
         rec = CAL.calibrate(target="t", contract=contract, traces=traces)
         assert rec["audit"]["ok"], rec["audit"]["violations"]
 
@@ -374,8 +415,9 @@ DRIVER = merlin_dir() / "experiments" / "capsule_bench" / "harness" / "perf_cali
 
 
 def test_driver_help_runs():
-    got = subprocess.run([sys.executable, str(DRIVER), "--help"], capture_output=True, text=True,
-                         cwd=str(repo_root()), timeout=180)
+    got = subprocess.run(
+        [sys.executable, str(DRIVER), "--help"], capture_output=True, text=True, cwd=str(repo_root()), timeout=180
+    )
     assert got.returncode == 0
     assert "mechanisms" in got.stdout
 
@@ -388,23 +430,31 @@ def test_driver_consumes_the_trace_seam_end_to_end(tmp_path):
     """
     from merlin.targetgen import target_registry as TR
 
-    target = next((t for t in TR.all_targets()
-                   if len(_kinds(TR, t)) >= 2), None)
+    target = next((t for t in TR.all_targets() if len(_kinds(TR, t)) >= 2), None)
     if target is None:
         pytest.skip("no reference target declares two engines")
     engines = sorted(_kinds(TR, target))
-    trace = {"capsule": "synthetic_pair_probe",
-             "columns": {"col_a": _bits("11110000"), "col_b": _bits("00111100")},
-             "binding": {"col_a": engines[0], "col_b": engines[1]},
-             "port_columns": ["col_a", "col_b"], "state_columns": [],
-             "unmeasured_units": [], "work": "probe", "completion_observable": True,
-             "provenance": "synthetic; proves the seam, not the hardware"}
+    trace = {
+        "capsule": "synthetic_pair_probe",
+        "columns": {"col_a": _bits("11110000"), "col_b": _bits("00111100")},
+        "binding": {"col_a": engines[0], "col_b": engines[1]},
+        "port_columns": ["col_a", "col_b"],
+        "state_columns": [],
+        "unmeasured_units": [],
+        "work": "probe",
+        "completion_observable": True,
+        "provenance": "synthetic; proves the seam, not the hardware",
+    }
     tf = tmp_path / "trace.json"
     tf.write_text(json.dumps(trace))
 
-    got = subprocess.run([sys.executable, str(DRIVER), "--target", target,
-                          "--traces", str(tf), "--dry-run"],
-                         capture_output=True, text=True, cwd=str(repo_root()), timeout=900)
+    got = subprocess.run(
+        [sys.executable, str(DRIVER), "--target", target, "--traces", str(tf), "--dry-run"],
+        capture_output=True,
+        text=True,
+        cwd=str(repo_root()),
+        timeout=900,
+    )
     assert got.returncode == 0, got.stderr[-3000:]
     assert "eta=0.5000" in got.stdout, got.stdout[-3000:]
     assert "audit ok=True" in got.stdout
@@ -412,7 +462,8 @@ def test_driver_consumes_the_trace_seam_end_to_end(tmp_path):
 
 def _kinds(TR, target):
     from merlin.perf.occupancy import declared_engines
+
     try:
         return declared_engines(TR.load_contract(target))
-    except Exception:                                       # noqa: BLE001 -- unparseable contract
+    except Exception:  # noqa: BLE001 -- unparseable contract
         return {}

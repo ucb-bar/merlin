@@ -10,6 +10,7 @@ These tests pin the emitter, not the toolchain, so they run without a RISC-V com
 claim they support was measured separately: at M=1024 K=256 N=128 (the census's own `tall_skinny`
 extents, 33.6M MACs) the harness goes from 590,522 bytes to 664, and spike returns the correct result.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -34,18 +35,25 @@ def _codegen():
 
 
 def _cb(*, m: int, k: int, n: int) -> dict:
-    return {"abi_version": "0.1", "target": "gemmini",
-            "tensors": {"W": {"shape": [k, n], "dtype": "i8", "role": "weight"},
-                        "A0": {"shape": [m, k], "dtype": "i8", "role": "input"},
-                        "Y0": {"shape": [m, n], "dtype": "i32", "role": "output"}},
-            "commands": [
-                {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"},
-                 "attributes": {"layout": "packed_rhs"}},
-                {"opcode": "MATMUL_RESIDENT",
-                 "operands": {"lhs": "A0", "rhs": "W_res", "dst": "acc0"}},
-                {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"},
-                 "attributes": {"epilogue": [], "output_dtype": "i32"}},
-                {"opcode": "EVICT", "operands": {"handle": "W_res"}}]}
+    return {
+        "abi_version": "0.1",
+        "target": "gemmini",
+        "tensors": {
+            "W": {"shape": [k, n], "dtype": "i8", "role": "weight"},
+            "A0": {"shape": [m, k], "dtype": "i8", "role": "input"},
+            "Y0": {"shape": [m, n], "dtype": "i32", "role": "output"},
+        },
+        "commands": [
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "W_res", "dst": "acc0"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc0", "dst": "Y0"},
+                "attributes": {"epilogue": [], "output_dtype": "i32"},
+            },
+            {"opcode": "EVICT", "operands": {"handle": "W_res"}},
+        ],
+    }
 
 
 class TestTheGradedDefaultDoesNotMove:
@@ -101,7 +109,7 @@ class TestALargeOperandMovesOutOfLine:
         gm = _codegen()
         blobs: dict = {}
         gm._harness_c(_cb(m=64, k=64, n=64), blobs=blobs)
-        assert blobs["T_W"]["align"] == gm._ceil_dim(1) * 1      # tile edge x sizeof(i8)
+        assert blobs["T_W"]["align"] == gm._ceil_dim(1) * 1  # tile edge x sizeof(i8)
 
     def test_the_stub_incbins_rather_than_listing_bytes(self):
         """A `.byte` list would move the one-statement-per-element cost from the compiler to the
@@ -114,7 +122,7 @@ class TestALargeOperandMovesOutOfLine:
     def test_the_harness_collapses_by_orders_of_magnitude_at_a_census_shape(self):
         """The point of the change, stated as a number rather than an intention."""
         gm = _codegen()
-        shape = {"m": 1024, "k": 256, "n": 128}                  # the census's own tall_skinny
+        shape = {"m": 1024, "k": 256, "n": 128}  # the census's own tall_skinny
         inline = gm._harness_c(_cb(**shape))
         blobs: dict = {}
         blobbed = gm._harness_c(_cb(**shape), blobs=blobs)
@@ -149,11 +157,12 @@ class TestTheCensusShapesTheCorpusActuallyMints:
 
     def _members(self):
         import yaml
+
         from merlin.perf.member_geometry import stamp_for
         from merlin.targetgen.corpora import graded_capsule_roots
         from merlin.targetgen.corpus_synth import SYNTH_PREFIX
 
-        target = "gemmini"                      # this bucket's tests are ABOUT this target
+        target = "gemmini"  # this bucket's tests are ABOUT this target
         prefix = f"{SYNTH_PREFIX}_geometry_"
         out = []
         for root in graded_capsule_roots(target):
@@ -175,10 +184,10 @@ class TestTheCensusShapesTheCorpusActuallyMints:
             blobs: dict = {}
             source = gm._harness_c(_cb(m=stamp["M"], k=stamp["K"], n=stamp["N"]), blobs=blobs)
             assert set(blobs) == {"T_W", "T_A0"}, (
-                f"{name} ({stamp['M']}x{stamp['K']}x{stamp['N']}): an operand still spelled in C")
+                f"{name} ({stamp['M']}x{stamp['K']}x{stamp['N']}): an operand still spelled in C"
+            )
             assert "static const elem_t" not in source, f"{name}: an operand is defined twice"
-            assert len(source) < 4_000, (
-                f"{name}: the harness is {len(source)} bytes, so something is still inline")
+            assert len(source) < 4_000, f"{name}: the harness is {len(source)} bytes, so something is still inline"
 
     def test_the_blob_holds_the_padded_operand_the_kernel_will_read(self):
         """A blob shorter than the padded extent is not a build error -- it is a DMA reading past the

@@ -6,21 +6,22 @@ Guardrail: the module emits ONLY the encoding surface (funct table, legal set, r
 semantic-class map). It must NEVER emit compiler-level ops/dialect — those stay a human-owned shared
 abstraction (synthesize.dialect_plan), not auto-generated from instruction names.
 """
+
 from __future__ import annotations
 
 import json
 
-from merlin.targetgen.rtl.gen_isa_module import generate
-from merlin.targetgen.rtl.facts import load_facts
-from merlin.targetgen.target_experiment import load_capability_manifest
 from merlin.targetgen.rocc import decode as RD
+from merlin.targetgen.rtl.facts import load_facts
+from merlin.targetgen.rtl.gen_isa_module import generate
+from merlin.targetgen.target_experiment import load_capability_manifest
 
 
 def _generated_ns() -> dict:
     facts = load_facts("gemmini")
     enc = load_capability_manifest("gemmini").encoding
     ns: dict = {}
-    exec(generate(facts, enc), ns)   # noqa: S102 — executing our own generated, deterministic module
+    exec(generate(facts, enc), ns)  # noqa: S102 — executing our own generated, deterministic module
     return ns
 
 
@@ -49,13 +50,14 @@ def test_generator_emits_encoding_only_never_ops_or_dialect():
 
 def test_generated_cpp_header_carries_the_same_single_source_constants():
     from merlin.targetgen.rtl.gen_isa_module import generate_header
+
     facts = load_facts("gemmini")
     enc = load_capability_manifest("gemmini").encoding
     h = generate_header(facts, enc, "gemmini")
     # the C++ header a backend #includes instead of hand-typing constexprs — same values as the Python
     # module + the emitter, so the third (C++) leg of the former triplication shares the single source.
     assert "namespace gemmini_isa" in h
-    assert f"constexpr unsigned CUSTOM_OPCODE = {hex(0x7b)};" in h
+    assert f"constexpr unsigned CUSTOM_OPCODE = {hex(0x7B)};" in h
     assert f"constexpr unsigned C_ACC = {hex(RD.isa_constants('gemmini')['C_ACC'])};" in h
     assert "constexpr int K_MVIN = 2;" in h and "constexpr int K_MVOUT = 3;" in h
 
@@ -67,4 +69,4 @@ def test_without_encoding_the_module_still_carries_the_rtl_encoder():
     ns: dict = {}
     exec(generate(facts, None), ns)  # noqa: S102
     assert "LEGAL_FUNCT" in ns and "FUNCT" in ns
-    assert "SEMANTIC_CLASS" not in ns   # comes only from the manifest encoding block
+    assert "SEMANTIC_CLASS" not in ns  # comes only from the manifest encoding block

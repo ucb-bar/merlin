@@ -8,6 +8,7 @@ pipeline's opening `canonicalize,cse` (running before it un-merges the rotary em
 transcendental generics) and it must imply `erase_self_copy` (whose post-bufferization
 canonicalize/cse is what turns the in-place `insert_slice`'s copy into a deletable self-copy).
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -44,8 +45,8 @@ module {
 """
 # the second generic's declared result type above is a typo magnet; state it correctly
 TWO_PRODUCERS = TWO_PRODUCERS.replace(
-    "      linalg.yield %c : f32\n    } -> tensor<8x32xf32>",
-    "      linalg.yield %c : f32\n    } -> tensor<8x16xf32>")
+    "      linalg.yield %c : f32\n    } -> tensor<8x32xf32>", "      linalg.yield %c : f32\n    } -> tensor<8x16xf32>"
+)
 
 #: `cat(x, x)` — one value, used twice by the same concat. Only the FIRST position may be
 #: retargeted: the second is a genuine second placement of the same bytes.
@@ -117,7 +118,7 @@ def test_every_lowering_runner_carries_the_rewrite_and_the_same_argv_gate():
         assert "_concat_dps(module, ctx)" in src, "a runner variant does not run the rewrite"
         assert "_CONCAT_DPS = len(sys.argv) > 8" in src, "a runner variant has its own gate"
     # ...and the caller passes that slot, so the gate is reachable at all.
-    lowering = (pipeline.__file__ and open(pipeline.__file__, encoding="utf-8").read())
+    lowering = pipeline.__file__ and open(pipeline.__file__, encoding="utf-8").read()
     assert "_concat_dps_gate" in lowering and "_fold_wt, _concat_dps_gate" in lowering
 
 
@@ -138,9 +139,12 @@ def _rewrite(mlir_text: str, tmp_path) -> tuple[str, int, list[str]]:
         "print('N', n)\n"
         "for k, v in rep: print('R', k, v)\n"
         "print('MODULE')\n"
-        "print(str(mod.operation))\n", encoding="utf-8")
-    proc = subprocess.run([str(toolchain.m2m_python()), str(script), str(src)],
-                          capture_output=True, text=True, timeout=900)
+        "print(str(mod.operation))\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)], capture_output=True, text=True, timeout=900
+    )
     assert proc.returncode == 0, proc.stderr
     head, _, module = proc.stdout.partition("MODULE\n")
     lines = head.splitlines()

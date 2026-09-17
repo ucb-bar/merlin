@@ -12,14 +12,15 @@ the torchao subclass-inner-tensor fix; fp8 fold is a follow-up). int8 uses weigh
 float8_e4m3fn->f32 at load (dispatch_runtime.f8e4m3fn_to_f32). (smolvla bf16 fidelity is in
 test_smolvla_rvv.py; tiny/small_llama LLM datatypes are covered elsewhere.)
 """
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 import os
 from pathlib import Path
 
 import pytest
 
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.xdsl_dialects import _common
 
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
@@ -67,8 +68,9 @@ def _toolchain():
     return toolchain.available()
 
 
-@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"),
-                    reason="set MERLIN_RUN_SLOW=1 (compiles hundreds of kernels per model)")
+@pytest.mark.skipif(
+    not os.environ.get("MERLIN_RUN_SLOW"), reason="set MERLIN_RUN_SLOW=1 (compiles hundreds of kernels per model)"
+)
 @pytest.mark.skipif(not _toolchain(), reason="m2m venv / clang-23 missing")
 @pytest.mark.parametrize("bundle,min_cos,max_rel", MODELS)
 def test_vla_model_matches_torch(bundle, min_cos, max_rel, tmp_path):

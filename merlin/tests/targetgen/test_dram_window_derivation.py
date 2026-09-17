@@ -12,6 +12,7 @@ or no card gives UNKNOWN with a reason that says WHOSE gap it is (this tooling's
 and nothing anywhere substitutes a plausible default -- a fabricated window would manufacture false
 "unmapped address" faults for exactly the programs the real window contains.
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -29,18 +30,20 @@ from merlin.targetgen import dram_facts as DF
 CARD_TARGET = "atlas"
 NO_CARD_TARGET = "gemmini"
 
-_GIB = 1024 ** 3
+_GIB = 1024**3
 
 
 # --- (A) the derivation -----------------------------------------------------------------------------
+
 
 def test_a_shipped_card_with_both_addresses_yields_the_real_window():
     base, size, why = DF.dram_window_for(CARD_TARGET)
     assert base == 0x8000_0000
     # end - start, with `hi` exclusive everywhere it is consumed: exactly 32 GiB.
     assert size == 32 * _GIB, "the end address must be parsed, not discarded"
-    assert f"{base:#x}" in why and f"{base + size:#x}" in why, \
+    assert f"{base:#x}" in why and f"{base + size:#x}" in why, (
         f"provenance must name both addresses it derived from, got {why!r}"
+    )
 
 
 def test_a_target_with_no_memory_map_stays_unknown_and_says_so():
@@ -48,8 +51,9 @@ def test_a_target_with_no_memory_map_stays_unknown_and_says_so():
     assert base == 0, "no card means the 0-based aperture, not a fabricated base"
     assert size is None, "an underivable window must be UNKNOWN, never a plausible default"
     low = why.lower()
-    assert "no memory-map card" in low or "ships no memory map" in low, \
+    assert "no memory-map card" in low or "ships no memory map" in low, (
         f"provenance must say the TARGET ships no map, got {why!r}"
+    )
 
 
 def test_a_start_only_row_is_a_different_gap_from_no_card_at_all(tmp_path, monkeypatch):
@@ -59,15 +63,17 @@ def test_a_start_only_row_is_a_different_gap_from_no_card_at_all(tmp_path, monke
     the other only by the target shipping a map at all.
     """
     card = tmp_path / "card.md"
-    card.write_text(textwrap.dedent("""
+    card.write_text(
+        textwrap.dedent("""
         | Region | Address |
         | --- | --- |
         | `IMEM` | `0x1000` ~ `0x2000` |
         | `DRAM` (cacheable) | `0x8000_0000` |
-    """).strip(), encoding="utf-8")
+    """).strip(),
+        encoding="utf-8",
+    )
     desc = tmp_path / "target_experiment.yaml"
-    desc.write_text(f"target: synthstartonly\nhardware_spec:\n  isa_headers:\n    - {card}\n",
-                    encoding="utf-8")
+    desc.write_text(f"target: synthstartonly\nhardware_spec:\n  isa_headers:\n    - {card}\n", encoding="utf-8")
     monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(desc))
     DF._WINDOW_CACHE.pop("synthstartonly", None)
 
@@ -75,8 +81,9 @@ def test_a_start_only_row_is_a_different_gap_from_no_card_at_all(tmp_path, monke
     assert base == 0x8000_0000, "the start is still derivable"
     assert size is None, "one token cannot give a size"
     assert "no upper bound" in why.lower(), f"provenance must name the missing end, got {why!r}"
-    assert why != DF.dram_window_for(NO_CARD_TARGET)[2], \
+    assert why != DF.dram_window_for(NO_CARD_TARGET)[2], (
         "a card-without-an-end must not read the same as a target with no card"
+    )
 
 
 def test_a_card_that_declares_no_dram_row_is_its_own_third_gap(tmp_path, monkeypatch):
@@ -88,8 +95,7 @@ def test_a_card_that_declares_no_dram_row_is_its_own_third_gap(tmp_path, monkeyp
     card = tmp_path / "card.md"
     card.write_text("| Region | Address |\n| `IMEM` | `0x1000` ~ `0x2000` |\n", encoding="utf-8")
     desc = tmp_path / "target_experiment.yaml"
-    desc.write_text(f"target: synthnodramrow\nhardware_spec:\n  isa_headers:\n    - {card}\n",
-                    encoding="utf-8")
+    desc.write_text(f"target: synthnodramrow\nhardware_spec:\n  isa_headers:\n    - {card}\n", encoding="utf-8")
     monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(desc))
     DF._WINDOW_CACHE.pop("synthnodramrow", None)
 
@@ -97,8 +103,9 @@ def test_a_card_that_declares_no_dram_row_is_its_own_third_gap(tmp_path, monkeyp
     assert base == 0, "an absent DRAM row must not borrow another region's address"
     assert size is None
     assert "no DRAM region row" in why, f"provenance must name the missing row, got {why!r}"
-    assert why != DF.dram_window_for(NO_CARD_TARGET)[2], \
+    assert why != DF.dram_window_for(NO_CARD_TARGET)[2], (
         "a card without a DRAM row must not read the same as a target with no card"
+    )
 
 
 def test_a_backwards_row_is_rejected_rather_than_believed(tmp_path, monkeypatch):
@@ -106,8 +113,7 @@ def test_a_backwards_row_is_rejected_rather_than_believed(tmp_path, monkeypatch)
     card = tmp_path / "card.md"
     card.write_text("| `DRAM` | `0x8000_0000` ~ `0x1000` |\n", encoding="utf-8")
     desc = tmp_path / "target_experiment.yaml"
-    desc.write_text(f"target: synthbackwards\nhardware_spec:\n  isa_headers:\n    - {card}\n",
-                    encoding="utf-8")
+    desc.write_text(f"target: synthbackwards\nhardware_spec:\n  isa_headers:\n    - {card}\n", encoding="utf-8")
     monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(desc))
     DF._WINDOW_CACHE.pop("synthbackwards", None)
 
@@ -132,28 +138,53 @@ def test_dram_base_for_is_byte_identical_for_existing_callers(target, expected):
 
 # --- (C) the screen's finding names the reason ------------------------------------------------------
 
+
 def _facts(**kw) -> SiliconFacts:
     base = dict(
-        target="synthtest", mesh_rows=16, mesh_cols=16,
-        scratchpad_bytes=262144, scratchpad_rows=4096,
-        accumulator_bytes=65536, accumulator_rows=1024,
-        accumulator_row_bytes=64, acc_ctrl_mask=0xE0000000,
-        legal_funct=[2, 3, 4], custom_opcode=0x7B, funct3=3,
-        dram_base=0x8000_0000, provenance="synthetic",
+        target="synthtest",
+        mesh_rows=16,
+        mesh_cols=16,
+        scratchpad_bytes=262144,
+        scratchpad_rows=4096,
+        accumulator_bytes=65536,
+        accumulator_rows=1024,
+        accumulator_row_bytes=64,
+        acc_ctrl_mask=0xE0000000,
+        legal_funct=[2, 3, 4],
+        custom_opcode=0x7B,
+        funct3=3,
+        dram_base=0x8000_0000,
+        provenance="synthetic",
     )
     base.update(kw)
     return SiliconFacts(**base)
 
 
 def _movement_trace():
-    return {"source": "synthetic", "abi": {}, "summary": {"class_histogram": {}}, "instructions": [
-        {"index": 0, "class": "MVIN", "funct": 2, "rs1": None, "rs2": None,
-         "decoded": {"spad_addr": 0, "rows": 16,
-                     "dram": {"kind": "argbase", "arg_index": 0, "offset": 0}}},
-        {"index": 1, "class": "MVOUT", "funct": 3, "rs1": None, "rs2": None,
-         "decoded": {"acc_addr": 0, "dram": {"kind": "argbase", "arg_index": 1, "offset": 0}}},
-        {"index": 2, "class": "FENCE", "funct": 1, "rs1": None, "rs2": None, "decoded": {}},
-    ]}
+    return {
+        "source": "synthetic",
+        "abi": {},
+        "summary": {"class_histogram": {}},
+        "instructions": [
+            {
+                "index": 0,
+                "class": "MVIN",
+                "funct": 2,
+                "rs1": None,
+                "rs2": None,
+                "decoded": {"spad_addr": 0, "rows": 16, "dram": {"kind": "argbase", "arg_index": 0, "offset": 0}},
+            },
+            {
+                "index": 1,
+                "class": "MVOUT",
+                "funct": 3,
+                "rs1": None,
+                "rs2": None,
+                "decoded": {"acc_addr": 0, "dram": {"kind": "argbase", "arg_index": 1, "offset": 0}},
+            },
+            {"index": 2, "class": "FENCE", "funct": 1, "rs1": None, "rs2": None, "decoded": {}},
+        ],
+    }
 
 
 def _rules(findings):
@@ -161,10 +192,10 @@ def _rules(findings):
 
 
 def test_a_derived_window_suppresses_the_unknown_finding():
-    findings, peaks = simulate(_movement_trace(), _facts(), dram_bytes=32 * _GIB,
-                              dram_window_why=DF.dram_window_for(CARD_TARGET)[2])
-    assert "dram-window-unknown" not in _rules(findings), \
-        "a window that WAS derived must not be reported unknown"
+    findings, peaks = simulate(
+        _movement_trace(), _facts(), dram_bytes=32 * _GIB, dram_window_why=DF.dram_window_for(CARD_TARGET)[2]
+    )
+    assert "dram-window-unknown" not in _rules(findings), "a window that WAS derived must not be reported unknown"
     assert peaks["dram_window_bytes"] == 32 * _GIB, "the window must reach resource_peaks"
 
 
@@ -175,8 +206,7 @@ def test_an_undecidable_window_still_fires_and_names_the_reason():
     assert unk, "an underivable window must still be surfaced (fail closed)"
     assert unk[0].severity == Severity.UNKNOWN
     assert why in unk[0].message, f"the message must carry the reason, got {unk[0].message!r}"
-    assert why in (unk[0].derived_from or ""), \
-        f"derived_from must carry the reason, got {unk[0].derived_from!r}"
+    assert why in (unk[0].derived_from or ""), f"derived_from must carry the reason, got {unk[0].derived_from!r}"
     assert peaks["dram_window_bytes"] is None
 
 
@@ -191,13 +221,22 @@ def test_a_caller_that_supplies_no_reason_keeps_the_historical_wording():
 def test_the_reason_threads_through_the_program_and_assess(monkeypatch):
     """`assess` is the entry point the capsule runner calls; the field must not stop at `simulate`."""
     monkeypatch.setattr("merlin.liveness.oracle.silicon_facts", lambda t: _facts(target=t))
-    rep = assess(Program(name="p", trace=_movement_trace(), address_model="fixed_preload",
-                         dram_bytes=None, dram_window_why="SENTINEL-REASON"), "synthtest")
+    rep = assess(
+        Program(
+            name="p",
+            trace=_movement_trace(),
+            address_model="fixed_preload",
+            dram_bytes=None,
+            dram_window_why="SENTINEL-REASON",
+        ),
+        "synthtest",
+    )
     unk = [f for f in rep.findings if f.rule == "dram-window-unknown"]
     assert unk and "SENTINEL-REASON" in unk[0].message
 
 
 # --- (B) the runner actually supplies the fact ------------------------------------------------------
+
 
 def test_the_capsule_runner_hands_the_derived_window_to_the_screen():
     """The fact was derivable all along and the ONE call site never passed it.
@@ -210,13 +249,17 @@ def test_the_capsule_runner_hands_the_derived_window_to_the_screen():
     from merlin.common.paths import merlin_dir
 
     src = (merlin_dir() / "python" / "merlin" / "targetgen" / "capsule_runner.py").read_text()
-    calls = [n for n in ast.walk(ast.parse(src))
-             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_LProg"]
+    calls = [
+        n
+        for n in ast.walk(ast.parse(src))
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "_LProg"
+    ]
     assert calls, "the liveness screen's Program construction site vanished"
     for call in calls:
         kw = {k.arg: k.value for k in call.keywords}
         assert "dram_bytes" in kw, "the derived DRAM window size must be supplied"
         assert "dram_window_why" in kw, "so must the provenance of that derivation"
         for name in ("dram_bytes", "dram_window_why"):
-            assert not isinstance(kw[name], ast.Constant), \
+            assert not isinstance(kw[name], ast.Constant), (
                 f"{name} must be DERIVED, never a literal (a baked window fabricates the fact)"
+            )

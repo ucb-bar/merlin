@@ -11,6 +11,7 @@ Every target below is synthetic and reaches the code only through data written i
 registry file, an mlc outputs tree, an out-of-tree package on ``MERLIN_TARGET_PATH``. Nothing here names a
 shipped target, so a second target that passes these tests needs no library edit.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,9 +23,9 @@ import yaml
 from merlin.targetgen.rtl import introspect
 from merlin.targetgen.rtl import mlc_bridge as B
 
-_ARC_KEY = "newchip_arc"            # synthetic mlc arc key
-_TARGET = "newchip"                 # synthetic merlin target
-_CONFIG = "NewChipHarnessConfig"    # synthetic chipyard harness config
+_ARC_KEY = "newchip_arc"  # synthetic mlc arc key
+_TARGET = "newchip"  # synthetic merlin target
+_CONFIG = "NewChipHarnessConfig"  # synthetic chipyard harness config
 
 
 def _registry(tmp_path: Path, models: dict) -> Path:
@@ -40,15 +41,14 @@ def _use_registry(monkeypatch, path: Path) -> None:
 
 def _fake_mlc(tmp_path: Path, monkeypatch) -> Path:
     root = tmp_path / "mlc_checkout"
-    (root / "mlc").mkdir(parents=True)          # mlc_dir() requires the package dir to exist
+    (root / "mlc").mkdir(parents=True)  # mlc_dir() requires the package dir to exist
     monkeypatch.setattr(B, "mlc_dir", lambda: root)
     return root
 
 
 # ------------------------------------------------------------------ kind + encoding file: the registry
 def test_arc_model_kind_and_encoding_file_come_from_the_registry(tmp_path, monkeypatch):
-    _use_registry(monkeypatch, _registry(tmp_path, {
-        _ARC_KEY: {"kind": "spatial", "isa_encoding": "newchip_isa.json"}}))
+    _use_registry(monkeypatch, _registry(tmp_path, {_ARC_KEY: {"kind": "spatial", "isa_encoding": "newchip_isa.json"}}))
     mlc = _fake_mlc(tmp_path, monkeypatch)
     fact = {"inst_width": 32, "fields": {"opcode": [6, 0]}, "opcodes": {"op0": 11}}
     outputs = mlc / "runs" / "circt-arc" / _ARC_KEY / "outputs"
@@ -81,11 +81,14 @@ def test_no_mlc_checkout_is_a_named_reason_not_a_path(tmp_path, monkeypatch):
     assert path is None and "MERLIN_MLC_DIR" in why
 
 
-@pytest.mark.parametrize("entry, needle", [
-    ({"kind": "not_a_kind"}, "kind"),
-    ({"isa_encodings": "x.json"}, "unknown field"),
-    ({"isa_encoding": "../escape.json"}, "bare file name"),
-])
+@pytest.mark.parametrize(
+    "entry, needle",
+    [
+        ({"kind": "not_a_kind"}, "kind"),
+        ({"isa_encodings": "x.json"}, "unknown field"),
+        ({"isa_encoding": "../escape.json"}, "bare file name"),
+    ],
+)
 def test_registry_refuses_what_it_cannot_honour(tmp_path, entry, needle):
     with pytest.raises(B.ArcModelRegistryError, match=needle):
         B.load_arc_models(_registry(tmp_path, {_ARC_KEY: entry}))
@@ -111,11 +114,19 @@ def _oot_package(root: Path, name: str, runtime: dict) -> Path:
     pkg = root / name
     (pkg / "contracts").mkdir(parents=True)
     contract = {
-        "name": name, "version": "0.1", "status": "prototype",
+        "name": name,
+        "version": "0.1",
+        "status": "prototype",
         "runtime": runtime,
-        "compute_units": [{
-            "name": "mesh", "kind": "systolic", "dtypes": ["fp16"], "ops": ["matmul"],
-            "accumulate": [{"in": "fp16", "weight": "fp16", "acc": "f32"}]}],
+        "compute_units": [
+            {
+                "name": "mesh",
+                "kind": "systolic",
+                "dtypes": ["fp16"],
+                "ops": ["matmul"],
+                "accumulate": [{"in": "fp16", "weight": "fp16", "acc": "f32"}],
+            }
+        ],
     }
     (pkg / "contracts" / "target_contract.yaml").write_text(yaml.safe_dump(contract), encoding="utf-8")
     return pkg
@@ -125,10 +136,11 @@ def _fake_elaboration(chipyard: Path, config: str) -> Path:
     gen = chipyard / "sims" / "verilator" / "generated-src" / f"chipyard.harness.TestHarness.{config}"
     gen.mkdir(parents=True)
     (gen / f"chipyard.harness.TestHarness.{config}.fir").write_text(
-        "FIRRTL version 4.0.0\ncircuit TestHarness :\n  module TestHarness :\n", encoding="utf-8")
+        "FIRRTL version 4.0.0\ncircuit TestHarness :\n  module TestHarness :\n", encoding="utf-8"
+    )
     (gen / "top_module_hierarchy.json").write_text(
-        json.dumps({"instance_name": "TestHarness", "module_name": "TestHarness", "instances": []}),
-        encoding="utf-8")
+        json.dumps({"instance_name": "TestHarness", "module_name": "TestHarness", "instances": []}), encoding="utf-8"
+    )
     return gen
 
 

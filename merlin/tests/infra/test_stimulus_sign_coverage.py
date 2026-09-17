@@ -16,6 +16,7 @@ The C emitters are tested by COMPILING AND RUNNING them against `fill`, not by c
 sum became ~4.29e9. It survived a cast to an integer type by two's-complement truncation and was
 silently wrong for `float`, which is exactly the shape of bug a string comparison cannot see.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -97,27 +98,29 @@ int main(void) {{
 """
     import tempfile
     from pathlib import Path
+
     with tempfile.TemporaryDirectory() as tmp:
         source = Path(tmp) / "fill.c"
         binary = Path(tmp) / "fill"
         source.write_text(program)
-        build = subprocess.run([cc, "-O1", "-std=gnu99", str(source), "-o", str(binary)],
-                               capture_output=True, text=True)
+        build = subprocess.run(
+            [cc, "-O1", "-std=gnu99", str(source), "-o", str(binary)], capture_output=True, text=True
+        )
         assert build.returncode == 0, build.stderr[-2000:]
         out = subprocess.run([str(binary)], capture_output=True, text=True, check=True)
     return out.stdout.split()
 
 
 @pytest.mark.parametrize("lo,hi", [(DEFAULT_LO, DEFAULT_HI), (SIGNED_LO, SIGNED_HI)])
-@pytest.mark.parametrize("ctype,fmt,cast", [("int32_t", "%d", "int32_t"),
-                                            ("float", "%.0f", "float"),
-                                            ("elem_t", "%d", "elem_t")])
+@pytest.mark.parametrize(
+    "ctype,fmt,cast", [("int32_t", "%d", "int32_t"), ("float", "%.0f", "float"), ("elem_t", "%d", "elem_t")]
+)
 def test_the_emitted_c_fill_matches_python_for_both_ranges(lo, hi, ctype, fmt, cast) -> None:
     """The reason this module exists is byte-identical data; a negative `lo` must not break it."""
     rows, cols = 4, 6
     from merlin.common.stimulus import det_seed
-    body = c_fill_loop("dst", str(rows), str(cols), str(det_seed("A0")),
-                       cast=cast, lo=lo, hi=hi)
+
+    body = c_fill_loop("dst", str(rows), str(cols), str(det_seed("A0")), cast=cast, lo=lo, hi=hi)
     printed = [int(float(v)) for v in _run_c(body, rows * cols, ctype, fmt)]
     assert printed == fill("A0", (rows, cols), lo=lo, hi=hi)
 
@@ -126,10 +129,11 @@ def test_the_emitted_c_fill_matches_python_for_both_ranges(lo, hi, ctype, fmt, c
 def test_the_emitted_2d_c_fill_also_matches_python(lo, hi) -> None:
     rows, cols = 3, 5
     from merlin.common.stimulus import det_seed
-    body = c_fill_loop_2d("dst", str(rows), str(cols), str(det_seed("W")),
-                          cast="float", lo=lo, hi=hi)
-    printed = [int(float(v)) for v in _run_c(
-        body, rows * cols, "float", "%.0f", decl=f"static float dst[{rows}][{cols}];")]
+
+    body = c_fill_loop_2d("dst", str(rows), str(cols), str(det_seed("W")), cast="float", lo=lo, hi=hi)
+    printed = [
+        int(float(v)) for v in _run_c(body, rows * cols, "float", "%.0f", decl=f"static float dst[{rows}][{cols}];")
+    ]
     assert printed == fill("W", (rows, cols), lo=lo, hi=hi)
 
 

@@ -9,6 +9,7 @@ Increment 4 of the whole-model compiler. Two layers of proof:
   ``dequantize_per_channel`` weight prep), lowered through ``lower_module``, and executed — the
   int8 dequant idiom handled by the compiler, numerically exact vs numpy. Gated on the m2m checkout.
 """
+
 from __future__ import annotations
 
 import os
@@ -47,7 +48,9 @@ def test_engine_int8_dequant_pack_end_to_end():
 
     M, K, N = 4, 5, 3
     cb = {
-        "abi_version": "0.1", "target": "toy_npu", "backend": "simulator",
+        "abi_version": "0.1",
+        "target": "toy_npu",
+        "backend": "simulator",
         "tensors": {
             "W": {"shape": [K, N], "dtype": "i8", "role": "weight"},
             "S": {"shape": [N], "dtype": "f32", "role": "input"},
@@ -58,17 +61,23 @@ def test_engine_int8_dequant_pack_end_to_end():
         },
         "outputs": ["Y"],
         "commands": [
-            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "Wr", "scale": "S"},
-             "attributes": {"layout": "packed_rhs", "dequant_axis": 1}},
+            {
+                "opcode": "RES_PACK",
+                "operands": {"src": "W", "dst": "Wr", "scale": "S"},
+                "attributes": {"layout": "packed_rhs", "dequant_axis": 1},
+            },
             {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A", "rhs": "Wr", "dst": "acc"}},
-            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y"},
-             "attributes": {"epilogue": [], "output_dtype": "f32"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc", "dst": "Y"},
+                "attributes": {"epilogue": [], "output_dtype": "f32"},
+            },
             {"opcode": "EVICT", "operands": {"handle": "Wr"}},
         ],
     }
     rng = np.random.default_rng(0)
     W = rng.integers(-8, 8, size=(K, N)).astype(np.int8)
-    S = (rng.random(N).astype(np.float32) * 0.1 + 0.01)
+    S = rng.random(N).astype(np.float32) * 0.1 + 0.01
     A = rng.standard_normal((M, K)).astype(np.float32)
     inj = {"W": W.tolist(), "S": S.tolist(), "A": A.tolist()}
 
@@ -81,8 +90,7 @@ def test_engine_int8_dequant_pack_end_to_end():
 
 
 @pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
-@pytest.mark.skipif(_tiny_llama_int8() is None,
-                    reason="model2MLIR checkout not resolvable (set MERLIN_M2M_DIR)")
+@pytest.mark.skipif(_tiny_llama_int8() is None, reason="model2MLIR checkout not resolvable (set MERLIN_M2M_DIR)")
 def test_real_tiny_llama_int8_section_compiles_and_runs():
     """Carve matmul_1 out of the real int8 tiny_llama, lower it, and run it: the compiler handles
     the int8 weight-only dequant idiom (folded into RES_PACK) and the result matches numpy."""
@@ -104,13 +112,13 @@ def test_real_tiny_llama_int8_section_compiles_and_runs():
 
     # Boundary shapes tell us the real layer dims (M x K, K x N weight, N scale).
     shapes = {tuple(b.type.get_shape()): str(b.type.element_type) for b in boundary}
-    (K, N), = [s for s in shapes if len(s) == 2 and shapes[s] == "i8"]
-    (M, K2), = [s for s in shapes if len(s) == 2 and shapes[s] != "i8"]
+    ((K, N),) = [s for s in shapes if len(s) == 2 and shapes[s] == "i8"]
+    ((M, K2),) = [s for s in shapes if len(s) == 2 and shapes[s] != "i8"]
     assert K2 == K
 
     rng = np.random.default_rng(0)
     W = rng.integers(-8, 8, size=(K, N)).astype(np.int8)
-    S = (rng.random(N).astype(np.float32) * 0.02 + 0.001)
+    S = rng.random(N).astype(np.float32) * 0.02 + 0.001
     A = rng.standard_normal((M, K)).astype(np.float32)
     inj = {}
     for name, spec in cb["tensors"].items():

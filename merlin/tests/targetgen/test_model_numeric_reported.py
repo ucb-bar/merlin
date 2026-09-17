@@ -19,6 +19,7 @@ What is pinned here is that reporting the number NEVER promotes the verdict: eve
 numeric result still returns `fail` or `incomplete`, and the number is labelled with the lane it was
 measured on so it cannot be read as an accelerator result.
 """
+
 from __future__ import annotations
 
 import ast
@@ -45,16 +46,24 @@ def _body(name: str) -> str:
     src = _src()
     tree = ast.parse(src)
     fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name)
-    body = fn.body[1:] if (fn.body and isinstance(fn.body[0], ast.Expr)
-                           and isinstance(getattr(fn.body[0], "value", None), ast.Constant)
-                           and isinstance(fn.body[0].value.value, str)) else fn.body
+    body = (
+        fn.body[1:]
+        if (
+            fn.body
+            and isinstance(fn.body[0], ast.Expr)
+            and isinstance(getattr(fn.body[0], "value", None), ast.Constant)
+            and isinstance(fn.body[0].value.value, str)
+        )
+        else fn.body
+    )
     return "\n".join(ast.get_source_segment(src, n) or "" for n in body)
 
 
 def test_the_helper_reports_a_real_status_not_an_absence():
     body = _body("_numeric_when_not_accelerated")
     assert '"pass" if (st == "verified" and gate) else "fail"' in body, (
-        "the numeric status must be the measured verdict, not a placeholder")
+        "the numeric status must be the measured verdict, not a placeholder"
+    )
     assert "not_compared" not in body, "the helper must not re-introduce the placeholder in code"
 
 
@@ -79,7 +88,8 @@ def test_every_rejection_path_carries_the_numeric_verdict():
         assert category in seg, f"rejection path {category} is gone — was it renamed?"
     assert seg.count("_numeric_when_not_accelerated(") == 3, (
         "each rejection path with a measured number (unmeasurable layers, must_accelerate fallback, "
-        "failed tier) must report it rather than overwrite it with a placeholder")
+        "failed tier) must report it rather than overwrite it with a placeholder"
+    )
     # and the paths where nothing was compared are deliberately NOT among them: they go through
     # _numeric_not_compared, which is a different statement from a measured rejection.
     assert "_numeric_not_compared(" in seg
@@ -90,13 +100,17 @@ def test_reporting_the_number_never_promotes_the_verdict():
     seg = _fn("_grade_model_capsule")
     for chunk in seg.split("_numeric_when_not_accelerated(")[1:]:
         head = chunk[:400]
-        assert ('status="fail"' in chunk[-600:] or 'status="incomplete"' in chunk[-600:]
-                or 'status="fail"' in head or 'status="incomplete"' in head), (
-            "a path that reports a numeric result must still return fail/incomplete")
+        assert (
+            'status="fail"' in chunk[-600:]
+            or 'status="incomplete"' in chunk[-600:]
+            or 'status="fail"' in head
+            or 'status="incomplete"' in head
+        ), "a path that reports a numeric result must still return fail/incomplete"
 
 
 def test_not_compared_survives_only_where_nothing_was_measured():
     """It is still the right answer when the model never ran -- just not when it did."""
     src = _src()
     assert src.count('"status": "not_compared"') <= 1, (
-        "not_compared should remain only for the case where no measurement exists")
+        "not_compared should remain only for the case where no measurement exists"
+    )

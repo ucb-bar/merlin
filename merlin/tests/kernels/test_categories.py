@@ -1,7 +1,9 @@
 """WS-C C4: the improvement-category layer (the beam's 'what should we improve?' question)."""
+
 from __future__ import annotations
 
-from merlin.kernels import categories as C, cca_contract
+from merlin.kernels import categories as C
+from merlin.kernels import cca_contract
 from merlin.kernels.cca_compare import Divergence
 
 
@@ -23,9 +25,11 @@ def test_category_assignment_matches_the_named_buckets():
 
 
 def test_categorize_groups_divergences_by_what_to_improve():
-    divs = [Divergence("compute.accumulator_resident", True, False, "rvv"),
-            Divergence("compute.contraction_form", "fused_fma", "mul_add", "rvv"),
-            Divergence("vector.lmul", 4.0, 2.0, "rvv")]
+    divs = [
+        Divergence("compute.accumulator_resident", True, False, "rvv"),
+        Divergence("compute.contraction_form", "fused_fma", "mul_add", "rvv"),
+        Divergence("vector.lmul", 4.0, 2.0, "rvv"),
+    ]
     grouped = C.categorize(divs)
     assert set(grouped) == {"register-residency", "instruction-selection"}
     # both lmul + contraction_form are instruction-selection

@@ -7,6 +7,7 @@ back to the weight function argument), the ops it already lowers, and the fundam
 synthetic tests run everywhere; the tiny_llama test skips unless the m2m checkout is resolvable
 (``MERLIN_M2M_DIR`` / ``MERLIN_MODEL2MLIR``).
 """
+
 from __future__ import annotations
 
 import os
@@ -44,12 +45,12 @@ def test_fully_modeled_block_is_compilable():
 
 def test_divf_op_is_a_fundamental_blocker():
     """A generic whose body divides is a fundamental gap — no engine operator — and is reported."""
-    from xdsl.ir import Block, Region
     from xdsl.dialects import arith
     from xdsl.dialects import tensor as td
     from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, FunctionType, ModuleOp, TensorType, f32
     from xdsl.dialects.func import FuncOp, ReturnOp
     from xdsl.dialects.linalg import ops as lo
+    from xdsl.ir import Block, Region
     from xdsl.ir.affine import AffineMap
 
     from merlin.xdsl_dialects.lowering.compilability import classify_op, compilability_report
@@ -63,12 +64,13 @@ def test_divf_op_is_a_fundamental_blocker():
     d = arith.DivfOp(body.args[0], body.args[1])
     body.add_ops([d, lo.YieldOp(d.result)])
     gen = lo.GenericOp(
-        inputs=(a, b), outputs=(e.tensor,),
+        inputs=(a, b),
+        outputs=(e.tensor,),
         body=Region([body]),
         indexing_maps=ArrayAttr([idmap, idmap, idmap]),
-        iterator_types=ArrayAttr([lo.IteratorTypeAttr.parallel(),
-                                  lo.IteratorTypeAttr.parallel()]),
-        result_types=((t,),))
+        iterator_types=ArrayAttr([lo.IteratorTypeAttr.parallel(), lo.IteratorTypeAttr.parallel()]),
+        result_types=((t,),),
+    )
     blk.add_ops([e, gen, ReturnOp(gen.results[0])])
     fn = FuncOp("f", FunctionType.from_lists([t, t], [t]), Region([blk]))
     r = compilability_report(ModuleOp([fn]))
@@ -77,8 +79,7 @@ def test_divf_op_is_a_fundamental_blocker():
     assert any("arith.divf" in b["body_math"] for b in r.blockers)
 
 
-@pytest.mark.skipif(_tiny_llama_int8() is None,
-                    reason="model2MLIR checkout not resolvable (set MERLIN_M2M_DIR)")
+@pytest.mark.skipif(_tiny_llama_int8() is None, reason="model2MLIR checkout not resolvable (set MERLIN_M2M_DIR)")
 def test_real_tiny_llama_int8_backbone_and_gaps():
     """The compiler consumes a real int8 tiny_llama: it inventories the matmul backbone (real
     shapes, weight traced through the dequant idiom to an i8 arg) and honestly reports the rmsnorm/
@@ -91,9 +92,9 @@ def test_real_tiny_llama_int8_backbone_and_gaps():
     # with a per-channel scale — the int8 weight-only idiom handled structurally.
     assert len(r.matmuls) == 15
     for s in r.matmuls:
-        assert s.m and s.k and s.n                       # real 2D shapes
-        assert s.weight_arg is not None                  # traced to a function argument
-        assert s.scale_arg is not None                   # per-channel scale argument
+        assert s.m and s.k and s.n  # real 2D shapes
+        assert s.weight_arg is not None  # traced to a function argument
+        assert s.scale_arg is not None  # per-channel scale argument
         assert s.quant == "quant_ext.dequantize_per_channel"
         assert s.weight_dtype == "i8"
 

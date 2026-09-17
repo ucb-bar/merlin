@@ -2,6 +2,7 @@
 transcode -> stock llvm-mc -> fork-free link. The full end-to-end (kernel + vendored BSP -> cyclotron
 correct result) is proven byte-identical to the fork baseline in the session record; here we lock the
 hermetic fail-closed contracts that do not need the vendored BSP or the simulator."""
+
 from __future__ import annotations
 
 import subprocess
@@ -11,11 +12,13 @@ from pathlib import Path
 import pytest
 
 from merlin.runtime.backends.base import get_backend
-muon = get_backend("muon").muon                 # evicted SIMT backend, resolved via plugin discovery
+
+muon = get_backend("muon").muon  # evicted SIMT backend, resolved via plugin discovery
 
 
 def _stock_clang() -> bool:
     from merlin.targetgen.contract.toolchain import mlir_bin
+
     return mlir_bin("clang").is_file() and mlir_bin("llvm-objcopy").is_file()
 
 
@@ -27,11 +30,11 @@ def test_forkfree_builds_a_kernel_with_a_relocation_via_the_object_transcode(tmp
     if not _stock_clang():
         pytest.skip("stock LLVM (clang/objcopy) unavailable")
     from merlin.targetgen.rtl import mlc_bridge
+
     if not mlc_bridge.isa_encoding_for("radiance"):
         pytest.skip("derived ISA encoding fact not present")
     # a volatile global table forces a PC-relative relocation that survives -O2 into the kernel object
-    src = ("static volatile int T[4]={1,2,3,4};\nvolatile int s;\n"
-           "int main(void){s=T[s&3];return 0;}")
+    src = "static volatile int T[4]={1,2,3,4};\nvolatile int s;\nint main(void){s=T[s&3];return 0;}"
     elf = muon.compile_kernel_forkfree(src, tmp_path, target="radiance")
     assert _reloc_kernel_object_has_relocations(tmp_path), "no relocation survived; test would be vacuous"
     assert elf.is_file()
@@ -45,7 +48,9 @@ def test_multiwarp_graded_on_the_rtl_arc_oracle(tmp_path):
     is bit-exact correct against the oracle a real new target would have (its RTL), NOT a vendor sim. Gated on
     the stock toolchain + the derived fact + the compiled arc model."""
     import struct
+
     from merlin.targetgen.rtl import mlc_bridge
+
     if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.arc_oracle_available("radiance")):
         pytest.skip("stock LLVM / derived fact / RTL-arc model not all available")
     model = muon._model_for("radiance")
@@ -54,8 +59,11 @@ def test_multiwarp_graded_on_the_rtl_arc_oracle(tmp_path):
     elf = muon.compile_kernel_forkfree(prog, tmp_path, target="radiance", num_warps=4)
     # C's address from the linked ELF (never hardcoded); read its 8 words back from the arc model's memory.
     from merlin.targetgen.contract.toolchain import mlir_bin
+
     st = subprocess.run([str(mlir_bin("llvm-objdump")), "-t", str(elf)], capture_output=True, text=True).stdout
-    c_addr = next(int(l.split()[0], 16) for l in st.splitlines() if l.rstrip().endswith(" C") or l.rstrip().endswith("\tC"))
+    c_addr = next(
+        int(l.split()[0], 16) for l in st.splitlines() if l.rstrip().endswith(" C") or l.rstrip().endswith("\tC")
+    )
     data = muon.run_elf_arc(elf, target="radiance", base=c_addr, length=32)
     assert list(struct.unpack("<8I", data)) == [11, 22, 33, 44, 55, 66, 77, 88]
 
@@ -66,8 +74,7 @@ def test_arc_readback_adapter_fails_closed_without_the_model(tmp_path, monkeypat
     MO = get_backend("muon").muon_oracles
     monkeypatch.setattr(muon, "arc_oracle_available", lambda target="radiance": False)
     with pytest.raises(muon.MuonUnavailable):
-        MO.arc_readback_adapter()({"target": "radiance", "tensors": {}}, "int main(void){return 0;}",
-                                  tmp_path, 60)
+        MO.arc_readback_adapter()({"target": "radiance", "tensors": {}}, "int main(void){return 0;}", tmp_path, 60)
 
 
 def test_forkfree_needs_the_derived_fact(tmp_path, monkeypatch):
@@ -75,6 +82,7 @@ def test_forkfree_needs_the_derived_fact(tmp_path, monkeypatch):
     if not _stock_clang():
         pytest.skip("stock LLVM unavailable")
     from merlin.targetgen.rtl import mlc_bridge
+
     monkeypatch.setattr(mlc_bridge, "isa_encoding_for", lambda t: None)
     with pytest.raises(muon.MuonUnavailable):
         muon.compile_kernel_forkfree("int main(void){return 0;}", tmp_path, bsp_objs=[], target="radiance")
@@ -107,9 +115,10 @@ def test_forkfree_e2e_regenerated_from_source_is_correct_on_cyclotron(tmp_path):
     run uses, so a live run never debugs the pipeline. Gated on the stock toolchain + the derived fact +
     cyclotron being available."""
     from merlin.targetgen.rtl import mlc_bridge
+
     if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
         pytest.skip("stock LLVM / derived fact / cyclotron not all available")
-    elf = muon.compile_kernel_forkfree(_VECADD_KERNEL, tmp_path, target="radiance")   # BSP regenerated
+    elf = muon.compile_kernel_forkfree(_VECADD_KERNEL, tmp_path, target="radiance")  # BSP regenerated
     assert elf.is_file()
     console, cycles, _ = muon.run_elf(str(elf), simulator="cyclotron", timeout=180)
     expected = "0000000b 00000016 00000021 0000002c 00000037 00000042 0000004d 00000058"
@@ -142,10 +151,13 @@ def _reloc_kernel_object_has_relocations(work) -> bool:
     """objdump the intermediate rv32 object the driver left behind: assert it really carried an R_RISCV
     relocation (guards against a compiler build that folds the volatile load away and reverts to the fast
     path, which would make the test silently vacuous)."""
-    from merlin.targetgen.contract.toolchain import mlir_bin
     import subprocess
-    rr = subprocess.run([str(mlir_bin("llvm-objdump")), "-r", str(work / "kernel.o")],
-                        capture_output=True, text=True).stdout
+
+    from merlin.targetgen.contract.toolchain import mlir_bin
+
+    rr = subprocess.run(
+        [str(mlir_bin("llvm-objdump")), "-r", str(work / "kernel.o")], capture_output=True, text=True
+    ).stdout
     return any("R_RISCV" in ln for ln in rr.splitlines())
 
 
@@ -156,6 +168,7 @@ def test_forkfree_kernel_with_a_relocation_takes_the_reloc_preserving_path(tmp_p
     DERIVED field positions. Proves it is functionally correct on cyclotron -- the P2c relocation-preserving
     path. Gated on stock LLVM + the derived fact + cyclotron."""
     from merlin.targetgen.rtl import mlc_bridge
+
     if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
         pytest.skip("stock LLVM / derived fact / cyclotron not all available")
     elf = muon.compile_kernel_forkfree(_RELOC_KERNEL, tmp_path, target="radiance")
@@ -190,6 +203,7 @@ def test_grading_oracle_routes_forkfree_and_stamps_the_toolchain(tmp_path):
     coverage (never a hidden fork fallback), runs cyclotron, and parses the graded outputs. Proves the infra
     the live run uses works offline. Gated on the stock toolchain + the derived fact + cyclotron."""
     from merlin.targetgen.rtl import mlc_bridge
+
     MO = get_backend("muon").muon_oracles
     if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
         pytest.skip("stock LLVM / derived fact / cyclotron not all available")
@@ -224,9 +238,10 @@ def test_forkfree_float_path_uses_derived_zfinx_march_and_is_correct(tmp_path):
     hardware-float kernel compiles to the target's actual FP encoding (Muon = zfinx) with no hand-set flag.
     Proves the float codegen path end to end on cyclotron. Gated on stock LLVM + derived fact + cyclotron."""
     from merlin.targetgen.rtl import mlc_bridge
+
     if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
         pytest.skip("stock LLVM / derived fact / cyclotron not all available")
-    elf = muon.compile_kernel_forkfree(_FLOAT_KERNEL, tmp_path, target="radiance")   # march DERIVED
+    elf = muon.compile_kernel_forkfree(_FLOAT_KERNEL, tmp_path, target="radiance")  # march DERIVED
     console, _cycles, _ = muon.run_elf(str(elf), simulator="cyclotron", timeout=180)
     vlines = [l for l in console.splitlines() if l.startswith("V ")]
     assert vlines == ["V 4.000", "V 7.000"], f"wrong float result: {vlines}\n{console[-300:]}"
@@ -239,10 +254,12 @@ def test_real_fp32_capsule_grades_forkfree_against_its_golden(tmp_path):
     function through the fork-free driver (stock LLVM + derived zfinx transcode + fork-free link), and the
     cyclotron output matches the independent golden within the capsule's float tolerance -- closing the gap
     where live fork-free coverage was ~0. Gated on stock LLVM + the derived fact + cyclotron."""
-    import yaml
     import numpy as np
+    import yaml
+
     from merlin.common.paths import repo_root
     from merlin.targetgen.rtl import mlc_bridge
+
     MH = get_backend("muon").muon_harness
     if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
         pytest.skip("stock LLVM / derived fact / cyclotron not all available")
@@ -254,15 +271,21 @@ def test_real_fp32_capsule_grades_forkfree_against_its_golden(tmp_path):
     y_gold = np.array(g["outputs"]["Y0"], dtype=np.float32)
     # a whole-computation reference kernel FUNCTION (the shape the emit contract asks the agent for):
     # Y0 = A0 @ W, row-major 16x16. arg order = [weight] ++ [lhs] ++ [out].
-    kfn = ("void radiance_kernel(float* W, float* A0, float* Y0){"
-           "for(int i=0;i<16;i++)for(int j=0;j<16;j++){float a=0.0f;"
-           "for(int k=0;k<16;k++)a+=A0[i*16+k]*W[k*16+j];Y0[i*16+j]=a;}}")
+    kfn = (
+        "void radiance_kernel(float* W, float* A0, float* Y0){"
+        "for(int i=0;i<16;i++)for(int j=0;j<16;j++){float a=0.0f;"
+        "for(int k=0;k<16;k++)a+=A0[i*16+k]*W[k*16+j];Y0[i*16+j]=a;}}"
+    )
     prog = MH.build_program(
         kfn,
-        [MH.TensorArg("W", 16, 16, ins["W"]["decoded"], "f32"),
-         MH.TensorArg("A0", 16, 16, ins["A0"]["decoded"], "f32")],
+        [
+            MH.TensorArg("W", 16, 16, ins["W"]["decoded"], "f32"),
+            MH.TensorArg("A0", 16, 16, ins["A0"]["decoded"], "f32"),
+        ],
         [MH.TensorArg("Y0", 16, 16, [0.0] * 256, "f32")],
-        kernel_symbol="radiance_kernel", model=muon._model_for("radiance"))
+        kernel_symbol="radiance_kernel",
+        model=muon._model_for("radiance"),
+    )
     elf = muon.compile_kernel_forkfree(prog, tmp_path, target="radiance")
     console, cycles, _ = muon.run_elf(str(elf), simulator="cyclotron", timeout=300)
     outputs, _ = muon.parse_output(console, cycles)
@@ -279,10 +302,12 @@ def test_grading_adapter_wraps_a_kernel_function_and_grades_forkfree(tmp_path, c
     harness, grades fork-free, and matches the capsule's golden -- so live fork-free coverage is real, not
     ~0. Covers both an fp32 (R0) and a bf16 (R2) GEMM: the f32-materialize + fp32-accumulate reference
     matches the pre-rounded bf16 golden within tolerance."""
-    import yaml
     import numpy as np
+    import yaml
+
     from merlin.common.paths import repo_root
     from merlin.targetgen.rtl import mlc_bridge
+
     MO = get_backend("muon").muon_oracles
     if not (_stock_clang() and mlc_bridge.isa_encoding_for("radiance") and muon.available("cyclotron")):
         pytest.skip("stock LLVM / derived fact / cyclotron not all available")
@@ -293,15 +318,24 @@ def test_grading_adapter_wraps_a_kernel_function_and_grades_forkfree(tmp_path, c
     atol = float(yaml.safe_load((cdir / "capsule.yaml").read_text())["numeric_policy"]["atol"])
     ins = g["oracle_provenance"]["inputs"]
     y_gold = np.array(g["outputs"]["Y0"], dtype=np.float32)
-    cb = {"target": "radiance",
-          "tensors": {"W": {"shape": [16, 16], "role": "weight"}, "A0": {"shape": [16, 16], "role": "input"},
-                      "Y0": {"shape": [16, 16], "role": "output"}},
-          "commands": [{"opcode": "MATMUL", "operands": {"weight": "W", "lhs": "A0", "out": "Y0"}}],
-          "canonical_inputs": {"W": {"shape": [16, 16], "values": ins["W"]["decoded"]},
-                               "A0": {"shape": [16, 16], "values": ins["A0"]["decoded"]}}}
-    kfn = ("void radiance_kernel(float* W, float* A0, float* Y0){"
-           "for(int i=0;i<16;i++)for(int j=0;j<16;j++){float a=0.0f;"
-           "for(int k=0;k<16;k++)a+=A0[i*16+k]*W[k*16+j];Y0[i*16+j]=a;}}")
+    cb = {
+        "target": "radiance",
+        "tensors": {
+            "W": {"shape": [16, 16], "role": "weight"},
+            "A0": {"shape": [16, 16], "role": "input"},
+            "Y0": {"shape": [16, 16], "role": "output"},
+        },
+        "commands": [{"opcode": "MATMUL", "operands": {"weight": "W", "lhs": "A0", "out": "Y0"}}],
+        "canonical_inputs": {
+            "W": {"shape": [16, 16], "values": ins["W"]["decoded"]},
+            "A0": {"shape": [16, 16], "values": ins["A0"]["decoded"]},
+        },
+    }
+    kfn = (
+        "void radiance_kernel(float* W, float* A0, float* Y0){"
+        "for(int i=0;i<16;i++)for(int j=0;j<16;j++){float a=0.0f;"
+        "for(int k=0;k<16;k++)a+=A0[i*16+k]*W[k*16+j];Y0[i*16+j]=a;}}"
+    )
     res = MO.cyclotron_adapter()(cb, kfn, tmp_path, 300)
     assert res["toolchain"] == "fork-free"
     y = np.array(res["outputs"]["Y0"], dtype=np.float32)

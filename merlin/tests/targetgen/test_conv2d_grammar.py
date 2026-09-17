@@ -21,6 +21,7 @@ Supported subset: NHWC layout, ``kernel = [kh, kw, ci, co]``, ``stride``, 4-edge
 Deliberately NOT supported (and asserted to raise): grouped/depthwise convolution, a non-nhwc
 layout, a ``bias_add`` epilogue (the op carries no bias operand), and a float output dtype.
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -39,7 +40,7 @@ from merlin.targetgen.contract.schemas import contract_dir
 #: The three shipped capsules whose only compute op is the conv.
 _CONV_CAPSULES = ("B3_conv2d_im2col_i8", "B4_conv2d_relu_i8", "GC0_conv2d_i8")
 
-_CONV_IFACE = textwrap.dedent('''\
+_CONV_IFACE = textwrap.dedent("""\
     module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
       %IFM = merlin_iface.tensor {name = "IFM", role = "input"} : tensor<1x8x8x4xi8>
       %W = merlin_iface.tensor {name = "W", role = "weight"} : tensor<36x8xi8>
@@ -47,35 +48,56 @@ _CONV_IFACE = textwrap.dedent('''\
       %Y0 = merlin_iface.conv2d %IFM, %W_res {kernel = [3, 3, 4, 8], stride = [1, 1], padding = [0, 0, 0, 0], dilation = [1, 1], name = "Y0", epilogue = [], output_dtype = "i32", layout = "nhwc"} : (tensor<1x8x8x4xi8>, !merlin_iface.resident) -> tensor<36x8xi32>
       merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()
     }
-    ''')
+    """)
 
 
 def _capsule_dir(name: str):
     return repo_root() / "merlin" / "contract" / "capsules" / "layers" / name
 
 
-def _conv_cb(*, H=8, W=8, ci=4, kh=3, kw=3, co=8, stride=(1, 1), padding=(0, 0, 0, 0),
-             dilation=(1, 1), epilogue=(), output_dtype="i32", extra=None):
+def _conv_cb(
+    *,
+    H=8,
+    W=8,
+    ci=4,
+    kh=3,
+    kw=3,
+    co=8,
+    stride=(1, 1),
+    padding=(0, 0, 0, 0),
+    dilation=(1, 1),
+    epilogue=(),
+    output_dtype="i32",
+    extra=None,
+):
     """A minimal single-conv command buffer (no residency pack — the weight is read directly)."""
-    attrs = {"kernel": [kh, kw, ci, co], "stride": list(stride), "padding": list(padding),
-             "dilation": list(dilation), "layout": "nhwc", "epilogue": list(epilogue),
-             "output_dtype": output_dtype}
+    attrs = {
+        "kernel": [kh, kw, ci, co],
+        "stride": list(stride),
+        "padding": list(padding),
+        "dilation": list(dilation),
+        "layout": "nhwc",
+        "epilogue": list(epilogue),
+        "output_dtype": output_dtype,
+    }
     attrs.update(extra or {})
-    return {"abi_version": "0.1", "target": "t",
-            "tensors": {"IFM": {"shape": [1, H, W, ci], "dtype": "i8", "role": "input"},
-                        "W": {"shape": [kh * kw * ci, co], "dtype": "i8", "role": "weight"}},
-            "commands": [{"opcode": "CONV2D",
-                          "operands": {"ifm": "IFM", "weight": "W", "dst": "Y0"},
-                          "attributes": attrs}],
-            "outputs": ["Y0"]}
+    return {
+        "abi_version": "0.1",
+        "target": "t",
+        "tensors": {
+            "IFM": {"shape": [1, H, W, ci], "dtype": "i8", "role": "input"},
+            "W": {"shape": [kh * kw * ci, co], "dtype": "i8", "role": "weight"},
+        },
+        "commands": [{"opcode": "CONV2D", "operands": {"ifm": "IFM", "weight": "W", "dst": "Y0"}, "attributes": attrs}],
+        "outputs": ["Y0"],
+    }
 
 
 def _im2col_reference(*, H, W, ci, kh, kw, co, stride, padding, dilation):
     """The definition, recomputed independently of the simulator: gather then contract."""
     ifm = Tensor.deterministic("IFM", (1, H, W, ci), "i8")
     w = Tensor.deterministic("W", (kh * kw * ci, co), "i8")
-    cols = conv_im2col(ifm, kh=kh, kw=kw, ci=ci, stride=stride, padding=padding,
-                       dilation=dilation, layout="nhwc")
+    cols = conv_im2col(ifm, kh=kh, kw=kw, ci=ci, stride=stride, padding=padding, dilation=dilation, layout="nhwc")
     return cols.matmul(w)
 
 
@@ -114,24 +136,25 @@ class TestTheGrammarDefinesConv2d:
 
 class TestSimulatorSemantics:
     def test_conv_is_im2col_then_contract(self):
-        geom = dict(H=8, W=8, ci=4, kh=3, kw=3, co=8, stride=(1, 1), padding=(0, 0, 0, 0),
-                    dilation=(1, 1))
+        geom = dict(H=8, W=8, ci=4, kh=3, kw=3, co=8, stride=(1, 1), padding=(0, 0, 0, 0), dilation=(1, 1))
         want = _im2col_reference(**geom)
         got = simulate(_conv_cb(**geom))["outputs"]["Y0"]
         assert got == want.to_list()
 
-    @pytest.mark.parametrize("stride,padding,dilation", [
-        ((2, 2), (0, 0, 0, 0), (1, 1)),
-        ((1, 1), (1, 1, 1, 1), (1, 1)),
-        ((2, 1), (1, 0, 1, 0), (1, 1)),
-        ((1, 1), (0, 0, 0, 0), (2, 2)),
-    ])
+    @pytest.mark.parametrize(
+        "stride,padding,dilation",
+        [
+            ((2, 2), (0, 0, 0, 0), (1, 1)),
+            ((1, 1), (1, 1, 1, 1), (1, 1)),
+            ((2, 1), (1, 0, 1, 0), (1, 1)),
+            ((1, 1), (0, 0, 0, 0), (2, 2)),
+        ],
+    )
     def test_stride_padding_and_dilation_are_honoured(self, stride, padding, dilation):
         # These are the parameters the target's own conv loop takes. A simulator that accepted them
         # and ignored them would still return a well-shaped integer tensor, so the check is against
         # the independently recomputed definition, not against "it did not crash".
-        geom = dict(H=8, W=8, ci=4, kh=3, kw=3, co=8, stride=stride, padding=padding,
-                    dilation=dilation)
+        geom = dict(H=8, W=8, ci=4, kh=3, kw=3, co=8, stride=stride, padding=padding, dilation=dilation)
         want = _im2col_reference(**geom)
         got = simulate(_conv_cb(**geom))["outputs"]["Y0"]
         assert got == want.to_list()
@@ -155,8 +178,8 @@ class TestSimulatorSemantics:
         # non-negative activation and a non-negative weight the conv accumulator is never negative, so
         # relu would be indistinguishable from no epilogue at all and this test would prove nothing.
         # Flat row-major (the command buffer's ``inputs`` override flattens rank 2, not rank 4).
-        ifm = [-3, 2, 1, -4, 5, -6, 0, 2, -1, 3, -2, 4, 2, -5, 1, -1]     # 1x4x4x1, NHWC
-        w = [[1, -2], [-3, 4], [2, 1], [-1, -1]]                          # [kh*kw*ci, co] = [4, 2]
+        ifm = [-3, 2, 1, -4, 5, -6, 0, 2, -1, 3, -2, 4, 2, -5, 1, -1]  # 1x4x4x1, NHWC
+        w = [[1, -2], [-3, 4], [2, 1], [-1, -1]]  # [kh*kw*ci, co] = [4, 2]
         cb = _conv_cb(H=4, W=4, ci=1, kh=2, kw=2, co=2)
         bare = simulate(cb, {"IFM": ifm, "W": w})["outputs"]["Y0"]
         assert any(v < 0 for row in bare for v in row), "stimulus must reach the relu clamp"
@@ -165,8 +188,9 @@ class TestSimulatorSemantics:
         assert got == [[max(v, 0) for v in row] for row in bare]
 
     def test_a_narrow_output_dtype_saturates_rather_than_wrapping(self):
-        want = _im2col_reference(H=8, W=8, ci=4, kh=3, kw=3, co=8, stride=(1, 1),
-                                 padding=(0, 0, 0, 0), dilation=(1, 1)).to_i8()
+        want = _im2col_reference(
+            H=8, W=8, ci=4, kh=3, kw=3, co=8, stride=(1, 1), padding=(0, 0, 0, 0), dilation=(1, 1)
+        ).to_i8()
         got = simulate(_conv_cb(output_dtype="i8"))["outputs"]["Y0"]
         assert got == want.to_list()
         assert max(v for row in got for v in row) <= 127
@@ -215,7 +239,7 @@ class TestUnsupportedParametersFailClosed:
 
     def test_a_weight_that_is_not_im2col_packed_is_rejected(self):
         cb = _conv_cb()
-        cb["tensors"]["W"]["shape"] = [8, 36]           # transposed: same element count, wrong packing
+        cb["tensors"]["W"]["shape"] = [8, 36]  # transposed: same element count, wrong packing
         with pytest.raises(SimulationError, match="im2col-packed"):
             simulate(cb)
 
@@ -240,10 +264,13 @@ class TestTheShippedCapsulesRunAndMatchTheirGolden:
         exercised against signed stimulus in :class:`TestSimulatorSemantics` instead, and this test
         pins the fact so the corpus gap is visible rather than mistaken for coverage.
         """
+
         def out(name):
             d = _capsule_dir(name)
-            return simulate(IE.parse_interface_mlir(
-                (d / "capsule.interface.mlir").read_text(encoding="utf-8")))["outputs"]["Y0"]
+            return simulate(IE.parse_interface_mlir((d / "capsule.interface.mlir").read_text(encoding="utf-8")))[
+                "outputs"
+            ]["Y0"]
+
         assert out("B4_conv2d_relu_i8") == out("B3_conv2d_im2col_i8")
         assert all(v >= 0 for row in out("B3_conv2d_im2col_i8") for v in row)
 
@@ -262,7 +289,6 @@ class TestTheContractDeclaresConv2d:
         assert "unsupported" in abi["opcodes"]["CONV2D"], "the refused subset must be written down"
 
     def test_the_interface_contract_maps_the_mnemonic(self):
-        spec = yaml.safe_load(
-            (contract_dir() / "interface_dialect_contract.yaml").read_text(encoding="utf-8"))
+        spec = yaml.safe_load((contract_dir() / "interface_dialect_contract.yaml").read_text(encoding="utf-8"))
         mapped = {op["name"]: op.get("maps_to") for op in spec["dialect"]["required_ops"]}
         assert mapped.get("merlin_iface.conv2d") == "CONV2D"

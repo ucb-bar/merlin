@@ -27,6 +27,7 @@ What is gated here, and why a comment could not do it:
 NOT gated here, because it is not true: this is not bit-exact against the per-row scheme. It is a
 genuine numeric change and is measured against the bundle goldens, not asserted here.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -43,6 +44,7 @@ def _prepared(bundle):
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.llvmlower.passes_xdsl import collapse_overrank_matmul
     from merlin.runtime.dispatch_runtime import _propagate_quant_inner
+
     module = parse_mlir_file(bundle / "model.mlir")
     collapse_overrank_matmul(module)
     _propagate_quant_inner(module)
@@ -62,6 +64,7 @@ def _elem_bits(t):
 
 def _pure_gathers(module):
     from merlin.llvmlower.passes_quant_int import _yields_only_input
+
     out = []
     for op in module.walk():
         if op.name != "linalg.generic" or not op.body.blocks:
@@ -73,6 +76,7 @@ def _pure_gathers(module):
 
 # --- the default does not move ------------------------------------------------------------------
 
+
 def test_feature_off_takes_no_action_at_all():
     """With ``prequant_gather`` unset the pass must not even look: no counters, no rank-0 scale, no
     i8 gather. This is the frozen-baseline invariant in the form a test can hold — the byte-identity
@@ -83,11 +87,13 @@ def test_feature_off_takes_no_action_at_all():
     report: dict = {}
     lower_contraction_int8(module, report_out=report)
     assert not any(k.startswith("prequant_gather") for k in report), report
-    assert all(_elem_bits(g.results[0].type) is None for g in _pure_gathers(module)), \
+    assert all(_elem_bits(g.results[0].type) is None for g in _pure_gathers(module)), (
         "a gather moving i8 means the feature fired with the flag off"
+    )
 
 
 # --- the lever is not inert -----------------------------------------------------------------------
+
 
 def test_fires_on_im2col_and_erases_the_f32_expansion():
     """On the real capture: the rewrite fires, the gathers it claimed now move i8, and the f32
@@ -131,12 +137,15 @@ def test_the_rewritten_operands_lose_their_per_row_scale():
 
     module = _prepared(_bundle_or_skip())
     lower_contraction_int8(module, prequant_gather=True)
+
     def role(op):
         return getattr(op.attributes.get("prov.role"), "data", "")
 
-    rank0_scales = [op for op in module.walk()
-                    if op.name == "linalg.generic" and role(op) == "act_scale"
-                    and list(op.results[0].type.get_shape()) == []]
+    rank0_scales = [
+        op
+        for op in module.walk()
+        if op.name == "linalg.generic" and role(op) == "act_scale" and list(op.results[0].type.get_shape()) == []
+    ]
     assert len(rank0_scales) == 12
     produced = {op.results[0] for op in rank0_scales}
 
@@ -166,7 +175,8 @@ _STRIDED_GATHER = (
     'iterator_types = ["parallel","parallel","parallel","parallel","parallel","parallel"]} '
     "ins(%a : tensor<1x1x66x66xf32>) outs(%e : tensor<1x3x3x1x32x32xf32>) { "
     "^bb(%x: f32, %o: f32): linalg.yield %x : f32 } -> tensor<1x3x3x1x32x32xf32> "
-    "func.return %g : tensor<1x3x3x1x32x32xf32> } }")
+    "func.return %g : tensor<1x3x3x1x32x32xf32> } }"
+)
 
 
 def test_covered_box_is_exactly_what_the_gather_reads(tmp_path):
@@ -186,11 +196,11 @@ def test_covered_box_is_exactly_what_the_gather_reads(tmp_path):
 
     rng = np.random.default_rng(0)
     a = rng.standard_normal((1, 1, 66, 66)).astype(np.float32) * 0.1
-    a[0, 0, 65, 65] = 99.0                       # the element the gather never reads
+    a[0, 0, 65, 65] = 99.0  # the element the gather never reads
     gathered = np.array(
-        [a[0, 0, 2 * i + kh, 2 * j + kw]
-         for kh in range(3) for kw in range(3) for i in range(32) for j in range(32)],
-        dtype=np.float32)
+        [a[0, 0, 2 * i + kh, 2 * j + kw] for kh in range(3) for kw in range(3) for i in range(32) for j in range(32)],
+        dtype=np.float32,
+    )
     box = a[:1, :1, :65, :65]
     assert np.abs(box).max() == pytest.approx(np.abs(gathered).max())
     assert np.abs(a).max() > np.abs(gathered).max(), "the fixture must exercise the difference"
@@ -211,17 +221,19 @@ _MM_ON_GATHER = (
     "%f = linalg.fill ins(%c0 : f32) outs(%o : tensor<{m}x{n}xf32>) -> tensor<{m}x{n}xf32> "
     "%y = linalg.matmul ins(%w, %g : tensor<{m}x{k}xf32>, tensor<{k}x{n}xf32>) "
     "outs(%f : tensor<{m}x{n}xf32>) -> tensor<{m}x{n}xf32> "
-    "func.return %y : tensor<{m}x{n}xf32> }} }}")
+    "func.return %y : tensor<{m}x{n}xf32> }} }}"
+)
 
 _COPY_BODY = "linalg.yield %x : f32"
 _COMPUTED_BODY = "%t = arith.mulf %x, %x : f32 linalg.yield %t : f32"
 _IDENT = "affine_map<(d0,d1)->(d0,d1)>"
-_HOLED = "affine_map<(d0,d1)->(d0*3,d1)>"        # stride 3 over a dim of extent 3*k: reads 1 in 3
+_HOLED = "affine_map<(d0,d1)->(d0*3,d1)>"  # stride 3 over a dim of extent 3*k: reads 1 in 3
 
 
 def _lower(tmp_path, name, text):
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.llvmlower.passes_quant_int import lower_contraction_int8
+
     src = tmp_path / f"{name}.mlir"
     src.write_text(text, encoding="utf-8")
     module = parse_mlir_file(src)
@@ -233,21 +245,21 @@ def _lower(tmp_path, name, text):
 
 def test_fires_on_a_plain_copy_producer(tmp_path):
     """The positive control for the two refusals below: same module, pure-copy body, it fires."""
-    _m, report = _lower(tmp_path, "copy", _MM_ON_GATHER.format(
-        sk=8, k=8, n=4, m=2, imap=_IDENT, body=_COPY_BODY))
+    _m, report = _lower(tmp_path, "copy", _MM_ON_GATHER.format(sk=8, k=8, n=4, m=2, imap=_IDENT, body=_COPY_BODY))
     assert report.get("prequant_gather_rewrites", 0) == 1
     assert report.get("prequant_gather_mode_source_amax", 0) == 1
 
 
 def test_pre_gather_scale_defines_the_all_zero_tensor(tmp_path):
     """The pre-gather constructor uses the same zero-amax scale rule as ordinary quantization."""
-    module, report = _lower(tmp_path, "copy_zero_scale", _MM_ON_GATHER.format(
-        sk=8, k=8, n=4, m=2, imap=_IDENT, body=_COPY_BODY))
+    module, report = _lower(
+        tmp_path, "copy_zero_scale", _MM_ON_GATHER.format(sk=8, k=8, n=4, m=2, imap=_IDENT, body=_COPY_BODY)
+    )
     assert report.get("prequant_gather_rewrites", 0) == 1
     scales = [
-        op for op in module.walk()
-        if op.name == "linalg.generic"
-        and getattr(op.attributes.get("prov.role"), "data", "") == "act_scale"
+        op
+        for op in module.walk()
+        if op.name == "linalg.generic" and getattr(op.attributes.get("prov.role"), "data", "") == "act_scale"
     ]
     assert len(scales) == 1
     names = [op.name for op in scales[0].body.blocks[0].ops]
@@ -257,6 +269,7 @@ def test_pre_gather_scale_defines_the_all_zero_tensor(tmp_path):
 def test_zero_pre_gather_activation_stays_finite_after_qround(tmp_path):
     """A zero source remains finite through pre-gather quantization and qround fusion."""
     from merlin.llvmlower import toolchain
+
     if not toolchain.available():
         pytest.skip("m2m venv / clang-23 missing")
     from merlin.llvmlower.abi import HostModel
@@ -265,8 +278,9 @@ def test_zero_pre_gather_activation_stays_finite_after_qround(tmp_path):
     from merlin.xdsl_dialects._common import text as to_text
 
     m, k, n = 2, 8, 4
-    module, report = _lower(tmp_path, "copy_zero_host", _MM_ON_GATHER.format(
-        sk=k, k=k, n=n, m=m, imap=_IDENT, body=_COPY_BODY))
+    module, report = _lower(
+        tmp_path, "copy_zero_host", _MM_ON_GATHER.format(sk=k, k=k, n=n, m=m, imap=_IDENT, body=_COPY_BODY)
+    )
     assert report.get("prequant_gather_rewrites", 0) == 1
     assert fuse_round_clamp_convert(module) == 2  # pre-gather activation + ordinary f32 weight
     result = lower_model(to_text(module), tmp_path / "copy_zero_host", targets=("host",))
@@ -274,17 +288,21 @@ def test_zero_pre_gather_activation_stays_finite_after_qround(tmp_path):
     act = np.zeros((k, n), np.float32)
     weight = np.arange(m * k, dtype=np.float32).reshape(m, k) - 8.0
     out = np.full((m, n), np.nan, np.float32)
-    HostModel.load(str(result.host_so))([
-        (act.ctypes.data, act.shape), (weight.ctypes.data, weight.shape),
-        (out.ctypes.data, out.shape),
-    ])
+    HostModel.load(str(result.host_so))(
+        [
+            (act.ctypes.data, act.shape),
+            (weight.ctypes.data, weight.shape),
+            (out.ctypes.data, out.shape),
+        ]
+    )
     assert np.array_equal(out, np.zeros_like(out)), out
 
 
 def test_refuses_a_computed_producer(tmp_path):
     """A body that computes anything does not commute with quantization."""
-    _m, report = _lower(tmp_path, "computed", _MM_ON_GATHER.format(
-        sk=8, k=8, n=4, m=2, imap=_IDENT, body=_COMPUTED_BODY))
+    _m, report = _lower(
+        tmp_path, "computed", _MM_ON_GATHER.format(sk=8, k=8, n=4, m=2, imap=_IDENT, body=_COMPUTED_BODY)
+    )
     assert report.get("prequant_gather_rewrites", 0) == 0
     assert report.get("prequant_gather_refused_producer_not_gather", 0) == 1
 
@@ -318,6 +336,7 @@ def test_refuses_a_shared_expansion():
 
 # --- lower_conv_int8 is dead, and says so ----------------------------------------------------------
 
+
 def test_conv_int8_cannot_reach_a_single_conv_in_this_fleet():
     """The pass whose docstring ``contraction_view`` defers convs to has never fired on one.
 
@@ -333,11 +352,12 @@ def test_conv_int8_cannot_reach_a_single_conv_in_this_fleet():
     assert lower_conv_int8(module, report_out=report) == 0
     assert report["conv_prov_ops"] > 100, "the model must be full of convolution provenance"
     assert report["windowed_map_generics"] == 0
-    assert report["compound_map_generics"] == 4       # broadcasts, not convs
+    assert report["compound_map_generics"] == 4  # broadcasts, not convs
     assert report["lowered"] == 0
 
 
 # --- registration ----------------------------------------------------------------------------------
+
 
 def test_feature_is_registered_eagerly_and_ranked():
     """``wholemodel_proposer._composes`` swallows the KeyError for an unregistered name and returns
@@ -358,10 +378,10 @@ def test_the_feature_name_reaches_the_quant_pass(monkeypatch):
     from merlin.llvmlower import quant_passes as QP
 
     seen: list[bool] = []
-    monkeypatch.setattr(Q, "lower_contraction_int8",
-                        lambda _m, **kw: (seen.append(kw.get("prequant_gather", False)), 0)[1])
-    for fn in ("lower_conv_int8", "lower_softmax_int", "lower_gelu_int", "lower_silu_int",
-               "lower_rsqrt_int"):
+    monkeypatch.setattr(
+        Q, "lower_contraction_int8", lambda _m, **kw: (seen.append(kw.get("prequant_gather", False)), 0)[1]
+    )
+    for fn in ("lower_conv_int8", "lower_softmax_int", "lower_gelu_int", "lower_silu_int", "lower_rsqrt_int"):
         monkeypatch.setattr(Q, fn, lambda _m, **kw: 0)
     QP.apply_quant(object(), prequant_gather=True)
     assert seen == [True]
@@ -378,7 +398,8 @@ _DIAGONAL_GATHER = (
     'iterator_types = ["parallel"]} '
     "ins(%a : tensor<8x8xf32>) outs(%e : tensor<8xf32>) { "
     "^bb(%x: f32, %o: f32): linalg.yield %x : f32 } -> tensor<8xf32> "
-    "func.return %g : tensor<8xf32> } }")
+    "func.return %g : tensor<8xf32> } }"
+)
 
 
 def test_refuses_a_gather_whose_axes_are_coupled(tmp_path):

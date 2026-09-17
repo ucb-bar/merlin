@@ -9,6 +9,7 @@ model's run unrecoverable in a way that looked like a model result:
   * the verdict redactor scrubbed EVERY numeric literal, so ``emit_command_buffer rc=0`` reached the agent
     as ``rc=#``. 19 of 20 capsules received that 26-character non-message for six consecutive rounds.
 """
+
 from __future__ import annotations
 
 import sys
@@ -24,15 +25,18 @@ if str(_H) not in sys.path:
 
 def _oc():
     import opencode_agent
+
     return opencode_agent
 
 
 def _qa():
     import qa_check
+
     return qa_check
 
 
 # ---------------------------------------------------------------- window budgeting
+
 
 def test_declared_output_limit_leaves_the_window_to_the_prompt():
     """A model with a known window must not reserve a quarter of it for output it never writes."""
@@ -75,6 +79,7 @@ def test_declared_windows_are_provider_measured():
 
 # ---------------------------------------------------------------- diagnostic fidelity
 
+
 def test_return_code_survives_redaction():
     """rc=0 is the difference between 'crashed' and 'exited clean and wrote nothing'."""
     qa = _qa()
@@ -103,17 +108,20 @@ def test_scrub_is_structural_not_positional():
 def test_actionable_hint_is_not_truncated():
     """The encoding-divergence hint's self-inspection METHOD lives past 240 chars."""
     qa = _qa()
-    hint = ("on spike, your emitted artifact does not compute the declared operation "
-            "The command-buffer tiers (numeric + trace) PASSED, so the divergence is in your "
-            "emit_target_artifact hardware encoding - some field the command buffer cannot carry "
-            "(a config scale, an accumulate/dataflow bit, a readout dtype, a DRAM address). "
-            "Decode your OWN emitted artifact (the disassembler / instruction_trace.json) and check "
-            "each op's operands against your intent.")
+    hint = (
+        "on spike, your emitted artifact does not compute the declared operation "
+        "The command-buffer tiers (numeric + trace) PASSED, so the divergence is in your "
+        "emit_target_artifact hardware encoding - some field the command buffer cannot carry "
+        "(a config scale, an accumulate/dataflow bit, a readout dtype, a DRAM address). "
+        "Decode your OWN emitted artifact (the disassembler / instruction_trace.json) and check "
+        "each op's operands against your intent."
+    )
     out = qa._redact_detail(hint)
     assert "Decode your OWN emitted artifact" in out
 
 
 # ---------------------------------------------------------------- agent-authored manifest
+
 
 def test_a_malformed_manifest_is_graded_not_crashed(tmp_path):
     """A syntax error in the AGENT's manifest is an ordinary verdict, not an internal error.
@@ -127,7 +135,8 @@ def test_a_malformed_manifest_is_graded_not_crashed(tmp_path):
     from merlin.targetgen.oot_runner import CertFailure, load_package
 
     (tmp_path / "manifest.yaml").write_text(
-        "entrypoints:\n  tool: t.py\nauthor:(opencode agent)\ngenerated_by_agent: true\n")
+        "entrypoints:\n  tool: t.py\nauthor:(opencode agent)\ngenerated_by_agent: true\n"
+    )
     with pytest.raises(CertFailure) as ei:
         load_package(tmp_path)
     assert "not valid YAML" in str(ei.value)

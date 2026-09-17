@@ -30,6 +30,7 @@ The ceiling is expressed over the tier NAMES the corpus declares, never over any
 so it survives a re-mapping of which engine answers on which rung (one rung was retired outright while
 this was being written, and nothing here moved).
 """
+
 from __future__ import annotations
 
 import json
@@ -44,19 +45,31 @@ TARGET = "ceiling_fixture_target"
 
 # --- fixtures: a synthetic measured history, so nothing here depends on a real target -------------
 
+
 def _write_result(root, capsule, *, cycles, seconds, engine, functional_cycles=None, tier="L3"):
     """One capsule_result.json shaped exactly like the grader writes: per-tier, engine-attributed."""
     tiers = {}
     if functional_cycles:
-        tiers["L2"] = {"status": "pass", "cycles": functional_cycles, "cycle_accurate": False,
-                       "derived_from_rtl": False, "timing": {"sim_active_s": 0.03}}
-    tiers[tier] = {"status": "pass", "cycles": cycles, "cycle_accurate": True,
-                   "derived_from_rtl": True, "engine": engine,
-                   "timing": {"sim_active_s": seconds}}
+        tiers["L2"] = {
+            "status": "pass",
+            "cycles": functional_cycles,
+            "cycle_accurate": False,
+            "derived_from_rtl": False,
+            "timing": {"sim_active_s": 0.03},
+        }
+    tiers[tier] = {
+        "status": "pass",
+        "cycles": cycles,
+        "cycle_accurate": True,
+        "derived_from_rtl": True,
+        "engine": engine,
+        "timing": {"sim_active_s": seconds},
+    }
     d = root / capsule
     d.mkdir(parents=True, exist_ok=True)
     (d / "capsule_result.json").write_text(
-        json.dumps({"capsule": capsule, "status": "pass", "tiers": tiers}), encoding="utf-8")
+        json.dumps({"capsule": capsule, "status": "pass", "tiers": tiers}), encoding="utf-8"
+    )
 
 
 @pytest.fixture
@@ -68,9 +81,14 @@ def costly_history(tmp_path):
     """
     root = tmp_path / "costly"
     for i, cycles in enumerate((200, 500, 1000, 2000, 4000, 8000)):
-        _write_result(root, f"H{i}_depth_{cycles}", cycles=cycles,
-                      seconds=130.0 + 0.07 * cycles, engine="slow_rtl",
-                      functional_cycles=cycles // 6)
+        _write_result(
+            root,
+            f"H{i}_depth_{cycles}",
+            cycles=cycles,
+            seconds=130.0 + 0.07 * cycles,
+            engine="slow_rtl",
+            functional_cycles=cycles // 6,
+        )
     CC.reset_cache()
     yield [root]
     CC.reset_cache()
@@ -95,13 +113,21 @@ def _capsule(name="C0_probe", **extra):
 def _perf_capsule(name="PK00_k16", *, correctness="L2", timing="L3", **extra):
     """A perf-family capsule, declaring its two axes the way the frozen acceptance block does."""
     cap = _capsule(name, **extra)
-    cap["performance"] = {"acceptance": {"evidence": {
-        "correctness_tier": correctness, "timing_tier": timing,
-        "timing_simulator": "fast_rtl", "correctness_simulator": "functional"}}}
+    cap["performance"] = {
+        "acceptance": {
+            "evidence": {
+                "correctness_tier": correctness,
+                "timing_tier": timing,
+                "timing_simulator": "fast_rtl",
+                "correctness_simulator": "functional",
+            }
+        }
+    }
     return cap
 
 
 # --- 1. the cost model reads the measurement, per engine -----------------------------------------
+
 
 def test_the_fit_recovers_the_rate_it_was_given(costly_history):
     fit = CC.fit_for(TARGET, "L3", roots=costly_history)
@@ -109,7 +135,8 @@ def test_the_fit_recovers_the_rate_it_was_given(costly_history):
     assert fit.intercept_s == pytest.approx(130.0, abs=1.0)
     assert fit.per_cycle_s == pytest.approx(0.07, rel=0.02)
     assert fit.engine == "slow_rtl", (
-        "an engine this repo has not declared keeps its own bucket, spelled as the record spelled it")
+        "an engine this repo has not declared keeps its own bucket, spelled as the record spelled it"
+    )
     # The cheap predictor, measured rather than assumed to be 1.0.
     assert fit.functional_ratio == pytest.approx(6.0, rel=0.05)
 
@@ -141,11 +168,9 @@ def test_one_engine_under_SEVERAL_SPELLINGS_is_one_bucket(tmp_path):
     into ``verilator_console.log`` (498) and ``rtl_verilator_console.log`` (274), and a second target
     spells the same engine a third way. Two buckets of one engine are two weaker fits of one law."""
     root = tmp_path / "spellings"
-    spellings = ("verilator_console.log", "rtl_verilator_console.log",
-                 "atlas-verilator-rtl_console.log")
+    spellings = ("verilator_console.log", "rtl_verilator_console.log", "atlas-verilator-rtl_console.log")
     for i, cycles in enumerate((200, 500, 1000, 2000, 4000, 8000)):
-        _write_result(root, f"V{i}", cycles=cycles, seconds=130.0 + 0.07 * cycles,
-                      engine=None, tier="L3")
+        _write_result(root, f"V{i}", cycles=cycles, seconds=130.0 + 0.07 * cycles, engine=None, tier="L3")
         path = root / f"V{i}" / "capsule_result.json"
         doc = json.loads(path.read_text())
         doc["tiers"]["L3"]["evidence"] = spellings[i % len(spellings)]
@@ -197,15 +222,14 @@ def test_a_STATED_engine_outranks_one_inferred_from_a_filename():
 
 # --- 2. it fires ----------------------------------------------------------------------------------
 
+
 def test_a_declared_ceiling_declines_the_deeper_tier(costly_history):
     # The sibling must actually have earned the deeper tier for the claim to verify -- see
     # test_extends_is_verified_not_trusted. H0_depth_200 passed L3 in the fixture history.
     cap = _capsule(max_oracle_tier="L2", extends="H0_depth_200")
-    at_cap = TP.oracle_ceiling(TARGET, cap, "L2", declared_tiers=["L2", "L3"],
-                               cost_roots=costly_history)
+    at_cap = TP.oracle_ceiling(TARGET, cap, "L2", declared_tiers=["L2", "L3"], cost_roots=costly_history)
     assert at_cap.allowed, "the tier AT the ceiling is exactly what the capsule asks for"
-    deeper = TP.oracle_ceiling(TARGET, cap, "L3", declared_tiers=["L2", "L3"],
-                               cost_roots=costly_history)
+    deeper = TP.oracle_ceiling(TARGET, cap, "L3", declared_tiers=["L2", "L3"], cost_roots=costly_history)
     assert not deeper.allowed
     assert deeper.source == TP.SOURCE_DECLARED
     assert deeper.record["max_oracle_tier"] == "L2"
@@ -218,10 +242,16 @@ def test_a_declared_ceiling_declines_the_deeper_tier(costly_history):
 
 def test_a_ceiling_without_extends_is_recorded_as_the_weaker_claim(costly_history):
     """A cap resting on a named sibling and a cap resting on nothing are different claims."""
-    with_sibling = TP.oracle_ceiling(TARGET, _capsule(max_oracle_tier="L2", extends="H0_depth_200"),
-                                     "L3", declared_tiers=["L2", "L3"], cost_roots=costly_history)
-    alone = TP.oracle_ceiling(TARGET, _capsule(max_oracle_tier="L2"), "L3",
-                              declared_tiers=["L2", "L3"], cost_roots=costly_history)
+    with_sibling = TP.oracle_ceiling(
+        TARGET,
+        _capsule(max_oracle_tier="L2", extends="H0_depth_200"),
+        "L3",
+        declared_tiers=["L2", "L3"],
+        cost_roots=costly_history,
+    )
+    alone = TP.oracle_ceiling(
+        TARGET, _capsule(max_oracle_tier="L2"), "L3", declared_tiers=["L2", "L3"], cost_roots=costly_history
+    )
     assert with_sibling.record["claim"] == TP.CLAIM_EXTENDS
     assert alone.record["claim"] == TP.CLAIM_SCREENED_ONLY
     assert alone.record["extends"]["extends"] is None
@@ -235,33 +265,36 @@ def test_a_derived_ceiling_fires_on_the_measured_rate(costly_history):
     1200s budget buys it. Both the budget and the prediction are named in the reason.
     """
     cap = _capsule("H5_depth_8000")
-    declined = TP.oracle_ceiling(TARGET, cap, "L3", declared_tiers=["L2", "L3"],
-                                 budget_s=300.0, cost_roots=costly_history)
+    declined = TP.oracle_ceiling(
+        TARGET, cap, "L3", declared_tiers=["L2", "L3"], budget_s=300.0, cost_roots=costly_history
+    )
     assert not declined.allowed
     assert declined.source == TP.SOURCE_DERIVED_BUDGET
     assert declined.record["budget_s"] == 300.0
     assert declined.record["affordability"]["verdict"] == CC.TOO_EXPENSIVE
     assert "300s budget" in declined.reason and "690" in declined.reason.replace(",", "")
 
-    afforded = TP.oracle_ceiling(TARGET, cap, "L3", declared_tiers=["L2", "L3"],
-                                 budget_s=1200.0, cost_roots=costly_history)
+    afforded = TP.oracle_ceiling(
+        TARGET, cap, "L3", declared_tiers=["L2", "L3"], budget_s=1200.0, cost_roots=costly_history
+    )
     assert afforded.allowed, "the same capsule under a budget that covers it is not capped"
 
 
 def test_a_capsule_never_certified_is_priced_from_its_screen_tier(costly_history):
     """The cheap path: the screen tier costs milliseconds and reports cycles, so a capsule with no
     cycle-accurate history of its own is still priceable -- via the MEASURED functional ratio."""
-    aff = CC.affordability(TARGET, "L3", budget_s=300.0, capsule="never_run_here",
-                           functional_cycles=1200, roots=costly_history)
+    aff = CC.affordability(
+        TARGET, "L3", budget_s=300.0, capsule="never_run_here", functional_cycles=1200, roots=costly_history
+    )
     assert aff.verdict == CC.TOO_EXPENSIVE, "1200 screen cycles x ~6 is ~7200 cycles, ~635s"
     assert "measured ratio" in aff.reason
 
 
 # --- 3. it refuses rather than guessing -----------------------------------------------------------
 
+
 def test_no_measured_history_is_unknown_not_affordable(no_history):
-    aff = CC.affordability(TARGET, "L3", budget_s=300.0, capsule="C0_probe",
-                           functional_cycles=100, roots=no_history)
+    aff = CC.affordability(TARGET, "L3", budget_s=300.0, capsule="C0_probe", functional_cycles=100, roots=no_history)
     assert aff.verdict == CC.UNKNOWN
     assert aff.verdict not in (CC.AFFORDABLE, CC.TOO_EXPENSIVE)
     assert "no measured certification cost" in aff.reason
@@ -269,8 +302,9 @@ def test_no_measured_history_is_unknown_not_affordable(no_history):
 
 def test_an_unpriced_capsule_fails_closed_and_is_labelled_unknown(no_history):
     """The refusal requirement: neither affordable nor capped. Both mislabels are checked for."""
-    ceiling = TP.oracle_ceiling(TARGET, _capsule(), "L3", declared_tiers=["L2", "L3"],
-                                budget_s=300.0, cost_roots=no_history)
+    ceiling = TP.oracle_ceiling(
+        TARGET, _capsule(), "L3", declared_tiers=["L2", "L3"], budget_s=300.0, cost_roots=no_history
+    )
     assert not ceiling.allowed, "an unpriced capsule must not be bought as though affordable"
     assert ceiling.source == TP.SOURCE_UNPRICED
     assert ceiling.source != TP.SOURCE_DERIVED_BUDGET, "not a budget cap: nothing was measured"
@@ -294,8 +328,9 @@ def test_no_declared_budget_means_no_derived_ceiling(costly_history, monkeypatch
     """Opt-in, with no default number: a budget nobody declared must not quietly cap anything."""
     monkeypatch.delenv("MERLIN_ORACLE_CEILING_BUDGET_S", raising=False)
     assert TP.ceiling_budget_seconds() is None
-    ceiling = TP.oracle_ceiling(TARGET, _capsule("H5_depth_8000"), "L3",
-                                declared_tiers=["L2", "L3"], cost_roots=costly_history)
+    ceiling = TP.oracle_ceiling(
+        TARGET, _capsule("H5_depth_8000"), "L3", declared_tiers=["L2", "L3"], cost_roots=costly_history
+    )
     assert ceiling.allowed, "a capsule priced at ~690s is still bought when no budget is declared"
 
 
@@ -310,18 +345,31 @@ def test_the_budget_is_a_declared_parameter(monkeypatch):
 
 # --- 4. a capped tier is RECORDED, never absent ---------------------------------------------------
 
+
 def _tier_result_for(ceiling, tier="L3", mandatory=True):
     """Build the tier record the grader's loop builds, so this asserts on the emitted shape."""
     from merlin.targetgen.capsule_runner import TierResult
-    return TierResult(tier, "skipped", mandatory, reason=ceiling.reason,
-                      budget_deferred=True, oracle_ceiling=ceiling.record,
-                      derived_from_rtl=True)
+
+    return TierResult(
+        tier,
+        "skipped",
+        mandatory,
+        reason=ceiling.reason,
+        budget_deferred=True,
+        oracle_ceiling=ceiling.record,
+        derived_from_rtl=True,
+    )
 
 
 def test_a_capped_tier_is_skipped_with_a_reason_not_omitted(costly_history):
     """The bug this exists to prevent: the tier key MISSING, so the capsule reads as never graded."""
-    ceiling = TP.oracle_ceiling(TARGET, _capsule(max_oracle_tier="L2", extends="H0_depth_200"), "L3",
-                                declared_tiers=["L2", "L3"], cost_roots=costly_history)
+    ceiling = TP.oracle_ceiling(
+        TARGET,
+        _capsule(max_oracle_tier="L2", extends="H0_depth_200"),
+        "L3",
+        declared_tiers=["L2", "L3"],
+        cost_roots=costly_history,
+    )
     row = _tier_result_for(ceiling).to_dict()
 
     assert row["status"] == "skipped", "recorded as skipped -- never pass, never fail"
@@ -334,15 +382,16 @@ def test_a_capped_tier_is_skipped_with_a_reason_not_omitted(costly_history):
 
 
 def test_a_derived_cap_records_the_budget_that_set_it(costly_history):
-    ceiling = TP.oracle_ceiling(TARGET, _capsule("H5_depth_8000"), "L3",
-                                declared_tiers=["L2", "L3"], budget_s=300.0,
-                                cost_roots=costly_history)
+    ceiling = TP.oracle_ceiling(
+        TARGET, _capsule("H5_depth_8000"), "L3", declared_tiers=["L2", "L3"], budget_s=300.0, cost_roots=costly_history
+    )
     row = _tier_result_for(ceiling).to_dict()
     assert row["status"] == "skipped"
     assert row["oracle_ceiling"]["budget_s"] == 300.0, "the budget that set the cap is in the record"
     fit = row["oracle_ceiling"]["affordability"]["fit"]
     assert fit["n_samples"] >= CC.MIN_SAMPLES and fit["measured_range_cycles"] == [200, 8000], (
-        "the record carries the evidence the cap rests on, not just a verdict")
+        "the record carries the evidence the cap rests on, not just a verdict"
+    )
     assert "300s budget" in row["reason"]
 
 
@@ -352,27 +401,30 @@ def test_a_capped_mandatory_tier_can_never_read_as_a_pass(costly_history):
     ``budget_deferred`` is what the finalizer keys on to downgrade a pass to ``screened_only``, so a
     capped mandatory tier is carried on that same flag deliberately.
     """
-    ceiling = TP.oracle_ceiling(TARGET, _capsule(max_oracle_tier="L2"), "L3",
-                                declared_tiers=["L2", "L3"], cost_roots=costly_history)
+    ceiling = TP.oracle_ceiling(
+        TARGET, _capsule(max_oracle_tier="L2"), "L3", declared_tiers=["L2", "L3"], cost_roots=costly_history
+    )
     row = _tier_result_for(ceiling, mandatory=True).to_dict()
     assert row["mandatory"] is True
     assert row["status"] != "pass"
     assert row["budget_deferred"] is True
     assert row.get("not_applicable") is not True, (
         "a cap is an affordability decision, NOT a claim that the tier is inapplicable -- "
-        "not_applicable is the one flag that exempts a tier from not_run_is_not_pass")
+        "not_applicable is the one flag that exempts a tier from not_run_is_not_pass"
+    )
 
 
 def test_an_uncapped_tier_carries_no_ceiling_block(costly_history):
     """A capsule nothing declined must be byte-identical to before this mechanism existed."""
     from merlin.targetgen.capsule_runner import TierResult
-    ceiling = TP.oracle_ceiling(TARGET, _capsule(), "L3", declared_tiers=["L2", "L3"],
-                                cost_roots=costly_history)
+
+    ceiling = TP.oracle_ceiling(TARGET, _capsule(), "L3", declared_tiers=["L2", "L3"], cost_roots=costly_history)
     assert ceiling.allowed and ceiling.record is None
     assert "oracle_ceiling" not in TierResult("L3", "pass", True).to_dict()
 
 
 # --- 5. the ceiling is expressed over tier names, not over a simulator map ------------------------
+
 
 def test_depth_order_comes_from_the_tier_names_alone():
     """Deliberately independent of which engine serves which rung: that mapping is being changed, and
@@ -390,12 +442,13 @@ def test_depth_order_comes_from_the_tier_names_alone():
 def test_the_ceiling_fields_are_schema_valid():
     """``max_oracle_tier`` and ``extends`` must be real declared capsule fields, not invented here."""
     from merlin.common.paths import merlin_dir
-    schema = json.loads((merlin_dir() / "contract" / "schemas" / "capsule.schema.json")
-                        .read_text(encoding="utf-8"))
+
+    schema = json.loads((merlin_dir() / "contract" / "schemas" / "capsule.schema.json").read_text(encoding="utf-8"))
     props = schema["properties"]
     assert TP.CEILING_FIELD in props and TP.EXTENDS_FIELD in props
     assert props[TP.CEILING_FIELD]["enum"] == props["required_oracle_tiers"]["items"]["enum"], (
-        "a ceiling onto a tier the ladder does not have would leave the capsule demanding everything")
+        "a ceiling onto a tier the ladder does not have would leave the capsule demanding everything"
+    )
 
 
 # --- 6. the two axes: a correctness ceiling must not silence a timing measurement ----------------
@@ -405,6 +458,7 @@ def test_the_ceiling_fields_are_schema_valid():
 # reason for existing is the cycle-accurate COUNT, and the perf family declares the split itself:
 # `correctness_tier` on the cheap rung, `timing_tier` on the cert rung. Capping the first must not
 # cap the second, or a cell that was measured reads back as though it never was.
+
 
 def test_the_axis_is_derived_from_the_capsules_own_acceptance_block():
     perf = _perf_capsule(correctness="L2", timing="L3")
@@ -420,11 +474,11 @@ def test_a_correctness_ceiling_never_declines_the_timing_tier(costly_history):
     """The load-bearing separation. `correctness_tier: L2` caps correctness; L3 is still BOUGHT,
     because the perf claim needs the cycle count and nothing else can supply it."""
     perf = _perf_capsule("PK03_k128", correctness="L2", timing="L3", extends="H0_depth_200")
-    timing = TP.oracle_ceiling(TARGET, perf, "L3", declared_tiers=["L2", "L3"],
-                               cost_roots=costly_history)
+    timing = TP.oracle_ceiling(TARGET, perf, "L3", declared_tiers=["L2", "L3"], cost_roots=costly_history)
     assert timing.allowed, (
         "L3 is this capsule's declared TIMING rung; a correctness ceiling must not decline it, or a "
-        "measured cycle count reads back as a cell that was never measured")
+        "measured cycle count reads back as a cell that was never measured"
+    )
     assert timing.axis == TP.AXIS_TIMING
 
 
@@ -436,8 +490,9 @@ def test_the_acceptance_blocks_correctness_tier_is_honoured_as_a_ceiling(costly_
     acceptance block rather than from the general field.
     """
     perf = _perf_capsule("PK03_k128", correctness="L2", timing="L3", extends="H0_depth_200")
-    deeper_non_timing = TP.oracle_ceiling(TARGET, perf, "L4", declared_tiers=["L2", "L3", "L4"],
-                                          cost_roots=costly_history)
+    deeper_non_timing = TP.oracle_ceiling(
+        TARGET, perf, "L4", declared_tiers=["L2", "L3", "L4"], cost_roots=costly_history
+    )
     assert not deeper_non_timing.allowed
     assert deeper_non_timing.source == TP.SOURCE_DECLARED_ACCEPTANCE
     assert deeper_non_timing.record["axis"] == TP.AXIS_CORRECTNESS
@@ -451,10 +506,10 @@ def test_a_timing_exclusion_is_its_own_declaration_and_says_so(costly_history):
     carries `measurement_excluded` -- so a reader concludes "no cycle count is claimed here", never
     "correctness was not certified".
     """
-    perf = _perf_capsule("PR08_spills_k16384", correctness="L2", timing="L3",
-                         max_timing_tier="L2", extends="H0_depth_200")
-    excluded = TP.oracle_ceiling(TARGET, perf, "L3", declared_tiers=["L2", "L3"],
-                                 cost_roots=costly_history)
+    perf = _perf_capsule(
+        "PR08_spills_k16384", correctness="L2", timing="L3", max_timing_tier="L2", extends="H0_depth_200"
+    )
+    excluded = TP.oracle_ceiling(TARGET, perf, "L3", declared_tiers=["L2", "L3"], cost_roots=costly_history)
     assert not excluded.allowed
     assert excluded.axis == TP.AXIS_TIMING
     assert excluded.record["measurement_excluded"] is True
@@ -471,8 +526,9 @@ def test_a_derived_cap_on_the_timing_rung_is_still_labelled_a_measurement_exclus
     """Cost can decline a timing rung too -- 8000 cycles is ~690s against a 300s budget -- but the
     record must not let that read as an uncertified correctness claim OR as a measured cell."""
     perf = _perf_capsule("H5_depth_8000", correctness="L2", timing="L3")
-    declined = TP.oracle_ceiling(TARGET, perf, "L3", declared_tiers=["L2", "L3"],
-                                 budget_s=300.0, cost_roots=costly_history)
+    declined = TP.oracle_ceiling(
+        TARGET, perf, "L3", declared_tiers=["L2", "L3"], budget_s=300.0, cost_roots=costly_history
+    )
     assert not declined.allowed and declined.axis == TP.AXIS_TIMING
     assert declined.record["measurement_excluded"] is True
     assert "MEASUREMENT matrix" in declined.reason
@@ -484,17 +540,20 @@ def test_a_derived_cap_on_the_timing_rung_is_still_labelled_a_measurement_exclus
 # sibling actually earned the deeper tier in the run being cited. An unverifiable `extends` is WEAKER
 # than no `extends`, because it READS as certified -- so it can never be recorded as the certified one.
 
+
 def test_extends_is_verified_against_the_siblings_own_result(costly_history):
-    ok = TP.verify_extends(TARGET, _capsule(extends="H0_depth_200"), "L2",
-                           declared_tiers=["L2", "L3"], roots=costly_history)
+    ok = TP.verify_extends(
+        TARGET, _capsule(extends="H0_depth_200"), "L2", declared_tiers=["L2", "L3"], roots=costly_history
+    )
     assert ok.verified is True
     assert ok.tier == "L3" and ok.claim == TP.CLAIM_EXTENDS
     assert ok.source and "capsule_result.json" in ok.source, "verified against a record, not a name"
 
 
 def test_an_absent_sibling_fails_closed_as_unverified(costly_history):
-    missing = TP.verify_extends(TARGET, _capsule(extends="A2_single_tile_matmul"), "L2",
-                                declared_tiers=["L2", "L3"], roots=costly_history)
+    missing = TP.verify_extends(
+        TARGET, _capsule(extends="A2_single_tile_matmul"), "L2", declared_tiers=["L2", "L3"], roots=costly_history
+    )
     assert missing.verified is False
     assert missing.claim == TP.CLAIM_EXTENDS_UNVERIFIED
     assert missing.claim != TP.CLAIM_EXTENDS, "an unchecked claim must never read as the certified one"
@@ -507,23 +566,28 @@ def test_a_sibling_that_did_not_pass_deeper_carries_nothing(tmp_path):
     root = tmp_path / "mixed"
     # A sibling whose cert tier FAILED.
     (root / "S_failed").mkdir(parents=True)
-    (root / "S_failed" / "capsule_result.json").write_text(json.dumps(
-        {"capsule": "S_failed", "status": "fail",
-         "tiers": {"L2": {"status": "pass"}, "L3": {"status": "fail"}}}), encoding="utf-8")
+    (root / "S_failed" / "capsule_result.json").write_text(
+        json.dumps(
+            {"capsule": "S_failed", "status": "fail", "tiers": {"L2": {"status": "pass"}, "L3": {"status": "fail"}}}
+        ),
+        encoding="utf-8",
+    )
     # A sibling that only ever passed the cap tier itself -- it corroborates nothing deeper.
     (root / "S_shallow").mkdir(parents=True)
-    (root / "S_shallow" / "capsule_result.json").write_text(json.dumps(
-        {"capsule": "S_shallow", "status": "pass", "tiers": {"L2": {"status": "pass"}}}),
-        encoding="utf-8")
+    (root / "S_shallow" / "capsule_result.json").write_text(
+        json.dumps({"capsule": "S_shallow", "status": "pass", "tiers": {"L2": {"status": "pass"}}}), encoding="utf-8"
+    )
     CC.reset_cache()
     try:
-        failed = TP.verify_extends(TARGET, _capsule(extends="S_failed"), "L2",
-                                   declared_tiers=["L2", "L3"], roots=[root])
+        failed = TP.verify_extends(
+            TARGET, _capsule(extends="S_failed"), "L2", declared_tiers=["L2", "L3"], roots=[root]
+        )
         assert failed.verified is False and failed.claim == TP.CLAIM_EXTENDS_UNVERIFIED
         assert "no PASSING tier deeper" in failed.reason
 
-        shallow = TP.verify_extends(TARGET, _capsule(extends="S_shallow"), "L2",
-                                    declared_tiers=["L2", "L3"], roots=[root])
+        shallow = TP.verify_extends(
+            TARGET, _capsule(extends="S_shallow"), "L2", declared_tiers=["L2", "L3"], roots=[root]
+        )
         assert shallow.verified is False, "passing the cap tier is not certifying anything deeper"
     finally:
         CC.reset_cache()
@@ -534,15 +598,20 @@ def test_an_UNSTATED_cap_refuses_rather_than_verifying_against_anything(costly_h
     never taken and ANY passing tier verifies -- an L0 functional pass would certify a member nobody
     ran cycle-accurately, the exact inverse of this function's contract. So a null cap fails closed."""
     for cap in (None, "", "   "):
-        v = TP.verify_extends(TARGET, _capsule(extends="H0_depth_200"), cap,
-                              declared_tiers=["L2", "L3"], roots=costly_history)
+        v = TP.verify_extends(
+            TARGET, _capsule(extends="H0_depth_200"), cap, declared_tiers=["L2", "L3"], roots=costly_history
+        )
         assert v.verified is False, f"a {cap!r} cap verified an extends against an unbounded ladder"
         assert v.claim == TP.CLAIM_EXTENDS_UNVERIFIED
         assert "screened at was not stated" in v.reason
     # And the same sibling DOES verify once the cap is stated, so the refusal is about the cap and not
     # about the evidence.
-    assert TP.verify_extends(TARGET, _capsule(extends="H0_depth_200"), "L2",
-                             declared_tiers=["L2", "L3"], roots=costly_history).verified is True
+    assert (
+        TP.verify_extends(
+            TARGET, _capsule(extends="H0_depth_200"), "L2", declared_tiers=["L2", "L3"], roots=costly_history
+        ).verified
+        is True
+    )
 
 
 def test_certified_on_disk_reads_the_records_CLAIM_of_cycle_accuracy(tmp_path):
@@ -552,15 +621,27 @@ def test_certified_on_disk_reads_the_records_CLAIM_of_cycle_accuracy(tmp_path):
     root = tmp_path / "mixed_fidelity"
     _write_result(root, "C_certified", cycles=1000, seconds=90.0, engine="slow_rtl")
     (root / "C_functional").mkdir(parents=True)
-    (root / "C_functional" / "capsule_result.json").write_text(json.dumps(
-        {"capsule": "C_functional", "status": "pass",
-         "tiers": {"L3": {"status": "pass", "cycle_accurate": False, "derived_from_rtl": False}}}),
-        encoding="utf-8")
+    (root / "C_functional" / "capsule_result.json").write_text(
+        json.dumps(
+            {
+                "capsule": "C_functional",
+                "status": "pass",
+                "tiers": {"L3": {"status": "pass", "cycle_accurate": False, "derived_from_rtl": False}},
+            }
+        ),
+        encoding="utf-8",
+    )
     (root / "C_failed").mkdir(parents=True)
-    (root / "C_failed" / "capsule_result.json").write_text(json.dumps(
-        {"capsule": "C_failed", "status": "fail",
-         "tiers": {"L3": {"status": "fail", "cycle_accurate": True, "derived_from_rtl": True}}}),
-        encoding="utf-8")
+    (root / "C_failed" / "capsule_result.json").write_text(
+        json.dumps(
+            {
+                "capsule": "C_failed",
+                "status": "fail",
+                "tiers": {"L3": {"status": "fail", "cycle_accurate": True, "derived_from_rtl": True}},
+            }
+        ),
+        encoding="utf-8",
+    )
     seen = TP.certified_on_disk(TARGET, roots=[root])
     assert set(seen) == {"C_certified"}, "a functional pass or a failed run is not a certification"
     assert seen["C_certified"][0] == "L3"
@@ -571,8 +652,7 @@ def test_certified_on_disk_reads_the_records_CLAIM_of_cycle_accuracy(tmp_path):
 def test_an_unverified_extends_is_recorded_as_unverified_on_the_tier(costly_history):
     """End to end: the emitted tier record must not let an unchecked claim read as a certification."""
     cap = _capsule("P0_rests_on_a_ghost", max_oracle_tier="L2", extends="A2_single_tile_matmul")
-    ceiling = TP.oracle_ceiling(TARGET, cap, "L3", declared_tiers=["L2", "L3"],
-                                cost_roots=costly_history)
+    ceiling = TP.oracle_ceiling(TARGET, cap, "L3", declared_tiers=["L2", "L3"], cost_roots=costly_history)
     row = _tier_result_for(ceiling).to_dict()
     assert row["status"] == "skipped"
     assert row["oracle_ceiling"]["claim"] == TP.CLAIM_EXTENDS_UNVERIFIED
@@ -583,8 +663,8 @@ def test_an_unverified_extends_is_recorded_as_unverified_on_the_tier(costly_hist
 
 def test_the_timing_ceiling_field_is_schema_valid():
     from merlin.common.paths import merlin_dir
-    schema = json.loads((merlin_dir() / "contract" / "schemas" / "capsule.schema.json")
-                        .read_text(encoding="utf-8"))
+
+    schema = json.loads((merlin_dir() / "contract" / "schemas" / "capsule.schema.json").read_text(encoding="utf-8"))
     props = schema["properties"]
     assert TP.TIMING_CEILING_FIELD in props
     assert props[TP.TIMING_CEILING_FIELD]["enum"] == props["required_oracle_tiers"]["items"]["enum"]
@@ -594,6 +674,7 @@ def test_the_ceiling_fields_are_carried_by_the_generator():
     """Declarable ONCE in a profile and carried onto every member it derives -- so the link between a
     derived sweep member and the functional capsule it extends is machine-readable, not prose."""
     import importlib.util
+
     from merlin.common.paths import merlin_dir
 
     path = merlin_dir() / "contract" / "capsules" / "generate_corpus.py"
@@ -602,8 +683,7 @@ def test_the_ceiling_fields_are_carried_by_the_generator():
     spec.loader.exec_module(mod)
     assert {TP.CEILING_FIELD, TP.TIMING_CEILING_FIELD, TP.EXTENDS_FIELD} <= set(mod._DECLARED_BLOCKS)
     cap: dict = {}
-    assert mod._carry_declared_blocks(
-        {TP.CEILING_FIELD: "L2", TP.EXTENDS_FIELD: "A2_single_tile_matmul"}, cap)
+    assert mod._carry_declared_blocks({TP.CEILING_FIELD: "L2", TP.EXTENDS_FIELD: "A2_single_tile_matmul"}, cap)
     assert cap[TP.CEILING_FIELD] == "L2" and cap[TP.EXTENDS_FIELD] == "A2_single_tile_matmul"
     # A hand-authored capsule stays the source of record.
     already = {TP.CEILING_FIELD: "L3"}

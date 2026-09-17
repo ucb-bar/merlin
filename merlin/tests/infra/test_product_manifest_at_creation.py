@@ -6,6 +6,7 @@ EVERY session on this shared tree, for as long as the producer runs. That happen
 a verification product left one behind when its session ended, and a multi-model campaign tripped the
 gate 39 seconds into a run that would have written its manifest only after the first cell finished.
 """
+
 from __future__ import annotations
 
 import os
@@ -79,8 +80,10 @@ def test_the_layout_gate_accepts_a_freshly_created_product(out_root):
     import importlib.util
 
     from merlin.common.paths import repo_root
+
     spec = importlib.util.spec_from_file_location(
-        "_layout", repo_root() / "build_tools" / "scripts" / "check_artifact_layout.py")
+        "_layout", repo_root() / "build_tools" / "scripts" / "check_artifact_layout.py"
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     violations = [v for v in mod.check(root, staged=True) if "manifest.yaml" in v]

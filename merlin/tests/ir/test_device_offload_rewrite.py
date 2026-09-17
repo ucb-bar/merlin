@@ -10,6 +10,7 @@ unit. These tests pin the generalization, and specifically the three ways it cou
   * a contraction moved with no decision behind it (which would duplicate the placement decision and
     then disagree with it).
 """
+
 from __future__ import annotations
 
 import json
@@ -18,8 +19,7 @@ import pytest
 
 from merlin.common import mlir_query as mq
 from merlin.common.ir_lock import IR_LOCK
-from merlin.llvmlower.device_offload import (SIDECAR_NAME, load_sidecar,
-                                             rewrite_contractions_to_device, symbol_stem)
+from merlin.llvmlower.device_offload import SIDECAR_NAME, load_sidecar, rewrite_contractions_to_device, symbol_stem
 from merlin.system.offload import device_dtype_triples
 
 I8_MATMUL = """
@@ -35,8 +35,9 @@ module {
 }
 """
 
-F32_MATMUL = I8_MATMUL.replace("i8", "f32").replace("i32", "f32").replace(
-    "arith.constant 0 : f32", "arith.constant 0.0 : f32")
+F32_MATMUL = (
+    I8_MATMUL.replace("i8", "f32").replace("i32", "f32").replace("arith.constant 0 : f32", "arith.constant 0.0 : f32")
+)
 
 
 def _int8_device():
@@ -51,6 +52,7 @@ def _parse(src):
 
 
 # --------------------------------------------------------------- nothing moves without a decision
+
 
 def test_no_selector_moves_nothing():
     dev = _int8_device()
@@ -70,6 +72,7 @@ def test_a_selector_that_declines_everything_moves_nothing():
 
 
 # --------------------------------------------------------------- the rewrite itself
+
 
 def test_a_selected_contraction_becomes_a_call_to_a_private_symbol():
     dev = _int8_device()
@@ -91,11 +94,13 @@ def test_the_callee_is_declared_so_the_module_still_verifies():
         m = _parse(I8_MATMUL)
         r = rewrite_contractions_to_device(m, dev, select=lambda _s: True)
         decls = [f for f in mq.walk(m, "func.func")]
-        assert any(mq.attr_str(f, "sym_name") == r.routed[0].symbol for f in decls), \
+        assert any(mq.attr_str(f, "sym_name") == r.routed[0].symbol for f in decls), (
             "the call has no declaration; the module would not verify"
+        )
 
 
 # --------------------------------------------------------------- the quiet failures
+
 
 def test_a_device_does_not_inherit_another_devices_datapath():
     """The failure a hardcoded triple cannot avoid: an integer device taking an f32 contraction."""
@@ -124,6 +129,7 @@ def test_an_underivable_device_declines_with_a_reason():
 
 # --------------------------------------------------------------- the sidecar
 
+
 def test_the_sidecar_carries_what_the_build_step_needs(tmp_path):
     """The rewrite runs inside the lowering subprocess; the build step that generates the callee runs
     outside it. An in-memory hand-off silently produced an empty signature set."""
@@ -136,7 +142,7 @@ def test_the_sidecar_carries_what_the_build_step_needs(tmp_path):
     assert back["device"] == dev
     assert back["signatures"][r.routed[0].symbol] == [16, 16, 32]
     assert back["routed"][0]["dtypes"] == ["i8", "i8", "i32"]
-    assert json.dumps(back)                       # round-trips as plain JSON
+    assert json.dumps(back)  # round-trips as plain JSON
 
 
 def test_an_absent_sidecar_reads_as_empty_not_an_error():
@@ -166,6 +172,7 @@ module {
 
 def _rewrite_on_disk(tmp_path, select=lambda _s: True):
     from merlin.llvmlower.device_offload import rewrite_prepared_file
+
     dev = _int8_device()
     prep = tmp_path / "prepared.mlir"
     prep.write_text(_TWO_SHAPES, encoding="utf-8")
@@ -196,6 +203,7 @@ def test_the_sidecar_is_written_even_when_nothing_moved(tmp_path):
     """An absent sidecar and an empty one mean different things to a build: 'the rewrite never ran'
     versus 'it ran and routed nothing'."""
     from merlin.llvmlower.device_offload import load_sidecar
+
     r, _ = _rewrite_on_disk(tmp_path, select=lambda _s: False)
     assert r.moved == 0
     assert load_sidecar(tmp_path).get("signatures") == {}
@@ -208,8 +216,10 @@ def test_the_module_is_untouched_when_nothing_moved(tmp_path):
 
 # --------------------------------------------------------------- through the runtime dialect
 
+
 def _text(m):
     from merlin.xdsl_dialects._common import text as to_text
+
     return to_text(m)
 
 
@@ -217,6 +227,7 @@ def test_the_offload_is_recorded_as_runtime_ops_before_it_is_realized():
     """Merlin owns a `runtime` dialect that says exactly this -- device.get, a command buffer, an
     append per command, submit -- and no real model passed through it. Now one does."""
     from merlin.llvmlower.device_offload import emit_device_program
+
     dev = _int8_device()
     with IR_LOCK:
         m = _parse(_TWO_SHAPES)
@@ -258,6 +269,7 @@ def test_passing_through_the_dialect_changes_nothing_about_the_result():
 
 def test_the_lowering_reports_what_it_removed():
     from merlin.llvmlower.device_offload import emit_device_program, lower_device_submits
+
     dev = _int8_device()
     with IR_LOCK:
         m = _parse(I8_MATMUL)
@@ -269,6 +281,7 @@ def test_the_lowering_reports_what_it_removed():
 
 def test_a_declined_selection_records_no_program():
     from merlin.llvmlower.device_offload import emit_device_program
+
     dev = _int8_device()
     with IR_LOCK:
         m = _parse(I8_MATMUL)

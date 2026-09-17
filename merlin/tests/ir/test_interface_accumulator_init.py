@@ -24,6 +24,7 @@ it EXECUTES every accepted lowering on the host engine and compares against nump
 The defect was invisible at the IR level — the emitted module verified at all six stages — so an
 IR-inspection test could not have caught it and cannot protect against its return.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -34,8 +35,14 @@ pytest.importorskip("xdsl")
 from merlin.frontends.linalg_mlir import parse_mlir_text  # noqa: E402
 from merlin.xdsl_dialects.lowering.input_workload import find_matmuls  # noqa: E402
 from merlin.xdsl_dialects.lowering.interface_lowering import (  # noqa: E402
-    LoweringError, accumulated_inits, init_contributes_nothing, lower_to_interface,
-    nonzero_accumulator_inits, payload_ops, unaccounted_ops)
+    LoweringError,
+    accumulated_inits,
+    init_contributes_nothing,
+    lower_to_interface,
+    nonzero_accumulator_inits,
+    payload_ops,
+    unaccounted_ops,
+)
 from merlin.xdsl_dialects.lowering.pipeline import execute, lower_module  # noqa: E402
 
 N = 8
@@ -46,33 +53,47 @@ TT = f"tensor<{N}x{N}xf32>"
 INITS = [
     # -- provably contributes nothing -------------------------------------------------------
     ("tensor.empty", f"    %e = tensor.empty() : {TT}", "%e", np.zeros((N, N)), True),
-    ("zero fill",
-     f"    %e = tensor.empty() : {TT}\n"
-     "    %z = arith.constant 0.0 : f32\n"
-     f"    %f = linalg.fill ins(%z : f32) outs(%e : {TT}) -> {TT}", "%f", np.zeros((N, N)), True),
-    ("all-zero dense constant", f"    %k = arith.constant dense<0.0> : {TT}", "%k",
-     np.zeros((N, N)), True),
-    ("zero splat",
-     "    %z = arith.constant 0.0 : f32\n"
-     f"    %s = tensor.splat %z : {TT}", "%s", np.zeros((N, N)), True),
+    (
+        "zero fill",
+        f"    %e = tensor.empty() : {TT}\n"
+        "    %z = arith.constant 0.0 : f32\n"
+        f"    %f = linalg.fill ins(%z : f32) outs(%e : {TT}) -> {TT}",
+        "%f",
+        np.zeros((N, N)),
+        True,
+    ),
+    ("all-zero dense constant", f"    %k = arith.constant dense<0.0> : {TT}", "%k", np.zeros((N, N)), True),
+    ("zero splat", f"    %z = arith.constant 0.0 : f32\n    %s = tensor.splat %z : {TT}", "%s", np.zeros((N, N)), True),
     # -- NOT provably zero: each of these is a real value the rebuild would drop ---------------
-    ("function argument", "", "%c", None, False),          # None -> the C input array
-    ("non-zero fill",
-     f"    %e = tensor.empty() : {TT}\n"
-     "    %z = arith.constant 1.5 : f32\n"
-     f"    %f = linalg.fill ins(%z : f32) outs(%e : {TT}) -> {TT}", "%f",
-     np.full((N, N), 1.5), False),
-    ("non-zero dense constant", f"    %k = arith.constant dense<2.0> : {TT}", "%k",
-     np.full((N, N), 2.0), False),
-    ("non-zero splat",
-     "    %z = arith.constant 3.0 : f32\n"
-     f"    %s = tensor.splat %z : {TT}", "%s", np.full((N, N), 3.0), False),
+    ("function argument", "", "%c", None, False),  # None -> the C input array
+    (
+        "non-zero fill",
+        f"    %e = tensor.empty() : {TT}\n"
+        "    %z = arith.constant 1.5 : f32\n"
+        f"    %f = linalg.fill ins(%z : f32) outs(%e : {TT}) -> {TT}",
+        "%f",
+        np.full((N, N), 1.5),
+        False,
+    ),
+    ("non-zero dense constant", f"    %k = arith.constant dense<2.0> : {TT}", "%k", np.full((N, N), 2.0), False),
+    (
+        "non-zero splat",
+        f"    %z = arith.constant 3.0 : f32\n    %s = tensor.splat %z : {TT}",
+        "%s",
+        np.full((N, N), 3.0),
+        False,
+    ),
     # A computed init. `tensor.pad` is separately unsupported by the rebuild, and stays refused.
-    ("computed (tensor.pad)",
-     f"    %p = tensor.pad %d low[0, 0] high[{N - 5}, 0] {{\n"
-     "      ^bb0(%i: index, %j: index):\n"
-     "        tensor.yield %zp : f32\n"
-     f"    }} : tensor<5x{N}xf32> to {TT}", "%p", None, False),
+    (
+        "computed (tensor.pad)",
+        f"    %p = tensor.pad %d low[0, 0] high[{N - 5}, 0] {{\n"
+        "      ^bb0(%i: index, %j: index):\n"
+        "        tensor.yield %zp : f32\n"
+        f"    }} : tensor<5x{N}xf32> to {TT}",
+        "%p",
+        None,
+        False,
+    ),
 ]
 
 
@@ -107,10 +128,9 @@ def _init_value(module):
 # The measurement that matters: run it, and compare against numpy
 # --------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("label, init_ops, init, init_value, acceptable", INITS,
-                         ids=[c[0] for c in INITS])
-def test_lower_or_refuse_never_computes_a_different_program(label, init_ops, init, init_value,
-                                                            acceptable):
+
+@pytest.mark.parametrize("label, init_ops, init, init_value, acceptable", INITS, ids=[c[0] for c in INITS])
+def test_lower_or_refuse_never_computes_a_different_program(label, init_ops, init, init_value, acceptable):
     """For EVERY init spelling: either the pipeline refuses, or what it emits equals init + A@W.
 
     Executed on the host engine, not inspected. This is the shape of the original defect — a module
@@ -154,9 +174,9 @@ def test_the_argument_init_repro_is_refused_by_name():
         lower_to_interface(module)
     msg = str(excinfo.value)
     assert "linalg.matmul" in msg
-    assert "block argument" in msg          # where the dropped value came from
+    assert "block argument" in msg  # where the dropped value came from
     assert "not provably zero" in msg
-    assert "A@B" in msg                     # what would have been computed instead
+    assert "A@B" in msg  # what would have been computed instead
 
 
 def test_a_fused_bias_epilogue_does_not_excuse_a_non_zero_init():
@@ -191,6 +211,7 @@ module {{
 # --------------------------------------------------------------------------------------------
 # The proof itself, and the derivation it rests on
 # --------------------------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("label, init_ops, init, _v, expected", INITS, ids=[c[0] for c in INITS])
 def test_the_zero_proof_answers_each_init_spelling(label, init_ops, init, _v, expected):
@@ -255,6 +276,7 @@ def test_an_op_with_no_inspectable_body_fails_closed():
 
     A stub without a region stands in for any future op whose ``outs`` semantics this cannot read.
     """
+
     class _Bodyless:
         name = "fake.contraction"
         outputs = ("an init value",)
@@ -318,11 +340,14 @@ module {{
 """
 
 
-@pytest.mark.parametrize("label, text", [
-    ("masked store", MASKED_STORE),
-    ("row bias (a non-bias elementwise epilogue)", ROW_BIAS),
-    ("tensor.pad", PAD_CONSUMER),
-])
+@pytest.mark.parametrize(
+    "label, text",
+    [
+        ("masked store", MASKED_STORE),
+        ("row bias (a non-bias elementwise epilogue)", ROW_BIAS),
+        ("tensor.pad", PAD_CONSUMER),
+    ],
+)
 def test_what_was_refused_before_is_still_refused(label, text):
     """The danger of teaching a fail-closed guard a new case is turning it fail-OPEN.
 

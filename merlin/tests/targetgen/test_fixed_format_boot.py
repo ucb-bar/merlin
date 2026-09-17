@@ -6,20 +6,37 @@ Hermetic, board-free checks of the instruction-level transcode that lets a STOCK
 fixed-format words without a vendor compiler fork. The full assemble+link+cyclotron proof runs out of
 band with the local radiance toolchain; here we lock the CUSTOM-slot re-encode and the auipc contract.
 """
+
 from __future__ import annotations
 
-from merlin.targetgen.isa_model import isa_model_from_encoding
-from merlin.targetgen.isa_asm import assemble_fixed
-from merlin.targetgen.isa_transcode import FixedFormatTranscoder
 from merlin.targetgen.fixed_format import boot as MB
+from merlin.targetgen.isa_asm import assemble_fixed
+from merlin.targetgen.isa_model import isa_model_from_encoding
+from merlin.targetgen.isa_transcode import FixedFormatTranscoder
 
 # A Muon-shaped fixed-format model that also defines the standard CUSTOM slots + AUIPC.
 FACT = {
     "inst_width": 64,
-    "fields": {"opcode": [6, 0], "ext2": [8, 7], "rd": [16, 9], "f3": [19, 17],
-               "rs1": [27, 20], "rs2": [35, 28], "f7": [58, 52], "imm24": [59, 36]},
-    "opcodes": {"LOAD": 0x03, "CUSTOM0": 0x0B, "OP_IMM": 0x13, "AUIPC": 0x17, "STORE": 0x23,
-                "OP": 0x33, "BRANCH": 0x63, "JAL": 0x6F},
+    "fields": {
+        "opcode": [6, 0],
+        "ext2": [8, 7],
+        "rd": [16, 9],
+        "f3": [19, 17],
+        "rs1": [27, 20],
+        "rs2": [35, 28],
+        "f7": [58, 52],
+        "imm24": [59, 36],
+    },
+    "opcodes": {
+        "LOAD": 0x03,
+        "CUSTOM0": 0x0B,
+        "OP_IMM": 0x13,
+        "AUIPC": 0x17,
+        "STORE": 0x23,
+        "OP": 0x33,
+        "BRANCH": 0x63,
+        "JAL": 0x6F,
+    },
 }
 
 
@@ -47,7 +64,7 @@ def test_auipc_becomes_clean_zero_immediate_word_with_rd_preserved():
     # transcode to opcode+rd with a zero immediate (the linker fills it), not fail closed.
     m = isa_model_from_encoding("synth", FACT)
     tc, customs = _tc(m)
-    rv = 0x17 | (5 << 7) | (0x12345 << 12)           # auipc t0, 0x12345 (the imm is reloc-supplied)
+    rv = 0x17 | (5 << 7) | (0x12345 << 12)  # auipc t0, 0x12345 (the imm is reloc-supplied)
     got = MB._transcode_word(rv, tc, customs, m)
     assert got == assemble_fixed(m, "AUIPC", {"rd": 5})
     # immediate fields (imm24 + rs2 high byte) are zero; only opcode + rd carry information
@@ -57,7 +74,7 @@ def test_auipc_becomes_clean_zero_immediate_word_with_rd_preserved():
 def test_base_isa_word_still_goes_through_the_transcoder():
     m = isa_model_from_encoding("synth", FACT)
     tc, customs = _tc(m)
-    addi = 0x00B50513                                 # addi a0, a0, 11
+    addi = 0x00B50513  # addi a0, a0, 11
     assert MB._transcode_word(addi, tc, customs, m) == tc.transcode_text(addi.to_bytes(4, "little"))[0]
 
 
@@ -65,16 +82,18 @@ def test_pcrel_pair_without_reloc_is_rescaled_to_target_stride():
     # a same-section `la`/&sym the assembler resolved into a bare auipc+addi (NO relocation) carries its
     # displacement at the rv32 (4-byte) stride; under the target's 8-byte stride it must be rescaled x2.
     import struct
-    auipc = (0 << 12) | (10 << 7) | 0x17                        # auipc a0, 0   (high part 0, within ±2KB)
-    addi = (40 << 20) | (10 << 15) | (0 << 12) | (10 << 7) | 0x13   # addi a0, a0, 40  (the pcrel low part)
+
+    auipc = (0 << 12) | (10 << 7) | 0x17  # auipc a0, 0   (high part 0, within ±2KB)
+    addi = (40 << 20) | (10 << 15) | (0 << 12) | (10 << 7) | 0x13  # addi a0, a0, 40  (the pcrel low part)
     data = struct.pack("<II", auipc, addi)
     ov = MB._pcrel_lo_overrides(data, reloc_offsets=set(), stride_ratio=2)
-    assert ov == {4: 80}                                        # the addi (byte off 4) carries 40*2 = 80
+    assert ov == {4: 80}  # the addi (byte off 4) carries 40*2 = 80
 
 
 def test_pcrel_pair_at_a_reloc_site_is_left_to_the_linker():
     # when the auipc IS a relocation site, the linker resolves the pair — no override is emitted here.
     import struct
+
     auipc = (0 << 12) | (10 << 7) | 0x17
     addi = (40 << 20) | (10 << 15) | (10 << 7) | 0x13
     data = struct.pack("<II", auipc, addi)
@@ -102,10 +121,11 @@ def test_the_occupancy_shim_refuses_to_guess_a_symbol():
 
 def test_override_immediate_is_encoded_into_the_low_instruction():
     from merlin.targetgen import isa_disasm
+
     m = isa_model_from_encoding("synth", FACT)
     tc, customs = _tc(m)
     addi = (40 << 20) | (10 << 15) | (0 << 12) | (10 << 7) | 0x13
     w = MB._transcode_word(addi, tc, customs, m, override_imm=80)
     rec = isa_disasm.disassemble(m, [w])[0]
-    assert rec["operands"]["imm24"] == 80                       # the rescaled displacement, contiguous
+    assert rec["operands"]["imm24"] == 80  # the rescaled displacement, contiguous
     assert rec["operands"]["rd"] == 10 and rec["operands"]["rs1"] == 10

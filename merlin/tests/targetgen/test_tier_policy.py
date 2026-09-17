@@ -11,6 +11,7 @@ Three measured facts drive this policy, all from the two graded targets:
 * a screen may never CERTIFY: one submission passed the cheap functional tier 20/20 while its RTL tier
   passed 1.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -75,17 +76,26 @@ def test_calibration_is_reported_honestly():
 
 # --- coverage ------------------------------------------------------------------------------------
 
+
 def _cap(name, *, family="contraction", op="matmul", epilogue=(), mtiles=1, modes=()):
-    return {"name": name, "kind": "isa",
-            "semantic": {"semantic_family": family, "generalization_axis": "seen"},
-            "operation": {"op": op, "attributes": {"epilogue": list(epilogue)}},
-            "M_tiles": mtiles,
-            "expected": {"modes": {m: True for m in modes}}}
+    return {
+        "name": name,
+        "kind": "isa",
+        "semantic": {"semantic_family": family, "generalization_axis": "seen"},
+        "operation": {"op": op, "attributes": {"epilogue": list(epilogue)}},
+        "M_tiles": mtiles,
+        "expected": {"modes": {m: True for m in modes}},
+    }
 
 
 def test_the_cover_spans_every_declared_axis():
-    caps = [_cap("a"), _cap("b"), _cap("c", epilogue=["relu"], modes=["relu"]),
-            _cap("d", family="movement", op="movement"), _cap("e", mtiles=2)]
+    caps = [
+        _cap("a"),
+        _cap("b"),
+        _cap("c", epilogue=["relu"], modes=["relu"]),
+        _cap("d", family="movement", op="movement"),
+        _cap("e", mtiles=2),
+    ]
     cover = TP.covering_set(caps)
     covered = set().union(*[TP.capsule_axes(c) for c in caps if c["name"] in cover])
     assert covered == set().union(*[TP.capsule_axes(c) for c in caps])
@@ -106,7 +116,7 @@ def test_certify_order_puts_the_cover_first():
     caps = [_cap("a"), _cap("b"), _cap("z", op="movement")]
     order = TP.certify_order(caps)
     cover = set(TP.covering_set(caps))
-    assert set(order[:len(cover)]) == cover and len(order) == 3
+    assert set(order[: len(cover)]) == cover and len(order) == 3
 
 
 def test_a_capsule_declaring_nothing_is_never_a_representative():
@@ -115,6 +125,7 @@ def test_a_capsule_declaring_nothing_is_never_a_representative():
 
 
 # --- budget --------------------------------------------------------------------------------------
+
 
 def test_unlimited_is_the_default_so_coverage_is_never_silently_narrowed(monkeypatch):
     monkeypatch.delenv("MERLIN_CERTIFY_BUDGET_S", raising=False)
@@ -147,22 +158,30 @@ def test_spend_is_per_target(monkeypatch):
 
 # --- what the artifact says ------------------------------------------------------------------------
 
+
 def test_a_screened_capsule_is_neither_numerator_nor_denominator_and_is_named(monkeypatch):
     """The whole risk of this policy in one test: a capsule that was screened and not certified must not
     inflate a score, must not deflate one, and must be listed by name with the reason."""
     from merlin.targetgen import capsule_grade as CG
 
-    results = ([{"capsule": f"p{i}", "status": "pass", "kind": "op", "tiers": {"L3": "pass"}}
-                for i in range(6)]
-               + [{"capsule": f"s{i}", "status": "screened_only", "kind": "op", "tiers": {},
-                   "failure": {"plane": "budget", "category": "SCREENED_NOT_CERTIFIED",
-                               "detail": "passed the screen tier; certify tier(s) L3 not purchased"}}
-                  for i in range(9)])
+    results = [{"capsule": f"p{i}", "status": "pass", "kind": "op", "tiers": {"L3": "pass"}} for i in range(6)] + [
+        {
+            "capsule": f"s{i}",
+            "status": "screened_only",
+            "kind": "op",
+            "tiers": {},
+            "failure": {
+                "plane": "budget",
+                "category": "SCREENED_NOT_CERTIFIED",
+                "detail": "passed the screen tier; certify tier(s) L3 not purchased",
+            },
+        }
+        for i in range(9)
+    ]
     monkeypatch.setattr(CG, "load_package", lambda *a, **k: type("P", (), {"integrity_exempt": False})())
     monkeypatch.setattr(CG, "integrity_scan", lambda *a, **k: None)
     monkeypatch.setattr(CG, "build_package", lambda *a, **k: None)
-    monkeypatch.setattr(CG.CR, "discover_capsules", lambda *a, **k: [{"name": r["capsule"]}
-                                                                     for r in results])
+    monkeypatch.setattr(CG.CR, "discover_capsules", lambda *a, **k: [{"name": r["capsule"]} for r in results])
     monkeypatch.setattr(CG.CR, "run_suite", lambda *a, **k: results)
     s = CG.grade("pkg", capsules_root=["r"], runs_root="runs", target="gemmini", max_workers=1)
 
@@ -177,13 +196,14 @@ def test_a_screened_capsule_does_not_prop_up_the_model_gate(monkeypatch):
     evidence nobody bought — the same shape as the crash-leak this suite already guards."""
     from merlin.targetgen import capsule_runner as CR
 
-    caps = ([{"name": f"ok{i}", "kind": "op"} for i in range(4)]
-            + [{"name": f"sc{i}", "kind": "op"} for i in range(16)]
-            + [{"name": "M0", "kind": "model", "gate": {"after_op_pass_fraction": 0.8}}])
+    caps = (
+        [{"name": f"ok{i}", "kind": "op"} for i in range(4)]
+        + [{"name": f"sc{i}", "kind": "op"} for i in range(16)]
+        + [{"name": "M0", "kind": "model", "gate": {"after_op_pass_fraction": 0.8}}]
+    )
 
     def _fake(cap, package_dir, **kw):
-        st = ("pass" if cap["name"].startswith("ok")
-              else "pass" if cap.get("kind") == "model" else "screened_only")
+        st = "pass" if cap["name"].startswith("ok") else "pass" if cap.get("kind") == "model" else "screened_only"
         return {"capsule": cap["name"], "status": st, "kind": cap.get("kind"), "tiers": {}}
 
     monkeypatch.setattr(CR, "load_package", lambda *a, **k: object())
@@ -206,8 +226,7 @@ def test_the_covering_set_is_dispatched_before_the_rest(monkeypatch):
     from merlin.targetgen import capsule_runner as CR
 
     order: list[str] = []
-    caps = [_cap("zzz_movement", family="movement", op="movement"),
-            _cap("aaa"), _cap("bbb"), _cap("ccc")]
+    caps = [_cap("zzz_movement", family="movement", op="movement"), _cap("aaa"), _cap("bbb"), _cap("ccc")]
 
     def _fake(cap, package_dir, **kw):
         order.append(cap["name"])
@@ -221,5 +240,5 @@ def test_the_covering_set_is_dispatched_before_the_rest(monkeypatch):
     CR.run_suite(caps, "pkg", runs_root="runs", target="gemmini", max_workers=1)
 
     cover = set(TP.covering_set(caps))
-    assert set(order[:len(cover)]) == cover, f"cover {sorted(cover)} not dispatched first: {order}"
+    assert set(order[: len(cover)]) == cover, f"cover {sorted(cover)} not dispatched first: {order}"
     assert "zzz_movement" in cover, "the only movement capsule must be a representative"

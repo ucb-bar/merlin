@@ -4,6 +4,7 @@ the heavy deps), so it never blocks the hermetic suite. When it runs it asserts 
 make the debugger safe + useful: the OUTPUT region is refused, an INPUT window comes back populated (the
 canonical preload landed), and `run_to=N` stops early with a value-free on-chip populated map.
 """
+
 from __future__ import annotations
 
 import tempfile
@@ -17,8 +18,9 @@ from merlin.common.paths import merlin_dir
 def _atlas_like_descriptor() -> Path | None:
     """Any capsule-bench target descriptor whose backend is external_backend (self-hosted ISA). Returns the
     first one found under the experiments tree, or None (skip) — no target name is hardcoded."""
-    from merlin.targetgen.target_experiment import load_target_experiment
     from merlin.targetgen import capsule_runner as CR
+    from merlin.targetgen.target_experiment import load_target_experiment
+
     root = merlin_dir() / "experiments" / "capsule_bench" / "targets"
     if not root.is_dir():
         return None
@@ -34,6 +36,7 @@ def _atlas_like_descriptor() -> Path | None:
 
 def _skip_unless_ready():
     from merlin.targetgen.rtl import mlc_bridge
+
     if mlc_bridge.mlc_dir() is None:
         pytest.skip("mlc dir unavailable (MERLIN_MLC_DIR) — no functional program runner")
     desc = _atlas_like_descriptor()
@@ -44,10 +47,10 @@ def _skip_unless_ready():
 
 def test_debug_e2e_refuses_output_and_maps_state():
     desc = _skip_unless_ready()
-    from merlin.targetgen.target_experiment import load_target_experiment
-    from merlin.targetgen.contract.materialize import public_capsules_for
     from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen import program_oracle as PO
+    from merlin.targetgen.contract.materialize import public_capsules_for
+    from merlin.targetgen.target_experiment import load_target_experiment
 
     te = load_target_experiment(desc)
     target = te.target
@@ -74,9 +77,16 @@ def test_debug_e2e_refuses_output_and_maps_state():
         ks.write_text(".text\n.word 0x00000000\n")
         try:
             r = PO.run_program_debug(
-                target, model_ext=model_ext, cb=cb, kernel_s=ks,
-                dump_regions=[[inp["base"], 32], [out_base, min(32, out_n)]],   # input (allowed) + output (refused)
-                run_to=4, state_summary=True, workdir=Path(td), timeout=300)
+                target,
+                model_ext=model_ext,
+                cb=cb,
+                kernel_s=ks,
+                dump_regions=[[inp["base"], 32], [out_base, min(32, out_n)]],  # input (allowed) + output (refused)
+                run_to=4,
+                state_summary=True,
+                workdir=Path(td),
+                timeout=300,
+            )
         except PO.OracleUnavailable as e:
             pytest.skip(f"functional runner unavailable: {e}")
 
@@ -95,4 +105,4 @@ def test_debug_e2e_refuses_output_and_maps_state():
     assert r["instr_count"] <= 4
     oc = r["on_chip"]
     assert oc is not None and set(("vmem_populated", "mrf_populated", "acc_populated")) <= set(oc)
-    assert all(isinstance(b, bool) for b in oc["mrf_populated"])   # booleans only — no values leak
+    assert all(isinstance(b, bool) for b in oc["mrf_populated"])  # booleans only — no values leak

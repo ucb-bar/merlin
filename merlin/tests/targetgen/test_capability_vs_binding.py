@@ -15,6 +15,7 @@ The asymmetry is deliberate — compute_units documents the gap between declared
 routing as the compiler deficiency the ARR number exists to surface. These tests exist so the two are
 never again quoted as if they were one number.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen import model_coverage as MC
@@ -49,7 +50,8 @@ def test_a_zero_mesh_count_is_not_evidence_of_zero_capability():
     assert MC.route_model(regions, "gemmini")["mesh"] == 0
     rep = MC.coverage_for(regions, "gemmini", model="t")
     assert rep.family_supported == 1 and rep.dtype_ok == 1, (
-        "zero routed while family-eligible and dtype-clear — the two numbers answer different questions")
+        "zero routed while family-eligible and dtype-clear — the two numbers answer different questions"
+    )
 
 
 def test_an_fp32_contraction_is_dtype_blocked_on_an_int8_mesh_whatever_the_spelling():

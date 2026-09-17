@@ -4,6 +4,7 @@ The suite these tests run against is an external, separately-pinned measurement 
 not present the tests SKIP with the reason — a check that could not run is reported as not-run, never
 as a pass.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,8 +13,7 @@ import pytest
 
 from merlin.common import provenance as prov
 from merlin.perf import record as R
-from merlin.perf.term import (UNKNOWN, UNKNOWN_TOKEN, PerformanceTerm, Provenance,
-                              UnknownValueError, Validity)
+from merlin.perf.term import UNKNOWN, UNKNOWN_TOKEN, PerformanceTerm, Provenance, UnknownValueError, Validity
 
 #: The declared built artifact these records are about, and the pins it was elaborated from. Named
 #: HERE, at the test edge, rather than in library code: `merlin/python/merlin/**` must not contain a
@@ -44,12 +44,12 @@ def _validity() -> Validity:
 def suite_path():
     try:
         arts = prov.load_artifacts()
-    except prov.PinsError as exc:                                    # pragma: no cover
+    except prov.PinsError as exc:  # pragma: no cover
         pytest.skip(f"pin registry unreadable: {exc}")
-    if ARTIFACT not in arts:                                         # pragma: no cover
+    if ARTIFACT not in arts:  # pragma: no cover
         pytest.skip(f"no built artifact {ARTIFACT!r} declared in the pin registry")
     path = arts[ARTIFACT].resolve()
-    if path is None or not path.is_file():                           # pragma: no cover
+    if path is None or not path.is_file():  # pragma: no cover
         pytest.skip(f"the measured cycle suite is not on this host ({path}); DID NOT RUN")
     return path
 
@@ -62,8 +62,7 @@ def suite(suite_path):
 @pytest.fixture(scope="module")
 def records(suite, suite_path):
     digest = R.read_digest_triple(pin_names=PINS, artifact_names=[ARTIFACT], sources=[suite_path])
-    return {r.kernel: r for r in R.build_records(suite, target=TARGET, digest=digest,
-                                                 unit_models=UNIT_MODELS)}
+    return {r.kernel: r for r in R.build_records(suite, target=TARGET, digest=digest, unit_models=UNIT_MODELS)}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -78,16 +77,20 @@ def test_a_record_without_a_digest_raises():
         R.PerformanceRecord(kernel="k", target=TARGET, digest=None)
 
 
-@pytest.mark.parametrize("kwargs, why", [
-    ({"sources": "", "artifacts": {"a": "1" * 64}, "pins": {"p": "2" * 40}}, "no source digest"),
-    ({"sources": "0" * 64, "artifacts": {}, "pins": {"p": "2" * 40}}, "no built artifact"),
-    ({"sources": "0" * 64, "artifacts": {"a": "1" * 64}, "pins": {}}, "no pin"),
-    ({"sources": "0" * 63, "artifacts": {"a": "1" * 64}, "pins": {"p": "2" * 40}}, "short digest"),
-    ({"sources": "0" * 64, "artifacts": {"a": UNKNOWN_TOKEN}, "pins": {"p": "2" * 40}},
-     "an UNKNOWN artifact digest"),
-    ({"sources": "0" * 64, "artifacts": {"a": "1" * 64}, "pins": {"p": "2" * 7}},
-     "an abbreviated commit"),
-])
+@pytest.mark.parametrize(
+    "kwargs, why",
+    [
+        ({"sources": "", "artifacts": {"a": "1" * 64}, "pins": {"p": "2" * 40}}, "no source digest"),
+        ({"sources": "0" * 64, "artifacts": {}, "pins": {"p": "2" * 40}}, "no built artifact"),
+        ({"sources": "0" * 64, "artifacts": {"a": "1" * 64}, "pins": {}}, "no pin"),
+        ({"sources": "0" * 63, "artifacts": {"a": "1" * 64}, "pins": {"p": "2" * 40}}, "short digest"),
+        (
+            {"sources": "0" * 64, "artifacts": {"a": UNKNOWN_TOKEN}, "pins": {"p": "2" * 40}},
+            "an UNKNOWN artifact digest",
+        ),
+        ({"sources": "0" * 64, "artifacts": {"a": "1" * 64}, "pins": {"p": "2" * 7}}, "an abbreviated commit"),
+    ],
+)
 def test_an_incomplete_digest_triple_raises(kwargs, why):
     with pytest.raises(R.MissingDigestError):
         R.DigestTriple(**kwargs)
@@ -95,7 +98,7 @@ def test_an_incomplete_digest_triple_raises(kwargs, why):
 
 def test_a_record_whose_digest_was_removed_never_reaches_the_disk(tmp_path):
     rec = R.PerformanceRecord(kernel="k", target=TARGET, digest=_DIGEST_STUB)
-    rec.digest = None                                    # simulate a caller stripping it after build
+    rec.digest = None  # simulate a caller stripping it after build
     with pytest.raises(R.MissingDigestError):
         rec.write(tmp_path / "k.json")
     assert not (tmp_path / "k.json").exists()
@@ -133,7 +136,7 @@ def test_overlap_is_unknown_not_zero(records):
         with pytest.raises(UnknownValueError):
             _ = term.value + rec.terms["total_cycles"].value
         with pytest.raises(UnknownValueError):
-            _ = float(term.value or 0)                 # the exact idiom that would publish a zero
+            _ = float(term.value or 0)  # the exact idiom that would publish a zero
         # It is still bounded: the Amdahl cap is derivable even though the value is not.
         assert term.bounds.lower == 0
         assert term.bounds.upper is not UNKNOWN
@@ -250,10 +253,13 @@ def test_peer_model_numbers_are_diagnostics_not_terms(records):
 
 def test_a_term_citing_a_diagnostic_source_is_rejected(records):
     rec = records["matmul"]
-    bad = PerformanceTerm(name="total_cycles_from_the_peer_model",
-                          value=rec.diagnostics["peer_model_cycles"].value, unit="cycles",
-                          provenance=_prov("measured", (R.SRC_PEER_MODEL,)),
-                          validity=_validity())
+    bad = PerformanceTerm(
+        name="total_cycles_from_the_peer_model",
+        value=rec.diagnostics["peer_model_cycles"].value,
+        unit="cycles",
+        provenance=_prov("measured", (R.SRC_PEER_MODEL,)),
+        validity=_validity(),
+    )
     with pytest.raises(R.DiagnosticSourceError):
         rec.add_term(bad)
     assert "total_cycles_from_the_peer_model" not in rec.terms
@@ -308,8 +314,9 @@ def test_an_absent_diagnostic_is_unknown_not_zero(records):
 
 
 def test_a_diagnostic_may_not_be_declared_citable():
-    rec = R.PerformanceRecord(kernel="k", target=TARGET, digest=_DIGEST_STUB,
-                              sources={"s": R.Source(id="s", role=R.CITABLE)})
+    rec = R.PerformanceRecord(
+        kernel="k", target=TARGET, digest=_DIGEST_STUB, sources={"s": R.Source(id="s", role=R.CITABLE)}
+    )
     with pytest.raises(ValueError, match="cannot leak into a term"):
         rec.add_diagnostic(R.Diagnostic(name="d", value=1, unit="cycles", source="s"))
 
@@ -323,7 +330,7 @@ def test_every_kernel_gets_a_schema_valid_record(records):
     assert len(records) == 21
     for kernel, rec in records.items():
         obj = rec.to_dict()
-        R.validate_record(obj)                                   # raises ContractViolation if not
+        R.validate_record(obj)  # raises ContractViolation if not
         assert obj["target"] == TARGET
         assert obj["kernel"] == kernel
         assert obj["digest"]["sources"]
@@ -357,26 +364,48 @@ _OTHER_TARGET_SUITE = {
     "_meta": {"beat_bytes": 16, "pe_side": 8},
     "kernels": {
         "one_tile": {
-            "npu_cycles": 100, "footprint_bytes": 256,
-            "op_stream": [["Q", "push.w", 0], ["S", "stall", 7], ["Q", "mac", 0], ["S", "stall", 40],
-                          ["Q", "pop", 0], ["S", "stall", 7]],
-            "arc": {"truth": 90, "dma_busy": 30, "q": 54, "none": 7, "reads": 8, "writes": 8,
-                    "halt_reason": 1}},
+            "npu_cycles": 100,
+            "footprint_bytes": 256,
+            "op_stream": [
+                ["Q", "push.w", 0],
+                ["S", "stall", 7],
+                ["Q", "mac", 0],
+                ["S", "stall", 40],
+                ["Q", "pop", 0],
+                ["S", "stall", 7],
+            ],
+            "arc": {"truth": 90, "dma_busy": 30, "q": 54, "none": 7, "reads": 8, "writes": 8, "halt_reason": 1},
+        },
         "accumulated": {
-            "npu_cycles": 200, "footprint_bytes": 512,
-            "op_stream": [["Q", "push.w", 0], ["S", "stall", 7], ["Q", "mac", 0], ["S", "stall", 40],
-                          ["Q", "mac.acc", 0], ["S", "stall", 40], ["Q", "pop", 0], ["S", "stall", 7]],
-            "arc": {"truth": 150, "dma_busy": 60, "q": 84, "none": 7, "reads": 16, "writes": 16,
-                    "halt_reason": 1}},
+            "npu_cycles": 200,
+            "footprint_bytes": 512,
+            "op_stream": [
+                ["Q", "push.w", 0],
+                ["S", "stall", 7],
+                ["Q", "mac", 0],
+                ["S", "stall", 40],
+                ["Q", "mac.acc", 0],
+                ["S", "stall", 40],
+                ["Q", "pop", 0],
+                ["S", "stall", 7],
+            ],
+            "arc": {"truth": 150, "dma_busy": 60, "q": 84, "none": 7, "reads": 16, "writes": 16, "halt_reason": 1},
+        },
     },
 }
 
 
 def test_the_same_code_produces_different_correct_answers_on_another_target():
     """A tool that only works where it was written is manual overfitting with extra steps."""
-    recs = {r.kernel: r for r in R.build_records(
-        _OTHER_TARGET_SUITE, target="toy_npu", digest=_DIGEST_STUB,
-        unit_models=[R.UnitModel(bucket="q", family="Q", dim_key="pe_side")])}
+    recs = {
+        r.kernel: r
+        for r in R.build_records(
+            _OTHER_TARGET_SUITE,
+            target="toy_npu",
+            digest=_DIGEST_STUB,
+            unit_models=[R.UnitModel(bucket="q", family="Q", dim_key="pe_side")],
+        )
+    }
 
     # A different geometry gives a different fill (2*8-2 = 14), so a different -- and exact -- answer.
     assert R.fill_cycles("systolic_2d", 8) == 14

@@ -15,6 +15,7 @@ A helper reference is not exercised by importing either module, so this test res
 running self-check does: it reads the attribute names off ``agent_selfcheck``'s own source and requires
 each one to exist on ``qa_check``. Parsed structurally (``partition``/``split``), no regex.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -65,7 +66,8 @@ def test_every_helper_the_selfcheck_calls_exists_on_qa_check():
     missing = sorted(n for n in _referenced_qa_check_helpers() if not hasattr(qc, n))
     assert not missing, (
         f"agent_selfcheck calls qa_check.{missing} which qa_check does not define; the self-check will "
-        f"raise AttributeError after grading and print no verdict JSON at all")
+        f"raise AttributeError after grading and print no verdict JSON at all"
+    )
 
 
 def test_the_execution_digest_bridge_degrades_to_none_rather_than_raising(tmp_path):

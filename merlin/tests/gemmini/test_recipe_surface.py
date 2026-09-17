@@ -22,6 +22,7 @@ The package is driven as a SUBPROCESS, never imported: it is ``integrity_exempt:
 import merlin, and merlin must not import it), and a subprocess is also how the real harness invokes
 it, so the test exercises the delivered path.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -40,7 +41,8 @@ FORK = artifacts_dir() / "targets/gemmini/gemmini_xdsl_recipe_v0/mlir_oot"
 
 pytestmark = pytest.mark.skipif(
     not (FORK / "gemmini_opt.py").exists() or not (FROZEN / "gemmini_opt.py").exists(),
-    reason="the frozen backend and/or its recipe fork are not materialised in this checkout")
+    reason="the frozen backend and/or its recipe fork are not materialised in this checkout",
+)
 
 IFACE = """module attributes {{merlin_iface.version = "0.1", merlin_iface.target = "gemmini", \
 merlin_iface.abi_version = "0.1"}} {{
@@ -64,9 +66,14 @@ def _emit(pkg: Path, mlir: Path, recipe: dict | None) -> str:
     env.pop("MERLIN_CODEGEN_RECIPE", None)
     if recipe is not None:
         env["MERLIN_CODEGEN_RECIPE"] = json.dumps(recipe)
-    r = subprocess.run([sys.executable, "gemmini_opt.py", "--convert-iface-to-gemmini",
-                        "--emit-target-artifact", str(mlir)],
-                       cwd=str(pkg), capture_output=True, text=True, env=env, timeout=600)
+    r = subprocess.run(
+        [sys.executable, "gemmini_opt.py", "--convert-iface-to-gemmini", "--emit-target-artifact", str(mlir)],
+        cwd=str(pkg),
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=600,
+    )
     assert r.returncode == 0, f"emit failed ({recipe}): {r.stderr[-800:]}"
     return r.stdout
 
@@ -84,7 +91,8 @@ def _mvins(artifact: str) -> int:
     the emitter's own table rather than being written down here.
     """
     sys.path.insert(0, str(FORK))
-    from lowering.isa import FUNCT                                    # noqa: PLC0415
+    from lowering.isa import FUNCT  # noqa: PLC0415
+
     want = FUNCT["MVIN"]
     n = 0
     for line in artifact.splitlines():
@@ -115,8 +123,14 @@ def _classes(artifact: str) -> list[str]:
 
 # --------------------------------------------------------------------------- is it the same compiler
 
-CERTIFIED = ["isa/A2_single_tile_matmul", "isa/A3_k_accumulation", "isa/A5_relu_epilogue",
-             "isa/A6_resident_reuse", "isa/A7_edge_padding", "_perf/PK03_k128"]
+CERTIFIED = [
+    "isa/A2_single_tile_matmul",
+    "isa/A3_k_accumulation",
+    "isa/A5_relu_epilogue",
+    "isa/A6_resident_reuse",
+    "isa/A7_edge_padding",
+    "_perf/PK03_k128",
+]
 
 
 @pytest.mark.parametrize("capsule", CERTIFIED)
@@ -131,12 +145,13 @@ def test_default_recipe_emits_the_certified_artifact(capsule: str) -> None:
         pytest.skip(f"{capsule} carries no interface MLIR in this checkout")
     frozen = _emit(FROZEN, mlir, None)
     fork = _emit(FORK, mlir, None)
-    assert hashlib.sha256(fork.encode()).hexdigest() == \
-        hashlib.sha256(frozen.encode()).hexdigest(), (
-        f"{capsule}: the fork's DEFAULT recipe diverged from the certified backend")
+    assert hashlib.sha256(fork.encode()).hexdigest() == hashlib.sha256(frozen.encode()).hexdigest(), (
+        f"{capsule}: the fork's DEFAULT recipe diverged from the certified backend"
+    )
 
 
 # --------------------------------------------------------------------------- are the levers real
+
 
 def test_panel_residency_matches_the_reuse_arithmetic(tmp_path: Path) -> None:
     """64x64x64: activation transfers drop from Mt*Nt*Kt to Mt*Kt; weight transfers are unchanged.
@@ -148,15 +163,15 @@ def test_panel_residency_matches_the_reuse_arithmetic(tmp_path: Path) -> None:
     mt = nt = kt = 4
     per_tile = _mvins(_emit(FORK, mlir, {"activation_residency": "per_tile", "drain": "inline"}))
     panel = _mvins(_emit(FORK, mlir, {"activation_residency": "panel", "drain": "inline"}))
-    assert per_tile == kt * nt + mt * nt * kt      # weights + one activation move per output column
-    assert panel == kt * nt + mt * kt              # weights + one activation panel per row
+    assert per_tile == kt * nt + mt * nt * kt  # weights + one activation move per output column
+    assert panel == kt * nt + mt * kt  # weights + one activation panel per row
     assert panel < per_tile
 
 
 def test_panel_saving_scales_with_the_n_sweep(tmp_path: Path) -> None:
     """The saving is Mt*Kt*(Nt-1) transfers, so it GROWS with N -- which is why the best recipe is
     shape-dependent even though one value happens to win everywhere."""
-    for (m, n, k) in ((16, 512, 256), (64, 64, 64), (32, 32, 32)):
+    for m, n, k in ((16, 512, 256), (64, 64, 64), (32, 32, 32)):
         mt, nt, kt = -(-m // DIM), -(-n // DIM), -(-k // DIM)
         mlir = _shape_mlir(tmp_path, m, n, k)
         per_tile = _mvins(_emit(FORK, mlir, {"activation_residency": "per_tile", "drain": "inline"}))
@@ -177,7 +192,7 @@ def test_single_n_tile_saves_no_transfers(tmp_path: Path) -> None:
     members are m=n=16, i.e. Nt=1, so the saving this recipe exists to buy is exactly zero on every
     certified shape. Any "win" measured there is measuring something else.
     """
-    mlir = _shape_mlir(tmp_path, 16, 16, 128)          # Nt=1, Kt=8
+    mlir = _shape_mlir(tmp_path, 16, 16, 128)  # Nt=1, Kt=8
     a = _emit(FORK, mlir, {"activation_residency": "per_tile", "drain": "inline"})
     b = _emit(FORK, mlir, {"activation_residency": "panel", "drain": "inline"})
     assert _mvins(a) == _mvins(b), "with no N sweep there is no activation reuse to win"
@@ -199,9 +214,11 @@ def test_deferred_drain_reorders_without_changing_the_multiset(tmp_path: Path) -
 
 # --------------------------------------------------------------------------- refusals are named
 
+
 def _recipe_mod():
     sys.path.insert(0, str(FORK / "lowering"))
-    import recipe                                                    # noqa: PLC0415
+    import recipe  # noqa: PLC0415
+
     return recipe
 
 
@@ -235,13 +252,15 @@ def test_the_catalog_reports_legality_per_value_for_a_shape() -> None:
     # break this test for a reason that has nothing to do with what it checks -- while still
     # asserting the catalog is internally consistent about how many points it claims.
     import math
+
     expected = math.prod(len(v) for v in cat["dimensions"].values())
     assert cat["n_total"] == expected, "n_total disagrees with the dimensions it enumerates"
     assert cat["n_legal"] == cat["n_total"], "every point should be legal at a shape that fits"
-    assert cat["n_legal"] >= 15, ("the agentic arm needs a space a 16-evaluation budget cannot "
-                                  "exhaust; below ~15 points a search measures nothing")
-    assert set(cat["dimensions"]) == {"activation_residency", "config_policy", "drain",
-                                      "block_m", "block_n", "block_k"}
+    assert cat["n_legal"] >= 15, (
+        "the agentic arm needs a space a 16-evaluation budget cannot "
+        "exhaust; below ~15 points a search measures nothing"
+    )
+    assert set(cat["dimensions"]) == {"activation_residency", "config_policy", "drain", "block_m", "block_n", "block_k"}
     for entries in cat["dimensions"].values():
         assert sum(1 for e in entries if e["is_default"]) == 1
     # 32x512x512 is past the SINGLE-BLOCK bound: before blocking it had no legal point at all.
@@ -265,8 +284,7 @@ def test_auto_is_identical_to_panel_on_every_expressible_shape(tmp_path: Path) -
     the emitted code, including the Nt=1 shapes where the saving is zero, so a future edit that
     reintroduces a predicate has to justify itself against a failing test.
     """
-    for (m, n, k) in ((32, 32, 32), (64, 64, 64), (16, 512, 256),
-                      (16, 16, 128), (128, 16, 128), (48, 96, 48)):
+    for m, n, k in ((32, 32, 32), (64, 64, 64), (16, 512, 256), (16, 16, 128), (128, 16, 128), (48, 96, 48)):
         mlir = _shape_mlir(tmp_path, m, n, k)
         auto = _emit(FORK, mlir, {"activation_residency": "auto", "drain": "inline"})
         panel = _emit(FORK, mlir, {"activation_residency": "panel", "drain": "inline"})
@@ -282,13 +300,13 @@ def test_past_capacity_defeats_both_residency_values_equally() -> None:
     """
     R = _recipe_mod()
     for arm in ("per_tile", "panel", "auto"):
-        f = R.fit(R.Recipe(activation_residency=arm), m=32, n=512, k=512,
-                  dim=DIM, spad_rows=16384, acc_rows=1024)
+        f = R.fit(R.Recipe(activation_residency=arm), m=32, n=512, k=512, dim=DIM, spad_rows=16384, acc_rows=1024)
         assert not f.ok, f"{arm} unexpectedly fits a shape past the operand-store bound"
         assert "operand store" in f.reason
 
 
 # --------------------------------------------------------------------------- wave B
+
 
 def test_every_residency_value_emits_distinct_code(tmp_path: Path) -> None:
     """Four staging values, four distinct emissions -- no value is a relabelling of another.
@@ -300,8 +318,7 @@ def test_every_residency_value_emits_distinct_code(tmp_path: Path) -> None:
     mlir = _shape_mlir(tmp_path, 64, 64, 64)
     seen: dict[str, str] = {}
     for value in ("per_tile", "panel", "a_prefetch", "prefetch_all"):
-        art = _emit(FORK, mlir, {"activation_residency": value, "config_policy": "per_mvin",
-                                 "drain": "inline"})
+        art = _emit(FORK, mlir, {"activation_residency": value, "config_policy": "per_mvin", "drain": "inline"})
         digest = hashlib.sha256(art.encode()).hexdigest()
         assert digest not in seen.values(), f"{value} emits the same code as {seen}"
         seen[value] = digest
@@ -318,8 +335,7 @@ def test_prefetch_values_move_the_same_tiles_as_panel(tmp_path: Path) -> None:
     mlir = _shape_mlir(tmp_path, 64, 64, 64)
     mt = nt = kt = 4
     for value in ("panel", "a_prefetch", "prefetch_all"):
-        n = _mvins(_emit(FORK, mlir, {"activation_residency": value,
-                                      "config_policy": "per_mvin", "drain": "inline"}))
+        n = _mvins(_emit(FORK, mlir, {"activation_residency": value, "config_policy": "per_mvin", "drain": "inline"}))
         assert n == kt * nt + mt * kt, f"{value} moved {n} tiles, expected {kt * nt + mt * kt}"
 
 
@@ -331,13 +347,12 @@ def test_on_change_config_cuts_configs_without_touching_transfers(tmp_path: Path
     only the redundant re-programming is dropped. So transfer counts must be untouched.
     """
     sys.path.insert(0, str(FORK))
-    from lowering.isa import FUNCT                                    # noqa: PLC0415
+    from lowering.isa import FUNCT  # noqa: PLC0415
+
     mlir = _shape_mlir(tmp_path, 64, 64, 64)
     for residency in ("per_tile", "panel"):
-        base = _emit(FORK, mlir, {"activation_residency": residency,
-                                  "config_policy": "per_mvin", "drain": "inline"})
-        lean = _emit(FORK, mlir, {"activation_residency": residency,
-                                  "config_policy": "on_change", "drain": "inline"})
+        base = _emit(FORK, mlir, {"activation_residency": residency, "config_policy": "per_mvin", "drain": "inline"})
+        lean = _emit(FORK, mlir, {"activation_residency": residency, "config_policy": "on_change", "drain": "inline"})
         assert _mvins(lean) == _mvins(base), "transfers must be untouched"
         cfg_base = sum(1 for c in _classes(base) if c == hex(FUNCT["CONFIG_LD"]))
         cfg_lean = sum(1 for c in _classes(lean) if c == hex(FUNCT["CONFIG_LD"]))
@@ -363,10 +378,12 @@ def _blocks(m: int, n: int, k: int, recipe: dict | None = None):
     return R.blocks(rec, m=m, n=n, k=k, dim=DIM, spad_rows=16384, acc_rows=1024)
 
 
-@pytest.mark.parametrize("m,n,k", [(16, 16, 16), (32, 32, 32), (64, 64, 64), (16, 512, 256),
-                                   (16, 16, 2304), (8, 16, 5632)])
+@pytest.mark.parametrize(
+    "m,n,k", [(16, 16, 16), (32, 32, 32), (64, 64, 64), (16, 512, 256), (16, 16, 2304), (8, 16, 5632)]
+)
 def test_a_shape_that_already_fits_is_one_block_and_is_emitted_unchanged(
-        tmp_path: Path, m: int, n: int, k: int) -> None:
+    tmp_path: Path, m: int, n: int, k: int
+) -> None:
     """Byte-identity under blocking is STRUCTURAL, not a coincidence: a fitting shape yields exactly
     one block and the block body is the frozen nest. Asserting both together is what makes the
     equivalence gate mean 'the same compiler' rather than 'the same output on the cases we tried'."""
@@ -376,11 +393,16 @@ def test_a_shape_that_already_fits_is_one_block_and_is_emitted_unchanged(
     assert _emit(FROZEN, w, None) == _emit(FORK, w, None)
 
 
-@pytest.mark.parametrize("m,n,k", [(64, 12544, 147),      # ResNet-50 conv1, im2col
-                                   (512, 49, 4608),       # ResNet-50 layer4 3x3
-                                   (8, 2048, 2048),       # TinyLlama q_proj
-                                   (8, 32000, 2048),      # TinyLlama lm_head
-                                   (1, 1000, 2048)])      # ResNet-50 classifier, M=1
+@pytest.mark.parametrize(
+    "m,n,k",
+    [
+        (64, 12544, 147),  # ResNet-50 conv1, im2col
+        (512, 49, 4608),  # ResNet-50 layer4 3x3
+        (8, 2048, 2048),  # TinyLlama q_proj
+        (8, 32000, 2048),  # TinyLlama lm_head
+        (1, 1000, 2048),
+    ],
+)  # ResNet-50 classifier, M=1
 def test_every_real_model_shape_becomes_expressible(m: int, n: int, k: int) -> None:
     """The capability claim, stated over the shapes the two claim models actually contain.
 
@@ -388,8 +410,9 @@ def test_every_real_model_shape_becomes_expressible(m: int, n: int, k: int) -> N
     blocking has to deliver is a legal cut for every one of them, derived with no agent involvement.
     """
     R = _recipe_mod()
-    assert not R.fit(R.Recipe(), m=m, n=n, k=k, dim=DIM, spad_rows=16384,
-                     acc_rows=1024).ok, "shape was expected to be inexpressible before blocking"
+    assert not R.fit(R.Recipe(), m=m, n=n, k=k, dim=DIM, spad_rows=16384, acc_rows=1024).ok, (
+        "shape was expected to be inexpressible before blocking"
+    )
     plan = _blocks(m, n, k)
     assert plan.ok, f"{m}x{n}x{k} still has no legal block: {plan.reason}"
     assert plan.derived, "the default must need no chosen value"
@@ -415,13 +438,19 @@ def test_the_store_count_is_invariant_under_blocking(tmp_path: Path) -> None:
     particular must NOT store a partial sum -- the store waits for the last K block.
     """
     sys.path.insert(0, str(FORK))
-    from lowering.isa import FUNCT                                    # noqa: PLC0415
+    from lowering.isa import FUNCT  # noqa: PLC0415
+
     m, n, k = 32, 32, 32
     want = (m // DIM) * (n // DIM)
     w = _shape_mlir(tmp_path, m, n, k)
-    for recipe in (None, {"block_k": "16"}, {"block_n": "16"}, {"block_m": "16"},
-                   {"block_m": "16", "block_n": "16", "block_k": "16"},
-                   {"block_k": "16", "drain": "deferred"}):
+    for recipe in (
+        None,
+        {"block_k": "16"},
+        {"block_n": "16"},
+        {"block_m": "16"},
+        {"block_m": "16", "block_n": "16", "block_k": "16"},
+        {"block_k": "16", "drain": "deferred"},
+    ):
         classes = _classes(_emit(FORK, w, recipe))
         got = sum(1 for c in classes if c.startswith("0x") and int(c, 16) == FUNCT["MVOUT"])
         assert got == want, f"{recipe}: {got} stores, expected {want}"
@@ -439,7 +468,8 @@ def test_a_k_cut_accumulates_onto_the_tile_instead_of_overwriting_it(tmp_path: P
 
     def _fresh_dests(artifact: str) -> int:
         sys.path.insert(0, str(FORK))
-        from lowering.isa import ACC_ACCUMULATE, FUNCT                # noqa: PLC0415
+        from lowering.isa import ACC_ACCUMULATE, FUNCT  # noqa: PLC0415
+
         n_fresh = 0
         for line in artifact.splitlines():
             if "llvm.inline_asm" not in line or ".insn " not in line:
@@ -452,7 +482,8 @@ def test_a_k_cut_accumulates_onto_the_tile_instead_of_overwriting_it(tmp_path: P
     base = _fresh_dests(_emit(FORK, w, None))
     for bk in ("16", "32"):
         assert _fresh_dests(_emit(FORK, w, {"block_k": bk})) == base, (
-            f"block_k={bk} changed the preload count; a K cut must not add or drop reduction steps")
+            f"block_k={bk} changed the preload count; a K cut must not add or drop reduction steps"
+        )
 
 
 def test_an_illegal_block_is_refused_with_the_bound_named() -> None:
@@ -471,7 +502,7 @@ def test_the_derived_block_is_maximal_under_both_bounds() -> None:
     no legal block has more work than the derived one. A heuristic that merely looks reasonable is
     how a 'derived' rule quietly becomes a tuned constant."""
     R = _recipe_mod()
-    for (m, n, k) in [(64, 12544, 147), (512, 49, 4608), (8, 2048, 2048), (16, 512, 256)]:
+    for m, n, k in [(64, 12544, 147), (512, 49, 4608), (8, 2048, 2048), (16, 512, 256)]:
         bm, bn, bk = R.derive_blocks(m, n, k, dim=DIM, spad_rows=16384, acc_rows=1024)
         ceil = lambda x: -(-x // DIM)  # noqa: E731 -- a partial tile still occupies one
         best = ceil(bm) * ceil(bn) * ceil(bk)
@@ -479,8 +510,7 @@ def test_the_derived_block_is_maximal_under_both_bounds() -> None:
             for nt in range(1, min(-(-n // DIM), 64 // mt) + 1):
                 kt = min(-(-k // DIM), 1024 // (mt + nt))
                 if kt >= 1 and R._fits(mt, nt, kt, dim=DIM, spad_rows=16384, acc_rows=1024):
-                    assert mt * nt * kt <= best, (
-                        f"{m}x{n}x{k}: block {mt}x{nt}x{kt} beats the derived {bm}x{bn}x{bk}")
+                    assert mt * nt * kt <= best, f"{m}x{n}x{k}: block {mt}x{nt}x{kt} beats the derived {bm}x{bn}x{bk}"
 
 
 def test_a_fused_pool_refuses_to_be_split_rather_than_pooling_a_partial_image() -> None:

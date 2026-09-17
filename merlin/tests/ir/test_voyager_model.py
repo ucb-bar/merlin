@@ -10,6 +10,7 @@ downsample) compiled by the pinned Voyager compiler. Two oracles:
   Voyager's bufferized graph computed in bf16. The two differ only by the readout's rounding (C1/C5),
   so they must agree closely -- and stop agreeing when the residual or the bias is dropped.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,8 +20,17 @@ import numpy as np
 import pytest
 
 from merlin.baselines.voyager_ir import UnsupportedConstruct, load_model, replay
-from merlin.baselines.voyager_schedule import (DEQUANTIZE_ACC, REQUANTIZE, AccMvin, Geometry, HostOp,
-                                               Mvout, Schedule, execute_model, lower_model)
+from merlin.baselines.voyager_schedule import (
+    DEQUANTIZE_ACC,
+    REQUANTIZE,
+    AccMvin,
+    Geometry,
+    HostOp,
+    Mvout,
+    Schedule,
+    execute_model,
+    lower_model,
+)
 from merlin.common.paths import merlin_dir
 
 FIXTURES = merlin_dir() / "tests" / "data" / "voyager_ir"
@@ -44,7 +54,7 @@ def _random_tensors(trace) -> dict[str, np.ndarray]:
     rng = np.random.default_rng(0)
     tensors = {}
     for box in list(trace.inputs) + list(trace.parameters):
-        lo, hi = (-2**16, 2**16) if box.dtype == "int32" else (-128, 128)
+        lo, hi = (-(2**16), 2**16) if box.dtype == "int32" else (-128, 128)
         tensors[box.node] = rng.integers(lo, hi, size=box.shape, dtype=np.int64)
     return tensors
 
@@ -58,7 +68,7 @@ def _conv(x: np.ndarray, w: np.ndarray, stride: int, pad: int) -> np.ndarray:
     out = np.zeros((x.shape[0], oh, ow, w.shape[3]), dtype=np.int64)
     for fy in range(k):
         for fx in range(k):
-            window = padded[:, fy:fy + stride * oh:stride, fx:fx + stride * ow:stride]
+            window = padded[:, fy : fy + stride * oh : stride, fx : fx + stride * ow : stride]
             out += np.einsum("nhwc,co->nhwo", window, w[fy, fx])
     return out
 
@@ -86,7 +96,7 @@ def _reference(tensors: dict, layers: list, workload: dict) -> np.ndarray:
     y2 = _conv(y1, t["conv2_weight"], 1, 1) + t["conv2_bias"]
     y2 = _scale(np.maximum(y2, 0) if r2["relu"] else y2, r2["scale"], -128, 127)
     acc = _conv(x, t["downsample_0_weight"], s, 0) + t["downsample_0_bias"]
-    acc = acc + _scale(y2, host[REQUANTIZE].attrs["scale"], -2**31, 2**31 - 1)
+    acc = acc + _scale(y2, host[REQUANTIZE].attrs["scale"], -(2**31), 2**31 - 1)
     dq = host[DEQUANTIZE_ACC].attrs
     out = acc.astype(np.float32) * np.float32(dq["scale"])
     out = _bf16(np.maximum(out, np.float32(0)) if dq["relu"] else out)
@@ -103,12 +113,11 @@ def _bottleneck_reference(tensors: dict, layers: list, workload: dict) -> np.nda
     def quantized(values: np.ndarray, r: dict) -> np.ndarray:
         return _scale(np.maximum(values, 0) if r["relu"] else values, r["scale"], -128, 127)
 
-    y1 = quantized(_conv(t["x_preprocess"], t["conv1_weight"], 1, 0) + t["conv1_bias"],
-                   readout["conv1"])
+    y1 = quantized(_conv(t["x_preprocess"], t["conv1_weight"], 1, 0) + t["conv1_bias"], readout["conv1"])
     y2 = quantized(_conv(y1, t["conv2_weight"], s, 1) + t["conv2_bias"], readout["conv2"])
     y3 = quantized(_conv(y2, t["conv3_weight"], 1, 0) + t["conv3_bias"], readout["conv3"])
     acc = _conv(t["x_preprocess"], t["downsample_0_weight"], s, 0) + t["downsample_0_bias"]
-    acc = acc + _scale(y3, host[REQUANTIZE].attrs["scale"], -2**31, 2**31 - 1)
+    acc = acc + _scale(y3, host[REQUANTIZE].attrs["scale"], -(2**31), 2**31 - 1)
     dq = host[DEQUANTIZE_ACC].attrs
     out = acc.astype(np.float32) * np.float32(dq["scale"])
     out = _bf16(np.maximum(out, np.float32(0)) if dq["relu"] else out)
@@ -127,14 +136,16 @@ def test_a_standalone_residual_add_is_renamed_onto_its_k_split_exactly() -> None
     expected = _bottleneck_reference(dict(tensors), layers, workload)
     assert np.array_equal(execute_model(layers, dict(tensors), trace)["permute_default_1"], expected)
     broken = _without(layers, lambda op: not (isinstance(op, AccMvin) and op.role == "residual"))
-    assert not np.array_equal(execute_model(broken, dict(tensors), trace)["permute_default_1"],
-                              expected)
+    assert not np.array_equal(execute_model(broken, dict(tensors), trace)["permute_default_1"], expected)
 
 
 def _without(layers: list, keep) -> list:
-    return [replace(layer, program=replace(layer.program, ops=[op for op in layer.program.ops
-                                                               if keep(op)]))
-            if isinstance(layer.program, Schedule) else layer for layer in layers]
+    return [
+        replace(layer, program=replace(layer.program, ops=[op for op in layer.program.ops if keep(op)]))
+        if isinstance(layer.program, Schedule)
+        else layer
+        for layer in layers
+    ]
 
 
 def test_segmentation_is_one_layer_per_voyager_loop() -> None:
@@ -148,11 +159,15 @@ def test_segmentation_is_one_layer_per_voyager_loop() -> None:
 def test_the_block_lowers_to_three_schedules_and_the_bridge_host_ops() -> None:
     trace, scales, _ = _load(BASIC)
     layers = lower_model(trace, GEOMETRY, scales)
-    shape = [(layer.name, layer.kind if layer.kind != "host" else layer.program.target)
-             for layer in layers]
-    assert shape == [("conv1", "conv"), ("conv2", "conv"), ("downsample_0", REQUANTIZE),
-                     ("downsample_0", "conv"), ("downsample_0", DEQUANTIZE_ACC),
-                     ("downsample_0", "aten::permute")]
+    shape = [(layer.name, layer.kind if layer.kind != "host" else layer.program.target) for layer in layers]
+    assert shape == [
+        ("conv1", "conv"),
+        ("conv2", "conv"),
+        ("downsample_0", REQUANTIZE),
+        ("downsample_0", "conv"),
+        ("downsample_0", DEQUANTIZE_ACC),
+        ("downsample_0", "aten::permute"),
+    ]
     # conv1/conv2 quantize on the store path; the residual layer's output is unquantized, so it is
     # read out raw and dequantized (with the relu) on the host.
     assert [layers[i].readout["out_dtype"] for i in (0, 1, 3)] == ["int8", "int8", "int32"]
@@ -169,14 +184,26 @@ def test_the_lowered_block_is_exact_and_the_oracle_can_fail(name: str) -> None:
     expected = _reference(dict(tensors), layers, workload)
     got = execute_model(layers, dict(tensors), trace)["permute_default_1"]
     assert np.array_equal(got, expected)
-    for broken in (_without(layers, lambda op: not (isinstance(op, AccMvin) and op.role == "residual")),
-                   _without(layers, lambda op: not (isinstance(op, AccMvin) and op.role == "bias")),
-                   [replace(layer, program=replace(layer.program, ops=[
-                       replace(op, relu=not op.relu) if isinstance(op, Mvout) and op.out_dtype == "int8"
-                       else op for op in layer.program.ops]))
-                    if isinstance(layer.program, Schedule) else layer for layer in layers]):
-        assert not np.array_equal(execute_model(broken, dict(tensors), trace)["permute_default_1"],
-                                  expected)
+    for broken in (
+        _without(layers, lambda op: not (isinstance(op, AccMvin) and op.role == "residual")),
+        _without(layers, lambda op: not (isinstance(op, AccMvin) and op.role == "bias")),
+        [
+            replace(
+                layer,
+                program=replace(
+                    layer.program,
+                    ops=[
+                        replace(op, relu=not op.relu) if isinstance(op, Mvout) and op.out_dtype == "int8" else op
+                        for op in layer.program.ops
+                    ],
+                ),
+            )
+            if isinstance(layer.program, Schedule)
+            else layer
+            for layer in layers
+        ],
+    ):
+        assert not np.array_equal(execute_model(broken, dict(tensors), trace)["permute_default_1"], expected)
 
 
 def test_the_split_k_block_accumulates_its_k_parts_in_the_accumulator() -> None:
@@ -184,18 +211,21 @@ def test_the_split_k_block_accumulates_its_k_parts_in_the_accumulator() -> None:
     layers = lower_model(trace, GEOMETRY, scales)
     conv1 = layers[0].program
     assert any("C2" in note for note in conv1.notes)
-    assert layers[0].readout == {"scale": layers[0].readout["scale"], "relu": True,
-                                 "out_dtype": "int8"}
+    assert layers[0].readout == {"scale": layers[0].readout["scale"], "relu": True, "out_dtype": "int8"}
 
 
 def test_a_target_whose_accumulator_loads_scale_needs_no_host_requantization() -> None:
     trace, scales, workload = _load(BASIC)
-    scaled = Geometry(dim=16, spad_rows=16384, spad_row_bytes=16, acc_rows=1024,
-                      scaled_acc_loads=True)
+    scaled = Geometry(dim=16, spad_rows=16384, spad_row_bytes=16, acc_rows=1024, scaled_acc_loads=True)
     layers = lower_model(trace, scaled, scales)
     assert REQUANTIZE not in [layer.program.target for layer in layers if layer.kind == "host"]
-    residual = [op for layer in layers if isinstance(layer.program, Schedule)
-                for op in layer.program.ops if isinstance(op, AccMvin) and op.role == "residual"]
+    residual = [
+        op
+        for layer in layers
+        if isinstance(layer.program, Schedule)
+        for op in layer.program.ops
+        if isinstance(op, AccMvin) and op.role == "residual"
+    ]
     assert residual and {op.scale for op in residual} != {1.0}
     host_path = lower_model(trace, GEOMETRY, scales)
     tensors = _random_tensors(trace)
@@ -218,8 +248,10 @@ def test_voyagers_own_parameters_reproduce_voyagers_own_output() -> None:
     # Measured 0.99997 and 1.0% on this fixture; the thresholds leave room for rounding only.
     cosine, worst = agreement(layers)
     assert cosine >= 0.9999 and worst <= 0.02
-    for broken in (_without(layers, lambda op: not (isinstance(op, AccMvin) and op.role == "residual")),
-                   _without(layers, lambda op: not (isinstance(op, AccMvin) and op.role == "bias"))):
+    for broken in (
+        _without(layers, lambda op: not (isinstance(op, AccMvin) and op.role == "residual")),
+        _without(layers, lambda op: not (isinstance(op, AccMvin) and op.role == "bias")),
+    ):
         cosine, worst = agreement(broken)
         assert cosine < 0.99 and worst > 0.1
     assert all(isinstance(layer.program, (Schedule, HostOp)) for layer in layers)
@@ -234,8 +266,11 @@ def test_an_output_tile_larger_than_the_accumulator_runs_in_passes_exactly() -> 
     whole = execute_model(lower_model(trace, GEOMETRY, scales), dict(tensors), trace)
     small = Geometry(dim=16, spad_rows=16384, spad_row_bytes=16, acc_rows=64)
     layers = lower_model(trace, small, scales)
-    in_passes = [i for i, layer in enumerate(layers) if isinstance(layer.program, Schedule)
-                 and any("passes" in note for note in layer.program.notes)]
+    in_passes = [
+        i
+        for i, layer in enumerate(layers)
+        if isinstance(layer.program, Schedule) and any("passes" in note for note in layer.program.notes)
+    ]
     assert in_passes
     got = execute_model(layers, dict(tensors), trace)
     assert np.array_equal(got["permute_default_1"], whole["permute_default_1"])
@@ -243,7 +278,7 @@ def test_an_output_tile_larger_than_the_accumulator_runs_in_passes_exactly() -> 
     ops = layers[i].program.ops
     last = max(k for k, op in enumerate(ops) if isinstance(op, Mvout))
     broken = list(layers)
-    broken[i] = replace(layers[i], program=replace(layers[i].program, ops=ops[:last] + ops[last + 1:]))
+    broken[i] = replace(layers[i], program=replace(layers[i].program, ops=ops[:last] + ops[last + 1 :]))
     out = layers[i].program.dram_nodes["out"]
     assert not np.array_equal(execute_model(broken, dict(tensors), trace)[out], whole[out])
     tiny = Geometry(dim=16, spad_rows=16384, spad_row_bytes=16, acc_rows=32)

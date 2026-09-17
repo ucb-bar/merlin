@@ -6,6 +6,7 @@ widest tensor it TOUCHED rather than what it writes -- so an op merely reading a
 weight was billed that weight's whole extent. On a 22-layer decoder that read 3,216,234,988 elements
 against a 400,000 budget; charging only evaluated elements reads 43,562,132.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -15,11 +16,11 @@ import pytest
 
 from merlin.common.paths import repo_root
 
-_PKG = (repo_root() / "out/artifacts/perf-bench/gemmini"
-        / "development_automatic_loop_ws_resadd_20260908/compiler")
+_PKG = repo_root() / "out/artifacts/perf-bench/gemmini" / "development_automatic_loop_ws_resadd_20260908/compiler"
 pytestmark = pytest.mark.skipif(
     not (_PKG / "mlir_oot/codegen/host_linalg.py").is_file(),
-    reason="generated gemmini package is not present in this checkout")
+    reason="generated gemmini package is not present in this checkout",
+)
 
 
 def _host_linalg():
@@ -44,6 +45,7 @@ def setup_module(_module) -> None:
 def _eager_transpose(elems, src_shape, perm):
     """What the materialising implementation did: walk the RESULT space and read the source."""
     import itertools
+
     out_shape = [src_shape[p] for p in perm]
     strides = HL._strides(tuple(src_shape))
     out = []
@@ -55,10 +57,19 @@ def _eager_transpose(elems, src_shape, perm):
     return out, tuple(out_shape)
 
 
-@pytest.mark.parametrize("shape,perm", [
-    ((2, 3), [1, 0]), ((3, 2), [1, 0]), ((2, 3, 4), [2, 0, 1]), ((2, 3, 4), [1, 2, 0]),
-    ((4, 1, 5), [0, 2, 1]), ((2, 2, 2, 2), [3, 1, 0, 2]), ((7,), [0]), ((1, 6), [1, 0]),
-])
+@pytest.mark.parametrize(
+    "shape,perm",
+    [
+        ((2, 3), [1, 0]),
+        ((3, 2), [1, 0]),
+        ((2, 3, 4), [2, 0, 1]),
+        ((2, 3, 4), [1, 2, 0]),
+        ((4, 1, 5), [0, 2, 1]),
+        ((2, 2, 2, 2), [3, 1, 0, 2]),
+        ((7,), [0]),
+        ((1, 6), [1, 0]),
+    ],
+)
 def test_lazy_transpose_view_matches_materialising_it(shape, perm) -> None:
     n = 1
     for d in shape:
@@ -86,10 +97,16 @@ def test_repeat_view_is_one_value_over_a_shape() -> None:
 def test_layout_only_ops_are_free_and_agree_with_the_handlers() -> None:
     # Every name here must be handled by a view in the emitter, or the estimate admits a program
     # the emitter cannot finish. The reverse (charged here, free there) refuses compilable models.
-    assert HL._LAYOUT_ONLY_OPS == frozenset({
-        "linalg.transpose", "tensor.expand_shape", "tensor.collapse_shape", "tensor.reshape",
-        "tensor.empty", "tensor.splat",
-    })
+    assert HL._LAYOUT_ONLY_OPS == frozenset(
+        {
+            "linalg.transpose",
+            "tensor.expand_shape",
+            "tensor.collapse_shape",
+            "tensor.reshape",
+            "tensor.empty",
+            "tensor.splat",
+        }
+    )
 
 
 class _Ty:

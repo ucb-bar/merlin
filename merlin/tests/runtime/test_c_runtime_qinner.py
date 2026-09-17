@@ -5,6 +5,7 @@ the two halves of that seam: the table gains a row (and the blob gains the bytes
 arguments `qinner.lift` appends, an absent tensor is refused rather than zero-filled, and a caller
 that only measures a few steps is not forced to embed the whole corpus as C literals.
 """
+
 from __future__ import annotations
 
 import json
@@ -43,25 +44,41 @@ def _bundle(tmp_path, *, with_scale: bool = True, steps: int = 0):
     header = json.dumps({}).encode("utf-8")
     (model / "weights.safetensors").write_bytes(struct.pack("<Q", len(header)) + header)
     (model / "weights.safetensors.manifest.json").write_text(
-        json.dumps({"0": {"kind": "input", "name": "x"}}), encoding="utf-8")
+        json.dumps({"0": {"kind": "input", "name": "x"}}), encoding="utf-8"
+    )
     (model / "input_order.json").write_text(json.dumps({"x": 0}), encoding="utf-8")
     np.savez(model / "inputs.npz", in0=np.ones(4, np.float32))
     extra = {"qinner::fc.tensor_impl.scale": SCALE} if with_scale else {}
     np.savez(model / "extra.npz", **extra)
     if steps:
-        np.savez(model / "session_inputs.npz",
-                 frames=np.arange(steps * 4, dtype=np.float32).reshape(steps, 4))
-        np.savez(model / "session_goldens.npz",
-                 output0=np.zeros((steps, 4), np.float32))
-        (model / "session_contract.yaml").write_text(yaml.safe_dump({
-            "version": 1, "kind": "frames", "paper_ready": False, "stages": ["step"],
-            "inputs": "session_inputs.npz", "states": [],
-            "streams": [{"name": "x", "input_arg": 0, "key": "frames"}],
-            "correctness": {"scope": "trajectory", "golden": "session_goldens.npz",
-                            "key": "output0", "output_index": 0},
-            "quality": {"scope": "trajectory", "golden": "session_goldens.npz",
-                        "key": "output0", "output_index": 0},
-        }), encoding="utf-8")
+        np.savez(model / "session_inputs.npz", frames=np.arange(steps * 4, dtype=np.float32).reshape(steps, 4))
+        np.savez(model / "session_goldens.npz", output0=np.zeros((steps, 4), np.float32))
+        (model / "session_contract.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "version": 1,
+                    "kind": "frames",
+                    "paper_ready": False,
+                    "stages": ["step"],
+                    "inputs": "session_inputs.npz",
+                    "states": [],
+                    "streams": [{"name": "x", "input_arg": 0, "key": "frames"}],
+                    "correctness": {
+                        "scope": "trajectory",
+                        "golden": "session_goldens.npz",
+                        "key": "output0",
+                        "output_index": 0,
+                    },
+                    "quality": {
+                        "scope": "trajectory",
+                        "golden": "session_goldens.npz",
+                        "key": "output0",
+                        "output_index": 0,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
     return model
 
 
@@ -79,7 +96,7 @@ def test_table_and_blob_carry_the_lifted_quant_inner_tensor(tmp_path):
 
     offset = int(rows[1].split(",")[1].strip().rstrip("L"))
     blob = (out / "weights.bin").read_bytes()
-    stored = np.frombuffer(blob[offset:offset + SCALE.nbytes], dtype=np.float32)
+    stored = np.frombuffer(blob[offset : offset + SCALE.nbytes], dtype=np.float32)
     assert np.array_equal(stored, SCALE)
     assert info["weights_bytes"] == len(blob)
 

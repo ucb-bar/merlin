@@ -6,38 +6,44 @@ the RTL oracle, and were reported as numeric mismatches whose counts could not r
 
 from __future__ import annotations
 
-from merlin.targetgen.output_reachability import (declared_outputs, output_reachability_findings,
-                                                 unwritten_outputs)
+from merlin.targetgen.output_reachability import declared_outputs, output_reachability_findings, unwritten_outputs
 
 
 def _cb(commands, tensors=None):
-    return {"abi_version": "0.1", "target": "t",
-            "tensors": tensors or {"A": {"role": "input"}, "B": {"role": "input"},
-                                   "Y0": {"role": "output"}},
-            "commands": commands}
+    return {
+        "abi_version": "0.1",
+        "target": "t",
+        "tensors": tensors or {"A": {"role": "input"}, "B": {"role": "input"}, "Y0": {"role": "output"}},
+        "commands": commands,
+    }
 
 
 def test_the_measured_af6_buffer_is_caught():
     """The exact shape that cost seven rounds: one compute command, no store."""
-    cb = _cb([{"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y0"},
-               "attributes": {"op": "add"}}])
+    cb = _cb([{"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y0"}, "attributes": {"op": "add"}}])
     # AF6 DID name dst=Y0 -- so reachability alone does not flag it; that is honest and important.
     assert output_reachability_findings(cb) == []
 
 
 def test_a_buffer_that_names_no_destination_is_flagged():
-    cb = _cb([{"opcode": "VREDUCE", "operands": {"src": "X"}, "attributes": {"op": "sum"}}],
-             tensors={"X": {"role": "input"}, "Y0": {"role": "output"}})
+    cb = _cb(
+        [{"opcode": "VREDUCE", "operands": {"src": "X"}, "attributes": {"op": "sum"}}],
+        tensors={"X": {"role": "input"}, "Y0": {"role": "output"}},
+    )
     f = output_reachability_findings(cb)
     assert len(f) == 1 and "Y0" in f[0]
     assert "untouched fill" in f[0]
 
 
 def test_a_resident_matmul_chain_passes():
-    cb = _cb([{"opcode": "RES_PACK", "operands": {"src": "B", "dst": "B_res"}},
-              {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A", "rhs": "B_res", "dst": "acc0"}},
-              {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"}},
-              {"opcode": "EVICT", "operands": {"handle": "B_res"}}])
+    cb = _cb(
+        [
+            {"opcode": "RES_PACK", "operands": {"src": "B", "dst": "B_res"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A", "rhs": "B_res", "dst": "acc0"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"}},
+            {"opcode": "EVICT", "operands": {"handle": "B_res"}},
+        ]
+    )
     assert output_reachability_findings(cb) == []
 
 
@@ -60,8 +66,7 @@ def test_unknown_destination_key_is_indeterminate_not_a_failure():
 
 
 def test_no_declared_outputs_is_not_this_checks_business():
-    assert output_reachability_findings(_cb([{"opcode": "X", "operands": {}}],
-                                            tensors={"A": {"role": "input"}})) == []
+    assert output_reachability_findings(_cb([{"opcode": "X", "operands": {}}], tensors={"A": {"role": "input"}})) == []
 
 
 def test_helpers():
@@ -72,6 +77,10 @@ def test_helpers():
 
 
 def test_malformed_input_does_not_raise():
-    for bad in ({}, {"tensors": None}, {"tensors": {"Y0": {"role": "output"}}, "commands": None},
-                {"tensors": {"Y0": {"role": "output"}}, "commands": [None, 3, "x"]}):
-        output_reachability_findings(bad)          # must not raise
+    for bad in (
+        {},
+        {"tensors": None},
+        {"tensors": {"Y0": {"role": "output"}}, "commands": None},
+        {"tensors": {"Y0": {"role": "output"}}, "commands": [None, 3, "x"]},
+    ):
+        output_reachability_findings(bad)  # must not raise

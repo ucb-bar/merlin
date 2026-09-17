@@ -16,6 +16,7 @@ What separates the two is read from the buffer itself: a FLOAT-declared output c
 graded against a golden the integer engine recomputed, so for that buffer -- and only that one --
 ``link_elf`` embeds the recorded operands.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -43,13 +44,15 @@ class _Rendered(Exception):
 def _link(cb, monkeypatch, tmp_path, *, inputs=None):
     rec = _Recorder()
     from merlin.runtime.backends import base
+
     monkeypatch.setattr(base, "harness_renderer", lambda target: rec)
-    monkeypatch.setattr(base, "harness_build_recipe",
-                        lambda target: SimpleNamespace(load_address=0, link_script=None,
-                                                       support_sources=(), error_cls=RuntimeError))
+    monkeypatch.setattr(
+        base,
+        "harness_build_recipe",
+        lambda target: SimpleNamespace(load_address=0, link_script=None, support_sources=(), error_cls=RuntimeError),
+    )
     with pytest.raises(_Rendered):
-        contract_compile.link_elf(cb, tmp_path / "kernel.o", tmp_path, target="synthetic",
-                                  inputs=inputs)
+        contract_compile.link_elf(cb, tmp_path / "kernel.o", tmp_path, target="synthetic", inputs=inputs)
     return rec.inputs
 
 
@@ -58,9 +61,16 @@ RECORDED = {"arg0": {"shape": [2, 2], "values": VALUES["arg0"]}}
 
 
 def _cb(out_dtype: str, **extra) -> dict:
-    return dict({"tensors": {"arg0": {"shape": [2, 2], "dtype": "f32", "role": "input"},
-                             "Y0": {"shape": [2, 2], "dtype": out_dtype, "role": "output"}},
-                 "commands": []}, **extra)
+    return dict(
+        {
+            "tensors": {
+                "arg0": {"shape": [2, 2], "dtype": "f32", "role": "input"},
+                "Y0": {"shape": [2, 2], "dtype": out_dtype, "role": "output"},
+            },
+            "commands": [],
+        },
+        **extra,
+    )
 
 
 def test_a_float_graded_buffer_runs_on_the_recorded_operands(monkeypatch, tmp_path):
@@ -118,6 +128,7 @@ def test_gs0_records_operands_that_are_not_its_materialized_ones():
     described in a comment: GS0's golden is recomputed on the integer engine, and the operands its
     golden.yaml records are NOT the ones that recompute uses."""
     import yaml
+
     from merlin.common.paths import merlin_dir
     from merlin.targetgen import capsule_golden as cg
 
@@ -130,5 +141,8 @@ def test_gs0_records_operands_that_are_not_its_materialized_ones():
     recorded = cg.canonical_input_values(capsule, d)
     assert recorded, "GS0 does record operands — which is what makes it the hazard"
     materialized = cg.materialize_capsule_leaves(capsule)
-    assert any(list(materialized[name].data) != [int(v) for v in spec["values"]]
-               for name, spec in recorded.items() if name in materialized)
+    assert any(
+        list(materialized[name].data) != [int(v) for v in spec["values"]]
+        for name, spec in recorded.items()
+        if name in materialized
+    )

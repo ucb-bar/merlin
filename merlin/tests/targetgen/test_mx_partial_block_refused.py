@@ -15,6 +15,7 @@ ignores the same tail and fails one that does not. No capsule on disk trips this
 non-aligned MX capsule cannot be minted at all. Supporting one means scaling a partial final group in the
 reference, never relaxing these checks.
 """
+
 from __future__ import annotations
 
 import sys
@@ -38,7 +39,7 @@ def gen():
 def mx(gen):
     try:
         return gen._mx_ref()
-    except Exception as e:                                  # noqa: BLE001 — mlc not present in this env
+    except Exception as e:  # noqa: BLE001 — mlc not present in this env
         pytest.skip(f"MX reference unavailable: {type(e).__name__}: {e}")
 
 
@@ -80,9 +81,16 @@ def test_flash_reference_refuses_a_partial_key_block(mx):
 
     Skv = int(mx.GROUP) + 1
     with pytest.raises(ValueError) as ei:
-        MFR.flash_attention_fp8(mx, np.zeros((4, Skv)), np.zeros((Skv, 16)),
-                                np.zeros((max(1, Skv // int(mx.GROUP)), 16), dtype=np.uint8),
-                                M=4, Skv=Skv, Dv=16, att_scale=1.0)
+        MFR.flash_attention_fp8(
+            mx,
+            np.zeros((4, Skv)),
+            np.zeros((Skv, 16)),
+            np.zeros((max(1, Skv // int(mx.GROUP)), 16), dtype=np.uint8),
+            M=4,
+            Skv=Skv,
+            Dv=16,
+            att_scale=1.0,
+        )
     assert str(mx.GROUP) in str(ei.value)
 
 
@@ -100,7 +108,7 @@ def test_every_mx_capsule_on_disk_has_a_whole_group_K():
     for p in caps.rglob("capsule.yaml"):
         try:
             c = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        except Exception:                                   # noqa: BLE001
+        except Exception:  # noqa: BLE001
             continue
         ins = {i.get("name"): (i.get("shape") or []) for i in (c.get("inputs") or [])}
         # BLOCK-SCALED IS A PROPERTY OF THE CAPSULE, not of a dtype token, and the capsule declares it:

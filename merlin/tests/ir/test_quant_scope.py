@@ -1,8 +1,12 @@
 """Captured quantization reach is derived from quant IR, not framework/model names."""
 
 from merlin.llvmlower import impr_features as F
-from merlin.llvmlower.quant_scope import (FEATURE, captured_quantized_contraction,
-                                          ensure_registered, traces_to_prequantized)
+from merlin.llvmlower.quant_scope import (
+    FEATURE,
+    captured_quantized_contraction,
+    ensure_registered,
+    traces_to_prequantized,
+)
 
 
 class _Op:
@@ -45,8 +49,7 @@ def test_only_input_operands_can_admit_a_contraction():
     quant_weight = _value("quant_ext.dequantize_per_channel", _Value())
     init_that_looks_quantized = quant_weight
     assert captured_quantized_contraction(_Op("linalg.matmul", [plain_a, quant_weight, _Value()]))
-    assert not captured_quantized_contraction(
-        _Op("linalg.matmul", [plain_a, plain_b, init_that_looks_quantized]))
+    assert not captured_quantized_contraction(_Op("linalg.matmul", [plain_a, plain_b, init_that_looks_quantized]))
 
 
 def test_feature_is_registered_as_a_default_off_policy_request():

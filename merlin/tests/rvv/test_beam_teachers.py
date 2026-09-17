@@ -11,6 +11,7 @@ These tests pin the seam (``run_beam(compare_fn=...)``) and, on the real harvest
 consulting every teacher strictly WIDENS what the beam sees. The widening is the whole point: a seam
 that were inert here would be a seam that changed nothing about what the search can find.
 """
+
 from pathlib import Path
 
 import pytest
@@ -31,8 +32,7 @@ def _run_with_ours(tmp_path: Path, fixture: str = "ours_baseline_matmul.objdump"
 
 def test_compare_fn_replaces_the_single_expert_diff(tmp_path):
     run = _run_with_ours(tmp_path)
-    expert = cca.CCA(op="matmul", backend=["rvv"],
-                     compute=cca.ComputeFacet(op="matmul", contraction_form="fused_fma"))
+    expert = cca.CCA(op="matmul", backend=["rvv"], compute=cca.ComputeFacet(op="matmul", contraction_form="fused_fma"))
     seen = {}
 
     def _cmp(ours):
@@ -47,8 +47,9 @@ def test_compare_fn_is_not_consulted_when_there_is_no_objdump(tmp_path):
     """Fail closed the same way the single-expert path does: no emitted code, no divergences. A
     compare_fn that ran here would be diffing against nothing and returning confident gaps."""
     calls = []
-    out = _cca_divergences(tmp_path / "absent", None, {"op": "matmul"},
-                           compare_fn=lambda ours: calls.append(ours) or ["x"])
+    out = _cca_divergences(
+        tmp_path / "absent", None, {"op": "matmul"}, compare_fn=lambda ours: calls.append(ours) or ["x"]
+    )
     assert out == [] and calls == []
 
 
@@ -69,9 +70,12 @@ def test_teachers_widen_what_the_beam_sees_on_the_real_fixtures(tmp_path):
 
     single = {d.axis for d in _cca_divergences(run, matmul_expert, {"op": "matmul"})}
     audit = []
-    every = {d.axis for d in _cca_divergences(
-        run, matmul_expert, {"op": "matmul"},
-        compare_fn=teacher_compare_fn(dtype="f32", record=audit))}
+    every = {
+        d.axis
+        for d in _cca_divergences(
+            run, matmul_expert, {"op": "matmul"}, compare_fn=teacher_compare_fn(dtype="f32", record=audit)
+        )
+    }
 
     assert single <= every, f"a teacher set must never LOSE an axis; dropped {sorted(single - every)}"
     assert every - single, "consulting every teacher found nothing new -- the seam is inert"
@@ -83,13 +87,12 @@ def test_teachers_widen_what_the_beam_sees_on_the_real_fixtures(tmp_path):
 
 
 def test_the_axes_no_teacher_can_answer_are_reported_not_dropped(tmp_path):
-    """"The search found no divergence here" is only honest alongside the axes nobody could judge."""
+    """ "The search found no divergence here" is only honest alongside the axes nobody could judge."""
     from merlin.mining.wholemodel_proposer import teacher_compare_fn
 
     run = _run_with_ours(tmp_path)
     audit = []
-    _cca_divergences(run, None, {"op": "matmul"},
-                     compare_fn=teacher_compare_fn(dtype="f32", record=audit))
+    _cca_divergences(run, None, {"op": "matmul"}, compare_fn=teacher_compare_fn(dtype="f32", record=audit))
     assert audit and "unanswered_axes" in audit[0]
     assert isinstance(audit[0]["unanswered_axes"], list)
     assert audit[0]["dtype"] == "fp32", "the caller's spelling must be normalised, not rejected"
@@ -104,14 +107,26 @@ def test_a_dtype_with_no_fixture_yields_no_teacher_rather_than_the_wrong_one(tmp
     assert expert_family_cca("matmul", dtype="bf16") is None
 
 
-@pytest.mark.parametrize("spelling,expected", [
-    ("f32", "fp32"), ("fp32", "fp32"), ("float32", "fp32"),
-    ("i8", "int8"), ("int8", "int8"), ("qd8", "int8"),
-    ("f16", "fp16"), ("half", "fp16"),
-    ("bf16", None), ("", None), (None, None), ("nonsense", None),
-])
+@pytest.mark.parametrize(
+    "spelling,expected",
+    [
+        ("f32", "fp32"),
+        ("fp32", "fp32"),
+        ("float32", "fp32"),
+        ("i8", "int8"),
+        ("int8", "int8"),
+        ("qd8", "int8"),
+        ("f16", "fp16"),
+        ("half", "fp16"),
+        ("bf16", None),
+        ("", None),
+        (None, None),
+        ("nonsense", None),
+    ],
+)
 def test_dtype_spellings_normalise_or_fail_closed(spelling, expected):
     from merlin.mining.wholemodel_proposer import canonical_dtype
+
     assert canonical_dtype(spelling) == expected
 
 
@@ -119,6 +134,7 @@ def test_every_dtype_alias_names_a_live_fixture_key():
     """A guard on the alias table itself: an alias pointing at a key no fixture table has would
     silently mean 'no expert' for a dtype the caller believes is supported."""
     from merlin.mining import wholemodel_proposer as wp
+
     for spelling in wp._DTYPE_ALIASES:
         assert wp.canonical_dtype(spelling) is not None
 
@@ -142,15 +158,27 @@ def test_instrumented_beam_with_teachers_records_the_audit_and_forks_more(tmp_pa
         (gen / "objdump.txt").write_text(ours_objd)
         pkg = load_rvv_package(package_dir)
         n = pkg.op_match[0]["vector"][-2] if pkg.op_match else 8
-        return {"correctness": {"gate_ok": True},
-                "measurement": [{"target": "k1", "cycle_accurate": False,
-                                 "cycles": 4_000_000 // n, "wall_ns": 900_000 // n}]}
+        return {
+            "correctness": {"gate_ok": True},
+            "measurement": [
+                {"target": "k1", "cycle_accurate": False, "cycles": 4_000_000 // n, "wall_ns": 900_000 // n}
+            ],
+        }
 
     def _run(teachers):
         return run_instrumented_beam(
-            seed_pkg=str(hand_v0), model_dir=tmp_path / "wl", expert_objdump=expert_objd,
-            op="matmul", dtype="f32", targets=("k1",), width=3, depth=1, top_k=1,
-            certify_fn=mock_certify, teachers=teachers)
+            seed_pkg=str(hand_v0),
+            model_dir=tmp_path / "wl",
+            expert_objdump=expert_objd,
+            op="matmul",
+            dtype="f32",
+            targets=("k1",),
+            width=3,
+            depth=1,
+            top_k=1,
+            certify_fn=mock_certify,
+            teachers=teachers,
+        )
 
     single, every = _run(None), _run("all")
 
@@ -166,8 +194,9 @@ def test_instrumented_beam_with_teachers_records_the_audit_and_forks_more(tmp_pa
         return {n.get("lever") for n in res.get("nodes", [])} - {"seed", None}
 
     assert _levers(every) >= _levers(single), "teachers must never lose a lever the single expert found"
-    assert len(every.get("nodes", [])) >= len(single.get("nodes", [])), \
+    assert len(every.get("nodes", [])) >= len(single.get("nodes", [])), (
         "more answerable axes must not yield fewer explored forks"
+    )
 
 
 def test_teachers_on_a_dtype_with_no_fixtures_refuses_instead_of_silently_single_expert(tmp_path, monkeypatch):
@@ -178,12 +207,17 @@ def test_teachers_on_a_dtype_with_no_fixtures_refuses_instead_of_silently_single
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
     with pytest.raises(SystemExit, match="harvested fixtures"):
         run_instrumented_beam(
-            seed_pkg="unused", model_dir=tmp_path / "wl",
+            seed_pkg="unused",
+            model_dir=tmp_path / "wl",
             expert_objdump=_FIXTURES / "xnnpack_f32_gemm_rvv.objdump",
-            op="matmul", dtype="bf16", teachers="all")
+            op="matmul",
+            dtype="bf16",
+            teachers="all",
+        )
 
 
 # --------------------------------------------------------------------------- the CLI wiring itself
+
 
 def test_every_flag_main_passes_is_a_parameter_run_instrumented_beam_accepts():
     """A structural guard on the CLI seam, not a behaviour test.
@@ -201,24 +235,27 @@ def test_every_flag_main_passes_is_a_parameter_run_instrumented_beam_accepts():
 
     src = inspect.getsource(beam_cli.main)
     tree = ast.parse(src.lstrip())
-    call = next(n for n in ast.walk(tree)
-                if isinstance(n, ast.Call)
-                and getattr(n.func, "id", None) == "run_instrumented_beam")
+    call = next(
+        n for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "run_instrumented_beam"
+    )
     passed = {kw.arg for kw in call.keywords if kw.arg}
     accepted = set(inspect.signature(beam_cli.run_instrumented_beam).parameters)
     missing = sorted(passed - accepted)
     assert not missing, (
         f"main() passes {missing} which run_instrumented_beam() does not accept -- this is a "
-        f"TypeError on the next real run")
+        f"TypeError on the next real run"
+    )
 
 
 def test_the_pass_slot_flag_defaults_to_off():
     """A slot turn costs an agent and a build, so the ladder must never enter it implicitly."""
-    from merlin.mining.beam_cli import main
     import argparse
     import inspect
+
+    from merlin.mining.beam_cli import main
 
     src = inspect.getsource(main)
     assert '"--pass-slot-turns"' in src or "'--pass-slot-turns'" in src
     import merlin.mining.beam_cli as bc
+
     assert inspect.signature(bc.run_instrumented_beam).parameters["pass_slot_turns"].default == 0

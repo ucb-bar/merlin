@@ -8,13 +8,15 @@ elementwise path and masking the defect. A whole-model capstone in the same corp
 The gate is corpus-wide and target-agnostic: every graded capsule must REJECT the answers a kernel can
 produce without computing.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
 from merlin.common.paths import repo_root
-from merlin.targetgen import capsule_common, numeric_falsifiability as NF
+from merlin.targetgen import capsule_common
+from merlin.targetgen import numeric_falsifiability as NF
 
 CAPSULES = repo_root() / "merlin/contract/capsules"
 
@@ -23,7 +25,7 @@ def _all_capsules():
     for p in sorted(CAPSULES.rglob("capsule.yaml")):
         try:
             yield p.parent, capsule_common.load_capsule(p.parent)
-        except Exception:                                # a corpus-loading bug is another gate's business
+        except Exception:  # a corpus-loading bug is another gate's business
             continue
 
 
@@ -31,11 +33,14 @@ def test_no_capsule_accepts_an_answer_that_computes_nothing():
     offenders = []
     for cd, cap in _all_capsules():
         for r in NF.audit_capsule(cap, cd):
-            offenders.append(f"{cd.name}/{r['output']} accepts '{r['answer']}' "
-                             f"(atol={r['atol']} vs golden range {r['range'][0]:.4g}..{r['range'][1]:.4g})")
+            offenders.append(
+                f"{cd.name}/{r['output']} accepts '{r['answer']}' "
+                f"(atol={r['atol']} vs golden range {r['range'][0]:.4g}..{r['range'][1]:.4g})"
+            )
     assert not offenders, (
         "these capsules pass without the kernel computing anything; tighten atol below the "
-        "falsifiability ceiling (numeric_falsifiability.max_falsifiable_atol):\n  " + "\n  ".join(offenders))
+        "falsifiability ceiling (numeric_falsifiability.max_falsifiable_atol):\n  " + "\n  ".join(offenders)
+    )
 
 
 def test_the_gate_is_not_vacuous_it_catches_a_loose_tolerance():
@@ -75,6 +80,7 @@ class _FakeDir:
 @pytest.fixture(autouse=True)
 def _golden_from_fake(monkeypatch):
     from merlin.targetgen import capsule_golden
+
     real = capsule_golden.golden
 
     def stub(capsule, capsule_dir=None):
@@ -89,6 +95,7 @@ def _golden_from_fake(monkeypatch):
 # A profile declares ONE absolute tolerance for a whole target. That is the right shape for a datapath
 # error budget and the wrong shape for a small-magnitude output: measured, a softmax capsule whose golden
 # spans 0.0139..0.1523 was graded at `atol: 0.25`, so zeros, the mean and the midrange all passed it.
+
 
 def test_a_tolerance_below_the_ceiling_is_left_exactly_alone():
     """The rule only fires on a vacuous policy. Tightening a sound one would reject correct submissions."""
@@ -109,6 +116,7 @@ def test_a_vacuous_tolerance_is_replaced_by_the_profiles_own_relative_one():
     assert prov["declared_atol"] == 0.25
     # and the constants that used to pass no longer do
     import numpy as np
+
     exp = np.asarray(golden, dtype=np.float64)
     for name, ans in NF.degenerate_answers(exp).items():
         assert not NF._accepts(ans, exp, out["atol"], out["rtol"]), f"{name} still passes"
@@ -128,6 +136,5 @@ def test_an_exact_integer_policy_is_not_applicable():
 
 def test_a_ragged_golden_is_skipped_rather_than_crashing_the_pass():
     """A gate that dies finds nothing. One unsizeable output must not take the whole corpus check down."""
-    out, prov = NF.falsifiable_policy({"atol": 0.25, "rtol": 0.02},
-                                      {"Y0": [[1.0, 2.0], [3.0]], "Y1": [0.0, 1.0]})
+    out, prov = NF.falsifiable_policy({"atol": 0.25, "rtol": 0.02}, {"Y0": [[1.0, 2.0], [3.0]], "Y1": [0.0, 1.0]})
     assert prov["status"] == "ok"

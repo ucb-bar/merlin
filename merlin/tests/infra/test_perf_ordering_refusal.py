@@ -12,6 +12,7 @@ Two separate failures live here, and both shipped:
   any of them as a ranker would be worse than exposing nothing, because a signal below chance is
   followed. This pins the refusal so a later change has to face the numbers rather than a memory.
 """
+
 from __future__ import annotations
 
 import sys
@@ -35,14 +36,16 @@ def test_no_recorded_signal_beats_chance():
         beats_chance = rate > rank_validation.CHANCE
         assert (not beats_chance) or decided < 40 or "backwards" in why, (
             f"{signal} records {rate:.3f} over {decided} decided pair(s), which beats chance with "
-            f"enough evidence -- it must then be exposed rather than refused, or the record is stale")
+            f"enough evidence -- it must then be exposed rather than refused, or the record is stale"
+        )
 
 
 def test_the_action_refuses_to_order_and_says_so_with_numbers():
     assert PAS.ORDERING_REFUSED.startswith("refused")
     evidence = PAS.ORDERING_EVIDENCE
     assert evidence["held_out_pairs"] > 0 and evidence["held_out_workloads"] > 1, (
-        "a refusal measured on one workload is not a refusal that generalises")
+        "a refusal measured on one workload is not a refusal that generalises"
+    )
     assert evidence["artifact"].endswith(".json")
 
 
@@ -50,11 +53,13 @@ def test_the_registry_description_promises_only_what_is_returned():
     """It must not name a verdict the action stopped returning."""
     source = (_SCRIPTS / "perf_agent_stage.py").read_text(encoding="utf-8")
     start = source.index("ANALYSIS_ACTION, (_HOST_ANALYSIS_SENTINEL")
-    description = source[start:start + 900]
+    description = source[start : start + 900]
     assert "differential verdict" not in description, (
-        "the differential was removed and returns not_attempted; the description must not promise it")
+        "the differential was removed and returns not_attempted; the description must not promise it"
+    )
     assert "cannot certify" in description or "never certify" in description, (
-        "a screen that may only eliminate has to say so where the agent reads it")
+        "a screen that may only eliminate has to say so where the agent reads it"
+    )
 
 
 def test_the_prompt_documents_the_free_action_and_its_limit():
@@ -62,7 +67,8 @@ def test_the_prompt_documents_the_free_action_and_its_limit():
     assert PAS.ANALYSIS_ACTION in source, "the prompt never mentions the free screening action"
     assert "no oracle time" in source, "the agent must be told the screen is free, or it will not use it"
     assert "never certify" in source, (
-        "the screen may eliminate and may never certify; the prompt has to carry the asymmetry")
+        "the screen may eliminate and may never certify; the prompt has to carry the asymmetry"
+    )
 
 
 def test_every_verdict_the_harness_can_emit_is_explained_to_the_agent():

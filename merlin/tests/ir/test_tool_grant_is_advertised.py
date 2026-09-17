@@ -11,6 +11,7 @@ arm): the compiler-verification seam" — while `ToolSpec.blurb`, which carries 
 exit-code contract, was rendered nowhere. The arm's single treatment was bound into the sandbox and
 unadvertised.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -26,22 +27,23 @@ def test_a_granted_tools_blurb_reaches_the_agent_facing_doc():
         pytest.skip("verify_seam is not registered in this checkout")
 
     doc = _allowed_merlin_tools_doc(
-        {"bundle_id": "b", "arm": "merlin_verify", "allowed": [], "denied": [], "tools": [name]})
+        {"bundle_id": "b", "arm": "merlin_verify", "allowed": [], "denied": [], "tools": [name]}
+    )
     assert name in doc, "the doc does not name the granted tool"
     assert spec.blurb.split(".")[0] in doc, (
         "the tool's blurb — what it answers and how to invoke it — is not in the agent-facing doc; "
-        "the arm's treatment would be unadvertised and a null result uninterpretable")
+        "the arm's treatment would be unadvertised and a null result uninterpretable"
+    )
 
 
 def test_the_manifest_records_which_tools_it_granted():
     """tools.txt and the manifest must not be two half-descriptions of the same grant."""
     from merlin.targetgen.generate_bundles import _allowed_merlin_tools_doc
 
-    doc = _allowed_merlin_tools_doc(
-        {"bundle_id": "b", "arm": "a", "allowed": [], "denied": [], "tools": []})
+    doc = _allowed_merlin_tools_doc({"bundle_id": "b", "arm": "a", "allowed": [], "denied": [], "tools": []})
     assert "predates tool recording" in doc, (
-        "a manifest with no tools list must say so, not render an empty section that reads as "
-        "'this arm grants nothing'")
+        "a manifest with no tools list must say so, not render an empty section that reads as 'this arm grants nothing'"
+    )
 
 
 def test_every_tool_blurb_names_an_invocation_that_exists():
@@ -63,4 +65,5 @@ def test_every_tool_blurb_names_an_invocation_that_exists():
             if shutil.which(script) is None:
                 pytest.fail(
                     f"tool {name!r} tells the agent to run {script!r}, which is not on PATH in this "
-                    f"environment. Use `python -m <module>` instead, or install the console scripts.")
+                    f"environment. Use `python -m <module>` instead, or install the console scripts."
+                )

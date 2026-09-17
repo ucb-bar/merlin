@@ -18,6 +18,7 @@ if the contract admits a capsule's (family, dtype) then the accelerator can take
 capsule declining to demand it owes a `not_asserted_reason`. On a cell the contract does NOT admit,
 `must_accelerate: false` is the correct answer and demanding otherwise would be the bug.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -43,7 +44,8 @@ def test_the_gate_examines_a_real_population():
     rep = gate.audit()
     assert rep["n_admitted_capsules_checked"] > 50, (
         f"only {rep['n_admitted_capsules_checked']} capsules sit on an admitted cell; this test "
-        f"established almost nothing")
+        f"established almost nothing"
+    )
 
 
 def test_every_reported_capsule_really_declines_admitted_work():
@@ -60,7 +62,8 @@ def test_every_reported_capsule_really_declines_admitted_work():
         dtypes = {CF.capsule_dtype(str(x)) for x in (adm.get(row["family"]) or ())}
         assert row["dtype"] in dtypes, (
             f"{row['capsule']} was reported, but {row['family']}/{row['dtype']} is NOT admitted on "
-            f"{row['target']} (admits {sorted(dtypes)}) -- a fallback is correct there")
+            f"{row['target']} (admits {sorted(dtypes)}) -- a fallback is correct there"
+        )
         assert row["must_accelerate"] is not True
 
 
@@ -73,6 +76,7 @@ def test_a_stated_reason_excuses_the_decline():
     import yaml
 
     from merlin.common.paths import merlin_dir
+
     excused = 0
     for cy in (merlin_dir() / "contract" / "capsules").rglob("capsule.yaml"):
         try:
@@ -84,8 +88,7 @@ def test_a_stated_reason_excuses_the_decline():
             continue
         if doc.get("not_asserted_reason") or sem.get("not_asserted_reason"):
             excused += 1
-            assert cy.parent.name not in reported, (
-                f"{cy.parent.name} states a reason and must not be reported")
+            assert cy.parent.name not in reported, f"{cy.parent.name} states a reason and must not be reported"
     if not excused:
         pytest.skip("no capsule currently states a not_asserted_reason")
 
@@ -115,14 +118,18 @@ def test_an_unresolvable_target_establishes_nothing():
     rep = gate.audit()
     assert isinstance(rep["unresolved_targets"], dict)
     if rep["unresolved_targets"]:
-        assert gate.main([]) == 2      # by default, not behind a flag
+        assert gate.main([]) == 2  # by default, not behind a flag
     # And the six corpus CATEGORIES (`isa`, `hidden`, `model`, ...) must never appear here: they are
     # not targets, and reading them as such put a sixth of the corpus in this bucket.
     import yaml
 
     from merlin.common.paths import merlin_dir
-    categories = {d.name for d in (merlin_dir() / "contract" / "capsules").iterdir()
-                  if d.is_dir() and not (d / "capsule.yaml").exists()}
+
+    categories = {
+        d.name
+        for d in (merlin_dir() / "contract" / "capsules").iterdir()
+        if d.is_dir() and not (d / "capsule.yaml").exists()
+    }
     declared = set()
     tdir = repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets"
     for desc in tdir.glob("*/target_experiment.yaml"):

@@ -14,6 +14,7 @@ the shipped ISA files.
 Found on introduction: five ops in that state, plus a sixth caught in the act -- `bias_add` was added
 to the parser and to `interface_grammar.md` in one change and to the ABI only after this gate existed.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -35,8 +36,7 @@ def _gate():
 
 
 def _abi_opcodes() -> set[str]:
-    doc = yaml.safe_load(
-        (merlin_dir() / "contract" / "command_buffer_abi.yaml").read_text(encoding="utf-8")) or {}
+    doc = yaml.safe_load((merlin_dir() / "contract" / "command_buffer_abi.yaml").read_text(encoding="utf-8")) or {}
     return set(doc.get("opcodes") or ())
 
 
@@ -61,11 +61,13 @@ def test_no_new_op_reaches_a_capsule_without_abi_semantics():
     new = {m: oc for m, oc in rep["undocumented"].items() if m not in allowed}
     assert not new, (
         f"interface op(s) {sorted(new)} are accepted by the parser and have no ABI semantics; write "
-        f"the command_buffer_abi.yaml entry in the same change that adds the parser row")
+        f"the command_buffer_abi.yaml entry in the same change that adds the parser row"
+    )
     stale = sorted(allowed - set(rep["undocumented"]))
     assert not stale, (
         f"ratchet entries {stale} are now documented — delete them; a ratchet that does not shrink "
-        f"stops being a ratchet")
+        f"stops being a ratchet"
+    )
 
 
 def test_the_gate_would_have_caught_the_op_that_prompted_it():
@@ -83,7 +85,8 @@ def test_the_gate_would_have_caught_the_op_that_prompted_it():
     with_empty = {m: oc for m, oc in rep["undocumented"].items()}
     assert len(with_empty) == 5, (
         f"expected exactly the five inherited ops, got {sorted(with_empty)}; if this changed, either "
-        f"debt was paid (shrink the ratchet) or a new op arrived undocumented")
+        f"debt was paid (shrink the ratchet) or a new op arrived undocumented"
+    )
 
 
 def test_bias_add_semantics_state_the_accumulator_dtype_rule():
@@ -93,8 +96,7 @@ def test_bias_add_semantics_state_the_accumulator_dtype_rule():
     is i32. An implementer who assumed the operand dtype would compute a different function from the
     golden, and the fused/unfused cycle comparison the op exists for would not be summable.
     """
-    doc = yaml.safe_load(
-        (merlin_dir() / "contract" / "command_buffer_abi.yaml").read_text(encoding="utf-8"))
+    doc = yaml.safe_load((merlin_dir() / "contract" / "command_buffer_abi.yaml").read_text(encoding="utf-8"))
     entry = doc["opcodes"]["BIAS_ADD"]
     assert set(entry["operands"]) == {"src", "bias", "dst"}
     sem = entry["semantics"].lower()

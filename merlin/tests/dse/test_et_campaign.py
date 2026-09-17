@@ -6,6 +6,7 @@ whose basis cannot be shown is the failure this whole workstream is about), and 
 recorded — measured OR refused — must not be re-run, because re-deriving a refusal costs board time
 and learns nothing.
 """
+
 from __future__ import annotations
 
 import ast
@@ -80,8 +81,7 @@ def test_a_bundle_larger_than_the_board_is_refused_before_any_board_time(recaps)
 
 def test_the_budget_records_that_it_was_declared_not_measured(recaps):
     _make_bundle(recaps, "m_int8_consistent")
-    plan = ec.plan_cell("m", budget_bytes=99, budget_source="declared via --board-usable-bytes",
-                        recaptures_root=recaps)
+    plan = ec.plan_cell("m", budget_bytes=99, budget_source="declared via --board-usable-bytes", recaptures_root=recaps)
     assert plan.footprint["budget_source"] == "declared via --board-usable-bytes"
 
 
@@ -125,8 +125,8 @@ def test_an_unrecorded_w8a8_golden_is_unknown_not_independent(recaps):
 def test_a_bundle_may_declare_its_own_w8a8_provenance(recaps):
     d = _make_bundle(recaps, "selfdeclared_int8_consistent")
     (d / ec.W8A8_PROVENANCE_SIDECAR).write_text(
-        json.dumps({"independent": True, "source": "torch eager", "evidence": "weights match"}),
-        encoding="utf-8")
+        json.dumps({"independent": True, "source": "torch eager", "evidence": "weights match"}), encoding="utf-8"
+    )
     ref = ec.w8a8_reference(d)
     assert ref["status"] == "declared_by_bundle" and ref["independent"] is True
     assert ref["note"] == ""
@@ -135,21 +135,24 @@ def test_a_bundle_may_declare_its_own_w8a8_provenance(recaps):
 def test_a_bundle_declaring_a_non_independent_golden_still_carries_the_warning(recaps):
     d = _make_bundle(recaps, "frozen_int8_consistent")
     (d / ec.W8A8_PROVENANCE_SIDECAR).write_text(
-        json.dumps({"independent": False, "source": "our own runtime, frozen"}), encoding="utf-8")
+        json.dumps({"independent": False, "source": "our own runtime, frozen"}), encoding="utf-8"
+    )
     ref = ec.w8a8_reference(d)
     assert ref["independent"] is False
     assert "decides nothing" in ref["note"]
 
 
-def test_provenance_is_inherited_across_a_layout_rewrite_only_when_the_goldens_match(recaps,
-                                                                                     monkeypatch):
+def test_provenance_is_inherited_across_a_layout_rewrite_only_when_the_goldens_match(recaps, monkeypatch):
     src = _make_bundle(recaps, "src_int8_consistent")
     same = _make_bundle(recaps, "same_int8_consistent")
     (same / "golden_w8a8.npy").write_bytes((src / "golden_w8a8.npy").read_bytes())
     differ = _make_bundle(recaps, "differ_int8_consistent")
     np.save(differ / "golden_w8a8.npy", np.ones(4, dtype=np.float32))
-    monkeypatch.setitem(ec.W8A8_GOLDEN_PROVENANCE, "src_int8_consistent",
-                        {"independent": True, "source": "torchao", "evidence": "bit-for-bit"})
+    monkeypatch.setitem(
+        ec.W8A8_GOLDEN_PROVENANCE,
+        "src_int8_consistent",
+        {"independent": True, "source": "torchao", "evidence": "bit-for-bit"},
+    )
     got = ec.w8a8_reference(same, source_bundle_id="src_int8_consistent", recaptures_root=recaps)
     assert got["status"] == "inherited_across_layout_rewrite" and got["independent"] is True
     # A golden that is NOT the same bytes inherits nothing -- the claim would be about other numbers.
@@ -162,8 +165,8 @@ def test_provenance_is_inherited_across_a_layout_rewrite_only_when_the_goldens_m
 
 def _write_rewrite(d, *, name, source):
     (d / "bundle.rewrites.json").write_text(
-        json.dumps({"rewrites": [{"name": name, "source_bundle": source, "soundness": "x"}]}),
-        encoding="utf-8")
+        json.dumps({"rewrites": [{"name": name, "source_bundle": source, "soundness": "x"}]}), encoding="utf-8"
+    )
 
 
 def test_rewritten_siblings_reads_the_record_not_the_directory_name(recaps):
@@ -184,17 +187,17 @@ def test_rewritten_siblings_reads_the_record_not_the_directory_name(recaps):
 def test_prefer_rewritten_declines_when_more_than_one_derivative_exists(recaps):
     _make_bundle(recaps, "b_int8_consistent")
     for n in ("b_int8_consistent_a", "b_int8_consistent_b"):
-        _write_rewrite(_make_bundle(recaps, n), name="hoist_weight_transposes",
-                       source="b_int8_consistent")
+        _write_rewrite(_make_bundle(recaps, n), name="hoist_weight_transposes", source="b_int8_consistent")
     plan = ec.plan_cell("b", prefer_rewritten=True, recaptures_root=recaps)
-    assert plan.ours_bundle_id == "b_int8_consistent"     # unrewritten, not an arbitrary pick
+    assert plan.ours_bundle_id == "b_int8_consistent"  # unrewritten, not an arbitrary pick
     assert any("declined" in n for n in plan.notes)
 
 
 def test_prefer_rewritten_records_the_equivalence_the_ratio_rests_on(recaps):
     _make_bundle(recaps, "c_int8_consistent")
-    _write_rewrite(_make_bundle(recaps, "c_int8_consistent_pt"), name="hoist_weight_transposes",
-                   source="c_int8_consistent")
+    _write_rewrite(
+        _make_bundle(recaps, "c_int8_consistent_pt"), name="hoist_weight_transposes", source="c_int8_consistent"
+    )
     plan = ec.plan_cell("c", prefer_rewritten=True, recaptures_root=recaps)
     assert plan.ours_bundle_id == "c_int8_consistent_pt"
     assert plan.layout_equivalence["kind"] == "layout_only"
@@ -211,25 +214,52 @@ def _plan(recaps, name="small_int8_consistent", model="small"):
 
 def _measured_record():
     return {
-        "source_digest": "abc123", "source_dirty": ["passes_quant_int.py"],
-        "ours": {"min_wall_ns": 1_000_000,
-                 "protocol": {"warmup": 2, "iters": 5, "launches": 3, "pick": "min-of-n"},
-                 "board_conditions": [{"governor": "performance"}],
-                 "gate": {"fp32_cos": 0.999, "fp32_rel": 0.001, "w8a8_cos": 0.9999,
-                          "w8a8_rel": 1e-4, "tiers": ["fp32", "w8a8"], "tier_ok": True},
-                 "rvv": {"compute_symbol": "forward", "compute_symbol_coverage": 0.42,
-                         "coverage_overall": 0.31}},
+        "source_digest": "abc123",
+        "source_dirty": ["passes_quant_int.py"],
+        "ours": {
+            "min_wall_ns": 1_000_000,
+            "protocol": {"warmup": 2, "iters": 5, "launches": 3, "pick": "min-of-n"},
+            "board_conditions": [{"governor": "performance"}],
+            "gate": {
+                "fp32_cos": 0.999,
+                "fp32_rel": 0.001,
+                "w8a8_cos": 0.9999,
+                "w8a8_rel": 1e-4,
+                "tiers": ["fp32", "w8a8"],
+                "tier_ok": True,
+            },
+            "rvv": {"compute_symbol": "forward", "compute_symbol_coverage": 0.42, "coverage_overall": 0.31},
+        },
         "executorch_qd8": {
-            "recipe_requested": "pt2e_qd8", "n_lo": 1, "n_hi": 6,
-            "warm_ns": 2_000_000, "cold_ns": 3_200_000, "cold_over_warm": 1.6,
-            "runs": [{"n": 1, "load_ns": 26_000_000, "quant_recipe": "pt2e_qd8",
-                      "bundle_id": "small_int8_consistent", "accuracy_reference": "recomputed_fp32",
-                      "cos": 0.998, "rel": 0.004, "board_conditions": {}}]},
-        "verdict_qd8": {"status": "measured", "ours_ns": 1_000_000,
-                        "executorch_warm_ns": 2_000_000, "ours_over_executorch": 0.5,
-                        "speedup_vs_executorch": 2.0, "beats_executorch": True,
-                        "executorch_load_ns": 26_000_000,
-                        "accuracy": {"status": "not_comparable", "reason": "different references"}},
+            "recipe_requested": "pt2e_qd8",
+            "n_lo": 1,
+            "n_hi": 6,
+            "warm_ns": 2_000_000,
+            "cold_ns": 3_200_000,
+            "cold_over_warm": 1.6,
+            "runs": [
+                {
+                    "n": 1,
+                    "load_ns": 26_000_000,
+                    "quant_recipe": "pt2e_qd8",
+                    "bundle_id": "small_int8_consistent",
+                    "accuracy_reference": "recomputed_fp32",
+                    "cos": 0.998,
+                    "rel": 0.004,
+                    "board_conditions": {},
+                }
+            ],
+        },
+        "verdict_qd8": {
+            "status": "measured",
+            "ours_ns": 1_000_000,
+            "executorch_warm_ns": 2_000_000,
+            "ours_over_executorch": 0.5,
+            "speedup_vs_executorch": 2.0,
+            "beats_executorch": True,
+            "executorch_load_ns": 26_000_000,
+            "accuracy": {"status": "not_comparable", "reason": "different references"},
+        },
         "session_drift": {"ratio": 1.01, "within_noise_band": True},
     }
 
@@ -259,8 +289,10 @@ def test_a_measured_row_carries_everything_that_makes_the_ratio_checkable(recaps
 
 def test_a_not_measured_verdict_becomes_a_refusal_with_no_ratio_anywhere(recaps):
     rec = _measured_record()
-    rec["verdict_qd8"] = {"status": "not_measured",
-                          "reason": "cannot extract a warm slope: need a passing wall at BOTH N"}
+    rec["verdict_qd8"] = {
+        "status": "not_measured",
+        "reason": "cannot extract a warm slope: need a passing wall at BOTH N",
+    }
     row = ec.campaign_row(_plan(recaps), rec)
     assert row["verdict"]["status"] == "refused"
     assert "warm slope" in row["verdict"]["reason"]
@@ -270,8 +302,7 @@ def test_a_not_measured_verdict_becomes_a_refusal_with_no_ratio_anywhere(recaps)
 
 def test_a_not_comparable_verdict_keeps_the_guard_reason(recaps):
     rec = _measured_record()
-    rec["verdict_qd8"] = {"status": "not_comparable",
-                          "reason": "quantization recipe MISMATCH: ours ran ..."}
+    rec["verdict_qd8"] = {"status": "not_comparable", "reason": "quantization recipe MISMATCH: ours ran ..."}
     row = ec.campaign_row(_plan(recaps), rec)
     assert row["verdict"]["status"] == "refused"
     assert "recipe MISMATCH" in row["verdict"]["reason"]
@@ -321,8 +352,10 @@ def test_a_declared_blocker_never_skips_the_cell(recaps):
 def test_the_ledger_round_trips_and_a_refused_cell_counts_as_recorded(tmp_path, recaps):
     ledger = tmp_path / "ledger.jsonl"
     ec.append_row(ledger, ec.campaign_row(_plan(recaps), _measured_record()))
-    ec.append_row(ledger, ec.campaign_row(_plan(recaps, "other_int8_consistent", "other"), None,
-                                          refusal="export blocked upstream"))
+    ec.append_row(
+        ledger,
+        ec.campaign_row(_plan(recaps, "other_int8_consistent", "other"), None, refusal="export blocked upstream"),
+    )
     rows = ec.read_ledger(ledger)
     assert len(rows) == 2
     # A refusal is an OUTCOME: re-running it would spend board time to re-derive what is recorded.
@@ -334,8 +367,12 @@ def test_retry_refused_reruns_only_the_refusals(tmp_path, recaps):
     would record a session outage as a property of four models, forever, on every resume."""
     ledger = tmp_path / "ledger.jsonl"
     ec.append_row(ledger, ec.campaign_row(_plan(recaps), _measured_record()))
-    ec.append_row(ledger, ec.campaign_row(_plan(recaps, "other_int8_consistent", "other"), None,
-                                          refusal="ssh: connect to host ... No route to host"))
+    ec.append_row(
+        ledger,
+        ec.campaign_row(
+            _plan(recaps, "other_int8_consistent", "other"), None, refusal="ssh: connect to host ... No route to host"
+        ),
+    )
     rows = ec.read_ledger(ledger)
     assert ec.completed_models(rows) == {"small", "other"}
     assert ec.completed_models(rows, retry_refused=True) == {"small"}
@@ -363,19 +400,24 @@ def test_a_truncated_ledger_line_is_skipped_not_guessed_at(tmp_path, recaps):
 def _row(model, status, *, beats=None, reason=""):
     v = {"status": status}
     if status == "measured":
-        v.update(ours_ns=1e6, executorch_warm_ns=2e6, speedup_vs_executorch=2.0,
-                 beats_executorch=beats)
+        v.update(ours_ns=1e6, executorch_warm_ns=2e6, speedup_vs_executorch=2.0, beats_executorch=beats)
     else:
         v["reason"] = reason
-    return {"model": model, "verdict": v, "w8a8_reference": {"independent": None},
-            "expectation": ec.expectation_status(model, status)}
+    return {
+        "model": model,
+        "verdict": v,
+        "w8a8_reference": {"independent": None},
+        "expectation": ec.expectation_status(model, status),
+    }
 
 
 def test_the_summary_makes_how_many_cells_produced_a_verdict_impossible_to_miss():
-    rows = [_row("a", "measured", beats=True),
-            _row("b", "refused", reason="export blocked"),
-            _row("c", "refused", reason="runner cannot load"),
-            _row("d", "refused", reason="does not fit the board")]
+    rows = [
+        _row("a", "measured", beats=True),
+        _row("b", "refused", reason="export blocked"),
+        _row("c", "refused", reason="runner cannot load"),
+        _row("d", "refused", reason="does not fit the board"),
+    ]
     s = ec.summarize(rows)
     assert s["cells_attempted"] == 4
     assert s["verdicts_produced"] == 1
@@ -435,8 +477,7 @@ def test_every_flag_the_driver_passes_is_one_the_instrument_accepts():
     tree = ast.parse(INSTRUMENT.read_text(encoding="utf-8"))
     accepted = set()
     for node in ast.walk(tree):
-        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "add_argument"):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "add_argument":
             for arg in node.args:
                 if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
                     accepted.add(arg.value)
@@ -445,10 +486,9 @@ def test_every_flag_the_driver_passes_is_one_the_instrument_accepts():
     for node in ast.walk(driver):
         if isinstance(node, ast.FunctionDef) and node.name == "_instrument_command":
             for sub in ast.walk(node):
-                if isinstance(sub, ast.Constant) and isinstance(sub.value, str) \
-                        and sub.value.startswith("--"):
+                if isinstance(sub, ast.Constant) and isinstance(sub.value, str) and sub.value.startswith("--"):
                     passed.add(sub.value)
-    passed.add("--out")                      # added by the caller, not by _instrument_command
+    passed.add("--out")  # added by the caller, not by _instrument_command
     assert passed, "the driver's command builder passed no flags at all"
     assert passed <= accepted, f"instrument does not accept {sorted(passed - accepted)}"
 
@@ -456,11 +496,20 @@ def test_every_flag_the_driver_passes_is_one_the_instrument_accepts():
 def test_dry_run_resolves_every_cell_spends_no_board_time_and_writes_nothing(tmp_path):
     """The gate before board time: --dry-run must exit 0, name each cell's decision, and leave no
     artifact behind. A model with no capture must REFUSE, loudly, not report not_run."""
-    env = {"PYTHONPATH": str(repo_root() / "merlin" / "python"), "PATH": "/usr/bin:/bin",
-           "HOME": str(tmp_path), "MERLIN_OUT_ROOT": str(tmp_path / "out")}
-    got = subprocess.run([sys.executable, str(DRIVER), "--dry-run",
-                          "--models", "definitely_not_a_captured_model"],
-                         cwd=str(repo_root()), capture_output=True, text=True, env=env, timeout=600)
+    env = {
+        "PYTHONPATH": str(repo_root() / "merlin" / "python"),
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(tmp_path),
+        "MERLIN_OUT_ROOT": str(tmp_path / "out"),
+    }
+    got = subprocess.run(
+        [sys.executable, str(DRIVER), "--dry-run", "--models", "definitely_not_a_captured_model"],
+        cwd=str(repo_root()),
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=600,
+    )
     assert got.returncode == 0, got.stderr[-2000:]
     assert "NO board time will be spent" in got.stdout
     assert "WOULD REFUSE" in got.stdout
@@ -518,8 +567,8 @@ def _make_session(root, name, *, programs=("a", "b"), weights=1024, extra=512, s
         (c / "weights.safetensors").write_bytes(b"\0" * weights)
         (c / "extra.npz").write_bytes(b"\0" * extra)
         (c / "model.mlir").write_text(
-            "module {\n  func.func @forward(%0: tensor<4xf32>) -> tensor<4xf32> {\n  }\n}\n",
-            encoding="utf-8")
+            "module {\n  func.func @forward(%0: tensor<4xf32>) -> tensor<4xf32> {\n  }\n}\n", encoding="utf-8"
+        )
         np.save(c / "golden.npy", np.arange(4, dtype=np.float32))
         lines += [f"  - name: {p}", f"    bundle: stages/{p}"]
     (d / "session_contract.yaml").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -570,10 +619,11 @@ def test_forward_result_count_does_not_split_inside_a_tensor_type(tmp_path):
     m.write_text(
         "module {\n"
         "  func.func @forward(%0: tensor<1x2xf32>, %1: tensor<3xf32>) -> "
-        "(tensor<1x113xi1>, tensor<2x16x1x113x5x64xbf16>) {\n  }\n}\n", encoding="utf-8")
+        "(tensor<1x113xi1>, tensor<2x16x1x113x5x64xbf16>) {\n  }\n}\n",
+        encoding="utf-8",
+    )
     assert ec._forward_result_count(m) == 2
-    m.write_text("module {\n  func.func @forward(%0: tensor<4xf32>) -> tensor<4xf32> {\n }\n}\n",
-                 encoding="utf-8")
+    m.write_text("module {\n  func.func @forward(%0: tensor<4xf32>) -> tensor<4xf32> {\n }\n}\n", encoding="utf-8")
     assert ec._forward_result_count(m) == 1
 
 
@@ -582,15 +632,14 @@ def _cover_bundle(root, name, *, results, golden):
     rets = ", ".join(f"tensor<{i + 1}xf32>" for i in range(results))
     sig = rets if results == 1 else f"({rets})"
     (d / "model.mlir").write_text(
-        f"module {{\n  func.func @forward(%0: tensor<4xf32>) -> {sig} {{\n  }}\n}}\n",
-        encoding="utf-8")
+        f"module {{\n  func.func @forward(%0: tensor<4xf32>) -> {sig} {{\n  }}\n}}\n", encoding="utf-8"
+    )
     np.save(d / "golden.npy", golden)
     return d
 
 
 def test_a_partial_gate_is_declared_but_still_measurable(recaps):
-    _cover_bundle(recaps, "p_int8_consistent", results=3,
-                  golden=np.arange(3, dtype=np.float32))
+    _cover_bundle(recaps, "p_int8_consistent", results=3, golden=np.arange(3, dtype=np.float32))
     plan = ec.plan_cell("p", recaptures_root=recaps)
     assert plan.golden_coverage["partial"] is True
     assert plan.golden_coverage["cannot_fail"] is False
@@ -600,8 +649,7 @@ def test_a_partial_gate_is_declared_but_still_measurable(recaps):
 
 def test_a_gate_that_cannot_fail_is_refused(recaps):
     # 1 of 2 results graded, and that one constant -- smolvla/prefix_encode exactly.
-    _cover_bundle(recaps, "v_int8_consistent", results=2,
-                  golden=np.ones((1, 113), dtype=np.float32))
+    _cover_bundle(recaps, "v_int8_consistent", results=2, golden=np.ones((1, 113), dtype=np.float32))
     plan = ec.plan_cell("v", recaptures_root=recaps)
     assert plan.golden_coverage["cannot_fail"] is True
     assert not plan.runnable
@@ -609,8 +657,7 @@ def test_a_gate_that_cannot_fail_is_refused(recaps):
 
 
 def test_a_full_nondegenerate_golden_raises_neither_flag(recaps):
-    _cover_bundle(recaps, "ok_int8_consistent", results=1,
-                  golden=np.arange(8, dtype=np.float32))
+    _cover_bundle(recaps, "ok_int8_consistent", results=1, golden=np.arange(8, dtype=np.float32))
     plan = ec.plan_cell("ok", recaptures_root=recaps)
     assert plan.golden_coverage == {**plan.golden_coverage, "partial": False, "degenerate": False}
     assert plan.runnable
@@ -625,7 +672,8 @@ def test_a_refused_cell_still_shows_a_reference_wall_that_was_measured():
     summary printed `nan`, and the 364.142 ms had to be recovered by hand out of log text.
     """
     row = {
-        "model": "tiny_llama", "ours_bundle_id": "tiny_llama_int8_consistent",
+        "model": "tiny_llama",
+        "ours_bundle_id": "tiny_llama_int8_consistent",
         "w8a8_reference": {"independent": True},
         "protocol": {"reference": {"warm_ns": 364141594.0, "cold_ns": 391514666.0}},
         "verdict": {"status": "refused", "reason": "clang outran the compile ceiling"},
@@ -673,8 +721,9 @@ def test_a_declared_blocker_that_was_overtaken_is_removed_not_kept():
 def test_a_prefix_score_is_labelled_a_prefix_score_not_a_bare_cosine(recaps):
     """tiny_llama's board console prints 4096 of 256000 logits; the row published only the cos."""
     rec = _measured_record()
-    rec["ours"]["gate"].update(n_compared=4096, n_reference=256_000,
-                               compared_fraction=4096 / 256_000, comparison_complete=False)
+    rec["ours"]["gate"].update(
+        n_compared=4096, n_reference=256_000, compared_fraction=4096 / 256_000, comparison_complete=False
+    )
     acc = ec.campaign_row(_plan(recaps), rec)["accuracy"]
     assert acc["ours_comparison_complete"] is False
     assert acc["ours_n_compared"] == 4096
@@ -686,8 +735,7 @@ def test_a_prefix_score_is_labelled_a_prefix_score_not_a_bare_cosine(recaps):
 
 def test_a_whole_output_score_carries_the_coverage_without_a_caveat(recaps):
     rec = _measured_record()
-    rec["ours"]["gate"].update(n_compared=256_000, n_reference=256_000,
-                               compared_fraction=1.0, comparison_complete=True)
+    rec["ours"]["gate"].update(n_compared=256_000, n_reference=256_000, compared_fraction=1.0, comparison_complete=True)
     acc = ec.campaign_row(_plan(recaps), rec)["accuracy"]
     assert acc["ours_comparison_complete"] is True
     assert acc["ours_compared_fraction"] == 1.0
@@ -710,8 +758,7 @@ def test_output_arity_coverage_does_not_see_element_truncation(recaps):
     gcov = ec.golden_coverage(recaps / "small_int8_consistent")
     assert gcov["partial"] is False and gcov["cannot_fail"] is False
     rec = _measured_record()
-    rec["ours"]["gate"].update(n_compared=4096, n_reference=256_000,
-                               compared_fraction=0.016, comparison_complete=False)
+    rec["ours"]["gate"].update(n_compared=4096, n_reference=256_000, compared_fraction=0.016, comparison_complete=False)
     plan = ec.plan_cell("small", recaptures_root=recaps)
     assert plan.golden_coverage["partial"] is False
     assert ec.campaign_row(plan, rec)["accuracy"]["ours_comparison_complete"] is False

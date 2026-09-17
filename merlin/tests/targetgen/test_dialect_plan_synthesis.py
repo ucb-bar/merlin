@@ -4,6 +4,7 @@ Previously every non-toy_npu target fell to an empty `requires_human_review` stu
 that advertises the Merlin tensor-resident interface is generated into a real plan (reproducing the
 committed reference plans, and buildable by the dialect factory).
 """
+
 from __future__ import annotations
 
 import yaml
@@ -15,8 +16,7 @@ from merlin.targetgen.synthesize.dialect_plan import _generate, _is_tensor_resid
 
 
 def _contract(target: str) -> dict:
-    return yaml.safe_load(
-        (merlin_dir() / "targets" / target / "contracts" / "target_contract.yaml").read_text())
+    return yaml.safe_load((merlin_dir() / "targets" / target / "contracts" / "target_contract.yaml").read_text())
 
 
 def test_generator_reproduces_committed_reference_plans():
@@ -26,12 +26,10 @@ def test_generator_reproduces_committed_reference_plans():
     decision, verified against the CIRCT oracle), so only saturn is checked here.
     """
     for t in ("saturn",):
-        committed = yaml.safe_load(
-            (merlin_dir() / "targets" / t / "contracts" / "dialect_plan.yaml").read_text())
+        committed = yaml.safe_load((merlin_dir() / "targets" / t / "contracts" / "dialect_plan.yaml").read_text())
         g = _generate(_contract(t))
         assert g["dialect_name"] == committed["dialect_name"]
-        assert {r["from"]: r["to"] for r in g["lowering"]} == \
-               {r["from"]: r["to"] for r in committed["lowering"]}
+        assert {r["from"]: r["to"] for r in g["lowering"]} == {r["from"]: r["to"] for r in committed["lowering"]}
         assert schemas.validate(g, "dialect_plan") == []
 
 
@@ -42,11 +40,13 @@ def test_detects_tensor_resident_from_contract():
 
 def test_synthesize_generates_usable_plan_for_new_target():
     """A new tensor-resident contract synthesizes a usable plan (not the review-flagged stub)."""
-    newc = {"name": "demo_npu",
-            "features": ["resident_packed_tensor", "accumulator_commit", "command_buffer"],
-            "ops": ["pack", "matmul", "commit", "evict"],
-            "types": ["resident_tensor", "accumulator"],
-            "capabilities": {"ops": ["matmul"]}}
+    newc = {
+        "name": "demo_npu",
+        "features": ["resident_packed_tensor", "accumulator_commit", "command_buffer"],
+        "ops": ["pack", "matmul", "commit", "evict"],
+        "types": ["resident_tensor", "accumulator"],
+        "capabilities": {"ops": ["matmul"]},
+    }
     plan = synthesize_dialect_plan(Evidence(target="demo_npu", sources={}), newc)
     assert plan.get("generated_from_contract") is True
     assert plan["requires_human_review"] is False
@@ -59,14 +59,23 @@ def test_generated_plan_builds_a_dialect():
     import pytest
 
     from merlin.xdsl_dialects import _common
+
     if not _common.HAS_XDSL:
         pytest.skip("xDSL not installed")
     from merlin.xdsl_dialects.targets.factory import build_dialect
 
-    newc = {"name": "demo_npu", "features": ["accumulator_commit", "command_buffer"],
-            "ops": ["pack", "matmul", "commit", "evict"], "capabilities": {"ops": ["matmul"]}}
+    newc = {
+        "name": "demo_npu",
+        "features": ["accumulator_commit", "command_buffer"],
+        "ops": ["pack", "matmul", "commit", "evict"],
+        "capabilities": {"ops": ["matmul"]},
+    }
     plan = _generate(newc)
     built = build_dialect("demo_npu", plan=plan)
     assert built.dialect.name == "demonpu"
     assert {o.name for o in built.dialect.operations} == {
-        "demonpu.pack", "demonpu.matmul", "demonpu.commit", "demonpu.evict"}
+        "demonpu.pack",
+        "demonpu.matmul",
+        "demonpu.commit",
+        "demonpu.evict",
+    }

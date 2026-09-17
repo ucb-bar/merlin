@@ -15,6 +15,7 @@ assumed.
 The synthetic modules below are deliberate: parsing a real capture takes minutes, and every property
 here is about the grouping rather than about any one model.
 """
+
 from __future__ import annotations
 
 import json
@@ -86,7 +87,7 @@ def test_the_heaviest_member_represents_its_class(tmp_path):
 
 
 def test_alignment_is_unknown_rather_than_aligned_without_a_tile_edge():
-    """"There is no edge" and "it lines up with the edge" are different facts, and only one of them
+    """ "There is no edge" and "it lines up with the edge" are different facts, and only one of them
     says anything about whether tails were exercised."""
     assert APP._alignment(16, 16, 16, None) == "unknown"
     assert APP._alignment(16, 16, 16, 16) == "aligned"
@@ -121,28 +122,38 @@ def test_weight_only_e4m3_f32_is_refused_as_block_scaled_application_evidence(tm
     bundle = tmp_path / "weight_only_fp8"
     bundle.mkdir()
     model = _module((32, 32, 16)).replace(
-        "module {", 'module attributes {prov.quantization = "float8_weight_only_e4m3"} {', 1)
+        "module {", 'module attributes {prov.quantization = "float8_weight_only_e4m3"} {', 1
+    )
     (bundle / "model.mlir").write_text(model, encoding="utf-8")
-    (bundle / "weights.safetensors.manifest.json").write_text(json.dumps({
-        "0": {
-            "weight": "layer.parametrizations.weight.original0",
-            "kind": "param",
-            "dtype": "float8_e4m3fn",
-            "shape": [32, 16],
-        }
-    }), encoding="utf-8")
+    (bundle / "weights.safetensors.manifest.json").write_text(
+        json.dumps(
+            {
+                "0": {
+                    "weight": "layer.parametrizations.weight.original0",
+                    "kind": "param",
+                    "dtype": "float8_e4m3fn",
+                    "shape": [32, 16],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
 
     out = APP.classify_captures(
-        {"fp8_named_bundle": bundle / "model.mlir"}, _TARGET,
-        required_block_scaled_formats={"mxfp8"})
+        {"fp8_named_bundle": bundle / "model.mlir"}, _TARGET, required_block_scaled_formats={"mxfp8"}
+    )
 
     assert {row["dtype"] for row in out["classes"]} == {"f32"}
     gap = out["missing_capabilities"][0]
     assert gap["schema"] == "application_missing_capability_v1"
-    assert gap["required_formats"] == [{
-        "format": "mxfp8", "scale_kind": "block_e8m0", "block": 32,
-        "quant_ext_type": "mx_tensor",
-    }]
+    assert gap["required_formats"] == [
+        {
+            "format": "mxfp8",
+            "scale_kind": "block_e8m0",
+            "block": 32,
+            "quant_ext_type": "mx_tensor",
+        }
+    ]
     capture = gap["captures"][0]
     assert capture["declared_quantization"] == "float8_weight_only_e4m3"
     assert capture["stored_weight_formats"] == ["fp8_e4m3"]
@@ -154,12 +165,19 @@ def test_weight_only_e4m3_f32_is_refused_as_block_scaled_application_evidence(tm
 def test_explicit_block_scaled_compute_suppresses_the_missing_capability(monkeypatch, tmp_path):
     evidence = APP.ClassEvidence(
         region_class=APP.RegionClass("contraction", "mxfp8", "aligned", "unknown", 2, "squareish_gemm"),
-        m=16, k=32, n=16, batch=1, multiplicity=1, work=8192,
-        work_complete=True, source="mx_bundle")
+        m=16,
+        k=32,
+        n=16,
+        batch=1,
+        multiplicity=1,
+        work=8192,
+        work_complete=True,
+        source="mx_bundle",
+    )
     monkeypatch.setattr(APP, "classify_capture", lambda *_args, **_kwargs: [evidence])
     out = APP.classify_captures(
-        {"mx_bundle": tmp_path / "mx_bundle" / "model.mlir"}, _TARGET,
-        required_block_scaled_formats={"mxfp8"})
+        {"mx_bundle": tmp_path / "mx_bundle" / "model.mlir"}, _TARGET, required_block_scaled_formats={"mxfp8"}
+    )
     assert "missing_capabilities" not in out
 
 
@@ -185,15 +203,24 @@ def test_merging_two_applications_sums_the_mass_and_keeps_the_heavier_shape(tmp_
 
 # ------------------------------------------------------------------ sizing and tier assignment
 
+
 def _evidence(m, k, n, *, mult=1, geometry="squareish_gemm"):
     return APP.ClassEvidence(
         region_class=APP.RegionClass("contraction", "i8", "aligned", "spills", 2, geometry),
-        m=m, k=k, n=n, batch=1, multiplicity=mult, work=m * k * n * mult,
-        work_complete=True, source="app")
+        m=m,
+        k=k,
+        n=n,
+        batch=1,
+        multiplicity=mult,
+        work=m * k * n * mult,
+        work_complete=True,
+        source="app",
+    )
 
 
 def _fit_or_skip():
     from merlin.targetgen import cert_cost as CC
+
     fit = CC.fit_for("gemmini")
     if fit is None:
         pytest.skip("no measured certification history in this checkout")
@@ -204,8 +231,7 @@ def test_a_certifiable_class_yields_a_clamped_capsule_and_the_real_one_extending
     """The two-capsule split the whole design turns on: something small enough to certify
     cycle-accurately, and the application's own shape resting on it."""
     fit = _fit_or_skip()
-    caps, refusal = APP.size_class(_evidence(256, 64, 784), target="gemmini",
-                                   budget_s=300.0, tile=16, fit=fit)
+    caps, refusal = APP.size_class(_evidence(256, 64, 784), target="gemmini", budget_s=300.0, tile=16, fit=fit)
     assert refusal is None
     tiers = [c.tier for c in caps]
     assert tiers == ["L3", "L2"]
@@ -220,8 +246,7 @@ def test_k_is_never_clamped_because_k_is_what_makes_the_class():
     """Accumulation, residency and spill behaviour live in the reduction depth. A shallower K is a
     different behavioural class, so clamping it would silently answer a different question."""
     fit = _fit_or_skip()
-    caps, refusal = APP.size_class(_evidence(256, 64, 784), target="gemmini",
-                                   budget_s=300.0, tile=16, fit=fit)
+    caps, refusal = APP.size_class(_evidence(256, 64, 784), target="gemmini", budget_s=300.0, tile=16, fit=fit)
     assert refusal is None
     assert all(c.k == 64 for c in caps)
 
@@ -247,8 +272,7 @@ def test_a_class_outside_the_measured_range_is_refused_by_name():
     at zero.
     """
     fit = _fit_or_skip()
-    caps, refusal = APP.size_class(_evidence(8, 2048, 32000), target="gemmini",
-                                   budget_s=300.0, tile=16, fit=fit)
+    caps, refusal = APP.size_class(_evidence(8, 2048, 32000), target="gemmini", budget_s=300.0, tile=16, fit=fit)
     assert caps == []
     assert refusal, "an unaffordable class must be refused with a reason, never dropped"
     # Named specifically enough that a reader knows what to measure next.
@@ -262,8 +286,9 @@ def test_no_cost_model_means_no_capsule_rather_than_a_convention_sized_one():
     be 'the size the corpus already certifies', and clamping K would change the class. A target must
     certify something before application capsules are admitted for it — otherwise the large L2
     capsule rests on a sibling nobody could size."""
-    caps, refusal = APP.size_class(_evidence(256, 64, 784), target="definitely_not_a_target",
-                                   budget_s=300.0, tile=16, fit=None)
+    caps, refusal = APP.size_class(
+        _evidence(256, 64, 784), target="definitely_not_a_target", budget_s=300.0, tile=16, fit=None
+    )
     assert caps == []
     assert refusal and "no measured certification history" in refusal
 
@@ -272,8 +297,7 @@ def test_a_class_already_small_enough_yields_one_capsule_not_two():
     """No L2 extension when the application's own shape is already certifiable — a second capsule at
     the identical shape would be a duplicate wearing a weaker tier."""
     fit = _fit_or_skip()
-    caps, refusal = APP.size_class(_evidence(16, 32, 16), target="gemmini",
-                                   budget_s=600.0, tile=16, fit=fit)
+    caps, refusal = APP.size_class(_evidence(16, 32, 16), target="gemmini", budget_s=600.0, tile=16, fit=fit)
     assert refusal is None
     assert [c.tier for c in caps] == ["L3"]
 
@@ -282,8 +306,7 @@ def test_the_certified_size_carries_the_evidence_it_was_sized_by():
     """A reader must be able to tell a capsule sized by measurement from one sized by a default,
     which is why there is no default."""
     fit = _fit_or_skip()
-    caps, _ = APP.size_class(_evidence(256, 64, 784), target="gemmini",
-                             budget_s=300.0, tile=16, fit=fit)
+    caps, _ = APP.size_class(_evidence(256, 64, 784), target="gemmini", budget_s=300.0, tile=16, fit=fit)
     basis = caps[0].basis
     assert basis["sized_by"] == "measured_cost_model"
     assert basis["budget_s"] == 300.0
@@ -296,8 +319,7 @@ def test_the_certified_size_is_whole_tiles():
     """A capsule whose parallel extents are not tile multiples is testing the tail path by accident
     rather than by declaration — the alignment axis is where that belongs."""
     fit = _fit_or_skip()
-    caps, refusal = APP.size_class(_evidence(999, 64, 999), target="gemmini",
-                                   budget_s=300.0, tile=16, fit=fit)
+    caps, refusal = APP.size_class(_evidence(999, 64, 999), target="gemmini", budget_s=300.0, tile=16, fit=fit)
     if refusal:
         pytest.skip("this class is not certifiable at this budget")
     assert caps[0].m % 16 == 0 and caps[0].n % 16 == 0

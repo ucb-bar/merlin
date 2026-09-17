@@ -7,6 +7,7 @@ instructions at all" because a matrix image is not an RVV one, and a manifest th
 configuration without ever saying which tile edge the kernel was compiled for. Each is a sentence a
 reader cannot check, so each is pinned here.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -26,24 +27,60 @@ def _load_packager():
 
 
 def _matrix_binary(**over):
-    matrix = {"unit": "a_unit", "config": "SomeConfig", "unit_instruction_counts": {"ACC": 3},
-              "tile_edge": 64, "alignment_bytes": 32, "scratch_bytes": 8192,
-              "parallel_tiles": True, "twin_simulated": False, "lowering_digest": "ld",
-              "twin_build_hash": "tb", "twin_spike_cycles": None, "gated_via": "..."}
+    matrix = {
+        "unit": "a_unit",
+        "config": "SomeConfig",
+        "unit_instruction_counts": {"ACC": 3},
+        "tile_edge": 64,
+        "alignment_bytes": 32,
+        "scratch_bytes": 8192,
+        "parallel_tiles": True,
+        "twin_simulated": False,
+        "lowering_digest": "ld",
+        "twin_build_hash": "tb",
+        "twin_spike_cycles": None,
+        "gated_via": "...",
+    }
     matrix.update(over.pop("matrix", {}))
-    b = {"model": "m", "elf": "m_h2_matrix.elf", "harts": 2, "dtype": "int8", "backend": "matrix",
-         "build_hash": "z", "ram_bytes": 268435456, "spike_cycles": None, "gate_ok": False,
-         "tier_ok": None, "cos": None, "rel": None, "upload_estimate_s": 100, "matrix": matrix}
+    b = {
+        "model": "m",
+        "elf": "m_h2_matrix.elf",
+        "harts": 2,
+        "dtype": "int8",
+        "backend": "matrix",
+        "build_hash": "z",
+        "ram_bytes": 268435456,
+        "spike_cycles": None,
+        "gate_ok": False,
+        "tier_ok": None,
+        "cos": None,
+        "rel": None,
+        "upload_estimate_s": 100,
+        "matrix": matrix,
+    }
     b.update(over)
     return b
 
 
 def _manifest(binaries, **over):
     brd = boards.board("kodiak_opu_2core")
-    man = {"board": {"name": brd.name, "dram_bytes": brd.dram_bytes, "harts": brd.harts,
-                     "vlen": brd.vlen, "console": brd.console, "notes": brd.notes},
-           "notes": [], "binaries": binaries, "problems": [], "vector_probe": None,
-           "firesim_evidence": None, "merlin_commit": "abc", "validated_on": "x"}
+    man = {
+        "board": {
+            "name": brd.name,
+            "dram_bytes": brd.dram_bytes,
+            "harts": brd.harts,
+            "vlen": brd.vlen,
+            "console": brd.console,
+            "notes": brd.notes,
+        },
+        "notes": [],
+        "binaries": binaries,
+        "problems": [],
+        "vector_probe": None,
+        "firesim_evidence": None,
+        "merlin_commit": "abc",
+        "validated_on": "x",
+    }
     man.update(over)
     return brd, man
 
@@ -70,8 +107,7 @@ def test_an_unrun_twin_is_not_described_as_graded():
 
 def test_a_run_twin_is_described_as_graded():
     md = _load_packager()
-    brd, man = _manifest([_matrix_binary(matrix={"twin_simulated": True,
-                                                 "twin_spike_cycles": 1234})])
+    brd, man = _manifest([_matrix_binary(matrix={"twin_simulated": True, "twin_spike_cycles": 1234})])
     txt = md._readme(brd, man)
     assert "grades bit-exact" in txt
 
@@ -105,17 +141,37 @@ def test_matrix_facts_keep_the_revision_and_drop_our_directory_layout():
     """A delivery leaves this host. The build's own record carries absolute paths into our checkouts; what
     the recipient needs is the geometry and which revision the encodings came from."""
     md = _load_packager()
-    got = md._matrix_facts({
-        "object": "/somewhere/private/shim.o", "source": "/somewhere/private/shim.c",
-        "tile_edge": 64, "alignment_bytes": 32, "scratch_bytes": 8192, "parallel_tiles": True,
-        "scalar_tile": False, "gaps": ["pin drifted"],
-        "provenance": {"hardware_pins": {"a_pin": {
-            "pin": "a_pin", "ok": False,
-            "observed": {"path": "/somewhere/private/checkout", "commit": "f" * 40,
-                         "branch": "a-branch", "remote": "https://example.invalid/x.git",
-                         "dirty_files": 9, "dirty_paths": ["private/file"]},
-            "drift": ["a source moved"]}},
-            "source_digest": "abcd", "sources": ["/somewhere/private/Consts.scala"]}})
+    got = md._matrix_facts(
+        {
+            "object": "/somewhere/private/shim.o",
+            "source": "/somewhere/private/shim.c",
+            "tile_edge": 64,
+            "alignment_bytes": 32,
+            "scratch_bytes": 8192,
+            "parallel_tiles": True,
+            "scalar_tile": False,
+            "gaps": ["pin drifted"],
+            "provenance": {
+                "hardware_pins": {
+                    "a_pin": {
+                        "pin": "a_pin",
+                        "ok": False,
+                        "observed": {
+                            "path": "/somewhere/private/checkout",
+                            "commit": "f" * 40,
+                            "branch": "a-branch",
+                            "remote": "https://example.invalid/x.git",
+                            "dirty_files": 9,
+                            "dirty_paths": ["private/file"],
+                        },
+                        "drift": ["a source moved"],
+                    }
+                },
+                "source_digest": "abcd",
+                "sources": ["/somewhere/private/Consts.scala"],
+            },
+        }
+    )
     assert got["tile_edge"] == 64 and got["parallel_tiles"] is True
     assert got["unit_revision"]["commit"] == "f" * 40
     assert got["unit_revision"]["verified"] is False
@@ -230,12 +286,19 @@ def test_a_bundle_directory_can_be_named_explicitly():
 
 
 def test_the_readme_states_what_actually_went_to_the_unit():
-    """"The matrix unit is used" is compatible with one small GEMM out of a hundred going through it."""
+    """ "The matrix unit is used" is compatible with one small GEMM out of a hundred going through it."""
     md = _load_packager()
-    b = _matrix_binary(matrix={"routing": {
-        "routed_contractions": 110, "distinct_signatures": 9, "skipped": [],
-        "macs_routed": 195_890_000_000,
-        "widest_routed": {"fqn": "lm_head", "shape": [1, 128, 256000, 2304], "macs": 7.5e10}}})
+    b = _matrix_binary(
+        matrix={
+            "routing": {
+                "routed_contractions": 110,
+                "distinct_signatures": 9,
+                "skipped": [],
+                "macs_routed": 195_890_000_000,
+                "widest_routed": {"fqn": "lm_head", "shape": [1, 128, 256000, 2304], "macs": 7.5e10},
+            }
+        }
+    )
     brd, man = _manifest([b])
     txt = md._readme(brd, man)
     assert "110 contraction(s)" in txt
@@ -246,9 +309,16 @@ def test_the_readme_states_what_actually_went_to_the_unit():
 
 def test_a_skipped_contraction_is_named_rather_than_averaged_away():
     md = _load_packager()
-    b = _matrix_binary(matrix={"routing": {
-        "routed_contractions": 3, "distinct_signatures": 1,
-        "skipped": ["sym_x: init is not provably zero"], "macs_routed": 10}})
+    b = _matrix_binary(
+        matrix={
+            "routing": {
+                "routed_contractions": 3,
+                "distinct_signatures": 1,
+                "skipped": ["sym_x: init is not provably zero"],
+                "macs_routed": 10,
+            }
+        }
+    )
     brd, man = _manifest([b])
     txt = md._readme(brd, man)
     assert "NOT everything was routed" in txt
@@ -295,13 +365,14 @@ def test_a_wrapper_that_hand_picks_its_return_still_carries_the_memory_demand():
     passed an image it never examined. An unchecked arena is worse than an unsized one: it reads as
     verified."""
     md = _load_packager()
-    kept = md._keep_memory({"elf": "x", "allocation_bytes_total": 7, "allocation_dynamic_calls": 1,
-                            "activation_peak_bytes": None})
+    kept = md._keep_memory(
+        {"elf": "x", "allocation_bytes_total": 7, "allocation_dynamic_calls": 1, "activation_peak_bytes": None}
+    )
     assert kept == {"allocation_bytes_total": 7, "allocation_dynamic_calls": 1}
 
 
 def test_no_start_small_advice_when_every_image_costs_the_same_days():
-    """"Start with the smallest" is advice when the smallest is cheap and noise when it is 73.9 hours
+    """ "Start with the smallest" is advice when the smallest is cheap and noise when it is 73.9 hours
     against 74.0. Advice that carries nothing teaches a reader to skip the paragraph."""
     md = _load_packager()
     a = _matrix_binary(elf="a.elf", upload_estimate_s=266_000, upload_bytes=1533 * 2**20)

@@ -1,4 +1,5 @@
 """The FSM inventory: derived from what synthesis DETECTED, not from what it chose to export."""
+
 from __future__ import annotations
 
 from merlin.targetgen.rtl.fsm import (
@@ -57,9 +58,11 @@ class TestInventory:
         d = self._dir(tmp_path, tables={"LoadController.control_state.kiss2": _TABLE})
         inv = fsm_inventory("t", d)
         assert len(inv) == 3
-        assert [f.qualified for f in inv] == ["ExecuteController.control_state",
-                                              "LoadController.control_state",
-                                              "LoopMatmulStC.state"]
+        assert [f.qualified for f in inv] == [
+            "ExecuteController.control_state",
+            "LoadController.control_state",
+            "LoopMatmulStC.state",
+        ]
 
     def test_an_exported_table_enriches_its_entry_and_the_rest_stay_unknown(self, tmp_path):
         d = self._dir(tmp_path, tables={"LoadController.control_state.kiss2": _TABLE})

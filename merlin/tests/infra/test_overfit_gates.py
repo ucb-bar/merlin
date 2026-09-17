@@ -11,6 +11,7 @@ end to end) sat in a vendor-named home for months with nothing asking whether th
 Tested against SYNTHETIC files rather than the live tree: a test that asserts today's counts turns into
 a chore that gets bumped, and it would pass just as well if the scan stopped working.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -63,8 +64,7 @@ def test_a_docstring_mention_is_not_coupling(gate, tmp_path):
 
 def test_an_inline_marker_suppresses_a_deliberate_mention(gate, tmp_path):
     src = tmp_path / "generic.py"
-    src.write_text(f'NAMES = ("gemmini",)  # {gate.INLINE_MARKER} the set this gate hunts\n',
-                   encoding="utf-8")
+    src.write_text(f'NAMES = ("gemmini",)  # {gate.INLINE_MARKER} the set this gate hunts\n', encoding="utf-8")
     assert gate._scan_coupling(src) == []
 
 
@@ -82,7 +82,9 @@ def test_the_marker_is_honoured_beside_the_mention_not_only_at_the_constants_sta
         '    "first fragment, no target here "\n'
         "    # target-ok: cites a pin, not a routing fact\n"
         '    "second fragment mentioning saturn "\n'
-        ")\n", encoding="utf-8")
+        ")\n",
+        encoding="utf-8",
+    )
     assert gate._scan_file(src) == []
 
 
@@ -90,10 +92,9 @@ def test_an_unmarked_multi_line_constant_is_still_caught(gate, tmp_path):
     """The span rule must widen where a marker is ACCEPTED, never what gets scanned."""
     src = tmp_path / "generic.py"
     src.write_text(
-        "DESCRIPTION = (\n"
-        '    "first fragment, no target here "\n'
-        '    "second fragment mentioning saturn "\n'
-        ")\n", encoding="utf-8")
+        'DESCRIPTION = (\n    "first fragment, no target here "\n    "second fragment mentioning saturn "\n)\n',
+        encoding="utf-8",
+    )
     assert [name for _, name, _ in gate._scan_file(src)] == ["saturn"]
 
 

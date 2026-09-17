@@ -1,4 +1,5 @@
 """Admit canonical integer contraction semantics, not metadata or op counts."""
+
 from xdsl.context import Context
 from xdsl.dialects import arith, builtin, func, linalg, tensor
 from xdsl.parser import Parser
@@ -48,7 +49,8 @@ def test_narrow_intermediate_and_changed_yield_are_not_matmul():
         "%sum = arith.addi %acc, %prod : i32",
         "%narrow = arith.trunci %prod : i32 to i8\n"
         "%wide = arith.extsi %narrow : i8 to i32\n"
-        "%sum = arith.addi %acc, %wide : i32")
+        "%sum = arith.addi %acc, %wide : i32",
+    )
     assert not is_integer_matmul(generic(narrowed))
     assert not is_integer_matmul(generic(SOURCE.replace("linalg.yield %sum", "linalg.yield %prod")))
     assert not is_integer_matmul(generic(SOURCE.replace("linalg.yield %sum", "linalg.yield %acc")))

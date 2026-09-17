@@ -8,6 +8,7 @@ The skip is deliberate and loud: a missing FileCheck/llvm-lit must produce a SKI
 never a pass. A verification suite that could not run and reported green is the failure mode this
 whole layer exists to prevent.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -22,8 +23,8 @@ _FC = tools.find_filecheck()
 _MO = tools.find_mlir_tool("mlir-opt")
 
 pytestmark = pytest.mark.skipif(
-    not (_LIT and _FC and _MO),
-    reason=f"lit suite needs llvm-lit/FileCheck/mlir-opt (found: {tools.availability()})")
+    not (_LIT and _FC and _MO), reason=f"lit suite needs llvm-lit/FileCheck/mlir-opt (found: {tools.availability()})"
+)
 
 
 def _suite_dir():
@@ -31,8 +32,7 @@ def _suite_dir():
 
 
 def _run_lit(*extra: str) -> subprocess.CompletedProcess:
-    return subprocess.run([_LIT, "-sv", *extra, str(_suite_dir())],
-                          capture_output=True, text=True, timeout=600)
+    return subprocess.run([_LIT, "-sv", *extra, str(_suite_dir())], capture_output=True, text=True, timeout=600)
 
 
 def test_lit_suite_passes():
@@ -62,9 +62,11 @@ def test_negative_tests_are_present():
     message and fails on unexpected ones too. The iface negatives were converted to it on 2026-09-05;
     this assertion accepts both so a file in either style still counts as a control.
     """
-    negatives = [p for p in _suite_dir().rglob("*.mlir")
-                 if any(mark in p.read_text(encoding="utf-8")
-                        for mark in ("RUN: not ", "-verify-diagnostics"))]
+    negatives = [
+        p
+        for p in _suite_dir().rglob("*.mlir")
+        if any(mark in p.read_text(encoding="utf-8") for mark in ("RUN: not ", "-verify-diagnostics"))
+    ]
     assert negatives, "the suite has no negative control"
 
 
@@ -82,13 +84,15 @@ def test_a_verify_diagnostics_file_expects_a_diagnostic_on_a_line():
             offenders.append(path.name)
     assert not offenders, (
         f"{offenders} run with -verify-diagnostics but expect no diagnostic; such a file asserts the "
-        f"input is clean, which is the opposite of a negative control")
+        f"input is clean, which is the opposite of a negative control"
+    )
 
 
 # --- mutation control: are the CHECK lines load-bearing? ------------------------------------------
 # A suite that passes proves nothing unless it also FAILS on wrong output. These run the real pass,
 # mutate its result the way a miscompiling backend would, and require FileCheck to reject it. If one
 # of these starts passing, the corresponding CHECK lines have gone decorative.
+
 
 def _filecheck(check_file, text: str) -> subprocess.CompletedProcess:
     return subprocess.run([_FC, str(check_file)], input=text, capture_output=True, text=True)
@@ -99,11 +103,13 @@ def _residency_output() -> tuple[str, object]:
     import sys
 
     src = _suite_dir() / "core" / "materialize_interface_residency.mlir"
-    env = {"PYTHONPATH": str(merlin_dir() / "python"), "PATH": "/usr/bin:/bin",
-           "HOME": "/tmp"}
-    r = subprocess.run([sys.executable, "-m", "merlin.xdsl_dialects.opt", str(src),
-                        "-p", "merlin-materialize-interface"],
-                       capture_output=True, text=True, env=env)
+    env = {"PYTHONPATH": str(merlin_dir() / "python"), "PATH": "/usr/bin:/bin", "HOME": "/tmp"}
+    r = subprocess.run(
+        [sys.executable, "-m", "merlin.xdsl_dialects.opt", str(src), "-p", "merlin-materialize-interface"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
     assert r.returncode == 0, r.stderr
     return r.stdout, src
 
@@ -113,24 +119,29 @@ def test_unmutated_output_passes_its_checks():
     assert _filecheck(src, out).returncode == 0, "the honest baseline must pass"
 
 
-@pytest.mark.parametrize("name,mutate", [
-    # A weight packed twice: residency was never established, so the second pack silently re-uploads
-    # and the reuse the schedule proved is gone.
-    ("packed_twice",
-     lambda t: t.replace('"interface.resident_pack"', '"interface.resident_pack"', 1).replace(
-         "    %5 =", '    %99 = "interface.resident_pack"(%4) : (tensor<128x64xi8>) -> ()\n    %5 =', 1)),
-    # Evicted before the last use: the classic use-after-evict that only shows up as a wrong number.
-    ("evicted_early",
-     lambda t: _move_evict_first(t)),
-])
+@pytest.mark.parametrize(
+    "name,mutate",
+    [
+        # A weight packed twice: residency was never established, so the second pack silently re-uploads
+        # and the reuse the schedule proved is gone.
+        (
+            "packed_twice",
+            lambda t: t.replace('"interface.resident_pack"', '"interface.resident_pack"', 1).replace(
+                "    %5 =", '    %99 = "interface.resident_pack"(%4) : (tensor<128x64xi8>) -> ()\n    %5 =', 1
+            ),
+        ),
+        # Evicted before the last use: the classic use-after-evict that only shows up as a wrong number.
+        ("evicted_early", lambda t: _move_evict_first(t)),
+    ],
+)
 def test_mutated_output_is_rejected(name, mutate):
     out, src = _residency_output()
     mutated = mutate(out)
     assert mutated != out, f"mutation {name!r} did not change the IR — the test would be vacuous"
     r = _filecheck(src, mutated)
     assert r.returncode != 0, (
-        f"FileCheck ACCEPTED the {name!r} mutation — those CHECK lines are not load-bearing\n"
-        f"{mutated}")
+        f"FileCheck ACCEPTED the {name!r} mutation — those CHECK lines are not load-bearing\n{mutated}"
+    )
 
 
 def _move_evict_first(text: str) -> str:
@@ -140,7 +151,7 @@ def _move_evict_first(text: str) -> str:
     if not ev or not mm:
         return text
     line = lines.pop(ev[0])
-    return "\n".join(lines[:mm[0]] + [line] + lines[mm[0]:]) + "\n"
+    return "\n".join(lines[: mm[0]] + [line] + lines[mm[0] :]) + "\n"
 
 
 def test_the_core_suite_credits_a_PRODUCTION_pass(tmp_path, monkeypatch):
@@ -158,12 +169,14 @@ def test_the_core_suite_credits_a_PRODUCTION_pass(tmp_path, monkeypatch):
     monkeypatch.setenv("MERLIN_VERIFY_LOG", str(log))
     verdicts = record_core_verdicts(lit_passed=True)
 
-    production = {i.name for i in P.production_catalog()} if hasattr(P, "production_catalog") \
-        else {i.name for i in P.CATALOG}
+    production = (
+        {i.name for i in P.production_catalog()} if hasattr(P, "production_catalog") else {i.name for i in P.CATALOG}
+    )
     credited = {n for n, v in verdicts.items() if v == "verified"} & production
     assert credited, (
         f"no PRODUCTION pass is credited by the core suite; verdicts={verdicts}. Without one the "
-        f"obligation gate can only ever report 0/4 verified for production.")
+        f"obligation gate can only ever report 0/4 verified for production."
+    )
     assert log.is_file(), "verdicts were computed but nothing reached the log the gate reads"
 
 

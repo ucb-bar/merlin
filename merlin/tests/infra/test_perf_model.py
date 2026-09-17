@@ -4,6 +4,7 @@ These pin the properties that make the model citable: it never invents a ceiling
 rate on understated work, it ranks against the rate something actually reached, and it reports its
 own error instead of assuming it.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,8 +26,7 @@ def test_rank_n_batched_reduction_depth_comes_from_the_trailing_k_axis():
             "w": {"shape": [2, 3, 7, 11]},
             "dst": {"shape": [2, 3, 5, 11]},
         },
-        "commands": [{"opcode": "BATCHED_MATMUL",
-                      "operands": {"a": "a", "w": "w", "dst": "dst"}}],
+        "commands": [{"opcode": "BATCHED_MATMUL", "operands": {"a": "a", "w": "w", "dst": "dst"}}],
     }
     assert PM._command_reduction_depths(cb) == (7,)
 
@@ -39,14 +39,20 @@ def _result(root: Path, name: str, *, cycles, commands=None, buffer: bool = True
     d = root / name
     (d / "generated").mkdir(parents=True)
     (d / "capsule_result.json").write_text(
-        json.dumps({"tiers": {"L3": {"cycles": cycles, "status": "pass"}}}), encoding="utf-8")
+        json.dumps({"tiers": {"L3": {"cycles": cycles, "status": "pass"}}}), encoding="utf-8"
+    )
     if buffer:
         (d / "generated" / "command_buffer.json").write_text(
-            json.dumps({"tensors": {"A": {"shape": [16, 16], "dtype": "i8"},
-                                    "W": {"shape": [16, 16], "dtype": "i8"}},
-                        "commands": commands if commands is not None else
-                        [{"opcode": "MATMUL", "operands": {"lhs": "A", "rhs": "W", "dst": "acc"}}]}),
-            encoding="utf-8")
+            json.dumps(
+                {
+                    "tensors": {"A": {"shape": [16, 16], "dtype": "i8"}, "W": {"shape": [16, 16], "dtype": "i8"}},
+                    "commands": commands
+                    if commands is not None
+                    else [{"opcode": "MATMUL", "operands": {"lhs": "A", "rhs": "W", "dst": "acc"}}],
+                }
+            ),
+            encoding="utf-8",
+        )
 
 
 def test_a_measured_point_needs_both_exact_work_and_a_cycle_verdict(tmp_path):
@@ -88,7 +94,7 @@ def test_the_achievable_ceiling_is_a_falsified_ceiling_not_a_nameplate():
     points = [PM.MeasuredPoint("slow", 4096, 400, "x"), PM.MeasuredPoint("fast", 8192, 400, "x")]
     peak = PM.achievable_ceiling(points, provenance="unit test")
     assert peak.known and peak.is_ceiling and peak.n_samples == 2
-    assert peak.value == pytest.approx(8192 / 400)      # the best rate anything reached
+    assert peak.value == pytest.approx(8192 / 400)  # the best rate anything reached
     # Every point must satisfy demand/rate <= its own cycles, which is what makes it a bound.
     for p in points:
         assert p.macs / peak.value <= p.cycles + 1e-9
@@ -99,8 +105,7 @@ def test_the_achievable_ceiling_is_a_falsified_ceiling_not_a_nameplate():
 
 def test_headroom_ranks_the_least_utilised_shape_first():
     """This ordering is the optimisation order, so the worst offender must lead it."""
-    points = [PM.MeasuredPoint("at_ceiling", 8192, 400, "x"),
-              PM.MeasuredPoint("far_below", 4096, 4000, "x")]
+    points = [PM.MeasuredPoint("at_ceiling", 8192, 400, "x"), PM.MeasuredPoint("far_below", 4096, 4000, "x")]
     peak = PM.achievable_ceiling(points, provenance="unit test")
     ranked = PM.rank_headroom(points, achievable=peak, structural=256)
     assert [h.point.capsule for h in ranked] == ["far_below", "at_ceiling"]
@@ -128,9 +133,13 @@ def test_prediction_error_is_reported_not_assumed():
 # --- overlap falsifier and schedule ordering ------------------------------------------------------
 
 #: The measured gemmini probe, from out/artifacts/perf-bench/gemmini/composition_smoke.json.
-_MEASURED_OVERLAP = {"realised_cycles": 15, "available_cycles": 90,
-                     "busy_cycles": {"EX": 84, "LD": 53, "ST": 43},
-                     "engines": ["EX", "LD", "ST"], "measurement_cycles": 286}
+_MEASURED_OVERLAP = {
+    "realised_cycles": 15,
+    "available_cycles": 90,
+    "busy_cycles": {"EX": 84, "LD": 53, "ST": 43},
+    "engines": ["EX", "LD", "ST"],
+    "measurement_cycles": 286,
+}
 
 
 def test_the_overlap_denominator_convention_is_the_counter_module_s_and_is_stated():
@@ -153,7 +162,7 @@ def test_bit_exactness_alone_is_not_evidence_that_a_reordering_bought_anything()
     base = PM.overlap_observation("base", _MEASURED_OVERLAP)
     flat = PM.overlap_observation("cand", _MEASURED_OVERLAP)
     verdict = PM.overlap_verdict(base, flat, bit_exact=True, invariants_held=True)
-    assert verdict["state"] != "accept"          # eta did not rise
+    assert verdict["state"] != "accept"  # eta did not rise
     assert verdict["baseline_eta"] == pytest.approx(verdict["candidate_eta"])
 
     risen = PM.overlap_observation("cand", {**_MEASURED_OVERLAP, "realised_cycles": 45})
@@ -172,32 +181,36 @@ def test_schedule_ordering_refuses_on_a_partial_overlap_machine_and_says_why():
     from merlin.perf.envelope import Basis, Peak, ResourceDemand, compose, resource_time
     from merlin.perf.headroom import Composition
 
-    peak = Peak.observed_ceiling("compute", [(4096, 303), (32768, 610)], unit="mac",
-                                 provenance="test")
+    peak = Peak.observed_ceiling("compute", [(4096, 303), (32768, 610)], unit="mac", provenance="test")
     unknown = Peak.unknown("movement", "bytes", "no measured byte ceiling", provenance="test")
 
     def composed(macs, operator, eta):
         times = [
-            resource_time(ResourceDemand("compute", ResourceKind.COMPUTE, macs, "mac",
-                                         Basis.MOVED), peak),
-            resource_time(ResourceDemand("movement", ResourceKind.MOVEMENT, 1024, "bytes",
-                                         Basis.MOVED), unknown),
+            resource_time(ResourceDemand("compute", ResourceKind.COMPUTE, macs, "mac", Basis.MOVED), peak),
+            resource_time(ResourceDemand("movement", ResourceKind.MOVEMENT, 1024, "bytes", Basis.MOVED), unknown),
         ]
         return compose(times, operator=operator, eta=eta)
 
-    demands = {"movement": ResourceDemand("movement", ResourceKind.MOVEMENT, 1024, "bytes",
-                                          Basis.MOVED)}
-    partial = PM.schedule_ordering(composed(4096, Composition.PARTIAL, 0.1667),
-                                   composed(3000, Composition.PARTIAL, 0.1667),
-                                   demands_a=demands, demands_b=demands)
+    demands = {"movement": ResourceDemand("movement", ResourceKind.MOVEMENT, 1024, "bytes", Basis.MOVED)}
+    partial = PM.schedule_ordering(
+        composed(4096, Composition.PARTIAL, 0.1667),
+        composed(3000, Composition.PARTIAL, 0.1667),
+        demands_a=demands,
+        demands_b=demands,
+    )
     assert partial["usable"] is False
     assert "partial" in partial["reason"].lower()
 
     # The same call on an additive machine yields an exact ordering -- the tool is sound, the
     # machine is what makes it inapplicable here.
-    additive = PM.schedule_ordering(composed(4096, Composition.SUM, 0.0),
-                                    composed(3000, Composition.SUM, 0.0),
-                                    demands_a=demands, demands_b=demands, label_a="a", label_b="b")
+    additive = PM.schedule_ordering(
+        composed(4096, Composition.SUM, 0.0),
+        composed(3000, Composition.SUM, 0.0),
+        demands_a=demands,
+        demands_b=demands,
+        label_a="a",
+        label_b="b",
+    )
     assert additive["usable"] is True and additive["faster"] == "b"
     assert additive["delta_cycles"] is not None
     assert "movement" in additive["cancelled"]
@@ -226,8 +239,8 @@ def test_every_measured_cycle_lands_in_a_bucket_including_the_residual():
     source = PM.activity_source_from_counters("probe", _MEASURED_OVERLAP, _KINDS)
     components = {c["bucket"]: c for c in PM.attribute_gap(source)["components"]}
     assert set(components) >= {"compute", "dma", "stall", "control", "host", "residual"}
-    assert components["compute"]["measured_cycles"] == 84          # EX
-    assert components["dma"]["measured_cycles"] == 53 + 43         # LD + ST
+    assert components["compute"]["measured_cycles"] == 84  # EX
+    assert components["dma"]["measured_cycles"] == 53 + 43  # LD + ST
     assert components["residual"]["measured_cycles"] > 0
     # With no structural envelope supplied the gap is UNKNOWN, never zero.
     assert str(components["compute"]["structural_cycles"]) == "UNKNOWN"
@@ -237,12 +250,13 @@ def test_roles_separate_what_can_be_optimised_from_what_only_calibrates():
     """A workload isolating one engine calibrates that term; it is not an optimisation target."""
     compute = PM.activity_source_from_counters("compute", _MEASURED_OVERLAP, _KINDS)
     copy = PM.activity_source_from_counters(
-        "copy", {"busy_cycles": {"EX": 0, "LD": 35, "ST": 7}, "measurement_cycles": 129}, _KINDS)
+        "copy", {"busy_cycles": {"EX": 0, "LD": 35, "ST": 7}, "measurement_cycles": 129}, _KINDS
+    )
     report = PM.classify_roles([compute, copy])
     assert report["status"] == "classified"
     assert report["by_role"]["OPTIMIZE"] == ["compute"]
     assert report["by_role"]["CALIBRATION"] == ["copy"]
-    assert all(row["rule"] for row in report["rows"])              # every verdict carries its rule
+    assert all(row["rule"] for row in report["rows"])  # every verdict carries its rule
 
     assert PM.classify_roles([])["status"] == "unavailable"
 
@@ -250,10 +264,14 @@ def test_roles_separate_what_can_be_optimised_from_what_only_calibrates():
 def test_an_oracle_query_too_expensive_for_the_budget_is_refused_before_it_is_spent():
     """The point is to keep a large shape out of the expensive tier without paying to find out."""
     from merlin.perf.oracle_cost import CostSample, ProbeKind, fit_cost_law
+
     law = fit_cost_law(
-        [CostSample(seconds=10.0 + 0.005 * c, cycles=c, words=0, concurrency=1,
-                    kind=ProbeKind.CORPUS) for c in (200, 1000, 5000, 20000)],
-        substrate="test")
+        [
+            CostSample(seconds=10.0 + 0.005 * c, cycles=c, words=0, concurrency=1, kind=ProbeKind.CORPUS)
+            for c in (200, 1000, 5000, 20000)
+        ],
+        substrate="test",
+    )
     cheap = PM.oracle_affordability(law, predicted_cycles=600, budget_seconds=300)
     dear = PM.oracle_affordability(law, predicted_cycles=451_584, budget_seconds=300)
     assert cheap["affordable"] is True and dear["affordable"] is False
@@ -264,6 +282,7 @@ def test_an_oracle_query_too_expensive_for_the_budget_is_refused_before_it_is_sp
 
 
 # --- schedulability -------------------------------------------------------------------------------
+
 
 def _facts_path():
     p = repo_root() / "merlin/targets/gemmini/contracts/rtl_facts/facts.json"
@@ -277,14 +296,14 @@ def test_the_machine_budget_is_derived_and_unpublished_limits_stay_none():
     budget = PM.machine_budget(_facts_path(), "gemmini")
     declared = json.loads(_facts_path().read_text(encoding="utf-8"))["facts"]["arrays"][0]
     assert (budget.tile_rows, budget.tile_cols) == (declared["rows"], declared["cols"])
-    assert budget.operand_bytes == 1 and budget.accum_bytes == 4     # i8 operands, i32 accumulator
+    assert budget.operand_bytes == 1 and budget.accum_bytes == 4  # i8 operands, i32 accumulator
     assert budget.dram_window is None and budget.imem_words is None
     assert "rtl facts" in budget.provenance
 
     report = PM.preflight_shape("probe", m=16, k=128, n=16, budget=budget)
     codes = {r["code"] for r in report["refusals"]}
     assert {"dram_window_unchecked", "imem_unchecked"} <= codes
-    assert report["ok"] is False        # could-not-check is not a pass
+    assert report["ok"] is False  # could-not-check is not a pass
 
 
 def test_a_rate_needs_two_distinct_pass_counts_before_it_is_a_rate():
@@ -293,9 +312,14 @@ def test_a_rate_needs_two_distinct_pass_counts_before_it_is_a_rate():
     one = PM.tile_pass_rate([PM.MeasuredPoint("a", 4096, 303, "x")], budget=budget)
     assert one.n_points == 1 and "EXTRAPOLATION" in one.basis.name
 
-    many = PM.tile_pass_rate([PM.MeasuredPoint("a", 4096, 303, "x"),
-                              PM.MeasuredPoint("b", 32768, 610, "x"),
-                              PM.MeasuredPoint("c", 65536, 1112, "x")], budget=budget)
+    many = PM.tile_pass_rate(
+        [
+            PM.MeasuredPoint("a", 4096, 303, "x"),
+            PM.MeasuredPoint("b", 32768, 610, "x"),
+            PM.MeasuredPoint("c", 65536, 1112, "x"),
+        ],
+        budget=budget,
+    )
     assert many.basis.name == "FITTED" and many.per_tile_pass > 0
 
     none = PM.tile_pass_rate([], budget=budget)
@@ -305,24 +329,29 @@ def test_a_rate_needs_two_distinct_pass_counts_before_it_is_a_rate():
 def test_projected_cycles_feed_the_affordability_gate():
     """The point of projecting a shape is to refuse the expensive tier before paying for it."""
     from merlin.perf.oracle_cost import CostSample, ProbeKind, fit_cost_law
+
     budget = PM.machine_budget(_facts_path(), "gemmini")
-    rate = PM.tile_pass_rate([PM.MeasuredPoint("a", 4096, 303, "x"),
-                              PM.MeasuredPoint("b", 2_101_248, 28_118, "x")], budget=budget)
-    law = fit_cost_law([CostSample(seconds=12.9 + 0.0046 * c, cycles=c, words=0, concurrency=1,
-                                   kind=ProbeKind.CORPUS) for c in (200, 1000, 5000, 20000)],
-                       substrate="gsim")
+    rate = PM.tile_pass_rate(
+        [PM.MeasuredPoint("a", 4096, 303, "x"), PM.MeasuredPoint("b", 2_101_248, 28_118, "x")], budget=budget
+    )
+    law = fit_cost_law(
+        [
+            CostSample(seconds=12.9 + 0.0046 * c, cycles=c, words=0, concurrency=1, kind=ProbeKind.CORPUS)
+            for c in (200, 1000, 5000, 20000)
+        ],
+        substrate="gsim",
+    )
     small = PM.preflight_shape("small", m=16, k=128, n=16, budget=budget, rate=rate)
     large = PM.preflight_shape("layer", m=3136, k=576, n=64, budget=budget, rate=rate)
     assert large["tile_passes"] > small["tile_passes"] * 100
     assert large["projected_cycles"] > small["projected_cycles"]
 
-    verdict = PM.oracle_affordability(law, predicted_cycles=large["projected_cycles"],
-                                      budget_seconds=300)
+    verdict = PM.oracle_affordability(law, predicted_cycles=large["projected_cycles"], budget_seconds=300)
     assert verdict["affordable"] is False, verdict["reason"]
 
 
 def test_counter_availability_never_infers_absence_from_a_failed_lookup():
-    """"absent" is a claim about the machine and may only follow reading a real header."""
+    """ "absent" is a claim about the machine and may only follow reading a real header."""
     report = PM.counter_availability("gemmini")
     assert report["status"] in {"derived", "absent", "unavailable"}
     if report["status"] == "derived":
@@ -332,7 +361,7 @@ def test_counter_availability_never_infers_absence_from_a_failed_lookup():
 
 
 def test_the_capability_report_invokes_every_analysis_and_names_each_refusal():
-    """"Is the tooling used?" must be a measurement, not a reading of the import list.
+    """ "Is the tooling used?" must be a measurement, not a reading of the import list.
 
     Every analysis is CALLED. A module built for another archetype refuses in its own words -- a
     command-buffer target ships no ISA definition, and a target with no vector unit has no vector
@@ -377,8 +406,9 @@ def test_the_capability_report_invokes_every_analysis_and_names_each_refusal():
 
 # --- the ISA a RoCC target derives from its own decoder -------------------------------------------
 
+
 def test_a_rocc_target_derives_its_isa_from_its_own_decode_table():
-    """"ships no ISA definition" meant "we looked in two places", not "the ISA is unknown".
+    """ "ships no ISA definition" meant "we looked in two places", not "the ISA is unknown".
 
     The RTL facts carry `interfaces.funct_decode_table` -- custom_opcode, legal_funct and names --
     which is the same table `merlin.kernels.decode.rocc` already disassembles against.
@@ -416,17 +446,23 @@ def test_a_bundle_with_no_decode_table_yields_an_empty_model(tmp_path):
 def _composed(macs, moved, operator, eta):
     from merlin.perf.decompose import ResourceKind
     from merlin.perf.envelope import Basis, Peak, ResourceDemand, compose, resource_time
+
     peak = Peak.observed_ceiling("compute", [(4096, 303), (32768, 610)], unit="mac", provenance="t")
     unknown = Peak.unknown("movement", "bytes", "no measured byte ceiling", provenance="t")
-    return compose([
-        resource_time(ResourceDemand("compute", ResourceKind.COMPUTE, macs, "mac", Basis.MOVED), peak),
-        resource_time(ResourceDemand("movement", ResourceKind.MOVEMENT, moved, "bytes", Basis.MOVED),
-                      unknown)], operator=operator, eta=eta)
+    return compose(
+        [
+            resource_time(ResourceDemand("compute", ResourceKind.COMPUTE, macs, "mac", Basis.MOVED), peak),
+            resource_time(ResourceDemand("movement", ResourceKind.MOVEMENT, moved, "bytes", Basis.MOVED), unknown),
+        ],
+        operator=operator,
+        eta=eta,
+    )
 
 
 def _demand(moved):
     from merlin.perf.decompose import ResourceKind
     from merlin.perf.envelope import Basis, ResourceDemand
+
     return {"movement": ResourceDemand("movement", ResourceKind.MOVEMENT, moved, "bytes", Basis.MOVED)}
 
 
@@ -435,9 +471,12 @@ def test_a_refusal_names_the_resource_that_broke_it():
     from merlin.perf.headroom import Composition
 
     # Same unresolved resource, DIFFERENT work asked of it -> the unknown cannot cancel.
-    report = PM.schedule_ordering(_composed(4096, 1024, Composition.SUM, 0.0),
-                                  _composed(3000, 4096, Composition.SUM, 0.0),
-                                  demands_a=_demand(1024), demands_b=_demand(4096))
+    report = PM.schedule_ordering(
+        _composed(4096, 1024, Composition.SUM, 0.0),
+        _composed(3000, 4096, Composition.SUM, 0.0),
+        demands_a=_demand(1024),
+        demands_b=_demand(4096),
+    )
     assert report["usable"] is False
     assert "movement" in report["comparable_reason"]
     proof = {row["resource"]: row for row in report["cancellation_proof"]}
@@ -449,10 +488,14 @@ def test_on_a_partial_machine_the_evidence_cancels_and_only_the_operator_refuses
     """The useful diagnostic: nothing is missing here -- the machine's composition is the blocker."""
     from merlin.perf.headroom import Composition
 
-    report = PM.schedule_ordering(_composed(4096, 1024, Composition.PARTIAL, 0.1667),
-                                  _composed(3000, 1024, Composition.PARTIAL, 0.1667),
-                                  demands_a=_demand(1024), demands_b=_demand(1024),
-                                  label_a="cand", label_b="base")
+    report = PM.schedule_ordering(
+        _composed(4096, 1024, Composition.PARTIAL, 0.1667),
+        _composed(3000, 1024, Composition.PARTIAL, 0.1667),
+        demands_a=_demand(1024),
+        demands_b=_demand(1024),
+        label_a="cand",
+        label_b="base",
+    )
     assert report["usable"] is False
     assert "partial" in report["comparable_reason"].lower()
     # The evidence WOULD have cancelled; the operator is the sole obstacle.
@@ -465,10 +508,14 @@ def test_on_a_partial_machine_the_evidence_cancels_and_only_the_operator_refuses
 def test_an_additive_machine_gives_an_exact_delta_and_shows_what_dropped_out():
     from merlin.perf.headroom import Composition
 
-    report = PM.schedule_ordering(_composed(4096, 1024, Composition.SUM, 0.0),
-                                  _composed(3000, 1024, Composition.SUM, 0.0),
-                                  demands_a=_demand(1024), demands_b=_demand(1024),
-                                  label_a="cand", label_b="base")
+    report = PM.schedule_ordering(
+        _composed(4096, 1024, Composition.SUM, 0.0),
+        _composed(3000, 1024, Composition.SUM, 0.0),
+        demands_a=_demand(1024),
+        demands_b=_demand(1024),
+        label_a="cand",
+        label_b="base",
+    )
     assert report["usable"] is True and report["basis"] == "exact"
     assert report["faster"] == "base" and report["delta_cycles"] < 0
     assert report["cancelled"] == ["movement"]
@@ -478,9 +525,11 @@ def test_ranking_keeps_a_candidate_it_could_not_compare():
     """A candidate excluded for want of evidence is a hole in the search, not an answer about it."""
     from merlin.perf.headroom import Composition
 
-    cands = {"c1": _composed(4096, 1024, Composition.SUM, 0.0),
-             "c2": _composed(3000, 1024, Composition.SUM, 0.0),
-             "c3": _composed(5000, 1024, Composition.SUM, 0.0)}
+    cands = {
+        "c1": _composed(4096, 1024, Composition.SUM, 0.0),
+        "c2": _composed(3000, 1024, Composition.SUM, 0.0),
+        "c3": _composed(5000, 1024, Composition.SUM, 0.0),
+    }
     ranked = PM.rank_candidates(cands, demands={k: _demand(1024) for k in cands})
     assert ranked["order"] == ["c2", "c1", "c3"]
     assert ranked["fully_comparable"] is True
@@ -498,15 +547,23 @@ def test_ranking_keeps_a_candidate_it_could_not_compare():
 
 def test_the_roofline_names_what_limits_each_shape_not_just_how_far_it_is():
     """A gap is a number; a limiter is a lever. The corpus is overwhelmingly movement-bound."""
-    from merlin.perf.headroom import Composition
     from merlin.common.paths import repo_root
-    run = (repo_root() / "out/runs/gemmini/capsule-bench/merlin_assisted"
-           / "merlincirct_arm4_func_20260902_codex5_evidence_gsim")
+    from merlin.perf.headroom import Composition
+
+    run = (
+        repo_root()
+        / "out/runs/gemmini/capsule-bench/merlin_assisted"
+        / "merlincirct_arm4_func_20260902_codex5_evidence_gsim"
+    )
     if not run.is_dir():
         pytest.skip("the frozen functional run is absent in this checkout")
     report = PM.empirical_roofline_report(
-        run, operand_bytes=1, composition=Composition.PARTIAL,
-        composition_eta=0.16666666666666666, composition_provenance="measured counters")
+        run,
+        operand_bytes=1,
+        composition=Composition.PARTIAL,
+        composition_eta=0.16666666666666666,
+        composition_provenance="measured counters",
+    )
     assert report["status"] == "derived"
     assert report["resolved"] > 0 and report["expected"] >= report["resolved"]
     # Only an achievable ceiling is admissible here -- a nameplate peak cannot enter.
@@ -521,14 +578,16 @@ def test_the_roofline_names_what_limits_each_shape_not_just_how_far_it_is():
 
 def test_traffic_is_counted_from_declared_extents_not_from_mnemonics():
     """Nothing here matches an opcode or class name, so another target counts the same way."""
-    trace = {"instructions": [
-        {"index": 0, "class": "ANYTHING", "decoded": {"rows": 4, "cols": 8}},
-        {"index": 1, "class": "OTHER", "decoded": {"rows": 2, "cols": 2}},
-        {"index": 2, "class": "NO_EXTENT", "decoded": {}},
-        {"index": 3, "class": "MALFORMED", "decoded": {"rows": 0, "cols": 5}},
-    ]}
+    trace = {
+        "instructions": [
+            {"index": 0, "class": "ANYTHING", "decoded": {"rows": 4, "cols": 8}},
+            {"index": 1, "class": "OTHER", "decoded": {"rows": 2, "cols": 2}},
+            {"index": 2, "class": "NO_EXTENT", "decoded": {}},
+            {"index": 3, "class": "MALFORMED", "decoded": {"rows": 0, "cols": 5}},
+        ]
+    }
     elements, counted = PM.moved_elements_from_trace(trace)
-    assert (elements, counted) == (4 * 8 + 2 * 2, 2)   # zero-extent and extent-less contribute nothing
+    assert (elements, counted) == (4 * 8 + 2 * 2, 2)  # zero-extent and extent-less contribute nothing
     demand = PM.traffic_demand(trace, operand_bytes=4)
     assert demand.amount == (4 * 8 + 2 * 2) * 4 and demand.unit == "bytes"
     assert "decoded transfers" in demand.provenance
@@ -550,7 +609,7 @@ def test_fill_depth_asks_each_circuit_for_its_own_modules():
         pytest.skip("the atlas circuit is not reachable in this checkout")
     # Atlas carries an output-valid delay line, so its depth IS statically measurable.
     assert atlas.dim > 0 and atlas.measured_cycles > 0
-    assert atlas.law_cycles == atlas.measured_cycles     # the systolic_2d law holds for this design
+    assert atlas.law_cycles == atlas.measured_cycles  # the systolic_2d law holds for this design
 
     # The other design carries no NAMED delay line -- its emitter left "valid" only on the signals
     # each stage samples -- so the depth is recovered by walking the valid path instead. It must
@@ -579,8 +638,8 @@ def test_a_per_unit_analysis_is_asked_only_where_the_rtl_has_that_unit():
     report = PM.vector_term_for("gemmini")
     assert report["status"] == "not_applicable"
     assert "no vector compute unit" in report["reason"]
-    assert "systolic_mesh" in report["reason"]          # says what it DOES have
-    assert "manifest" not in report["reason"]           # not the foreign error
+    assert "systolic_mesh" in report["reason"]  # says what it DOES have
+    assert "manifest" not in report["reason"]  # not the foreign error
 
     atlas_units = dict(PM.compute_units_of("atlas"))
     if "vector" not in atlas_units.values():

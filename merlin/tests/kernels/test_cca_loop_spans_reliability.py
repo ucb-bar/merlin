@@ -11,6 +11,7 @@ The fix carries a reliability flag on the decoder (`InsnStream.spans_reliable()`
 loop structure cannot be trusted. `runtime_calls` (from the object's undefined symbols, NOT from loop
 structure) is unaffected -- it stays the trustworthy axis that names the escape on a whole-model fork.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -57,17 +58,18 @@ def test_calls_in_loop_is_none_when_spans_unreliable():
 
 def test_relocated_stream_gives_trustworthy_calls_in_loop():
     c = cca.lift_asm(rvv.decode_text(_RELOCATED), op="matmul", source="ours")
-    assert c.envelope.calls_in_loop == 0        # a real, trustworthy count (no call in the loop)
+    assert c.envelope.calls_in_loop == 0  # a real, trustworthy count (no call in the loop)
 
 
 def test_runtime_calls_survive_unreliable_spans():
     """The `runtime_calls` axis comes from the object's undefined symbols, not loop structure, so it
     stays trustworthy even when `calls_in_loop` had to be nulled -- this is the axis that routes to
     erase_self_copy on a whole-model fork."""
-    c = cca.lift_asm(rvv.decode_text(_UNRELOCATED), op="matmul", source="ours",
-                     undefined_symbols=["memrefCopy", "malloc"])
+    c = cca.lift_asm(
+        rvv.decode_text(_UNRELOCATED), op="matmul", source="ours", undefined_symbols=["memrefCopy", "malloc"]
+    )
     assert c.envelope.calls_in_loop is None
-    assert c.envelope.runtime_calls == ("malloc", "memrefCopy")   # sorted intersection of escapes
+    assert c.envelope.runtime_calls == ("malloc", "memrefCopy")  # sorted intersection of escapes
 
 
 def test_harvested_fixtures_are_linked_and_an_unlinkable_one_stays_honest():
@@ -93,7 +95,8 @@ def test_harvested_fixtures_are_linked_and_an_unlinkable_one_stays_honest():
         c = cca.lift_asm(stream, op="matmul", source="expert")
         assert c.envelope.calls_in_loop == 0, f"{name}: a trustworthy count, not UNKNOWN"
         assert c.compute.register_block is not None, (
-            f"{name}: a linked expert must be able to teach the register block — that is the lesson")
+            f"{name}: a linked expert must be able to teach the register block — that is the lesson"
+        )
 
     f16 = _DATA / "xnnpack_f16_gemm_rvv.objdump"
     if f16.is_file():

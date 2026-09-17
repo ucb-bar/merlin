@@ -20,6 +20,7 @@ inert lever must be proven by a measured emitted-code delta, not by its declarat
 This is the corpus-level invariant rather than a builder unit test on purpose: the same silent default
 can reappear in any builder, and only the emitted bytes show whether a declared axis survived.
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -45,8 +46,7 @@ def _capsules() -> list[dict]:
             doc = yaml.safe_load(cap.read_text(encoding="utf-8")) or {}
         except yaml.YAMLError:
             continue
-        out.append({"name": d.name, "doc": doc,
-                    "iface_sha": sha256(iface.read_bytes()).hexdigest()})
+        out.append({"name": d.name, "doc": doc, "iface_sha": sha256(iface.read_bytes()).hexdigest()})
     return out
 
 
@@ -70,7 +70,7 @@ def test_a_declared_axis_reaches_the_program_of_every_op_that_has_it():
         pytest.skip("no materialized performance corpus")
     by_family: dict[str, list[dict]] = defaultdict(list)
     for c in caps:
-        fam = ((c["doc"].get("performance") or {}).get("family") or "")
+        fam = (c["doc"].get("performance") or {}).get("family") or ""
         if fam:
             by_family[fam].append(c)
     assert by_family, "no capsule declares a performance family, so this test established nothing"
@@ -90,7 +90,8 @@ def test_a_declared_axis_reaches_the_program_of_every_op_that_has_it():
                 redundant[f"{fam}:{sha[:12]}"] = names
     assert not collisions, (
         "capsules of a contraction op in one performance family emit byte-identical interfaces, so a "
-        f"declared axis never reached the program: {collisions}")
+        f"declared axis never reached the program: {collisions}"
+    )
 
     # Reported, not failed. An axis-independent part shared by two groups is a true fact about the op,
     # but it is still the SAME program measured twice, which costs oracle time on a substrate whose
@@ -106,10 +107,8 @@ def test_a_family_whose_gate_demands_two_levels_has_two_distinct_programs():
         pytest.skip("no materialized performance corpus")
     checked = 0
     for fam in sorted({((c["doc"].get("performance") or {}).get("family") or "") for c in caps} - {""}):
-        members = [c for c in caps
-                   if ((c["doc"].get("performance") or {}).get("family")) == fam]
-        capacity = str((((members[0]["doc"].get("performance") or {}).get("gate")) or {})
-                       .get("capacity") or "")
+        members = [c for c in caps if ((c["doc"].get("performance") or {}).get("family")) == fam]
+        capacity = str((((members[0]["doc"].get("performance") or {}).get("gate")) or {}).get("capacity") or "")
         # "at least two <something>" is the shape of every capacity clause that demands levels; read it
         # by its leading tokens rather than matching a family name, so a new family is covered too.
         tokens = capacity.replace("-", "_").split("_")
@@ -118,7 +117,8 @@ def test_a_family_whose_gate_demands_two_levels_has_two_distinct_programs():
         distinct = {c["iface_sha"] for c in members}
         assert len(distinct) >= 2, (
             f"{fam} declares gate.capacity {capacity!r} but its {len(members)} capsule(s) emit "
-            f"{len(distinct)} distinct program(s); the levels are labels, not measurements")
+            f"{len(distinct)} distinct program(s); the levels are labels, not measurements"
+        )
         checked += 1
     if not checked:
         pytest.skip("no family declares an at-least-two capacity clause")

@@ -5,6 +5,7 @@ malloc claims from the leftover. Sizing the headroom from the weight bytes alone
 are small relative to weights, which is false for an encoder whose attention matrices dwarf its
 parameters — the case that motivated measuring the peak instead of assuming it.
 """
+
 from merlin.common.mlir_query import activation_peak_bytes
 from merlin.common.paths import repo_root
 from merlin.runtime.backends.zephyr_model import DEFAULT_RAM_BYTES, _ram_for_weights

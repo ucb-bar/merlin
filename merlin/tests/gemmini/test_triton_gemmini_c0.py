@@ -16,6 +16,7 @@ a weight-stationary systolic array earns its keep by keeping the weight resident
 built around a packed right-hand side, so a lone matmul never produces a RES_PACK for it to consume.
 The shared operand is what makes residency inferrable.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -24,6 +25,7 @@ import triton_kernels as K
 
 from merlin.common.paths import repo_root
 from merlin.runtime import reference_outputs, simulate
+
 # The gemmini reference backend was EVICTED from runtime/backends/ into its own target package
 # (contract `plugin.backend`), so it is reached through the registry rather than by module path.
 from merlin.runtime.backends.base import get_backend
@@ -54,8 +56,7 @@ def descent():
     ttir = source.make_ttir(spec)
     bridged = to_linalg(ttir, spec)
     result = compile_core.compile_core_mlir(bridged.module, target_package=_package())
-    return {"spec": spec, "ttir": ttir, "bridged": bridged, "result": result,
-            "lowered": result.staged}
+    return {"spec": spec, "ttir": ttir, "bridged": bridged, "result": result, "lowered": result.staged}
 
 
 def test_the_payload_routes_to_the_staged_pipeline(descent):
@@ -92,7 +93,13 @@ def test_the_command_buffer_is_the_certified_c0_shape(descent):
     cb = descent["lowered"].command_buffer
     assert cb["target"] == "gemmini"
     assert [c["opcode"] for c in cb["commands"]] == [
-        "RES_PACK", "MATMUL_RESIDENT", "COMMIT", "MATMUL_RESIDENT", "COMMIT", "EVICT"]
+        "RES_PACK",
+        "MATMUL_RESIDENT",
+        "COMMIT",
+        "MATMUL_RESIDENT",
+        "COMMIT",
+        "EVICT",
+    ]
     # OPERANDS are i8; the ACCUMULATOR/output is i32, and declaring it is correct -- a weight-stationary
     # i8 mesh accumulates in i32 and commits from there. This once asserted i8 everywhere, which held
     # only while the output tensor went undeclared; a buffer that declares its accumulator is a better
@@ -118,10 +125,12 @@ def test_the_command_buffer_simulates_against_an_independent_reference(descent):
     # Operand names are read out of the command buffer rather than assumed, so this keeps checking
     # the right tensors if naming changes.
     tensors = materialize_inputs(cb)
-    packed = {c["operands"]["dst"]: c["operands"]["src"]
-              for c in cb["commands"] if c["opcode"] == "RES_PACK"}
-    lhs_of = {c["operands"]["dst"]: (c["operands"]["lhs"], c["operands"]["rhs"])
-              for c in cb["commands"] if c["opcode"].startswith("MATMUL")}
+    packed = {c["operands"]["dst"]: c["operands"]["src"] for c in cb["commands"] if c["opcode"] == "RES_PACK"}
+    lhs_of = {
+        c["operands"]["dst"]: (c["operands"]["lhs"], c["operands"]["rhs"])
+        for c in cb["commands"]
+        if c["opcode"].startswith("MATMUL")
+    }
     commits = [c for c in cb["commands"] if c["opcode"] == "COMMIT"]
     assert commits, "no COMMIT to check"
     for commit in commits:

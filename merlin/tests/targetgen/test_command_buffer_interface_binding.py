@@ -1,4 +1,5 @@
 """The emitted command buffer must preserve the input interface's logical tensor ABI."""
+
 from __future__ import annotations
 
 import pytest
@@ -25,8 +26,7 @@ def _buffer(*, src: str = "fp8_e4m3", dst: str = "float32") -> dict:
 
 def test_interface_dtype_binding_accepts_registry_and_machine_aliases():
     validate_interface_tensor_dtypes(_buffer(), _interface())
-    validate_interface_tensor_dtypes(
-        _buffer(src="int8", dst="int32"), _interface(src="i8", dst="i32"))
+    validate_interface_tensor_dtypes(_buffer(src="int8", dst="int32"), _interface(src="i8", dst="i32"))
 
 
 def test_interface_dtype_binding_rejects_narrowed_output_despite_physical_hint():

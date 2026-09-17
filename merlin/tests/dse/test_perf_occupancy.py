@@ -4,6 +4,7 @@ Each test here is a regression on a fabricated number that was actually measured
 before the rule existed. The fixtures are hand-built boolean vectors, so nothing depends on a
 target, an engine or a signal name.
 """
+
 from __future__ import annotations
 
 from merlin.perf.occupancy import (
@@ -78,7 +79,7 @@ class TestStateCalibration:
 
     def test_disagreeing_idle_values_refuse_rather_than_pick_one(self):
         a = {"p": list("0110"), "s": list("0220")}
-        b = {"q": list("0110"), "t": list("9009")}       # idle 9 here, 0 there
+        b = {"q": list("0110"), "t": list("9009")}  # idle 9 here, 0 there
         out = calibrate_state_idle([a, b], ["s", "t"], ["p", "q"])
         assert out["idle_value"] is None
         assert "disagree" in out["detail"]
@@ -87,7 +88,7 @@ class TestStateCalibration:
 class TestEngineMerge:
     def test_the_sampling_offset_is_derived_not_assumed(self):
         a = _cols(unit="011000")
-        b = _cols(unit_view="110000")               # the same signal, sampled one cycle earlier
+        b = _cols(unit_view="110000")  # the same signal, sampled one cycle earlier
         shift, hits = align_offset(a, b)
         assert (shift, hits) == (-1, 1)
 
@@ -110,7 +111,7 @@ class TestEngineMerge:
         # The measured failure: a bus-valid signal beside the per-channel ports of the same bus
         # reported 6.8% overlap on a corpus where no two distinct units are ever busy together.
         a = _cols(ch0="110000", ch1="001100")
-        b = _cols(bus_valid="010100")               # a strict subset of ch0 | ch1
+        b = _cols(bus_valid="010100")  # a strict subset of ch0 | ch1
         merged, prov = merge_engines(a, b)
         assert prov["folded"]["bus_valid"] == "<covered by the other instrument>"
         assert joint_counts(merged)["overlap_any"] == 0
@@ -139,7 +140,7 @@ class TestJointCounts:
         assert out["undeclared_columns"] == ["c"]
 
     def test_overlap_across_kinds_needs_two_distinct_kinds(self):
-        hot = _cols(a="1100", b="0110")          # distinct signals, both busy on cycle 1
+        hot = _cols(a="1100", b="0110")  # distinct signals, both busy on cycle 1
         assert joint_counts(hot, kinds={"a": "compute", "b": "compute"})["overlap_across_kinds"] == 0
         assert joint_counts(hot, kinds={"a": "compute", "b": "movement"})["overlap_across_kinds"] == 1
 
@@ -159,10 +160,9 @@ class TestDeclaredHierarchy:
         hot = _cols(cluster="1111111100", embedded_pe="0011110000")
         units = {"cluster": "cluster", "embedded_pe": "embedded_pe"}
         assert subsumed_columns(hot, unit_of=units) == {}
-        jc = joint_counts(hot, kinds={"cluster": "compute", "embedded_pe": "compute"},
-                          unit_of=units)
+        jc = joint_counts(hot, kinds={"cluster": "compute", "embedded_pe": "compute"}, unit_of=units)
         assert jc["joint_columns"] == ["cluster", "embedded_pe"]
-        assert jc["overlap_any"] == 4          # the two microarchitectures running together
+        assert jc["overlap_any"] == 4  # the two microarchitectures running together
 
     def test_without_the_declaration_the_inner_engine_disappears(self):
         # The failure this exists to prevent, kept as a regression: undeclared, the inner engine is
@@ -188,14 +188,16 @@ class TestDeclaredHierarchy:
 class TestDeclaredEngines:
     """The unit set comes from the target's own contract, not from this module."""
 
-    CONTRACT = {"compute_units": [
-        {"name": "cluster", "kind": "simt", "dtypes": ["float32"], "ops": ["matmul"],
-         "contains": ["embedded_pe"]},
-        {"name": "embedded_pe", "kind": "systolic", "dtypes": ["int8"], "ops": ["matmul"]},
-    ]}
+    CONTRACT = {
+        "compute_units": [
+            {"name": "cluster", "kind": "simt", "dtypes": ["float32"], "ops": ["matmul"], "contains": ["embedded_pe"]},
+            {"name": "embedded_pe", "kind": "systolic", "dtypes": ["int8"], "ops": ["matmul"]},
+        ]
+    }
 
     def test_a_composed_device_yields_both_engines_and_the_containment(self):
         from merlin.perf.occupancy import declared_engines
+
         eng = declared_engines(self.CONTRACT)
         assert set(eng) == {"cluster", "embedded_pe"}
         assert eng["cluster"]["kind"] == "simt"
@@ -205,6 +207,7 @@ class TestDeclaredEngines:
     def test_a_binding_to_an_undeclared_engine_raises(self):
         # The trace and the contract disagreeing about what the device is must be loud.
         from merlin.perf.occupancy import declared_engines, unit_bindings
+
         eng = declared_engines(self.CONTRACT)
         try:
             unit_bindings(["a"], {"a": "ghost_unit"}, eng)
@@ -215,6 +218,7 @@ class TestDeclaredEngines:
 
     def test_an_unbound_column_is_returned_not_folded(self):
         from merlin.perf.occupancy import declared_engines, unit_bindings
+
         eng = declared_engines(self.CONTRACT)
         unit_of, unbound = unit_bindings(["x", "y"], {"x": "cluster"}, eng)
         assert unit_of == {"x": "cluster"}
@@ -222,10 +226,10 @@ class TestDeclaredEngines:
 
     def test_end_to_end_the_contained_engine_survives(self):
         from merlin.perf.occupancy import declared_engines, unit_bindings
+
         eng = declared_engines(self.CONTRACT)
         hot = _cols(cluster_busy="1111111100", pe_busy="0011110000")
-        unit_of, _ = unit_bindings(list(hot),
-                                   {"cluster_busy": "cluster", "pe_busy": "embedded_pe"}, eng)
+        unit_of, _ = unit_bindings(list(hot), {"cluster_busy": "cluster", "pe_busy": "embedded_pe"}, eng)
         jc = joint_counts(hot, unit_of=unit_of)
         assert set(jc["joint_columns"]) == {"cluster_busy", "pe_busy"}
         assert jc["overlap_any"] == 4
@@ -242,7 +246,9 @@ class TestGeneralisesAcrossRealTargets:
     def _contract(self, name):
         import pytest
         import yaml
+
         from merlin.common.paths import merlin_dir
+
         p = merlin_dir() / "targets" / name / "contracts" / "target_contract.yaml"
         if not p.is_file():
             pytest.skip(f"{name} declares no target contract in this checkout")
@@ -250,6 +256,7 @@ class TestGeneralisesAcrossRealTargets:
 
     def test_every_declared_engine_has_a_kind(self):
         from merlin.perf.occupancy import declared_engines
+
         seen = set()
         for name in ("gemmini", "muon", "saturn", "toy_npu"):
             for engine, rec in declared_engines(self._contract(name)).items():
@@ -260,6 +267,7 @@ class TestGeneralisesAcrossRealTargets:
     def test_a_nested_heterogeneous_device_keeps_both_engines_separable(self):
         # The case derived containment gets wrong: an engine of one archetype inside another.
         from merlin.perf.occupancy import declared_engines, unit_bindings
+
         eng = declared_engines(self._contract("muon"))
         outer = [n for n, r in eng.items() if r["contains"]]
         assert outer, "muon should declare a composed engine"
@@ -271,6 +279,7 @@ class TestGeneralisesAcrossRealTargets:
 
     def test_sibling_engines_are_separable_too(self):
         from merlin.perf.occupancy import declared_engines
+
         eng = declared_engines(self._contract("saturn"))
         assert len(eng) >= 2 and not any(r["contains"] for r in eng.values())
 
@@ -281,7 +290,7 @@ class TestOverlapObservability:
     def test_a_single_live_column_cannot_observe_overlap(self):
         out = joint_counts(_cols(only="1100"))
         assert out["overlap_any"] == 0
-        assert out["overlap_observable"] is False      # the zero is empty, not evidence
+        assert out["overlap_observable"] is False  # the zero is empty, not evidence
 
     def test_a_column_that_never_fires_does_not_make_overlap_observable(self):
         # The measured case: two controllers constant at idle while a third does all the work.

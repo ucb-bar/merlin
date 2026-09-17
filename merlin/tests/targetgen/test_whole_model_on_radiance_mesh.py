@@ -17,6 +17,7 @@ honestly until ``run_matmul_on_mesh`` grows a cyclotron dispatch (see the module
 ``merlin.compile_cli`` / the accompanying implementation spec). It is target-name-legitimate to name
 radiance here: this is a test that is ABOUT radiance, not shared library code.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -75,13 +76,17 @@ def test_radiance_contract_routes_matmuls_to_simt_mesh():
     assert any(u.kind == "simt" for u in units), "radiance contract has no SIMT mesh unit"
 
     plan, prog = _program(_vecblock(), units)
-    assert len(plan["mesh"]) == 2, plan            # both A@W1 and A@W2 route onto the mesh
+    assert len(plan["mesh"]) == 2, plan  # both A@W1 and A@W2 route onto the mesh
     assert all(r.demand.op == "matmul" for r in plan["mesh"])
     # relu + add are not mesh ops -> scalar/vector lane (honest, expected for a matmul mesh).
     scalar_ops = {r.demand.op for r in plan["scalar_rvv"]} | {r.demand.op for r in plan["fallback"]}
     assert scalar_ops == {"relu", "add"}, scalar_ops
     assert [(s.family, s.lane) for s in prog.steps] == [
-        ("matmul", "mesh"), ("relu", "scalar"), ("matmul", "mesh"), ("add", "scalar")]
+        ("matmul", "mesh"),
+        ("relu", "scalar"),
+        ("matmul", "mesh"),
+        ("add", "scalar"),
+    ]
 
 
 # --------------------------------------------------------------------------- splice plumbing (no oracle)
@@ -96,20 +101,19 @@ def test_radiance_splice_threads_layer_outputs_with_injected_mesh_executor():
     units = _units()
     _, prog = _program(_vecblock(), units)
     rng = np.random.default_rng(0)
-    leaves = {lid: rng.standard_normal(tuple(meta["shape"])).astype(np.float32)
-              for lid, meta in prog.leaves.items()}
+    leaves = {lid: rng.standard_normal(tuple(meta["shape"])).astype(np.float32) for lid, meta in prog.leaves.items()}
 
     calls: list = []
 
     def fake_oracle(lhs, rhs, step):
         calls.append(step.index)
-        return np.asarray(lhs) @ np.asarray(rhs)   # exact-matmul stand-in for the device
+        return np.asarray(lhs) @ np.asarray(rhs)  # exact-matmul stand-in for the device
 
     run = mp.run_whole_model_program(prog, leaves, mesh_exec=fake_oracle)
     A, W1, W2 = leaves["L0"], leaves["L1"], leaves["L2"]
     expected = np.maximum(A @ W1, 0.0) + (A @ W2)
     assert np.allclose(run["outputs"][prog.output], expected, rtol=1e-5, atol=1e-5)
-    assert calls == [0, 2]                          # only the two matmul steps hit the mesh executor
+    assert calls == [0, 2]  # only the two matmul steps hit the mesh executor
 
 
 def test_radiance_splice_fails_closed_when_mesh_layer_unavailable():
@@ -119,8 +123,7 @@ def test_radiance_splice_fails_closed_when_mesh_layer_unavailable():
     from merlin.targetgen import mesh_program_run as mp
 
     _, prog = _program(_vecblock(), _units())
-    leaves = {lid: np.zeros(tuple(meta["shape"]), dtype=np.float32)
-              for lid, meta in prog.leaves.items()}
+    leaves = {lid: np.zeros(tuple(meta["shape"]), dtype=np.float32) for lid, meta in prog.leaves.items()}
     with pytest.raises(mp.MeshLayerUnavailable):
         mp.run_whole_model_program(prog, leaves, mesh_exec=lambda lhs, rhs, step: None)
 
@@ -155,8 +158,16 @@ def test_whole_model_matmuls_on_radiance_mesh_bit_exact():
     units = _units()
     tok = _mesh_dtype_token(units)
     res = compile_cli.run_whole_model_on_mesh(
-        _TARGET, _vecblock(), in_fmt=tok, weight_fmt=tok,
-        operand_dtype=tok, accum_dtype=tok, ref_target=_REF_TARGET, seed=0, timeout=900)
+        _TARGET,
+        _vecblock(),
+        in_fmt=tok,
+        weight_fmt=tok,
+        operand_dtype=tok,
+        accum_dtype=tok,
+        ref_target=_REF_TARGET,
+        seed=0,
+        timeout=900,
+    )
 
     if res.get("status") == "oracle_unavailable":
         pytest.skip(res.get("reason", "radiance mesh oracle unavailable at run time"))

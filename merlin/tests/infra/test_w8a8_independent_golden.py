@@ -6,6 +6,7 @@ that have nothing to do with the datapath under test, and it is indistinguishabl
 one once it is sitting in the bundle. These tests pin the refusals, the never-overwrite naming,
 and the capture-environment layering that a wrong reference would otherwise come in through.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -34,13 +35,18 @@ def tool():
 
 def _write_safetensors(path, tensors: dict[str, np.ndarray]) -> None:
     """Minimal safetensors writer, so the reader is tested against bytes and not against itself."""
-    tag = {np.dtype(np.int8): "I8", np.dtype(np.uint8): "U8", np.dtype(np.int32): "I32",
-           np.dtype(np.int64): "I64", np.dtype(np.float32): "F32", np.dtype(np.float16): "F16"}
+    tag = {
+        np.dtype(np.int8): "I8",
+        np.dtype(np.uint8): "U8",
+        np.dtype(np.int32): "I32",
+        np.dtype(np.int64): "I64",
+        np.dtype(np.float32): "F32",
+        np.dtype(np.float16): "F16",
+    }
     header, blob, offset = {}, bytearray(), 0
     for name, arr in tensors.items():
         raw = np.ascontiguousarray(arr).tobytes()
-        header[name] = {"dtype": tag[arr.dtype], "shape": list(arr.shape),
-                        "data_offsets": [offset, offset + len(raw)]}
+        header[name] = {"dtype": tag[arr.dtype], "shape": list(arr.shape), "data_offsets": [offset, offset + len(raw)]}
         blob += raw
         offset += len(raw)
     head = json.dumps(header).encode()
@@ -49,9 +55,11 @@ def _write_safetensors(path, tensors: dict[str, np.ndarray]) -> None:
 
 # --------------------------------------------------------------------- the container reader
 def test_safetensors_reader_round_trips_bytes(tool, tmp_path):
-    tensors = {"w.int_data": np.arange(-6, 6, dtype=np.int8).reshape(3, 4),
-               "w.scale": np.array([0.5, 0.25, 0.125], dtype=np.float32),
-               "ids": np.array([[1, 2, 3]], dtype=np.int64)}
+    tensors = {
+        "w.int_data": np.arange(-6, 6, dtype=np.int8).reshape(3, 4),
+        "w.scale": np.array([0.5, 0.25, 0.125], dtype=np.float32),
+        "ids": np.array([[1, 2, 3]], dtype=np.int64),
+    }
     path = tmp_path / "weights.safetensors"
     _write_safetensors(path, tensors)
     got = tool.read_safetensors(path)
@@ -63,10 +71,8 @@ def test_safetensors_reader_round_trips_bytes(tool, tmp_path):
 
 # --------------------------------------------------------------------- the consistency gate
 def test_gate_accepts_bit_identical_quantized_weights(tool):
-    a = {"w.int_data": np.arange(-8, 8, dtype=np.int8),
-         "w.scale": np.array([0.5], dtype=np.float32)}
-    b = {"w.int_data": np.arange(-8, 8, dtype=np.int8),
-         "w.scale": np.array([0.5], dtype=np.float32)}
+    a = {"w.int_data": np.arange(-8, 8, dtype=np.int8), "w.scale": np.array([0.5], dtype=np.float32)}
+    b = {"w.int_data": np.arange(-8, 8, dtype=np.int8), "w.scale": np.array([0.5], dtype=np.float32)}
     report = tool.quantized_weight_diff(a, b)
     assert report["ok"] is True
     assert report["n_quantized"] == 1
@@ -85,8 +91,7 @@ def test_gate_refuses_partial_quantization_coverage_even_when_shared_weight_matc
 
 
 def test_gate_accepts_complete_quantization_coverage(tool):
-    tensors = {f"layer{i}.weight.int_data": np.array([i], dtype=np.int8)
-               for i in range(3)}
+    tensors = {f"layer{i}.weight.int_data": np.array([i], dtype=np.int8) for i in range(3)}
     report = tool.quantized_weight_diff(tensors, dict(tensors), expected_quantized=3)
     assert report["ok"] is True
     assert report["coverage_complete"] is True
@@ -112,14 +117,13 @@ def test_quantizable_inventory_counts_tied_weights_once(tool):
             yield "second", _Linear(_Weight())
             yield "normalization", _Other()
 
-    assert tool.quantizable_weight_inventory(_Model(), (_Linear,)) == [
-        "first.weight", "second.weight"]
+    assert tool.quantizable_weight_inventory(_Model(), (_Linear,)) == ["first.weight", "second.weight"]
 
 
 def test_gate_refuses_when_one_quantized_element_differs(tool):
     a = {"w.int_data": np.arange(-8, 8, dtype=np.int8)}
     flipped = np.arange(-8, 8, dtype=np.int8)
-    flipped[3] += 1                      # a single element: the smallest real disagreement
+    flipped[3] += 1  # a single element: the smallest real disagreement
     report = tool.quantized_weight_diff(a, {"w.int_data": flipped})
     assert report["ok"] is False
     assert report["n_mismatched"] == 1
@@ -155,8 +159,7 @@ def test_default_output_never_targets_the_shipped_golden(tool):
     assert tool.DEFAULT_OUT_NAME.endswith(".npy")
 
 
-def test_generate_writes_nothing_when_the_capture_interpreter_is_absent(tool, tmp_path,
-                                                                       monkeypatch):
+def test_generate_writes_nothing_when_the_capture_interpreter_is_absent(tool, tmp_path, monkeypatch):
     bundle = tmp_path / "recaptures" / "somemodel_int8_full"
     bundle.mkdir(parents=True)
     monkeypatch.setattr(tool, "m2m_root", lambda: tmp_path / "absent_m2m")
@@ -176,8 +179,7 @@ def test_capture_environment_override_can_unset_a_smoke_default(tool, tmp_path, 
     """
     model_dir = tmp_path / "workloads" / "somemodel"
     model_dir.mkdir(parents=True)
-    (model_dir / "capture.toml").write_text(
-        '[env]\nM2M_LAYERS = "2"\nHF_HOME = "/cache"\n', encoding="utf-8")
+    (model_dir / "capture.toml").write_text('[env]\nM2M_LAYERS = "2"\nHF_HOME = "/cache"\n', encoding="utf-8")
     monkeypatch.delenv("M2M_LAYERS", raising=False)
 
     plain = tool.capture_environment(tmp_path, "somemodel")
@@ -185,7 +187,7 @@ def test_capture_environment_override_can_unset_a_smoke_default(tool, tmp_path, 
 
     unset = tool.capture_environment(tmp_path, "somemodel", {"M2M_LAYERS": ""})
     assert "M2M_LAYERS" not in unset
-    assert unset["HF_HOME"] == "/cache"        # untouched entries survive
+    assert unset["HF_HOME"] == "/cache"  # untouched entries survive
 
     replaced = tool.capture_environment(tmp_path, "somemodel", {"M2M_LAYERS": "26"})
     assert replaced["M2M_LAYERS"] == "26"
@@ -201,12 +203,15 @@ def test_capture_python_falls_back_to_the_repo_venv(tool, tmp_path):
 
 
 # --------------------------------------------------------------------- bundle naming
-@pytest.mark.parametrize("bundle,model", [
-    ("spectformer_int8_full", "spectformer"),
-    ("small_llama_int8_consistent", "small_llama"),
-    ("gemma2_2b_int8_full_seq8_sliced_tiledhead", "gemma2_2b"),
-    ("lstmnetvit_int8_w8a8_consistent", "lstmnetvit"),
-])
+@pytest.mark.parametrize(
+    "bundle,model",
+    [
+        ("spectformer_int8_full", "spectformer"),
+        ("small_llama_int8_consistent", "small_llama"),
+        ("gemma2_2b_int8_full_seq8_sliced_tiledhead", "gemma2_2b"),
+        ("lstmnetvit_int8_w8a8_consistent", "lstmnetvit"),
+    ],
+)
 def test_bundle_model_name(tool, tmp_path, bundle, model):
     assert tool.bundle_model_name(tmp_path / bundle) == model
 
@@ -237,11 +242,15 @@ def test_bundle_qinner_reads_only_the_quantized_leaves(tool, tmp_path):
     Gating only on the safetensors there finds an empty intersection, which the gate must (and
     does) refuse — so the reference could never be written for such a bundle at all.
     """
-    np.savez(tmp_path / "extra.npz",
-             **{"buf::running_mean": np.zeros(3, dtype=np.float32),
-                "c_lifted_tensor_0": np.zeros(2, dtype=np.float32),
-                "qinner::fc.weight.tensor_impl.int_data": np.arange(-4, 4, dtype=np.int8),
-                "qinner::fc.weight.tensor_impl.scale": np.array([0.25], dtype=np.float32)})
+    np.savez(
+        tmp_path / "extra.npz",
+        **{
+            "buf::running_mean": np.zeros(3, dtype=np.float32),
+            "c_lifted_tensor_0": np.zeros(2, dtype=np.float32),
+            "qinner::fc.weight.tensor_impl.int_data": np.arange(-4, 4, dtype=np.int8),
+            "qinner::fc.weight.tensor_impl.scale": np.array([0.25], dtype=np.float32),
+        },
+    )
     got = tool.bundle_quantized_parameters(tmp_path)
     assert set(got) == {"fc.weight.tensor_impl.int_data", "fc.weight.tensor_impl.scale"}
     assert got["fc.weight.tensor_impl.int_data"].dtype == np.dtype(np.int8)
@@ -259,7 +268,8 @@ def test_flatten_quantized_parameters_names_leaves_like_the_capture_does(tool):
     names. Pinned with numpy-backed stand-ins so the assertion RUNS in merlin's own venv (torch
     lives in the model capture venvs); an importorskip here would report success without checking.
     """
-    class _Leaf:                       # the torch.Tensor surface flatten_quantized_parameters uses
+
+    class _Leaf:  # the torch.Tensor surface flatten_quantized_parameters uses
         def __init__(self, array):
             self._array = array
             self.dtype = array.dtype
@@ -284,11 +294,14 @@ def test_flatten_quantized_parameters_names_leaves_like_the_capture_does(tool):
         def __tensor_flatten__(self):
             return list(self._children), {}
 
-    class Parameter(_Leaf):        # named so the "is this a plain torch Parameter" filter sees it
+    class Parameter(_Leaf):  # named so the "is this a plain torch Parameter" filter sees it
         pass
 
-    quantized = _Node(tensor_impl=_Node(int_data=_Leaf(np.arange(-4, 4, dtype=np.int8)),
-                                        scale=_Leaf(np.array([0.25], dtype=np.float32))))
+    quantized = _Node(
+        tensor_impl=_Node(
+            int_data=_Leaf(np.arange(-4, 4, dtype=np.int8)), scale=_Leaf(np.array([0.25], dtype=np.float32))
+        )
+    )
 
     class _Model:
         def named_parameters(self):

@@ -3,6 +3,7 @@
 Hermetic: the origin-rewrite and the fallback are pure logic (no RTL build needed); the chipyard memmap
 read is exercised only when a build is present (skipped otherwise), so this stays target/host-agnostic.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,11 +12,11 @@ from merlin.targetgen import runtime_build as RB
 
 
 def test_rebase_replaces_the_first_absolute_origin():
-    ld = "OUTPUT_ARCH(\"riscv\")\nSECTIONS {\n  . = 0x80000000;\n  .text : { *(.text*) }\n}\n"
+    ld = 'OUTPUT_ARCH("riscv")\nSECTIONS {\n  . = 0x80000000;\n  .text : { *(.text*) }\n}\n'
     out = RB._rebase_ld(ld, 0x40000000)
     assert ". = 0x40000000;" in out
-    assert "0x80000000" not in out          # the baked origin is gone
-    assert ".text : { *(.text*) }" in out    # the rest of the layout is untouched
+    assert "0x80000000" not in out  # the baked origin is gone
+    assert ".text : { *(.text*) }" in out  # the rest of the layout is untouched
 
 
 def test_rebase_returns_none_when_no_origin_to_rewrite():

@@ -21,6 +21,7 @@ Three mechanisms, and what each of these tests is here to catch:
   (process-global counter environment, a relative path a chdir window can re-root) must drop the
   width back to one rather than proceed.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -44,8 +45,7 @@ if str(_SCRIPTS) not in sys.path:
 import run_paired_perf_bench as PAIR  # noqa: E402
 
 _ORCH_SOURCE = _SCRIPTS / "run_agentic_perf_experiment.py"
-_ORCH_SPEC = importlib.util.spec_from_file_location("run_agentic_perf_experiment_savings",
-                                                    _ORCH_SOURCE)
+_ORCH_SPEC = importlib.util.spec_from_file_location("run_agentic_perf_experiment_savings", _ORCH_SOURCE)
 assert _ORCH_SPEC is not None and _ORCH_SPEC.loader is not None
 ORCH = importlib.util.module_from_spec(_ORCH_SPEC)
 sys.modules[_ORCH_SPEC.name] = ORCH
@@ -65,20 +65,22 @@ def _stage(name: str, *, launches: bool) -> ORCH.ChildStage:
 
 def test_the_lead_wave_covers_every_corpus_before_anything_fans_out():
     """One cell per corpus lands first, so the frozen baseline for that corpus is bought once."""
-    stages = [_stage(f"m:{trial}:{phase}", launches=True)
-              for trial in ("t0", "t1", "t2") for phase in ("tuning", "held_out")]
+    stages = [
+        _stage(f"m:{trial}:{phase}", launches=True) for trial in ("t0", "t1", "t2") for phase in ("tuning", "held_out")
+    ]
     phases = ["tuning", "held_out"] * 3
     lead = ORCH.baseline_lead_prefix(stages, phases)
     assert set(phases[:lead]) == {"tuning", "held_out"}
     # and it is the SHORTEST such prefix -- a longer one serialises measurements for nothing
-    assert set(phases[:lead - 1]) != {"tuning", "held_out"}
+    assert set(phases[: lead - 1]) != {"tuning", "held_out"}
 
 
 def test_the_lead_wave_is_a_prefix_so_the_commit_order_never_changes():
     """The checkpoint chain is a linear hash chain committed in declared order; a filtered subset
     would reorder it and the resumed campaign would not re-derive the same chain."""
-    stages = [_stage(f"m:{trial}:{phase}", launches=True)
-              for trial in ("t0", "t1", "t2") for phase in ("tuning", "held_out")]
+    stages = [
+        _stage(f"m:{trial}:{phase}", launches=True) for trial in ("t0", "t1", "t2") for phase in ("tuning", "held_out")
+    ]
     phases = ["tuning", "held_out"] * 3
     lead = ORCH.baseline_lead_prefix(stages, phases)
     assert [stage.name for stage in stages[:lead] + stages[lead:]] == [s.name for s in stages]
@@ -87,8 +89,12 @@ def test_the_lead_wave_is_a_prefix_so_the_commit_order_never_changes():
 def test_an_adopted_cell_does_not_stand_in_for_a_measurement_nobody_ran():
     """A cell with no launch is being adopted from an artifact; it warms nothing in this campaign,
     so the lead must reach the first cell of that corpus that actually runs."""
-    stages = [_stage("m:t0:tuning", launches=False), _stage("m:t0:held_out", launches=True),
-              _stage("m:t1:tuning", launches=True), _stage("m:t1:held_out", launches=True)]
+    stages = [
+        _stage("m:t0:tuning", launches=False),
+        _stage("m:t0:held_out", launches=True),
+        _stage("m:t1:tuning", launches=True),
+        _stage("m:t1:held_out", launches=True),
+    ]
     phases = ["tuning", "held_out", "tuning", "held_out"]
     lead = ORCH.baseline_lead_prefix(stages, phases)
     assert lead == 3 and all(stage.launch is not None for stage in stages[1:lead])
@@ -114,8 +120,9 @@ class _Checkpoints:
         self._rows[name] = row
 
 
-def _measure_waves(monkeypatch, tmp_path: Path, *, workers: int, sim_workers: int = 1
-                   ) -> tuple[list[list[str]], list[str], list[list[str]]]:
+def _measure_waves(
+    monkeypatch, tmp_path: Path, *, workers: int, sim_workers: int = 1
+) -> tuple[list[list[str]], list[str], list[list[str]]]:
     """Run the full 3-trial x 2-phase matrix with every child stubbed; report the wave split."""
     waves: list[list[str]] = []
     commands: list[list[str]] = []
@@ -131,25 +138,37 @@ def _measure_waves(monkeypatch, tmp_path: Path, *, workers: int, sim_workers: in
     monkeypatch.setattr(ORCH, "run_child_stages", run_child_stages)
     monkeypatch.setattr(ORCH, "_uncheckpointed_state", lambda root, artifact, *, label: "absent")
     monkeypatch.setattr(ORCH, "child_environment", lambda config, certificate: {})
-    monkeypatch.setattr(ORCH, "_run_checked",
-                        lambda runner, command, **k: commands.append(list(command)))
-    monkeypatch.setattr(ORCH, "_verify_measurement_manifest",
-                        lambda path, **kwargs: {"path": str(path)})
+    monkeypatch.setattr(ORCH, "_run_checked", lambda runner, command, **k: commands.append(list(command)))
+    monkeypatch.setattr(ORCH, "_verify_measurement_manifest", lambda path, **kwargs: {"path": str(path)})
     monkeypatch.setattr(ORCH, "_verify_saved_file", lambda saved, output, *, label: Path(output))
 
-    handoff = SimpleNamespace(record_path=tmp_path / "candidate.json",
-                              corpus_root=tmp_path / "corpus")
+    handoff = SimpleNamespace(record_path=tmp_path / "candidate.json", corpus_root=tmp_path / "corpus")
     certificate = SimpleNamespace(path=tmp_path / "certificate.json", sha256="b" * 64)
-    cells = [ORCH._MeasurementCell(
-        trial=trial, phase=phase, handoff=handoff, corpus_root=tmp_path / "corpus",
-        corpus_manifest=tmp_path / "corpus/manifest.json", corpus_manifest_sha256="c" * 64,
-        corpus_capsules_sha256="d" * 64, certificate=certificate,
-        stage=f"measurement:{trial}:{phase}", run_id=f"{trial}__{phase}",
-        output=tmp_path / trial / phase / "campaign_manifest.json")
-        for trial in ("t0", "t1", "t2") for phase in ("tuning", "held_out")]
-    config = SimpleNamespace(functional_run_id="functional", functional_submission_sha256="a" * 64,
-                             rtl_facts=tmp_path / "rtl.json", measurement_timeout=90,
-                             hardware_counters=False, sim_workers=sim_workers)
+    cells = [
+        ORCH._MeasurementCell(
+            trial=trial,
+            phase=phase,
+            handoff=handoff,
+            corpus_root=tmp_path / "corpus",
+            corpus_manifest=tmp_path / "corpus/manifest.json",
+            corpus_manifest_sha256="c" * 64,
+            corpus_capsules_sha256="d" * 64,
+            certificate=certificate,
+            stage=f"measurement:{trial}:{phase}",
+            run_id=f"{trial}__{phase}",
+            output=tmp_path / trial / phase / "campaign_manifest.json",
+        )
+        for trial in ("t0", "t1", "t2")
+        for phase in ("tuning", "held_out")
+    ]
+    config = SimpleNamespace(
+        functional_run_id="functional",
+        functional_submission_sha256="a" * 64,
+        rtl_facts=tmp_path / "rtl.json",
+        measurement_timeout=90,
+        hardware_counters=False,
+        sim_workers=sim_workers,
+    )
     state = _Checkpoints()
     ORCH._measure_cells(cells, config, state, command_runner=lambda *a, **k: None, workers=workers)
     return waves, state.order, commands
@@ -159,8 +178,7 @@ def test_a_serial_matrix_is_launched_exactly_as_before(monkeypatch, tmp_path):
     """workers == 1 takes the single unsplit call: the serial campaign is the reference."""
     waves, order, _ = _measure_waves(monkeypatch, tmp_path, workers=1)
     assert len(waves) == 1 and len(waves[0]) == 6
-    assert order == [f"measurement:{t}:{p}" for t in ("t0", "t1", "t2")
-                     for p in ("tuning", "held_out")]
+    assert order == [f"measurement:{t}:{p}" for t in ("t0", "t1", "t2") for p in ("tuning", "held_out")]
 
 
 def test_a_wide_matrix_lands_one_cell_per_corpus_before_the_rest(monkeypatch, tmp_path):
@@ -169,8 +187,7 @@ def test_a_wide_matrix_lands_one_cell_per_corpus_before_the_rest(monkeypatch, tm
     assert waves[0] == ["measurement:t0:tuning", "measurement:t0:held_out"]
     assert len(waves) == 2 and len(waves[1]) == 4
     # the checkpoint chain is unchanged: splitting into waves must not reorder a single commit
-    assert order == [f"measurement:{t}:{p}" for t in ("t0", "t1", "t2")
-                     for p in ("tuning", "held_out")]
+    assert order == [f"measurement:{t}:{p}" for t in ("t0", "t1", "t2") for p in ("tuning", "held_out")]
 
 
 # =====================================================================================
@@ -178,8 +195,11 @@ def test_a_wide_matrix_lands_one_cell_per_corpus_before_the_rest(monkeypatch, tm
 # =====================================================================================
 class _Certificate:
     def __init__(self, binary_sha256: str):
-        self.pins = {"gsim_binary": {"sha256": binary_sha256},
-                     "gsim_firrtl": {"sha256": FIRRTL}, "gsim_model": {"sha256": MODEL}}
+        self.pins = {
+            "gsim_binary": {"sha256": binary_sha256},
+            "gsim_firrtl": {"sha256": FIRRTL},
+            "gsim_model": {"sha256": MODEL},
+        }
 
 
 class _Engine:
@@ -200,22 +220,29 @@ class _Engine:
     def activate(self):
         """Make THIS engine the one the run resolves; the backend resolver is process-global."""
         import merlin.runtime.backends.base as backends
+
         self._monkeypatch.setattr(
-            backends, "get_backend",
-            lambda target: types.SimpleNamespace(gsim_path=lambda: str(self.binary)))
+            backends, "get_backend", lambda target: types.SimpleNamespace(gsim_path=lambda: str(self.binary))
+        )
 
         def run_on_oracle(cb, llvm_text, *, simulator, target, workdir, timeout):
             self.calls += 1
-            return {"elf": str(self.elf), "cycles": 4242, "outputs": {"Y": [1]}, "console": "",
-                    "oracle": {"kind": "rtl_gsim", "derived_from_rtl": True},
-                    "timing": {"build_s": 0.5, "sim_active_s": 110.0, "oracle_wait_s": 0.0}}
+            return {
+                "elf": str(self.elf),
+                "cycles": 4242,
+                "outputs": {"Y": [1]},
+                "console": "",
+                "oracle": {"kind": "rtl_gsim", "derived_from_rtl": True},
+                "timing": {"build_s": 0.5, "sim_active_s": 110.0, "oracle_wait_s": 0.0},
+            }
 
         self._monkeypatch.setattr(PAIR.OOT, "run_on_oracle", run_on_oracle)
 
     def measure(self, store, cb=CB, llvm="module {}"):
         evidence: dict = {}
-        result = PAIR._gsim_l3_adapter("t", evidence, self.certificate,
-                                       reuse_scope=SCOPE, store=store)(cb, llvm, self.elf.parent, 60)
+        result = PAIR._gsim_l3_adapter("t", evidence, self.certificate, reuse_scope=SCOPE, store=store)(
+            cb, llvm, self.elf.parent, 60
+        )
         return evidence, result
 
 
@@ -233,8 +260,16 @@ def store(tmp_path):
 
 def _row(reused, *, simulator="gsim", citable=True, arm="baseline"):
     provenance = {"tier": "L3", "simulator": simulator, "reused_measurement": reused}
-    return {"phase": "tuning", "arm": arm, "family": "f", "capsule": "c", "replicate": "r000",
-            "simulator": simulator, "citable": citable, "provenance": provenance}
+    return {
+        "phase": "tuning",
+        "arm": arm,
+        "family": "f",
+        "capsule": "c",
+        "replicate": "r000",
+        "simulator": simulator,
+        "citable": citable,
+        "provenance": provenance,
+    }
 
 
 def test_a_fresh_measurement_says_it_was_measured_here(tmp_path, monkeypatch, store):
@@ -314,40 +349,73 @@ def test_the_headline_pairs_say_which_half_of_the_ratio_was_carried():
 # 3. fan-out: same campaign, less wall clock -- or a refusal to fan out at all
 # =====================================================================================
 def _plan(tmp_path: Path, members: int = 3):
-    descriptor = {"operation": {"op": "movement", "attributes": {"src": "X", "out": "Y"}},
-                  "inputs": [{"name": "X", "shape": [1], "dtype": "i8"}],
-                  "numeric_policy": {"compare": "exact_int"}}
+    descriptor = {
+        "operation": {"op": "movement", "attributes": {"src": "X", "out": "Y"}},
+        "inputs": [{"name": "X", "shape": [1], "dtype": "i8"}],
+        "numeric_policy": {"compare": "exact_int"},
+    }
     loaded = []
     for index in range(members):
         source = (tmp_path / f"m{index}").resolve()
         source.mkdir(parents=True, exist_ok=True)
         (source / "capsule.yaml").write_text(yaml.safe_dump(descriptor), encoding="utf-8")
-        loaded.append(SimpleNamespace(family="f", capsule=f"m{index}", source_dir=source,
-                                      source_sha256=str(index) * 64, descriptor=descriptor))
+        loaded.append(
+            SimpleNamespace(
+                family="f", capsule=f"m{index}", source_dir=source, source_sha256=str(index) * 64, descriptor=descriptor
+            )
+        )
     workloads = [PAIR._gsim_workload(member) for member in loaded]
     certificate = SimpleNamespace(
-        sha256="d" * 64, unresolved={}, pins={},
-        members={PAIR.GATE.workload_sha256(workload): {} for workload in workloads})
+        sha256="d" * 64,
+        unresolved={},
+        pins={},
+        members={PAIR.GATE.workload_sha256(workload): {} for workload in workloads},
+    )
     baseline, candidate = (tmp_path / "baseline").resolve(), (tmp_path / "candidate").resolve()
     inputs = PAIR.PairedInputs(
         SimpleNamespace(run_id="functional", digest="a" * 64),
-        SimpleNamespace(record_sha256="b" * 64), SimpleNamespace(capsules=tuple(loaded)),
-        "held_out", baseline, "a" * 64, candidate, "c" * 64, certificate)
+        SimpleNamespace(record_sha256="b" * 64),
+        SimpleNamespace(capsules=tuple(loaded)),
+        "held_out",
+        baseline,
+        "a" * 64,
+        candidate,
+        "c" * 64,
+        certificate,
+    )
     return PAIR.build_measurement_plan(inputs)
 
 
 def _mock_measurement(spec, cycles: int) -> dict:
     digest = hashlib.sha256(f"{spec.pair_id}{spec.arm}".encode()).hexdigest()
-    return {"status": "pass", "numeric": "pass", "work_volume": {},
-            "command_buffer_artifact": None, "gsim_qualification": {"admitted": True},
-            "per_sim": {
-                "spike": {"correct": True, "cycles": None, "correctness_cycles": 5,
-                          "provenance": {"tier": "L2", "simulator": "spike"}},
-                "gsim": {"correct": True, "cycles": cycles,
-                         "provenance": {"tier": "L3", "simulator": "gsim",
-                                        "oracle_kind": "rtl_gsim", "derived_from_rtl": True,
-                                        "cycle_accurate": True, "elf_sha256": digest,
-                                        "reused_measurement": False}}}}
+    return {
+        "status": "pass",
+        "numeric": "pass",
+        "work_volume": {},
+        "command_buffer_artifact": None,
+        "gsim_qualification": {"admitted": True},
+        "per_sim": {
+            "spike": {
+                "correct": True,
+                "cycles": None,
+                "correctness_cycles": 5,
+                "provenance": {"tier": "L2", "simulator": "spike"},
+            },
+            "gsim": {
+                "correct": True,
+                "cycles": cycles,
+                "provenance": {
+                    "tier": "L3",
+                    "simulator": "gsim",
+                    "oracle_kind": "rtl_gsim",
+                    "derived_from_rtl": True,
+                    "cycle_accurate": True,
+                    "elf_sha256": digest,
+                    "reused_measurement": False,
+                },
+            },
+        },
+    }
 
 
 def _run(plan, out_dir: Path, *, width: int, hardware_counters: bool = False, hook=None):
@@ -359,14 +427,24 @@ def _run(plan, out_dir: Path, *, width: int, hardware_counters: bool = False, ho
         seen.append(int(kwargs.get("workers") or 0))
         if hook is not None:
             hook()
-        return {"schema": "mock", "execution": spec.as_dict(),
-                "measurement": _mock_measurement(spec, 100 + spec.execution_index)}
+        return {
+            "schema": "mock",
+            "execution": spec.as_dict(),
+            "measurement": _mock_measurement(spec, 100 + spec.execution_index),
+        }
 
     fanout = PAIR.schedule_fanout(width, plan, hardware_counters=hardware_counters)
     rows, roofline = PAIR.execute_schedule(
-        plan, out_dir, timeout=1, target_experiment=object(), rtl_identity={},
-        hardware_counters=hardware_counters, executor=executor, progress=lambda _line: None,
-        fanout=fanout)
+        plan,
+        out_dir,
+        timeout=1,
+        target_experiment=object(),
+        rtl_identity={},
+        hardware_counters=hardware_counters,
+        executor=executor,
+        progress=lambda _line: None,
+        fanout=fanout,
+    )
     return rows, roofline, fanout, seen
 
 
@@ -376,16 +454,18 @@ def test_a_wide_run_records_exactly_what_the_serial_run_records(tmp_path):
     serial_rows, _, serial_fanout, _ = _run(plan, tmp_path / "serial", width=1)
     wide_rows, _, wide_fanout, _ = _run(plan, tmp_path / "wide", width=8)
     assert serial_fanout["effective"] == 1 and wide_fanout["effective"] == 8
+
     # the raw-result PATH names the run directory and nothing else; every other byte must match
     def _comparable(text: str, run: str) -> str:
         return text.replace(str(tmp_path / run), "<run>")
 
-    assert (_comparable(json.dumps(wide_rows, sort_keys=True), "wide")
-            == _comparable(json.dumps(serial_rows, sort_keys=True), "serial"))
+    assert _comparable(json.dumps(wide_rows, sort_keys=True), "wide") == _comparable(
+        json.dumps(serial_rows, sort_keys=True), "serial"
+    )
     for name in ("raw_results.index.json", "paired_completion_cells.json"):
-        assert (_comparable((tmp_path / "wide" / name).read_text(encoding="utf-8"), "wide")
-                == _comparable((tmp_path / "serial" / name).read_text(encoding="utf-8"), "serial")), (
-            f"{name} depends on the fan-out")
+        assert _comparable((tmp_path / "wide" / name).read_text(encoding="utf-8"), "wide") == _comparable(
+            (tmp_path / "serial" / name).read_text(encoding="utf-8"), "serial"
+        ), f"{name} depends on the fan-out"
     assert PAIR.completion_report(wide_rows, plan.expected)["complete"] is True
 
 
@@ -428,8 +508,9 @@ def test_a_relative_input_path_refuses_to_fan_out(tmp_path, monkeypatch):
     plan = _plan(tmp_path)
     relative = [PAIR.copy.copy(spec) for spec in plan.schedule]
     object.__setattr__(relative[0], "package", Path("baseline"))
-    narrowed = PAIR.MeasurementPlan(plan.phase, tuple(relative), plan.expected,
-                                    plan.declaration, plan.declaration_sha256)
+    narrowed = PAIR.MeasurementPlan(
+        plan.phase, tuple(relative), plan.expected, plan.declaration, plan.declaration_sha256
+    )
     fanout = PAIR.schedule_fanout(16, narrowed, hardware_counters=False)
     assert fanout["effective"] == 1 and "relative" in fanout["reason"]
 
@@ -442,12 +523,13 @@ def test_a_width_below_one_is_refused_rather_than_rounded(tmp_path):
 def test_the_declared_width_reaches_the_measurement_child(monkeypatch, tmp_path):
     """A width nobody forwards is inert; this is the flag the child actually receives."""
     _, _, commands = _measure_waves(monkeypatch, tmp_path, workers=1, sim_workers=12)
-    assert commands and all("--sim-workers" in command and
-                            command[command.index("--sim-workers") + 1] == "12"
-                            for command in commands)
+    assert commands and all(
+        "--sim-workers" in command and command[command.index("--sim-workers") + 1] == "12" for command in commands
+    )
 
 
 def test_an_unset_width_leaves_the_campaign_serial():
     source = (_SCRIPTS / "run_paired_perf_bench.py").read_text(encoding="utf-8")
     assert '"--sim-workers", type=int, default=1' in source, (
-        "--sim-workers no longer defaults to serial; a formal campaign's width must be DECLARED")
+        "--sim-workers no longer defaults to serial; a formal campaign's width must be DECLARED"
+    )

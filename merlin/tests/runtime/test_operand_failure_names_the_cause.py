@@ -15,6 +15,7 @@ command buffer was told its artifact was fine and the harness was broken. The ag
 "every semantically reasonable opcode set is rejected before compilation" -- it spent the round permuting
 opcodes, which is where the message sent it.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -34,7 +35,8 @@ pytestmark = pytest.mark.skipif(muon is None, reason="SIMT backend not present i
 def _cb(*, tensors: dict | None, canonical: bool = True) -> dict:
     """A GEMM command buffer in the documented resident-matmul vocabulary."""
     cb = {
-        "abi_version": "1", "target": "radiance",
+        "abi_version": "1",
+        "target": "radiance",
         "commands": [
             {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}},
             {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "W_res", "dst": "acc0"}},

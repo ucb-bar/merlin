@@ -10,6 +10,7 @@ emitted instructions against declared ones.
 The funct table is a parameter here, exactly as it is in the module: these tests use invented
 names so that nothing pins a real target's ISA into the test suite.
 """
+
 from __future__ import annotations
 
 from merlin.perf.isa_utilization import capability_utilization, emitted_functs
@@ -29,23 +30,19 @@ def _artifact(*templates: str) -> str:
 
 def test_only_the_targets_own_opcode_is_counted() -> None:
     """A fence or an unrelated custom instruction is not an accelerator instruction."""
-    art = _artifact(".insn r 0x5b, 0x3, 0x8, x0, $0, $1",
-                    ".insn r 0x2b, 0x3, 0x8, x0, $0, $1",
-                    "fence")
+    art = _artifact(".insn r 0x5b, 0x3, 0x8, x0, $0, $1", ".insn r 0x2b, 0x3, 0x8, x0, $0, $1", "fence")
     assert emitted_functs(art, custom_opcode=OPCODE) == {8: 1}
     assert emitted_functs(art, custom_opcode=OTHER_OPCODE) == {8: 1}
 
 
 def test_occurrences_are_counted_not_just_presence() -> None:
-    art = _artifact(*[".insn r 0x5b, 0x3, 0x8, x0, $0, $1"] * 3,
-                    ".insn r 0x5b, 0x3, 0x0, x0, $0, $1")
+    art = _artifact(*[".insn r 0x5b, 0x3, 0x8, x0, $0, $1"] * 3, ".insn r 0x5b, 0x3, 0x0, x0, $0, $1")
     assert emitted_functs(art, custom_opcode=OPCODE) == {8: 3, 0: 1}
 
 
 def test_unused_declared_instructions_are_reported_by_name() -> None:
     """The finding: a capability the hardware offers and the compiler never reaches for."""
-    art = _artifact(".insn r 0x5b, 0x3, 0x8, x0, $0, $1",
-                    ".insn r 0x5b, 0x3, 0x9, x0, $0, $1")
+    art = _artifact(".insn r 0x5b, 0x3, 0x8, x0, $0, $1", ".insn r 0x5b, 0x3, 0x9, x0, $0, $1")
     out = capability_utilization(art, declared_functs=DECLARED, custom_opcode=OPCODE)
     assert out["declared_count"] == 6
     assert out["used_count"] == 2
@@ -77,6 +74,5 @@ def test_an_empty_program_uses_nothing_and_says_so() -> None:
 
 
 def test_a_malformed_template_is_skipped_not_guessed() -> None:
-    art = _artifact(".insn r 0x5b", ".insn r 0x5b, 0x3, notanumber, x0", "fence",
-                    ".insn r 0x5b, 0x3, 0x8, x0, $0, $1")
+    art = _artifact(".insn r 0x5b", ".insn r 0x5b, 0x3, notanumber, x0", "fence", ".insn r 0x5b, 0x3, 0x8, x0, $0, $1")
     assert emitted_functs(art, custom_opcode=OPCODE) == {8: 1}

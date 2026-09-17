@@ -1,11 +1,13 @@
 """A declared target build helper must affect identity, never widen its package boundary."""
+
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from merlin.runtime.backends import base
-from merlin.targetgen import build_cache as BC, target_registry
+from merlin.targetgen import build_cache as BC
+from merlin.targetgen import target_registry
 
 
 def setup_target(tmp_path, monkeypatch):
@@ -28,9 +30,12 @@ def test_declared_sibling_helper_changes_build_identity(tmp_path, monkeypatch):
     monkeypatch.setattr(BC, "recipe_token", lambda _: {"compile": ["synthetic-compiler"]})
     monkeypatch.setattr(BC, "toolchain_token", lambda _: "synthetic-toolchain-digest")
     monkeypatch.delenv("MERLIN_ELF_BUILD_CACHE", raising=False)
+
     def identity():
-        return BC.build_identity(target="synthetic-target", lowered_mlir_text="module {}",
-                                 cb={}, inputs=None, recipe=object())
+        return BC.build_identity(
+            target="synthetic-target", lowered_mlir_text="module {}", cb={}, inputs=None, recipe=object()
+        )
+
     first_paths = BC.build_path("synthetic-target")
     assert helper in first_paths
     first = BC._build_path_digest(first_paths)
@@ -41,7 +46,10 @@ def test_declared_sibling_helper_changes_build_identity(tmp_path, monkeypatch):
     assert identity() != first_key
 
 
-@pytest.mark.parametrize("case", ["missing", "outside", "relative", "directory", "not_python", "symlink", "parent_symlink", "empty", "raises"])
+@pytest.mark.parametrize(
+    "case",
+    ["missing", "outside", "relative", "directory", "not_python", "symlink", "parent_symlink", "empty", "raises"],
+)
 def test_invalid_declared_closure_disables_partial_reuse(tmp_path, monkeypatch, case):
     backend, helper, package = setup_target(tmp_path, monkeypatch)
     if case == "missing":
@@ -65,10 +73,12 @@ def test_invalid_declared_closure_disables_partial_reuse(tmp_path, monkeypatch, 
         selected = linked / helper.name
     else:
         selected = helper
+
     def declare():
         if case == "raises":
             raise RuntimeError("incomplete source declaration")
         return [] if case == "empty" else [selected]
+
     backend.build_source_paths = declare
     assert BC.build_path("synthetic-target") is None
 

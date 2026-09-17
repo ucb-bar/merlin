@@ -12,6 +12,7 @@ When one of these fails the fix is to regenerate, not to edit:
     build_tools/scripts/check_conformance_coverage.py --target <t> \\
         --write merlin/contract/capsules/conformance/<t>.yaml
 """
+
 from __future__ import annotations
 
 import pytest
@@ -40,11 +41,11 @@ def test_every_required_cell_is_still_admitted(spec_path):
     if not adm:
         pytest.skip(f"no capability manifest resolvable for {target!r} in this environment")
     admitted_pairs = {(fam, CF.capsule_dtype(dt)) for fam, dts in adm.items() for dt in dts}
-    stale = [c["cell"] for c in (doc.get("cells") or [])
-             if (c.get("family"), c.get("dtype")) not in admitted_pairs]
+    stale = [c["cell"] for c in (doc.get("cells") or []) if (c.get("family"), c.get("dtype")) not in admitted_pairs]
     assert not stale, (
         f"{spec_path.name} requires {len(stale)} cell(s) the manifest no longer admits: {stale[:8]} — "
-        f"regenerate the spec")
+        f"regenerate the spec"
+    )
 
 
 @pytest.mark.parametrize("spec_path", _specs(), ids=lambda p: p.stem)
@@ -58,10 +59,11 @@ def test_recorded_boundaries_still_match_the_target(spec_path):
     if now.tile_edge is None and rec.get("tile_edge") is None:
         pytest.skip("no tile edge either then or now")
     assert rec.get("tile_edge") == now.tile_edge, (
-        f"tile edge drifted: spec says {rec.get('tile_edge')}, target derives {now.tile_edge}")
+        f"tile edge drifted: spec says {rec.get('tile_edge')}, target derives {now.tile_edge}"
+    )
     assert rec.get("block_scale_group") == now.block_scale_group, (
-        f"block-scale group drifted: spec says {rec.get('block_scale_group')}, target derives "
-        f"{now.block_scale_group}")
+        f"block-scale group drifted: spec says {rec.get('block_scale_group')}, target derives {now.block_scale_group}"
+    )
 
 
 @pytest.mark.parametrize("spec_path", _specs(), ids=lambda p: p.stem)
@@ -69,8 +71,7 @@ def test_a_declared_cell_carries_its_citation(spec_path):
     """`declared` is the escape hatch for a target-model with no capture. It is only honest while it
     says WHO asserted it — otherwise it is indistinguishable from an observation."""
     doc = _load(spec_path)
-    naked = [c["cell"] for c in (doc.get("cells") or [])
-             if c.get("basis") == CF.DECLARED and not c.get("citation")]
+    naked = [c["cell"] for c in (doc.get("cells") or []) if c.get("basis") == CF.DECLARED and not c.get("citation")]
     assert not naked, f"declared cell(s) with no citation: {naked}"
 
 
@@ -91,9 +92,10 @@ def test_the_spec_states_the_basis_of_each_axis(spec_path):
     for axis in ("composition", "memory_mapping", "shape_generalization"):
         block = doc.get(axis)
         if block is None:
-            continue                                   # an axis a target does not carry
+            continue  # an axis a target does not carry
         assert (block.get("axis_basis") or "").strip(), (
-            f"{spec_path.name}: the {axis!r} axis records no basis — regenerate")
+            f"{spec_path.name}: the {axis!r} axis records no basis — regenerate"
+        )
 
 
 @pytest.mark.parametrize("spec_path", _specs(), ids=lambda p: p.stem)
@@ -101,8 +103,11 @@ def test_composite_cells_name_the_primitives_that_evidence_them(spec_path):
     """`observed_via_primitives` is an INFERENCE (the importer decomposes attention before we see it).
     It must carry the primitives it rests on, or it reads as a direct observation."""
     doc = _load(spec_path)
-    bad = [c["cell"] for c in (doc.get("cells") or [])
-           if c.get("basis") == CF.OBSERVED_VIA_PRIMITIVES and not c.get("via_primitives")]
+    bad = [
+        c["cell"]
+        for c in (doc.get("cells") or [])
+        if c.get("basis") == CF.OBSERVED_VIA_PRIMITIVES and not c.get("via_primitives")
+    ]
     assert not bad, f"composite cell(s) with no recorded primitives: {bad}"
 
 
@@ -120,8 +125,8 @@ def test_a_mesh_left_to_rtl_discovery_is_still_a_hardware_boundary() -> None:
         b = boundaries(target)
         assert b.tile_edge, f"{target}: no tile edge derived"
         assert b.tile_edge_is_hardware_fact is True, (
-            f"{target}: a declared/discovered mesh reported as a software default "
-            f"({b.tile_edge_source})")
+            f"{target}: a declared/discovered mesh reported as a software default ({b.tile_edge_source})"
+        )
 
     # And the flag still discriminates: a target that genuinely declares no fixed mesh stays False,
     # so this is not a blanket true.

@@ -18,6 +18,7 @@ BOUND on the bank count (the index is n bits); what pins it is the design's own 
 address against its elaborated limit. Where no such check exists the bound is published and the capacity
 is withheld — a capacity wrong by the bank factor reads as a fit.
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -66,8 +67,7 @@ class TestFirrtl6ModuleHeader:
     def test_a_statement_is_not_read_as_a_module_header(self):
         # The qualifier skip must not turn any second-position `module` token into a module: the name
         # that follows has to look like a declaration name.
-        got = P.parse_ports("circuit M :\n  module M :\n    wire module : UInt<1>\n"
-                            "    output io : { busy : UInt<1>}\n")
+        got = P.parse_ports("circuit M :\n  module M :\n    wire module : UInt<1>\n    output io : { busy : UInt<1>}\n")
         assert set(got) == {"M"}, "a statement whose second token is a keyword is not a module header"
 
 
@@ -113,8 +113,7 @@ class TestUnpinnedFailsClosed:
     def test_two_disagreeing_limits_are_ambiguous_not_averaged(self):
         # A module stating two admissible limits cannot tell this reader which one bounds the store.
         # Answering with either would be a guess; the bound is reported instead.
-        two = _FIR6.replace("connect io.write.valid, _T_57",
-                            "node _T_58 = lt(io.cmd.bits.lineAddr, UInt<16>(0h8000))")
+        two = _FIR6.replace("connect io.write.valid, _T_57", "node _T_58 = lt(io.cmd.bits.lineAddr, UInt<16>(0h8000))")
         rec = _entry(two)
         assert rec["banks"] is None and "disagree" in rec["banks_unknown"]
 
@@ -140,9 +139,11 @@ class TestNotEveryBundleIsAMemory:
         # Flattening every level into one namespace lets a `data` under one sub-bundle pair with a
         # `mask` under a DIFFERENT one and invent a memory neither port describes. Each level is its
         # own namespace, so this pairs with nothing.
-        split = ("circuit M :\n  module M :\n"
-                 "    output io : { a : { data : UInt<256>, addr : UInt<13>},"
-                 " b : { mask : UInt<1>[32], addr : UInt<13>}}\n")
+        split = (
+            "circuit M :\n  module M :\n"
+            "    output io : { a : { data : UInt<256>, addr : UInt<13>},"
+            " b : { mask : UInt<1>[32], addr : UInt<13>}}\n"
+        )
         assert P.banked_store_ports(split) == []
 
     def test_a_design_with_no_banked_port_yields_nothing(self):
@@ -158,8 +159,7 @@ class TestMemoryFactShape:
 
     def test_the_entry_matches_the_census_schema(self, tmp_path):
         mem = self._mems(tmp_path)[0]
-        for key in ("name", "banks", "depth", "row_elems", "elem_bits", "row_bits_rtl", "bytes",
-                    "source", "evidence"):
+        for key in ("name", "banks", "depth", "row_elems", "elem_bits", "row_bits_rtl", "bytes", "source", "evidence"):
             assert key in mem, f"a consumer of census memories reads {key}"
         assert mem["banks"] == 6 and mem["depth"] == 8192 and mem["bytes"] == 49152 * 32
         assert mem["row_bits_rtl"] == 256
@@ -193,8 +193,10 @@ class TestWiring:
     def test_a_target_with_no_elaboration_gains_nothing(self):
         facts: dict = {}
         assert CI._memories_from_ports("no-such-target", facts) == []
-        assert "memories" not in facts, ("an empty list would say the device has NO on-chip store, "
-                                         "which is a claim; the absence of the key is the UNKNOWN")
+        assert "memories" not in facts, (
+            "an empty list would say the device has NO on-chip store, "
+            "which is a claim; the absence of the key is the UNKNOWN"
+        )
 
 
 class TestTheDerivedStoreIsAddressable:
@@ -225,6 +227,7 @@ class TestTheDerivedStoreIsAddressable:
         facts["datapaths"] = [{"name": facts["memories"][0]["name"], "dtype": "i8"}]
         (store,) = AS.derive_address_space("t", facts=facts).stores
         assert store.row_bytes == 16, "the array x datapath derivation is unchanged where it applies"
-        assert any(u.quantity == "row_bytes" and "DISAGREE" in u.reason
-                   for u in AS.derive_address_space("t", facts=facts).unknowns), \
-            "a store whose two row widths disagree must SAY so rather than pick one silently"
+        assert any(
+            u.quantity == "row_bytes" and "DISAGREE" in u.reason
+            for u in AS.derive_address_space("t", facts=facts).unknowns
+        ), "a store whose two row widths disagree must SAY so rather than pick one silently"

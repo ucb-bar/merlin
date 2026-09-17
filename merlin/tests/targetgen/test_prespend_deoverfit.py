@@ -3,6 +3,7 @@
 Each test pins a target-agnosticism / robustness fix found by replicating the agent grade loop offline
 before spending on a real run. They are pure-Python (no sim, no LLM) so they run in any checkout.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -23,12 +24,12 @@ def test_capsule_dram_knows_mx_dtypes():
     from merlin.targetgen import capsule_dram as CD
 
     assert CD.dtype_bits("mxfp8") == 8 and CD.dtype_bits("mxfp6") == 6 and CD.dtype_bits("mxfp4") == 4
-    assert CD.dtype_bits("f6E3M2FN") == 6 and CD.dtype_bits("f4E2M1FN") == 4   # MLIR spellings resolve
-    assert CD.dtype_bytes("mxfp8") == 1                       # byte-aligned: bytes/element is meaningful
+    assert CD.dtype_bits("f6E3M2FN") == 6 and CD.dtype_bits("f4E2M1FN") == 4  # MLIR spellings resolve
+    assert CD.dtype_bytes("mxfp8") == 1  # byte-aligned: bytes/element is meaningful
     for sub_byte in ("mxfp6", "mxfp4", "f6E3M2FN", "f4E2M1FN"):
-        with pytest.raises(KeyError):                         # ...and for a packed format it is not
+        with pytest.raises(KeyError):  # ...and for a packed format it is not
             CD.dtype_bytes(sub_byte)
-    assert CD.tensor_nbytes([16, 32], "mxfp6") == 384         # 512 elements x 6 bits, not 512 bytes
+    assert CD.tensor_nbytes([16, 32], "mxfp6") == 384  # 512 elements x 6 bits, not 512 bytes
     assert CD.tensor_nbytes([16, 32], "mxfp4") == 256
     assert CD.tensor_nbytes([16, 32], "mxfp8") == 512
 
@@ -50,29 +51,33 @@ def test_dtype_width_has_exactly_one_source():
         capsule_spelling, _mlir, width, _integer = dtype_info(token)
         bits = CD.dtype_bits(capsule_spelling)
         if bits % 8:
-            assert width is None, \
-                f"{token}: {bits}-bit format must not claim a byte width (got {width})"
+            assert width is None, f"{token}: {bits}-bit format must not claim a byte width (got {width})"
         else:
             assert width == bits // 8, f"{token}: corpus_spec says {width}B, registry says {bits} bits"
 
 
 # --- interface_emit: MX float tensor types parse structurally (no narrow-regex silent drop) ------------
-@pytest.mark.parametrize("ttype,dims,dt", [
-    ("tensor<16x32xf32>", [16, 32], "f32"),
-    ("tensor<16x32xbf16>", [16, 32], "bf16"),
-    ("tensor<32x16xf8E4M3FN>", [32, 16], "f8E4M3FN"),
-    ("tensor<32x32xf6E3M2FN>", [32, 32], "f6E3M2FN"),
-    ("tensor<32x32xf4E2M1FN>", [32, 32], "f4E2M1FN"),
-    ("tensor<8x8xi8>", [8, 8], "i8"),
-])
+@pytest.mark.parametrize(
+    "ttype,dims,dt",
+    [
+        ("tensor<16x32xf32>", [16, 32], "f32"),
+        ("tensor<16x32xbf16>", [16, 32], "bf16"),
+        ("tensor<32x16xf8E4M3FN>", [32, 16], "f8E4M3FN"),
+        ("tensor<32x32xf6E3M2FN>", [32, 32], "f6E3M2FN"),
+        ("tensor<32x32xf4E2M1FN>", [32, 32], "f4E2M1FN"),
+        ("tensor<8x8xi8>", [8, 8], "i8"),
+    ],
+)
 def test_interface_emit_parses_mx_tensor_types(ttype, dims, dt):
     from merlin.targetgen.contract.interface_emit import _shape_dtype
+
     assert _shape_dtype(ttype) == (dims, dt)
 
 
 # --- gen_numeric_facts: FAIL CLOSED (no baked gemmini i8/i32/32) + no regex in generated code ----------
 def test_gen_numeric_facts_fails_closed_without_datapaths():
     from merlin.targetgen.rtl import gen_numeric_facts as G
+
     code = G.generate({"facts": {"datapaths": [], "memories": []}})
     assert "INPUT_DTYPE = None" in code and "ACC_DTYPE = None" in code and "ACC_WIDTH_BITS = None" in code
     header = code.split("def check_numeric_shapes")[0]
@@ -80,45 +85,64 @@ def test_gen_numeric_facts_fails_closed_without_datapaths():
     assert "import re" not in code and "re.search" not in code, "regex leaked into generated code"
     ns: dict = {}
     exec(code, ns)  # generated module must be valid and skip the width check when the width is unknown
-    assert ns["check_numeric_shapes"](
-        {"tensors": {"acc": {"dtype": "i8"}}, "commands": [{"opcode": "MATMUL", "operands": {"dst": "acc"}}]}
-    ) == []
+    assert (
+        ns["check_numeric_shapes"](
+            {"tensors": {"acc": {"dtype": "i8"}}, "commands": [{"opcode": "MATMUL", "operands": {"dst": "acc"}}]}
+        )
+        == []
+    )
 
 
 def test_arm4_generators_have_no_baked_target_name():
     """The arm-4 agent-facing generators emit into ANY target's module — they must not bake one target's
     name into their operative output (a second RoCC target was mislabeled 'Gemmini')."""
     import inspect
+
     from merlin.targetgen.rtl import gen_isa_module, gen_rtl_digest
+
     assert "Gemmini" not in gen_isa_module._HEADER and "gemmini" not in gen_isa_module._HEADER
     assert "Gemmini accelerator" not in inspect.getsource(gen_rtl_digest.generate)
 
 
 def test_gen_numeric_facts_derives_from_facts():
     from merlin.targetgen.rtl import gen_numeric_facts as G
-    code = G.generate({"facts": {"datapaths": [{"name": "input", "dtype": "i8"},
-                                               {"name": "accumulator", "dtype": "i32"}],
-                                 "memories": [{"name": "accumulator", "lane_bits": 32}]}})
+
+    code = G.generate(
+        {
+            "facts": {
+                "datapaths": [{"name": "input", "dtype": "i8"}, {"name": "accumulator", "dtype": "i32"}],
+                "memories": [{"name": "accumulator", "lane_bits": 32}],
+            }
+        }
+    )
     assert "ACC_WIDTH_BITS = 32" in code
     ns: dict = {}
     exec(code, ns)
     # a narrow i8 accumulator vs the derived 32b width is flagged; _bits is structural (no regex)
-    assert len(ns["check_numeric_shapes"](
-        {"tensors": {"acc": {"dtype": "i8"}}, "commands": [{"opcode": "MATMUL", "operands": {"dst": "acc"}}]})) == 1
+    assert (
+        len(
+            ns["check_numeric_shapes"](
+                {"tensors": {"acc": {"dtype": "i8"}}, "commands": [{"opcode": "MATMUL", "operands": {"dst": "acc"}}]}
+            )
+        )
+        == 1
+    )
     assert ns["_bits"]("bf16") == 16 and ns["_bits"]("f8E4M3FN") == 8
 
 
 # --- capsule_golden: nested (specir 2D) decoded operands flatten to the documented flat list ----------
 def test_capsule_golden_flatten_row_major():
     from merlin.targetgen.capsule_golden import _flatten_row_major
+
     assert _flatten_row_major([[1, 2], [3, 4]]) == [1, 2, 3, 4]
-    assert _flatten_row_major([1, 2, 3]) == [1, 2, 3]      # already-flat unchanged
-    assert _flatten_row_major(5) == [5]                     # scalar -> singleton
+    assert _flatten_row_major([1, 2, 3]) == [1, 2, 3]  # already-flat unchanged
+    assert _flatten_row_major(5) == [5]  # scalar -> singleton
 
 
 # --- capsule_runner: force_match_policy merges with (never discards) the capsule's declared tolerance --
 def test_merge_match_policy_takes_looser_tolerance():
     from merlin.targetgen.capsule_runner import _merge_match_policy
+
     force = {"compare": "float", "atol": 0.001}
     cap = {"compare": "float", "atol": 0.03125, "rtol": 0.015625}
     merged = _merge_match_policy(force, cap)
@@ -139,7 +163,9 @@ def test_mx_datapath_oracle_reproduces_golden(cap):
     bit-exact — so the golden is genuine and a kernel computing the mx_ref result passes. (The fp32 reference
     emitter can't target the MX PE, hence it fails these — a reference limit, not a grading gap.)"""
     import yaml
+
     from merlin.targetgen import mx_oracle
+
     if not mx_oracle.mx_datapath_available():
         pytest.skip("mlc mx_ref datapath not importable in this checkout")
     gp = repo_root() / f"merlin/contract/capsules/radiance/isa/{cap}/golden.yaml"
@@ -147,8 +173,7 @@ def test_mx_datapath_oracle_reproduces_golden(cap):
         pytest.skip(f"{cap} golden not present")
     g = yaml.safe_load(gp.read_text())
     inp = g["oracle_provenance"]["inputs"]
-    r = mx_oracle.grade_matmul(inp["operand_codes"], inp["SA_e8m0_codes"], inp["SB_e8m0_codes"],
-                               g["outputs"]["Y0"])
+    r = mx_oracle.grade_matmul(inp["operand_codes"], inp["SA_e8m0_codes"], inp["SB_e8m0_codes"], g["outputs"]["Y0"])
     assert r["status"] == "pass" and r["exact"] is True, r
 
 
@@ -156,8 +181,9 @@ def test_mx_datapath_oracle_reproduces_golden(cap):
 def test_answer_surfaces_masks_all_hidden_dirs():
     """The shared merlin/contract/capsules/hidden and other targets' <t>/hidden are answer surfaces too
     (the bundle grants merlin/contract broadly). A run must mask all of them, not only te.hidden_corpus()."""
-    from merlin.targetgen.target_experiment import load_target_experiment
     from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces
+    from merlin.targetgen.target_experiment import load_target_experiment
+
     desc = repo_root() / "merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml"
     if not desc.is_file():
         pytest.skip("radiance descriptor not present in this checkout")

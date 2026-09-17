@@ -5,6 +5,7 @@ assertions are structural facts of Voyager's schedule that a bridge must reprodu
 is loaded into which slot at which step, when a load is skipped because its tile is already resident,
 and how a split reduction is combined -- plus the two ways the replay must refuse instead of guessing.
 """
+
 from __future__ import annotations
 
 import copy
@@ -12,8 +13,15 @@ from collections import Counter
 
 import pytest
 
-from merlin.baselines.voyager_ir import (Copy, FusedCompute, SemaphoreViolation, UnsupportedConstruct,
-                                         Wait, load_model, replay)
+from merlin.baselines.voyager_ir import (
+    Copy,
+    FusedCompute,
+    SemaphoreViolation,
+    UnsupportedConstruct,
+    Wait,
+    load_model,
+    replay,
+)
 from merlin.common.paths import merlin_dir
 
 FIXTURES = merlin_dir() / "tests" / "data" / "voyager_ir"
@@ -48,18 +56,16 @@ def test_split_k_commits_an_add_into_the_first_partial_and_reloads_only_changed_
     trace = _trace("split_k_256x512x256")
     computes = trace.of(FusedCompute)
     tails = Counter(c.tail for c in computes)
-    assert tails == {("quantized_ops::dequantize",): 8,
-                     ("quantized_ops::dequantize", "aten::add"): 8}
+    assert tails == {("quantized_ops::dequantize",): 8, ("quantized_ops::dequantize", "aten::add"): 8}
     # K is the innermost grid axis: every first partial is immediately followed by its add.
     assert [len(c.tail) for c in computes] == [1, 2] * 8
 
     stores = [c for c in trace.of(Copy) if c.is_store]
-    assert len(stores) == 8                      # one per (M, N) output tile, after its last K split
+    assert len(stores) == 8  # one per (M, N) output tile, after its last K split
     assert len(set(s.indices for s in stores)) == 8
 
     # The interstellar mapping travels with the compute, innermost loop first, per level.
-    assert computes[0].tiling == ((("LOOP_OX", 32), ("LOOP_OC", 2)),
-                                  (("LOOP_IC", 16), ("LOOP_OX", 2), ("LOOP_OC", 4)))
+    assert computes[0].tiling == ((("LOOP_OX", 32), ("LOOP_OC", 2)), (("LOOP_IC", 16), ("LOOP_OX", 2), ("LOOP_OC", 4)))
 
 
 def test_every_wait_and_commit_is_matched_by_an_earlier_signal() -> None:
@@ -83,8 +89,7 @@ def test_a_loop_bound_at_the_enum_default_decodes_as_fx() -> None:
                 inner = op.get(key)
                 if not isinstance(inner, dict):
                     continue
-                for region in (inner.get("for_loop", {}).get("body"), inner.get("body"),
-                               inner.get("true_region")):
+                for region in (inner.get("for_loop", {}).get("body"), inner.get("body"), inner.get("true_region")):
                     if isinstance(region, dict):
                         found = first_tiling(region.get("ops", ()))
                         if found:
@@ -102,8 +107,7 @@ def test_an_unmodelled_scalar_operation_is_refused_not_skipped() -> None:
     model = load_model(FIXTURES / "lin64" / "model.json")
     broken = copy.deepcopy(model)
     loop = next(op for op in broken["ops"] if "loop" in op)
-    scalar_op = next(op for op in loop["loop"]["for_loop"]["body"]["ops"]
-                     if op.get("prim", {}).get("target") == "add")
+    scalar_op = next(op for op in loop["loop"]["for_loop"]["body"]["ops"] if op.get("prim", {}).get("target") == "add")
     scalar_op["prim"]["target"] = "bitwise_xor"
     with pytest.raises(UnsupportedConstruct, match="bitwise_xor"):
         replay(broken)
@@ -112,8 +116,7 @@ def test_an_unmodelled_scalar_operation_is_refused_not_skipped() -> None:
 def _renamed_scalar_operands(first: str, second: str) -> dict:
     model = copy.deepcopy(load_model(FIXTURES / "lin64" / "model.json"))
     loop = next(op for op in model["ops"] if "loop" in op)
-    scalar_op = next(op for op in loop["loop"]["for_loop"]["body"]["ops"]
-                     if op.get("prim", {}).get("target") == "add")
+    scalar_op = next(op for op in loop["loop"]["for_loop"]["body"]["ops"] if op.get("prim", {}).get("target") == "add")
     kwargs = scalar_op["prim"]["kwargs"]
     kwargs[first], kwargs[second] = kwargs.pop("input"), kwargs.pop("other")
     return model
@@ -124,8 +127,9 @@ def test_sym_style_operand_names_replay_like_aten_style_ones() -> None:
     # crashed with a KeyError (found by the mutation study).
     reference = _trace("lin64")
     renamed = replay(_renamed_scalar_operands("a", "b"))
-    assert [(type(e).__name__, getattr(e, "indices", None)) for e in renamed.events] == \
-           [(type(e).__name__, getattr(e, "indices", None)) for e in reference.events]
+    assert [(type(e).__name__, getattr(e, "indices", None)) for e in renamed.events] == [
+        (type(e).__name__, getattr(e, "indices", None)) for e in reference.events
+    ]
 
 
 def test_a_binary_operation_with_unknown_operand_names_is_refused() -> None:
@@ -138,8 +142,7 @@ def test_a_wait_with_no_prior_signal_is_a_violation() -> None:
     broken = copy.deepcopy(model)
     # Drop the input load that precedes the loop: the first commit then depends on a semaphore that
     # nothing signalled, which a real pipeline would deadlock on.
-    broken["ops"] = [op for op in broken["ops"]
-                     if op.get("prim", {}).get("target") != "voyager::async_copy"]
+    broken["ops"] = [op for op in broken["ops"] if op.get("prim", {}).get("target") != "voyager::async_copy"]
     with pytest.raises(SemaphoreViolation):
         replay(broken)
     assert replay(broken, check_semaphores=False).of(FusedCompute)

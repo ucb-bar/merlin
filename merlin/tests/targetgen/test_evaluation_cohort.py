@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import copy
-import json
 import hashlib
+import json
 from pathlib import Path
 
 import pytest
@@ -18,7 +18,6 @@ from merlin.targetgen.evaluation_cohort import (
 )
 from merlin.targetgen.target_experiment import load_target_experiment
 
-
 RADIANCE = repo_root() / "merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml"
 _SEARCH_BINDING: dict = {}
 
@@ -28,8 +27,7 @@ def _sha(path: Path) -> str:
 
 
 def _canonical_sha(value: dict) -> str:
-    return hashlib.sha256(json.dumps(
-        value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 @pytest.fixture(autouse=True)
@@ -44,11 +42,12 @@ def _working_search_engine(tmp_path, monkeypatch):
     config.write_text("[sim]\ntimeout = 1\n")
     (config_tree / "timing.toml").write_text("latency = 4\n")
     binding = EC.configured_executable_binding(
-        engine="cyclotron", binary=binary, source=source,
-        config=config, config_tree=config_tree)
+        engine="cyclotron", binary=binary, source=source, config=config, config_tree=config_tree
+    )
     binding["target"] = "radiance"
     binding["binding_sha256"] = _canonical_sha(
-        {key: value for key, value in binding.items() if key != "binding_sha256"})
+        {key: value for key, value in binding.items() if key != "binding_sha256"}
+    )
     _SEARCH_BINDING.clear()
     _SEARCH_BINDING.update(binding)
     monkeypatch.setattr(EC, "cyclotron_l2_engine_binding", lambda _target: copy.deepcopy(binding))
@@ -79,8 +78,7 @@ def _working_engine(tmp_path: Path, monkeypatch) -> dict:
         "stage": "derived_gsim",
         "required_tier": "L3",
         "requested_engine": "gsim",
-        "selected": {"available": True, "engine": "gsim", "fidelity": "elaborated_rtl",
-                     "reason": "receipt:test"},
+        "selected": {"available": True, "engine": "gsim", "fidelity": "elaborated_rtl", "reason": "receipt:test"},
         "engine_binding": binding,
         "ok": True,
         "problems": [],
@@ -102,20 +100,29 @@ def _candidate(tmp_path: Path) -> Path:
 
 def _passing_search_score(path: Path, te) -> None:
     names = sorted(te.graded_include)
-    path.write_text(json.dumps({
-        "n_capsules": len(names),
-        "n_passed": len(names),
-        "n_certified": len(names),
-        "n_unchecked": 0,
-        "all_pass": True,
-        "per_capsule": [
-            {"capsule": name, "pass": True, "barrier_tier": "L2",
-             "barrier_status": "pass", "barrier_cycles": 1000 + index,
-             "barrier_engine_binding": copy.deepcopy(_SEARCH_BINDING),
-             "execution_digest": hashlib.sha256(name.encode()).hexdigest()}
-            for index, name in enumerate(names)
-        ],
-    }))
+    path.write_text(
+        json.dumps(
+            {
+                "n_capsules": len(names),
+                "n_passed": len(names),
+                "n_certified": len(names),
+                "n_unchecked": 0,
+                "all_pass": True,
+                "per_capsule": [
+                    {
+                        "capsule": name,
+                        "pass": True,
+                        "barrier_tier": "L2",
+                        "barrier_status": "pass",
+                        "barrier_cycles": 1000 + index,
+                        "barrier_engine_binding": copy.deepcopy(_SEARCH_BINDING),
+                        "execution_digest": hashlib.sha256(name.encode()).hexdigest(),
+                    }
+                    for index, name in enumerate(names)
+                ],
+            }
+        )
+    )
 
 
 def _search_seal(tmp_path: Path, te, candidate: Path) -> Path:
@@ -132,8 +139,7 @@ def test_radiance_derived_gsim_materialization_makes_l3_mandatory(tmp_path, monk
     candidate = _candidate(tmp_path)
     seal = _search_seal(tmp_path, te, candidate)
     out = tmp_path / "derived-gsim"
-    record = materialize_evaluation_cohort(
-        out, te, "derived_gsim", candidate, search_pass_seal=seal)
+    record = materialize_evaluation_cohort(out, te, "derived_gsim", candidate, search_pass_seal=seal)
 
     assert record["n_capsules"] == len(te.evaluation_cohort("derived_gsim")["include_capsules"])
     assert record["after"] == "search_l2_pass"
@@ -144,18 +150,21 @@ def test_radiance_derived_gsim_materialization_makes_l3_mandatory(tmp_path, monk
         assert "L3" in doc["required_oracle_tiers"]
         assert "max_oracle_tier" not in doc
         assert "oracle_tier_ceiling" not in doc, (
-            "the frozen evaluation copy must unlock L3 after the search view constrained execution")
+            "the frozen evaluation copy must unlock L3 after the search view constrained execution"
+        )
         assert doc["evaluation_stage"] == {
             "name": "derived_gsim",
             "policy": "radiance_model_derived_l3_frozen_candidate_v2",
             "after": "search_l2_pass",
             "required_oracle_tier": "L3",
             "oracle_engine": "gsim",
-            "predecessor_l2_cycles": 1000 + sorted(
-                te.evaluation_cohort("derived_gsim")["include_capsules"]).index(name),
+            "predecessor_l2_cycles": 1000
+            + sorted(te.evaluation_cohort("derived_gsim")["include_capsules"]).index(name),
             "cycle_budget": {
-                "source": "sealed_predecessor_tier", "multiplier": 8,
-                "minimum_cycles": 120000, "compute_floor_multiplier": 2,
+                "source": "sealed_predecessor_tier",
+                "multiplier": 8,
+                "minimum_cycles": 120000,
+                "compute_floor_multiplier": 2,
             },
         }
     assert validate_evaluation_cohort(out, te, candidate) == record
@@ -251,7 +260,8 @@ def test_search_pass_rejects_missing_or_mixed_l2_engine_binding(tmp_path):
     altered = doc["per_capsule"][0]["barrier_engine_binding"]
     altered["target"] = "another-target"
     altered["binding_sha256"] = _canonical_sha(
-        {key: value for key, value in altered.items() if key != "binding_sha256"})
+        {key: value for key, value in altered.items() if key != "binding_sha256"}
+    )
     score.write_text(json.dumps(doc))
     with pytest.raises(ValueError, match="invalid L2 engine provenance"):
         create_search_pass_seal(tmp_path / "mixed.json", te, candidate, score)
@@ -291,7 +301,8 @@ def test_configured_executable_binding_cites_resolvable_source_commit(tmp_path, 
 
     monkeypatch.setattr(EC.subprocess, "run", git_stub)
     binding = EC.configured_executable_binding(
-        engine="test", binary=binary, source=source, config=config, config_tree=tree)
+        engine="test", binary=binary, source=source, config=config, config_tree=tree
+    )
 
     assert binding["source"]["git_root"] == str(source.resolve())
     assert binding["source"]["git_commit"] == "d" * 40
@@ -307,8 +318,7 @@ def test_engine_preflight_failure_does_not_materialize(tmp_path, monkeypatch):
     )
     out = tmp_path / "derived-gsim"
     with pytest.raises(ValueError, match="receipt mismatch"):
-        materialize_evaluation_cohort(
-            out, te, "derived_gsim", candidate, search_pass_seal=seal)
+        materialize_evaluation_cohort(out, te, "derived_gsim", candidate, search_pass_seal=seal)
     assert not out.exists()
 
 
@@ -318,8 +328,7 @@ def test_evaluation_validation_detects_engine_binary_mutation(tmp_path, monkeypa
     candidate = _candidate(tmp_path)
     seal = _search_seal(tmp_path, te, candidate)
     out = tmp_path / "derived-gsim"
-    materialize_evaluation_cohort(
-        out, te, "derived_gsim", candidate, search_pass_seal=seal)
+    materialize_evaluation_cohort(out, te, "derived_gsim", candidate, search_pass_seal=seal)
     Path(preflight["engine_binding"]["binary"]).write_bytes(b"changed")
     with pytest.raises(ValueError, match="engine binary content digest mismatch"):
         validate_evaluation_cohort(out, te, candidate)
@@ -334,8 +343,7 @@ def test_evaluation_materialization_refuses_stale_files(tmp_path, monkeypatch):
     out.mkdir()
     (out / "stale").write_text("old")
     with pytest.raises(ValueError, match="not empty"):
-        materialize_evaluation_cohort(
-            out, te, "derived_gsim", candidate, search_pass_seal=seal)
+        materialize_evaluation_cohort(out, te, "derived_gsim", candidate, search_pass_seal=seal)
 
 
 def test_evaluation_materialization_refuses_empty_candidate(tmp_path):
@@ -352,8 +360,7 @@ def test_evaluation_validation_detects_capsule_mutation(tmp_path, monkeypatch):
     candidate = _candidate(tmp_path)
     seal = _search_seal(tmp_path, te, candidate)
     out = tmp_path / "derived-gsim"
-    materialize_evaluation_cohort(
-        out, te, "derived_gsim", candidate, search_pass_seal=seal)
+    materialize_evaluation_cohort(out, te, "derived_gsim", candidate, search_pass_seal=seal)
     record = json.loads((out / ".evaluation_cohort.json").read_text())
     name = record["capsules"][0]["name"]
     with (out / name / "README.md").open("a") as handle:
@@ -369,8 +376,7 @@ def test_evaluation_validation_detects_candidate_mutation(tmp_path, monkeypatch)
     schedule = candidate / "schedule.mlir"
     seal = _search_seal(tmp_path, te, candidate)
     out = tmp_path / "derived-gsim"
-    materialize_evaluation_cohort(
-        out, te, "derived_gsim", candidate, search_pass_seal=seal)
+    materialize_evaluation_cohort(out, te, "derived_gsim", candidate, search_pass_seal=seal)
     schedule.write_text("module { func.func private @changed() }\n")
     with pytest.raises(ValueError, match="candidate content digest mismatch"):
         validate_evaluation_cohort(out, te, candidate)
@@ -385,19 +391,22 @@ def test_unknown_evaluation_stage_fails_closed():
 def _passing_predecessor_score(path: Path, candidate: Path, record: dict) -> None:
     names = sorted(row["name"] for row in record["capsules"])
     tier = record["required_oracle_tier"]
-    path.write_text(json.dumps({
-        "package": str(candidate.resolve()),
-        "integrity_status": "clean",
-        "gradeable": True,
-        "n_capsules": len(names),
-        "n_passed": len(names),
-        "per_capsule": [
-            {"capsule": name, "status": "pass", "tiers": {tier: "pass"},
-             "numeric": {"status": "pass"}}
-            for name in names
-        ],
-        "pass_evidence": {"rtl_backed": len(names)},
-    }))
+    path.write_text(
+        json.dumps(
+            {
+                "package": str(candidate.resolve()),
+                "integrity_status": "clean",
+                "gradeable": True,
+                "n_capsules": len(names),
+                "n_passed": len(names),
+                "per_capsule": [
+                    {"capsule": name, "status": "pass", "tiers": {tier: "pass"}, "numeric": {"status": "pass"}}
+                    for name in names
+                ],
+                "pass_evidence": {"rtl_backed": len(names)},
+            }
+        )
+    )
 
 
 def test_kernel_comparison_requires_exact_derived_gsim_pass(tmp_path, monkeypatch):
@@ -406,27 +415,24 @@ def test_kernel_comparison_requires_exact_derived_gsim_pass(tmp_path, monkeypatc
     candidate = _candidate(tmp_path)
 
     with pytest.raises(ValueError, match="requires --predecessor-cohort"):
-        materialize_evaluation_cohort(
-            tmp_path / "comparison-refused", te, "kernel_library_comparison", candidate)
+        materialize_evaluation_cohort(tmp_path / "comparison-refused", te, "kernel_library_comparison", candidate)
 
     derived = tmp_path / "derived"
     seal = _search_seal(tmp_path, te, candidate)
-    prior = materialize_evaluation_cohort(
-        derived, te, "derived_gsim", candidate, search_pass_seal=seal)
+    prior = materialize_evaluation_cohort(derived, te, "derived_gsim", candidate, search_pass_seal=seal)
     score = tmp_path / "derived-score.json"
     _passing_predecessor_score(score, candidate, prior)
     comparison = tmp_path / "comparison"
     record = materialize_evaluation_cohort(
-        comparison, te, "kernel_library_comparison", candidate,
-        predecessor_cohort=derived, predecessor_score=score)
+        comparison, te, "kernel_library_comparison", candidate, predecessor_cohort=derived, predecessor_score=score
+    )
 
     evidence = record["predecessor_pass_evidence"]
     assert evidence["stage"] == "derived_gsim"
     assert evidence["n_passed"] == evidence["n_capsules"] == prior["n_capsules"]
     assert evidence["candidate_tree_sha256"] == prior["candidate_tree_sha256"]
     assert evidence["search_pass_seal_sha256"] == prior["search_pass_evidence"]["seal_sha256"]
-    assert evidence["engine_binding_sha256"] == (
-        prior["engine_preflight"]["engine_binding"]["binding_sha256"])
+    assert evidence["engine_binding_sha256"] == (prior["engine_preflight"]["engine_binding"]["binding_sha256"])
     assert validate_evaluation_cohort(comparison, te, candidate) == record
     score.write_text(score.read_text() + "\n")
     with pytest.raises(ValueError, match="predecessor score evidence digest mismatch"):
@@ -439,8 +445,7 @@ def test_kernel_comparison_rejects_partial_or_nonphysical_predecessor(tmp_path, 
     candidate = _candidate(tmp_path)
     derived = tmp_path / "derived"
     seal = _search_seal(tmp_path, te, candidate)
-    prior = materialize_evaluation_cohort(
-        derived, te, "derived_gsim", candidate, search_pass_seal=seal)
+    prior = materialize_evaluation_cohort(derived, te, "derived_gsim", candidate, search_pass_seal=seal)
     score = tmp_path / "derived-score.json"
     _passing_predecessor_score(score, candidate, prior)
     doc = json.loads(score.read_text())
@@ -450,5 +455,10 @@ def test_kernel_comparison_rejects_partial_or_nonphysical_predecessor(tmp_path, 
 
     with pytest.raises(ValueError, match="predecessor pass evidence rejected"):
         materialize_evaluation_cohort(
-            tmp_path / "comparison", te, "kernel_library_comparison", candidate,
-            predecessor_cohort=derived, predecessor_score=score)
+            tmp_path / "comparison",
+            te,
+            "kernel_library_comparison",
+            candidate,
+            predecessor_cohort=derived,
+            predecessor_score=score,
+        )

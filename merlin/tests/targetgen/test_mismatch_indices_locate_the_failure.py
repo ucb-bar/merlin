@@ -10,6 +10,7 @@ bf16 ULP and sub-ULP in the operand format -- and nothing in the record said whe
 
 Target-agnostic: the comparison is over flat element lists and knows nothing about any device.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen.capsule_golden import _MISMATCH_INDEX_CAP, compare
@@ -17,7 +18,7 @@ from merlin.targetgen.capsule_golden import _MISMATCH_INDEX_CAP, compare
 N = 16
 POLICY = {"compare": "tolerance_float", "atol": 0.0, "rtol": 0.0}
 BASE = [float(i % 7) + 1.0 for i in range(N * N)]
-DELTA = 0.09375                                   # the measured 3/32 divergence
+DELTA = 0.09375  # the measured 3/32 divergence
 
 
 def _run(bad_positions):

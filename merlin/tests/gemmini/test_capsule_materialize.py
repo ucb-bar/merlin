@@ -1,4 +1,5 @@
 """The sandbox public-capsule view stays derivable from the contract and descriptor."""
+
 from __future__ import annotations
 
 import hashlib
@@ -10,7 +11,7 @@ import yaml
 from merlin.common.paths import merlin_dir
 from merlin.targetgen.contract.materialize import materialize_public_capsules
 
-PUB = (merlin_dir() / "experiments" / "capsule_bench" / "harness" / "full_public_capsules")
+PUB = merlin_dir() / "experiments" / "capsule_bench" / "harness" / "full_public_capsules"
 _LEGACY_MIRROR_FILES = ("capsule.yaml", "capsule.interface.mlir", "README.md")
 
 
@@ -19,9 +20,7 @@ def _load(p):
 
 
 def _name_digest(names):
-    return hashlib.sha256(
-        json.dumps(sorted(names), separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+    return hashlib.sha256(json.dumps(sorted(names), separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 def test_legacy_public_mirror_is_a_valid_named_smoke_subset(tmp_path):
@@ -47,10 +46,11 @@ def test_materializer_caps_tiers_below_ceiling(tmp_path):
         doc = _load(cap_yaml)
         tiers = doc.get("required_oracle_tiers", [])
         assert all(t in ("L0", "L1", "L2") for t in tiers), (
-            f"{cap_yaml.parent.name} requires an unreachable tier in the sandbox: {tiers}")
+            f"{cap_yaml.parent.name} requires an unreachable tier in the sandbox: {tiers}"
+        )
         assert doc["oracle_tier_ceiling"] == "L2", (
-            "the materialized ceiling must constrain optional adapters too, not only rewrite the "
-            "required tier list")
+            "the materialized ceiling must constrain optional adapters too, not only rewrite the required tier list"
+        )
 
 
 def test_materializer_copies_whole_model_compile_inputs(tmp_path):
@@ -79,9 +79,9 @@ def test_materializer_copies_whole_model_compile_inputs(tmp_path):
     for name, payload in files.items():
         (capsule / name).write_bytes(payload)
 
-    assert materialize_public_capsules(
-        tmp_path / "materialized", tier_ceiling="L2", corpus_roots=[source]
-    ) == ["M_model"]
+    assert materialize_public_capsules(tmp_path / "materialized", tier_ceiling="L2", corpus_roots=[source]) == [
+        "M_model"
+    ]
     for name, payload in files.items():
         assert (tmp_path / "materialized" / "M_model" / name).read_bytes() == payload
 
@@ -100,15 +100,18 @@ def test_public_capsules_for_is_target_aware_and_gemmini_parity():
     from merlin.common.paths import repo_root
     from merlin.targetgen.contract.materialize import public_capsules_for
     from merlin.targetgen.target_experiment import load_target_experiment
+
     root = repo_root()
 
     te_g = load_target_experiment(root / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
     gem_root = public_capsules_for(te_g, tier_ceiling="L3")
     gem = sorted(p.name for p in gem_root.iterdir() if p.is_dir())
-    source = sorted(cap["name"] for cap in __import__(
-        "merlin.targetgen.capsule_runner", fromlist=["discover_capsules"]
-    ).discover_capsules(te_g.graded_roots(), labels={"public", "dev"},
-                        contract=str(root / "merlin/contract")))
+    source = sorted(
+        cap["name"]
+        for cap in __import__("merlin.targetgen.capsule_runner", fromlist=["discover_capsules"]).discover_capsules(
+            te_g.graded_roots(), labels={"public", "dev"}, contract=str(root / "merlin/contract")
+        )
+    )
     n_source = te_g.graded_expected_source_capsules
     n_admitted = te_g.graded_expected_admitted_capsules
     n_capability = len(te_g.graded_capability_exclude)
@@ -119,12 +122,17 @@ def test_public_capsules_for_is_target_aware_and_gemmini_parity():
     # The policy NAME tracks which classes the record accounts for, so it is derived from the descriptor
     # rather than spelled out here: a descriptor that also declares a PHASE partition records a
     # three-class policy, and pinning the two-class name would make adding the third read as corruption.
-    assert record["policy"] == ("descriptor_capability_resource_and_phase_v1"
-                               if te_g.graded_phase is not None
-                               else "descriptor_capability_and_resource_v1")
-    assert (record["n_source_capsules"], record["n_admitted_capsules"],
-            record["n_capability_excluded"], record["n_resource_excluded"]) == (
-                n_source, n_admitted, n_capability, n_resource)
+    assert record["policy"] == (
+        "descriptor_capability_resource_and_phase_v1"
+        if te_g.graded_phase is not None
+        else "descriptor_capability_and_resource_v1"
+    )
+    assert (
+        record["n_source_capsules"],
+        record["n_admitted_capsules"],
+        record["n_capability_excluded"],
+        record["n_resource_excluded"],
+    ) == (n_source, n_admitted, n_capability, n_resource)
     if te_g.graded_phase is not None:
         # A phase partition is RECORDED and not subtracted, so it must leave the denominator alone --
         # this is the assertion that would catch someone later "applying" it and shrinking the cohort.
@@ -148,6 +156,7 @@ def test_public_capsules_for_is_target_aware_and_gemmini_parity():
     # a leak only if it resolves to the SAME directory, so that is what is checked.
     def _origin(te, name):
         from pathlib import Path as _Path
+
         for r in te.graded_roots():
             cand = _Path(r) / name
             if (cand / "capsule.yaml").is_file():
@@ -156,13 +165,16 @@ def test_public_capsules_for_is_target_aware_and_gemmini_parity():
 
     for shared in sorted(set(atlas) & set(gem)):
         a, g = _origin(te_a, shared), _origin(te_g, shared)
-        assert a != g, (f"{shared} materialized into BOTH targets' grades from the same directory "
-                        f"{g} — that is a leak, not a per-target synthesis")
+        assert a != g, (
+            f"{shared} materialized into BOTH targets' grades from the same directory "
+            f"{g} — that is a leak, not a per-target synthesis"
+        )
 
 
 def test_materialized_cohort_rejects_descriptor_drift(tmp_path):
     from merlin.targetgen.contract.materialize import (
-        public_capsules_for, validate_materialized_cohort,
+        public_capsules_for,
+        validate_materialized_cohort,
     )
     from merlin.targetgen.target_experiment import load_target_experiment
 
@@ -197,8 +209,7 @@ def test_descriptor_rejects_cohort_count_arithmetic_drift(tmp_path):
     from merlin.common.paths import repo_root
     from merlin.targetgen.target_experiment import load_target_experiment
 
-    source = (repo_root()
-              / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
+    source = repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
     doc = yaml.safe_load(source.read_text(encoding="utf-8"))
     doc["grading"]["expected_cohort"]["admitted_capsules"] = 33
     descriptor = tmp_path / "target_experiment.yaml"
@@ -212,16 +223,18 @@ def test_public_capsules_for_is_concurrency_safe():
     unique versioned dir, then repoint a per-target symlink) so no arm rmtrees another's half-built cache
     mid-read: every concurrent caller must see a COMPLETE corpus (equal, non-zero capsule count)."""
     from concurrent.futures import ThreadPoolExecutor
+
     from merlin.common.paths import repo_root
     from merlin.targetgen.contract.materialize import public_capsules_for
     from merlin.targetgen.target_experiment import load_target_experiment
-    te = load_target_experiment(
-        repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
+
+    te = load_target_experiment(repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
     assert public_capsules_for(te, tier_ceiling="L3").is_symlink()
 
     def worker(_):
         d = public_capsules_for(te, tier_ceiling="L3")
-        return sum(1 for _ in d.rglob("capsule.yaml"))   # full traversal blows up on a half-deleted tree
+        return sum(1 for _ in d.rglob("capsule.yaml"))  # full traversal blows up on a half-deleted tree
+
     with ThreadPoolExecutor(max_workers=4) as ex:
         counts = list(ex.map(worker, range(4)))
     assert len(set(counts)) == 1 and counts[0] > 0, f"racey materialization corrupted the corpus: {counts}"

@@ -15,6 +15,7 @@ Two properties are worth pinning down, because both were arrived at by being wro
    verifier. deepjscc happens not to trip that; whisper does. An ordering that only some models
    exercise is exactly the kind that regresses silently.
 """
+
 from __future__ import annotations
 
 from merlin.llvmlower import pipeline as P
@@ -27,10 +28,11 @@ def _stages(text: str) -> list[str]:
 
 
 def test_every_pipeline_deallocates():
-    for name, text in (("upstream", P._upstream_pipeline()),
-                       ("parallel", P._parallel_pipeline()),
-                       ("rvv", P.build_rvv_pipeline("", hoist_static_allocs=True,
-                                                    features=frozenset()))):
+    for name, text in (
+        ("upstream", P._upstream_pipeline()),
+        ("parallel", P._parallel_pipeline()),
+        ("rvv", P.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset())),
+    ):
         assert DEALLOC in _stages(text), f"{name} pipeline bufferizes but never deallocates"
 
 

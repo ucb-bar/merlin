@@ -1,4 +1,5 @@
 """Tests for the mixed-precision policy (merlin.frontends.mixed_precision)."""
+
 from __future__ import annotations
 
 import pytest

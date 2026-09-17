@@ -1,11 +1,12 @@
 """The static ISA linter: illegal-opcode (always) and halt-present (once the halt op set is derived), with an
 honest INFO when termination can't be verified. Hermetic synthetic model, no real target.
 """
+
 from __future__ import annotations
 
-from merlin.targetgen.isa_model import IsaModel
 from merlin.targetgen import isa_asm as A
 from merlin.targetgen import isa_lint as L
+from merlin.targetgen.isa_model import IsaModel
 
 
 def _sig(opcode: int, fields: dict) -> tuple[int, int]:
@@ -13,7 +14,7 @@ def _sig(opcode: int, fields: dict) -> tuple[int, int]:
     for bits in fields.values():
         for b in bits:
             if isinstance(b, int) and b >= 0:
-                var |= (1 << b)
+                var |= 1 << b
     mask = (~var) & 0xFFFFFFFF
     return mask, opcode & mask
 
@@ -26,17 +27,20 @@ def _halt_sigs(by_mnem: dict, halt: tuple) -> tuple:
 
 def _model(halt=()) -> IsaModel:
     mm_f = {"rd": [7, 8, 9, 10, 11], "rs1": [15, 16, 17, 18, 19]}
-    hl_f: dict = {}                                          # terminator takes no operands
+    hl_f: dict = {}  # terminator takes no operands
     mm_mask, mm_val = _sig(0x2B, mm_f)
     hl_mask, hl_val = _sig(0x73, hl_f)
     by_mnem = {
-        "MatMul": {"class": "MatMul", "role": "matmul", "fixed_mask": mm_mask, "fixed_value": mm_val,
-                   "fields": mm_f},
-        "Halt": {"class": "Halt", "role": "scalar", "fixed_mask": hl_mask, "fixed_value": hl_val,
-                 "fields": hl_f},
+        "MatMul": {"class": "MatMul", "role": "matmul", "fixed_mask": mm_mask, "fixed_value": mm_val, "fields": mm_f},
+        "Halt": {"class": "Halt", "role": "scalar", "fixed_mask": hl_mask, "fixed_value": hl_val, "fields": hl_f},
     }
-    return IsaModel(target="fake", by_mnemonic=by_mnem, roles={"matmul": ["MatMul"]},
-                    halt_mnemonics=halt, halt_signatures=_halt_sigs(by_mnem, halt))
+    return IsaModel(
+        target="fake",
+        by_mnemonic=by_mnem,
+        roles={"matmul": ["MatMul"]},
+        halt_mnemonics=halt,
+        halt_signatures=_halt_sigs(by_mnem, halt),
+    )
 
 
 def _rules(findings):
@@ -45,7 +49,7 @@ def _rules(findings):
 
 def test_illegal_opcode_is_flagged():
     m = _model()
-    findings = L.lint(m, [0xFFFFFFFF])                       # matches no signature
+    findings = L.lint(m, [0xFFFFFFFF])  # matches no signature
     assert any(f["rule"] == "illegal_opcode" and f["severity"] == "error" for f in findings)
 
 
@@ -53,7 +57,7 @@ def test_halt_present_when_halt_set_known():
     m = _model(halt=("Halt",))
     good = A.assemble_text(m, "MatMul rd=1, rs1=1\nHalt\n")
     assert "no_halt" not in _rules(L.lint(m, good))
-    bad = A.assemble_text(m, "MatMul rd=1, rs1=1\n")         # never terminates
+    bad = A.assemble_text(m, "MatMul rd=1, rs1=1\n")  # never terminates
     f = L.lint(m, bad)
     assert any(x["rule"] == "no_halt" and x["severity"] == "error" for x in f)
 
@@ -71,19 +75,21 @@ def test_barrier_sharing_halt_class_is_not_termination():
     case that made the old mnemonic-string check wrong.)"""
     mm_f = {"rd": [7, 8, 9, 10, 11], "rs1": [15, 16, 17, 18, 19]}
     mm_mask, mm_val = _sig(0x2B, mm_f)
-    hl_mask, hl_val = _sig(0x73, {})                         # terminator: opcode 0x73
-    fn_mask, fn_val = _sig(0x0F, {})                         # fence: SAME class, DIFFERENT opcode 0x0F
+    hl_mask, hl_val = _sig(0x73, {})  # terminator: opcode 0x73
+    fn_mask, fn_val = _sig(0x0F, {})  # fence: SAME class, DIFFERENT opcode 0x0F
     by = {
-        "MatMul": {"class": "MatMul", "role": "matmul", "fixed_mask": mm_mask, "fixed_value": mm_val,
-                   "fields": mm_f},
-        "Halt": {"class": "Nullary", "role": "scalar", "fixed_mask": hl_mask, "fixed_value": hl_val,
-                 "fields": {}},
-        "Fence": {"class": "Nullary", "role": "scalar", "fixed_mask": fn_mask, "fixed_value": fn_val,
-                  "fields": {}},
+        "MatMul": {"class": "MatMul", "role": "matmul", "fixed_mask": mm_mask, "fixed_value": mm_val, "fields": mm_f},
+        "Halt": {"class": "Nullary", "role": "scalar", "fixed_mask": hl_mask, "fixed_value": hl_val, "fields": {}},
+        "Fence": {"class": "Nullary", "role": "scalar", "fixed_mask": fn_mask, "fixed_value": fn_val, "fields": {}},
     }
     # only 'Halt' is the derived terminator; 'Fence' shares the class but is NOT in halt_signatures
-    m = IsaModel(target="fake3", by_mnemonic=by, roles={"matmul": ["MatMul"]},
-                 halt_mnemonics=("Halt",), halt_signatures=((hl_mask, hl_val),))
+    m = IsaModel(
+        target="fake3",
+        by_mnemonic=by,
+        roles={"matmul": ["MatMul"]},
+        halt_mnemonics=("Halt",),
+        halt_signatures=((hl_mask, hl_val),),
+    )
     words = A.assemble_text(m, "MatMul rd=1, rs1=1\nFence\n")  # ends in a fence, not a terminator
     assert any(x["rule"] == "no_halt" and x["severity"] == "error" for x in L.lint(m, words))
     # and a real terminator IS accepted
@@ -108,9 +114,9 @@ def _model_ambiguous() -> IsaModel:
 
 def test_ambiguous_decode_is_flagged():
     m = _model_ambiguous()
-    f = L.lint(m, [0x2B])                                     # 0x2B matches BOTH OpA and OpB signatures
+    f = L.lint(m, [0x2B])  # 0x2B matches BOTH OpA and OpB signatures
     amb = [x for x in f if x["rule"] == "ambiguous_decode"]
-    assert amb and amb[0]["severity"] == "error"             # an ambiguous encoding is an error, not clean
+    assert amb and amb[0]["severity"] == "error"  # an ambiguous encoding is an error, not clean
     assert "OpA" in amb[0]["detail"] and "OpB" in amb[0]["detail"]
 
 
@@ -125,16 +131,26 @@ def test_rtl_corrected_encoding_is_not_reported_as_the_stale_spec(monkeypatch):
     m = _model(halt=("Halt",))
     by = {name: dict(entry) for name, entry in m.by_mnemonic.items()}
     by["Halt"]["errata_applied"] = {
-        "declared": "0x00000000", "hardware": "0x00000073",
+        "declared": "0x00000000",
+        "hardware": "0x00000073",
         "sources_against_spec": ["rtl_bitpat"],
     }
-    corrected = IsaModel(target="fake-corrected", by_mnemonic=by, roles=m.roles,
-                         halt_mnemonics=m.halt_mnemonics, halt_signatures=m.halt_signatures)
+    corrected = IsaModel(
+        target="fake-corrected",
+        by_mnemonic=by,
+        roles=m.roles,
+        halt_mnemonics=m.halt_mnemonics,
+        halt_signatures=m.halt_signatures,
+    )
     monkeypatch.setattr(
         "merlin.targetgen.isa_rtl_crosscheck.contradicted_mnemonics",
-        lambda _target: {"Halt": {"declared": "0x00000000",
-                                    "hardware_against": ["rtl_bitpat"],
-                                    "evidence": {"rtl_bitpat": "0x00000073"}}},
+        lambda _target: {
+            "Halt": {
+                "declared": "0x00000000",
+                "hardware_against": ["rtl_bitpat"],
+                "evidence": {"rtl_bitpat": "0x00000073"},
+            }
+        },
     )
 
     words = A.assemble_text(corrected, "Halt\n")
@@ -142,17 +158,22 @@ def test_rtl_corrected_encoding_is_not_reported_as_the_stale_spec(monkeypatch):
 
 
 def test_halt_unknown_is_info_not_a_false_error():
-    m = _model(halt=())                                       # halt set not derived
+    m = _model(halt=())  # halt set not derived
     f = L.lint(m, A.assemble_text(m, "MatMul rd=1, rs1=1\n"))
     assert "halt_unknown" in _rules(f)
-    assert "no_halt" not in _rules(f)                        # never a false termination verdict
+    assert "no_halt" not in _rules(f)  # never a false termination verdict
     assert all(x["severity"] != "error" for x in f)
 
 
 def test_empty_model_is_info():
     f = L.lint(IsaModel(target="bare"), [0x2B])
-    assert f == [{"rule": "no_isa_model", "severity": "info",
-                  "detail": "this target ships no ISA definition; static ISA lint is unavailable"}]
+    assert f == [
+        {
+            "rule": "no_isa_model",
+            "severity": "info",
+            "detail": "this target ships no ISA definition; static ISA lint is unavailable",
+        }
+    ]
 
 
 def test_format_findings_orders_by_severity():
@@ -162,6 +183,7 @@ def test_format_findings_orders_by_severity():
 
 
 # ---- structural required-role checks (memory + compute roles present in the model) ----
+
 
 def _model2(halt=("Halt",)) -> IsaModel:
     """A model carrying BOTH a memory-role load and a matmul-role compute, so required-role coverage has
@@ -173,15 +195,17 @@ def _model2(halt=("Halt",)) -> IsaModel:
     mm_mask, mm_val = _sig(0x2B, mm_f)
     hl_mask, hl_val = _sig(0x73, {})
     by = {
-        "Load": {"class": "Load", "role": "memory", "fixed_mask": ld_mask, "fixed_value": ld_val,
-                 "fields": ld_f},
-        "MatMul": {"class": "MatMul", "role": "matmul", "fixed_mask": mm_mask, "fixed_value": mm_val,
-                   "fields": mm_f},
-        "Halt": {"class": "Halt", "role": "scalar", "fixed_mask": hl_mask, "fixed_value": hl_val,
-                 "fields": {}},
+        "Load": {"class": "Load", "role": "memory", "fixed_mask": ld_mask, "fixed_value": ld_val, "fields": ld_f},
+        "MatMul": {"class": "MatMul", "role": "matmul", "fixed_mask": mm_mask, "fixed_value": mm_val, "fields": mm_f},
+        "Halt": {"class": "Halt", "role": "scalar", "fixed_mask": hl_mask, "fixed_value": hl_val, "fields": {}},
     }
-    return IsaModel(target="fake2", by_mnemonic=by, roles={"memory": ["Load"], "matmul": ["MatMul"]},
-                    halt_mnemonics=halt, halt_signatures=_halt_sigs(by, halt))
+    return IsaModel(
+        target="fake2",
+        by_mnemonic=by,
+        roles={"memory": ["Load"], "matmul": ["MatMul"]},
+        halt_mnemonics=halt,
+        halt_signatures=_halt_sigs(by, halt),
+    )
 
 
 def test_missing_compute_role_is_flagged_for_matmul():
@@ -190,13 +214,13 @@ def test_missing_compute_role_is_flagged_for_matmul():
     words = A.assemble_text(m, "Load rd=1, imm=0\nHalt\n")
     f = L.lint(m, words, op="matmul")
     miss = [x for x in f if x["rule"] == "missing_required_role"]
-    assert any("matmul" in x["detail"] for x in miss)          # the compute role is reported missing
-    assert x_all_not_error(miss)                               # it is a warning, not a hard error
+    assert any("matmul" in x["detail"] for x in miss)  # the compute role is reported missing
+    assert x_all_not_error(miss)  # it is a warning, not a hard error
 
 
 def test_missing_memory_role_is_flagged():
     m = _model2()
-    words = A.assemble_text(m, "MatMul rd=1, rs1=1\nHalt\n")    # multiplies but never loads operands
+    words = A.assemble_text(m, "MatMul rd=1, rs1=1\nHalt\n")  # multiplies but never loads operands
     f = L.lint(m, words, op="matmul")
     assert any(x["rule"] == "missing_required_role" and "memory" in x["detail"] for x in f)
 
@@ -205,7 +229,7 @@ def test_no_missing_role_when_both_present():
     m = _model2()
     words = A.assemble_text(m, "Load rd=1, imm=0\nMatMul rd=1, rs1=1\nHalt\n")
     f = L.lint(m, words, op="matmul")
-    assert not any(x["rule"] == "missing_required_role" for x in f)   # memory+matmul satisfied; absent roles skipped
+    assert not any(x["rule"] == "missing_required_role" for x in f)  # memory+matmul satisfied; absent roles skipped
 
 
 def test_undefined_roles_never_false_positive():
@@ -219,15 +243,15 @@ def test_undefined_roles_never_false_positive():
 
 def test_no_recognized_instructions():
     m = _model2()
-    f = L.lint(m, [0xFFFFFFFF, 0xEEEEEEEE], op="matmul")       # all garbage
+    f = L.lint(m, [0xFFFFFFFF, 0xEEEEEEEE], op="matmul")  # all garbage
     assert any(x["rule"] == "no_recognized_instructions" and x["severity"] == "error" for x in f)
 
 
 def test_movement_op_only_requires_memory():
     m = _model2()
-    words = A.assemble_text(m, "Load rd=1, imm=0\nHalt\n")      # a copy kernel: memory only, no matmul
+    words = A.assemble_text(m, "Load rd=1, imm=0\nHalt\n")  # a copy kernel: memory only, no matmul
     f = L.lint(m, words, op="movement", movement=True)
-    assert not any(x["rule"] == "missing_required_role" for x in f)   # matmul not required for movement
+    assert not any(x["rule"] == "missing_required_role" for x in f)  # matmul not required for movement
 
 
 def x_all_not_error(findings):
@@ -235,6 +259,7 @@ def x_all_not_error(findings):
 
 
 # ---- target-declared explicit-latency schedule checks -------------------------------
+
 
 def _schedule_model() -> IsaModel:
     """Tiny synthetic self-hosted ISA with a tensor LSU and explicit frontend delay."""
@@ -248,24 +273,28 @@ def _schedule_model() -> IsaModel:
         ("Halt", 0x73, {}, "scalar"),
     ):
         mask, value = _sig(opcode, fields)
-        by[name] = {"class": name, "role": role, "fixed_mask": mask,
-                    "fixed_value": value, "fields": fields}
-    return IsaModel(target="scheduled", by_mnemonic=by,
-                    roles={"memory": ["VLOAD", "VSTORE"]},
-                    halt_mnemonics=("Halt",),
-                    halt_signatures=((by["Halt"]["fixed_mask"], by["Halt"]["fixed_value"]),))
+        by[name] = {"class": name, "role": role, "fixed_mask": mask, "fixed_value": value, "fields": fields}
+    return IsaModel(
+        target="scheduled",
+        by_mnemonic=by,
+        roles={"memory": ["VLOAD", "VSTORE"]},
+        halt_mnemonics=("Halt",),
+        halt_signatures=((by["Halt"]["fixed_mask"], by["Halt"]["fixed_value"]),),
+    )
 
 
 _SCHEDULE = {
     "version": 1,
     "delay_instruction": {"mnemonic": "DELAY", "cycles_operand": "imm"},
-    "minimum_issue_gap": [{
-        "name": "tensor_lsu",
-        "producers": ["VLOAD", "VSTORE"],
-        "consumers": ["VLOAD", "VSTORE"],
-        "cycles": 33,
-        "severity": "error",
-    }],
+    "minimum_issue_gap": [
+        {
+            "name": "tensor_lsu",
+            "producers": ["VLOAD", "VSTORE"],
+            "consumers": ["VLOAD", "VSTORE"],
+            "cycles": 33,
+            "severity": "error",
+        }
+    ],
 }
 
 
@@ -273,15 +302,21 @@ def test_back_to_back_resource_use_violates_declared_issue_gap():
     model = _schedule_model()
     words = A.assemble_text(model, "VLOAD rd=0\nVLOAD rd=1\nHalt\n")
 
-    findings = L.lint(model, words, op="movement", movement=True,
-                      schedule_contract=_SCHEDULE)
+    findings = L.lint(model, words, op="movement", movement=True, schedule_contract=_SCHEDULE)
 
     hazard = [f for f in findings if f["rule"] == "minimum_issue_gap"]
     assert len(hazard) == 1
-    assert hazard[0] | {
-        "producer_mnemonic": "VLOAD", "consumer_mnemonic": "VLOAD",
-        "actual_cycles": 1, "required_cycles": 33, "missing_cycles": 32,
-    } == hazard[0]
+    assert (
+        hazard[0]
+        | {
+            "producer_mnemonic": "VLOAD",
+            "consumer_mnemonic": "VLOAD",
+            "actual_cycles": 1,
+            "required_cycles": 33,
+            "missing_cycles": 32,
+        }
+        == hazard[0]
+    )
     assert hazard[0]["index"] == 1
     assert "VLOAD" in hazard[0]["detail"] and "33" in hazard[0]["detail"]
 
@@ -290,8 +325,7 @@ def test_explicit_delay_satisfies_declared_issue_gap():
     model = _schedule_model()
     words = A.assemble_text(model, "VLOAD rd=0\nDELAY imm=33\nVLOAD rd=1\nHalt\n")
 
-    findings = L.lint(model, words, op="movement", movement=True,
-                      schedule_contract=_SCHEDULE)
+    findings = L.lint(model, words, op="movement", movement=True, schedule_contract=_SCHEDULE)
 
     assert "minimum_issue_gap" not in _rules(findings)
 
@@ -323,42 +357,48 @@ def _dependency_model() -> IsaModel:
         ("DELAY", 0x67 | (1 << 12), imm_fields),
     ):
         mask, value = _sig(opcode, fields)
-        by[name] = {"class": name, "role": "memory" if name == "VSTORE" else "scalar",
-                    "fixed_mask": mask, "fixed_value": value, "fields": fields}
+        by[name] = {
+            "class": name,
+            "role": "memory" if name == "VSTORE" else "scalar",
+            "fixed_mask": mask,
+            "fixed_value": value,
+            "fields": fields,
+        }
     return IsaModel(target="dependency-scheduled", by_mnemonic=by, roles={})
 
 
 _DEPENDENCY_SCHEDULE = {
     "delay_instruction": {"mnemonic": "DELAY", "cycles_operand": "imm"},
-    "register_dependency_gap": [{
-        "name": "pair_result_to_pair_compute",
-        "producers": ["VADD"],
-        "consumers": ["VADD", "VRED"],
-        "producer_destination_operand": "vd",
-        "consumer_source_operands": ["vs1", "vs2"],
-        "register_span": 2,
-        "cycles": 66,
-        "severity": "error",
-    }, {
-        "name": "pair_result_to_store",
-        "producers": ["VADD"],
-        "consumers": ["VSTORE"],
-        "producer_destination_operand": "vd",
-        "consumer_source_operands": ["vd"],
-        "register_span": 2,
-        "cycles": 66,
-        "severity": "error",
-    }],
+    "register_dependency_gap": [
+        {
+            "name": "pair_result_to_pair_compute",
+            "producers": ["VADD"],
+            "consumers": ["VADD", "VRED"],
+            "producer_destination_operand": "vd",
+            "consumer_source_operands": ["vs1", "vs2"],
+            "register_span": 2,
+            "cycles": 66,
+            "severity": "error",
+        },
+        {
+            "name": "pair_result_to_store",
+            "producers": ["VADD"],
+            "consumers": ["VSTORE"],
+            "producer_destination_operand": "vd",
+            "consumer_source_operands": ["vd"],
+            "register_span": 2,
+            "cycles": 66,
+            "severity": "error",
+        },
+    ],
 }
 
 
 def test_true_register_dependency_uses_declared_result_latency():
     model = _dependency_model()
-    words = A.assemble_text(
-        model, "VADD vd=2,vs1=0,vs2=4\nDELAY imm=33\nVADD vd=8,vs1=2,vs2=6\n")
+    words = A.assemble_text(model, "VADD vd=2,vs1=0,vs2=4\nDELAY imm=33\nVADD vd=8,vs1=2,vs2=6\n")
 
-    findings = L.analyze_schedule(
-        model, words, schedule_contract=_DEPENDENCY_SCHEDULE)["findings"]
+    findings = L.analyze_schedule(model, words, schedule_contract=_DEPENDENCY_SCHEDULE)["findings"]
 
     hazard = next(f for f in findings if f["rule"] == "register_dependency_gap")
     assert hazard["definition_index"] == 0 and hazard["index"] == 2
@@ -369,14 +409,11 @@ def test_true_register_dependency_uses_declared_result_latency():
 
 def test_unrelated_registers_may_overlap_and_a_full_gap_satisfies_dependency():
     model = _dependency_model()
-    independent = A.assemble_text(
-        model, "VADD vd=2,vs1=0,vs2=4\nDELAY imm=33\nVADD vd=8,vs1=10,vs2=12\n")
-    dependent = A.assemble_text(
-        model, "VADD vd=2,vs1=0,vs2=4\nDELAY imm=64\nVADD vd=8,vs1=2,vs2=6\n")
+    independent = A.assemble_text(model, "VADD vd=2,vs1=0,vs2=4\nDELAY imm=33\nVADD vd=8,vs1=10,vs2=12\n")
+    dependent = A.assemble_text(model, "VADD vd=2,vs1=0,vs2=4\nDELAY imm=64\nVADD vd=8,vs1=2,vs2=6\n")
 
     for words in (independent, dependent):
-        findings = L.analyze_schedule(
-            model, words, schedule_contract=_DEPENDENCY_SCHEDULE)["findings"]
+        findings = L.analyze_schedule(model, words, schedule_contract=_DEPENDENCY_SCHEDULE)["findings"]
         assert not any(f["rule"] == "register_dependency_gap" for f in findings)
 
 
@@ -384,11 +421,11 @@ def test_result_store_is_a_dependency_consumer_too():
     model = _dependency_model()
     words = A.assemble_text(model, "VADD vd=2,vs1=0,vs2=4\nDELAY imm=33\nVSTORE vd=2\n")
 
-    findings = L.analyze_schedule(
-        model, words, schedule_contract=_DEPENDENCY_SCHEDULE)["findings"]
+    findings = L.analyze_schedule(model, words, schedule_contract=_DEPENDENCY_SCHEDULE)["findings"]
 
-    assert any(f["rule"] == "register_dependency_gap"
-               and f["schedule_rule"] == "pair_result_to_store" for f in findings)
+    assert any(
+        f["rule"] == "register_dependency_gap" and f["schedule_rule"] == "pair_result_to_store" for f in findings
+    )
 
 
 def _control_flow_model() -> IsaModel:
@@ -405,48 +442,69 @@ def _control_flow_model() -> IsaModel:
     add_mask, add_value = _sig(0x13, compute_fields)
     branch_mask, branch_value = _sig(0x63, branch_fields)
     by = {
-        "ADDI": {"class": "ComputeImm", "mnemonic": "ADDI", "role": "scalar", "fixed_mask": add_mask,
-                 "fixed_value": add_value, "fields": compute_fields},
-        "BNE": {"class": "BranchImm", "mnemonic": "BNE", "role": "scalar", "fixed_mask": branch_mask,
-                "fixed_value": branch_value, "fields": branch_fields},
+        "ADDI": {
+            "class": "ComputeImm",
+            "mnemonic": "ADDI",
+            "role": "scalar",
+            "fixed_mask": add_mask,
+            "fixed_value": add_value,
+            "fields": compute_fields,
+        },
+        "BNE": {
+            "class": "BranchImm",
+            "mnemonic": "BNE",
+            "role": "scalar",
+            "fixed_mask": branch_mask,
+            "fixed_value": branch_value,
+            "fields": branch_fields,
+        },
     }
     return IsaModel(target="control-flow", by_mnemonic=by, roles={})
 
 
 _CONTROL_FLOW = {
-    "control_flow": {"relative_branches": [{
-        "mnemonics": ["BNE"],
-        "immediate_operand": "imm",
-        "immediate_bits": 8,
-        "decoded_immediate_units_per_instruction": 1,
-        "comparison_registers": ["rs1", "rs2"],
-        "destination_operand": "rd",
-        "source_operands": ["rs1", "rs2"],
-        "zero_register": 0,
-        "reinitialization_severity": "error",
-    }]},
+    "control_flow": {
+        "relative_branches": [
+            {
+                "mnemonics": ["BNE"],
+                "immediate_operand": "imm",
+                "immediate_bits": 8,
+                "decoded_immediate_units_per_instruction": 1,
+                "comparison_registers": ["rs1", "rs2"],
+                "destination_operand": "rd",
+                "source_operands": ["rs1", "rs2"],
+                "zero_register": 0,
+                "reinitialization_severity": "error",
+            }
+        ]
+    },
 }
 
 
 def test_backward_branch_reports_resolved_edge_without_false_loop_reset():
     model = _control_flow_model()
-    words = A.assemble_text(model, "ADDI rd=4,rs1=0,imm=3\nADDI rd=5,rs1=0,imm=0\n"
-                           "ADDI rd=4,rs1=4,imm=255\nBNE rs1=4,rs2=0,imm=255\n")
+    words = A.assemble_text(
+        model, "ADDI rd=4,rs1=0,imm=3\nADDI rd=5,rs1=0,imm=0\nADDI rd=4,rs1=4,imm=255\nBNE rs1=4,rs2=0,imm=255\n"
+    )
     analysis = L.analyze_schedule(model, words, schedule_contract=_CONTROL_FLOW)
-    assert analysis["branch_edges"] == [{
-        "index": 3, "target": 2, "mnemonic": "BNE", "decoded_displacement": -1,
-    }]
-    assert not any(f["rule"] == "loop_comparison_register_reinitialized"
-                   for f in analysis["findings"])
+    assert analysis["branch_edges"] == [
+        {
+            "index": 3,
+            "target": 2,
+            "mnemonic": "BNE",
+            "decoded_displacement": -1,
+        }
+    ]
+    assert not any(f["rule"] == "loop_comparison_register_reinitialized" for f in analysis["findings"])
 
 
 def test_backward_branch_into_counter_initializer_is_an_error():
     model = _control_flow_model()
-    words = A.assemble_text(model, "ADDI rd=4,rs1=0,imm=3\nADDI rd=5,rs1=0,imm=0\n"
-                           "ADDI rd=4,rs1=4,imm=255\nBNE rs1=4,rs2=0,imm=253\n")
+    words = A.assemble_text(
+        model, "ADDI rd=4,rs1=0,imm=3\nADDI rd=5,rs1=0,imm=0\nADDI rd=4,rs1=4,imm=255\nBNE rs1=4,rs2=0,imm=253\n"
+    )
     analysis = L.analyze_schedule(model, words, schedule_contract=_CONTROL_FLOW)
-    finding = next(f for f in analysis["findings"]
-                   if f["rule"] == "loop_comparison_register_reinitialized")
+    finding = next(f for f in analysis["findings"] if f["rule"] == "loop_comparison_register_reinitialized")
     assert finding["severity"] == "error"
     assert finding["target"] == 0
     assert finding["definition_index"] == 0

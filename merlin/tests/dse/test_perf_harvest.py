@@ -5,6 +5,7 @@ thrown away. Recovering it is the easy half; the tests below are mostly about th
 that a number read out of a running program is **contended** and must never be spelled as anything
 stronger than that. Each honesty rule has a test that fails if the rule is relaxed.
 """
+
 from __future__ import annotations
 
 import json
@@ -16,32 +17,48 @@ from merlin.kernels.measurement import MeasurementAuthority
 from merlin.perf import harvest as H
 from merlin.perf.term import UNKNOWN, UnknownValueError
 
-
 # ---------------------------------------------------------------------------------------------
 # fixtures: a declared authority and a couple of hand-built capsule results
 # ---------------------------------------------------------------------------------------------
 
 
 def _authority(**kw):
-    base = {"target": "unit-under-test", "cycles_from": "sim", "cycles_tier": "rtl",
-            "citable_tier": "rtl", "declared": True}
+    base = {
+        "target": "unit-under-test",
+        "cycles_from": "sim",
+        "cycles_tier": "rtl",
+        "citable_tier": "rtl",
+        "declared": True,
+    }
     base.update(kw)
     return MeasurementAuthority(**base)
 
 
 def _obs(value, *, workload="w", submission="s", status="pass", **kw):
-    return H.Observation(submission=submission, workload=workload, stage="L3", substrate="sim",
-                         tier="rtl", quantity="total_cycles", value=float(value), unit="cycles",
-                         status=status, concurrent=("a movement engine",), evidence=("run.json",),
-                         **kw)
+    return H.Observation(
+        submission=submission,
+        workload=workload,
+        stage="L3",
+        substrate="sim",
+        tier="rtl",
+        quantity="total_cycles",
+        value=float(value),
+        unit="cycles",
+        status=status,
+        concurrent=("a movement engine",),
+        evidence=("run.json",),
+        **kw,
+    )
 
 
 def _write_capsule_result(tmp_path, submission, capsule, tiers):
     d = tmp_path / submission / "runs" / "suite" / capsule
     d.mkdir(parents=True, exist_ok=True)
     p = d / "capsule_result.json"
-    p.write_text(json.dumps({"capsule": capsule, "status": "pass", "tiers": tiers,
-                             "toolchain_shas": {"tool": "abc123"}}), encoding="utf-8")
+    p.write_text(
+        json.dumps({"capsule": capsule, "status": "pass", "tiers": tiers, "toolchain_shas": {"tool": "abc123"}}),
+        encoding="utf-8",
+    )
     return p
 
 
@@ -55,6 +72,7 @@ def test_harvested_term_is_trace_derived_and_never_stronger():
     assert term.provenance.kind == H.HARVEST_KIND == "trace_derived"
     # weaker than a dedicated measurement, so anything composed from it inherits the weaker kind
     from merlin.perf.term import combine_kinds
+
     assert combine_kinds([term.provenance.kind, "measured"]) == H.HARVEST_KIND
 
 
@@ -65,10 +83,11 @@ def test_harvested_term_names_what_else_was_active():
 
 
 def test_harvested_term_records_the_spread_across_occurrences():
-    term = H.harvested_term("busy", [_obs(1090), _obs(3078), _obs(8889)], unit="cycles",
-                            regime="three submissions of one capsule")
+    term = H.harvested_term(
+        "busy", [_obs(1090), _obs(3078), _obs(8889)], unit="cycles", regime="three submissions of one capsule"
+    )
     assert term.bounds.lower == 1090 and term.bounds.upper == 8889
-    assert term.value == 3078                    # the median is a PRIOR, not the constant
+    assert term.value == 3078  # the median is a PRIOR, not the constant
     assert "spread" in term.validity.expected_error
     assert H.spread([1090, 3078, 8889])["ratio"] == pytest.approx(8889 / 1090)
 
@@ -86,9 +105,15 @@ def test_promotion_to_calibrated_always_raises():
 
 def test_a_term_spelled_stronger_than_trace_derived_is_rejected():
     from merlin.perf.term import Bounds, PerformanceTerm, Provenance, Validity
-    strong = PerformanceTerm(name="busy", value=100, unit="cycles",
-                             provenance=Provenance("measured", ("run.json",)),
-                             validity=Validity(validated_regime="r"), bounds=Bounds(0, 200))
+
+    strong = PerformanceTerm(
+        name="busy",
+        value=100,
+        unit="cycles",
+        provenance=Provenance("measured", ("run.json",)),
+        validity=Validity(validated_regime="r"),
+        bounds=Bounds(0, 200),
+    )
     with pytest.raises(H.ContendedTermError):
         H.assert_contended(strong)
 
@@ -99,17 +124,27 @@ def test_a_term_spelled_stronger_than_trace_derived_is_rejected():
 
 
 def test_an_undeclared_authority_contributes_nothing(tmp_path):
-    p = _write_capsule_result(tmp_path, "sub", "cap", {
-        "L3": {"status": "pass", "cycles": 500, "derived_from_rtl": True, "cycle_accurate": True}})
+    p = _write_capsule_result(
+        tmp_path,
+        "sub",
+        "cap",
+        {"L3": {"status": "pass", "cycles": 500, "derived_from_rtl": True, "cycle_accurate": True}},
+    )
     obs, refusals = H.harvest_capsule_result(p, authority=MeasurementAuthority(target="t"))
     assert obs == []
     assert refusals and "nothing is declared at all" in refusals[0].reason
 
 
 def test_a_tier_below_the_declared_citable_tier_is_refused_with_its_reason(tmp_path):
-    p = _write_capsule_result(tmp_path, "sub", "cap", {
-        "L2": {"status": "pass", "cycles": 543, "derived_from_rtl": False},
-        "L3": {"status": "pass", "cycles": 178, "derived_from_rtl": True, "cycle_accurate": True}})
+    p = _write_capsule_result(
+        tmp_path,
+        "sub",
+        "cap",
+        {
+            "L2": {"status": "pass", "cycles": 543, "derived_from_rtl": False},
+            "L3": {"status": "pass", "cycles": 178, "derived_from_rtl": True, "cycle_accurate": True},
+        },
+    )
     obs, refusals = H.harvest_capsule_result(p, authority=_authority())
     assert [o.value for o in obs] == [178.0]
     assert any("functional" in r.reason for r in refusals)
@@ -117,9 +152,20 @@ def test_a_tier_below_the_declared_citable_tier_is_refused_with_its_reason(tmp_p
 
 def test_the_oracles_own_fidelity_outranks_the_tier_name(tmp_path):
     # A tier NAMED L3 whose oracle calls itself a functional model is not an RTL result.
-    p = _write_capsule_result(tmp_path, "sub", "cap", {
-        "L3": {"status": "pass", "cycles": 7, "derived_from_rtl": True, "cycle_accurate": True,
-               "fidelity": "functional_model"}})
+    p = _write_capsule_result(
+        tmp_path,
+        "sub",
+        "cap",
+        {
+            "L3": {
+                "status": "pass",
+                "cycles": 7,
+                "derived_from_rtl": True,
+                "cycle_accurate": True,
+                "fidelity": "functional_model",
+            }
+        },
+    )
     obs, _ = H.harvest_capsule_result(p, authority=_authority())
     assert obs == []
     obs, _ = H.harvest_capsule_result(p, authority=_authority(citable_tier="functional"))
@@ -130,7 +176,7 @@ def test_a_tier_record_stating_no_provenance_reaches_no_tier(tmp_path):
     p = _write_capsule_result(tmp_path, "sub", "cap", {"L3": "pass"})
     obs, refusals = H.harvest_capsule_result(p, authority=_authority())
     assert obs == []
-    assert refusals == []                        # a bare-string record reports no cycles at all
+    assert refusals == []  # a bare-string record reports no cycles at all
 
 
 # ---------------------------------------------------------------------------------------------
@@ -144,22 +190,27 @@ def test_an_empty_series_is_unknown_with_a_reason_and_refuses_to_read_as_zero():
     with pytest.raises(UnknownValueError):
         float(term.value)
     with pytest.raises(UnknownValueError):
-        bool(term.value)                         # `x or 0` must not silently publish a zero
+        bool(term.value)  # `x or 0` must not silently publish a zero
     assert term.value is UNKNOWN
 
 
 def test_an_adapter_with_no_timing_capability_emits_nothing_never_zeros(tmp_path):
-    p = _write_capsule_result(tmp_path, "sub", "cap", {
-        "L3": {"status": "pass", "cycles": None, "derived_from_rtl": True, "cycle_accurate": True},
-        "L4": {"status": "skipped", "cycles": None, "not_applicable": True}})
+    p = _write_capsule_result(
+        tmp_path,
+        "sub",
+        "cap",
+        {
+            "L3": {"status": "pass", "cycles": None, "derived_from_rtl": True, "cycle_accurate": True},
+            "L4": {"status": "skipped", "cycles": None, "not_applicable": True},
+        },
+    )
     obs, refusals = H.harvest_capsule_result(p, authority=_authority())
     assert obs == [] and refusals == []
 
 
 def test_a_score_summary_with_no_tier_is_refused_rather_than_attributed(tmp_path):
     p = tmp_path / "score_capsule.json"
-    p.write_text(json.dumps({"package": "pkg", "cycles_diagnostic": {"A1": 159, "A2": 316}}),
-                 encoding="utf-8")
+    p.write_text(json.dumps({"package": "pkg", "cycles_diagnostic": {"A1": 159, "A2": 316}}), encoding="utf-8")
     obs, refusals = H.harvest_score_file(p, authority=_authority())
     assert obs == []
     assert len(refusals) == 2 and all("no tier" in r.reason for r in refusals)
@@ -183,8 +234,7 @@ def test_observations_are_keyed_by_submission_not_by_capsule_name(tmp_path):
 
 def test_a_term_refuses_to_pool_observations_with_different_verdicts():
     with pytest.raises(ValueError) as exc:
-        H.harvested_term("busy", [_obs(2, status="fail"), _obs(6349, status="pass")],
-                         unit="cycles", regime="r")
+        H.harvested_term("busy", [_obs(2, status="fail"), _obs(6349, status="pass")], unit="cycles", regime="r")
     assert "different verdicts" in str(exc.value)
 
 
@@ -203,9 +253,13 @@ def test_the_failing_stages_are_kept_and_reachable(tmp_path):
 
 def _axis(points, **kw):
     kw.setdefault("x_name", "x")
-    return H.AxisEvidence(axis="a", y_name="y", y_unit="cycles",
-                          points=tuple(H.Point(x, y, f"p{i}") for i, (x, y) in enumerate(points)),
-                          **kw)
+    return H.AxisEvidence(
+        axis="a",
+        y_name="y",
+        y_unit="cycles",
+        points=tuple(H.Point(x, y, f"p{i}") for i, (x, y) in enumerate(points)),
+        **kw,
+    )
 
 
 def test_an_affine_fit_refuses_below_four_points():
@@ -235,9 +289,10 @@ def test_an_unimplemented_fit_form_is_refused_not_guessed():
 
 def test_a_fill_law_inverts_through_the_law_itself_and_refuses_what_it_cannot_produce():
     from merlin.perf.record import fill_cycles
+
     dim, why = H.invert_fill_law("systolic_2d", fill_cycles("systolic_2d", 32))
     assert dim == 32 and "systolic_2d(32)" in why
-    none, reason = H.invert_fill_law("systolic_2d", 63)     # an odd fill: 2*d-2 is always even
+    none, reason = H.invert_fill_law("systolic_2d", 63)  # an odd fill: 2*d-2 is always even
     assert none is None and "does not describe this unit" in reason
 
 
@@ -268,14 +323,23 @@ def _linear_suite():
     for i, (groups, beats) in enumerate([(1, 128), (1, 256), (2, 512), (2, 1024), (0, 64)]):
         ops = []
         for _ in range(groups):
-            ops += [["Grid", "push", 0], ["Sched", "delay", 4],
-                    ["Grid", "mul", 0], ["Sched", "delay", 10],
-                    ["Grid", "pop", 0], ["Sched", "delay", 4]]
+            ops += [
+                ["Grid", "push", 0],
+                ["Sched", "delay", 4],
+                ["Grid", "mul", 0],
+                ["Sched", "delay", 10],
+                ["Grid", "pop", 0],
+                ["Sched", "delay", 4],
+            ]
         ops += [["Move", "xfer", 0]]
-        kernels[f"k{i}"] = _kernel(ops=ops, truth=beats + 7 + groups * 16,
-                                   buckets={"engine": beats + 7, "grid": groups * 16},
-                                   reads=beats // 2, writes=beats - beats // 2,
-                                   footprint=beats * 8)
+        kernels[f"k{i}"] = _kernel(
+            ops=ops,
+            truth=beats + 7 + groups * 16,
+            buckets={"engine": beats + 7, "grid": groups * 16},
+            reads=beats // 2,
+            writes=beats - beats // 2,
+            footprint=beats * 8,
+        )
     return _suite(kernels, {"beat_bytes": 8})
 
 
@@ -296,7 +360,7 @@ def test_the_movement_pairing_is_refused_when_two_buckets_look_linear():
     suite = _linear_suite()
     for entry in suite["kernels"].values():
         beats = entry["arc"]["reads"] + entry["arc"]["writes"]
-        entry["arc"]["grid"] = beats + 3          # a second bucket that also tracks the beats
+        entry["arc"]["grid"] = beats + 3  # a second bucket that also tracks the beats
     axes, refusals, deriv = H.axes_from_suite(suite)
     assert deriv["movement"]["bucket"] is None
     assert any("ambiguous" in r.reason for r in refusals)
@@ -316,10 +380,17 @@ def test_a_compute_bucket_whose_support_does_not_match_any_family_is_not_paired(
 def test_a_program_outside_the_one_compute_per_drain_regime_is_excluded_not_fitted():
     suite = _linear_suite()
     k = suite["kernels"]["k0"]
-    k["op_stream"] = [["Grid", "push", 0], ["Sched", "delay", 4],
-                      ["Grid", "mul", 0], ["Sched", "delay", 10],
-                      ["Grid", "mul", 0], ["Sched", "delay", 10],
-                      ["Grid", "pop", 0], ["Sched", "delay", 4], ["Move", "xfer", 0]]
+    k["op_stream"] = [
+        ["Grid", "push", 0],
+        ["Sched", "delay", 4],
+        ["Grid", "mul", 0],
+        ["Sched", "delay", 10],
+        ["Grid", "mul", 0],
+        ["Sched", "delay", 10],
+        ["Grid", "pop", 0],
+        ["Sched", "delay", 4],
+        ["Move", "xfer", 0],
+    ]
     axes, _, _ = H.axes_from_suite(suite)
     excluded = axes["compute_group_count"].excluded
     assert any("accumulates" in r.reason for r in excluded)
@@ -347,14 +418,18 @@ def test_traits_the_evidence_establishes_never_overturn_a_refutation():
 def test_the_delay_marker_is_derived_from_the_corpus_not_assumed():
     h = H.harvest_op_stream(_linear_suite(), target="t", authority=_authority(cycles_tier="rtl"))
     assert h.observations
-    assert {o.quantity for o in h.observations} == {"scheduled_delay.push", "scheduled_delay.mul",
-                                                    "scheduled_delay.pop"}
+    assert {o.quantity for o in h.observations} == {
+        "scheduled_delay.push",
+        "scheduled_delay.mul",
+        "scheduled_delay.pop",
+    }
     assert all(o.concurrent for o in h.observations)
 
 
 def test_the_op_stream_adapter_refuses_when_the_corpus_tier_is_not_citable():
-    h = H.harvest_op_stream(_linear_suite(), target="t",
-                            authority=_authority(cycles_tier="functional", citable_tier="rtl"))
+    h = H.harvest_op_stream(
+        _linear_suite(), target="t", authority=_authority(cycles_tier="functional", citable_tier="rtl")
+    )
     assert h.observations == ()
     assert any("not citable" in r.reason for r in h.refusals)
 
@@ -403,6 +478,7 @@ def test_retro_mine_recovers_real_observations_from_runs_already_on_disk(target)
     assert all(o.evidence for o in h.observations)
     # every recovered number is citable at the tier the target declares
     from merlin.kernels.measurement import citable
+
     assert all(citable(h.authority, o.tier) for o in h.observations)
     # and the refusals are named rather than dropped
     assert all(r.reason for r in h.refusals)
@@ -419,12 +495,29 @@ def test_the_module_parses_structurally_and_names_no_target():
 
 
 def test_a_per_unit_timing_block_is_harvested_under_the_same_citability_gate(tmp_path):
-    p = _write_capsule_result(tmp_path, "sub", "cap", {"L3": {
-        "status": "pass", "cycles": 1090, "derived_from_rtl": True, "cycle_accurate": True,
-        H.TIMING_OBSERVATIONS_KEY: [
-            {"quantity": "busy_cycles.grid", "value": 158, "unit": "cycles",
-             "concurrent": ["the movement engine"], "note": "per-unit activity"},
-            {"quantity": "busy_cycles.mover", "value": 2054, "unit": "cycles"}]}})
+    p = _write_capsule_result(
+        tmp_path,
+        "sub",
+        "cap",
+        {
+            "L3": {
+                "status": "pass",
+                "cycles": 1090,
+                "derived_from_rtl": True,
+                "cycle_accurate": True,
+                H.TIMING_OBSERVATIONS_KEY: [
+                    {
+                        "quantity": "busy_cycles.grid",
+                        "value": 158,
+                        "unit": "cycles",
+                        "concurrent": ["the movement engine"],
+                        "note": "per-unit activity",
+                    },
+                    {"quantity": "busy_cycles.mover", "value": 2054, "unit": "cycles"},
+                ],
+            }
+        },
+    )
     obs, _ = H.harvest_capsule_result(p, authority=_authority())
     assert {o.quantity for o in obs} == {"total_cycles", "busy_cycles.grid", "busy_cycles.mover"}
     fine = [o for o in obs if o.quantity == "busy_cycles.grid"][0]
@@ -435,10 +528,20 @@ def test_a_per_unit_timing_block_is_harvested_under_the_same_citability_gate(tmp
 
 
 def test_an_unreported_per_unit_entry_is_skipped_never_recorded_as_zero(tmp_path):
-    p = _write_capsule_result(tmp_path, "sub", "cap", {"L3": {
-        "status": "pass", "cycles": 10, "derived_from_rtl": True, "cycle_accurate": True,
-        H.TIMING_OBSERVATIONS_KEY: [{"quantity": "busy_cycles.grid", "value": None},
-                                    {"value": 5}]}})
+    p = _write_capsule_result(
+        tmp_path,
+        "sub",
+        "cap",
+        {
+            "L3": {
+                "status": "pass",
+                "cycles": 10,
+                "derived_from_rtl": True,
+                "cycle_accurate": True,
+                H.TIMING_OBSERVATIONS_KEY: [{"quantity": "busy_cycles.grid", "value": None}, {"value": 5}],
+            }
+        },
+    )
     obs, _ = H.harvest_capsule_result(p, authority=_authority())
     assert [o.quantity for o in obs] == ["total_cycles"]
 
@@ -446,8 +549,7 @@ def test_an_unreported_per_unit_entry_is_skipped_never_recorded_as_zero(tmp_path
 def test_an_adapter_that_carries_no_block_is_byte_identical_to_before(tmp_path):
     tier = {"status": "pass", "cycles": 10, "derived_from_rtl": True, "cycle_accurate": True}
     p = _write_capsule_result(tmp_path, "sub", "cap", {"L3": tier})
-    q = _write_capsule_result(tmp_path, "sub2", "cap", {"L3": {**tier,
-                                                              H.TIMING_OBSERVATIONS_KEY: []}})
+    q = _write_capsule_result(tmp_path, "sub2", "cap", {"L3": {**tier, H.TIMING_OBSERVATIONS_KEY: []}})
     a, _ = H.harvest_capsule_result(p, authority=_authority())
     b, _ = H.harvest_capsule_result(q, authority=_authority())
     assert len(a) == len(b) == 1

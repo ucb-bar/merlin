@@ -10,6 +10,7 @@ The safety property is the one this file exists for: BASELINE arms may move the 
 arms may not. A ceiling the agent can raise is a target the agent authors -- its own candidate would
 sit near 1.0 by construction while every other member was pushed down.
 """
+
 from __future__ import annotations
 
 import json
@@ -28,23 +29,44 @@ import perf_agent_stage as PAS  # noqa: E402
 
 def _plant(work_root: Path, *, call: int, arm: str, capsule: str, macs: int, cycles: int):
     """Write one measured member the way the stage's own workspace layout does."""
-    run = (work_root / f"round_00" / f"call_{call:03d}"
-           / PAS._ARM_WORKSPACE.format(index=0, arm=arm)
-           / "unprofiled" / "capsule_runs" / "runs" / "t-capsule-bench" / f"x_{capsule}_{arm}")
+    run = (
+        work_root
+        / f"round_00"
+        / f"call_{call:03d}"
+        / PAS._ARM_WORKSPACE.format(index=0, arm=arm)
+        / "unprofiled"
+        / "capsule_runs"
+        / "runs"
+        / "t-capsule-bench"
+        / f"x_{capsule}_{arm}"
+    )
     (run / "generated").mkdir(parents=True)
-    (run / "capsule_result.json").write_text(json.dumps({
-        "capsule": capsule, "status": "pass",
-        "tiers": {"L3": {"status": "pass", "cycles": cycles,
-                         "derived_from_rtl": True, "cycle_accurate": True}},
-    }), encoding="utf-8")
+    (run / "capsule_result.json").write_text(
+        json.dumps(
+            {
+                "capsule": capsule,
+                "status": "pass",
+                "tiers": {"L3": {"status": "pass", "cycles": cycles, "derived_from_rtl": True, "cycle_accurate": True}},
+            }
+        ),
+        encoding="utf-8",
+    )
     # one MATMUL whose declared shapes price to exactly `macs`
-    (run / "generated" / "command_buffer.json").write_text(json.dumps({
-        "abi_version": "0.1", "target": "t",
-        "tensors": {"A": {"shape": [1, macs // 1], "dtype": "i8", "role": "input"},
+    (run / "generated" / "command_buffer.json").write_text(
+        json.dumps(
+            {
+                "abi_version": "0.1",
+                "target": "t",
+                "tensors": {
+                    "A": {"shape": [1, macs // 1], "dtype": "i8", "role": "input"},
                     "W": {"shape": [macs // 1, 1], "dtype": "i8", "role": "weight"},
-                    "Y": {"shape": [1, 1], "dtype": "i32", "role": "output"}},
-        "commands": [{"opcode": "MATMUL", "operands": {"lhs": "A", "rhs": "W", "dst": "Y"}}],
-    }), encoding="utf-8")
+                    "Y": {"shape": [1, 1], "dtype": "i32", "role": "output"},
+                },
+                "commands": [{"opcode": "MATMUL", "operands": {"lhs": "A", "rhs": "W", "dst": "Y"}}],
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_only_the_baseline_arm_is_harvested(tmp_path):
@@ -56,7 +78,8 @@ def test_only_the_baseline_arm_is_harvested(tmp_path):
     names = {p.capsule for p in harvested}
     assert any("SLOW" in n for n in names), "the baseline arm must be harvested"
     assert not any("FAST" in n for n in names), (
-        "a candidate arm reached the ceiling: the agent can now author its own target")
+        "a candidate arm reached the ceiling: the agent can now author its own target"
+    )
 
 
 def test_an_absent_work_root_harvests_nothing_rather_than_raising(tmp_path):
@@ -65,12 +88,24 @@ def test_an_absent_work_root_harvests_nothing_rather_than_raising(tmp_path):
 
 def _evaluator(tmp_path, seed):
     from types import SimpleNamespace
+
     return PAS.DevelopmentGsimFeedback(
-        SimpleNamespace(sha256="a" * 64), SimpleNamespace(capsules=[], capsules_sha256="a" * 64),
-        Path("."), "a" * 64, SimpleNamespace(target="t"), {}, tmp_path / "work", {},
-        peak_macs_per_cycle=256, peak_basis="test",
-        achievable_macs_per_cycle=seed, achievable_basis="seeded", achievable_dispersion=0.5,
-        seed_points=(), functional_run_id="fn")
+        SimpleNamespace(sha256="a" * 64),
+        SimpleNamespace(capsules=[], capsules_sha256="a" * 64),
+        Path("."),
+        "a" * 64,
+        SimpleNamespace(target="t"),
+        {},
+        tmp_path / "work",
+        {},
+        peak_macs_per_cycle=256,
+        peak_basis="test",
+        achievable_macs_per_cycle=seed,
+        achievable_basis="seeded",
+        achievable_dispersion=0.5,
+        seed_points=(),
+        functional_run_id="fn",
+    )
 
 
 def test_an_empty_harvest_never_downgrades_a_known_ceiling(tmp_path):
@@ -88,16 +123,14 @@ def test_a_faster_baseline_raises_the_ceiling_and_says_where_it_came_from(tmp_pa
     evaluator._refresh_achievable()
     assert evaluator.achievable_macs_per_cycle > 80.0, "a faster baseline must move the ceiling"
     basis = evaluator.achievable_basis
-    assert "baseline arms only" in basis, (
-        "the basis must let a reader rule out circularity without reading the code")
+    assert "baseline arms only" in basis, "the basis must let a reader rule out circularity without reading the code"
     assert "no candidate measurement contributes" in basis
 
 
 def _matmul_descriptor(*, m: int, k: int, n: int) -> dict:
     return {
         "operation": {"op": "matmul", "attributes": {"lhs": "A", "weight": "W"}},
-        "inputs": [{"name": "A", "shape": [m, k]},
-                   {"name": "W", "shape": [k, n]}],
+        "inputs": [{"name": "A", "shape": [m, k]}, {"name": "W", "shape": [k, n]}],
     }
 
 
@@ -126,7 +159,8 @@ def test_harvested_points_keep_the_reduction_depth_that_established_their_rate(t
     [point] = PAS.harvest_baseline_points(work)
     assert point.reduction_depths == (16,)
     assert not PM.achievable_ceiling([point], provenance="test").known, (
-        "one point preserves its signature but cannot separate rate from fixed intercept")
+        "one point preserves its signature but cannot separate rate from fixed intercept"
+    )
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -144,16 +178,19 @@ def test_a_condition_that_cannot_be_answered_says_so():
     from merlin.perf.budget import Budget, unpriced_channel
 
     state = SELECT.SearchState(
-        baseline_cycles=1000, best_cycles=900.0,
-        budget=Budget(unit=unpriced_channel("q", missing="not priced in this test"),
-                      limit_items=100),
-        attainable_cycles=500.0, improvements=(0.5, 0.4, 0.3))
+        baseline_cycles=1000,
+        best_cycles=900.0,
+        budget=Budget(unit=unpriced_channel("q", missing="not priced in this test"), limit_items=100),
+        attainable_cycles=500.0,
+        improvements=(0.5, 0.4, 0.3),
+    )
     verdicts = {v.name: v for v in SELECT.check_stop(state)}
 
     predicted = verdicts["predicted_remaining_below"]
     assert predicted.fired is False
     assert predicted.evaluable is False, (
-        "a condition with no candidate pool to price must report that it could not be answered")
+        "a condition with no candidate pool to price must report that it could not be answered"
+    )
     assert predicted.to_dict()["evaluable"] is False
 
     # the conditions that CAN be answered here must not be tarred with the same flag
@@ -174,11 +211,11 @@ def test_a_missing_input_marks_the_condition_unevaluable_wherever_it_occurs():
 
     budget = Budget(unit=unpriced_channel("q", missing="not priced here"), limit_items=100)
     # attainable UNKNOWN: exactly the live case, caused by members with no declared work
-    state = SELECT.SearchState(baseline_cycles=1000, best_cycles=900.0, budget=budget,
-                               improvements=(0.5, 0.4, 0.3))
+    state = SELECT.SearchState(baseline_cycles=1000, best_cycles=900.0, budget=budget, improvements=(0.5, 0.4, 0.3))
     verdicts = {v.name: v for v in SELECT.check_stop(state)}
     assert verdicts["attainment_reached"].evaluable is False, (
-        "a condition whose own reason says it cannot be evaluated must say so in the field too")
+        "a condition whose own reason says it cannot be evaluated must say so in the field too"
+    )
     for name in ("plateaued", "budget_exhausted"):
         assert verdicts[name].evaluable is True
 
@@ -188,12 +225,15 @@ def test_a_missing_input_marks_the_condition_unevaluable_wherever_it_occurs():
 # ---------------------------------------------------------------------------------------------------
 def _reuse_descriptor(*, k=64, n=64, activations=(16, 16)):
     return {
-        "operation": {"op": "resident_reuse", "attributes": {
-            "weight": "W",
-            "matmuls": [{"lhs": f"A{i}", "out": f"Y{i}"} for i in range(len(activations))]}},
+        "operation": {
+            "op": "resident_reuse",
+            "attributes": {
+                "weight": "W",
+                "matmuls": [{"lhs": f"A{i}", "out": f"Y{i}"} for i in range(len(activations))],
+            },
+        },
         "inputs": [{"name": "W", "shape": [k, n], "role": "weight"}]
-                  + [{"name": f"A{i}", "shape": [m, k], "role": "input"}
-                     for i, m in enumerate(activations)],
+        + [{"name": f"A{i}", "shape": [m, k], "role": "input"} for i, m in enumerate(activations)],
     }
 
 
@@ -215,7 +255,7 @@ def test_a_reused_weight_contributes_work_for_every_reuse():
 
 def test_a_reuse_whose_shapes_do_not_contract_is_refused_by_name():
     bad = _reuse_descriptor()
-    bad["inputs"][1]["shape"] = [16, 32]          # activation K disagrees with the weight's K
+    bad["inputs"][1]["shape"] = [16, 32]  # activation K disagrees with the weight's K
     macs, basis = PAS.declared_capsule_macs(bad)
     assert macs is None and "does not contract" in basis
 
@@ -246,5 +286,7 @@ def test_every_shipped_perf_capsule_declares_work_it_can_be_scored_against():
         if not macs:
             undecided.append(f"{Path(path).parent.name}: {basis}")
     assert not undecided, "capsules with no declared work: " + "; ".join(undecided)
-    assert elementwise, ("no elementwise member was found, so the exemption above is either stale or "
-                         "matching nothing -- check it still names the shipped op spelling")
+    assert elementwise, (
+        "no elementwise member was found, so the exemption above is either stale or "
+        "matching nothing -- check it still names the shipped op spelling"
+    )

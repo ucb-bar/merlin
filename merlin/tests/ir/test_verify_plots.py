@@ -12,6 +12,7 @@ Two separate properties are checked here, because they fail independently:
 A companion source check keeps a target name or a measured constant from being pasted back into the
 plotting module later, where the synthetic-record test alone might not notice it.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,7 +24,6 @@ from merlin.common.paths import merlin_dir
 pytest.importorskip("matplotlib")
 
 from merlin.verify import plots  # noqa: E402
-
 
 # --- synthetic records: every value below is deliberately absurd, so finding it on the canvas ------
 # proves it was read, and NOT recognisable as any measurement this repo has ever produced.
@@ -40,20 +40,25 @@ def _fake_detection() -> dict:
     ]
     detections = []
     for fault in faults:
-        for layer, seconds in (("static", _MAGIC_STATIC_SECONDS), ("formal", _MAGIC_FORMAL_SECONDS),
-                               ("dynamic", 0.5)):
-            detections.append({
-                "fault": fault["name"], "layer": layer,
-                "detected": layer in fault["expected"], "seconds": seconds, "diagnostic": "",
-            })
+        for layer, seconds in (("static", _MAGIC_STATIC_SECONDS), ("formal", _MAGIC_FORMAL_SECONDS), ("dynamic", 0.5)):
+            detections.append(
+                {
+                    "fault": fault["name"],
+                    "layer": layer,
+                    "detected": layer in fault["expected"],
+                    "seconds": seconds,
+                    "diagnostic": "",
+                }
+            )
     return {
         "schema": plots.DETECTION_SCHEMA,
         "shape": {"m": 3, "k": 5, "n": 7, "reuse": 9},
         "layers": ["static", "formal", "dynamic"],
         "layers_not_measured": {"rtl": "synthetic reason"},
-        "false_positives": [{"fault": "<none: unmutated>", "layer": l, "detected": False,
-                             "seconds": 0.1, "diagnostic": ""}
-                            for l in ("static", "formal", "dynamic")],
+        "false_positives": [
+            {"fault": "<none: unmutated>", "layer": l, "detected": False, "seconds": 0.1, "diagnostic": ""}
+            for l in ("static", "formal", "dynamic")
+        ],
         "detections": detections,
         "faults": faults,
     }
@@ -62,26 +67,53 @@ def _fake_detection() -> dict:
 def _fake_coverage() -> dict:
     return {
         "schema": plots.COVERAGE_SCHEMA,
-        "targets": [{
-            "target": _MAGIC_TARGET, "obligations_declared": 7, "emitted": 3, "omitted": 4,
-            "omission_reasons": [{"obligation": "zz_obligation", "reason": "zz synthetic reason"}],
-            "checks": [], "mesh_edge": {"value": 64, "derived": True},
-        }],
-        "declared_total": 7, "emitted_total": 3, "omitted_total": 4,
+        "targets": [
+            {
+                "target": _MAGIC_TARGET,
+                "obligations_declared": 7,
+                "emitted": 3,
+                "omitted": 4,
+                "omission_reasons": [{"obligation": "zz_obligation", "reason": "zz synthetic reason"}],
+                "checks": [],
+                "mesh_edge": {"value": 64, "derived": True},
+            }
+        ],
+        "declared_total": 7,
+        "emitted_total": 3,
+        "omitted_total": 4,
         "baseline": {"emitted": 0, "source": "zz synthetic baseline"},
     }
 
 
 def _fake_scaling() -> dict:
     return {
-        "schema": plots.SCALING_SCHEMA, "reuse": 9, "timeout_ms": 4000,
+        "schema": plots.SCALING_SCHEMA,
+        "reuse": 9,
+        "timeout_ms": 4000,
         "derived_mesh_edges": {_MAGIC_TARGET: 64},
         "points": [
-            {"m": 2, "k": 2, "n": 2, "product": 8, "seconds": 0.25, "status": "unsat",
-             "verified": True, "n_outputs": 2, "mesh_tile_for": []},
-            {"m": 64, "k": 64, "n": 64, "product": 262144, "seconds": _MAGIC_FORMAL_SECONDS,
-             "status": "unsat", "verified": True, "n_outputs": 2,
-             "mesh_tile_for": [_MAGIC_TARGET]},
+            {
+                "m": 2,
+                "k": 2,
+                "n": 2,
+                "product": 8,
+                "seconds": 0.25,
+                "status": "unsat",
+                "verified": True,
+                "n_outputs": 2,
+                "mesh_tile_for": [],
+            },
+            {
+                "m": 64,
+                "k": 64,
+                "n": 64,
+                "product": 262144,
+                "seconds": _MAGIC_FORMAL_SECONDS,
+                "status": "unsat",
+                "verified": True,
+                "n_outputs": 2,
+                "mesh_tile_for": [_MAGIC_TARGET],
+            },
         ],
     }
 
@@ -98,10 +130,13 @@ def _canvas_text(fig) -> str:
 
 # --- the figures draw --------------------------------------------------------------------------
 
+
 def test_all_four_figures_generate(tmp_path):
-    records = {plots.DETECTION_FILE: _fake_detection(),
-               plots.COVERAGE_FILE: _fake_coverage(),
-               plots.SCALING_FILE: _fake_scaling()}
+    records = {
+        plots.DETECTION_FILE: _fake_detection(),
+        plots.COVERAGE_FILE: _fake_coverage(),
+        plots.SCALING_FILE: _fake_scaling(),
+    }
     written = plots.draw_all(records, tmp_path, formats=("png",))
     stems = {stem for stem, _, _ in plots.FIGURES}
     assert {p.stem for p in written} == stems
@@ -110,6 +145,7 @@ def test_all_four_figures_generate(tmp_path):
 
 
 # --- the figures report the RECORD, not the code -------------------------------------------------
+
 
 def test_detection_matrix_reads_the_record():
     fig = plots.fig_detection_matrix(_fake_detection())
@@ -161,6 +197,7 @@ def test_a_shape_the_solver_did_not_settle_is_not_reported_as_verified():
 
 
 # --- and nothing is baked into the plotting module ------------------------------------------------
+
 
 def _plots_source() -> str:
     return (merlin_dir() / "python" / "merlin" / "verify" / "plots.py").read_text(encoding="utf-8")
@@ -216,7 +253,7 @@ def test_the_internal_note_is_derived_from_the_records_not_typed():
     2x optimistic against the freshest one, and it lived in a superseded directory whose records were
     never written. Both failures are structural, so the fix is structural: derive the note.
     """
-    from merlin.verify.plots import internal_note, DETECTION_FILE, COVERAGE_FILE, SCALING_FILE
+    from merlin.verify.plots import COVERAGE_FILE, DETECTION_FILE, SCALING_FILE, internal_note
 
     det = {
         "schema": "verify_detection_matrix/v2",
@@ -226,23 +263,69 @@ def test_the_internal_note_is_derived_from_the_records_not_typed():
         "layers_not_measured": {},
         "false_positives": [],
         "detections": [
-            {"fault": "only_static", "layer": "static", "detected": True, "seconds": 0.1,
-             "diagnostic": "", "outcome": "detected"},
-            {"fault": "only_static", "layer": "formal", "detected": False, "seconds": 0.2,
-             "diagnostic": "unsat", "outcome": "clean"},
-            {"fault": "gave_up", "layer": "static", "detected": False, "seconds": 0.1,
-             "diagnostic": "", "outcome": "clean"},
-            {"fault": "gave_up", "layer": "formal", "detected": False, "seconds": 9.9,
-             "diagnostic": "timeout", "outcome": "abstained"},
+            {
+                "fault": "only_static",
+                "layer": "static",
+                "detected": True,
+                "seconds": 0.1,
+                "diagnostic": "",
+                "outcome": "detected",
+            },
+            {
+                "fault": "only_static",
+                "layer": "formal",
+                "detected": False,
+                "seconds": 0.2,
+                "diagnostic": "unsat",
+                "outcome": "clean",
+            },
+            {
+                "fault": "gave_up",
+                "layer": "static",
+                "detected": False,
+                "seconds": 0.1,
+                "diagnostic": "",
+                "outcome": "clean",
+            },
+            {
+                "fault": "gave_up",
+                "layer": "formal",
+                "detected": False,
+                "seconds": 9.9,
+                "diagnostic": "timeout",
+                "outcome": "abstained",
+            },
         ],
-        "faults": [{"name": "only_static", "summary": "", "expected": []},
-                   {"name": "gave_up", "summary": "", "expected": []}],
+        "faults": [
+            {"name": "only_static", "summary": "", "expected": []},
+            {"name": "gave_up", "summary": "", "expected": []},
+        ],
     }
-    cov = {"declared_total": 13, "emitted_total": 5, "omitted_total": 8,
-           "baseline": {"emitted": 0, "source": "nothing consumed them"}, "targets": []}
-    sca = {"reuse": 3, "timeout_ms": 41_000, "derived_mesh_edges": {},
-           "points": [{"m": 7, "k": 7, "n": 7, "product": 343, "seconds": 1.25, "status": "unsat",
-                       "verified": True, "n_outputs": 1, "mesh_tile_for": ["some_target"]}]}
+    cov = {
+        "declared_total": 13,
+        "emitted_total": 5,
+        "omitted_total": 8,
+        "baseline": {"emitted": 0, "source": "nothing consumed them"},
+        "targets": [],
+    }
+    sca = {
+        "reuse": 3,
+        "timeout_ms": 41_000,
+        "derived_mesh_edges": {},
+        "points": [
+            {
+                "m": 7,
+                "k": 7,
+                "n": 7,
+                "product": 343,
+                "seconds": 1.25,
+                "status": "unsat",
+                "verified": True,
+                "n_outputs": 1,
+                "mesh_tile_for": ["some_target"],
+            }
+        ],
+    }
 
     note = internal_note({DETECTION_FILE: det, COVERAGE_FILE: cov, SCALING_FILE: sca})
 

@@ -16,6 +16,7 @@ What is pinned here, in both directions:
   module realises its unit are each recorded as UNKNOWN *with the reason*, never as "no engine",
   which is the reading that flatters the result.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -31,8 +32,9 @@ ONE_UNIT_CONTRACT = {
 }
 ALIASED_CONTRACT = {
     "name": "t_probe",
-    "compute_units": [{"name": "mesh", "kind": "systolic", "dtypes": ["int8"], "ops": ["matmul"],
-                       "rtl_module": "Exec"}],
+    "compute_units": [
+        {"name": "mesh", "kind": "systolic", "dtypes": ["int8"], "ops": ["matmul"], "rtl_module": "Exec"}
+    ],
 }
 
 
@@ -45,9 +47,12 @@ def _ports(completing=(), decoupled=(), *, n_modules=100, status="derived", why=
     """A :func:`merlin.targetgen.rtl.ports.port_facts` record, in its own shape."""
     if status != "derived":
         return {"status": status, "why": why, "fields": {}}
-    return {"status": "derived", "dialect": "fir", "n_modules": n_modules,
-            "fields": {"completed": {"modules": sorted(completing),
-                                     "decoupled": sorted(decoupled), "leaves": {}}}}
+    return {
+        "status": "derived",
+        "dialect": "fir",
+        "n_modules": n_modules,
+        "fields": {"completed": {"modules": sorted(completing), "decoupled": sorted(decoupled), "leaves": {}}},
+    }
 
 
 class TestTheDerivationFires:
@@ -57,7 +62,8 @@ class TestTheDerivationFires:
         got, basis = derived_engines(
             "t_probe",
             fsm_registers=_fsm("Ld.control_state", "St.control_state", "Exec.control_state"),
-            ports=_ports(completing=("Ld", "St", "Exec", "Top"), decoupled=("Ld", "St")))
+            ports=_ports(completing=("Ld", "St", "Exec", "Top"), decoupled=("Ld", "St")),
+        )
         assert sorted(got) == ["Exec", "Ld", "St"], "the intersection of both halves is the engine set"
         assert basis["status"] == "derived"
         for name in got:
@@ -65,8 +71,9 @@ class TestTheDerivationFires:
             assert got[name]["kind"], "a derived engine must carry a kind"
 
     def test_the_derivation_says_which_evidence_made_each_engine(self):
-        got, _ = derived_engines("t_probe", fsm_registers=_fsm("Ld.control_state"),
-                                 ports=_ports(completing=("Ld",), decoupled=("Ld",)))
+        got, _ = derived_engines(
+            "t_probe", fsm_registers=_fsm("Ld.control_state"), ports=_ports(completing=("Ld",), decoupled=("Ld",))
+        )
         basis = got["Ld"]["basis"]
         assert "Ld.control_state" in basis, "the register that evidenced it is named"
         assert "handshake" in basis, "whether the completion is tagged is part of the evidence"
@@ -74,10 +81,15 @@ class TestTheDerivationFires:
 
     def test_the_completion_field_is_a_parameter_not_a_law(self):
         # A target whose engines signal completion under another name is served by asking for it.
-        ports = {"status": "derived", "dialect": "hw", "n_modules": 9,
-                 "fields": {"done": {"modules": ["Ld"], "decoupled": [], "leaves": {}}}}
-        got, basis = derived_engines("t_probe", fsm_registers=_fsm("Ld.control_state"),
-                                     ports=ports, completion_field="done")
+        ports = {
+            "status": "derived",
+            "dialect": "hw",
+            "n_modules": 9,
+            "fields": {"done": {"modules": ["Ld"], "decoupled": [], "leaves": {}}},
+        }
+        got, basis = derived_engines(
+            "t_probe", fsm_registers=_fsm("Ld.control_state"), ports=ports, completion_field="done"
+        )
         assert sorted(got) == ["Ld"] and basis["completion_field"] == "done"
 
 
@@ -85,9 +97,11 @@ class TestItRefusesRatherThanInvents:
     """Each way the evidence can fail, and the reason it leaves behind."""
 
     def test_an_fsm_with_no_completion_port_is_refused_with_its_reason(self):
-        got, basis = derived_engines("t_probe",
-                                     fsm_registers=_fsm("Ld.control_state", "Inner.state"),
-                                     ports=_ports(completing=("Ld",), decoupled=("Ld",)))
+        got, basis = derived_engines(
+            "t_probe",
+            fsm_registers=_fsm("Ld.control_state", "Inner.state"),
+            ports=_ports(completing=("Ld",), decoupled=("Ld",)),
+        )
         assert sorted(got) == ["Ld"]
         assert "Inner" in basis["refused"], "a refused candidate is RECORDED, not dropped"
         assert "Inner.state" in basis["refused"]["Inner"]
@@ -95,13 +109,17 @@ class TestItRefusesRatherThanInvents:
 
     def test_a_completion_port_with_no_fsm_is_not_an_engine(self):
         # A wrapper and a command tracker both complete work they do not sequence.
-        got, _ = derived_engines("t_probe", fsm_registers=_fsm("Ld.control_state"),
-                                 ports=_ports(completing=("Ld", "Top", "Tracker")))
+        got, _ = derived_engines(
+            "t_probe", fsm_registers=_fsm("Ld.control_state"), ports=_ports(completing=("Ld", "Top", "Tracker"))
+        )
         assert sorted(got) == ["Ld"]
 
     def test_an_unreadable_elaboration_is_unknown_not_empty(self):
-        got, basis = derived_engines("t_probe", fsm_registers=_fsm("Ld.control_state"),
-                                     ports=_ports(status="unavailable", why="not on this host"))
+        got, basis = derived_engines(
+            "t_probe",
+            fsm_registers=_fsm("Ld.control_state"),
+            ports=_ports(status="unavailable", why="not on this host"),
+        )
         assert got == {} and basis["status"] != "derived"
         assert "UNKNOWN" in basis["why"] and "not on this host" in basis["why"]
 
@@ -119,8 +137,9 @@ class TestItRefusesRatherThanInvents:
     def test_a_derivation_that_clears_nothing_says_so_rather_than_confirming_the_declaration(self):
         # Both extractions RAN and no module clears the bar. That is a third state, and the record
         # must not let it read as "the contract's single engine is the whole machine".
-        got, basis = derived_engines("t_probe", fsm_registers=_fsm("VectorFSM.state"),
-                                     ports=_ports(completing=("Top",)))
+        got, basis = derived_engines(
+            "t_probe", fsm_registers=_fsm("VectorFSM.state"), ports=_ports(completing=("Top",))
+        )
         assert got == {} and basis["status"] == "derived"
         assert "UNKNOWN" in basis["why"]
         assert "VectorFSM" in basis["refused"]
@@ -133,7 +152,8 @@ class TestTheUnionCountsAnEngineOnce:
         engines, basis = engine_set(
             ALIASED_CONTRACT,
             fsm_registers=_fsm("Ld.control_state", "St.control_state", "Exec.control_state"),
-            ports=_ports(completing=("Ld", "St", "Exec"), decoupled=("Ld", "St")))
+            ports=_ports(completing=("Ld", "St", "Exec"), decoupled=("Ld", "St")),
+        )
         assert sorted(engines) == ["Ld", "St", "mesh"], "Exec IS the mesh; it is not a fourth engine"
         assert basis["declared_aliases"] == {"Exec": "mesh"}
         assert basis["unresolved_aliases"] == []
@@ -142,8 +162,10 @@ class TestTheUnionCountsAnEngineOnce:
 
     def test_an_unresolved_alias_is_reported_not_silently_merged_or_doubled(self):
         engines, basis = engine_set(
-            ONE_UNIT_CONTRACT, fsm_registers=_fsm("Ld.control_state", "Exec.control_state"),
-            ports=_ports(completing=("Ld", "Exec"), decoupled=("Ld",)))
+            ONE_UNIT_CONTRACT,
+            fsm_registers=_fsm("Ld.control_state", "Exec.control_state"),
+            ports=_ports(completing=("Ld", "Exec"), decoupled=("Ld",)),
+        )
         assert sorted(engines) == ["Exec", "Ld", "mesh"]
         assert basis["unresolved_aliases"] == ["mesh"]
         assert "UNKNOWN" in engines["mesh"]["basis"], "whether one of them IS the mesh is unknown"
@@ -151,17 +173,20 @@ class TestTheUnionCountsAnEngineOnce:
     def test_an_rtl_module_the_elaboration_does_not_contain_fails_the_cross_check(self):
         # The contract is not trusted about the RTL: a module the elaboration was READ and found not
         # to contain is recorded as uncorroborated rather than accepted.
-        contract = {"name": "t_probe",
-                    "compute_units": [{"name": "mesh", "kind": "systolic", "dtypes": ["int8"],
-                                       "rtl_module": "NotThere"}]}
-        engines, _ = engine_set(contract, fsm_registers=_fsm("Ld.control_state"),
-                                ports=_ports(completing=("Ld",), decoupled=("Ld",)))
+        contract = {
+            "name": "t_probe",
+            "compute_units": [{"name": "mesh", "kind": "systolic", "dtypes": ["int8"], "rtl_module": "NotThere"}],
+        }
+        engines, _ = engine_set(
+            contract, fsm_registers=_fsm("Ld.control_state"), ports=_ports(completing=("Ld",), decoupled=("Ld",))
+        )
         assert sorted(engines) == ["Ld", "mesh"], "the declared unit survives; it is just not confirmed"
         assert "FAILS the cross-check" in engines["mesh"]["basis"]
 
     def test_with_no_rtl_evidence_the_union_is_exactly_the_declaration(self):
-        engines, basis = engine_set(ONE_UNIT_CONTRACT, fsm_registers=[],
-                                    ports=_ports(status="unavailable", why="absent"))
+        engines, basis = engine_set(
+            ONE_UNIT_CONTRACT, fsm_registers=[], ports=_ports(status="unavailable", why="absent")
+        )
         assert sorted(engines) == ["mesh"] and basis["status"] != "derived"
         assert "UNKNOWN" not in engines["mesh"].get("rtl_module", "")
 
@@ -175,11 +200,12 @@ class TestOnTheShippedTargets:
 
     def _derivable(self):
         from merlin.targetgen import target_registry as TR
+
         out = []
         for name in TR.all_targets():
             try:
                 got, basis = derived_engines(name)
-            except Exception:                                   # noqa: BLE001 -- unparseable target
+            except Exception:  # noqa: BLE001 -- unparseable target
                 continue
             out.append((name, got, basis))
         return out
@@ -201,13 +227,14 @@ class TestOnTheShippedTargets:
         if not fired:
             pytest.skip("no shipped target's elaboration and FSM extraction are both on this host")
         for name in fired:
-            inv = CAL.engine_inventory(TR.load_contract(name), [], CAL.calibrate_idle([]),
-                                       fsm_registers=list(fsm_inventory(name)))
+            inv = CAL.engine_inventory(
+                TR.load_contract(name), [], CAL.calibrate_idle([]), fsm_registers=list(fsm_inventory(name))
+            )
             assert len(inv.declared) >= 2, (
-                f"{name}: its RTL evidences {fired} engines, so the inventory is not one unit")
+                f"{name}: its RTL evidences {fired} engines, so the inventory is not one unit"
+            )
             cells = CAL.required_cells(inv, {})
             pairless = [c for c in cells if c.axis == CAL.ENGINE_PAIR_AXIS and "engine(s)" in c.why]
-            assert not pairless, (
-                f"{name}: still reports no pair to overlap: {[c.why for c in pairless]}")
+            assert not pairless, f"{name}: still reports no pair to overlap: {[c.why for c in pairless]}"
             assert inv.derivation.get("status") == "derived"
             assert inv.derivation.get("rule"), "the record must carry the rule it applied"

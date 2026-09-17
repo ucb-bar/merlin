@@ -11,6 +11,7 @@ captured model rather than a fixture, then asserts the gate reports all four exe
 with the dispatch program carrying 488 nodes for small_llama -- so this is reachability by real work,
 not a formal touch.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -58,7 +59,8 @@ def _drive(log_path, monkeypatch) -> dict:
     reqs = tuple(cap.get("pass_requirements") or ())
     assert reqs, (
         "the capstone must declare its requirement classes, or an exercised pass has no requiring "
-        "capsule to be attributed to")
+        "capsule to be attributed to"
+    )
     with PS.pass_run_context(str(cap["name"]), reqs):
         module = load_module(_CAPTURE)
         _outlined, prog = DP.lower_model_to_dispatch_program(module)
@@ -74,7 +76,8 @@ def test_the_production_passes_are_exercised_by_a_real_model(tmp_path, monkeypat
     info = _drive(log, monkeypatch)
     assert info["n_program_nodes"] > 0, (
         "the dispatch program is empty, so the passes were touched but did no work; that is a formal "
-        "invocation, not evidence the pass is part of the compiler")
+        "invocation, not evidence the pass is part of the compiler"
+    )
 
     records = [json.loads(l) for l in log.read_text(encoding="utf-8").splitlines() if l.strip()]
     invoked = {r.get("pass") or r.get("name") for r in records if r.get("kind") == "invoke"}
@@ -82,7 +85,8 @@ def test_the_production_passes_are_exercised_by_a_real_model(tmp_path, monkeypat
     missing = catalogued - invoked
     assert not missing, (
         f"catalogued pass(es) {sorted(missing)} were not invoked by lowering a real model; either the "
-        f"pass is furniture or this driver no longer reaches it")
+        f"pass is furniture or this driver no longer reaches it"
+    )
 
     # ⚠️ INVOKED IS NOT EXERCISED. Every invocation must be MEASURED to have done something, or this
     # test certifies a formal touch. Measured on this capture: 183 dispatches outlined, 1541 program
@@ -91,9 +95,11 @@ def test_the_production_passes_are_exercised_by_a_real_model(tmp_path, monkeypat
     # handed. A subject-only probe would call that a no-op, which is why the product is measured too.
     for r in (r for r in records if r.get("kind") == "invoke"):
         assert r.get("effect") == PS.EFFECT_CHANGED, (
-            f"{r['pass']} ran to effect {r.get('effect')!r}: {r.get('evidence')}")
+            f"{r['pass']} ran to effect {r.get('effect')!r}: {r.get('evidence')}"
+        )
         assert (r.get("evidence") or {}).get("produced", 0) > 0, (
-            f"{r['pass']} produced nothing measurable: {r.get('evidence')}")
+            f"{r['pass']} produced nothing measurable: {r.get('evidence')}"
+        )
 
 
 def test_a_pass_that_runs_and_transforms_nothing_is_not_reported_exercised(tmp_path, monkeypatch):
@@ -130,7 +136,8 @@ def test_a_pass_that_runs_and_transforms_nothing_is_not_reported_exercised(tmp_p
 
     gate = _gate()
     assert gate.main(["--log", str(log), "--fail-on-noop"]) == 1, (
-        "a pass that reached none of its work must fail the noop gate")
+        "a pass that reached none of its work must fail the noop gate"
+    )
     # And the same evidence must NOT be spendable as liveness: dead and noop are distinct verdicts.
     f = gate.findings(gate.audit([log]), set())
     assert [it["pass"] for it in f["noop"]] == ["merlin-outline-dispatches"]
@@ -148,15 +155,18 @@ def test_the_gate_reports_no_dead_pass_when_given_that_evidence(tmp_path, monkey
     log = tmp_path / "passes.jsonl"
 
     monkeypatch.delenv(PS.PASS_LOG_ENV, raising=False)
-    assert gate.main(["--fail-on-dead"]) == 2, (
-        "with no log the gate must report UNMEASURED, never clean")
+    assert gate.main(["--fail-on-dead"]) == 2, "with no log the gate must report UNMEASURED, never clean"
 
     _drive(log, monkeypatch)
-    assert gate.main(["--log", str(log), "--fail-on-dead", "--fail-on-undischarged",
-                      "--fail-on-unrequired", "--fail-on-noop"]) == 0, (
+    assert (
+        gate.main(
+            ["--log", str(log), "--fail-on-dead", "--fail-on-undischarged", "--fail-on-unrequired", "--fail-on-noop"]
+        )
+        == 0
+    ), (
         "with real evidence every catalogued pass must be discharged, required and exercised -- and "
-        "--fail-on-noop is part of that bar, or 'exercised' still means 'called'")
+        "--fail-on-noop is part of that bar, or 'exercised' still means 'called'"
+    )
 
     monkeypatch.delenv(PS.PASS_LOG_ENV, raising=False)
-    assert gate.main(["--fail-on-noop"]) == 2, (
-        "with no log the noop half must report CANNOT DECIDE, never clean")
+    assert gate.main(["--fail-on-noop"]) == 2, "with no log the noop half must report CANNOT DECIDE, never clean"

@@ -7,16 +7,22 @@ whole-model lowerings (small_llama / openvla / bitvla / rdt2 / smolvla, pinned b
 The cells reproduced below are the ones that DISCRIMINATE between candidate rules; the tests are
 pure-Python (no MLIR, no board), so they stay a fast regression on the policy, not on the toolchain.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.kernels.microkernel import (ContractionShape, MicrokernelSpec, VL_DYNAMIC,
-                                        largest_divisor_at_most, masked_parallel_dims,
-                                        resolve, resolve_for_shapes)
+from merlin.kernels.microkernel import (
+    VL_DYNAMIC,
+    ContractionShape,
+    MicrokernelSpec,
+    largest_divisor_at_most,
+    masked_parallel_dims,
+    resolve,
+    resolve_for_shapes,
+)
 from merlin.kernels.shapes import contraction_shapes
 from merlin.mining.from_strategy import _rvv_best_block, _rvv_blocking_lowers
-
 
 # (MR, NR, M, N, lowers) — measured cells of the int8 lowering grid.
 MEASURED_CELLS = [
@@ -60,15 +66,14 @@ def test_predicate_matches_measured_lowering(MR, NR, M, N, expected):
 
 def test_reduction_extent_is_not_a_hazard():
     """Masking K is harmless — M=8, N=128, K=344 lowers at the champion block (measured)."""
-    assert _rvv_blocking_lowers(4, 16, 8, 128)          # K plays no part in the predicate
+    assert _rvv_blocking_lowers(4, 16, 8, 128)  # K plays no part in the predicate
     assert masked_parallel_dims((4, 16), (8, 128)) == ()
     assert masked_parallel_dims((4, 16), (8, 344)) == (1,)
     assert masked_parallel_dims((4, 16), (17, 128)) == (0,)
-    assert masked_parallel_dims((0, 16), (17, 344)) == (1,)   # tile 0 = "do not tile" = no mask
+    assert masked_parallel_dims((0, 16), (17, 344)) == (1,)  # tile 0 = "do not tile" = no mask
 
 
-@pytest.mark.parametrize("n,cap,expected", [(8, 16, 8), (344, 16, 8), (64, 16, 16),
-                                            (17, 4, 1), (1, 16, 1), (32, 4, 4)])
+@pytest.mark.parametrize("n,cap,expected", [(8, 16, 8), (344, 16, 8), (64, 16, 16), (17, 4, 1), (1, 16, 1), (32, 4, 4)])
 def test_largest_divisor_at_most(n, cap, expected):
     assert largest_divisor_at_most(n, cap) == expected
 
@@ -117,8 +122,10 @@ def test_shape_blind_resolution_is_unchanged_without_shapes():
 
 def test_policy_is_a_noop_when_the_pinned_block_already_fits():
     spec = MicrokernelSpec(MR=4, NR=16, KC=16)
-    shapes = [ContractionShape("linalg.matmul", (32, 256), (256,)),
-              ContractionShape("linalg.batch_matmul", (8, 32, 32), (32,))]
+    shapes = [
+        ContractionShape("linalg.matmul", (32, 256), (256,)),
+        ContractionShape("linalg.batch_matmul", (8, 32, 32), (32,)),
+    ]
     assert resolve_for_shapes("rvv", spec, shapes) == resolve("rvv", spec)
 
 
@@ -126,8 +133,10 @@ def test_policy_solves_each_op_class_independently():
     """small_llama's matmuls want (4, 8); a batch_matmul with N=32 could keep 16 — each op class
     carries its own tile factors in the emitted schedule, so they are solved separately."""
     spec = MicrokernelSpec(MR=4, NR=16, KC=16)
-    shapes = [ContractionShape("linalg.matmul", (8, 344), (128,)),
-              ContractionShape("linalg.batch_matmul", (4, 32, 32), (32,))]
+    shapes = [
+        ContractionShape("linalg.matmul", (8, 344), (128,)),
+        ContractionShape("linalg.batch_matmul", (4, 32, 32), (32,)),
+    ]
     feats = resolve_for_shapes("rvv", spec, shapes)
     assert feats[0] == "accum_resident_v3p_4_8_4_16_16"
 
@@ -188,8 +197,7 @@ def test_shape_observer_reads_named_and_generic_contractions():
       }
     }
     """
-    assert contraction_shapes(generic) == [
-        ContractionShape("linalg.matmul", (8, 344), (128,), ("i8", "i8", "i32"))]
+    assert contraction_shapes(generic) == [ContractionShape("linalg.matmul", (8, 344), (128,), ("i8", "i8", "i32"))]
 
 
 def test_shape_observer_degrades_to_empty_on_unreadable_input():
@@ -212,12 +220,14 @@ def test_frozen_block_caps_match_the_registered_point():
 
     caps = frozen_block_caps(impr.WHOLEMODEL_VF_NAME)
     blocks = frozen_block_per_class(impr.WHOLEMODEL_VF_NAME)
-    assert caps == {"MR": impr.WHOLEMODEL_VF_CAPS[0], "NR": impr.WHOLEMODEL_VF_CAPS[1],
-                    "KC": impr.WHOLEMODEL_VF_CAPS[2]}
+    assert caps == {
+        "MR": impr.WHOLEMODEL_VF_CAPS[0],
+        "NR": impr.WHOLEMODEL_VF_CAPS[1],
+        "KC": impr.WHOLEMODEL_VF_CAPS[2],
+    }
     # The schedule tiles matmul [MR_mm, NR] and batch_matmul [1, MR, NR_bmm].
     assert blocks["linalg.matmul"] == (impr.WHOLEMODEL_VF_MR_MM, impr.WHOLEMODEL_VF_CAPS[1])
-    assert blocks["linalg.batch_matmul"] == (impr.WHOLEMODEL_VF_CAPS[0],
-                                            impr.WHOLEMODEL_VF_NR_BMM)
+    assert blocks["linalg.batch_matmul"] == (impr.WHOLEMODEL_VF_CAPS[0], impr.WHOLEMODEL_VF_NR_BMM)
     assert frozen_block_caps("not_a_frozen_point") is None
 
 
@@ -260,7 +270,8 @@ def test_adaptation_fires_only_for_the_failing_op_class():
     mr_mm, nr_mm, mr_bmm, nr_bmm, kc = (int(p) for p in name.rsplit("_", 5)[1:])
     assert (mr_mm, nr_mm) == (1, 8), f"matmul block not re-derived to fit N=8: {name}"
     assert (mr_bmm, nr_bmm) == (impr.WHOLEMODEL_VF_CAPS[0], impr.WHOLEMODEL_VF_NR_BMM), (
-        f"batch_matmul block changed even though the frozen one lowers: {name}")
+        f"batch_matmul block changed even though the frozen one lowers: {name}"
+    )
     assert kc == impr.WHOLEMODEL_VF_CAPS[2]
 
 
@@ -279,20 +290,22 @@ def test_a_class_with_no_multi_lane_block_is_left_unclaimed():
     shapes = [
         _Shape("linalg.matmul", (1, 384)),
         _Shape("linalg.matmul", (1500, 1536)),
-        _Shape("linalg.batch_matmul", (6, 1, 1)),          # the decode step: N=1
+        _Shape("linalg.batch_matmul", (6, 1, 1)),  # the decode step: N=1
         _Shape("linalg.batch_matmul", (6, 1500, 1500)),
     ]
     feats = _adapt_frozen_points([impr.WHOLEMODEL_VF_NAME], shapes, target="rvv")
     assert len(feats) == 1
     name = feats[0]
     assert name.endswith(f"_x_x_{impr.WHOLEMODEL_VF_CAPS[2]}"), (
-        f"batch_matmul should be unclaimed, not blocked at 1 lane: {name}")
+        f"batch_matmul should be unclaimed, not blocked at 1 lane: {name}"
+    )
     # the matmul class still gets real lanes
     assert name.startswith("accum_resident_v3p_1_16_"), name
     sched = impr.apply_schedule("", frozenset([name]))
     assert "linalg.matmul" in sched
     assert "linalg.batch_matmul" not in sched, (
-        "the unclaimed class must not appear in the schedule (it goes to convert-linalg-to-loops)")
+        "the unclaimed class must not appear in the schedule (it goes to convert-linalg-to-loops)"
+    )
 
 
 def test_claiming_no_class_at_all_is_rejected():
@@ -353,17 +366,19 @@ def test_a_schedule_pinned_block_that_masks_is_reported_not_swallowed():
 
     class _Pkg:
         compiler_features: tuple = ()
-        schedule_text = ('%mm = transform.structured.match ops{["linalg.matmul"]} in %arg0 '
-                         ': (!transform.any_op) -> !transform.any_op\n'
-                         '%t, %l:3 = transform.structured.tile_using_for %mm tile_sizes [4, 8, 1] '
-                         ': (!transform.any_op) -> (!transform.any_op)\n')
+        schedule_text = (
+            '%mm = transform.structured.match ops{["linalg.matmul"]} in %arg0 '
+            ": (!transform.any_op) -> !transform.any_op\n"
+            "%t, %l:3 = transform.structured.tile_using_for %mm tile_sizes [4, 8, 1] "
+            ": (!transform.any_op) -> (!transform.any_op)\n"
+        )
 
     import merlin.mining.apply as apply_mod
 
-    shapes = [_Shape("linalg.matmul", (1, 64)), _Shape("linalg.matmul", (3, 4096)),
-              _Shape("linalg.matmul", (64, 256))]
+    shapes = [_Shape("linalg.matmul", (1, 64)), _Shape("linalg.matmul", (3, 4096)), _Shape("linalg.matmul", (64, 256))]
     orig = apply_mod.__dict__.get("contraction_shapes")
     import merlin.kernels.shapes as shapes_mod
+
     saved = shapes_mod.contraction_shapes
     shapes_mod.contraction_shapes = lambda _p: shapes
     try:
@@ -419,6 +434,5 @@ def test_a_remainder_tile_is_checked_too_not_just_the_ceiling():
     from merlin.mining.apply import _harts_split_shapes
 
     # N=10 over 4 harts -> ceil = 3 for three harts, remainder 1 for the fourth.
-    tiles = sorted({s.parallel[-1] for s in
-                    _harts_split_shapes([_Shape("linalg.matmul", (8, 10))], 4)})
+    tiles = sorted({s.parallel[-1] for s in _harts_split_shapes([_Shape("linalg.matmul", (8, 10))], 4)})
     assert tiles == [1, 3], tiles

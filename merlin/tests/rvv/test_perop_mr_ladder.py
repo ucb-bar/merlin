@@ -22,6 +22,7 @@ neighbouring register-block family:
 Registration is default-off, so none of this moves the frozen baseline: the sentinel carries no
 schedule or cflags hook and raises if it ever reaches lowering unresolved.
 """
+
 from __future__ import annotations
 
 import json
@@ -44,8 +45,7 @@ def test_the_ladder_is_registered_at_import_not_on_demand():
         "print(json.dumps([n for n in F.PEROP_MR_LADDER if n not in known]))\n"
     )
     env = {"PYTHONPATH": str(merlin_dir() / "python"), "PATH": "/usr/bin:/bin"}
-    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                       cwd=repo_root(), env=env)
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=repo_root(), env=env)
     assert r.returncode == 0, r.stderr[-2000:]
     missing = json.loads(r.stdout.strip().splitlines()[-1])
     assert missing == [], f"rungs registered only on demand, so unreachable by name: {missing}"
@@ -87,14 +87,19 @@ def test_a_rung_composes_with_the_champion_stack_minus_its_own_block():
     """
     from merlin.mining.wholemodel_proposer import _composes
 
-    champion = ["prepack_weight_layout", "perop_register_block", "promote_buffers_to_stack",
-                "expand_memref_copy", "cse_through_provenance"]
+    champion = [
+        "prepack_weight_layout",
+        "perop_register_block",
+        "promote_buffers_to_stack",
+        "expand_memref_copy",
+        "cse_through_provenance",
+    ]
     base = [f for f in champion if f != "perop_register_block"]
     for name in F.PEROP_MR_LADDER:
         assert _composes(base + [name]), f"{name} does not compose onto the champion base"
         assert not _composes(champion + [name]), (
-            f"{name} stacked on the plain sentinel must be refused -- two full schedule "
-            "replacements cannot both apply")
+            f"{name} stacked on the plain sentinel must be refused -- two full schedule replacements cannot both apply"
+        )
 
 
 def test_the_sentinel_still_refuses_to_reach_lowering():

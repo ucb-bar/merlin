@@ -1,4 +1,5 @@
 """Linear per-command cost model: prediction, band, folds, round-trip, and fail-closed resolution."""
+
 import json
 
 import pytest
@@ -14,7 +15,10 @@ def _model(**kw):
     return LinearCostModel(
         const=50.0,
         coeff={"config": 5, "mvin_A": 20, "mvin2_B": 20, "compute": 16, "mvout": 18, "fence": 40},
-        error={"mape": 0.1, "max_abs_pct": 0.2, "n_points": 14}, events=EVENTS, **kw)
+        error={"mape": 0.1, "max_abs_pct": 0.2, "n_points": 14},
+        events=EVENTS,
+        **kw,
+    )
 
 
 def test_predict_linear():
@@ -68,8 +72,9 @@ def test_a_fold_without_a_target_fails_closed():
 def test_a_fold_whose_width_is_not_in_the_rtl_facts_fails_closed(monkeypatch):
     from merlin.targetgen.rtl import facts as rtl_facts
 
-    monkeypatch.setattr(rtl_facts, "load_facts",
-                        lambda target: {"facts": {"datapaths": [{"name": "input", "dtype": "i8"}]}})
+    monkeypatch.setattr(
+        rtl_facts, "load_facts", lambda target: {"facts": {"datapaths": [{"name": "input", "dtype": "i8"}]}}
+    )
     m = _model(folds=FOLD, target="t")
     with pytest.raises(CostModelUnavailable, match="no 'accumulator' datapath"):
         m.predict({"bias": 1})

@@ -5,6 +5,7 @@ targets, three of the four targets declared none, so ``toolchain_shas`` returned
 and nothing else: every hardware-tier verdict they produced was attributed to no RTL revision, and it
 looked exactly like a target with no hardware dependency.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -43,6 +44,7 @@ def test_every_declared_target_resolves_a_real_revision():
     """A 40-hex sha is what `tier_cache._valid_pin` requires; anything else cannot key a certificate,
     so a pin that resolves to UNKNOWN leaves the target exactly as unattributed as before."""
     from merlin.targetgen import tier_cache as TC
+
     pins = PROV.load_pins()
     for target in sorted({t for p in pins.values() for t in p.targets}):
         shas = TPROV.toolchain_shas(target)
@@ -62,6 +64,7 @@ def test_merlins_own_commit_is_never_the_hardware_attribution():
 # parsing the declaration
 # --------------------------------------------------------------------------------------------
 
+
 def test_a_declaration_is_parsed_into_the_pin(registry):
     pins = PROV.load_pins(registry)
     assert any(p.targets for p in pins.values())
@@ -71,15 +74,15 @@ def test_a_declaration_is_parsed_into_the_pin(registry):
 
 
 def test_an_absent_declaration_is_not_an_error(registry):
-    """"Not stated" is a legitimate state -- some pins are tooling, not a device revision."""
+    """ "Not stated" is a legitimate state -- some pins are tooling, not a device revision."""
     text = registry.read_text().replace("    targets: [gemmini]\n", "", 1)
     registry.write_text(text)
     PROV._PINS_MEMO.clear()
-    pins = PROV.load_pins(registry)                     # must not raise
+    pins = PROV.load_pins(registry)  # must not raise
     assert pins
 
 
-@pytest.mark.parametrize("bad", ["targets: gemmini", "targets: []", "targets: [\"\"]", "targets: [3]"])
+@pytest.mark.parametrize("bad", ["targets: gemmini", "targets: []", 'targets: [""]', "targets: [3]"])
 def test_a_malformed_declaration_raises_rather_than_being_dropped(registry, bad):
     """Dropped silently, it would read as "this target has no hardware dependency" -- the exact
     confusion this field exists to remove."""
@@ -98,6 +101,7 @@ def test_the_contract_and_the_registry_are_unioned_without_duplicates(monkeypatc
     class _R:
         def load_contract(self):
             return {"hardware_pins": ["gemmini_rtl", "some_contract_only_pin"]}
+
     monkeypatch.setattr("merlin.targetgen.target_registry.resolve", lambda t: _R())
     got = TPROV.declared_pins("gemmini")
     assert got.count("gemmini_rtl") == 1, f"unioned with a duplicate: {got}"
@@ -107,10 +111,13 @@ def test_the_contract_and_the_registry_are_unioned_without_duplicates(monkeypatc
 
 def test_an_unreadable_registry_leaves_the_contract_working(monkeypatch):
     """The registry is additive. If it cannot be read, a contract declaration must still stand."""
+
     class _R:
         def load_contract(self):
             return {"hardware_pins": ["only_from_the_contract"]}
+
     monkeypatch.setattr("merlin.targetgen.target_registry.resolve", lambda t: _R())
-    monkeypatch.setattr("merlin.common.provenance.load_pins",
-                        lambda *a, **k: (_ for _ in ()).throw(OSError("no registry")))
+    monkeypatch.setattr(
+        "merlin.common.provenance.load_pins", lambda *a, **k: (_ for _ in ()).throw(OSError("no registry"))
+    )
     assert TPROV.declared_pins("gemmini") == ("only_from_the_contract",)

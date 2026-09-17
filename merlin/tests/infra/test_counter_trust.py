@@ -4,12 +4,21 @@ The defect this guards cost a session hours: an optimization loop read accelerat
 counters off a functional ISS that returns `rand()` for them, and the values looked like small
 measurements. Refusal has to be the default for anything not positively declared real.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.perf.counter_trust import (FABRICATED, REAL, UNKNOWN, declared_engines, is_trusted,
-                                       require_trusted, values_or_refusal, verdict_for)
+from merlin.perf.counter_trust import (
+    FABRICATED,
+    REAL,
+    UNKNOWN,
+    declared_engines,
+    is_trusted,
+    require_trusted,
+    values_or_refusal,
+    verdict_for,
+)
 
 _VALUES = {"MAIN_LD_CYCLES": 3801783, "RDMA_BYTES_REC": 7}
 

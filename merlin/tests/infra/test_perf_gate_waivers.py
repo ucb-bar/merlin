@@ -14,6 +14,7 @@ override's three properties, which are what make it a record rather than a bypas
 
 The fixture is the one the gate's own tests use, so "clean" here means the same thing it does there.
 """
+
 from __future__ import annotations
 
 import json
@@ -21,7 +22,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from test_perf_campaign_gate import PC, _functional_run
 
 
@@ -41,7 +41,7 @@ def _skip_finalize(run: Path) -> None:
 def _drop_a_tier(run: Path) -> None:
     path = run / "grading_public" / "score_capsule.json"
     score = json.loads(path.read_text())
-    score["per_capsule"][0]["tiers"] = {"L3": "pass"}      # a model row: no L2 key at all
+    score["per_capsule"][0]["tiers"] = {"L3": "pass"}  # a model row: no L2 key at all
     path.write_text(json.dumps(score))
 
 
@@ -72,8 +72,7 @@ def test_every_failure_is_named_at_once(tmp_path: Path) -> None:
     with pytest.raises(PC.CampaignGateError) as excinfo:
         PC.inspect_functional_run(tmp_path, run.name, digest)
     message = str(excinfo.value)
-    for predicate in ("qa_loop_not_converged", "finalize_regrade_not_pass",
-                      "capsule_tier_not_earned"):
+    for predicate in ("qa_loop_not_converged", "finalize_regrade_not_pass", "capsule_tier_not_earned"):
         assert predicate in message, message
     assert "refused by 3 gate predicate(s)" in message
 
@@ -83,11 +82,10 @@ def test_a_named_waiver_launches_and_is_recorded(tmp_path: Path) -> None:
     _break_convergence(run)
     _skip_finalize(run)
     record = PC.inspect_functional_run(
-        tmp_path, run.name, digest,
-        waive={"qa_loop_not_converged", "finalize_regrade_not_pass"})
+        tmp_path, run.name, digest, waive={"qa_loop_not_converged", "finalize_regrade_not_pass"}
+    )
     assert record.gate_clean is False
-    assert {d.predicate for d in record.deviations} == {"qa_loop_not_converged",
-                                                        "finalize_regrade_not_pass"}
+    assert {d.predicate for d in record.deviations} == {"qa_loop_not_converged", "finalize_regrade_not_pass"}
     for deviation in record.deviations:
         assert deviation.detail, "a waived predicate must record what was actually observed"
         assert deviation.to_dict()["predicate"] == deviation.predicate
@@ -105,11 +103,9 @@ def test_an_operator_seal_is_a_named_recorded_completeness_deviation(tmp_path: P
     with pytest.raises(PC.CampaignGateError, match="operator_sealed_before_convergence"):
         PC.inspect_functional_run(tmp_path, run.name, digest)
 
-    record = PC.inspect_functional_run(
-        tmp_path, run.name, digest, waive={"operator_sealed_before_convergence"})
+    record = PC.inspect_functional_run(tmp_path, run.name, digest, waive={"operator_sealed_before_convergence"})
     assert record.gate_clean is False
-    assert [deviation.predicate for deviation in record.deviations] == [
-        "operator_sealed_before_convergence"]
+    assert [deviation.predicate for deviation in record.deviations] == ["operator_sealed_before_convergence"]
     assert "completed round 3" in record.deviations[0].detail
 
 
@@ -122,16 +118,13 @@ def test_manifest_gradeability_is_waivable_but_manifest_integrity_is_not(tmp_pat
 
     with pytest.raises(PC.CampaignGateError, match="manifest_not_gradeable"):
         PC.inspect_functional_run(tmp_path, run.name, digest)
-    record = PC.inspect_functional_run(
-        tmp_path, run.name, digest, waive={"manifest_not_gradeable"})
-    assert [deviation.predicate for deviation in record.deviations] == [
-        "manifest_not_gradeable"]
+    record = PC.inspect_functional_run(tmp_path, run.name, digest, waive={"manifest_not_gradeable"})
+    assert [deviation.predicate for deviation in record.deviations] == ["manifest_not_gradeable"]
 
     manifest["integrity_status"] = "failed"
     path.write_text(yaml.safe_dump(manifest))
     with pytest.raises(PC.CampaignGateError, match="manifest_integrity_gate_failed"):
-        PC.inspect_functional_run(
-            tmp_path, run.name, digest, waive={"manifest_not_gradeable"})
+        PC.inspect_functional_run(tmp_path, run.name, digest, waive={"manifest_not_gradeable"})
 
 
 def test_a_partial_waiver_still_refuses_the_rest(tmp_path: Path) -> None:
@@ -155,11 +148,19 @@ def test_no_integrity_predicate_can_be_waived(tmp_path: Path, predicate: str) ->
 
 
 def test_the_integrity_set_covers_the_things_that_make_numbers_mean_anything(tmp_path: Path) -> None:
-    for predicate in ("sandbox_not_bwrap", "answer_mask_vacuous", "round_answer_access_unclean",
-                      "finalize_answer_access_unclean", "isolation_audit_unclean",
-                      "capsule_identity_reused", "score_integrity_failed",
-                      "bundle_input_snapshot_incomplete", "cohort_admission_missing",
-                      "cohort_admission_does_not_close", "excluded_name_set_unpinned"):
+    for predicate in (
+        "sandbox_not_bwrap",
+        "answer_mask_vacuous",
+        "round_answer_access_unclean",
+        "finalize_answer_access_unclean",
+        "isolation_audit_unclean",
+        "capsule_identity_reused",
+        "score_integrity_failed",
+        "bundle_input_snapshot_incomplete",
+        "cohort_admission_missing",
+        "cohort_admission_does_not_close",
+        "excluded_name_set_unpinned",
+    ):
         assert predicate in PC.UNWAIVABLE, predicate
     assert not (PC.UNWAIVABLE & PC._WAIVABLE_PREDICATES), "a predicate cannot be both"
 
@@ -175,8 +176,9 @@ def test_a_waiver_for_something_that_did_not_fail_is_an_error(tmp_path: Path) ->
     run, digest = _functional_run(tmp_path)
     _break_convergence(run)
     with pytest.raises(PC.CampaignGateError, match="did not fail"):
-        PC.inspect_functional_run(tmp_path, run.name, digest,
-                                  waive={"qa_loop_not_converged", "capsule_tier_not_earned"})
+        PC.inspect_functional_run(
+            tmp_path, run.name, digest, waive={"qa_loop_not_converged", "capsule_tier_not_earned"}
+        )
 
 
 def test_a_capability_exclusion_is_reconciled_not_refused(tmp_path: Path) -> None:
@@ -189,13 +191,18 @@ def test_a_capability_exclusion_is_reconciled_not_refused(tmp_path: Path) -> Non
     """
     run, digest = _functional_run(tmp_path)
     environment = yaml.safe_load((run / "environment.yaml").read_text())
-    environment["task_scope"]["held_out_capsules"] = 2        # one more than is gradeable
+    environment["task_scope"]["held_out_capsules"] = 2  # one more than is gradeable
     (run / "environment.yaml").write_text(yaml.safe_dump(environment))
     path = run / "grading_hidden" / "score_capsule.json"
     score = json.loads(path.read_text())
-    score["cohort_admission"].update({"policy": "frozen_target_capability_operand_dtype",
-                                      "n_source_capsules": 2, "n_capability_excluded": 1,
-                                      "excluded_name_set_sha256": "c" * 64})
+    score["cohort_admission"].update(
+        {
+            "policy": "frozen_target_capability_operand_dtype",
+            "n_source_capsules": 2,
+            "n_capability_excluded": 1,
+            "excluded_name_set_sha256": "c" * 64,
+        }
+    )
     path.write_text(json.dumps(score))
     record = PC.inspect_functional_run(tmp_path, run.name, digest)
     assert record.gate_clean is True, [d.to_dict() for d in record.deviations]

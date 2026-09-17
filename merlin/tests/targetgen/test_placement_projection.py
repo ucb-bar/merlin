@@ -36,7 +36,7 @@ def test_the_projection_agrees_with_route_plan(target):
     likely to diverge are the ones nobody thought to check."""
     try:
         plan = route_plan(list(_DEMANDS), target)
-    except Exception as exc:                       # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         pytest.skip(f"{target} has no resolvable contract: {type(exc).__name__}: {exc}")
     system, _ = system_for_experiment(target)
     proj = place(list(_DEMANDS), system).as_route_plan()
@@ -76,5 +76,4 @@ def test_emulation_is_reported_rather_than_silent():
     rec = place(exotic, system).to_dict()
     assert rec["n_emulated"] == len(rec["emulated"])
     for row in rec["emulated"]:
-        assert row["emulated"] is True and not row["unit"], (
-            "an emulated op is one no unit accepted, host included")
+        assert row["emulated"] is True and not row["unit"], "an emulated op is one no unit accepted, host included"

@@ -15,6 +15,7 @@ Three layers, cheapest first:
    the fp32 AND w8a8 goldens under their own tier keys.
    Slow (two whole-model lowerings + two runs), so it is behind ``MERLIN_RUN_SLOW``.
 """
+
 from __future__ import annotations
 
 import os
@@ -24,11 +25,12 @@ import numpy as np
 import pytest
 
 from merlin.common.paths import artifacts_dir
-from merlin.llvmlower import lower as _lower_mod  # noqa: F401  (registers the feature)
 from merlin.llvmlower import epilogue_fusion as EF
+from merlin.llvmlower import lower as _lower_mod  # noqa: F401  (registers the feature)
 from merlin.llvmlower.impr_features import apply_pipeline, get, known, normalize
 from merlin.llvmlower.pipeline import _UPSTREAM_PASSES, _splice
-from merlin.llvmlower.toolchain import available as _toolchain_available, mlir_translate
+from merlin.llvmlower.toolchain import available as _toolchain_available
+from merlin.llvmlower.toolchain import mlir_translate
 
 BUNDLE = artifacts_dir() / "recaptures" / "small_llama_int8_consistent"
 
@@ -42,6 +44,7 @@ def _mlir_opt():
 # ---------------------------------------------------------------------------------------------
 # 1. pipeline
 # ---------------------------------------------------------------------------------------------
+
 
 def test_feature_is_registered_and_default_off():
     assert EF.FEATURE in known()
@@ -57,8 +60,8 @@ def test_stage_replaces_the_loop_anchor():
     out = apply_pipeline(base, normalize([EF.FEATURE]))
     i = base.index(EF.LOOP_ANCHOR)
     assert out[:i] == base[:i]
-    assert out[i:i + len(EF.fusion_stage())] == EF.fusion_stage()
-    assert out[i + len(EF.fusion_stage()):] == base[i + 1:]
+    assert out[i : i + len(EF.fusion_stage())] == EF.fusion_stage()
+    assert out[i + len(EF.fusion_stage()) :] == base[i + 1 :]
     # the anchor survives as the tail of the stage: ops the affine conversion cannot take must
     # still become loops.
     assert EF.fusion_stage()[-1] == EF.LOOP_ANCHOR
@@ -94,7 +97,7 @@ def test_stage_refuses_the_rvv_pipeline(tmp_path):
     sched.write_text(RVV_TRANSFORM_SCHEDULE, encoding="utf-8")
     plain = build_rvv_pipeline(sched)
     assert EF.LOOP_ANCHOR in plain
-    assert "affine-loop-fusion" not in plain          # default-off: baseline untouched
+    assert "affine-loop-fusion" not in plain  # default-off: baseline untouched
     with pytest.raises(ValueError, match="unsafe.*vector"):
         build_rvv_pipeline(sched, features=normalize([EF.FEATURE]))
 
@@ -155,9 +158,11 @@ def _run_opt(tmp_path, passes: list[str], name: str) -> str:
     src.write_text(_PAIR, encoding="utf-8")
     out = tmp_path / f"{name}.out.mlir"
     proc = subprocess.run(
-        [str(_mlir_opt()), str(src), f"--pass-pipeline=builtin.module({_splice(passes)})",
-         "-o", str(out)],
-        capture_output=True, text=True, timeout=600)
+        [str(_mlir_opt()), str(src), f"--pass-pipeline=builtin.module({_splice(passes)})", "-o", str(out)],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
     assert proc.returncode == 0, proc.stderr
     return out.read_text(encoding="utf-8")
 
@@ -204,8 +209,9 @@ def _classify(nests: list[str]) -> dict[str, int]:
 
 @pytest.mark.skipif(not _mlir_opt().is_file(), reason="standalone mlir-opt not present")
 def test_epilogue_fuses_into_the_reduction_nest(tmp_path):
-    fused = _classify(_loop_nests(
-        _run_opt(tmp_path, apply_pipeline(_prefix_passes(), normalize([EF.FEATURE])), "fused")))
+    fused = _classify(
+        _loop_nests(_run_opt(tmp_path, apply_pipeline(_prefix_passes(), normalize([EF.FEATURE])), "fused"))
+    )
     assert fused["fused"] == 1, fused
     assert fused["reduction_only"] == 0, fused
     assert fused["epilogue_only"] == 0, fused
@@ -218,7 +224,7 @@ def test_affine_loop_form_alone_does_not_fuse(tmp_path):
     stage = [p for p in EF.fusion_stage() if "affine-loop-fusion" not in p]
     passes = list(_prefix_passes())
     i = passes.index(EF.LOOP_ANCHOR)
-    passes[i:i + 1] = stage
+    passes[i : i + 1] = stage
     ctl = _classify(_loop_nests(_run_opt(tmp_path, passes, "control")))
     assert ctl["fused"] == 0, ctl
     assert ctl["reduction_only"] == 1, ctl
@@ -267,8 +273,9 @@ def test_fusion_preserves_earlier_consumers_through_a_rank_expanding_alias(tmp_p
     """
     if access == "scalar":
         source = source.replace("affine.load %view[0, %i]", "memref.load %view[%c0, %i]")
-    passes = [p for p in apply_pipeline(list(_UPSTREAM_PASSES), normalize([EF.FEATURE]))
-              if p != "__DEALLOC__"]  # This fixture already owns and frees its explicit allocation.
+    passes = [
+        p for p in apply_pipeline(list(_UPSTREAM_PASSES), normalize([EF.FEATURE])) if p != "__DEALLOC__"
+    ]  # This fixture already owns and frees its explicit allocation.
     llvm = tmp_path / "model.ll"
     llvm.write_text(lower_to_llvm_ir(source, workdir=tmp_path, pipeline=_splice(passes)))
     model = HostModel.load(str(build_host_shared(llvm, tmp_path / "model.so")), n_args=3)
@@ -284,6 +291,7 @@ def test_fusion_preserves_earlier_consumers_through_a_rank_expanding_alias(tmp_p
 # 3. numerics — whole model, both goldens, under their own tier keys
 # ---------------------------------------------------------------------------------------------
 
+
 @pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"), reason="whole-model lowering; MERLIN_RUN_SLOW=1")
 @pytest.mark.skipif(not _toolchain_available(), reason="m2m venv / clang not configured")
 @pytest.mark.skipif(not (BUNDLE / "golden_w8a8.npy").is_file(), reason="int8 capture bundle absent")
@@ -297,8 +305,9 @@ def test_whole_model_output_is_bit_identical_and_gates(tmp_path):
 
     prep = tmp_path / "prep"
     prep.mkdir(parents=True, exist_ok=True)
-    prepared, _ = prepare_for_lowering(BUNDLE / "model.mlir", prep, int8_compute=True,
-                                       features=frozenset(), blocking=False)
+    prepared, _ = prepare_for_lowering(
+        BUNDLE / "model.mlir", prep, int8_compute=True, features=frozenset(), blocking=False
+    )
     upstream, _stats = preprocess_text_textual(prepared.read_text(encoding="utf-8"))
 
     variants = {"base": frozenset(), "fused": normalize([EF.FEATURE])}
@@ -311,8 +320,7 @@ def test_whole_model_output_is_bit_identical_and_gates(tmp_path):
         work = tmp_path / name
         work.mkdir(parents=True, exist_ok=True)
         ll = work / "model.ll"
-        ll.write_text(lower_to_llvm_ir(upstream, workdir=work, features=features),
-                      encoding="utf-8")
+        ll.write_text(lower_to_llvm_ir(upstream, workdir=work, features=features), encoding="utf-8")
         so = build_host_shared(ll, work / "model_host.so")
         out = np.zeros(golden.shape, dtype=np.float32)
         bufs = [(a.ctypes.data, list(a.shape)) for a in args] + [(out.ctypes.data, list(out.shape))]

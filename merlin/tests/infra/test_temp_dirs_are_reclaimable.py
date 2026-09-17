@@ -6,6 +6,7 @@ removed those directories -- not the test, not pytest, not the OS -- and each ho
 bundle, the MLIR at every stage, an object file and a disassembly. The conftest fixture routes them
 into pytest's managed base temp dir instead; these tests hold it to that.
 """
+
 from __future__ import annotations
 
 import os
@@ -27,7 +28,10 @@ def test_a_spawned_tool_writes_its_intermediates_there_too(tmp_path_factory):
     base = tmp_path_factory.getbasetemp().resolve()
     got = subprocess.run(
         [sys.executable, "-c", "import tempfile,pathlib;print(pathlib.Path(tempfile.mkdtemp()).resolve())"],
-        capture_output=True, text=True, check=True)
+        capture_output=True,
+        text=True,
+        check=True,
+    )
     assert base in Path(got.stdout.strip()).parents
 
 

@@ -1,4 +1,5 @@
 """Token-free command-plan checks for the CHIA performance-experiment envelope."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -8,7 +9,6 @@ from pathlib import Path
 import pytest
 
 from merlin.common.paths import merlin_dir
-
 
 SOURCE = merlin_dir() / "experiments/gemmini_perf_bench/scripts/chia_agentic_perf_experiment.py"
 SPEC = importlib.util.spec_from_file_location("chia_agentic_perf_experiment_under_test", SOURCE)
@@ -23,13 +23,15 @@ def test_plan_wraps_unchanged_coordinator_under_main_python() -> None:
     assert Path(command[0]).name == "python"
     assert Path(command[1]).name == "run_agentic_perf_experiment.py"
     assert command[2:] == ["--experiment-id", "e", "--model", "gpt-5.6-sol"]
-    assert WRAPPER.run_coordinator._resources == {"codex_slots": 1, "gsim_slots": 1} \
-        if hasattr(WRAPPER.run_coordinator, "_resources") else True
+    assert (
+        WRAPPER.run_coordinator._resources == {"codex_slots": 1, "gsim_slots": 1}
+        if hasattr(WRAPPER.run_coordinator, "_resources")
+        else True
+    )
 
 
 def test_stub_plan_is_token_free_and_dry_run_launches_nothing(capsys) -> None:
-    assert WRAPPER.main([
-        "--orchestration-run-id", "stub", "--stub-seconds", "0.01", "--dry-run"]) == 0
+    assert WRAPPER.main(["--orchestration-run-id", "stub", "--stub-seconds", "0.01", "--dry-run"]) == 0
     output = capsys.readouterr().out
     assert '"stub": true' in output
     assert "time.sleep" in output
@@ -37,8 +39,7 @@ def test_stub_plan_is_token_free_and_dry_run_launches_nothing(capsys) -> None:
 
 
 def test_runtime_assignment_gate_requires_both_logical_resources() -> None:
-    assert WRAPPER.validate_assigned_resources(
-        {"CPU": 1, "codex_slots": 1, "gsim_slots": 1})["gsim_slots"] == 1.0
+    assert WRAPPER.validate_assigned_resources({"CPU": 1, "codex_slots": 1, "gsim_slots": 1})["gsim_slots"] == 1.0
     with pytest.raises(RuntimeError, match="gsim_slots"):
         WRAPPER.validate_assigned_resources({"CPU": 1, "codex_slots": 1})
 

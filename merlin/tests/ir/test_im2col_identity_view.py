@@ -1,4 +1,5 @@
 """The pointwise-im2col view rewrite: exact real pattern, refusals, and frozen default."""
+
 from __future__ import annotations
 
 from merlin.common import mlir_query as mq

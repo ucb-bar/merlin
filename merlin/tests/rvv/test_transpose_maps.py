@@ -32,6 +32,7 @@ Five defects are pinned here.
    contraction shape as refused, and ``test_hot_axis_preserving_permutation_still_folds`` pins that
    the guard is not vacuous.
 """
+
 from __future__ import annotations
 
 import os
@@ -48,13 +49,13 @@ from merlin.llvmlower.transpose_maps import FEATURE, run_source
 
 BUNDLE = artifacts_dir() / "recaptures" / "small_llama_int8_consistent"
 
-_needs_m2m = pytest.mark.skipif(not toolchain.available(),
-                                reason="m2m venv / clang not configured")
+_needs_m2m = pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang not configured")
 
 
 # ---------------------------------------------------------------------------------------------
 # 1. registration + the runner wiring
 # ---------------------------------------------------------------------------------------------
+
 
 def test_feature_is_registered_and_default_off():
     assert FEATURE in known()
@@ -68,13 +69,16 @@ def test_feature_is_registered_and_default_off():
 def _runner_variants() -> dict[str, str]:
     from merlin.llvmlower.accum_microkernel import run_source as scalarize_source
     from merlin.llvmlower.pipeline import (
-        EMIT_TRANSLATE,
         _RUNNER,
+        EMIT_TRANSLATE,
         _activation_poly_runner,
     )
-    return {"plain": _RUNNER,
-            "act_poly": _activation_poly_runner(EMIT_TRANSLATE),
-            "scalarize": scalarize_source().replace("__MERLIN_EMIT__", EMIT_TRANSLATE)}
+
+    return {
+        "plain": _RUNNER,
+        "act_poly": _activation_poly_runner(EMIT_TRANSLATE),
+        "scalarize": scalarize_source().replace("__MERLIN_EMIT__", EMIT_TRANSLATE),
+    }
 
 
 @pytest.mark.parametrize("variant", sorted(_runner_variants()))
@@ -90,6 +94,7 @@ def test_the_gate_is_threaded_from_the_feature_set():
     import inspect
 
     from merlin.llvmlower import pipeline as P
+
     src = inspect.getsource(P.lower_to_llvm_ir)
     assert "_FOLD_WEIGHT_TRANSPOSE_FEATURE in feats" in src
     assert "_fold_wt" in src
@@ -114,14 +119,14 @@ def test_the_lever_resolves_but_is_deliberately_not_ranked():
     )
     env = dict(os.environ)
     env["PYTHONPATH"] = str(merlin_dir() / "python")
-    proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                          timeout=300, env=env)
+    proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=300, env=env)
     assert proc.returncode == 0 and "OK" in proc.stdout, proc.stdout + proc.stderr
 
 
 # ---------------------------------------------------------------------------------------------
 # 2. the rewrite itself, driven through the SHIPPED prelude
 # ---------------------------------------------------------------------------------------------
+
 
 def _fold(tmp_path, mlir_text: str, name: str = "f") -> tuple[str, str]:
     """Run the shipped rewrite on `mlir_text`. Returns (stdout, rewritten module text)."""
@@ -130,8 +135,9 @@ def _fold(tmp_path, mlir_text: str, name: str = "f") -> tuple[str, str]:
     src = tmp_path / f"{name}.mlir"
     src.write_text(mlir_text, encoding="utf-8")
     out = tmp_path / f"{name}.out.mlir"
-    proc = subprocess.run([str(toolchain.m2m_python()), str(driver), str(src), str(out)],
-                          capture_output=True, text=True, timeout=900)
+    proc = subprocess.run(
+        [str(toolchain.m2m_python()), str(driver), str(src), str(out)], capture_output=True, text=True, timeout=900
+    )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     return proc.stdout, out.read_text(encoding="utf-8")
 
@@ -187,7 +193,7 @@ def test_refuses_to_stride_the_vectorized_axis(tmp_path):
     stdout, text = _fold(tmp_path, _INT8_WEIGHT, "int8")
     assert "FOLDED 0" in stdout, stdout
     assert "vectorized axis d1" in stdout, stdout
-    assert "from stride 1 to stride 16" in stdout, stdout      # K = 16 in the fixture
+    assert "from stride 1 to stride 16" in stdout, stdout  # K = 16 in the fixture
     assert text.count("linalg.transpose") == 1, "a refused transpose was removed anyway"
 
 
@@ -230,8 +236,9 @@ def test_folded_module_verifies(tmp_path):
         pytest.skip("standalone mlir-opt not present")
     src = tmp_path / "verify.folded.mlir"
     src.write_text(text, encoding="utf-8")
-    proc = subprocess.run([str(opt), str(src), "-o", str(tmp_path / "v.out.mlir")],
-                          capture_output=True, text=True, timeout=600)
+    proc = subprocess.run(
+        [str(opt), str(src), "-o", str(tmp_path / "v.out.mlir")], capture_output=True, text=True, timeout=600
+    )
     assert proc.returncode == 0, proc.stderr
 
 
@@ -287,11 +294,14 @@ module {
 
 
 @_needs_m2m
-@pytest.mark.parametrize("text,needle", [
-    pytest.param(_COMPUTED_SOURCE, "not loop-invariant", id="computed-source"),
-    pytest.param(_SLICE_CONSUMER, "states no per-operand indexing_maps", id="unmappable-consumer"),
-    pytest.param(_OUTS_CONSUMER, "`outs` operand", id="written-operand"),
-])
+@pytest.mark.parametrize(
+    "text,needle",
+    [
+        pytest.param(_COMPUTED_SOURCE, "not loop-invariant", id="computed-source"),
+        pytest.param(_SLICE_CONSUMER, "states no per-operand indexing_maps", id="unmappable-consumer"),
+        pytest.param(_OUTS_CONSUMER, "`outs` operand", id="written-operand"),
+    ],
+)
 def test_refusals_are_counted_and_leave_the_transpose(tmp_path, text, needle):
     stdout, out = _fold(tmp_path, text, "refuse")
     assert "FOLDED 0" in stdout, stdout
@@ -351,8 +361,7 @@ def test_non_involutive_permutation_keeps_the_numbers(tmp_path):
 
     got = {}
     for tag, feats in (("off", None), ("on", frozenset({FEATURE}))):
-        res = lower_model(_PERM3, tmp_path / tag, targets=("host",), textual=True,
-                          vectorize=False, features=feats)
+        res = lower_model(_PERM3, tmp_path / tag, targets=("host",), textual=True, vectorize=False, features=feats)
         model = HostModel.load(str(res.host_so))
         src = np.ascontiguousarray(w)
         out = np.zeros((3, 4, 2, 8), dtype=np.float32)
@@ -367,8 +376,8 @@ def test_non_involutive_permutation_keeps_the_numbers(tmp_path):
 # 5. whole model -- counts, digest, and BOTH goldens under their own tier keys
 # ---------------------------------------------------------------------------------------------
 
-@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"),
-                    reason="whole-model lowering; MERLIN_RUN_SLOW=1")
+
+@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"), reason="whole-model lowering; MERLIN_RUN_SLOW=1")
 @_needs_m2m
 @pytest.mark.skipif(not (BUNDLE / "golden_w8a8.npy").is_file(), reason="int8 capture bundle absent")
 def test_whole_model_refuses_every_weight_transpose_and_stays_identical(tmp_path):
@@ -390,8 +399,9 @@ def test_whole_model_refuses_every_weight_transpose_and_stays_identical(tmp_path
 
     prep = tmp_path / "prep"
     prep.mkdir(parents=True, exist_ok=True)
-    prepared, _stats = prepare_for_lowering(BUNDLE / "model.mlir", prep, int8_compute=True,
-                                            features=frozenset(), blocking=False)
+    prepared, _stats = prepare_for_lowering(
+        BUNDLE / "model.mlir", prep, int8_compute=True, features=frozenset(), blocking=False
+    )
     upstream, _s = preprocess_text_textual(prepared.read_text(encoding="utf-8"))
 
     # The premise for the whole feature: the matmul-only fold has nothing to match here.
@@ -419,14 +429,12 @@ def test_whole_model_refuses_every_weight_transpose_and_stays_identical(tmp_path
         so = build_host_shared(ll, work / "model_host.so")
         digests[tag] = hashlib.sha256(so.read_bytes()).hexdigest()
         out = np.zeros(golden.shape, dtype=np.float32)
-        bufs = ([(a.ctypes.data, list(a.shape)) for a in args]
-                + [(out.ctypes.data, list(out.shape))])
+        bufs = [(a.ctypes.data, list(a.shape)) for a in args] + [(out.ctypes.data, list(out.shape))]
         HostModel.load(str(so), n_args=len(bufs))(bufs)
         outs[tag] = out.copy()
         gates[tag] = _gate(out, {"fp32": golden, "w8a8": golden_w8a8})
 
-    assert digests["off"] == digests["on"], \
-        "the feature changed the object on a model where it folds nothing"
+    assert digests["off"] == digests["on"], "the feature changed the object on a model where it folds nothing"
     assert np.array_equal(outs["off"], outs["on"])
     for tag, g in gates.items():
         assert g["tiers"] == ["fp32", "w8a8"], (tag, g)

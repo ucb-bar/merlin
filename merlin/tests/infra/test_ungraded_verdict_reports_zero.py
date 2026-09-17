@@ -9,6 +9,7 @@ was wrong with the run; the number was a placeholder.
 This is the same family as every other defect this corpus keeps finding: a value that cannot be told
 apart from a real one, in a path nobody exercises deliberately.
 """
+
 from __future__ import annotations
 
 import ast
@@ -50,12 +51,12 @@ def test_a_verdict_that_graded_nothing_reports_zero_capsules():
         assert isinstance(node, ast.Constant), "n_capsules must be a literal in a failure stub"
         assert node.value == 0, (
             f"an ungraded verdict reports n_capsules={node.value!r}; it renders as '0/{node.value}' "
-            f"in the round log and is indistinguishable from a real grade of that many capsules")
+            f"in the round log and is indistinguishable from a real grade of that many capsules"
+        )
 
 
 def test_an_ungraded_verdict_carries_no_per_capsule_rows():
     """The count and the rows must agree, or one of them is lying about what happened."""
     for stub in _stub_verdicts():
         rows = stub.get("per_capsule")
-        assert isinstance(rows, ast.List) and not rows.elts, (
-            "an ungraded verdict must carry no per-capsule rows")
+        assert isinstance(rows, ast.List) and not rows.elts, "an ungraded verdict must carry no per-capsule rows"

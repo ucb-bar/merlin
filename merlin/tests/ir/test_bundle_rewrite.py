@@ -4,6 +4,7 @@ The second half is not bookkeeping. `gemma2_2b_int8_full_seq8_pretransposed` had
 specialized AND 183 weights physically pre-transposed, recorded neither, and still named the original
 bundle's weights file -- so anything measured from it read as stock Gemma 2 2B.
 """
+
 from __future__ import annotations
 
 import json
@@ -64,10 +65,14 @@ def bundle(tmp_path):
     w = np.arange(32, dtype=np.int8).reshape(4, 8)
     other = np.arange(6, dtype=np.int8).reshape(2, 3)
     _write_safetensors(src / "weights.safetensors", {"w": w, "other": other})
-    (src / "weights.safetensors.manifest.json").write_text(json.dumps({
-        "0": {"kind": "param", "weight": "w", "dtype": "int8", "shape": [4, 8]},
-        "1": {"kind": "param", "weight": "other", "dtype": "int8", "shape": [2, 3]},
-    }))
+    (src / "weights.safetensors.manifest.json").write_text(
+        json.dumps(
+            {
+                "0": {"kind": "param", "weight": "w", "dtype": "int8", "shape": [4, 8]},
+                "1": {"kind": "param", "weight": "other", "dtype": "int8", "shape": [2, 3]},
+            }
+        )
+    )
     (src / "golden.npy").write_bytes(b"")
     return src, w, other
 
@@ -109,9 +114,15 @@ def test_the_rewrite_records_itself(bundle, tmp_path):
 def test_rewrites_chain_rather_than_replace(bundle, tmp_path):
     """A bundle rewritten twice must show BOTH, or the second erases the first's caveats."""
     src, _, _ = bundle
-    br.record_rewrite(src, br.RewriteRecord(
-        name="specialize_gather", source_bundle="orig", soundness="index tensor has one consumer",
-        caveats=["valid for these 8 token ids ONLY"]))
+    br.record_rewrite(
+        src,
+        br.RewriteRecord(
+            name="specialize_gather",
+            source_bundle="orig",
+            soundness="index tensor has one consumer",
+            caveats=["valid for these 8 token ids ONLY"],
+        ),
+    )
     dst = tmp_path / "dst"
     br.hoist_weight_transposes(src, dst)
 
@@ -135,8 +146,9 @@ def test_a_shared_weight_is_refused_not_silently_corrupted(tmp_path):
 }
 """)
     _write_safetensors(src / "weights.safetensors", {"w": np.arange(32, dtype=np.int8).reshape(4, 8)})
-    (src / "weights.safetensors.manifest.json").write_text(json.dumps({
-        "0": {"kind": "param", "weight": "w", "dtype": "int8", "shape": [4, 8]}}))
+    (src / "weights.safetensors.manifest.json").write_text(
+        json.dumps({"0": {"kind": "param", "weight": "w", "dtype": "int8", "shape": [4, 8]}})
+    )
     with pytest.raises(ValueError, match="no hoistable"):
         br.hoist_weight_transposes(src, tmp_path / "dst")
 
@@ -170,8 +182,7 @@ def test_retype_updates_every_occurrence_of_the_table_type():
 
 
 def test_retype_leaves_a_same_shaped_unrelated_value_alone():
-    ir = GATHER_IR.replace(
-        "    return %2", "    %9 = tensor.empty() : tensor<256000x2304xf32>\n    return %2")
+    ir = GATHER_IR.replace("    return %2", "    %9 = tensor.empty() : tensor<256000x2304xf32>\n    return %2")
     out = br._retype_arg(ir, 0, [256000, 2304], [8, 2304], "f32")
     assert "%9 = tensor.empty() : tensor<256000x2304xf32>" in out
 

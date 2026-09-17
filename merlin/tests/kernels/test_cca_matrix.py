@@ -8,6 +8,7 @@ compiles a variant that reads out *inside* the loop and requires the lifter to s
 The other thing guarded here is the None case. A kernel with one accumulate has no reduction, and claiming
 residency for it would be the strongest possible verdict on the weakest possible evidence.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -37,6 +38,7 @@ _SPEC = KernelSpec(accumulate="ACC", broadcast="BCAST", readout="READOUT")
 #: Call sites of the tile body clang may inline: the direct path and the partial-N padded tail.
 _TILE_CALL_SITES = 2
 
+
 def _compile(src: str, tmp_path: Path, *, link: bool = True) -> Path:
     """Compile and (by default) LINK, because residency is scoped to a loop.
 
@@ -45,6 +47,7 @@ def _compile(src: str, tmp_path: Path, *, link: bool = True) -> Path:
     is the honest answer but tests nothing, so these fixtures link.
     """
     from merlin.llvmlower import toolchain
+
     if not toolchain.available():
         pytest.skip("needs the pinned clang")
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -55,10 +58,23 @@ def _compile(src: str, tmp_path: Path, *, link: bool = True) -> Path:
     # (zephyr_model.RVV_CFLAGS). Without them clang turns the kernel's copy/zero loops into memcpy and
     # memset CALLS, and this fixture links the object ALONE with no libc -- so the link failed on a
     # dependency the real build never has. Compile the way the product compiles.
-    proc = subprocess.run([toolchain.clang(), "--target=riscv64-unknown-elf", "-march=rv64gcv",
-                           "-mabi=lp64d", "-O2", "-ffreestanding", "-fno-builtin",
-                           "-c", str(c), "-o", str(obj)],
-                          capture_output=True, text=True)
+    proc = subprocess.run(
+        [
+            toolchain.clang(),
+            "--target=riscv64-unknown-elf",
+            "-march=rv64gcv",
+            "-mabi=lp64d",
+            "-O2",
+            "-ffreestanding",
+            "-fno-builtin",
+            "-c",
+            str(c),
+            "-o",
+            str(obj),
+        ],
+        capture_output=True,
+        text=True,
+    )
     if proc.returncode != 0:
         pytest.fail(f"compile failed:\n{proc.stderr[-2000:]}")
     if not link:
@@ -67,8 +83,9 @@ def _compile(src: str, tmp_path: Path, *, link: bool = True) -> Path:
     ld = shutil.which("ld.lld") or shutil.which("riscv64-unknown-elf-ld")
     if ld is None:
         pytest.skip("needs a linker to resolve branch displacements (ld.lld)")
-    proc = subprocess.run([ld, "-e", "0", "--no-check-sections", str(obj), "-o", str(elf)],
-                          capture_output=True, text=True)
+    proc = subprocess.run(
+        [ld, "-e", "0", "--no-check-sections", str(obj), "-o", str(elf)], capture_output=True, text=True
+    )
     if proc.returncode != 0:
         pytest.fail(f"link failed:\n{proc.stderr[-2000:]}")
     return elf
@@ -87,12 +104,12 @@ void non_resident(int32_t *c, const int8_t *at, const int8_t *b, size_t m, size_
                  "vle8.v v4, (%[bp])\\n\\t"
                  "vsetvli zero, %[ml], e8, m1, ta, ma\\n\\t"
                  "vle8.v v5, (%[ap])\\n\\t"
-                 "{_TABLE['ACC'].insn_r('x1', 'x5', 'x4')}"
+                 "{_TABLE["ACC"].insn_r("x1", "x5", "x4")}"
                  :: [ml] "r"(ml), [nl] "r"(nl), [ap] "r"(at + kk * m), [bp] "r"(b + kk * n)
                  : "memory");
     /* the commit, INSIDE the reduction */
     asm volatile("vsetvli zero, %[nl], e32, m1, ta, ma\\n\\t"
-                 "{_TABLE['READOUT'].insn_r('x0', 'x0', 'x1')}\\n\\t"
+                 "{_TABLE["READOUT"].insn_r("x0", "x0", "x1")}\\n\\t"
                  "vse32.v v0, (%[cp])"
                  :: [nl] "r"(nl), [cp] "r"(c)
                  : "memory");
@@ -107,7 +124,7 @@ _SINGLE = f"""
 void single(size_t ml, size_t nl, const int8_t *ap, const int8_t *bp) {{
   asm volatile("vsetvli zero, %[nl], e8, m1, ta, ma\\n\\t"
                "vle8.v v4, (%[bp])\\n\\t"
-               "{_TABLE['ACC'].insn_r('x1', 'x5', 'x4')}"
+               "{_TABLE["ACC"].insn_r("x1", "x5", "x4")}"
                :: [ml] "r"(ml), [nl] "r"(nl), [ap] "r"(ap), [bp] "r"(bp) : "memory");
 }}
 """
@@ -176,8 +193,7 @@ class TestResidencyIsReadFromTheStream:
 
     def test_a_missing_encoding_raises_rather_than_reading_an_empty_stream(self, resident_stream):
         with pytest.raises(ValueError, match="no "):
-            CM.stream_facts(resident_stream, {"ACC": _TABLE["ACC"]}, accumulate="ACC",
-                            readout="READOUT")
+            CM.stream_facts(resident_stream, {"ACC": _TABLE["ACC"]}, accumulate="ACC", readout="READOUT")
 
     def test_identity_comes_from_the_table_not_from_a_mnemonic(self, resident_stream):
         # Shift every funct6: the same stream must now decode as containing none of the unit's ops. This
@@ -191,30 +207,36 @@ class TestTheLiftedCCA:
     def test_residency_lands_on_the_compute_facet_too(self, resident_stream):
         # It belongs on compute because that is where the same question is asked for every other backend;
         # under `spatial` alone it would never diverge against a vector expert.
-        cca = CM.lift_matrix_unit(resident_stream, _TABLE, op="matmul", source="t",
-                                  accumulate="ACC", readout="READOUT")
+        cca = CM.lift_matrix_unit(resident_stream, _TABLE, op="matmul", source="t", accumulate="ACC", readout="READOUT")
         assert cca.compute.accumulator_resident is True
         assert cca.spatial.accumulator_resident is True
 
     def test_the_contraction_form_is_its_own_token(self, resident_stream):
-        cca = CM.lift_matrix_unit(resident_stream, _TABLE, op="matmul", source="t",
-                                  accumulate="ACC", readout="READOUT")
+        cca = CM.lift_matrix_unit(resident_stream, _TABLE, op="matmul", source="t", accumulate="ACC", readout="READOUT")
         assert cca.compute.contraction_form == CM.CONTRACTION_FORM != "systolic"
 
     def test_the_tile_geometry_is_carried_when_supplied(self, resident_stream):
-        cca = CM.lift_matrix_unit(resident_stream, _TABLE, op="matmul", source="t",
-                                  accumulate="ACC", readout="READOUT", tile_rows=32, tile_cols=32)
+        cca = CM.lift_matrix_unit(
+            resident_stream,
+            _TABLE,
+            op="matmul",
+            source="t",
+            accumulate="ACC",
+            readout="READOUT",
+            tile_rows=32,
+            tile_cols=32,
+        )
         assert (cca.spatial.pe_rows, cca.spatial.pe_cols) == (32, 32)
 
     def test_the_stream_facts_are_kept_in_provenance(self, resident_stream):
-        cca = CM.lift_matrix_unit(resident_stream, _TABLE, op="matmul", source="t",
-                                  accumulate="ACC", readout="READOUT")
+        cca = CM.lift_matrix_unit(resident_stream, _TABLE, op="matmul", source="t", accumulate="ACC", readout="READOUT")
         assert cca.provenance["stream"]["accumulates"] >= 1
         assert cca.provenance["stream"]["reduction_is_loop"] is True
 
     def test_a_non_resident_lift_reports_false_not_none(self, non_resident_stream):
-        cca = CM.lift_matrix_unit(non_resident_stream, _TABLE, op="matmul", source="t",
-                                  accumulate="ACC", readout="READOUT")
+        cca = CM.lift_matrix_unit(
+            non_resident_stream, _TABLE, op="matmul", source="t", accumulate="ACC", readout="READOUT"
+        )
         assert cca.compute.accumulator_resident is False
 
 
@@ -239,17 +261,19 @@ class TestTheRoutes:
     def test_a_lost_residency_routes_to_an_epilogue_pass(self):
         from merlin.kernels import action_catalog as AC
         from merlin.kernels.cca_compare import Divergence
+
         CM.register_routes("matrix_test")
-        got = AC.route(Divergence(axis="compute.accumulator_resident", expert=True, ours=False,
-                                  backend="matrix_test"))
+        got = AC.route(Divergence(axis="compute.accumulator_resident", expert=True, ours=False, backend="matrix_test"))
         assert got is not None and got.action_class == "PASS"
         assert got.intended_facet == {"compute.accumulator_resident": True}
 
     def test_registration_is_idempotent(self):
         from merlin.kernels import action_catalog as AC
+
         CM.register_routes("matrix_idem")
         CM.register_routes("matrix_idem")
         from merlin.kernels.cca_compare import Divergence
+
         # Registering twice must not produce two competing actions for the same seam.
         n = len(AC._ROUTES.get("matrix_idem", []))
         CM.register_routes("matrix_idem")
@@ -258,9 +282,13 @@ class TestTheRoutes:
     def test_the_codegen_route_excludes_the_narrow_regimes(self):
         from merlin.kernels import action_catalog as AC
         from merlin.kernels.cca_compare import Divergence
+
         CM.register_routes("matrix_regime")
-        got = AC.route(Divergence(axis="compute.contraction_form", expert=CM.CONTRACTION_FORM,
-                                  ours="vector", backend="matrix_regime"))
+        got = AC.route(
+            Divergence(
+                axis="compute.contraction_form", expert=CM.CONTRACTION_FORM, ours="vector", backend="matrix_regime"
+            )
+        )
         assert got is not None and got.action_class == "CODEGEN"
         # An M=1 contraction is exactly what this action must not claim.
         assert not AC.applies_to_shape(got, "vector")
@@ -270,10 +298,12 @@ class TestTheRoutes:
     def test_the_profitable_regimes_are_real_regime_tokens(self):
         # A typo here would silently make the action apply to nothing.
         from merlin.kernels.bench_ceiling import shape_regime
-        produced = {shape_regime("matmul", *mnk) for mnk in
-                    [(1, 1, 64), (4, 4, 64), (64, 64, 64), (512, 512, 512), (256, 8, 64)]}
-        assert set(CM.PROFITABLE_REGIMES) <= produced | {"square_large", "square_medium",
-                                                         "rectangular"}
+
+        produced = {
+            shape_regime("matmul", *mnk)
+            for mnk in [(1, 1, 64), (4, 4, 64), (64, 64, 64), (512, 512, 512), (256, 8, 64)]
+        }
+        assert set(CM.PROFITABLE_REGIMES) <= produced | {"square_large", "square_medium", "rectangular"}
         assert produced & set(CM.PROFITABLE_REGIMES), "no sampled shape lands in a profitable regime"
 
 
@@ -285,6 +315,7 @@ class TestMatrixRegisterOccupancy:
         # count or cycle total says that; the destination field does.
         src = emit_microkernel(_TABLE, _SPEC)
         import tempfile
+
         with tempfile.TemporaryDirectory() as d:
             got = CM.stream_facts(_compile(src, Path(d)), _TABLE, accumulate="ACC", readout="READOUT")
         assert got.matrix_registers_used == 1
@@ -298,8 +329,8 @@ void two_banks(const int8_t *ap, const int8_t *bp, size_t ml, size_t nl, size_t 
   for (size_t kk = 0; kk < k; ++kk) {{
     asm volatile("vsetvli zero, %[nl], e8, m1, ta, ma\\n\\t"
                  "vle8.v v4, (%[bp])\\n\\t"
-                 "{_TABLE['ACC'].insn_r('x1', 'x5', 'x4')}\\n\\t"
-                 "{_TABLE['ACC'].insn_r('x2', 'x5', 'x4')}"
+                 "{_TABLE["ACC"].insn_r("x1", "x5", "x4")}\\n\\t"
+                 "{_TABLE["ACC"].insn_r("x2", "x5", "x4")}"
                  :: [ml] "r"(ml), [nl] "r"(nl), [ap] "r"(ap), [bp] "r"(bp) : "memory");
   }}
 }}
@@ -313,8 +344,7 @@ void two_banks(const int8_t *ap, const int8_t *bp, size_t ml, size_t nl, size_t 
         assert got.matrix_registers_used is None
 
     def test_it_is_carried_in_the_lifted_provenance(self, resident_stream):
-        cca = CM.lift_matrix_unit(resident_stream, _TABLE, op="matmul", source="t",
-                                  accumulate="ACC", readout="READOUT")
+        cca = CM.lift_matrix_unit(resident_stream, _TABLE, op="matmul", source="t", accumulate="ACC", readout="READOUT")
         assert cca.provenance["stream"]["matrix_registers_used"] == 1
 
 
@@ -327,7 +357,7 @@ _UNDERPROVISIONED = f"""
 void underprovisioned(int32_t *c, size_t nl, size_t ml) {{
   asm volatile("vsetvli zero, %[nl], e32, m1, ta, ma" :: [nl] "r"(nl));
   for (size_t r = 0; r < ml; ++r) {{
-    asm volatile("{_TABLE['READOUT'].insn_r('x0', '%[r]', 'x1')}\\n\\t"
+    asm volatile("{_TABLE["READOUT"].insn_r("x0", "%[r]", "x1")}\\n\\t"
                  "vse32.v v0, (%[cp])"
                  :: [r] "r"(r), [cp] "r"(c + r) : "memory");
   }}
@@ -338,14 +368,17 @@ void underprovisioned(int32_t *c, size_t nl, size_t ml) {{
 class TestTheVtypeMustSpanATileRow:
     """The constraint the hardware enforces by hanging, checked statically instead."""
 
-    @pytest.mark.parametrize("sew,lmul,ok", [
-        (8, 1, True),      # the operand vtype: VLMAX == tile edge
-        (32, 1, False),    # what hung the RTL: VLMAX == tile/4
-        (32, 4, True),     # the accumulator vtype, correctly grouped
-        (32, 8, True),     # wider than needed is still safe
-        (16, 2, True),
-        (16, 1, False),
-    ])
+    @pytest.mark.parametrize(
+        "sew,lmul,ok",
+        [
+            (8, 1, True),  # the operand vtype: VLMAX == tile edge
+            (32, 1, False),  # what hung the RTL: VLMAX == tile/4
+            (32, 4, True),  # the accumulator vtype, correctly grouped
+            (32, 8, True),  # wider than needed is still safe
+            (16, 2, True),
+            (16, 1, False),
+        ],
+    )
     def test_the_rule_is_vlen_independent(self, sew, lmul, ok):
         # LMUL * operand_bits >= SEW. The VLEN cancels, which is what lets this be checked on an object.
         assert CM.vtype_spans_tile_row(sew, lmul, operand_bits=8) is ok
@@ -372,7 +405,7 @@ class TestTheVtypeMustSpanATileRow:
     def test_an_unconfigured_instruction_is_reported_too(self, tmp_path):
         src = f"""
 #include <stdint.h>
-void unconfigured(void) {{ asm volatile("{_TABLE['ACC'].insn_r('x1', 'x5', 'x4')}"); }}
+void unconfigured(void) {{ asm volatile("{_TABLE["ACC"].insn_r("x1", "x5", "x4")}"); }}
 """
         got = CM.vtype_violations(_compile(src, tmp_path), _TABLE, operand_bits=8)
         assert got and got[0]["sew"] is None and "inherited" in got[0]["why"]
@@ -387,7 +420,7 @@ _OPERAND_VTYPE_INIT = f"""
 void operand_vtype_init(const int32_t *bias, size_t nl) {{
   asm volatile("vsetvli zero, %[nl], e8, m1, ta, ma\\n\\t"
                "vle32.v v0, (%[bp])\\n\\t"
-               "{_TABLE['BCAST'].insn_r('x1', 'x0', 'x0')}"
+               "{_TABLE["BCAST"].insn_r("x1", "x0", "x0")}"
                :: [nl] "r"(nl), [bp] "r"(bias) : "memory");
 }}
 """
@@ -401,19 +434,23 @@ class TestAccumulatorCarryingOpsNeedTheAccumulatorVtype:
         # RTL whose mismatch count changed with unrelated contents of the same binary.
         obj = _compile(_OPERAND_VTYPE_INIT, tmp_path)
         assert CM.vtype_violations(obj, _TABLE, operand_bits=8) == (), (
-            "the span rule alone must accept it -- that is why a second rule is needed")
+            "the span rule alone must accept it -- that is why a second rule is needed"
+        )
         got = CM.vtype_violations(obj, _TABLE, operand_bits=8, acc_bits=32, acc_carrying=("BCAST",))
         assert got and got[0]["insn"] == "BCAST"
         assert "only part of one" in got[0]["why"]
 
     def test_the_fixed_kernel_satisfies_both_rules(self, resident_stream):
-        assert CM.vtype_violations(resident_stream, _TABLE, operand_bits=8, acc_bits=32,
-                                   acc_carrying=("BCAST", "READOUT")) == ()
+        assert (
+            CM.vtype_violations(resident_stream, _TABLE, operand_bits=8, acc_bits=32, acc_carrying=("BCAST", "READOUT"))
+            == ()
+        )
 
     def test_the_accumulate_is_not_held_to_the_accumulator_vtype(self, resident_stream):
         # It carries int8 operands, so e8/m1 is correct for it. Naming it here would be wrong.
-        got = CM.vtype_violations(resident_stream, _TABLE, operand_bits=8, acc_bits=32,
-                                  acc_carrying=("BCAST", "READOUT"))
+        got = CM.vtype_violations(
+            resident_stream, _TABLE, operand_bits=8, acc_bits=32, acc_carrying=("BCAST", "READOUT")
+        )
         assert not any(v["insn"] == "ACC" for v in got)
 
     def test_a_wider_group_than_needed_is_accepted(self, tmp_path):
@@ -422,10 +459,9 @@ class TestAccumulatorCarryingOpsNeedTheAccumulatorVtype:
 #include <stddef.h>
 void wide(size_t nl) {{
   asm volatile("vsetvli zero, %[nl], e32, m8, ta, ma\\n\\t"
-               "{_TABLE['BCAST'].insn_r('x1', 'x0', 'x0')}"
+               "{_TABLE["BCAST"].insn_r("x1", "x0", "x0")}"
                :: [nl] "r"(nl));
 }}
 """
-        got = CM.vtype_violations(_compile(src, tmp_path), _TABLE, operand_bits=8, acc_bits=32,
-                                  acc_carrying=("BCAST",))
+        got = CM.vtype_violations(_compile(src, tmp_path), _TABLE, operand_bits=8, acc_bits=32, acc_carrying=("BCAST",))
         assert got == ()

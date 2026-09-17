@@ -7,6 +7,7 @@ written while looking at that failure, has fit one data point.
 The last class reproduces the actual defect this was written for — an 8x32x24 contraction that came back
 missing exactly one reduction step's contribution in the columns of the second physical subtile.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -26,8 +27,7 @@ class TestASynthesisedDroppedStep:
     def test_dropping_one_step_is_named_with_its_index(self):
         _, lhs, rhs, ref = _case()
         drop_k = 7
-        dev = ref.astype(np.int64) - np.outer(lhs[drop_k].astype(np.int64),
-                                              rhs[drop_k].astype(np.int64))
+        dev = ref.astype(np.int64) - np.outer(lhs[drop_k].astype(np.int64), rhs[drop_k].astype(np.int64))
         got = [e for e in F.explain_deltas(lhs, rhs, dev, ref) if e.kind == "dropped_step"]
         assert got, "a dropped step must be recognised"
         assert any(e.detail["k"] == drop_k for e in got)
@@ -57,7 +57,7 @@ class TestASynthesisedDroppedStep:
         # Only complete explanations are returned; a partial one is usually a coincidence of int8 products.
         _, lhs, rhs, ref = _case()
         dev = ref.astype(np.int64).copy()
-        dev[0, 0] += 1                      # a delta no single step can explain
+        dev[0, 0] += 1  # a delta no single step can explain
         assert all(e.complete for e in F.explain_deltas(lhs, rhs, dev, ref))
 
     def test_mismatched_shapes_raise(self):
@@ -102,7 +102,7 @@ class TestTheRealDefect:
     def test_the_measured_deltas_are_exactly_one_dropped_step(self):
         _, lhs, rhs, ref = _case()
         deltas = {(0, j): v - int(ref[0, j]) for j, v in self._DEVICE_ROW0.items()}
-        deltas[(0, 22)] = 0                 # it agreed, so its delta is zero and must also be explained
+        deltas[(0, 22)] = 0  # it agreed, so its delta is zero and must also be explained
         got = F.find_dropped_step(lhs, rhs, deltas)
         assert got, "the measured deltas must have a single-step explanation"
         assert all(e.kind == "dropped_step" for e in got)

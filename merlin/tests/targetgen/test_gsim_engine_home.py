@@ -10,6 +10,7 @@ The policy was never wrong; what was missing was a home, a reason, and a gate. T
 Everything here uses a MADE-UP target name and a redirected output root, so nothing depends on which
 targets this checkout happens to have built.
 """
+
 from __future__ import annotations
 
 import json
@@ -43,12 +44,17 @@ def _install_binary(target: str, *, executable: bool = True) -> "object":
 
 
 def _write_receipt(target: str, binary_sha256: str, **over) -> None:
-    doc = {"schema_version": "merlin.gsim-model-build.v2", "status": "complete",
-           "binary_sha256": binary_sha256,
-           "artifacts": {"binary": {"sha256": binary_sha256},
-                         "firrtl": {"sha256": "f" * 64, "path": "/nowhere/design.fir"},
-                         "model_manifest": {"sha256": "m" * 64}},
-           "tools": {"gsim_emitter": {"sha256": "e" * 64}}}
+    doc = {
+        "schema_version": "merlin.gsim-model-build.v2",
+        "status": "complete",
+        "binary_sha256": binary_sha256,
+        "artifacts": {
+            "binary": {"sha256": binary_sha256},
+            "firrtl": {"sha256": "f" * 64, "path": "/nowhere/design.fir"},
+            "model_manifest": {"sha256": "m" * 64},
+        },
+        "tools": {"gsim_emitter": {"sha256": "e" * 64}},
+    }
     doc.update(over)
     (GE.gsim_home(target) / GE.RECEIPT_NAME).write_text(json.dumps(doc), encoding="utf-8")
 
@@ -56,34 +62,33 @@ def _write_receipt(target: str, binary_sha256: str, **over) -> None:
 def _write_strict_receipt(target: str, binary) -> dict:
     home = GE.gsim_home(target)
     pinned = {}
-    for name in ("firrtl", "model_manifest", "gsim_emitter", "cxx_wrapper", "cxx_compiler",
-                 "harness"):
+    for name in ("firrtl", "model_manifest", "gsim_emitter", "cxx_wrapper", "cxx_compiler", "harness"):
         path = home / name
         path.write_text(f"exact {name}\n", encoding="utf-8")
         from merlin.common import provenance
+
         pinned[name] = {"path": str(path.resolve()), "sha256": provenance.file_digest(path)}
     from merlin.common import provenance
+
     binary_pin = {"path": str(binary.resolve()), "sha256": provenance.file_digest(binary)}
     inputs = [{"role": "harness", **pinned["harness"]}]
     commands = [
-        {"stage": "emit", "cwd": str(home.resolve()),
-         "argv": [pinned["gsim_emitter"]["path"], "design.fir"]},
-        {"stage": "compile", "cwd": str(home.resolve()),
-         "argv": [pinned["cxx_wrapper"]["path"], "model.cpp"]},
-        {"stage": "link", "cwd": str(home.resolve()),
-         "argv": [pinned["cxx_wrapper"]["path"], "model.o"]},
+        {"stage": "emit", "cwd": str(home.resolve()), "argv": [pinned["gsim_emitter"]["path"], "design.fir"]},
+        {"stage": "compile", "cwd": str(home.resolve()), "argv": [pinned["cxx_wrapper"]["path"], "model.cpp"]},
+        {"stage": "link", "cwd": str(home.resolve()), "argv": [pinned["cxx_wrapper"]["path"], "model.o"]},
     ]
     doc = {
         "schema_version": GE.STRICT_RECEIPT_SCHEMA,
         "status": "complete",
-        "provenance": {"firrtl_boundary": GE.FIRRTL_BOUNDARY_ADOPTED,
-                       "elaboration_performed": False,
-                       "warning": GE.ADOPTED_FIRRTL_WARNING},
+        "provenance": {
+            "firrtl_boundary": GE.FIRRTL_BOUNDARY_ADOPTED,
+            "elaboration_performed": False,
+            "warning": GE.ADOPTED_FIRRTL_WARNING,
+        },
         "firrtl_sha256": pinned["firrtl"]["sha256"],
         "model_manifest_sha256": pinned["model_manifest"]["sha256"],
         "binary_sha256": binary_pin["sha256"],
-        "artifacts": {"firrtl": pinned["firrtl"], "model_manifest": pinned["model_manifest"],
-                      "binary": binary_pin},
+        "artifacts": {"firrtl": pinned["firrtl"], "model_manifest": pinned["model_manifest"], "binary": binary_pin},
         "tools": {name: pinned[name] for name in ("gsim_emitter", "cxx_wrapper", "cxx_compiler")},
         "inputs": inputs,
         "inputs_sha256": GE._canonical_sha(inputs),
@@ -96,6 +101,7 @@ def _write_strict_receipt(target: str, binary) -> dict:
 
 # --- present -> selected ------------------------------------------------------------------------
 
+
 def test_a_gsim_build_in_the_derived_home_is_selected_over_verilator(out_root):
     """The whole point of a derived home: installing the binary IS registering the engine.
 
@@ -107,8 +113,7 @@ def test_a_gsim_build_in_the_derived_home_is_selected_over_verilator(out_root):
     ok, why = GE.probe(target)
     assert ok is True, why
 
-    sel = POL.select(target, {"gsim": lambda: GE.probe(target),
-                              "verilator": lambda: (True, "verilator is present")})
+    sel = POL.select(target, {"gsim": lambda: GE.probe(target), "verilator": lambda: (True, "verilator is present")})
     assert sel["engine"] == "gsim"
     assert sel["fidelity"] == POL.ELABORATED_RTL
 
@@ -132,19 +137,19 @@ def test_an_env_override_still_wins_over_the_derived_home(out_root, tmp_path, mo
 
 # --- absent -> verilator, WITH the reason ---------------------------------------------------------
 
+
 def test_an_absent_gsim_build_falls_back_to_verilator_and_records_why(out_root):
     """Falling back is fine. Falling back SILENTLY is the defect.
 
     The recorded reason has to be actionable — it must name the place a build would go, because the
     person reading it is the person who would build one.
     """
-    target = "fixture_np"                              # nothing installed
+    target = "fixture_np"  # nothing installed
     ok, why = GE.probe(target)
     assert ok is False
     assert str(GE.gsim_home(target)) in why, why
 
-    sel = POL.select(target, {"gsim": lambda: GE.probe(target),
-                              "verilator": lambda: (True, "verilator sim present")})
+    sel = POL.select(target, {"gsim": lambda: GE.probe(target), "verilator": lambda: (True, "verilator sim present")})
     assert sel["engine"] == "verilator"
     assert sel["passed_over"] == ["gsim"]
     passed_over = [c for c in sel["considered"] if c["engine"] == "gsim"][0]
@@ -166,6 +171,7 @@ def test_an_unexecutable_emulator_is_unavailable_not_a_crash(out_root):
 
 # --- present but unattributable / mis-attributed --------------------------------------------------
 
+
 def test_an_emulator_whose_receipt_binds_other_bytes_is_refused_not_used(out_root):
     """THE hazard: a result attributed to the wrong device.
 
@@ -177,7 +183,7 @@ def test_an_emulator_whose_receipt_binds_other_bytes_is_refused_not_used(out_roo
     """
     target = "fixture_np"
     _install_binary(target)
-    _write_receipt(target, binary_sha256="0" * 64)     # deliberately not this binary
+    _write_receipt(target, binary_sha256="0" * 64)  # deliberately not this binary
 
     res = GE.resolve(target)
     assert res.ok is False
@@ -186,8 +192,7 @@ def test_an_emulator_whose_receipt_binds_other_bytes_is_refused_not_used(out_roo
     assert "REFUSED" in res.reason and "DIFFERENT binary" in res.reason
 
     # And the policy must then pick the slower engine rather than the refused one.
-    sel = POL.select(target, {"gsim": lambda: GE.probe(target),
-                              "verilator": lambda: (True, "verilator sim present")})
+    sel = POL.select(target, {"gsim": lambda: GE.probe(target), "verilator": lambda: (True, "verilator sim present")})
     assert sel["engine"] == "verilator"
 
 
@@ -195,6 +200,7 @@ def test_a_matching_receipt_binds_the_lineage_and_the_citation_carries_it(out_ro
     target = "fixture_np"
     emu = _install_binary(target)
     from merlin.common import provenance
+
     _write_receipt(target, binary_sha256=provenance.file_digest(emu))
 
     res = GE.resolve(target)
@@ -268,8 +274,10 @@ def test_installing_refuses_a_receipt_that_does_not_bind_the_binary(out_root, tm
     src.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     src.chmod(src.stat().st_mode | stat.S_IXUSR)
     bad = tmp_path / "receipt.json"
-    bad.write_text(json.dumps({"schema_version": "merlin.gsim-model-build.v2", "status": "complete",
-                               "binary_sha256": "0" * 64}), encoding="utf-8")
+    bad.write_text(
+        json.dumps({"schema_version": "merlin.gsim-model-build.v2", "status": "complete", "binary_sha256": "0" * 64}),
+        encoding="utf-8",
+    )
 
     with pytest.raises(ValueError):
         GE.install(target, src, receipt=bad)
@@ -278,6 +286,7 @@ def test_installing_refuses_a_receipt_that_does_not_bind_the_binary(out_root, tm
 
 
 # --- the home is per (target, engine), and derived from the target --------------------------------
+
 
 def test_the_engine_home_is_derived_per_target_and_per_engine(out_root):
     a, b = GE.gsim_home("fixture_np"), GE.gsim_home("fixture_simt")
@@ -297,6 +306,7 @@ def test_the_engine_home_is_derived_per_target_and_per_engine(out_root):
 # programs at 32x the speed, and `gsim_emulator.probe` answered False for it. A probe that cannot see a
 # working engine is the same defect as an env var nobody exported.
 
+
 def _install_wrapper(target: str, *, engine: str = "gsim") -> "object":
     home = GE.engine_home(target, engine)
     home.mkdir(parents=True, exist_ok=True)
@@ -311,11 +321,18 @@ def _adopt(target: str, *, engine: str = "gsim", cover: bool = True) -> None:
     home = GE.engine_home(target, engine)
     wrapper = home / GE.wrapper_name(engine)
     from merlin.common import provenance
+
     digest = provenance.file_digest(wrapper) if cover else "0" * 64
     (home / GE.ADOPTION_NAME).write_text(
-        json.dumps({"schema_version": "merlin.gsim-emulator-adoption.v1", "target": target,
-                    "files": {GE.wrapper_name(engine): {"sha256": digest}}}),
-        encoding="utf-8")
+        json.dumps(
+            {
+                "schema_version": "merlin.gsim-emulator-adoption.v1",
+                "target": target,
+                "files": {GE.wrapper_name(engine): {"sha256": digest}},
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_a_wrapper_only_home_is_a_built_engine_and_is_selected(out_root):
@@ -329,8 +346,7 @@ def test_a_wrapper_only_home_is_a_built_engine_and_is_selected(out_root):
     assert res.flavour == "wrapper"
     assert res.path.name == GE.wrapper_name("gsim")
 
-    sel = POL.select(target, {"gsim": lambda: GE.probe(target),
-                              "verilator": lambda: (True, "verilator is present")})
+    sel = POL.select(target, {"gsim": lambda: GE.probe(target), "verilator": lambda: (True, "verilator is present")})
     assert sel["engine"] == "gsim"
 
 
@@ -342,7 +358,7 @@ def test_a_wrapper_whose_adoption_record_misses_its_bytes_says_provenance_is_unr
     _adopt(target, cover=False)
 
     res = GE.resolve(target)
-    assert res.ok is True, res.reason          # loud, not fatal — same policy as an unreceipted binary
+    assert res.ok is True, res.reason  # loud, not fatal — same policy as an unreceipted binary
     assert res.receipt_status == "absent"
     assert "UNRECORDED" in res.reason
 
@@ -371,7 +387,7 @@ def test_a_binary_still_wins_when_a_home_holds_both_shapes(out_root):
 
 
 def test_an_empty_home_names_both_shapes_so_the_fix_is_actionable(out_root):
-    """"Absent" must say what would make it present — both installable shapes, not only one."""
+    """ "Absent" must say what would make it present — both installable shapes, not only one."""
     target = "fixture_empty"
     GE.gsim_home(target).mkdir(parents=True, exist_ok=True)
     res = GE.resolve(target)

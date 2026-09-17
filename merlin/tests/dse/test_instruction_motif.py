@@ -7,21 +7,34 @@ from merlin.targetgen.rocc import decode
 def primitive_trace():
     def constant(value):
         return {"kind": "const", "raw": value}
-    return {"instructions": [
-        {"class": "CONFIG_EX", "funct": 10, "rs1": constant(7), "rs2": constant(9),
-         "decoded": {"subtype": "EX"}},
-        {"class": "MVIN", "decoded": {"spad_addr": 0, "rows": 4, "cols": 4}},
-        {"class": "MVIN", "decoded": {"spad_addr": 8, "rows": 4, "cols": 4}},
-        {"class": "PRELOAD", "funct": 11, "rs1": constant(18), "rs2": constant(19),
-         "decoded": {"weight_spad": 8, "c_addr": 0, "accumulate": False}},
-        {"class": "COMPUTE_PRELOADED", "funct": 12, "rs1": constant(20), "rs2": constant(21),
-         "decoded": {"a_spad": 0}},
-    ]}
+
+    return {
+        "instructions": [
+            {"class": "CONFIG_EX", "funct": 10, "rs1": constant(7), "rs2": constant(9), "decoded": {"subtype": "EX"}},
+            {"class": "MVIN", "decoded": {"spad_addr": 0, "rows": 4, "cols": 4}},
+            {"class": "MVIN", "decoded": {"spad_addr": 8, "rows": 4, "cols": 4}},
+            {
+                "class": "PRELOAD",
+                "funct": 11,
+                "rs1": constant(18),
+                "rs2": constant(19),
+                "decoded": {"weight_spad": 8, "c_addr": 0, "accumulate": False},
+            },
+            {
+                "class": "COMPUTE_PRELOADED",
+                "funct": 12,
+                "rs1": constant(20),
+                "rs2": constant(21),
+                "decoded": {"a_spad": 0},
+            },
+        ]
+    }
 
 
 def configure(monkeypatch, selector=10):
-    monkeypatch.setattr(decode, "isa_constants", lambda target: {
-        "CONFIG_SUBTYPE": {selector: "CONFIG_EX"}, "CUSTOM_OPCODE": selector})
+    monkeypatch.setattr(
+        decode, "isa_constants", lambda target: {"CONFIG_SUBTYPE": {selector: "CONFIG_EX"}, "CUSTOM_OPCODE": selector}
+    )
 
 
 def test_actual_compute_payload_and_initialized_operands_define_domain(monkeypatch):
@@ -42,8 +55,7 @@ def test_actual_compute_payload_and_initialized_operands_define_domain(monkeypat
 def test_partial_overwrite_blocks_initialized_tile_proof(monkeypatch):
     configure(monkeypatch)
     trace = primitive_trace()
-    trace["instructions"].insert(3, {"class": "MVIN", "decoded": {
-        "spad_addr": 9, "rows": 1, "cols": 4}})
+    trace["instructions"].insert(3, {"class": "MVIN", "decoded": {"spad_addr": 9, "rows": 1, "cols": 4}})
     result = initialized_compute_primitives(trace, target="test-device")[0]
     assert any("partially overwritten" in missing for missing in result["missing"])
     assert result["domain_digest"] is None
@@ -94,39 +106,60 @@ def test_unknown_instruction_invalidates_prior_initialization(monkeypatch):
 def compiled_task_fixture(monkeypatch, *, operand_capacity=8, unknown_host=False):
     """Real LLVM SSA/assembly parse against a small independently supplied target fact set."""
     from types import SimpleNamespace
+
     from xdsl.dialects import llvm
     from xdsl.dialects.builtin import IntegerAttr, ModuleOp, i64
     from xdsl.ir import Block, Region
+
+    from merlin.perf.instruction_motif import extract_task_instruction_motif
     from merlin.targetgen import address_space
     from merlin.targetgen.address_space import Store
-    from merlin.perf.instruction_motif import extract_task_instruction_motif
 
-    isa = {"DIM": 4, "CUSTOM_OPCODE": 11, "FUNCT3": 3,
-           "ACC_I8": 1 << 31, "C_ACC": (1 << 31) | (1 << 29),
-           "ACC_ACCUM": 1 << 30, "FULL_C_BIT": 1 << 29,
-           "CONFIG_SUBTYPE": {0: "CONFIG_EX", 1: "CONFIG_LD", 2: "CONFIG_ST"},
-           "FUNCT_CLASS": {0: "CONFIG", 2: "MVIN", 3: "MVOUT", 4: "COMPUTE_PRELOADED",
-                           6: "PRELOAD"}}
+    isa = {
+        "DIM": 4,
+        "CUSTOM_OPCODE": 11,
+        "FUNCT3": 3,
+        "ACC_I8": 1 << 31,
+        "C_ACC": (1 << 31) | (1 << 29),
+        "ACC_ACCUM": 1 << 30,
+        "FULL_C_BIT": 1 << 29,
+        "CONFIG_SUBTYPE": {0: "CONFIG_EX", 1: "CONFIG_LD", 2: "CONFIG_ST"},
+        "FUNCT_CLASS": {0: "CONFIG", 2: "MVIN", 3: "MVOUT", 4: "COMPUTE_PRELOADED", 6: "PRELOAD"},
+    }
     monkeypatch.setattr(decode, "isa_constants", lambda target: isa)
-    stores = [Store("operand-sram", operand_capacity * 4, operand_capacity, 4, "i8", 8,
-                    4, operand_capacity, 1),
-              Store("result-sram", 128, 8, 4, "i32", 32, 16, 8, 1)]
+    stores = [
+        Store("operand-sram", operand_capacity * 4, operand_capacity, 4, "i8", 8, 4, operand_capacity, 1),
+        Store("result-sram", 128, 8, 4, "i32", 32, 16, 8, 1),
+    ]
     monkeypatch.setattr(address_space, "derive_address_space", lambda target: SimpleNamespace(stores=stores))
     ptr = llvm.LLVMPointerType()
     block = Block(arg_types=[ptr, ptr, ptr])
+
     def add(op):
         op.attributes["merlin.global_task"] = IntegerAttr(0, i64)
         block.add_op(op)
         return op.results[0] if op.results else None
+
     def const(n):
         return add(llvm.ConstantOp(IntegerAttr(n, i64), i64))
+
     def fence():
         add(llvm.InlineAsmOp("fence", "~{memory}", [], [], has_side_effects=True))
+
     def issue(funct, left, right):
-        add(llvm.InlineAsmOp(f".insn r {isa['CUSTOM_OPCODE']}, 3, {funct}, x0, $0, $1",
-                            "r,r", [left, right], [], has_side_effects=True))
+        add(
+            llvm.InlineAsmOp(
+                f".insn r {isa['CUSTOM_OPCODE']}, 3, {funct}, x0, $0, $1",
+                "r,r",
+                [left, right],
+                [],
+                has_side_effects=True,
+            )
+        )
+
     def packed(addr):
         return const((4 << 48) | (4 << 32) | addr)
+
     fence()
     issue(0, const(0), const(0))
     issue(0, const(1), const(4))
@@ -140,22 +173,29 @@ def compiled_task_fixture(monkeypatch, *, operand_capacity=8, unknown_host=False
         add(llvm.LoadOp(block.args[0], i64))
     fence()
     block.add_op(llvm.ReturnOp())
-    module = ModuleOp([llvm.FuncOp("kernel", llvm.LLVMFunctionType([ptr, ptr, ptr]),
-                                   body=Region([block]))])
+    module = ModuleOp([llvm.FuncOp("kernel", llvm.LLVMFunctionType([ptr, ptr, ptr]), body=Region([block]))])
     module.verify()
-    cb = {"params": {"global_program_plan": {"tasks": [{"task_index": 0, "kind": "contraction",
-                                                           "reads": ["A", "W"], "writes": ["Y"]}]}},
-          "kernel_abi": {"args": [{"tensor": name} for name in ("A", "W", "Y")]},
-          "tensors": {name: {"dtype": "i8", "shape": [4, 4]} for name in ("A", "W", "Y")}}
-    return extract_task_instruction_motif(artifact=str(module).encode(), command_buffer=cb,
-                                          target="derived-small-engine", task_index=0)
+    cb = {
+        "params": {
+            "global_program_plan": {
+                "tasks": [{"task_index": 0, "kind": "contraction", "reads": ["A", "W"], "writes": ["Y"]}]
+            }
+        },
+        "kernel_abi": {"args": [{"tensor": name} for name in ("A", "W", "Y")]},
+        "tensors": {name: {"dtype": "i8", "shape": [4, 4]} for name in ("A", "W", "Y")},
+    }
+    return extract_task_instruction_motif(
+        artifact=str(module).encode(), command_buffer=cb, target="derived-small-engine", task_index=0
+    )
 
 
 def test_structural_llvm_extractor_derives_capacity_and_keeps_timing_unknown(monkeypatch):
     result = compiled_task_fixture(monkeypatch)
     assert result.signature is not None, result.missing
     assert result.signature.to_dict()["capacity_regime"] == {
-        "operand-sram": "fits_single", "result-sram": "fits_double"}
+        "operand-sram": "fits_single",
+        "result-sram": "fits_double",
+    }
     assert result.facts["device_boundary_fences"] == {"entry": True, "exit": True}
     assert result.timing_context_missing
 

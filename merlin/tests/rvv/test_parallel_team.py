@@ -1,4 +1,5 @@
 """Per-region OpenMP team sizing is explicit, structural, and default-off."""
+
 import pytest
 
 from merlin.llvmlower import impr_features
@@ -13,7 +14,12 @@ from merlin.llvmlower.parallel_team import (
 
 def test_team_width_rounds_through_powers_and_caps():
     assert [team_width(cost, 100, 8) for cost in (0, 100, 101, 201, 401, 801)] == [
-        1, 1, 2, 4, 8, 8,
+        1,
+        1,
+        2,
+        4,
+        8,
+        8,
     ]
     assert team_width(1000, 100, 6) == 6
 
@@ -30,7 +36,8 @@ def test_feature_name_is_derived_and_conflicts_fail_closed():
 
 
 def test_rewrite_serializes_tiny_region_and_emits_per_region_num_threads():
-    module, report = apply_for_test(r'''module {
+    module, report = apply_for_test(
+        r"""module {
       func.func @forward() {
         %c0 = arith.constant 0 : index
         %c8 = arith.constant 8 : index
@@ -46,7 +53,10 @@ def test_rewrite_serializes_tiny_region_and_emits_per_region_num_threads():
         }
         return
       }
-    }''', work_per_thread=16, max_team=8)
+    }""",
+        work_per_thread=16,
+        max_team=8,
+    )
     assert report["plan"] == [8]
     assert module.count("omp.parallel") == 1
     assert "num_threads(%c8_i32 : i32)" in module

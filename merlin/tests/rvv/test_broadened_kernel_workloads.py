@@ -2,6 +2,7 @@
 model op census. Hermetic: generation + golden correctness + structured MLIR checks + the census
 weighting math on a synthetic module. No board, no m2m toolchain.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -34,9 +35,9 @@ def test_gen_binary_golden_and_ir(tmp_path, op, np_op):
     assert "reduction" not in str(gens[0].properties.get("iterator_types", ""))
 
 
-@pytest.mark.parametrize("op,np_red", [("sum", lambda x: x.sum(1)),
-                                       ("max", lambda x: x.max(1)),
-                                       ("min", lambda x: x.min(1))])
+@pytest.mark.parametrize(
+    "op,np_red", [("sum", lambda x: x.sum(1)), ("max", lambda x: x.max(1)), ("min", lambda x: x.min(1))]
+)
 def test_gen_reduce_golden_and_ir(tmp_path, op, np_red):
     b = workloads.gen_reduce_f32(tmp_path, op=op, M=8, N=64)
     ins, g = _inputs(b), _golden(b)
@@ -61,7 +62,7 @@ def test_gen_relu_clamps_both_ends(tmp_path):
 def test_gen_transpose_nonsquare_moves_data(tmp_path):
     b = workloads.gen_transpose_f32(tmp_path, R=16, C=8)
     ins, g = _inputs(b), _golden(b)
-    assert g.shape == (8, 16)                      # (C,R)
+    assert g.shape == (8, 16)  # (C,R)
     np.testing.assert_array_equal(g, ins["in0"].T)
     m = mq.parse(b / "model.mlir")
     gen = next(o for o in m.walk() if mq.op_name(o) == "linalg.generic")
@@ -96,7 +97,7 @@ def test_census_reduce_counts_reduction_axis(tmp_path):
     census = _load_census()
     b = workloads.gen_reduce_f32(tmp_path, op="sum", M=8, N=64)
     fams = census.census_bundle(b / "model.mlir")
-    assert fams["generic"]["work"] == 8 * 64            # M*N visited, 1-op body
+    assert fams["generic"]["work"] == 8 * 64  # M*N visited, 1-op body
     assert fams["generic"]["linalg_ops"] == {"linalg.generic": 1}
 
 
@@ -107,12 +108,15 @@ def test_new_generators_wired_into_cli_registry():
         assert op in workloads._GENERATORS, op
 
 
-@pytest.mark.parametrize("argv,expect", [
-    (["reduce_f32", "-M", "8", "-N", "64", "--elt-op", "sum"], "reduce_sum_f32_8x64"),
-    (["binary_f32", "-N", "128", "--elt-op", "add"], "binary_add_f32_128"),
-    (["relu_f32", "-N", "128"], "relu_f32_128"),
-    (["transpose_f32", "-M", "8", "-N", "16"], "transpose_f32_8x16"),
-])
+@pytest.mark.parametrize(
+    "argv,expect",
+    [
+        (["reduce_f32", "-M", "8", "-N", "64", "--elt-op", "sum"], "reduce_sum_f32_8x64"),
+        (["binary_f32", "-N", "128", "--elt-op", "add"], "binary_add_f32_128"),
+        (["relu_f32", "-N", "128"], "relu_f32_128"),
+        (["transpose_f32", "-M", "8", "-N", "16"], "transpose_f32_8x16"),
+    ],
+)
 def test_cli_main_generates_each_new_family(tmp_path, argv, expect):
     rc = workloads.main([*argv, "--out-root", str(tmp_path)])
     assert rc == 0

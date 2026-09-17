@@ -4,6 +4,7 @@ A build cache is only safe while its key covers every input that reaches the exe
 that matter are the ones that MUTATE one input and demand a different key. A test that only asserts
 "same inputs hit" passes on a cache that always hits, which is the defect, not the feature.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,8 +23,14 @@ ELF = "package_kernel.elf"
 class _Recipe:
     """The smallest object with the surface :func:`build_cache.recipe_token` reads."""
 
-    def __init__(self, script: Path, support: Path, march: str = "-march=rv64gc",
-                 load_address: int = 0x8000_0000, flag: str = "-O2"):
+    def __init__(
+        self,
+        script: Path,
+        support: Path,
+        march: str = "-march=rv64gc",
+        load_address: int = 0x8000_0000,
+        flag: str = "-O2",
+    ):
         self.link_script, self.support_sources = script, (support,)
         self.load_address, self._march, self._flag = load_address, march, flag
 
@@ -34,8 +41,7 @@ class _Recipe:
         return ["/usr/bin/false-compiler", self._flag, "-c", str(source), "-o", str(output)]
 
     def link_command(self, *, objects, output, link_script):
-        return ["/usr/bin/false-compiler", "-T", str(link_script), "-o", str(output),
-                *[str(o) for o in objects]]
+        return ["/usr/bin/false-compiler", "-T", str(link_script), "-o", str(output), *[str(o) for o in objects]]
 
 
 @pytest.fixture
@@ -77,10 +83,16 @@ def key_of(recipe, monkeypatch, store):
     monkeypatch.setattr(BC, "build_path", lambda target=None: (LOWERING,))
 
     def make(**over):
-        args = {"target": "some_target", "lowered_mlir_text": "module {}", "cb": {"commands": []},
-                "inputs": None, "recipe": recipe}
+        args = {
+            "target": "some_target",
+            "lowered_mlir_text": "module {}",
+            "cb": {"commands": []},
+            "inputs": None,
+            "recipe": recipe,
+        }
         args.update(over)
         return BC.build_identity(**args)
+
     return make
 
 
@@ -99,16 +111,20 @@ def _build(work: Path, text: str = "elf-bytes") -> Path:
 # THE KEY -- every mutation must be visible, and the paired direction must not be
 # --------------------------------------------------------------------------------------------
 
+
 def test_identical_inputs_give_one_key(key_of):
     assert key_of() is not None and key_of() == key_of()
 
 
-@pytest.mark.parametrize("mutation", [
-    {"lowered_mlir_text": "module { func.func @k() { return } }"},
-    {"cb": {"commands": [{"opcode": "MVIN"}]}},
-    {"inputs": {"A": [1, 2, 3]}},
-    {"target": "another_target"},
-])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"lowered_mlir_text": "module { func.func @k() { return } }"},
+        {"cb": {"commands": [{"opcode": "MVIN"}]}},
+        {"inputs": {"A": [1, 2, 3]}},
+        {"target": "another_target"},
+    ],
+)
 def test_every_input_that_reaches_the_executable_changes_the_key(key_of, mutation):
     assert key_of(**mutation) != key_of(), f"{sorted(mutation)} did not change the key"
 
@@ -116,10 +132,8 @@ def test_every_input_that_reaches_the_executable_changes_the_key(key_of, mutatio
 def test_a_recipe_change_changes_the_key(key_of, recipe, tmp_path):
     base = key_of()
     assert key_of(recipe=_Recipe(recipe.link_script, recipe.support_sources[0], flag="-O0")) != base
-    assert key_of(recipe=_Recipe(recipe.link_script, recipe.support_sources[0],
-                                 march="-march=rv64gcv")) != base
-    assert key_of(recipe=_Recipe(recipe.link_script, recipe.support_sources[0],
-                                 load_address=0x9000_0000)) != base
+    assert key_of(recipe=_Recipe(recipe.link_script, recipe.support_sources[0], march="-march=rv64gcv")) != base
+    assert key_of(recipe=_Recipe(recipe.link_script, recipe.support_sources[0], load_address=0x9000_0000)) != base
 
 
 def test_support_source_and_link_script_bytes_are_in_the_key(key_of, recipe):
@@ -149,16 +163,14 @@ def test_no_key_without_an_establishable_toolchain(recipe, monkeypatch, store):
     """The toolchain is outside the repo and outside every hardware pin: unresolved means no cache."""
     monkeypatch.setattr(BC, "build_path", lambda target=None: (LOWERING,))
     monkeypatch.setattr(BC, "toolchain_token", lambda compiler: None)
-    assert BC.build_identity(target="t", lowered_mlir_text="m", cb={}, inputs=None,
-                             recipe=recipe) is None
+    assert BC.build_identity(target="t", lowered_mlir_text="m", cb={}, inputs=None, recipe=recipe) is None
 
 
 def test_no_key_without_an_establishable_build_path(recipe, monkeypatch, store):
     """A build path missing a member would key executables on a partial compiler."""
     monkeypatch.setattr(BC, "toolchain_token", lambda compiler: "toolchain-sha")
     monkeypatch.setattr(BC, "build_path", lambda target=None: None)
-    assert BC.build_identity(target="t", lowered_mlir_text="m", cb={}, inputs=None,
-                             recipe=recipe) is None
+    assert BC.build_identity(target="t", lowered_mlir_text="m", cb={}, inputs=None, recipe=recipe) is None
 
 
 def test_the_real_build_path_refuses_a_target_with_no_backend():
@@ -188,6 +200,7 @@ def test_unresolvable_toolchain_reports_none(monkeypatch):
 # --------------------------------------------------------------------------------------------
 # THE STORE -- a hit reproduces the whole build; anything doubtful is a miss
 # --------------------------------------------------------------------------------------------
+
 
 def test_round_trip_restores_every_file_the_build_produced(key_of, tmp_path):
     key, first = key_of(), tmp_path / "first"
@@ -252,6 +265,7 @@ def test_no_key_never_hits_and_never_writes(tmp_path, store):
 # THE MARKER -- one ladder builds once, and a marker never speaks for a previous grade
 # --------------------------------------------------------------------------------------------
 
+
 def test_the_marker_makes_a_second_tier_free(key_of, tmp_path, store, monkeypatch):
     key, work = key_of(), tmp_path / "w"
     _build(work)
@@ -279,7 +293,7 @@ def test_forget_drops_the_claim(key_of, tmp_path, monkeypatch):
     assert not (work / BC.KEY_MARKER).exists()
     monkeypatch.setenv("MERLIN_ELF_BUILD_CACHE", str(tmp_path / "elsewhere"))
     assert BC.reuse(work, key_of(), ELF) is None
-    BC.forget(work)                      # idempotent: a directory with no marker is not an error
+    BC.forget(work)  # idempotent: a directory with no marker is not an error
 
 
 def test_the_whole_directory_is_stored_not_a_diff(key_of, tmp_path):
@@ -288,7 +302,7 @@ def test_the_whole_directory_is_stored_not_a_diff(key_of, tmp_path):
     would restore a stale file beside a fresh executable; storing everything cannot err that way."""
     work = tmp_path / "w"
     work.mkdir()
-    (work / "command_buffer.json").write_text('{"commands": []}')   # written by the emit step
+    (work / "command_buffer.json").write_text('{"commands": []}')  # written by the emit step
     _build(work)
     assert set(BC.contents(work)) == {"command_buffer.json", "kernel.ll", "harness.c", ELF}
     BC.store(key_of(), work, ELF)
@@ -321,8 +335,8 @@ def test_a_restore_skips_what_is_already_in_place(key_of, tmp_path, monkeypatch)
 
     second = tmp_path / "second"
     second.mkdir()
-    (second / "lowered.llvm.mlir").write_text("module { /* emitted */ }")   # identical: skip
-    (second / "kernel.ll").write_text("; STALE, wrong length")              # differs: replace
+    (second / "lowered.llvm.mlir").write_text("module { /* emitted */ }")  # identical: skip
+    (second / "kernel.ll").write_text("; STALE, wrong length")  # differs: replace
     copied = []
     real = BC.shutil.copyfile
     monkeypatch.setattr(BC.shutil, "copyfile", lambda s, d: (copied.append(Path(d).name), real(s, d))[1])
@@ -342,7 +356,7 @@ def test_a_same_length_but_different_file_is_replaced(key_of, tmp_path):
     BC.store(key_of(), work, ELF)
     second = tmp_path / "second"
     second.mkdir()
-    (second / "kernel.ll").write_text("; XX")            # same length, different bytes
+    (second / "kernel.ll").write_text("; XX")  # same length, different bytes
     assert BC.reuse(second, key_of(), ELF) is not None
     assert (second / "kernel.ll").read_text() == "; ir"
 

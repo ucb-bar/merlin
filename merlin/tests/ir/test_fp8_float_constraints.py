@@ -14,6 +14,7 @@ The second half is reader PARITY. merlin has two context builders; only `xdsl_di
 registered fp8, so the same capsule loaded through one reader and failed `type expected` in the
 other. Both now register it.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -65,8 +66,7 @@ def test_builtin_float_casts_are_unaffected():
 @pytest.mark.parametrize("fp8", ["f8E4M3FN", "f8E5M2"])
 def test_the_math_dialect_accepts_fp8_too(fp8):
     """`math` has its own `floatingPointLike`. Patching only `arith` leaves math ops refusing fp8."""
-    _roundtrip(
-        f"builtin.module {{ func.func @f(%x: {fp8}) {{ %t = math.absf %x : {fp8}\n func.return }} }}")
+    _roundtrip(f"builtin.module {{ func.func @f(%x: {fp8}) {{ %t = math.absf %x : {fp8}\n func.return }} }}")
 
 
 def test_the_float_constraint_still_refuses_a_non_float():

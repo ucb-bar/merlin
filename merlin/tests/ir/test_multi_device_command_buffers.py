@@ -11,13 +11,13 @@ regardless of which buffer it was appended to, so relaxing the cap without fixin
 not have produced two buffers -- it would have produced two buffers each carrying all of both their
 commands, which runs, and silently issues every command to both devices.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from merlin.xdsl_dialects import runtime as r
-from merlin.xdsl_dialects.lowering.emit_command_buffer import (emit_command_buffer,
-                                                               emit_command_buffers)
+from merlin.xdsl_dialects.lowering.emit_command_buffer import emit_command_buffer, emit_command_buffers
 from merlin.xdsl_dialects.lowering.interface_lowering import LoweringError
 
 pytest.importorskip("xdsl")
@@ -25,33 +25,42 @@ pytest.importorskip("xdsl")
 
 def _module(specs):
     """One func holding a (device, create, appends...) group per spec."""
-    from xdsl.dialects.builtin import (ArrayAttr, DictionaryAttr, FunctionType, ModuleOp,
-                                       StringAttr)
+    from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, FunctionType, ModuleOp, StringAttr
     from xdsl.dialects.func import FuncOp, ReturnOp
     from xdsl.ir import Block, Region
 
     blk = Block()
     for dev_name, target, tensors, outs, cmds in specs:
-        dev = r.DeviceGetOp(result_types=[r.DeviceType()], properties={
-            "device": StringAttr(dev_name), "backend": r.BackendAttr(r.Backend.SIMULATOR)})
+        dev = r.DeviceGetOp(
+            result_types=[r.DeviceType()],
+            properties={"device": StringAttr(dev_name), "backend": r.BackendAttr(r.Backend.SIMULATOR)},
+        )
         cb = r.CommandBufferCreateOp(
-            operands=[dev.dev], result_types=[r.CommandBufferType()],
-            properties={"target": StringAttr(target),
-                        "tensors": DictionaryAttr({k: StringAttr(v) for k, v in tensors.items()}),
-                        "outputs": ArrayAttr([StringAttr(o) for o in outs])})
+            operands=[dev.dev],
+            result_types=[r.CommandBufferType()],
+            properties={
+                "target": StringAttr(target),
+                "tensors": DictionaryAttr({k: StringAttr(v) for k, v in tensors.items()}),
+                "outputs": ArrayAttr([StringAttr(o) for o in outs]),
+            },
+        )
         blk.add_ops([dev, cb])
         for opcode, args in cmds:
-            blk.add_op(r.CommandBufferAppendOp(operands=[cb.cb], properties={
-                "opcode": StringAttr(opcode),
-                "args": DictionaryAttr({k: StringAttr(v) for k, v in args.items()})}))
+            blk.add_op(
+                r.CommandBufferAppendOp(
+                    operands=[cb.cb],
+                    properties={
+                        "opcode": StringAttr(opcode),
+                        "args": DictionaryAttr({k: StringAttr(v) for k, v in args.items()}),
+                    },
+                )
+            )
     blk.add_op(ReturnOp())
     return ModuleOp([FuncOp("main", FunctionType.from_lists([], []), Region([blk]))])
 
 
-_ONE = [("dev0", "alpha", {"W": "4x4:i8", "Y": "4x4:i32"}, ["Y"],
-         [("RES_PACK", {"src": "W", "dst": "W_res"})])]
-_TWO = _ONE + [("dev1", "beta", {"V": "8x8:f32", "Z": "8x8:f32"}, ["Z"],
-                [("VECTOR_MAP", {"src": "V", "dst": "Z"})])]
+_ONE = [("dev0", "alpha", {"W": "4x4:i8", "Y": "4x4:i32"}, ["Y"], [("RES_PACK", {"src": "W", "dst": "W_res"})])]
+_TWO = _ONE + [("dev1", "beta", {"V": "8x8:f32", "Z": "8x8:f32"}, ["Z"], [("VECTOR_MAP", {"src": "V", "dst": "Z"})])]
 
 
 def test_one_device_is_unchanged():

@@ -1,9 +1,9 @@
 """A constant quantized weight transpose must not become per-inference dequant/requant work."""
+
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower.passes_quant_int import lower_contraction_int8
 
-
-IR = r'''builtin.module {
+IR = r"""builtin.module {
   func.func @forward(%aq: tensor<1x8xi8>, %as: tensor<f32>, %az: tensor<i64>,
                      %wq: tensor<4x8xi8>, %ws: tensor<4xf32>, %wz: tensor<4xi64>)
       -> tensor<1x4xf32> {
@@ -23,7 +23,7 @@ IR = r'''builtin.module {
       outs(%f : tensor<1x4xf32>) -> tensor<1x4xf32>
     func.return %r : tensor<1x4xf32>
   }
-}'''
+}"""
 
 
 def test_quantized_weight_is_transposed_as_i8_without_runtime_requantization():
@@ -32,8 +32,9 @@ def test_quantized_weight_is_transposed_as_i8_without_runtime_requantization():
     assert lower_contraction_int8(module, report_out=report) == 1
     assert report["transposed_quantized_weight_reused"] == 1
 
-    transposes = [op for op in module.walk() if op.name == "linalg.transpose"
-                  and str(op.results[0].type) == "tensor<8x4xi8>"]
+    transposes = [
+        op for op in module.walk() if op.name == "linalg.transpose" and str(op.results[0].type) == "tensor<8x4xi8>"
+    ]
     assert len(transposes) == 1
     assert str(transposes[0].operands[0].type) == "tensor<4x8xi8>"
 

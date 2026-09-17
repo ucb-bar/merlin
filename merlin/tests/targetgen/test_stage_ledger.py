@@ -42,10 +42,13 @@ def test_the_six_round_case_edit_lands_but_emission_is_identical(tmp_path):
     """The real failure: the agent edits its emitter every round and every emitted artifact is
     byte-identical, so no numeric verdict CAN move. This is the line that was never printed."""
     r0 = _round(tmp_path, "r0", {"pipeline.py": "v1"}, {"AF6": {"cb.json": "{}"}, "AT7": {"cb.json": "[]"}})
-    r1 = _round(tmp_path, "r1",
-                {"pipeline.py": "v2 — a real edit"},                      # submission DID change
-                {"AF6": {"cb.json": "{}"}, "AT7": {"cb.json": "[]"}},     # emission did NOT
-                prev=r0)
+    r1 = _round(
+        tmp_path,
+        "r1",
+        {"pipeline.py": "v2 — a real edit"},  # submission DID change
+        {"AF6": {"cb.json": "{}"}, "AT7": {"cb.json": "[]"}},  # emission did NOT
+        prev=r0,
+    )
     assert r1["submission_moved"] is True
     assert r1["emit_moved"] is False
     assert r1["diagnosis"] == SL.EMIT_INSENSITIVE_TO_EDIT
@@ -54,8 +57,7 @@ def test_the_six_round_case_edit_lands_but_emission_is_identical(tmp_path):
 
 def test_one_byte_of_emitted_change_is_emit_moved(tmp_path):
     r0 = _round(tmp_path, "r0", {"pipeline.py": "v1"}, {"AF6": {"cb.json": "{}"}, "AT7": {"cb.json": "[]"}})
-    r1 = _round(tmp_path, "r1", {"pipeline.py": "v2"},
-                {"AF6": {"cb.json": "{ }"}, "AT7": {"cb.json": "[]"}}, prev=r0)
+    r1 = _round(tmp_path, "r1", {"pipeline.py": "v2"}, {"AF6": {"cb.json": "{ }"}, "AT7": {"cb.json": "[]"}}, prev=r0)
     assert r1["diagnosis"] == SL.EMIT_MOVED
     assert r1["capsules"]["AF6"]["verdicts"]["cb.json"] == SL.CHANGED
     # the capsule that really did not move is still named, so a partial move is not read as a full one
@@ -66,14 +68,13 @@ def test_emission_that_stops_producing_a_file_is_absent_not_silence(tmp_path):
     r0 = _round(tmp_path, "r0", {"p.py": "v1"}, {"AF6": {"cb.json": "{}", "kernel.S": ".word 0"}})
     r1 = _round(tmp_path, "r1", {"p.py": "v2"}, {"AF6": {"cb.json": "{}"}}, prev=r0)
     assert r1["capsules"]["AF6"]["verdicts"]["kernel.S"] == SL.ABSENT
-    assert r1["emit_moved"] is True          # losing an artifact IS movement, and must be visible
+    assert r1["emit_moved"] is True  # losing an artifact IS movement, and must be visible
 
 
 def test_scratch_dirs_do_not_manufacture_movement(tmp_path):
     """A __pycache__ rewrite on every import would report CHANGED forever and destroy the signal."""
     r0 = _round(tmp_path, "r0", {"p.py": "v1", "__pycache__/p.pyc": "a"}, {"AF6": {"cb.json": "{}"}})
-    r1 = _round(tmp_path, "r1", {"p.py": "v1", "__pycache__/p.pyc": "DIFFERENT"}, {"AF6": {"cb.json": "{}"}},
-                prev=r0)
+    r1 = _round(tmp_path, "r1", {"p.py": "v1", "__pycache__/p.pyc": "DIFFERENT"}, {"AF6": {"cb.json": "{}"}}, prev=r0)
     assert all("__pycache__" not in k for k in r1["submission_files"])
     assert r1["diagnosis"] == SL.NO_SUBMISSION_CHANGE
 
@@ -102,7 +103,7 @@ def test_an_unchanged_unknown_never_reads_as_unchanged(tmp_path):
 def test_ledger_is_json_serializable_and_summarizes(tmp_path):
     r0 = _round(tmp_path, "r0", {"p.py": "v1"}, {"AF6": {"cb.json": "{}"}})
     r1 = _round(tmp_path, "r1", {"p.py": "v2"}, {"AF6": {"cb.json": "{}"}}, prev=r0)
-    json.dumps(r1)                                     # lands in the run dir as JSON
+    json.dumps(r1)  # lands in the run dir as JSON
     line = SL.summarize(r1)
     assert "emit_insensitive_to_edit" in line and "unmoved=1" in line
 
@@ -110,6 +111,7 @@ def test_ledger_is_json_serializable_and_summarizes(tmp_path):
 def test_no_target_name_or_regex_in_the_module():
     """The cardinal rule: this must stay a byte comparator, with no target fact and no regex."""
     from merlin.common.paths import repo_root
+
     src = (repo_root() / "merlin/python/merlin/targetgen/stage_ledger.py").read_text()
     assert "import re" not in src and "from re " not in src
     for name in ("gemmini", "atlas", "radiance", "saturn", "muon"):
@@ -119,16 +121,23 @@ def test_no_target_name_or_regex_in_the_module():
 def test_run_level_boolean_hides_a_plateau_but_failing_and_frozen_does_not(tmp_path):
     """The replayed real case: SOME capsule moves every round, so a run-level flag says 'moved' while
     the failing set is frozen. The join with the verdict is what names the actionable class."""
-    r0 = _round(tmp_path, "r0", {"p.py": "v1"},
-                {"AF6": {"cb": "x"}, "AF7": {"cb": "y"}, "AT7": {"cb": "z"}})
-    r1 = _round(tmp_path, "r1", {"p.py": "v2"},
-                {"AF6": {"cb": "x"}, "AF7": {"cb": "y"}, "AT7": {"cb": "MOVED"}},   # only the PASSING one
-                prev=r0)
-    assert r1["emit_moved"] is True                     # run-level: "something moved" -- misleading
+    r0 = _round(tmp_path, "r0", {"p.py": "v1"}, {"AF6": {"cb": "x"}, "AF7": {"cb": "y"}, "AT7": {"cb": "z"}})
+    r1 = _round(
+        tmp_path,
+        "r1",
+        {"p.py": "v2"},
+        {"AF6": {"cb": "x"}, "AF7": {"cb": "y"}, "AT7": {"cb": "MOVED"}},  # only the PASSING one
+        prev=r0,
+    )
+    assert r1["emit_moved"] is True  # run-level: "something moved" -- misleading
     assert SL.frozen_fraction(r1) == 2 / 3
-    verdict = {"per_capsule": [{"capsule": "AF6", "status": "fail"},
-                               {"capsule": "AF7", "status": "fail"},
-                               {"capsule": "AT7", "status": "pass"}]}
+    verdict = {
+        "per_capsule": [
+            {"capsule": "AF6", "status": "fail"},
+            {"capsule": "AF7", "status": "fail"},
+            {"capsule": "AT7", "status": "pass"},
+        ]
+    }
     assert SL.failing_and_frozen(r1, verdict) == ["AF6", "AF7"]
     assert "frozen=67%" in SL.summarize(r1)
 
@@ -136,9 +145,8 @@ def test_run_level_boolean_hides_a_plateau_but_failing_and_frozen_does_not(tmp_p
 def test_failing_and_frozen_is_empty_when_the_failing_set_moved(tmp_path):
     r0 = _round(tmp_path, "r0", {"p.py": "v1"}, {"AF6": {"cb": "x"}, "AT7": {"cb": "z"}})
     r1 = _round(tmp_path, "r1", {"p.py": "v2"}, {"AF6": {"cb": "MOVED"}, "AT7": {"cb": "z"}}, prev=r0)
-    verdict = {"per_capsule": [{"capsule": "AF6", "status": "fail"},
-                               {"capsule": "AT7", "status": "pass"}]}
-    assert SL.failing_and_frozen(r1, verdict) == []     # it moved and was still wrong -- a real attempt
+    verdict = {"per_capsule": [{"capsule": "AF6", "status": "fail"}, {"capsule": "AT7", "status": "pass"}]}
+    assert SL.failing_and_frozen(r1, verdict) == []  # it moved and was still wrong -- a real attempt
 
 
 def test_gated_capsules_are_not_counted_as_failing(tmp_path):

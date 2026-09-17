@@ -20,6 +20,7 @@ Why these three concerns and not the exporter itself:
     recipe. ``weight_only`` const-folds to an fp32 GEMM. A cell must record which one ran, and the
     recipes must never be silently interchangeable.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -67,8 +68,17 @@ def _export_qd8(model: str, b, tmp: Path | None = None):
 
     work = (tmp or build_dir() / "baselines" / "executorch" / "runs") / f"{model}_int8_qd8_regress"
     work.mkdir(parents=True, exist_ok=True)
-    return et.export_pte(model, b, work, xnnpack=True, quantize=True, compute_golden=True,
-                         qd8=True, extra_env=et.loader_env(model), timeout=1800)
+    return et.export_pte(
+        model,
+        b,
+        work,
+        xnnpack=True,
+        quantize=True,
+        compute_golden=True,
+        qd8=True,
+        extra_env=et.loader_env(model),
+        timeout=1800,
+    )
 
 
 def _workload(root, model: str, capture_toml: str):
@@ -86,11 +96,20 @@ def test_export_cache_reuses_only_the_exact_recorded_artifact(tmp_path):
         path.write_bytes(contents)
     key = {"recipe": "qd8", "identity": "pinned"}
     cache = tmp_path / "export_result.json"
-    cache.write_text(json.dumps({
-        "key": key, "pte": et._file_identity(pte), "ptd_files": [],
-        "input_files": [str(inputs)], "golden": str(golden),
-        "delegated_nodes": 3, "total_call_nodes": 4, "summary": {"cached": True},
-    }))
+    cache.write_text(
+        json.dumps(
+            {
+                "key": key,
+                "pte": et._file_identity(pte),
+                "ptd_files": [],
+                "input_files": [str(inputs)],
+                "golden": str(golden),
+                "delegated_nodes": 3,
+                "total_call_nodes": 4,
+                "summary": {"cached": True},
+            }
+        )
+    )
 
     result = et._read_export_cache(cache, key)
     assert result is not None and result.pte == pte
@@ -154,24 +173,30 @@ def test_export_can_replay_the_capture_bundle_weights_exactly(tmp_path, monkeypa
 
 # ------------------------------------------------------------------- loader environment derivation
 
+
 def test_capture_locations_keeps_paths_and_drops_fidelity_knobs(tmp_path, monkeypatch):
     """A capture.toml [env] mixes per-host LOCATIONS with SMOKE knobs; only the former may replay."""
     cache = tmp_path / "hf_cache"
     cache.mkdir()
-    _workload(tmp_path, "toy", f'''
+    _workload(
+        tmp_path,
+        "toy",
+        f'''
 venv = "/nowhere/.venv"
 
 [env]
 HF_HOME = "{cache}"
 M2M_TOY_LAYERS = "2"
 M2M_TOY_SESSION = "e2e"
-''')
+''',
+    )
     monkeypatch.setenv("MERLIN_MODEL2MLIR", str(tmp_path))
 
     env = et.capture_locations("toy")
     assert env == {"HF_HOME": str(cache)}, (
         "only the entry naming an existing directory is a location; a layer count and a session "
-        "mode are fidelity knobs whose capture.toml value is the SMOKE setting")
+        "mode are fidelity knobs whose capture.toml value is the SMOKE setting"
+    )
 
 
 def test_capture_locations_drops_a_path_that_is_not_present(tmp_path, monkeypatch):
@@ -181,7 +206,7 @@ def test_capture_locations_drops_a_path_that_is_not_present(tmp_path, monkeypatc
     assert et.capture_locations("toy") == {}
 
 
-@pytest.mark.parametrize("body", ["", "venv = \"/x\"\n", "[env]\nX = 3\n", "!! not toml !!"])
+@pytest.mark.parametrize("body", ["", 'venv = "/x"\n', "[env]\nX = 3\n", "!! not toml !!"])
 def test_capture_locations_is_empty_when_there_is_nothing_to_read(tmp_path, monkeypatch, body):
     """No workload, no [env], a non-string value, or unparseable TOML -> no environment, no crash."""
     _workload(tmp_path, "toy", body)
@@ -198,8 +223,7 @@ def test_loader_env_lets_the_curated_full_fidelity_knob_win(tmp_path, monkeypatc
     other.mkdir()
     _workload(tmp_path, "toy", f'[env]\nHF_HOME = "{cache}"\nM2M_TOY_LAYERS = "2"\n')
     monkeypatch.setenv("MERLIN_MODEL2MLIR", str(tmp_path))
-    monkeypatch.setattr(et._bundle, "full_env",
-                        lambda m: {"M2M_TOY_LAYERS": "26", "HF_HOME": str(other)})
+    monkeypatch.setattr(et._bundle, "full_env", lambda m: {"M2M_TOY_LAYERS": "26", "HF_HOME": str(other)})
 
     assert et.loader_env("toy") == {"HF_HOME": str(other), "M2M_TOY_LAYERS": "26"}
 
@@ -209,17 +233,19 @@ def test_loader_env_of_a_real_workload_carries_no_fidelity_knob():
     for model in et.DEFAULT_MODELS:
         for key, value in et.capture_locations(model).items():
             from pathlib import Path
+
             assert Path(value).is_dir(), f"{model}: {key}={value!r} is not a location"
 
 
 # --------------------------------------------------------------------------- input-arity reconcile
 
+
 def test_reconcile_input_arity_pads_from_the_loader_example():
     """A bundle that stores only the VARIED tensors is padded with the loader's initial state."""
     helper = _load_et_export_helper()
     captured, keys, note = helper.reconcile_input_arity(
-        ("depth", "desvel", "quat"), ["in0", "in1", "in2"],
-        ("d", "v", "q", _Shaped((3, 128)), _Shaped((3, 128))))
+        ("depth", "desvel", "quat"), ["in0", "in1", "in2"], ("d", "v", "q", _Shaped((3, 128)), _Shaped((3, 128)))
+    )
 
     assert captured == ("depth", "desvel", "quat", _Shaped((3, 128)), _Shaped((3, 128)))
     assert keys == ["in0", "in1", "in2", "loader_init0", "loader_init1"]
@@ -283,8 +309,10 @@ def test_captured_state_reconciliation_handles_framework_namespace_drift():
     remapped, note = helper.reconcile_captured_state_dict(captured, live)
 
     assert list(remapped) == list(live)
-    assert remapped["vla.model.language_model.layers.0.mlp.down_proj.weight"] is captured[
-        "vla.language_model.model.layers.0.mlp.down_proj.weight"]
+    assert (
+        remapped["vla.model.language_model.layers.0.mlp.down_proj.weight"]
+        is captured["vla.language_model.model.layers.0.mlp.down_proj.weight"]
+    )
     assert remapped["vla.lm_head.weight"] is captured["vla.language_model.lm_head.weight"]
     assert "structurally remapped 3/3" in note
 
@@ -304,11 +332,11 @@ def test_captured_state_reconciliation_refuses_an_ambiguous_same_shape_guess():
 
 # ------------------------------------------------------------------------------- int8 recipe choice
 
+
 def test_qd8_and_weight_only_are_not_interchangeable():
     """The two int8 recipes are different arithmetics; asking for both must raise, not pick one."""
     with pytest.raises(ValueError) as e:
-        et.run_model("small_llama", "int8", qd8=True, int8_whole_model=True,
-                     run_board=False, write=False)
+        et.run_model("small_llama", "int8", qd8=True, int8_whole_model=True, run_board=False, write=False)
     assert "two different int8 recipes" in str(e.value)
 
 
@@ -325,14 +353,16 @@ def test_a_missing_bundle_names_the_gap_and_never_runs_the_board(tmp_path, monke
 
 # ------------------------------------------------------------------- the failure a gap reports
 
+
 def test_failure_summary_leads_with_the_exception_not_a_stack_frame():
     """Every consumer truncates a long gap_reason from the FRONT, so the error must come first."""
     out = et._failure_summary(
-        'Traceback (most recent call last):\n'
+        "Traceback (most recent call last):\n"
         '  File "/x/_program.py", line 1328, in to_edge_transform_and_lower\n'
-        '    edge_manager = _gen(...)\n'
-        '                   ^^^^^^^^\n'
-        'RuntimeError: PT2E int8 quantization (qd8) failed: indices must be long\n')
+        "    edge_manager = _gen(...)\n"
+        "                   ^^^^^^^^\n"
+        "RuntimeError: PT2E int8 quantization (qd8) failed: indices must be long\n"
+    )
 
     assert out.startswith("RuntimeError: PT2E int8 quantization (qd8) failed:")
     assert "_program.py" not in out and "^^^" not in out
@@ -352,6 +382,7 @@ def test_failure_summary_never_returns_nothing():
 
 # ---------------------------------------------------------------------------- the model roster
 
+
 def test_the_default_roster_is_not_a_single_architecture():
     """The int8 bar is a MAJORITY of a DIVERSE set, so the roster must span more than one family."""
     for model in ("small_llama", "spectformer", "lstmnetvit", "gemma2_2b"):
@@ -363,12 +394,12 @@ def test_every_rostered_model_has_a_torch_loader():
     root = et._bundle.model2mlir_root()
     if not (root / "workloads").is_dir():
         pytest.skip(f"model2MLIR checkout absent at {root} (set MERLIN_M2M_DIR)")
-    missing = [m for m in et.DEFAULT_MODELS
-               if not et._bundle.resolve(m, "int8").torch_loader.is_file()]
+    missing = [m for m in et.DEFAULT_MODELS if not et._bundle.resolve(m, "int8").torch_loader.is_file()]
     assert not missing, f"no model2MLIR torch loader for {missing}"
 
 
 # ------------------------------------------------------- the two PT2E blocks that refused cells
+
 
 def test_bounding_the_channels_last_walk_always_reports_whether_it_applied():
     """The qd8 NHWC fix is a hand-port of a PINNED upstream method, so it must never apply silently.
@@ -388,9 +419,9 @@ def test_bounding_the_channels_last_walk_always_reports_whether_it_applied():
     mod = _load_et_export_helper()
     status = mod._bound_dynamic_qdq_channels_last_walk()
     assert isinstance(status, str) and status
-    assert (("walk bounded to the qdq chain" in status
-             and "rewiring bounded to qdq consumers" in status)
-            or "NOT bounded (" in status), status
+    assert (
+        "walk bounded to the qdq chain" in status and "rewiring bounded to qdq consumers" in status
+    ) or "NOT bounded (" in status, status
 
 
 @pytest.mark.slow
@@ -448,10 +479,15 @@ def test_the_vision_patch_shim_is_wired_into_the_compat_shims():
     # so a wider slice would still match after the call was deleted -- a check that cannot fail.
     body = src.partition("def _apply_loader_compat_shims(")[2].partition("\n    return applied")[0]
     assert body, "could not isolate _apply_loader_compat_shims' body"
-    assert "_shape_static_vision_patch_positions()" in body, \
+    assert "_shape_static_vision_patch_positions()" in body, (
         "_apply_loader_compat_shims no longer installs the vision patch-position shim"
-    for name in ("_vision_position_ids", "_shape_static_vision_patch_forward",
-                 "_frozen_vision_patch_forward", "verify_shape_static_vision_patch"):
+    )
+    for name in (
+        "_vision_position_ids",
+        "_shape_static_vision_patch_forward",
+        "_frozen_vision_patch_forward",
+        "verify_shape_static_vision_patch",
+    ):
         assert callable(getattr(mod, name, None)), name
 
 

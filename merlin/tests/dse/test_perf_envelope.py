@@ -12,6 +12,7 @@ Three things are pinned here, each of which a plausible implementation gets wron
 The RTL facts used are the ones the depth walk actually produced on this host; where they are not
 cached the test skips, because an absent cache is "did not run", not a pass.
 """
+
 from __future__ import annotations
 
 import functools
@@ -64,8 +65,10 @@ def _timing(target: str) -> list[dict]:
         pytest.skip(f"RTL facts for the {target} archetype unavailable: {exc}")
     records = body.get("timing")
     if not records:
-        pytest.skip(f"no cached timing facts for {target}: UNCACHED is not absent -- run "
-                    "circt_introspect.dump_facts to build them (~70 s/target)")
+        pytest.skip(
+            f"no cached timing facts for {target}: UNCACHED is not absent -- run "
+            "circt_introspect.dump_facts to build them (~70 s/target)"
+        )
     return records
 
 
@@ -117,10 +120,8 @@ def test_partial_depth_is_refused_by_name_and_is_never_a_latency():
 def test_the_dominant_resource_of_each_archetype_refuses():
     # This is the hard constraint, not an edge case: on one archetype the movement engine refuses
     # while movement is the majority of every cycle count; on the other the mesh itself refuses.
-    assert isinstance(FixedTerm.from_pipeline_depth(_module("atlas", "DmaEngine"),
-                                                    name="dma_fill"), Unavailable)
-    assert isinstance(FixedTerm.from_pipeline_depth(_module("gemmini", "Mesh"),
-                                                    name="mesh_fill"), Unavailable)
+    assert isinstance(FixedTerm.from_pipeline_depth(_module("atlas", "DmaEngine"), name="dma_fill"), Unavailable)
+    assert isinstance(FixedTerm.from_pipeline_depth(_module("gemmini", "Mesh"), name="mesh_fill"), Unavailable)
 
 
 def test_unreachable_rtl_is_a_different_refusal_from_a_walked_module_that_declined():
@@ -140,8 +141,7 @@ def test_the_systolic_fill_law_and_the_rtl_walk_agree():
     dim = _suite()["_meta"]["mxu_dim"]
     law = FixedTerm.from_fill_law("systolic_2d", dim, name="mxu_fill", resource="mxu")
     assert law.cycles == 2 * dim - 2 == 62
-    walked = FixedTerm.from_pipeline_depth(_module("atlas", "SystolicArray"), name="mxu_fill",
-                                           resource="mxu")
+    walked = FixedTerm.from_pipeline_depth(_module("atlas", "SystolicArray"), name="mxu_fill", resource="mxu")
     assert isinstance(walked, FixedTerm)
     assert walked.cycles == law.cycles
 
@@ -150,13 +150,11 @@ def test_the_systolic_fill_law_and_the_rtl_walk_agree():
 
 
 def _dma_samples() -> list[tuple[float, float]]:
-    return [(k["arc"]["reads"] + k["arc"]["writes"], k["arc"]["dma_busy"])
-            for k in _suite()["kernels"].values()]
+    return [(k["arc"]["reads"] + k["arc"]["writes"], k["arc"]["dma_busy"]) for k in _suite()["kernels"].values()]
 
 
 def test_the_movement_peak_is_an_observed_ceiling_and_bounds_every_workload():
-    peak = Peak.observed_ceiling("dma", _dma_samples(), unit="beats",
-                                 provenance="per-cycle activity decomposition")
+    peak = Peak.observed_ceiling("dma", _dma_samples(), unit="beats", provenance="per-cycle activity decomposition")
     assert peak.known and peak.is_ceiling
     assert peak.n_samples == 21
     assert round(peak.value, 6) == 0.999024
@@ -170,8 +168,7 @@ def test_a_demand_that_does_not_drive_occupancy_is_refuted_rather_than_priced():
     # them while the engine is charged zero cycles. No positive rate can bound that, so the peak is
     # UNKNOWN -- the alternative is a model that predicts more cycles than the hardware spent.
     kernels = _suite()["kernels"]
-    samples = [(sum(1 for fam, _m, _i in k["op_stream"] if fam == "Vector"), k["arc"]["vpu"])
-               for k in kernels.values()]
+    samples = [(sum(1 for fam, _m, _i in k["op_stream"] if fam == "Vector"), k["arc"]["vpu"]) for k in kernels.values()]
     assert any(d > 0 and b == 0 for d, b in samples), "the refuting point must be in the corpus"
     peak = Peak.observed_ceiling("vpu", samples, unit="ops", provenance="program op stream")
     assert not peak.known
@@ -198,8 +195,7 @@ def test_an_unknown_peak_must_say_why():
 
 
 def _peak(value: float = 1.0) -> Peak:
-    return Peak(resource="dma", value=value, unit="bytes", evidence_kind="measured",
-                provenance="observed")
+    return Peak(resource="dma", value=value, unit="bytes", evidence_kind="measured", provenance="observed")
 
 
 def test_an_algorithmic_byte_demand_without_amplification_is_unknown_not_optimistic():
@@ -212,23 +208,23 @@ def test_an_algorithmic_byte_demand_without_amplification_is_unknown_not_optimis
 
 
 def test_an_algorithmic_demand_is_priced_only_at_its_measured_amplification():
-    d = ResourceDemand("dma", ResourceKind.MOVEMENT, 4096, "bytes", basis=Basis.ALGORITHMIC,
-                       amplification=16.0)
+    d = ResourceDemand("dma", ResourceKind.MOVEMENT, 4096, "bytes", basis=Basis.ALGORITHMIC, amplification=16.0)
     assert resource_time(d, _peak()).cycles == 4096 * 16.0
-    assert resource_time(ResourceDemand("dma", ResourceKind.MOVEMENT, 4096 * 16, "bytes"),
-                         _peak()).cycles == 4096 * 16.0
+    assert (
+        resource_time(ResourceDemand("dma", ResourceKind.MOVEMENT, 4096 * 16, "bytes"), _peak()).cycles == 4096 * 16.0
+    )
 
 
 def test_applying_an_amplification_to_a_moved_demand_is_refused_as_double_counting():
     with pytest.raises(ValueError, match="twice"):
-        ResourceDemand("dma", ResourceKind.MOVEMENT, 4096, "bytes", basis=Basis.MOVED,
-                       amplification=16.0)
+        ResourceDemand("dma", ResourceKind.MOVEMENT, 4096, "bytes", basis=Basis.MOVED, amplification=16.0)
 
 
 def test_an_unknown_peak_propagates_into_the_time_with_its_own_reason():
     d = ResourceDemand("dma", ResourceKind.MOVEMENT, 4096, "bytes")
-    t = resource_time(d, Peak.unknown("dma", "bytes", "the engine's module refuses: 21/21 cyclic",
-                                      provenance="rtl walk"))
+    t = resource_time(
+        d, Peak.unknown("dma", "bytes", "the engine's module refuses: 21/21 cyclic", provenance="rtl walk")
+    )
     assert not t.known
     assert "21/21 cyclic" in t.reason
 
@@ -237,8 +233,10 @@ def test_an_unknown_peak_propagates_into_the_time_with_its_own_reason():
 
 
 def _times(*pairs: tuple[str, float]) -> list[ResourceTime]:
-    return [ResourceTime(resource=n, kind=ResourceKind.COMPUTE, cycles=c, unit="cycles",
-                         basis=Basis.MOVED) for n, c in pairs]
+    return [
+        ResourceTime(resource=n, kind=ResourceKind.COMPUTE, cycles=c, unit="cycles", basis=Basis.MOVED)
+        for n, c in pairs
+    ]
 
 
 def test_the_three_operators_give_the_three_documented_answers():
@@ -278,11 +276,9 @@ def test_no_composition_falls_below_the_busiest_single_resource():
 def test_workload_intercepts_sit_outside_the_overlap_and_resource_fills_inside_it():
     reset = FixedTerm(name="reset", cycles=12)
     ts = _times(("a", 100.0), ("b", 40.0))
-    assert compose(ts, operator=Composition.MAX, eta=1.0,
-                   workload_fixed=[reset]).cycles == 112.0
+    assert compose(ts, operator=Composition.MAX, eta=1.0, workload_fixed=[reset]).cycles == 112.0
     with pytest.raises(ValueError, match="inside that engine"):
-        compose(ts, operator=Composition.SUM, eta=0.0,
-                workload_fixed=[FixedTerm(name="fill", cycles=62, resource="a")])
+        compose(ts, operator=Composition.SUM, eta=0.0, workload_fixed=[FixedTerm(name="fill", cycles=62, resource="a")])
 
 
 def test_a_fixed_term_of_zero_cycles_is_legal_and_a_negative_one_is_not():
@@ -295,9 +291,16 @@ def test_a_fixed_term_of_zero_cycles_is_legal_and_a_negative_one_is_not():
 
 
 def test_an_unresolved_resource_makes_the_bound_unknown_but_keeps_a_partial_one():
-    ts = _times(("a", 100.0)) + [ResourceTime(
-        resource="b", kind=ResourceKind.MOVEMENT, cycles=UNKNOWN, unit="cycles",
-        basis=Basis.MOVED, reason="its module refuses")]
+    ts = _times(("a", 100.0)) + [
+        ResourceTime(
+            resource="b",
+            kind=ResourceKind.MOVEMENT,
+            cycles=UNKNOWN,
+            unit="cycles",
+            basis=Basis.MOVED,
+            reason="its module refuses",
+        )
+    ]
     c = compose(ts, operator=Composition.SUM, eta=0.0)
     assert c.cycles is UNKNOWN
     assert c.partial_cycles == 100.0
@@ -309,9 +312,22 @@ def test_an_unresolved_resource_makes_the_bound_unknown_but_keeps_a_partial_one(
 def test_the_partial_bound_carries_a_different_name_from_the_full_one():
     # Same discipline as the RTL walk's pipeline_depth vs partial_depth: two differently derived
     # numbers must not share one field.
-    env = envelope("w", _times(("a", 10.0)) + [ResourceTime(
-        resource="b", kind=ResourceKind.COMPUTE, cycles=UNKNOWN, unit="cycles", basis=Basis.MOVED,
-        reason="unresolved")], operator=Composition.SUM, eta=0.0)
+    env = envelope(
+        "w",
+        _times(("a", 10.0))
+        + [
+            ResourceTime(
+                resource="b",
+                kind=ResourceKind.COMPUTE,
+                cycles=UNKNOWN,
+                unit="cycles",
+                basis=Basis.MOVED,
+                reason="unresolved",
+            )
+        ],
+        operator=Composition.SUM,
+        eta=0.0,
+    )
     assert env.lower_bound_cycles is UNKNOWN
     assert env.partial_lower_bound_cycles == 10.0
     assert env.to_dict()["lower_bound_cycles"] == "UNKNOWN"
@@ -322,8 +338,9 @@ def test_the_partial_bound_carries_a_different_name_from_the_full_one():
 
 
 def test_the_envelope_names_the_binding_resource_and_the_margin_to_second():
-    env = envelope("w", _times(("movement", 2050.0), ("compute", 158.0), ("other", 40.0)),
-                   operator=Composition.SUM, eta=0.0)
+    env = envelope(
+        "w", _times(("movement", 2050.0), ("compute", 158.0), ("other", 40.0)), operator=Composition.SUM, eta=0.0
+    )
     assert env.limiter == "movement"
     assert env.limiter_cycles == 2050.0
     assert env.margin_to_second == 2050.0 - 158.0
@@ -340,17 +357,42 @@ def test_a_near_tie_reports_a_small_margin_rather_than_a_confident_binder():
 
 
 def test_the_limiter_is_provisional_while_any_resource_is_unresolved():
-    env = envelope("w", _times(("a", 10.0)) + [ResourceTime(
-        resource="dma", kind=ResourceKind.MOVEMENT, cycles=UNKNOWN, unit="cycles",
-        basis=Basis.MOVED, reason="peak not derivable")], operator=Composition.SUM, eta=0.0)
+    env = envelope(
+        "w",
+        _times(("a", 10.0))
+        + [
+            ResourceTime(
+                resource="dma",
+                kind=ResourceKind.MOVEMENT,
+                cycles=UNKNOWN,
+                unit="cycles",
+                basis=Basis.MOVED,
+                reason="peak not derivable",
+            )
+        ],
+        operator=Composition.SUM,
+        eta=0.0,
+    )
     assert env.limiter == "a"
     assert env.limiter_is_provisional, "an unresolved resource could bind instead"
     assert env.unresolved == ("dma",)
 
 
 def test_an_envelope_over_nothing_resolved_has_an_unknown_limiter():
-    env = envelope("w", [ResourceTime(resource="dma", kind=ResourceKind.MOVEMENT, cycles=UNKNOWN,
-                                      unit="cycles", basis=Basis.MOVED, reason="no peak")],
-                   operator=Composition.SUM, eta=0.0)
+    env = envelope(
+        "w",
+        [
+            ResourceTime(
+                resource="dma",
+                kind=ResourceKind.MOVEMENT,
+                cycles=UNKNOWN,
+                unit="cycles",
+                basis=Basis.MOVED,
+                reason="no peak",
+            )
+        ],
+        operator=Composition.SUM,
+        eta=0.0,
+    )
     assert env.limiter is UNKNOWN
     assert is_unknown(env.margin_to_second)

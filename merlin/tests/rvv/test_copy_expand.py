@@ -15,6 +15,7 @@ Two defects are pinned here.
    pass sits at ``k+1``, so a rewrite that EMITS linalg (this feature emits ``linalg.copy``) ran
    after its own lowering and the build died in LLVM translation.
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -29,9 +30,9 @@ from merlin.llvmlower.copy_expand import FEATURE as EXPAND_FEATURE
 from merlin.llvmlower.copy_expand import MID_STAGE_SRC, RUNNER_PRELUDE
 from merlin.llvmlower.impr_features import known, normalize
 from merlin.llvmlower.pipeline import (
+    _RUNNER,
     EMIT_TRANSLATE,
     _activation_poly_runner,
-    _RUNNER,
     _upstream_pipeline,
 )
 
@@ -53,13 +54,12 @@ module {
 
 def _scalarize_runner() -> str:
     from merlin.llvmlower.accum_microkernel import run_source
+
     return run_source().replace("__MERLIN_EMIT__", EMIT_TRANSLATE)
 
 
 def _runner_variants() -> dict[str, str]:
-    return {"plain": _RUNNER,
-            "act_poly": _activation_poly_runner(EMIT_TRANSLATE),
-            "scalarize": _scalarize_runner()}
+    return {"plain": _RUNNER, "act_poly": _activation_poly_runner(EMIT_TRANSLATE), "scalarize": _scalarize_runner()}
 
 
 def test_feature_is_registered_and_off_by_default():
@@ -91,6 +91,7 @@ def _stage_probe():
     """Exec the runner prelude against a stub PassManager and return (run, calls_of_pipelines)."""
     ns: dict = {}
     from merlin.llvmlower.selfcopy import RUNNER_PRELUDE as SELFCOPY_PRELUDE
+
     exec("import sys\n" + SELFCOPY_PRELUDE + RUNNER_PRELUDE, ns)  # noqa: S102 - the shipped source
     seen: list[str] = []
 
@@ -143,12 +144,16 @@ def test_mid_stage_window_stops_before_linalg_is_lowered():
 
     ns, seen = _stage_probe()
     calls: list[str] = []
-    ns["_run_stages"](None, _EmptyModule(), _upstream_pipeline(), False,
-                      [("expand_memref_copy", lambda _c, _m: calls.append("ran") or 0)])
+    ns["_run_stages"](
+        None,
+        _EmptyModule(),
+        _upstream_pipeline(),
+        False,
+        [("expand_memref_copy", lambda _c, _m: calls.append("ran") or 0)],
+    )
     assert calls == ["ran"], "the mid rewrite never ran"
     assert len(seen) == 2, "the pipeline was not split around the rewrite"
-    assert "convert-linalg-to-loops" not in seen[0], \
-        "linalg was lowered before the rewrite that emits it"
+    assert "convert-linalg-to-loops" not in seen[0], "linalg was lowered before the rewrite that emits it"
     assert "convert-linalg-to-loops" in seen[1]
 
 
@@ -167,7 +172,7 @@ def test_erase_window_is_unchanged_on_the_rvv_pipeline():
     ns, seen = _stage_probe()
     ns["_run_stages"](None, _EmptyModule(), pipeline, True, ())
     assert len(seen) == 2
-    assert seen[0] == "builtin.module(" + ",".join(passes[:k + 3]) + ")"
+    assert seen[0] == "builtin.module(" + ",".join(passes[: k + 3]) + ")"
 
 
 @pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
@@ -181,15 +186,20 @@ def test_expand_removes_the_runtime_copy_and_keeps_the_numbers(tmp_path, vectori
     results = {}
     counts = {}
     for tag, feats in (("off", None), ("on", frozenset({EXPAND_FEATURE}))):
-        res = lower_model(CONCAT, tmp_path / f"{tag}_{int(vectorize)}", targets=("host",),
-                          textual=True, vectorize=vectorize, features=feats)
+        res = lower_model(
+            CONCAT,
+            tmp_path / f"{tag}_{int(vectorize)}",
+            targets=("host",),
+            textual=True,
+            vectorize=vectorize,
+            features=feats,
+        )
         counts[tag] = res.ll_path.read_text(encoding="utf-8").count("@memrefCopy")
         model = HostModel.load(str(res.host_so))
         a = (ctypes.c_float * 32)(*[i * 0.5 for i in range(32)])
         b = (ctypes.c_float * 32)(*[100.0 + i for i in range(32)])
         y = (ctypes.c_float * 64)()
-        model([(ctypes.addressof(a), (4, 8)), (ctypes.addressof(b), (4, 8)),
-               (ctypes.addressof(y), (4, 16))])
+        model([(ctypes.addressof(a), (4, 8)), (ctypes.addressof(b), (4, 8)), (ctypes.addressof(y), (4, 16))])
         results[tag] = list(y)
 
     assert counts["off"] > 0, "fixture no longer produces a rank-generic copy to remove"

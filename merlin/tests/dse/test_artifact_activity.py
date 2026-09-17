@@ -24,14 +24,20 @@ class _Endpoint:
 
 
 def _facts(monkeypatch):
-    monkeypatch.setattr(A, "funct_table_for", lambda _target: {
-        "names": {"1": "CFG", "2": "DMA", "3": "LOAD", "4": "MAC",
-                  "5": "WAIT", "6": "LOOP", "7": "UNMAPPED"},
-    })
+    monkeypatch.setattr(
+        A,
+        "funct_table_for",
+        lambda _target: {
+            "names": {"1": "CFG", "2": "DMA", "3": "LOAD", "4": "MAC", "5": "WAIT", "6": "LOOP", "7": "UNMAPPED"},
+        },
+    )
     monkeypatch.setattr(A, "endpoints_for", lambda _target: (_Endpoint(),))
     # Keep this unit test about the artifact join. Role ownership itself has independent contract tests.
-    monkeypatch.setattr(A.asm_provenance, "provenance_of_role", lambda role: type(
-        "P", (), {"to_dict": lambda self: {"role": role, "actionable": True}})())
+    monkeypatch.setattr(
+        A.asm_provenance,
+        "provenance_of_role",
+        lambda role: type("P", (), {"to_dict": lambda self: {"role": role, "actionable": True}})(),
+    )
     monkeypatch.setattr(A.asm_provenance, "opportunities", lambda *_args, **_kwargs: [])
 
 
@@ -96,8 +102,7 @@ def test_it_never_turns_missing_role_or_unknown_encoding_into_zero(monkeypatch):
 def test_empty_artifact_is_unknown_not_zero_or_complete(monkeypatch):
     _facts(monkeypatch)
 
-    got = A.analyze_artifact_activity({"source": "empty", "instructions": []},
-                                      target="derived-target")
+    got = A.analyze_artifact_activity({"source": "empty", "instructions": []}, target="derived-target")
 
     assert got["status"] == "UNKNOWN"
     assert got["encoding_resolution"]["status"] == "UNKNOWN"

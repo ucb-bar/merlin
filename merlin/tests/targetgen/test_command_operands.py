@@ -10,6 +10,7 @@ linalg.reduce, 525 linalg.transpose, 1 linalg.matmul) through a backend produced
 model bound to an opcode the ABI defines as an NCHW depthwise convolution over {src, weight, dst}.
 The schema accepted it. A whole model collapsed into one mislabelled command validated clean.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,12 +27,17 @@ from merlin.targetgen.contract.command_operands import (
 
 
 def _cmd(opcode="DEPTHWISE_CONV2D", **operands):
-    return {"abi_version": "0.1", "target": "t", "backend": "b",
-            "tensors": {"a": {"shape": [1], "dtype": "f32", "role": "input"}},
-            "commands": [{"opcode": opcode, "operands": dict(operands)}]}
+    return {
+        "abi_version": "0.1",
+        "target": "t",
+        "backend": "b",
+        "tensors": {"a": {"shape": [1], "dtype": "f32", "role": "input"}},
+        "commands": [{"opcode": opcode, "operands": dict(operands)}],
+    }
 
 
 # --- derivation ------------------------------------------------------------------------------
+
 
 def test_operands_are_derived_from_the_abi_not_listed_in_code():
     d = declared_operands()
@@ -45,6 +51,7 @@ def test_an_optional_operand_is_read_as_optional():
 
 
 # --- the degenerate whole-model command ------------------------------------------------------
+
 
 def test_the_whole_model_as_one_command_is_caught():
     """THE REGRESSION: 817 operands on a depthwise conv must not pass silently."""
@@ -67,10 +74,14 @@ def test_a_command_may_omit_an_optional_operand_but_not_a_required_one():
 
 # --- must not report OTHER artifact families as broken ---------------------------------------
 
-@pytest.mark.parametrize("rel", [
-    "merlin/contract/capsules/atlas/isa/AS0_matmul_spec/capsule.command_buffer.json",
-    "merlin/contract/capsules/radiance/isa/RS0_matmul_spec/capsule.command_buffer.json",
-])
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "merlin/contract/capsules/atlas/isa/AS0_matmul_spec/capsule.command_buffer.json",
+        "merlin/contract/capsules/radiance/isa/RS0_matmul_spec/capsule.command_buffer.json",
+    ],
+)
 def test_a_non_abi_artifact_is_not_audited(rel):
     """An ISA command stream (numeric opcode) and a SIMT warp descriptor (no `commands`) share the
     file name. Describing them as defective would be a false finding, not rigour."""
@@ -85,8 +96,7 @@ def test_every_real_command_buffer_in_the_tree_is_clean():
 
     noisy = []
     paths = ["merlin/contract/examples/expected_command_buffer_g0.json"]
-    paths += glob.glob(str(repo_root() / "merlin/contract/capsules/**/capsule.command_buffer.json"),
-                       recursive=True)
+    paths += glob.glob(str(repo_root() / "merlin/contract/capsules/**/capsule.command_buffer.json"), recursive=True)
     for p in sorted(set(paths)):
         cb = json.loads(open(p).read())
         if applies(cb) and audit(cb):
@@ -95,6 +105,7 @@ def test_every_real_command_buffer_in_the_tree_is_clean():
 
 
 # --- our own specification gap, reported as ours ---------------------------------------------
+
 
 def test_an_opcode_with_no_abi_operands_is_named_as_a_contract_gap_not_a_defect():
     cb = _cmd("ATTENTION_FULL", q="a", k="a", v="a", dst="a")

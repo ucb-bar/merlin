@@ -1,4 +1,5 @@
 """Lazy compiler helpers must be pinned without executing package initializers."""
+
 from __future__ import annotations
 
 import ast
@@ -9,24 +10,26 @@ import pytest
 from merlin.common.paths import repo_root
 from merlin.perf.static_imports import imported_attribute_paths, resolve_lazy_export
 
-
-GETTER = '''
+GETTER = """
 from importlib import import_module
 def __getattr__(name):
     module = _EXPORTS.get(name)
     if module is None:
         raise AttributeError(name)
     return getattr(import_module(f".{module}", __name__), name)
-'''
+"""
 
 
 def test_literal_comprehension_selects_one_actual_module():
-    initializer = '''
+    initializer = (
+        """
 _EXPORTS = {name: module for module, names in (
     ("global_plan", ("GlobalPlan", "CycleInterval")),
     ("pipeline", ("execute",)),
 ) for name in names}
-''' + GETTER
+"""
+        + GETTER
+    )
     result = resolve_lazy_export(initializer.encode(), package="merlin.lowering", symbol="GlobalPlan")
     assert result.status == "resolved"
     assert result.module == "merlin.lowering.global_plan"
@@ -61,7 +64,9 @@ def closure_environment(tmp_path, monkeypatch):
     runtime.mkdir()
     (runtime / "__init__.py").write_text(
         '_EXPORTS = {"Tensor": "tensor", "simulate": "simulator", "reference_outputs": "reference"}\n'
-        + GETTER + '\nraise RuntimeError("initializer must never execute")\n')
+        + GETTER
+        + '\nraise RuntimeError("initializer must never execute")\n'
+    )
     (runtime / "tensor.py").write_text("class Tensor: pass\n")
     (runtime / "simulator.py").write_text('raise RuntimeError("masked simulator")\n')
     (runtime / "reference.py").write_text('raise RuntimeError("masked reference")\n')
@@ -71,11 +76,14 @@ def closure_environment(tmp_path, monkeypatch):
     return launcher, candidate, runtime
 
 
-@pytest.mark.parametrize("statement", [
-    "from merlin.runtime import Tensor\n",
-    "import merlin.runtime as rt\nvalue = rt.Tensor\n",
-    'from merlin import runtime\nvalue = getattr(runtime, "Tensor")\n',
-])
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "from merlin.runtime import Tensor\n",
+        "import merlin.runtime as rt\nvalue = rt.Tensor\n",
+        'from merlin import runtime\nvalue = getattr(runtime, "Tensor")\n',
+    ],
+)
 def test_selected_leaf_edit_changes_compiler_identity_without_masked_siblings(closure_environment, statement):
     launcher, candidate, runtime = closure_environment
     (candidate / "compiler.py").write_text(statement)
@@ -102,8 +110,9 @@ def test_unresolved_lazy_symbol_refuses_to_issue_incomplete_identity(closure_env
 
 def test_actual_global_plan_initializer_maps_to_actual_implementation():
     root = repo_root() / "merlin/python/merlin/xdsl_dialects/lowering"
-    result = resolve_lazy_export((root / "__init__.py").read_bytes(),
-                                 package="merlin.xdsl_dialects.lowering", symbol="GlobalPlan")
+    result = resolve_lazy_export(
+        (root / "__init__.py").read_bytes(), package="merlin.xdsl_dialects.lowering", symbol="GlobalPlan"
+    )
     assert result.module == "merlin.xdsl_dialects.lowering.global_plan"
     assert (root / "global_plan.py").is_file()
 
@@ -117,4 +126,5 @@ def test_actual_global_plan_from_import_enters_production_closure(tmp_path, monk
     record = launcher.compiler_dependency_record(candidate)
     assert "xdsl_dialects/lowering/global_plan.py" in record["shared_sources"]
     assert record["selected_lazy_exports"]["merlin.xdsl_dialects.lowering.GlobalPlan"] == (
-        "merlin.xdsl_dialects.lowering.global_plan")
+        "merlin.xdsl_dialects.lowering.global_plan"
+    )

@@ -8,6 +8,7 @@ pinned rather than left to reviewer attention.
 The redaction test is the load-bearing one: the grader's own mismatch report embeds the expected
 value, so a blacklist that missed a key would hand an agent the answer key.
 """
+
 import pytest
 
 from merlin.benchharness import evaluation as EV
@@ -18,10 +19,16 @@ CERT = frozenset({"L2"})
 def _result(**over):
     base = {
         "status": "pass",
-        "tiers": {"L2": {"status": "pass", "cycles": 1000, "gflops": 1.5, "pct_fp_peak": 0.1,
-                         "timing": {"build_s": 0.5, "adapter_wall_s": 3.0}}},
-        "numeric": {"status": "pass", "mismatch_count": 0, "max_abs_diff": 0,
-                    "max_rel_error": 0.0, "policy": "float"},
+        "tiers": {
+            "L2": {
+                "status": "pass",
+                "cycles": 1000,
+                "gflops": 1.5,
+                "pct_fp_peak": 0.1,
+                "timing": {"build_s": 0.5, "adapter_wall_s": 3.0},
+            }
+        },
+        "numeric": {"status": "pass", "mismatch_count": 0, "max_abs_diff": 0, "max_rel_error": 0.0, "policy": "float"},
         "failure": None,
         "toolchain_shas": {},
     }
@@ -30,8 +37,7 @@ def _result(**over):
 
 
 def _ev(res, **kw):
-    return EV.from_capsule_result(res, task_id="T", config_id="C0", target="t",
-                                  certifying_tiers=CERT, **kw)
+    return EV.from_capsule_result(res, task_id="T", config_id="C0", target="t", certifying_tiers=CERT, **kw)
 
 
 def test_a_certifying_tier_pass_is_correct():
@@ -58,8 +64,10 @@ def test_execution_only_tier_is_not_a_correctness_pass():
 
 def test_an_unwinnable_task_is_excluded_not_failed():
     """No correct submission could win it, so it leaves both sides of the ratio."""
-    ev = _ev(_result(status="fail", numeric={"status": "fail", "mismatch_count": 247}),
-             unwinnable_reason="golden requires target-private block scales")
+    ev = _ev(
+        _result(status="fail", numeric={"status": "fail", "mismatch_count": 247}),
+        unwinnable_reason="golden requires target-private block scales",
+    )
     assert ev.status == "unsupported"
     assert ev.verdict == "structurally_unwinnable"
     assert ev.is_scoreable is False
@@ -68,8 +76,11 @@ def test_an_unwinnable_task_is_excluded_not_failed():
 
 def test_an_incorrect_kernel_gets_no_performance_credit():
     """A wrong kernel can be arbitrarily fast by not doing the work."""
-    ev = _ev(_result(status="fail", numeric={"status": "fail", "mismatch_count": 5,
-                                             "max_abs_diff": 3.5, "max_rel_error": 0.9}))
+    ev = _ev(
+        _result(
+            status="fail", numeric={"status": "fail", "mismatch_count": 5, "max_abs_diff": 3.5, "max_rel_error": 0.9}
+        )
+    )
     assert ev.verdict == "mismatch"
     assert ev.cycles == 1000, "cycles are still recorded"
     assert ev.perf_valid is False, "but they must not count as performance"
@@ -84,8 +95,7 @@ def test_a_substituted_reference_kernel_is_not_attributed_to_the_submission():
 
 def test_tier_rank_is_numeric_not_lexicographic():
     """L10 must outrank L2; string ordering would silently report the lower tier."""
-    res = _result(tiers={"L2": {"status": "pass", "cycles": 1},
-                         "L10": {"status": "pass", "cycles": 2}})
+    res = _result(tiers={"L2": {"status": "pass", "cycles": 1}, "L10": {"status": "pass", "cycles": 2}})
     assert _ev(res).tier_reached == "L10"
 
 
@@ -93,11 +103,15 @@ def test_redaction_never_leaks_a_golden_value():
     """The load-bearing test: the grader's report embeds `expected`, which is the answer key."""
     res = _result(
         status="fail",
-        numeric={"status": "fail", "mismatch_count": 3, "max_abs_diff": 2.5,
-                 "max_rel_error": 0.4, "policy": "float",
-                 "first_mismatch": {"output": "Y0", "index": 7,
-                                    "expected": 1234.5, "observed": 0.0},
-                 "per_output": {"Y0": {"expected_values": [1234.5, 6.0]}}},
+        numeric={
+            "status": "fail",
+            "mismatch_count": 3,
+            "max_abs_diff": 2.5,
+            "max_rel_error": 0.4,
+            "policy": "float",
+            "first_mismatch": {"output": "Y0", "index": 7, "expected": 1234.5, "observed": 0.0},
+            "per_output": {"Y0": {"expected_values": [1234.5, 6.0]}},
+        },
     )
     red = _ev(res).redact()
     blob = repr(red)
@@ -121,9 +135,12 @@ def test_redaction_is_a_whitelist_so_new_grader_keys_cannot_leak():
 
 def test_unavailable_is_not_reported_as_a_failure():
     """A crashed oracle and a wrong answer are different findings."""
-    res = _result(status="error", tiers={"L2": {"status": "error", "reason": "sim crashed"}},
-                  numeric={"status": "skipped"},
-                  failure={"plane": "oracle", "category": "tool_crash", "detail": "boom"})
+    res = _result(
+        status="error",
+        tiers={"L2": {"status": "error", "reason": "sim crashed"}},
+        numeric={"status": "skipped"},
+        failure={"plane": "oracle", "category": "tool_crash", "detail": "boom"},
+    )
     ev = _ev(res)
     assert ev.status == "error"
     assert ev.verdict == "unknown", "no run happened, so nothing is certified either way"
@@ -146,8 +163,7 @@ def test_an_rtl_tier_without_cycles_leaves_the_latency_a_model_estimate():
     res = _result(
         tiers={
             "L2": {"status": "pass", "cycles": 573042, "cycle_accurate": False},
-            "L3": {"status": "pass", "cycles": None, "cycle_accurate": True,
-                   "derived_from_rtl": True},
+            "L3": {"status": "pass", "cycles": None, "cycle_accurate": True, "derived_from_rtl": True},
         },
     )
     ev = _ev(res)
@@ -161,10 +177,13 @@ def test_an_rtl_tier_without_cycles_leaves_the_latency_a_model_estimate():
 
 def test_a_cycle_accurate_tier_that_reports_cycles_needs_no_caveat():
     """The control: when RTL DOES time the kernel, nothing is hedged."""
-    res = _result(tiers={"L2": {"status": "pass", "cycles": 99, "cycle_accurate": False},
-                         "L3": {"status": "pass", "cycles": 12345, "cycle_accurate": True}})
-    ev = EV.from_capsule_result(res, task_id="T", config_id="C0", target="t",
-                                certifying_tiers=frozenset({"L2", "L3"}))
+    res = _result(
+        tiers={
+            "L2": {"status": "pass", "cycles": 99, "cycle_accurate": False},
+            "L3": {"status": "pass", "cycles": 12345, "cycle_accurate": True},
+        }
+    )
+    ev = EV.from_capsule_result(res, task_id="T", config_id="C0", target="t", certifying_tiers=frozenset({"L2", "L3"}))
     assert ev.cycles == 12345 and ev.cycles_tier == "L3"
     assert ev.cycles_cycle_accurate is True
     assert "latency_is_a_model_estimate" not in {c.code for c in ev.caveats}

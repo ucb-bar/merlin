@@ -5,6 +5,7 @@ emitter fails closed (never a faked program). The spec capture is skipped when s
 
 Target-agnostic: the gen is a parameter (the ``spec_ref`` a profile entry declares), never a code literal
 in library scope — this test file is a legitimate edge that names gens as data under test."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -42,10 +43,13 @@ def test_spec_capture_fails_closed_unknown_gen():
 
 
 @_needs_spec
-@pytest.mark.parametrize("spec_ref,workload,td,contraction", [
-    ("atlas-npu:op.matmul_mxu0", (32, 32, 32), 32, True),   # fp8 MXU command sequence
-    ("radiance:op.matmul", (16, 16, 16), 16, True),          # SIMT warp schedule
-])
+@pytest.mark.parametrize(
+    "spec_ref,workload,td,contraction",
+    [
+        ("atlas-npu:op.matmul_mxu0", (32, 32, 32), 32, True),  # fp8 MXU command sequence
+        ("radiance:op.matmul", (16, 16, 16), 16, True),  # SIMT warp schedule
+    ],
+)
 def test_spec_capture_float_families(spec_ref, workload, td, contraction):
     """Atlas (MXU) and radiance (SIMT warp) programs: decoded role-keyed operands + a float golden that
     equals a matmul over those operands (self-consistent, no live oracle needed)."""
@@ -56,7 +60,7 @@ def test_spec_capture_float_families(spec_ref, workload, td, contraction):
     W = np.array(art.operands["weight"], dtype=np.float64)
     G = np.array(art.golden["out"], dtype=np.float64)
     rel = np.abs(G - A @ W).max() / (np.abs(A @ W).max() + 1e-9)
-    assert rel < 0.25          # golden reproduces the spec matmul over the decoded operands
+    assert rel < 0.25  # golden reproduces the spec matmul over the decoded operands
 
 
 @_needs_spec

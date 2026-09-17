@@ -1,16 +1,16 @@
 """Regression checks for the declared-application census and exact elementwise L2 slices."""
+
 from __future__ import annotations
 
 import hashlib
 import json
-from pathlib import Path
 import runpy
+from pathlib import Path
 
 import yaml
 
 from merlin.common.paths import repo_root
 from merlin.targetgen.capsule_common import load_capsule
-
 
 ROOT = repo_root()
 ADD_NAME = "SY_app_elementwise_add_f32_rank3_1x113x1_l2"
@@ -42,12 +42,17 @@ def test_declared_capture_census_and_original_search_gap_are_exact():
     assert report["wired_probes"]["add"]["exact_occurrences_in_declared_captures"] == 99
     assert report["wired_probes"]["mul"]["exact_occurrences_in_declared_captures"] == 168
     assert report["selection"]["highest_frequency_missing_family"] == {
-        "admitted": False, "family": "movement", "occurrences": 3469,
+        "admitted": False,
+        "family": "movement",
+        "occurrences": 3469,
         "reason": "absent from effective capability map",
     }
     assert report["selection"]["highest_frequency_safe_unrepresented_operation"] == {
-        "admitted": True, "family": "elementwise_map", "occurrences": 1533,
-        "operation": "mul", "reason": "standalone float32 elementwise_map is effective",
+        "admitted": True,
+        "family": "elementwise_map",
+        "occurrences": 1533,
+        "operation": "mul",
+        "reason": "standalone float32 elementwise_map is effective",
     }
     assert report["effective_capability"]["dtypes"] == ["float32"]
     assert report["effective_capability"]["ranks"] == []
@@ -77,8 +82,10 @@ def test_new_search_members_are_exact_model_derived_l2_and_not_pr_evidence():
         cap = load_capsule(capsule_dir, contract=ROOT / "merlin/contract")
         assert cap["source_role"] == "model_derived" and cap["operation"]["op"] == op
         assert cap["semantic"] == {
-            "semantic_family": "elementwise_map", "generalization_axis": "application",
-            "must_accelerate": True, "eligible": "auto",
+            "semantic_family": "elementwise_map",
+            "generalization_axis": "application",
+            "must_accelerate": True,
+            "eligible": "auto",
         }
         assert cap["required_oracle_tiers"] == ["L0", "L1", "L2"]
         assert [operand["shape"] for operand in cap["inputs"]] == shapes

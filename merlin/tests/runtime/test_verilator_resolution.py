@@ -5,6 +5,7 @@ literals in the shared backend -- so a second vector SoC could not reach this pa
 They are now fields of the board entry, and these tests pin both the derivation and that the default
 board still resolves the variable and config existing setups rely on.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -16,8 +17,7 @@ from merlin.runtime.backends import zephyr_model as zm
 
 @pytest.fixture()
 def acme_board(monkeypatch):
-    b = boards.Board(name="acme_board", dram_bytes=1 << 28, harts=2, target="acme",
-                     rtl_sim_config="AcmeSoCConfig")
+    b = boards.Board(name="acme_board", dram_bytes=1 << 28, harts=2, target="acme", rtl_sim_config="AcmeSoCConfig")
     monkeypatch.setitem(boards.BOARDS, b.name, b)
     monkeypatch.delenv(target_env_name("acme", "VERILATOR"), raising=False)
     return b

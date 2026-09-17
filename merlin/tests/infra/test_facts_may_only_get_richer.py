@@ -10,6 +10,7 @@ of the truth.
 
 These pin the ratchet: evidence may only get richer, unless a caller explicitly says the hardware lost it.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,19 +18,26 @@ import json
 import pytest
 
 from merlin.targetgen.rtl.facts import (
-    FactsDowngrade, _read_facts_doc, _refuse_hollowed, hollowed_facts, write_facts_guarded,
+    FactsDowngrade,
+    _read_facts_doc,
+    _refuse_hollowed,
+    hollowed_facts,
+    write_facts_guarded,
 )
 
-RICH = {"facts": {
-    "isa": {"instruction_classes": ["AUIPC", "BRANCH"], "address_spaces": {"global": 0},
-            "max_src_operands": 3},
-    "simt": {"cores": 2},
-}}
+RICH = {
+    "facts": {
+        "isa": {"instruction_classes": ["AUIPC", "BRANCH"], "address_spaces": {"global": 0}, "max_src_operands": 3},
+        "simt": {"cores": 2},
+    }
+}
 # what a regeneration WITHOUT the mlc toolchain actually produces: same keys, hollowed values
-POOR = {"facts": {
-    "isa": {"instruction_classes": [], "address_spaces": None, "max_src_operands": 4},
-    "simt": {"cores": 2},
-}}
+POOR = {
+    "facts": {
+        "isa": {"instruction_classes": [], "address_spaces": None, "max_src_operands": 4},
+        "simt": {"cores": 2},
+    }
+}
 
 
 def test_the_exact_mlc_absent_downgrade_is_named():
@@ -75,11 +83,12 @@ def test_a_genuine_hardware_loss_can_be_declared(tmp_path):
 
 def test_a_first_write_is_never_blocked(tmp_path):
     p = tmp_path / "facts.json"
-    write_facts_guarded(p, POOR)          # nothing to lose yet
+    write_facts_guarded(p, POOR)  # nothing to lose yet
     assert p.is_file()
 
 
 # --- the ratchet is a property of every FAMILY, not of the one target that exposed it -------------
+
 
 def test_every_declared_family_routes_through_the_guard():
     """Each compute-unit kind declares a ``fact_extractor``; every one of those paths must be guarded.
@@ -88,11 +97,13 @@ def test_every_declared_family_routes_through_the_guard():
     import inspect
 
     from merlin.targetgen import families
-    from merlin.targetgen.rtl import circt_introspect, facts as F, spatial_introspect
+    from merlin.targetgen.rtl import circt_introspect, spatial_introspect
+    from merlin.targetgen.rtl import facts as F
 
     extractors = {families.family_profile(k).fact_extractor for k in families.known_kinds()}
     assert extractors == {"circt_static", "simt_config", "opu"}, (
-        f"a new fact-extraction family appeared ({extractors}); guard its writer too")
+        f"a new fact-extraction family appeared ({extractors}); guard its writer too"
+    )
 
     # simt_config (GPU-class, e.g. muon) — guarded inside the shared seam
     assert "write_facts_guarded" in inspect.getsource(F._dump_facts_for_kind)
@@ -109,7 +120,7 @@ def test_the_seam_restores_the_artifact_before_raising(tmp_path):
     p = tmp_path / "facts.json"
     p.write_text(json.dumps(RICH))
     before = _read_facts_doc(p)
-    p.write_text(json.dumps(POOR))        # stands in for the extractor's own write
+    p.write_text(json.dumps(POOR))  # stands in for the extractor's own write
     with pytest.raises(FactsDowngrade):
         _refuse_hollowed(p, before)
     assert json.loads(p.read_text())["facts"]["isa"]["instruction_classes"] == ["AUIPC", "BRANCH"]
@@ -120,5 +131,5 @@ def test_the_seam_is_silent_when_there_was_nothing_to_protect(tmp_path):
     an error."""
     p = tmp_path / "facts.json"
     p.write_text(json.dumps(POOR))
-    _refuse_hollowed(p, None)             # no snapshot => nothing was lost
+    _refuse_hollowed(p, None)  # no snapshot => nothing was lost
     assert json.loads(p.read_text())["facts"]["isa"]["instruction_classes"] == []

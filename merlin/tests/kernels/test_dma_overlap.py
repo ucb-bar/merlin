@@ -5,6 +5,7 @@ overlap with compute". Those are different questions, and the derivation could n
 while any DMA was present -- so on a corpus whose every transfer is immediately awaited it reported
 True everywhere, which is the opposite of the fact, on the axis carrying the largest available win.
 """
+
 from __future__ import annotations
 
 from merlin.kernels.cca import _dma_overlap
@@ -34,8 +35,7 @@ def test_work_between_issue_and_wait_IS_overlap():
 
 def test_one_overlapped_transfer_among_serial_ones_still_counts_as_overlap():
     """The facet asks whether movement is EVER issued to overlap; the metric carries how much."""
-    overlapped, gap = _dma_overlap(
-        _stream("dma", "sync", "dma", "accumulate", "sync", "dma", "sync"))
+    overlapped, gap = _dma_overlap(_stream("dma", "sync", "dma", "accumulate", "sync", "dma", "sync"))
     assert overlapped is True
     assert gap == 1
 

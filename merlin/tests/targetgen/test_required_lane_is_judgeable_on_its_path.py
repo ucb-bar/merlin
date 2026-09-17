@@ -16,6 +16,7 @@ produces no ledger, and therefore cannot judge a required lane by construction.
 forbidding one lane already leaves the other as the only place work can land, so the `require` also
 carried no information. Removing it fixed the capsule without weakening any refusal.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -60,8 +61,11 @@ def test_no_non_model_capsule_requires_a_lane_it_cannot_evidence(strict_kind):
             offenders.append(f"{doc.get('name')} ({path.parent.name}) requires {required}")
     assert not offenders, (
         "a required lane needs execution evidence that only the whole-model dispatch ledger carries, "
-        "so a " + strict_kind + " declaring one can never be judged and scores `incomplete` forever: "
-        + "; ".join(offenders))
+        "so a "
+        + strict_kind
+        + " declaring one can never be judged and scores `incomplete` forever: "
+        + "; ".join(offenders)
+    )
 
 
 def test_gn0_keeps_the_forbid_that_carries_its_assertion():
@@ -82,7 +86,7 @@ def test_the_profile_and_the_generated_capsule_agree():
     text = prof.read_text()
     marker = "name: GN0_layernorm_host_only_bf16_pt"
     assert marker in text
-    entry = text[text.index(marker):]
-    entry = entry[:entry.find("\n- {")] if "\n- {" in entry else entry
+    entry = text[text.index(marker) :]
+    entry = entry[: entry.find("\n- {")] if "\n- {" in entry else entry
     assert "lanes: {forbid: [on_mesh]}" in entry, "the profile entry must declare forbid only"
     assert "require: [scalar_rvv_lane]" not in entry

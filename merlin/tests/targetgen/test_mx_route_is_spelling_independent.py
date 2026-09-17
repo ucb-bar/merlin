@@ -9,6 +9,7 @@ The string test was also wrong in both directions. `merlin.common.quant_formats`
 kind `mx_block` / scale `block_e8m0` (genuinely block-scaled) and `f8E4M3FN` as `fp_ocp` / `per_tensor`
 (not block-scaled at all) — so the prefixes matched a non-MX format and missed every real one.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -53,7 +54,8 @@ def test_the_registry_is_what_decides():
 
     assert qf.get("mxfp8").kind == "mx_block", "registry no longer classes mxfp8 as block-scaled"
     assert qf.get("f8E4M3FN").kind != "mx_block", (
-        "f8E4M3FN is per-tensor OCP fp8; if the registry now calls it mx_block the predicate needs review")
+        "f8E4M3FN is per-tensor OCP fp8; if the registry now calls it mx_block the predicate needs review"
+    )
 
 
 def test_the_oracle_gates_on_the_golden_not_the_cb_dtype():
@@ -66,13 +68,13 @@ def test_the_oracle_gates_on_the_golden_not_the_cb_dtype():
     tree = ast.parse(src)
     gate = None
     for node in ast.walk(tree):
-        if isinstance(node, ast.Assign) and any(
-                isinstance(t, ast.Name) and t.id == "_mxprog" for t in node.targets):
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "_mxprog" for t in node.targets):
             gate = node
             break
     assert gate is not None, "the MX route disappeared from the oracle adapter"
     # the guarding `if` must mention mx_operands and must NOT re-introduce the dtype test
-    guard_src = src[src.index("_mxprog = None"):src.index("_mxprog = None") + 600]
+    guard_src = src[src.index("_mxprog = None") : src.index("_mxprog = None") + 600]
     assert "mx_operands" in guard_src, "the MX route must gate on the golden-derived operand bundle"
     assert "is_mx_cb" not in guard_src.split("if cb.get")[0] + guard_src.split("_mxprog = _mx")[0][:0], (
-        "the agent's dtype spelling must not gate the grading path")
+        "the agent's dtype spelling must not gate the grading path"
+    )

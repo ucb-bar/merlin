@@ -16,6 +16,7 @@ The dtype is the load-bearing detail. The bias lands on the ACCUMULATOR, before 
 in the operand dtype instead, the two members would be adding different numbers and their cycles would
 not be summable.
 """
+
 from __future__ import annotations
 
 import sys
@@ -36,22 +37,30 @@ _TARGETS = ("gemmini", "atlas")
 
 def _binding(target: str):
     import generate_corpus as GC
+
     prof = GC.load_profile(target)
     te = load_target_experiment(descriptor_path(target))
     return CS.derive_binding(te, prof.get("datapath") or {})
 
 
 def _entry(name: str, op: str, **kw) -> dict:
-    return {"name": name, "kind": "model_slice", "cat": "_perf", "op": op,
-            "source_role": "derived_sweep", "source_reference": "fusion pair test",
-            "out": "Y0", **kw}
+    return {
+        "name": name,
+        "kind": "model_slice",
+        "cat": "_perf",
+        "op": op,
+        "source_role": "derived_sweep",
+        "source_reference": "fusion pair test",
+        "out": "Y0",
+        **kw,
+    }
 
 
 @pytest.fixture(params=_TARGETS, ids=_TARGETS)
 def binding(request):
     try:
         return _binding(request.param)
-    except Exception as exc:                       # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         pytest.skip(f"{request.param} does not resolve a binding: {type(exc).__name__}: {exc}")
 
 
@@ -77,7 +86,8 @@ def test_the_bias_is_declared_in_the_accumulator_dtype(binding):
     cap, _ = CS.build(_entry("F", "fused_matmul_bias", M=16, K=16, N=16), binding)
     bias = _role(cap, "bias")
     assert bias["dtype"] == accum, (
-        f"bias declared {bias['dtype']!r}; the stage runs in the accumulator domain ({accum!r})")
+        f"bias declared {bias['dtype']!r}; the stage runs in the accumulator domain ({accum!r})"
+    )
     if accum != operand:
         assert bias["dtype"] != operand, "bias must not be declared in the operand dtype"
     assert bias["shape"] == [16], "a per-column bias is a length-N vector"
@@ -100,7 +110,8 @@ def test_the_two_members_share_the_stages_arithmetic(binding):
     bias = CG.materialize_capsule_leaves(fused)[fused["operation"]["attributes"]["bias"]].to_list()
     for r, (rp, rf) in enumerate(zip(gp, gf)):
         assert [b - a for a, b in zip(rp, rf)] == list(bias), (
-            f"row {r}: the fused golden does not differ from the matmul golden by the bias")
+            f"row {r}: the fused golden does not differ from the matmul golden by the bias"
+        )
 
 
 def test_the_standalone_member_computes_the_same_addition(binding):
@@ -108,7 +119,8 @@ def test_the_standalone_member_computes_the_same_addition(binding):
     assert "merlin_iface.bias_add" in mlir
     accum = binding.cap_dtype(binding.accum_dtype)
     assert [i["dtype"] for i in cap["inputs"]] == [accum, accum], (
-        "the unfused half operates in the accumulator domain, like the stage it is")
+        "the unfused half operates in the accumulator domain, like the stage it is"
+    )
     if CG.is_independent_float_golden(cap, ""):
         pytest.skip("this target's golden is read from an independent oracle, not recomputed here")
     env = CG.materialize_capsule_leaves(cap)

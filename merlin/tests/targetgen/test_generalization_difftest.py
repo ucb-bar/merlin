@@ -6,6 +6,7 @@ turns the probe generators into an actual unseen-workload recall number. These a
 emit only, no oracle run); the numeric recall itself is produced by running the harness module against
 cyclotron. Skips cleanly when the radiance descriptor / reference package is not present in this checkout.
 """
+
 from __future__ import annotations
 
 import os
@@ -31,32 +32,36 @@ def gd():
     mp.setenv("MERLIN_TARGET_EXPERIMENT", str(_DESC))
     mp.syspath_prepend(str(repo_root() / "merlin/experiments/capsule_bench/harness"))
     import generalization_difftest as G  # noqa: PLC0415
+
     yield G
     mp.undo()
 
 
-@pytest.mark.parametrize("family,probe_name,op", [
-    ("contraction", "contraction.tile", "matmul"),
-    ("normalization", "normalization.tile", "rmsnorm"),
-    ("softmax", "softmax.tile", "softmax"),
-    ("attention", "attention.tile", "attention_qk"),
-])
+@pytest.mark.parametrize(
+    "family,probe_name,op",
+    [
+        ("contraction", "contraction.tile", "matmul"),
+        ("normalization", "normalization.tile", "rmsnorm"),
+        ("softmax", "softmax.tile", "softmax"),
+        ("attention", "attention.tile", "attention_qk"),
+    ],
+)
 def test_materializer_produces_emittable_capsule(gd, family, probe_name, op):
+    from merlin.runtime.backends.base import get_backend
     from merlin.targetgen import capability_probes as CP
     from merlin.targetgen import eligibility as EL
     from merlin.targetgen.capsule_common import load_capsule
     from merlin.targetgen.contract.interface_emit import parse_interface_mlir
-    from merlin.runtime.backends.base import get_backend
 
     probes = {p.name: p for p in CP.synthesize(EL.capability_map_for_target(gd.TARGET))}
     assert probe_name in probes, f"{probe_name} not in the synthesized probe set"
     cdir = gd.FAMILY_MAT[family](probes[probe_name], seed=7)
     assert cdir is not None
-    cap = load_capsule(str(cdir), contract=str(gd.CONTRACT))            # schema-valid capsule
+    cap = load_capsule(str(cdir), contract=str(gd.CONTRACT))  # schema-valid capsule
     assert cap["operation"]["op"] == op
     cb = parse_interface_mlir((cdir / "capsule.interface.mlir").read_text())
     mlir = get_backend("muon").muon_codegen_mlir.emit_kernel_mlir(cb, target=gd.TARGET)
-    assert "llvm.func @" in mlir                                         # reaches an emitted kernel
+    assert "llvm.func @" in mlir  # reaches an emitted kernel
     gold = __import__("yaml").safe_load((cdir / "golden.yaml").read_text())
     assert gold["outputs"]["Y0"], "numpy CPU-reference output must be present"
 

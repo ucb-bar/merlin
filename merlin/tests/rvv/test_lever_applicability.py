@@ -1,8 +1,8 @@
 """Preflight: can a transform lever reach the IR at all, before board time is spent on it."""
+
 from __future__ import annotations
 
-from merlin.mining.lever_applicability import (all_matched_op_names, applicability,
-                                               matched_op_names)
+from merlin.mining.lever_applicability import all_matched_op_names, applicability, matched_op_names
 
 # A schedule shaped like the real ones: two payload matches plus a CONTAINER match that exists only
 # to receive apply_patterns.
@@ -42,7 +42,8 @@ def test_a_lever_whose_payload_ops_are_all_absent_is_inapplicable():
     assert a["status"] == "inapplicable"
     assert a["present"] == {"linalg.batch_matmul": 0, "linalg.matmul": 0}
     assert "empty handle" in a["reason"] and "reports as applied" in a["reason"].replace(
-        "report as applied", "reports as applied")
+        "report as applied", "reports as applied"
+    )
 
 
 def test_one_present_payload_op_is_enough():
@@ -64,6 +65,7 @@ def test_a_schedule_that_does_not_match_by_name_is_unknown_not_inapplicable():
 
 def test_the_real_mrpad_schedule_is_judged_on_its_payload_ops():
     from merlin.llvmlower.impr_features import _accumulator_resident_v3_mrpad_pre_schedule as sched
+
     txt = sched(4, 16, 16, NR_bmm=8)
     assert matched_op_names(txt) == ("linalg.batch_matmul", "linalg.matmul")
     # the int8 datapath as it lowers by default: inapplicable
@@ -79,6 +81,7 @@ def test_the_check_has_a_caller_at_the_seam_that_knows_both_things():
     module, so that is where a lever which cannot fire has to be named.
     """
     from merlin.common.paths import merlin_dir
+
     src = (merlin_dir() / "python" / "merlin" / "runtime" / "backends" / "zephyr_model.py").read_text()
     assert "inapplicable_features as _inapplicable" in src
     assert "op_counts_out=_op_counts" in src
@@ -92,6 +95,7 @@ def test_named_features_resolve_their_own_schedules():
     correct as levers are added."""
     from merlin.llvmlower.impr_features import MRPAD_INT8_NAME
     from merlin.mining.lever_applicability import inapplicable_features
+
     feats = {MRPAD_INT8_NAME, "promote_buffers_to_stack", "named_int8_contraction"}
     # int8 as it lowers by DEFAULT: the register block cannot fire
     bad = inapplicable_features(feats, {"func.func": 1, "linalg.generic": 280})
@@ -113,16 +117,17 @@ def test_the_harness_records_vector_coverage_and_isolates_its_build_tree():
         regression overwrote the binary that produced it.
     """
     from merlin.common.paths import repo_root
+
     src = (repo_root() / "build_tools" / "scripts" / "k1_int8_fair_compare.py").read_text()
     # coverage is recorded beside the wall
     assert "_rvv_audit.audit_binary(obj)" in src
     assert '"coverage_overall": rep.coverage_overall' in src
-    assert '"zero_vector_symbols"' in src   # renamed: the old name invited a model-level reading
+    assert '"zero_vector_symbols"' in src  # renamed: the old name invited a model-level reading
     # and it can never break a measurement
     assert "never let a diagnostic break a measurement" in src
     # the build tree is keyed by the feature set, not just the bundle
     assert '"fair_compare" / md.name / _feat_key' in src
-    assert 'FEATURES.txt' in src
+    assert "FEATURES.txt" in src
 
 
 def test_the_model_verdict_comes_from_the_compute_symbol_not_a_zero_vector_list():
@@ -139,14 +144,15 @@ def test_the_model_verdict_comes_from_the_compute_symbol_not_a_zero_vector_list(
     """
     from merlin.baselines.rvv_audit import AuditReport, SymbolCoverage
 
-    rep = AuditReport(by_symbol={
-        ".Lpcrel_hi4": SymbolCoverage(symbol=".Lpcrel_hi4", vector=9000,
-                                      scalar_int=10000, scalar_compute=10000),
-        "forward": SymbolCoverage(symbol="forward", vector=1080,
-                                  scalar_int=3137, scalar_compute=3137),
-        "_mlir_ciface_forward": SymbolCoverage(symbol="_mlir_ciface_forward", vector=0,
-                                               scalar_int=165, scalar_compute=165),
-    })
+    rep = AuditReport(
+        by_symbol={
+            ".Lpcrel_hi4": SymbolCoverage(symbol=".Lpcrel_hi4", vector=9000, scalar_int=10000, scalar_compute=10000),
+            "forward": SymbolCoverage(symbol="forward", vector=1080, scalar_int=3137, scalar_compute=3137),
+            "_mlir_ciface_forward": SymbolCoverage(
+                symbol="_mlir_ciface_forward", vector=0, scalar_int=165, scalar_compute=165
+            ),
+        }
+    )
     name, sym = rep.compute_symbol()
     assert name == "forward", "picked a local label or the descriptor wrapper"
     assert sym.coverage is not None
@@ -158,6 +164,7 @@ def test_the_model_verdict_comes_from_the_compute_symbol_not_a_zero_vector_list(
 
 def test_the_harness_records_the_compute_symbol_coverage():
     from merlin.common.paths import repo_root
+
     src = (repo_root() / "build_tools" / "scripts" / "k1_int8_fair_compare.py").read_text()
     assert '"compute_symbol_coverage"' in src
     assert '"zero_vector_symbols"' in src, "the misleading key name is back"
@@ -173,27 +180,28 @@ def test_a_measurement_records_the_source_it_was_built_from():
     on features; codegen_env keys on the environment; neither sees source state.
     """
     from merlin.common.paths import repo_root
+
     src = (repo_root() / "build_tools" / "scripts" / "k1_int8_fair_compare.py").read_text()
     assert "source_digest" in src and "source_dirty" in src
     assert "_prov.source_digest(_src)" in src
     # the stamp must never be able to break a measurement
     assert "a provenance stamp must not break a measurement" in src
     # and it must cover the modules that actually decide the emitted code
-    for mod in ("passes_quant_int.py", "impr_features.py", "quant_passes.py",
-                "zephyr_model.py", "k1.py"):
+    for mod in ("passes_quant_int.py", "impr_features.py", "quant_passes.py", "zephyr_model.py", "k1.py"):
         assert mod in src, mod
 
 
 def test_source_digest_changes_with_the_bytes_read(tmp_path):
     """Fail-closed property: a modified source must not keep the digest of the pinned one."""
     from merlin.common import provenance as prov
+
     a = tmp_path / "m.py"
     a.write_text("x = 1\n")
     first = prov.source_digest([a])
     a.write_text("x = 2\n")
     assert prov.source_digest([a]) != first
     a.write_text("x = 1\n")
-    assert prov.source_digest([a]) == first    # and it is content-addressed, not time-based
+    assert prov.source_digest([a]) == first  # and it is content-addressed, not time-based
 
 
 def test_levers_are_judged_against_the_module_lowering_receives():
@@ -209,6 +217,7 @@ def test_levers_are_judged_against_the_module_lowering_receives():
     reports the wrong answer is worse than no check.
     """
     from merlin.common.paths import merlin_dir
+
     src = (merlin_dir() / "python" / "merlin" / "runtime" / "backends" / "zephyr_model.py").read_text()
     assert "_judge_levers_on" in src
     # both return paths must judge, not just the main one

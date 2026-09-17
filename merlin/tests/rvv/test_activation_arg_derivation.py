@@ -12,11 +12,11 @@ were named hoistable -- which was the whole point of the census.
 `input_order.json` maps an input NAME to its index in the inputs npz. It carries no argument
 positions and must never be read as if it did.
 """
+
 from __future__ import annotations
 
-import json
-
 import importlib.util
+import json
 
 import pytest
 
@@ -75,9 +75,9 @@ def test_positional_rule_disagrees_with_the_manifest():
         positional = set(range(len(json.loads((bundle / "input_order.json").read_text()))))
         assert not (truth & positional), (
             f"{bundle.name}: the positional rule {sorted(positional)} overlaps the manifest-derived "
-            f"activation set {sorted(truth)}; this test can no longer detect the old defect")
-        assert len(positional) == len(truth), (
-            f"{bundle.name}: the two rules should differ in POSITION, not in count")
+            f"activation set {sorted(truth)}; this test can no longer detect the old defect"
+        )
+        assert len(positional) == len(truth), f"{bundle.name}: the two rules should differ in POSITION, not in count"
         seen += 1
     if not seen:
         pytest.skip("no int8 recapture bundles present in this checkout")

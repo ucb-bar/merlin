@@ -5,6 +5,7 @@ property of the emitted circuit. On one array the two differ by two cycles; on a
 microarchitecture the same assumption over-predicts substantially, and a fill is an intercept, so the
 error lands hardest on the small tiles.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -45,8 +46,15 @@ def test_the_naive_law_is_the_one_the_circuit_refutes() -> None:
 
 def test_a_refuted_law_says_do_not_sweep_with_it() -> None:
     """The report must make a disagreement actionable rather than merely visible."""
-    d = FillDepth(dim=32, measured_cycles=62, law_cycles=64, law="rows_plus_cols",
-                  weight_buffer_slots=2, accumulator_banks=2, source="synthetic")
+    d = FillDepth(
+        dim=32,
+        measured_cycles=62,
+        law_cycles=64,
+        law="rows_plus_cols",
+        weight_buffer_slots=2,
+        accumulator_banks=2,
+        source="synthetic",
+    )
     assert d.law_agrees is False
     assert "REFUTED" in d.claim() and "do not sweep with it" in d.claim()
 
@@ -61,9 +69,9 @@ def test_double_buffering_is_reported_beside_the_depth() -> None:
 
 def test_an_unreadable_circuit_is_unknown_not_a_free_pipeline() -> None:
     with pytest.raises(HandshakeUnavailable):
-        measure_fill_depth("a-target-with-no-circuit", hw_mlir=None) \
-            if mlc_bridge.core_hw_mlir("a-target-with-no-circuit") is None \
-            else (_ for _ in ()).throw(HandshakeUnavailable("simulated"))
+        measure_fill_depth("a-target-with-no-circuit", hw_mlir=None) if mlc_bridge.core_hw_mlir(
+            "a-target-with-no-circuit"
+        ) is None else (_ for _ in ()).throw(HandshakeUnavailable("simulated"))
 
 
 def test_a_delay_line_the_emitter_did_not_name_is_still_walked() -> None:
@@ -100,6 +108,5 @@ def test_a_law_is_reported_against_each_targets_own_circuit() -> None:
     does not describe.
     """
     _needs_circuit()
-    verdicts = {t: measure_fill_depth(t, law="systolic_2d").law_agrees
-                for t in ("gemmini", "atlas")}
+    verdicts = {t: measure_fill_depth(t, law="systolic_2d").law_agrees for t in ("gemmini", "atlas")}
     assert set(verdicts.values()) == {True, False}, verdicts

@@ -3,8 +3,8 @@
 These run with no toolchain (K0/K10 surface). The runner smoke/negative tests live in
 test_oot_runner_smoke.py / test_oot_runner_negative.py.
 """
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 import json
 from pathlib import Path
@@ -12,9 +12,10 @@ from pathlib import Path
 import jsonschema
 import pytest
 
-from merlin.targetgen.eval.gemmini_conformance import RUNGS, QUANT_RUNGS, build
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.targetgen.contract import schemas
 from merlin.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
+from merlin.targetgen.eval.gemmini_conformance import QUANT_RUNGS, RUNGS, build
 
 REPO = repo_root()
 BC = REPO / "merlin/contract"
@@ -39,7 +40,7 @@ def test_golden_examples_parse_and_validate():
     for name in ("g0_matmul", "g1_relu", "g2_acc_scale"):
         text = (BC / "examples" / f"{name}.interface.mlir").read_text()
         cb = parse_interface_mlir(text)
-        schemas.validate_command_buffer(cb)            # fail-closed schema check
+        schemas.validate_command_buffer(cb)  # fail-closed schema check
         assert cb["commands"] and cb["target"] == "gemmini"
 
 
@@ -59,11 +60,14 @@ def test_command_buffer_schema_fails_closed():
 
 def test_manifest_schema_accepts_real_packages_and_rejects_missing_entrypoint():
     import yaml
+
     for pkg in ("merlin_native_v0", "hand_smoke_oot"):
         man = yaml.safe_load((REPO / "out/artifacts/targets" / "gemmini" / pkg / "manifest.yaml").read_text())
         schemas.validate_manifest(man)
     # drop a required entrypoint -> fail closed
-    man = yaml.safe_load((REPO / "out/artifacts/targets" / "gemmini" / "merlin_native_v0" / "manifest.yaml").read_text())
+    man = yaml.safe_load(
+        (REPO / "out/artifacts/targets" / "gemmini" / "merlin_native_v0" / "manifest.yaml").read_text()
+    )
     del man["commands"]["emit_command_buffer"]
     with pytest.raises(schemas.ContractViolation):
         schemas.validate_manifest(man)
@@ -71,9 +75,9 @@ def test_manifest_schema_accepts_real_packages_and_rejects_missing_entrypoint():
 
 def test_manifest_schema_accepts_optional_one_pass_analysis_bundle():
     import yaml
-    man = yaml.safe_load(
-        (REPO / "out/artifacts/targets/gemmini/merlin_native_v0/manifest.yaml").read_text())
+
+    man = yaml.safe_load((REPO / "out/artifacts/targets/gemmini/merlin_native_v0/manifest.yaml").read_text())
     man["commands"]["emit_analysis_bundle"] = {
-        "argv": ["{tool}", "--emit-command-buffer={output_json}",
-                 "--emit-target-artifact", "{input_mlir}"]}
+        "argv": ["{tool}", "--emit-command-buffer={output_json}", "--emit-target-artifact", "{input_mlir}"]
+    }
     schemas.validate_manifest(man)

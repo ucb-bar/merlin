@@ -24,19 +24,20 @@ The end-to-end test is ``test_ladder_carries_the_cert_tier_and_reruns_after_one_
 real ladder twice and counts adapter invocations. Counting is the point -- a test that only inspected
 the emitted record could not tell a skipped tier from one that ran and was overwritten.
 """
+
 from __future__ import annotations
 
 import json
 
 import pytest
 
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen import tier_cache as TC
 from merlin.targetgen import tier_policy as _TP
 from merlin.targetgen.capsule_common import load_capsule
 from merlin.targetgen.oracle_schedule import CERT_LEDGER
 from merlin.targetgen.runner_config import RunnerConfig
-from merlin.common.paths import merlin_dir, repo_root
 
 CAPS = repo_root() / "merlin/contract/capsules"
 
@@ -83,10 +84,12 @@ def test_execution_identity_is_the_one_promotion_binds_a_certificate_to(tmp_path
     """
     import importlib.util
     import sys
+
     import yaml
 
     spec = importlib.util.spec_from_file_location(
-        "tier_promote", merlin_dir() / "experiments/capsule_bench/harness/tier_promote.py")
+        "tier_promote", merlin_dir() / "experiments/capsule_bench/harness/tier_promote.py"
+    )
     tp = importlib.util.module_from_spec(spec)
     sys.modules.setdefault("tier_promote", tp)
     spec.loader.exec_module(tp)
@@ -97,27 +100,29 @@ def test_execution_identity_is_the_one_promotion_binds_a_certificate_to(tmp_path
     (run / "run_manifest.yaml").write_text(yaml.safe_dump({"target": "t"}))
 
     from_promotion = tp.execution_digest(run / "capsule_result.json")
-    from_cache = TC.execution_identity(target="t",
-                                       executables=[generated / "package_kernel.elf"],
-                                       toolchain_shas=SHAS)
+    from_cache = TC.execution_identity(target="t", executables=[generated / "package_kernel.elf"], toolchain_shas=SHAS)
     assert from_promotion is not None, "the promotion identity must still be computable"
     assert from_promotion == from_cache, (
-        "the cache must key on the SAME identity the promotion ledger binds a certificate to")
+        "the cache must key on the SAME identity the promotion ledger binds a certificate to"
+    )
 
 
 def test_execution_identity_moves_with_one_byte_of_the_executable(tmp_path):
-    a = TC.execution_identity(target="t", executables=[_elf(tmp_path, b"AAAA") / "package_kernel.elf"],
-                              toolchain_shas=SHAS)
-    b = TC.execution_identity(target="t", executables=[_elf(tmp_path, b"AAAB") / "package_kernel.elf"],
-                              toolchain_shas=SHAS)
+    a = TC.execution_identity(
+        target="t", executables=[_elf(tmp_path, b"AAAA") / "package_kernel.elf"], toolchain_shas=SHAS
+    )
+    b = TC.execution_identity(
+        target="t", executables=[_elf(tmp_path, b"AAAB") / "package_kernel.elf"], toolchain_shas=SHAS
+    )
     assert a and b and a != b, "one changed byte of the program must be a different identity"
 
 
 def test_execution_identity_moves_with_the_hardware_revision(tmp_path):
     elf = _elf(tmp_path) / "package_kernel.elf"
     a = TC.execution_identity(target="t", executables=[elf], toolchain_shas=SHAS)
-    b = TC.execution_identity(target="t", executables=[elf],
-                              toolchain_shas={"merlin": SHAS["merlin"], "some_rtl": "c" * 40})
+    b = TC.execution_identity(
+        target="t", executables=[elf], toolchain_shas={"merlin": SHAS["merlin"], "some_rtl": "c" * 40}
+    )
     assert a and b and a != b, "a certificate is about one device revision; another is not the same"
 
 
@@ -125,20 +130,22 @@ def test_execution_identity_ignores_merlins_own_commit(tmp_path):
     """An edit that emits a byte-identical program on the same device has not changed the program."""
     elf = _elf(tmp_path) / "package_kernel.elf"
     a = TC.execution_identity(target="t", executables=[elf], toolchain_shas=SHAS)
-    b = TC.execution_identity(target="t", executables=[elf],
-                              toolchain_shas={"merlin": "f" * 40, "some_rtl": PIN})
+    b = TC.execution_identity(target="t", executables=[elf], toolchain_shas={"merlin": "f" * 40, "some_rtl": PIN})
     assert a == b, "keying on merlin's commit would invalidate every certificate on every edit"
 
 
-@pytest.mark.parametrize("target,shas,write_elf", [
-    (None, SHAS, True),                       # no target
-    ("", SHAS, True),                         # no target
-    ("t", {"merlin": "b" * 40}, True),        # merlin only: no hardware revision at all
-    ("t", {"merlin": "b" * 40, "rtl": "UNKNOWN"}, True),   # a pin nobody could resolve
-    ("t", {"merlin": "b" * 40, "rtl": "abc123"}, True),    # an abbreviated pin
-    ("t", SHAS, False),                       # no executable
-    ("t", None, True),                        # no provenance block
-])
+@pytest.mark.parametrize(
+    "target,shas,write_elf",
+    [
+        (None, SHAS, True),  # no target
+        ("", SHAS, True),  # no target
+        ("t", {"merlin": "b" * 40}, True),  # merlin only: no hardware revision at all
+        ("t", {"merlin": "b" * 40, "rtl": "UNKNOWN"}, True),  # a pin nobody could resolve
+        ("t", {"merlin": "b" * 40, "rtl": "abc123"}, True),  # an abbreviated pin
+        ("t", SHAS, False),  # no executable
+        ("t", None, True),  # no provenance block
+    ],
+)
 def test_execution_identity_fails_closed(tmp_path, target, shas, write_elf):
     """Every missing or imprecise input answers ``None``, which makes the tier re-run."""
     if write_elf:
@@ -196,7 +203,8 @@ def test_instrument_digest_fails_closed_without_a_grading_path_or_an_engine(tmp_
     monkeypatch.setattr(TC, "_engine_token", lambda target, tier, rtl_tier: None)
     TC._INSTRUMENT_MEMO.clear()
     assert TC.instrument_digest("t", "L3", rtl_tier=True) is None, (
-        "an RTL tier whose engine cannot be established has no instrument identity")
+        "an RTL tier whose engine cannot be established has no instrument identity"
+    )
 
 
 def test_every_declared_grading_module_exists():
@@ -206,28 +214,38 @@ def test_every_declared_grading_module_exists():
     missing = [rel for rel in TC._GRADING_MODULES if not (repo_root() / rel).is_file()]
     assert not missing, f"grading-path members have moved: {missing}"
     assert "merlin/python/merlin/targetgen/capsule_runner.py" in TC._GRADING_MODULES, (
-        "the ladder decides what a tier verdict means; its bytes must be in the instrument")
+        "the ladder decides what a tier verdict means; its bytes must be in the instrument"
+    )
     assert "merlin/python/merlin/targetgen/tier_cache.py" in TC._GRADING_MODULES, (
-        "this module decides what a HIT means; an edit to it must not be carried across")
+        "this module decides what a HIT means; an edit to it must not be carried across"
+    )
 
 
 def test_grading_path_includes_the_targets_own_backend_and_refuses_an_unknown_one():
     """Derived from the backend registry, never named here -- and ``None`` when it cannot be resolved."""
-    got = TC.grading_path("gemmini")            # target-ok: a test may name the target it derives from
+    got = TC.grading_path("gemmini")  # target-ok: a test may name the target it derives from
     if got is None:
         pytest.skip("this environment cannot resolve a backend")
     assert any("targets" in p.parts for p in got), (
-        "the target's own backend decides what a console means; its bytes are part of the instrument")
+        "the target's own backend decides what a console means; its bytes are part of the instrument"
+    )
     assert TC.grading_path("no-such-target-exists") is None, (
-        "an unresolvable backend must yield no instrument identity, not a partial one")
+        "an unresolvable backend must yield no instrument identity, not a partial one"
+    )
 
 
 # ---------------------------------------------------------------------------------------------
 # 3. the store: the mutation matrix
 # ---------------------------------------------------------------------------------------------
-RESULT = {"status": "pass", "cycles": 116, "mandatory": True, "derived_from_rtl": True,
-          "evidence": "engine_console.log", "timing": {"sim_active_s": 33.5},
-          "concurrency": {"workers": 16}}
+RESULT = {
+    "status": "pass",
+    "cycles": 116,
+    "mandatory": True,
+    "derived_from_rtl": True,
+    "evidence": "engine_console.log",
+    "timing": {"sim_active_s": 33.5},
+    "concurrency": {"workers": 16},
+}
 
 
 def test_a_stored_pass_is_found_for_the_same_bytes_and_the_same_instrument():
@@ -236,19 +254,21 @@ def test_a_stored_pass_is_found_for_the_same_bytes_and_the_same_instrument():
     assert hit is not None and hit["status"] == "pass"
     assert hit["tier_result"]["cycles"] == 116, "a cycle count is a property of the program + device"
     for dropped in TC._NOT_MEASURED_NOW:
-        assert dropped not in hit["tier_result"], (
-            f"{dropped!r} describes an act of measurement that did not happen now")
+        assert dropped not in hit["tier_result"], f"{dropped!r} describes an act of measurement that did not happen now"
 
 
-@pytest.mark.parametrize("capsule,tier,identity,instrument", [
-    ("C0", "L3", DIGEST_A, "3" * 64),         # a different instrument: the judge moved
-    ("C0", "L3", "3" * 64, DIGEST_B),         # a different program: one byte changed
-    ("C0", "L4", DIGEST_A, DIGEST_B),         # a different tier
-    ("C1", "L3", DIGEST_A, DIGEST_B),         # a different capsule
-    ("C0", "L3", None, DIGEST_B),             # no identity at all
-    ("C0", "L3", DIGEST_A, None),             # no instrument at all
-    ("C0", "L3", "not-a-digest", DIGEST_B),   # a malformed identity
-])
+@pytest.mark.parametrize(
+    "capsule,tier,identity,instrument",
+    [
+        ("C0", "L3", DIGEST_A, "3" * 64),  # a different instrument: the judge moved
+        ("C0", "L3", "3" * 64, DIGEST_B),  # a different program: one byte changed
+        ("C0", "L4", DIGEST_A, DIGEST_B),  # a different tier
+        ("C1", "L3", DIGEST_A, DIGEST_B),  # a different capsule
+        ("C0", "L3", None, DIGEST_B),  # no identity at all
+        ("C0", "L3", DIGEST_A, None),  # no instrument at all
+        ("C0", "L3", "not-a-digest", DIGEST_B),  # a malformed identity
+    ],
+)
 def test_every_mutation_of_the_key_is_a_miss(capsule, tier, identity, instrument):
     TC.record("C0", "L3", DIGEST_A, DIGEST_B, status="pass", tier_result=RESULT)
     assert TC.lookup(capsule, tier, identity, instrument) is None
@@ -281,8 +301,7 @@ def test_a_record_that_disagrees_with_its_own_key_is_a_miss():
 def test_a_failure_is_never_stored_and_never_carried():
     """A failure is what an agent acts on -- its plane, its category, its first mismatch. A record
     carrying only the word "fail" would replace actionable feedback with an assertion."""
-    assert TC.record("C0", "L3", DIGEST_A, DIGEST_B, status="fail",
-                     tier_result={"status": "fail"}) is None
+    assert TC.record("C0", "L3", DIGEST_A, DIGEST_B, status="fail", tier_result={"status": "fail"}) is None
     assert TC.lookup("C0", "L3", DIGEST_A, DIGEST_B) is None
 
 
@@ -300,36 +319,50 @@ def test_switching_the_cache_off_never_hits(monkeypatch):
 # ---------------------------------------------------------------------------------------------
 def _ledger(tmp_path, entry) -> str:
     p = tmp_path / "tier_state.json"
-    p.write_text(json.dumps({"C0": {CERT_LEDGER: {"L3": {DIGEST_A: entry}}},
-                             "C0_mirror_only": {"L3": entry}}))
+    p.write_text(json.dumps({"C0": {CERT_LEDGER: {"L3": {DIGEST_A: entry}}}, "C0_mirror_only": {"L3": entry}}))
     return str(p)
 
 
 def test_a_promotion_certificate_is_carried(tmp_path, monkeypatch):
     """The measured waste this exists to remove: an async promotion earns a certificate on real RTL and
     the next grade re-buys it. The ledger was written and nothing read it."""
-    monkeypatch.setenv("MERLIN_TIER_CERT_LEDGER",
-                       _ledger(tmp_path, {"status": "pass", "execution_digest": DIGEST_A,
-                                          "instrument": DIGEST_B}))
+    monkeypatch.setenv(
+        "MERLIN_TIER_CERT_LEDGER",
+        _ledger(tmp_path, {"status": "pass", "execution_digest": DIGEST_A, "instrument": DIGEST_B}),
+    )
     hit = TC.lookup("C0", "L3", DIGEST_A, DIGEST_B)
     assert hit is not None and hit["status"] == "pass"
     assert "ledger" in str(hit.get("source")), "a carry must say where the verdict came from"
     assert hit["tier_result"] == {}, (
-        "a ledger entry holds no tier record; inventing cycles for it would be a fabricated measurement")
+        "a ledger entry holds no tier record; inventing cycles for it would be a fabricated measurement"
+    )
 
 
-@pytest.mark.parametrize("entry,why", [
-    ({"status": "pass", "execution_digest": DIGEST_A},
-     "an entry that never recorded its instrument -- every entry written before the reader existed"),
-    ({"status": "pass", "execution_digest": DIGEST_A, "instrument": "3" * 64},
-     "a certificate earned under a different judge"),
-    ({"status": "pending", "execution_digest": DIGEST_A, "instrument": DIGEST_B},
-     "an in-flight job is not a verdict"),
-    ({"status": "fail", "execution_digest": DIGEST_A, "instrument": DIGEST_B},
-     "a failure is re-run for its detail"),
-    ({"status": "pass", "execution_digest": "3" * 64, "instrument": DIGEST_B},
-     "an entry whose own identity disagrees with the slot it sits in"),
-])
+@pytest.mark.parametrize(
+    "entry,why",
+    [
+        (
+            {"status": "pass", "execution_digest": DIGEST_A},
+            "an entry that never recorded its instrument -- every entry written before the reader existed",
+        ),
+        (
+            {"status": "pass", "execution_digest": DIGEST_A, "instrument": "3" * 64},
+            "a certificate earned under a different judge",
+        ),
+        (
+            {"status": "pending", "execution_digest": DIGEST_A, "instrument": DIGEST_B},
+            "an in-flight job is not a verdict",
+        ),
+        (
+            {"status": "fail", "execution_digest": DIGEST_A, "instrument": DIGEST_B},
+            "a failure is re-run for its detail",
+        ),
+        (
+            {"status": "pass", "execution_digest": "3" * 64, "instrument": DIGEST_B},
+            "an entry whose own identity disagrees with the slot it sits in",
+        ),
+    ],
+)
 def test_every_unusable_ledger_entry_is_a_miss(tmp_path, monkeypatch, entry, why):
     monkeypatch.setenv("MERLIN_TIER_CERT_LEDGER", _ledger(tmp_path, entry))
     assert TC.lookup("C0", "L3", DIGEST_A, DIGEST_B) is None, why
@@ -361,13 +394,11 @@ def test_a_carried_tier_record_is_never_presented_as_freshly_measured(tmp_path, 
     f.write_text("x\n")
     _fixed_instrument(monkeypatch, [f])
     generated = _elf(tmp_path)
-    identity = TC.execution_identity(target="t", executables=[generated / "package_kernel.elf"],
-                                     toolchain_shas=SHAS)
+    identity = TC.execution_identity(target="t", executables=[generated / "package_kernel.elf"], toolchain_shas=SHAS)
     instrument = TC.instrument_digest("t", "L3", rtl_tier=True)
     TC.record("C0", "L3", identity, instrument, status="pass", tier_result=RESULT, run_id="earlier")
 
-    got, why = CR.carried_tier_result("C0", "L3", True, target="t", generated=generated, shas=SHAS,
-                                      from_rtl=True)
+    got, why = CR.carried_tier_result("C0", "L3", True, target="t", generated=generated, shas=SHAS, from_rtl=True)
     assert got is not None and got.status == "pass"
     assert why == "", "a HIT must not also report a refusal"
     d = got.to_dict()
@@ -379,10 +410,12 @@ def test_a_carried_tier_record_is_never_presented_as_freshly_measured(tmp_path, 
     assert "carried" in (d["reason"] or ""), "the record must SAY it was not executed"
     assert d["cycles"] == 116, "cycles are a property of the program and the device"
     assert d.get("timing") is None and d.get("concurrency") is None, (
-        "no time was spent measuring now; a copied duration would be a fabricated measurement")
+        "no time was spent measuring now; a copied duration would be a fabricated measurement"
+    )
     assert d.get("evidence") is None, "the console file belongs to the run that earned the verdict"
     assert d["carried"]["earned_evidence"]["evidence"] == "engine_console.log", (
-        "and it must still be findable, in the block that says where it lives")
+        "and it must still be findable, in the block that says where it lives"
+    )
 
 
 def test_an_executed_record_asserts_that_it_was_measured():
@@ -396,8 +429,8 @@ def test_reuse_block_states_both_lists():
     block = TC.reuse_block({"L2": fresh, "L3": carried})
     assert block == {"executed": ["L2"], "carried": ["L3"], "note": block["note"]}
     assert TC.reuse_block({"L2": fresh})["carried"] == [], (
-        "the accounting is emitted even when nothing was reused, or a cached grade and a fresh one "
-        "read the same")
+        "the accounting is emitted even when nothing was reused, or a cached grade and a fresh one read the same"
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -406,9 +439,16 @@ def test_reuse_block_states_both_lists():
 def _two_tier_config() -> RunnerConfig:
     """A screen tier and a cert tier. Shape, not identity: the target string is a label here."""
     return RunnerConfig(
-        target="cachetest", suite="cachetest-capsule-bench", dtype="fp8_e4m3",
-        fourth_output_name="kernel.S", tier_sim={"L2": "screen-sim", "L3": "cert-sim"},
-        rtl_tiers=frozenset({"L3"}), oracle_tiers=("L2", "L3"), perf_fields=(), trace_gate=None)
+        target="cachetest",
+        suite="cachetest-capsule-bench",
+        dtype="fp8_e4m3",
+        fourth_output_name="kernel.S",
+        tier_sim={"L2": "screen-sim", "L3": "cert-sim"},
+        rtl_tiers=frozenset({"L3"}),
+        oracle_tiers=("L2", "L3"),
+        perf_fields=(),
+        trace_gate=None,
+    )
 
 
 @pytest.fixture
@@ -425,11 +465,22 @@ def _ladder(monkeypatch, tmp_path):
     # would silently turn this into a test of a different question. The ORDER is not what is under test.
     monkeypatch.setattr(_TP, "tier_order", lambda target, tiers: [t for t in ("L2", "L3") if t in set(tiers)])
     monkeypatch.setattr(CR, "_match_by_policy", lambda *a, **k: True)
-    monkeypatch.setattr(CR.CG, "compare", lambda *a, **k: {
-        "status": "pass", "policy": "p", "max_abs_error": 0, "max_rel_error": 0,
-        "mismatch_count": 0, "first_mismatch": None, "per_output": {}})
+    monkeypatch.setattr(
+        CR.CG,
+        "compare",
+        lambda *a, **k: {
+            "status": "pass",
+            "policy": "p",
+            "max_abs_error": 0,
+            "max_rel_error": 0,
+            "mismatch_count": 0,
+            "first_mismatch": None,
+            "per_output": {},
+        },
+    )
     # `run_capsule` imports this at call time from merlin.targetgen.provenance; patch it there.
     from merlin.targetgen import provenance as _PROV
+
     monkeypatch.setattr(_PROV, "toolchain_shas", lambda *a, **k: dict(SHAS))
     f = tmp_path / "grader.py"
     f.write_text("judge\n")
@@ -439,6 +490,7 @@ def _ladder(monkeypatch, tmp_path):
 
 def _adapters(program: bytes, calls: dict):
     """A screen adapter that BUILDS the program (as every real one does) and a cert adapter that counts."""
+
     def screen(cb, llvm_text, workdir, timeout):
         calls["L2"] = calls.get("L2", 0) + 1
         (workdir).mkdir(parents=True, exist_ok=True)
@@ -459,8 +511,14 @@ def _capsule():
 
 
 def _grade(tmp_path, run_id, program, calls):
-    return CR.run_capsule(_capsule(), "unused-package", runs_root=tmp_path / run_id, run_id=run_id,
-                          config=_two_tier_config(), oracle_adapters=_adapters(program, calls))
+    return CR.run_capsule(
+        _capsule(),
+        "unused-package",
+        runs_root=tmp_path / run_id,
+        run_id=run_id,
+        config=_two_tier_config(),
+        oracle_adapters=_adapters(program, calls),
+    )
 
 
 def test_materialized_execution_ceiling_does_not_invoke_a_higher_adapter(tmp_path, _ladder):
@@ -474,8 +532,12 @@ def test_materialized_execution_ceiling_does_not_invoke_a_higher_adapter(tmp_pat
     capsule["required_oracle_tiers"] = ["L2"]
     capsule["oracle_tier_ceiling"] = "L2"
     result = CR.run_capsule(
-        capsule, "unused-package", runs_root=tmp_path / "ceiling", run_id="ceiling",
-        config=_two_tier_config(), oracle_adapters=_adapters(b"\x7fELF-search", calls),
+        capsule,
+        "unused-package",
+        runs_root=tmp_path / "ceiling",
+        run_id="ceiling",
+        config=_two_tier_config(),
+        oracle_adapters=_adapters(b"\x7fELF-search", calls),
     )
     assert result["status"] == "pass", result.get("failure")
     assert calls == {"L2": 1}, "an L2 search view must never launch the available L3/GSIM adapter"
@@ -494,13 +556,15 @@ def test_ladder_carries_the_cert_tier_and_reruns_after_one_byte(tmp_path, _ladde
     first = _grade(tmp_path, "g1", b"\x7fELF-program-one", calls)
     assert first["status"] == "pass", first.get("failure")
     assert calls == {"L2": 1, "L3": 1}, "the first grade pays for both tiers"
-    assert first["tier_reuse"] == {"executed": ["L0", "L1", "L2", "L3"], "carried": [],
-                                   "note": first["tier_reuse"]["note"]}
+    assert first["tier_reuse"] == {
+        "executed": ["L0", "L1", "L2", "L3"],
+        "carried": [],
+        "note": first["tier_reuse"]["note"],
+    }
 
     second = _grade(tmp_path, "g2", b"\x7fELF-program-one", calls)
     assert second["status"] == "pass", second.get("failure")
-    assert calls == {"L2": 2, "L3": 1}, (
-        "the cert tier was re-bought for a program that had not changed a byte")
+    assert calls == {"L2": 2, "L3": 1}, "the cert tier was re-bought for a program that had not changed a byte"
     assert second["tier_reuse"]["carried"] == ["L3"]
     assert "L3" not in second["tier_reuse"]["executed"]
     assert second["tiers"]["L3"]["measured_now"] is False
@@ -508,11 +572,11 @@ def test_ladder_carries_the_cert_tier_and_reruns_after_one_byte(tmp_path, _ladde
     assert second["tiers"]["L3"]["cycles"] == 4242, "the certified cycle count is carried with it"
     assert second["tiers"]["L2"]["measured_now"] is True, (
         "the first tier the ladder executes is always paid for: its adapter builds the program the "
-        "key is taken from, so nothing can be carried until it has run")
+        "key is taken from, so nothing can be carried until it has run"
+    )
 
     third = _grade(tmp_path, "g3", b"\x7fELF-program-TWO", calls)
-    assert calls == {"L2": 3, "L3": 2}, (
-        "one changed byte of the emitted program must re-run the cert tier")
+    assert calls == {"L2": 3, "L3": 2}, "one changed byte of the emitted program must re-run the cert tier"
     assert third["tier_reuse"]["carried"] == []
 
 
@@ -532,6 +596,7 @@ def test_ladder_reruns_when_the_store_is_purged(tmp_path, _ladder, monkeypatch):
     calls: dict = {}
     _grade(tmp_path, "g1", b"\x7fELF-program-one", calls)
     import shutil
+
     shutil.rmtree(TC.cache_root())
     _grade(tmp_path, "g2", b"\x7fELF-program-one", calls)
     assert calls == {"L2": 2, "L3": 2}, "a purged cache re-runs; it never assumes"
@@ -560,9 +625,14 @@ def test_adapter_owns_its_evidence_even_when_general_tier_cache_hits(tmp_path, _
     program = b"\x7fELF-program-one"
     _grade(tmp_path, "prime", program, calls)
     result = CR.run_capsule(
-        _capsule(), "unused-package", runs_root=tmp_path / "scoped", run_id="scoped",
-        config=_two_tier_config(), oracle_adapters=_adapters(program, calls),
-        adapter_managed_tiers=("L3",))
+        _capsule(),
+        "unused-package",
+        runs_root=tmp_path / "scoped",
+        run_id="scoped",
+        config=_two_tier_config(),
+        oracle_adapters=_adapters(program, calls),
+        adapter_managed_tiers=("L3",),
+    )
     assert result["status"] == "pass"
     assert calls == {"L2": 2, "L3": 2}, "the general cache must not bypass an evidence-owning adapter"
     assert result["tier_reuse"]["carried"] == []

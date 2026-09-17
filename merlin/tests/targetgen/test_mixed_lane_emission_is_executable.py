@@ -8,6 +8,7 @@ whole-model emission, so the check now derives agreement between the artifact's 
 
 Each negative case here is a MUTATION of the positive one, so a check that cannot fail is visible.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -28,10 +29,10 @@ def _artifact(parameters: int) -> str:
         '"builtin.module"() ({\n'
         '  "llvm.mlir.global"() <{global_type = !llvm.array<16 x i8>, sym_name = "stage"}> : () -> ()\n'
         '  "llvm.func"() <{sym_name = "kernel", '
-        f'function_type = !llvm.func<void ({pointers})>}}> ({{\n'
+        f"function_type = !llvm.func<void ({pointers})>}}> ({{\n"
         '    "llvm.return"() : () -> ()\n'
-        '  }) : () -> ()\n'
-        '}) : () -> ()\n'
+        "  }) : () -> ()\n"
+        "}) : () -> ()\n"
     )
 
 
@@ -58,10 +59,10 @@ def test_arity_ignores_nesting_inside_a_parameter_type() -> None:
     text = (
         '"builtin.module"() ({\n'
         '  "llvm.func"() <{sym_name = "kernel", function_type = '
-        '!llvm.func<void (!llvm.struct<(i32, i32, i64)>, !llvm.ptr)>}> ({\n'
+        "!llvm.func<void (!llvm.struct<(i32, i32, i64)>, !llvm.ptr)>}> ({\n"
         '    "llvm.return"() : () -> ()\n'
-        '  }) : () -> ()\n'
-        '}) : () -> ()\n'
+        "  }) : () -> ()\n"
+        "}) : () -> ()\n"
     )
     assert emitted_entry_arity(text) == 2
 
@@ -93,8 +94,7 @@ def test_arity_disagreement_is_refused_and_says_both_numbers() -> None:
 
 
 def test_artifact_without_an_entry_is_refused() -> None:
-    ok, why_not = is_executable_emission(
-        _mixed_buffer(393), artifact_text='"builtin.module"() ({}) : () -> ()')
+    ok, why_not = is_executable_emission(_mixed_buffer(393), artifact_text='"builtin.module"() ({}) : () -> ()')
     assert not ok
     assert "no entry function" in why_not
 

@@ -10,14 +10,14 @@ This is the second frozen input grammar the experiment ABI hands a backend packa
 * drive a valid command buffer for the matmul family (the highest-leverage slice — it reuses the
   existing residency path with no new opcodes).
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
 from merlin.common.paths import repo_root
-from merlin.targetgen.contract.linalg_iface import (
-    is_linalg_on_tensors, matmul_records, parse_linalg_mlir)
+from merlin.targetgen.contract.linalg_iface import is_linalg_on_tensors, matmul_records, parse_linalg_mlir
 
 _CAPS = repo_root() / "merlin" / "contract" / "capsules" / "radiance"
 
@@ -58,9 +58,11 @@ def test_every_linalg_capsule_parses_to_a_clean_inventory(rel):
     assert parsed["results"] and all(r["dtype"] for r in parsed["results"])
     assert parsed["ops"], "no payload ops surfaced"
     # No structural init/terminator op leaks into the payload list (would double-count body ops).
-    leaked = [o["kind"] for o in parsed["ops"]
-              if o["kind"] in ("linalg.yield", "func.return", "tensor.empty",
-                               "arith.constant", "linalg.fill", "tensor.splat")]
+    leaked = [
+        o["kind"]
+        for o in parsed["ops"]
+        if o["kind"] in ("linalg.yield", "func.return", "tensor.empty", "arith.constant", "linalg.fill", "tensor.splat")
+    ]
     assert not leaked, leaked
     # Every op carries a dataflow source for each input (arg / prior-op / init / const).
     for o in parsed["ops"]:
@@ -111,18 +113,21 @@ def test_matmul_family_lowers_to_a_command_buffer_that_executes():
     assert mm["extents"] == {"m": 16, "k": 16, "n": 16}
 
     cb = {
-        "abi_version": "0.1", "target": "radiance",
+        "abi_version": "0.1",
+        "target": "radiance",
         "tensors": {
             "X": {"shape": parsed["args"][0]["shape"], "dtype": "i8", "role": "input"},
             "W": {"shape": parsed["args"][1]["shape"], "dtype": "i8", "role": "weight"},
             "B": {"shape": parsed["args"][2]["shape"], "dtype": "i32", "role": "bias"},
         },
         "commands": [
-            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "Wp"},
-             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "Wp"}, "attributes": {"layout": "packed_rhs"}},
             {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "X", "rhs": "Wp", "dst": "acc"}},
-            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y", "bias": "B"},
-             "attributes": {"epilogue": ["bias_add"], "output_dtype": "i32"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc", "dst": "Y", "bias": "B"},
+                "attributes": {"epilogue": ["bias_add"], "output_dtype": "i32"},
+            },
         ],
         "outputs": ["Y"],
     }

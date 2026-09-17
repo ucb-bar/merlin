@@ -4,6 +4,7 @@ A validator that has never rejected anything has not been shown to work, so the 
 here are the load-bearing tests: each mutates the pass's real output the way a miscompiling backend
 would, and requires a refutation with a counterexample.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -13,7 +14,8 @@ from merlin.verify.tools import find_mlir_tool
 
 pytestmark = pytest.mark.skipif(
     not (HAS_XDSL and HAS_Z3 and find_mlir_tool("mlir-translate")),
-    reason="needs the verify extra (xdsl + z3) and mlir-translate")
+    reason="needs the verify extra (xdsl + z3) and mlir-translate",
+)
 
 
 #: Refutation (finding a `sat` model) is far costlier than verification (proving `unsat`), and the
@@ -25,6 +27,7 @@ _REFUTE_TIMEOUT_MS = 60_000
 
 def _module(m=2, k=2, n=2, reuse=2):
     from merlin.xdsl_dialects.lowering import pipeline
+
     return pipeline.lower_repeated_rhs_matmul(reuse=reuse, m=m, k=k, n=n).interface_module
 
 
@@ -53,6 +56,7 @@ def test_verified_across_shapes(shape):
 
 
 # --- negative controls ---------------------------------------------------------------------------
+
 
 def _miswire_commit(module):
     """The second commit reads the FIRST accumulator: a duplicated / mis-wired commit."""
@@ -91,7 +95,8 @@ def test_mutations_are_refuted(mutate):
         pytest.fail(
             f"solver ABSTAINED on {label} at {_SHAPE} within {_REFUTE_TIMEOUT_MS} ms — this is a "
             f"budget/tractability failure, NOT the validator accepting the miscompilation. Raise "
-            f"the bound or shrink the shape; do not read it as a correctness result.")
+            f"the bound or shrink the shape; do not read it as a correctness result."
+        )
     assert v.refuted, f"validator ACCEPTED a miscompilation ({label}) at {_SHAPE}: status={v.status}"
     assert v.model, f"refuted {label} but produced no counterexample"
 
@@ -119,11 +124,13 @@ def test_operands_are_declared_at_their_own_width_not_the_accumulator_width():
 
     v = validate_interface_module(_module(), timeout_ms=_REFUTE_TIMEOUT_MS)
     assert v.status == "unsat"
-    widths = sorted({int(line.split("(_ BitVec")[1].split(")")[0])
-                     for line in v.smt2.splitlines() if "declare-const" in line})
+    widths = sorted(
+        {int(line.split("(_ BitVec")[1].split(")")[0]) for line in v.smt2.splitlines() if "declare-const" in line}
+    )
     assert widths == [8], (
         f"symbolic elements declared at {widths}; an i8 program must declare i8 constants and widen "
-        f"with smt.bv.concat, not declare wide constants and constrain them down")
+        f"with smt.bv.concat, not declare wide constants and constrain them down"
+    )
     assert "(concat" in v.smt2, "no concat in the export — the widening path is not being used"
 
 

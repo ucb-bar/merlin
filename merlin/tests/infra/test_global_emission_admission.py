@@ -2,6 +2,7 @@
 
 Exercise production admission before any decoding, machine audit or timing.
 """
+
 import json
 import sys
 
@@ -18,18 +19,22 @@ import perf_agent_stage as PAS
 
 
 @pytest.mark.parametrize("arm", ["baseline", "candidate", "cached_baseline"])
-@pytest.mark.parametrize("declined", [
-    {"op": "host_lane", "reason": "straight-line budget exceeded", "shape": [1, 1000]},
-    {},
-])
+@pytest.mark.parametrize(
+    "declined",
+    [
+        {"op": "host_lane", "reason": "straight-line budget exceeded", "shape": [1, 1000]},
+        {},
+    ],
+)
 def test_declined_arm_is_not_a_successful_empty_model(tmp_path, monkeypatch, arm, declined):
     baseline, candidate, source = (tmp_path / name for name in ("base", "candidate", "source"))
     for path in (baseline, candidate, source):
         path.mkdir()
     (source / "capsule.yaml").write_text(json.dumps({"id": "external_model"}))
     (source / "capsule.interface.mlir").write_text("module {}")
-    sentinel = PAS.StageE2ESentinel("external_model", str(source), str(source),
-        PAS._exact_tree_record(source)["sha256"], (), ())
+    sentinel = PAS.StageE2ESentinel(
+        "external_model", str(source), str(source), PAS._exact_tree_record(source)["sha256"], (), ()
+    )
     calls = []
     payload = json.dumps({"declined": declined, "commands": []})
     lowered = "module {}"
@@ -45,13 +50,27 @@ def test_declined_arm_is_not_a_successful_empty_model(tmp_path, monkeypatch, arm
     monkeypatch.setattr(PAS, "analyze_command_buffers", no_accounting)
     retained = None
     if arm == "cached_baseline":
-        retained = {"identity": {"baseline_sha256": hash_tree(baseline)["sha256"],
-                    "capsule_sha256": sentinel.capsule_sha256, "target": "fixture_device"},
-                    "lowered_text": lowered, "lowered_sha256": PAS._sha256(lowered.encode()),
-                    "command_buffer_text": payload, "command_buffer_sha256": PAS._sha256(payload.encode())}
+        retained = {
+            "identity": {
+                "baseline_sha256": hash_tree(baseline)["sha256"],
+                "capsule_sha256": sentinel.capsule_sha256,
+                "target": "fixture_device",
+            },
+            "lowered_text": lowered,
+            "lowered_sha256": PAS._sha256(lowered.encode()),
+            "command_buffer_text": payload,
+            "command_buffer_sha256": PAS._sha256(payload.encode()),
+        }
     with pytest.raises(PAS.StageGateError, match="lowering declined; no structural or cycle comparison"):
-        PAS.analyze_whole_model_emission(baseline, candidate, sentinel, timeout_s=10,
-            peak_macs_per_cycle=None, achievable_macs_per_cycle=None, target="fixture_device",
-            emit_pair_runner=emit, baseline_artifacts=retained)
-    assert calls == {"baseline": ["baseline"], "candidate": ["baseline", "candidate"],
-                     "cached_baseline": []}[arm]
+        PAS.analyze_whole_model_emission(
+            baseline,
+            candidate,
+            sentinel,
+            timeout_s=10,
+            peak_macs_per_cycle=None,
+            achievable_macs_per_cycle=None,
+            target="fixture_device",
+            emit_pair_runner=emit,
+            baseline_artifacts=retained,
+        )
+    assert calls == {"baseline": ["baseline"], "candidate": ["baseline", "candidate"], "cached_baseline": []}[arm]

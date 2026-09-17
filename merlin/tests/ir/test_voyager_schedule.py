@@ -7,6 +7,7 @@ the integer accumulator (concession C2). The structure is pinned against Voyager
 load per block of every tile Voyager loads, the loads in Voyager's order, one weight preload per
 resident-block change.
 """
+
 from __future__ import annotations
 
 import copy
@@ -17,8 +18,17 @@ import numpy as np
 import pytest
 
 from merlin.baselines.voyager_ir import Copy, FusedCompute, UnsupportedConstruct, load_model, replay
-from merlin.baselines.voyager_schedule import (AccMvin, Compute, Geometry, Mvin, Mvout, Preload,
-                                               execute, lower_conv, lower_gemm)
+from merlin.baselines.voyager_schedule import (
+    AccMvin,
+    Compute,
+    Geometry,
+    Mvin,
+    Mvout,
+    Preload,
+    execute,
+    lower_conv,
+    lower_gemm,
+)
 from merlin.common.paths import merlin_dir
 
 FIXTURES = merlin_dir() / "tests" / "data" / "voyager_ir"
@@ -45,9 +55,11 @@ def test_every_voyager_load_becomes_exactly_its_blocks_in_order() -> None:
     trace = _trace("split_k_256x512x256")
     schedule = lower_gemm(trace, GEOMETRY)
     d = GEOMETRY.dim
-    expected = [(("lhs" if c.src.box.node == "x_preprocess" else "weight"),
-                 (c.sizes[0] // d) * (c.sizes[1] // d))
-                for c in trace.of(Copy) if c.is_load]
+    expected = [
+        (("lhs" if c.src.box.node == "x_preprocess" else "weight"), (c.sizes[0] // d) * (c.sizes[1] // d))
+        for c in trace.of(Copy)
+        if c.is_load
+    ]
     got, run = [], None
     for op in (o for o in schedule.ops if isinstance(o, Mvin)):
         if run and run[0] == op.role and run[1] < run[2]:
@@ -95,7 +107,7 @@ def test_a_gemm_bias_is_loaded_into_the_accumulator_exactly() -> None:
     rng = np.random.default_rng(1)
     lhs = rng.integers(-128, 128, size=schedule.shapes["lhs"], dtype=np.int64)
     weight = rng.integers(-128, 128, size=schedule.shapes["weight"], dtype=np.int64)
-    bias = rng.integers(-2**20, 2**20, size=schedule.shapes["bias"], dtype=np.int64)
+    bias = rng.integers(-(2**20), 2**20, size=schedule.shapes["bias"], dtype=np.int64)
     expected = (lhs @ weight + bias).astype(np.int32)
     assert np.array_equal(execute(schedule, lhs, weight, bias=bias), expected)
     no_bias = replace(schedule, ops=[op for op in schedule.ops if not isinstance(op, AccMvin)])
@@ -112,8 +124,7 @@ def test_an_output_tile_the_accumulator_cannot_hold_is_refused() -> None:
 # 3x3 layers keep an innermost OX extent of 4 (stride 1) or 2 (stride 2) inside a 30- or 29-pixel
 # tile row, so each weight residency's pixels come as 4- or 2-pixel runs; the 1x1 layer's tile is 4
 # pixels wide, so its OY4 x OX4 stream is one contiguous 16-row run.
-CONV_FIXTURES = {"conv3x3_s1_28x28x64x64": 4, "conv3x3_s2_28x28x64x128": 2,
-                 "conv1x1_28x28x64x256": 16}
+CONV_FIXTURES = {"conv3x3_s1_28x28x64x64": 4, "conv3x3_s2_28x28x64x128": 2, "conv1x1_28x28x64x256": 16}
 
 
 def _conv_case(name: str):
@@ -124,14 +135,14 @@ def _conv_case(name: str):
     rng = np.random.default_rng(0)
     x = rng.integers(-128, 128, size=(1, workload["H"], workload["W"], cin), dtype=np.int64)
     w = rng.integers(-128, 128, size=(k, k, cin, cout), dtype=np.int64)
-    bias = rng.integers(-2**20, 2**20, size=cout, dtype=np.int64)
+    bias = rng.integers(-(2**20), 2**20, size=cout, dtype=np.int64)
     padded = np.pad(x, ((0, 0), (pad, pad), (pad, pad), (0, 0)))
     oh = (padded.shape[1] - k) // stride + 1
     ow = (padded.shape[2] - k) // stride + 1
     out = np.zeros((1, oh, ow, cout), dtype=np.int64)
     for fy in range(k):
         for fx in range(k):
-            window = padded[:, fy:fy + stride * oh:stride, fx:fx + stride * ow:stride]
+            window = padded[:, fy : fy + stride * oh : stride, fx : fx + stride * ow : stride]
             out += np.einsum("nhwc,co->nhwo", window, w[fy, fx])
     operands = (x.reshape(-1, cin), w.reshape(-1, cout), (bias[None, :]))
     return operands, (out + bias).reshape(-1, cout).astype(np.int32)
@@ -149,9 +160,10 @@ def test_the_conv_oracle_fails_when_the_bias_or_the_phase_split_is_broken() -> N
     schedule = lower_conv(_trace(name), GEOMETRY)
     (lhs, weight, bias), expected = _conv_case(name)
     no_bias = replace(schedule, ops=[op for op in schedule.ops if not isinstance(op, AccMvin)])
-    unit_step = replace(schedule, ops=[replace(op, row_step=1)
-                                       if isinstance(op, Mvin) and op.role == "lhs" else op
-                                       for op in schedule.ops])
+    unit_step = replace(
+        schedule,
+        ops=[replace(op, row_step=1) if isinstance(op, Mvin) and op.role == "lhs" else op for op in schedule.ops],
+    )
     assert any(isinstance(op, AccMvin) for op in schedule.ops)
     assert {op.row_step for op in schedule.ops if isinstance(op, Mvin) and op.role == "lhs"} == {2}
     for broken in (no_bias, unit_step):
@@ -159,8 +171,7 @@ def test_the_conv_oracle_fails_when_the_bias_or_the_phase_split_is_broken() -> N
 
 
 @pytest.mark.parametrize("name, rows", sorted(CONV_FIXTURES.items()))
-def test_conv_weights_change_once_per_voyager_residency_and_runs_follow_its_stream(
-        name: str, rows: int) -> None:
+def test_conv_weights_change_once_per_voyager_residency_and_runs_follow_its_stream(name: str, rows: int) -> None:
     trace = _trace(name)
     schedule = lower_conv(trace, GEOMETRY)
     computes = [op for op in schedule.ops if isinstance(op, Compute)]

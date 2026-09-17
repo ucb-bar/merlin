@@ -10,6 +10,7 @@ report is actively harmful: "the evidence contradicts your declaration" and "no 
 see that engine" want opposite responses, and a report that says the first when it means the second
 tells a correct contract to delete a real engine.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -29,10 +30,18 @@ def _facts(arrays=()) -> dict:
 
 def _mesh(rows, cols, *, element="Tile", instances=None, container="Mesh", corroborated=True) -> dict:
     """A mesh fact shaped the way the extractor now emits one: geometry PLUS the corroboration."""
-    return {"name": "mesh", "rows": rows, "cols": cols, "source": "mlc_discovery",
-            "element": element, "instances": instances if instances is not None else rows * cols,
-            "container": container, "element_variants": [[element, rows * cols]],
-            "mac_idiom": {"muls": 1, "adds": 7, "regs": 3}, "corroborated": corroborated}
+    return {
+        "name": "mesh",
+        "rows": rows,
+        "cols": cols,
+        "source": "mlc_discovery",
+        "element": element,
+        "instances": instances if instances is not None else rows * cols,
+        "container": container,
+        "element_variants": [[element, rows * cols]],
+        "mac_idiom": {"muls": 1, "adds": 7, "regs": 3},
+        "corroborated": corroborated,
+    }
 
 
 class TestWhatTheEvidenceReaches:
@@ -49,8 +58,7 @@ class TestWhatTheEvidenceReaches:
         assert "weight_load" in d.evidenced["spatial"].evidence
 
     def test_tensor_compute_roles_evidence_a_lane_engine(self):
-        d = cd.derive_engines("t", {}, taxonomy=_tax({"tensor_compute_binary": ["VAdd"],
-                                                      "matmul": ["MM"]}))
+        d = cd.derive_engines("t", {}, taxonomy=_tax({"tensor_compute_binary": ["VAdd"], "matmul": ["MM"]}))
         assert d.engines() == ["spatial", "vector"], "a hybrid must report BOTH, never a primary"
 
     def test_a_mac_array_in_the_rtl_facts_evidences_an_array_engine(self):
@@ -109,7 +117,8 @@ class TestTheThreeStatesAreKeptApart:
         drift = cd.reconcile_engines({"simt"}, d)
         assert any(x.startswith("unchecked_engine simt") for x in drift), drift
         assert not any(x.startswith("unevidenced_engine") for x in drift), (
-            "a gap in our instruments must never be reported as an over-declaration")
+            "a gap in our instruments must never be reported as an over-declaration"
+        )
         assert any("not a finding about the hardware" in x for x in drift)
 
     def test_a_declared_engine_a_capable_rung_missed_is_unevidenced(self):
@@ -121,8 +130,7 @@ class TestTheThreeStatesAreKeptApart:
         assert any(x.startswith("unevidenced_engine vector") for x in drift), drift
 
     def test_evidence_beyond_the_declaration_is_reported_as_undeclared(self):
-        d = cd.derive_engines("t", {}, taxonomy=_tax({"matmul": ["MM"],
-                                                      "tensor_compute_unary": ["VExp"]}))
+        d = cd.derive_engines("t", {}, taxonomy=_tax({"matmul": ["MM"], "tensor_compute_unary": ["VExp"]}))
         drift = cd.reconcile_engines({"spatial"}, d)
         assert any(x.startswith("undeclared_engine vector") for x in drift), drift
 
@@ -169,7 +177,8 @@ class TestAnUncorroboratedReadingBlamesTheInstrument:
         assert suspect, drift
         assert "OUR extractor" in suspect[0]
         assert not any(x.startswith("undeclared_engine") for x in drift), (
-            "an uncorroborated reading must never be reported as the contract under-declaring")
+            "an uncorroborated reading must never be reported as the contract under-declaring"
+        )
 
     def test_the_suspect_observation_is_quoted_so_it_can_be_refuted(self):
         d = cd.derive_engines("t", {}, self._bare())
@@ -185,8 +194,7 @@ class TestAnUncorroboratedReadingBlamesTheInstrument:
         # It has to reach the manifest, not just the return value -- an instrument fault nobody reads
         # is the same as no instrument fault.
         d = cd.derive_engines("t", {}, self._bare())
-        assert d.to_dict()["engines_suspect"] == [
-            {"engine": "spatial", "observation": d.suspect["spatial"]}]
+        assert d.to_dict()["engines_suspect"] == [{"engine": "spatial", "observation": d.suspect["spatial"]}]
 
 
 class TestTheStatedInstrumentGap:
@@ -201,20 +209,21 @@ class TestTheStatedInstrumentGap:
         for rung, can_see in cd._RUNG_CAN_SEE.items():
             assert "simt" not in can_see, (
                 f"rung {rung!r} now claims to observe simt — if that is real, delete this test and "
-                f"pin what it observes instead")
+                f"pin what it observes instead"
+            )
 
     def test_every_rung_declares_what_it_can_see(self):
         # A rung that runs without an entry here would make its findings look total: everything it did
         # not find would read as "a capable rung missed it".
-        d = cd.derive_engines("t", {}, _facts([_mesh(8, 8)]),
-                              taxonomy=_tax({"matmul": ["MM"]}))
+        d = cd.derive_engines("t", {}, _facts([_mesh(8, 8)]), taxonomy=_tax({"matmul": ["MM"]}))
         for rung in d.rungs:
             assert rung in cd._RUNG_CAN_SEE, f"rung {rung!r} declares no observability"
 
     def test_every_observable_engine_is_a_real_engine_facet(self):
         seen = {e for caps in cd._RUNG_CAN_SEE.values() for e in caps}
         assert seen <= E.ENGINE_FACETS, (
-            f"rungs claim to observe {sorted(seen - E.ENGINE_FACETS)}, which are not engine facets")
+            f"rungs claim to observe {sorted(seen - E.ENGINE_FACETS)}, which are not engine facets"
+        )
 
 
 class TestAgainstTheRealTargets:
@@ -223,9 +232,10 @@ class TestAgainstTheRealTargets:
     def _report(self, target):
         from merlin.targetgen import target_registry as tr
         from merlin.targetgen.rtl import facts as F
+
         try:
             contract = tr.load_contract(target) or {}
-        except Exception:                              # noqa: BLE001
+        except Exception:  # noqa: BLE001
             pytest.skip(f"{target} contract not resolvable in this checkout")
         d = cd.derive_engines(target, contract, F.load_facts(target) or {})
         return d, cd.reconcile_engines(E.facet_families_for(target), d)
@@ -248,6 +258,7 @@ class TestAgainstTheRealTargets:
         so this asserts the evidence AND the provenance of the declaration.
         """
         import yaml
+
         from merlin.targetgen import target_registry as _R
 
         d, drift = self._report("atlas")
@@ -260,9 +271,10 @@ class TestAgainstTheRealTargets:
         kinds = {u.get("kind") for u in contract.get("compute_units") or []}
         assert "vector" in kinds, contract.get("compute_units")
         # ... and it got there by DERIVATION, not by declaration.
-        assert "vector_unit" in (contract.get("derived_compute_units") or []), \
-            "the lane engine must stay marked as derived — a synthesized unit that looks author-" \
+        assert "vector_unit" in (contract.get("derived_compute_units") or []), (
+            "the lane engine must stay marked as derived — a synthesized unit that looks author-"
             "declared erases the finding it exists to record"
+        )
         # With it declared, the audit has nothing left to report. If the synthesis were removed the
         # drift would return, which is what makes this a fix and not a suppression.
         assert not [x for x in drift if x.startswith("undeclared_engine vector")], drift

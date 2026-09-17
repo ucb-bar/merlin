@@ -5,6 +5,7 @@ provides: no `golden.yaml` for the grader, and `update_provenance_manifest` woul
 solver-produced capsule as `hand_authored`, which is exactly backwards. So the test that matters is
 not "does emit_witness write files" but "would this entry materialise as a capsule the bench grades".
 """
+
 from __future__ import annotations
 
 import sys
@@ -63,13 +64,13 @@ def test_a_refuted_shape_builds_a_schema_valid_capsule():
     entry = counterexample_entry(target=target, m=15, k=17, n=15, bound_ms=300_000)
     capsule, mlir = CS.build(entry, _binding(target))
 
-    schema = json.loads(
-        (merlin_dir() / "contract" / "schemas" / "capsule.schema.json").read_text())
+    schema = json.loads((merlin_dir() / "contract" / "schemas" / "capsule.schema.json").read_text())
     jsonschema.validate(capsule, schema)
 
     assert capsule["source_role"] == "smt_counterexample", (
         "provenance must survive into the capsule, or a solver-produced case is indistinguishable "
-        "from one an author chose")
+        "from one an author chose"
+    )
     # the refuting SHAPE is what the entry exists to carry
     shapes = {tuple(i["shape"]) for i in capsule["inputs"]}
     assert (15, 17) in shapes and (17, 15) in shapes, f"the refuting shape was lost: {shapes}"
@@ -125,4 +126,5 @@ def test_the_entry_does_not_claim_to_carry_input_values():
     assert "SHAPE is the solver's" in reference
     assert "deterministic fill" in reference
     assert not any(k in entry for k in ("values", "inputs", "counterexample")), (
-        "the entry must not carry input values; a capsule cannot express them")
+        "the entry must not carry input values; a capsule cannot express them"
+    )

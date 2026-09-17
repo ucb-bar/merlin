@@ -19,6 +19,7 @@ corruption, not rounding.
 Gated on the Zephyr+spike toolchain and ``MERLIN_RUN_SLOW`` (each parametrization lowers a
 model and builds a Zephyr image).
 """
+
 from __future__ import annotations
 
 import os
@@ -36,6 +37,7 @@ BUNDLE = "small_llama_int8_consistent"
 
 def _zm():
     from merlin.runtime.backends import zephyr_model
+
     return zephyr_model
 
 
@@ -54,8 +56,9 @@ def _refs(b):
     return refs
 
 
-slow = pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"),
-                          reason="set MERLIN_RUN_SLOW=1 (builds Zephyr images + runs spike)")
+slow = pytest.mark.skipif(
+    not os.environ.get("MERLIN_RUN_SLOW"), reason="set MERLIN_RUN_SLOW=1 (builds Zephyr images + runs spike)"
+)
 
 
 def test_single_hart_image_carries_no_openmp():
@@ -102,7 +105,7 @@ def test_scalar_multicore_parallelizes_at_the_linalg_loop_level():
     assert "requires backend='rvv'" not in src
     # The two routes, both wired: scalar via `parallel`, rvv via `parallel_harts`.
     assert 'parallel=(backend != "rvv" and n_harts > 1)' in src
-    assert 'parallel_harts=(n_harts if n_harts > 1' in src
+    assert "parallel_harts=(n_harts if n_harts > 1" in src
 
 
 @pytest.mark.parametrize("threads", [2, 4, 8])
@@ -125,12 +128,12 @@ def test_multicore_is_bit_identical_on_the_k1_board(threads, tmp_path):
         pytest.skip("K1 board unreachable")
     b = _bundle()
     pkg = load_rvv_package(default_package("int8"))
-    binary = k1.build_k1_binary(b, tmp_path, pkg, inputs_npz=b / "inputs.npz",
-                                parallel_harts=8)
+    binary = k1.build_k1_binary(b, tmp_path, pkg, inputs_npz=b / "inputs.npz", parallel_harts=8)
 
     def _run(t):
-        return k1.run_binary_on_k1(b, tmp_path, pkg, binary, timeout=1800,
-                                   env={"OMP_NUM_THREADS": str(t), "OMP_PROC_BIND": "spread"})
+        return k1.run_binary_on_k1(
+            b, tmp_path, pkg, binary, timeout=1800, env={"OMP_NUM_THREADS": str(t), "OMP_PROC_BIND": "spread"}
+        )
 
     base = _run(1)["outputs"]
     got = _run(threads)["outputs"]
@@ -139,7 +142,8 @@ def test_multicore_is_bit_identical_on_the_k1_board(threads, tmp_path):
     assert ndiff == 0, (
         f"{threads} threads differ from 1 thread in {ndiff}/{base.size} elements — an "
         f"overlapping work split or vector-state corruption, NOT rounding (the split touches "
-        f"only parallel dims; reductions stay serial, so there is no reordering)")
+        f"only parallel dims; reductions stay serial, so there is no reordering)"
+    )
 
 
 @pytest.mark.parametrize("n_harts", [2, 4])
@@ -167,21 +171,41 @@ def test_zephyr_openmp_shim_is_bit_identical_on_a_kernel(n_harts, tmp_path):
     b = workloads.gen_matmul_f32(tmp_path / "bundle", M=64, N=256, K=64, seed=0)
     golden = np.load(b / "golden.npy")
 
-    base = zm.build_and_run(b, tmp_path / "h1", board="spike_riscv64", backend="rvv",
-                            rvv_hart=0, harts=2, arena_mb=32, n_harts=1,
-                            reference=golden, timeout=1800)
+    base = zm.build_and_run(
+        b,
+        tmp_path / "h1",
+        board="spike_riscv64",
+        backend="rvv",
+        rvv_hart=0,
+        harts=2,
+        arena_mb=32,
+        n_harts=1,
+        reference=golden,
+        timeout=1800,
+    )
     assert base.get("ok"), f"single-hart reference failed its own gate: cos={base.get('cos')}"
 
-    multi = zm.build_and_run(b, tmp_path / f"h{n_harts}", board="spike_riscv64", backend="rvv",
-                             rvv_hart=0, harts=n_harts, arena_mb=32, n_harts=n_harts,
-                             reference=golden, timeout=1800)
+    multi = zm.build_and_run(
+        b,
+        tmp_path / f"h{n_harts}",
+        board="spike_riscv64",
+        backend="rvv",
+        rvv_hart=0,
+        harts=n_harts,
+        arena_mb=32,
+        n_harts=n_harts,
+        reference=golden,
+        timeout=1800,
+    )
     assert multi["metrics"].get("omp_threads") == n_harts, (
-        f"pool clamped to {multi['metrics'].get('omp_threads')} instead of {n_harts}")
+        f"pool clamped to {multi['metrics'].get('omp_threads')} instead of {n_harts}"
+    )
     assert multi.get("ok")
     a, c = base["outputs"], multi["outputs"]
     assert np.array_equal(a, c), (
         f"{n_harts}-hart output differs from 1-hart in {(a != c).sum()} elements — the shim's "
-        f"work split or its vector-state handling is wrong; both corrupt silently")
+        f"work split or its vector-state handling is wrong; both corrupt silently"
+    )
 
 
 @pytest.mark.parametrize("n_harts", [2, 4])
@@ -200,23 +224,45 @@ def test_multicore_output_is_bit_identical_to_single_hart(n_harts, tmp_path):
     b = _bundle()
     refs = _refs(b)
 
-    base = zm.build_and_run(b, tmp_path / "h1", board="spike_riscv64", backend="rvv",
-                            rvv_hart=0, harts=2, arena_mb=64, int8_compute=True,
-                            n_harts=1, references=refs, timeout=3600)
+    base = zm.build_and_run(
+        b,
+        tmp_path / "h1",
+        board="spike_riscv64",
+        backend="rvv",
+        rvv_hart=0,
+        harts=2,
+        arena_mb=64,
+        int8_compute=True,
+        n_harts=1,
+        references=refs,
+        timeout=3600,
+    )
     assert base.get("ok"), f"single-hart reference failed its own gate: cos={base.get('cos')}"
 
-    multi = zm.build_and_run(b, tmp_path / f"h{n_harts}", board="spike_riscv64", backend="rvv",
-                             rvv_hart=0, harts=n_harts, arena_mb=64, int8_compute=True,
-                             n_harts=n_harts, references=refs, timeout=3600)
-    assert multi["metrics"].get("omp_threads") == n_harts, \
+    multi = zm.build_and_run(
+        b,
+        tmp_path / f"h{n_harts}",
+        board="spike_riscv64",
+        backend="rvv",
+        rvv_hart=0,
+        harts=n_harts,
+        arena_mb=64,
+        int8_compute=True,
+        n_harts=n_harts,
+        references=refs,
+        timeout=3600,
+    )
+    assert multi["metrics"].get("omp_threads") == n_harts, (
         f"pool clamped to {multi['metrics'].get('omp_threads')} instead of {n_harts}"
+    )
 
     a, c = base["outputs"], multi["outputs"]
     assert a.shape == c.shape, f"shape changed with harts: {a.shape} vs {c.shape}"
     assert np.array_equal(a, c), (
         f"{n_harts}-hart output differs from 1-hart by max "
         f"{np.abs(a - c).max()} — vector-state corruption or an overlapping work split, "
-        f"NOT rounding (the split touches only parallel dims)")
+        f"NOT rounding (the split touches only parallel dims)"
+    )
     assert multi.get("ok")
 
 
@@ -228,8 +274,8 @@ def test_multicore_output_is_bit_identical_to_single_hart(n_harts, tmp_path):
 # 3 harts is deliberate -- it is the Kodiak tapeout's working core count, and 3 divides almost
 # nothing, which is exactly when a split that assumed divisibility would drop or double work.
 NEW_WORKLOAD_SPLIT_CASES = [
-    ("deepjscc_int8_full", 3),        # smallest: conv encoder/decoder, no batch_matmul at all
-    ("spectformer_int8_full", 3),     # spectral: matmul N=8 (DFT bins) -> an ADAPTED register block
+    ("deepjscc_int8_full", 3),  # smallest: conv encoder/decoder, no batch_matmul at all
+    ("spectformer_int8_full", 3),  # spectral: matmul N=8 (DFT bins) -> an ADAPTED register block
 ]
 
 
@@ -263,23 +309,34 @@ def test_new_workload_multicore_output_is_bit_identical(bundle_name, n_harts, tm
     pkg = load_rvv_package(pkg_dir)
     feats = frozenset(shape_adapted_features(pkg, b))
     refs = _refs(b)
-    common = dict(board="spike_riscv64", backend="rvv", rvv_hart=0, arena_mb=64,
-                  int8_compute=True, references=refs, timeout=7200,
-                  rvv_schedule=pkg.schedule_text,
-                  cflags_override=pkg.cflags + zm._CFLAGS_COMMON, features=feats)
+    common = dict(
+        board="spike_riscv64",
+        backend="rvv",
+        rvv_hart=0,
+        arena_mb=64,
+        int8_compute=True,
+        references=refs,
+        timeout=7200,
+        rvv_schedule=pkg.schedule_text,
+        cflags_override=pkg.cflags + zm._CFLAGS_COMMON,
+        features=feats,
+    )
 
     base = zm.build_and_run(b, tmp_path / "h1", harts=2, n_harts=1, **common)
     multi = zm.build_and_run(b, tmp_path / f"h{n_harts}", harts=n_harts, n_harts=n_harts, **common)
 
-    assert multi["metrics"].get("omp_threads") == n_harts, \
+    assert multi["metrics"].get("omp_threads") == n_harts, (
         f"pool clamped to {multi['metrics'].get('omp_threads')} instead of {n_harts}"
+    )
     a, c = base["outputs"], multi["outputs"]
     assert a.shape == c.shape, f"shape changed with harts: {a.shape} vs {c.shape}"
     assert np.array_equal(a, c), (
         f"{bundle_name}: {n_harts}-hart output differs from 1-hart by max "
         f"{np.abs(a - c).max()} — an overlapping or lost work split, NOT rounding "
-        f"(the split touches only parallel dims)")
+        f"(the split touches only parallel dims)"
+    )
     if base.get("ok"):
         assert multi.get("ok"), (
             f"{bundle_name}: 1 hart passed the golden gate but {n_harts} harts did not, "
-            f"despite identical output — the gate itself is unstable")
+            f"despite identical output — the gate itself is unstable"
+        )

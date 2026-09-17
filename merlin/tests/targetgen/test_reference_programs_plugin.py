@@ -8,6 +8,7 @@ package, the contract declares it as ``plugin.reference_programs``, and callers 
 entry and a file. A target that declares nothing fails closed with the reason instead of borrowing
 another target's tool.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,13 +29,13 @@ def _write_package(root: Path, name: str, *, declare: bool) -> str:
     pkg = root / name
     (pkg / "contracts").mkdir(parents=True)
     plugin = f"plugin:\n  {KEY}: tools/refprog.py\n" if declare else ""
-    (pkg / "contracts" / "target_contract.yaml").write_text(
-        f"name: {name}\nversion: '0.1'\n{plugin}", encoding="utf-8")
+    (pkg / "contracts" / "target_contract.yaml").write_text(f"name: {name}\nversion: '0.1'\n{plugin}", encoding="utf-8")
     (pkg / "tools").mkdir()
     (pkg / "tools" / "__init__.py").write_text("", encoding="utf-8")
     (pkg / "tools" / "refprog.py").write_text(
         "def _anchors():\n    return [{'name': 'a0', 'capsule': 'c0', 'feature': 'f', 'golden': [[1]]}]\n",
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     return str(root)
 
 

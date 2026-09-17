@@ -7,6 +7,7 @@ a capsule resting on a sibling is exactly the one that does not demand L3: it wa
 tier because it could not afford certification. The check reported zero unverified while 19 capsules on
 disk declared the field.
 """
+
 from __future__ import annotations
 
 import importlib.util

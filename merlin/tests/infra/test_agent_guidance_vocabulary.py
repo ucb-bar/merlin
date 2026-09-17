@@ -1,4 +1,5 @@
 """The optimization-surface vocabulary is DERIVED from the manifest schema, not duplicated."""
+
 from __future__ import annotations
 
 import pytest
@@ -8,11 +9,9 @@ from merlin.targetgen.contract.schemas import load_schema
 
 
 def _schema_enums():
-    surfaces = ((load_schema("manifest").get("properties") or {})
-                .get("optimization_surfaces") or {})
+    surfaces = (load_schema("manifest").get("properties") or {}).get("optimization_surfaces") or {}
     fields = (surfaces.get("items") or {}).get("properties") or {}
-    return ((fields.get("scope") or {}).get("enum"),
-            ((fields.get("effects") or {}).get("items") or {}).get("enum"))
+    return ((fields.get("scope") or {}).get("enum"), ((fields.get("effects") or {}).get("items") or {}).get("enum"))
 
 
 def test_the_vocabulary_matches_the_schema_exactly():
@@ -35,9 +34,9 @@ def test_memory_planning_is_admitted():
 
 def test_it_refuses_rather_than_falling_back_to_a_baked_copy(monkeypatch):
     """A schema with no enum must RAISE. Falling back to a literal is how the drift returns."""
-    monkeypatch.setattr(AG, "_declared_surface_vocabulary",
-                        AG._declared_surface_vocabulary, raising=True)
+    monkeypatch.setattr(AG, "_declared_surface_vocabulary", AG._declared_surface_vocabulary, raising=True)
     import merlin.targetgen.contract.schemas as S
+
     monkeypatch.setattr(S, "load_schema", lambda *a, **k: {"properties": {}})
     with pytest.raises(ValueError, match="cannot be derived"):
         AG._declared_surface_vocabulary()

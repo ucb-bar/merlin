@@ -1,6 +1,7 @@
 """Merlin-FAITHFUL Gemmini codegen: the RoCC sequence emitted from MLIR (llvm.inline_asm),
 lowered by merlin's compiler — no C kernel. Certified bit-exact against the reference.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -18,7 +19,7 @@ gm = gem.gemmini_codegen_mlir
 
 
 NONREQUANT = ["C0", "C1", "C4", "C4e", "C5"]
-QUANT = ["Q0", "Q1", "Q2", "Q1t"]   # Gemmini i8 readout: float acc_scale (round-near-even) + clamp
+QUANT = ["Q0", "Q1", "Q2", "Q1t"]  # Gemmini i8 readout: float acc_scale (round-near-even) + clamp
 
 
 def test_kernel_is_mlir_inline_asm_not_c():
@@ -32,21 +33,32 @@ def test_kernel_is_mlir_inline_asm_not_c():
 def _two_weight_cb(D=16):
     """A command buffer with TWO DIFFERENT resident weights (two independent matmuls) — the shape a
     single-resident-weight kernel could not host. Emits as ONE co-scheduled kernel."""
-    t = lambda r: {"shape": [D, D], "dtype": "i8", "role": r}   # noqa: E731
+    t = lambda r: {"shape": [D, D], "dtype": "i8", "role": r}  # noqa: E731
     return {
-        "abi_version": "0.1", "target": "gemmini", "backend": "simulator",
+        "abi_version": "0.1",
+        "target": "gemmini",
+        "backend": "simulator",
         "tensors": {"W": t("weight"), "W1": t("weight"), "A0": t("input"), "A1": t("input")},
         "commands": [
             {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {"layout": "packed_rhs"}},
             {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "W_res", "dst": "acc0"}},
-            {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"}, "attributes": {"epilogue": [], "output_dtype": "i32"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc0", "dst": "Y0"},
+                "attributes": {"epilogue": [], "output_dtype": "i32"},
+            },
             {"opcode": "EVICT", "operands": {"handle": "W_res"}},
             {"opcode": "RES_PACK", "operands": {"src": "W1", "dst": "W1_res"}, "attributes": {"layout": "packed_rhs"}},
             {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A1", "rhs": "W1_res", "dst": "acc1"}},
-            {"opcode": "COMMIT", "operands": {"src": "acc1", "dst": "Y1"}, "attributes": {"epilogue": [], "output_dtype": "i32"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc1", "dst": "Y1"},
+                "attributes": {"epilogue": [], "output_dtype": "i32"},
+            },
             {"opcode": "EVICT", "operands": {"handle": "W1_res"}},
         ],
-        "outputs": ["Y0", "Y1"], "metrics_requested": ["cycles"],
+        "outputs": ["Y0", "Y1"],
+        "metrics_requested": ["cycles"],
     }
 
 
@@ -57,8 +69,8 @@ def test_multi_weight_lowers_to_one_kernel():
     kernel rejected. Fast (emit only, no toolchain)."""
     cb = _two_weight_cb()
     text, args = gm.emit_kernel_mlir(cb)
-    assert args == ["W", "W1", "A0", "A1", "Y0", "Y1"]     # weights ++ lhss ++ outs
-    assert text.count("llvm.func @gemmini_kernel") == 1     # ONE co-scheduled kernel
+    assert args == ["W", "W1", "A0", "A1", "Y0", "Y1"]  # weights ++ lhss ++ outs
+    assert text.count("llvm.func @gemmini_kernel") == 1  # ONE co-scheduled kernel
     # both weights are mvin'd and both outputs mvout in the one kernel (2x the single-weight rocc body).
     assert ".insn r 0x7b" in text
 
@@ -86,13 +98,15 @@ def test_requant_rejected_on_mlir_path():
 
 try:
     from merlin.llvmlower import toolchain as _tc
+
     _HAVE_LLVM = _tc.available()
 except Exception:  # pragma: no cover
     _HAVE_LLVM = False
 
 
-@pytest.mark.skipif(not (_HAVE_LLVM and gem.available("spike")),
-                    reason="merlin MLIR→LLVM + riscv toolchain unavailable")
+@pytest.mark.skipif(
+    not (_HAVE_LLVM and gem.available("spike")), reason="merlin MLIR→LLVM + riscv toolchain unavailable"
+)
 def test_rocc_sequence_emitted_from_mlir(tmp_path):
     """Lowering the C0 MLIR kernel emits the full Gemmini RoCC custom-3 sequence (9 instrs)."""
     obj = gm.build_object(build("C0"), tmp_path)

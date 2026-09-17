@@ -7,6 +7,7 @@ runtime-adapter / zephyr concrete plans ride the contract's command-buffer tenso
 The neutral ``toy_npu`` example (``families.DEFAULT_EXAMPLE_TARGET``) is the FAMILY DEFAULT, not a
 special case.
 """
+
 from __future__ import annotations
 
 from merlin.common import schemas
@@ -19,8 +20,7 @@ from merlin.targetgen.synthesize.zephyr_plan import synthesize_zephyr_plan
 
 
 def _unit_contract(name: str, kind: str) -> dict:
-    return {"name": name, "compute_units": [
-        {"name": "u", "kind": kind, "ops": ["matmul"], "dtypes": ["int8"]}]}
+    return {"name": name, "compute_units": [{"name": "u", "kind": kind, "ops": ["matmul"], "dtypes": ["int8"]}]}
 
 
 def _ev(name: str) -> Evidence:
@@ -51,8 +51,7 @@ def test_llvm_fork_posture_is_keyed_on_family_endpoint_not_name():
 def test_runtime_adapter_is_concrete_for_any_command_buffer_resident_contract():
     # An arbitrarily-named contract that declares the command-buffer tensor-resident family gets the
     # concrete command-stream adapter (parameterized), flagged for review since it is not the example.
-    tc = {"name": "acme_npu",
-          "features": ["command_buffer", "accumulator_commit", "resident_packed_tensor", "metrics"]}
+    tc = {"name": "acme_npu", "features": ["command_buffer", "accumulator_commit", "resident_packed_tensor", "metrics"]}
     p = synthesize_runtime_adapter_plan(_ev("acme_npu"), tc)
     assert p["command_encoding"]["format"] == "acmenpu_command_stream"
     assert p["requires_human_review"] is True

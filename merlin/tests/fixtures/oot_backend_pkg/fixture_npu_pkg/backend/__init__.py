@@ -9,6 +9,7 @@ lets the relative import below resolve out-of-tree. At import time it self-regis
 backend registry, exactly as an in-tree backend would; it carries no real toolchain (the test only
 proves the discover -> import-as-package -> register plumbing).
 """
+
 from __future__ import annotations
 
 from merlin.runtime.backends import base

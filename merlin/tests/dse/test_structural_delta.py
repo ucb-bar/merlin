@@ -1,22 +1,40 @@
 """Whole-model work comparisons retain missing dimensions and conflicting changes."""
+
 from copy import deepcopy
 
 from merlin.perf.structural_delta import compare_full_model_structure
 
 
 def _analysis():
-    return {"diagnostics": {
-        "captured_logical_graph": {"status": "verified", "logical_dispatch_digest": "a" * 64},
-        "verified_global_plan_emission": {"status": "verified", "tasks": 4, "host_activity": {
-            "status": "derived", "load_payload_bytes": 100, "store_payload_bytes": 100,
-            "static_allocation_payload_bytes": 100,
-            "dynamic_operations": {"integer_arithmetic": 10, "floating_arithmetic": 20}}},
-        "target_artifact_activity": {"candidate": {"status": "decoded", "issued": {
-            "compute_instructions": 5, "configuration_instructions": 2,
-            "movement_instructions": 4, "synchronization_instructions": 3}}},
-        "arms": {"candidate": {"movement": {"exact_bytes": 100, "is_lower_bound": False}}},
-        "model_contraction_placement": {"candidate": {"total_contraction_macs": 200}},
-    }}
+    return {
+        "diagnostics": {
+            "captured_logical_graph": {"status": "verified", "logical_dispatch_digest": "a" * 64},
+            "verified_global_plan_emission": {
+                "status": "verified",
+                "tasks": 4,
+                "host_activity": {
+                    "status": "derived",
+                    "load_payload_bytes": 100,
+                    "store_payload_bytes": 100,
+                    "static_allocation_payload_bytes": 100,
+                    "dynamic_operations": {"integer_arithmetic": 10, "floating_arithmetic": 20},
+                },
+            },
+            "target_artifact_activity": {
+                "candidate": {
+                    "status": "decoded",
+                    "issued": {
+                        "compute_instructions": 5,
+                        "configuration_instructions": 2,
+                        "movement_instructions": 4,
+                        "synchronization_instructions": 3,
+                    },
+                }
+            },
+            "arms": {"candidate": {"movement": {"exact_bytes": 100, "is_lower_bound": False}}},
+            "model_contraction_placement": {"candidate": {"total_contraction_macs": 200}},
+        }
+    }
 
 
 def test_fewer_fences_is_structural_not_a_cycle_verdict():
@@ -53,9 +71,14 @@ def test_unknown_does_not_cancel_and_changed_model_is_refused():
 def test_post_backend_code_growth_is_a_tradeoff_not_hidden_by_ir_memory_savings():
     before = _analysis()
     before["emission"] = {"candidate_lowered_sha256": "c" * 64}
-    before["diagnostics"]["machine_artifact_activity"] = {"candidate": {
-        "status": "compiled", "source_sha256": "c" * 64,
-        "instruction_sites": {"schema": "encoded_instruction_sites_v1", "total": 10}, "object_bytes": 100}}
+    before["diagnostics"]["machine_artifact_activity"] = {
+        "candidate": {
+            "status": "compiled",
+            "source_sha256": "c" * 64,
+            "instruction_sites": {"schema": "encoded_instruction_sites_v1", "total": 10},
+            "object_bytes": 100,
+        }
+    }
     after = deepcopy(before)
     after["diagnostics"]["verified_global_plan_emission"]["host_activity"]["store_payload_bytes"] = 50
     after["diagnostics"]["machine_artifact_activity"]["candidate"]["instruction_sites"]["total"] = 11
@@ -69,12 +92,15 @@ def test_post_backend_code_growth_is_a_tradeoff_not_hidden_by_ir_memory_savings(
 def test_ir_hygiene_with_identical_object_is_not_emitted_kernel_work_deletion():
     before = _analysis()
     before["emission"] = {"candidate_lowered_sha256": "c" * 64}
-    before["diagnostics"]["machine_artifact_activity"] = {"candidate": {
-        "status": "compiled", "source_sha256": "c" * 64, "object_sha256": "d" * 64}}
+    before["diagnostics"]["machine_artifact_activity"] = {
+        "candidate": {"status": "compiled", "source_sha256": "c" * 64, "object_sha256": "d" * 64}
+    }
     after = deepcopy(before)
     after["emission"]["candidate_lowered_sha256"] = "e" * 64
     after["diagnostics"]["machine_artifact_activity"]["candidate"]["source_sha256"] = "e" * 64
-    after["diagnostics"]["verified_global_plan_emission"]["host_activity"]["dynamic_operations"]["integer_arithmetic"] = 5
+    after["diagnostics"]["verified_global_plan_emission"]["host_activity"]["dynamic_operations"][
+        "integer_arithmetic"
+    ] = 5
     result = compare_full_model_structure(before, after)
     assert "host_dynamic_integer_arithmetic" in result["decreased"]
     assert result["machine_object_comparison"]["status"] == "identical"
@@ -87,9 +113,9 @@ def test_ir_hygiene_with_identical_object_is_not_emitted_kernel_work_deletion():
 def test_equal_object_sizes_do_not_imply_equal_machine_code():
     before = _analysis()
     before["emission"] = {"candidate_lowered_sha256": "c" * 64}
-    before["diagnostics"]["machine_artifact_activity"] = {"candidate": {
-        "status": "compiled", "source_sha256": "c" * 64, "object_sha256": "d" * 64,
-        "object_bytes": 100}}
+    before["diagnostics"]["machine_artifact_activity"] = {
+        "candidate": {"status": "compiled", "source_sha256": "c" * 64, "object_sha256": "d" * 64, "object_bytes": 100}
+    }
     after = deepcopy(before)
     after["diagnostics"]["machine_artifact_activity"]["candidate"]["object_sha256"] = "e" * 64
     assert compare_full_model_structure(before, after)["machine_object_comparison"]["status"] == "different"
@@ -114,8 +140,11 @@ def test_partial_decoder_zero_is_only_zero_classified_sites():
     before = _analysis()
     artifact = before["diagnostics"]["target_artifact_activity"]["candidate"]
     artifact["issued"]["compute_instructions"] = 0
-    artifact["encoding_resolution"] = {"status": "partial", "unknown_instruction_indices": [2, 4],
-                                      "named_without_role": ["unclassified"]}
+    artifact["encoding_resolution"] = {
+        "status": "partial",
+        "unknown_instruction_indices": [2, 4],
+        "named_without_role": ["unclassified"],
+    }
     report = compare_full_model_structure(before, deepcopy(before))
     arm = report["instruction_accounting"]["before"]
     assert arm["classification_status"] == "partial"

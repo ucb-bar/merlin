@@ -6,6 +6,7 @@ actual 8-bit integer arithmetic with i32 accumulation (RVV ``vwmacc.vv``), not d
 to f32. Auto-skips the RVV-disasm check without the chipyard toolchain; the host correctness
 + W8A8 accuracy checks need only clang (m2m venv).
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -17,15 +18,17 @@ from merlin.llvmlower import toolchain
 
 
 def _i8_matmul_src(m, k, n):
-    return (f"builtin.module {{ func.func @forward(%a: tensor<{m}x{k}xi8>, "
-            f"%b: tensor<{k}x{n}xi8>) -> tensor<{m}x{n}xi32> {{ "
-            f"%e = tensor.empty() : tensor<{m}x{n}xi32> "
-            f"%c0 = arith.constant 0 : i32 "
-            f"%f = linalg.fill ins(%c0 : i32) outs(%e : tensor<{m}x{n}xi32>) "
-            f"-> tensor<{m}x{n}xi32> "
-            f"%y = linalg.matmul ins(%a, %b : tensor<{m}x{k}xi8>, tensor<{k}x{n}xi8>) "
-            f"outs(%f : tensor<{m}x{n}xi32>) -> tensor<{m}x{n}xi32> "
-            f"func.return %y : tensor<{m}x{n}xi32> }} }}")
+    return (
+        f"builtin.module {{ func.func @forward(%a: tensor<{m}x{k}xi8>, "
+        f"%b: tensor<{k}x{n}xi8>) -> tensor<{m}x{n}xi32> {{ "
+        f"%e = tensor.empty() : tensor<{m}x{n}xi32> "
+        f"%c0 = arith.constant 0 : i32 "
+        f"%f = linalg.fill ins(%c0 : i32) outs(%e : tensor<{m}x{n}xi32>) "
+        f"-> tensor<{m}x{n}xi32> "
+        f"%y = linalg.matmul ins(%a, %b : tensor<{m}x{k}xi8>, tensor<{k}x{n}xi8>) "
+        f"outs(%f : tensor<{m}x{n}xi32>) -> tensor<{m}x{n}xi32> "
+        f"func.return %y : tensor<{m}x{n}xi32> }} }}"
+    )
 
 
 def _run_i8_matmul(src, A, B, M, N, tmp_path):
@@ -35,8 +38,7 @@ def _run_i8_matmul(src, A, B, M, N, tmp_path):
     res = lower_model(src, tmp_path / "i8", targets=("host",))
     model = HostModel.load(str(res.host_so))
     Y = np.zeros((M, N), np.int32)
-    model([(A.ctypes.data, (M, A.shape[1])), (B.ctypes.data, (B.shape[0], N)),
-           (Y.ctypes.data, (M, N))])
+    model([(A.ctypes.data, (M, A.shape[1])), (B.ctypes.data, (B.shape[0], N)), (Y.ctypes.data, (M, N))])
     return Y
 
 
@@ -61,16 +63,15 @@ def test_w8a8_dynamic_quant_matches_f32(tmp_path):
     B = rng.standard_normal((K, N)).astype(np.float32)
     ref = A @ B
 
-    sa = np.abs(A).max(1, keepdims=True) / 127.0                  # per-row act scale
-    sw = np.abs(B).max(0, keepdims=True) / 127.0                  # per-col weight scale
+    sa = np.abs(A).max(1, keepdims=True) / 127.0  # per-row act scale
+    sw = np.abs(B).max(0, keepdims=True) / 127.0  # per-col weight scale
     Aq = np.clip(np.round(A / sa), -127, 127).astype(np.int8)
     Bq = np.clip(np.round(B / sw), -127, 127).astype(np.int8)
 
     acc = _run_i8_matmul(_i8_matmul_src(M, K, N), Aq, Bq, M, N, tmp_path)  # i8xi8->i32 on RVV path
-    out = acc.astype(np.float32) * sa * sw                       # requantize
+    out = acc.astype(np.float32) * sa * sw  # requantize
 
-    cos = float((out.ravel() @ ref.ravel())
-                / (np.linalg.norm(out) * np.linalg.norm(ref) + 1e-12))
+    cos = float((out.ravel() @ ref.ravel()) / (np.linalg.norm(out) * np.linalg.norm(ref) + 1e-12))
     assert cos > 0.999, cos
 
 
@@ -84,8 +85,7 @@ def test_i8_matmul_emits_rvv_integer_simd(tmp_path):
         pytest.skip("chipyard objdump unavailable")
     res = lower_model(_i8_matmul_src(8, 64, 16), tmp_path / "i8r", targets=("riscv",))
     objdump = spike.gcc_path().with_name("riscv64-unknown-elf-objdump")
-    dis = subprocess.run([objdump, "-d", str(res.riscv_obj)], capture_output=True,
-                         text=True).stdout
+    dis = subprocess.run([objdump, "-d", str(res.riscv_obj)], capture_output=True, text=True).stdout
     assert "vwmacc" in dis or "vmacc" in dis, "expected RVV integer multiply-accumulate"
     assert "vsetvli" in dis or "vsetivli" in dis
 
@@ -104,7 +104,8 @@ _DEQUANT_MM = (
     "%f = linalg.fill ins(%c0 : f32) outs(%e : tensor<{m}x{n}xf32>) -> tensor<{m}x{n}xf32> "
     "%y = linalg.matmul ins(%act, %wd : tensor<{m}x{k}xf32>, tensor<{k}x{n}xf32>) "
     "outs(%f : tensor<{m}x{n}xf32>) -> tensor<{m}x{n}xf32> "
-    "func.return %y : tensor<{m}x{n}xf32> }} }}")
+    "func.return %y : tensor<{m}x{n}xf32> }} }}"
+)
 
 
 def test_lower_matmul_int8_makes_integer_contraction(tmp_path):
@@ -120,12 +121,18 @@ def test_lower_matmul_int8_makes_integer_contraction(tmp_path):
     module.verify()
     assert n == 1
     assert all(op.name != "linalg.matmul" for op in module.walk())  # f32 matmul gone
+
     def _ibits(t):
         return getattr(getattr(t.element_type, "width", None), "data", None)
+
     int_contract = [
-        op for op in module.walk()
-        if op.name == "linalg.generic" and len(op.inputs) == 2
-        and all(_ibits(i.type) == 8 for i in op.inputs) and _ibits(op.results[0].type) == 32]
+        op
+        for op in module.walk()
+        if op.name == "linalg.generic"
+        and len(op.inputs) == 2
+        and all(_ibits(i.type) == 8 for i in op.inputs)
+        and _ibits(op.results[0].type) == 32
+    ]
     assert int_contract, "expected one i8×i8→i32 integer contraction"
 
 
@@ -147,17 +154,20 @@ def test_dynamic_matmul_scale_defines_the_all_zero_row(tmp_path):
     scale_bodies = [
         [body_op.name for body_op in op.body.blocks[0].ops]
         for op in module.walk()
-        if op.name == "linalg.generic" and op.body.blocks
+        if op.name == "linalg.generic"
+        and op.body.blocks
         and any(body_op.name == "arith.divf" for body_op in op.body.blocks[0].ops)
         and any(body_op.name == "linalg.yield" for body_op in op.body.blocks[0].ops)
     ]
-    assert any("arith.maximumf" in names and "arith.cmpf" in names
-               and "arith.select" in names for names in scale_bodies), \
-        scale_bodies
+    assert any(
+        "arith.maximumf" in names and "arith.cmpf" in names and "arith.select" in names for names in scale_bodies
+    ), scale_bodies
 
     quantizers = [
-        op for op in module.walk()
-        if op.name == "linalg.generic" and op.body.blocks
+        op
+        for op in module.walk()
+        if op.name == "linalg.generic"
+        and op.body.blocks
         and any(body_op.name == "arith.fptosi" for body_op in op.body.blocks[0].ops)
     ]
     assert len(quantizers) == 1
@@ -200,12 +210,20 @@ def test_dynamic_matmul_quantization_is_bit_exact_torchao(case, tmp_path):
     weight_scale = np.ones((k,), dtype=np.float32)
     zero_point = np.zeros((k,), dtype=np.int32)
     out = np.full((1, k), np.nan, dtype=np.float32)
-    model([(act.ctypes.data, act.shape), (weight.ctypes.data, weight.shape),
-           (weight_scale.ctypes.data, weight_scale.shape),
-           (zero_point.ctypes.data, zero_point.shape), (out.ctypes.data, out.shape)])
+    model(
+        [
+            (act.ctypes.data, act.shape),
+            (weight.ctypes.data, weight.shape),
+            (weight_scale.ctypes.data, weight_scale.shape),
+            (zero_point.ctypes.data, zero_point.shape),
+            (out.ctypes.data, out.shape),
+        ]
+    )
     expected = want_q.astype(np.float32) * want_scale
     assert np.array_equal(out.view(np.uint32), expected.view(np.uint32)), (
-        case, int(np.count_nonzero(out.view(np.uint32) != expected.view(np.uint32))))
+        case,
+        int(np.count_nonzero(out.view(np.uint32) != expected.view(np.uint32))),
+    )
 
 
 @pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
@@ -235,11 +253,15 @@ def test_zero_activation_stays_finite_after_quant_round_fusion(tmp_path):
     scale = np.full((n,), 0.03125, np.float32)
     zero_point = np.zeros((n,), np.int32)
     out = np.full((m, n), np.nan, np.float32)
-    HostModel.load(str(result.host_so))([
-        (act.ctypes.data, act.shape), (weight.ctypes.data, weight.shape),
-        (scale.ctypes.data, scale.shape), (zero_point.ctypes.data, zero_point.shape),
-        (out.ctypes.data, out.shape),
-    ])
+    HostModel.load(str(result.host_so))(
+        [
+            (act.ctypes.data, act.shape),
+            (weight.ctypes.data, weight.shape),
+            (scale.ctypes.data, scale.shape),
+            (zero_point.ctypes.data, zero_point.shape),
+            (out.ctypes.data, out.shape),
+        ]
+    )
     assert np.array_equal(out, np.zeros_like(out)), out
 
 
@@ -255,14 +277,15 @@ _CONV_MOD = (
     "affine_map<(d0,d1,d2,d3,d4,d5,d6)->(d0,d4,d2*16+d5,d3*16+d6)>, "
     "affine_map<(d0,d1,d2,d3,d4,d5,d6)->(d1,d4,d5,d6)>, "
     "affine_map<(d0,d1,d2,d3,d4,d5,d6)->(d0,d1,d2,d3)>], "
-    "iterator_types = [\"parallel\",\"parallel\",\"parallel\",\"parallel\","
-    "\"reduction\",\"reduction\",\"reduction\"], "
+    'iterator_types = ["parallel","parallel","parallel","parallel",'
+    '"reduction","reduction","reduction"], '
     'prov.op = "conv2d"}} '
     "ins(%x, %w : tensor<1x3x64x64xf32>, tensor<{oc}x3x16x16xf32>) "
     "outs(%f : tensor<1x{oc}x4x4xf32>) {{ "
     "^bb(%a: f32, %b: f32, %o: f32): %m = arith.mulf %a, %b : f32 "
     "%s = arith.addf %o, %m : f32 linalg.yield %s : f32 }} "
-    "-> tensor<1x{oc}x4x4xf32> func.return %y : tensor<1x{oc}x4x4xf32> }} }}")
+    "-> tensor<1x{oc}x4x4xf32> func.return %y : tensor<1x{oc}x4x4xf32> }} }}"
+)
 
 
 # Grouped direct conv keeps G and F/G separate in the contraction result.  The weight's output
@@ -287,7 +310,8 @@ _GROUPED_CONV_MOD = (
     "^bb(%a: f32, %b: f32, %o: f32): %m = arith.mulf %a, %b : f32 "
     "%s = arith.addf %o, %m : f32 linalg.yield %s : f32 } "
     "-> tensor<1x32x8x15x23xf32> "
-    "func.return %y : tensor<1x32x8x15x23xf32> } }")
+    "func.return %y : tensor<1x32x8x15x23xf32> } }"
+)
 
 
 def test_lower_conv_int8_makes_integer_conv(tmp_path):
@@ -303,13 +327,19 @@ def test_lower_conv_int8_makes_integer_conv(tmp_path):
     n = lower_conv_int8(module)
     module.verify()
     assert n == 1
+
     def _ibits(t):
         return getattr(getattr(t.element_type, "width", None), "data", None)
+
     i8conv = [
-        op for op in module.walk()
-        if op.name == "linalg.generic" and len(op.inputs) == 2
-        and op.indexing_maps.data[0].data.num_dims == 7          # conv iterator space preserved
-        and all(_ibits(i.type) == 8 for i in op.inputs) and _ibits(op.results[0].type) == 32]
+        op
+        for op in module.walk()
+        if op.name == "linalg.generic"
+        and len(op.inputs) == 2
+        and op.indexing_maps.data[0].data.num_dims == 7  # conv iterator space preserved
+        and all(_ibits(i.type) == 8 for i in op.inputs)
+        and _ibits(op.results[0].type) == 32
+    ]
     assert i8conv, "expected one i8×i8→i32 conv with the stride-affine maps intact"
 
 
@@ -319,9 +349,10 @@ def test_dynamic_conv_scales_define_zero_activation_and_weight_groups(tmp_path):
     The fixture has an f32 activation and an f32 weight, so it exercises the per-tensor activation
     constructor and the per-output-channel dynamic-weight constructor independently.
     """
+    from xdsl.dialects.builtin import f32
+
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.llvmlower.passes_quant_int import lower_conv_int8
-    from xdsl.dialects.builtin import f32
 
     src = tmp_path / "conv_zero_scales.mlir"
     src.write_text(_CONV_MOD.format(oc=4), encoding="utf-8")
@@ -337,9 +368,9 @@ def test_dynamic_conv_scales_define_zero_activation_and_weight_groups(tmp_path):
         if names and names[0] == "arith.divf" and op.results[0].type.element_type == f32:
             scale_bodies.append(names)
     assert len(scale_bodies) == 2, scale_bodies
-    assert all("arith.maximumf" in names and "arith.cmpf" in names
-               and "arith.select" in names for names in scale_bodies), \
-        scale_bodies
+    assert all(
+        "arith.maximumf" in names and "arith.cmpf" in names and "arith.select" in names for names in scale_bodies
+    ), scale_bodies
 
 
 @pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
@@ -363,15 +394,13 @@ def test_zero_conv_groups_stay_finite_after_quant_round_fusion(tmp_path):
     act = np.zeros((1, 3, 64, 64), np.float32)
     weight = np.ones((4, 3, 16, 16), np.float32)
     out = np.full((1, 4, 4, 4), np.nan, np.float32)
-    model([(act.ctypes.data, act.shape), (weight.ctypes.data, weight.shape),
-           (out.ctypes.data, out.shape)])
+    model([(act.ctypes.data, act.shape), (weight.ctypes.data, weight.shape), (out.ctypes.data, out.shape)])
     assert np.array_equal(out, np.zeros_like(out)), out
 
     act.fill(1.0)
     weight.fill(0.0)
     out.fill(np.nan)
-    model([(act.ctypes.data, act.shape), (weight.ctypes.data, weight.shape),
-           (out.ctypes.data, out.shape)])
+    model([(act.ctypes.data, act.shape), (weight.ctypes.data, weight.shape), (out.ctypes.data, out.shape)])
     assert np.array_equal(out, np.zeros_like(out)), out
 
 
@@ -410,9 +439,11 @@ def test_dynamic_gelu_scale_defines_zero_without_changing_its_nonzero_floor(tmp_
     assert len(scale_bodies) == 1
     assert "arith.cmpf" in scale_bodies[0] and "arith.select" in scale_bodies[0], scale_bodies
     from merlin.llvmlower.quant_round import fuse_round_clamp_convert
+
     report: dict = {}
     assert fuse_round_clamp_convert(module, report_out=report) == 1
     assert report.get("refused_clamp_not_two_sided") == 2, report
+
 
 def test_lower_grouped_conv_int8_preserves_compound_channel_scale_map(tmp_path):
     """The grouped-direct form reaches W8A8 instead of crashing on ``g*FG+fg``.
@@ -433,24 +464,28 @@ def test_lower_grouped_conv_int8_preserves_compound_channel_scale_map(tmp_path):
         return getattr(getattr(t.element_type, "width", None), "data", None)
 
     contractions = [
-        op for op in module.walk()
-        if op.name == "linalg.generic" and len(op.inputs) == 2
+        op
+        for op in module.walk()
+        if op.name == "linalg.generic"
+        and len(op.inputs) == 2
         and op.indexing_maps.data[0].data.num_dims == 8
         and all(_ibits(i.type) == 8 for i in op.inputs)
         and _ibits(op.results[0].type) == 32
     ]
     assert len(contractions) == 1
     requants = [
-        op for op in module.walk()
-        if op.name == "linalg.generic"
-        and getattr(op.attributes.get("prov.role"), "data", "") == "requant"
+        op
+        for op in module.walk()
+        if op.name == "linalg.generic" and getattr(op.attributes.get("prov.role"), "data", "") == "requant"
     ]
     assert len(requants) == 1
     scale_map = requants[0].indexing_maps.data[2].data
     from merlin.llvmlower.passes_quant_int import _affine_terms
+
     assert scale_map.num_dims == 5 and len(scale_map.results) == 1
     terms, const = _affine_terms(scale_map.results[0])
     assert sorted(terms or ()) == [(1, 8), (2, 1)] and const == 0, scale_map
+
 
 # softmax-shaped: a (S - rowmax) subtraction feeding the exp (the signature lower_softmax_int
 # requires). %m is the per-row max (pass zeros in the numeric test so sub == x).
@@ -460,16 +495,17 @@ _EXP_MOD = (
     "%se = tensor.empty() : tensor<{m}x{l}xf32> "
     "%sub = linalg.generic {{indexing_maps = [affine_map<(d0,d1)->(d0,d1)>, "
     "affine_map<(d0,d1)->(d0)>, affine_map<(d0,d1)->(d0,d1)>], "
-    "iterator_types = [\"parallel\",\"parallel\"]}} "
+    'iterator_types = ["parallel","parallel"]}} '
     "ins(%x, %mx : tensor<{m}x{l}xf32>, tensor<{m}xf32>) outs(%se : tensor<{m}x{l}xf32>) {{ "
     "^bb(%a: f32, %mm: f32, %o: f32): %s = arith.subf %a, %mm : f32 linalg.yield %s : f32 }} "
     "-> tensor<{m}x{l}xf32> "
     "%e = tensor.empty() : tensor<{m}x{l}xf32> "
     "%r = linalg.generic {{indexing_maps = [affine_map<(d0,d1)->(d0,d1)>, "
-    "affine_map<(d0,d1)->(d0,d1)>], iterator_types = [\"parallel\",\"parallel\"]}} "
+    'affine_map<(d0,d1)->(d0,d1)>], iterator_types = ["parallel","parallel"]}} '
     "ins(%sub : tensor<{m}x{l}xf32>) outs(%e : tensor<{m}x{l}xf32>) {{ "
     "^bb(%a: f32, %o: f32): %ex = math.exp %a : f32 linalg.yield %ex : f32 }} "
-    "-> tensor<{m}x{l}xf32> func.return %r : tensor<{m}x{l}xf32> }} }}")
+    "-> tensor<{m}x{l}xf32> func.return %r : tensor<{m}x{l}xf32> }} }}"
+)
 
 
 def test_lower_softmax_int_removes_math_exp(tmp_path):
@@ -494,13 +530,14 @@ _SIGMOID_MOD = (
     "builtin.module {{ func.func @forward(%x: tensor<{m}x{l}xf32>) -> tensor<{m}x{l}xf32> {{ "
     "%e = tensor.empty() : tensor<{m}x{l}xf32> "
     "%r = linalg.generic {{indexing_maps = [affine_map<(d0,d1)->(d0,d1)>, "
-    "affine_map<(d0,d1)->(d0,d1)>], iterator_types = [\"parallel\",\"parallel\"]}} "
+    'affine_map<(d0,d1)->(d0,d1)>], iterator_types = ["parallel","parallel"]}} '
     "ins(%x : tensor<{m}x{l}xf32>) outs(%e : tensor<{m}x{l}xf32>) "
     'attrs = {{prov.op = "sigmoid"}} {{ '
     "^bb(%a: f32, %o: f32): %n = arith.negf %a : f32 %ex = math.exp %n : f32 "
     "%c1 = arith.constant 1.0 : f32 %d = arith.addf %c1, %ex : f32 "
     "%s = arith.divf %c1, %d : f32 linalg.yield %s : f32 }} "
-    "-> tensor<{m}x{l}xf32> func.return %r : tensor<{m}x{l}xf32> }} }}")
+    "-> tensor<{m}x{l}xf32> func.return %r : tensor<{m}x{l}xf32> }} }}"
+)
 
 
 def test_lower_silu_int_removes_math_exp(tmp_path):
@@ -523,10 +560,11 @@ _RSQRT_MOD = (
     "builtin.module {{ func.func @forward(%x: tensor<{m}x{l}xf32>) -> tensor<{m}x{l}xf32> {{ "
     "%e = tensor.empty() : tensor<{m}x{l}xf32> "
     "%r = linalg.generic {{indexing_maps = [affine_map<(d0,d1)->(d0,d1)>, "
-    "affine_map<(d0,d1)->(d0,d1)>], iterator_types = [\"parallel\",\"parallel\"]}} "
+    'affine_map<(d0,d1)->(d0,d1)>], iterator_types = ["parallel","parallel"]}} '
     "ins(%x : tensor<{m}x{l}xf32>) outs(%e : tensor<{m}x{l}xf32>) {{ "
     "^bb(%a: f32, %o: f32): %q = math.rsqrt %a : f32 linalg.yield %q : f32 }} "
-    "-> tensor<{m}x{l}xf32> func.return %r : tensor<{m}x{l}xf32> }} }}")
+    "-> tensor<{m}x{l}xf32> func.return %r : tensor<{m}x{l}xf32> }} }}"
+)
 
 
 def test_lower_rsqrt_int_removes_math_rsqrt(tmp_path):
@@ -549,9 +587,9 @@ def test_lower_rsqrt_int_removes_math_rsqrt(tmp_path):
 def test_silu_sigmoid_matches_float(tmp_path):
     """The integer SiLU sigmoid tracks the f32 logistic over mixed-sign inputs (cos > 0.999)."""
     from merlin.frontends.linalg_mlir import parse_mlir_file
-    from merlin.llvmlower.passes_quant_int import lower_silu_int
-    from merlin.llvmlower.lower import lower_model
     from merlin.llvmlower.abi import HostModel
+    from merlin.llvmlower.lower import lower_model
+    from merlin.llvmlower.passes_quant_int import lower_silu_int
     from merlin.xdsl_dialects._common import text as to_text
 
     M, L = 4, 16
@@ -562,7 +600,7 @@ def test_silu_sigmoid_matches_float(tmp_path):
     res = lower_model(to_text(module), tmp_path / "b", targets=("host",))
     hm = HostModel.load(str(res.host_so))
     rng = np.random.default_rng(0)
-    xs = (rng.standard_normal((M, L)) * 4).astype(np.float32)            # mixed sign
+    xs = (rng.standard_normal((M, L)) * 4).astype(np.float32)  # mixed sign
     out = np.zeros((M, L), np.float32)
     hm([(xs.ctypes.data, (M, L)), (out.ctypes.data, (M, L))])
     ref = 1.0 / (1.0 + np.exp(-xs))
@@ -574,9 +612,9 @@ def test_silu_sigmoid_matches_float(tmp_path):
 def test_integer_exp_matches_float_exp(tmp_path):
     """The integer i-exp tracks float exp for x<=0 (cos > 0.99 — I-BERT 2nd-order poly)."""
     from merlin.frontends.linalg_mlir import parse_mlir_file
-    from merlin.llvmlower.passes_quant_int import lower_softmax_int
-    from merlin.llvmlower.lower import lower_model
     from merlin.llvmlower.abi import HostModel
+    from merlin.llvmlower.lower import lower_model
+    from merlin.llvmlower.passes_quant_int import lower_softmax_int
     from merlin.xdsl_dialects._common import text as to_text
 
     M, L = 4, 8
@@ -587,8 +625,8 @@ def test_integer_exp_matches_float_exp(tmp_path):
     res = lower_model(to_text(module), tmp_path / "b", targets=("host",))
     hm = HostModel.load(str(res.host_so))
     rng = np.random.default_rng(0)
-    xs = (-np.abs(rng.standard_normal((M, L))) * 3).astype(np.float32)   # x <= 0
-    mx = np.zeros((M,), np.float32)                                      # rowmax 0 -> sub == xs
+    xs = (-np.abs(rng.standard_normal((M, L))) * 3).astype(np.float32)  # x <= 0
+    mx = np.zeros((M,), np.float32)  # rowmax 0 -> sub == xs
     out = np.zeros((M, L), np.float32)
     hm([(xs.ctypes.data, (M, L)), (mx.ctypes.data, (M,)), (out.ctypes.data, (M, L))])
     ref = np.exp(xs)
@@ -599,9 +637,9 @@ def test_integer_exp_matches_float_exp(tmp_path):
 def _run_iexp(tmp_path, xs: np.ndarray) -> np.ndarray:
     """Lower + compile the softmax i-exp and evaluate it on ``xs`` (rowmax passed as 0)."""
     from merlin.frontends.linalg_mlir import parse_mlir_file
-    from merlin.llvmlower.passes_quant_int import lower_softmax_int
-    from merlin.llvmlower.lower import lower_model
     from merlin.llvmlower.abi import HostModel
+    from merlin.llvmlower.lower import lower_model
+    from merlin.llvmlower.passes_quant_int import lower_softmax_int
     from merlin.xdsl_dialects._common import text as to_text
 
     M, L = xs.shape
@@ -633,12 +671,12 @@ def test_integer_exp_is_elementwise_not_row_scaled(tmp_path):
     zero to any precision, so it must leave every real entry's exp EXACTLY where it was.
     """
     real = np.array([0.0, -0.4, -1.3, -2.9], np.float32)
-    plain = np.tile(real, (2, 1))                                  # 4 real entries
+    plain = np.tile(real, (2, 1))  # 4 real entries
     padded = np.tile(np.concatenate([real, np.full(4, -np.inf, np.float32)]), (2, 1))
     got_plain = _run_iexp(tmp_path, plain)[:, :4]
     got_padded = _run_iexp(tmp_path, padded)
     assert np.array_equal(got_plain, got_padded[:, :4]), (got_plain, got_padded[:, :4])
-    assert np.all(got_padded[:, 4:] == 0.0), got_padded[:, 4:]     # exp(-inf) -> 0
+    assert np.all(got_padded[:, 4:] == 0.0), got_padded[:, 4:]  # exp(-inf) -> 0
 
 
 @pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")

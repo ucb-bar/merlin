@@ -11,6 +11,7 @@ The declared tile is the question a backend can always answer: not "how much fit
 build". The guardrail that makes this honest rather than flattering is that a pass produced this way is
 attributed to the RUNTIME, and the score reports the backend's own coverage beside it.
 """
+
 from __future__ import annotations
 
 import yaml
@@ -28,6 +29,7 @@ def _pkg(tmp_path, **manifest):
 
 
 # --------------------------------------------------------------- the declaration
+
 
 def test_a_declared_tile_is_read_back(tmp_path):
     p = _pkg(tmp_path, primitive_tile={"m": 32, "k": 32, "n": 32, "dtype": "fp8_e4m3"})
@@ -48,35 +50,50 @@ def test_a_malformed_declaration_is_not_a_declaration(tmp_path):
 
 
 def test_the_manifest_schema_accepts_it():
-    cmds = {k: {"argv": ["{tool}", "{input_mlir}"]}
-            for k in ("parse", "lower_interface_to_target", "emit_command_buffer",
-                      "lower_target_to_llvm")}
-    schemas.validate({"artifact_type": "mlir_oot_target_backend", "target": "t", "language": "python",
-                      "authoring": {"mode": "agent_generated_from_rtl_facts"}, "integrity_exempt": False,
-                      "entrypoints": {"tool": "t"}, "commands": cmds,
-                      "primitive_tile": {"m": 32, "k": 32, "n": 32}}, "manifest")
+    cmds = {
+        k: {"argv": ["{tool}", "{input_mlir}"]}
+        for k in ("parse", "lower_interface_to_target", "emit_command_buffer", "lower_target_to_llvm")
+    }
+    schemas.validate(
+        {
+            "artifact_type": "mlir_oot_target_backend",
+            "target": "t",
+            "language": "python",
+            "authoring": {"mode": "agent_generated_from_rtl_facts"},
+            "integrity_exempt": False,
+            "entrypoints": {"tool": "t"},
+            "commands": cmds,
+            "primitive_tile": {"m": 32, "k": 32, "n": 32},
+        },
+        "manifest",
+    )
 
 
 # --------------------------------------------------------------- the guardrail
+
 
 def _score(monkeypatch, results):
     monkeypatch.setattr(CG, "load_package", lambda *a, **k: type("P", (), {"integrity_exempt": False})())
     monkeypatch.setattr(CG, "integrity_scan", lambda *a, **k: None)
     monkeypatch.setattr(CG, "build_package", lambda *a, **k: None)
     monkeypatch.setattr(CG, "source_experiment_env", lambda *a, **k: None)
-    monkeypatch.setattr(CG.CR, "discover_capsules", lambda *a, **k: [{"name": r["capsule"]}
-                                                                     for r in results])
+    monkeypatch.setattr(CG.CR, "discover_capsules", lambda *a, **k: [{"name": r["capsule"]} for r in results])
     monkeypatch.setattr(CG.CR, "run_suite", lambda *a, **k: results)
     return CG.grade("pkg", capsules_root=["root"], runs_root="runs", target="atlas", max_workers=1)
 
 
 def _cap(name, status="pass", tiled_by=None):
-    r = {"capsule": name, "kind": "op", "label": "public", "status": status,
-         "tiers": {"L4": {"status": status, "derived_from_rtl": True}},
-         "numeric": {"status": status}, "trace_check": {"status": status}}
+    r = {
+        "capsule": name,
+        "kind": "op",
+        "label": "public",
+        "status": status,
+        "tiers": {"L4": {"status": status, "derived_from_rtl": True}},
+        "numeric": {"status": status},
+        "trace_check": {"status": status},
+    }
     if tiled_by:
-        r["contract_obligations"] = {"capacity_fit": {"tiled_by": tiled_by,
-                                                      "discharged_by": "merlin runtime"}}
+        r["contract_obligations"] = {"capacity_fit": {"tiled_by": tiled_by, "discharged_by": "merlin runtime"}}
     return r
 
 
@@ -86,8 +103,7 @@ def test_a_runtime_driven_pass_is_reported_separately_from_the_backends_own(monk
     Reporting only ``with_runtime_loop`` is how "our runtime covered for them" becomes "their compiler
     generalizes over shape" in a citation.
     """
-    s = _score(monkeypatch, [_cap("A0"), _cap("A1"),
-                             _cap("A2", tiled_by="declared_primitive_tile")])
+    s = _score(monkeypatch, [_cap("A0"), _cap("A1"), _cap("A2", tiled_by="declared_primitive_tile")])
     bc = s["backend_coverage"]
     assert bc["with_runtime_loop"] == "3/3"
     assert bc["unblocked"] == "2/3", "A2 only passed because the runtime drove the loop"
@@ -116,9 +132,10 @@ def test_tiled_by_survives_the_whole_chain_to_the_score():
     nothing in the artifact saying so, which is the exact failure the guardrail exists to prevent.
     """
     import inspect
+
+    from merlin import compile_cli
     from merlin.runtime import dispatch_runtime
     from merlin.targetgen import capsule_runner
-    from merlin import compile_cli
 
     # produced
     assert '"tiled_by": _tiled_by' in inspect.getsource(compile_cli.run_matmul_on_mesh)

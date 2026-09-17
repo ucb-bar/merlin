@@ -5,6 +5,7 @@ Two things in the same text spell `->` followed by `(` and are CORRECT as writte
 Rewriting either would corrupt a valid module, so the discriminator -- an arrow that follows a
 region close -- is the property under test, not an implementation detail.
 """
+
 from __future__ import annotations
 
 from merlin.frontends.multi_result_linalg import normalize_multi_result_linalg as normalize
@@ -22,8 +23,10 @@ def test_a_single_result_arrow_is_untouched():
 
 
 def test_an_affine_map_is_never_rewritten():
-    src = ("linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, "
-           "affine_map<(d0, d1) -> (d1)>], iterator_types = [\"parallel\"]}")
+    src = (
+        "linalg.generic {indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, "
+        'affine_map<(d0, d1) -> (d1)>], iterator_types = ["parallel"]}'
+    )
     assert normalize(src) == (src, 0)
 
 
@@ -61,9 +64,11 @@ def test_a_graph_with_nothing_to_do_is_returned_byte_identical():
 
 def test_the_real_failing_shape_from_a_min_dim_lowering():
     # aten.min.dim returns values AND indices; this is the op that made a whole graph uncompilable.
-    src = ('    linalg.yield %3999, %4000 : i64, i64\n'
-           '    } -> (tensor<1xi64>, tensor<1xi64>)\n'
-           '    %4001 = tensor.expand_shape %3991 [[0 : i64, 1 : i64]] output_shape [1, 1]')
+    src = (
+        "    linalg.yield %3999, %4000 : i64, i64\n"
+        "    } -> (tensor<1xi64>, tensor<1xi64>)\n"
+        "    %4001 = tensor.expand_shape %3991 [[0 : i64, 1 : i64]] output_shape [1, 1]"
+    )
     got, n = normalize(src)
     assert n == 1
     assert "} -> tensor<1xi64>, tensor<1xi64>" in got

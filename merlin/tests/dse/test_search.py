@@ -1,15 +1,16 @@
 """Search layer: candidate/evaluator/grid/evolutionary/MAP-Elites over compilation strategies."""
+
 from merlin.common import paths
 from merlin.common.yaml import load_yaml
 from merlin.design_pressure.pressure_vector import compute_rpv
 from merlin.design_pressure.workloads.vla_action_chunk_decode import build_region
-from merlin.dse.strategy import strategy_from_passes
 from merlin.dse.search import evolutionary, grid, map_elites
 from merlin.dse.search.archive import archive_rows
 from merlin.dse.search.candidate import make_candidate, seed_candidates
 from merlin.dse.search.evaluator import make_evaluator
 from merlin.dse.search.mutations import mutate, neighbours
 from merlin.dse.search.reports import build_report
+from merlin.dse.strategy import strategy_from_passes
 
 BENCH = paths.merlin_dir() / "benchmarks" / "semantic_memory"
 
@@ -46,6 +47,7 @@ def test_baseline_is_correct_everywhere():
 
 def test_mutation_changes_features():
     import random
+
     parent = next(c for c in seed_candidates() if c.artifact["variant_class"] == "baseline")
     child = mutate(parent, random.Random(0))
     assert child.id != parent.id
@@ -62,9 +64,8 @@ def test_evolutionary_search_improves_or_holds():
 
 def test_map_elites_builds_portfolio(tmp_path):
     ev = _vla_evaluator()
-    me = map_elites.map_elites_search(seed_candidates(), ev, iterations=30, seed=2,
-                                      workload_regime="decode_like")
-    assert me["occupied_cells"] >= 3            # a portfolio, not one winner
+    me = map_elites.map_elites_search(seed_candidates(), ev, iterations=30, seed=2, workload_regime="decode_like")
+    assert me["occupied_cells"] >= 3  # a portfolio, not one winner
     # resident_object family is represented in the portfolio
     mems = {r["memory_abstraction"] for r in archive_rows(me["archive"])}
     assert "resident_object" in mems

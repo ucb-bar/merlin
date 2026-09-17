@@ -9,6 +9,7 @@ endpoint that reaches it.
 Nothing caught this because each side was tested against itself. These tests assert the JOIN: that the
 tier one module hands over is a tier the other module accepts.
 """
+
 from __future__ import annotations
 
 import importlib.util

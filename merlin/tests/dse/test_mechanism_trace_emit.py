@@ -14,6 +14,7 @@ whose instance resolves to no DECLARED engine is left unbound and reported -- ne
 whichever engine happens to be nearest, which would put three decoupled controllers' concurrency inside
 one systolic array where it cannot be seen.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -59,8 +60,7 @@ def fake_checkout(tmp_path, monkeypatch, driver):
 
 def test_instance_to_module_comes_from_the_design_not_from_resemblance(fake_checkout, driver):
     got = driver.instance_modules("t")
-    assert got == {"u0": "ExecuteController", "u1": "LoadController",
-                   "widget": "SomeUndeclaredThing"}
+    assert got == {"u0": "ExecuteController", "u1": "LoadController", "widget": "SomeUndeclaredThing"}
 
 
 def test_an_absent_hw_dialect_binds_nothing_rather_than_guessing(tmp_path, monkeypatch, driver):
@@ -69,46 +69,46 @@ def test_an_absent_hw_dialect_binds_nothing_rather_than_guessing(tmp_path, monke
     assert driver.instance_modules("t") == {}
 
 
-def test_a_column_with_no_declared_engine_is_left_unbound_and_reported(fake_checkout, driver,
-                                                                      monkeypatch):
+def test_a_column_with_no_declared_engine_is_left_unbound_and_reported(fake_checkout, driver, monkeypatch):
     """Unbound is the honest state. Binding it to the nearest engine would hide the concurrency."""
-    monkeypatch.setattr(driver, "STATE_SIGNALS",
-                        ("u0/control_state", "u1/control_state", "widget/control_state"))
+    monkeypatch.setattr(driver, "STATE_SIGNALS", ("u0/control_state", "u1/control_state", "widget/control_state"))
     monkeypatch.setattr(driver, "PORT_SIGNALS", ())
-    monkeypatch.setattr(driver, "engine_by_module",
-                        lambda target: {"ExecuteController": "systolic_mesh",
-                                        "LoadController": "LoadController"})
-    trace = {"u0/control_state": ["0", "1"], "u1/control_state": ["0", "0"],
-             "widget/control_state": ["1", "1"]}
-    meta = {"shape": "2x2x2", "signals_present": sorted(trace), "signals_absent": [],
-            "bit_exact": True}
+    monkeypatch.setattr(
+        driver,
+        "engine_by_module",
+        lambda target: {"ExecuteController": "systolic_mesh", "LoadController": "LoadController"},
+    )
+    trace = {"u0/control_state": ["0", "1"], "u1/control_state": ["0", "0"], "widget/control_state": ["1", "1"]}
+    meta = {"shape": "2x2x2", "signals_present": sorted(trace), "signals_absent": [], "bit_exact": True}
     got = driver.mechanism_traces("t", [trace], [meta])[0]
-    assert got["binding"] == {"u0/control_state": "systolic_mesh",
-                              "u1/control_state": "LoadController"}
+    assert got["binding"] == {"u0/control_state": "systolic_mesh", "u1/control_state": "LoadController"}
     assert "widget/control_state" not in got["binding"]
     assert "UNBOUND" in got["provenance"]
     assert "widget/control_state" in got["provenance"]
 
 
-def test_the_emitted_trace_is_the_shape_the_calibration_seam_consumes(fake_checkout, driver,
-                                                                     monkeypatch):
+def test_the_emitted_trace_is_the_shape_the_calibration_seam_consumes(fake_checkout, driver, monkeypatch):
     from merlin.perf import calibration as CAL
 
     monkeypatch.setattr(driver, "STATE_SIGNALS", ("u0/control_state",))
     monkeypatch.setattr(driver, "PORT_SIGNALS", ("u0/io_busy",))
-    monkeypatch.setattr(driver, "engine_by_module",
-                        lambda target: {"ExecuteController": "systolic_mesh"})
+    monkeypatch.setattr(driver, "engine_by_module", lambda target: {"ExecuteController": "systolic_mesh"})
     trace = {"u0/control_state": ["0", "1", "1", "0"], "u0/io_busy": ["0", "1", "1", "0"]}
-    meta = {"shape": "2x2x2", "signals_present": sorted(trace), "signals_absent": ["u9/absent"],
-            "bit_exact": True}
+    meta = {"shape": "2x2x2", "signals_present": sorted(trace), "signals_absent": ["u9/absent"], "bit_exact": True}
     got = driver.mechanism_traces("t", [trace], [meta])[0]
     # Round-trips through JSON, because that is how the driver hands it over.
     got = json.loads(json.dumps(got))
     mt = CAL.MechanismTrace(
-        capsule=got["capsule"], columns=got["columns"], binding=got["binding"],
-        port_columns=tuple(got["port_columns"]), state_columns=tuple(got["state_columns"]),
-        unmeasured_units=tuple(got["unmeasured_units"]), work=got["work"],
-        completion_observable=got["completion_observable"], provenance=got["provenance"])
+        capsule=got["capsule"],
+        columns=got["columns"],
+        binding=got["binding"],
+        port_columns=tuple(got["port_columns"]),
+        state_columns=tuple(got["state_columns"]),
+        unmeasured_units=tuple(got["unmeasured_units"]),
+        work=got["work"],
+        completion_observable=got["completion_observable"],
+        provenance=got["provenance"],
+    )
     assert mt.sampled_cycles == 4
     assert mt.state_columns == ("u0/control_state",)
     assert mt.port_columns == ("u0/io_busy",)
@@ -119,33 +119,33 @@ def test_completion_observable_is_stated_false_not_defaulted_true(fake_checkout,
     """Defaulting it True is how an unmeasured trait becomes a satisfied concurrency gate."""
     monkeypatch.setattr(driver, "STATE_SIGNALS", ("u0/control_state",))
     monkeypatch.setattr(driver, "PORT_SIGNALS", ())
-    monkeypatch.setattr(driver, "engine_by_module",
-                        lambda target: {"ExecuteController": "systolic_mesh"})
+    monkeypatch.setattr(driver, "engine_by_module", lambda target: {"ExecuteController": "systolic_mesh"})
     got = driver.mechanism_traces(
-        "t", [{"u0/control_state": ["0", "1"]}],
-        [{"shape": "2x2x2", "signals_present": ["u0/control_state"], "signals_absent": [],
-          "bit_exact": True}])[0]
+        "t",
+        [{"u0/control_state": ["0", "1"]}],
+        [{"shape": "2x2x2", "signals_present": ["u0/control_state"], "signals_absent": [], "bit_exact": True}],
+    )[0]
     assert got["completion_observable"] is False
 
 
-def test_the_work_fingerprint_carries_whether_the_run_was_bit_exact(fake_checkout, driver,
-                                                                    monkeypatch):
+def test_the_work_fingerprint_carries_whether_the_run_was_bit_exact(fake_checkout, driver, monkeypatch):
     """An occupancy vector from a run that computed the wrong thing is not the machine's behaviour."""
     monkeypatch.setattr(driver, "STATE_SIGNALS", ("u0/control_state",))
     monkeypatch.setattr(driver, "PORT_SIGNALS", ())
-    monkeypatch.setattr(driver, "engine_by_module",
-                        lambda target: {"ExecuteController": "systolic_mesh"})
+    monkeypatch.setattr(driver, "engine_by_module", lambda target: {"ExecuteController": "systolic_mesh"})
     for flag in (True, False):
         got = driver.mechanism_traces(
-            "t", [{"u0/control_state": ["0", "1"]}],
-            [{"shape": "2x2x2", "signals_present": ["u0/control_state"], "signals_absent": [],
-              "bit_exact": flag}])[0]
+            "t",
+            [{"u0/control_state": ["0", "1"]}],
+            [{"shape": "2x2x2", "signals_present": ["u0/control_state"], "signals_absent": [], "bit_exact": flag}],
+        )[0]
         assert f"bit_exact={flag}" in got["work"]
 
 
 def test_the_checkout_context_manager_restores_the_working_directory(driver, tmp_path):
     """The modelling repo resolves its artifacts relative to CWD; a leaked chdir breaks the caller."""
     import os
+
     before = os.getcwd()
     with pytest.raises(RuntimeError):
         with driver._in_mlc_checkout(tmp_path):

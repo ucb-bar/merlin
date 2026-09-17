@@ -6,6 +6,7 @@ identity. And every refusal was spelled ``None``, which a caller can only render
 carried" — indistinguishable from a converged run with nothing worth carrying. Measured: two of three
 targets had a certificate cache that never once fired, and nothing said so.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -26,6 +27,7 @@ def _elf(d, name, body=b"body"):
 # --------------------------------------------------------------------------------------------
 # which executables
 # --------------------------------------------------------------------------------------------
+
 
 def test_the_operator_name_is_the_fast_path(tmp_path):
     _elf(tmp_path, "package_kernel.elf")
@@ -59,7 +61,8 @@ def test_a_declared_program_and_an_elf_both_count(tmp_path):
 
 def test_changing_the_declared_program_changes_the_identity(tmp_path):
     a, b = tmp_path / "one", tmp_path / "two"
-    a.mkdir(); b.mkdir()
+    a.mkdir()
+    b.mkdir()
     (a / "oracle.program").write_text('{"words": [1, 2, 3]}')
     (b / "oracle.program").write_text('{"words": [1, 2, 4]}')
     ia = TC.execution_identity(target="t", executables=CR.run_executables(a), toolchain_shas=SHAS)
@@ -79,13 +82,14 @@ def test_the_declaration_covers_program_AND_stimulus():
     """The same program on different operands is a different execution; a digest over one of them
     would carry a verdict across a change in the other."""
     from merlin.common.paths import repo_root
+
     src = (repo_root() / "merlin" / "python" / "merlin" / "targetgen" / "program_oracle.py").read_text()
     # Scoped to the function, not a character count: a fixed window spilled into the next function,
     # which mentions x["b64"] for its own reasons -- so the assertion passed on unrelated code and a
     # mutation that dropped the stimulus from the declaration went unnoticed.
     i = src.index("def _declare_executed_program")
     j = src.find("\ndef ", i + 1)
-    body = src[i:j if j != -1 else len(src)]
+    body = src[i : j if j != -1 else len(src)]
     assert '"words": bundle.get("words")' in body, "the program is not in the declaration"
     assert 'i.get("b64")' in body, "the stimulus is not in the declaration"
     assert "_declare_executed_program(Path(workdir), bundle)" in src, "declared but never called"
@@ -106,8 +110,10 @@ def test_every_executable_is_in_the_identity(tmp_path):
     """Not one picked by name or mtime: keying a certificate on the wrong program is the direction
     this must never fail in, so a change to ANY of them must move the identity."""
     a, b = tmp_path / "one", tmp_path / "two"
-    _elf(a, "kernel.x.elf", b"AAA"); _elf(a, "kernel.y.elf", b"BBB")
-    _elf(b, "kernel.x.elf", b"AAA"); _elf(b, "kernel.y.elf", b"CHANGED")
+    _elf(a, "kernel.x.elf", b"AAA")
+    _elf(a, "kernel.y.elf", b"BBB")
+    _elf(b, "kernel.x.elf", b"AAA")
+    _elf(b, "kernel.y.elf", b"CHANGED")
     ia = TC.execution_identity(target="t", executables=CR.run_executables(a), toolchain_shas=SHAS)
     ib = TC.execution_identity(target="t", executables=CR.run_executables(b), toolchain_shas=SHAS)
     assert ia and ib and ia != ib, "a second executable's bytes did not reach the identity"
@@ -116,7 +122,8 @@ def test_every_executable_is_in_the_identity(tmp_path):
 def test_the_identity_is_stable_for_the_same_bytes(tmp_path):
     a, b = tmp_path / "one", tmp_path / "two"
     for d in (a, b):
-        _elf(d, "kernel.x.elf", b"AAA"); _elf(d, "kernel.y.elf", b"BBB")
+        _elf(d, "kernel.x.elf", b"AAA")
+        _elf(d, "kernel.y.elf", b"BBB")
     ia = TC.execution_identity(target="t", executables=CR.run_executables(a), toolchain_shas=SHAS)
     ib = TC.execution_identity(target="t", executables=CR.run_executables(b), toolchain_shas=SHAS)
     assert ia == ib
@@ -127,13 +134,15 @@ def test_a_renamed_executable_is_a_different_identity(tmp_path):
     a, b = tmp_path / "one", tmp_path / "two"
     _elf(a, "kernel.x.elf", b"AAA")
     _elf(b, "kernel.z.elf", b"AAA")
-    assert (TC.execution_identity(target="t", executables=CR.run_executables(a), toolchain_shas=SHAS)
-            != TC.execution_identity(target="t", executables=CR.run_executables(b), toolchain_shas=SHAS))
+    assert TC.execution_identity(
+        target="t", executables=CR.run_executables(a), toolchain_shas=SHAS
+    ) != TC.execution_identity(target="t", executables=CR.run_executables(b), toolchain_shas=SHAS)
 
 
 # --------------------------------------------------------------------------------------------
 # why it refused
 # --------------------------------------------------------------------------------------------
+
 
 def _reason(**kw):
     base = {"target": "t", "executables": (), "toolchain_shas": SHAS}
@@ -147,24 +156,34 @@ def test_a_hit_reports_no_reason(tmp_path):
     assert _reason(executables=ex) == "", "a formable identity must not also report a refusal"
 
 
-@pytest.mark.parametrize("kw, must_mention", [
-    ({"executables": ()}, "executable"),
-    ({"toolchain_shas": {"merlin": "d" * 40}}, "hardware pin"),
-    ({"toolchain_shas": {"some_rtl": "UNKNOWN"}}, "guess"),
-    ({"target": ""}, "target"),
-])
+@pytest.mark.parametrize(
+    "kw, must_mention",
+    [
+        ({"executables": ()}, "executable"),
+        ({"toolchain_shas": {"merlin": "d" * 40}}, "hardware pin"),
+        ({"toolchain_shas": {"some_rtl": "UNKNOWN"}}, "guess"),
+        ({"target": ""}, "target"),
+    ],
+)
 def test_every_refusal_says_which_one_it_was(tmp_path, kw, must_mention):
     ex = kw.pop("executables", (_elf(tmp_path, "package_kernel.elf"),))
-    assert TC.execution_identity(target=kw.get("target", "t"), executables=ex,
-                                 toolchain_shas=kw.get("toolchain_shas", SHAS)) is None
+    assert (
+        TC.execution_identity(
+            target=kw.get("target", "t"), executables=ex, toolchain_shas=kw.get("toolchain_shas", SHAS)
+        )
+        is None
+    )
     why = _reason(executables=ex, **kw)
     assert why and must_mention in why, f"refusal did not explain itself: {why!r}"
 
 
 def test_the_reason_cannot_drift_from_the_decision(tmp_path):
     """Both forms run the same computation, so a refusal is never explained as a success or vice versa."""
-    cases = [((), SHAS, "t"), ((_elf(tmp_path, "package_kernel.elf"),), SHAS, "t"),
-             ((_elf(tmp_path, "package_kernel.elf"),), {"merlin": "d" * 40}, "t")]
+    cases = [
+        ((), SHAS, "t"),
+        ((_elf(tmp_path, "package_kernel.elf"),), SHAS, "t"),
+        ((_elf(tmp_path, "package_kernel.elf"),), {"merlin": "d" * 40}, "t"),
+    ]
     for ex, shas, target in cases:
         got = TC.execution_identity(target=target, executables=ex, toolchain_shas=shas)
         why = TC.execution_identity_reason(target=target, executables=ex, toolchain_shas=shas)
@@ -187,21 +206,22 @@ def test_a_miss_is_not_reported_as_a_refusal(tmp_path, monkeypatch):
     monkeypatch.setattr(TC, "lookup", lambda *a, **k: None)
     monkeypatch.setattr(TC, "instrument_digest", lambda *a, **k: "instr")
     _elf(tmp_path, "package_kernel.elf")
-    got, why = CR.carried_tier_result("C0", "L3", True, target="t", generated=tmp_path,
-                                      shas=SHAS, from_rtl=True)
+    got, why = CR.carried_tier_result("C0", "L3", True, target="t", generated=tmp_path, shas=SHAS, from_rtl=True)
     assert got is None and why == ""
 
 
 def test_an_unaskable_question_is_reported(tmp_path):
     _elf(tmp_path, "package_kernel.elf")
-    got, why = CR.carried_tier_result("C0", "L3", True, target="t", generated=tmp_path,
-                                      shas={"merlin": "d" * 40}, from_rtl=True)
+    got, why = CR.carried_tier_result(
+        "C0", "L3", True, target="t", generated=tmp_path, shas={"merlin": "d" * 40}, from_rtl=True
+    )
     assert got is None and "hardware pin" in why
 
 
 # --------------------------------------------------------------------------------------------
 # stamping the refusal onto the record
 # --------------------------------------------------------------------------------------------
+
 
 def test_a_refusal_is_stamped_onto_its_tier_record():
     tiers = {"L2": CR.TierResult("L2", "pass", True), "L3": CR.TierResult("L3", "pass", True)}

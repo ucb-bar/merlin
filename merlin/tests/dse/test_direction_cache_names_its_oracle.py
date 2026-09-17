@@ -10,6 +10,7 @@ spec and its RTL disagree the cache records the spec's answer. One such entry --
 recorded as writing only its named register, where the elaborated design clears the whole register file
 -- was read as an RTL fact.
 """
+
 from __future__ import annotations
 
 import sys
@@ -36,5 +37,6 @@ def test_the_settle_tier_is_still_distinguishable():
 def test_the_probe_really_does_run_on_the_functional_core():
     """Guards the premise: if the probe ever routes to an RTL engine, this name becomes the wrong one."""
     import inspect
+
     src = inspect.getsource(D.derive_direction)
     assert "run_program_debug" in src, "probe no longer uses the functional debugger; revisit the name"

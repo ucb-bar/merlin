@@ -10,6 +10,7 @@ died in argument handling. In a transcript that reads as the agent failing a too
 harness being broken, which is why it survived: arm-4's whole point is that the agent uses this
 tooling, so a crash here penalises exactly the runs that do the right thing.
 """
+
 from __future__ import annotations
 
 import sys
@@ -21,12 +22,14 @@ from merlin.common.paths import repo_root
 sys.path.insert(0, str(repo_root() / "merlin/experiments/capsule_bench/harness"))
 from isa_tools_shim import _text_of  # noqa: E402
 
-
-KERNEL = "\n".join([
-    "  .word 0x0000035f  # VLI_ALL",
-    "  .insn i 0x67, 1, x0, x0, 33  # DELAY",
-    "  .word 0x0800c077  # VMATPUSH_ACC_BF16_MXU0",
-] * 40)
+KERNEL = "\n".join(
+    [
+        "  .word 0x0000035f  # VLI_ALL",
+        "  .insn i 0x67, 1, x0, x0, 33  # DELAY",
+        "  .word 0x0800c077  # VMATPUSH_ACC_BF16_MXU0",
+    ]
+    * 40
+)
 
 
 def test_a_long_inline_listing_is_returned_as_text():
@@ -37,6 +40,7 @@ def test_a_long_inline_listing_is_returned_as_text():
 def test_the_old_guard_really_did_raise_on_this_input():
     """Pin the root cause, so a refactor back to a bare is_file() fails here."""
     from pathlib import Path
+
     with pytest.raises(OSError):
         Path(KERNEL).is_file()
 

@@ -1,16 +1,16 @@
 """The Muon GSIM tier grades a declared result page, not console silence."""
+
 from __future__ import annotations
 
-from types import ModuleType, SimpleNamespace
-from pathlib import Path
 import struct
 import subprocess
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
 from merlin.runtime.backends.base import get_backend
 from merlin.targetgen.isa_model import IsaModel
-
 
 BACKEND = get_backend("muon")
 H = BACKEND.muon_harness
@@ -18,10 +18,13 @@ MO = BACKEND.muon_oracles
 MU = BACKEND.muon
 RP = BACKEND.muon_result_page
 
-MODEL = IsaModel(target="synthetic", runtime_abi={
-    "special_csrs": {"mhartid": 0xF14},
-    "apertures": {"console_mmio": 0xFF080000},
-})
+MODEL = IsaModel(
+    target="synthetic",
+    runtime_abi={
+        "special_csrs": {"mhartid": 0xF14},
+        "apertures": {"console_mmio": 0xFF080000},
+    },
+)
 
 
 def _arg(name: str, count: int, dtype: str = "f32") -> object:
@@ -30,7 +33,10 @@ def _arg(name: str, count: int, dtype: str = "f32") -> object:
 
 def test_result_page_harness_streams_through_fixed_acknowledged_mailbox() -> None:
     harness = H.build_external_kernel_main(
-        [_arg("X", 65)], [_arg("Y", 65)], kernel_symbol="kernel", model=MODEL,
+        [_arg("X", 65)],
+        [_arg("Y", 65)],
+        kernel_symbol="kernel",
+        model=MODEL,
         result_page=True,
     )
 
@@ -53,9 +59,14 @@ def test_result_page_harness_streams_through_fixed_acknowledged_mailbox() -> Non
 
 def test_compact_result_page_checks_all_words_but_publishes_two_word_summary() -> None:
     harness = H.build_external_kernel_main(
-        [_arg("X", 65)], [_arg("Y", 65)], kernel_symbol="kernel", model=MODEL,
-        compact_expected={"Y": [0.0] * 65}, compact_policy={"compare": "exact"},
-        compact_symbol_tag="n_test", compact_result_page=True,
+        [_arg("X", 65)],
+        [_arg("Y", 65)],
+        kernel_symbol="kernel",
+        model=MODEL,
+        compact_expected={"Y": [0.0] * 65},
+        compact_policy={"compare": "exact"},
+        compact_symbol_tag="n_test",
+        compact_result_page=True,
     )
 
     assert "for(uint32_t _i=0;_i<65u;++_i)" in harness.source
@@ -71,7 +82,10 @@ def test_compact_result_page_checks_all_words_but_publishes_two_word_summary() -
 def test_compact_result_page_requires_private_expected_bounds() -> None:
     with pytest.raises(ValueError, match="requires compact_expected"):
         H.build_external_kernel_main(
-            [_arg("X", 1)], [_arg("Y", 1)], kernel_symbol="kernel", model=MODEL,
+            [_arg("X", 1)],
+            [_arg("Y", 1)],
+            kernel_symbol="kernel",
+            model=MODEL,
             compact_result_page=True,
         )
 
@@ -93,7 +107,10 @@ def test_sequence_tokens_exclude_stale_ready_and_ack_interleavings() -> None:
 
 def test_legacy_harness_is_unchanged_when_numeric_mailbox_is_disabled() -> None:
     harness = H.build_external_kernel_main(
-        [_arg("X", 2)], [_arg("Y", 2)], kernel_symbol="kernel", model=MODEL,
+        [_arg("X", 2)],
+        [_arg("Y", 2)],
+        kernel_symbol="kernel",
+        model=MODEL,
         result_page=False,
     )
 
@@ -152,9 +169,9 @@ def test_carrier_is_generated_from_declared_layout_and_policy() -> None:
     assert "uint32_t count = STATUS[1]" in source
     assert "STATUS[2] = MERLIN_RESULT_ACK(sequence)" in source
     observe = source.index("STATUS[0] != MERLIN_RESULT_READY(sequence)")
-    acquire = source.index('fence r,rw', observe)
+    acquire = source.index("fence r,rw", observe)
     mailbox_read = source.index("uint32_t got = MAILBOX[i]")
-    release_ack = source.index('fence rw,rw', mailbox_read)
+    release_ack = source.index("fence rw,rw", mailbox_read)
     ack = source.index("STATUS[2] = MERLIN_RESULT_ACK(sequence)", mailbox_read)
     assert observe < acquire < mailbox_read < release_ack < ack
 
@@ -195,14 +212,18 @@ def test_compact_carrier_rejects_partial_or_malformed_summary() -> None:
 
 def test_inline_source_large_numeric_output_uses_private_static_storage() -> None:
     source = H.build_program(
-        "void kernel(const void *x, void *y) {}", [_arg("X", 1)], [_arg("Y", 2048)],
-        kernel_symbol="kernel", model=MODEL, result_page=True,
+        "void kernel(const void *x, void *y) {}",
+        [_arg("X", 1)],
+        [_arg("Y", 2048)],
+        kernel_symbol="kernel",
+        model=MODEL,
+        result_page=True,
     )
 
     declaration = "static volatile uint32_t _out_Y[2048];"
     assert declaration in source
     assert source.index(declaration) < source.index("int main(void)")
-    assert "volatile uint32_t _out_Y[2048];" not in source[source.index("int main(void)"):]
+    assert "volatile uint32_t _out_Y[2048];" not in source[source.index("int main(void)") :]
 
 
 def _artifact_verifier():
@@ -218,8 +239,7 @@ def test_publication_verifier_rejects_unlisted_and_hidden_forbidden_files(tmp_pa
     verifier = _artifact_verifier()
     safe = tmp_path / "receipt.json"
     safe.write_text("{}\n", encoding="utf-8")
-    (tmp_path / "SHA256SUMS").write_text(
-        f"{verifier.digest(safe)}  receipt.json\n", encoding="utf-8")
+    (tmp_path / "SHA256SUMS").write_text(f"{verifier.digest(safe)}  receipt.json\n", encoding="utf-8")
     assert verifier.publication_failures(tmp_path) == []
 
     extra = tmp_path / "unlisted.txt"
@@ -236,23 +256,31 @@ def test_publication_verifier_rejects_unlisted_and_hidden_forbidden_files(tmp_pa
 
 def test_outcome_requires_the_final_pc_to_reach_a_retained_symbol() -> None:
     symbols = {"merlin_numeric_pass": 0x80000086, "merlin_numeric_fail": 0x800000C6}
-    assert RP.outcome_from_console(
-        "[gsim-probe final] rocket_pc=0x80000086\n[gsim-emu] FINISHED: cycles=120000\n",
-        symbols,
-    ) == "pass"
-    assert RP.outcome_from_console(
-        "[gsim-probe final] rocket_pc=0x800000c6\n",
-        symbols,
-    ) == "fail"
+    assert (
+        RP.outcome_from_console(
+            "[gsim-probe final] rocket_pc=0x80000086\n[gsim-emu] FINISHED: cycles=120000\n",
+            symbols,
+        )
+        == "pass"
+    )
+    assert (
+        RP.outcome_from_console(
+            "[gsim-probe final] rocket_pc=0x800000c6\n",
+            symbols,
+        )
+        == "fail"
+    )
     assert RP.outcome_from_console("[gsim-emu] FINISHED: cycles=120000\n", symbols) is None
 
 
-@pytest.mark.parametrize(("final_pc", "status"), [
-    (0x80000086, "pass"),
-    (0x800000C6, "fail"),
-])
-def test_gsim_adapter_prefers_numeric_pc_witness_over_cycle_cap(
-        final_pc, status, monkeypatch, tmp_path) -> None:
+@pytest.mark.parametrize(
+    ("final_pc", "status"),
+    [
+        (0x80000086, "pass"),
+        (0x800000C6, "fail"),
+    ],
+)
+def test_gsim_adapter_prefers_numeric_pc_witness_over_cycle_cap(final_pc, status, monkeypatch, tmp_path) -> None:
     cb = {
         "target": "synthetic",
         "_oracle_expected_outputs": {"Y": [1.0]},
@@ -261,26 +289,32 @@ def test_gsim_adapter_prefers_numeric_pc_witness_over_cycle_cap(
     monkeypatch.setenv("MERLIN_MUON_GSIM_MAXCYCLES", "120000")
     monkeypatch.setattr(MO, "gsim_status", lambda target: (True, "stub"))
     from merlin.targetgen import gsim_emulator as GE
+
     monkeypatch.setattr(GE, "emulator_path", lambda *a, **k: tmp_path / "emu")
     monkeypatch.setattr(MU, "is_mlir_artifact", lambda src: True)
     monkeypatch.setattr(MU, "compile_mlir_forkfree", lambda *a, **k: tmp_path / "kernel.elf")
     monkeypatch.setattr(H, "args_from_cb", lambda cb: ([], [_arg("Y", 1)]))
-    monkeypatch.setattr(RP, "manifest_from_elf", lambda *a, **k: {
-        "status": {"soc_address": 0x110004000},
-        "mailbox": {"soc_address": 0x110004040, "words": 32},
-        "outputs": [{"name": "Y", "elements": 1, "dtype": "f32"}],
-    })
+    monkeypatch.setattr(
+        RP,
+        "manifest_from_elf",
+        lambda *a, **k: {
+            "status": {"soc_address": 0x110004000},
+            "mailbox": {"soc_address": 0x110004040, "words": 32},
+            "outputs": [{"name": "Y", "elements": 1, "dtype": "f32"}],
+        },
+    )
     monkeypatch.setattr(RP, "render_carrier", lambda *a, **k: "int main(void){return 0;}\n")
     monkeypatch.setattr(MU, "fuse_soc_elf", lambda *a, **k: tmp_path / "kernel.soc.elf")
-    monkeypatch.setattr(RP, "symbol_addresses", lambda *a, **k: {
-        "merlin_numeric_pass": 0x80000086, "merlin_numeric_fail": 0x800000C6})
+    monkeypatch.setattr(
+        RP, "symbol_addresses", lambda *a, **k: {"merlin_numeric_pass": 0x80000086, "merlin_numeric_fail": 0x800000C6}
+    )
     monkeypatch.setattr(MO, "flops_from_cb", lambda cb: 0)
     monkeypatch.setattr(
-        __import__("subprocess"), "run",
+        __import__("subprocess"),
+        "run",
         lambda *a, **k: SimpleNamespace(returncode=0),
     )
-    console = (f"[gsim-probe final] rocket_pc=0x{final_pc:x}\n"
-               "[gsim-emu] FINISHED: cycles=120000\n")
+    console = f"[gsim-probe final] rocket_pc=0x{final_pc:x}\n[gsim-emu] FINISHED: cycles=120000\n"
     monkeypatch.setattr(MU, "_read_console", lambda log: (console, len(console), False))
 
     result = MO.gsim_muon_adapter("synthetic")(cb, "llvm.func @kernel()", tmp_path, 60)
@@ -291,16 +325,17 @@ def test_gsim_adapter_prefers_numeric_pc_witness_over_cycle_cap(
 
 
 @pytest.mark.parametrize(("observed", "status"), [(1.0, "pass"), (2.0, "fail")])
-def test_gsim_compact_opt_in_uses_host_dump_and_ordinary_grader(
-        observed, status, monkeypatch, tmp_path) -> None:
+def test_gsim_compact_opt_in_uses_host_dump_and_ordinary_grader(observed, status, monkeypatch, tmp_path) -> None:
     cb = {
         "target": "synthetic",
         "_oracle_expected_outputs": {"Y": [1.0]},
         "_oracle_numeric_policy": {"compare": "exact"},
         "_oracle_l2_cycles": 25_000,
         "_oracle_gsim_cycle_policy": {
-            "source": "sealed_predecessor_tier", "multiplier": 8,
-            "minimum_cycles": 120_000, "compute_floor_multiplier": 2,
+            "source": "sealed_predecessor_tier",
+            "multiplier": 8,
+            "minimum_cycles": 120_000,
+            "compute_floor_multiplier": 2,
         },
     }
     compiled = {}
@@ -308,6 +343,7 @@ def test_gsim_compact_opt_in_uses_host_dump_and_ordinary_grader(
     monkeypatch.delenv("MERLIN_MUON_GSIM_MAXCYCLES", raising=False)
     monkeypatch.setattr(MO, "gsim_status", lambda target: (True, "stub"))
     from merlin.targetgen import gsim_emulator as GE
+
     monkeypatch.setattr(GE, "emulator_path", lambda *a, **k: tmp_path / "emu")
     monkeypatch.setattr(MU, "is_mlir_artifact", lambda src: True)
     monkeypatch.setattr(MU, "soc_fuse_offset", lambda: 0x110000000)
@@ -320,17 +356,21 @@ def test_gsim_compact_opt_in_uses_host_dump_and_ordinary_grader(
 
     monkeypatch.setattr(MU, "compile_mlir_forkfree", compile_stub)
     monkeypatch.setattr(H, "args_from_cb", lambda cb: ([], [_arg("Y", 1)]))
-    monkeypatch.setattr(RP, "symbol_layouts", lambda *a, **k: {
-        "_out_Y": {"address": 0x4040, "size": 4},
-    })
+    monkeypatch.setattr(
+        RP,
+        "symbol_layouts",
+        lambda *a, **k: {
+            "_out_Y": {"address": 0x4040, "size": 4},
+        },
+    )
     monkeypatch.setattr(MU, "fuse_soc_elf", lambda *a, **k: tmp_path / "kernel.soc.elf")
     monkeypatch.setattr(MO, "flops_from_cb", lambda cb: 0)
 
     def run_stub(*args, **kwargs):
         Path(kwargs["env"]["GSIM_DUMP_FILE"]).write_bytes(struct.pack("<f", observed))
         kwargs["stdout"].write(
-            b"[gsim-emu] FINISHED: cycles=123 wall=0.1s model_finished=1\n"
-            b"[gsim-emu] BINARY_DUMP complete bytes=4\n")
+            b"[gsim-emu] FINISHED: cycles=123 wall=0.1s model_finished=1\n[gsim-emu] BINARY_DUMP complete bytes=4\n"
+        )
         return subprocess.CompletedProcess(args[0], 0)
 
     monkeypatch.setattr(subprocess, "run", run_stub)
@@ -344,27 +384,39 @@ def test_gsim_compact_opt_in_uses_host_dump_and_ordinary_grader(
     assert result["outputs"] == {"Y": [[observed]]}
     assert result["cycles"] == 123
     assert "numeric_verdict" not in result
-    assert result["host_gmem_dump"]["trust_scope"] == \
-        "frozen_non_adversarial_derived_evaluation_only"
+    assert result["host_gmem_dump"]["trust_scope"] == "frozen_non_adversarial_derived_evaluation_only"
     from merlin.targetgen import capsule_golden as CG
+
     report = CG.compare({"Y": [1.0]}, result["outputs"], {"compare": "exact"})
     assert report["status"] == status
     assert result["bounded_observation"] == {
-        "source": "sealed_l2_cycles", "max_cycles": 200_000,
-        "l2_cycles": 25_000, "l2_multiplier": 8,
-        "minimum_cycles": 120_000, "compute_floor_multiplier": 2,
-        "compute_floor_cycles": None, "performance_measurement": False,
+        "source": "sealed_l2_cycles",
+        "max_cycles": 200_000,
+        "l2_cycles": 25_000,
+        "l2_multiplier": 8,
+        "minimum_cycles": 120_000,
+        "compute_floor_multiplier": 2,
+        "compute_floor_cycles": None,
+        "performance_measurement": False,
     }
 
 
 def test_gsim_cycle_budget_fails_closed_on_invalid_l2_hint(monkeypatch) -> None:
     monkeypatch.delenv("MERLIN_MUON_GSIM_MAXCYCLES", raising=False)
     with pytest.raises(MU.MuonUnavailable, match="positive integer"):
-        MO._gsim_cycle_budget({"_oracle_l2_cycles": 0,
-                               "_oracle_gsim_cycle_policy": {
-                                   "source": "sealed_predecessor_tier", "multiplier": 8,
-                                   "minimum_cycles": 120_000, "compute_floor_multiplier": 2,
-                               }}, target="synthetic", flops=1)
+        MO._gsim_cycle_budget(
+            {
+                "_oracle_l2_cycles": 0,
+                "_oracle_gsim_cycle_policy": {
+                    "source": "sealed_predecessor_tier",
+                    "multiplier": 8,
+                    "minimum_cycles": 120_000,
+                    "compute_floor_multiplier": 2,
+                },
+            },
+            target="synthetic",
+            flops=1,
+        )
 
 
 def test_gsim_cycle_budget_rejects_unbound_policy(monkeypatch) -> None:
@@ -375,7 +427,6 @@ def test_gsim_cycle_budget_rejects_unbound_policy(monkeypatch) -> None:
 
 def test_gsim_cycle_budget_override_precedes_l2_hint(monkeypatch) -> None:
     monkeypatch.setenv("MERLIN_MUON_GSIM_MAXCYCLES", "321")
-    value, record = MO._gsim_cycle_budget(
-        {"_oracle_l2_cycles": 25_000}, target="synthetic", flops=1)
+    value, record = MO._gsim_cycle_budget({"_oracle_l2_cycles": 25_000}, target="synthetic", flops=1)
     assert value == 321
     assert record == {"source": "explicit_override", "max_cycles": 321}

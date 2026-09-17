@@ -1,9 +1,9 @@
 """The runtime backend registry classifies backends by target CLASS (CPU/GPU/NPU), not instance."""
+
 from __future__ import annotations
 
 from merlin.runtime.backends import base
 from merlin.runtime.backends.base import BackendKind, TargetClass
-
 
 #: The backends this repo ships. An OUT-OF-TREE package may register more via `plugin.backend`, which
 #: is the seam working as designed — so these assertions pin the in-tree set and require anything extra
@@ -14,8 +14,7 @@ from merlin.runtime.backends.base import BackendKind, TargetClass
 #: registers from merlin._oot_backends.*, which is the eviction working as intended. They are still
 #: registered and still classified — the class assertions below check them by name — they are simply
 #: no longer implemented in this repo's core tree.
-IN_TREE = {"spike", "spike_model", "zephyr_model",
-           "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
+IN_TREE = {"spike", "spike_model", "zephyr_model", "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
 
 #: The evicted reference backends, by the class each must still report.
 EVICTED = {"gemmini": "NPU", "muon": "GPU", "saturn_vec": "CPU"}
@@ -40,11 +39,18 @@ def test_registry_taxonomy():
     assert set(base.backends_of_class(TargetClass.NPU)) >= {"gemmini"}
     assert set(base.backends_of_class(TargetClass.GPU)) >= {"muon"}
     assert _in_tree(base.backends_of_class(TargetClass.CPU)) == {
-        "spike", "spike_model", "zephyr_model",
-        "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
+        "spike",
+        "spike_model",
+        "zephyr_model",
+        "xnnpack_board",
+        "openblas_board",
+        "ours_board",
+        "xnnpack_host",
+    }
     for name, cls in EVICTED.items():
         assert base.info(name).module.startswith("merlin._oot_backends."), (
-            f"{name} is registering from core again — the eviction regressed")
+            f"{name} is registering from core again — the eviction regressed"
+        )
         assert base.class_of(name).name == cls
 
 
@@ -52,9 +58,12 @@ def test_backend_kinds():
     assert base.info("gemmini").kind is BackendKind.KERNEL
     assert base.info("zephyr_model").kind is BackendKind.WHOLE_MODEL
     assert base.info("xnnpack_board").kind is BackendKind.MATMUL_ROUTE
-    assert _in_tree(b for b in base.list_backends()
-                    if base.info(b).kind is BackendKind.MATMUL_ROUTE) == {
-        "xnnpack_board", "openblas_board", "ours_board", "xnnpack_host"}
+    assert _in_tree(b for b in base.list_backends() if base.info(b).kind is BackendKind.MATMUL_ROUTE) == {
+        "xnnpack_board",
+        "openblas_board",
+        "ours_board",
+        "xnnpack_host",
+    }
 
 
 def test_get_backend_lazy_import():
@@ -86,11 +95,15 @@ def test_parse_console_shared_protocol():
     outs, raw = base.parse_console("OUT Y0 2 2 1 2 3 4\nMETRIC cycles 100\nDONE\n")
     assert outs == {"Y0": [[1, 2], [3, 4]]} and raw == {"cycles": 100}
     # strip_warnings drops Verilator fragments; tolerant_metric skips malformed METRIC (gemmini flags)
-    outs, raw = base.parse_console("OUT Y0 1 1 7\n%Warning: junk\nMETRIC broken\nMETRIC cycles 5\nDONE\n",
-                                   strip_warnings=True, tolerant_metric=True)
+    outs, raw = base.parse_console(
+        "OUT Y0 1 1 7\n%Warning: junk\nMETRIC broken\nMETRIC cycles 5\nDONE\n",
+        strip_warnings=True,
+        tolerant_metric=True,
+    )
     assert outs == {"Y0": [[7]]} and raw == {"cycles": 5}
     # error_cls + DONE requirement + length check
     import pytest
+
     with pytest.raises(ValueError):
         base.parse_console("OUT Y0 1 1 5\n", error_cls=ValueError)  # no DONE
     with pytest.raises(ValueError):
@@ -101,7 +114,9 @@ def test_parse_console_shared_protocol():
 
 
 def test_spike_gemmini_delegate_to_parse_console():
-    from merlin.runtime.backends import base as _bk, spike
+    from merlin.runtime.backends import base as _bk
+    from merlin.runtime.backends import spike
+
     gemmini = _bk.get_backend("gemmini")
     t = "OUT Y0 1 2 3 4\nMETRIC cycles 9\nDONE\n"
     assert spike.parse_output(t) == ({"Y0": [[3, 4]]}, {"cycles": 9})

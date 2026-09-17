@@ -1,4 +1,5 @@
 """Residual-loop parallelism is a named, grain-bounded lowering choice."""
+
 import pytest
 
 from merlin.llvmlower import impr_features
@@ -42,11 +43,9 @@ def test_negative_threshold_is_refused():
 def test_feature_selects_parallel_residue_while_default_stays_serial(tmp_path):
     schedule = tmp_path / "schedule.mlir"
     schedule.write_text("module attributes {transform.with_named_sequence} {}", encoding="utf-8")
-    baseline = build_rvv_pipeline(schedule, features=frozenset(),
-                                  par_sched_path=schedule, perop_parallel=True)
+    baseline = build_rvv_pipeline(schedule, features=frozenset(), par_sched_path=schedule, perop_parallel=True)
     enabled = impr_features.normalize([ensure_registered(10_000)])
-    parallel = build_rvv_pipeline(schedule, features=enabled,
-                                  par_sched_path=schedule, perop_parallel=True)
+    parallel = build_rvv_pipeline(schedule, features=enabled, par_sched_path=schedule, perop_parallel=True)
     assert "func.func(convert-linalg-to-loops)" in baseline
     assert "func.func(convert-linalg-to-parallel-loops)" not in baseline
     assert "func.func(convert-linalg-to-parallel-loops)" in parallel

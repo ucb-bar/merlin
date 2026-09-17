@@ -1,4 +1,5 @@
 """Incremental self-check feedback remains redacted and separate from the final verdict."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -21,11 +22,15 @@ def test_progress_snapshot_counts_only_durable_capsule_statuses(tmp_path):
     for name, status in (("fast_pass", "pass"), ("numeric_bug", "fail")):
         result = root / name / "capsule_result.json"
         result.parent.mkdir(parents=True)
-        result.write_text(json.dumps({
-            "capsule": name,
-            "status": status,
-            "numeric": {"first_mismatch": {"expected": 123, "observed": 0}},
-        }))
+        result.write_text(
+            json.dumps(
+                {
+                    "capsule": name,
+                    "status": status,
+                    "numeric": {"first_mismatch": {"expected": 123, "observed": 0}},
+                }
+            )
+        )
     partial = root / "still_writing" / "capsule_result.json"
     partial.parent.mkdir(parents=True)
     partial.write_text('{"capsule":')

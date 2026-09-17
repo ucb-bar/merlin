@@ -4,6 +4,7 @@ Guards WS-C: `xdsl_dialects.targets.factory.build_dialect` synthesizes the tenso
 classes from data, and the built toy_npu/saturn dialects reproduce the hand-written ones (same op
 names, verify, and lowering output).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -18,14 +19,16 @@ def test_build_dialect_shape():
 
     vec = {"vector_map", "vector_reduce"}
     for target, dname, ops in (
-            ("toy_npu", "toynpu", {"res_pack", "matmul", "commit", "evict"} | vec),
-            ("saturn", "saturn", {"pack", "matmul", "commit", "release"} | vec)):
-        b = build_dialect(target, matmul_rhs_typed=(target == "toy_npu"),
-                          matmul_vl_policy=(target == "saturn"))
+        ("toy_npu", "toynpu", {"res_pack", "matmul", "commit", "evict"} | vec),
+        ("saturn", "saturn", {"pack", "matmul", "commit", "release"} | vec),
+    ):
+        b = build_dialect(target, matmul_rhs_typed=(target == "toy_npu"), matmul_vl_policy=(target == "saturn"))
         assert b.dialect.name == dname
         assert {op.name.split(".", 1)[1] for op in b.dialect.operations} == ops
-        assert {t.name.split(".", 1)[1] for t in b.dialect.attributes} == {b.resident_type.name.split(".", 1)[1],
-                                                                           "accumulator"}
+        assert {t.name.split(".", 1)[1] for t in b.dialect.attributes} == {
+            b.resident_type.name.split(".", 1)[1],
+            "accumulator",
+        }
         # the TargetSpec exposes the four op-class handles the lowering loop consumes
         assert b.spec.pack_op is b.pack_op and b.spec.matmul_op is b.matmul_op
         assert b.spec.commit_op is b.commit_op and b.spec.evict_op is b.evict_op
@@ -41,13 +44,23 @@ def test_reference_modules_use_the_factory():
     toynpu = specs["toy_npu"].dialect_module
     assert toynpu.get_dialect().name == "toynpu"
     assert {o.name for o in toynpu.get_dialect().operations} == {
-        "toynpu.res_pack", "toynpu.matmul", "toynpu.commit", "toynpu.evict",
-        "toynpu.vector_map", "toynpu.vector_reduce"}
-    saturn = specs["saturn"].dialect_module   # discovered via plugin.dialect, not an in-tree import
+        "toynpu.res_pack",
+        "toynpu.matmul",
+        "toynpu.commit",
+        "toynpu.evict",
+        "toynpu.vector_map",
+        "toynpu.vector_reduce",
+    }
+    saturn = specs["saturn"].dialect_module  # discovered via plugin.dialect, not an in-tree import
     assert saturn.get_dialect().name == "saturn"
     assert {o.name for o in saturn.get_dialect().operations} == {
-        "saturn.pack", "saturn.matmul", "saturn.commit", "saturn.release",
-        "saturn.vector_map", "saturn.vector_reduce"}
+        "saturn.pack",
+        "saturn.matmul",
+        "saturn.commit",
+        "saturn.release",
+        "saturn.vector_map",
+        "saturn.vector_reduce",
+    }
 
 
 def test_factory_lowering_matches_per_target():

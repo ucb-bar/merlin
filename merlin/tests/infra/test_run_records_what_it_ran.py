@@ -6,6 +6,7 @@ artifact asserted something untrue about its own run, and nothing in the run dir
 it. The driver now stamps the effort it actually passed into the transcript's init record -- the codex
 driver already does this -- so the claim is checkable against the run rather than trusted.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -27,8 +28,8 @@ def _src(name):
 
 def test_the_init_record_stamps_the_effort_actually_passed():
     s = _src("opencode_agent")
-    init = s[s.index('"subtype": "init"'):]
-    init = init[:init.index("})") + 2]
+    init = s[s.index('"subtype": "init"') :]
+    init = init[: init.index("})") + 2]
     for field in ("effort_requested", "variant_passed", "sandbox", "delegate_model"):
         assert field in init, f"the init record omits {field}, so the round is not auditable from its own artifact"
 
@@ -43,7 +44,7 @@ def test_reasoning_tokens_are_carried_not_dropped():
 def test_the_delegate_is_reported_truthfully():
     """The record must name the delegate that was configured, or None -- never a hardcoded placeholder."""
     s = _src("opencode_agent")
-    assert '"delegate_model": _delegate' in s, \
-        "delegate_model must come from the resolved delegate, not a literal"
-    assert s.index("_delegate =") < s.index('"delegate_model"'), \
+    assert '"delegate_model": _delegate' in s, "delegate_model must come from the resolved delegate, not a literal"
+    assert s.index("_delegate =") < s.index('"delegate_model"'), (
         "the delegate must be resolved before the record that reports it"
+    )

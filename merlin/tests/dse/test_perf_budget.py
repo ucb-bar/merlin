@@ -8,6 +8,7 @@ generalizable claim and a test that only shows one direction does not test it.
 
 No oracle runs, no simulator, no network: every price here is a supplied sample.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,14 +21,13 @@ from merlin.perf.decompose import Unavailable, is_unknown
 from merlin.perf.oracle_cost import CostLaw, Provenance, Term
 from merlin.targetgen import tier_policy
 
-
 # --- pricing a channel ------------------------------------------------------------------------------
+
 
 def test_channel_from_samples_uses_the_median_not_the_mean():
     """Long-tailed by construction: the observed agent runs span 900-65,401 s. A mean over that is a
     number no single run ever cost."""
-    c = bud.channel_from_samples("synthesis_call", seconds=[900.0, 2184.0, 65401.0],
-                                 dollars=[0.51, 25.33, 103.17])
+    c = bud.channel_from_samples("synthesis_call", seconds=[900.0, 2184.0, 65401.0], dollars=[0.51, 25.33, 103.17])
     assert c.seconds_per_item == 2184.0
     assert c.dollars_per_item == 25.33
     assert c.provenance == bud.MEASURED
@@ -51,6 +51,7 @@ def test_items_per_datapoint_is_separate_from_the_per_item_price():
 
 
 # --- which unit is scarce ---------------------------------------------------------------------------
+
 
 def _synthesis_dominated() -> list[bud.Channel]:
     """One regime: a fast oracle, an expensive synthesis call."""
@@ -80,13 +81,15 @@ def test_the_measured_oracle_share_of_a_datapoint_is_a_fraction_of_a_percent():
     rep = bud.unit_report(_synthesis_dominated())
     assert rep.established
     share = rep.ratios["oracle_query"]
-    assert 0.002 < float(share) < 0.004      # the measured 0.2-0.4% band
+    assert 0.002 < float(share) < 0.004  # the measured 0.2-0.4% band
 
 
 def test_scarce_unit_refuses_while_any_channel_is_unpriced():
     """An unpriced channel cannot be ruled out as the expensive one. Refusing is the whole point."""
-    chans = [bud.channel_from_samples("synthesis_call", seconds=[2184.0]),
-             bud.unpriced_channel("deep_sim", missing="never timed on this target")]
+    chans = [
+        bud.channel_from_samples("synthesis_call", seconds=[2184.0]),
+        bud.unpriced_channel("deep_sim", missing="never timed on this target"),
+    ]
     out = bud.scarce_unit(chans)
     assert isinstance(out, Unavailable)
     assert any("deep_sim" in m for m in out.missing)
@@ -99,26 +102,31 @@ def test_scarce_unit_refuses_with_only_one_priced_channel():
 
 
 def test_unit_report_ratios_are_unknown_when_the_unit_is_not_established():
-    rep = bud.unit_report([bud.unpriced_channel("a", missing="x"),
-                           bud.unpriced_channel("b", missing="y")])
+    rep = bud.unit_report([bud.unpriced_channel("a", missing="x"), bud.unpriced_channel("b", missing="y")])
     assert not rep.established
     assert all(is_unknown(v) for v in rep.ratios.values())
 
 
 # --- pricing from a fitted cost law -------------------------------------------------------------------
 
+
 def _law(*, with_word_term: bool = True, cycle_domain: float = 1_000_000.0) -> CostLaw:
     """A two-term law standing in for one fitted by ``oracle_cost.fit_cost_law``."""
-    word = (Term("per_word", 0.000264, "s/word", Provenance.MEASURED, "halt-first probe", n=6,
-                 domain=(0.0, 4096.0))
-            if with_word_term else
-            Term("per_word", None, "s/word", Provenance.UNKNOWN, "not isolated"))
+    word = (
+        Term("per_word", 0.000264, "s/word", Provenance.MEASURED, "halt-first probe", n=6, domain=(0.0, 4096.0))
+        if with_word_term
+        else Term("per_word", None, "s/word", Provenance.UNKNOWN, "not isolated")
+    )
     return CostLaw(
-        substrate="fast_sim", concurrency=1,
+        substrate="fast_sim",
+        concurrency=1,
         fixed=Term("fixed", 0.01, "s", Provenance.MEASURED, "floor probe", n=3),
-        per_cycle=Term("per_cycle", 0.000131, "s/cycle", Provenance.MEASURED, "trip-count sweep",
-                       n=8, domain=(178.0, cycle_domain)),
-        per_word=word, n_samples=17)
+        per_cycle=Term(
+            "per_cycle", 0.000131, "s/cycle", Provenance.MEASURED, "trip-count sweep", n=8, domain=(178.0, cycle_domain)
+        ),
+        per_word=word,
+        n_samples=17,
+    )
 
 
 def test_channel_from_cost_law_prices_a_query_from_the_fit():
@@ -142,6 +150,7 @@ def test_projecting_past_the_measured_domain_is_flagged_as_extrapolation():
 
 # --- the ledger --------------------------------------------------------------------------------------
 
+
 def _budget(**limits) -> bud.Budget:
     b = bud.budget_from_channels(_synthesis_dominated(), **limits)
     assert isinstance(b, bud.Budget)
@@ -154,8 +163,9 @@ def test_budget_is_denominated_in_the_scarce_unit():
 
 
 def test_budget_from_channels_propagates_the_refusal():
-    out = bud.budget_from_channels([bud.unpriced_channel("a", missing="x"),
-                                    bud.channel_from_samples("b", seconds=[1.0])], limit_items=3)
+    out = bud.budget_from_channels(
+        [bud.unpriced_channel("a", missing="x"), bud.channel_from_samples("b", seconds=[1.0])], limit_items=3
+    )
     assert isinstance(out, Unavailable)
 
 
@@ -194,6 +204,7 @@ def test_charging_also_credits_the_shared_tier_policy_ledger():
 
 # --- tier-price persistence + explicit uncalibrated state ---------------------------------------------
 
+
 @pytest.fixture()
 def out_root(tmp_path, monkeypatch):
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
@@ -216,7 +227,7 @@ def test_tier_prices_round_trip_through_disk_so_a_new_process_starts_calibrated(
     path = bud.save_tier_costs("tgt", ["screen", "certify"])
     assert json.loads(path.read_text())["median_seconds"] == {"certify": 3.7, "screen": 0.3}
 
-    tier_policy.reset_costs()                       # a fresh process
+    tier_policy.reset_costs()  # a fresh process
     assert bud.calibration("tgt", ["screen", "certify"], load=False).calibrated is False
 
     primed = bud.load_tier_costs("tgt")
@@ -251,7 +262,7 @@ def test_budget_from_channels_inherits_the_repo_wide_certify_budget_cap(monkeypa
     assert b.limit_seconds == 5000.0
     b.charge(label="a")
     b.charge(label="b")
-    b.charge(label="c")               # 3 x 2184 s = 6552 s
+    b.charge(label="c")  # 3 x 2184 s = 6552 s
     assert b.exhausted and "s of" in b.exhausted_reason
 
 

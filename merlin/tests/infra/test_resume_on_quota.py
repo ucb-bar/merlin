@@ -10,6 +10,7 @@ A round can die with a partial submission on disk in two ways the loop must tell
 Hermetic: synthetic transcripts on tmp dirs. Also asserts on the two REAL run dirs when present (they are
 under out/runs/, gitignored + purgeable) so the fixtures stay faithful to what the driver really emits.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -22,7 +23,7 @@ from merlin.common.paths import merlin_dir, repo_root
 def _load():
     hdir = merlin_dir() / "experiments" / "capsule_bench" / "harness"
     if str(hdir) not in sys.path:
-        sys.path.insert(0, str(hdir))   # so resume_on_quota's `import _ratelimit` resolves
+        sys.path.insert(0, str(hdir))  # so resume_on_quota's `import _ratelimit` resolves
     p = hdir / "resume_on_quota.py"
     spec = importlib.util.spec_from_file_location("resume_on_quota", p)
     mod = importlib.util.module_from_spec(spec)
@@ -33,20 +34,17 @@ def _load():
 def _write_round(run_dir, events, rnd=0):
     d = run_dir / "rounds"
     d.mkdir(parents=True, exist_ok=True)
-    (d / f"round_{rnd:02d}.transcript.jsonl").write_text(
-        "".join(json.dumps(e) + "\n" for e in events))
+    (d / f"round_{rnd:02d}.transcript.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events))
     return run_dir
 
 
 # --- synthetic transcript fragments faithful to the real driver output ---------------------------------
 def _tool_use(name="Write"):
-    return {"type": "assistant",
-            "message": {"content": [{"type": "tool_use", "name": name, "input": {}}]}}
+    return {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": name, "input": {}}]}}
 
 
 def _clean_result(all_pass=False):
-    return {"type": "result", "is_error": False, "terminal_reason": "success",
-            "result": "done", "subtype": "success"}
+    return {"type": "result", "is_error": False, "terminal_reason": "success", "result": "done", "subtype": "success"}
 
 
 def _weekly_events():
@@ -54,20 +52,34 @@ def _weekly_events():
     # api_error 429 "weekly limit" result.
     return [
         _tool_use("Write"),
-        {"type": "rate_limit_event",
-         "rate_limit_info": {"status": "rejected", "resetsAt": 1786388400,
-                             "rateLimitType": "seven_day", "overageStatus": "rejected",
-                             "overageDisabledReason": "org_level_disabled"}},
-        {"type": "result", "is_error": True, "terminal_reason": "api_error",
-         "api_error_status": 429, "subtype": "success",
-         "result": "You've hit your weekly limit · resets Aug 10, 12pm (America/Los_Angeles)"},
+        {
+            "type": "rate_limit_event",
+            "rate_limit_info": {
+                "status": "rejected",
+                "resetsAt": 1786388400,
+                "rateLimitType": "seven_day",
+                "overageStatus": "rejected",
+                "overageDisabledReason": "org_level_disabled",
+            },
+        },
+        {
+            "type": "result",
+            "is_error": True,
+            "terminal_reason": "api_error",
+            "api_error_status": 429,
+            "subtype": "success",
+            "result": "You've hit your weekly limit · resets Aug 10, 12pm (America/Los_Angeles)",
+        },
     ]
 
 
 def _timeout_events():
     # what a rc=124 wall-clock kill leaves: real work, transcript ends mid-stream (NO result event).
-    return [_tool_use("Read"), _tool_use("Write"),
-            {"type": "assistant", "message": {"content": [{"type": "thinking", "thinking": "..."}]}}]
+    return [
+        _tool_use("Read"),
+        _tool_use("Write"),
+        {"type": "assistant", "message": {"content": [{"type": "thinking", "thinking": "..."}]}},
+    ]
 
 
 def test_weekly_quota_classifies_as_exit(tmp_path):
@@ -78,9 +90,9 @@ def test_weekly_quota_classifies_as_exit(tmp_path):
     assert R.resume_policy(reason) == R.EXIT_WITH_STATUS
     assert R.weekly_quota_hit(rd / "rounds" / "round_00.transcript.jsonl")
     assert R.weekly_reset_epoch(rd / "rounds" / "round_00.transcript.jsonl") == 1786388400
-    sp = R.write_quota_status(rd, R.REASON_WEEKLY, rnd=0,
-                              transcript=rd / "rounds" / "round_00.transcript.jsonl")
+    sp = R.write_quota_status(rd, R.REASON_WEEKLY, rnd=0, transcript=rd / "rounds" / "round_00.transcript.jsonl")
     import yaml
+
     doc = yaml.safe_load(sp.read_text())
     assert doc["status"] == R.STATUS_WEEKLY == "QUOTA_EXHAUSTED_WEEKLY"
     assert doc["resets_at_epoch"] == 1786388400 and doc["round"] == 0
@@ -113,18 +125,17 @@ def test_resume_note_is_prepended_to_brief(tmp_path):
     R.prepend_resume_note(ws, R.REASON_TIMEOUT)
     txt = (ws / "qa" / "round_brief.md").read_text()
     assert txt.startswith("> ## RESUME")
-    assert "manifest.yaml" in txt and "# existing brief" in txt   # banner FIRST, brief preserved
+    assert "manifest.yaml" in txt and "# existing brief" in txt  # banner FIRST, brief preserved
 
 
 def test_real_run_dirs_when_present():
     """The two real cut-short runs on disk (gitignored/purgeable) must classify as documented."""
     import pytest
+
     R = _load()
     cases = [
-        ("atlas/capsule-bench/merlin_assisted/merlincirct_atlas_ccval1", R.REASON_TIMEOUT,
-         R.RESUME_IN_BUDGET),
-        ("radiance/capsule-bench/merlin_assisted/merlincirct_rad_ccval1", R.REASON_WEEKLY,
-         R.EXIT_WITH_STATUS),
+        ("atlas/capsule-bench/merlin_assisted/merlincirct_atlas_ccval1", R.REASON_TIMEOUT, R.RESUME_IN_BUDGET),
+        ("radiance/capsule-bench/merlin_assisted/merlincirct_rad_ccval1", R.REASON_WEEKLY, R.EXIT_WITH_STATUS),
     ]
     seen = 0
     for rel, want_reason, want_policy in cases:

@@ -17,6 +17,7 @@ The LIVE probe (actually launching bwrap to run the tools + confirm a golden rea
 ``bwrap`` + toolchain availability and skips when they are absent — so CI stays hermetic while a
 developer box still gets the end-to-end proof.
 """
+
 from __future__ import annotations
 
 import json
@@ -50,8 +51,11 @@ def _roster() -> list[Path]:
 def _max_exposure_bundle(target: str) -> dict:
     """A worst-case bundle that BINDS every answer-bearing parent, forcing the mask pass to re-hide every
     surface a legit bind could re-expose. Target-agnostic: parents are derived, not per-target."""
-    allowed = [{"path": "merlin/contract"}, {"path": "merlin/python/merlin"},
-               {"path": f"out/artifacts/targets/{target}"}]
+    allowed = [
+        {"path": "merlin/contract"},
+        {"path": "merlin/python/merlin"},
+        {"path": f"out/artifacts/targets/{target}"},
+    ]
     return {"allowed": [a for a in allowed if (repo_root() / a["path"]).exists()]}
 
 
@@ -91,8 +95,7 @@ def test_expected_instruction_coverage_is_an_answer_surface_and_audit_token():
     """The structural grading expectation must be as private as the numerical golden."""
     descriptor = repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
     te = load_target_experiment(descriptor)
-    expected = next((repo_root() / "merlin/contract/capsules").rglob(
-        "expected_instruction_coverage.yaml"))
+    expected = next((repo_root() / "merlin/contract/capsules").rglob("expected_instruction_coverage.yaml"))
     surfaces = {surface.path: surface for surface in answer_surfaces(te)}
 
     assert surfaces[expected].origin == "golden" and surfaces[expected].kind == "file"
@@ -115,7 +118,7 @@ def test_model_weights_remain_in_private_snapshot_but_agent_mounts_are_masked(tm
             assert frozen.read_bytes() == source.read_bytes()
 
         argv = BW.apply_answer_masks(BW.base_argv(ws, bundle), answer_surfaces(te))
-        mount_args = [argv[index:index + 3] for index, token in enumerate(argv) if token == "--ro-bind"]
+        mount_args = [argv[index : index + 3] for index, token in enumerate(argv) if token == "--ro-bind"]
         for path in paths:
             assert not BW.is_exposed(argv, path)
             assert ["--ro-bind", "/dev/null", str(path)] in mount_args
@@ -190,12 +193,14 @@ def test_snapshot_bytes_do_not_follow_later_source_edits(tmp_path):
         # The source side of the grant is private frozen storage.  Even after
         # the original destination disappears, the pinned destination and the
         # workspace's absolute symlink both resolve to the snapshotted bytes.
-        grant = [(argv[i + 1], argv[i + 2]) for i, token in enumerate(argv[:-2])
-                 if token == "--ro-bind" and argv[i + 2] == str(source)]
+        grant = [
+            (argv[i + 1], argv[i + 2])
+            for i, token in enumerate(argv[:-2])
+            if token == "--ro-bind" and argv[i + 2] == str(source)
+        ]
         assert grant and all(src != str(source) for src, _ in grant)
         probe = f'cat "{source}"; cat "{ws / "contract.txt"}"'
-        out = subprocess.run([*argv, "bash", "-c", probe], capture_output=True,
-                             text=True, timeout=30)
+        out = subprocess.run([*argv, "bash", "-c", probe], capture_output=True, text=True, timeout=30)
         assert out.returncode == 0, out.stderr
         assert out.stdout.splitlines() == ["before", "before"]
     finally:
@@ -231,9 +236,7 @@ def test_post_snapshot_answer_file_is_not_mounted_inside_frozen_parent(tmp_path)
 
         assert not BW.is_exposed(argv, late_golden)
         assert ["--ro-bind", "/dev/null", str(late_golden)] not in [
-            argv[index:index + 3]
-            for index, token in enumerate(argv[:-2])
-            if token == "--ro-bind"
+            argv[index : index + 3] for index, token in enumerate(argv[:-2]) if token == "--ro-bind"
         ]
         if shutil.which("bwrap"):
             completed = subprocess.run(
@@ -266,8 +269,7 @@ def test_a_symlinked_toolchain_is_bound_at_its_REAL_path_too(tmp_path, monkeypat
     snapshot.mkdir()
     (snapshot / ".venv").symlink_to(origin / ".venv")
 
-    descriptor = (repo_root()
-                  / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
+    descriptor = repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
     monkeypatch.setattr(TC, "VENV", str(snapshot / ".venv"))
     binds = TC.toolchain_binds(load_target_experiment(descriptor))
     pairs = [(binds[i + 1], binds[i + 2]) for i, tok in enumerate(binds) if tok == "--ro-bind"]
@@ -283,8 +285,7 @@ def test_a_real_toolchain_path_is_bound_exactly_once(tmp_path, monkeypatch):
 
     real = tmp_path / "venv"
     (real / "bin").mkdir(parents=True)
-    descriptor = (repo_root()
-                  / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
+    descriptor = repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
     monkeypatch.setattr(TC, "VENV", str(real))
     binds = TC.toolchain_binds(load_target_experiment(descriptor))
     pairs = [(binds[i + 1], binds[i + 2]) for i, tok in enumerate(binds) if tok == "--ro-bind"]
@@ -306,8 +307,7 @@ def test_pinned_submission_mount_defeats_chmod_and_byte_write(tmp_path, monkeypa
         pytest.skip("bwrap unavailable — final read-only mount tested structurally only")
 
     completed = subprocess.run(
-        [*argv, "bash", "-c",
-         "chmod -R u+w submission 2>/dev/null || true; printf mutated >> submission/compiler.py"],
+        [*argv, "bash", "-c", "chmod -R u+w submission 2>/dev/null || true; printf mutated >> submission/compiler.py"],
         capture_output=True,
         text=True,
         timeout=30,
@@ -423,8 +423,9 @@ def test_snapshotted_executable_remains_runnable(tmp_path):
         assert frozen.stat().st_mode & 0o111
         ws.mkdir(parents=True)
         tool.unlink()
-        out = subprocess.run([*BW.base_argv(ws, bundle, repo=repo), str(tool)],
-                             capture_output=True, text=True, timeout=30)
+        out = subprocess.run(
+            [*BW.base_argv(ws, bundle, repo=repo), str(tool)], capture_output=True, text=True, timeout=30
+        )
         assert out.returncode == 0, out.stderr
         assert out.stdout.strip() == "SNAPSHOT_TOOL_OK"
     finally:
@@ -444,8 +445,7 @@ def test_answer_surface_is_derived_and_complete(descriptor):
     # descriptor-conditioned origins:
     if te.hidden_corpus():
         assert "hidden" in origins, f"{te.target}: hidden corpus exists but not masked"
-    declared_priors = [p for p in te.prior_backends
-                       if (repo_root() / "out/artifacts/targets" / te.target / p).exists()]
+    declared_priors = [p for p in te.prior_backends if (repo_root() / "out/artifacts/targets" / te.target / p).exists()]
     if declared_priors:
         assert "prior_backend" in origins, f"{te.target}: declared prior_backends not masked"
 
@@ -458,8 +458,7 @@ def test_no_answer_surface_reachable_under_worst_case_bundle(descriptor):
     with tempfile.TemporaryDirectory() as td:
         ws = Path(td) / "ws"
         ws.mkdir()
-        sb = build_sandbox(te, ws, _max_exposure_bundle(te.target),
-                           _policy_test_live_inputs=True)
+        sb = build_sandbox(te, ws, _max_exposure_bundle(te.target), _policy_test_live_inputs=True)
         gap = sb.coverage_gap()
         assert gap == [], f"{te.target}: answer surfaces reachable in sandbox: {[s.label for s in gap]}"
 
@@ -475,9 +474,12 @@ def test_coverage_guard_is_not_vacuous(descriptor):
         ws.mkdir()
         # base + toolchain binds, WITHOUT apply_answer_masks -> the contract bind re-exposes the goldens
         from merlin.targetgen.sandbox import toolchain as TC
-        unmasked = (BW.base_argv(ws, _max_exposure_bundle(te.target),
-                                 _policy_test_live_inputs=True)
-                    + BW.claude_runtime_binds() + TC.toolchain_binds(te))
+
+        unmasked = (
+            BW.base_argv(ws, _max_exposure_bundle(te.target), _policy_test_live_inputs=True)
+            + BW.claude_runtime_binds()
+            + TC.toolchain_binds(te)
+        )
         gap = BW.coverage_gap(unmasked, surfaces)
         assert gap, f"{te.target}: guard found nothing unmasked even without the mask pass (vacuous)"
 
@@ -495,8 +497,9 @@ def test_required_tools_are_granted(descriptor):
         assert {p.label for p in UNIVERSAL_PROBES} <= {p.label for p in sb.required_tools}
         for probe in sb.required_tools:
             if probe.bind and Path(probe.bind).exists():
-                assert BW.is_exposed(argv, Path(probe.bind)), \
+                assert BW.is_exposed(argv, Path(probe.bind)), (
                     f"{te.target}: tool {probe.label} not granted (bind {probe.bind} not exposed)"
+                )
 
 
 def test_kind_routes_tool_requirements():
@@ -525,6 +528,7 @@ def _live_ready(te) -> bool:
     if not shutil.which("bwrap"):
         return False
     from merlin.targetgen.sandbox.toolchain import LLVM, VENV
+
     return Path(VENV).exists() and Path(LLVM).exists()
 
 
@@ -539,8 +543,7 @@ def test_live_bwrap_tools_work_and_golden_masked(descriptor):
     with tempfile.TemporaryDirectory() as td:
         ws = Path(td) / "ws"
         (ws / "merlin" / "python").mkdir(parents=True)
-        sb = build_sandbox(te, ws, _max_exposure_bundle(te.target),
-                           _policy_test_live_inputs=True)
+        sb = build_sandbox(te, ws, _max_exposure_bundle(te.target), _policy_test_live_inputs=True)
         # (a) universal tools run
         for probe in UNIVERSAL_PROBES:
             cmd = sb.wrap(f"{probe.cmd} >/dev/null 2>&1 && echo OK || echo FAIL")
@@ -549,7 +552,9 @@ def test_live_bwrap_tools_work_and_golden_masked(descriptor):
         # (b) a golden reads empty (masked) inside the sandbox
         golden = next((s for s in sb.answer_surfaces if s.origin == "golden"), None)
         if golden:
-            probe = f'if head -c1 "{golden.path}" >/dev/null 2>&1 && test -s "{golden.path}"; ' \
-                    f'then echo VISIBLE; else echo masked; fi'
+            probe = (
+                f'if head -c1 "{golden.path}" >/dev/null 2>&1 && test -s "{golden.path}"; '
+                f"then echo VISIBLE; else echo masked; fi"
+            )
             out = subprocess.run(["bash", "-c", sb.wrap(probe)], capture_output=True, text=True, timeout=120)
             assert out.stdout.strip().endswith("masked"), f"{te.target}: golden VISIBLE inside sandbox"

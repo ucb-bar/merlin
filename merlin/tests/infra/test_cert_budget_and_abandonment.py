@@ -21,6 +21,7 @@ six programs with wrong numbers:
 Both fixes are the kind that fail silently when they break: a wrong budget just produces more
 timeouts, and a mis-bucketed timeout just produces a lower score. Hence this file.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -60,23 +61,35 @@ def agg():
 # Defect A: the budget must come from the engine that will actually run.
 # --------------------------------------------------------------------------------------------------
 
+
 def _fits(**laws):
     """``{engine: CycleCostFit}`` with the real dataclass, so the fields the broker reads are real."""
     from merlin.targetgen.cert_cost import CycleCostFit
-    return {eng: CycleCostFit(target="t", intercept_s=icept, per_cycle_s=rate, r2=0.5,
-                              n_samples=99, cycles_min=1, cycles_max=cmax, engine=eng,
-                              engine_basis="engine")
-            for eng, (icept, rate, cmax) in laws.items()}
+
+    return {
+        eng: CycleCostFit(
+            target="t",
+            intercept_s=icept,
+            per_cycle_s=rate,
+            r2=0.5,
+            n_samples=99,
+            cycles_min=1,
+            cycles_max=cmax,
+            engine=eng,
+            engine_basis="engine",
+        )
+        for eng, (icept, rate, cmax) in laws.items()
+    }
 
 
 @pytest.fixture()
 def stub_cost(monkeypatch):
     """Install a fake cost history whose two engines are far enough apart to tell which one was used."""
     from merlin.targetgen import cert_cost
+
     laws = _fits(gsim=(41.0, 0.00024, 4_000_000), verilator=(55.0, 0.229, 1_200))
     monkeypatch.setattr(cert_cost, "fits_cycles_for", lambda target, **kw: dict(laws))
-    monkeypatch.setattr(cert_cost, "fit_cycles_for",
-                        lambda target, *, engine=None, **kw: laws.get(engine))
+    monkeypatch.setattr(cert_cost, "fit_cycles_for", lambda target, *, engine=None, **kw: laws.get(engine))
     monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
     return laws
 
@@ -112,6 +125,7 @@ def test_the_budget_never_regresses_below_the_historical_floor(broker, monkeypat
     """A cheap fit must not SHORTEN the budget. Derivation may RAISE the wall clock, never lower it:
     the floor is what the old flat default already allowed every capsule."""
     from merlin.targetgen import cert_cost
+
     laws = _fits(gsim=(1.0, 1e-9, 10))
     monkeypatch.setattr(cert_cost, "fits_cycles_for", lambda target, **kw: dict(laws))
     monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
@@ -125,11 +139,11 @@ def test_an_explicit_request_beats_every_derivation(broker, stub_cost):
     assert broker._per_capsule_timeout(77)[0] == 77
 
 
-def test_without_a_fit_the_recorded_verilator_measurement_still_applies(broker, monkeypatch,
-                                                                       tmp_path):
+def test_without_a_fit_the_recorded_verilator_measurement_still_applies(broker, monkeypatch, tmp_path):
     """The historical path is KEPT for a target with no cert history, so the new code cannot make an
     unmeasured target worse off than before."""
     from merlin.targetgen import cert_cost
+
     monkeypatch.setattr(cert_cost, "fits_cycles_for", lambda target, **kw: {})
     monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
     monkeypatch.setattr(broker, "HERE", tmp_path)
@@ -139,12 +153,12 @@ def test_without_a_fit_the_recorded_verilator_measurement_still_applies(broker, 
     assert "verilator measurement" in why, why
 
 
-def test_with_neither_a_fit_nor_a_measurement_the_old_constant_applies(broker, monkeypatch,
-                                                                      tmp_path):
+def test_with_neither_a_fit_nor_a_measurement_the_old_constant_applies(broker, monkeypatch, tmp_path):
     from merlin.targetgen import cert_cost
+
     monkeypatch.setattr(cert_cost, "fits_cycles_for", lambda target, **kw: {})
     monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
-    monkeypatch.setattr(broker, "HERE", tmp_path)          # no .oracle_timing.json here
+    monkeypatch.setattr(broker, "HERE", tmp_path)  # no .oracle_timing.json here
     secs, why = broker._per_capsule_timeout(0)
     assert secs == broker._CERT_TIMEOUT_FALLBACK_S, why
 
@@ -152,6 +166,7 @@ def test_with_neither_a_fit_nor_a_measurement_the_old_constant_applies(broker, m
 def test_no_measured_history_refuses_rather_than_guessing(broker, monkeypatch):
     """``cert_cost`` returning nothing must yield None + a reason, so the caller keeps its default."""
     from merlin.targetgen import cert_cost
+
     monkeypatch.setattr(cert_cost, "fits_cycles_for", lambda target, **kw: {})
     monkeypatch.delenv("MERLIN_REQUIRED_RTL_ENGINE", raising=False)
     secs, why = broker._cert_budget_s("t")
@@ -180,6 +195,7 @@ def test_the_budget_derivation_runs_no_availability_probe(broker, monkeypatch, s
     design, so a test that only raised would pass whether or not the probe ran.
     """
     from merlin.targetgen import rtl_engine_policy
+
     calls = []
 
     def record(*a, **kw):
@@ -195,9 +211,11 @@ def test_the_budget_derivation_runs_no_availability_probe(broker, monkeypatch, s
 def test_every_elaborated_rtl_engine_gets_the_derived_budget(broker, engine):
     """The launch branch used to name verilator alone, so gsim ran on a flat 900 s."""
     from merlin.targetgen.rtl_engine_policy import ENGINE_PRIORITY
+
     assert engine in ENGINE_PRIORITY
     assert broker._job_timeout_s(engine, 1, 1367) == 1367, (
-        f"{engine} is an elaborated-RTL engine and must get the derived per-capsule budget")
+        f"{engine} is an elaborated-RTL engine and must get the derived per-capsule budget"
+    )
     assert broker._job_timeout_s(engine, 3, 1367) == 3 * 1367
 
 
@@ -210,6 +228,7 @@ def test_the_functional_screen_keeps_its_own_budget(broker):
 def test_engine_list_is_derived_from_the_policy(broker):
     """The engines come from `rtl_engine_policy`, never from a second literal ladder in the broker."""
     from merlin.targetgen.rtl_engine_policy import ENGINE_PRIORITY
+
     assert broker._rtl_engines() == tuple(ENGINE_PRIORITY)
 
 
@@ -217,39 +236,50 @@ def test_engine_list_is_derived_from_the_policy(broker):
 # Defect B: an abandoned cert is unaffordable, not wrong.
 # --------------------------------------------------------------------------------------------------
 
-_TIMEOUT_REASON = ("elaborated_rtl crash: Command '['/x/emulator', '/y/package_kernel.elf']' "
-                   "timed out after 900 seconds")
+_TIMEOUT_REASON = "elaborated_rtl crash: Command '['/x/emulator', '/y/package_kernel.elf']' timed out after 900 seconds"
 #: The same reason as it appears in a VERDICT, whose digits are redacted to '#'. Anything anchored on
 #: the number would classify every real record wrongly.
-_REDACTED_REASON = ("elaborated_rtl invocation failed: Command '['/x/emulator']' timed out after "
-                    "# seconds")
-_WRONG_NUMBERS = ("declared oracle tier(s) ['L3'] RAN and did not pass (on-mesh execution: # of # "
-                  "tile(s) passed, # failed)")
+_REDACTED_REASON = "elaborated_rtl invocation failed: Command '['/x/emulator']' timed out after # seconds"
+_WRONG_NUMBERS = (
+    "declared oracle tier(s) ['L3'] RAN and did not pass (on-mesh execution: # of # tile(s) passed, # failed)"
+)
 
 
 def _verdict(tmp_path, capsules):
     run = tmp_path / "run"
     (run / "qa_history").mkdir(parents=True)
-    (run / "qa_history" / "verdict_round_00.json").write_text(json.dumps({
-        "n_capsules": len(capsules),
-        "n_passed": sum(1 for c in capsules if c.get("status") == "pass"),
-        "per_capsule": capsules}))
+    (run / "qa_history" / "verdict_round_00.json").write_text(
+        json.dumps(
+            {
+                "n_capsules": len(capsules),
+                "n_passed": sum(1 for c in capsules if c.get("status") == "pass"),
+                "per_capsule": capsules,
+            }
+        )
+    )
     return run
 
 
 def _cap(name, *, status, l3, detail=None):
-    return {"capsule": name, "label": "public", "status": status,
-            "tiers": {"L0": "skipped", "L1": "skipped", "L2": "pass", "L3": l3},
-            "failure_plane": "elaborated_rtl" if l3 == "fail" else None,
-            "failure_detail": detail}
+    return {
+        "capsule": name,
+        "label": "public",
+        "status": status,
+        "tiers": {"L0": "skipped", "L1": "skipped", "L2": "pass", "L3": l3},
+        "failure_plane": "elaborated_rtl" if l3 == "fail" else None,
+        "failure_detail": detail,
+    }
 
 
 def test_an_abandoned_cert_is_unaffordable_and_a_wrong_answer_is_a_failure(agg, tmp_path):
-    run = _verdict(tmp_path, [
-        _cap("ok", status="pass", l3="pass"),
-        _cap("too_slow", status="fail", l3="fail", detail=_TIMEOUT_REASON),
-        _cap("wrong", status="fail", l3="fail", detail=_WRONG_NUMBERS),
-    ])
+    run = _verdict(
+        tmp_path,
+        [
+            _cap("ok", status="pass", l3="pass"),
+            _cap("too_slow", status="fail", l3="fail", detail=_TIMEOUT_REASON),
+            _cap("wrong", status="fail", l3="fail", detail=_WRONG_NUMBERS),
+        ],
+    )
     ev = agg._l3_evidence(run)
     assert ev["not_certified_budget"] == 1, ev
     assert ev["not_certified_failed"] == 1, ev
@@ -282,8 +312,7 @@ def test_a_redacted_timeout_reason_is_still_recognised(agg, tmp_path):
 
 def test_the_brokers_own_abandonment_wording_is_recognised(agg, tmp_path):
     """The broker writes its own sentence when it reaps a job at the wall clock."""
-    run = _verdict(tmp_path, [_cap("too_slow", status="fail", l3="fail",
-                                   detail="gsim exceeded its time budget")])
+    run = _verdict(tmp_path, [_cap("too_slow", status="fail", l3="fail", detail="gsim exceeded its time budget")])
     assert agg._l3_evidence(run)["not_certified_budget"] == 1
 
 
@@ -297,8 +326,7 @@ def test_an_unexplained_cert_failure_is_not_reclassified_as_unaffordable(agg, tm
 
 def test_a_cert_tier_that_never_ran_is_in_neither_bucket(agg, tmp_path):
     """A skipped cert is an absence. Attributing it to either cause would be an invention."""
-    run = _verdict(tmp_path, [_cap("skipped", status="pass", l3="skipped"),
-                              _cap("clean", status="pass", l3="pass")])
+    run = _verdict(tmp_path, [_cap("skipped", status="pass", l3="skipped"), _cap("clean", status="pass", l3="pass")])
     ev = agg._l3_evidence(run)
     assert (ev["not_certified_budget"], ev["not_certified_failed"]) == (0, 0), ev
 
@@ -306,10 +334,20 @@ def test_a_cert_tier_that_never_ran_is_in_neither_bucket(agg, tmp_path):
 def test_the_grader_tier_record_shape_is_read_too(agg, tmp_path):
     """``capsule_result.json`` carries ``tiers.L3`` as a RECORD with its own ``reason``; the verdict
     carries a status string plus ``failure_detail``. Reading only one shape is how this goes silent."""
-    run = _verdict(tmp_path, [{
-        "capsule": "too_slow", "label": "public", "status": "fail",
-        "tiers": {"L2": {"status": "pass", "reason": None},
-                  "L3": {"status": "fail", "mandatory": False, "reason": _TIMEOUT_REASON}}}])
+    run = _verdict(
+        tmp_path,
+        [
+            {
+                "capsule": "too_slow",
+                "label": "public",
+                "status": "fail",
+                "tiers": {
+                    "L2": {"status": "pass", "reason": None},
+                    "L3": {"status": "fail", "mandatory": False, "reason": _TIMEOUT_REASON},
+                },
+            }
+        ],
+    )
     ev = agg._l3_evidence(run)
     assert (ev["not_certified_budget"], ev["not_certified_failed"]) == (1, 0), ev
 
@@ -317,15 +355,15 @@ def test_the_grader_tier_record_shape_is_read_too(agg, tmp_path):
 def test_existing_keys_keep_their_previous_meaning(agg, tmp_path):
     """A caller printing ``rtl_clean`` must report the same quantity it always did, with the new
     breakdown available BESIDE it rather than replacing it."""
-    caps = [_cap("ok", status="pass", l3="pass"),
-            _cap("l2_only", status="pass", l3="fail", detail=_TIMEOUT_REASON),
-            _cap("wrong", status="fail", l3="fail", detail=_WRONG_NUMBERS)]
+    caps = [
+        _cap("ok", status="pass", l3="pass"),
+        _cap("l2_only", status="pass", l3="fail", detail=_TIMEOUT_REASON),
+        _cap("wrong", status="fail", l3="fail", detail=_WRONG_NUMBERS),
+    ]
     ev = agg._l3_evidence(_verdict(tmp_path, caps))
     # Independently recomputed here exactly as the pre-change function defined them.
-    assert ev["rtl_clean"] == len([c for c in caps if c["status"] == "pass"
-                                   and c["tiers"]["L3"] == "pass"])
-    assert ev["l2_only"] == len([c for c in caps if c["status"] == "pass"
-                                 and c["tiers"]["L3"] not in ("pass", None)])
+    assert ev["rtl_clean"] == len([c for c in caps if c["status"] == "pass" and c["tiers"]["L3"] == "pass"])
+    assert ev["l2_only"] == len([c for c in caps if c["status"] == "pass" and c["tiers"]["L3"] not in ("pass", None)])
     assert ev["gate_passed"] == 2 and ev["n_capsules"] == 3
     assert ev["l3_source"] == "verdict_round_00.json"
 
@@ -333,8 +371,15 @@ def test_existing_keys_keep_their_previous_meaning(agg, tmp_path):
 def test_not_measured_still_reads_as_not_measured(agg, tmp_path):
     """No verdict must yield None for EVERY key, new ones included, so absent cannot read as zero."""
     ev = agg._l3_evidence(tmp_path / "no_such_run")
-    assert set(ev) >= {"rtl_clean", "l2_only", "gate_passed", "n_capsules", "l3_source",
-                       "not_certified_budget", "not_certified_failed"}
+    assert set(ev) >= {
+        "rtl_clean",
+        "l2_only",
+        "gate_passed",
+        "n_capsules",
+        "l3_source",
+        "not_certified_budget",
+        "not_certified_failed",
+    }
     assert all(v is None for v in ev.values()), ev
 
 

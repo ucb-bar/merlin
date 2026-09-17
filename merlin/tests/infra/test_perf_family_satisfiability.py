@@ -6,6 +6,7 @@ a range or band the declaration never carried. Each still generated capsules, st
 still reported -- they simply could never fail, which is the one thing a falsifier must be able to
 do. Nothing caught it because nothing asserted it, so this does.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -23,8 +24,11 @@ PROFILE = repo_root() / "merlin" / "contract" / "capsules" / "profiles" / "_perf
 def _families():
     document = yaml.safe_load(PROFILE.read_text(encoding="utf-8"))
     emitted = [(s["id"], s["base"]["performance"]) for s in document.get("sweeps") or []]
-    blocked = [(b["family"], b["performance"]) for b in document.get("blocked_unimplemented") or []
-               if isinstance(b.get("performance"), dict)]
+    blocked = [
+        (b["family"], b["performance"])
+        for b in document.get("blocked_unimplemented") or []
+        if isinstance(b.get("performance"), dict)
+    ]
     return emitted, blocked
 
 
@@ -38,7 +42,8 @@ def test_every_emitted_family_is_satisfiable(family_id):
     performance = dict(_families()[0])[family_id]
     reach = _reach(performance)
     assert reach["satisfiable"], (
-        f"{family_id} cannot be satisfied by any admissible measurement: {reach['obstructions']}")
+        f"{family_id} cannot be satisfied by any admissible measurement: {reach['obstructions']}"
+    )
 
 
 @pytest.mark.parametrize("family_id", [fid for fid, _ in _families()[1]])
@@ -66,7 +71,8 @@ def test_no_family_declares_a_predictive_claim_without_a_contract():
     for family_id, performance in _families()[0]:
         if performance.get("claim") == "PREDICTS":
             assert isinstance(performance.get("acceptance"), dict), (
-                f"{family_id} claims PREDICTS with no frozen acceptance contract")
+                f"{family_id} claims PREDICTS with no frozen acceptance contract"
+            )
 
 
 @pytest.mark.parametrize("family_id", [fid for fid, _ in _families()[0]])
@@ -97,13 +103,15 @@ def test_an_emitter_declared_existing_actually_exists(family_id):
         pytest.skip(f"{family_id} does not declare an existing emitter")
     entry = str(emitter.get("entry") or "")
     assert entry and not entry.startswith("new:"), (
-        f"{family_id} declares status 'existing' with entry {entry!r}, which names work not yet done")
+        f"{family_id} declares status 'existing' with entry {entry!r}, which names work not yet done"
+    )
     module_path, _, attribute = entry.rpartition(".")
     assert module_path and attribute, f"{family_id}: entry {entry!r} is not a module path plus a name"
     module = importlib.import_module(module_path)
     assert hasattr(module, attribute), (
         f"{family_id} declares emitter {entry!r} as existing, but {module_path} defines no "
-        f"{attribute!r}; the family cannot build its arms")
+        f"{attribute!r}; the family cannot build its arms"
+    )
 
 
 @pytest.mark.parametrize("family_id", [fid for fid, _ in _families()[1]])
@@ -117,7 +125,9 @@ def test_a_blocked_family_does_not_claim_its_emitter_exists(family_id):
         return
     module_path, _, attribute = entry.rpartition(".")
     assert module_path and attribute and not entry.startswith("new:"), (
-        f"{family_id} is blocked yet declares emitter {entry!r} as existing")
+        f"{family_id} is blocked yet declares emitter {entry!r} as existing"
+    )
     module = importlib.import_module(module_path)
     assert hasattr(module, attribute), (
-        f"{family_id} is blocked and its 'existing' emitter {entry!r} does not resolve either")
+        f"{family_id} is blocked and its 'existing' emitter {entry!r} does not resolve either"
+    )

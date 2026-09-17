@@ -4,6 +4,7 @@
 admitted dtypes and reported survivors. Nobody could ask the direct question, so the answer lived in
 whichever profile entry happened to name a dtype.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -27,7 +28,7 @@ def test_a_preference_can_never_widen_what_the_hardware_admits():
 
 
 def test_a_rejection_says_which_kind_it_is():
-    """"we preferred int8 and this target has no int8 datapath" and "int8 is a typo" send a reader to
+    """ "we preferred int8 and this target has no int8 datapath" and "int8 is a typo" send a reader to
     different places, so the two must not share a reason."""
     r = best_format("gemmini", preference=["definitely_not_a_format", "fp8_e4m3"])
     whys = {x["format"]: x["why"] for x in r["rejected"]}

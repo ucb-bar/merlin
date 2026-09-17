@@ -7,6 +7,7 @@ emitted programs byte-identical. Making the cheap path easy is only safe once a 
 what it is: checking two capsules of ninety-six and passing both reported `all_pass: true` beside a
 note whose first sentence defines "done".
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -40,6 +41,7 @@ def mod(tmp_path, monkeypatch):
 # how big the suite is
 # --------------------------------------------------------------------------------------------
 
+
 def test_the_suite_size_is_counted_from_the_corpus(mod):
     assert mod._suite_size() == 4
 
@@ -53,6 +55,7 @@ def test_an_unreadable_corpus_reports_zero_not_a_guess(mod, monkeypatch, tmp_pat
 # --capsules failing
 # --------------------------------------------------------------------------------------------
 
+
 def _prev(tmp_path, rows):
     out = tmp_path / "selfcheck_out"
     out.mkdir(exist_ok=True)
@@ -60,8 +63,9 @@ def _prev(tmp_path, rows):
 
 
 def test_failing_reads_the_previous_self_check(mod, tmp_path):
-    _prev(tmp_path, [{"capsule": "A0", "pass": True}, {"capsule": "A1", "pass": False},
-                     {"capsule": "B0", "pass": False}])
+    _prev(
+        tmp_path, [{"capsule": "A0", "pass": True}, {"capsule": "A1", "pass": False}, {"capsule": "B0", "pass": False}]
+    )
     names, why = mod._previously_failing()
     assert names == {"A1", "B0"} and why == ""
 
@@ -102,11 +106,12 @@ def test_a_declined_capsule_counts_as_failing(mod, tmp_path):
 
 def test_the_flag_is_documented_where_the_agent_reads_it(mod):
     import argparse
+
     ap = argparse.ArgumentParser()
     # mirror the real declaration by scraping it, so the help text cannot silently drop the mode
     text = SRC.read_text()
     i = text.index('ap.add_argument("--capsules"')
-    decl = text[i:i + 400]
+    decl = text[i : i + 400]
     assert "'failing'" in decl, "the mode exists but is not offered in --help"
     assert "fast iteration" in decl
 
@@ -115,10 +120,15 @@ def test_the_flag_is_documented_where_the_agent_reads_it(mod):
 # what a partial verdict may claim
 # --------------------------------------------------------------------------------------------
 
+
 def test_a_subset_check_cannot_report_completion():
     """`certified_complete` is the field an agent may key "done" on, and a subset must never set it."""
-    for scope, ncert, n, expected in (("all", 4, 4, True), ("subset", 2, 2, False),
-                                      ("all", 3, 4, False), ("all", 0, 0, False)):
+    for scope, ncert, n, expected in (
+        ("all", 4, 4, True),
+        ("subset", 2, 2, False),
+        ("all", 3, 4, False),
+        ("all", 0, 0, False),
+    ):
         assert bool(scope == "all" and ncert == n and n > 0) is expected, (scope, ncert, n)
 
 
@@ -126,11 +136,12 @@ def test_the_partial_warning_leads_the_note_and_names_the_unchecked_count():
     """It has to be the FIRST thing read: the sentence it precedes defines "done"."""
     text = SRC.read_text()
     i = text.index('"note": ((f"⚠ PARTIAL:')
-    note = text[i:i + 700]
+    note = text[i : i + 700]
     assert "were NOT checked" in note and "UNKNOWN, not" in note
     assert "certified_complete" in note, "the note must point at the field that means done"
     assert "can also BREAK a capsule you did not check" in note, (
-        "a partial re-check can miss a regression it caused; the note must say so")
+        "a partial re-check can miss a regression it caused; the note must say so"
+    )
     assert note.index("PARTIAL") < note.index("Self-check on"), "the warning must come first"
 
 
@@ -149,5 +160,6 @@ def test_the_suite_size_is_read_from_the_corpus_not_from_the_subset():
     text = SRC.read_text()
     assert "suite_size = _suite_size()" in text, (
         "suite_size must come from the corpus; deriving it from the checked subset makes a partial "
-        "check indistinguishable from a complete one")
+        "check indistinguishable from a complete one"
+    )
     assert "suite_size = n" not in text

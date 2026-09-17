@@ -23,6 +23,7 @@ pay, which is the failure mode this pipeline keeps re-learning.
 Deliberately NOT asserted here: that either change is a speedup. Both are default-off placements
 whose payoff is a board measurement.
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -34,13 +35,12 @@ import numpy as np
 import pytest
 
 from merlin.common.paths import artifacts_dir
-from merlin.llvmlower import lower as _lower_mod  # noqa: F401  (registers runner-gated features)
 from merlin.llvmlower import impr_features as impr
+from merlin.llvmlower import lower as _lower_mod  # noqa: F401  (registers runner-gated features)
 from merlin.llvmlower import pipeline as P
 from merlin.llvmlower.toolchain import available as _toolchain_available
 
-_needs_m2m = pytest.mark.skipif(not _toolchain_available(),
-                                reason="m2m venv / clang not configured")
+_needs_m2m = pytest.mark.skipif(not _toolchain_available(), reason="m2m venv / clang not configured")
 
 #: The whole defect in nine lines: a tagged all-parallel generic that IS a broadcast (so
 #: ``linalg-specialize-generic-ops`` renames it and drops the tag) feeding an elementwise consumer
@@ -83,13 +83,13 @@ def _passes(features=frozenset(), **kw) -> list[str]:
 
 def _lower(text: str, features, tmp_path, **kw) -> str:
     work = Path(tempfile.mkdtemp(prefix="vectag_", dir=str(tmp_path)))
-    return P.lower_to_llvm_ir(text, workdir=work, vectorize=True,
-                              features=impr.normalize(features), **kw)
+    return P.lower_to_llvm_ir(text, workdir=work, vectorize=True, features=impr.normalize(features), **kw)
 
 
 # ---------------------------------------------------------------------------------------------
 # 1. the frozen baseline -- nothing here may reach a build that did not ask for it
 # ---------------------------------------------------------------------------------------------
+
 
 def test_the_lever_off_pipeline_carries_no_pre_specialization_stage():
     """The whole placement is conditional on the lever. With it off the pass string is the one
@@ -97,8 +97,7 @@ def test_the_lever_off_pipeline_carries_no_pre_specialization_stage():
     passes = _passes()
     assert P.VEC_PRE_ENTRY not in ",".join(passes)
     assert passes.count(MAIN_INTERP) == 1
-    assert passes.index(SPECIALIZE) < next(i for i, p in enumerate(passes)
-                                           if p.startswith("transform-preload-library"))
+    assert passes.index(SPECIALIZE) < next(i for i, p in enumerate(passes) if p.startswith("transform-preload-library"))
     assert P.vec_pre_schedule(frozenset()) is None
 
 
@@ -114,6 +113,7 @@ def test_the_reorder_is_default_off_and_changes_nothing_unasked(monkeypatch):
 # 2. blocker 2 -- the arms run before the pass that eats their tag
 # ---------------------------------------------------------------------------------------------
 
+
 def test_the_arms_run_before_specialization_when_the_lever_is_on():
     passes = _passes({VEC})
     assert passes.index(VEC_INTERP) < passes.index(SPECIALIZE) < passes.index(MAIN_INTERP)
@@ -126,8 +126,9 @@ def test_the_pre_library_is_preloaded_alongside_the_package_schedule():
     that anchors on ``__transform_main`` -- has to compose unchanged."""
     text = ",".join(_passes({VEC}, vec_sched_path="/VEC"))
     head, _, tail = text.partition("transform-preload-library{transform-library-paths=")
-    assert "transform-preload-library" not in head and "transform-preload-library" not in tail, \
+    assert "transform-preload-library" not in head and "transform-preload-library" not in tail, (
         "the pre-library must join the existing preload, not add a second one"
+    )
     libs = tail.partition("}")[0].split(",")
     assert libs == ["/VEC", "/SCHED"], libs
 
@@ -155,7 +156,7 @@ def test_the_pre_library_arms_come_from_the_same_generator_as_the_package_ones()
 
 
 def test_a_skeleton_the_arms_cannot_splice_into_fails_closed(monkeypatch):
-    """"Enabled and changed nothing" is the failure this file keeps re-learning. If the anchor the
+    """ "Enabled and changed nothing" is the failure this file keeps re-learning. If the anchor the
     splice keys on ever moves, the build must stop, not preload an empty entry point."""
     monkeypatch.setattr(P, "_VEC_PRE_SKELETON", "module {}\n")
     with pytest.raises(P.PipelineError):
@@ -188,8 +189,9 @@ def test_a_tag_specialization_would_eat_now_reaches_an_arm(tmp_path, monkeypatch
 
     lanes = impr.VEC_NONCONTRACTION_LANES
     assert off.count("load <") == 0 and off.count("store <") == 0
-    assert old.count("load <") == 0 and old.count("store <") == 0, \
+    assert old.count("load <") == 0 and old.count("store <") == 0, (
         "the old placement is supposed to reach nothing on this fixture"
+    )
     assert new.count(f"load <{lanes} x float>") >= 1, new.count("load <")
     assert new.count(f"store <{lanes} x float>") >= 1
     # ...and not by copying the tile onto itself, which is the realization the lever already pays for
@@ -199,6 +201,7 @@ def test_a_tag_specialization_would_eat_now_reaches_an_arm(tmp_path, monkeypatch
 # ---------------------------------------------------------------------------------------------
 # 3. blocker 1 -- the fusion stage cannot see a named op
 # ---------------------------------------------------------------------------------------------
+
 
 def test_the_reorder_moves_generalization_in_front_of_every_fusion_stage(monkeypatch):
     monkeypatch.setenv("MERLIN_GENERALIZE_BEFORE_FUSE", "1")
@@ -216,16 +219,17 @@ def test_the_reorder_reaches_the_feature_driven_stage_not_only_the_literal_one(m
     assert P._FUSE_ELEMENTWISE in passes
     assert passes.index(P._GENERALIZE_NAMED) < passes.index(P._FUSE_ELEMENTWISE)
     # the cleanup stays attached to the fusion it cleans up after
-    assert passes[passes.index(P._FUSE_ELEMENTWISE) + 1:
-                  passes.index(P._FUSE_ELEMENTWISE) + 3] == ["canonicalize", "cse"]
+    assert passes[passes.index(P._FUSE_ELEMENTWISE) + 1 : passes.index(P._FUSE_ELEMENTWISE) + 3] == [
+        "canonicalize",
+        "cse",
+    ]
 
 
 def test_the_reorder_never_crosses_the_transform_interpreter():
     """A generalization hoisted in front of the schedule leaves ``ops{["linalg.matmul"]}`` nothing
     to match -- a silent 0-vectorization, which is the failure the current order exists to avoid."""
     with pytest.raises(ValueError):
-        P._reorder_generalize_before_fuse(
-            [P._FUSE_ELEMENTWISE, MAIN_INTERP, P._GENERALIZE_NAMED])
+        P._reorder_generalize_before_fuse([P._FUSE_ELEMENTWISE, MAIN_INTERP, P._GENERALIZE_NAMED])
 
 
 def test_the_reorder_is_a_no_op_where_there_is_nothing_to_reorder():
@@ -260,9 +264,9 @@ def test_the_reorder_does_not_change_the_numbers(tmp_path, monkeypatch):
     each in the same process is safe here because the two libraries are loaded LOCAL, not global."""
     from merlin.llvmlower.abi import HostModel
     from merlin.llvmlower.codegen import build_host_shared
-
     from merlin.llvmlower.passes_xdsl import preprocess_text_textual
-    ciface, _ = preprocess_text_textual(TAGGED_BROADCAST)   # adds llvm.emit_c_interface
+
+    ciface, _ = preprocess_text_textual(TAGGED_BROADCAST)  # adds llvm.emit_c_interface
 
     rng = np.random.default_rng(0)
     s = rng.standard_normal(64, dtype=np.float32)
@@ -302,14 +306,14 @@ def _prepared(bundle, work, features):
     from merlin.runtime.backends.zephyr_model import prepare_for_lowering
 
     work.mkdir(parents=True, exist_ok=True)
-    prepared, _ = prepare_for_lowering(bundle / "model.mlir", work, int8_compute=True,
-                                       features=impr.normalize(features), blocking=False)
+    prepared, _ = prepare_for_lowering(
+        bundle / "model.mlir", work, int8_compute=True, features=impr.normalize(features), blocking=False
+    )
     text, _stats = preprocess_text_textual(prepared.read_text(encoding="utf-8"))
     return text
 
 
-@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"),
-                    reason="whole-model lowering; MERLIN_RUN_SLOW=1")
+@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"), reason="whole-model lowering; MERLIN_RUN_SLOW=1")
 @_needs_m2m
 @pytest.mark.skipif(not (BUNDLE / "golden_w8a8.npy").is_file(), reason="int8 capture bundle absent")
 def test_whole_model_tag_survival(tmp_path, monkeypatch):
@@ -328,8 +332,7 @@ def test_whole_model_tag_survival(tmp_path, monkeypatch):
     assert tagged > 0, "the prepare pass tagged nothing; this fixture cannot measure survival"
 
     reach_new = P.apply_passes(upstream, "canonicalize,cse", timeout=3600).count("merlin.vec_r")
-    reach_old = P.apply_passes(upstream, f"canonicalize,cse,{SPECIALIZE}",
-                               timeout=3600).count("merlin.vec_r")
+    reach_old = P.apply_passes(upstream, f"canonicalize,cse,{SPECIALIZE}", timeout=3600).count("merlin.vec_r")
     assert reach_old < reach_new / 2, (tagged, reach_new, reach_old)
     assert reach_new > 0.7 * tagged, (tagged, reach_new)
 
@@ -338,12 +341,10 @@ def test_whole_model_tag_survival(tmp_path, monkeypatch):
     monkeypatch.setenv("MERLIN_VEC_AFTER_SPECIALIZE", "1")
     old = _lower(upstream, {VEC}, tmp_path)
     assert new != old, "the two placements produced the same module"
-    assert new.count("load <") > 1.5 * old.count("load <"), \
-        (new.count("load <"), old.count("load <"))
+    assert new.count("load <") > 1.5 * old.count("load <"), (new.count("load <"), old.count("load <"))
 
 
-@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"),
-                    reason="whole-model lowering; MERLIN_RUN_SLOW=1")
+@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"), reason="whole-model lowering; MERLIN_RUN_SLOW=1")
 @_needs_m2m
 @pytest.mark.skipif(not (BUNDLE / "golden_w8a8.npy").is_file(), reason="int8 capture bundle absent")
 def test_whole_model_baseline_is_frozen_and_the_reorder_reaches_the_fusion(tmp_path, monkeypatch):
@@ -367,5 +368,7 @@ def test_whole_model_baseline_is_frozen_and_the_reorder_reaches_the_fusion(tmp_p
     assert off == on, "the reorder touched a pipeline that carries no fusion stage"
     assert fuse_on != fuse_off, "the reorder did not reach the feature-driven fusion stage"
     # what it buys, measured: the broadcasts specialize created stop being materialized
-    assert fuse_on.count("call ptr @malloc") < fuse_off.count("call ptr @malloc"), \
-        (fuse_on.count("call ptr @malloc"), fuse_off.count("call ptr @malloc"))
+    assert fuse_on.count("call ptr @malloc") < fuse_off.count("call ptr @malloc"), (
+        fuse_on.count("call ptr @malloc"),
+        fuse_off.count("call ptr @malloc"),
+    )

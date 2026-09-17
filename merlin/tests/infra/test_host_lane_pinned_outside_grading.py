@@ -30,7 +30,8 @@ def test_the_host_lanes_are_declared_as_tree_artifacts():
         assert art.digest, f"{name} declares no digest; an artifact that certifies itself is not a pin"
         assert art.repo_relative, (
             f"{name} must resolve against the repo root; without it the same declaration verifies from "
-            f"the repo root and reports 'no directory' from anywhere else")
+            f"the repo root and reports 'no directory' from anywhere else"
+        )
 
 
 @pytest.mark.parametrize("name", sorted(_lane_artifacts()))
@@ -48,7 +49,7 @@ def test_the_certified_champion_agrees_with_the_pinned_lane(dtype):
 
     from merlin.compile_cli import _DTYPE_STRATEGY, default_package, host_lane_pin_name
 
-    pkg = Path(default_package(dtype))            # raises (SystemExit) on drift
+    pkg = Path(default_package(dtype))  # raises (SystemExit) on drift
     pinned = load_artifacts()[host_lane_pin_name(_DTYPE_STRATEGY[dtype])].resolve()
     assert pkg.resolve() == Path(pinned).resolve()
 

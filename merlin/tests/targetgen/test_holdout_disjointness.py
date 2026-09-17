@@ -6,6 +6,7 @@ public capsule under another name and watches the check catch it. The rest pin t
 make that possible (a rename is not a new point; tiles and absolute extents are one spelling) and the
 non-leakage property that lets the gate run in CI at all (it reports counts, never points).
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -42,14 +43,38 @@ def test_overlapping_pair_is_caught():
     program gets built. That is exactly the shape of the renames a prior audit of this repo found being
     scored as generalisation.
     """
-    public = [{"name": "A2_matmul", "cat": "isa", "kind": "isa", "op": "matmul",
-               "M_tiles": 1, "K_tiles": 1, "N_tiles": 1,
-               "lhs": "A0", "weight": "W", "out": "Y0", "label": "public",
-               "source_reference": "single-tile int8 matmul"}]
-    holdout = [{"name": "H9_matmul_hidden", "cat": "hidden", "kind": "isa", "op": "matmul",
-                "M_tiles": 1, "K_tiles": 1, "N_tiles": 1,
-                "lhs": "Ah9", "weight": "Wh9", "out": "Y0", "label": "hidden",
-                "source_reference": "hidden int8 matmul (allegedly unseen)"}]
+    public = [
+        {
+            "name": "A2_matmul",
+            "cat": "isa",
+            "kind": "isa",
+            "op": "matmul",
+            "M_tiles": 1,
+            "K_tiles": 1,
+            "N_tiles": 1,
+            "lhs": "A0",
+            "weight": "W",
+            "out": "Y0",
+            "label": "public",
+            "source_reference": "single-tile int8 matmul",
+        }
+    ]
+    holdout = [
+        {
+            "name": "H9_matmul_hidden",
+            "cat": "hidden",
+            "kind": "isa",
+            "op": "matmul",
+            "M_tiles": 1,
+            "K_tiles": 1,
+            "N_tiles": 1,
+            "lhs": "Ah9",
+            "weight": "Wh9",
+            "out": "Y0",
+            "label": "hidden",
+            "source_reference": "hidden int8 matmul (allegedly unseen)",
+        }
+    ]
 
     r = C.compare(public, holdout, TILE)
     assert r["disjoint"] is False
@@ -58,10 +83,34 @@ def test_overlapping_pair_is_caught():
 
 def test_genuinely_unseen_holdout_is_disjoint():
     """The same obligation at a tile count the public set never reaches is NOT an overlap."""
-    public = [{"name": "A2_matmul", "cat": "isa", "kind": "isa", "op": "matmul",
-               "M_tiles": 1, "K_tiles": 1, "N_tiles": 1, "lhs": "A0", "weight": "W", "out": "Y0"}]
-    holdout = [{"name": "H5_matmul_m2_hidden", "cat": "hidden", "kind": "isa", "op": "matmul",
-                "M_tiles": 2, "K_tiles": 1, "N_tiles": 1, "lhs": "A0", "weight": "W", "out": "Y0"}]
+    public = [
+        {
+            "name": "A2_matmul",
+            "cat": "isa",
+            "kind": "isa",
+            "op": "matmul",
+            "M_tiles": 1,
+            "K_tiles": 1,
+            "N_tiles": 1,
+            "lhs": "A0",
+            "weight": "W",
+            "out": "Y0",
+        }
+    ]
+    holdout = [
+        {
+            "name": "H5_matmul_m2_hidden",
+            "cat": "hidden",
+            "kind": "isa",
+            "op": "matmul",
+            "M_tiles": 2,
+            "K_tiles": 1,
+            "N_tiles": 1,
+            "lhs": "A0",
+            "weight": "W",
+            "out": "Y0",
+        }
+    ]
 
     r = C.compare(public, holdout, TILE)
     assert r["disjoint"] is True
@@ -83,8 +132,13 @@ def test_a_real_parameter_difference_is_not_an_overlap():
     """Only the identity/label fields are ignored — a differing epilogue or dtype is a different point."""
     base = {"name": "P", "op": "matmul", "M_tiles": 1, "K_tiles": 1, "N_tiles": 1}
     public = [dict(base)]
-    for differing in ({"epilogue": ["relu"]}, {"operand_dtype": "bf16"}, {"acc_scale": 0.25},
-                      {"modes": {"k_accumulate": True}}, {"op": "movement"}):
+    for differing in (
+        {"epilogue": ["relu"]},
+        {"operand_dtype": "bf16"},
+        {"acc_scale": 0.25},
+        {"modes": {"k_accumulate": True}},
+        {"op": "movement"},
+    ):
         holdout = [dict(base, name="H", **differing)]
         r = C.compare(public, holdout, TILE)
         assert r["disjoint"] is True, f"{differing} was wrongly collapsed onto the public point"
@@ -119,11 +173,15 @@ def test_report_carries_counts_and_booleans_only():
     precisely what the untracked sidecar exists to hide.
     """
     public = [{"name": "P", "op": "matmul", "operand_dtype": "int8", "M": 16, "K": 16, "N": 16}]
-    holdout = [{"name": "SECRET_HOLDOUT", "op": "matmul", "operand_dtype": "int8",
-                "M": 999, "K": 777, "N": 555}]
+    holdout = [{"name": "SECRET_HOLDOUT", "op": "matmul", "operand_dtype": "int8", "M": 999, "K": 777, "N": 555}]
     r = C.compare(public, holdout, TILE)
-    assert set(r) == {"n_public_distinct_points", "n_holdout_points",
-                      "n_holdout_coinciding_with_public", "n_holdout_internal_duplicates", "disjoint"}
+    assert set(r) == {
+        "n_public_distinct_points",
+        "n_holdout_points",
+        "n_holdout_coinciding_with_public",
+        "n_holdout_internal_duplicates",
+        "disjoint",
+    }
     for value in r.values():
         assert isinstance(value, (int, bool))
     blob = repr(r)
@@ -141,7 +199,7 @@ def test_ratchet_is_scoped_per_target(tmp_path):
     r = C._load_ratchet(p)
     assert r == {"target_a overlap": 2, "target_b overlap": 0}
     assert C._debt_key("target_a") in r
-    assert C._debt_key("target_c") not in r          # unlisted target allows nothing
+    assert C._debt_key("target_c") not in r  # unlisted target allows nothing
 
 
 def test_ratchet_rejects_a_malformed_line(tmp_path):
@@ -154,8 +212,7 @@ def test_ratchet_rejects_a_malformed_line(tmp_path):
 def test_shipped_ratchet_parses_and_every_target_is_within_it():
     """The gate as it is actually configured: run it over the real profiles and hold every target to
     its ratcheted allowance. Counts only — nothing here reads or prints a holdout's values."""
-    ratchet = C._load_ratchet(repo_root() / "build_tools" / "scripts"
-                              / "holdout_disjointness_ratchet.txt")
+    ratchet = C._load_ratchet(repo_root() / "build_tools" / "scripts" / "holdout_disjointness_ratchet.txt")
     reports = [C.audit(t) for t in C.targets_with_holdouts()]
     assert reports, "no target declares a holdout sidecar; the gate would be vacuous"
     for r in reports:
@@ -167,10 +224,12 @@ def test_shipped_ratchet_parses_and_every_target_is_within_it():
         assert r["n_holdout_coinciding_with_public"] <= allowed, (
             f"{r['target']}: {r['n_holdout_coinciding_with_public']} holdout point(s) coincide with a "
             f"public point, allowance {allowed}. The values are deliberately not shown; read the "
-            f"untracked sidecar.")
+            f"untracked sidecar."
+        )
         assert not r["unclassified_keys"], (
             f"{r['target']}: unclassified profile field(s) {r['unclassified_keys']} — classify them in "
-            f"check_holdout_disjointness.py rather than leaving the comparison UNKNOWN about them")
+            f"check_holdout_disjointness.py rather than leaving the comparison UNKNOWN about them"
+        )
 
 
 def test_every_target_with_a_sidecar_generates_some_holdouts():
@@ -184,4 +243,5 @@ def test_every_target_with_a_sidecar_generates_some_holdouts():
             continue
         assert r["n_holdout_generated"] > 0, (
             f"{r['target']}: every holdout is hand-authored; declare a `sweeps:` block in its hidden "
-            f"profile so the points are computed from the target's own tile edge")
+            f"profile so the points are computed from the target's own tile edge"
+        )

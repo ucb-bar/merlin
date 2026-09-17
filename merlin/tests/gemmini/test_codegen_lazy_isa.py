@@ -10,13 +10,13 @@ The fix is laziness, not removal — the constants are still derived, still from
 So the property under test is narrow and exact: importing resolves nothing, first USE resolves, and
 what gets resolved is unchanged.
 """
+
 from __future__ import annotations
 
 import importlib
 import sys
 
 import pytest
-
 
 #: The emitter was EVICTED from core to the target's own package (0f645a12), and this test kept
 #: naming the core path -- so all five cases here have been failing with ModuleNotFoundError ever
@@ -49,7 +49,7 @@ def _install_backend_package():
         pytest.skip(f"gemmini backend package not present: {d}")
     if PKG not in sys.modules:
         pkg = types.ModuleType(PKG)
-        pkg.__path__ = [str(d)]                    # makes `PKG.<sibling>` and `from .x import` resolve
+        pkg.__path__ = [str(d)]  # makes `PKG.<sibling>` and `from .x import` resolve
         sys.modules[PKG] = pkg
     yield
     for name in [n for n in sys.modules if n == PKG or n.startswith(PKG + ".")]:

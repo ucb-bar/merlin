@@ -11,6 +11,7 @@ report "no comparison group has two members" while `_perf` holds `fmb_*` with th
 `amort_*` with two. Scanning the whole corpus tree instead is wrong the other way: it finds ANOTHER
 target's groups, whose pairs say nothing about the one being launched.
 """
+
 from __future__ import annotations
 
 import yaml
@@ -41,7 +42,8 @@ def test_perf_roots_are_underscore_prefixed_and_per_target():
         for root in perf_capsule_roots(target):
             assert root.name.startswith("_"), (
                 f"{target}: {root.name} is not underscore-prefixed, so `corpus_siblings` would admit "
-                f"it to the functional suite")
+                f"it to the functional suite"
+            )
             assert root.is_dir()
 
 
@@ -68,12 +70,13 @@ def test_a_usable_comparison_group_is_findable_in_the_perf_roots_and_not_the_gra
         usable = {g: n for g, n in _groups(roots).items() if n >= 2}
         assert usable, (
             f"{target}: its perf roots {[r.name for r in roots]} hold no comparison group with two "
-            f"members, so they cannot support an A/B")
+            f"members, so they cannot support an A/B"
+        )
         # And the graded roots do NOT hold them -- which is why asking there reports them absent.
         graded_usable = {g: n for g, n in _groups(graded_capsule_roots(target)).items() if n >= 2}
         assert not (set(usable) & set(graded_usable)), (
             f"{target}: group(s) {sorted(set(usable) & set(graded_usable))} appear in BOTH root sets; "
-            f"a perf capsule in the graded suite scores the functional run")
+            f"a perf capsule in the graded suite scores the functional run"
+        )
         checked += 1
-    assert checked, (
-        "no target ships a perf root, so this test established nothing about where they are found")
+    assert checked, "no target ships a perf root, so this test established nothing about where they are found"

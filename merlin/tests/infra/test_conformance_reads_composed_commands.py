@@ -9,6 +9,7 @@ however well the agent behaved. Measured on the atlas arm-4 run of 2026-09-07.
 Anti-forgery is the invariant these tests protect: decomposition must credit REAL invocations only,
 never a quoted string.
 """
+
 from __future__ import annotations
 
 import sys
@@ -20,13 +21,13 @@ import conformance as CF  # noqa: E402
 
 
 def _call(command: str, *, result: str = "", ok: bool = True) -> CF.ToolCall:
-    return CF.ToolCall(name="Bash", input={"command": command}, tool_use_id="t0",
-                       result_present=True, succeeded=ok, result_text=result)
+    return CF.ToolCall(
+        name="Bash", input={"command": command}, tool_use_id="t0", result_present=True, succeeded=ok, result_text=result
+    )
 
 
 def _bijection(call) -> bool:
-    return CF._cca_evidence(call, script="cca_contract.py",
-                            subcommand="check-bijection", api="check_bijection")
+    return CF._cca_evidence(call, script="cca_contract.py", subcommand="check-bijection", api="check_bijection")
 
 
 def test_a_redirect_does_not_hide_the_cca_invocation():
@@ -36,8 +37,7 @@ def test_a_redirect_does_not_hide_the_cca_invocation():
 
 def test_a_command_after_a_heredoc_is_still_seen():
     # The heredoc body merges following commands into one bogus segment unless we split on newlines.
-    call = _call('/bin/bash -lc "python3 - <<\'PY\'\nprint(1)\nPY\n'
-                 'python3 cca_contract.py check-bijection atlas"')
+    call = _call("/bin/bash -lc \"python3 - <<'PY'\nprint(1)\nPY\npython3 cca_contract.py check-bijection atlas\"")
     assert _bijection(call)
 
 
@@ -54,7 +54,7 @@ def test_a_quoted_string_is_not_evidence():
 
 def test_listing_the_submission_is_not_an_edit():
     """An agent's first call is typically a read-only survey; it must not become the edit boundary."""
-    call = _call('/bin/bash -lc "pwd && rg --files -g \'submission/**\' | sort"')
+    call = _call("/bin/bash -lc \"pwd && rg --files -g 'submission/**' | sort\"")
     assert not CF._submission_mutation(call)
 
 

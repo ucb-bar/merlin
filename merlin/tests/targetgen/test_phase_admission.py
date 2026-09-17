@@ -19,6 +19,7 @@ Three properties, each of which has a way of quietly going wrong:
   property of the corpus — the exact failure the repo keeps re-finding, where an unanswerable question
   reads as a "no".
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,8 +32,7 @@ from merlin.targetgen import cert_cost as CC
 from merlin.targetgen import phase_policy as PP
 from merlin.targetgen.target_experiment import load_target_experiment
 
-DESCRIPTORS = sorted((merlin_dir() / "experiments/capsule_bench/targets").glob(
-    "*/target_experiment.yaml"))
+DESCRIPTORS = sorted((merlin_dir() / "experiments/capsule_bench/targets").glob("*/target_experiment.yaml"))
 
 
 def _write(tmp_path: Path, grading: dict, *, target: str = "probe_target") -> Path:
@@ -53,14 +53,24 @@ def _phase_sealed():
 
 # ------------------------------------------------------------------ the descriptor grammar
 
+
 def test_phase_exclusions_are_parsed_apart_from_capability_and_resource(tmp_path):
-    te = load_target_experiment(_write(tmp_path, {
-        "capability_exclude_capsules": ["A"],
-        "resource_bound": {"policy": "p", "exclude_capsules": ["B"],
-                           "required_admitted_models": ["M"]},
-        "phase_bound": {"phase": 1, "budget_s": 300, "policy": "q",
-                        "phase2_only_capsules": ["C", "D"], "exclude_capsules": ["C"]},
-    }))
+    te = load_target_experiment(
+        _write(
+            tmp_path,
+            {
+                "capability_exclude_capsules": ["A"],
+                "resource_bound": {"policy": "p", "exclude_capsules": ["B"], "required_admitted_models": ["M"]},
+                "phase_bound": {
+                    "phase": 1,
+                    "budget_s": 300,
+                    "policy": "q",
+                    "phase2_only_capsules": ["C", "D"],
+                    "exclude_capsules": ["C"],
+                },
+            },
+        )
+    )
     assert te.graded_capability_exclude == ("A",)
     assert te.graded_resource_exclude == ("B",)
     assert te.graded_phase2_only == ("C", "D")
@@ -74,10 +84,14 @@ def test_the_frozen_arithmetic_counts_the_phase_class(tmp_path):
     """source == admitted + capability + resource + phase, or the descriptor refuses to load."""
     grading = {
         "capability_exclude_capsules": ["A"],
-        "resource_bound": {"policy": "p", "exclude_capsules": ["B"],
-                           "required_admitted_models": ["M"]},
-        "phase_bound": {"phase": 1, "budget_s": 300, "policy": "q",
-                        "phase2_only_capsules": ["C", "D"], "exclude_capsules": ["C"]},
+        "resource_bound": {"policy": "p", "exclude_capsules": ["B"], "required_admitted_models": ["M"]},
+        "phase_bound": {
+            "phase": 1,
+            "budget_s": 300,
+            "policy": "q",
+            "phase2_only_capsules": ["C", "D"],
+            "exclude_capsules": ["C"],
+        },
         "expected_cohort": {"source_capsules": 13, "admitted_capsules": 10},
     }
     assert load_target_experiment(_write(tmp_path, grading)).graded_expected_admitted_capsules == 10
@@ -89,14 +103,16 @@ def test_the_frozen_arithmetic_counts_the_phase_class(tmp_path):
 
 def test_a_phase_verdict_without_its_budget_is_refused(tmp_path):
     with pytest.raises(ValueError, match="budget_s"):
-        load_target_experiment(_write(tmp_path, {
-            "phase_bound": {"phase": 1, "policy": "q", "phase2_only_capsules": ["C"]}}))
+        load_target_experiment(
+            _write(tmp_path, {"phase_bound": {"phase": 1, "policy": "q", "phase2_only_capsules": ["C"]}})
+        )
 
 
 def test_a_phase_class_without_a_named_policy_is_refused(tmp_path):
     with pytest.raises(ValueError, match="policy"):
-        load_target_experiment(_write(tmp_path, {
-            "phase_bound": {"phase": 1, "budget_s": 300, "phase2_only_capsules": ["C"]}}))
+        load_target_experiment(
+            _write(tmp_path, {"phase_bound": {"phase": 1, "budget_s": 300, "phase2_only_capsules": ["C"]}})
+        )
 
 
 def test_a_row_may_not_be_held_out_for_a_verdict_it_did_not_fail(tmp_path):
@@ -106,20 +122,41 @@ def test_a_row_may_not_be_held_out_for_a_verdict_it_did_not_fail(tmp_path):
     which is the disguise the three separate classes exist to prevent.
     """
     with pytest.raises(ValueError, match="did not fail"):
-        load_target_experiment(_write(tmp_path, {
-            "phase_bound": {"phase": 1, "budget_s": 300, "policy": "q",
-                            "phase2_only_capsules": ["C"], "exclude_capsules": ["NOT_C"]}}))
+        load_target_experiment(
+            _write(
+                tmp_path,
+                {
+                    "phase_bound": {
+                        "phase": 1,
+                        "budget_s": 300,
+                        "policy": "q",
+                        "phase2_only_capsules": ["C"],
+                        "exclude_capsules": ["NOT_C"],
+                    }
+                },
+            )
+        )
 
 
-@pytest.mark.parametrize("other,field", [
-    ("capability_exclude_capsules", None),
-    ("resource_bound", "exclude_capsules"),
-])
+@pytest.mark.parametrize(
+    "other,field",
+    [
+        ("capability_exclude_capsules", None),
+        ("resource_bound", "exclude_capsules"),
+    ],
+)
 def test_a_row_may_not_be_excluded_for_two_reasons_at_once(tmp_path, other, field):
     """An overlap is not a harmless duplicate: it lets a row be reported under whichever heading reads
     best, and it double-counts in the frozen arithmetic."""
-    grading = {"phase_bound": {"phase": 1, "budget_s": 300, "policy": "q",
-                               "phase2_only_capsules": ["DUP"], "exclude_capsules": ["DUP"]}}
+    grading = {
+        "phase_bound": {
+            "phase": 1,
+            "budget_s": 300,
+            "policy": "q",
+            "phase2_only_capsules": ["DUP"],
+            "exclude_capsules": ["DUP"],
+        }
+    }
     if field:
         grading[other] = {"policy": "p", field: ["DUP"], "required_admitted_models": ["M"]}
     else:
@@ -130,20 +167,22 @@ def test_a_row_may_not_be_excluded_for_two_reasons_at_once(tmp_path, other, fiel
 
 # ------------------------------------------------------------------ the derivation itself
 
+
 def test_undetermined_is_never_an_exclusion():
     """A target with no certification history cannot have its phase-1 membership decided.
 
     This is the property that makes the seal safe to re-derive automatically: the derivation must be
     able to say "I cannot tell", and "I cannot tell" must not turn into a removed row.
     """
-    capsule = {"name": "X", "kind": "isa",
-               "inputs": [{"name": "A", "shape": [4, 4], "dtype": "i8"},
-                          {"name": "B", "shape": [4, 4], "dtype": "i8"}],
-               "operation": {"op": "matmul", "attributes": {"lhs": "A", "rhs": "B", "out": "Y"}},
-               "required_oracle_tiers": ["L0", "L1", "L2", "L3"]}
+    capsule = {
+        "name": "X",
+        "kind": "isa",
+        "inputs": [{"name": "A", "shape": [4, 4], "dtype": "i8"}, {"name": "B", "shape": [4, 4], "dtype": "i8"}],
+        "operation": {"op": "matmul", "attributes": {"lhs": "A", "rhs": "B", "out": "Y"}},
+        "required_oracle_tiers": ["L0", "L1", "L2", "L3"],
+    }
     # no fit and no cycle-accurate answer -> the verdict is UNDETERMINED, not NEITHER
-    v = PP.phase_of(capsule, target="probe_target", fit=None, budget_s=300.0,
-                    cycle_accurate_available=None)
+    v = PP.phase_of(capsule, target="probe_target", fit=None, budget_s=300.0, cycle_accurate_available=None)
     assert v.phase == PP.UNDETERMINED
     assert v.phase != PP.NEITHER
     assert v.reason.strip(), "an undetermined verdict with no reason cannot be acted on"
@@ -169,17 +208,19 @@ def test_every_targets_partition_is_derivable_and_every_verdict_carries_a_reason
     # An undetermined verdict must NAME the evidence it is missing. Without that it is indistinguishable
     # from a row the predicate quietly declined on, and a nameless gap is what lets an absence be read
     # later as a verdict against the capsule.
-    missing_evidence = ("no measured certification history", "was not established",
-                        "achievable ceiling is not positive")
+    missing_evidence = (
+        "no measured certification history",
+        "was not established",
+        "achievable ceiling is not positive",
+    )
     for cap in source:
-        v = PP.phase_of(cap, target=te.target, fit=fit, budget_s=300.0,
-                        cycle_accurate_available=cycle_accurate)
+        v = PP.phase_of(cap, target=te.target, fit=fit, budget_s=300.0, cycle_accurate_available=cycle_accurate)
         assert v.phase in (PP.BOTH, PP.PHASE1, PP.PHASE2, PP.NEITHER, PP.UNDETERMINED)
         assert v.reason.strip(), f"{path}: {cap.get('name')} is {v.phase} with no recorded reason"
         if v.phase == PP.UNDETERMINED:
             assert any(m in v.reason for m in missing_evidence), (
-                f"{path}: {cap.get('name')} is undetermined but its reason names no missing evidence: "
-                f"{v.reason!r}")
+                f"{path}: {cap.get('name')} is undetermined but its reason names no missing evidence: {v.reason!r}"
+            )
 
 
 @pytest.mark.parametrize("path,te", _phase_sealed(), ids=lambda x: getattr(x, "name", ""))
@@ -205,9 +246,10 @@ def test_the_recorded_phase_partition_is_exactly_what_the_verdict_derives(path, 
     for cap in source:
         name = str(cap.get("name"))
         if name in capability or name in resource:
-            continue                      # already out, for a different and stated reason
-        v = PP.phase_of(cap, target=te.target, fit=fit, budget_s=te.graded_phase_budget_s,
-                        cycle_accurate_available=cycle_accurate)
+            continue  # already out, for a different and stated reason
+        v = PP.phase_of(
+            cap, target=te.target, fit=fit, budget_s=te.graded_phase_budget_s, cycle_accurate_available=cycle_accurate
+        )
         if v.phase == PP.UNDETERMINED:
             undetermined.append(name)
         elif v.phase not in serves:
@@ -215,9 +257,11 @@ def test_the_recorded_phase_partition_is_exactly_what_the_verdict_derives(path, 
 
     assert not undetermined, (
         f"{path}: {len(undetermined)} row(s) have no phase verdict on this target "
-        f"({undetermined[:5]}). Certify this target's corpus once; do not read the gap as an exclusion.")
+        f"({undetermined[:5]}). Certify this target's corpus once; do not read the gap as an exclusion."
+    )
     assert sorted(te.graded_phase2_only) == sorted(derived), (
         f"{path}: the recorded phase-2-only set is not what the verdict derives at "
         f"{te.graded_phase_budget_s}s.\n"
         f"  recorded but not derived: {sorted(set(te.graded_phase2_only) - derived)}\n"
-        f"  derived but not recorded: {sorted(derived - set(te.graded_phase2_only))}")
+        f"  derived but not recorded: {sorted(derived - set(te.graded_phase2_only))}"
+    )

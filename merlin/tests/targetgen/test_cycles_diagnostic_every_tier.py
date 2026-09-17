@@ -7,6 +7,7 @@ asymmetric and therefore invisible -- passing capsules clear every tier and are 
 failures carry a count only at the tier that refuted them, so the diagnostic reads "failures have no
 cycles" when the truth is the opposite.
 """
+
 from __future__ import annotations
 
 import json
@@ -21,8 +22,9 @@ LADDER = ("L0", "L1", "L2", "L3", "L4", "L5")
 
 def test_a_count_under_a_tier_other_than_the_cheapest_is_still_harvested():
     # The shape a refuted capsule actually has: the cheap tier never recorded, the elaborated tier did.
-    got = cycles_by_tier({"L0": "pass", "L1": "pass", "L2": "pass",
-                          "L4": {"status": "fail", "cycles": 1378}}, ladder=LADDER)
+    got = cycles_by_tier(
+        {"L0": "pass", "L1": "pass", "L2": "pass", "L4": {"status": "fail", "cycles": 1378}}, ladder=LADDER
+    )
     assert got == {"L4": 1378}
 
 
@@ -46,19 +48,20 @@ def test_a_bare_string_tier_record_reports_nothing_and_is_not_read_as_zero():
 
 
 def test_a_tier_that_ran_but_reported_no_cycles_contributes_no_entry():
-    assert cycles_by_tier({"L3": {"status": "pass"}, "L4": {"status": "pass", "cycles": None}},
-                          ladder=LADDER) == {}
+    assert cycles_by_tier({"L3": {"status": "pass"}, "L4": {"status": "pass", "cycles": None}}, ladder=LADDER) == {}
 
 
 # --- replay against a real graded run ---------------------------------------------------------------
 # The regression this fixes is quantitative, so it is checked against real per-capsule records rather
 # than only synthetic ones. Untracked run output: skipped (loudly) when absent, never silently passed.
-_RUN = (repo_root() / "out/runs/atlas/capsule-bench/merlin_assisted/merlincirct_atlassg1"
-        / "grading_public/runs/atlas-capsule-bench")
+_RUN = (
+    repo_root()
+    / "out/runs/atlas/capsule-bench/merlin_assisted/merlincirct_atlassg1"
+    / "grading_public/runs/atlas-capsule-bench"
+)
 
 
-@pytest.mark.skipif(not _RUN.is_dir(),
-                    reason=f"DID NOT RUN: graded-run replay corpus absent at {_RUN}")
+@pytest.mark.skipif(not _RUN.is_dir(), reason=f"DID NOT RUN: graded-run replay corpus absent at {_RUN}")
 def test_replay_a_graded_run_recovers_the_failures_a_single_tier_dropped():
     single_tier, every_tier, failures_recovered = 0, 0, 0
     for result_path in sorted(_RUN.glob("*/capsule_result.json")):
@@ -74,7 +77,9 @@ def test_replay_a_graded_run_recovers_the_failures_a_single_tier_dropped():
             failures_recovered += 1
     assert every_tier > single_tier, (
         f"replay corpus must contain a count outside the single tier "
-        f"(every_tier={every_tier}, single_tier={single_tier})")
+        f"(every_tier={every_tier}, single_tier={single_tier})"
+    )
     assert failures_recovered >= 1, (
         "the point of the fix: capsules that FAILED carry their cycle count under the tier that "
-        "refuted them, and a single-tier harvest loses exactly those")
+        "refuted them, and a single-tier harvest loses exactly those"
+    )

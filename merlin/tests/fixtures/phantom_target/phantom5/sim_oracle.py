@@ -8,6 +8,7 @@ a target contributes an oracle as DATA (a plugin path), with zero edit to the co
 literal. It carries no real toolchain: ``available()`` always fails closed, so the fixture can never be
 mistaken for a runnable oracle.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen.capsule_runner import register_sim_oracle

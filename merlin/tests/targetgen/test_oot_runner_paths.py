@@ -12,6 +12,7 @@ submission:
 * An unknown placeholder reached the package verbatim and surfaced as
   `FileNotFoundError: '{input_json}'` from inside the submission's own traceback.
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -26,13 +27,16 @@ def _pkg(tmp_path, argv, *, tool="mlir_oot/tool.py"):
     d = tmp_path / "submission"
     (d / "mlir_oot").mkdir(parents=True)
     (d / "mlir_oot" / "tool.py").write_text("#!/usr/bin/env python3\n")
-    (d / "mlir_oot" / "parse.py").write_text(textwrap.dedent("""
+    (d / "mlir_oot" / "parse.py").write_text(
+        textwrap.dedent("""
         import sys, pathlib
         src = pathlib.Path(sys.argv[1]).read_text()
         pathlib.Path(sys.argv[2]).write_text(src)
         print("PARSED_OK")
-    """))
-    (d / "manifest.yaml").write_text(textwrap.dedent(f"""
+    """)
+    )
+    (d / "manifest.yaml").write_text(
+        textwrap.dedent(f"""
         artifact_type: mlir_oot_target_backend
         target: t
         language: python
@@ -50,14 +54,16 @@ def _pkg(tmp_path, argv, *, tool="mlir_oot/tool.py"):
             argv: ["python3", "mlir_oot/tool.py", "{{input_mlir}}", "{{output_json}}"]
           lower_target_to_llvm:
             argv: ["python3", "mlir_oot/tool.py", "{{input_mlir}}"]
-    """))
+    """)
+    )
     return load_package(str(d))
 
 
 def test_a_package_relative_entrypoint_runs(tmp_path):
     """The shape the contract describes must work."""
     pkg = _pkg(tmp_path, '["python3", "mlir_oot/parse.py", "{input_mlir}", "{output_json}"]')
-    src = tmp_path / "in.mlir"; src.write_text("module {}")
+    src = tmp_path / "in.mlir"
+    src.write_text("module {}")
     out = tmp_path / "out.json"
     r = run_entrypoint(pkg, "parse", src, out, timeout=60)
     assert r.returncode == 0, r.stderr
@@ -67,8 +73,8 @@ def test_a_package_relative_entrypoint_runs(tmp_path):
 def test_optional_analysis_bundle_is_feature_detected_and_resolved(tmp_path):
     pkg = _pkg(tmp_path, '["python3", "mlir_oot/parse.py", "{input_mlir}", "{output_json}"]')
     pkg.manifest["commands"]["emit_analysis_bundle"] = {
-        "argv": ["{tool}", "--emit-command-buffer={output_json}",
-                 "--emit-target-artifact", "{input_mlir}"]}
+        "argv": ["{tool}", "--emit-command-buffer={output_json}", "--emit-target-artifact", "{input_mlir}"]
+    }
     source = tmp_path / "in.mlir"
     output = tmp_path / "out.json"
     assert oot_runner.analysis_emission_entrypoints(pkg) == ("emit_analysis_bundle",)
@@ -79,14 +85,14 @@ def test_optional_analysis_bundle_is_feature_detected_and_resolved(tmp_path):
 
 def test_analysis_emission_keeps_legacy_pair_when_optional_bundle_is_absent(tmp_path):
     pkg = _pkg(tmp_path, '["python3", "mlir_oot/parse.py", "{input_mlir}", "{output_json}"]')
-    assert oot_runner.analysis_emission_entrypoints(pkg) == (
-        "emit_command_buffer", "lower_target_to_llvm")
+    assert oot_runner.analysis_emission_entrypoints(pkg) == ("emit_command_buffer", "lower_target_to_llvm")
 
 
 def test_a_relative_input_path_still_resolves(tmp_path, monkeypatch):
     """Moving cwd to the package must not break a caller that passes a relative capsule path."""
     pkg = _pkg(tmp_path, '["python3", "mlir_oot/parse.py", "{input_mlir}", "{output_json}"]')
-    src = tmp_path / "in.mlir"; src.write_text("module {}")
+    src = tmp_path / "in.mlir"
+    src.write_text("module {}")
     monkeypatch.chdir(tmp_path)
     r = run_entrypoint(pkg, "parse", "in.mlir", tmp_path / "o.json", timeout=60)
     assert r.returncode == 0, r.stderr
@@ -97,8 +103,8 @@ def test_relative_shared_compiler_import_root_survives_package_cwd(tmp_path, mon
     (tmp_path / "shared").mkdir()
     (tmp_path / "shared" / "compiler_helper.py").write_text("VALUE = 'shared compiler helper'\n")
     (pkg.directory / "mlir_oot" / "parse.py").write_text(
-        "import sys, pathlib\nfrom compiler_helper import VALUE\n"
-        "pathlib.Path(sys.argv[2]).write_text(VALUE)\n")
+        "import sys, pathlib\nfrom compiler_helper import VALUE\npathlib.Path(sys.argv[2]).write_text(VALUE)\n"
+    )
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("PYTHONPATH", "shared")
     source = tmp_path / "input.mlir"
@@ -111,8 +117,11 @@ def test_relative_shared_compiler_import_root_survives_package_cwd(tmp_path, mon
 
 def test_a_submission_prefixed_path_is_rescued(tmp_path):
     """The package root IS the submission dir, so `submission/x` is unambiguously double-rooted."""
-    pkg = _pkg(tmp_path, '["python3", "./submission/mlir_oot/parse.py", "{input_mlir}", "{output_json}"]',
-               tool="/usr/bin/python3")
+    pkg = _pkg(
+        tmp_path,
+        '["python3", "./submission/mlir_oot/parse.py", "{input_mlir}", "{output_json}"]',
+        tool="/usr/bin/python3",
+    )
     argv = _resolve_argv(pkg, "parse", tmp_path / "in.mlir", tmp_path / "o.json")
     assert "mlir_oot/parse.py" in argv, argv
     assert not any(a.startswith("./submission/") for a in argv), argv
@@ -149,8 +158,19 @@ def test_cli_accepts_gsim_as_a_cycle_accurate_oracle(monkeypatch):
         return {"status": "pass"}
 
     monkeypatch.setattr(oot_runner, "certify", fake_certify)
-    assert oot_runner.main([
-        "--package", "submission", "--input", "case.interface.mlir", "--run-id", "g0",
-        "--simulator", "gsim",
-    ]) == 0
+    assert (
+        oot_runner.main(
+            [
+                "--package",
+                "submission",
+                "--input",
+                "case.interface.mlir",
+                "--run-id",
+                "g0",
+                "--simulator",
+                "gsim",
+            ]
+        )
+        == 0
+    )
     assert observed["simulator"] == "gsim"

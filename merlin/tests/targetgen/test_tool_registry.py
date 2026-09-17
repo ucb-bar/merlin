@@ -9,6 +9,7 @@ look like it varied one thing while actually varying none, or several:
 * the default (no add/drop) must reproduce the ladder exactly, or every historical bundle moves;
 * a tool other tools import must not be droppable alone, or the cell measures their absence too.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -20,7 +21,7 @@ from merlin.targetgen.target_experiment import load_target_experiment
 
 # One real descriptor is enough: every tool path in the registry is a literal shared by all targets, and
 # the single target-varying grant is exercised through the descriptor attribute that derives it.
-_DESCRIPTOR = ("merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
+_DESCRIPTOR = "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
 
 
 @pytest.fixture(scope="module")
@@ -37,8 +38,7 @@ def test_every_registry_path_exists_on_disk():
     """A grant naming a path that moved silently grants nothing — the arm loses the tool and nobody sees
     it. This is not hypothetical: the arm-4 generators were unusable for three live runs because one
     import was missing from the grant set."""
-    missing = [p for t in TR.TOOLS.values() for p in t.bundle_paths
-               if not (repo_root() / p).exists()]
+    missing = [p for t in TR.TOOLS.values() for p in t.bundle_paths if not (repo_root() / p).exists()]
     assert not missing, f"registry names paths that do not exist: {missing}"
 
 
@@ -98,16 +98,19 @@ def test_default_generation_is_unchanged_by_the_ablation_machinery(te):
     keep resolving."""
     plain = generate_bundles(te, variant="hwbringup_v0")
     assert set(plain) == {
-        "raw_baseline_hwbringup_v0", "cpp_merlininfra_hwbringup_v0", "merlin_assisted_hwbringup_v0",
-        "merlin_assisted_rtlchecks_hwbringup_v0", "merlin_assisted_eqsat_hwbringup_v0"}
+        "raw_baseline_hwbringup_v0",
+        "cpp_merlininfra_hwbringup_v0",
+        "merlin_assisted_hwbringup_v0",
+        "merlin_assisted_rtlchecks_hwbringup_v0",
+        "merlin_assisted_eqsat_hwbringup_v0",
+    }
     for bid, man in plain.items():
         assert bid.endswith("hwbringup_v0"), "a default bundle must carry no ablation suffix"
         assert man["bundle_id"] == bid
 
 
 def test_a_cell_names_itself_in_its_bundle_id(te):
-    cells = generate_bundles(te, variant="hwbringup_v0", drop_tools=("rtl_generators",),
-                             arms=("merlin_rtlchecks",))
+    cells = generate_bundles(te, variant="hwbringup_v0", drop_tools=("rtl_generators",), arms=("merlin_rtlchecks",))
     assert list(cells) == ["merlin_assisted_rtlchecks_hwbringup_v0-rtl_generators"]
 
 
@@ -177,6 +180,7 @@ def test_the_registry_names_no_target():
     """The cardinal rule: a rung is the same set of literal module paths for every target. The one
     target-varying grant is named indirectly, as a descriptor attribute."""
     from merlin.targetgen import tool_registry
+
     src = (repo_root() / "merlin/python/merlin/targetgen/tool_registry.py").read_text()
     for token in ("gemmini", "atlas", "radiance", "saturn", "muon", "vortex"):
         assert token not in src.lower(), f"registry names the target {token!r}"
@@ -188,9 +192,9 @@ def test_the_registry_names_no_target():
 def _workflow(te, arm, **kw):
     """The mandatory-workflow block a bundle's OWN grant set produces (cheap: no capability manifest)."""
     from merlin.targetgen.generate_prompt import _enforced_workflow
+
     m = _arm_manifest(te, arm, "bid", **kw)
-    granted = {e["path"] for e in m["allowed"]
-               if str(e.get("path", "")).startswith(("merlin/", "experiments/"))}
+    granted = {e["path"] for e in m["allowed"] if str(e.get("path", "")).startswith(("merlin/", "experiments/"))}
     return _enforced_workflow(arm, "inline_asm_insn", granted, te.target)
 
 
@@ -216,5 +220,4 @@ def test_the_rtl_mandate_needs_both_rtl_tools_dropped(te):
     ablation table needs that distinction, so pin it rather than leave it to be rediscovered.
     """
     assert "RTL-checks arm" in _workflow(te, "merlin_rtlchecks", drop_tools=("rtl_generators",))
-    assert "RTL-checks arm" not in _workflow(te, "merlin_rtlchecks",
-                                             drop_tools=("rtl_generators", "rtl_facts"))
+    assert "RTL-checks arm" not in _workflow(te, "merlin_rtlchecks", drop_tools=("rtl_generators", "rtl_facts"))

@@ -14,12 +14,12 @@ activation, because the readout is full-width ``i32`` and that path writes the r
 Everything here also pins the property that makes this safe to land: a capsule that declares nothing
 materializes byte-identically to before.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.runtime.commandbuffer import (DEFAULT_STIMULUS_RANGE, STIMULUS_RANGE_KEY,
-                                          materialize_inputs, stimulus_range)
+from merlin.runtime.commandbuffer import DEFAULT_STIMULUS_RANGE, STIMULUS_RANGE_KEY, materialize_inputs, stimulus_range
 from merlin.runtime.tensor import Tensor
 from merlin.targetgen.capsule_golden import capsule_stimulus_range, materialize_capsule_leaves
 
@@ -54,15 +54,13 @@ class TestADeclaredRangeReachesBothMaterializers:
         assert min(got.data) < 0 and set(got.data) <= set(range(-3, 4))
 
     def test_the_capsule_side_honours_it(self):
-        cap = {"stimulus_range": [-3, 3],
-               "inputs": [{"name": "X", "role": "input", "shape": [4, 4], "dtype": "i8"}]}
+        cap = {"stimulus_range": [-3, 3], "inputs": [{"name": "X", "role": "input", "shape": [4, 4], "dtype": "i8"}]}
         got = materialize_capsule_leaves(cap)["X"]
         assert min(got.data) < 0 and set(got.data) <= set(range(-3, 4))
 
     def test_both_sides_produce_THE_SAME_values_for_one_declared_range(self):
         """The golden reads the capsule and the device reads the buffer; they must not diverge."""
-        cap = {"stimulus_range": [-3, 3],
-               "inputs": [{"name": "X", "role": "input", "shape": [4, 4], "dtype": "i8"}]}
+        cap = {"stimulus_range": [-3, 3], "inputs": [{"name": "X", "role": "input", "shape": [4, 4], "dtype": "i8"}]}
         from_capsule = materialize_capsule_leaves(cap)["X"]
         from_buffer = materialize_inputs(_cb(params={STIMULUS_RANGE_KEY: [-3, 3]}))["X"]
         assert list(from_capsule.data) == list(from_buffer.data)
@@ -110,14 +108,13 @@ class TestValuesOnTheDeclarationWinOverAnyFill:
 
     def test_declared_data_beats_a_declared_range(self):
         """Injected values are the strongest form: both sides compute on the same bytes."""
-        got = materialize_inputs(_cb(params={STIMULUS_RANGE_KEY: [-3, 3]},
-                                     data=[[9, 9, 9, 9]] * 4))["X"]
+        got = materialize_inputs(_cb(params={STIMULUS_RANGE_KEY: [-3, 3]}, data=[[9, 9, 9, 9]] * 4))["X"]
         assert set(got.data) == {9}
 
     def test_an_explicit_inputs_argument_still_wins_over_both(self):
-        got = materialize_inputs(_cb(params={STIMULUS_RANGE_KEY: [-3, 3]},
-                                     data=[[9, 9, 9, 9]] * 4),
-                                 {"X": [[5, 5, 5, 5]] * 4})["X"]
+        got = materialize_inputs(
+            _cb(params={STIMULUS_RANGE_KEY: [-3, 3]}, data=[[9, 9, 9, 9]] * 4), {"X": [[5, 5, 5, 5]] * 4}
+        )["X"]
         assert set(got.data) == {5}
 
 
@@ -125,11 +122,13 @@ class TestTheSignedReluCapsuleIsLoadBearing:
     """The capsule this feature exists for: its ReLU must actually be able to fail."""
 
     def _capsule(self):
-        import yaml
         from pathlib import Path
+
+        import yaml
+
         from merlin.common.paths import repo_root
-        path = (Path(repo_root()) / "merlin/contract/capsules/layers"
-                / "B1s_linear_relu_signed_i8" / "capsule.yaml")
+
+        path = Path(repo_root()) / "merlin/contract/capsules/layers" / "B1s_linear_relu_signed_i8" / "capsule.yaml"
         return yaml.safe_load(path.read_text(encoding="utf-8"))
 
     def test_it_declares_a_signed_range(self):

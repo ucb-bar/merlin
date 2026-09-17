@@ -4,6 +4,7 @@ Routes a GGUF checkpoint's quantized weights against a target's compute_units â€
 target run' probe built on the GGUF reader + the target-agnostic routing tooling. No download: a tiny
 GGUF is synthesized with GGUFWriter.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -32,7 +33,10 @@ def _write(path):
         wq = np.random.RandomState(0).randn(4, 64).astype(np.float32)
         w.add_tensor(name, quants.quantize(wq, T.Q8_0), raw_dtype=T.Q8_0)
     w.add_tensor("output_norm.weight", np.ones(64, dtype=np.float32))
-    w.write_header_to_file(); w.write_kv_data_to_file(); w.write_tensors_to_file(); w.close()
+    w.write_header_to_file()
+    w.write_kv_data_to_file()
+    w.write_tensors_to_file()
+    w.close()
 
 
 def test_weight_demands_skip_norms(tmp_path):
@@ -56,4 +60,4 @@ def test_analyze_reports_honest_gaps(tmp_path):
         assert rep.gaps.get("gguf_q8_0") == 2
         assert rep.routable == 0
         assert not rep.fully_routable
-        assert rep.unsupported_types == []   # Q8_0 IS a known canonical format (just not target-native)
+        assert rep.unsupported_types == []  # Q8_0 IS a known canonical format (just not target-native)

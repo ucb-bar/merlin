@@ -1,6 +1,7 @@
 """Exact host runtime grants preserve the existing answer masks."""
-from dataclasses import replace
+
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -18,14 +19,31 @@ def setup(tmp_path):
     interpreter = Path("/usr/bin/python3").resolve()
     argv = (str(interpreter), "-c", "trusted wrapper", str(engine), str(elf))
     calls = []
-    cap = HostExecutableDependencies(argv, str(engine), str(elf), str(receipt),
-        tuple((str(p), hashlib.sha256(p.read_bytes()).hexdigest())
-              for p in (interpreter, engine, elf, receipt)), lambda: calls.append(True))
+    cap = HostExecutableDependencies(
+        argv,
+        str(engine),
+        str(elf),
+        str(receipt),
+        tuple((str(p), hashlib.sha256(p.read_bytes()).hexdigest()) for p in (interpreter, engine, elf, receipt)),
+        lambda: calls.append(True),
+    )
     oracle = tmp_path / "reference.py"
     oracle.write_text("secret")
-    policy = {"command_prefix": ["bwrap", "--clearenv", "--ro-bind", str(tmp_path), str(tmp_path),
-        "--ro-bind", "/dev/null", str(oracle), "--chdir", str(tmp_path)],
-        "answer_surfaces": [{"path": str(oracle), "kind": "file", "origin": "oracle"}]}
+    policy = {
+        "command_prefix": [
+            "bwrap",
+            "--clearenv",
+            "--ro-bind",
+            str(tmp_path),
+            str(tmp_path),
+            "--ro-bind",
+            "/dev/null",
+            str(oracle),
+            "--chdir",
+            str(tmp_path),
+        ],
+        "answer_surfaces": [{"path": str(oracle), "kind": "file", "origin": "oracle"}],
+    }
     return cap, policy, calls
 
 
@@ -67,11 +85,13 @@ def test_engine_cannot_overlap_answer_surface(setup):
 def test_missing_original_mask_and_target_revalidation_failure(setup):
     cap, policy, _ = setup
     with pytest.raises(RuntimeError, match="stale target"):
+
         def stale():
             raise RuntimeError("stale target")
+
         replace(cap, command_revalidator=stale).extend(policy, cap.argv)
     p = policy["command_prefix"]
     at = p.index("/dev/null") - 1
-    del p[at:at+3]
+    del p[at : at + 3]
     with pytest.raises(ValueError, match="answer masks"):
         cap.extend(policy, cap.argv)

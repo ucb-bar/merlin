@@ -9,6 +9,7 @@ Every test here is a MUTATION test where it can be: the census is shown to FAIL 
 is not the model, not merely to pass on one that is. A check that cannot fail is the failure mode
 this repo keeps re-discovering.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -28,11 +29,12 @@ def _module_with_ops(n: int) -> str:
         body.append(
             f"%e{i} = tensor.empty() : tensor<8xf32> "
             f"%v{i} = linalg.generic {{indexing_maps = [affine_map<(d0) -> (d0)>, "
-            f"affine_map<(d0) -> (d0)>], iterator_types = [\"parallel\"]}} "
+            f'affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]}} '
             f"ins({cur} : tensor<8xf32>) outs(%e{i} : tensor<8xf32>) {{ "
             f"^bb0(%a{i}: f32, %o{i}: f32): "
             f"%m{i} = arith.mulf %a{i}, %a{i} : f32 "
-            f"linalg.yield %m{i} : f32 }} -> tensor<8xf32>")
+            f"linalg.yield %m{i} : f32 }} -> tensor<8xf32>"
+        )
         cur = f"%v{i}"
     body.append(f"func.return {cur} : tensor<8xf32> }} }}")
     return " ".join(body)
@@ -46,11 +48,12 @@ def _module_with_dead_ops(live: int, dead: int) -> str:
         extra.append(
             f"%de{i} = tensor.empty() : tensor<8xf32> "
             f"%dv{i} = linalg.generic {{indexing_maps = [affine_map<(d0) -> (d0)>, "
-            f"affine_map<(d0) -> (d0)>], iterator_types = [\"parallel\"]}} "
+            f'affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]}} '
             f"ins(%de{i} : tensor<8xf32>) outs(%de{i} : tensor<8xf32>) {{ "
             f"^bb0(%da{i}: f32, %do{i}: f32): "
             f"%dm{i} = arith.mulf %da{i}, %da{i} : f32 "
-            f"linalg.yield %dm{i} : f32 }} -> tensor<8xf32>")
+            f"linalg.yield %dm{i} : f32 }} -> tensor<8xf32>"
+        )
     return text.replace("func.return", " ".join(extra) + " func.return", 1)
 
 
@@ -62,12 +65,13 @@ def _write(tmp_path, name, text):
 
 # --- the obligation count, derived from the prepared IR --------------------------------------
 
+
 def test_live_count_excludes_ops_that_reach_nothing():
-    from merlin.llvmlower.codegen_census import live_structured_ops
     from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.llvmlower.codegen_census import live_structured_ops
 
     live, total = live_structured_ops(parse_mlir_text(_module_with_dead_ops(5, 3)))
-    assert (live, total) == (5, 8)      # dead ops are NOT charged to codegen
+    assert (live, total) == (5, 8)  # dead ops are NOT charged to codegen
 
 
 def test_live_count_follows_values_captured_by_nested_regions():
@@ -75,33 +79,35 @@ def test_live_count_follows_values_captured_by_nested_regions():
     value never appears in the enclosing op's operand list. Walking only operands severs the chain
     there and under-counts the live set by an order of magnitude, which would leave the census
     blind on exactly the models it exists for."""
-    from merlin.llvmlower.codegen_census import live_structured_ops
     from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.llvmlower.codegen_census import live_structured_ops
 
     src = (
         "builtin.module { func.func @forward(%i: tensor<4xindex>) -> tensor<4xf32> { "
         "%t = tensor.empty() : tensor<4xf32> "
         # produced ONLY for the gather below to read from inside a region
         "%tbl = linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, "
-        "affine_map<(d0) -> (d0)>], iterator_types = [\"parallel\"]} "
+        'affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} '
         "ins(%t : tensor<4xf32>) outs(%t : tensor<4xf32>) { "
         "^bb0(%a: f32, %o: f32): "
         "%m = arith.mulf %a, %a : f32 "
         "linalg.yield %m : f32 } -> tensor<4xf32> "
         "%e = tensor.empty() : tensor<4xf32> "
         "%g = linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, "
-        "affine_map<(d0) -> (d0)>], iterator_types = [\"parallel\"]} "
+        'affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} '
         "ins(%i : tensor<4xindex>) outs(%e : tensor<4xf32>) { "
         "^bb0(%iv: index, %go: f32): "
         "%x = tensor.extract %tbl[%iv] : tensor<4xf32> "
         "linalg.yield %x : f32 } -> tensor<4xf32> "
-        "func.return %g : tensor<4xf32> } }")
+        "func.return %g : tensor<4xf32> } }"
+    )
     live, total = live_structured_ops(parse_mlir_text(src))
     assert total == 2
     assert live == 2, "the gathered table is live; only an operand-only walk would miss it"
 
 
 # --- the delivery count, read off the object ---------------------------------------------------
+
 
 def _clang():
     from merlin.llvmlower import toolchain
@@ -117,8 +123,12 @@ def _objdump():
 
 def _compile(tmp_path, name, c_source):
     clang = _clang()
-    proc = subprocess.run([str(clang), "-O1", "-c", "-x", "c", "-", "-o", str(tmp_path / name)],
-                          input=c_source, text=True, capture_output=True)
+    proc = subprocess.run(
+        [str(clang), "-O1", "-c", "-x", "c", "-", "-o", str(tmp_path / name)],
+        input=c_source,
+        text=True,
+        capture_output=True,
+    )
     assert proc.returncode == 0, proc.stderr
     return tmp_path / name
 
@@ -195,6 +205,7 @@ def test_missing_objdump_is_a_refusal_not_a_skip(tmp_path):
 
 # --- the gate is actually WIRED into the build ------------------------------------------------
 
+
 def test_build_paths_call_the_census():
     """A gate nobody calls is a comment. Both object-emitting sites in the board build must run it.
 
@@ -217,8 +228,8 @@ def test_build_paths_report_the_linked_elf_census():
     from merlin.common.paths import merlin_dir
 
     src = (merlin_dir() / "python" / "merlin" / "mining" / "k1.py").read_text(encoding="utf-8")
-    link_at = src.index('if not binary.is_file():')
-    linked_at = src.index("_census_require(prepared, binary, \"forward\")", link_at)
+    link_at = src.index("if not binary.is_file():")
+    linked_at = src.index('_census_require(prepared, binary, "forward")', link_at)
     assert linked_at > link_at
     assert '"linked_elf": _linked_census.as_dict()' in src
     assert '"gate_object": _object_census.as_dict()' in src
@@ -334,7 +345,6 @@ def test_census_does_not_reintroduce_the_form_assuming_parse():
     """
     from merlin.common.paths import merlin_dir
 
-    src = (merlin_dir() / "python" / "merlin" / "llvmlower"
-           / "codegen_census.py").read_text(encoding="utf-8")
+    src = (merlin_dir() / "python" / "merlin" / "llvmlower" / "codegen_census.py").read_text(encoding="utf-8")
     assert "parse_mlir_file_any_form" in src
     assert "from ..frontends.linalg_mlir import parse_mlir_file" not in src

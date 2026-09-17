@@ -9,6 +9,7 @@ taps that fill it, and -- more importantly -- the refusals that keep a filled pi
 The example block is a REAL capture: ``MatmulProgram`` on the atlas program-driven Verilator oracle
 (elaborated RTL, 463 cycles), whose per-cycle dump reconciles with these aggregates exactly.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,17 +25,12 @@ from merlin.perf import observations as OBS
 REAL_BLOCK = {
     "cycles": 463,
     "timing_observations": [
-        {"quantity": "busy_cycles.mxu0Comp.in_program", "value": 94, "unit": "cycles",
-         "kind": "compute"},
-        {"quantity": "busy_cycles.mxu0Data.in_program", "value": 64, "unit": "cycles",
-         "kind": "compute"},
+        {"quantity": "busy_cycles.mxu0Comp.in_program", "value": 94, "unit": "cycles", "kind": "compute"},
+        {"quantity": "busy_cycles.mxu0Data.in_program", "value": 64, "unit": "cycles", "kind": "compute"},
         {"quantity": "busy_cycles.xlu.in_program", "value": 0, "unit": "cycles", "kind": "compute"},
-        {"quantity": "busy_cycles.lsu.in_program", "value": 136, "unit": "cycles",
-         "kind": "movement"},
-        {"quantity": "busy_cycles.dma0.in_program", "value": 68, "unit": "cycles",
-         "kind": "movement"},
-        {"quantity": "busy_cycles.dma1.in_program", "value": 131, "unit": "cycles",
-         "kind": "movement"},
+        {"quantity": "busy_cycles.lsu.in_program", "value": 136, "unit": "cycles", "kind": "movement"},
+        {"quantity": "busy_cycles.dma0.in_program", "value": 68, "unit": "cycles", "kind": "movement"},
+        {"quantity": "busy_cycles.dma1.in_program", "value": 131, "unit": "cycles", "kind": "movement"},
         {"quantity": OBS.IDLE_QUANTITY, "value": 36, "unit": "cycles", "kind": "fixed"},
         {"quantity": OBS.OVERLAP_OBSERVED, "value": 65, "unit": "cycles"},
         {"quantity": OBS.OVERLAP_ACROSS_KINDS, "value": 0, "unit": "cycles"},
@@ -54,19 +50,22 @@ REAL_BLOCK = {
 # Absent is not zero
 # --------------------------------------------------------------------------------------------
 
+
 def test_an_oracle_with_no_timing_capability_emits_nothing_not_zeros():
     """``None`` and an empty block are different answers, and collapsing them turns a missing
     instrument into a measurement of zero."""
     assert OBS.validate_block({"cycles": 400, "outputs": {}}) is None
-    empty = OBS.validate_block({"timing_observations": [], "unmeasured_units": [],
-                                "partitioned": False, "alias_collisions": 0})
-    assert empty is not None and not empty.usable      # reports timing, none of it survived
+    empty = OBS.validate_block(
+        {"timing_observations": [], "unmeasured_units": [], "partitioned": False, "alias_collisions": 0}
+    )
+    assert empty is not None and not empty.usable  # reports timing, none of it survived
 
 
 def test_a_null_value_is_dropped_with_a_reason_never_recorded_as_zero():
     raw = dict(REAL_BLOCK)
-    raw["timing_observations"] = [{"quantity": "busy_cycles.mxu1Comp.in_program", "value": None,
-                                   "unit": "cycles", "kind": "compute"}]
+    raw["timing_observations"] = [
+        {"quantity": "busy_cycles.mxu1Comp.in_program", "value": None, "unit": "cycles", "kind": "compute"}
+    ]
     block = OBS.validate_block(raw)
     assert block.busy_by_unit() == {}
     assert any("not reported" in r for r in block.refusals)
@@ -95,12 +94,14 @@ def test_a_missing_alias_count_is_unknown_not_zero():
 # A contended number stays contended
 # --------------------------------------------------------------------------------------------
 
+
 def test_an_unnamespaced_per_unit_busy_count_is_refused():
     """``busy_cycles.<unit>`` without ``.in_program`` could be paired with an isolation-probe
     constant of the same name. Those are different measurements, so the spelling is enforced."""
     raw = dict(REAL_BLOCK)
-    raw["timing_observations"] = [{"quantity": "busy_cycles.mxu0Comp", "value": 94,
-                                   "unit": "cycles", "kind": "compute"}]
+    raw["timing_observations"] = [
+        {"quantity": "busy_cycles.mxu0Comp", "value": 94, "unit": "cycles", "kind": "compute"}
+    ]
     block = OBS.validate_block(raw)
     assert block.busy_by_unit() == {}
     assert any("in_program" in r for r in block.refusals)
@@ -111,11 +112,16 @@ def test_promote_still_raises_for_a_per_unit_count():
     engines were running inside the same window. There is no door from here to a constant."""
     from merlin.perf.harvest import ContendedTermError, promote
     from merlin.perf.term import PerformanceTerm, Provenance, Validity
+
     term = PerformanceTerm(
-        name="busy_cycles.mxu0Comp.in_program", value=94.0, unit="cycles",
+        name="busy_cycles.mxu0Comp.in_program",
+        value=94.0,
+        unit="cycles",
         provenance=Provenance(kind="trace_derived", evidence=("a graded capsule run",)),
-        validity=Validity(validated_regime="one program, with every other engine of the same core "
-                                           "free to run inside the same window"))
+        validity=Validity(
+            validated_regime="one program, with every other engine of the same core free to run inside the same window"
+        ),
+    )
     with pytest.raises(ContendedTermError):
         promote(term, experiment="the cleanest per-unit waterfall we have")
 
@@ -123,6 +129,7 @@ def test_promote_still_raises_for_a_per_unit_count():
 # --------------------------------------------------------------------------------------------
 # Overlap is joint, and a partition may never speak about it
 # --------------------------------------------------------------------------------------------
+
 
 def test_the_joint_vector_asserts_partitioned_false_explicitly():
     block = OBS.validate_block(REAL_BLOCK)
@@ -137,8 +144,7 @@ def test_an_overlap_entry_from_a_partitioned_source_is_refused():
     assert block.overlap_cycles() is None
     assert any(OBS.OVERLAP_OBSERVED in r for r in block.refusals)
     # and a producer that says nothing at all fails closed the same way
-    silent = OBS.validate_block({k: v for k, v in REAL_BLOCK.items()
-                                 if k != OBS.PARTITIONED_KEY})
+    silent = OBS.validate_block({k: v for k, v in REAL_BLOCK.items() if k != OBS.PARTITIONED_KEY})
     assert silent.partitioned is True and silent.overlap_cycles() is None
 
 
@@ -151,10 +157,16 @@ def test_composition_operator_resolves_once_it_has_the_joint_vector():
     block = OBS.validate_block(REAL_BLOCK)
     busy = block.busy_by_unit()
     kinds = {u: ResourceKind(k) for u, k in block.kinds().items()}
-    src = activity_from_busy("matmul@L4", block.quantity(OBS.SAMPLED_QUANTITY), busy, kinds,
-                             partitioned=block.partitioned, provenance="elaborated_rtl")
+    src = activity_from_busy(
+        "matmul@L4",
+        block.quantity(OBS.SAMPLED_QUANTITY),
+        busy,
+        kinds,
+        partitioned=block.partitioned,
+        provenance="elaborated_rtl",
+    )
 
-    assert isinstance(composition_operator([src]), Unavailable)      # no overlap argument: refuses
+    assert isinstance(composition_operator([src]), Unavailable)  # no overlap argument: refuses
     got = composition_operator([src], observed_overlap_cycles={"matmul@L4": block.overlap_cycles()})
     assert not isinstance(got, Unavailable), got
     op, eta = got
@@ -167,6 +179,7 @@ def test_composition_operator_resolves_once_it_has_the_joint_vector():
 # Concurrency and submission
 # --------------------------------------------------------------------------------------------
 
+
 def test_a_record_without_a_concurrency_stamp_is_marked_not_invented():
     """22,845 timing blocks on disk predate the stamp. They are read as unrecorded; they are never
     retro-labelled, because the concurrency they ran at is not recoverable."""
@@ -178,16 +191,18 @@ def test_a_record_without_a_concurrency_stamp_is_marked_not_invented():
 
 def test_concurrency_stamp_records_the_fan_out_and_refuses_to_assume_one():
     from merlin.targetgen.capsule_runner import concurrency_stamp
+
     at16 = concurrency_stamp(16)
     assert at16["workers"] == 16 and at16["serial"] is False and at16["nproc"]
     serial = concurrency_stamp(1)
     assert serial["serial"] is True
     unstated = concurrency_stamp(None)
-    assert unstated["workers"] is None and unstated["serial"] is None   # not assumed serial
+    assert unstated["workers"] is None and unstated["serial"] is None  # not assumed serial
 
 
 def test_submission_identity_states_the_package_and_names_what_it_lacks(monkeypatch, tmp_path):
     from merlin.targetgen.capsule_runner import submission_identity
+
     for var in ("MERLIN_SUBMISSION_RUN_ID", "MERLIN_SUBMISSION_ARM", "MERLIN_SUBMISSION_ROUND"):
         monkeypatch.delenv(var, raising=False)
     bare = submission_identity(tmp_path)
@@ -202,12 +217,19 @@ def test_submission_identity_states_the_package_and_names_what_it_lacks(monkeypa
 
 def test_tier_result_stays_byte_identical_when_the_new_fields_are_unset():
     from merlin.targetgen.capsule_runner import TierResult
+
     plain = TierResult("L3", "pass", True, cycles=463).to_dict()
     for key in ("concurrency", "submission", "timing_capability"):
         assert key not in plain
-    rich = TierResult("L4", "pass", True, cycles=463,
-                      concurrency={"workers": 8}, submission={"package": "/p"},
-                      timing_capability={"partitioned": False}).to_dict()
+    rich = TierResult(
+        "L4",
+        "pass",
+        True,
+        cycles=463,
+        concurrency={"workers": 8},
+        submission={"package": "/p"},
+        timing_capability={"partitioned": False},
+    ).to_dict()
     assert rich["concurrency"] == {"workers": 8}
     assert rich["submission"] == {"package": "/p"}
     assert rich["timing_capability"] == {"partitioned": False}
@@ -217,21 +239,38 @@ def test_tier_result_stays_byte_identical_when_the_new_fields_are_unset():
 # End to end: the block survives the whole pipe
 # --------------------------------------------------------------------------------------------
 
+
 def _capsule_result(tmp_path, *, target: str, block: dict) -> "object":
     d = tmp_path / "runs" / "suite" / "AF_matmul"
     d.mkdir(parents=True)
     p = d / "capsule_result.json"
-    p.write_text(json.dumps({
-        "capsule": "AF_matmul", "status": "pass", "contract_version": "0.1",
-        "trace_check": {}, "numeric": {},
-        "tiers": {"L4": {"status": "pass", "not_run_is_not_pass": True, "mandatory": True,
-                         "cycles": block["cycles"], "derived_from_rtl": True,
-                         "cycle_accurate": True, "fidelity": "elaborated_rtl",
-                         "evidence": "verilator-rtl_console.log",
-                         "concurrency": {"workers": 8, "nproc": 48, "serial": False},
-                         "submission": {"package": "/some/submission"},
-                         "timing_observations": block["timing_observations"]}},
-    }, indent=2))
+    p.write_text(
+        json.dumps(
+            {
+                "capsule": "AF_matmul",
+                "status": "pass",
+                "contract_version": "0.1",
+                "trace_check": {},
+                "numeric": {},
+                "tiers": {
+                    "L4": {
+                        "status": "pass",
+                        "not_run_is_not_pass": True,
+                        "mandatory": True,
+                        "cycles": block["cycles"],
+                        "derived_from_rtl": True,
+                        "cycle_accurate": True,
+                        "fidelity": "elaborated_rtl",
+                        "evidence": "verilator-rtl_console.log",
+                        "concurrency": {"workers": 8, "nproc": 48, "serial": False},
+                        "submission": {"package": "/some/submission"},
+                        "timing_observations": block["timing_observations"],
+                    }
+                },
+            },
+            indent=2,
+        )
+    )
     return p
 
 
@@ -259,6 +298,7 @@ def test_harvest_recovers_more_than_total_cycles_once_the_tap_is_open(tmp_path):
 # The perf-ledger product
 # --------------------------------------------------------------------------------------------
 
+
 def test_perf_ledger_is_its_own_product_and_names_what_it_refused(tmp_path, monkeypatch):
     """``perf-ledger`` is what ONE graded run measured. It is deliberately a third topic beside
     ``perf-records`` (a designed suite) and ``perf-harvest`` (retro-mined) -- three concerns, three
@@ -266,37 +306,75 @@ def test_perf_ledger_is_its_own_product_and_names_what_it_refused(tmp_path, monk
     from merlin.targetgen import capsule_grade as CG
     from merlin.targetgen.capsule_runner import suite_for
 
-    target = "atlas"                       # a test may name the target it is about; library code may not
+    target = "atlas"  # a test may name the target it is about; library code may not
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
     runs_root = tmp_path / "grading"
     d = runs_root / "runs" / suite_for(target) / "AF_matmul"
     d.mkdir(parents=True)
-    tier = {"status": "pass", "not_run_is_not_pass": True, "mandatory": True,
-            "cycles": REAL_BLOCK["cycles"], "derived_from_rtl": True, "cycle_accurate": True,
-            "fidelity": "elaborated_rtl", "evidence": "verilator-rtl_console.log",
-            "concurrency": {"workers": 8, "nproc": 48, "load_avg": 3.1, "serial": False},
-            "submission": {"package": "/some/submission"},
-            "timing_observations": REAL_BLOCK["timing_observations"],
-            "timing_capability": {"unmeasured_units": ["scaleRegs"], "partitioned": False,
-                                  "alias_collisions": 0, "refusals": []}}
+    tier = {
+        "status": "pass",
+        "not_run_is_not_pass": True,
+        "mandatory": True,
+        "cycles": REAL_BLOCK["cycles"],
+        "derived_from_rtl": True,
+        "cycle_accurate": True,
+        "fidelity": "elaborated_rtl",
+        "evidence": "verilator-rtl_console.log",
+        "concurrency": {"workers": 8, "nproc": 48, "load_avg": 3.1, "serial": False},
+        "submission": {"package": "/some/submission"},
+        "timing_observations": REAL_BLOCK["timing_observations"],
+        "timing_capability": {
+            "unmeasured_units": ["scaleRegs"],
+            "partitioned": False,
+            "alias_collisions": 0,
+            "refusals": [],
+        },
+    }
     # A second capsule whose oracle reports NO timing at all: it must be named as having no
     # capability, never filled in with zeros.
-    blind = {"status": "pass", "not_run_is_not_pass": True, "mandatory": True, "cycles": 1090,
-             "derived_from_rtl": False, "fidelity": "functional_model"}
-    (d / "capsule_result.json").write_text(json.dumps({
-        "capsule": "AF_matmul", "status": "pass", "contract_version": "0.1",
-        "trace_check": {}, "numeric": {}, "tiers": {"L4": tier}}))
+    blind = {
+        "status": "pass",
+        "not_run_is_not_pass": True,
+        "mandatory": True,
+        "cycles": 1090,
+        "derived_from_rtl": False,
+        "fidelity": "functional_model",
+    }
+    (d / "capsule_result.json").write_text(
+        json.dumps(
+            {
+                "capsule": "AF_matmul",
+                "status": "pass",
+                "contract_version": "0.1",
+                "trace_check": {},
+                "numeric": {},
+                "tiers": {"L4": tier},
+            }
+        )
+    )
     d2 = runs_root / "runs" / suite_for(target) / "AF_blind"
     d2.mkdir(parents=True)
-    (d2 / "capsule_result.json").write_text(json.dumps({
-        "capsule": "AF_blind", "status": "pass", "contract_version": "0.1",
-        "trace_check": {}, "numeric": {}, "tiers": {"L2": blind}}))
+    (d2 / "capsule_result.json").write_text(
+        json.dumps(
+            {
+                "capsule": "AF_blind",
+                "status": "pass",
+                "contract_version": "0.1",
+                "trace_check": {},
+                "numeric": {},
+                "tiers": {"L2": blind},
+            }
+        )
+    )
 
-    results = [{"capsule": "AF_matmul", "status": "pass", "tiers": {"L4": tier}},
-               {"capsule": "AF_blind", "status": "pass", "tiers": {"L2": blind}}]
+    results = [
+        {"capsule": "AF_matmul", "status": "pass", "tiers": {"L4": tier}},
+        {"capsule": "AF_blind", "status": "pass", "tiers": {"L2": blind}},
+    ]
     summary = CG.emit_perf_ledger(results, target=target, runs_root=runs_root)
 
     from pathlib import Path as _P
+
     pdir = _P(summary["product"])
     assert pdir.parent.parent.name == target and "perf-ledger" in str(pdir)
     ledger = json.loads((pdir / "ledger.json").read_text())

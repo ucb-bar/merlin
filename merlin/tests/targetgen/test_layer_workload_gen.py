@@ -9,6 +9,7 @@ The four properties under test are the four ways a layer-scale run returns a pla
 the loop that never closes, the footprint that silently wraps the simulator's DRAM window, the
 reference computed in the wrong format, and the unrolled program that does not fit instruction memory.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -20,7 +21,7 @@ from merlin.targetgen.isa_model import IsaModel
 # --- a synthetic ISA -------------------------------------------------------------------------------
 # RISC-V-shaped field maps, written HERE (in the test) rather than in the library: the generator reads
 # every field placement from the model it is handed, which is exactly what makes this fixture possible.
-_R = [7, 8, 9, 10, 11]                       # a 5-bit destination field -> a 32-register file
+_R = [7, 8, 9, 10, 11]  # a 5-bit destination field -> a 32-register file
 _S1 = [15, 16, 17, 18, 19]
 _S2 = [20, 21, 22, 23, 24]
 _I12 = list(range(20, 32))
@@ -57,30 +58,60 @@ def synthetic_isa(target: str = "synthetic") -> IsaModel:
         roles.setdefault(ent["role"], [])
         if ent["class"] not in roles[ent["role"]]:
             roles[ent["role"]].append(ent["class"])
-    return IsaModel(target=target, by_mnemonic=by, asm_mnemonics={}, roles=roles,
-                    dram_base=0, halt_mnemonics=("HALT",))
+    return IsaModel(target=target, by_mnemonic=by, asm_mnemonics={}, roles=roles, dram_base=0, halt_mnemonics=("HALT",))
 
 
-OPS = WG.KernelOps(add="ADD", add_imm="ADDI", load_upper="LUI", branch_ne="BNE", stall="DELAY",
-                   halt="HALT", dma_load="DLOAD", dma_store="DSTORE", dma_wait="DWAIT",
-                   tile_load="TLOAD", tile_store="TSTORE", transpose="TPOSE", weight_push="WPUSH",
-                   contract="MUL", contract_accumulate="MULACC", acc_read="ACCPOP")
+OPS = WG.KernelOps(
+    add="ADD",
+    add_imm="ADDI",
+    load_upper="LUI",
+    branch_ne="BNE",
+    stall="DELAY",
+    halt="HALT",
+    dma_load="DLOAD",
+    dma_store="DSTORE",
+    dma_wait="DWAIT",
+    tile_load="TLOAD",
+    tile_store="TSTORE",
+    transpose="TPOSE",
+    weight_push="WPUSH",
+    contract="MUL",
+    contract_accumulate="MULACC",
+    acc_read="ACCPOP",
+)
 
 CF = WG.ControlFlow(2, 1, "fixture")
 SETTLE = WG.Settle.uniform(4, "fixture")
 
 
-def synthetic_facts(*, window: int | None = 1 << 16, edge: int = 4,
-                    imem: int | None = 1024) -> WG.MachineFacts:
+def synthetic_facts(*, window: int | None = 1 << 16, edge: int = 4, imem: int | None = 1024) -> WG.MachineFacts:
     return WG.MachineFacts(
-        target="synthetic", isa=synthetic_isa(), tile=WG.TileGeometry(edge, edge, "fixture"),
-        dram_base=0, word_bytes=4, operand_dtype="fp8_e4m3", accum_dtype="bf16",
-        dram_window=window, imem_words=imem, provenance={"fixture": "synthetic"})
+        target="synthetic",
+        isa=synthetic_isa(),
+        tile=WG.TileGeometry(edge, edge, "fixture"),
+        dram_base=0,
+        word_bytes=4,
+        operand_dtype="fp8_e4m3",
+        accum_dtype="bf16",
+        dram_window=window,
+        imem_words=imem,
+        provenance={"fixture": "synthetic"},
+    )
 
 
 def _plan(m, k, n, *, facts=None, cf=CF, A=None, W=None):
-    return WG.plan_matmul(facts or synthetic_facts(), OPS, m=m, k=k, n=n, control_flow=cf,
-                          settle=SETTLE, A=A, W=W, subnormal_operand_flush=False)
+    return WG.plan_matmul(
+        facts or synthetic_facts(),
+        OPS,
+        m=m,
+        k=k,
+        n=n,
+        control_flow=cf,
+        settle=SETTLE,
+        A=A,
+        W=W,
+        subnormal_operand_flush=False,
+    )
 
 
 # --- 1. the loop that never closes -----------------------------------------------------------------
@@ -113,7 +144,7 @@ def test_the_delay_slot_is_filled_and_is_not_a_branch():
         resolved = p.resolved()
         assert len(resolved) == 1 + slots
         for mnem, ops in resolved[1:]:
-            assert mnem == OPS.add_imm and ops["rd"] == 0     # a write to the fixed-zero register
+            assert mnem == OPS.add_imm and ops["rd"] == 0  # a write to the fixed-zero register
 
 
 def test_the_kernel_length_does_not_grow_with_the_shape():
@@ -154,8 +185,10 @@ def test_alias_report_flags_a_tensor_that_runs_past_the_window():
 def test_alias_report_flags_two_tensors_that_collide_after_reduction():
     """The addresses differ by a whole window, so they look disjoint and reduce onto each other -- the
     exact failure the runner does not report."""
-    places = (WG.Placement("A", "input", [1], "fp8_e4m3", 64, 0),
-              WG.Placement("B", "weight", [1], "fp8_e4m3", 64, 4096))
+    places = (
+        WG.Placement("A", "input", [1], "fp8_e4m3", 64, 0),
+        WG.Placement("B", "weight", [1], "fp8_e4m3", 64, 4096),
+    )
     rep = WG.alias_report(places, 4096)
     assert not rep.ok and ("A", "B") in rep.collisions
 
@@ -181,15 +214,13 @@ def test_the_reference_rounds_into_the_accumulator_after_every_mac():
     W = np.full((64, 1), 3.0, dtype=np.float32)
     ref = WG.accumulate_reference(A, W, accum_dtype="bf16")
     assert ref is not None
-    assert ref[0, 0] != (A @ W)[0, 0]                 # 576 needs more than bf16's mantissa carries
-    small = WG.accumulate_reference(np.ones((1, 4), np.float32), np.ones((4, 1), np.float32),
-                                    accum_dtype="bf16")
-    assert small[0, 0] == 4.0                        # exact where the format can represent it
+    assert ref[0, 0] != (A @ W)[0, 0]  # 576 needs more than bf16's mantissa carries
+    small = WG.accumulate_reference(np.ones((1, 4), np.float32), np.ones((4, 1), np.float32), accum_dtype="bf16")
+    assert small[0, 0] == 4.0  # exact where the format can represent it
 
 
 def test_an_exact_accumulator_has_no_model_and_says_so():
-    assert WG.accumulate_reference(np.ones((1, 2), np.float32), np.ones((2, 1), np.float32),
-                                   accum_dtype="int8") is None
+    assert WG.accumulate_reference(np.ones((1, 2), np.float32), np.ones((2, 1), np.float32), accum_dtype="int8") is None
 
 
 def test_the_bank_stream_unpacks_back_to_the_logical_matrix():
@@ -204,7 +235,7 @@ def test_the_bank_stream_unpacks_back_to_the_logical_matrix():
     for i in range(2):
         for j in range(2):
             for b in range(banks):
-                rows.append(logical[i * 4:(i + 1) * 4, j * 4 + b * cpb: j * 4 + (b + 1) * cpb])
+                rows.append(logical[i * 4 : (i + 1) * 4, j * 4 + b * cpb : j * 4 + (b + 1) * cpb])
     stream = np.concatenate(rows, axis=0)
     assert np.array_equal(plan.unpack_output(stream), logical)
 
@@ -238,8 +269,12 @@ def test_probe_control_flow_keeps_the_candidate_that_actually_loops():
         seen.append(scale)
         # decode which candidate this is from the emitted branch immediate
         words = [int(l.split()[1], 16) for l in src.splitlines() if l.strip().startswith(".word")]
-        imm = (((words[-3] >> 8) & 0xF) << 1) | (((words[-3] >> 25) & 0x3F) << 5) \
-            | (((words[-3] >> 7) & 1) << 11) | (((words[-3] >> 31) & 1) << 12)
+        imm = (
+            (((words[-3] >> 8) & 0xF) << 1)
+            | (((words[-3] >> 25) & 0x3F) << 5)
+            | (((words[-3] >> 7) & 1) << 11)
+            | (((words[-3] >> 31) & 1) << 12)
+        )
         signed = imm - (1 << 13) if imm & (1 << 12) else imm
         return trips * body + 20 if signed == -4 * 2 else body + 8
 

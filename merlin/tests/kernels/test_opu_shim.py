@@ -10,6 +10,7 @@ The host build defines ``OPU_SCALAR_TILE``, so no matrix instruction executes he
 tiling loop, the K-major pack, the stride checks and the fallback are all target-independent code, and
 proving them on a host is what makes a failure on the device attributable to the datapath.
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -20,8 +21,7 @@ import numpy as np
 import pytest
 
 from merlin.kernels.opu_kernel import KernelSpec
-from merlin.llvmlower.opu_shim import (DEFAULT_SCRATCH_BYTES, emit_translation_unit,
-                                       scratch_bytes_for)
+from merlin.llvmlower.opu_shim import DEFAULT_SCRATCH_BYTES, emit_translation_unit, scratch_bytes_for
 
 
 class _Enc:
@@ -55,9 +55,13 @@ _EDGES = (4, 8, 16, 32)
 
 
 class _Memref2D(ctypes.Structure):
-    _fields_ = [("allocated", ctypes.c_void_p), ("aligned", ctypes.c_void_p),
-                ("offset", ctypes.c_ssize_t),
-                ("sizes", ctypes.c_ssize_t * 2), ("strides", ctypes.c_ssize_t * 2)]
+    _fields_ = [
+        ("allocated", ctypes.c_void_p),
+        ("aligned", ctypes.c_void_p),
+        ("offset", ctypes.c_ssize_t),
+        ("sizes", ctypes.c_ssize_t * 2),
+        ("strides", ctypes.c_ssize_t * 2),
+    ]
 
 
 def _unpack(buf, shape, strides):
@@ -67,21 +71,44 @@ def _unpack(buf, shape, strides):
     test: a shim that read the extents from the wrong position would still link and would still run.
     """
     base = ctypes.cast(buf, ctypes.c_void_p)
-    return [base, base, ctypes.c_ssize_t(0),
-            ctypes.c_ssize_t(shape[0]), ctypes.c_ssize_t(shape[1]),
-            ctypes.c_ssize_t(strides[0]), ctypes.c_ssize_t(strides[1])]
+    return [
+        base,
+        base,
+        ctypes.c_ssize_t(0),
+        ctypes.c_ssize_t(shape[0]),
+        ctypes.c_ssize_t(shape[1]),
+        ctypes.c_ssize_t(strides[0]),
+        ctypes.c_ssize_t(strides[1]),
+    ]
 
 
-def _build(signatures, tmp_path: Path, *, edge: int, align: int = _ALIGN,
-           scratch_bytes: int | None = None, padded: bool = False) -> ctypes.CDLL:
-    src = emit_translation_unit(_TABLE, signatures, spec=_SPEC, alignment_bytes=align,
-                               scratch_bytes=scratch_bytes)
+def _build(
+    signatures,
+    tmp_path: Path,
+    *,
+    edge: int,
+    align: int = _ALIGN,
+    scratch_bytes: int | None = None,
+    padded: bool = False,
+) -> ctypes.CDLL:
+    src = emit_translation_unit(_TABLE, signatures, spec=_SPEC, alignment_bytes=align, scratch_bytes=scratch_bytes)
     tmp_path.mkdir(parents=True, exist_ok=True)
     c = tmp_path / "opu_shim.c"
     c.write_text(str(src), encoding="utf-8")
     so = tmp_path / "opu_shim.so"
-    cmd = ["cc", "-O1", "-fPIC", "-shared", "-Wall", "-Werror",
-           "-DOPU_SCALAR_TILE", f"-DOPU_TILE_EDGE={edge}", str(c), "-o", str(so)]
+    cmd = [
+        "cc",
+        "-O1",
+        "-fPIC",
+        "-shared",
+        "-Wall",
+        "-Werror",
+        "-DOPU_SCALAR_TILE",
+        f"-DOPU_TILE_EDGE={edge}",
+        str(c),
+        "-o",
+        str(so),
+    ]
     if padded:
         # The device default. Forced on WITH the stand-in so the partial-N path is actually compiled
         # on a host: it is off by default there, which is why nothing ever exercised it.
@@ -92,8 +119,7 @@ def _build(signatures, tmp_path: Path, *, edge: int, align: int = _ALIGN,
     return ctypes.CDLL(str(so))
 
 
-def _call(lib, symbol: str, a: np.ndarray, b: np.ndarray, *, shape=None,
-          a_strides=None, b_strides=None) -> np.ndarray:
+def _call(lib, symbol: str, a: np.ndarray, b: np.ndarray, *, shape=None, a_strides=None, b_strides=None) -> np.ndarray:
     """Run one entry point on real buffers and return what it wrote into C.
 
     ``shape`` is the LOGICAL ``(m, n, k)``, which is what the descriptors advertise; ``a``/``b`` are the
@@ -107,9 +133,11 @@ def _call(lib, symbol: str, a: np.ndarray, b: np.ndarray, *, shape=None,
     fn = getattr(lib, symbol)
     fn.restype = _Memref2D
     fn.argtypes = None
-    args = [*_unpack(a.ctypes.data_as(ctypes.c_void_p), (m, k), a_strides or (k, 1)),
-            *_unpack(b.ctypes.data_as(ctypes.c_void_p), (k, n), b_strides or (n, 1)),
-            *_unpack(c.ctypes.data_as(ctypes.c_void_p), (m, n), (n, 1))]
+    args = [
+        *_unpack(a.ctypes.data_as(ctypes.c_void_p), (m, k), a_strides or (k, 1)),
+        *_unpack(b.ctypes.data_as(ctypes.c_void_p), (k, n), b_strides or (n, 1)),
+        *_unpack(c.ctypes.data_as(ctypes.c_void_p), (m, n), (n, 1)),
+    ]
     fn(*args)
     return c
 
@@ -170,14 +198,18 @@ class TestComputesTheContraction:
         """
         # n scaled down from (2048, 1024, 2304, 9216, 256000) so the test stays fast; what is preserved
         # is that every n spans MANY blocks at edge 32 while m spans none.
-        sigs = {"merlin_opu_gemm_i8_0": (8, 256, 8), "merlin_opu_gemm_i8_1": (8, 128, 8),
-                "merlin_opu_gemm_i8_2": (8, 288, 8), "merlin_opu_gemm_i8_3": (8, 576, 8),
-                "merlin_opu_gemm_i8_4": (8, 288, 8), "merlin_opu_gemm_i8_5": (8, 1024, 8)}
+        sigs = {
+            "merlin_opu_gemm_i8_0": (8, 256, 8),
+            "merlin_opu_gemm_i8_1": (8, 128, 8),
+            "merlin_opu_gemm_i8_2": (8, 288, 8),
+            "merlin_opu_gemm_i8_3": (8, 576, 8),
+            "merlin_opu_gemm_i8_4": (8, 288, 8),
+            "merlin_opu_gemm_i8_5": (8, 1024, 8),
+        }
         lib = _build(sigs, tmp_path, edge=32)
         for sym, (m, n, k) in sigs.items():
             a, b = _operands(m, n, k)
-            np.testing.assert_array_equal(_call(lib, sym, a, b), _expected(a, b),
-                                          err_msg=f"{sym} m={m} n={n} k={k}")
+            np.testing.assert_array_equal(_call(lib, sym, a, b), _expected(a, b), err_msg=f"{sym} m={m} n={n} k={k}")
 
     def test_a_partial_row_panel_survives_a_long_reduction(self, tmp_path):
         """M=8 with K far past the point where the accumulator must be carried across k-steps.
@@ -193,14 +225,17 @@ class TestComputesTheContraction:
     def test_spectformers_real_signatures_agree(self, tmp_path):
         # The five signatures the rewrite actually mints for spectformer, at reduced K so the test is
         # quick -- the extents that matter here are M and N, which drive the tiling and the pack.
-        sigs = {"merlin_opu_gemm_i8_0": (256, 196, 8), "merlin_opu_gemm_i8_1": (196, 1024, 8),
-                "merlin_opu_gemm_i8_2": (196, 256, 8), "merlin_opu_gemm_i8_3": (196, 768, 8),
-                "merlin_opu_gemm_i8_4": (1, 1000, 8)}
+        sigs = {
+            "merlin_opu_gemm_i8_0": (256, 196, 8),
+            "merlin_opu_gemm_i8_1": (196, 1024, 8),
+            "merlin_opu_gemm_i8_2": (196, 256, 8),
+            "merlin_opu_gemm_i8_3": (196, 768, 8),
+            "merlin_opu_gemm_i8_4": (1, 1000, 8),
+        }
         lib = _build(sigs, tmp_path, edge=32)
         for sym, (m, n, k) in sigs.items():
             a, b = _operands(m, n, k)
-            np.testing.assert_array_equal(_call(lib, sym, a, b), _expected(a, b),
-                                          err_msg=f"{sym} m={m} n={n} k={k}")
+            np.testing.assert_array_equal(_call(lib, sym, a, b), _expected(a, b), err_msg=f"{sym} m={m} n={n} k={k}")
 
 
 class TestTheCallingConvention:
@@ -227,9 +262,11 @@ class TestTheCallingConvention:
         c = np.zeros((6, 10), dtype=np.int32)
         fn = lib.merlin_opu_gemm_i8_0
         fn.restype = _Memref2D
-        got = fn(*_unpack(a.ctypes.data_as(ctypes.c_void_p), (6, 4), (4, 1)),
-                 *_unpack(b.ctypes.data_as(ctypes.c_void_p), (4, 10), (10, 1)),
-                 *_unpack(c.ctypes.data_as(ctypes.c_void_p), (6, 10), (10, 1)))
+        got = fn(
+            *_unpack(a.ctypes.data_as(ctypes.c_void_p), (6, 4), (4, 1)),
+            *_unpack(b.ctypes.data_as(ctypes.c_void_p), (4, 10), (10, 1)),
+            *_unpack(c.ctypes.data_as(ctypes.c_void_p), (6, 10), (10, 1)),
+        )
         assert (got.sizes[0], got.sizes[1]) == (6, 10)
         assert (got.strides[0], got.strides[1]) == (10, 1)
         assert got.aligned == c.ctypes.data
@@ -242,7 +279,7 @@ class TestTheLeftOperandPack:
         # produces a completely different answer, so this cannot pass by accident.
         lib = _build({"merlin_opu_gemm_i8_0": (8, 8, 4)}, tmp_path, edge=8)
         a, b = _operands(8, 8, 4)
-        backing = np.full((8, 16), 99, dtype=np.int8)     # row stride 16 for a K=4 operand
+        backing = np.full((8, 16), 99, dtype=np.int8)  # row stride 16 for a K=4 operand
         backing[:, :4] = a
         got = _call(lib, "merlin_opu_gemm_i8_0", backing, b, shape=(8, 8, 4), a_strides=(16, 1))
         np.testing.assert_array_equal(got, _expected(a, b))
@@ -255,7 +292,7 @@ class TestTheLeftOperandPack:
         # twice and computes A^T @ B.
         lib = _build({"merlin_opu_gemm_i8_0": (6, 8, 5)}, tmp_path, edge=8)
         a, b = _operands(6, 8, 5)
-        colmajor = np.asfortranarray(a)                   # same values, strides (1, 6)
+        colmajor = np.asfortranarray(a)  # same values, strides (1, 6)
         got = _call(lib, "merlin_opu_gemm_i8_0", colmajor, b, shape=(6, 8, 5), a_strides=(1, 6))
         np.testing.assert_array_equal(got, _expected(a, b))
 
@@ -263,13 +300,13 @@ class TestTheLeftOperandPack:
         # The scratch is static and sized at generation time. Overrunning it would be a memory-safety bug
         # in generated code, so the shim must decline instead -- and declining must still be CORRECT.
         lib = _build({"merlin_opu_gemm_i8_0": (32, 8, 32)}, tmp_path, edge=8, scratch_bytes=64)
-        a, b = _operands(32, 8, 32)          # needs 1024 bytes, has 64
+        a, b = _operands(32, 8, 32)  # needs 1024 bytes, has 64
         np.testing.assert_array_equal(_call(lib, "merlin_opu_gemm_i8_0", a, b), _expected(a, b))
         assert lib.merlin_opu_fallbacks() >= 1, "a shape that cannot be packed must be counted, not hidden"
 
     def test_the_scratch_is_sized_to_the_largest_signature(self):
         sigs = {"a": (196, 1024, 256), "b": (256, 196, 768), "c": (196, 256, 1024)}
-        assert scratch_bytes_for(sigs) == 196 * 1024        # 200704, the largest M*K
+        assert scratch_bytes_for(sigs) == 196 * 1024  # 200704, the largest M*K
         assert scratch_bytes_for({}) == DEFAULT_SCRATCH_BYTES
 
 
@@ -279,7 +316,7 @@ class TestTheFallbackIsCorrectAndCounted:
         # would silently mix rows. It must fall back, and the fallback must be right.
         lib = _build({"merlin_opu_gemm_i8_0": (8, 8, 4)}, tmp_path, edge=8)
         a, b = _operands(8, 8, 4)
-        backing = np.full((4, 32), 99, dtype=np.int8)      # row stride 32 for an N=8 operand
+        backing = np.full((4, 32), 99, dtype=np.int8)  # row stride 32 for an N=8 operand
         backing[:, :8] = b
         got = _call(lib, "merlin_opu_gemm_i8_0", a, backing, shape=(8, 8, 4), b_strides=(32, 1))
         np.testing.assert_array_equal(got, _expected(a, b))
@@ -307,9 +344,11 @@ class TestTheFallbackIsCorrectAndCounted:
         b = np.zeros((0, 4), dtype=np.int8)
         fn = lib.merlin_opu_gemm_i8_0
         fn.restype = _Memref2D
-        fn(*_unpack(a.ctypes.data_as(ctypes.c_void_p), (4, 0), (0, 1)),
-           *_unpack(b.ctypes.data_as(ctypes.c_void_p), (0, 4), (4, 1)),
-           *_unpack(c.ctypes.data_as(ctypes.c_void_p), (4, 4), (4, 1)))
+        fn(
+            *_unpack(a.ctypes.data_as(ctypes.c_void_p), (4, 0), (0, 1)),
+            *_unpack(b.ctypes.data_as(ctypes.c_void_p), (0, 4), (4, 1)),
+            *_unpack(c.ctypes.data_as(ctypes.c_void_p), (4, 4), (4, 1)),
+        )
         np.testing.assert_array_equal(c, np.zeros((4, 4), dtype=np.int32))
 
 
@@ -323,24 +362,43 @@ class TestTheDeviceBuild:
     @pytest.fixture
     def device_object(self, tmp_path):
         from merlin.llvmlower import toolchain
+
         if not toolchain.available():
             pytest.skip("needs the pinned clang")
-        src = emit_translation_unit(_TABLE, {"merlin_opu_gemm_i8_0": (196, 1024, 256),
-                                             "merlin_opu_gemm_i8_1": (256, 196, 768)},
-                                    spec=_SPEC, alignment_bytes=_ALIGN)
+        src = emit_translation_unit(
+            _TABLE,
+            {"merlin_opu_gemm_i8_0": (196, 1024, 256), "merlin_opu_gemm_i8_1": (256, 196, 768)},
+            spec=_SPEC,
+            alignment_bytes=_ALIGN,
+        )
         tmp_path.mkdir(parents=True, exist_ok=True)
         c = tmp_path / "shim_dev.c"
         c.write_text(str(src), encoding="utf-8")
         o = tmp_path / "shim_dev.o"
-        got = subprocess.run([toolchain.clang(), "--target=riscv64-unknown-elf", "-march=rv64gcv",
-                              "-mabi=lp64d", "-O2", "-Wall", "-Werror", "-c", str(c), "-o", str(o)],
-                             capture_output=True, text=True)
+        got = subprocess.run(
+            [
+                toolchain.clang(),
+                "--target=riscv64-unknown-elf",
+                "-march=rv64gcv",
+                "-mabi=lp64d",
+                "-O2",
+                "-Wall",
+                "-Werror",
+                "-c",
+                str(c),
+                "-o",
+                str(o),
+            ],
+            capture_output=True,
+            text=True,
+        )
         if got.returncode != 0:
             pytest.fail(f"the emitted unit does not build for the device:\n{got.stderr[-3000:]}")
         return o
 
     def test_the_matrix_instructions_reach_the_object(self, device_object):
         from merlin.kernels.decode import opu as OA
+
         audit = OA.audit_object(device_object, _TABLE)
         assert audit.counts["ACC"] >= 1 and audit.counts["READOUT"] >= 1
 
@@ -349,6 +407,7 @@ class TestTheDeviceBuild:
         # The audit is what detects it, and it has to hold for the code SHIPPED in the model, not only for
         # the kernel compiled on its own.
         from merlin.kernels.decode import opu as OA
+
         audit = OA.audit_object(device_object, _TABLE)
         assert audit.unconfigured == () and audit.unaccounted == ()
 
@@ -356,16 +415,20 @@ class TestTheDeviceBuild:
         got = subprocess.run(["nm", "-g", str(device_object)], capture_output=True, text=True)
         if got.returncode != 0:
             pytest.skip("nm unavailable")
-        for sym in ("merlin_opu_gemm_i8_0", "merlin_opu_gemm_i8_1", "merlin_opu_shim_gemm_i8",
-                    "merlin_opu_calls", "merlin_opu_fallbacks"):
+        for sym in (
+            "merlin_opu_gemm_i8_0",
+            "merlin_opu_gemm_i8_1",
+            "merlin_opu_shim_gemm_i8",
+            "merlin_opu_calls",
+            "merlin_opu_fallbacks",
+        ):
             assert sym in got.stdout, f"{sym} is not exported, so the model would not link"
 
 
 class TestRefusesToGuess:
     def test_an_unresolved_encoding_derivation_is_not_emitted_from(self):
         with pytest.raises(ValueError, match="cross-check"):
-            emit_translation_unit(_TABLE, {"s": (4, 4, 4)}, spec=_SPEC, alignment_bytes=_ALIGN,
-                                  derivation_ok=False)
+            emit_translation_unit(_TABLE, {"s": (4, 4, 4)}, spec=_SPEC, alignment_bytes=_ALIGN, derivation_ok=False)
 
     def test_a_nonsense_alignment_is_refused(self):
         with pytest.raises(ValueError, match="alignment"):
@@ -382,16 +445,23 @@ class TestRefusesToGuess:
         # The microkernel must be the emitter's output, not a transcription: the accumulate word has to
         # move when the encoding table does.
         base = emit_translation_unit(_TABLE, {"s": (4, 4, 4)}, spec=_SPEC, alignment_bytes=_ALIGN)
-        shifted = emit_translation_unit({k: _Enc(v.opcode, v.funct3, v.funct6 + 2)
-                                         for k, v in _TABLE.items()},
-                                        {"s": (4, 4, 4)}, spec=_SPEC, alignment_bytes=_ALIGN)
+        shifted = emit_translation_unit(
+            {k: _Enc(v.opcode, v.funct3, v.funct6 + 2) for k, v in _TABLE.items()},
+            {"s": (4, 4, 4)},
+            spec=_SPEC,
+            alignment_bytes=_ALIGN,
+        )
         assert "0x51" in base and "0x51" not in shifted
 
 
 class _Memref3D(ctypes.Structure):
-    _fields_ = [("allocated", ctypes.c_void_p), ("aligned", ctypes.c_void_p),
-                ("offset", ctypes.c_ssize_t),
-                ("sizes", ctypes.c_ssize_t * 3), ("strides", ctypes.c_ssize_t * 3)]
+    _fields_ = [
+        ("allocated", ctypes.c_void_p),
+        ("aligned", ctypes.c_void_p),
+        ("offset", ctypes.c_ssize_t),
+        ("sizes", ctypes.c_ssize_t * 3),
+        ("strides", ctypes.c_ssize_t * 3),
+    ]
 
 
 class TestBatchedContractions:
@@ -413,20 +483,27 @@ class TestBatchedContractions:
 
         def unpack(buf, sizes, strides, ctype):
             base = ctypes.cast(buf, ctypes.c_void_p)
-            return [base, base, ctypes.c_ssize_t(0),
-                    *[ctypes.c_ssize_t(s) for s in sizes],
-                    *[ctypes.c_ssize_t(s) for s in strides]]
+            return [
+                base,
+                base,
+                ctypes.c_ssize_t(0),
+                *[ctypes.c_ssize_t(s) for s in sizes],
+                *[ctypes.c_ssize_t(s) for s in strides],
+            ]
 
         fn = getattr(lib, symbol)
         fn.restype = _Memref3D
         fn.argtypes = None
-        fn(*unpack(a.ctypes.data_as(ctypes.c_void_p), (batch, m, k), (m * k, k, 1), None),
-           *unpack(b.ctypes.data_as(ctypes.c_void_p), (batch, k, n), (k * n, n, 1), None),
-           *unpack(c.ctypes.data_as(ctypes.c_void_p), (batch, m, n), (m * n, n, 1), None))
+        fn(
+            *unpack(a.ctypes.data_as(ctypes.c_void_p), (batch, m, k), (m * k, k, 1), None),
+            *unpack(b.ctypes.data_as(ctypes.c_void_p), (batch, k, n), (k * n, n, 1), None),
+            *unpack(c.ctypes.data_as(ctypes.c_void_p), (batch, m, n), (m * n, n, 1), None),
+        )
         return c
 
-    @pytest.mark.parametrize("batch,m,n,k", [(4, 196, 196, 64), (4, 196, 64, 196),
-                                             (3, 17, 33, 5), (1, 64, 64, 64), (2, 1, 1, 1)])
+    @pytest.mark.parametrize(
+        "batch,m,n,k", [(4, 196, 196, 64), (4, 196, 64, 196), (3, 17, 33, 5), (1, 64, 64, 64), (2, 1, 1, 1)]
+    )
     def test_every_slice_gets_its_own_contraction(self, tmp_path, batch, m, n, k):
         # spectformer's two real attention shapes, plus a batch that is not a power of two with short
         # tails, plus the degenerate ends. A slice-offset bug shows up as one correct slice and the rest
@@ -474,8 +551,20 @@ class TestTheTileLoopIsParallel:
         c = tmp_path / "opu_shim_omp.c"
         c.write_text(str(src), encoding="utf-8")
         so = tmp_path / "opu_shim_omp.so"
-        cmd = ["cc", "-O1", "-fPIC", "-shared", "-Wall", "-Werror", "-fopenmp",
-               "-DOPU_SCALAR_TILE", f"-DOPU_TILE_EDGE={edge}", str(c), "-o", str(so)]
+        cmd = [
+            "cc",
+            "-O1",
+            "-fPIC",
+            "-shared",
+            "-Wall",
+            "-Werror",
+            "-fopenmp",
+            "-DOPU_SCALAR_TILE",
+            f"-DOPU_TILE_EDGE={edge}",
+            str(c),
+            "-o",
+            str(so),
+        ]
         if padded:
             cmd.insert(-3, "-DMERLIN_OPU_PAD_PARTIAL_N=1")
         got = subprocess.run(cmd, capture_output=True, text=True)
@@ -512,7 +601,7 @@ class TestTheTileLoopIsParallel:
         try:
             lib.omp_set_num_threads(ctypes.c_int(32))
         except AttributeError:
-            pass                     # not libgomp; the default count still exercises the path
+            pass  # not libgomp; the default count still exercises the path
         a, b = _operands(m, n, k)
         for _ in range(8):
             got = _call(lib, "merlin_opu_gemm_i8_0", a, b, shape=(m, n, k))
@@ -526,20 +615,40 @@ class TestTheTileLoopIsParallel:
         """
         m, n, k = 196, 196, 256
         a, b = _operands(m, n, k)
-        pad = _call(_build({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path / "pad", edge=64, padded=True),
-                    "merlin_opu_gemm_i8_0", a, b, shape=(m, n, k))
-        raw = _call(_build({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path / "raw", edge=64),
-                    "merlin_opu_gemm_i8_0", a, b, shape=(m, n, k))
+        pad = _call(
+            _build({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path / "pad", edge=64, padded=True),
+            "merlin_opu_gemm_i8_0",
+            a,
+            b,
+            shape=(m, n, k),
+        )
+        raw = _call(
+            _build({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path / "raw", edge=64),
+            "merlin_opu_gemm_i8_0",
+            a,
+            b,
+            shape=(m, n, k),
+        )
         np.testing.assert_array_equal(pad, raw)
 
     def test_it_is_the_same_answer_as_the_serial_build(self, tmp_path):
         """Bit-identical to the unparallelised object, which is the certified one."""
         m, n, k = 196, 768, 256
         a, b = _operands(m, n, k)
-        par = _call(self._build_omp({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path / "omp", edge=64),
-                    "merlin_opu_gemm_i8_0", a, b, shape=(m, n, k))
-        ser = _call(_build({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path / "ser", edge=64),
-                    "merlin_opu_gemm_i8_0", a, b, shape=(m, n, k))
+        par = _call(
+            self._build_omp({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path / "omp", edge=64),
+            "merlin_opu_gemm_i8_0",
+            a,
+            b,
+            shape=(m, n, k),
+        )
+        ser = _call(
+            _build({"merlin_opu_gemm_i8_0": (m, n, k)}, tmp_path / "ser", edge=64),
+            "merlin_opu_gemm_i8_0",
+            a,
+            b,
+            shape=(m, n, k),
+        )
         np.testing.assert_array_equal(par, ser)
 
     def test_the_serial_loop_is_kept_separate_from_the_parallel_one(self):
@@ -551,16 +660,18 @@ class TestTheTileLoopIsParallel:
         one keeps its hoist. Asserting the shape of the guard is what keeps a later simplification from
         collapsing them back into one and quietly reintroducing that cost.
         """
-        src = str(emit_translation_unit(_TABLE, {"merlin_opu_gemm_i8_0": (64, 64, 64)}, spec=_SPEC,
-                                        alignment_bytes=_ALIGN))
+        src = str(
+            emit_translation_unit(_TABLE, {"merlin_opu_gemm_i8_0": (64, 64, 64)}, spec=_SPEC, alignment_bytes=_ALIGN)
+        )
         i = src.index("#pragma omp parallel for")
-        assert "#ifdef _OPENMP" in src[i - 200:i], "the pragma must sit inside an _OPENMP guard"
+        assert "#ifdef _OPENMP" in src[i - 200 : i], "the pragma must sit inside an _OPENMP guard"
         parallel, _, serial = src[i:].partition("#else")
         # The parallel form recomputes both lengths in the inner loop; the serial one hoists `ml`.
         assert parallel.count("const size_t ml") == 1 and parallel.count("const size_t nl") == 1
-        head = serial[:serial.index("#endif")]
-        assert head.index("const size_t ml") < head.index("for (size_t j"), \
+        head = serial[: serial.index("#endif")]
+        assert head.index("const size_t ml") < head.index("for (size_t j"), (
             "the serial loop must keep the row length hoisted out of the column loop"
+        )
 
 
 class TestTheUnitContract:
@@ -572,28 +683,31 @@ class TestTheUnitContract:
 
     def test_the_shipped_contract_declares_the_unit(self):
         from merlin.llvmlower.opu_shim import load_contract
+
         got = load_contract("saturn_opu")
         assert got.pin and got.root_env
         for key in ("consts", "instructions", "params", "crosscheck_header"):
             assert key in got.sources, f"the derivation reads {key} and the contract must say where"
-        for key in ("funct6_enum", "consts_container", "insn_seq", "opcode_name", "form_funct3",
-                    "crosscheck_pairs"):
+        for key in ("funct6_enum", "consts_container", "insn_seq", "opcode_name", "form_funct3", "crosscheck_pairs"):
             assert key in got.declarations
 
     def test_it_names_a_pin_that_exists(self):
         # A contract pointing at an undeclared pin would build an object nothing could attribute.
         from merlin.common import provenance as PROV
         from merlin.llvmlower.opu_shim import load_contract
+
         assert load_contract("saturn_opu").pin in PROV.load_pins()
 
     def test_the_kernel_roles_produce_a_valid_spec(self):
         from merlin.llvmlower.opu_shim import load_contract
+
         spec = load_contract("saturn_opu").spec()
         assert spec.accumulate and spec.broadcast and spec.readout
         assert spec.row_vreg_alt is not None, "the RTL hazard workaround must stay on by default"
 
     def test_an_unknown_unit_lists_what_exists(self):
         from merlin.llvmlower.opu_shim import load_contract
+
         with pytest.raises(KeyError, match="declared"):
             load_contract("no_such_unit")
 
@@ -601,6 +715,7 @@ class TestTheUnitContract:
         p = tmp_path / "units.yaml"
         p.write_text("version: 1\nunits:\n  u:\n    pin: x\n    root_env: E\n", encoding="utf-8")
         from merlin.llvmlower.opu_shim import load_contract
+
         with pytest.raises(ValueError, match="missing"):
             load_contract("u", path=p)
 
@@ -611,7 +726,9 @@ class TestBuildingAgainstTheRealCheckout:
     @pytest.fixture
     def built(self, tmp_path):
         from merlin.common.paths import env as _env
-        from merlin.llvmlower import opu_shim as S, toolchain
+        from merlin.llvmlower import opu_shim as S
+        from merlin.llvmlower import toolchain
+
         if not _env("MERLIN_CHIPYARD"):
             pytest.skip("needs the hardware checkout ($MERLIN_CHIPYARD)")
         if not toolchain.available():
@@ -620,10 +737,14 @@ class TestBuildingAgainstTheRealCheckout:
             S.load_contract("saturn_opu").source("consts").read_text()
         except OSError:
             pytest.skip("the pinned checkout does not carry the unit's sources")
-        return S.build_object({"merlin_opu_gemm_i8_0": (196, 1024, 256)}, tmp_path,
-                              unit="saturn_opu", config="OPUV256D128ShuttleConfig", cc=toolchain.clang(),
-                              cflags=["--target=riscv64-unknown-elf", "-march=rv64gcv",
-                                      "-mabi=lp64d", "-O2", "-Wall", "-Werror"])
+        return S.build_object(
+            {"merlin_opu_gemm_i8_0": (196, 1024, 256)},
+            tmp_path,
+            unit="saturn_opu",
+            config="OPUV256D128ShuttleConfig",
+            cc=toolchain.clang(),
+            cflags=["--target=riscv64-unknown-elf", "-march=rv64gcv", "-mabi=lp64d", "-O2", "-Wall", "-Werror"],
+        )
 
     def test_the_geometry_is_derived_from_the_named_config(self, built):
         # VLEN=256 / dLen=128 -> a 32-lane tile edge at e8 and a 16-byte operand alignment. Both come from
@@ -632,13 +753,19 @@ class TestBuildingAgainstTheRealCheckout:
 
     def test_a_wider_config_derives_a_wider_tile_with_no_code_change(self, tmp_path):
         from merlin.common.paths import env as _env
-        from merlin.llvmlower import opu_shim as S, toolchain
+        from merlin.llvmlower import opu_shim as S
+        from merlin.llvmlower import toolchain
+
         if not _env("MERLIN_CHIPYARD") or not toolchain.available():
             pytest.skip("needs the hardware checkout and the pinned clang")
-        got = S.build_object({"merlin_opu_gemm_i8_0": (64, 64, 64)}, tmp_path / "wide",
-                             unit="saturn_opu", config="OPUV512D256ShuttleConfig", cc=toolchain.clang(),
-                             cflags=["--target=riscv64-unknown-elf", "-march=rv64gcv",
-                                     "-mabi=lp64d", "-O2"])
+        got = S.build_object(
+            {"merlin_opu_gemm_i8_0": (64, 64, 64)},
+            tmp_path / "wide",
+            unit="saturn_opu",
+            config="OPUV512D256ShuttleConfig",
+            cc=toolchain.clang(),
+            cflags=["--target=riscv64-unknown-elf", "-march=rv64gcv", "-mabi=lp64d", "-O2"],
+        )
         assert (got.tile_edge, got.alignment_bytes) == (64, 32)
 
     def test_it_records_which_revision_the_object_came_from(self, built):
@@ -655,13 +782,20 @@ class TestBuildingAgainstTheRealCheckout:
 
     def test_the_scalar_build_carries_the_derived_edge(self, tmp_path):
         from merlin.common.paths import env as _env
-        from merlin.llvmlower import opu_shim as S, toolchain
+        from merlin.llvmlower import opu_shim as S
+        from merlin.llvmlower import toolchain
+
         if not _env("MERLIN_CHIPYARD") or not toolchain.available():
             pytest.skip("needs the hardware checkout and the pinned clang")
-        got = S.build_object({"merlin_opu_gemm_i8_0": (64, 64, 64)}, tmp_path / "sc",
-                             unit="saturn_opu", config="OPUV256D128ShuttleConfig", cc=toolchain.clang(),
-                             cflags=["--target=riscv64-unknown-elf", "-march=rv64gcv",
-                                     "-mabi=lp64d", "-O2"], scalar_tile=True)
+        got = S.build_object(
+            {"merlin_opu_gemm_i8_0": (64, 64, 64)},
+            tmp_path / "sc",
+            unit="saturn_opu",
+            config="OPUV256D128ShuttleConfig",
+            cc=toolchain.clang(),
+            cflags=["--target=riscv64-unknown-elf", "-march=rv64gcv", "-mabi=lp64d", "-O2"],
+            scalar_tile=True,
+        )
         assert got.scalar_tile and got.tile_edge == 32
         # A report must never confuse the stand-in with the datapath.
         assert got.to_dict()["scalar_tile"] is True
@@ -679,6 +813,7 @@ class TestConfigsLiveInMoreThanOnePlace:
     def contract(self):
         from merlin.common.paths import env as _env
         from merlin.llvmlower.opu_shim import load_contract
+
         if not _env("MERLIN_CHIPYARD"):
             pytest.skip("needs the hardware checkout ($MERLIN_CHIPYARD)")
         return load_contract("saturn_opu")
@@ -697,14 +832,19 @@ class TestConfigsLiveInMoreThanOnePlace:
         assert contract.geometry("GemminiAndOPUShuttleConfig") == (16, 8)
 
     def test_the_shim_builds_for_the_existing_bitstreams_geometry(self, contract, tmp_path):
-        from merlin.llvmlower import opu_shim as S, toolchain
+        from merlin.llvmlower import opu_shim as S
+        from merlin.llvmlower import toolchain
+
         if not toolchain.available():
             pytest.skip("needs the pinned clang")
-        got = S.build_object({"merlin_opu_gemm_i8_0": (196, 1024, 256)}, tmp_path,
-                             unit="saturn_opu", config="GemminiAndOPUShuttleConfig",
-                             cc=toolchain.clang(),
-                             cflags=["--target=riscv64-unknown-elf", "-march=rv64gcv",
-                                     "-mabi=lp64d", "-O2", "-Wall", "-Werror"])
+        got = S.build_object(
+            {"merlin_opu_gemm_i8_0": (196, 1024, 256)},
+            tmp_path,
+            unit="saturn_opu",
+            config="GemminiAndOPUShuttleConfig",
+            cc=toolchain.clang(),
+            cflags=["--target=riscv64-unknown-elf", "-march=rv64gcv", "-mabi=lp64d", "-O2", "-Wall", "-Werror"],
+        )
         assert (got.tile_edge, got.alignment_bytes) == (16, 8)
         assert got.object_path.is_file()
 

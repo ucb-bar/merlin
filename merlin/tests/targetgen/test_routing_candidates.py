@@ -12,6 +12,7 @@ routing decisions on the strength of having no data, and an unmeasured unit that
 ruled out for the same reason — so declining is a third outcome, and a demand whose only legal unit is
 unmeasured still has to route somewhere and be honest that it did so unscored.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -23,9 +24,15 @@ _MATMUL = ("matmul",)
 
 
 def _unit(name, kind, *, dtypes=("int8",), ops=_MATMUL, exposure=None, contains=()):
-    return CU.ComputeUnit(name=name, kind=kind, dtypes=tuple(dtypes), ops=tuple(ops),
-                          accumulate=(CU.AccumRule("int8", "int8", "i32"),),
-                          exposure=exposure, contains=tuple(contains))
+    return CU.ComputeUnit(
+        name=name,
+        kind=kind,
+        dtypes=tuple(dtypes),
+        ops=tuple(ops),
+        accumulate=(CU.AccumRule("int8", "int8", "i32"),),
+        exposure=exposure,
+        contains=tuple(contains),
+    )
 
 
 #: A hybrid target: both units can legally run an int8 matmul, which is the case the old router cannot
@@ -51,6 +58,7 @@ class TestExposureIsPerUnit:
         # This is what makes the change inert: a unit that declares nothing, on a target that declares
         # nothing, resolves exactly as it did before the axis existed.
         from merlin.targetgen import families
+
         for kind in sorted(CU.KINDS):
             expected = families.family_profile(kind).endpoint_kind_default
             assert CU.resolve_exposure(_unit("u", kind)) == expected
@@ -59,25 +67,28 @@ class TestExposureIsPerUnit:
         # The whole point: a spatial datapath defaults to command_buffer, but software drives THIS one
         # with vector instructions. A taxonomy that cannot express that cannot express the machine.
         from merlin.targetgen import families
+
         assert families.family_profile("spatial").endpoint_kind_default == "command_buffer"
-        assert CU.resolve_exposure(_unit("mat", "spatial", exposure="inline_asm_insn")) == \
-            "inline_asm_insn"
+        assert CU.resolve_exposure(_unit("mat", "spatial", exposure="inline_asm_insn")) == "inline_asm_insn"
 
     def test_two_units_can_have_different_exposures_at_once(self):
-        units = [_unit("vec", "vector", exposure="upstream_target"),
-                 _unit("mat", "spatial", exposure="inline_asm_insn")]
-        got = {c.unit: c.exposure
-               for e in R.route_candidates([_demand()], units) for c in e.candidates}
+        units = [
+            _unit("vec", "vector", exposure="upstream_target"),
+            _unit("mat", "spatial", exposure="inline_asm_insn"),
+        ]
+        got = {c.unit: c.exposure for e in R.route_candidates([_demand()], units) for c in e.candidates}
         assert got == {"vec": "upstream_target", "mat": "inline_asm_insn"}
 
     def test_an_unknown_exposure_is_refused_at_parse_time(self):
         with pytest.raises(ValueError, match="exposure"):
-            CU.compute_units({"compute_units": [
-                {"name": "u", "kind": "spatial", "dtypes": ["int8"], "exposure": "telepathy"}]})
+            CU.compute_units(
+                {"compute_units": [{"name": "u", "kind": "spatial", "dtypes": ["int8"], "exposure": "telepathy"}]}
+            )
 
     def test_a_declared_exposure_survives_parsing(self):
-        units = CU.compute_units({"compute_units": [
-            {"name": "u", "kind": "spatial", "dtypes": ["int8"], "exposure": "inline_asm_insn"}]})
+        units = CU.compute_units(
+            {"compute_units": [{"name": "u", "kind": "spatial", "dtypes": ["int8"], "exposure": "inline_asm_insn"}]}
+        )
         assert units[0].exposure == "inline_asm_insn"
 
     def test_composition_does_not_inherit_a_childs_exposure(self):
@@ -118,10 +129,15 @@ class TestCandidatesAreEnumerated:
 
 
 class TestTheWrapperIsInert:
-    @pytest.mark.parametrize("units", [
-        _hybrid(), list(reversed(_hybrid())), [_unit("only", "vector")],
-        [_unit("v", "vector", dtypes=("int8",))],
-    ])
+    @pytest.mark.parametrize(
+        "units",
+        [
+            _hybrid(),
+            list(reversed(_hybrid())),
+            [_unit("only", "vector")],
+            [_unit("v", "vector", dtypes=("int8",))],
+        ],
+    )
     def test_route_picks_the_first_candidate(self, units):
         demands = [_demand(), _demand(m=1, n=64, k=64), _demand(in_fmt="fp4", weight_fmt="fp4")]
         cands = R.route_candidates(demands, units)
@@ -151,11 +167,13 @@ class TestTheEagerBaseline:
 
 class TestTheMeasuredModel:
     def _model(self, **kw):
-        base = dict(macs_per_cycle={"vec": 4.0, "mat": 256.0},
-                    dispatch_cycles={"mat": 200.0, "vec": 0.0},
-                    pack_cycles_per_element={"mat": 2.0},
-                    requires_k_major=frozenset({"mat"}),
-                    tile_edge={"mat": 32})
+        base = dict(
+            macs_per_cycle={"vec": 4.0, "mat": 256.0},
+            dispatch_cycles={"mat": 200.0, "vec": 0.0},
+            pack_cycles_per_element={"mat": 2.0},
+            requires_k_major=frozenset({"mat"}),
+            tile_edge={"mat": 32},
+        )
         base.update(kw)
         return R.MeasuredCost(**base)
 
@@ -180,8 +198,7 @@ class TestTheMeasuredModel:
     def test_crossing_a_tile_boundary_costs_another_tile(self):
         # One extra row doubles the tiles. Dispatch is excluded here because it is a fixed additive term
         # and would dilute the factor being asserted.
-        model = self._model(pack_cycles_per_element={}, requires_k_major=frozenset(),
-                            dispatch_cycles={})
+        model = self._model(pack_cycles_per_element={}, requires_k_major=frozenset(), dispatch_cycles={})
         cand = R.Candidate("mat", "spatial", "i32", "x")
         assert model(_demand(33, 32, 64), cand) == 2 * model(_demand(32, 32, 64), cand)
 
@@ -198,14 +215,12 @@ class TestTheMeasuredModel:
         # unit would win, which is how a routing decision comes out in favour of a unit that then spends
         # more time rearranging memory than computing.
         shape = _demand(64, 8, 512)
-        cheap = R.select(R.route_candidates([shape], _hybrid()),
-                         self._model(pack_cycles_per_element={"mat": 0.0}))
-        dear = R.select(R.route_candidates([shape], _hybrid()),
-                        self._model(pack_cycles_per_element={"mat": 40.0}))
+        cheap = R.select(R.route_candidates([shape], _hybrid()), self._model(pack_cycles_per_element={"mat": 0.0}))
+        dear = R.select(R.route_candidates([shape], _hybrid()), self._model(pack_cycles_per_element={"mat": 40.0}))
         assert cheap[0].unit == "mat" and dear[0].unit == "vec"
 
     def test_an_unmeasured_unit_is_declined_not_scored(self):
-        model = self._model(macs_per_cycle={"vec": 4.0})       # "mat" absent
+        model = self._model(macs_per_cycle={"vec": 4.0})  # "mat" absent
         assert model(_demand(256, 256, 256), R.Candidate("mat", "spatial", "i32", "x")) is None
 
     def test_a_declined_unit_does_not_win_by_having_no_data(self):
@@ -242,8 +257,11 @@ class TestSelectionSemantics:
             assert got[0].unit is None and got[0].gap is not None
 
     def test_selection_preserves_demand_order_and_count(self):
-        demands = [_demand(1, 1, 8, site="a"), _demand(in_fmt="fp4", weight_fmt="fp4", site="b"),
-                   _demand(64, 64, 64, site="c")]
+        demands = [
+            _demand(1, 1, 8, site="a"),
+            _demand(in_fmt="fp4", weight_fmt="fp4", site="b"),
+            _demand(64, 64, 64, site="c"),
+        ]
         got = R.select(R.route_candidates(demands, _hybrid()), R.eager_cost)
         assert [r.demand.site for r in got] == ["a", "b", "c"]
 

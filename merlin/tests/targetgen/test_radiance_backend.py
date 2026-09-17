@@ -15,6 +15,7 @@ Scope of the hardware test is deliberately narrow and matches what the backend c
 buffer executes bit-exact on the target's own RTL-derived model, across warps, on the base integer
 ISA. It is NOT a tensor-core result and NOT a certification of the package's hand-authored dialect.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -35,7 +36,7 @@ def backend():
     # later test in the session, which is how one suite silently reconfigures another.
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("MERLIN_TARGET_PATH", str(PACKAGE))
-        patch.setattr(base, "_oot_env_seen", None)   # re-run OOT discovery with the env now set
+        patch.setattr(base, "_oot_env_seen", None)  # re-run OOT discovery with the env now set
         names = [n for n in base.list_backends() if n.startswith("radiance")]
         if not names:
             pytest.skip("the package's backend did not register (its optional deps are absent)")
@@ -58,8 +59,11 @@ def _matmul_cb(m: int = 16, k: int = 32, n: int = 16, *, epilogue=None, **commit
         },
         "commands": [
             {"opcode": "MATMUL", "operands": {"lhs": "A0", "rhs": "A1", "dst": "acc0"}},
-            {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"},
-             "attributes": {"epilogue": epilogue or [], "output_dtype": "i32", **commit_attrs}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc0", "dst": "Y0"},
+                "attributes": {"epilogue": epilogue or [], "output_dtype": "i32", **commit_attrs},
+            },
         ],
     }
 
@@ -70,23 +74,27 @@ def test_the_package_supplies_its_own_backend_and_the_core_names_nothing(backend
     import yaml
 
     contract = yaml.safe_load((PACKAGE / "contracts" / "target_contract.yaml").read_text())
-    assert (contract.get("plugin") or {}).get("backend") == "backend.py", \
+    assert (contract.get("plugin") or {}).get("backend") == "backend.py", (
         "the contract must name its own backend file; that declaration is the only thing that wires it"
-    assert backend.__file__.startswith(str(PACKAGE)), \
+    )
+    assert backend.__file__.startswith(str(PACKAGE)), (
         f"the loaded backend must live in the package, not in the core tree (got {backend.__file__})"
+    )
 
     core_backends = repo_root() / "merlin/python/merlin/runtime/backends"
     core_text = (core_backends / "base.py").read_text(encoding="utf-8")
-    assert backend.BACKEND_NAME not in core_text, \
+    assert backend.BACKEND_NAME not in core_text, (
         "the core registry must not seed this backend's name — it self-registers from the package"
+    )
 
 
 # ------------------------------------------------------------------ what it refuses, and why
 def test_residency_is_refused_and_names_the_missing_aperture(backend):
     """A pack realized in global memory has made nothing resident; refusing beats pretending."""
     cb = _matmul_cb()
-    cb["commands"].insert(0, {"opcode": "RES_PACK", "operands": {"src": "A1", "dst": "A1_res"},
-                              "attributes": {"layout": "packed_rhs"}})
+    cb["commands"].insert(
+        0, {"opcode": "RES_PACK", "operands": {"src": "A1", "dst": "A1_res"}, "attributes": {"layout": "packed_rhs"}}
+    )
     with pytest.raises(backend.EmitError) as excinfo:
         backend.emit_kernel(cb)
     message = str(excinfo.value)
@@ -130,9 +138,9 @@ def test_the_warp_count_comes_from_the_contract_not_a_default(backend):
 # ------------------------------------------------------------------ what it emits
 def test_the_accumulator_width_is_computed_from_the_operands(backend):
     """i8 x i8 over K=32 needs 21 bits; habit would say i32 and be right here and wrong later."""
-    assert backend.accumulator_dtype("i8", "i8", 32) == "i32"     # 8 + 8 + 5 = 21 bits
-    assert backend.accumulator_dtype("i8", "i8", 1) == "i16"      # 8 + 8 + 0 = 16 bits
-    assert backend.accumulator_dtype("i16", "i16", 4) == "i64"    # 16 + 16 + 2 = 34 bits
+    assert backend.accumulator_dtype("i8", "i8", 32) == "i32"  # 8 + 8 + 5 = 21 bits
+    assert backend.accumulator_dtype("i8", "i8", 1) == "i16"  # 8 + 8 + 0 = 16 bits
+    assert backend.accumulator_dtype("i16", "i16", 4) == "i64"  # 16 + 16 + 2 = 34 bits
     # 32 + 32 + 2 = 66 bits fits nothing here, so it must refuse rather than wrap silently.
     with pytest.raises(backend.EmitError, match="accumulator bits"):
         backend.accumulator_dtype("i32", "i32", 4)
@@ -147,15 +155,17 @@ def test_every_command_partitions_work_the_same_way(backend):
     oracle), so the emitter cannot repair such a schedule after the fact; it must not emit one.
     """
     source = backend.emit_kernel(_matmul_cb()).source
-    assert "i += MU_NUM_WARPS" not in source, \
+    assert "i += MU_NUM_WARPS" not in source, (
         "a flat-index stride crosses row ownership; partition by row like the matmul does"
+    )
     strided = source.count("m += MU_NUM_WARPS")
     assert strided > 0, "no warp-strided loop was emitted at all"
     # Counted as a ratio rather than against the command count: the derived scaffold emits the body
     # twice (the spawned workers and warp 0's own tile), and that is the scaffold's business, not this
     # assertion's. Every row loop must start at wid and step by the warp count.
-    assert source.count("m = wid") == strided, \
+    assert source.count("m = wid") == strided, (
         "every command's row loop must be both based at wid and strided by the warp count"
+    )
 
 
 def test_operands_are_volatile_so_the_kernel_cannot_be_folded_away(backend):
@@ -165,8 +175,9 @@ def test_operands_are_volatile_so_the_kernel_cannot_be_folded_away(backend):
     """
     source = backend.emit_kernel(_matmul_cb()).source
     for name in ("A0", "A1", "acc0", "Y0"):
-        assert f"volatile int8_t {name}[" in source or f"volatile int32_t {name}[" in source, \
+        assert f"volatile int8_t {name}[" in source or f"volatile int32_t {name}[" in source, (
             f"{name} must be volatile or the contraction can be constant-folded at build time"
+        )
 
 
 def test_the_simt_control_ops_are_derived_not_spelled(backend):
@@ -195,8 +206,9 @@ def test_the_spawn_count_is_capped_below_the_declared_warp_slots_and_says_so(bac
     emitted = backend.emit_kernel(_matmul_cb())
     assert emitted.num_warps == backend.ORACLE_SPAWN_WARPS
     assert emitted.warps_declared == backend.warps_per_core()
-    assert emitted.warps_declared > emitted.num_warps, \
+    assert emitted.warps_declared > emitted.num_warps, (
         "if the declared count stops exceeding the cap, re-measure rather than deleting this"
+    )
     assert emitted.warps_capped is True
     assert f"MU_NUM_WARPS {backend.ORACLE_SPAWN_WARPS}u" in emitted.source
 
@@ -216,27 +228,33 @@ def test_completion_is_asserted_before_any_output_is_graded(backend):
     that reads as a miscompile.
     """
     source = backend.emit_kernel(_matmul_cb()).source
-    assert f"{backend.SENTINEL}[0] = 1;" in source, \
+    assert f"{backend.SENTINEL}[0] = 1;" in source, (
         "the kernel must record its own completion, and only after every warp has parked"
+    )
     # It has to be set in the manager tail — i.e. after the wait on the warp mask, not inside the body.
     tail = source.split("while(_wmask()!=1){}")[-1]
-    assert f"{backend.SENTINEL}[0] = 1;" in tail, \
+    assert f"{backend.SENTINEL}[0] = 1;" in tail, (
         "a sentinel set before the wait would mean 'warp 0 finished', not 'the kernel finished'"
+    )
 
 
 # ------------------------------------------------------------------ the hardware grade
 @pytest.mark.slow
-@pytest.mark.xfail(strict=True, reason=(
-    "the emitted kernel does not reach its completion sentinel, so its output is deliberately not graded. "
-    "What IS established on RTL: the contraction is bit-exact (acc0 read back as [192,192,64,64,...], "
-    "matching the reference exactly) with the operands correctly in device memory — the arithmetic and the "
-    "operand plumbing are right. What blocks the whole-kernel grade is the ORACLE's visibility of a "
-    "kernel's final stores: measured, a store is unreliably recovered when little or no execution follows "
-    "it, and a `fence` (the standard remedy, and what this hardware's own runtime uses) transcodes but "
-    "stops execution dead — nothing after one runs. Both are outside this backend; see "
-    "docs/design/target_kernel_anatomy.md. Not worked around by padding the tail with filler stores until "
-    "the real one becomes visible: that would pass by exploiting the race that makes the grade "
-    "meaningless. strict=True so this fails loudly the moment it starts passing."))
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "the emitted kernel does not reach its completion sentinel, so its output is deliberately not graded. "
+        "What IS established on RTL: the contraction is bit-exact (acc0 read back as [192,192,64,64,...], "
+        "matching the reference exactly) with the operands correctly in device memory — the arithmetic and the "
+        "operand plumbing are right. What blocks the whole-kernel grade is the ORACLE's visibility of a "
+        "kernel's final stores: measured, a store is unreliably recovered when little or no execution follows "
+        "it, and a `fence` (the standard remedy, and what this hardware's own runtime uses) transcodes but "
+        "stops execution dead — nothing after one runs. Both are outside this backend; see "
+        "docs/design/target_kernel_anatomy.md. Not worked around by padding the tail with filler stores until "
+        "the real one becomes visible: that would pass by exploiting the race that makes the grade "
+        "meaningless. strict=True so this fails loudly the moment it starts passing."
+    ),
+)
 def test_the_command_buffer_executes_bit_exact_on_the_targets_own_rtl(backend, tmp_path):
     """The result the missing slot existed to make possible.
 
@@ -252,11 +270,10 @@ def test_the_command_buffer_executes_bit_exact_on_the_targets_own_rtl(backend, t
         pytest.skip("stock LLVM tools / derived ISA fact / RTL-arc model not all present")
 
     result = backend.run_command_buffer(_matmul_cb(m=4, k=8, n=4), workdir=tmp_path)
-    assert result["oracle"]["derived_from_rtl"] is True, \
-        "a grade that is not against RTL must not be reported as one"
+    assert result["oracle"]["derived_from_rtl"] is True, "a grade that is not against RTL must not be reported as one"
     assert result["correct"], (
-        f"device output differs from the reference\n got: {result['outputs']}\n"
-        f"expected: {result['expected']}")
+        f"device output differs from the reference\n got: {result['outputs']}\nexpected: {result['expected']}"
+    )
 
 
 @pytest.mark.slow
@@ -283,11 +300,10 @@ def test_the_pipelines_own_command_buffer_executes_on_rtl(backend, tmp_path):
 
     spec = triton_kernels.matmul_one_tile_spec()
     staged = compile_core.compile_core_mlir(
-        to_linalg(triton_source.make_ttir(spec), spec).module,
-        target_package=load_target(PACKAGE)).staged
+        to_linalg(triton_source.make_ttir(spec), spec).module, target_package=load_target(PACKAGE)
+    ).staged
 
-    result = backend.run_command_buffer(staged.command_buffer, workdir=tmp_path,
-                                        max_cycles=600_000, timeout=1800)
+    result = backend.run_command_buffer(staged.command_buffer, workdir=tmp_path, max_cycles=600_000, timeout=1800)
     assert result["correct"], (
-        f"device output differs from the reference\n got: {result['outputs']}\n"
-        f"expected: {result['expected']}")
+        f"device output differs from the reference\n got: {result['outputs']}\nexpected: {result['expected']}"
+    )

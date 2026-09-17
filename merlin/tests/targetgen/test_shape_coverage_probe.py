@@ -16,14 +16,15 @@ M-tiles (a bare ECALL), 1187 at two K-tiles, 1205 at two N-tiles -- the same M-v
 post-freeze holdout took a paid run to find. The control target lowers all four and its work grows
 monotonically.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from merlin.targetgen import lowering_coverage as LC
 
-
 # --------------------------------------------------------------- the interface it probes with
+
 
 def test_the_probe_interface_is_the_capsule_shape_with_different_extents():
     """Only the extents differ from a real corpus capsule -- otherwise this is a new op, not a probe."""
@@ -52,16 +53,26 @@ def test_tail_corners_cover_subtile_and_each_independent_remainder_axis():
 
 # --------------------------------------------------------------- the invariant
 
+
 def _sweep(monkeypatch, work_by_corner, declined=()):
     """Drive sweep() with a fake emit path so the invariant is tested, not a real backend."""
-    monkeypatch.setattr(LC, "_binding", lambda t: type(
-        "B", (), {"operand_dtype": "int8", "accum_dtype": "int32",
-                  "mlir_dtype": staticmethod(lambda tok: {"int8": "i8"}.get(tok, "i32"))})())
+    monkeypatch.setattr(
+        LC,
+        "_binding",
+        lambda t: type(
+            "B",
+            (),
+            {
+                "operand_dtype": "int8",
+                "accum_dtype": "int32",
+                "mlir_dtype": staticmethod(lambda tok: {"int8": "i8"}.get(tok, "i32")),
+            },
+        )(),
+    )
     monkeypatch.setattr(LC, "tile_edge", lambda t: 32)
 
     def fake(package, *, target, m, k, n, operand_mlir, accum_mlir, contract=None, timeout=300):
-        corner = next(c for c, (fm, fk, fn) in LC.CORNERS.items()
-                      if (32 * fm, 32 * fk, 32 * fn) == (m, k, n))
+        corner = next(c for c, (fm, fk, fn) in LC.CORNERS.items() if (32 * fm, 32 * fk, 32 * fn) == (m, k, n))
         if corner in declined:
             return "declined", "no loop over this axis", 0
         return "lowered", None, work_by_corner[corner]
@@ -71,9 +82,19 @@ def _sweep(monkeypatch, work_by_corner, declined=()):
 
 
 def test_tail_failures_are_named_per_axis_without_a_golden(monkeypatch):
-    monkeypatch.setattr(LC, "_binding", lambda t: type(
-        "B", (), {"operand_dtype": "int8", "accum_dtype": "int32",
-                  "mlir_dtype": staticmethod(lambda tok: {"int8": "i8"}.get(tok, "i32"))})())
+    monkeypatch.setattr(
+        LC,
+        "_binding",
+        lambda t: type(
+            "B",
+            (),
+            {
+                "operand_dtype": "int8",
+                "accum_dtype": "int32",
+                "mlir_dtype": staticmethod(lambda tok: {"int8": "i8"}.get(tok, "i32")),
+            },
+        )(),
+    )
     monkeypatch.setattr(LC, "tile_edge", lambda t: 32)
 
     def fake(package, *, target, m, k, n, operand_mlir, accum_mlir, contract=None, timeout=300):
@@ -82,11 +103,12 @@ def test_tail_failures_are_named_per_axis_without_a_golden(monkeypatch):
         return "lowered", None, 100
 
     monkeypatch.setattr(LC, "probe_shape", fake)
-    result = LC.sweep("pkg", target="t", corners={"tile": (1, 1, 1)},
-                      tail_corners={"sub_tile": (-1, -1, -1),
-                                    "m_tail": (1, 0, 0),
-                                    "k_tail": (0, 1, 0),
-                                    "n_tail": (0, 0, 1)})
+    result = LC.sweep(
+        "pkg",
+        target="t",
+        corners={"tile": (1, 1, 1)},
+        tail_corners={"sub_tile": (-1, -1, -1), "m_tail": (1, 0, 0), "k_tail": (0, 1, 0), "n_tail": (0, 0, 1)},
+    )
 
     assert result["tail_axes_uncovered"] == ["n"]
     assert result["tail_cases_uncovered"] == ["n_tail"]
@@ -101,8 +123,7 @@ def test_a_program_that_shrinks_on_a_bigger_problem_is_a_silent_refusal(monkeypa
     assert by["k_2tiles"] == by["n_2tiles"] == "lowered"
     assert r["multi_tile_axes_uncovered"] == ["m"], "names the AXIS, which is the actionable part"
     assert r["all_covered"] is False
-    assert "cannot compute more by doing less" in next(
-        c["detail"] for c in r["corners"] if c["corner"] == "m_2tiles")
+    assert "cannot compute more by doing less" in next(c["detail"] for c in r["corners"] if c["corner"] == "m_2tiles")
 
 
 def test_work_that_grows_on_every_axis_is_covered(monkeypatch):
@@ -115,8 +136,7 @@ def test_work_that_grows_on_every_axis_is_covered(monkeypatch):
 
 def test_a_stated_decline_is_uncovered_but_not_a_collapse(monkeypatch):
     """Declining is the HONEST way to not cover a shape. Still uncovered; no longer silent."""
-    r = _sweep(monkeypatch, {"tile": 418, "m_2tiles": 0, "k_2tiles": 900, "n_2tiles": 900},
-               declined=("m_2tiles",))
+    r = _sweep(monkeypatch, {"tile": 418, "m_2tiles": 0, "k_2tiles": 900, "n_2tiles": 900}, declined=("m_2tiles",))
     by = {c["corner"]: c["outcome"] for c in r["corners"]}
     assert by["m_2tiles"] == "declined"
     assert r["n_declined"] == 1 and r["n_collapsed"] == 0
@@ -141,8 +161,11 @@ def test_a_failing_baseline_refuses_to_attribute_anything_to_shape(monkeypatch):
     worse than no answer. Measured: substituting a gradeable operand dtype moved the probe onto a
     different lowering path with a different tile edge and produced exactly that false reading.
     """
-    r = _sweep(monkeypatch, {"tile": 0, "m_2tiles": 0, "k_2tiles": 0, "n_2tiles": 0},
-               declined=("tile", "m_2tiles", "k_2tiles", "n_2tiles"))
+    r = _sweep(
+        monkeypatch,
+        {"tile": 0, "m_2tiles": 0, "k_2tiles": 0, "n_2tiles": 0},
+        declined=("tile", "m_2tiles", "k_2tiles", "n_2tiles"),
+    )
     assert r["baseline_tile_lowered"] is False
     assert r["multi_tile_axes_uncovered"] == []
     assert r["all_covered"] is False
@@ -151,16 +174,19 @@ def test_a_failing_baseline_refuses_to_attribute_anything_to_shape(monkeypatch):
 
 # --------------------------------------------------------------- end to end, on the real submissions
 
-@pytest.mark.parametrize("target,pkg,expected_axes", [
-    ("atlas", "out/runs/atlas/capsule-bench/merlin_assisted/merlincirct_atlas_arm4_v1/submission", ["m"]),
-    ("gemmini",
-     "out/runs/gemmini/capsule-bench/merlin_assisted/merlincirct_gemarm4_codex/submission", []),
-])
-def test_the_frozen_submissions_reproduce_their_measured_holdout_boundary(target, pkg, expected_axes,
-                                                                          monkeypatch):
+
+@pytest.mark.parametrize(
+    "target,pkg,expected_axes",
+    [
+        ("atlas", "out/runs/atlas/capsule-bench/merlin_assisted/merlincirct_atlas_arm4_v1/submission", ["m"]),
+        ("gemmini", "out/runs/gemmini/capsule-bench/merlin_assisted/merlincirct_gemarm4_codex/submission", []),
+    ],
+)
+def test_the_frozen_submissions_reproduce_their_measured_holdout_boundary(target, pkg, expected_axes, monkeypatch):
     """The whole point, end to end: this finds -- with no holdout, no golden and no oracle -- the same
     boundary that previously took a post-freeze holdout on a paid run."""
     from merlin.common.paths import repo_root
+
     p = repo_root() / pkg
     if not (p / "manifest.yaml").is_file():
         pytest.skip(f"frozen submission not present: {pkg}")
@@ -169,8 +195,10 @@ def test_the_frozen_submissions_reproduce_their_measured_holdout_boundary(target
     # test_model_grade.py, the eight tests holding "a model capsule only passes if its layers actually
     # ran on the mesh" resolved a different target, failed closed, and reported `incomplete`. They
     # passed in isolation and failed in the full suite, which is the shape of a guard nobody trusts.
-    monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(
-        repo_root() / f"merlin/experiments/capsule_bench/targets/{target}/target_experiment.yaml"))
+    monkeypatch.setenv(
+        "MERLIN_TARGET_EXPERIMENT",
+        str(repo_root() / f"merlin/experiments/capsule_bench/targets/{target}/target_experiment.yaml"),
+    )
     cov = LC.sweep(p, target=target, contract=str(repo_root() / "merlin/contract"))
     assert cov["baseline_tile_lowered"] is True, "the one-tile baseline must lower for this to mean anything"
     assert cov["multi_tile_axes_uncovered"] == expected_axes

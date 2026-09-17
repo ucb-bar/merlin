@@ -10,6 +10,7 @@ cells are data and are allowed to move. The properties are:
 Property 3 is the one that justifies the layer existing. If it ever fails, the static layer has
 become a cost optimization rather than a coverage gain, and the write-up must say so.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -19,12 +20,14 @@ from merlin.verify.tools import find_filecheck, find_mlir_tool
 
 pytestmark = pytest.mark.skipif(
     not (HAS_XDSL and HAS_Z3 and find_filecheck() and find_mlir_tool("mlir-translate")),
-    reason="needs the verify extra and the in-tree LLVM tools")
+    reason="needs the verify extra and the in-tree LLVM tools",
+)
 
 
 @pytest.fixture(scope="module")
 def matrix():
     from merlin.verify.evaluate import run_matrix
+
     return run_matrix(m=2, k=2, n=2, reuse=2, timeout_ms=60_000)
 
 
@@ -73,11 +76,11 @@ def test_static_layer_catches_something_nothing_else_does(matrix):
     for d in matrix["detections"]:
         if d["detected"]:
             by_fault.setdefault(d["fault"], set()).add(d["layer"])
-    only_static = [f for f, layers in by_fault.items()
-                   if layers == {"static"} and f not in abstained_on]
+    only_static = [f for f, layers in by_fault.items() if layers == {"static"} and f not in abstained_on]
     assert only_static, (
         "no fault is caught by the static layer alone — it has become a cost optimization "
-        "rather than a coverage gain, and the write-up must say so")
+        "rather than a coverage gain, and the write-up must say so"
+    )
 
 
 def test_render_reports_unmeasured_layers(matrix):

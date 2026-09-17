@@ -21,6 +21,7 @@ passing treatment is attributable to the implication rather than to the arms.
 
 Deliberately NOT asserted here: that the lever is now a speedup. That is a board measurement.
 """
+
 from __future__ import annotations
 
 import tempfile
@@ -29,8 +30,8 @@ from pathlib import Path
 import pytest
 
 from merlin.common.paths import repo_root
-from merlin.llvmlower import lower as _lower_mod  # noqa: F401  (registers runner-gated features)
 from merlin.llvmlower import impr_features as impr
+from merlin.llvmlower import lower as _lower_mod  # noqa: F401  (registers runner-gated features)
 from merlin.llvmlower.selfcopy import FEATURE as SELF_COPY
 from merlin.llvmlower.toolchain import available as _toolchain_available
 
@@ -58,6 +59,7 @@ func.func @f(%a: tensor<4x64xf32>) -> tensor<4x64xf32> {
 # 1. the closure -- cheap, always runs
 # ---------------------------------------------------------------------------------------------
 
+
 def test_the_lever_implies_the_self_copy_erase():
     """Without this, everyone who names the lever in ``compiler_features`` gets the cancelled
     version: the vector win paid back as a memcpy per tile."""
@@ -77,6 +79,7 @@ def test_the_baseline_is_untouched():
     assert impr.normalize(None) == frozenset()
     assert impr.normalize([]) == frozenset()
     from merlin.llvmlower.pipeline import RVV_TRANSFORM_SCHEDULE
+
     assert impr.apply_schedule(RVV_TRANSFORM_SCHEDULE, frozenset()) == RVV_TRANSFORM_SCHEDULE
     assert SELF_COPY not in impr.normalize([])
 
@@ -90,6 +93,7 @@ def test_the_hygiene_is_named_once():
 # ---------------------------------------------------------------------------------------------
 # 2. the emitted code -- does the per-tile self-copy actually go away?
 # ---------------------------------------------------------------------------------------------
+
 
 def _self_memcpy_sizes(ll_text: str) -> list[str]:
     """Byte sizes of every ``llvm.memcpy`` whose SOURCE and DESTINATION are the same SSA value.
@@ -113,9 +117,9 @@ def _self_memcpy_sizes(ll_text: str) -> list[str]:
 
 def _lower(text: str, sched: str, features: frozenset[str], tmp_path) -> str:
     from merlin.llvmlower.pipeline import lower_to_llvm_ir
+
     work = Path(tempfile.mkdtemp(prefix="vecrealize_", dir=str(tmp_path)))
-    return lower_to_llvm_ir(text, workdir=work, vectorize=True,
-                            transform_schedule=sched, features=features)
+    return lower_to_llvm_ir(text, workdir=work, vectorize=True, transform_schedule=sched, features=features)
 
 
 @pytest.mark.skipif(not _toolchain_available(), reason="m2m venv / clang not configured")
@@ -127,8 +131,8 @@ def test_the_vectorized_tile_is_not_copied_onto_itself(tmp_path):
     implication and not to the tiling.
     """
     from merlin.llvmlower.pipeline import RVV_TRANSFORM_SCHEDULE
-    armed = impr.apply_schedule(RVV_TRANSFORM_SCHEDULE,
-                                impr.normalize([impr.VEC_NONCONTRACTION_NAME]))
+
+    armed = impr.apply_schedule(RVV_TRANSFORM_SCHEDULE, impr.normalize([impr.VEC_NONCONTRACTION_NAME]))
     assert "merlin.vec_r2" in armed
     assert impr.apply_schedule(armed, impr.normalize([impr.VEC_NONCONTRACTION_NAME])) == armed
 
@@ -146,8 +150,7 @@ def test_the_vectorized_tile_is_not_copied_onto_itself(tmp_path):
         assert arm.count(f"load <{impr.VEC_NONCONTRACTION_LANES} x float>") >= 1
         assert arm.count(f"store <{impr.VEC_NONCONTRACTION_LANES} x float>") >= 1
     # ...and it is not paid for with new memory traffic: total copies and allocations both fall.
-    assert (treated.count("call void @llvm.memcpy")
-            < control.count("call void @llvm.memcpy"))
+    assert treated.count("call void @llvm.memcpy") < control.count("call void @llvm.memcpy")
     assert treated.count("call ptr @malloc") < control.count("call ptr @malloc")
 
 
@@ -156,11 +159,11 @@ def test_an_untagged_module_is_unaffected_by_the_lever(tmp_path):
     """The arms match by attribute; a module carrying none must lower identically with the feature
     on or off, so nothing here can be attributed to the implied erase firing on unrelated code."""
     from merlin.llvmlower.pipeline import RVV_TRANSFORM_SCHEDULE
+
     untagged = _TAGGED_RELU.replace("\n      attrs = {merlin.vec_r2}", "")
     assert "merlin.vec_r2" not in untagged
     off = _lower(untagged, RVV_TRANSFORM_SCHEDULE, frozenset(), tmp_path)
-    on = _lower(untagged, RVV_TRANSFORM_SCHEDULE,
-                frozenset([impr.VEC_NONCONTRACTION_NAME]), tmp_path)
+    on = _lower(untagged, RVV_TRANSFORM_SCHEDULE, frozenset([impr.VEC_NONCONTRACTION_NAME]), tmp_path)
     assert _self_memcpy_sizes(off) == [] and _self_memcpy_sizes(on) == []
     assert off == on
 
@@ -169,10 +172,12 @@ def test_an_untagged_module_is_unaffected_by_the_lever(tmp_path):
 # 3. where the cost comes from -- the tiling on tensors, before any of the above
 # ---------------------------------------------------------------------------------------------
 
+
 def _mlir_opt() -> Path:
     """``mlir-opt`` of the same standalone LLVM install the pipeline's translate comes from --
     derived from the resolved tool, never a hardcoded path."""
     from merlin.llvmlower.toolchain import mlir_translate
+
     return mlir_translate().parent / "mlir-opt"
 
 
@@ -189,8 +194,7 @@ def test_the_tiling_on_tensors_is_what_emits_the_copy(tmp_path):
 
     from merlin.llvmlower.pipeline import RVV_TRANSFORM_SCHEDULE, build_rvv_pipeline
 
-    armed = impr.apply_schedule(RVV_TRANSFORM_SCHEDULE,
-                                impr.normalize([impr.VEC_NONCONTRACTION_NAME]))
+    armed = impr.apply_schedule(RVV_TRANSFORM_SCHEDULE, impr.normalize([impr.VEC_NONCONTRACTION_NAME]))
     sched = tmp_path / "sched.mlir"
     sched.write_text(armed, encoding="utf-8")
     pipeline = build_rvv_pipeline(sched)
@@ -210,14 +214,17 @@ def test_the_tiling_on_tensors_is_what_emits_the_copy(tmp_path):
         cur.append(ch)
     passes.append("".join(cur))
     stop = max(i for i, p in enumerate(passes) if "buffer-loop-hoisting" in p)
-    prefix = ",".join(passes[:stop + 1] + ["canonicalize", "cse"])
+    prefix = ",".join(passes[: stop + 1] + ["canonicalize", "cse"])
 
     src = tmp_path / "in.mlir"
     src.write_text(_TAGGED_RELU, encoding="utf-8")
     out = tmp_path / "out.mlir"
-    proc = subprocess.run([str(_mlir_opt()), str(src),
-                           f"--pass-pipeline=builtin.module({prefix})", "-o", str(out)],
-                          capture_output=True, text=True, timeout=600)
+    proc = subprocess.run(
+        [str(_mlir_opt()), str(src), f"--pass-pipeline=builtin.module({prefix})", "-o", str(out)],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
     assert proc.returncode == 0, proc.stderr
     text = out.read_text(encoding="utf-8")
 

@@ -23,6 +23,7 @@ The host half is compiled for the machine running the harness (x86 here), which 
 code. The device half is assembled for the device. That the two are different architectures is the
 whole point of a seam.
 """
+
 from __future__ import annotations
 
 import struct
@@ -33,10 +34,10 @@ import pytest
 
 from merlin.common.paths import artifacts_dir
 
-
 # ------------------------------------------------------------------------------------------------
 # discovery -- what this checkout can actually build a seam for
 # ------------------------------------------------------------------------------------------------
+
 
 def _emittable_target_with_a_package() -> tuple[str, Path] | None:
     """A (target, package_dir) whose seam this repo can emit, or None if this checkout has none.
@@ -81,8 +82,10 @@ def seam(tmp_path_factory):
         pytest.skip(f"no {missing} in this environment; the seam cannot be assembled or compiled")
     found = _emittable_target_with_a_package()
     if found is None:
-        pytest.skip("this checkout has no backend package for any device_native target "
-                    "(they are generated output); nothing to emit a seam from")
+        pytest.skip(
+            "this checkout has no backend package for any device_native target "
+            "(they are generated output); nothing to emit a seam from"
+        )
     target, package_dir = found
 
     # Extents and datapath DERIVED from the target: its own mesh tile is the shape its package emits a
@@ -91,9 +94,15 @@ def seam(tmp_path_factory):
     d = int(binding.tile_dim)
     work = tmp_path_factory.mktemp("seam")
     built = build_device_native_seam(
-        target, {"layer0": (d, d, d)}, package_dir=package_dir, workdir=work,
-        operand_dtype=binding.operand_dtype, accum_dtype=binding.accum_dtype,
-        codegen_target="x86", timeout=900)
+        target,
+        {"layer0": (d, d, d)},
+        package_dir=package_dir,
+        workdir=work,
+        operand_dtype=binding.operand_dtype,
+        accum_dtype=binding.accum_dtype,
+        codegen_target="x86",
+        timeout=900,
+    )
     if not built.programs:
         pytest.skip(f"{target}'s package emitted no seam for a {d}x{d}x{d} tile: {built.skipped}")
     return built, target, binding, work
@@ -102,6 +111,7 @@ def seam(tmp_path_factory):
 # ------------------------------------------------------------------------------------------------
 # the artifact
 # ------------------------------------------------------------------------------------------------
+
 
 def test_a_complete_seam_is_emitted(seam):
     """Both halves and the contract, in one build. A device image with no stager is not a seam."""
@@ -130,7 +140,7 @@ def test_the_device_image_is_the_assembled_directives_not_their_text(seam):
     words: list[int] = []
     only_words = True
     for raw in art.read_text(encoding="utf-8").splitlines():
-        line = raw.split("#", 1)[0].strip()          # structural: strip the comment, no regex
+        line = raw.split("#", 1)[0].strip()  # structural: strip the comment, no regex
         if not line or line.endswith(":") or not line.startswith("."):
             continue
         directive, _, rest = line.partition(" ")
@@ -142,7 +152,8 @@ def test_the_device_image_is_the_assembled_directives_not_their_text(seam):
     assert prog.image, "the assembled image is empty"
     if only_words:
         assert prog.image == b"".join(struct.pack("<I", w) for w in words), (
-            "the image is not the little-endian assembly of the package's own words")
+            "the image is not the little-endian assembly of the package's own words"
+        )
     else:
         assert prog.image[:4] == struct.pack("<I", words[0])
 
@@ -154,9 +165,11 @@ def test_the_address_contract_is_window_relative_and_sized_from_the_format(seam)
     built, target, _binding, _work = seam
     from merlin.system.derive import link_for
     from merlin.targetgen.target_experiment import load_capability_manifest
+
     link = link_for(target, getattr(load_capability_manifest(target), "endpoint_kind", None))
     assert built.window_base == int(link.device_dram_base), (
-        "the window was not the one the device's own memory map declares")
+        "the window was not the one the device's own memory map declares"
+    )
 
     prog = built.programs[0]
     assert prog.tensors, "an address contract with no tensors is not a contract"
@@ -166,7 +179,7 @@ def test_the_address_contract_is_window_relative_and_sized_from_the_format(seam)
         assert t.device_address >= built.window_base
         assert t.window_offset == t.device_address - built.window_base
         width = CS.dtype_info(t.dtype)[2]
-        if width is not None:                        # sub-byte formats have no byte width
+        if width is not None:  # sub-byte formats have no byte width
             n = 1
             for dim in t.shape:
                 n *= dim
@@ -174,7 +187,8 @@ def test_the_address_contract_is_window_relative_and_sized_from_the_format(seam)
     ordered = sorted(prog.tensors, key=lambda t: t.window_offset)
     for prev, nxt in zip(ordered, ordered[1:]):
         assert prev.window_offset + prev.nbytes <= nxt.window_offset, (
-            f"{prev.name} and {nxt.name} overlap; staging one would destroy the other")
+            f"{prev.name} and {nxt.name} overlap; staging one would destroy the other"
+        )
 
 
 def test_the_host_unit_carries_the_whole_image_and_the_same_offsets(seam):
@@ -190,8 +204,7 @@ def test_the_host_unit_carries_the_whole_image_and_the_same_offsets(seam):
         assert f"{{ {t.window_offset}u, {t.nbytes}u }}" in text, f"{t.name} slot missing"
     # No absolute host address may appear in generated code: the mapping is not derivable.
     for t in prog.tensors:
-        assert f"{t.device_address}u" not in text, (
-            f"{t.name}'s absolute address leaked into the generated code")
+        assert f"{t.device_address}u" not in text, f"{t.name}'s absolute address leaked into the generated code"
 
 
 def test_the_host_object_defines_the_entries_and_leaves_only_libc_undefined(seam):
@@ -199,8 +212,7 @@ def test_the_host_object_defines_the_entries_and_leaves_only_libc_undefined(seam
     from merlin.targetgen.contract.toolchain import mlir_bin
 
     built, _target, _binding, _work = seam
-    r = subprocess.run([str(mlir_bin("llvm-nm")), str(built.host_object)],
-                       capture_output=True, text=True, timeout=300)
+    r = subprocess.run([str(mlir_bin("llvm-nm")), str(built.host_object)], capture_output=True, text=True, timeout=300)
     assert r.returncode == 0, r.stderr
     defined, undefined = set(), set()
     for line in r.stdout.splitlines():
@@ -233,7 +245,8 @@ def test_the_seam_links_and_the_stager_honours_its_own_contract(seam, tmp_path):
     window_bytes = max(t.window_offset + t.nbytes for t in prog.tensors) + 64
 
     src = tmp_path / "harness.c"
-    src.write_text(f"""
+    src.write_text(
+        f"""
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -253,16 +266,24 @@ static int stub_launch(void *ctx, const unsigned char *program, uint64_t nbytes)
 }}
 int main(void) {{
   g_window = calloc({window_bytes}u, 1);
-  {"".join(f"unsigned char *op{i} = malloc({t.nbytes}u); memset(op{i}, {0x11 + i}, {t.nbytes}u);"
-           for i, t in enumerate(ins))}
+  {
+            "".join(
+                f"unsigned char *op{i} = malloc({t.nbytes}u); memset(op{i}, {0x11 + i}, {t.nbytes}u);"
+                for i, t in enumerate(ins)
+            )
+        }
   unsigned char *res0 = calloc({out.nbytes}u, 1);
   const void *ops[] = {{ {", ".join(f"op{i}" for i in range(len(ins)))} }};
   void *res[] = {{ res0 }};
   int rc = {prog.entry}_dispatch(g_window, ops, res, stub_launch, 0);
   int staged = 1;
-  {"".join(f'if (g_window[{t.window_offset}u] != {0x11 + i} '
-           f'|| g_window[{t.window_offset + t.nbytes - 1}u] != {0x11 + i}) staged = 0;'
-           for i, t in enumerate(ins))}
+  {
+            "".join(
+                f"if (g_window[{t.window_offset}u] != {0x11 + i} "
+                f"|| g_window[{t.window_offset + t.nbytes - 1}u] != {0x11 + i}) staged = 0;"
+                for i, t in enumerate(ins)
+            )
+        }
   printf("rc=%d bytes=%llu in=%llu out=%llu staged=%d first=%02x last=%02x head=%02x\\n",
          rc, (unsigned long long)g_program_bytes,
          (unsigned long long){prog.entry}_input_count(),
@@ -270,14 +291,19 @@ int main(void) {{
          res0[0], res0[{out.nbytes} - 1], g_window[0]);
   return 0;
 }}
-""", encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
 
     exe = tmp_path / "harness"
-    c = subprocess.run([str(clang()), "-O1", str(src), str(built.host_object), "-o", str(exe)],
-                       capture_output=True, text=True, timeout=600)
+    c = subprocess.run(
+        [str(clang()), "-O1", str(src), str(built.host_object), "-o", str(exe)],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
     if c.returncode != 0:
-        pytest.skip(f"no host link in this environment (clang cannot link a hosted binary): "
-                    f"{c.stderr.strip()[-300:]}")
+        pytest.skip(f"no host link in this environment (clang cannot link a hosted binary): {c.stderr.strip()[-300:]}")
     r = subprocess.run([str(exe)], capture_output=True, text=True, timeout=300)
     assert r.returncode == 0, r.stderr
     fields = dict(tok.split("=", 1) for tok in r.stdout.split())
@@ -286,7 +312,8 @@ int main(void) {{
     assert int(fields["in"]) == len(ins) and int(fields["out"]) == len(prog.outputs)
     assert fields["staged"] == "1", "an operand did not land at its declared offset"
     assert fields["first"] == "ab" and fields["last"] == "ab", (
-        "the result was not collected from the offset the contract declares")
+        "the result was not collected from the offset the contract declares"
+    )
     assert fields["head"] == "00", "the stager wrote outside the slots it declared"
 
 
@@ -313,4 +340,5 @@ def test_a_device_without_a_derivable_window_is_refused(seam):
 
 def _all_targets() -> list[str]:
     from merlin.targetgen.target_registry import all_targets
+
     return all_targets()

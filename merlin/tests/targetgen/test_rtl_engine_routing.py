@@ -4,6 +4,7 @@ The tier records a fidelity; which simulator produced it is an availability choi
 survive onto the result. A tier that silently resolved to a different engine than the capsule asked for
 produces correct-looking numbers that cannot be audited afterwards.
 """
+
 from __future__ import annotations
 
 import pytest

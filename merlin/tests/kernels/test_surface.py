@@ -5,6 +5,7 @@ search that cannot enumerate its own action space cannot report what it did NOT 
 surface would be a fourth list to keep in agreement with regions, routes and the CCA contract - and
 a hand-maintained list silently ceasing to match what it describes is the recurring failure here.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -28,15 +29,14 @@ class TestTheSurfaceMirrorsTheRegistries:
     def test_declared_gaps_are_carried_through_as_gaps(self, surf):
         """A gap is a known place with no registrable hook. Dropping it would make the surface look
         complete; listing it as forkable would make a planner propose an action nobody can apply."""
-        gap_seams = {f"{k}/{ep.seam}" for k, r in rg.REGIONS.items()
-                     for ep in r.edit_points if not ep.forkable_now}
+        gap_seams = {f"{k}/{ep.seam}" for k, r in rg.REGIONS.items() for ep in r.edit_points if not ep.forkable_now}
         assert {e.seam_id for e in surf.gaps()} == gap_seams
         assert gap_seams, "the registry declares gaps; a surface reporting none is not reading it"
 
     def test_a_seam_governing_no_axis_is_reported_not_omitted(self, surf):
         """Ungoverned seams are a real state: the place exists and no CCA axis reaches it."""
         assert surf.ungoverned
-        assert all(not surf.by_axis(a) or True for a in ())      # by_axis is total
+        assert all(not surf.by_axis(a) or True for a in ())  # by_axis is total
         for sid in surf.ungoverned:
             entry = next(e for e in surf.entries if e.seam_id == sid)
             assert entry.cca_axes == ()
@@ -53,8 +53,9 @@ class TestScopeIsDerivedFromTheAxes:
             assert all(e.scope == "program" for e in entries)
 
     def test_an_inner_loop_seam_stays_kernel_scoped(self, surf):
-        entries = [e for e in surf.entries if e.cca_axes and
-                   all(a.startswith(("compute.", "vector.")) for a in e.cca_axes)]
+        entries = [
+            e for e in surf.entries if e.cca_axes and all(a.startswith(("compute.", "vector.")) for a in e.cca_axes)
+        ]
         assert entries and all(e.scope == "kernel" for e in entries)
 
 
@@ -97,13 +98,16 @@ class TestScopeFallsBackToThePhaseNotToTheNarrowestAnswer:
 
     def test_a_phase_with_no_natural_scope_is_not_invented(self):
         from merlin.kernels.surface import _scope_of
+
         assert _scope_of((), "cross-cutting") == "kernel"
         assert _scope_of((), "") == "kernel"
 
     def test_axes_win_over_the_phase_when_present(self):
         from merlin.kernels.surface import _scope_of
+
         assert _scope_of(("coverage.claimed_mac_fraction",), "kernel-codegen") == "program"
 
     def test_the_broadest_axis_wins_not_the_first(self):
         from merlin.kernels.surface import _scope_of
+
         assert _scope_of(("compute.op", "coverage.x"), "") == "program"

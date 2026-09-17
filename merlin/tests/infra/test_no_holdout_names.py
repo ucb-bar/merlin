@@ -14,6 +14,7 @@ surfaces are tracked, `check_holdout_disjointness` asks whether the sets overlap
 whether the GRANTED tree leaks into a running experiment. None asks whether any tracked file, anywhere,
 contains a holdout name.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -23,7 +24,8 @@ import pytest
 from merlin.common.paths import repo_root
 
 _spec = importlib.util.spec_from_file_location(
-    "check_no_holdout_names", repo_root() / "build_tools" / "scripts" / "check_no_holdout_names.py")
+    "check_no_holdout_names", repo_root() / "build_tools" / "scripts" / "check_no_holdout_names.py"
+)
 G = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(G)
 
@@ -52,7 +54,8 @@ def test_the_tree_is_clean_or_every_offender_is_declared_debt():
         f"tracked file(s) name a held-out capsule and are not in the ratchet: "
         f"{[r['file'] for r in rep['leaks']]}. Fix by WITHHOLDING (keep the auditable counts and the "
         f"refusal reasons, drop the identity-bearing fields), or declare it in "
-        f"build_tools/scripts/holdout_name_ratchet.txt with a reason.")
+        f"build_tools/scripts/holdout_name_ratchet.txt with a reason."
+    )
 
 
 def test_the_ratchet_has_no_stale_entries():
@@ -64,7 +67,8 @@ def test_the_ratchet_has_no_stale_entries():
     stale = rep["ratchet_declared"] - rep["n_ratcheted"]
     assert stale <= 0, (
         f"{stale} ratchet entr(y/ies) no longer name a holdout and must be deleted from "
-        f"build_tools/scripts/holdout_name_ratchet.txt — this list may only shrink")
+        f"build_tools/scripts/holdout_name_ratchet.txt — this list may only shrink"
+    )
 
 
 def test_every_ratchet_entry_states_a_reason():

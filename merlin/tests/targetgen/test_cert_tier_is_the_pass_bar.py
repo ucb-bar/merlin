@@ -12,6 +12,7 @@ materialized corpus asked only for spike. Two consequences, neither visible in a
 
 The ceiling exists to avoid REQUIRING a tier the endpoint cannot reach. These pin it to exactly that.
 """
+
 from __future__ import annotations
 
 import sys
@@ -55,15 +56,19 @@ def test_the_pilot_corpus_demands_a_cycle_accurate_tier(target, monkeypatch):
     monkeypatch.setattr(sys, "argv", ["x"])
     import run_baseline_qa_loop as L
 
-    caps = list((L._pilot_subset()).rglob("capsule.yaml")) if hasattr(L._pilot_subset(), "rglob") \
+    caps = (
+        list((L._pilot_subset()).rglob("capsule.yaml"))
+        if hasattr(L._pilot_subset(), "rglob")
         else list(__import__("pathlib").Path(L._pilot_subset()).rglob("capsule.yaml"))
+    )
     assert caps, "pilot subset is empty"
     declared = set()
     for cf in caps:
         declared |= set((yaml.safe_load(cf.read_text()) or {}).get("required_oracle_tiers") or [])
     assert declared - {"L0", "L1", "L2"}, (
         f"{target}: the pilot corpus demands nothing above the screen tier ({sorted(declared)}) -- a "
-        f"functional-sim pass would count as done and the RTL barrier would not arm")
+        f"functional-sim pass would count as done and the RTL barrier would not arm"
+    )
 
     armed, why = L._cycle_accurate_checkpoint_enabled()
     assert armed, f"{target}: cycle-accurate barrier disarmed: {why}"

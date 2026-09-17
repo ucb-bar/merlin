@@ -9,6 +9,7 @@ canonical matrix-unit workload — and the published recall was computed without
 These tests pin the correction: the certificate prices the unmatched mass from the module itself and
 states a recall FLOOR beside the headline number, so a reader gets a bracket instead of one end of one.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen import coverage_certificate as cc
@@ -54,8 +55,8 @@ module {
 }
 """
 
-_MATMUL_MACS = 4 * 8 * 16       # 512, what the matcher saw
-_GENERIC_MACS = 2 * 6 * 4 * 6   # 288, what it did not
+_MATMUL_MACS = 4 * 8 * 16  # 512, what the matcher saw
+_GENERIC_MACS = 2 * 6 * 4 * 6  # 288, what it did not
 
 
 def _plan_one_accelerated_matmul():
@@ -74,8 +75,7 @@ def test_unmatched_contraction_is_priced_from_the_module():
     assert got["matched_contraction_macs"] == _MATMUL_MACS
     assert got["unmatched_contraction_macs"] == _GENERIC_MACS
     assert got["n_unmatched_contractions"] == 1
-    assert abs(got["unmatched_contraction_share"]
-               - _GENERIC_MACS / (_MATMUL_MACS + _GENERIC_MACS)) < 1e-9
+    assert abs(got["unmatched_contraction_share"] - _GENERIC_MACS / (_MATMUL_MACS + _GENERIC_MACS)) < 1e-9
     assert got["caveats"], "an unmatched contraction must be stated, not just counted"
 
 
@@ -131,14 +131,12 @@ def test_no_module_reports_the_absence_rather_than_implying_completeness():
     cert = cc.build(_plan_one_accelerated_matmul(), _cap_map(), target=None)
     assert cert["denominator_completeness"] is None
     assert cert["unmatched_contraction_flops"] == 0
-    assert cert["metrics"]["acceleratable_flop_recall_lower_bound"] == \
-        cert["metrics"]["acceleratable_flop_recall"]
+    assert cert["metrics"]["acceleratable_flop_recall_lower_bound"] == cert["metrics"]["acceleratable_flop_recall"]
 
 
 def test_an_unparseable_module_surfaces_the_error_instead_of_vanishing():
     """Fail closed: a certificate that silently drops the block looks exactly like a complete one."""
-    cert = cc.build(_plan_one_accelerated_matmul(), _cap_map(), target=None,
-                    linalg_mlir="this is not MLIR {{{")
+    cert = cc.build(_plan_one_accelerated_matmul(), _cap_map(), target=None, linalg_mlir="this is not MLIR {{{")
     got = cert["denominator_completeness"]
     assert got is not None and "error" in got
     assert "UNKNOWN" in got["note"]

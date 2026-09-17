@@ -22,5 +22,5 @@ def test_expected_and_observed_values_still_scrub():
 
 
 def test_a_shape_still_survives():
-    out = qa_check._scrub_numbers('tensor<16x16xi8>')
+    out = qa_check._scrub_numbers("tensor<16x16xi8>")
     assert "16x16xi8" in out

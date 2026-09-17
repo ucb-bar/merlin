@@ -13,6 +13,7 @@ tile, which is the backend that shipped. The corners are per-axis because a lowe
 N but not M passes two of three, and naming the axis is the difference between "add a loop over M" and
 "the compiler does not generalize".
 """
+
 from __future__ import annotations
 
 from merlin.targetgen import capability_probes as CP
@@ -20,8 +21,9 @@ from merlin.targetgen.compute_units import SemanticCapability
 
 
 def _cap(family="contraction", **kw):
-    return SemanticCapability(family=family, dtypes=kw.pop("dtypes", ("int8",)),
-                              layouts=(), transpose=False, batch=False, **kw)
+    return SemanticCapability(
+        family=family, dtypes=kw.pop("dtypes", ("int8",)), layouts=(), transpose=False, batch=False, **kw
+    )
 
 
 def test_the_tile_edge_is_derived_per_target_not_a_literal():
@@ -73,8 +75,7 @@ def test_synthesize_threads_the_target_through():
 
 def test_a_unary_family_gets_no_k_or_n_multi_tile_probe():
     """It has no K or N to tile over; emitting those would be an unanswerable probe, not a strict one."""
-    names = {p.name.rpartition(".")[2]
-             for p in CP.probes_for_family("normalization", _cap("normalization"), tile=32)}
+    names = {p.name.rpartition(".")[2] for p in CP.probes_for_family("normalization", _cap("normalization"), tile=32)}
     assert "m_2tiles" in names
     assert "k_2tiles" not in names and "n_2tiles" not in names
 

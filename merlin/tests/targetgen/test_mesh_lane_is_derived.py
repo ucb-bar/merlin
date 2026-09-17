@@ -18,6 +18,7 @@ A fifth defect was the same shape one level up: routing compared format SPELLING
 contract declaring ``int8`` routed 0 of 15 contractions to a mesh that supports all of them -- and the
 coverage certificate reported that as a real-looking ARR of 0.0.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -43,22 +44,26 @@ def _model_capsule(target: str):
 @pytest.mark.parametrize("target", TARGETS)
 def test_the_mesh_datapath_is_read_off_the_target(target):
     from merlin.runtime.dispatch_runtime import mesh_datapath
+
     b = mesh_datapath(target)
     spelling = b.mlir_dtype(b.operand_dtype)
     assert b.operand_dtype and b.accum_dtype and spelling
     assert isinstance(b.integer, bool)
     # the MLIR spelling must be the one the target's own registry entry declares
     from merlin.targetgen.corpus_spec import dtype_info
+
     assert spelling == dtype_info(b.operand_dtype)[1]
 
 
 def test_two_targets_derive_two_different_datapaths():
     """The regression guard: a single hardcoded pair cannot be right for both."""
     from merlin.runtime.dispatch_runtime import mesh_datapath
+
     got = {t: mesh_datapath(t) for t in TARGETS}
     assert len({(g.operand_dtype, g.accum_dtype, g.integer) for g in got.values()}) > 1, got
-    assert (any(g.integer for g in got.values()) and not all(g.integer for g in got.values())), \
+    assert any(g.integer for g in got.values()) and not all(g.integer for g in got.values()), (
         "one integer datapath and one float datapath — the boundary cannot treat them alike"
+    )
 
 
 def test_the_datapath_carries_the_targets_declared_facts_not_dataclass_defaults():
@@ -72,6 +77,7 @@ def test_the_datapath_carries_the_targets_declared_facts_not_dataclass_defaults(
     """
     from merlin.runtime.dispatch_runtime import mesh_datapath
     from merlin.targetgen.corpus_spec import profile_datapath
+
     for t in TARGETS:
         declared = profile_datapath(t)
         if not declared:
@@ -79,8 +85,9 @@ def test_the_datapath_carries_the_targets_declared_facts_not_dataclass_defaults(
         b = mesh_datapath(t)
         for field in ("subnormal_operand_flush", "atol", "rtol"):
             if field in declared:
-                assert getattr(b, field) == declared[field], \
+                assert getattr(b, field) == declared[field], (
                     f"{t}: profile declares {field}={declared[field]!r}, binding carries {getattr(b, field)!r}"
+                )
 
 
 @pytest.mark.parametrize("target", TARGETS)
@@ -90,8 +97,7 @@ def test_a_model_routes_its_contractions_to_the_mesh(target):
     declared = ((cap.get("operation") or {}).get("attributes") or {}).get("dtype")
     assert declared, "a model capsule must declare its datapath format"
     plan = R.route_plan(CSRC.model_op_demands(lin, declared), target)
-    assert len(plan.get("mesh") or []) > 0, \
-        f"{target}: 0 contractions routed on its own declared format {declared!r}"
+    assert len(plan.get("mesh") or []) > 0, f"{target}: 0 contractions routed on its own declared format {declared!r}"
 
 
 def test_an_alias_routes_but_a_different_format_still_does_not():
@@ -113,6 +119,7 @@ def test_an_alias_routes_but_a_different_format_still_does_not():
 def test_routing_and_eligibility_agree_on_what_a_format_is(target):
     """The two sides of ARR. If they disagree about spelling, the ratio measures spelling."""
     from merlin.targetgen import eligibility as el
+
     cap, lin = _model_capsule(target)
     declared = ((cap.get("operation") or {}).get("attributes") or {}).get("dtype")
     cap_map = el.capability_map_for_target(target)
@@ -121,10 +128,10 @@ def test_routing_and_eligibility_agree_on_what_a_format_is(target):
     for d in demands:
         if id(d) not in routed:
             continue
-        v = el.is_eligible(el.RegionDescriptor(source=d.site or d.op, op=d.op, in_dtype=d.in_fmt,
-                                               weight_dtype=d.weight_fmt), cap_map)
-        assert v.eligible, \
-            f"{target}: routed {d.op} to the mesh while the oracle calls it ineligible ({v.reason})"
+        v = el.is_eligible(
+            el.RegionDescriptor(source=d.site or d.op, op=d.op, in_dtype=d.in_fmt, weight_dtype=d.weight_fmt), cap_map
+        )
+        assert v.eligible, f"{target}: routed {d.op} to the mesh while the oracle calls it ineligible ({v.reason})"
 
 
 @pytest.mark.parametrize("target", TARGETS)
@@ -143,11 +150,13 @@ def test_the_runner_finds_the_linalg_the_capsule_declares(target):
 def test_a_capstone_that_demands_acceleration_selects_the_mesh_lane(target):
     """Grading a must_accelerate capsule on the host lane passes a run that cannot possibly satisfy it."""
     import os
+
     cap, _ = _model_capsule(target)
     if not (cap.get("semantic") or {}).get("must_accelerate"):
         pytest.skip(f"{target}: capstone demand not grounded in this checkout")
-    assert not os.environ.get("MERLIN_MODEL_GRADE_RUN"), \
+    assert not os.environ.get("MERLIN_MODEL_GRADE_RUN"), (
         "this test describes the DEFAULT lane; unset the override to run it"
+    )
     sem = cap.get("semantic") or {}
     lane = os.environ.get("MERLIN_MODEL_GRADE_RUN") or ("mesh" if sem.get("must_accelerate") else "host")
     assert lane == "mesh"

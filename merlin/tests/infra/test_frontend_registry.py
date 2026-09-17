@@ -1,4 +1,5 @@
 """Tests for the frontend-adapter registry + extended bundle variants."""
+
 from __future__ import annotations
 
 import pytest
@@ -11,7 +12,7 @@ def test_registry_lists_adapters_and_resolves_modules():
     names = fr.list_adapters()
     assert {"m2m", "gguf"} <= set(names)
     for name in names:
-        mod = fr.get_adapter(name)          # lazy import must succeed
+        mod = fr.get_adapter(name)  # lazy import must succeed
         assert mod.NAME == name
         assert callable(mod.can_handle) and callable(mod.ingest)
 
@@ -47,7 +48,7 @@ def test_m2m_adapter_resolves_bundle_without_requiring_files():
 
 def test_bundle_variants_extended():
     for v in ("fp32", "fp16", "bf16", "int8", "fp8", "fp6", "fp4", "mixed"):
-        b = _bundle.resolve("tiny_llama", v)          # must not raise
+        b = _bundle.resolve("tiny_llama", v)  # must not raise
         assert b.variant == v
     with pytest.raises(ValueError):
         _bundle.resolve("tiny_llama", "not_a_variant")

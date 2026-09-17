@@ -9,6 +9,7 @@ literal, and the last three pin the three bugs that were actually found while bu
   * composite families never appearing in a capture, which dropped ``attention`` from a transformer corpus
   * the operand-store fact living in a memories LIST, not a ``shared_memory`` mapping
 """
+
 from __future__ import annotations
 
 import inspect
@@ -36,7 +37,8 @@ def test_admitted_comes_from_the_manifest_not_a_literal():
     # the property survives the next refactor of either.
     src = inspect.getsource(CF.admitted) + inspect.getsource(CF.admitted_with_reason)
     assert "capability_map_for_target" in src, (
-        "neither admitted() nor admitted_with_reason() reads the capability manifest")
+        "neither admitted() nor admitted_with_reason() reads the capability manifest"
+    )
     for fam in sf.FAMILIES:
         assert f'"{fam}"' not in src, f"the admitted path hardcodes the family {fam!r}"
 
@@ -52,11 +54,15 @@ def test_no_target_name_in_executable_code():
     import ast
 
     tree = ast.parse(inspect.getsource(CF))
-    for node in ast.walk(tree):                      # drop every docstring
+    for node in ast.walk(tree):  # drop every docstring
         if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             body = getattr(node, "body", [])
-            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) \
-                    and isinstance(body[0].value.value, str):
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
                 node.body = body[1:]
     code = ast.unparse(tree).lower()
     for name in ("radiance", "gemmini", "atlas", "saturn"):
@@ -140,7 +146,8 @@ def test_extent_probes_straddle_each_real_boundary():
     for p in probes:
         edge = p["edge"]
         assert edge - 1 in p["points"] and edge in p["points"] and edge + 1 in p["points"], (
-            f"probe for {p['boundary']} does not straddle its edge: {p}")
+            f"probe for {p['boundary']} does not straddle its edge: {p}"
+        )
         assert p["source"], f"probe for {p['boundary']} carries no provenance"
 
 

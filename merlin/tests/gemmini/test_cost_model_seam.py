@@ -3,6 +3,7 @@
 The coefficients and vocabulary live in the target's own directory and are resolved by name; the bias
 fold's scale is the accumulator/input datapath width ratio read from the RTL facts, not a literal.
 """
+
 import pytest
 
 from merlin.perf.linear_cost import LinearCostModel, cost_model_artifact, datapath_bits

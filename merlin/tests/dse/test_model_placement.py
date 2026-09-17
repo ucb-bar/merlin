@@ -7,13 +7,12 @@ import pytest
 
 from merlin.perf import model_placement as P
 
-
-SOURCE = '''builtin.module {
+SOURCE = """builtin.module {
   func.func @forward() -> tensor<2xi32> {
     %0 = arith.constant dense<[3, 7]> : tensor<2xi32>
     func.return %0 : tensor<2xi32>
   }
-}'''
+}"""
 
 
 class _Attr:
@@ -34,15 +33,22 @@ class _Shape:
 
 
 def test_placement_is_weighted_by_macs_not_region_count(monkeypatch) -> None:
-    monkeypatch.setattr(P, "observe_contractions", lambda _path: [
-        (_Op("large"), _Shape("linalg.matmul", (64, 64), (64,))),
-        (_Op("small"), _Shape("linalg.matmul", (1, 16), (16,))),
-    ])
+    monkeypatch.setattr(
+        P,
+        "observe_contractions",
+        lambda _path: [
+            (_Op("large"), _Shape("linalg.matmul", (64, 64), (64,))),
+            (_Op("small"), _Shape("linalg.matmul", (1, 16), (16,))),
+        ],
+    )
 
-    got = P.contraction_placement("model.mlir", [
-        {"region": "large", "lane": "engine_a"},
-        {"region": "small", "lane": "engine_b"},
-    ])
+    got = P.contraction_placement(
+        "model.mlir",
+        [
+            {"region": "large", "lane": "engine_a"},
+            {"region": "small", "lane": "engine_b"},
+        ],
+    )
 
     assert got["status"] == "complete"
     assert got["macs_by_lane"] == {"engine_a": 64 * 64 * 64, "engine_b": 1 * 16 * 16}
@@ -51,13 +57,16 @@ def test_placement_is_weighted_by_macs_not_region_count(monkeypatch) -> None:
 
 
 def test_missing_region_placement_stays_explicit(monkeypatch) -> None:
-    monkeypatch.setattr(P, "observe_contractions", lambda _path: [
-        (_Op("known"), _Shape("linalg.matmul", (16, 16), (16,))),
-        (_Op("missing"), _Shape("linalg.matmul", (8, 8), (8,))),
-    ])
+    monkeypatch.setattr(
+        P,
+        "observe_contractions",
+        lambda _path: [
+            (_Op("known"), _Shape("linalg.matmul", (16, 16), (16,))),
+            (_Op("missing"), _Shape("linalg.matmul", (8, 8), (8,))),
+        ],
+    )
 
-    got = P.contraction_placement(
-        "model.mlir", [{"region": "known", "lane": "engine"}])
+    got = P.contraction_placement("model.mlir", [{"region": "known", "lane": "engine"}])
 
     assert got["status"] == "partial"
     assert got["unresolved_placement_macs"] == 8 * 8 * 8
@@ -69,8 +78,7 @@ def test_prepared_and_legacy_graph_evidence_are_identical(tmp_path: Path) -> Non
     source.write_text(SOURCE)
     prepared = P.prepare_captured_source(source)
 
-    assert P.captured_global_graph(
-        source, prepared_source=prepared) == P.captured_global_graph(source)
+    assert P.captured_global_graph(source, prepared_source=prepared) == P.captured_global_graph(source)
 
 
 def test_prepared_source_refuses_file_identity_drift(tmp_path: Path) -> None:

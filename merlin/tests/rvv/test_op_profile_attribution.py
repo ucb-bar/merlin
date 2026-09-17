@@ -15,6 +15,7 @@ that was quoted:
 
 Board-free: everything below is the pure arithmetic in ``merlin.llvmlower.op_profile``.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -31,6 +32,7 @@ def _rec(oid, mlir_op, ticks, hits, family=None):
 # =================================================================================================
 # 1. The divisor is the MEASURED execution count, not the requested iteration count.
 # =================================================================================================
+
 
 def test_per_execution_divides_by_the_measured_hits_not_the_requested_iters():
     # 700 ticks accumulated over 7 executions is 100 ticks per execution -- whatever the CLI asked
@@ -50,12 +52,11 @@ def test_an_op_that_never_ran_is_unknown_not_zero():
 
 def test_the_warmup_ratio_reproduces_the_measured_144_percent():
     """The whole 144 % is the window mismatch -- reproduce it, then show the fix removes it."""
-    wall_ticks = 100_964.0                       # the harness's per-timed-iteration wall
-    table = [_rec(0, "linalg.matmul", 722_604, 7)]   # the artifact's total, over 7 executions
+    wall_ticks = 100_964.0  # the harness's per-timed-iteration wall
+    table = [_rec(0, "linalg.matmul", 722_604, 7)]  # the artifact's total, over 7 executions
     opf.annotate_table(table, timebase_hz=TIMEBASE_HZ)
-    good = opf.coverage_report(opf.sum_attributed_ticks(table), wall_ticks,
-                               executions=7, timed_iterations=5)
-    bad_ticks = 722_604 / 5                      # the old divisor
+    good = opf.coverage_report(opf.sum_attributed_ticks(table), wall_ticks, executions=7, timed_iterations=5)
+    bad_ticks = 722_604 / 5  # the old divisor
     bad = opf.coverage_report(bad_ticks, wall_ticks, executions=7, timed_iterations=5)
     assert bad["profiler_coverage"] == pytest.approx(1.44, abs=0.01)
     assert good["profiler_coverage"] == pytest.approx(1.02, abs=0.01)
@@ -70,6 +71,7 @@ def test_the_warmup_ratio_reproduces_the_measured_144_percent():
 # =================================================================================================
 # 2. Coverage outside the band refuses to express anything as a percentage of RUNTIME.
 # =================================================================================================
+
 
 def test_coverage_above_the_band_refuses_runtime_shares():
     cov = opf.coverage_report(144.0, 100.0)
@@ -120,28 +122,26 @@ def test_shares_of_attributed_are_invariant_to_the_bad_divisor():
     table = [_rec(0, "linalg.transpose", 900, 7), _rec(1, "linalg.matmul", 100, 7)]
     opf.annotate_table(table, timebase_hz=TIMEBASE_HZ)
     right = opf.rollup(table, lambda r: r["family_resolved"], "family")
-    for r in table:                       # re-annotate with the WRONG divisor
+    for r in table:  # re-annotate with the WRONG divisor
         r["hits"] = 5
     opf.annotate_table(table, timebase_hz=TIMEBASE_HZ)
     wrong = opf.rollup(table, lambda r: r["family_resolved"], "family")
-    assert [r["share_of_attributed"] for r in right] == pytest.approx(
-        [r["share_of_attributed"] for r in wrong])
-    assert wrong[0]["ms"] > right[0]["ms"]          # the ABSOLUTE ms did move
+    assert [r["share_of_attributed"] for r in right] == pytest.approx([r["share_of_attributed"] for r in wrong])
+    assert wrong[0]["ms"] > right[0]["ms"]  # the ABSOLUTE ms did move
 
 
 # =================================================================================================
 # 3. The family fallback: no false zero for a family whose tag was dropped.
 # =================================================================================================
 
+
 def test_prov_family_wins_when_present():
-    assert opf.resolve_family({"mlir_op": "linalg.generic", "family": "elementwise"}) == (
-        "elementwise", "prov.family")
+    assert opf.resolve_family({"mlir_op": "linalg.generic", "family": "elementwise"}) == ("elementwise", "prov.family")
 
 
 def test_an_untagged_named_contraction_is_still_a_contraction():
     """The whole false zero in one assertion."""
-    assert opf.resolve_family({"mlir_op": "linalg.matmul", "family": None}) == (
-        "contraction", "mlir_op")
+    assert opf.resolve_family({"mlir_op": "linalg.matmul", "family": None}) == ("contraction", "mlir_op")
     assert opf.resolve_family({"mlir_op": "linalg.batch_matmul"})[0] == "contraction"
 
 
@@ -154,14 +154,14 @@ def test_untagged_generic_is_unknown_and_says_so():
     """A generic with no tag may BE a contraction (the int8 datapath makes them); it is not
     evidence that contraction time is zero."""
     assert opf.is_unclassified_generic({"mlir_op": "linalg.generic", "family": None}) is True
-    assert opf.is_unclassified_generic({"mlir_op": "linalg.generic",
-                                        "family": "elementwise"}) is False
+    assert opf.is_unclassified_generic({"mlir_op": "linalg.generic", "family": "elementwise"}) is False
     assert opf.is_unclassified_generic({"mlir_op": "linalg.matmul", "family": None}) is False
 
 
 def test_contraction_ops_covers_everything_the_mac_pricer_prices():
     """Kept in sync with the structural pricer rather than drifting from it."""
     from merlin.xdsl_dialects.lowering.contraction_coverage import MATMUL_OPS
+
     assert set(MATMUL_OPS) <= opf.CONTRACTION_OPS
 
 
@@ -184,8 +184,7 @@ def test_untagged_table_ranks_the_way_the_tagged_one_would():
     table = [dict(r) for r in _UNTAGGED]
     opf.annotate_table(table, timebase_hz=TIMEBASE_HZ)
     rows = opf.rollup(table, lambda r: r["family_resolved"], "family")
-    assert [r["family"] for r in rows[:4]] == [
-        "linalg.transpose", "contraction", "linalg.generic", "tensor.concat"]
+    assert [r["family"] for r in rows[:4]] == ["linalg.transpose", "contraction", "linalg.generic", "tensor.concat"]
     assert all(r["family_sources"] == ["mlir_op"] for r in rows)
 
 
@@ -220,21 +219,22 @@ def test_every_untagged_row_is_marked_as_derived():
 # that is in fact sound -- an under-attribution refusal manufactured by arithmetic, not measurement.
 # =================================================================================================
 
+
 def test_a_plain_model_runs_forward_once_per_iteration():
-    assert opf.executions_per_iteration(7, 5, 2) == 1      # the 144 % artifact's own run
+    assert opf.executions_per_iteration(7, 5, 2) == 1  # the 144 % artifact's own run
     assert opf.executions_per_iteration(1, 1, 0) == 1
 
 
 def test_a_session_bundle_runs_forward_once_per_declared_step():
     """256 steps in one launch of one timed iteration is 256 executions per iteration."""
     assert opf.executions_per_iteration(256, 1, 0) == 256
-    assert opf.executions_per_iteration(768, 2, 1) == 256   # 3 launches x 256 steps
+    assert opf.executions_per_iteration(768, 2, 1) == 256  # 3 launches x 256 steps
 
 
 def test_an_underivable_divisor_is_unknown_not_guessed():
     """A count that is not a whole multiple of the launches means the model did something the
     profiler cannot account for -- refuse rather than round."""
-    assert opf.executions_per_iteration(7, 5, 0) is None    # 7/5 is not whole
+    assert opf.executions_per_iteration(7, 5, 0) is None  # 7/5 is not whole
     assert opf.executions_per_iteration(0, 1, 0) is None
     assert opf.executions_per_iteration(1, 0, 0) is None
 
@@ -242,11 +242,12 @@ def test_an_underivable_divisor_is_unknown_not_guessed():
 def test_a_session_profile_is_not_refused_for_a_window_it_did_not_have():
     """Same ticks, same wall: dividing the wall by the step count is the difference between a
     coverage of ~0.004 (refused) and ~1.0 (reportable)."""
-    wall_ticks = 256_000.0                       # one timed iteration = a 256-step session
-    attributed = 1_000.0                         # per ONE execution of @forward
+    wall_ticks = 256_000.0  # one timed iteration = a 256-step session
+    attributed = 1_000.0  # per ONE execution of @forward
     naive = opf.coverage_report(attributed, wall_ticks, executions=256, timed_iterations=1)
-    fixed = opf.coverage_report(attributed, wall_ticks, executions=256, timed_iterations=1,
-                                executions_per_timed_iteration=256)
+    fixed = opf.coverage_report(
+        attributed, wall_ticks, executions=256, timed_iterations=1, executions_per_timed_iteration=256
+    )
     assert naive["profiler_coverage"] == pytest.approx(1 / 256, abs=1e-4)
     assert naive["runtime_shares_reportable"] is False
     assert fixed["profiler_coverage"] == pytest.approx(1.0)
@@ -265,15 +266,26 @@ def test_an_underivable_divisor_refuses_runtime_shares():
 # 6. Actionable categories: the bucket a lever is aimed at, not the frontend's family name.
 # =================================================================================================
 
+
 def test_the_requant_epilogue_is_not_counted_as_a_contraction():
     """The int8 rewrite splits one matmul into a contraction and a requant epilogue that CARRY THE
     SAME fqn and family. Bucketing on family charges the quantize chain's cost to the matmul --
     which is precisely the claim ('the quantize chain costs more than every matmul combined') this
     profile exists to test."""
-    contraction = {"mlir_op": "linalg.generic", "family": "contraction", "op": "matmul",
-                   "role": "contraction", "fqn": "layers.0.attn.q_proj"}
-    requant = {"mlir_op": "linalg.generic", "family": "contraction", "op": "matmul",
-               "role": "requant", "fqn": "layers.0.attn.q_proj"}
+    contraction = {
+        "mlir_op": "linalg.generic",
+        "family": "contraction",
+        "op": "matmul",
+        "role": "contraction",
+        "fqn": "layers.0.attn.q_proj",
+    }
+    requant = {
+        "mlir_op": "linalg.generic",
+        "family": "contraction",
+        "op": "matmul",
+        "role": "requant",
+        "fqn": "layers.0.attn.q_proj",
+    }
     assert opf.resolve_category(contraction) == ("contraction", "prov.role")
     assert opf.resolve_category(requant) == ("quantize_requant", "prov.role")
     # ... while the FAMILY still calls them both a contraction, which is why the split is needed.
@@ -318,8 +330,17 @@ def test_an_untagged_op_the_map_does_not_know_is_named_not_folded():
 
 
 def test_annotate_table_stamps_the_category_and_its_source():
-    table = [{"id": 0, "mlir_op": "linalg.generic", "family": "contraction", "op": "matmul",
-              "role": "requant", "ticks": 100, "hits": 1}]
+    table = [
+        {
+            "id": 0,
+            "mlir_op": "linalg.generic",
+            "family": "contraction",
+            "op": "matmul",
+            "role": "requant",
+            "ticks": 100,
+            "hits": 1,
+        }
+    ]
     opf.annotate_table(table, timebase_hz=TIMEBASE_HZ)
     assert table[0]["category"] == "quantize_requant"
     assert table[0]["category_source"] == "prov.role"
@@ -329,6 +350,7 @@ def test_annotate_table_stamps_the_category_and_its_source():
 # 7. Every row carries its own denominator: a share quoted alone still says what it is a share of.
 # =================================================================================================
 
+
 def test_every_rollup_row_states_its_denominator_and_coverage():
     """The 144 % profile was quoted one row at a time. A caveat that lives only in a sibling block
     is a caveat that does not travel with the number."""
@@ -337,9 +359,13 @@ def test_every_rollup_row_states_its_denominator_and_coverage():
     refused = opf.rollup(table, lambda r: r["category"], "category", wall_ms=None, coverage=1.44)
     assert all(r["share_denominator"] == "attributed" for r in refused)
     assert all(r["profiler_coverage"] == 1.44 for r in refused)
-    ok = opf.rollup(table, lambda r: r["category"], "category",
-                    wall_ms=opf.sum_attributed_ticks(table) * (1e9 / TIMEBASE_HZ) / 1e6,
-                    coverage=1.0)
+    ok = opf.rollup(
+        table,
+        lambda r: r["category"],
+        "category",
+        wall_ms=opf.sum_attributed_ticks(table) * (1e9 / TIMEBASE_HZ) / 1e6,
+        coverage=1.0,
+    )
     assert all(r["share_denominator"] == "wall" for r in ok)
     assert sum(r["share_of_runtime"] for r in ok) == pytest.approx(1.0)
 
@@ -348,7 +374,7 @@ def test_what_the_profiler_cannot_attribute_is_named_rather_than_missing():
     """A bucket the mark interval structurally cannot see must not read as a measured zero."""
     assert set(opf.CATEGORIES_NOT_ATTRIBUTABLE) == {"allocator", "fork_join", "intra_op"}
     for why in opf.CATEGORIES_NOT_ATTRIBUTABLE.values():
-        assert len(why) > 60          # each says WHY, and what to do instead
+        assert len(why) > 60  # each says WHY, and what to do instead
 
 
 # =================================================================================================
@@ -362,16 +388,18 @@ def test_what_the_profiler_cannot_attribute_is_named_rather_than_missing():
 # which is exactly the comparison the profile is being run to settle.
 # =================================================================================================
 
+
 def test_round_to_int_is_the_quantize_step():
     assert opf.classify_generic_body(["math.roundeven", "arith.fptosi", "arith.divf"]) == (
-        "quantize_requant", "body:round_to_int")
+        "quantize_requant",
+        "body:round_to_int",
+    )
     # a narrowing convert alone is enough; not every spelling rounds explicitly
     assert opf.classify_generic_body(["arith.fptosi"])[0] == "quantize_requant"
 
 
 def test_int_to_float_times_a_scale_is_the_dequantize_step():
-    assert opf.classify_generic_body(["arith.sitofp", "arith.mulf"]) == (
-        "quantize_requant", "body:int_to_float_scale")
+    assert opf.classify_generic_body(["arith.sitofp", "arith.mulf"]) == ("quantize_requant", "body:int_to_float_scale")
 
 
 def test_abs_max_is_the_scale_search_and_keeps_its_own_bucket():
@@ -389,15 +417,18 @@ def test_a_body_no_rule_reads_stays_unknown():
     assert opf.classify_generic_body([]) is None
     assert opf.classify_generic_body(None) is None
     assert opf.resolve_category({"mlir_op": "linalg.generic", "body_ops": ["arith.divf"]}) == (
-        "unclassified_generic", "unknown")
+        "unclassified_generic",
+        "unknown",
+    )
 
 
 def test_int_widen_multiply_accumulate_is_a_contraction():
     body = ["arith.extsi", "arith.extsi", "arith.muli", "arith.addi"]
-    assert opf.classify_generic_body(body) == (
-        "contraction", "body:int_widen_mul_accumulate")
+    assert opf.classify_generic_body(body) == ("contraction", "body:int_widen_mul_accumulate")
     assert opf.resolve_category({"mlir_op": "linalg.generic", "body_ops": body}) == (
-        "contraction", "body:int_widen_mul_accumulate")
+        "contraction",
+        "body:int_widen_mul_accumulate",
+    )
 
 
 def test_plain_integer_axpy_is_not_enough_to_claim_a_contraction():
@@ -405,16 +436,20 @@ def test_plain_integer_axpy_is_not_enough_to_claim_a_contraction():
 
 
 def test_body_evidence_names_itself_so_it_can_be_audited():
-    cat, src = opf.resolve_category({"mlir_op": "linalg.generic",
-                                     "body_ops": ["math.roundeven", "arith.fptosi"]})
+    cat, src = opf.resolve_category({"mlir_op": "linalg.generic", "body_ops": ["math.roundeven", "arith.fptosi"]})
     assert cat == "quantize_requant" and src.startswith("body:")
 
 
 def test_a_tagged_op_is_decided_by_its_tag_not_its_body():
     """Body evidence is the LAST resort, not a competing signal: a contraction whose epilogue was
     fused into it still carries a convert, and must not be re-bucketed as a quantize op."""
-    rec = {"mlir_op": "linalg.generic", "family": "contraction", "op": "matmul",
-           "role": "contraction", "body_ops": ["math.roundeven", "arith.fptosi"]}
+    rec = {
+        "mlir_op": "linalg.generic",
+        "family": "contraction",
+        "op": "matmul",
+        "role": "contraction",
+        "body_ops": ["math.roundeven", "arith.fptosi"],
+    }
     assert opf.resolve_category(rec) == ("contraction", "prov.role")
 
 
@@ -449,5 +484,5 @@ def test_body_ops_are_attached_only_where_they_can_answer_something():
 def test_body_ops_reads_both_print_forms():
     """Bundles ship GENERIC form and the printer emits CUSTOM; a scan that reads only one silently
     finds no body at all, which reads as 'unknown' rather than as a failed match."""
-    assert "arith.mulf" in opf._body_ops('      %3 = arith.mulf %1, %2 : f32')
+    assert "arith.mulf" in opf._body_ops("      %3 = arith.mulf %1, %2 : f32")
     assert "arith.mulf" in opf._body_ops('      %3 = "arith.mulf"(%1, %2) : (f32, f32) -> f32')

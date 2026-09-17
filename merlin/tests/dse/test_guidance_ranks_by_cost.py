@@ -8,6 +8,7 @@ million because "a" precedes "h".
 
 Every case is built from an analysis whose numbers make the correct answer unambiguous.
 """
+
 from __future__ import annotations
 
 from merlin.perf.agent_guidance import (
@@ -19,8 +20,12 @@ EMPTY_INVENTORY = PackageOptimizationInventory(symbols=(), surfaces=())
 
 
 def _task(index: int, *, integer: int = 0, floating: int = 0, regions: tuple[str, ...] = ()):
-    return {"dynamic_operations": {"integer_arithmetic": integer, "floating_arithmetic": floating},
-            "load_payload_bytes": 0, "source_regions": list(regions), "task": index}
+    return {
+        "dynamic_operations": {"integer_arithmetic": integer, "floating_arithmetic": floating},
+        "load_payload_bytes": 0,
+        "source_regions": list(regions),
+        "task": index,
+    }
 
 
 def _analysis(tasks, *, sync_baseline: int = 3, sync_candidate: int = 23):
@@ -30,11 +35,14 @@ def _analysis(tasks, *, sync_baseline: int = 3, sync_candidate: int = 23):
         for name, value in task["dynamic_operations"].items():
             families[name] = families.get(name, 0) + value
     return {
-        "arms": {"baseline": {"status": "emitted", "macs": 1, "exact": True},
-                 "candidate": {"status": "emitted", "macs": 1, "exact": True}},
+        "arms": {
+            "baseline": {"status": "emitted", "macs": 1, "exact": True},
+            "candidate": {"status": "emitted", "macs": 1, "exact": True},
+        },
         "target_artifact_activity": {
             "baseline": {"synchronization_operations": sync_baseline},
-            "candidate": {"synchronization_operations": sync_candidate}},
+            "candidate": {"synchronization_operations": sync_candidate},
+        },
         "verified_global_plan_emission": {
             "status": "verified",
             "host_activity": {
@@ -58,8 +66,9 @@ def _rank_of(brief, kind: str) -> int:
 
 
 def test_the_dominant_cost_location_ranks_first() -> None:
-    brief = _brief([_task(0, integer=549_695, regions=("conv_0",)),
-                    _task(1, integer=100_000), _task(2, integer=50_000)])
+    brief = _brief(
+        [_task(0, integer=549_695, regions=("conv_0",)), _task(1, integer=100_000), _task(2, integer=50_000)]
+    )
     assert brief["ranked_actions"][0]["kind"] == "host_memory_hotspot"
     assert _rank_of(brief, "host_memory_hotspot") == 1
 
@@ -68,8 +77,11 @@ def test_a_measured_hotspot_outranks_an_unsized_regression() -> None:
     """The regression is real; it is simply not known to be big, and the hotspot is known to be."""
     brief = _brief([_task(0, integer=549_695), _task(1, integer=653_050)])
     hotspot = _rank_of(brief, "host_memory_hotspot")
-    others = [row["rank"] for row in brief["ranked_actions"]
-              if row["kind"] != "host_memory_hotspot" and row["magnitude_share"] is None]
+    others = [
+        row["rank"]
+        for row in brief["ranked_actions"]
+        if row["kind"] != "host_memory_hotspot" and row["magnitude_share"] is None
+    ]
     assert others, "the fixture must produce at least one unsized finding to outrank"
     assert hotspot < min(others)
 
@@ -84,8 +96,9 @@ def test_the_reported_share_is_the_largest_task_over_the_whole_lane() -> None:
 def test_tasks_are_ranked_by_operations_not_by_bytes() -> None:
     """The pre-existing list is ordered by payload bytes; cost order is a different order."""
     brief = _brief([_task(0, integer=10), _task(1, integer=1_000), _task(2, integer=100)])
-    ranked = next(row for row in brief["ranked_actions"]
-                  if row["kind"] == "host_memory_hotspot")["evidence"]["cost_ranked_tasks"]
+    ranked = next(row for row in brief["ranked_actions"] if row["kind"] == "host_memory_hotspot")["evidence"][
+        "cost_ranked_tasks"
+    ]
     assert [row["task_index"] for row in ranked] == [1, 2, 0]
     assert [row["dynamic_operations"] for row in ranked] == [1_000, 100, 10]
 
@@ -93,16 +106,18 @@ def test_tasks_are_ranked_by_operations_not_by_bytes() -> None:
 def test_each_cost_location_names_its_dominant_family() -> None:
     """Removing integer operations while leaving floating ones untouched was the observed failure."""
     brief = _brief([_task(0, integer=10, floating=990)])
-    ranked = next(row for row in brief["ranked_actions"]
-                  if row["kind"] == "host_memory_hotspot")["evidence"]["cost_ranked_tasks"]
+    ranked = next(row for row in brief["ranked_actions"] if row["kind"] == "host_memory_hotspot")["evidence"][
+        "cost_ranked_tasks"
+    ]
     assert ranked[0]["dominant_family"] == "floating_arithmetic"
     assert ranked[0]["dominant_family_operations"] == 990
 
 
 def test_cost_locations_name_their_source_regions() -> None:
     brief = _brief([_task(0, integer=100, regions=("conv_0", "dtype_cast_17"))])
-    ranked = next(row for row in brief["ranked_actions"]
-                  if row["kind"] == "host_memory_hotspot")["evidence"]["cost_ranked_tasks"]
+    ranked = next(row for row in brief["ranked_actions"] if row["kind"] == "host_memory_hotspot")["evidence"][
+        "cost_ranked_tasks"
+    ]
     assert ranked[0]["source_regions"] == ["conv_0", "dtype_cast_17"]
     assert ranked[0]["source_region_count"] == 2
 
@@ -110,8 +125,7 @@ def test_cost_locations_name_their_source_regions() -> None:
 def test_ties_still_fall_back_to_the_name_so_the_order_is_deterministic() -> None:
     first = _brief([_task(0, integer=100), _task(1, integer=100)])
     second = _brief([_task(0, integer=100), _task(1, integer=100)])
-    assert [row["kind"] for row in first["ranked_actions"]] == \
-           [row["kind"] for row in second["ranked_actions"]]
+    assert [row["kind"] for row in first["ranked_actions"]] == [row["kind"] for row in second["ranked_actions"]]
 
 
 def test_an_unmeasurable_host_lane_yields_no_share_rather_than_a_zero() -> None:
@@ -119,8 +133,7 @@ def test_an_unmeasurable_host_lane_yields_no_share_rather_than_a_zero() -> None:
     analysis = _analysis([_task(0, integer=100)])
     analysis["verified_global_plan_emission"]["host_activity"]["tasks"] = "UNKNOWN"
     brief = guidance_for_emission_analysis(analysis, EMPTY_INVENTORY)
-    hotspot = next((row for row in brief["ranked_actions"]
-                    if row["kind"] == "host_memory_hotspot"), None)
+    hotspot = next((row for row in brief["ranked_actions"] if row["kind"] == "host_memory_hotspot"), None)
     if hotspot is not None:
         assert hotspot["magnitude_share"] is None
         assert hotspot["evidence"]["cost_ranked_tasks"] == []
@@ -129,8 +142,7 @@ def test_an_unmeasurable_host_lane_yields_no_share_rather_than_a_zero() -> None:
 def test_a_declined_lowering_still_outranks_the_biggest_hotspot() -> None:
     """Nothing to optimize matters while the program does not compile."""
     analysis = _analysis([_task(0, integer=1_000_000)])
-    analysis["arms"]["candidate"] = {"status": "declined",
-                                     "declined": {"op": "conv2d", "reason": "over budget"}}
+    analysis["arms"]["candidate"] = {"status": "declined", "declined": {"op": "conv2d", "reason": "over budget"}}
     brief = guidance_for_emission_analysis(analysis, EMPTY_INVENTORY)
     assert brief["ranked_actions"][0]["kind"] == "whole_model_lowering_declined"
 
@@ -141,15 +153,28 @@ def test_a_declined_lowering_still_outranks_the_biggest_hotspot() -> None:
 # sequences were read; the guidance must carry them so an author can name the primitive.
 # --------------------------------------------------------------------------------------------
 
+
 def test_dominant_block_signatures_are_ranked_and_carry_their_share() -> None:
     analysis = _analysis([_task(0, integer=100)])
     host = analysis["verified_global_plan_emission"]["host_activity"]
     host["dynamic_operations"] = {"integer_arithmetic": 1000, "floating_arithmetic": 0}
     host["block_signatures"] = [
-        {"signature": "fsub ashr and and xor or", "blocks": 50, "trips": 100, "operations_per_trip": 6,
-         "dynamic_total": 600, "dynamic_operations": {"integer_arithmetic": 500, "floating_arithmetic": 100}},
-        {"signature": "udiv urem mul add", "blocks": 2, "trips": 100, "operations_per_trip": 4,
-         "dynamic_total": 400, "dynamic_operations": {"integer_arithmetic": 400}},
+        {
+            "signature": "fsub ashr and and xor or",
+            "blocks": 50,
+            "trips": 100,
+            "operations_per_trip": 6,
+            "dynamic_total": 600,
+            "dynamic_operations": {"integer_arithmetic": 500, "floating_arithmetic": 100},
+        },
+        {
+            "signature": "udiv urem mul add",
+            "blocks": 2,
+            "trips": 100,
+            "operations_per_trip": 4,
+            "dynamic_total": 400,
+            "dynamic_operations": {"integer_arithmetic": 400},
+        },
     ]
     brief = guidance_for_emission_analysis(analysis, EMPTY_INVENTORY)
     hot = next(r for r in brief["ranked_actions"] if r["kind"] == "host_memory_hotspot")
@@ -169,7 +194,8 @@ def test_unused_declared_instructions_become_a_ranked_finding() -> None:
     """A capability the hardware offers and the compiler never emits is the structural lever."""
     analysis = _analysis([_task(0, integer=100)])
     analysis["isa_capability_utilization"] = {
-        "declared_count": 25, "used_count": 8,
+        "declared_count": 25,
+        "used_count": 8,
         "used": {"SEQ": 3787},
         "unused": [{"funct": 15, "name": "SEQ_CONV"}, {"funct": 24, "name": "SEQ_CONFIG_SLOT"}],
         "undeclared_emitted": [],
@@ -184,22 +210,30 @@ def test_unused_declared_instructions_become_a_ranked_finding() -> None:
 
 def test_full_instruction_utilization_raises_no_finding() -> None:
     analysis = _analysis([_task(0, integer=100)])
-    analysis["isa_capability_utilization"] = {"declared_count": 6, "used_count": 6,
-                                              "used": {}, "unused": [], "undeclared_emitted": []}
+    analysis["isa_capability_utilization"] = {
+        "declared_count": 6,
+        "used_count": 6,
+        "used": {},
+        "unused": [],
+        "undeclared_emitted": [],
+    }
     brief = guidance_for_emission_analysis(analysis, EMPTY_INVENTORY)
     assert not any(r["kind"] == "declared_capability_unused" for r in brief["ranked_actions"])
 
 
 def test_a_refused_capability_becomes_a_finding_naming_the_clause() -> None:
-    """"You never emit this" is weaker than "you were refused, and here is the clause"."""
+    """ "You never emit this" is weaker than "you were refused, and here is the clause"."""
     analysis = _analysis([_task(0, integer=100)])
-    analysis["capability_refusals"] = [{
-        "capability": "device_sequencer", "sites_total": 53, "sites_refused": 53,
-        "clauses": [{"clause": "narrow_store_only", "sites": 53,
-                     "example_detail": {"output_dtype": "i32"}}],
-        "first_refusal_only": True,
-        "caveat": "counts are of first refusals; removing the top clause reveals the next",
-    }]
+    analysis["capability_refusals"] = [
+        {
+            "capability": "device_sequencer",
+            "sites_total": 53,
+            "sites_refused": 53,
+            "clauses": [{"clause": "narrow_store_only", "sites": 53, "example_detail": {"output_dtype": "i32"}}],
+            "first_refusal_only": True,
+            "caveat": "counts are of first refusals; removing the top clause reveals the next",
+        }
+    ]
     brief = guidance_for_emission_analysis(analysis, EMPTY_INVENTORY)
     found = next(r for r in brief["ranked_actions"] if r["kind"] == "declared_capability_refused")
     assert found["evidence"]["clauses"][0]["clause"] == "narrow_store_only"
@@ -209,7 +243,6 @@ def test_a_refused_capability_becomes_a_finding_naming_the_clause() -> None:
 
 def test_no_refusals_raises_no_refusal_finding() -> None:
     analysis = _analysis([_task(0, integer=100)])
-    analysis["capability_refusals"] = [{"capability": "c", "sites_total": 3, "sites_refused": 0,
-                                        "clauses": []}]
+    analysis["capability_refusals"] = [{"capability": "c", "sites_total": 3, "sites_refused": 0, "clauses": []}]
     brief = guidance_for_emission_analysis(analysis, EMPTY_INVENTORY)
     assert not any(r["kind"] == "declared_capability_refused" for r in brief["ranked_actions"])

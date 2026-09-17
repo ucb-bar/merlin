@@ -7,6 +7,7 @@ a monolithic image has one compute symbol and every instruction in the model bel
 Returning that single span with attributable=True would be literally correct and would read as "we
 can attribute instructions to regions". This pins the refusal.
 """
+
 from __future__ import annotations
 
 from merlin.kernels.correlate import attribute, symbol_of
@@ -14,8 +15,9 @@ from merlin.kernels.decode.objdump import RawInsn
 
 
 def _insns(section: str, n: int, base: int = 0):
-    return [RawInsn(addr=base + i * 4, mnemonic="add", operands=[], hexcode="00000013",
-                    section=section) for i in range(n)]
+    return [
+        RawInsn(addr=base + i * 4, mnemonic="add", operands=[], hexcode="00000013", section=section) for i in range(n)
+    ]
 
 
 class TestSymbolOf:
@@ -44,8 +46,7 @@ class TestAttribution:
         assert a.region_of_index(3) == "matmul_3"
 
     def test_spans_are_split_per_symbol_with_their_address_range(self):
-        raws = (_insns("0 <forward$kernel_0__ra>", 2, base=0)
-                + _insns("8 <forward$kernel_1__rb>", 3, base=8))
+        raws = _insns("0 <forward$kernel_0__ra>", 2, base=0) + _insns("8 <forward$kernel_1__rb>", 3, base=8)
         a = attribute(raws)
         by = a.by_region()
         assert set(by) == {"a", "b"}
@@ -56,7 +57,7 @@ class TestAttribution:
         raws = _insns("0 <memcpy>", 2) + _insns("8 <forward$kernel_0__rm>", 2, base=8)
         a = attribute(raws)
         assert a.attributable and list(a.by_region()) == ["m"]
-        assert a.region_of_index(0) is None       # inside memcpy: real, and not a model region
+        assert a.region_of_index(0) is None  # inside memcpy: real, and not a model region
 
     def test_an_empty_stream_is_a_refusal_not_an_empty_success(self):
         a = attribute([])
@@ -67,6 +68,7 @@ class TestAgainstARealBinary:
     def test_a_real_expert_object_reports_its_symbols_and_refuses_attribution(self):
         """An expert kernel carries no merlin region ids, so it must refuse - loudly, with symbols."""
         import os
+
         import pytest
 
         from merlin.kernels.decode import rvv as rvv_decode

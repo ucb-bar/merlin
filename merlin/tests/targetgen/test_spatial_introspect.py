@@ -12,6 +12,7 @@ Two things are proven here:
 The systolic path must be provably untouched: ``fact_bundle_for("gemmini")`` routes to the unchanged
 ``target_fact_bundle`` and (when mlc is available) is byte-identical to it.
 """
+
 from __future__ import annotations
 
 import json
@@ -61,13 +62,17 @@ def test_fact_bundle_for_routes_by_kind(monkeypatch):
     fact_bundle_for is memoized process-wide, so clear the memo first (else a real bundle cached by an
     earlier test shadows the monkeypatched leaf) and again in teardown."""
     B.clear_fact_bundle_cache()
-    monkeypatch.setattr(B, "target_fact_bundle", lambda t: {"via": "circt_static", "target": t,
-                                                            "fields": {"mesh_dim": {"value": 16,
-                                                                                    "derived": True}}})
+    monkeypatch.setattr(
+        B,
+        "target_fact_bundle",
+        lambda t: {"via": "circt_static", "target": t, "fields": {"mesh_dim": {"value": 16, "derived": True}}},
+    )
     monkeypatch.setattr(B, "spatial_fact_bundle", lambda t: {"via": "opu", "target": t, "fields": {}})
-    monkeypatch.setattr(B, "_simt_fact_bundle", lambda t: {"via": "muon", "target": t,
-                                                           "fields": {"simt": {"value": 1,
-                                                                               "derived": True}}})
+    monkeypatch.setattr(
+        B,
+        "_simt_fact_bundle",
+        lambda t: {"via": "muon", "target": t, "fields": {"simt": {"value": 1, "derived": True}}},
+    )
     try:
         monkeypatch.setattr(B, "_resolve_kinds", lambda t: ("systolic",))
         assert B.fact_bundle_for("gemmini")["via"] == "circt_static"
@@ -102,25 +107,32 @@ def test_grid_and_geometry_from_operand_ports():
     # a synthetic 2x2-cluster x 2x2-cell (=4x4 tile) manifest name set.
     names = [f"io_op_in_l_{g}_{i}" for g in range(2) for i in range(2)]
     names += [f"io_op_in_t_{g}_{j}" for g in range(2) for j in range(2)]
-    names += [f"clusters_{cy}_{cx}/cells_{r}_{c}/regs_{m}"
-              for cy in range(2) for cx in range(2) for r in range(2) for c in range(2)
-              for m in range(4)]
+    names += [
+        f"clusters_{cy}_{cx}/cells_{r}_{c}/regs_{m}"
+        for cy in range(2)
+        for cx in range(2)
+        for r in range(2)
+        for c in range(2)
+        for m in range(4)
+    ]
     names += ["io_op_macc_0", "io_op_macc_1", "io_op_mvin_0", "io_op_shift"]
     grid = SI._grid_from_operand_ports(names)
     assert grid["rows"] == 4 and grid["cols"] == 4
     assert grid["l_groups"] == 2 and grid["l_cells"] == 2
-    assert SI._cell_count(names) == 16          # 4 clusters x 4 cells, one regs_0 each
-    assert SI._mrf_depth(names) == 4            # regs_0..regs_3
+    assert SI._cell_count(names) == 16  # 4 clusters x 4 cells, one regs_0 each
+    assert SI._mrf_depth(names) == 4  # regs_0..regs_3
     assert SI._op_categories(names) == ["macc", "mvin", "shift"]
     # not an OPU manifest -> None, honestly.
     assert SI._grid_from_operand_ports(["io_foo", "io_bar"]) is None
 
 
 def test_cell_port_widths_and_fp8_fma_parse_via_shared_helpers():
-    hw = ("hw.module private @OuterProductCell(in %clock : i1, in %reset : i1, in %io_in_l : i8, "
-          "in %io_in_t : i8, in %io_mrf_idx : i4, in %io_fp8 : i1, in %io_mvin_data : i32, "
-          "out io_out : i32) {\n}\n"
-          "hw.module private @MulAddRecFNPipe_l1_e8_s24(in %clock : i1) {\n}\n")
+    hw = (
+        "hw.module private @OuterProductCell(in %clock : i1, in %reset : i1, in %io_in_l : i8, "
+        "in %io_in_t : i8, in %io_mrf_idx : i4, in %io_fp8 : i1, in %io_mvin_data : i32, "
+        "out io_out : i32) {\n}\n"
+        "hw.module private @MulAddRecFNPipe_l1_e8_s24(in %clock : i1) {\n}\n"
+    )
     w = SI._cell_port_widths(hw)
     assert w == {"operand_bits": 8, "accumulator_bits": 32, "mrf_idx_bits": 4}
     fma = SI._fp8_fma(hw)
@@ -164,8 +176,7 @@ def test_opu_facts_from_real_state_manifest():
     assert b["fields"]["accum_kind"]["value"] == {"int8": "i32", "fp8": "f32"}
 
 
-@pytest.mark.skipif(not _opu_available("saturn_opu_v128d64"),
-                    reason="mlc / v128d64 arc artifacts not present")
+@pytest.mark.skipif(not _opu_available("saturn_opu_v128d64"), reason="mlc / v128d64 arc artifacts not present")
 def test_opu_int8_only_config_has_no_fp8_datapath():
     b = B.fact_bundle_for("saturn_opu_v128d64")
     td = b["fields"]["tile_dim"]["value"]

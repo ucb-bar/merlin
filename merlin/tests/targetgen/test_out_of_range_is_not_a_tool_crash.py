@@ -15,6 +15,7 @@ than as an unreadable diagnostic.
 The bound is parsed STRUCTURALLY (library code may not import `re`), so a changed libstdc++ message
 must degrade to the generic crash text rather than invent a bound.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -34,16 +35,19 @@ def test_the_bound_is_parsed_from_a_real_libstdcxx_abort():
     assert (idx, size) == (1024, 1024)
 
 
-@pytest.mark.parametrize("msg", [
-    "spike exited 255: some other failure",
-    "",
-    # right exception, but not the _M_range_check shape -> must NOT invent a bound
-    "terminate called after throwing an instance of 'std::out_of_range'",
-    # marker present but non-numeric: degrade rather than guess
-    "_M_range_check: __n (which is nine) >= this->size() (which is 1024)",
-    # only one bound present
-    "_M_range_check: __n (which is 1024) >= this->size()",
-])
+@pytest.mark.parametrize(
+    "msg",
+    [
+        "spike exited 255: some other failure",
+        "",
+        # right exception, but not the _M_range_check shape -> must NOT invent a bound
+        "terminate called after throwing an instance of 'std::out_of_range'",
+        # marker present but non-numeric: degrade rather than guess
+        "_M_range_check: __n (which is nine) >= this->size() (which is 1024)",
+        # only one bound present
+        "_M_range_check: __n (which is 1024) >= this->size()",
+    ],
+)
 def test_anything_else_degrades_instead_of_guessing(msg):
     assert _range_check_bounds(msg) == (None, None)
 

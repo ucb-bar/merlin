@@ -13,6 +13,7 @@ which is why it read as model-specific rather than structural). And where a cons
 error instead, it degrades SILENTLY -- the block-table derivation reports "no contractions observed"
 and drops the register block, so a lever is reported as applied while doing nothing.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

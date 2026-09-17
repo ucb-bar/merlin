@@ -14,6 +14,7 @@ shipped target). Discovery mutates process-global state (``base._REGISTRY`` + ``
 each assertion runs in a FRESH interpreter via ``subprocess`` with a tailored ``MERLIN_TARGET_PATH``;
 running it in-process would leak the fixture backend into every other test in the session.
 """
+
 from __future__ import annotations
 
 import json

@@ -7,6 +7,7 @@ merlincirct_g4p1_biasabi_20260906: 92/96 reached at 2.19 h, then 3.91 h more (64
 score never moving and nothing saying so. So the unit here is a GRADE, and the tests below pin both
 directions: it fires on that history, and it stays quiet on a run that is still improving.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -15,9 +16,10 @@ from merlin.targetgen import plateau as PL
 
 
 def _g(passed, statuses, n=4, mismatch=None):
-    rows = [{"capsule": name, "status": st,
-             **({"mismatch_count": mismatch[name]} if mismatch and name in mismatch else {})}
-            for name, st in statuses.items()]
+    rows = [
+        {"capsule": name, "status": st, **({"mismatch_count": mismatch[name]} if mismatch and name in mismatch else {})}
+        for name, st in statuses.items()
+    ]
     return {"n_passed": passed, "n_capsules": n, "per_capsule": rows}
 
 
@@ -29,6 +31,7 @@ def _flat(n_grades, passed=92, n=96):
 # --------------------------------------------------------------------------------------------
 # it can fire
 # --------------------------------------------------------------------------------------------
+
 
 def test_a_flat_run_is_eventually_called_stuck():
     got = PL.assess(_flat(6), stall_threshold=4)
@@ -45,6 +48,7 @@ def test_it_fires_on_grades_not_on_rounds():
 # --------------------------------------------------------------------------------------------
 # it stays quiet when it should
 # --------------------------------------------------------------------------------------------
+
 
 def test_an_improving_run_is_never_stuck():
     grades = [_g(p, {"A": "pass", "B": "fail"}) for p in (10, 40, 70, 82, 92)]
@@ -87,6 +91,7 @@ def test_garbage_is_survived():
 # reachability, which is the stronger fact
 # --------------------------------------------------------------------------------------------
 
+
 def test_capsules_that_never_passed_are_named():
     grades = [_g(1, {"A": "pass", "B": "fail", "C": "fail"}) for _ in range(5)]
     got = PL.assess(grades)
@@ -96,8 +101,12 @@ def test_capsules_that_never_passed_are_named():
 
 def test_a_capsule_that_passed_once_is_not_called_never_passed():
     """The paired direction: it distinguishes unreachable from merely-not-passing-now."""
-    grades = [_g(2, {"A": "pass", "B": "pass"}), _g(1, {"A": "pass", "B": "fail"}),
-              _g(1, {"A": "pass", "B": "fail"}), _g(1, {"A": "pass", "B": "fail"})]
+    grades = [
+        _g(2, {"A": "pass", "B": "pass"}),
+        _g(1, {"A": "pass", "B": "fail"}),
+        _g(1, {"A": "pass", "B": "fail"}),
+        _g(1, {"A": "pass", "B": "fail"}),
+    ]
     got = PL.assess(grades)
     assert got.never_passed == () and got.regressed == ("B",)
     assert "regression" in got.sentence()
@@ -123,17 +132,19 @@ def test_stuck_always_carries_a_reason():
 # it must not become agent-visible feedback
 # --------------------------------------------------------------------------------------------
 
+
 def test_the_assessment_is_recorded_operator_side_only():
     """Naming the capsules that have never passed is FEEDBACK, and feedback defines an arm. Handing it
     to the agent would change the treatment and make the run incomparable with every earlier one."""
     from merlin.common.paths import merlin_dir
-    loop = (merlin_dir() / "experiments" / "capsule_bench" / "harness"
-            / "run_baseline_qa_loop.py").read_text()
+
+    loop = (merlin_dir() / "experiments" / "capsule_bench" / "harness" / "run_baseline_qa_loop.py").read_text()
     i = loop.index("def _record_plateau")
-    body = loop[i:i + 2600]
+    body = loop[i : i + 2600]
     assert 'run_dir / "plateau.json"' in body, "the assessment must land in the run dir"
     assert 'ws / "qa"' not in body, "it must never be written into the agent's workspace"
     assert "feedback would change the arm" in body or "change the arm's treatment" in body
     # and it must actually be called where grades land
     assert loop.count("_record_plateau(run_dir)") >= 2, (
-        "both operator-side grade paths must record it, or a continuous run reports nothing")
+        "both operator-side grade paths must record it, or a continuous run reports nothing"
+    )

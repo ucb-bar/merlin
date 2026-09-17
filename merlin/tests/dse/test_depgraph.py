@@ -5,6 +5,7 @@ could sit inside that wait. That is the shape the real question has -- three qua
 cycles had no unit busy, and this is the smallest program in which "the wait is covered by nothing"
 is true and fixable.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -17,21 +18,29 @@ from merlin.targetgen import isa_direction as ID
 
 
 def _dir(mnemonic: str, **spec) -> dict:
-    return {name: ID.OperandDirection(mnemonic, name, direction, file, written_slots=slots,
-                                      reason="fixture")
-            for name, (direction, file, slots) in spec.items()}
+    return {
+        name: ID.OperandDirection(mnemonic, name, direction, file, written_slots=slots, reason="fixture")
+        for name, (direction, file, slots) in spec.items()
+    }
 
 
-DIRECTIONS = ID.DirectionModel(target="fixture", by_mnemonic={
-    "LOAD": _dir("LOAD", vd=(ID.DEF, "mrf", (0,)), rs1=(ID.USE, "scalar", ())),
-    "MUL": _dir("MUL", vd=(ID.DEF, "acc", (0,)), vs1=(ID.USE, "mrf", ()), vs2=(ID.USE, "mrf", ())),
-    "POP": _dir("POP", vd=(ID.DEF, "mrf", (0, 1)), vs2=(ID.USE, "acc", ())),
-    "MOVE": _dir("MOVE", rd=(ID.DEF, "scalar", (0,)), rs1=(ID.USE, "scalar", ())),
-    "WAIT": {},
-})
+DIRECTIONS = ID.DirectionModel(
+    target="fixture",
+    by_mnemonic={
+        "LOAD": _dir("LOAD", vd=(ID.DEF, "mrf", (0,)), rs1=(ID.USE, "scalar", ())),
+        "MUL": _dir("MUL", vd=(ID.DEF, "acc", (0,)), vs1=(ID.USE, "mrf", ()), vs2=(ID.USE, "mrf", ())),
+        "POP": _dir("POP", vd=(ID.DEF, "mrf", (0, 1)), vs2=(ID.USE, "acc", ())),
+        "MOVE": _dir("MOVE", rd=(ID.DEF, "scalar", (0,)), rs1=(ID.USE, "scalar", ())),
+        "WAIT": {},
+    },
+)
 
-ISSUE = DG.IssueModel(issue_cycles=1.0, stall_unit=1.0, tier="fixture",
-                      provenance="fixture: one cycle per instruction, one cycle per stall unit")
+ISSUE = DG.IssueModel(
+    issue_cycles=1.0,
+    stall_unit=1.0,
+    tier="fixture",
+    provenance="fixture: one cycle per instruction, one cycle per stall unit",
+)
 ROLES = {"LOAD": "memory", "MUL": "matmul", "POP": "readout", "MOVE": "scalar", "WAIT": "scalar"}
 
 
@@ -42,11 +51,10 @@ def _program() -> DG.Program:
         LV.Instruction(2, "MUL", {"vd": 0, "vs1": 0, "vs2": 0}),
         LV.Instruction(3, "WAIT", {"imm": 10}),
         LV.Instruction(4, "POP", {"vd": 4, "vs2": 0}),
-        LV.Instruction(5, "MOVE", {"rd": 2, "rs1": 3}),      # independent of everything above
+        LV.Instruction(5, "MOVE", {"rd": 2, "rs1": 3}),  # independent of everything above
     ]
     effects = tuple(LV.effects_of(i, DIRECTIONS) for i in ins)
-    return DG.Program(instructions=tuple(ins), effects=effects,
-                      regions=(DG.Region("all", 0, len(ins)),), roles=ROLES)
+    return DG.Program(instructions=tuple(ins), effects=effects, regions=(DG.Region("all", 0, len(ins)),), roles=ROLES)
 
 
 @pytest.fixture()
@@ -56,8 +64,7 @@ def program() -> DG.Program:
 
 @pytest.fixture()
 def dag(program) -> DG.Dag:
-    return DG.build_dag(program.instructions, program.effects, issue=ISSUE,
-                        stall_mnemonic="WAIT", roles=ROLES)
+    return DG.build_dag(program.instructions, program.effects, issue=ISSUE, stall_mnemonic="WAIT", roles=ROLES)
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -104,8 +111,9 @@ def test_pressure_against_a_known_capacity_decides(program):
 
 
 def test_constant_propagation_kills_a_value_it_cannot_evaluate(program):
-    state = LV.constant_state(program.instructions, program.effects,
-                              immediate_forms={"MOVE": "imm"}, zero_slot={"scalar": 0})
+    state = LV.constant_state(
+        program.instructions, program.effects, immediate_forms={"MOVE": "imm"}, zero_slot={"scalar": 0}
+    )
     # MOVE at index 5 writes scalar[2] but carries no immediate here, so the value is UNKNOWN rather
     # than whatever happened to be there.
     assert state[-1][LV.Access("scalar", 2)] is None
@@ -121,7 +129,7 @@ def test_a_backward_branch_invalidates_every_propagated_constant():
     effects = tuple(LV.effects_of(i, DIRECTIONS) for i in ins)
     state = LV.constant_state(ins, effects, immediate_forms={"MOVE": "imm"})
     assert state[0][LV.Access("scalar", 1)] == 7
-    assert LV.Access("scalar", 1) not in state[2]        # invalidated by the backward branch
+    assert LV.Access("scalar", 1) not in state[2]  # invalidated by the backward branch
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -140,8 +148,7 @@ def test_a_declared_wait_is_a_KNOWN_separation_and_an_undeclared_one_is_not(dag)
 
 
 def test_an_unpriced_separation_is_counted_by_class_never_given_a_latency():
-    ins = [LV.Instruction(0, "LOAD", {"vd": 0, "rs1": 1}),
-           LV.Instruction(1, "MUL", {"vd": 0, "vs1": 0, "vs2": 0})]
+    ins = [LV.Instruction(0, "LOAD", {"vd": 0, "rs1": 1}), LV.Instruction(1, "MUL", {"vd": 0, "vs1": 0, "vs2": 0})]
     effects = tuple(LV.effects_of(i, DIRECTIONS) for i in ins)
     dag = DG.build_dag(ins, effects, issue=ISSUE, stall_mnemonic="WAIT", roles=ROLES)
     exposed = dag.exposed_classes()
@@ -175,8 +182,7 @@ def test_moving_work_into_a_wait_shadow_is_credited_against_the_wait(dag):
 # the composed bound and the ranking
 # ---------------------------------------------------------------------------------------------------
 def test_a_bound_with_an_exposed_unknown_never_reports_a_total():
-    ins = [LV.Instruction(0, "LOAD", {"vd": 0, "rs1": 1}),
-           LV.Instruction(1, "MUL", {"vd": 0, "vs1": 0, "vs2": 0})]
+    ins = [LV.Instruction(0, "LOAD", {"vd": 0, "rs1": 1}), LV.Instruction(1, "MUL", {"vd": 0, "vs1": 0, "vs2": 0})]
     effects = tuple(LV.effects_of(i, DIRECTIONS) for i in ins)
     dag = DG.build_dag(ins, effects, issue=ISSUE, stall_mnemonic="WAIT", roles=ROLES)
     composed = DG.to_composed(2.0, dag)
@@ -187,8 +193,7 @@ def test_a_bound_with_an_exposed_unknown_never_reports_a_total():
 
 def test_the_three_candidates_are_reorderings_of_the_same_work_and_rank_exactly(program, dag):
     indices = list(range(len(program.instructions)))
-    schedules = DG.candidates_for(dag, indices, stall_mnemonic="WAIT", hoist_role="memory",
-                                  roles=ROLES)
+    schedules = DG.candidates_for(dag, indices, stall_mnemonic="WAIT", hoist_role="memory", roles=ROLES)
     assert set(schedules) >= {"as_emitted", "stalls_tightened"}
     for name, order in schedules.items():
         assert sorted(order) == indices, f"{name} is not a reordering of the same instructions"
@@ -197,23 +202,29 @@ def test_the_three_candidates_are_reorderings_of_the_same_work_and_rank_exactly(
     order, refusals = differential.rank_schedules(composed, demands=demands)
     assert not refusals, [r.reason for r in refusals]
     names = sorted(composed)
-    c = differential.compare(composed[names[0]], composed[names[1]], demands_a=demands[names[0]],
-                             demands_b=demands[names[1]], label_a=names[0], label_b=names[1])
+    c = differential.compare(
+        composed[names[0]],
+        composed[names[1]],
+        demands_a=demands[names[0]],
+        demands_b=demands[names[1]],
+        label_a=names[0],
+        label_b=names[1],
+    )
     assert c.basis == differential.EXACT
     assert order[0] in schedules
 
 
 def test_the_report_states_the_gap_between_the_bound_and_a_measurement(program):
-    report = DG.analyse_program(program, DIRECTIONS, issue=ISSUE, stall_mnemonic="WAIT",
-                                hoist_role="memory", measured_cycles=1000.0)
+    report = DG.analyse_program(
+        program, DIRECTIONS, issue=ISSUE, stall_mnemonic="WAIT", hoist_role="memory", measured_cycles=1000.0
+    )
     assert report["bound_vs_measured"]["verdict"].startswith("consistent")
     assert report["reorder_slack_cycles"] > 0
     assert report["critical_path"]["cycles"] <= report["as_emitted_cycles"]
 
 
 def test_a_bound_above_its_measurement_is_reported_as_a_falsification(program):
-    report = DG.analyse_program(program, DIRECTIONS, issue=ISSUE, stall_mnemonic="WAIT",
-                                measured_cycles=1.0)
+    report = DG.analyse_program(program, DIRECTIONS, issue=ISSUE, stall_mnemonic="WAIT", measured_cycles=1.0)
     assert report["bound_vs_measured"]["verdict"].startswith("FALSIFIED")
 
 

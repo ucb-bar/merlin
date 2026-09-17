@@ -8,6 +8,7 @@ from a slow one; bytes produced can.
 These drive the REAL ``_capture`` against REAL processes -- a mocked Popen would not exercise the
 process-group reap, which is the part that previously leaked orphans.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -28,6 +29,7 @@ def oc():
         pytest.skip(f"{_SRC} not present")
     # the harness dir is not a package; its siblings import by bare name
     import sys
+
     sys.path.insert(0, str(_SRC.parent))
     try:
         spec = importlib.util.spec_from_file_location("opencode_agent_under_test", _SRC)
@@ -81,8 +83,9 @@ def test_the_whole_process_tree_dies_on_a_stall(oc):
     mark = "MERLIN_STALL_ORPHAN_PROBE_TEST"
 
     def alive():
-        out = subprocess.run(["ps", "-u", os.environ.get("USER", ""), "-o", "cmd="],
-                             capture_output=True, text=True).stdout
+        out = subprocess.run(
+            ["ps", "-u", os.environ.get("USER", ""), "-o", "cmd="], capture_output=True, text=True
+        ).stdout
         return sum(1 for line in out.splitlines() if mark in line and "ps -u" not in line)
 
     assert alive() == 0
@@ -142,11 +145,12 @@ def test_a_killed_round_keeps_the_record_of_what_it_did(oc):
     """
     script = "printf 'line-one\\n'; printf 'line-two\\n'; sleep 120"
     with pytest.raises(subprocess.TimeoutExpired) as ei:
-        _run(oc, script, timeout=8, stall=0)          # stall detector off: this is a WALL-CLOCK kill
+        _run(oc, script, timeout=8, stall=0)  # stall detector off: this is a WALL-CLOCK kill
     exc = ei.value
     assert hasattr(exc, "partial_stdout"), "the partial stream must be attached to the exception"
-    assert "line-one" in exc.partial_stdout and "line-two" in exc.partial_stdout, \
+    assert "line-one" in exc.partial_stdout and "line-two" in exc.partial_stdout, (
         "output produced before the kill must survive the capture files being cleaned up"
+    )
 
 
 def test_a_stalled_round_also_keeps_its_partial_stream(oc):
@@ -158,21 +162,26 @@ def test_a_stalled_round_also_keeps_its_partial_stream(oc):
 
 # ---------------------------------------------------------------- the wedge (socket signal)
 
+
 def test_socket_count_is_read_for_the_process_group_only(oc, tmp_path):
     """The third progress signal must scope to the agent's tree, like the CPU one."""
     import subprocess as sp
-    p = sp.Popen(["python3", "-c", "import socket,time\n"
-                                   "s=socket.socket(); s.bind(('127.0.0.1',0)); s.listen(1)\n"
-                                   "time.sleep(6)"], start_new_session=True)
+
+    p = sp.Popen(
+        ["python3", "-c", "import socket,time\ns=socket.socket(); s.bind(('127.0.0.1',0)); s.listen(1)\ntime.sleep(6)"],
+        start_new_session=True,
+    )
     try:
         import os
         import time
+
         time.sleep(1.5)
         pgid = os.getpgid(p.pid)
         assert oc._tree_socket_count(pgid) >= 1, "a process holding a socket must be counted"
         assert oc._tree_socket_count(999999) == 0, "an unrelated pgid contributes nothing"
     finally:
-        p.kill(); p.wait()
+        p.kill()
+        p.wait()
 
 
 def test_a_wedged_process_is_killed_despite_a_cpu_trickle(oc, tmp_path):
@@ -188,13 +197,12 @@ def test_a_wedged_process_is_killed_despite_a_cpu_trickle(oc, tmp_path):
         "end = time.time() + 90\n"
         "while time.time() < end:\n"
         "    x = 0\n"
-        "    for _ in range(20000):\n"     # a trickle: far below one core, no sockets, no output
+        "    for _ in range(20000):\n"  # a trickle: far below one core, no sockets, no output
         "        x += 1\n"
         "    time.sleep(1.0)\n"
     )
     with pytest.raises(oc.AgentStalled):
-        oc._capture(["python3", "-c", script], dict(os.environ), timeout=120,
-                    cwd=str(tmp_path), stall_seconds=25)
+        oc._capture(["python3", "-c", script], dict(os.environ), timeout=120, cwd=str(tmp_path), stall_seconds=25)
 
 
 def test_a_busy_local_build_is_not_mistaken_for_a_wedge(oc, tmp_path):
@@ -203,9 +211,10 @@ def test_a_busy_local_build_is_not_mistaken_for_a_wedge(oc, tmp_path):
         "import time\n"
         "end = time.time() + 30\n"
         "x = 0\n"
-        "while time.time() < end:\n"       # saturate one core: no sockets, no output, genuinely working
+        "while time.time() < end:\n"  # saturate one core: no sockets, no output, genuinely working
         "    x += 1\n"
     )
-    rc, out, err = oc._capture(["python3", "-c", script], dict(os.environ), timeout=90,
-                               cwd=str(tmp_path), stall_seconds=20)
+    rc, out, err = oc._capture(
+        ["python3", "-c", script], dict(os.environ), timeout=90, cwd=str(tmp_path), stall_seconds=20
+    )
     assert rc == 0, "a CPU-bound local build must not be killed as a stall"

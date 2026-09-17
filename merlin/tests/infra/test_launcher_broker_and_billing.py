@@ -22,6 +22,7 @@ byte-identical to ``--provider bedrock``.
 Both are pinned here because both are invisible when wrong: an under-parallel broker looks like a
 slow engine, and a mispriced seat run looks like a budget.
 """
+
 from __future__ import annotations
 
 import sys
@@ -38,6 +39,7 @@ if str(_HARNESS) not in sys.path:
 @pytest.fixture()
 def loop():
     import run_baseline_qa_loop as L
+
     saved = (L._DRIVER, L._PROVIDER, L._SIM_MAX_JOBS)
     try:
         yield L
@@ -49,10 +51,12 @@ def loop():
 def test_a_seat_run_on_the_claude_cli_is_not_billed_per_token(loop):
     """``--driver claudecode --provider subscription`` must NOT report metered spend."""
     from merlin.targetgen import experiment_tokens as ET
+
     loop._DRIVER, loop._PROVIDER = "claudecode", "subscription"
     assert loop._billing_mode("claude-opus-4-8") == ET.SUBSCRIPTION_NOTIONAL, (
         "a subscription-seat Claude Code run reported metered billing; its tokens will be priced at "
-        "list rates and can be spent against a real budget ceiling")
+        "list rates and can be spent against a real budget ceiling"
+    )
 
 
 def test_the_same_driver_on_our_bedrock_key_is_still_metered(loop):
@@ -62,6 +66,7 @@ def test_the_same_driver_on_our_bedrock_key_is_still_metered(loop):
     the mirror failure, and the worse one.
     """
     from merlin.targetgen import experiment_tokens as ET
+
     loop._DRIVER, loop._PROVIDER = "claudecode", "bedrock"
     assert loop._billing_mode("claude-opus-4-8") == ET.METERED
 
@@ -69,9 +74,11 @@ def test_the_same_driver_on_our_bedrock_key_is_still_metered(loop):
 def test_a_driver_that_declares_its_own_billing_mode_still_decides(loop):
     """A driver module's own declaration outranks the provider — the provider is only the fallback."""
     from merlin.targetgen import experiment_tokens as ET
+
     loop._DRIVER, loop._PROVIDER = "opencode", "subscription"
     assert loop._billing_mode("claude-opus-4-8") == ET.METERED, (
-        "the provider fallback leaked past a driver that declares its own BILLING_MODE")
+        "the provider fallback leaked past a driver that declares its own BILLING_MODE"
+    )
 
 
 # ------------------------------------------------------------------- broker
@@ -101,10 +108,10 @@ def test_sim_max_jobs_reaches_the_simjob_broker_and_only_it(loop, monkeypatch, t
     assert simjob, f"no simjob broker was spawned; got {[a[1] for a in argvs]}"
     for a in simjob:
         assert "--max-jobs" in a and a[a.index("--max-jobs") + 1] == "12", (
-            f"--sim-max-jobs never reached the broker: {a}")
+            f"--sim-max-jobs never reached the broker: {a}"
+        )
     for a in others:
-        assert "--max-jobs" not in a, (
-            f"--max-jobs was forwarded to a broker whose argparse does not accept it: {a}")
+        assert "--max-jobs" not in a, f"--max-jobs was forwarded to a broker whose argparse does not accept it: {a}"
 
 
 def test_the_default_path_passes_no_max_jobs_at_all(loop, monkeypatch, tmp_path):
@@ -124,17 +131,24 @@ def test_the_flag_exists_on_the_real_operator_surface():
     import subprocess
     import sys as _sys
 
-    out = subprocess.run([_sys.executable, str(_HARNESS / "run_baseline_qa_loop.py"), "--help"],
-                         capture_output=True, text=True, timeout=300)
+    out = subprocess.run(
+        [_sys.executable, str(_HARNESS / "run_baseline_qa_loop.py"), "--help"],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
     assert "--sim-max-jobs" in out.stdout, (
         "run_baseline_qa_loop exposes no way to set the simjob broker's concurrency; the cert tier "
-        "is stuck on the broker's Verilator-era default of 4 whatever engine is certifying")
+        "is stuck on the broker's Verilator-era default of 4 whatever engine is certifying"
+    )
 
 
 def test_the_flag_defaults_to_deferring_to_the_broker():
     """0 = 'let the broker choose', never a launcher-side override of it."""
     import run_baseline_qa_loop as L
+
     src = __import__("inspect").getsource(L.main)
     assert 'ap.add_argument("--sim-max-jobs", type=int, default=0' in src, (
         "--sim-max-jobs no longer defaults to 0; a non-zero default silently overrides the broker's "
-        "own choice for every run that never asked")
+        "own choice for every run that never asked"
+    )

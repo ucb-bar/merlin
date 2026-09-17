@@ -1,4 +1,5 @@
 """The task served to an agent records facts from this launch, not historical prose."""
+
 from __future__ import annotations
 
 import sys
@@ -14,12 +15,14 @@ sys.path.insert(0, str(repo_root() / "merlin/experiments/capsule_bench/harness")
 
 def _loop():
     import run_baseline_qa_loop as loop
+
     return loop
 
 
 def _gemmini():
     return load_target_experiment(
-        repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
+        repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
+    )
 
 
 def test_runtime_scope_matches_descriptor_discovery_not_historical_literals():
@@ -67,8 +70,8 @@ def test_unsandboxed_task_is_explicitly_untrusted():
 def test_launch_agent_refuses_to_build_task_after_environment_setup(monkeypatch, tmp_path):
     loop = _loop()
     monkeypatch.setattr(
-        loop, "_build_task",
-        lambda *_args, **_kwargs: pytest.fail("launch must not regenerate the sealed task"))
+        loop, "_build_task", lambda *_args, **_kwargs: pytest.fail("launch must not regenerate the sealed task")
+    )
     with pytest.raises(RuntimeError, match="sealed task is missing"):
         loop.launch_agent(tmp_path / "ws", tmp_path / "run", "dummy", "low", "none", {}, 0, 1)
 
@@ -76,8 +79,7 @@ def test_launch_agent_refuses_to_build_task_after_environment_setup(monkeypatch,
 def test_served_rtlchecks_task_and_tool_doc_have_no_stale_launch_claims(tmp_path, monkeypatch):
     loop = _loop()
     monkeypatch.setattr(loop, "_EXPERIMENT", "full")
-    monkeypatch.setitem(
-        loop.RX.ARM_BUNDLE, "merlin_assisted", "merlin_assisted_rtlchecks_public_v0")
+    monkeypatch.setitem(loop.RX.ARM_BUNDLE, "merlin_assisted", "merlin_assisted_rtlchecks_public_v0")
     ws, run_dir = tmp_path / "ws", tmp_path / "run"
     ws.mkdir()
     run_dir.mkdir()

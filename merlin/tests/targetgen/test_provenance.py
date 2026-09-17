@@ -8,6 +8,7 @@ unattributable rather than merely incomplete:
 * a content hash that changes with dict construction order, which would make every run look like a
   different one.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -46,6 +47,7 @@ class TestContentSha:
     def test_survives_non_json_values(self):
         # Paths and similar leak into these records constantly; hashing must not raise on them.
         from pathlib import Path
+
         assert prov.content_sha({"p": Path("/x")})
 
 
@@ -130,8 +132,7 @@ class TestRecord:
         assert rec["parent"]["reason"]
 
     def test_unset_env_source_is_recorded_as_unset_rather_than_dropped(self):
-        rec = prov.record("no_such_target_xyz",
-                          env_rtl_sources=[("hw", "MERLIN_NO_SUCH_ENV_VAR_XYZ", "generators/x")])
+        rec = prov.record("no_such_target_xyz", env_rtl_sources=[("hw", "MERLIN_NO_SUCH_ENV_VAR_XYZ", "generators/x")])
         assert "hw" in rec["rtl"], "an unresolvable source must still appear in the record"
         assert rec["rtl"]["hw"]["available"] is False
         assert "MERLIN_NO_SUCH_ENV_VAR_XYZ" in rec["rtl"]["hw"]["reason"]

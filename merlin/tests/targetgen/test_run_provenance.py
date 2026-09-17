@@ -5,6 +5,7 @@ root and a generator subdirectory). Every other target's run therefore recorded 
 else, and did so silently: the record looked complete. Which pins a result depends on is now the
 target's own declaration (``hardware_pins`` in its contract), read against the reviewed registry.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen import provenance as P

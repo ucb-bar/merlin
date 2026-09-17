@@ -23,6 +23,7 @@ The asymmetry is the whole design and is pinned below in both directions:
 
 A REQUIRED lane is never credited here: an instruction present in a binary is not one that executed.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,8 +40,9 @@ from merlin.targetgen.target_registry import all_targets
 _EM_RISCV = 243
 
 
-def build_elf(sections, *, machine: int = _EM_RISCV, ei_class: int = 2, ei_data: int = 1,
-              drop_section_headers: bool = False) -> bytes:
+def build_elf(
+    sections, *, machine: int = _EM_RISCV, ei_class: int = 2, ei_data: int = 1, drop_section_headers: bool = False
+) -> bytes:
     """A minimal ELF64 with the given ``(name, flags, bytes)`` sections. ``flags`` is the raw
     ``sh_flags`` so a test can place bytes in an executable section or a merely-allocated one."""
     names = [""] + [n for n, _f, _d in sections] + [".shstrtab"]
@@ -63,8 +65,7 @@ def build_elf(sections, *, machine: int = _EM_RISCV, ei_class: int = 2, ei_data:
     hdr[4], hdr[5], hdr[6] = ei_class, ei_data, 1
     struct.pack_into("<HHI", hdr, 0x10, 2, machine, 1)
     struct.pack_into("<QQQ", hdr, 0x18, 0x80000000, 0, 0 if drop_section_headers else shoff)
-    struct.pack_into("<IHHHHH", hdr, 0x30, 0, 64, 0, 0, 64,
-                     0 if drop_section_headers else len(sections) + 2)
+    struct.pack_into("<IHHHHH", hdr, 0x30, 0, 64, 0, 0, 64, 0 if drop_section_headers else len(sections) + 2)
     struct.pack_into("<H", hdr, 0x3E, 0 if drop_section_headers else len(sections) + 1)
     if drop_section_headers:
         return bytes(hdr) + body
@@ -80,11 +81,11 @@ def build_elf(sections, *, machine: int = _EM_RISCV, ei_class: int = 2, ei_data:
     return bytes(hdr) + body + bytes(shdrs)
 
 
-_EXEC = 0x2 | 0x4          # SHF_ALLOC | SHF_EXECINSTR
-_ALLOC = 0x2               # SHF_ALLOC only -- data, not instructions
+_EXEC = 0x2 | 0x4  # SHF_ALLOC | SHF_EXECINSTR
+_ALLOC = 0x2  # SHF_ALLOC only -- data, not instructions
 
-_NOP = struct.pack("<I", 0x00000013)      # addi x0, x0, 0
-_C_NOP = struct.pack("<H", 0x0001)        # a 16-bit instruction: shifts everything after it off 4-align
+_NOP = struct.pack("<I", 0x00000013)  # addi x0, x0, 0
+_C_NOP = struct.pack("<H", 0x0001)  # a 16-bit instruction: shifts everything after it off 4-align
 
 
 def _accel_word(opcode: int) -> bytes:
@@ -102,8 +103,10 @@ def derivable():
     while proving nothing."""
     found = [(t, EL.accelerator_opcode(t)) for t in all_targets()]
     have = [(t, op) for t, (op, _src) in found if op is not None]
-    assert have, ("no registered target has a derivable accelerator opcode; this test would otherwise "
-                  f"pass while measuring nothing (looked at {[t for t, _ in found]})")
+    assert have, (
+        "no registered target has a derivable accelerator opcode; this test would otherwise "
+        f"pass while measuring nothing (looked at {[t for t, _ in found]})"
+    )
     return have[0]
 
 
@@ -111,11 +114,13 @@ def test_the_scanned_file_is_the_one_the_compile_step_links():
     """The scan is worthless if it looks at a path the build never writes, and "no linked executable"
     is an UNMEASURED verdict -- which is quiet. Pin the name against the compile step that produces it."""
     from merlin.common.paths import merlin_dir
+
     src = (merlin_dir() / "python/merlin/targetgen/contract/compile.py").read_text(encoding="utf-8")
     assert "from ..elf_lanes import PACKAGE_ELF_NAME" in src
     assert "elf = workdir / PACKAGE_ELF_NAME" in src, (
         f"the compile step no longer links {EL.PACKAGE_ELF_NAME}; the lane scan would silently find "
-        f"nothing to read and report every forbidden lane as unmeasured")
+        f"nothing to read and report every forbidden lane as unmeasured"
+    )
 
 
 # --- the derivation ----------------------------------------------------------------------------
@@ -180,24 +185,25 @@ def test_data_sections_are_not_read_as_instructions(derivable, tmp_path):
     linker marked executable."""
     target, opcode = derivable
     elf = tmp_path / "k.elf"
-    elf.write_bytes(build_elf([(".text", _EXEC, _NOP * 4),
-                               (".rodata", _ALLOC, _accel_word(opcode) * 4)]))
+    elf.write_bytes(build_elf([(".text", _EXEC, _NOP * 4), (".rodata", _ALLOC, _accel_word(opcode) * 4)]))
     scan = EL.scan_elf_for_accelerator(elf, target)
     assert scan.status == "measured" and scan.n_hits == 0
     assert ".rodata" not in scan.sections
 
 
-@pytest.mark.parametrize("make", [
-    pytest.param(lambda p: None, id="absent"),
-    pytest.param(lambda p: p.write_bytes(b"not an elf at all"), id="not_an_elf"),
-    pytest.param(lambda p: p.write_bytes(build_elf([(".text", _EXEC, _NOP)],
-                                                   drop_section_headers=True)), id="stripped"),
-    pytest.param(lambda p: p.write_bytes(build_elf([(".text", _EXEC, _NOP)], machine=62)),
-                 id="wrong_machine"),
-    pytest.param(lambda p: p.write_bytes(build_elf([(".text", _EXEC, _NOP)], ei_data=2)),
-                 id="big_endian"),
-    pytest.param(lambda p: p.write_bytes(build_elf([(".rodata", _ALLOC, _NOP)])), id="no_exec_sections"),
-])
+@pytest.mark.parametrize(
+    "make",
+    [
+        pytest.param(lambda p: None, id="absent"),
+        pytest.param(lambda p: p.write_bytes(b"not an elf at all"), id="not_an_elf"),
+        pytest.param(
+            lambda p: p.write_bytes(build_elf([(".text", _EXEC, _NOP)], drop_section_headers=True)), id="stripped"
+        ),
+        pytest.param(lambda p: p.write_bytes(build_elf([(".text", _EXEC, _NOP)], machine=62)), id="wrong_machine"),
+        pytest.param(lambda p: p.write_bytes(build_elf([(".text", _EXEC, _NOP)], ei_data=2)), id="big_endian"),
+        pytest.param(lambda p: p.write_bytes(build_elf([(".rodata", _ALLOC, _NOP)])), id="no_exec_sections"),
+    ],
+)
 def test_an_unreadable_elf_is_unmeasured_never_clean(derivable, tmp_path, make):
     target, _op = derivable
     elf = tmp_path / "k.elf"
@@ -258,48 +264,54 @@ def _declared_program(tmp_path, words=(1, 2, 3)):
 
 def _program_decode(monkeypatch, records):
     from merlin.targetgen import isa_disasm, isa_model
+
     monkeypatch.setattr(isa_model, "isa_model_for_target", lambda _target: object())
     monkeypatch.setattr(isa_disasm, "disassemble", lambda _model, _words: records)
 
 
 def test_declared_self_hosted_program_can_prove_negative_mesh_lane(tmp_path, monkeypatch):
-    _program_decode(monkeypatch, [
-        {"index": 0, "word": "0x1", "isa_mnemonic": "ADDI", "role": "scalar"},
-        {"index": 1, "word": "0x2", "isa_mnemonic": "VADD", "role": "vector"},
-        {"index": 2, "word": "0x3", "isa_mnemonic": "ECALL", "role": "scalar"},
-    ])
-    rep = EL.lane_report_from_declared_program(
-        _forbidding(), _declared_program(tmp_path), target="self-hosted")
+    _program_decode(
+        monkeypatch,
+        [
+            {"index": 0, "word": "0x1", "isa_mnemonic": "ADDI", "role": "scalar"},
+            {"index": 1, "word": "0x2", "isa_mnemonic": "VADD", "role": "vector"},
+            {"index": 2, "word": "0x3", "isa_mnemonic": "ECALL", "role": "scalar"},
+        ],
+    )
+    rep = EL.lane_report_from_declared_program(_forbidding(), _declared_program(tmp_path), target="self-hosted")
     assert rep["violated"] == []
     assert rep["evidence"][R._ACCELERATOR_LANE] == EL.DECLARED_PROGRAM_EVIDENCE
     assert EL.unjudged_lanes(rep, _forbidding()["lanes"]) == []
 
 
 def test_declared_program_mesh_role_disproves_forbidden_lane(tmp_path, monkeypatch):
-    _program_decode(monkeypatch, [
-        {"index": 0, "word": "0x1", "isa_mnemonic": "MATMUL", "role": "matmul"},
-    ])
-    rep = EL.lane_report_from_declared_program(
-        _forbidding(), _declared_program(tmp_path, (1,)), target="self-hosted")
+    _program_decode(
+        monkeypatch,
+        [
+            {"index": 0, "word": "0x1", "isa_mnemonic": "MATMUL", "role": "matmul"},
+        ],
+    )
+    rep = EL.lane_report_from_declared_program(_forbidding(), _declared_program(tmp_path, (1,)), target="self-hosted")
     assert rep["violated"] == [R._ACCELERATOR_LANE]
     assert rep["program_scan"]["n_hits"] == 1
 
 
 def test_undecodable_declared_program_is_unmeasured_not_clean(tmp_path, monkeypatch):
     _program_decode(monkeypatch, [{"index": 0, "word": "0x1", "illegal": True}])
-    rep = EL.lane_report_from_declared_program(
-        _forbidding(), _declared_program(tmp_path, (1,)), target="self-hosted")
+    rep = EL.lane_report_from_declared_program(_forbidding(), _declared_program(tmp_path, (1,)), target="self-hosted")
     assert rep["program_scan"]["status"] == "unmeasured"
     assert EL.unjudged_lanes(rep, _forbidding()["lanes"]) == [R._ACCELERATOR_LANE]
 
 
 def test_declared_program_scan_never_credits_a_required_lane(tmp_path, monkeypatch):
-    _program_decode(monkeypatch, [
-        {"index": 0, "word": "0x1", "isa_mnemonic": "MATMUL", "role": "matmul"},
-    ])
+    _program_decode(
+        monkeypatch,
+        [
+            {"index": 0, "word": "0x1", "isa_mnemonic": "MATMUL", "role": "matmul"},
+        ],
+    )
     capsule = {"lanes": {"require": [R._ACCELERATOR_LANE]}}
-    rep = EL.lane_report_from_declared_program(
-        capsule, _declared_program(tmp_path, (1,)), target="self-hosted")
+    rep = EL.lane_report_from_declared_program(capsule, _declared_program(tmp_path, (1,)), target="self-hosted")
     assert rep["observed"] == []
     assert EL.unjudged_lanes(rep, capsule["lanes"]) == [R._ACCELERATOR_LANE]
 
@@ -318,33 +330,40 @@ def test_the_evidence_rung_is_not_folded_into_the_executed_vocabulary():
 def test_unjudged_lanes_refuses_a_missing_or_malformed_report():
     lanes = {"forbid": [R._ACCELERATOR_LANE], "require": ["scalar_rvv_lane"]}
     assert EL.unjudged_lanes(None, lanes) == sorted([R._ACCELERATOR_LANE, "scalar_rvv_lane"])
-    assert EL.unjudged_lanes({"evidence": "ledger"}, lanes) == sorted(
-        [R._ACCELERATOR_LANE, "scalar_rvv_lane"])
+    assert EL.unjudged_lanes({"evidence": "ledger"}, lanes) == sorted([R._ACCELERATOR_LANE, "scalar_rvv_lane"])
     assert EL.unjudged_lanes({"evidence": {}}, {}) == []
 
 
 def test_a_lane_both_required_and_forbidden_is_refused(derivable, tmp_path):
     target, _op = derivable
     with pytest.raises(ValueError):
-        EL.lane_report_from_elf({"lanes": {"require": ["x"], "forbid": ["x"]}},
-                                tmp_path / "k.elf", target=target)
+        EL.lane_report_from_elf({"lanes": {"require": ["x"], "forbid": ["x"]}}, tmp_path / "k.elf", target=target)
 
 
 # --- the verdict: the finalizer, in all three directions ---------------------------------------
 def _finalize(paths, capsule, *, target, status="pass"):
     return R._finalize_capsule_result(
-        name="cap", capsule=capsule, status=status, failure=None,
+        name="cap",
+        capsule=capsule,
+        status=status,
+        failure=None,
         tiers={"L2": R.TierResult("L2", "pass", True)},
         trace_check_res={"status": "skipped", "violations": []},
-        numeric={"status": "pass"}, required={"L2"}, no_oracle=False, eff_target=target,
-        paths=paths, run_id="cap", cfg=R._config_for_target(target, "t", "fp32"), contract=None)
+        numeric={"status": "pass"},
+        required={"L2"},
+        no_oracle=False,
+        eff_target=target,
+        paths=paths,
+        run_id="cap",
+        cfg=R._config_for_target(target, "t", "fp32"),
+        contract=None,
+    )
 
 
 @pytest.fixture()
 def paths(tmp_path, derivable):
     target, _op = derivable
-    return make_run_paths(tmp_path / "runs", "cap", suite="t", target=target,
-                          dtype="fp32", benchmark="cap")
+    return make_run_paths(tmp_path / "runs", "cap", suite="t", target=target, dtype="fp32", benchmark="cap")
 
 
 def _write_elf(paths, blob: bytes):
@@ -358,8 +377,11 @@ def test_mutation_clean_elf_reaches_pass(derivable, paths):
     capsules could not reach."""
     target, _op = derivable
     _write_elf(paths, build_elf([(".text", _EXEC, _NOP * 8)]))
-    row = _finalize(paths, {"name": "cap", "kind": "model_slice", "label": "public",
-                            "lanes": {"forbid": [R._ACCELERATOR_LANE]}}, target=target)
+    row = _finalize(
+        paths,
+        {"name": "cap", "kind": "model_slice", "label": "public", "lanes": {"forbid": [R._ACCELERATOR_LANE]}},
+        target=target,
+    )
     assert row["status"] == "pass", row.get("failure")
     assert row["lane_report"]["evidence"][R._ACCELERATOR_LANE] == EL.LINKED_ELF_EVIDENCE
     assert row["lane_report"]["elf_scan"]["opcode_source"]
@@ -370,8 +392,11 @@ def test_mutation_an_accelerated_elf_fails(derivable, paths):
     binary. It must FAIL -- and the row must name the lane, not merely go quiet."""
     target, opcode = derivable
     _write_elf(paths, build_elf([(".text", _EXEC, _NOP * 4 + _accel_word(opcode))]))
-    row = _finalize(paths, {"name": "cap", "kind": "model_slice", "label": "public",
-                            "lanes": {"forbid": [R._ACCELERATOR_LANE]}}, target=target)
+    row = _finalize(
+        paths,
+        {"name": "cap", "kind": "model_slice", "label": "public", "lanes": {"forbid": [R._ACCELERATOR_LANE]}},
+        target=target,
+    )
     assert row["status"] == "fail"
     assert row["failure"]["category"] == "ACCELERATED_A_FORBIDDEN_LANE"
     assert row["lane_report"]["violated"] == [R._ACCELERATOR_LANE]
@@ -382,8 +407,11 @@ def test_mutation_an_unreadable_elf_stays_unmeasured(derivable, paths):
     the submission was disproved and nothing was proved either."""
     target, _op = derivable
     _write_elf(paths, b"truncated")
-    row = _finalize(paths, {"name": "cap", "kind": "model_slice", "label": "public",
-                            "lanes": {"forbid": [R._ACCELERATOR_LANE]}}, target=target)
+    row = _finalize(
+        paths,
+        {"name": "cap", "kind": "model_slice", "label": "public", "lanes": {"forbid": [R._ACCELERATOR_LANE]}},
+        target=target,
+    )
     assert row["status"] == "incomplete"
     assert row["failure"]["category"] == "LANE_CONTRACT_NOT_EVALUATED"
     assert R._ACCELERATOR_LANE in row["failure"]["detail"]
@@ -393,8 +421,11 @@ def test_mutation_an_unreadable_elf_stays_unmeasured(derivable, paths):
 def test_a_missing_elf_stays_unmeasured(derivable, paths):
     """The compile never produced an executable: same verdict, and the capsule is still not passed."""
     target, _op = derivable
-    row = _finalize(paths, {"name": "cap", "kind": "model_slice", "label": "public",
-                            "lanes": {"forbid": [R._ACCELERATOR_LANE]}}, target=target)
+    row = _finalize(
+        paths,
+        {"name": "cap", "kind": "model_slice", "label": "public", "lanes": {"forbid": [R._ACCELERATOR_LANE]}},
+        target=target,
+    )
     assert row["status"] == "incomplete"
     assert row["status"] in R.NOT_MEASURED_STATUSES or row["status"] != "pass"
 
@@ -409,13 +440,19 @@ def test_self_hosted_declared_program_fallback_reaches_pass(derivable, paths, mo
     paths.generated.mkdir(parents=True, exist_ok=True)
     program = paths.generated / f"oracle{R.PROGRAM_ARTIFACT_SUFFIX}"
     program.write_text(json.dumps({"words": [1, 2], "inputs": []}), encoding="utf-8")
-    _program_decode(monkeypatch, [
-        {"index": 0, "word": "0x1", "isa_mnemonic": "ADDI", "role": "scalar"},
-        {"index": 1, "word": "0x2", "isa_mnemonic": "ECALL", "role": "scalar"},
-    ])
+    _program_decode(
+        monkeypatch,
+        [
+            {"index": 0, "word": "0x1", "isa_mnemonic": "ADDI", "role": "scalar"},
+            {"index": 1, "word": "0x2", "isa_mnemonic": "ECALL", "role": "scalar"},
+        ],
+    )
 
-    row = _finalize(paths, {"name": "cap", "kind": "model_slice", "label": "public",
-                            "lanes": {"forbid": [R._ACCELERATOR_LANE]}}, target=target)
+    row = _finalize(
+        paths,
+        {"name": "cap", "kind": "model_slice", "label": "public", "lanes": {"forbid": [R._ACCELERATOR_LANE]}},
+        target=target,
+    )
 
     assert row["status"] == "pass", row.get("failure")
     assert row["lane_report"]["judged_by"] == EL.DECLARED_PROGRAM_EVIDENCE
@@ -427,9 +464,16 @@ def test_a_required_lane_keeps_the_capsule_incomplete(derivable, paths):
     passed on the half that could be settled."""
     target, _op = derivable
     _write_elf(paths, build_elf([(".text", _EXEC, _NOP * 8)]))
-    row = _finalize(paths, {"name": "cap", "kind": "model_slice", "label": "public",
-                            "lanes": {"require": ["scalar_rvv_lane"],
-                                      "forbid": [R._ACCELERATOR_LANE]}}, target=target)
+    row = _finalize(
+        paths,
+        {
+            "name": "cap",
+            "kind": "model_slice",
+            "label": "public",
+            "lanes": {"require": ["scalar_rvv_lane"], "forbid": [R._ACCELERATOR_LANE]},
+        },
+        target=target,
+    )
     assert row["status"] == "incomplete"
     assert "scalar_rvv_lane" in row["failure"]["detail"]
 
@@ -447,16 +491,31 @@ def test_a_caller_supplied_lane_report_still_wins(derivable, paths):
     scan is the operator path's fallback, never an override of real execution evidence."""
     target, _op = derivable
     _write_elf(paths, build_elf([(".text", _EXEC, _NOP * 8)]))
-    supplied = {"required": [], "observed": [], "unexercised": [], "forbidden": [R._ACCELERATOR_LANE],
-                "violated": [], "evidence": {R._ACCELERATOR_LANE: "dynamic_dispatch_ledger"}}
+    supplied = {
+        "required": [],
+        "observed": [],
+        "unexercised": [],
+        "forbidden": [R._ACCELERATOR_LANE],
+        "violated": [],
+        "evidence": {R._ACCELERATOR_LANE: "dynamic_dispatch_ledger"},
+    }
     row = R._finalize_capsule_result(
-        name="cap", capsule={"name": "cap", "kind": "model_slice", "label": "public",
-                             "lanes": {"forbid": [R._ACCELERATOR_LANE]}},
-        status="pass", failure=None, tiers={"L2": R.TierResult("L2", "pass", True)},
-        trace_check_res={"status": "skipped", "violations": []}, numeric={"status": "pass"},
-        required={"L2"}, no_oracle=False, eff_target=target, paths=paths, run_id="cap",
-        cfg=R._config_for_target(target, "t", "fp32"), contract=None,
-        extra={"lane_report": supplied})
+        name="cap",
+        capsule={"name": "cap", "kind": "model_slice", "label": "public", "lanes": {"forbid": [R._ACCELERATOR_LANE]}},
+        status="pass",
+        failure=None,
+        tiers={"L2": R.TierResult("L2", "pass", True)},
+        trace_check_res={"status": "skipped", "violations": []},
+        numeric={"status": "pass"},
+        required={"L2"},
+        no_oracle=False,
+        eff_target=target,
+        paths=paths,
+        run_id="cap",
+        cfg=R._config_for_target(target, "t", "fp32"),
+        contract=None,
+        extra={"lane_report": supplied},
+    )
     assert row["status"] == "pass"
     assert row["lane_report"] is supplied or row["lane_report"] == supplied
     assert "elf_scan" not in row["lane_report"]
@@ -467,17 +526,31 @@ def test_a_caller_supplied_violation_still_fails(derivable, paths):
     whoever produced it."""
     target, _op = derivable
     _write_elf(paths, build_elf([(".text", _EXEC, _NOP * 8)]))
-    supplied = {"required": [], "observed": [R._ACCELERATOR_LANE], "unexercised": [],
-                "forbidden": [R._ACCELERATOR_LANE], "violated": [R._ACCELERATOR_LANE],
-                "evidence": {R._ACCELERATOR_LANE: "dynamic_dispatch_ledger"}}
+    supplied = {
+        "required": [],
+        "observed": [R._ACCELERATOR_LANE],
+        "unexercised": [],
+        "forbidden": [R._ACCELERATOR_LANE],
+        "violated": [R._ACCELERATOR_LANE],
+        "evidence": {R._ACCELERATOR_LANE: "dynamic_dispatch_ledger"},
+    }
     row = R._finalize_capsule_result(
-        name="cap", capsule={"name": "cap", "kind": "model_slice", "label": "public",
-                             "lanes": {"forbid": [R._ACCELERATOR_LANE]}},
-        status="pass", failure=None, tiers={"L2": R.TierResult("L2", "pass", True)},
-        trace_check_res={"status": "skipped", "violations": []}, numeric={"status": "pass"},
-        required={"L2"}, no_oracle=False, eff_target=target, paths=paths, run_id="cap",
-        cfg=R._config_for_target(target, "t", "fp32"), contract=None,
-        extra={"lane_report": supplied})
+        name="cap",
+        capsule={"name": "cap", "kind": "model_slice", "label": "public", "lanes": {"forbid": [R._ACCELERATOR_LANE]}},
+        status="pass",
+        failure=None,
+        tiers={"L2": R.TierResult("L2", "pass", True)},
+        trace_check_res={"status": "skipped", "violations": []},
+        numeric={"status": "pass"},
+        required={"L2"},
+        no_oracle=False,
+        eff_target=target,
+        paths=paths,
+        run_id="cap",
+        cfg=R._config_for_target(target, "t", "fp32"),
+        contract=None,
+        extra={"lane_report": supplied},
+    )
     assert row["status"] == "fail"
     assert row["failure"]["category"] == "ACCELERATED_A_FORBIDDEN_LANE"
 
@@ -486,9 +559,11 @@ def test_a_caller_supplied_violation_still_fails(derivable, paths):
 def test_the_whole_model_ladder_is_unchanged():
     """The dispatch-ledger path builds its own report and does not consult the ELF at all. Pinned here
     because a change that silently re-routed it would replace execution evidence with a static scan."""
-    rep = R.lane_report({"lanes": {"require": ["on_mesh"], "forbid": ["scalar_rvv_lane"]}},
-                        {"on_mesh": {"matmul": 3}},
-                        {"dispatch_ledger": [{"status": "pass", "lane": "on_mesh"}]})
+    rep = R.lane_report(
+        {"lanes": {"require": ["on_mesh"], "forbid": ["scalar_rvv_lane"]}},
+        {"on_mesh": {"matmul": 3}},
+        {"dispatch_ledger": [{"status": "pass", "lane": "on_mesh"}]},
+    )
     assert rep["evidence"]["on_mesh"] == "dynamic_dispatch_ledger"
     assert rep["observed"] == ["on_mesh"] and rep["violated"] == []
     assert "elf_scan" not in rep

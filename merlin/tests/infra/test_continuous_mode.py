@@ -16,6 +16,7 @@ launching an agent:
     moving workspace and the run's verdict must describe the submission as the session left it;
   * per-capsule tier promotion is NOT part of this change and must stay immediate.
 """
+
 from __future__ import annotations
 
 import ast
@@ -30,8 +31,7 @@ def _tree() -> ast.Module:
 
 
 def _fn(name: str) -> ast.FunctionDef:
-    return next(n for n in ast.walk(_tree())
-                if isinstance(n, ast.FunctionDef) and n.name == name)
+    return next(n for n in ast.walk(_tree()) if isinstance(n, ast.FunctionDef) and n.name == name)
 
 
 def _calls(node: ast.AST) -> set[str]:
@@ -51,7 +51,8 @@ def test_qa_grade_grades_a_snapshot_not_the_live_workspace():
     src = ast.get_source_segment(_LOOP.read_text(encoding="utf-8"), _fn("qa_grade")) or ""
     assert "copytree" in src, (
         "qa_grade must copy the submission before grading — continuous mode grades while the agent is "
-        "still writing, and grading the live workspace would grade a half-written tree")
+        "still writing, and grading the live workspace would grade a half-written tree"
+    )
     assert "verdict.json" in src, "qa_grade must publish the redacted verdict the agent reads"
 
 
@@ -70,8 +71,7 @@ def test_continuous_flags_are_exposed():
 def _continuous_branch() -> ast.If:
     """The `if a.continuous:` branch in main()."""
     for node in ast.walk(_fn("main")):
-        if isinstance(node, ast.If) and isinstance(node.test, ast.Attribute) \
-                and node.test.attr == "continuous":
+        if isinstance(node, ast.If) and isinstance(node.test, ast.Attribute) and node.test.attr == "continuous":
             return node
     raise AssertionError("no `if a.continuous:` branch in main()")
 
@@ -96,7 +96,8 @@ def _grader_fn() -> ast.FunctionDef:
                 return node
     raise AssertionError(
         "no nested function in the continuous branch loops over qa_grade — nothing grades while the "
-        "agent works, so the run has a round barrier in all but name")
+        "agent works, so the run has a round barrier in all but name"
+    )
 
 
 def test_continuous_runs_one_session_and_grades_on_an_interval():
@@ -109,21 +110,21 @@ def test_continuous_runs_one_session_and_grades_on_an_interval():
     br = _continuous_branch()
     calls = _calls(br)
 
-    grader = _grader_fn()                      # raises if nothing grades in a loop
+    grader = _grader_fn()  # raises if nothing grades in a loop
     # The grader must run on its own thread, or "alongside the session" is false — it would grade
     # before or after, which is the barrier this mode exists to remove.
     assert "Thread" in calls, (
-        "the interval grader is not started on a thread, so it cannot run alongside the agent session")
-    started_names = {n.func.attr for n in ast.walk(br)
-                     if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+        "the interval grader is not started on a thread, so it cannot run alongside the agent session"
+    )
+    started_names = {n.func.attr for n in ast.walk(br) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
     assert "start" in started_names, "a grader thread is constructed but never started"
 
     # It must WAIT on an interval rather than spin, and the wait must be interruptible so the session
     # teardown below can stop it.
-    assert any(isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "wait"
-               for n in ast.walk(grader)), (
+    assert any(isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "wait" for n in ast.walk(grader)), (
         "the grader does not wait on a stop event — it cannot be an INTERVAL grader that also stops "
-        "when the session does")
+        "when the session does"
+    )
 
     assert "qa_grade" in calls, "continuous mode must grade through the same path a round does"
     assert "launch_agent" in calls, "continuous mode still runs one real agent session"
@@ -140,7 +141,8 @@ def test_a_failed_grade_cannot_kill_the_run():
     handlers = [h for h in ast.walk(grader) if isinstance(h, ast.ExceptHandler)]
     assert handlers, "the interval grader must guard qa_grade — a mid-write submission is normal"
     assert any(isinstance(n, ast.Continue) for h in handlers for n in ast.walk(h)), (
-        "a failed grade must be a SKIPPED TICK: the grader has to keep grading after one raises")
+        "a failed grade must be a SKIPPED TICK: the grader has to keep grading after one raises"
+    )
 
 
 def test_there_is_a_final_authoritative_grade_after_the_session():
@@ -148,12 +150,15 @@ def test_there_is_a_final_authoritative_grade_after_the_session():
     br = _continuous_branch()
     # the last qa_grade in the branch must sit OUTSIDE the grader function definition
     inner = {id(n) for fn in ast.walk(br) if isinstance(fn, ast.FunctionDef) for n in ast.walk(fn)}
-    outer_grades = [n for n in ast.walk(br)
-                    if isinstance(n, ast.Call) and id(n) not in inner
-                    and isinstance(n.func, ast.Name) and n.func.id == "qa_grade"]
+    outer_grades = [
+        n
+        for n in ast.walk(br)
+        if isinstance(n, ast.Call) and id(n) not in inner and isinstance(n.func, ast.Name) and n.func.id == "qa_grade"
+    ]
     assert outer_grades, (
         "continuous mode must re-grade after the session ends; without it the run's verdict is whatever "
-        "the last interval tick happened to catch")
+        "the last interval tick happened to catch"
+    )
 
 
 def test_per_capsule_tier_promotion_is_untouched_by_this_mode():
@@ -162,4 +167,5 @@ def test_per_capsule_tier_promotion_is_untouched_by_this_mode():
     runner = (merlin_dir() / "python/merlin/targetgen/capsule_runner.py").read_text(encoding="utf-8")
     assert "for tier in _tier_seq:" in runner, (
         "the per-capsule tier ladder moved — promotion must stay immediate and per capsule, never "
-        "deferred to a round or a mode")
+        "deferred to a round or a mode"
+    )

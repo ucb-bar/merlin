@@ -14,6 +14,7 @@ make the composition trustworthy:
    pipeline and asserts the ``.ll`` carries ``__kmpc_*`` calls AND vector types — the actual
    claim, rather than an inspection of the pass-list string.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -32,8 +33,7 @@ def test_default_pipeline_is_byte_identical():
     """No par_sched_path -> the exact shipping serial pipeline (no silent perturbation)."""
     serial = P.build_rvv_pipeline("/tmp/sched.mlir")
     assert P.build_rvv_pipeline("/tmp/sched.mlir", par_sched_path=None) == serial
-    for tok in ("scf-forall-to-parallel", "convert-scf-to-openmp", "convert-openmp-to-llvm",
-                P.PARALLEL_ENTRY):
+    for tok in ("scf-forall-to-parallel", "convert-scf-to-openmp", "convert-openmp-to-llvm", P.PARALLEL_ENTRY):
         assert tok not in serial, f"{tok} leaked into the serial pipeline"
     assert "func.func(convert-linalg-to-loops)" in serial
 
@@ -44,8 +44,9 @@ def test_parallel_pipeline_adds_the_openmp_stages_and_preloads_both_libraries():
     assert "transform-library-paths=/tmp/par.mlir,/tmp/sched.mlir" in par
     # the parallel entry must run BEFORE the package schedule, so the package's match sees
     # the contraction already wrapped in the forall
-    assert (par.index(f"transform-interpreter{{entry-point={P.PARALLEL_ENTRY}}}")
-            < par.index("transform-interpreter{entry-point=__transform_main}"))
+    assert par.index(f"transform-interpreter{{entry-point={P.PARALLEL_ENTRY}}}") < par.index(
+        "transform-interpreter{entry-point=__transform_main}"
+    )
     for tok in ("scf-forall-to-parallel", "convert-scf-to-openmp", "convert-openmp-to-llvm"):
         assert tok in par
     # the serial fallback is REPLACED, not duplicated, or the ops would lower twice
@@ -66,7 +67,7 @@ def test_parallel_schedule_never_tiles_the_reduction_dim():
     with pytest.raises(ValueError):
         P.parallel_transform_schedule(4, matmul_dim="k")
     with pytest.raises(ValueError):
-        P.parallel_transform_schedule(1)      # 1 hart is not a parallel build
+        P.parallel_transform_schedule(1)  # 1 hart is not a parallel build
 
 
 def test_parallel_harts_requires_vectorize():
@@ -77,7 +78,8 @@ def test_parallel_harts_requires_vectorize():
 
 def test_residual_vector_operation_scan_preserves_mlir_name_boundaries(tmp_path):
     boundary = tmp_path / "translation_boundary.mlir"
-    boundary.write_text("""
+    boundary.write_text(
+        """
       %0 = vector.transfer_read %source[%c0], %pad
       %1 = "vector.mask"(%mask, %0) : (vector<8xi1>, vector<8xf32>) -> vector<8xf32>
       %2 = vector.contract2_x %lhs, %rhs, %acc
@@ -88,7 +90,9 @@ def test_residual_vector_operation_scan_preserves_mlir_name_boundaries(tmp_path)
       // Preserve the former ASCII identifier grammar and its stopping point.
       %6 = vector.partial-name
       %7 = vector.
-    """, encoding="utf-8")
+    """,
+        encoding="utf-8",
+    )
 
     assert P._residual_vector_dialect_ops(boundary) == (
         "vector.contract2_x",
@@ -98,8 +102,9 @@ def test_residual_vector_operation_scan_preserves_mlir_name_boundaries(tmp_path)
     )
 
 
-@pytest.mark.skipif(not MLIR_OPT.is_file() or not MLIR_TRANSLATE.is_file(),
-                    reason="third_party/llvm-install MLIR tools not built")
+@pytest.mark.skipif(
+    not MLIR_OPT.is_file() or not MLIR_TRANSLATE.is_file(), reason="third_party/llvm-install MLIR tools not built"
+)
 def test_composed_lowering_emits_both_openmp_and_vectors(tmp_path):
     """End-to-end: a matmul through the composed pipeline yields __kmpc_* AND vector types.
 
@@ -122,14 +127,17 @@ func.func @forward(%A: tensor<64x2048xf32>, %B: tensor<2048x512xf32>,
     pipe = P.build_rvv_pipeline(sched, par_sched_path=par)
     out = tmp_path / "out.mlir"
     proc = subprocess.run(
-        [str(MLIR_OPT), str(tmp_path / "mm.mlir"),
-         f"--pass-pipeline=builtin.module({pipe})", "-o", str(out)],
-        capture_output=True, text=True, timeout=600)
+        [str(MLIR_OPT), str(tmp_path / "mm.mlir"), f"--pass-pipeline=builtin.module({pipe})", "-o", str(out)],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
     assert proc.returncode == 0, f"composed pipeline failed:\n{proc.stderr[-3000:]}"
 
     ll = tmp_path / "out.ll"
-    tproc = subprocess.run([str(MLIR_TRANSLATE), "--mlir-to-llvmir", str(out), "-o", str(ll)],
-                           capture_output=True, text=True, timeout=600)
+    tproc = subprocess.run(
+        [str(MLIR_TRANSLATE), "--mlir-to-llvmir", str(out), "-o", str(ll)], capture_output=True, text=True, timeout=600
+    )
     assert tproc.returncode == 0, f"translate failed:\n{tproc.stderr[-3000:]}"
     text = ll.read_text()
 
@@ -148,8 +156,7 @@ def test_llvm23_has_no_scf_for_to_parallel():
     If a future LLVM gains an scf.for->scf.parallel pass this fails, and the simpler
     'parallelize the existing tile loop' design becomes available.
     """
-    help_text = subprocess.run([str(MLIR_OPT), "--help"], capture_output=True, text=True,
-                               timeout=120).stdout
+    help_text = subprocess.run([str(MLIR_OPT), "--help"], capture_output=True, text=True, timeout=120).stdout
     assert "--scf-forall-to-parallel" in help_text
     assert "--scf-for-to-parallel" not in help_text
 
@@ -161,6 +168,7 @@ def test_llvm23_has_no_scf_for_to_parallel():
 # across them was about threads. Measured on lstmnetvit int8 at 8 harts, in the LINKED ELF: 5 of 37
 # matmuls fell out of the block table to scalar loops, 9 more were narrowed, 59,752 -> 97,701 issued
 # instructions and 13,767 -> 5,144 vector ops. These tests pin the replacement.
+
 
 def _leading_op(line: str) -> str:
     """The op name a printed MLIR line starts, read structurally: strip one leading result list
@@ -205,21 +213,27 @@ func.func @forward(%A: tensor<64x2048xf32>, %B: tensor<2048x512xf32>,
     sched.write_text(pb.schedule_text(table, 16))
 
     def _counts(par_path):
-        pipe = P.build_rvv_pipeline(sched, par_sched_path=par_path,
-                                    perop_parallel=par_path is not None)
+        pipe = P.build_rvv_pipeline(sched, par_sched_path=par_path, perop_parallel=par_path is not None)
         anchor = "transform-interpreter{entry-point=__transform_main},canonicalize,cse"
-        prefix = pipe[:pipe.index(anchor) + len(anchor)]
+        prefix = pipe[: pipe.index(anchor) + len(anchor)]
         prefix += ")" * (prefix.count("(") - prefix.count(")"))
         proc = subprocess.run(
-            [str(MLIR_OPT), str(tmp_path / "mm.mlir"),
-             f"--pass-pipeline=builtin.module({prefix})"],
-            capture_output=True, text=True, timeout=600)
+            [str(MLIR_OPT), str(tmp_path / "mm.mlir"), f"--pass-pipeline=builtin.module({prefix})"],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
         assert proc.returncode == 0, proc.stderr[-3000:]
         got = {}
-        for tok in ("vector.contract", "vector.transfer_read", "vector.transfer_write",
-                    "vector.mask", "linalg.matmul", "scf.forall"):
-            got[tok] = sum(1 for l in proc.stdout.splitlines()
-                           if _leading_op(l) == tok)
+        for tok in (
+            "vector.contract",
+            "vector.transfer_read",
+            "vector.transfer_write",
+            "vector.mask",
+            "linalg.matmul",
+            "scf.forall",
+        ):
+            got[tok] = sum(1 for l in proc.stdout.splitlines() if _leading_op(l) == tok)
         return got
 
     parp = tmp_path / "par.mlir"
@@ -227,10 +241,10 @@ func.func @forward(%A: tensor<64x2048xf32>, %B: tensor<2048x512xf32>,
     one, eight = _counts(None), _counts(parp)
     assert eight["scf.forall"] == 1, "the parallel wrapper must be there"
     assert one["scf.forall"] == 0
-    for tok in ("vector.contract", "vector.transfer_read", "vector.transfer_write",
-                "vector.mask", "linalg.matmul"):
+    for tok in ("vector.contract", "vector.transfer_read", "vector.transfer_write", "vector.mask", "linalg.matmul"):
         assert one[tok] == eight[tok], (
-            f"{tok}: {one[tok]} at 1 hart vs {eight[tok]} at 8 -- the arms are not the same kernel")
+            f"{tok}: {one[tok]} at 1 hart vs {eight[tok]} at 8 -- the arms are not the same kernel"
+        )
     assert eight["vector.mask"] == 0 and eight["linalg.matmul"] == 0
 
 
@@ -268,6 +282,7 @@ def test_harts_reaches_the_compile_only_build():
     from merlin import compile_cli
 
     src = inspect.getsource(compile_cli.compile_rvv)
-    head = src[:src.index('if run == "k1":')]
+    head = src[: src.index('if run == "k1":')]
     assert head.count("parallel_harts=(harts if harts > 1 else None)") >= 1, (
-        "the compile-only build must receive the hart count")
+        "the compile-only build must receive the hart count"
+    )

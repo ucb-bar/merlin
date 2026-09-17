@@ -1,4 +1,5 @@
 """The data-driven planner edge accounts for representations and emitted activity exactly."""
+
 from __future__ import annotations
 
 import pytest
@@ -16,7 +17,6 @@ from merlin.xdsl_dialects.lowering.global_plan import (
     ResourceOccupancy,
     ValueRepresentation,
 )
-
 
 HOST = ValueRepresentation("host", "row_major", "i8", encoding="plain")
 PACKED = ValueRepresentation("local", "blocked", "i8", encoding="packed")
@@ -42,8 +42,7 @@ def _alternative() -> RegionAlternative:
         implementation="packed_kernel",
         placement="array",
         cycles=CycleInterval.point(80, "warm kernel probe"),
-        occupancy=(ResourceOccupancy(
-            "array", CycleInterval.point(80, "warm kernel probe"), "warm kernel probe"),),
+        occupancy=(ResourceOccupancy("array", CycleInterval.point(80, "warm kernel probe"), "warm kernel probe"),),
         inputs=(BufferRepresentation("input", HOST),),
         outputs=(BufferRepresentation("output", PACKED),),
     )
@@ -52,25 +51,46 @@ def _alternative() -> RegionAlternative:
 def _event_builder(program, selected, transitions, endpoint):
     compute = selected[0]
     conversion = transitions[0]
-    return schedule_activity((
-        ActivityEvent(
-            "compute", compute.placement, "compute", getattr(compute.cycles, endpoint),
-            provenance="warm kernel probe"),
-        ActivityEvent(
-            "unpack", "dma", "encoding", getattr(conversion.cycles, endpoint),
-            depends_on=("compute",), movement_bytes=64, movement_commands=1,
-            encoding_transition=True, provenance="warm conversion probe"),
-    ))
+    return schedule_activity(
+        (
+            ActivityEvent(
+                "compute",
+                compute.placement,
+                "compute",
+                getattr(compute.cycles, endpoint),
+                provenance="warm kernel probe",
+            ),
+            ActivityEvent(
+                "unpack",
+                "dma",
+                "encoding",
+                getattr(conversion.cycles, endpoint),
+                depends_on=("compute",),
+                movement_bytes=64,
+                movement_commands=1,
+                encoding_transition=True,
+                provenance="warm conversion probe",
+            ),
+        )
+    )
 
 
-def _adapter(*, event_builder=_event_builder,
-             composition: Composition = Composition.MAX) -> ExplicitPlanningAdapter:
+def _adapter(*, event_builder=_event_builder, composition: Composition = Composition.MAX) -> ExplicitPlanningAdapter:
     return ExplicitPlanningAdapter(
         alternatives=(_alternative(),),
         boundaries={("input", "input"): HOST, ("output", "output"): HOST},
-        transition_rules=(TransitionRule(
-            "unpack", PACKED, HOST, CycleInterval.point(40, "warm conversion probe"),
-            "dma", 64, 1, provenance="exact output shape"),),
+        transition_rules=(
+            TransitionRule(
+                "unpack",
+                PACKED,
+                HOST,
+                CycleInterval.point(40, "warm conversion probe"),
+                "dma",
+                64,
+                1,
+                provenance="exact output shape",
+            ),
+        ),
         resource_kinds={"array": ResourceKind.COMPUTE, "dma": ResourceKind.MOVEMENT},
         composition=composition,
         composition_eta=1.0 if composition is Composition.MAX else 0.0,
@@ -81,8 +101,7 @@ def _adapter(*, event_builder=_event_builder,
 
 
 def test_dependency_timeline_exposes_unhidden_output_conversion() -> None:
-    result = optimize_program(
-        _program(), _adapter(), policy=GlobalPlanPolicy(timeout_s=1))
+    result = optimize_program(_program(), _adapter(), policy=GlobalPlanPolicy(timeout_s=1))
 
     assert result.plan is not None
     assert result.plan.cycles.hi == 120
@@ -96,12 +115,11 @@ def test_dependency_timeline_exposes_unhidden_output_conversion() -> None:
 def test_event_timeline_must_account_for_every_priced_resource() -> None:
     def missing_conversion(program, selected, transitions, endpoint):
         compute = selected[0]
-        return schedule_activity((ActivityEvent(
-            "compute", "array", "compute", getattr(compute.cycles, endpoint)),))
+        return schedule_activity((ActivityEvent("compute", "array", "compute", getattr(compute.cycles, endpoint)),))
 
     result = optimize_program(
-        _program(), _adapter(event_builder=missing_conversion),
-        policy=GlobalPlanPolicy(timeout_s=1))
+        _program(), _adapter(event_builder=missing_conversion), policy=GlobalPlanPolicy(timeout_s=1)
+    )
 
     assert result.plan is None
     assert any("does not account for the priced occupancy" in item for item in result.refusals)
@@ -111,16 +129,26 @@ def test_serial_composition_rejects_an_illegally_overlapped_timeline() -> None:
     def illegally_overlapped(program, selected, transitions, endpoint):
         compute = selected[0]
         conversion = transitions[0]
-        return schedule_activity((
-            ActivityEvent("compute", "array", "compute", getattr(compute.cycles, endpoint)),
-            ActivityEvent("unpack", "dma", "encoding", getattr(conversion.cycles, endpoint),
-                          movement_bytes=64, movement_commands=1,
-                          encoding_transition=True),
-        ))
+        return schedule_activity(
+            (
+                ActivityEvent("compute", "array", "compute", getattr(compute.cycles, endpoint)),
+                ActivityEvent(
+                    "unpack",
+                    "dma",
+                    "encoding",
+                    getattr(conversion.cycles, endpoint),
+                    movement_bytes=64,
+                    movement_commands=1,
+                    encoding_transition=True,
+                ),
+            )
+        )
 
     result = optimize_program(
-        _program(), _adapter(event_builder=illegally_overlapped, composition=Composition.SUM),
-        policy=GlobalPlanPolicy(timeout_s=1))
+        _program(),
+        _adapter(event_builder=illegally_overlapped, composition=Composition.SUM),
+        policy=GlobalPlanPolicy(timeout_s=1),
+    )
 
     assert result.plan is None
     assert any("below the explicit sum resource bound" in item for item in result.refusals)
@@ -128,11 +156,9 @@ def test_serial_composition_rejects_an_illegally_overlapped_timeline() -> None:
 
 def test_transition_matching_includes_encoding_direction() -> None:
     adapter = _adapter()
-    adapter.transition_rules = (TransitionRule(
-        "wrong_direction", HOST, PACKED, CycleInterval.point(40), "dma", 64, 1),)
+    adapter.transition_rules = (TransitionRule("wrong_direction", HOST, PACKED, CycleInterval.point(40), "dma", 64, 1),)
 
-    result = optimize_program(
-        _program(), adapter, policy=GlobalPlanPolicy(timeout_s=1))
+    result = optimize_program(_program(), adapter, policy=GlobalPlanPolicy(timeout_s=1))
 
     assert result.plan is None
     assert any("no transition establishes" in item for item in result.refusals)
@@ -141,7 +167,12 @@ def test_transition_matching_includes_encoding_direction() -> None:
 def test_composition_requires_provenance() -> None:
     with pytest.raises(ValueError, match="composition provenance"):
         ExplicitPlanningAdapter(
-            alternatives=(_alternative(),), boundaries={}, transition_rules=(),
+            alternatives=(_alternative(),),
+            boundaries={},
+            transition_rules=(),
             resource_kinds={"array": ResourceKind.COMPUTE},
-            composition=Composition.MAX, composition_eta=1.0,
-            physical=Bound(0), composition_provenance="")
+            composition=Composition.MAX,
+            composition_eta=1.0,
+            physical=Bound(0),
+            composition_provenance="",
+        )

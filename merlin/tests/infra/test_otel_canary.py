@@ -15,6 +15,7 @@ An unverified exporter silently deletes the entire cost/telemetry axis of a sear
 loss is only discovered when someone asks for the traces afterwards — by which point the runs are
 gone. So this asserts RECEIPT, end to end, against a real sink.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,17 +33,17 @@ _EXPORTER = "opentelemetry.exporter.otlp.proto.http.trace_exporter"
 
 def _interpreter_with_exporter() -> str | None:
     """An interpreter that can actually EXPORT — not merely one that can import the SDK."""
-    from merlin.common.paths import repo_root
-
     # `out/build/chia-venv` is the CANONICAL one (the single generated-output root, which
     # `check_repro_env` probes). A legacy `build/chia-venv` also exists on some checkouts and is
     # tried second -- installing into only one of them is how the exporter came to be present for
     # an interpreter nothing actually runs agent rounds with.
-    from merlin.common.paths import build_dir
+    from merlin.common.paths import build_dir, repo_root
 
-    for cand in (sys.executable,
-                 str(build_dir() / "chia-venv/bin/python"),
-                 str(repo_root() / "build/chia-venv/bin/python")):
+    for cand in (
+        sys.executable,
+        str(build_dir() / "chia-venv/bin/python"),
+        str(repo_root() / "build/chia-venv/bin/python"),
+    ):
         if not cand or not Path(cand).exists():
             continue
         probe = subprocess.run([cand, "-c", f"import {_EXPORTER}"], capture_output=True)
@@ -80,12 +81,17 @@ class TestSpansReachTheCollector:
                 f"no interpreter has {_EXPORTER}; install "
                 "'opentelemetry-exporter-otlp-proto-http' into the venv that runs agent rounds. "
                 "Skipping is correct here — the transport is genuinely absent — but a RUN that "
-                "silently console-exports instead is not, which is what this test exists to catch.")
+                "silently console-exports instead is not, which is what this test exists to catch."
+            )
 
         out = tmp_path / "otel.jsonl"
         port = _free_port()
-        sink = subprocess.Popen(["aet", "otel-sink", "--port", str(port), "--out", str(out)],
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        sink = subprocess.Popen(
+            ["aet", "otel-sink", "--port", str(port), "--out", str(out)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
         try:
             assert _wait_listening(port), "aet otel-sink never started listening"
             emit = f"""
@@ -110,9 +116,10 @@ p.shutdown()
             deadline = time.time() + 15
             while time.time() < deadline and not (out.exists() and out.stat().st_size):
                 time.sleep(0.2)
-            assert out.exists() and out.stat().st_size, \
-                "the exporter reported success and the collector received NOTHING — the exact " \
+            assert out.exists() and out.stat().st_size, (
+                "the exporter reported success and the collector received NOTHING — the exact "
                 "silent failure this canary exists to make loud"
+            )
             first = json.loads(out.read_text().splitlines()[0])
             assert first.get("kind") == "traces", first
         finally:

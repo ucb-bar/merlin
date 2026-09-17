@@ -28,6 +28,7 @@ mapping with a `fir` key on one target and a bare string on another, and `facts.
 mapping on one and a list of records on another. Assuming either turns a target with a recorded
 elaboration into one reporting none — the direction that hides a fixable gap.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -70,7 +71,8 @@ def test_a_hw_dialect_elaboration_is_read_rather_than_reported_unknown():
         pytest.skip(f"atlas's elaboration is now recorded as {kind!r}; re-read this test")
     named = [w.strip() for w in detail.split(",") if w.strip().startswith("/")]
     assert named and Path(named[0]).is_file(), (
-        f"the named artifact {named[:1]} is not on this host; the diagnosis changed")
+        f"the named artifact {named[:1]} is not on this host; the diagnosis changed"
+    )
 
     pf = port_facts("atlas", fields=("completed", "busy"))
     assert pf["status"] == "derived", f"atlas's ports should read now: {pf.get('why')}"
@@ -88,15 +90,15 @@ def test_the_hw_reader_refuses_an_incomplete_signature_rather_than_answering():
     from merlin.targetgen.rtl.ports import hw_module_ports
 
     ports, bad = hw_module_ports(
-        "hw.module @Good(in %clock : i1, out done : i1) {\n}\n"
-        "hw.module @Truncated(in %clock : i1\n")
+        "hw.module @Good(in %clock : i1, out done : i1) {\n}\nhw.module @Truncated(in %clock : i1\n"
+    )
     assert "Good" in ports and "Truncated" in bad
     assert "matching paren" in bad["Truncated"]
 
     # And a signature it CAN read regroups the flattened bundle back into a field with leaves.
     ports, bad = hw_module_ports(
-        "hw.module @Ctrl(in %completed_ready : i1, out completed_valid : i1, "
-        "out completed_bits : i6) {\n}\n")
+        "hw.module @Ctrl(in %completed_ready : i1, out completed_valid : i1, out completed_bits : i6) {\n}\n"
+    )
     assert not bad
     f = ports["Ctrl"].field_named("completed")
     assert f is not None and set(f.leaves) == {"ready", "valid", "bits"}

@@ -10,6 +10,7 @@ number that means less than it appears to:
 Each is asserted rather than described, because the module's whole purpose is to avoid a flattered
 measurement and the instrument built for the historical replay flattered itself three ways first.
 """
+
 from __future__ import annotations
 
 import copy
@@ -18,8 +19,7 @@ import pytest
 
 from merlin.verify import HAS_XDSL, HAS_Z3
 
-pytestmark = pytest.mark.skipif(not (HAS_XDSL and HAS_Z3),
-                                reason="needs the verify extra (xdsl + z3)")
+pytestmark = pytest.mark.skipif(not (HAS_XDSL and HAS_Z3), reason="needs the verify extra (xdsl + z3)")
 
 _TIMEOUT_MS = 20_000
 
@@ -27,7 +27,8 @@ _TIMEOUT_MS = 20_000
 def _matmul_cb(m=2, k=2, n=2):
     """A small, complete command buffer: pack a weight, contract, commit, evict."""
     return {
-        "abi_version": "0.1", "target": "t",
+        "abi_version": "0.1",
+        "target": "t",
         "tensors": {
             "X": {"shape": [m, k], "dtype": "i8", "role": "input"},
             "W": {"shape": [k, n], "dtype": "i8", "role": "weight"},
@@ -35,10 +36,12 @@ def _matmul_cb(m=2, k=2, n=2):
         },
         "commands": [
             {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {}},
-            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "X", "rhs": "W_res", "dst": "acc0"},
-             "attributes": {}},
-            {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"},
-             "attributes": {"output_dtype": "i32", "epilogue": []}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "X", "rhs": "W_res", "dst": "acc0"}, "attributes": {}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc0", "dst": "Y0"},
+                "attributes": {"output_dtype": "i32", "epilogue": []},
+            },
             {"opcode": "EVICT", "operands": {"src": "W_res"}, "attributes": {}},
         ],
         "outputs": ["Y0"],
@@ -46,6 +49,7 @@ def _matmul_cb(m=2, k=2, n=2):
 
 
 # -- 1. the exclusion, which is the load-bearing one ---------------------------------------------
+
 
 def test_a_submission_identical_to_its_spec_is_excluded_not_verified():
     """The measurement this prevents: 2,500 of 4,111 archived submissions are their own spec.
@@ -66,8 +70,7 @@ def test_a_restructured_submission_is_eligible():
 
     spec = _matmul_cb()
     agent = copy.deepcopy(spec)
-    agent["commands"].insert(0, {"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "X"},
-                                 "attributes": {}})
+    agent["commands"].insert(0, {"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "X"}, "attributes": {}})
     assert classify(spec, agent) == "opcodes"
 
     attrs = copy.deepcopy(spec)
@@ -76,6 +79,7 @@ def test_a_restructured_submission_is_eligible():
 
 
 # -- 2. the verdicts themselves ------------------------------------------------------------------
+
 
 def test_an_equivalent_restructuring_is_verified():
     """Contract against the weight directly instead of packing it first; expect `unsat`.
@@ -97,7 +101,8 @@ def test_an_equivalent_restructuring_is_verified():
     v = validate_equivalence(spec, agent, timeout_ms=_TIMEOUT_MS)
     assert v.status == "unsat", (
         f"an equivalent restructuring must verify, not {v.status}; refuting a correct submission is "
-        f"the one outcome that makes this tool worse than useless")
+        f"the one outcome that makes this tool worse than useless"
+    )
 
 
 def test_a_wrong_buffer_is_refuted_with_a_counterexample():
@@ -130,6 +135,7 @@ def test_an_unmodellable_dtype_abstains_rather_than_refuting():
 
 # -- 3. the stimulus claim, and the report ------------------------------------------------------
 
+
 def test_the_stimulus_range_is_derived_from_the_tensor_module_not_written_down():
     """The ablation's headline-2 claim depends on this set; a hardcoded copy would go stale.
 
@@ -145,12 +151,12 @@ def test_the_stimulus_range_is_derived_from_the_tensor_module_not_written_down()
     assert all(v >= 0 for v in vals), "the claim 'the stimulus never goes negative' must hold"
     assert max(vals) < 8, f"the stimulus range widened to {sorted(vals)}; headline 2 must be restated"
 
-    rows = {tuple(Tensor.deterministic("A0", (4, 4), "i8").data[i * 4:(i + 1) * 4]) for i in range(4)}
+    rows = {tuple(Tensor.deterministic("A0", (4, 4), "i8").data[i * 4 : (i + 1) * 4]) for i in range(4)}
     assert len(rows) > 1, "rows are identical again; that is a separate, worse problem"
 
 
 def test_the_report_prints_every_declared_cell_including_the_empty_ones():
-    """"Nothing was found" and "nothing was looked for" must not render the same.
+    """ "Nothing was found" and "nothing was looked for" must not render the same.
 
     A table that omits its zero rows cannot distinguish them, and this ablation's most likely outcome
     is a zero in exactly the cell that matters most.
@@ -158,14 +164,25 @@ def test_the_report_prints_every_declared_cell_including_the_empty_ones():
     from merlin.verify.ablation import render
 
     record = {
-        "schema": "verify_ablation/v1", "question": "q", "population_total": 3, "sampled": 3,
-        "seed": None, "timeout_ms": 1000, "stimulus_values": [0, 1, 2, 3], "wall_seconds": 1.0,
+        "schema": "verify_ablation/v1",
+        "question": "q",
+        "population_total": 3,
+        "sampled": 3,
+        "seed": None,
+        "timeout_ms": 1000,
+        "stimulus_values": [0, 1, 2, 3],
+        "wall_seconds": 1.0,
         "population_pin": None,
         "records": [
             {"capsule": "A", "shape": "identical", "verdict": "excluded", "numeric_status": "pass"},
             {"capsule": "B", "shape": "opcodes", "verdict": "verified", "numeric_status": "pass"},
-            {"capsule": "C", "shape": "opcodes", "verdict": "abstained", "numeric_status": "fail",
-             "reason_kind": "float_dtype"},
+            {
+                "capsule": "C",
+                "shape": "opcodes",
+                "verdict": "abstained",
+                "numeric_status": "fail",
+                "reason_kind": "float_dtype",
+            },
         ],
     }
     text = render(record)
@@ -177,6 +194,7 @@ def test_the_report_prints_every_declared_cell_including_the_empty_ones():
 
 
 # -- 4. the defect the archive found in this checker ---------------------------------------------
+
 
 def test_right_values_under_the_wrong_name_is_refuted_not_verified():
     """A buffer that computes correctly but publishes under an undeclared name must not verify.

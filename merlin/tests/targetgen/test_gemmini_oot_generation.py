@@ -12,6 +12,7 @@ These tests pin two things: (1) the residual stays consistent with the curated r
 generated package has the shape the registry + runner require. They need no hardware and no mlc —
 gemmini is an all-residual prototype (no ``facts_source``).
 """
+
 from __future__ import annotations
 
 import yaml
@@ -42,13 +43,17 @@ def test_manifest_for_gemmini_reproduces_the_curated_contract():
     curated = _curated()
     # ``legality`` plus the per-run capability audit; both are derived, neither is curated (pinning
     # the audit into the reference contract would let a stale evidence block look authoritative).
-    assert set(m) - set(curated) == {"legality",
-                                     "capability_evidence", "semantic_capabilities_derived",
-        "semantic_capabilities_unknown", "unmapped_observations"}
+    assert set(m) - set(curated) == {
+        "legality",
+        "capability_evidence",
+        "semantic_capabilities_derived",
+        "semantic_capabilities_unknown",
+        "unmapped_observations",
+    }
     assert m["legality"] == []
     for key, val in curated.items():
         assert m[key] == val, f"gemmini.{key} drifted from the curated reference contract"
-    cm.validate(m)   # schema-valid + compute_units parse (raises on any problem)
+    cm.validate(m)  # schema-valid + compute_units parse (raises on any problem)
 
 
 def test_write_oot_target_gemmini_produces_the_interchange_package(tmp_path, monkeypatch):
@@ -66,7 +71,7 @@ def test_write_oot_target_gemmini_produces_the_interchange_package(tmp_path, mon
     assert info.contract_path == root / "contracts" / "target_contract.yaml"
     contract = info.load_contract()
     assert contract["endpoint_kind"] == "inline_asm_insn"
-    assert info.backend == "baremetal"          # derived from runtime.default_backend, not a name map
+    assert info.backend == "baremetal"  # derived from runtime.default_backend, not a name map
 
 
 def test_gemmini_materializes_into_the_zero_env_generated_home(tmp_path, monkeypatch):
@@ -76,18 +81,18 @@ def test_gemmini_materializes_into_the_zero_env_generated_home(tmp_path, monkeyp
     reference still wins ``resolve()`` (precedence 2 > the generated home) — as it must until a later GX
     phase deletes the in-tree package — so this asserts DISCOVERY + contract fidelity, not resolution."""
     monkeypatch.delenv("MERLIN_TARGET_PATH", raising=False)
-    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path))          # isolated generated home
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path))  # isolated generated home
     root = cm.materialize_generated_target("gemmini")
     assert root == tr.generated_target_home() / "gemmini"
     assert (root / "contracts" / "target_contract.yaml").is_file()
 
-    assert tr.external_targets().get("gemmini") == root          # discovered with zero env
+    assert tr.external_targets().get("gemmini") == root  # discovered with zero env
     gen = yaml.safe_load((root / "contracts" / "target_contract.yaml").read_text(encoding="utf-8"))
     assert gen["name"] == "gemmini"
     assert gen["endpoint_kind"] == self_ref_endpoint()
-    assert gen == cm.manifest_for("gemmini")                     # generated == derived manifest
+    assert gen == cm.manifest_for("gemmini")  # generated == derived manifest
 
-    assert tr.resolve("gemmini").kind == "reference"             # in-tree reference still wins resolve()
+    assert tr.resolve("gemmini").kind == "reference"  # in-tree reference still wins resolve()
 
 
 def self_ref_endpoint() -> str:

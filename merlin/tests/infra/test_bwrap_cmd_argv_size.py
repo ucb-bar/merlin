@@ -23,12 +23,13 @@ composer is what produces the string (it is the only mechanism that can honour t
 asserts the actual behaviour at real corpus scale, so it fails if the composer is ever bypassed or
 its threshold is raised past the kernel's.
 """
+
 from __future__ import annotations
 
 import os
-import sys
 import shlex
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -47,6 +48,7 @@ def _compose_source() -> str:
     import inspect
 
     import run_baseline_qa_loop as L
+
     return inspect.getsource(L.bwrap_cmd)
 
 
@@ -61,9 +63,9 @@ def test_bwrap_cmd_goes_through_the_shared_composer():
     assert "compose_command" in src, (
         "bwrap_cmd no longer routes through bwrap.compose_command; a raw join of the bind list "
         "exceeds MAX_ARG_STRLEN at corpus scale and every arm dies with E2BIG before round 1 "
-        "(regression of 34e0296f, which a merge already reverted once)")
-    assert '" ".join(parts)' not in src, (
-        "bwrap_cmd joins its argv inline again — that is the exact pre-34e0296f line")
+        "(regression of 34e0296f, which a merge already reverted once)"
+    )
+    assert '" ".join(parts)' not in src, "bwrap_cmd joins its argv inline again — that is the exact pre-34e0296f line"
 
 
 def test_composer_keeps_a_corpus_scale_mask_set_under_the_execve_limit(tmp_path):
@@ -73,10 +75,10 @@ def test_composer_keeps_a_corpus_scale_mask_set_under_the_execve_limit(tmp_path)
     above the kernel's. The argv is synthesised from the DECLARED answer surfaces, so the test tracks
     the corpus instead of a snapshot of it.
     """
+    import run_baseline_qa_loop as L
+
     from merlin.targetgen.sandbox import bwrap as BW
     from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces
-
-    import run_baseline_qa_loop as L
 
     surfaces = answer_surfaces(L._te())
     if len(surfaces) < 200:
@@ -84,19 +86,20 @@ def test_composer_keeps_a_corpus_scale_mask_set_under_the_execve_limit(tmp_path)
 
     argv = ["bwrap", "--dev-bind", "/", "/"]
     for s in surfaces:
-        argv += (["--ro-bind", "/dev/null", str(s.path)] if s.kind == "file"
-                 else ["--tmpfs", str(s.path)])
+        argv += ["--ro-bind", "/dev/null", str(s.path)] if s.kind == "file" else ["--tmpfs", str(s.path)]
     inline_bytes = len(" ".join(argv).encode("utf-8"))
     assert inline_bytes > MAX_ARG_BYTES, (
         f"the inline join is {inline_bytes} B, under the {MAX_ARG_BYTES} B cap — this test is no "
-        f"longer exercising the rule it exists for; lower the surface threshold or drop it")
+        f"longer exercising the rule it exists for; lower the surface threshold or drop it"
+    )
 
     # The composer writes its args file BESIDE `ws`, so `ws` must be a throwaway directory — pointing
     # it at a repo path would leave a 160 KB dotfile in the tree on every run of this test.
     composed = BW.compose_command(argv, " bash -c 'true'", tmp_path / "ws_size_probe")
     assert len(composed.encode("utf-8")) <= MAX_ARG_BYTES, (
         f"composed command is {len(composed.encode('utf-8'))} B, over the {MAX_ARG_BYTES} B execve "
-        f"per-argument limit; bash will refuse it with E2BIG")
+        f"per-argument limit; bash will refuse it with E2BIG"
+    )
 
 
 def test_inline_composer_preserves_literal_arguments(tmp_path):
@@ -148,8 +151,21 @@ def test_perf_codex_round_composes_large_policy_through_args_file(tmp_path, monk
 
     monkeypatch.setattr(stage, "_import_codex_driver", lambda: (SimpleNamespace(run_round=run_round), loop))
     result = stage._codex_round(
-        tmp_path / "workspace", tmp_path, SimpleNamespace(text="prompt"), None,
-        None, None, None, None, None, model="test", resolved_model="test", effort="high",
-        round_index=0, timeout_s=1, codex_binary=tmp_path / "codex")
+        tmp_path / "workspace",
+        tmp_path,
+        SimpleNamespace(text="prompt"),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        model="test",
+        resolved_model="test",
+        effort="high",
+        round_index=0,
+        timeout_s=1,
+        codex_binary=tmp_path / "codex",
+    )
     assert result == (0, transcript, policy)
     assert loop.bwrap_cmd is None

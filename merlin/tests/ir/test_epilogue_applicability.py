@@ -12,6 +12,7 @@ Nothing in the module under test names a target, a dtype width, or an opcode: th
 caller's declaration. These tests use a synthetic two-readout target for the rule, and the real
 backend's declaration only where the point is that it fires on real data.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -49,7 +50,7 @@ class TestTheRuleIsGeneral:
         assert "computes something other than what it declares" in got.discarded[0].why
 
     def test_no_epilogue_is_not_applicable_rather_than_a_pass(self):
-        """"nothing to apply" and "everything applied" are different facts."""
+        """ "nothing to apply" and "everything applied" are different facts."""
         got = EA.assess(_cb(_commit("wide", [])), CAPS)
         assert got.status == "not_applicable" and not got.refusing
 
@@ -90,8 +91,13 @@ class TestTheRuleIsGeneral:
         assert got.status == "discarded"
 
     def test_every_status_is_in_the_declared_vocabulary(self):
-        cases = (_cb(_commit("narrow", ["activation"])), _cb(_commit("wide", ["activation"])),
-                 _cb(_commit("wide", [])), _cb(_commit("mystery", ["activation"])), {})
+        cases = (
+            _cb(_commit("narrow", ["activation"])),
+            _cb(_commit("wide", ["activation"])),
+            _cb(_commit("wide", [])),
+            _cb(_commit("mystery", ["activation"])),
+            {},
+        )
         for buf in cases:
             assert EA.assess(buf, CAPS).status in EA.STATUSES
 
@@ -111,10 +117,10 @@ class TestItFiresOnTheRealTargetDeclaration:
 
     def _caps(self):
         from merlin.runtime.backends import base as B
+
         backend = B.get_backend("gemmini")
         declared = backend.readout_epilogue_capability()
-        return tuple(ReadoutCapability(r["selector"], frozenset(r["applies"]),
-                                       r.get("evidence", "")) for r in declared)
+        return tuple(ReadoutCapability(r["selector"], frozenset(r["applies"]), r.get("evidence", "")) for r in declared)
 
     def test_the_target_declares_more_than_one_readout(self):
         caps = self._caps()
@@ -145,6 +151,7 @@ class TestItFiresOnTheRealTargetDeclaration:
 
     def test_the_stage_names_are_the_command_buffer_abi_vocabulary(self):
         from merlin.runtime.commandbuffer import EPILOGUE_STAGE_SET
+
         for cap in self._caps():
             unknown = cap.applies - EPILOGUE_STAGE_SET
             assert not unknown, f"{cap.selector} declares non-ABI stage(s) {sorted(unknown)}"
@@ -161,6 +168,7 @@ class TestTheGateIsScopedByWhatATargetDECLARES:
 
     def _backend(self, name):
         from merlin.runtime.backends import base as B
+
         return B.get_backend(name)
 
     def test_a_target_that_declares_readouts_activates_the_gate(self):
@@ -179,8 +187,7 @@ class TestTheGateIsScopedByWhatATargetDECLARES:
         """
         from merlin.targetgen import capsule_runner
 
-        assert capsule_runner._readout_epilogue_capabilities(
-            "fixture-external-target-with-no-runtime-backend") is None
+        assert capsule_runner._readout_epilogue_capabilities("fixture-external-target-with-no-runtime-backend") is None
 
     def test_the_recorded_block_is_self_describing_even_when_nothing_applies(self):
         """An absent key reads as "this axis does not apply" -- the same shape as the defect.
@@ -196,6 +203,7 @@ class TestTheGateIsScopedByWhatATargetDECLARES:
     def test_a_declared_stage_outside_the_abi_vocabulary_is_caught_by_the_backend_test(self):
         """Guards the declaration itself: a typo'd stage name would silently never be applied."""
         from merlin.runtime.commandbuffer import EPILOGUE_STAGE_SET
+
         for row in self._backend("gemmini").readout_epilogue_capability():
             for stage in row.get("applies") or ():
                 assert stage in EPILOGUE_STAGE_SET, stage

@@ -30,20 +30,38 @@ commits), and hoisting must not move a config after the work it configures.
 Class names here are the decoder's own derived classes and the expectations come from a capsule's
 ``expected`` block, so nothing in this file assumes an opcode, a funct value or a target.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen import trace_check as TCK
 
 _EXPECTED = {
-    "instruction_classes": ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST",
-                            "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"],
+    "instruction_classes": [
+        "FLUSH",
+        "CONFIG_EX",
+        "CONFIG_LD",
+        "MVIN",
+        "CONFIG_ST",
+        "PRELOAD",
+        "COMPUTE_PRELOADED",
+        "MVOUT",
+    ],
     "modes": {"resident_reuse": True},
 }
 
 # Every class carries a funct so ``drives_accelerator`` (the one gating signal) is satisfied and the
 # only findings under test are the mode findings.
-_FUNCT = {"FENCE": None, "FLUSH": 7, "CONFIG_EX": 0, "CONFIG_LD": 0, "CONFIG_ST": 0,
-          "MVIN": 2, "MVOUT": 3, "PRELOAD": 6, "COMPUTE_PRELOADED": 4}
+_FUNCT = {
+    "FENCE": None,
+    "FLUSH": 7,
+    "CONFIG_EX": 0,
+    "CONFIG_LD": 0,
+    "CONFIG_ST": 0,
+    "MVIN": 2,
+    "MVOUT": 3,
+    "PRELOAD": 6,
+    "COMPUTE_PRELOADED": 4,
+}
 
 # The on-chip destinations A6 actually uses: the weight high in the scratchpad, activations at the base.
 _WEIGHT_SPAD, _ACT_SPAD = 16368, 0
@@ -55,10 +73,19 @@ def _ins(cls: str, *, decoded: dict | None = None, rs1=None, rs2=None) -> dict:
 
 def _load(arg_index: int, spad: int) -> list[dict]:
     """A CONFIG_LD + MVIN pair moving operand ``arg_index`` to ``spad``, as the decoder reports it."""
-    return [_ins("CONFIG_LD"),
-            _ins("MVIN", decoded={"dram": {"raw": None, "kind": "argbase",
-                                           "arg_index": arg_index, "offset": 0},
-                                  "rows": 16, "cols": 16, "addr": spad, "spad_addr": spad})]
+    return [
+        _ins("CONFIG_LD"),
+        _ins(
+            "MVIN",
+            decoded={
+                "dram": {"raw": None, "kind": "argbase", "arg_index": arg_index, "offset": 0},
+                "rows": 16,
+                "cols": 16,
+                "addr": spad,
+                "spad_addr": spad,
+            },
+        ),
+    ]
 
 
 def _commit(activation_arg: int, *, config_ex: bool, reload_weight: bool) -> list[dict]:
@@ -130,8 +157,7 @@ def test_the_two_halves_are_independent():
     This is the property whose absence caused the original miss: one finding was reported, the reader
     fixed the thing it named, and the other defect stayed.
     """
-    findings = _mode_violations(
-        TCK.check(_program(config_ex_per_commit=True, reload_weight=True), _EXPECTED))
+    findings = _mode_violations(TCK.check(_program(config_ex_per_commit=True, reload_weight=True), _EXPECTED))
     assert len(findings) == 2, findings
     assert any("redundant load" in f for f in findings)
     assert any("already active" in f for f in findings)
@@ -140,7 +166,8 @@ def test_the_two_halves_are_independent():
 def test_reuse_must_still_be_visible():
     """Neither half is satisfiable by dropping the second activation entirely."""
     findings = _mode_violations(
-        TCK.check(_program(config_ex_per_commit=False, reload_weight=False, commits=1), _EXPECTED))
+        TCK.check(_program(config_ex_per_commit=False, reload_weight=False, commits=1), _EXPECTED)
+    )
     assert findings == ["mode resident_reuse declared but <2 output commits (no reuse visible)"]
 
 
@@ -150,14 +177,12 @@ def test_a_reload_after_the_slot_is_reused_is_not_flagged():
     Tracking live contents per destination is what makes this distinction; a rule that merely looked
     for a repeated payload anywhere in the trace would fail this legitimate program.
     """
-    ins = [_ins("FENCE"), _ins("FLUSH"),
-           _ins("CONFIG_EX", rs1=0x3F80000000010004, rs2=0x1000000000000)]
-    ins += _load(0, _WEIGHT_SPAD)                      # weight in
-    ins += _load(1, _WEIGHT_SPAD)                      # slot repurposed for another tensor
-    ins += _load(0, _WEIGHT_SPAD)                      # so THIS is a genuine re-load
+    ins = [_ins("FENCE"), _ins("FLUSH"), _ins("CONFIG_EX", rs1=0x3F80000000010004, rs2=0x1000000000000)]
+    ins += _load(0, _WEIGHT_SPAD)  # weight in
+    ins += _load(1, _WEIGHT_SPAD)  # slot repurposed for another tensor
+    ins += _load(0, _WEIGHT_SPAD)  # so THIS is a genuine re-load
     for arg in (2, 3):
-        ins += [_ins("CONFIG_ST")] + _load(arg, _ACT_SPAD) + [
-            _ins("PRELOAD"), _ins("COMPUTE_PRELOADED"), _ins("MVOUT")]
+        ins += [_ins("CONFIG_ST")] + _load(arg, _ACT_SPAD) + [_ins("PRELOAD"), _ins("COMPUTE_PRELOADED"), _ins("MVOUT")]
     ins.append(_ins("FENCE"))
     for i, x in enumerate(ins):
         x["index"] = i
@@ -170,12 +195,18 @@ def test_a_decoder_that_cannot_see_the_destination_yields_no_finding():
     A target whose decoder exposes no on-chip destination gets silence from this half of the rule --
     never an inferred verdict. The mode-config half still applies, since it needs no address.
     """
-    ins = [_ins("FENCE"), _ins("FLUSH"),
-           _ins("CONFIG_EX", rs1=0x3F80000000010004, rs2=0x1000000000000)]
+    ins = [_ins("FENCE"), _ins("FLUSH"), _ins("CONFIG_EX", rs1=0x3F80000000010004, rs2=0x1000000000000)]
     for _ in range(2):
-        ins += [_ins("CONFIG_ST"), _ins("CONFIG_LD"), _ins("MVIN"),   # decoded={} -> no spad_addr
-                _ins("CONFIG_LD"), _ins("MVIN"),
-                _ins("PRELOAD"), _ins("COMPUTE_PRELOADED"), _ins("MVOUT")]
+        ins += [
+            _ins("CONFIG_ST"),
+            _ins("CONFIG_LD"),
+            _ins("MVIN"),  # decoded={} -> no spad_addr
+            _ins("CONFIG_LD"),
+            _ins("MVIN"),
+            _ins("PRELOAD"),
+            _ins("COMPUTE_PRELOADED"),
+            _ins("MVOUT"),
+        ]
     ins.append(_ins("FENCE"))
     for i, x in enumerate(ins):
         x["index"] = i

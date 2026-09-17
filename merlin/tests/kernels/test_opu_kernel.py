@@ -10,6 +10,7 @@ So the tests that matter here compile the generated kernel and read the instruct
 configure/load/configure/load/accumulate sequence must be contiguous, the row load must keep its
 tail-undisturbed policy, and the two operand lengths must come from different registers.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -36,8 +37,12 @@ class _Enc:
         return f".insn r {self.opcode:#x}, {self.funct3:#x}, {self.funct7:#x}, {rd}, {rs1}, {rs2}"
 
 
-_TABLE = {"ACC": _Enc(0x57, 2, 40), "MOVEIN": _Enc(0x57, 6, 42),
-          "BCAST": _Enc(0x57, 6, 44), "READOUT": _Enc(0x57, 6, 46)}
+_TABLE = {
+    "ACC": _Enc(0x57, 2, 40),
+    "MOVEIN": _Enc(0x57, 6, 42),
+    "BCAST": _Enc(0x57, 6, 44),
+    "READOUT": _Enc(0x57, 6, 46),
+}
 _SPEC = KernelSpec(accumulate="ACC", broadcast="BCAST", readout="READOUT")
 
 
@@ -68,12 +73,11 @@ def _device_reduction_loop(src: str) -> str:
     the first ``for`` over the reduction would read the wrong branch and these assertions would be about
     the stand-in rather than about the code the device runs.
     """
-    device = src[src.index("#else"):src.index("#endif")]
+    device = src[src.index("#else") : src.index("#endif")]
     # Anchored on the emitted comments rather than on the loop's own syntax: the loop is unrolled and the
     # left-operand register rotated (see KernelSpec.row_vreg_alt), so a slice keyed to `for (size_t kk`
     # silently stopped matching and these assertions began raising instead of checking anything.
-    return device[device.index("One fused block per reduction step"):
-                  device.index("Readout is row-serial")]
+    return device[device.index("One fused block per reduction step") : device.index("Readout is row-serial")]
 
 
 #: Matched WITH the opening paren and quote so the phrase "asm volatile" in the surrounding comment is
@@ -86,10 +90,10 @@ def _fused_blocks(loop: str) -> list[str]:
     out = []
     rest = loop
     while _ASM in rest:
-        rest = rest[rest.index(_ASM):]
-        body = rest[:rest.index("::")] if "::" in rest else rest
+        rest = rest[rest.index(_ASM) :]
+        body = rest[: rest.index("::")] if "::" in rest else rest
         out.append(body)
-        rest = rest[len(_ASM):]
+        rest = rest[len(_ASM) :]
     return out
 
 
@@ -132,7 +136,7 @@ class TestGeneratedSource:
         # device build, or the kernel could quietly compute correct answers without using the unit.
         src = emit_microkernel(_TABLE, _SPEC)
         assert "#ifdef OPU_SCALAR_TILE" in src
-        assert ".insn r" not in src[src.index("#ifdef OPU_SCALAR_TILE"):src.index("#else")]
+        assert ".insn r" not in src[src.index("#ifdef OPU_SCALAR_TILE") : src.index("#else")]
 
     def test_the_reference_shares_the_kernels_signature(self):
         # Same signature so a host or in-image comparison can call either through one declaration.
@@ -144,15 +148,28 @@ class TestGeneratedSource:
 
 def _compile(src: str, tmp_path: Path) -> Path:
     from merlin.llvmlower import toolchain
+
     if not toolchain.available():
         pytest.skip("needs the pinned clang")
     tmp_path.mkdir(parents=True, exist_ok=True)
     c = tmp_path / "k.c"
     c.write_text(src, encoding="utf-8")
     o = tmp_path / "k.o"
-    p = subprocess.run([toolchain.clang(), "--target=riscv64-unknown-elf", "-march=rv64gcv",
-                        "-mabi=lp64d", "-O2", "-c", str(c), "-o", str(o)],
-                       capture_output=True, text=True)
+    p = subprocess.run(
+        [
+            toolchain.clang(),
+            "--target=riscv64-unknown-elf",
+            "-march=rv64gcv",
+            "-mabi=lp64d",
+            "-O2",
+            "-c",
+            str(c),
+            "-o",
+            str(o),
+        ],
+        capture_output=True,
+        text=True,
+    )
     if p.returncode != 0:
         pytest.fail(f"the generated kernel does not compile:\n{p.stderr[-2000:]}")
     return o
@@ -164,6 +181,7 @@ class TestEmittedCode:
     @pytest.fixture
     def stream(self, tmp_path):
         from merlin.kernels.decode.objdump import tokenize
+
         obj = _compile(emit_microkernel(_TABLE, _SPEC) + emit_reference_c(), tmp_path)
         return tokenize(obj), obj
 
@@ -228,21 +246,28 @@ class TestAgainstTheRealDerivation:
         # paths.env, not os.environ: the checkout lives in the gitignored `.env`, and reading only the
         # process environment made this skip even where the hardware was present.
         from merlin.common.paths import env as _env
+
         root = _env("MERLIN_CHIPYARD")
         if not root:
             pytest.skip("needs the hardware checkout ($MERLIN_CHIPYARD)")
         s = Path(root) / "generators/saturn"
         if not s.is_dir():
             pytest.skip(f"no saturn generator under {s}")
-        d = OI.derive(consts=s / "src/main/scala/common/Consts.scala",
-                      instructions=s / "src/main/scala/insns/Instructions.scala",
-                      params=s / "src/main/scala/common/Parameters.scala",
-                      funct6_enum="OPMFunct6", consts_container="HasVectorConsts",
-                      insn_seq="opuInsns", opcode_name="opcVector",
-                      form_funct3={"VV": "OPMVV", "VX": "OPMVX"})
-        return OI.crosscheck(d, s / "benchmarks/common/bme.h",
-                             pairs={"OPMACC": "VOPACC", "OPMVIN": "VMV_RV",
-                                    "OPMVINBCAST": "OPMVINBCAST", "OPMVOUT": "VMV_VR"})
+        d = OI.derive(
+            consts=s / "src/main/scala/common/Consts.scala",
+            instructions=s / "src/main/scala/insns/Instructions.scala",
+            params=s / "src/main/scala/common/Parameters.scala",
+            funct6_enum="OPMFunct6",
+            consts_container="HasVectorConsts",
+            insn_seq="opuInsns",
+            opcode_name="opcVector",
+            form_funct3={"VV": "OPMVV", "VX": "OPMVX"},
+        )
+        return OI.crosscheck(
+            d,
+            s / "benchmarks/common/bme.h",
+            pairs={"OPMACC": "VOPACC", "OPMVIN": "VMV_RV", "OPMVINBCAST": "OPMVINBCAST", "OPMVOUT": "VMV_VR"},
+        )
 
     def test_the_kernel_generated_from_real_derived_facts_compiles_and_audits_clean(self, derived, tmp_path):
         assert derived.ok, [c for c in derived.crosschecks if not c["agrees"]]
@@ -279,6 +304,7 @@ class TestTheGuardActuallyGuards:
     @pytest.fixture
     def unfused(self, tmp_path):
         from merlin.kernels.decode.objdump import tokenize
+
         return tokenize(_compile(_UNFUSED, tmp_path))
 
     def test_the_contiguity_check_rejects_the_unfused_kernel(self, unfused):
@@ -286,7 +312,8 @@ class TestTheGuardActuallyGuards:
         i = next(d.index for d in decoded if d.identity == "ACC")
         before = [unfused[j].mnemonic for j in range(i - 6, i)]
         assert before != ["vsetvli", "vmv.v.i", "vsetvli", "vle8.v", "vsetvli", "vle8.v"], (
-            "the unfused kernel must not satisfy the contiguity assertion, or that assertion is vacuous")
+            "the unfused kernel must not satisfy the contiguity assertion, or that assertion is vacuous"
+        )
 
     def test_control_flow_lands_inside_the_sequence_when_it_is_not_fused(self, unfused):
         # This is the observable difference: the loads and the accumulate are no longer adjacent, so
@@ -323,16 +350,30 @@ class TestTilingIsNumericallyExact:
 
     def _host_lib(self, source, tmp_path, edge):
         import ctypes
+
         from merlin.llvmlower import toolchain
+
         if not toolchain.available():
             pytest.skip("needs the pinned clang")
         tmp_path.mkdir(parents=True, exist_ok=True)
         c = tmp_path / "host.c"
         c.write_text(source, encoding="utf-8")
         so = tmp_path / f"host_{edge}.so"
-        p = subprocess.run([toolchain.clang(), "-O2", "-shared", "-fPIC", "-DOPU_SCALAR_TILE",
-                            f"-DOPU_TILE_EDGE={edge}", str(c), "-o", str(so)],
-                           capture_output=True, text=True)
+        p = subprocess.run(
+            [
+                toolchain.clang(),
+                "-O2",
+                "-shared",
+                "-fPIC",
+                "-DOPU_SCALAR_TILE",
+                f"-DOPU_TILE_EDGE={edge}",
+                str(c),
+                "-o",
+                str(so),
+            ],
+            capture_output=True,
+            text=True,
+        )
         if p.returncode != 0:
             pytest.fail(f"host build failed:\n{p.stderr[-2000:]}")
         lib = ctypes.CDLL(str(so))
@@ -346,14 +387,22 @@ class TestTilingIsNumericallyExact:
         import numpy as np
 
         from merlin.kernels import opu_corpus as OC
+
         fn = self._host_lib(source, tmp_path / f"e{edge}", edge)
         runnable, _ = OC.select(32)
         assert runnable, "the corpus must not be empty"
         for case in runnable:
             lhs, rhs, bias = case.operands()
             out = np.zeros((case.m, case.n), dtype=np.int32)
-            fn(out.ctypes.data, lhs.ctypes.data, rhs.ctypes.data,
-               bias.ctypes.data if bias is not None else None, case.m, case.n, case.k)
+            fn(
+                out.ctypes.data,
+                lhs.ctypes.data,
+                rhs.ctypes.data,
+                bias.ctypes.data if bias is not None else None,
+                case.m,
+                case.n,
+                case.k,
+            )
             # Exact integer equality: there is no rounding to tolerate, and an aggregate similarity
             # gate has previously accepted a kernel over 1000% wrong per element.
             assert (out == OC.reference(lhs, rhs, bias)).all(), f"{case.name} at tile edge {edge}"
@@ -363,9 +412,10 @@ class TestTilingIsNumericallyExact:
         import numpy as np
 
         from merlin.kernels import opu_corpus as OC
+
         fn = self._host_lib(source, tmp_path / "e4", 4)
         rng = np.random.default_rng(11)
-        m, n, k = 13, 19, 7          # both extents several tiles wide with a short tail on each
+        m, n, k = 13, 19, 7  # both extents several tiles wide with a short tail on each
         lhs = rng.integers(-8, 9, size=(k, m), dtype=np.int8)
         rhs = rng.integers(-8, 9, size=(k, n), dtype=np.int8)
         out = np.zeros((m, n), dtype=np.int32)
@@ -377,9 +427,10 @@ class TestTilingIsNumericallyExact:
         import numpy as np
 
         from merlin.kernels import opu_corpus as OC
+
         fn = self._host_lib(source, tmp_path / "e4b", 4)
         m, n, k = 6, 11, 3
-        lhs = np.zeros((k, m), dtype=np.int8)          # zero operands, so the output IS the bias
+        lhs = np.zeros((k, m), dtype=np.int8)  # zero operands, so the output IS the bias
         rhs = np.zeros((k, n), dtype=np.int8)
         bias = np.arange(100, 100 + n, dtype=np.int32)
         out = np.zeros((m, n), dtype=np.int32)

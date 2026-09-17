@@ -8,6 +8,7 @@ that can absorb dequantization into contractions.  The whole-model experiment la
 lever converges to byte-identical uninstrumented code: profile markers had prevented the normal
 post-contraction fusion and made the broadcasts look like residual work.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -18,9 +19,7 @@ from merlin.llvmlower import toolchain
 from merlin.llvmlower.broadcast_fold import FEATURE, require_report, run_source
 from merlin.llvmlower.impr_features import get, known, normalize
 
-
-_needs_m2m = pytest.mark.skipif(not toolchain.available(),
-                                reason="m2m venv / clang not configured")
+_needs_m2m = pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang not configured")
 
 
 def _fold(tmp_path, mlir_text: str, name: str = "f") -> tuple[str, str]:
@@ -29,8 +28,9 @@ def _fold(tmp_path, mlir_text: str, name: str = "f") -> tuple[str, str]:
     src = tmp_path / f"{name}.mlir"
     src.write_text(mlir_text, encoding="utf-8")
     out = tmp_path / f"{name}.out.mlir"
-    proc = subprocess.run([str(toolchain.m2m_python()), str(driver), str(src), str(out)],
-                          capture_output=True, text=True, timeout=300)
+    proc = subprocess.run(
+        [str(toolchain.m2m_python()), str(driver), str(src), str(out)], capture_output=True, text=True, timeout=300
+    )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     return proc.stdout, out.read_text(encoding="utf-8")
 
@@ -84,8 +84,9 @@ def test_folded_module_verifies(tmp_path):
         pytest.skip("standalone mlir-opt not present")
     src = tmp_path / "folded.mlir"
     src.write_text(text, encoding="utf-8")
-    proc = subprocess.run([str(opt), str(src), "-o", str(tmp_path / "checked.mlir")],
-                          capture_output=True, text=True, timeout=300)
+    proc = subprocess.run(
+        [str(opt), str(src), "-o", str(tmp_path / "checked.mlir")], capture_output=True, text=True, timeout=300
+    )
     assert proc.returncode == 0, proc.stderr
 
 
@@ -126,7 +127,7 @@ def test_reduction_consumer_is_refused(tmp_path):
 
 def test_every_runner_variant_calls_the_fold_and_reads_argv14():
     from merlin.llvmlower.accum_microkernel import run_source as scalarize_source
-    from merlin.llvmlower.pipeline import EMIT_TRANSLATE, _RUNNER, _activation_poly_runner
+    from merlin.llvmlower.pipeline import _RUNNER, EMIT_TRANSLATE, _activation_poly_runner
 
     variants = {
         "plain": _RUNNER,
@@ -149,8 +150,7 @@ def test_requested_rewrite_requires_one_nonzero_runner_receipt(tmp_path):
 
 
 def test_receipt_parser_accepts_only_complete_exact_lines(tmp_path):
-    noise = ("prefix OK fold_broadcast_into_generic folded 7\n"
-             "OK fold_broadcast_into_generic folded 8 suffix\n")
+    noise = "prefix OK fold_broadcast_into_generic folded 7\nOK fold_broadcast_into_generic folded 8 suffix\n"
     with pytest.raises(ValueError, match="did not report exactly once"):
         require_report(noise, tmp_path)
     with pytest.raises(ValueError, match="did not report exactly once"):

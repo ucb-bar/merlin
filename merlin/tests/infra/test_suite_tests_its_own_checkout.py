@@ -14,6 +14,7 @@ before anything imports ``merlin``. This test is here so that fix cannot be undo
 it the symptom is a PASS, and nothing distinguishes "the code is right" from "the code was never
 imported".
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,7 +37,8 @@ def test_the_imported_library_comes_from_this_checkout():
     assert got.is_relative_to(here), (
         f"the suite is testing another checkout's library: this test file is in {here}, but "
         f"`import merlin` resolved to {got}. A shared editable venv points at one checkout; "
-        f"merlin/tests/conftest.py must put this checkout's merlin/python on sys.path first.")
+        f"merlin/tests/conftest.py must put this checkout's merlin/python on sys.path first."
+    )
 
 
 def test_repo_root_agrees_with_the_test_files_checkout():
@@ -49,4 +51,5 @@ def test_repo_root_agrees_with_the_test_files_checkout():
     here = Path(__file__).resolve().parents[3]
     assert paths.repo_root().resolve() == here, (
         f"paths.repo_root() is {paths.repo_root()} but this test file lives under {here}; "
-        f"fixture and capsule lookups would read a different checkout")
+        f"fixture and capsule lookups would read a different checkout"
+    )

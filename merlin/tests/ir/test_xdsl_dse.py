@@ -1,4 +1,5 @@
 """dse dialect: metadata, build+verify, invalid cases, round-trip."""
+
 from __future__ import annotations
 
 import pytest
@@ -24,27 +25,31 @@ def test_build_verify_roundtrip():
 
 
 def test_candidate_rejects_non_interface_ops():
-    from xdsl.utils.exceptions import VerifyException
     from xdsl.dialects.builtin import ArrayAttr, StringAttr
+    from xdsl.utils.exceptions import VerifyException
 
     op = dse.CandidateOp(
         result_types=[dse.InterfaceCandidateType(StringAttr("x"))],
-        properties={"candidate_name": StringAttr("x"),
-                    "interface_ops": ArrayAttr([StringAttr("toynpu.res_pack")])})
+        properties={"candidate_name": StringAttr("x"), "interface_ops": ArrayAttr([StringAttr("toynpu.res_pack")])},
+    )
     with pytest.raises(VerifyException, match="interface"):
         op.verify()
 
 
 def test_result_rejects_non_integer_metric():
+    from xdsl.dialects.builtin import DictionaryAttr, StringAttr
     from xdsl.ir import Block
     from xdsl.utils.exceptions import VerifyException
-    from xdsl.dialects.builtin import DictionaryAttr, StringAttr
 
     cand = Block(arg_types=[dse.InterfaceCandidateType(StringAttr("x"))]).args[0]
-    op = dse.ResultOp(operands=[cand], properties={
-        "variant": dse.VariantAttr(_common.Visibility.BASELINE),
-        "workload": StringAttr("w"),
-        "backend": StringAttr("simulator"),
-        "metrics": DictionaryAttr({"cycles": StringAttr("fast")})})
+    op = dse.ResultOp(
+        operands=[cand],
+        properties={
+            "variant": dse.VariantAttr(_common.Visibility.BASELINE),
+            "workload": StringAttr("w"),
+            "backend": StringAttr("simulator"),
+            "metrics": DictionaryAttr({"cycles": StringAttr("fast")}),
+        },
+    )
     with pytest.raises(VerifyException, match="integer"):
         op.verify()

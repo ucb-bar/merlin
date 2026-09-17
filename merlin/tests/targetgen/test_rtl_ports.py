@@ -6,6 +6,7 @@ completion channel, and a top-level busy port. Both matter for the same reason â
 reads as IDLE has already produced a wrong headline in this repo (a portless vector unit counted zero
 everywhere, and correcting it moved a corpus idle figure from 76.7% to 46.2%).
 """
+
 from __future__ import annotations
 
 import textwrap

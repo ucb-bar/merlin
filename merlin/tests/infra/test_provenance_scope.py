@@ -5,6 +5,7 @@ mtime and size, so an edited registry cannot hit. The observation scope is bound
 that opened it, so nothing survives the event it describes. Both directions are tested: a cache that
 never hits is useless, and one that hits when it should not is a lie about hardware provenance.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -27,6 +28,7 @@ def test_the_registry_is_parsed_once_per_file_state(registry, monkeypatch):
     calls = []
     real = PROV.yaml_safe_load if hasattr(PROV, "yaml_safe_load") else None
     import yaml
+
     original = yaml.safe_load
     monkeypatch.setattr(yaml, "safe_load", lambda *a, **k: (calls.append(1), original(*a, **k))[1])
     PROV._PINS_MEMO.clear()
@@ -66,7 +68,7 @@ def test_the_memo_hands_back_a_copy(registry):
     """
     PROV._PINS_MEMO.clear()
     baseline = len(PROV.load_pins(registry))
-    cached = PROV.load_pins(registry)                 # the second read is the one served from the memo
+    cached = PROV.load_pins(registry)  # the second read is the one served from the memo
     assert len(cached) == baseline
     cached.pop(sorted(cached)[0])
     assert len(PROV.load_pins(registry)) == baseline, "the memo handed out its live registry"
@@ -75,6 +77,7 @@ def test_the_memo_hands_back_a_copy(registry):
 # --------------------------------------------------------------------------------------------
 # THE OBSERVATION SCOPE
 # --------------------------------------------------------------------------------------------
+
 
 def test_without_a_scope_every_call_observes(monkeypatch):
     calls = []
@@ -117,7 +120,7 @@ def test_a_nested_scope_does_not_shorten_the_outer_one(monkeypatch):
     with PROV.observation_scope():
         with PROV.observation_scope():
             PROV.observe("/a")
-        PROV.observe("/a")               # still inside the OUTER scope: must not re-observe
+        PROV.observe("/a")  # still inside the OUTER scope: must not re-observe
     assert len(calls) == 1
 
 
@@ -132,8 +135,9 @@ def test_the_two_provenance_readers_share_one_scope(monkeypatch):
     """`targetgen.git_provenance` reads the same checkouts through its own git helper. If it kept its
     own cache the two could disagree inside one grade, which is the defect the scope exists to stop."""
     calls = []
-    monkeypatch.setattr(TPROV, "_git_provenance_now",
-                        lambda root: (calls.append(root), {"available": True, "head": "abc"})[1])
+    monkeypatch.setattr(
+        TPROV, "_git_provenance_now", lambda root: (calls.append(root), {"available": True, "head": "abc"})[1]
+    )
     with PROV.observation_scope():
         for _ in range(4):
             assert TPROV.git_provenance("/repo")["head"] == "abc"

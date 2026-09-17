@@ -5,6 +5,7 @@ show up as a crash: averaging repeated measurements, defaulting an unmeasured cl
 program whose work is only partly counted. Each of those produces a plausible number, and a plausible
 number is exactly what a ceiling must not be.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -16,15 +17,20 @@ from merlin.perf import rate_table as RT
 def _resident_buffer(*, jobs: int = 1, m: int = 16, k: int = 16, n: int = 16) -> dict:
     """A resident-weight matmul program, in the same ABI shape the certified corpus emits."""
     tensors = {"W": {"shape": [k, n], "dtype": "i8", "role": "weight"}}
-    commands = [{"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"},
-                 "attributes": {"layout": "packed_rhs"}}]
+    commands = [
+        {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {"layout": "packed_rhs"}}
+    ]
     for j in range(jobs):
         tensors[f"A{j}"] = {"shape": [m, k], "dtype": "i8", "role": "input"}
         tensors[f"Y{j}"] = {"shape": [m, n], "dtype": "i32", "role": "output"}
-        commands.append({"opcode": "MATMUL_RESIDENT",
-                         "operands": {"lhs": f"A{j}", "rhs": "W_res", "dst": f"acc{j}"}})
-        commands.append({"opcode": "COMMIT", "operands": {"src": f"acc{j}", "dst": f"Y{j}"},
-                         "attributes": {"epilogue": [], "output_dtype": "i32"}})
+        commands.append({"opcode": "MATMUL_RESIDENT", "operands": {"lhs": f"A{j}", "rhs": "W_res", "dst": f"acc{j}"}})
+        commands.append(
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": f"acc{j}", "dst": f"Y{j}"},
+                "attributes": {"epilogue": [], "output_dtype": "i32"},
+            }
+        )
     commands.append({"opcode": "EVICT", "operands": {"handle": "W_res"}})
     return {"abi_version": "0.1", "target": "t", "tensors": tensors, "commands": commands}
 
@@ -37,8 +43,7 @@ def _program(name: str, buffer: dict, *measured: float) -> RT.Program:
 
 
 def _table(programs, *, peak: float = 256.0) -> RT.RateTable:
-    return RT.rates_for("t", peak_macs_per_cycle=peak,
-                        programs={p.digest: p for p in programs})
+    return RT.rates_for("t", peak_macs_per_cycle=peak, programs={p.digest: p for p in programs})
 
 
 def _key(buffer: dict) -> str:
@@ -127,9 +132,12 @@ class TestOnlyEvidenceThatCanBoundAnythingContributes:
         assert any("lower bound" in r["reason"] for r in table.refusals)
 
     def test_a_program_with_no_priced_opcode_is_refused_with_its_reason(self):
-        movement = {"abi_version": "0.1", "target": "t",
-                    "tensors": {"X": {"shape": [4, 4], "dtype": "i8", "role": "input"}},
-                    "commands": [{"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y"}}]}
+        movement = {
+            "abi_version": "0.1",
+            "target": "t",
+            "tensors": {"X": {"shape": [4, 4], "dtype": "i8", "role": "input"}},
+            "commands": [{"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y"}}],
+        }
         table = _table([_program("moved", movement, 50.0)])
 
         assert table.rates == {}
@@ -175,8 +183,7 @@ class TestTheGateOnUsingTheseRatesAtAll:
 
     def test_rates_are_derived_from_one_half_and_scored_on_the_other(self):
         """Deriving and testing on one set reports how well a bound covers the data that set it."""
-        result = RT.holdout_containment("t", peak_macs_per_cycle=256.0,
-                                        programs=self._ladder(24))
+        result = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=self._ladder(24))
         assert result["n_train"] > 0 and result["n_test"] > 0
         assert result["n_train"] + result["n_test"] == 24
 
@@ -184,8 +191,7 @@ class TestTheGateOnUsingTheseRatesAtAll:
         programs = self._ladder(24)
         a = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=programs)
         b = RT.holdout_containment("t", peak_macs_per_cycle=256.0, programs=programs)
-        assert (a["n_train"], a["contained"], a["n_decided"]) == (b["n_train"], b["contained"],
-                                                                 b["n_decided"])
+        assert (a["n_train"], a["contained"], a["n_decided"]) == (b["n_train"], b["contained"], b["n_decided"])
 
     def test_the_two_miss_directions_are_reported_separately(self):
         """Below the floor and above the ceiling are different defects; one rate would hide both."""
@@ -224,11 +230,15 @@ class TestASerializedTableIsNotAnAnswerKey:
         buf = _resident_buffer(jobs=2)
         p = _program("H0_matmul_hidden", buf, 400.0)
         p.submissions.add("/scratch/someone/out/runs/t/capsule-bench/_holdout_codex/sub")
-        p.measured.add(500.0)                       # force a disagreement row too
+        p.measured.add(500.0)  # force a disagreement row too
         table = _table([p])
-        table.refusals.append({
-            "what": "cycle count", "reason": "the stage reached status 'fail'",
-            "where": "/scratch/someone/out/runs/t/grading_hidden/H3_movement_hidden/result.json"})
+        table.refusals.append(
+            {
+                "what": "cycle count",
+                "reason": "the stage reached status 'fail'",
+                "where": "/scratch/someone/out/runs/t/grading_hidden/H3_movement_hidden/result.json",
+            }
+        )
         return table
 
     def test_paths_and_workload_identities_are_withheld_by_default(self):

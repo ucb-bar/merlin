@@ -28,14 +28,19 @@ than none. Verified by mutation against the same reference:
   * every case  — dividing by ``(qmax-qmin)/2`` for the DTYPE range (127.5) instead of the range
     the scheme actually passes (127.0) changes every scale.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
 from merlin.common.paths import merlin_dir
-from merlin.llvmlower.torchao_affine import (ACTIVATION_QUANT, TorchAOAffineError,
-                                             derive_block_layout, lower_torchao_affine_quant)
+from merlin.llvmlower.torchao_affine import (
+    ACTIVATION_QUANT,
+    TorchAOAffineError,
+    derive_block_layout,
+    lower_torchao_affine_quant,
+)
 
 _REF = merlin_dir() / "tests" / "data" / "torchao_affine" / "reference.npz"
 _SCHEME = "int8_dyn_act_int8_weight"
@@ -48,7 +53,7 @@ def _module_text(in_shape, *, scheme: str | None = _SCHEME, scale_shape=None):
     it, st = f"tensor<{dims(in_shape)}xf32>", f"tensor<{dims(scale_shape)}xf32>"
     qt = f"tensor<{dims(in_shape)}xi8>"
     attrs = f' attributes {{prov.quantization = "{scheme}"}}' if scheme else ""
-    return f'''builtin.module{attrs} {{
+    return f"""builtin.module{attrs} {{
   func.func private @torchao_choose_qparams_affine_default({it}) -> {st}
   func.func private @torchao_quantize_affine_default({it}, {st}) -> {qt}
   func.func @forward(%x: {it}) -> ({st}, {qt}) {{
@@ -56,19 +61,21 @@ def _module_text(in_shape, *, scheme: str | None = _SCHEME, scale_shape=None):
     %q = func.call @torchao_quantize_affine_default(%x, %s) {{prov.region_id = "qa_0", prov.dispatch_id = "qa_0"}} : ({it}, {st}) -> {qt}
     func.return %s, %q : {st}, {qt}
   }}
-}}'''
+}}"""
 
 
 def _parse(text):
     from merlin.frontends.linalg_mlir import parse_mlir_text
+
     return parse_mlir_text(text)
 
 
 # --- derivation -------------------------------------------------------------------------------
 
+
 def test_block_size_is_derived_from_the_types_not_assumed():
     """The capture drops torchao's ``block_size``; it is recovered from input vs scale shapes."""
-    assert derive_block_layout((1, 2048), (1,)).block_size == (1, 2048)          # resnet50 fc
+    assert derive_block_layout((1, 2048), (1,)).block_size == (1, 2048)  # resnet50 fc
     assert derive_block_layout((1, 345, 32), (1, 345)).block_size == (1, 1, 32)  # lstmnetvit
     assert derive_block_layout((1, 345, 32), (1, 345)).granularity == "per_token"
     # keepdim=True form: ranks match, so each axis carries its own block count.
@@ -77,9 +84,9 @@ def test_block_size_is_derived_from_the_types_not_assumed():
 
 def test_an_underivable_block_layout_fails_closed():
     with pytest.raises(TorchAOAffineError):
-        derive_block_layout((2, 3, 32), (7,))       # scale is not the leading axes
+        derive_block_layout((2, 3, 32), (7,))  # scale is not the leading axes
     with pytest.raises(TorchAOAffineError):
-        derive_block_layout((1, 30), (1, 4))        # 30 is not divisible by 4
+        derive_block_layout((1, 30), (1, 4))  # 30 is not divisible by 4
 
 
 def test_an_unknown_scheme_is_refused_rather_than_defaulted():
@@ -93,11 +100,12 @@ def test_an_unknown_scheme_is_refused_rather_than_defaulted():
 def test_a_module_without_these_calls_is_untouched():
     """The frozen-baseline invariant: adding this pass cannot perturb a bundle that never had them."""
     from merlin.xdsl_dialects._common import text as to_text
-    plain = '''builtin.module {
+
+    plain = """builtin.module {
   func.func @forward(%x: tensor<4xf32>) -> tensor<4xf32> {
     func.return %x : tensor<4xf32>
   }
-}'''
+}"""
     module = _parse(plain)
     before = to_text(module)
     assert lower_torchao_affine_quant(module) == 0
@@ -120,6 +128,7 @@ def test_the_scheme_entry_records_where_it_came_from():
 
 
 # --- bit-exactness against torchao itself -------------------------------------------------------
+
 
 def _run_case(x):
     """Lower + outline + compile + execute one case; returns ``(scale, q)`` as numpy."""
@@ -144,7 +153,7 @@ def test_bit_exact_against_torchao(case):
     x, want_s, want_q = ref[f"{case}::x"], ref[f"{case}::scale"], ref[f"{case}::q"]
     try:
         got_s, got_q = _run_case(x)
-    except Exception as exc:                                  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         pytest.skip(f"host kernel toolchain unavailable: {type(exc).__name__}: {exc}")
     got_s = got_s.reshape(want_s.shape)
     got_q = got_q.reshape(want_q.shape)
@@ -152,6 +161,8 @@ def test_bit_exact_against_torchao(case):
     # changes the integers, which is the whole failure mode this guards.
     assert (got_s.view(np.uint32) == want_s.view(np.uint32)).all(), (
         f"{case}: scale differs from torchao's own (max |delta| "
-        f"{np.abs(got_s.astype(np.float64) - want_s.astype(np.float64)).max()})")
+        f"{np.abs(got_s.astype(np.float64) - want_s.astype(np.float64)).max()})"
+    )
     assert (got_q.astype(np.int64) == want_q.astype(np.int64)).all(), (
-        f"{case}: {int((got_q != want_q).sum())} of {want_q.size} quantized elements differ")
+        f"{case}: {int((got_q != want_q).sum())} of {want_q.size} quantized elements differ"
+    )

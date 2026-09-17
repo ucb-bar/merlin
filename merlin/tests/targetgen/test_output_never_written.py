@@ -20,7 +20,7 @@ def _cmp(expected, observed, **policy):
 
 def test_unwritten_output_is_named_not_called_a_mismatch():
     exp = {"Y0": [0.5, 1.5, -2.0, 0.0]}
-    obs = {"Y0": [0.0, 0.0, 0.0, 0.0]}          # buffer never touched
+    obs = {"Y0": [0.0, 0.0, 0.0, 0.0]}  # buffer never touched
     rep = _cmp(exp, obs)
     assert rep["status"] == "fail"
     assert rep["failure_class"] == "output_never_written"
@@ -30,7 +30,7 @@ def test_unwritten_output_is_named_not_called_a_mismatch():
 
 def test_a_genuinely_wrong_but_written_output_is_not_misclassified():
     exp = {"Y0": [0.5, 1.5, -2.0, 3.0]}
-    obs = {"Y0": [0.4, 9.9, -1.0, 0.0]}          # wrong, but varied -> a real attempt
+    obs = {"Y0": [0.4, 9.9, -1.0, 0.0]}  # wrong, but varied -> a real attempt
     rep = _cmp(exp, obs)
     assert rep["status"] == "fail"
     assert "failure_class" not in rep
@@ -84,6 +84,7 @@ def test_the_agent_facing_detail_names_a_writeback_failure_not_a_numeric_one():
     With the class detected, the agent is told the store never landed and that arithmetic changes will
     not move the count -- the two facts that would have redirected it on round 1."""
     from merlin.targetgen.capsule_runner import _unwritten_output_detail
+
     rep = _cmp({"Y0": [0.0] * 61 + [1.0] * 195}, {"Y0": [0.0] * 256})
     detail = _unwritten_output_detail(rep, "atlas-arc-arcilator-cosim")
     assert detail is not None
@@ -96,6 +97,7 @@ def test_the_detail_leaks_no_golden_VALUE():
     """It may name the output and the observed constant (both of which the agent already holds from its
     own readback); it must never carry a reference value."""
     from merlin.targetgen.capsule_runner import _unwritten_output_detail
+
     secret = 0.546875123
     rep = _cmp({"Y0": [secret, secret * 2, 0.0, 0.0]}, {"Y0": [0.0, 0.0, 0.0, 0.0]})
     detail = _unwritten_output_detail(rep, "sim")
@@ -106,6 +108,7 @@ def test_the_detail_leaks_no_golden_VALUE():
 
 def test_no_detail_when_the_output_was_genuinely_computed():
     from merlin.targetgen.capsule_runner import _unwritten_output_detail
+
     rep = _cmp({"Y0": [1.0, 2.0, 3.0]}, {"Y0": [1.0, 9.0, 3.0]})
     assert _unwritten_output_detail(rep, "sim") is None
 
@@ -119,7 +122,7 @@ def test_a_shape_error_is_named_not_folded_into_the_value_count():
     assert po["failure_class"] == "output_shape_mismatch"
     assert po["n_expected"] == 8 and po["n_observed"] == 512
     assert rep["outputs_wrong_shape"] == ["Y0"]
-    assert rep["mismatch_count"] == 505          # documents the ambiguous legacy number
+    assert rep["mismatch_count"] == 505  # documents the ambiguous legacy number
 
 
 def test_correct_shape_all_values_wrong_is_not_confused_with_near_success():
@@ -127,4 +130,4 @@ def test_correct_shape_all_values_wrong_is_not_confused_with_near_success():
     po = rep["per_output"]["Y0"]
     assert po["mismatch_count"] == 5 and po["n_elements"] == 8
     assert "failure_class" not in po or po.get("failure_class") != "output_shape_mismatch"
-    assert po["saturated"] is False               # 5 of 8, not pinned -- but 62% wrong, not near-passing
+    assert po["saturated"] is False  # 5 of 8, not pinned -- but 62% wrong, not near-passing

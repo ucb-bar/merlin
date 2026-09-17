@@ -12,6 +12,7 @@ encode is atlas, whose `explicit_completion` is unestablished. So the family is 
 declared. Before this it presented as "the emitter is not wired yet", which sent a reader off to build
 something that already existed.
 """
+
 from __future__ import annotations
 
 import sys
@@ -28,18 +29,22 @@ _TARGETS = ("gemmini", "atlas", "radiance", "mx_gemmini")
 
 
 def _shared():
-    return yaml.safe_load(
-        (merlin_dir() / "contract" / "capsules" / "profiles" / "_perf.yaml").read_text(
-            encoding="utf-8")) or {}
+    return (
+        yaml.safe_load((merlin_dir() / "contract" / "capsules" / "profiles" / "_perf.yaml").read_text(encoding="utf-8"))
+        or {}
+    )
 
 
 def _families() -> dict[str, str]:
-    return {s["base"]["performance"]["family"]: s["base"]["performance"]["emitter"]["entry"]
-            for s in _shared().get("sweeps") or []}
+    return {
+        s["base"]["performance"]["family"]: s["base"]["performance"]["emitter"]["entry"]
+        for s in _shared().get("sweeps") or []
+    }
 
 
 def _satisfying_targets() -> dict[str, tuple[str, ...]]:
     import generate_corpus as GC
+
     out: dict[str, tuple[str, ...]] = {}
     for sweep in _shared().get("sweeps") or []:
         perf = sweep["base"]["performance"]
@@ -47,7 +52,7 @@ def _satisfying_targets() -> dict[str, tuple[str, ...]]:
         for t in _TARGETS:
             try:
                 ok, _ = GC.evaluate_gate(perf["gate"], GC._performance_facts(t))
-            except Exception:                      # noqa: BLE001 -- an unresolvable target is not a pass
+            except Exception:  # noqa: BLE001 -- an unresolvable target is not a pass
                 ok = False
             if ok:
                 sat.append(t)
@@ -69,8 +74,8 @@ def test_the_program_generator_needs_a_self_hosted_isa():
     assert encodable["gemmini"].can_emit is False
     assert "no ISA definition" in encodable["gemmini"].reason
     assert encodable["atlas"].can_emit is True, (
-        "atlas is the target this generator can encode; if that changed, the reachability story below "
-        "changed with it")
+        "atlas is the target this generator can encode; if that changed, the reachability story below changed with it"
+    )
 
 
 def test_no_family_is_admitted_where_its_emitter_cannot_reach():
@@ -91,7 +96,8 @@ def test_no_family_is_admitted_where_its_emitter_cannot_reach():
     assert not blocked, (
         f"family/families {sorted(blocked)} are admitted by their traits only on targets their "
         f"emitter cannot reach: {blocked}. Either the emitter is declared against the wrong archetype "
-        f"or the gate admits a machine this emitter was never for.")
+        f"or the gate admits a machine this emitter was never for."
+    )
 
 
 def test_pc_reaches_the_one_target_its_traits_admit():
@@ -105,7 +111,8 @@ def test_pc_reaches_the_one_target_its_traits_admit():
     assert r.can_emit, f"PC's emitter cannot reach gemmini: {r.reason}"
     assert not r.needs_isa, (
         "PC's emitter needs a self-hosted ISA again; gemmini has none, so the family would be "
-        "unsatisfiable exactly as it was before")
+        "unsatisfiable exactly as it was before"
+    )
 
 
 def test_no_other_family_is_silently_unreachable():
@@ -115,8 +122,8 @@ def test_no_other_family_is_silently_unreachable():
     for fam in ("PK", "PF", "PL"):
         if fam in families:
             assert fam not in blocked, (
-                f"{fam} is reported unreachable, but it materializes capsules today; the reachability "
-                f"rule is wrong")
+                f"{fam} is reported unreachable, but it materializes capsules today; the reachability rule is wrong"
+            )
 
 
 def test_a_family_with_no_admitting_target_is_not_reported_here():
@@ -141,11 +148,11 @@ def test_a_family_with_no_admitting_target_is_not_reported_here():
 # a fabricated reason for the barrier pair, for both `new:` placeholders that name no module at all,
 # and for a nonsense string. Nothing consumed the module, so nothing noticed.
 
+
 def test_an_unclassified_entry_is_not_reported_as_reaching_everything():
     r = ER.can_emit("utter.nonsense.that.does.not.exist", "gemmini")
     assert r.can_emit is False
-    assert r.established is False, (
-        "an unrecognised emitter kind is UNMEASURED, not shown to be unreachable")
+    assert r.established is False, "an unrecognised emitter kind is UNMEASURED, not shown to be unreachable"
     assert "unclassified" in r.reason
 
 
@@ -168,8 +175,7 @@ def test_the_target_emitter_driver_is_unestablished_and_says_why():
 
 def test_both_grammar_emitters_still_reach_every_target():
     """The two archetypes that genuinely need no ISA: one produces the grammar, one consumes it."""
-    for entry in ("merlin.targetgen.corpus_spec.build",
-                  "merlin.perf.command_stream_gen.pair_from_interface"):
+    for entry in ("merlin.targetgen.corpus_spec.build", "merlin.perf.command_stream_gen.pair_from_interface"):
         for target in _TARGETS:
             r = ER.can_emit(entry, target)
             assert r.can_emit is True and r.established is True, f"{entry} on {target}: {r.reason}"
@@ -180,7 +186,8 @@ def test_unestablished_is_not_reported_as_unreachable():
     families = {"PBar": "merlin.perf.barrier_arms.pair_from_emitter"}
     gates = {"PBar": tuple(_TARGETS)}
     assert ER.unreachable_where_admitted(gates, families) == {}, (
-        "an unestablished reach is not evidence the family cannot be emitted")
+        "an unestablished reach is not evidence the family cannot be emitted"
+    )
     assert "PBar" in ER.unestablished_reach(families, _TARGETS), (
         "but it must be surfaced somewhere, not silently dropped from both reports"
     )

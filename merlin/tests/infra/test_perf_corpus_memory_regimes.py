@@ -19,6 +19,7 @@ declared inputs -- they are all live at once, so peak-live equals the total and 
 them is empty by construction -- and an unreachable regime is a real answer. A regime that is merely
 ABSENT is not, and from outside the two used to look identical.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -81,14 +82,17 @@ def _declared_axis() -> dict:
     for sweep in doc.get("sweeps") or []:
         axis = ((sweep or {}).get("axes") or {}).get("K")
         if isinstance(axis, dict) and str(axis.get("derive")) == DERIVATION:
-            return {"family": str((sweep.get("base") or {}).get("performance", {}).get("family")
-                                  or sweep.get("id")), "axis": axis}
+            return {
+                "family": str((sweep.get("base") or {}).get("performance", {}).get("family") or sweep.get("id")),
+                "axis": axis,
+            }
     return {}
 
 
 def _capsules(root: Path) -> list[tuple[Path, dict]]:
-    return [(cy.parent, yaml.safe_load(cy.read_text(encoding="utf-8")) or {})
-            for cy in sorted(root.glob("*/capsule.yaml"))]
+    return [
+        (cy.parent, yaml.safe_load(cy.read_text(encoding="utf-8")) or {}) for cy in sorted(root.glob("*/capsule.yaml"))
+    ]
 
 
 def _recorded_derivation(capsules) -> dict:
@@ -140,7 +144,8 @@ def test_every_declared_regime_is_fittable_or_recorded_unreachable(root: Path):
         f"{target}: the shared template declares family {declared['family']} with a {DERIVATION!r} "
         f"axis, but no capsule in {root} carries the derivation it produced. Either the family was "
         f"never materialized here or the corpus predates the axis -- regenerate it. A declared "
-        f"residency ladder with nothing on disk is the silent absence this gate exists to catch")
+        f"residency ladder with nothing on disk is the silent absence this gate exists to catch"
+    )
 
     reached = _by_regime(root, target, store, capacity)
     regimes = [str(r) for r in (declared["axis"].get("regimes") or MR.ORDER)]
@@ -154,7 +159,8 @@ def test_every_declared_regime_is_fittable_or_recorded_unreachable(root: Path):
             if not why:
                 failures.append(
                     f"{regime}: the corpus reached no depth in it AND recorded no reason. An "
-                    f"unreachable regime is an answer; a silent absence is not")
+                    f"unreachable regime is an answer; a silent absence is not"
+                )
             continue
         distinct = reached.get(regime, set())
         if len(distinct) < 2:
@@ -162,10 +168,11 @@ def test_every_declared_regime_is_fittable_or_recorded_unreachable(root: Path):
                 f"{regime}: reachable -- the derivation offers depths {[p['K'] for p in points]} at "
                 f"{[p['fraction_of_capacity'] for p in points]} of capacity -- but the corpus carries "
                 f"{len(distinct)} distinct working set(s) {sorted(distinct)} there. A rate and a "
-                f"fixed intercept are two parameters; one point fits them by extrapolation")
-    assert not failures, (
-        f"{target}: perf corpus {root} cannot support a per-regime fit:\n  - "
-        + "\n  - ".join(failures))
+                f"fixed intercept are two parameters; one point fits them by extrapolation"
+            )
+    assert not failures, f"{target}: perf corpus {root} cannot support a per-regime fit:\n  - " + "\n  - ".join(
+        failures
+    )
 
 
 @pytest.mark.parametrize("root", _perf_roots(), ids=lambda p: p.parent.name)
@@ -192,17 +199,22 @@ def test_recorded_derivation_still_matches_the_derived_store(root: Path):
 
     axis = declared["axis"]
     fresh = MR.reduction_depth_regimes(
-        target, [str(r) for r in (axis.get("regimes") or MR.ORDER)],
+        target,
+        [str(r) for r in (axis.get("regimes") or MR.ORDER)],
         tile_dim=int(record.get("tile_dim") or 0),
         dtype=store.element_dtype,
-        m_tiles=int(record.get("m_tiles", 1)), n_tiles=int(record.get("n_tiles", 1)),
+        m_tiles=int(record.get("m_tiles", 1)),
+        n_tiles=int(record.get("n_tiles", 1)),
         points_per_regime=int(axis.get("points_per_regime", 2)),
         spills_max_fraction=float(axis.get("spills_max_fraction_of_capacity", 2.0)),
-        store=store, capacity=capacity)
+        store=store,
+        capacity=capacity,
+    )
     assert int(record.get("capacity_rows") or 0) == int(capacity), (
         f"{target}: the corpus was generated against a {record.get('capacity_rows')}-row operand "
         f"store; the target now derives {capacity}. Regenerate `_perf`, or every member is filed "
-        f"under a band it no longer occupies")
+        f"under a band it no longer occupies"
+    )
     stale = []
     for regime, got in sorted((fresh.get("by_regime") or {}).items()):
         was = (record.get("by_regime") or {}).get(regime) or {}
@@ -211,8 +223,8 @@ def test_recorded_derivation_still_matches_the_derived_store(root: Path):
         if now_k != was_k:
             stale.append(f"{regime}: stamped {was_k}, current store gives {now_k}")
     assert not stale, (
-        f"{target}: the stamped residency ladder no longer matches the derived store:\n  - "
-        + "\n  - ".join(stale))
+        f"{target}: the stamped residency ladder no longer matches the derived store:\n  - " + "\n  - ".join(stale)
+    )
 
 
 @pytest.mark.parametrize("root", _perf_roots(), ids=lambda p: p.parent.name)
@@ -247,7 +259,8 @@ def test_every_derived_point_was_actually_shipped(root: Path):
                 missing.append(
                     f"{regime}: no capsule occupies {point['rows']} rows "
                     f"({point['fraction_of_capacity']} of capacity, K={point['K']}), which the "
-                    f"derivation put in the ladder")
-    assert not missing, (
-        f"{target}: perf corpus {root} is missing derived residency points:\n  - "
-        + "\n  - ".join(missing))
+                    f"derivation put in the ladder"
+                )
+    assert not missing, f"{target}: perf corpus {root} is missing derived residency points:\n  - " + "\n  - ".join(
+        missing
+    )

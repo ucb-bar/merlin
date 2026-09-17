@@ -9,6 +9,7 @@ These pin the two properties that make the fix trustworthy: the synthesizer find
 sizing the coverage gate measures with (so a capsule cannot be emitted for one regime and then be
 classified into another), and a regime it cannot reach is REPORTED rather than dropped.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -35,7 +36,8 @@ def test_derived_extents_land_in_the_regime_they_were_derived_for():
         rows = ext["rows"]
         assert MR.classify(rows, rows, capacity) == regime, (
             f"{regime}: derived {ext['M']}x{ext['K']}x{ext['N']} = {rows} rows, which the gate "
-            f"classifies as {MR.classify(rows, rows, capacity)}")
+            f"classifies as {MR.classify(rows, rows, capacity)}"
+        )
 
 
 def test_spills_actually_exceeds_capacity_and_the_fits_do_not():
@@ -65,10 +67,16 @@ def _spec_with_regimes():
     regimes = [MR.FITS_DOUBLE, MR.FITS_SINGLE, MR.SPILLS]
     return {
         "target": TARGET,
-        "cells": [{"cell": "contraction/i8/aligned", "family": "contraction", "dtype": "i8",
-                   "alignment": "aligned", "basis": "observed"}],
-        "boundaries": {"extent_probes": [{"boundary": "tile_edge", "edge": 16,
-                                          "points": [15, 16, 17, 32]}]},
+        "cells": [
+            {
+                "cell": "contraction/i8/aligned",
+                "family": "contraction",
+                "dtype": "i8",
+                "alignment": "aligned",
+                "basis": "observed",
+            }
+        ],
+        "boundaries": {"extent_probes": [{"boundary": "tile_edge", "edge": 16, "points": [15, 16, 17, 32]}]},
         "memory_mapping": {
             "required": {r: ["some_capture"] for r in regimes},
             "regime_dtype": "i8",

@@ -14,6 +14,7 @@ FIRRTL (LoadController and StoreController each expose a decoupled completion ch
 where the trait is UNKNOWN the family gates off rather than running a program nobody established the
 correctness of.
 """
+
 from __future__ import annotations
 
 import sys
@@ -24,6 +25,7 @@ from merlin.common.paths import merlin_dir
 sys.path.insert(0, str(merlin_dir() / "tests" / "targetgen"))
 
 import test_layer_workload_gen as LW  # noqa: E402
+
 from merlin.perf import workload_gen as WG  # noqa: E402
 
 _KW = dict(control_flow=LW.CF, settle=LW.SETTLE, subnormal_operand_flush=False)
@@ -77,11 +79,12 @@ def test_the_hoist_actually_changes_the_order():
     # unhoisted: the first wait precedes the second issue -- strictly serialized.
     assert b_wait[0] < b_load[1], (
         f"the unhoisted body is not serialized (load {b_load[:2]}, wait {b_wait[:2]}); there is then "
-        f"nothing for the hoist to be a hoist against")
+        f"nothing for the hoist to be a hoist against"
+    )
     # hoisted: both issues precede the first wait.
     assert h_load[1] < h_wait[0], (
-        f"stage two's transfer was NOT issued before stage one's wait (load {h_load[:2]}, "
-        f"wait {h_wait[:2]})")
+        f"stage two's transfer was NOT issued before stage one's wait (load {h_load[:2]}, wait {h_wait[:2]})"
+    )
 
 
 def test_the_unhoisted_program_is_unchanged_by_the_knob_existing():
@@ -92,8 +95,14 @@ def test_the_unhoisted_program_is_unchanged_by_the_knob_existing():
 def test_the_hoist_is_confined_to_the_transfer_pair():
     """Every tensor op keeps its place relative to the others, so only the transfers moved."""
     base, hoist = _plan(), _plan(hoist_transfers=True)
-    tensor = {LW.OPS.tile_load, LW.OPS.transpose, LW.OPS.weight_push,
-              LW.OPS.contract, LW.OPS.contract_accumulate, LW.OPS.acc_read}
+    tensor = {
+        LW.OPS.tile_load,
+        LW.OPS.transpose,
+        LW.OPS.weight_push,
+        LW.OPS.contract,
+        LW.OPS.contract_accumulate,
+        LW.OPS.acc_read,
+    }
     seq_a = [i.split()[0] for i in _instructions(base) if i.split()[0] in tensor]
     seq_b = [i.split()[0] for i in _instructions(hoist) if i.split()[0] in tensor]
     assert seq_a == seq_b, "the tensor-op order changed; the hoist must move transfers only"

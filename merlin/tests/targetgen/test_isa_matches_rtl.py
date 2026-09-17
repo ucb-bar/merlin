@@ -9,6 +9,7 @@ These tests pin the three properties that make the cross-check worth having:
   * it says UNKNOWN, never OK, when it had no evidence — a check that could not run must not pass;
   * it refuses to grade a model against the source that model was BUILT FROM.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -33,32 +34,42 @@ def test_bitpat_dontcare_bits_are_never_compared():
 
 
 def test_bitpat_reader_ignores_separators_and_non_literals():
-    got = X.parse_bitpats("\n".join([
-        'def A = BitPat("b0000000_00000")',
-        'def B = BitPat("b" + someRuntimeString)',       # not a literal -> must not be invented
-        'val C = BitPat("b1111")',                       # not a `def` -> different construct
-        'def D = BitPat("hDEADBEEF")',                   # not binary
-    ]))
+    got = X.parse_bitpats(
+        "\n".join(
+            [
+                'def A = BitPat("b0000000_00000")',
+                'def B = BitPat("b" + someRuntimeString)',  # not a literal -> must not be invented
+                'val C = BitPat("b1111")',  # not a `def` -> different construct
+                'def D = BitPat("hDEADBEEF")',  # not binary
+            ]
+        )
+    )
     assert set(got) == {"A"}
 
 
 def test_opcode_constants_skip_commented_out_lines():
     """A decoder keeps retired opcodes commented out. Reading one as live invents an encoding."""
-    got = X.parse_opcode_constants("\n".join([
-        "object Op {",
-        '  val LOAD = "b000000011"',
-        '  // val LOAD_FP = "b0000111"',
-        '  val NAME_WITH_TEXT = "not bits"',
-        "}",
-    ]))
+    got = X.parse_opcode_constants(
+        "\n".join(
+            [
+                "object Op {",
+                '  val LOAD = "b000000011"',
+                '  // val LOAD_FP = "b0000111"',
+                '  val NAME_WITH_TEXT = "not bits"',
+                "}",
+            ]
+        )
+    )
     assert got == {"LOAD": 3}
 
 
 def test_projection_fit_refuses_a_table_it_cannot_explain():
     """A table no projection of the model's own fields explains is uninterpretable. Reading it anyway
     would manufacture verdicts in both directions out of a coincidence."""
+
     class _M:
         by_mnemonic = {"A": {"opcode": 3, "funct7": 0, "fixed_mask": 0x707F, "fixed_value": 3}}
+
     _name, _fn, cov = X.fit_code_projection(_M(), {90210, 70000, 12345})
     assert cov < X.MIN_PROJECTION_COVERAGE
 
@@ -68,6 +79,7 @@ def test_projection_fit_refuses_a_table_it_cannot_explain():
 # ======================================================================================================
 def _targets():
     from merlin.common.paths import merlin_dir
+
     base = merlin_dir() / "experiments" / "capsule_bench" / "targets"
     return sorted(p.parent.name for p in base.glob("*/target_experiment.yaml"))
 
@@ -108,8 +120,9 @@ def test_a_model_is_never_graded_against_the_table_it_was_built_from():
         src = next(s for s in rep.sources if s.kind == X.RTL_DECODE_TABLE)
         assert src.circular, f"{target}: model built from the decode table but the source is not circular"
         assert not src.usable, f"{target}: a circular source must not count as evidence"
-        assert not any(f.source == X.RTL_DECODE_TABLE for f in rep.by_verdict(X.AGREE)), \
+        assert not any(f.source == X.RTL_DECODE_TABLE for f in rep.by_verdict(X.AGREE)), (
             f"{target}: tautological agreements leaked into the verdict"
+        )
     assert checked, "no target exercises the circular-provenance path; this test asserted nothing"
 
 
@@ -130,18 +143,21 @@ def test_declared_encoding_agrees_with_hardware(target):
     assert not undeclared, (
         f"{target}: {len(undeclared)} instruction(s) whose declared encoding this target's own hardware "
         f"contradicts, none recorded in {X.errata_path().name}: "
-        + "; ".join(f"{m} spec={r['declared']} vs {sorted(r['evidence'].values())}"
-                    for m, r in sorted(undeclared.items())))
+        + "; ".join(
+            f"{m} spec={r['declared']} vs {sorted(r['evidence'].values())}" for m, r in sorted(undeclared.items())
+        )
+    )
 
 
 def test_the_gate_can_actually_fail():
     """A gate nobody has seen fail is a gate nobody has tested. This drives the same comparison with a
     planted disagreement and asserts it is caught — so a future refactor that quietly turns the check
     into a no-op is detected even on a tree where every real target happens to agree."""
+
     class _M:
         target = "planted"
-        by_mnemonic = {"OP_A": {"opcode": 0x7F, "funct7": 1, "fixed_mask": 0xFE00_007F,
-                                "fixed_value": 0x0200_007F}}
+        by_mnemonic = {"OP_A": {"opcode": 0x7F, "funct7": 1, "fixed_mask": 0xFE00_007F, "fixed_value": 0x0200_007F}}
+
     findings = X.compare_bitpats(_M(), {"OP_A": X.BitPattern(mask=0xFE00_007F, value=0x0000_007F, width=32)})
     assert [f.verdict for f in findings] == [X.DISAGREE]
     assert findings[0].declared == "0x0200007f" and findings[0].evidence == "0x0000007f"
@@ -150,6 +166,7 @@ def test_the_gate_can_actually_fail():
 # ======================================================================================================
 # A correction must not collapse a family onto one of its members
 # ======================================================================================================
+
 
 def test_a_correction_preserves_the_bits_the_pattern_does_not_pin():
     """A BitPat's don't-cares carry the per-instruction field; the correction must keep them.
@@ -162,10 +179,9 @@ def test_a_correction_preserves_the_bits_the_pattern_does_not_pin():
     # funct7 + opcode pinned; funct3 (bits 14:12) and rs1 left as don't-care.
     pat = X.BitPattern(mask=0xFE00_707F & ~0x0000_7000, value=0x0000_007F, width=32)
     for channel in range(8):
-        declared = 0x0200_007F | (channel << 12)      # spec: funct7=1 (wrong), funct3=channel
+        declared = 0x0200_007F | (channel << 12)  # spec: funct7=1 (wrong), funct3=channel
         corrected = X._corrected(declared, pat)
-        assert corrected == 0x0000_007F | (channel << 12), (
-            f"channel {channel}: correction dropped the channel selector")
+        assert corrected == 0x0000_007F | (channel << 12), f"channel {channel}: correction dropped the channel selector"
     # and the correction really did change the contradicted bit
     assert X._corrected(0x0200_007F, pat) == 0x0000_007F
 
@@ -187,17 +203,25 @@ def _model_with(entry: dict) -> IsaModel:
     return IsaModel(target="t", by_mnemonic={"OP": dict(entry)})
 
 
-_SPEC = {"class": "C", "mnemonic": "OP", "opcode": 0x7F, "funct3": 3, "funct7": 1,
-         "fixed_mask": 0xFE00_707F, "fixed_value": 0x0200_307F}
+_SPEC = {
+    "class": "C",
+    "mnemonic": "OP",
+    "opcode": 0x7F,
+    "funct3": 3,
+    "funct7": 1,
+    "fixed_mask": 0xFE00_707F,
+    "fixed_value": 0x0200_307F,
+}
 
 
 def test_a_reviewed_correction_changes_the_word_the_assembler_emits():
     """isa_asm builds a word as `fixed_value | operands`, so this is the seam that decides bits."""
-    m = apply_errata(_model_with(_SPEC), {"OP": {
-        "authoritative": "rtl", "declared": "0x0200307f", "hardware": "0x0000307f"}})
+    m = apply_errata(
+        _model_with(_SPEC), {"OP": {"authoritative": "rtl", "declared": "0x0200307f", "hardware": "0x0000307f"}}
+    )
     e = m.resolve("OP")
     assert e["fixed_value"] == 0x0000_307F
-    assert e["spec_fixed_value"] == 0x0200_307F      # the contradicted word is kept, not erased
+    assert e["spec_fixed_value"] == 0x0200_307F  # the contradicted word is kept, not erased
     assert e["errata_applied"]["hardware"] == "0x0000307f"
 
 
@@ -206,8 +230,9 @@ def test_a_correction_updates_the_fields_derived_from_the_old_word():
 
     Leaving funct7 at the contradicted value would reproduce the same silent-wrong-bits failure one
     level down, in every consumer that reads fields rather than the packed word."""
-    m = apply_errata(_model_with(_SPEC), {"OP": {
-        "authoritative": "rtl", "declared": "0x0200307f", "hardware": "0x0000307f"}})
+    m = apply_errata(
+        _model_with(_SPEC), {"OP": {"authoritative": "rtl", "declared": "0x0200307f", "hardware": "0x0000307f"}}
+    )
     e = m.resolve("OP")
     assert e["funct7"] == 0, "funct7 kept the contradicted value"
     assert e["funct3"] == 3, "funct3 is a don't-care here and carries the channel — must survive"
@@ -217,9 +242,17 @@ def test_a_correction_updates_the_fields_derived_from_the_old_word():
 
 def test_an_unresolved_entry_changes_no_bits_and_says_so():
     """`unresolved` means nothing may derive from either encoding — not a silent pick of one side."""
-    m = apply_errata(_model_with(_SPEC), {"OP": {
-        "authoritative": "unresolved", "declared": "25", "hardware": "absent from the decoder",
-        "rationale": "one decoder's fan-out is not the whole machine"}})
+    m = apply_errata(
+        _model_with(_SPEC),
+        {
+            "OP": {
+                "authoritative": "unresolved",
+                "declared": "25",
+                "hardware": "absent from the decoder",
+                "rationale": "one decoder's fan-out is not the whole machine",
+            }
+        },
+    )
     e = m.resolve("OP")
     assert e["fixed_value"] == _SPEC["fixed_value"]
     assert "errata_unresolved" in e and e["errata_unresolved"]
@@ -229,8 +262,9 @@ def test_an_unresolved_entry_changes_no_bits_and_says_so():
 def test_a_field_whose_layout_cannot_be_confirmed_is_dropped_not_left_stale():
     """Fail closed: an unrecognised field after a correction must not keep the contradicted value."""
     spec = dict(_SPEC, weird_field=0x5)
-    m = apply_errata(_model_with(spec), {"OP": {
-        "authoritative": "rtl", "declared": "0x0200307f", "hardware": "0x0000307f"}})
+    m = apply_errata(
+        _model_with(spec), {"OP": {"authoritative": "rtl", "declared": "0x0200307f", "hardware": "0x0000307f"}}
+    )
     e = m.resolve("OP")
     assert e["weird_field"] is None
     assert "weird_field" in e["errata_dropped_fields"]

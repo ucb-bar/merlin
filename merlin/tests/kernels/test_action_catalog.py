@@ -1,4 +1,5 @@
 """R4: CCA divergences -> typed compiler-action catalog (FLAG/HEURISTIC/PASS/KNOB)."""
+
 from __future__ import annotations
 
 from merlin.common.paths import repo_root
@@ -7,16 +8,20 @@ from merlin.kernels import cca, cca_compare
 
 
 def _pair():
-    ours = cca.CCA(op="matmul", backend=["rvv"],
-                   compute=cca.ComputeFacet(op="matmul", contraction_form="mul_add",
-                                            widening=False, epilogue="none"),
-                   vector=cca.VectorFacet(sew=32, lmul=2.0, vl_strategy="vsetivli_fixed"),
-                   provenance={"level": "asm", "source": "ours"})
-    expert = cca.CCA(op="matmul", backend=["rvv"],
-                     compute=cca.ComputeFacet(op="matmul", contraction_form="fused_fma",
-                                              widening=False, epilogue="none"),
-                     vector=cca.VectorFacet(sew=32, lmul=4.0, vl_strategy="vsetvl_loop"),
-                     provenance={"level": "asm", "source": "xnnpack_rvv_gemm"})
+    ours = cca.CCA(
+        op="matmul",
+        backend=["rvv"],
+        compute=cca.ComputeFacet(op="matmul", contraction_form="mul_add", widening=False, epilogue="none"),
+        vector=cca.VectorFacet(sew=32, lmul=2.0, vl_strategy="vsetivli_fixed"),
+        provenance={"level": "asm", "source": "ours"},
+    )
+    expert = cca.CCA(
+        op="matmul",
+        backend=["rvv"],
+        compute=cca.ComputeFacet(op="matmul", contraction_form="fused_fma", widening=False, epilogue="none"),
+        vector=cca.VectorFacet(sew=32, lmul=4.0, vl_strategy="vsetvl_loop"),
+        provenance={"level": "asm", "source": "xnnpack_rvv_gemm"},
+    )
     return expert, ours
 
 
@@ -33,7 +38,7 @@ def test_divergences_route_to_typed_actions():
     assert cf.target_seam == "impr_features:fused_vfmacc_contraction"
     assert by_axis["vector.lmul"].action_class == "KNOB" and by_axis["vector.lmul"].forkable_now
     vl = by_axis["vector.vl_strategy"]
-    assert vl.action_class == "PASS" and not vl.forkable_now            # deferred work-item
+    assert vl.action_class == "PASS" and not vl.forkable_now  # deferred work-item
 
 
 def test_dtype_axes_route_to_dtype_strategy_knob():
@@ -62,6 +67,7 @@ def test_no_divergence_when_equal():
 def test_shape_conditional_optimization():
     # the SAME divergence gets a DIFFERENT optimization depending on the shape regime (small vs large)
     from merlin.kernels.cca_compare import Divergence
+
     rb = Divergence("compute.register_block", (7, None), (1, None), "rvv")
     mr = Divergence("compute.mr_adapts_to_m", True, False, "rvv")
     # large square: register-block MR=7 applies; the small-M clamp does NOT
@@ -89,28 +95,28 @@ def test_escalation_ladder_is_monotone_with_seam_files():
     classes = [step["action_class"] for step in ladder]
     assert classes == ["PASS", "CODEGEN"]
     order = [ac._CLASS_ORDER[c] for c in classes]
-    assert order == sorted(order)                    # weakest -> strongest
+    assert order == sorted(order)  # weakest -> strongest
     assert all(step["seam_file"] for step in ladder)  # every rung names a file to edit
-    assert ladder[-1]["needs_new_code"] is True       # the CODEGEN rung is the new-pass work-item
+    assert ladder[-1]["needs_new_code"] is True  # the CODEGEN rung is the new-pass work-item
 
 
 def test_accumulator_residency_routes_to_deferred_pass():
     # expert keeps the accumulator resident, ours does not -> a PASS action at the impr feature
     # seam. forkable_now is HONEST: the transform-dialect feature does not yet fully close it (still
     # spills the accumulator per K-tile), so it is a deferred work-item, not a green fork.
-    d = cca_compare.Divergence(axis="compute.accumulator_resident", expert=True, ours=False,
-                               backend="rvv", evidence=["openblas_rvv_gemm"])
+    d = cca_compare.Divergence(
+        axis="compute.accumulator_resident", expert=True, ours=False, backend="rvv", evidence=["openblas_rvv_gemm"]
+    )
     a = ac.route(d)
     assert a is not None and a.action_class == "PASS"
     assert a.target_seam == "impr_features:accumulator_resident_microkernel"
-    assert a.forkable_now is False                       # deferred: transform path doesn't close it
+    assert a.forkable_now is False  # deferred: transform path doesn't close it
 
 
 def test_accumulator_residency_codegen_when_ours_unknown():
     # when ours can't even be judged (no fma loop), route to the dedicated micro-kernel CODEGEN
     # closer (the intrinsic_microkernel ceiling target), also a deferred work-item.
-    d = cca_compare.Divergence(axis="compute.accumulator_resident", expert=True, ours=None,
-                               backend="rvv")
+    d = cca_compare.Divergence(axis="compute.accumulator_resident", expert=True, ours=None, backend="rvv")
     a = ac.route(d)
     assert a is not None and a.action_class == "CODEGEN" and a.forkable_now is False
 
@@ -118,8 +124,7 @@ def test_accumulator_residency_codegen_when_ours_unknown():
 def test_vl_nr_routes_to_forkable_heuristic():
     # NR=vsetvlmax (VL-adaptive output tile + N-tail) is expressible today (the N-tail-safe feature
     # vectorizes small-N attention), so it is a forkable HEURISTIC.
-    d = cca_compare.Divergence(axis="compute.nr_is_vsetvlmax", expert=True, ours=False,
-                               backend="rvv")
+    d = cca_compare.Divergence(axis="compute.nr_is_vsetvlmax", expert=True, ours=False, backend="rvv")
     a = ac.route(d)
     assert a is not None and a.action_class == "HEURISTIC" and a.forkable_now is True
     assert "vsetvlmax" in a.target_seam
@@ -128,8 +133,7 @@ def test_vl_nr_routes_to_forkable_heuristic():
 def test_mtail_routes_to_forkable_heuristic():
     # MR=min(MR,M) (matmul M-tail clamp) is the M-side analog of nr_is_vsetvlmax: a forkable
     # HEURISTIC (the accumulator_resident_mtail feature vectorizes the M=1 token-decode matmul).
-    d = cca_compare.Divergence(axis="compute.mr_adapts_to_m", expert=True, ours=False,
-                               backend="rvv")
+    d = cca_compare.Divergence(axis="compute.mr_adapts_to_m", expert=True, ours=False, backend="rvv")
     a = ac.route(d)
     assert a is not None and a.action_class == "HEURISTIC" and a.forkable_now is True
     assert "MR=min(MR,M)" in a.target_seam
@@ -139,22 +143,28 @@ def test_mtail_routes_to_forkable_heuristic():
 def test_reduction_form_routes_to_forkable_vectorize_reduction_pass():
     # compute.reduction_form was a bijection ORPHAN (a lever with no route). It now routes to the
     # vectorize_reduction PASS (vfredusum/vredsum), forkable now (a registered impr feature).
-    d = cca_compare.Divergence(axis="compute.reduction_form", expert="vredsum_tree", ours="none",
-                               backend="rvv")
+    d = cca_compare.Divergence(axis="compute.reduction_form", expert="vredsum_tree", ours="none", backend="rvv")
     a = ac.route(d)
     assert a is not None and a.action_class == "PASS" and a.forkable_now is True
     assert a.target_seam == "impr_features:vectorize_reduction"
     assert a.intended_facet == {"compute.reduction_form": "vredsum_tree"}
     # no route when we already vectorize the reduction (ours matches a real reduction form)
-    assert ac.route(cca_compare.Divergence(axis="compute.reduction_form", expert="vredsum_tree",
-                                           ours="vredsum_tree", backend="rvv")) is None
+    assert (
+        ac.route(
+            cca_compare.Divergence(
+                axis="compute.reduction_form", expert="vredsum_tree", ours="vredsum_tree", backend="rvv"
+            )
+        )
+        is None
+    )
 
 
 def test_reduction_form_no_longer_a_bijection_orphan():
     from merlin.kernels.cca_contract import check_bijection
+
     r = check_bijection("rvv")
     assert "compute.reduction_form" not in r.orphan_fields
-    assert r.unexpected().clean          # the ratchet stays green (only allowlisted gaps remain)
+    assert r.unexpected().clean  # the ratchet stays green (only allowlisted gaps remain)
 
 
 def test_unrouted_reported_not_dropped():
@@ -166,29 +176,26 @@ def test_unrouted_reported_not_dropped():
 
 # --- intended-vs-achieved + escalation ladder (the closed-loop methodology fix) ---
 
+
 def test_routes_carry_machine_readable_intended_facet():
     # register_block: the promise is "reach the EXPERT's MR" (derived from the divergence, not a const)
-    d = cca_compare.Divergence(axis="compute.register_block", expert=(7, ("vsetvlmax", 4)),
-                               ours=None, backend="rvv")
+    d = cca_compare.Divergence(axis="compute.register_block", expert=(7, ("vsetvlmax", 4)), ours=None, backend="rvv")
     a = ac.route(d)
     assert a.intended_facet == {"compute.register_block": 7}
     # accumulator_resident: the cheapest matching class is PASS, promising resident=True
-    d2 = cca_compare.Divergence(axis="compute.accumulator_resident", expert=True, ours=False,
-                                backend="rvv")
+    d2 = cca_compare.Divergence(axis="compute.accumulator_resident", expert=True, ours=False, backend="rvv")
     a2 = ac.route(d2)
     assert a2.action_class == "PASS" and a2.intended_facet == {"compute.accumulator_resident": True}
 
 
 def test_achieved_residual_detects_unmet_promise():
-    a = ac.route(cca_compare.Divergence(axis="compute.accumulator_resident", expert=True,
-                                        ours=False, backend="rvv"))
+    a = ac.route(cca_compare.Divergence(axis="compute.accumulator_resident", expert=True, ours=False, backend="rvv"))
     bad = cca.CCA(op="matmul", backend=["rvv"], compute=cca.ComputeFacet(accumulator_resident=False))
     ok = cca.CCA(op="matmul", backend=["rvv"], compute=cca.ComputeFacet(accumulator_resident=True))
     assert ac.achieved_residual(a, bad) == ["compute.accumulator_resident"]
     assert ac.achieved_residual(a, ok) == []
     # register_block: emitted MR must be >= promised MR
-    arb = ac.route(cca_compare.Divergence(axis="compute.register_block", expert=(7, None),
-                                          ours=None, backend="rvv"))
+    arb = ac.route(cca_compare.Divergence(axis="compute.register_block", expert=(7, None), ours=None, backend="rvv"))
     mr4 = cca.CCA(op="matmul", backend=["rvv"], compute=cca.ComputeFacet(register_block=(4, None)))
     mr7 = cca.CCA(op="matmul", backend=["rvv"], compute=cca.ComputeFacet(register_block=(7, None)))
     assert ac.achieved_residual(arb, mr4) == ["compute.register_block"]
@@ -197,8 +204,7 @@ def test_achieved_residual_detects_unmet_promise():
 
 def test_escalation_ladder_walks_up_classes():
     # PASS was insufficient for accumulator_resident -> escalate to the CODEGEN microkernel route
-    d = cca_compare.Divergence(axis="compute.accumulator_resident", expert=True, ours=False,
-                               backend="rvv")
+    d = cca_compare.Divergence(axis="compute.accumulator_resident", expert=True, ours=False, backend="rvv")
     esc = ac.route_escalated(d, prior_class="PASS")
     assert esc is not None and esc.action_class == "CODEGEN"
     # CODEGEN is the top of the ladder -> nothing stronger
@@ -213,11 +219,13 @@ class TestPromisesAreDerivedFromTheExpert:
 
     def _div(self, axis, expert, ours=None):
         from merlin.kernels.cca_compare import Divergence
+
         return Divergence(axis=axis, expert=expert, ours=ours, backend="rvv", evidence=[])
 
     def test_a_match_the_expert_axis_gets_a_promise_without_being_named(self):
         """The derivation used to name two axes as literals, leaving every other one unverifiable."""
         from merlin.kernels.action_catalog import route
+
         a = route(self._div("vector.sew", 8))
         assert a is not None and a.intended_facet == {"vector.sew": 8}
 
@@ -225,12 +233,14 @@ class TestPromisesAreDerivedFromTheExpert:
         """'The expert does not exhibit this property' names no target to reach, so there is nothing
         to promise. Fail closed rather than promising None, which anything would satisfy."""
         from merlin.kernels.action_catalog import _promised_value
+
         assert _promised_value(None) is None
 
     def test_a_tuple_promise_collapses_to_what_the_audit_actually_compares(self):
         """_facet_value reads register_block as its MR, so promising the whole tuple would compare a
         tuple against an int and never match."""
         from merlin.kernels.action_catalog import _promised_value
+
         assert _promised_value((7, 4)) == 7
 
     def test_direction_is_declared_not_inferred_from_the_value_type(self):
@@ -246,8 +256,9 @@ class TestPromisesAreDerivedFromTheExpert:
         from merlin.kernels.action_catalog import _RVV_ROUTES, route
 
         def _rb(expert_mr, ours_mr):
-            return route(self._div("compute.register_block",
-                                   (expert_mr, ("vsetvlmax", 4.0)), (ours_mr, ("vsetvlmax", 4.0))))
+            return route(
+                self._div("compute.register_block", (expert_mr, ("vsetvlmax", 4.0)), (ours_mr, ("vsetvlmax", 4.0)))
+            )
 
         # RAISING toward an expert above us keeps the promise by exceeding it.
         up = _rb(7, 1)
@@ -256,26 +267,41 @@ class TestPromisesAreDerivedFromTheExpert:
         # `at_least` would certify our slower config as a kept promise.
         down = _rb(1, 4)
         assert down.promise_comparison == "exact" and "lower" in down.change
-        assert all(r.promise_comparison == "exact"
-                   for r in _RVV_ROUTES if r.axis == "vector.sew")
+        assert all(r.promise_comparison == "exact" for r in _RVV_ROUTES if r.axis == "vector.sew")
 
     def test_at_least_credits_exceeding_the_expert(self):
         from merlin.kernels.action_catalog import CompilerAction, achieved_residual
         from merlin.kernels.cca import CCA, ComputeFacet
-        act = CompilerAction(divergence_axis="compute.register_block", action_class="PASS",
-                             target_seam="s", change="c", forkable_now=True, expected_effect="e",
-                             backend="rvv", intended_facet={"compute.register_block": 4},
-                             promise_comparison="at_least")
+
+        act = CompilerAction(
+            divergence_axis="compute.register_block",
+            action_class="PASS",
+            target_seam="s",
+            change="c",
+            forkable_now=True,
+            expected_effect="e",
+            backend="rvv",
+            intended_facet={"compute.register_block": 4},
+            promise_comparison="at_least",
+        )
         cca = CCA(op="matmul", backend="rvv", compute=ComputeFacet(register_block=(8, 4)))
-        assert achieved_residual(act, cca) == []          # 8 >= 4 keeps the promise
+        assert achieved_residual(act, cca) == []  # 8 >= 4 keeps the promise
 
     def test_at_least_still_reports_falling_short(self):
         from merlin.kernels.action_catalog import CompilerAction, achieved_residual
         from merlin.kernels.cca import CCA, ComputeFacet
-        act = CompilerAction(divergence_axis="compute.register_block", action_class="PASS",
-                             target_seam="s", change="c", forkable_now=True, expected_effect="e",
-                             backend="rvv", intended_facet={"compute.register_block": 8},
-                             promise_comparison="at_least")
+
+        act = CompilerAction(
+            divergence_axis="compute.register_block",
+            action_class="PASS",
+            target_seam="s",
+            change="c",
+            forkable_now=True,
+            expected_effect="e",
+            backend="rvv",
+            intended_facet={"compute.register_block": 8},
+            promise_comparison="at_least",
+        )
         cca = CCA(op="matmul", backend="rvv", compute=ComputeFacet(register_block=(4, 4)))
         assert achieved_residual(act, cca) == ["compute.register_block"]
 
@@ -283,9 +309,17 @@ class TestPromisesAreDerivedFromTheExpert:
         """Default semantics must stay exact -- a wider SEW than the expert is worse, not better."""
         from merlin.kernels.action_catalog import CompilerAction, achieved_residual
         from merlin.kernels.cca import CCA, VectorFacet
-        act = CompilerAction(divergence_axis="vector.sew", action_class="KNOB", target_seam="s",
-                             change="c", forkable_now=True, expected_effect="e", backend="rvv",
-                             intended_facet={"vector.sew": 8})
+
+        act = CompilerAction(
+            divergence_axis="vector.sew",
+            action_class="KNOB",
+            target_seam="s",
+            change="c",
+            forkable_now=True,
+            expected_effect="e",
+            backend="rvv",
+            intended_facet={"vector.sew": 8},
+        )
         cca = CCA(op="matmul", backend="rvv", vector=VectorFacet(sew=32))
         assert achieved_residual(act, cca) == ["vector.sew"]
 
@@ -296,12 +330,21 @@ class TestAnUnverifiableActionIsNotAnAchievedOne:
 
     def _action(self, facet):
         from merlin.kernels.action_catalog import CompilerAction
-        return CompilerAction(divergence_axis="compute.widening", action_class="KNOB",
-                              target_seam="schedule:x", change="c", forkable_now=True,
-                              expected_effect="e", backend="rvv", intended_facet=facet)
+
+        return CompilerAction(
+            divergence_axis="compute.widening",
+            action_class="KNOB",
+            target_seam="schedule:x",
+            change="c",
+            forkable_now=True,
+            expected_effect="e",
+            backend="rvv",
+            intended_facet=facet,
+        )
 
     def test_no_promise_is_not_reported_as_closed(self):
         from merlin.kernels.search_step import make_step
+
         step = make_step(self._action(None), None, correctness_ok=True, speedup=1.2)
         assert step.achieved is False and step.promise_checkable is False
         assert "UNVERIFIED" in step.to_line()
@@ -310,14 +353,15 @@ class TestAnUnverifiableActionIsNotAnAchievedOne:
         """The gap is a missing promise in the catalog, not a weak lever in the compiler, so it must
         not be pushed up the FLAG->KNOB->...->CODEGEN ladder."""
         from merlin.kernels.search_step import make_step
+
         assert make_step(self._action(None), None, correctness_ok=True, speedup=None).residual == []
 
     def test_a_kept_promise_still_reads_as_closed(self):
-        from merlin.kernels.search_step import make_step
         from merlin.kernels.cca import CCA, ComputeFacet
+        from merlin.kernels.search_step import make_step
+
         cca = CCA(op="matmul", backend="rvv", compute=ComputeFacet(widening=True))
-        step = make_step(self._action({"compute.widening": True}), cca,
-                         correctness_ok=True, speedup=1.2)
+        step = make_step(self._action({"compute.widening": True}), cca, correctness_ok=True, speedup=1.2)
         assert step.achieved is True and step.promise_checkable is True
         assert "closed" in step.to_line()
 
@@ -374,9 +418,16 @@ def test_a_forkable_seam_mints_a_fork_the_lowering_can_actually_resolve():
         # `action_to_fork` consumes a CompilerAction; build the one this route would produce. Only the
         # seam/flag/axis matter to the mapping, so a minimal stand-in is honest here.
         action = ac.CompilerAction(
-            divergence_axis=r.axis, action_class=r.action_class, target_seam=r.target_seam,
-            change=r.change, forkable_now=r.forkable_now, expected_effect=r.expected_effect,
-            backend="rvv", evidence=(), intended_facet=r.intended_facet)
+            divergence_axis=r.axis,
+            action_class=r.action_class,
+            target_seam=r.target_seam,
+            change=r.change,
+            forkable_now=r.forkable_now,
+            expected_effect=r.expected_effect,
+            backend="rvv",
+            evidence=(),
+            intended_facet=r.intended_facet,
+        )
         fork = action_to_fork(action, {})
         if not fork.forkable or fork.overrides.get("compiler_features") != [feat]:
             broken.append((r.axis, feat, fork.forkable, fork.overrides))
@@ -389,13 +440,12 @@ def test_per_op_register_block_is_forkable_because_it_is_wired():
     from merlin.kernels import action_catalog as ac
     from merlin.llvmlower.impr_features import PEROP_BLOCK_NAME
 
-    route = next(r for r in ac._RVV_ROUTES
-                 if r.axis == "coverage.unclaimed_op_classes")
+    route = next(r for r in ac._RVV_ROUTES if r.axis == "coverage.unclaimed_op_classes")
     assert route.forkable_now is True
     assert _impr_seam_feature(route.target_seam) == PEROP_BLOCK_NAME
     src = (repo_root() / "merlin/python/merlin/runtime/backends/zephyr_model.py").read_text()
-    assert "if PEROP_BLOCK_NAME in features:" in src           # the sentinel IS consumed
-    assert "ensure_perop_block(table, _PEROP_KC)" in src       # ...and swapped for the real feature
+    assert "if PEROP_BLOCK_NAME in features:" in src  # the sentinel IS consumed
+    assert "ensure_perop_block(table, _PEROP_KC)" in src  # ...and swapped for the real feature
 
 
 # ---------------------------------------------------------------------------------------
@@ -405,8 +455,10 @@ def test_per_op_register_block_is_forkable_because_it_is_wired():
 # affected, and one of them is the largest measured lever in the profile.
 # ---------------------------------------------------------------------------------------
 
+
 def _div(axis, ours, expert):
     from merlin.kernels.cca_compare import Divergence
+
     return Divergence(axis=axis, backend="rvv", ours=ours, expert=expert)
 
 
@@ -437,8 +489,10 @@ def test_a_falsy_target_is_a_target_but_an_unknown_one_is_not():
 def test_no_route_promises_a_target_it_cannot_express():
     """Every route on an elimination axis must carry, or derive, a promise -- otherwise the escalation
     it feeds has nothing to check and `achieved_residual` returns [] for any emitted code at all."""
-    for axis, ours, expert in (("envelope.runtime_calls", ("memcpy",), ()),
-                               ("coverage.unclaimed_op_classes", ("linalg.batch_matmul",), ())):
+    for axis, ours, expert in (
+        ("envelope.runtime_calls", ("memcpy",), ()),
+        ("coverage.unclaimed_op_classes", ("linalg.batch_matmul",), ()),
+    ):
         a = ac.route(_div(axis, ours, expert))
         if a is None:
             continue
@@ -447,6 +501,7 @@ def test_no_route_promises_a_target_it_cannot_express():
 
 
 # ------------------------------------------------- the ladder must terminate in something ACTIONABLE
+
 
 def test_every_blocked_route_says_WHERE_the_fix_goes():
     """The escalation ladder was terminating in prose.
@@ -467,8 +522,7 @@ def test_every_blocked_route_says_WHERE_the_fix_goes():
     from merlin.kernels import action_catalog as ac
 
     def _ok(route) -> bool:
-        return (ac.seam_module(route.target_seam) is not None
-                or ac.seam_needs_new_module(route.target_seam) is not None)
+        return ac.seam_module(route.target_seam) is not None or ac.seam_needs_new_module(route.target_seam) is not None
 
     order = ac._CLASS_ORDER
     unactionable = []
@@ -476,21 +530,24 @@ def test_every_blocked_route_says_WHERE_the_fix_goes():
         for r in routes:
             if r.forkable_now or _ok(r):
                 continue
-            stronger = [x for x in routes
-                        if x.axis == r.axis
-                        and order.get(x.action_class, -1) > order.get(r.action_class, -1)
-                        and _ok(x)]
+            stronger = [
+                x
+                for x in routes
+                if x.axis == r.axis and order.get(x.action_class, -1) > order.get(r.action_class, -1) and _ok(x)
+            ]
             if not stronger:
                 unactionable.append(f"{backend}:{r.action_class}:{r.axis} seam={r.target_seam!r}")
     assert not unactionable, (
         "these blocked routes name neither a module the pass slot can overlay nor a declared reason "
-        "there is none, so the ladder dead-ends in prose:\n  " + "\n  ".join(unactionable))
+        "there is none, so the ladder dead-ends in prose:\n  " + "\n  ".join(unactionable)
+    )
 
 
 def test_seam_module_resolves_only_a_pass_seam_whose_file_really_exists():
     """No guessing: a seam that does not resolve returns None, and the caller consults the declared
     reasons. A `pass:` label, a feature seam and a schedule seam are all correctly not modules."""
     from merlin.kernels import action_catalog as ac
+
     assert ac.seam_module("pass:llvmlower/act_poly.py (extend coverage)") == "merlin.llvmlower.act_poly"
     assert ac.seam_module("pass:llvmlower/does_not_exist.py") is None
     assert ac.seam_module("pass:tile-epilogue-store-once (a label)") is None
@@ -504,6 +561,7 @@ def test_every_declared_new_module_reason_belongs_to_a_real_blocked_seam():
     """The declaration list may only shrink as passes get written. An entry naming a seam no route
     carries is stale bookkeeping that would let a future dead-end pass the gate above."""
     from merlin.kernels import action_catalog as ac
+
     tokens = set()
     for routes in ac._ROUTES.values():
         for r in routes:

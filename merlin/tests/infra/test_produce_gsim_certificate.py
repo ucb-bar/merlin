@@ -1,4 +1,5 @@
 """The GSIM certificate producer binds fresh same-ELF captures, never legacy inference."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -11,7 +12,6 @@ import pytest
 import yaml
 
 from merlin.common.paths import merlin_dir
-
 
 _SCRIPTS = merlin_dir() / "experiments/gemmini_perf_bench/scripts"
 if str(_SCRIPTS) not in sys.path:
@@ -37,17 +37,31 @@ def _sha(path: Path) -> str:
 
 def _capsule(tmp_path: Path, *, k: int = 16) -> Path:
     path = tmp_path / "capsule.yaml"
-    path.write_text(yaml.safe_dump({
-        "name": f"matmul_k{k}",
-        "inputs": [
-            {"name": "W", "role": "weight", "shape": [k, 16], "dtype": "i8"},
-            {"name": "X", "role": "input", "shape": [16, k], "dtype": "i8"},
-        ],
-        "operation": {"op": "matmul", "attributes": {
-            "lhs": "X", "weight": "W", "out": "Y0", "epilogue": [],
-            "output_dtype": "i32", "semantic": "non-functional-source-label"}},
-        "numeric_policy": {"compare": "exact_int", "dtype": "i32"},
-    }, sort_keys=False), encoding="utf-8")
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "name": f"matmul_k{k}",
+                "inputs": [
+                    {"name": "W", "role": "weight", "shape": [k, 16], "dtype": "i8"},
+                    {"name": "X", "role": "input", "shape": [16, k], "dtype": "i8"},
+                ],
+                "operation": {
+                    "op": "matmul",
+                    "attributes": {
+                        "lhs": "X",
+                        "weight": "W",
+                        "out": "Y0",
+                        "epilogue": [],
+                        "output_dtype": "i32",
+                        "semantic": "non-functional-source-label",
+                    },
+                },
+                "numeric_policy": {"compare": "exact_int", "dtype": "i32"},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
     return path
 
 
@@ -57,15 +71,16 @@ def _artifacts(tmp_path: Path) -> tuple[PRODUCER.ArtifactPaths, Path]:
     (model_root / "ChipTop0.cpp").write_text("generated implementation\n", encoding="utf-8")
     (model_root / "ChipTop.h").write_text("generated interface\n", encoding="utf-8")
     model_manifest = PRODUCER.write_model_manifest(
-        model_root, ["ChipTop0.cpp", "ChipTop.h"], tmp_path / "gsim_model_manifest.json")
+        model_root, ["ChipTop0.cpp", "ChipTop.h"], tmp_path / "gsim_model_manifest.json"
+    )
     paths = {}
     for name in ("gsim_firrtl", "verilator_firrtl", "gsim_binary", "verilator_binary"):
         path = tmp_path / name
         path.write_text(f"exact {name}\n", encoding="utf-8")
         paths[name] = path
     artifacts = PRODUCER.ArtifactPaths(
-        paths["gsim_firrtl"], paths["verilator_firrtl"], model_manifest,
-        paths["gsim_binary"], paths["verilator_binary"])
+        paths["gsim_firrtl"], paths["verilator_firrtl"], model_manifest, paths["gsim_binary"], paths["verilator_binary"]
+    )
     tools = {}
     for name in ("emitter", "wrapper", "compiler", "harness", "library"):
         tool = tmp_path / name
@@ -73,20 +88,25 @@ def _artifacts(tmp_path: Path) -> tuple[PRODUCER.ArtifactPaths, Path]:
         tools[name] = tool
     receipt = tmp_path / "gsim_build_receipt.json"
     PRODUCER.write_build_receipt(
-        output=receipt, firrtl=paths["gsim_firrtl"], model_manifest=model_manifest,
-        binary=paths["gsim_binary"], emitter=tools["emitter"],
-        cxx_wrapper=tools["wrapper"], cxx_compiler=tools["compiler"],
+        output=receipt,
+        firrtl=paths["gsim_firrtl"],
+        model_manifest=model_manifest,
+        binary=paths["gsim_binary"],
+        emitter=tools["emitter"],
+        cxx_wrapper=tools["wrapper"],
+        cxx_compiler=tools["compiler"],
         inputs=[("harness", tools["harness"]), ("static_library", tools["library"])],
         commands=[
             {"stage": "elaborate", "cwd": str(tmp_path), "argv": ["java", "Generator"]},
-            {"stage": "emit", "cwd": str(tmp_path),
-             "argv": [str(tools["emitter"].resolve()), "input.fir"]},
-            {"stage": "compile", "cwd": str(tmp_path),
-             "argv": [str(tools["wrapper"].resolve()), "ChipTop0.cpp"]},
-            {"stage": "link", "cwd": str(tmp_path),
-             "argv": [str(tools["wrapper"].resolve()), "ChipTop0.o", "harness.o", "-o",
-                      "gsim_binary"]},
-        ])
+            {"stage": "emit", "cwd": str(tmp_path), "argv": [str(tools["emitter"].resolve()), "input.fir"]},
+            {"stage": "compile", "cwd": str(tmp_path), "argv": [str(tools["wrapper"].resolve()), "ChipTop0.cpp"]},
+            {
+                "stage": "link",
+                "cwd": str(tmp_path),
+                "argv": [str(tools["wrapper"].resolve()), "ChipTop0.o", "harness.o", "-o", "gsim_binary"],
+            },
+        ],
+    )
     return artifacts, receipt
 
 
@@ -123,25 +143,37 @@ def test_frozen_generated_corpus_is_verified_before_workloads_are_derived(tmp_pa
     tree = stage._exact_tree_record(capsule_dir)
     aggregate = stage._exact_tree_record(root / "capsules")
     manifest = root / "performance_corpus_manifest.json"
-    manifest.write_text(json.dumps({
-        "schema_version": 1, "target": "test_target", "capsules_sha256": aggregate["sha256"],
-        "capsules": [{
-            "family": "prediction", "capsule": "matmul_k16",
-            "source_relative_path": "performance/matmul_k16",
-            "snapshot_relative_path": "capsules/performance/matmul_k16",
-            "snapshot_sha256": tree["sha256"], "n_files": tree["n_files"],
-            "n_bytes": tree["n_bytes"],
-        }],
-    }, sort_keys=True), encoding="utf-8")
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "target": "test_target",
+                "capsules_sha256": aggregate["sha256"],
+                "capsules": [
+                    {
+                        "family": "prediction",
+                        "capsule": "matmul_k16",
+                        "source_relative_path": "performance/matmul_k16",
+                        "snapshot_relative_path": "capsules/performance/matmul_k16",
+                        "snapshot_sha256": tree["sha256"],
+                        "n_files": tree["n_files"],
+                        "n_bytes": tree["n_bytes"],
+                    }
+                ],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
     workloads = PRODUCER.derive_frozen_corpus_workloads(
-        root, manifest_sha256=_sha(manifest), capsules_sha256=aggregate["sha256"],
-        expected_target="test_target")
+        root, manifest_sha256=_sha(manifest), capsules_sha256=aggregate["sha256"], expected_target="test_target"
+    )
     assert workloads["matmul_k16"]["shape"] == {"m": 16, "n": 16, "k": 16}
     (capsule_dir / "capsule.yaml").write_text("changed: true\n", encoding="utf-8")
     with pytest.raises(stage.StageGateError, match="bytes changed|member changed"):
         PRODUCER.derive_frozen_corpus_workloads(
-            root, manifest_sha256=_sha(manifest), capsules_sha256=aggregate["sha256"],
-            expected_target="test_target")
+            root, manifest_sha256=_sha(manifest), capsules_sha256=aggregate["sha256"], expected_target="test_target"
+        )
 
 
 def test_generated_model_manifest_is_deterministic_and_detects_changed_sources(tmp_path: Path) -> None:
@@ -160,8 +192,7 @@ def test_output_digest_is_declared_little_endian_tensor_bytes_not_json(tmp_path:
     cb = {"tensors": {"Y0": {"role": "output", "shape": [2], "dtype": "i32"}}}
     digest, rows = PRODUCER.encode_declared_outputs({"Y0": [1, -2]}, cb)
     raw = b"\x01\x00\x00\x00\xfe\xff\xff\xff"
-    assert rows == [{"name": "Y0", "shape": [2], "dtype": "i32", "n_bytes": 8,
-                     "sha256": sha256(raw).hexdigest()}]
+    assert rows == [{"name": "Y0", "shape": [2], "dtype": "i32", "n_bytes": 8, "sha256": sha256(raw).hexdigest()}]
     assert digest != sha256(json.dumps({"Y0": [1, -2]}, sort_keys=True).encode()).hexdigest()
     with pytest.raises(PRODUCER.ProducerError, match="requires 2"):
         PRODUCER.encode_declared_outputs({"Y0": [1]}, cb)
@@ -171,26 +202,30 @@ def test_smoke_refuses_firrtl_and_generated_model_with_different_tops(tmp_path: 
     artifacts, _ = _artifacts(tmp_path)
     artifacts.gsim_firrtl.write_text("FIRRTL version 3.3.0\ncircuit NotChipTop :\n", encoding="utf-8")
     report = PRODUCER.smoke_legacy_evidence(
-        target="test_target", legacy_root=tmp_path / "absent-legacy",
-        v1_capture_root=None, artifacts=artifacts, build_receipt=None)
+        target="test_target",
+        legacy_root=tmp_path / "absent-legacy",
+        v1_capture_root=None,
+        artifacts=artifacts,
+        build_receipt=None,
+    )
     assert report["status"] == "refused"
     assert any("NotChipTop" in issue and "ChipTop" in issue for issue in report["issues"])
 
 
 def test_offline_capture_and_producer_make_a_gate_qualifying_certificate(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     capsule = _capsule(tmp_path)
     artifact_dir = tmp_path / "lowered"
     artifact_dir.mkdir()
-    command_buffer = {
-        "tensors": {"Y0": {"role": "output", "shape": [2, 2], "dtype": "i32"}}}
-    (artifact_dir / "command_buffer.json").write_text(
-        json.dumps(command_buffer), encoding="utf-8")
+    command_buffer = {"tensors": {"Y0": {"role": "output", "shape": [2, 2], "dtype": "i32"}}}
+    (artifact_dir / "command_buffer.json").write_text(json.dumps(command_buffer), encoding="utf-8")
     (artifact_dir / "lowered.llvm.mlir").write_text("module {}", encoding="utf-8")
     artifacts, receipt = _artifacts(tmp_path)
 
     # Keep the test offline while exercising the same-ELF and reference-output logic.
     import merlin.runtime.reference as reference
+
     monkeypatch.setattr(reference, "reference_outputs", lambda cb: {"Y0": [[1, 2], [3, 4]]})
     monkeypatch.setattr(reference, "outputs_match", lambda got, expected: got == expected)
 
@@ -201,14 +236,21 @@ def test_offline_capture_and_producer_make_a_gate_qualifying_certificate(
         return elf
 
     capture = PRODUCER.capture_case(
-        target="test_target", capsule_manifest=capsule, artifact_dir=artifact_dir,
-        workdir=tmp_path / "work", artifacts=artifacts, backend=_Backend(), build_elf=build_elf)
+        target="test_target",
+        capsule_manifest=capsule,
+        artifact_dir=artifact_dir,
+        workdir=tmp_path / "work",
+        artifacts=artifacts,
+        backend=_Backend(),
+        build_elf=build_elf,
+    )
     assert capture["reference"]["elf_sha256"] == capture["candidate"]["elf_sha256"]
     capture_path = tmp_path / "case.json"
     capture_path.write_text(json.dumps(capture, sort_keys=True), encoding="utf-8")
 
     certificate = PRODUCER.produce_certificate(
-        target="test_target", captures=[capture_path], artifacts=artifacts, build_receipt=receipt)
+        target="test_target", captures=[capture_path], artifacts=artifacts, build_receipt=receipt
+    )
     certificate_path = tmp_path / "gsim_equivalence_certificate.json"
     certificate_path.write_text(json.dumps(certificate, sort_keys=True), encoding="utf-8")
     record = GATE.load_certificate(certificate_path)
@@ -216,50 +258,65 @@ def test_offline_capture_and_producer_make_a_gate_qualifying_certificate(
 
 
 def test_independent_float_host_lane_uses_canonical_inputs_and_capsule_golden(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     capsule_dir = tmp_path / "float_host_lane"
     capsule_dir.mkdir()
     capsule = capsule_dir / "capsule.yaml"
-    capsule.write_text(yaml.safe_dump({
-        "name": "float_host_lane",
-        "inputs": [{"name": "X", "role": "input", "shape": [1, 1, 2, 2],
-                    "dtype": "bf16"}],
-        "operation": {"op": "movement", "attributes": {
-            "src": "X", "out": "Y0", "output_dtype": "bf16"}},
-        "numeric_policy": {"compare": "tolerance_float", "dtype": "bf16",
-                           "atol": 0.01, "rtol": 0.0},
-    }, sort_keys=False), encoding="utf-8")
+    capsule.write_text(
+        yaml.safe_dump(
+            {
+                "name": "float_host_lane",
+                "inputs": [{"name": "X", "role": "input", "shape": [1, 1, 2, 2], "dtype": "bf16"}],
+                "operation": {"op": "movement", "attributes": {"src": "X", "out": "Y0", "output_dtype": "bf16"}},
+                "numeric_policy": {"compare": "tolerance_float", "dtype": "bf16", "atol": 0.01, "rtol": 0.0},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
     values = [0.5, -1.0, 2.0, 3.0]
-    (capsule_dir / "golden.yaml").write_text(yaml.safe_dump({
-        "golden_source": "independent_test_oracle",
-        "oracle_provenance": {"inputs": {
-            "X": {"shape": [1, 1, 2, 2], "decoded": values}}},
-        "outputs": {"Y0": [[[[0.5, -1.0], [2.0, 3.0]]]]},
-    }, sort_keys=False), encoding="utf-8")
+    (capsule_dir / "golden.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "golden_source": "independent_test_oracle",
+                "oracle_provenance": {"inputs": {"X": {"shape": [1, 1, 2, 2], "decoded": values}}},
+                "outputs": {"Y0": [[[[0.5, -1.0], [2.0, 3.0]]]]},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
     artifact_dir = tmp_path / "lowered-float"
     artifact_dir.mkdir()
-    command_buffer = {"tensors": {
-        "arg0": {"role": "input", "shape": [1, 1, 2, 2], "dtype": "bf16"},
-        "Y0": {"role": "output", "shape": [1, 1, 2, 2], "dtype": "bf16"},
-    }, "commands": []}
-    (artifact_dir / "command_buffer.json").write_text(
-        json.dumps(command_buffer), encoding="utf-8")
+    command_buffer = {
+        "tensors": {
+            "arg0": {"role": "input", "shape": [1, 1, 2, 2], "dtype": "bf16"},
+            "Y0": {"role": "output", "shape": [1, 1, 2, 2], "dtype": "bf16"},
+        },
+        "commands": [],
+    }
+    (artifact_dir / "command_buffer.json").write_text(json.dumps(command_buffer), encoding="utf-8")
     (artifact_dir / "lowered.llvm.mlir").write_text("module {}", encoding="utf-8")
     artifacts, _receipt = _artifacts(tmp_path)
 
     import merlin.runtime.reference as reference
-    monkeypatch.setattr(reference, "reference_outputs", lambda _cb: pytest.fail(
-        "an empty host-lane command stream is not the float program's semantic oracle"))
+
+    monkeypatch.setattr(
+        reference,
+        "reference_outputs",
+        lambda _cb: pytest.fail("an empty host-lane command stream is not the float program's semantic oracle"),
+    )
 
     def build_elf(cb, llvm, destination):
         assert llvm == "module {}"
-        assert cb["canonical_inputs"] == {
-            "arg0": {"shape": [1, 1, 2, 2], "values": values}}
+        assert cb["canonical_inputs"] == {"arg0": {"shape": [1, 1, 2, 2], "values": values}}
         elf = destination / "case.elf"
         elf.write_bytes(b"one exact elf")
         return elf
 
     from merlin.runtime import fp8_formats
+
     codes = [int(value) for value in fp8_formats.float_to_codes(values, "bf16")]
 
     class FloatBackend(_Backend):
@@ -267,25 +324,29 @@ def test_independent_float_host_lane_uses_canonical_inputs_and_capsule_golden(
             return {"Y0": [codes[:2], codes[2:]]}, console
 
     capture = PRODUCER.capture_case(
-        target="test_target", capsule_manifest=capsule, artifact_dir=artifact_dir,
-        workdir=tmp_path / "work-float", artifacts=artifacts, backend=FloatBackend(),
-        build_elf=build_elf)
+        target="test_target",
+        capsule_manifest=capsule,
+        artifact_dir=artifact_dir,
+        workdir=tmp_path / "work-float",
+        artifacts=artifacts,
+        backend=FloatBackend(),
+        build_elf=build_elf,
+    )
 
     assert capture["semantic_reference"] == {
         "kind": "independent_capsule_golden",
         "golden_source": "independent_test_oracle",
-        "numeric_policy": {"compare": "tolerance_float", "dtype": "bf16",
-                           "atol": 0.01, "rtol": 0.0},
+        "numeric_policy": {"compare": "tolerance_float", "dtype": "bf16", "atol": 0.01, "rtol": 0.0},
         "operand_binding": "linalg_positional_declaration_order",
         "operand_source": "recorded_capsule_golden",
-        "canonical_inputs_sha256": PRODUCER._document_sha({
-            "arg0": {"shape": [1, 1, 2, 2], "values": values}}),
+        "canonical_inputs_sha256": PRODUCER._document_sha({"arg0": {"shape": [1, 1, 2, 2], "values": values}}),
     }
     assert capture["reference"]["output_sha256"] == capture["candidate"]["output_sha256"]
 
 
 def test_integer_whole_program_uses_materialized_inputs_and_complete_capsule_golden(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A whole-program command list is an accelerator projection, not its semantic oracle."""
     capsule = _capsule(tmp_path)
     command_buffer = {
@@ -308,13 +369,17 @@ def test_integer_whole_program_uses_materialized_inputs_and_complete_capsule_gol
         },
     }
     import merlin.runtime.reference as reference
-    monkeypatch.setattr(reference, "reference_outputs", lambda _cb: pytest.fail(
-        "a whole-program accelerator projection is not the complete kernel's semantic oracle"))
 
-    normalized, expected, matches, semantic = PRODUCER._semantic_oracle(
-        capsule, command_buffer)
+    monkeypatch.setattr(
+        reference,
+        "reference_outputs",
+        lambda _cb: pytest.fail("a whole-program accelerator projection is not the complete kernel's semantic oracle"),
+    )
+
+    normalized, expected, matches, semantic = PRODUCER._semantic_oracle(capsule, command_buffer)
 
     from merlin.targetgen import capsule_golden as golden
+
     manifest = yaml.safe_load(capsule.read_text(encoding="utf-8"))
     canonical = golden.materialized_input_values(manifest)
     assert normalized["canonical_inputs"] == canonical
@@ -331,15 +396,22 @@ def test_integer_whole_program_uses_materialized_inputs_and_complete_capsule_gol
 
 
 def test_model_whole_program_binds_returned_input_by_global_plan_position(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     capsule = tmp_path / "capsule.yaml"
-    capsule.write_text(yaml.safe_dump({
-        "name": "tiny_model", "kind": "model",
-        "inputs": [{"name": "I0", "role": "input", "shape": [2], "dtype": "f32"}],
-        "operation": {"op": "model", "attributes": {"out": "Y0"}},
-        "numeric_policy": {"compare": "tolerance_float", "dtype": "f32",
-                           "atol": 0.01, "rtol": 0.0},
-    }, sort_keys=False), encoding="utf-8")
+    capsule.write_text(
+        yaml.safe_dump(
+            {
+                "name": "tiny_model",
+                "kind": "model",
+                "inputs": [{"name": "I0", "role": "input", "shape": [2], "dtype": "f32"}],
+                "operation": {"op": "model", "attributes": {"out": "Y0"}},
+                "numeric_policy": {"compare": "tolerance_float", "dtype": "f32", "atol": 0.01, "rtol": 0.0},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
     command_buffer = {
         "tensors": {
             "arg0": {"role": "weight", "shape": [2], "dtype": "i8"},
@@ -356,17 +428,21 @@ def test_model_whole_program_binds_returned_input_by_global_plan_position(
             ],
             "outputs": ["Y0"],
         },
-        "params": {"global_program_plan": {
-            "entry_bindings": ["arg0", "Y0"],
-            "output_bindings": ["Y0"],
-        }},
+        "params": {
+            "global_program_plan": {
+                "entry_bindings": ["arg0", "Y0"],
+                "output_bindings": ["Y0"],
+            }
+        },
     }
 
     import contextlib
+
     import numpy as np
+
+    from merlin.runtime import dispatch_runtime
     from merlin.targetgen import capsule_golden as golden
     from merlin.targetgen import capsule_runner
-    from merlin.runtime import dispatch_runtime
 
     provenance = {
         "source": {"content_sha256": "1" * 64},
@@ -381,17 +457,23 @@ def test_model_whole_program_binds_returned_input_by_global_plan_position(
         yield tmp_path, provenance, lambda: None
 
     monkeypatch.setattr(capsule_runner, "_model_runtime_bundle", bundle)
-    monkeypatch.setattr(dispatch_runtime, "resolve_forward_args", lambda _bundle: [
-        np.asarray([-1, 1], dtype=np.int8),
-        np.asarray([0.5, -0.25], dtype=np.float32),
-    ])
+    monkeypatch.setattr(
+        dispatch_runtime,
+        "resolve_forward_args",
+        lambda _bundle: [
+            np.asarray([-1, 1], dtype=np.int8),
+            np.asarray([0.5, -0.25], dtype=np.float32),
+        ],
+    )
     monkeypatch.setattr(golden, "golden", lambda *_args: {"Y0": [1.0, 2.0]})
     monkeypatch.setattr(golden, "golden_source", lambda *_args: "pytorch_frozen_model")
-    monkeypatch.setattr(golden, "compare", lambda expected, observed, *_args, **_kwargs: {
-        "status": "pass" if expected == observed else "fail"})
+    monkeypatch.setattr(
+        golden,
+        "compare",
+        lambda expected, observed, *_args, **_kwargs: {"status": "pass" if expected == observed else "fail"},
+    )
 
-    normalized, expected, matches, semantic = PRODUCER._semantic_oracle(
-        capsule, command_buffer)
+    normalized, expected, matches, semantic = PRODUCER._semantic_oracle(capsule, command_buffer)
 
     bound = {
         "arg0": {"shape": [2], "values": [-1, 1]},
@@ -410,33 +492,60 @@ def test_model_whole_program_binds_returned_input_by_global_plan_position(
 
 def test_legacy_xval_cannot_be_promoted_or_fill_a_v1_capture(tmp_path: Path) -> None:
     legacy = tmp_path / "xval_bytes.json"
-    legacy.write_text(json.dumps({
-        "target": "test_target", "reference_engine": "verilator", "candidate_engine": "gsim",
-        "capsules": [{"capsule": "c", "agreement": "AGREE", "evidence": "output_bytes",
-                      "bytes_match": True,
-                      "reference": {"engine": "verilator", "ran": True, "verdict": "pass"},
-                      "candidate": {"engine": "gsim", "ran": True, "verdict": "pass"}}],
-    }), encoding="utf-8")
+    legacy.write_text(
+        json.dumps(
+            {
+                "target": "test_target",
+                "reference_engine": "verilator",
+                "candidate_engine": "gsim",
+                "capsules": [
+                    {
+                        "capsule": "c",
+                        "agreement": "AGREE",
+                        "evidence": "output_bytes",
+                        "bytes_match": True,
+                        "reference": {"engine": "verilator", "ran": True, "verdict": "pass"},
+                        "candidate": {"engine": "gsim", "ran": True, "verdict": "pass"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     artifacts, receipt = _artifacts(tmp_path)
     with pytest.raises(PRODUCER.ProducerError, match="not a v1 capture"):
         PRODUCER.produce_certificate(
-            target="test_target", captures=[legacy], artifacts=artifacts, build_receipt=receipt)
+            target="test_target", captures=[legacy], artifacts=artifacts, build_receipt=receipt
+        )
 
 
 def test_smoke_report_fails_closed_on_missing_capture_and_build_receipt(tmp_path: Path) -> None:
     legacy_root = tmp_path / "legacy"
     legacy_root.mkdir()
-    (legacy_root / "xval_bytes.json").write_text(json.dumps({
-        "target": "test_target", "reference_engine": "verilator", "candidate_engine": "gsim",
-        "capsules": [{"capsule": "c", "agreement": "AGREE", "evidence": "output_bytes",
-                      "bytes_match": True,
-                      "reference": {"engine": "verilator", "ran": True, "verdict": "pass"},
-                      "candidate": {"engine": "gsim", "ran": True, "verdict": "pass"}}],
-    }), encoding="utf-8")
+    (legacy_root / "xval_bytes.json").write_text(
+        json.dumps(
+            {
+                "target": "test_target",
+                "reference_engine": "verilator",
+                "candidate_engine": "gsim",
+                "capsules": [
+                    {
+                        "capsule": "c",
+                        "agreement": "AGREE",
+                        "evidence": "output_bytes",
+                        "bytes_match": True,
+                        "reference": {"engine": "verilator", "ran": True, "verdict": "pass"},
+                        "candidate": {"engine": "gsim", "ran": True, "verdict": "pass"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     artifacts, _ = _artifacts(tmp_path)
     report = PRODUCER.smoke_legacy_evidence(
-        target="test_target", legacy_root=legacy_root, v1_capture_root=None,
-        artifacts=artifacts, build_receipt=None)
+        target="test_target", legacy_root=legacy_root, v1_capture_root=None, artifacts=artifacts, build_receipt=None
+    )
     assert report["status"] == "refused"
     assert report["v1_capture_count"] == 0
     assert any("legacy xval" in issue for issue in report["issues"])

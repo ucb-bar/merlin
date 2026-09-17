@@ -11,6 +11,7 @@ a model's arithmetic.
 These tests pin the repair and the property that makes it useful — that the two pieces sharing an fqn
 stay distinguishable, so restoring the key does not just trade one imprecision for another.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -46,8 +47,7 @@ def rewritten():
 
 
 def _by_role(module):
-    return {mq.provenance(op).get("prov.role"): op
-            for op in module.walk() if mq.provenance(op).get("prov.role")}
+    return {mq.provenance(op).get("prov.role"): op for op in module.walk() if mq.provenance(op).get("prov.role")}
 
 
 class TestProvenanceSurvives:
@@ -76,8 +76,8 @@ class TestRolesDistinguishThePieces:
         roles = _by_role(rewritten)
         fqns = {r: mq.provenance(op).get("prov.fqn") for r, op in roles.items()}
         assert fqns == {"contraction": "enc.l0", "requant": "enc.l0"}, (
-            "they are one captured op split in two, so one fqn is correct -- the role is what "
-            "separates their costs")
+            "they are one captured op split in two, so one fqn is correct -- the role is what separates their costs"
+        )
 
     def test_the_role_tagged_contraction_is_the_one_the_shape_observer_finds(self, rewritten):
         observed = observe_contractions(rewritten)[0][0]
@@ -86,12 +86,14 @@ class TestRolesDistinguishThePieces:
     def test_the_profiler_lifts_the_role_into_its_op_table(self):
         # The census joins on fqn+role, which only works if the profile table carries the role at all.
         from merlin.llvmlower.op_profile import _PROV_KEYS
+
         assert "prov.role" in _PROV_KEYS
 
 
 class TestCensusJoinIsRestored:
     def test_a_census_of_the_rewritten_module_attributes_each_contraction_to_its_layer(self, rewritten):
         from merlin.kernels import census as cs
+
         got = cs.census(rewritten, model="m", stage="prepared")
         assert [r.key for r in got.rows] == ["enc.l0"]
         assert [r.role for r in got.rows] == ["contraction"]

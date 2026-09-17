@@ -16,6 +16,7 @@ i8 -- were scored as agent failures on that basis, 3 of that run's 11 non-passes
 WAS the agent's from an infra-shaped label. This is the fifth and the only one that runs the other
 way: it rescues the agent from a verdict that was never measured at all.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -23,11 +24,12 @@ import pytest
 from merlin.common.readback_integrity import ReadbackIntegrityError, require_intact
 from merlin.targetgen.capsule_common import NOT_MEASURED_STATUSES
 from merlin.targetgen.capsule_runner import _is_readback_refusal, _readback_refusal_detail
-from merlin.targetgen.oot_runner import (INFRASTRUCTURE_PLANE, CertFailure, InfraCategory,
-                                         InfraFailure)
+from merlin.targetgen.oot_runner import INFRASTRUCTURE_PLANE, CertFailure, InfraCategory, InfraFailure
 
-DETAIL = ("gsim_evaluator_owned_gmem_dump: readback_residue_class_zeroed: every 4-byte word at "
-          "index % 2 == 1 is exactly zero (512 of 1024)")
+DETAIL = (
+    "gsim_evaluator_owned_gmem_dump: readback_residue_class_zeroed: every 4-byte word at "
+    "index % 2 == 1 is exactly zero (512 of 1024)"
+)
 
 
 def _rewrapped_twice() -> BaseException:
@@ -45,6 +47,7 @@ def _rewrapped_twice() -> BaseException:
 
 
 # --- detection is by TYPE, through the re-wraps -------------------------------------------------
+
 
 def test_a_refusal_is_detected_through_two_rewraps():
     """THE REGRESSION. The refusal is unrecognisable by the time it reaches the handler unless the
@@ -77,6 +80,7 @@ def test_detection_survives_a_cycle_in_the_exception_chain():
 
 # --- the recorded outcome is NOT a verdict ------------------------------------------------------
 
+
 def test_the_category_exists_and_serializes_to_an_honest_token():
     assert InfraCategory.READBACK_TRANSPORT_REFUSED.value == "readback_transport_refused"
     assert str(InfraCategory.READBACK_TRANSPORT_REFUSED) == "readback_transport_refused"
@@ -97,6 +101,7 @@ def test_infra_failure_is_still_a_cert_failure_so_existing_recorders_work():
 
 
 # --- the refusal itself, since readback_integrity ships with this change ------------------------
+
 
 def _buf(words: list[int]) -> bytes:
     return b"".join(int(w).to_bytes(4, "little") for w in words)

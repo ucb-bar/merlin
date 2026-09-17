@@ -13,6 +13,7 @@ The field is redaction-safe by construction: statistics of the agent's own progr
 capacities it is already granted through the ISA facts. These tests pin BOTH halves -- that the signal
 arrives, and that nothing answer-bearing rides in with it.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,9 +27,14 @@ sys.path.insert(0, str(merlin_dir() / "experiments/capsule_bench/harness"))
 import qa_check as Q  # noqa: E402
 
 PEAKS = {
-    "dram_movements": 18624, "dram_unmapped": 0, "dram_unknown_provenance": 0,
-    "scratchpad_rows_touched": 32, "scratchpad_rows_capacity": 16384,
-    "accumulator_max_row": 0, "accumulator_rows_capacity": 1024, "closes_with_fence": True,
+    "dram_movements": 18624,
+    "dram_unmapped": 0,
+    "dram_unknown_provenance": 0,
+    "scratchpad_rows_touched": 32,
+    "scratchpad_rows_capacity": 16384,
+    "accumulator_max_row": 0,
+    "accumulator_rows_capacity": 1024,
+    "closes_with_fence": True,
 }
 
 
@@ -38,8 +44,8 @@ def _stage(tmp_path, peaks=PEAKS, *, write_report=True):
     (cap / "capsule_result.json").write_text(json.dumps({"capsule": "SY_x", "status": "pass"}))
     if write_report:
         (cap / "generated" / "liveness_report.json").write_text(
-            json.dumps({"target": "t", "program": "SY_x", "verdict": "unknown",
-                        "resource_peaks": peaks}))
+            json.dumps({"target": "t", "program": "SY_x", "verdict": "unknown", "resource_peaks": peaks})
+        )
     return cap / "capsule_result.json"
 
 

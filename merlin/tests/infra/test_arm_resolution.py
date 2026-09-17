@@ -13,6 +13,7 @@ it silently mis-resolves it to `merlin_assisted`. Measured 2026-09-05:
 `merlin_assisted`, so the verify arm would have run with arm-3's grants and no verification seam at
 all -- an arm gaining nothing while its result was read as evidence about the seam.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -38,7 +39,7 @@ def _resolver():
     module = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(module)
-    except Exception as exc:                      # noqa: BLE001 — harness deps absent in this env
+    except Exception as exc:  # noqa: BLE001 — harness deps absent in this env
         pytest.skip(f"harness not importable here: {type(exc).__name__}: {exc}")
     return module._arm_from_bundle_id
 
@@ -53,7 +54,8 @@ def test_every_arm_including_an_opt_in_one_resolves_to_itself():
             bundle_id = f"{stem}_{variant}"
             assert resolve(bundle_id) == arm, (
                 f"{bundle_id} resolved to {resolve(bundle_id)!r}, not {arm!r}; it would run with "
-                f"another arm's tool grants under this arm's name")
+                f"another arm's tool grants under this arm's name"
+            )
 
 
 def test_the_verify_arm_is_the_only_one_granted_the_verification_seam():
@@ -64,7 +66,8 @@ def test_the_verify_arm_is_the_only_one_granted_the_verification_seam():
     holders = [arm for arm in _ALL_ARMS if "verify_seam" in ARM_TOOLS.get(arm, ())]
     assert holders == ["merlin_verify"], (
         f"the verification seam is granted to {holders}; it must reach exactly the verify arm, or the "
-        f"comparison measures the seam against arms that also have it")
+        f"comparison measures the seam against arms that also have it"
+    )
 
 
 def test_an_unknown_bundle_id_raises_rather_than_defaulting():

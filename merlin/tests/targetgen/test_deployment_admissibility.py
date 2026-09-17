@@ -1,4 +1,5 @@
 """Target-neutral deployment profile, egress, and wrapper-order qualification."""
+
 from __future__ import annotations
 
 import copy
@@ -39,12 +40,14 @@ def _inputs(tmp_path: Path):
         "emission_identity": identity,
         "derivation_status": "verified",
         "coverage_status": "complete",
-        "egresses": [{
-            "name": "result",
-            "status": "verified",
-            "emitted_representation": {"encoding": "signed_integer", "width_bits": 8},
-            "physical_readout": {"encoding": "signed_integer", "width_bits": 8},
-        }],
+        "egresses": [
+            {
+                "name": "result",
+                "status": "verified",
+                "emitted_representation": {"encoding": "signed_integer", "width_bits": 8},
+                "physical_readout": {"encoding": "signed_integer", "width_bits": 8},
+            }
+        ],
     }
     wrapper_path = tmp_path / "wrapper.ir"
     wrapper_path.write_text("synthetic non-accelerator-specific wrapper\n", encoding="utf-8")
@@ -57,17 +60,21 @@ def _inputs(tmp_path: Path):
             "sha256": hashlib.sha256(wrapper_path.read_bytes()).hexdigest(),
         },
         "derivation_status": "verified",
-        "events": ["warm", "completion", "reset", "start", "measured", "completion",
-                   "end", "validation"],
+        "events": ["warm", "completion", "reset", "start", "measured", "completion", "end", "validation"],
     }
     return profile, profile_sha, identity, egress, wrapper
 
 
 def _assess(tmp_path: Path, profile, profile_sha, identity, egress, wrapper):
     return assess_deployment_admissibility(
-        profile, expected_profile_sha256=profile_sha,
-        expected_emission_identity=identity, egress_evidence=egress,
-        wrapper_evidence=wrapper, profile_root=tmp_path, wrapper_root=tmp_path)
+        profile,
+        expected_profile_sha256=profile_sha,
+        expected_emission_identity=identity,
+        egress_evidence=egress,
+        wrapper_evidence=wrapper,
+        profile_root=tmp_path,
+        wrapper_root=tmp_path,
+    )
 
 
 def _codes(result):
@@ -83,8 +90,7 @@ def test_synthetic_non_target_specific_profile_is_admitted(tmp_path):
     assert result["status"] == "admitted"
     assert result["admitted"] is True
     assert result["ranked_actionable_diagnostics"] == []
-    assert all(row["status"] == "verified"
-               for row in result["profile"]["artifact_bindings"].values())
+    assert all(row["status"] == "verified" for row in result["profile"]["artifact_bindings"].values())
     require_deployment_admissible(result, expected_profile_sha256=profile_sha)
 
 
@@ -123,8 +129,7 @@ def test_artifact_identity_mismatch_is_refused(tmp_path):
 
 def test_wrapper_end_before_measured_completion_is_refused(tmp_path):
     profile, profile_sha, identity, egress, wrapper = _inputs(tmp_path)
-    wrapper["events"] = ["warm", "completion", "reset", "start", "measured", "end",
-                         "completion", "validation"]
+    wrapper["events"] = ["warm", "completion", "reset", "start", "measured", "end", "completion", "validation"]
 
     result = _assess(tmp_path, profile, profile_sha, identity, egress, wrapper)
 
@@ -134,8 +139,7 @@ def test_wrapper_end_before_measured_completion_is_refused(tmp_path):
 
 def test_wrapper_warm_without_completion_is_refused(tmp_path):
     profile, profile_sha, identity, egress, wrapper = _inputs(tmp_path)
-    wrapper["events"] = ["warm", "reset", "start", "measured", "completion", "end",
-                         "validation"]
+    wrapper["events"] = ["warm", "reset", "start", "measured", "completion", "end", "validation"]
 
     result = _assess(tmp_path, profile, profile_sha, identity, egress, wrapper)
 
@@ -165,8 +169,7 @@ def test_incomplete_egress_derivation_cannot_omit_an_unsupported_result(tmp_path
 
 def test_validation_inside_compute_window_is_refused(tmp_path):
     profile, profile_sha, identity, egress, wrapper = _inputs(tmp_path)
-    wrapper["events"] = ["warm", "completion", "reset", "start", "measured", "validation",
-                         "completion", "end"]
+    wrapper["events"] = ["warm", "completion", "reset", "start", "measured", "validation", "completion", "end"]
 
     result = _assess(tmp_path, profile, profile_sha, identity, egress, wrapper)
 

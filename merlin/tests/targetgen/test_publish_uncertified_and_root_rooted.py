@@ -10,6 +10,7 @@ Two regressions, both of which produced an artifact that looked correct and was 
    and commit subject. The only reader who saw the warning was the operator who already knew; the
    person who clones the repo saw a certified champion.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -28,9 +29,12 @@ def _write(path: Path, text: str, *, mode: int | None = None) -> None:
         path.chmod(mode)
 
 
-def _make_root_rooted_python_package(targets_root: Path, target: str = "gemmini",
-                                     package_id: str = "graded_only_v0",
-                                     status: str = "capsule_graded_l3_partial") -> Path:
+def _make_root_rooted_python_package(
+    targets_root: Path,
+    target: str = "gemmini",
+    package_id: str = "graded_only_v0",
+    status: str = "capsule_graded_l3_partial",
+) -> Path:
     """An interpreted package shaped like a capsule-bench submission: the tool at the package root,
     the importable tree beside it, docs and a report alongside."""
     d = targets_root / target / package_id
@@ -44,35 +48,30 @@ def _make_root_rooted_python_package(targets_root: Path, target: str = "gemmini"
         "status": status,
         "version": 0,
         "integrity_exempt": False,
-        "authoring": {"mode": "agent_generated_from_rtl_facts", "author": "fixture",
-                      "generated_by_agent": True},
+        "authoring": {"mode": "agent_generated_from_rtl_facts", "author": "fixture", "generated_by_agent": True},
         "entrypoints": {"tool": tool},
         "commands": {
             "parse": {"argv": ["{tool}", "--verify-diagnostics", "{input_mlir}"]},
-            "lower_interface_to_target": {"argv": ["{tool}", f"--convert-iface-to-{target}",
-                                                   "{input_mlir}"]},
-            "emit_command_buffer": {"argv": ["{tool}", "--emit-command-buffer={output_json}",
-                                             "{input_mlir}"]},
+            "lower_interface_to_target": {"argv": ["{tool}", f"--convert-iface-to-{target}", "{input_mlir}"]},
+            "emit_command_buffer": {"argv": ["{tool}", "--emit-command-buffer={output_json}", "{input_mlir}"]},
             "lower_target_to_llvm": {"argv": ["{tool}", "--emit-target-artifact", "{input_mlir}"]},
         },
         "publication": {"champion": False, "certification": "not_certified"},
     }
     _write(d / "manifest.yaml", dump_yaml(manifest))
-    _write(d / tool,
-           "#!/usr/bin/env python3\n"
-           "import sys\n"
-           "from pathlib import Path\n"
-           "sys.path.insert(0, str(Path(__file__).resolve().parent))\n"
-           "from mlir_oot.opt import main\n"
-           "raise SystemExit(main())\n",
-           mode=0o755)
+    _write(
+        d / tool,
+        "#!/usr/bin/env python3\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "sys.path.insert(0, str(Path(__file__).resolve().parent))\n"
+        "from mlir_oot.opt import main\n"
+        "raise SystemExit(main())\n",
+        mode=0o755,
+    )
     _write(d / "mlir_oot" / "__init__.py", "")
     _write(d / "mlir_oot" / "tables.py", "OK = 'derived'\n")
-    _write(d / "mlir_oot" / "opt.py",
-           "from .tables import OK\n\n\n"
-           "def main():\n"
-           "    print(OK)\n"
-           "    return 0\n")
+    _write(d / "mlir_oot" / "opt.py", "from .tables import OK\n\n\ndef main():\n    print(OK)\n    return 0\n")
     _write(d / "REPORT.md", "# report\n")
     _write(d / "docs" / "notes.md", "# notes\n")
     return d
@@ -105,6 +104,7 @@ def test_a_root_rooted_package_keeps_its_entrypoint_and_stays_importable(out_roo
     assert (repo / "docs" / "notes.md").is_file()
     # and the manifest still points at the tool that is actually there
     from merlin.common.yaml import load_yaml
+
     assert load_yaml(repo / "manifest.yaml")["entrypoints"]["tool"] == "gemmini-opt"
     # the strongest check: it RUNS from the assembled tree
     proc = subprocess.run([str(tool)], capture_output=True, text=True, timeout=60)
@@ -157,15 +157,16 @@ def test_the_uncertified_warning_reaches_the_published_history(out_root, monkeyp
     subprocess.run(["git", "init", "--bare", "-q", str(bare)], check=True)
     monkeypatch.setenv("MERLIN_PUBLISH_REMOTE_GEMMINI", f"file://{bare}")
 
-    res = pub.publish("gemmini", dry_run=False, package_id="graded_only_v0", gate=False,
-                      branch="profiling/graded_only_v0")
+    res = pub.publish(
+        "gemmini", dry_run=False, package_id="graded_only_v0", gate=False, branch="profiling/graded_only_v0"
+    )
     assert res.committed
 
     clone = tmp_path / "clone"
-    subprocess.run(["git", "clone", "-q", "-b", "profiling/graded_only_v0", f"file://{bare}",
-                    str(clone)], check=True)
-    msg = subprocess.run(["git", "-C", str(clone), "log", "-1", "--format=%B"],
-                         capture_output=True, text=True, check=True).stdout
+    subprocess.run(["git", "clone", "-q", "-b", "profiling/graded_only_v0", f"file://{bare}", str(clone)], check=True)
+    msg = subprocess.run(
+        ["git", "-C", str(clone), "log", "-1", "--format=%B"], capture_output=True, text=True, check=True
+    ).stdout
     assert "UNCERTIFIED" in msg.splitlines()[0]
     assert "champion" not in msg.splitlines()[0]
     assert "--no-gate" in msg

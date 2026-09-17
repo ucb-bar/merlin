@@ -10,14 +10,14 @@ lane, so "this landed on the host because nothing could take it" is indistinguis
 placed on the host". These tests pin both halves: that the host is now a unit with a recorded reason,
 and that making it one changed nothing about where work actually goes.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from merlin.system.model import Device, Host, System
 from merlin.system.place import HOST_DEVICE, host_units, place, units_for
-from merlin.targetgen.routing import _legal_on
-from merlin.targetgen.routing import OpDemand
+from merlin.targetgen.routing import OpDemand, _legal_on
 
 _MM_I8 = OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="mm")
 _SOFTMAX = OpDemand(op="softmax", in_fmt="fp32", weight_fmt=None, site="sm")
@@ -27,6 +27,7 @@ _MM_MX = OpDemand(op="matmul", in_fmt="mxfp4", weight_fmt="mxfp4", site="mx")
 def _sys(board="chipyard_kodiak", device="gemmini"):
     from merlin.system import system_for
     from merlin.system.derive import host_from_board
+
     s = system_for(device)
     if not s.devices or not units_for(s):
         pytest.skip("device not resolvable in this checkout")
@@ -34,6 +35,7 @@ def _sys(board="chipyard_kodiak", device="gemmini"):
 
 
 # ------------------------------------------------------------------ the host exists now
+
 
 def test_the_host_is_a_unit_not_an_absence():
     units = units_for(_sys())
@@ -58,6 +60,7 @@ def test_a_vector_unit_is_synthesized_only_where_the_board_declares_one():
 
 # ------------------------------------------------------------------ inert on today's inputs
 
+
 def test_an_op_the_device_accepts_still_goes_to_the_device():
     p = place([_MM_I8], _sys())
     assert p.placed[0].on_device and p.placed[0].lane == "on_mesh"
@@ -71,6 +74,7 @@ def test_an_op_the_device_refuses_goes_to_the_host_with_a_reason():
 
 
 # ------------------------------------------------------------------ the case that was silent
+
 
 def test_an_op_nothing_can_compute_is_reported_as_emulated():
     """Neither the device nor the host natively carries this format. Today that is indistinguishable
@@ -88,6 +92,7 @@ def test_an_ordinary_host_placement_is_not_marked_emulated():
 
 # ------------------------------------------------------------------ cost is an argument, not a pass
 
+
 def test_without_a_cost_model_placement_is_declaration_order():
     p = place([_MM_I8], _sys())
     assert "declaration order" in p.placed[0].why
@@ -95,8 +100,10 @@ def test_without_a_cost_model_placement_is_declaration_order():
 
 def test_a_cost_model_can_move_work_off_the_device():
     """The decision becomes a decision: with the device priced as expensive, the host wins."""
+
     def cost(_demand, unit):
         return 100.0 if unit.kind == "systolic" else 1.0
+
     p = place([_MM_I8], _sys(), cost=cost)
     assert not p.placed[0].on_device
     assert "lowest cost" in p.placed[0].why
@@ -109,6 +116,7 @@ def test_a_cost_model_that_prices_nothing_keeps_the_legal_choice():
 
 
 # ------------------------------------------------------------------ reporting
+
 
 def test_every_op_gets_a_placement_in_order():
     demands = [_MM_I8, _SOFTMAX, _MM_MX]
@@ -127,21 +135,25 @@ def test_a_system_with_no_devices_still_places_everything_on_the_host():
 
 # ------------------------------------------------------------------ cost needs measurements
 
+
 def test_an_unmeasured_system_yields_no_cost_model():
     """`MeasuredCost` has existed unused since it was written, and not by oversight: it needs a
     per-unit throughput solved from that unit's own certification. A registry name cannot carry one,
     which is why registering it as a name was never going to work."""
-    from merlin.system.place import measured_cost_for
     from merlin.system import system_for
+    from merlin.system.place import measured_cost_for
+
     for target in ("gemmini", "atlas", "definitely_not_a_target"):
         assert measured_cost_for(system_for(target)) is None, (
-            f"{target} reported a cost model without any measurement behind it")
+            f"{target} reported a cost model without any measurement behind it"
+        )
 
 
 def test_placement_stays_declaration_order_while_nothing_is_measured():
     """The honest behaviour. The alternative is a default rate -- a measurement nobody took, driving
     a decision somebody will quote."""
     from merlin.system.place import measured_cost_for
+
     s = _sys()
     p = place([_MM_I8], s, cost=measured_cost_for(s))
     assert "declaration order" in p.placed[0].why
@@ -151,29 +163,28 @@ def test_a_shapeless_demand_cannot_be_priced_by_a_tiled_model():
     """Not a defect: a tiled unit is charged for the tile it occupies, and that is unknowable without
     the extents. Declining to price is not declining to run."""
     from merlin.targetgen.routing import MeasuredCost
+
     s = _sys()
     names = [u.name for d, u in units_for(s) if d != HOST_DEVICE]
     if not names:
         pytest.skip("no device unit resolvable here")
-    cost = MeasuredCost(macs_per_cycle={names[0]: 256.0}, tile_edge={names[0]: 16},
-                        tile_overhead_cycles={})
-    p = place([_MM_I8], s, cost=cost)          # _MM_I8 carries no m/n/k
+    cost = MeasuredCost(macs_per_cycle={names[0]: 256.0}, tile_edge={names[0]: 16}, tile_overhead_cycles={})
+    p = place([_MM_I8], s, cost=cost)  # _MM_I8 carries no m/n/k
     assert "could be priced" in p.placed[0].why and p.placed[0].on_device
 
 
 def test_a_measured_rate_is_used_when_one_exists():
     """The seam works the moment a measurement does; only the measurement is missing."""
     from merlin.targetgen.routing import MeasuredCost
+
     s = _sys()
     unit_names = [u.name for d, u in units_for(s) if d != HOST_DEVICE]
     if not unit_names:
         pytest.skip("no device unit resolvable here")
-    cost = MeasuredCost(macs_per_cycle={unit_names[0]: 256.0},
-                        tile_edge={unit_names[0]: 16}, tile_overhead_cycles={})
+    cost = MeasuredCost(macs_per_cycle={unit_names[0]: 256.0}, tile_edge={unit_names[0]: 16}, tile_overhead_cycles={})
     # A tiled cost model declines a demand with no extents, and rightly: a tiled unit is charged for
     # the tile it occupies, which is unknowable without the shape.
-    shaped = OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="mm",
-                      m=64, n=64, k=64)
+    shaped = OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="mm", m=64, n=64, k=64)
     p = place([shaped], s, cost=cost)
     assert "lowest cost" in p.placed[0].why and p.placed[0].on_device
 
@@ -183,13 +194,14 @@ def test_a_rate_is_never_inferred_from_lane_count():
     work it will not do, which is the error MeasuredCost documents itself as avoiding."""
     from merlin.system.place import _declared_rate
     from merlin.targetgen.compute_units import ComputeUnit
+
     assert _declared_rate(ComputeUnit(name="u", kind="systolic")) is None
     assert _declared_rate(ComputeUnit(name="u", kind="systolic", requant={"ref": "x"})) is None
-    assert _declared_rate(ComputeUnit(name="u", kind="systolic",
-                                      requant={"macs_per_cycle": 256})) == 256.0
+    assert _declared_rate(ComputeUnit(name="u", kind="systolic", requant={"macs_per_cycle": 256})) == 256.0
 
 
 # ------------------------------------------------------------------ two devices
+
 
 def _two_device_system():
     """A system with two accelerators, built from two real device descriptions.
@@ -201,6 +213,7 @@ def _two_device_system():
     from merlin.system import system_for
     from merlin.system.derive import host_from_board
     from merlin.system.model import System
+
     a = system_for("gemmini").devices
     b = system_for("atlas").devices
     if not a or not b or not a[0].kind or not b[0].kind:
@@ -222,7 +235,8 @@ def test_each_op_goes_to_the_device_that_can_take_it():
     got = {p.demand.site: p.device for p in place([i8, fp8], s).placed}
     assert got["i8"] != got["fp8"], (
         f"both formats landed on the same device ({got}); the datapaths differ, so one of them was "
-        f"placed somewhere that cannot compute it")
+        f"placed somewhere that cannot compute it"
+    )
 
 
 def test_cost_never_makes_an_illegal_placement_legal():
@@ -231,8 +245,7 @@ def test_cost_never_makes_an_illegal_placement_legal():
     would place work on hardware unable to compute it, which is the one thing pricing must never do."""
     s = _two_device_system()
     i8 = OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="i8", m=64, n=64, k=64)
-    legal_devices = {d for d, u in units_for(s)
-                     if d != HOST_DEVICE and _legal_on(u, i8)[0]}
+    legal_devices = {d for d, u in units_for(s) if d != HOST_DEVICE and _legal_on(u, i8)[0]}
     if len(legal_devices) != 1:
         pytest.skip("this checkout's devices do not partition on this format")
     only = next(iter(legal_devices))
@@ -241,5 +254,4 @@ def test_cost_never_makes_an_illegal_placement_legal():
         return 1.0 if _candidate.unit not in {u.name for d, u in units_for(s) if d == only} else 999.0
 
     got = place([i8], s, cost=perverse).placed[0]
-    assert got.device in (only, HOST_DEVICE), (
-        f"cost steered work onto {got.device}, which cannot compute this format")
+    assert got.device in (only, HOST_DEVICE), f"cost steered work onto {got.device}, which cannot compute this format"

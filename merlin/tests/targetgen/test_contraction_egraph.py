@@ -10,6 +10,7 @@ is given, so a cost model that overrates a unit routes work onto it confidently 
 therefore pin ``MeasuredCost``'s decline-when-unmeasured behaviour end to end: with no measured throughput
 for the matrix unit, nothing is routed.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -59,6 +60,7 @@ def _one_contraction():
 
 def _text(module) -> str:
     from merlin.xdsl_dialects._common import text as to_text
+
     return to_text(module)
 
 
@@ -79,7 +81,7 @@ class TestBothImplementationsArePresent:
         _mod, (op, _sh) = _one_contraction()
         module, _s = CE.build_contraction_egraph(op, symbol=_SYM, costs={})
         got = _text(module)
-        assert got.count("tensor<64x16xi32>") >= 3      # generic result, call result, class result
+        assert got.count("tensor<64x16xi32>") >= 3  # generic result, call result, class result
 
     def test_the_source_module_is_left_intact(self):
         # The decision is applied to that module afterwards, so building the graph must clone rather than
@@ -99,6 +101,7 @@ class TestBothImplementationsArePresent:
     def test_a_wrongly_shaped_op_is_refused(self):
         class _Fake:
             operands, results = (), ()
+
         with pytest.raises(ValueError, match="3-operand"):
             CE.build_contraction_egraph(_Fake(), symbol=_SYM, costs={})
 
@@ -109,8 +112,7 @@ class TestTheCostDecidesAndTheChoiceIsReadBack:
         # THE test. Same IR, same construction, only the costs differ — so the decision is being made by
         # minimisation over the graph and not by anything about the order or the shape.
         _mod, (op, sh) = _one_contraction()
-        got = CE.extract_contraction_choice(op, symbol=_SYM, shape=sh,
-                                           costs={CE.VECTOR: vec, CE.MATRIX: mat})
+        got = CE.extract_contraction_choice(op, symbol=_SYM, shape=sh, costs={CE.VECTOR: vec, CE.MATRIX: mat})
         assert got.chosen == expect and got.gap is None
         assert got.on_matrix_unit is (expect == CE.MATRIX)
 
@@ -118,8 +120,7 @@ class TestTheCostDecidesAndTheChoiceIsReadBack:
         # Declaration order breaks the tie, and the contraction is added first on purpose: the vector path
         # is the control, and a coin-flip must not move work onto a unit whose advantage is unproven.
         _mod, (op, sh) = _one_contraction()
-        got = CE.extract_contraction_choice(op, symbol=_SYM, shape=sh,
-                                           costs={CE.VECTOR: 3000, CE.MATRIX: 3000})
+        got = CE.extract_contraction_choice(op, symbol=_SYM, shape=sh, costs={CE.VECTOR: 3000, CE.MATRIX: 3000})
         assert got.chosen == CE.VECTOR
 
     def test_the_extents_are_recorded_with_the_choice(self):
@@ -131,8 +132,7 @@ class TestTheCostDecidesAndTheChoiceIsReadBack:
         # The source paper measures a 401x geomean slowdown against egg, so "the mechanism works" has to
         # come with a number rather than an impression.
         _mod, (op, sh) = _one_contraction()
-        got = CE.extract_contraction_choice(op, symbol=_SYM, shape=sh,
-                                           costs={CE.VECTOR: 9, CE.MATRIX: 1})
+        got = CE.extract_contraction_choice(op, symbol=_SYM, shape=sh, costs={CE.VECTOR: 9, CE.MATRIX: 1})
         assert got.build_seconds > 0 and got.extract_seconds > 0
         assert got.total_seconds == pytest.approx(got.build_seconds + got.extract_seconds)
         assert got.to_dict()["total_seconds"] >= 0
@@ -208,8 +208,12 @@ class TestOnTheRealPreparedModel:
     def candidates(self):
         from merlin.common.paths import artifacts_dir
         from merlin.frontends.linalg_mlir import parse_mlir_file
-        p = (Path(artifacts_dir()) / "target-evolution/saturn_opu/v1/latest/prepared"
-             / "spectformer_int8_full/model.prepared.mlir")
+
+        p = (
+            Path(artifacts_dir())
+            / "target-evolution/saturn_opu/v1/latest/prepared"
+            / "spectformer_int8_full/model.prepared.mlir"
+        )
         if not p.is_file():
             pytest.skip(f"no prepared module at {p}")
         return PO.routable_contractions(parse_mlir_file(p))
@@ -218,14 +222,12 @@ class TestOnTheRealPreparedModel:
         # A real model's contractions carry provenance attributes and regions the synthetic fixture does
         # not; the graph has to survive all 90 of them, not one.
         for op, _sh in candidates:
-            module, _s = CE.build_contraction_egraph(op, symbol=_SYM,
-                                                    costs={CE.VECTOR: 2, CE.MATRIX: 1})
+            module, _s = CE.build_contraction_egraph(op, symbol=_SYM, costs={CE.VECTOR: 2, CE.MATRIX: 1})
             module.verify()
 
     def test_the_decision_is_made_for_every_contraction_without_gaps(self, candidates):
         record: list[CE.ContractionChoice] = []
-        select = CE.egraph_selector(lambda sh, which: 1 if which == CE.MATRIX else 2,
-                                    symbol=_SYM, record=record)
+        select = CE.egraph_selector(lambda sh, which: 1 if which == CE.MATRIX else 2, symbol=_SYM, record=record)
         for op, sh in candidates:
             select(op, sh)
         assert len(record) == len(candidates)
@@ -235,8 +237,7 @@ class TestOnTheRealPreparedModel:
         # Compile-time cost is a first-class number here. A per-contraction budget in the tens of
         # milliseconds is what makes this usable on a whole model at all.
         record: list[CE.ContractionChoice] = []
-        select = CE.egraph_selector(lambda sh, which: 1 if which == CE.MATRIX else 2,
-                                    symbol=_SYM, record=record)
+        select = CE.egraph_selector(lambda sh, which: 1 if which == CE.MATRIX else 2, symbol=_SYM, record=record)
         for op, sh in candidates:
             select(op, sh)
         per_op = sum(r.total_seconds for r in record) / len(record)
@@ -248,10 +249,11 @@ class TestOnTheRealPreparedModel:
         decided = CE.for_rewrite(
             CE.egraph_selector(
                 # Cheap on the matrix unit only when both extents fill a 32-lane tile.
-                lambda sh, which: (1 if min(sh.parallel[0], sh.parallel[1]) >= 32 else 9)
-                if which == CE.MATRIX else 5,
-                symbol=_SYM),
-            candidates)
+                lambda sh, which: (1 if min(sh.parallel[0], sh.parallel[1]) >= 32 else 9) if which == CE.MATRIX else 5,
+                symbol=_SYM,
+            ),
+            candidates,
+        )
         chosen = [sh for _op, sh in candidates if decided(sh)]
         assert chosen, "the selector routed nothing, so this asserts nothing"
         for sh in chosen:
@@ -283,10 +285,13 @@ class TestSaturationGrowsTheGraph:
         # The PDL to PDL-interp conversion shells out to mlir-opt. Skipping is honest; pretending would
         # leave the mechanism untested while the suite looked green.
         import shutil
+
         from merlin.llvmlower import toolchain
+
         if not toolchain.available():
             pytest.skip("needs the pinned toolchain (mlir-opt ships beside clang)")
         from pathlib import Path as _P
+
         if not shutil.which(str(_P(toolchain.clang()).with_name("mlir-opt"))):
             pytest.skip("no mlir-opt beside the pinned clang")
 
@@ -324,8 +329,12 @@ class TestSaturationGrowsTheGraph:
     def test_it_saturates_the_real_models_contractions(self):
         from merlin.common.paths import artifacts_dir
         from merlin.frontends.linalg_mlir import parse_mlir_file
-        p = (Path(artifacts_dir()) / "target-evolution/saturn_opu/v1/latest/prepared"
-             / "spectformer_int8_full/model.prepared.mlir")
+
+        p = (
+            Path(artifacts_dir())
+            / "target-evolution/saturn_opu/v1/latest/prepared"
+            / "spectformer_int8_full/model.prepared.mlir"
+        )
         if not p.is_file():
             pytest.skip(f"no prepared module at {p}")
         cands = PO.routable_contractions(parse_mlir_file(p))
@@ -355,6 +364,7 @@ class TestSaturationGrowsTheGraph:
 
     def test_a_missing_mlir_opt_is_an_actionable_error(self, monkeypatch):
         import merlin.targetgen.contraction_egraph as mod
+
         monkeypatch.setenv(mod._MLIR_OPT_ENV, "/nonexistent/mlir-opt")
         monkeypatch.setattr("merlin.llvmlower.toolchain.available", lambda: False)
         with pytest.raises(FileNotFoundError, match="mlir-opt"):

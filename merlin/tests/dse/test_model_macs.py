@@ -9,7 +9,8 @@ from merlin.perf.model_placement import contraction_placement
 
 
 def convolution(*, spatial="5", address="d2 + d5", extra=""):
-    return '''module {
+    return (
+        """module {
       func.func @entry(%x: tensor<1x2xSPATIALx5xi8>, %w: tensor<3x2x3x3xi8>,
                        %out: tensor<1x3x3x3xi32>) -> tensor<1x3x3x3xi32> {
         %r = linalg.generic {indexing_maps = [
@@ -30,7 +31,10 @@ def convolution(*, spatial="5", address="d2 + d5", extra=""):
           } -> tensor<1x3x3x3xi32>
         func.return %r : tensor<1x3x3x3xi32>
       }
-    }'''.replace("SPATIAL", spatial).replace("ADDRESS", address).replace("EXTRA", extra)
+    }""".replace("SPATIAL", spatial)
+        .replace("ADDRESS", address)
+        .replace("EXTRA", extra)
+    )
 
 
 def test_multiaxis_convolution_counts_all_reduction_axes():
@@ -50,8 +54,7 @@ def test_affine_stride_has_same_mac_domain():
     assert shape.macs == 486
 
 
-@pytest.mark.parametrize("spatial,address", [("?", "d2+d5"), ("4", "d2+d5"),
-                                             ("5", "d2+d5-1")])
+@pytest.mark.parametrize("spatial,address", [("?", "d2+d5"), ("4", "d2+d5"), ("5", "d2+d5-1")])
 def test_unproved_bounds_are_unknown_not_zero(spatial, address):
     source = convolution(spatial=spatial, address=address)
     shape = observe_model_macs(source)[0][1]
@@ -64,19 +67,19 @@ def test_unproved_bounds_are_unknown_not_zero(spatial, address):
 
 
 def test_named_matmul_retains_existing_work():
-    source = '''module {func.func @entry(%a: tensor<2x3xf32>, %b: tensor<3x4xf32>,
+    source = """module {func.func @entry(%a: tensor<2x3xf32>, %b: tensor<3x4xf32>,
       %c: tensor<2x4xf32>) -> tensor<2x4xf32> {
       %r = linalg.matmul ins(%a, %b: tensor<2x3xf32>, tensor<3x4xf32>)
         outs(%c: tensor<2x4xf32>) -> tensor<2x4xf32>
       func.return %r : tensor<2x4xf32>
-    }}'''
+    }}"""
     rows = observe_model_macs(source)
     assert len(rows) == 1
     assert rows[0][1].macs == 24, rows[0][1].reason
 
 
 def test_inherited_contraction_provenance_does_not_make_pointwise_a_mac():
-    source = '''module {func.func @entry(%a: tensor<4xf32>, %b: tensor<4xf32>,
+    source = """module {func.func @entry(%a: tensor<4xf32>, %b: tensor<4xf32>,
       %c: tensor<4xf32>) -> tensor<4xf32> {
       %r = linalg.generic {indexing_maps = [affine_map<(d0)->(d0)>,
         affine_map<(d0)->(d0)>, affine_map<(d0)->(d0)>], iterator_types=["parallel"]}
@@ -87,7 +90,7 @@ def test_inherited_contraction_provenance_does_not_make_pointwise_a_mac():
           linalg.yield %p : f32
         } -> tensor<4xf32>
       func.return %r : tensor<4xf32>
-    }}'''
+    }}"""
     assert observe_model_macs(source) == []
 
 
@@ -106,9 +109,9 @@ def test_multiple_entries_require_explicit_selection():
 
 
 def test_source_call_is_not_counted_as_zero_work():
-    source = '''module {func.func private @helper()
+    source = """module {func.func private @helper()
       func.func @entry() {func.call @helper() : () -> ()
-      func.return}}'''
+      func.return}}"""
     rows = observe_model_macs(source, entry="entry")
     assert len(rows) == 1
     assert rows[0][1].status == "UNKNOWN"
@@ -117,17 +120,19 @@ def test_source_call_is_not_counted_as_zero_work():
 
 def test_full_operand_footprint_uses_each_actual_dtype(monkeypatch):
     from merlin.targetgen import memory_regime
+
     calls = []
 
     def size(shape, dtype):
         from math import prod
+
         calls.append(dtype)
         return prod(shape) * {"i8": 1, "i32": 4}[dtype]
 
-    monkeypatch.setattr(memory_regime, "operand_store", lambda *args, **kwargs:
-                        (SimpleNamespace(working_set_rows=size), 10000))
-    result = contraction_placement(convolution(), [{"region": "region_a", "lane": "engine"}],
-                                   target="mock_target")
+    monkeypatch.setattr(
+        memory_regime, "operand_store", lambda *args, **kwargs: (SimpleNamespace(working_set_rows=size), 10000)
+    )
+    result = contraction_placement(convolution(), [{"region": "region_a", "lane": "engine"}], target="mock_target")
     assert calls == ["i8", "i8", "i32"]
     assert result["contractions"][0]["working_set_rows"] == 50 + 54 + 108
     assert "not a tiled allocation" in result["memory_regime"]["note"]

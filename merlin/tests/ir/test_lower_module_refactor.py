@@ -20,6 +20,7 @@ Three properties, in the order they matter:
 Targets are DISCOVERED from the registry where a test needs "some reference target", so registering
 one does not require editing this file.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -59,32 +60,62 @@ STAGES = ("input", "contract", "schedule", "interface", "target", "runtime")
 #      records the cost this carries rather than pretending the change did not happen.
 STAGE_GOLDENS: dict[str, dict[str, str]] = {
     "default_reuse4": {
-        "input": "fed6f9dc9c36711a", "contract": "e78889598aefa3fb", "schedule": "18061d93e9f5ac00",
-        "interface": "99ba7dd31ddfc6e5", "target": "ad246c1b10e5adcb", "runtime": "1246de5c28434cbe",
-        "command_buffer": "c59a7c29773e6785"},
+        "input": "fed6f9dc9c36711a",
+        "contract": "e78889598aefa3fb",
+        "schedule": "18061d93e9f5ac00",
+        "interface": "99ba7dd31ddfc6e5",
+        "target": "ad246c1b10e5adcb",
+        "runtime": "1246de5c28434cbe",
+        "command_buffer": "c59a7c29773e6785",
+    },
     "toynpu_reuse3": {
-        "input": "d9dfdae8ad9f67e0", "contract": "1dd30866cc715105", "schedule": "d381afd0cd889137",
-        "interface": "83608464001aad44", "target": "bd935637c2099835", "runtime": "5a861e1eb6d799bf",
-        "command_buffer": "6788ed49363552b5"},
+        "input": "d9dfdae8ad9f67e0",
+        "contract": "1dd30866cc715105",
+        "schedule": "d381afd0cd889137",
+        "interface": "83608464001aad44",
+        "target": "bd935637c2099835",
+        "runtime": "5a861e1eb6d799bf",
+        "command_buffer": "6788ed49363552b5",
+    },
     "reuse2_small": {
-        "input": "9ee60e58b12e2bce", "contract": "76060b80c611eeab", "schedule": "f995c9e39f8db4e2",
-        "interface": "f94dae15b7ac81aa", "target": "11f5613d6b292163", "runtime": "0541f78c1bf66b8b",
-        "command_buffer": "4094beaba73f3e99"},
+        "input": "9ee60e58b12e2bce",
+        "contract": "76060b80c611eeab",
+        "schedule": "f995c9e39f8db4e2",
+        "interface": "f94dae15b7ac81aa",
+        "target": "11f5613d6b292163",
+        "runtime": "0541f78c1bf66b8b",
+        "command_buffer": "4094beaba73f3e99",
+    },
     "saturn_reuse4": {
-        "input": "9be380d68092547b", "contract": "d111a6aac70a0f4a", "schedule": "36ad01a37b5b8bd4",
-        "interface": "f269988f3f7b3402", "target": "96d674b8dbff0e83", "runtime": "a18dda011616751f",
-        "command_buffer": "37a6f443bc86dcc3"},
+        "input": "9be380d68092547b",
+        "contract": "d111a6aac70a0f4a",
+        "schedule": "36ad01a37b5b8bd4",
+        "interface": "f269988f3f7b3402",
+        "target": "96d674b8dbff0e83",
+        "runtime": "a18dda011616751f",
+        "command_buffer": "37a6f443bc86dcc3",
+    },
     "saturn_reuse2_small": {
-        "input": "9ee60e58b12e2bce", "contract": "93430b386173dea8", "schedule": "c10a2947720aa0ec",
-        "interface": "f94dae15b7ac81aa", "target": "690d7d2882444437", "runtime": "9763c77ae9f6de7b",
-        "command_buffer": "3dc672219a0c4f3c"},
+        "input": "9ee60e58b12e2bce",
+        "contract": "93430b386173dea8",
+        "schedule": "c10a2947720aa0ec",
+        "interface": "f94dae15b7ac81aa",
+        "target": "690d7d2882444437",
+        "runtime": "9763c77ae9f6de7b",
+        "command_buffer": "3dc672219a0c4f3c",
+    },
     # reuse=1 infers no residency at the SCHEDULE stage — contract and schedule are still the same
     # module — but the interface materializer stages the operand anyway (see note 2 above), so the
     # later stages do differ from a reuse-free lowering.
     "saturn_reuse1": {
-        "input": "d71dbd9a059b028e", "contract": "36e4df5c6682d5c9", "schedule": "36e4df5c6682d5c9",
-        "interface": "df5fd0bc27873f98", "target": "c38fd2afab854dc9", "runtime": "ffdd37a5f897cfc8",
-        "command_buffer": "29216f498926b985"},
+        "input": "d71dbd9a059b028e",
+        "contract": "36e4df5c6682d5c9",
+        "schedule": "36e4df5c6682d5c9",
+        "interface": "df5fd0bc27873f98",
+        "target": "c38fd2afab854dc9",
+        "runtime": "ffdd37a5f897cfc8",
+        "command_buffer": "29216f498926b985",
+    },
 }
 
 CASES: dict[str, dict] = {
@@ -120,7 +151,8 @@ def test_stage_fingerprints_match_pre_refactor(case):
     got = _fingerprint(lower_repeated_rhs_matmul(**CASES[case]))
     for stage in (*STAGES, "command_buffer"):
         assert got[stage] == STAGE_GOLDENS[case][stage], (
-            f"{case}/{stage} moved: {STAGE_GOLDENS[case][stage]} -> {got[stage]}")
+            f"{case}/{stage} moved: {STAGE_GOLDENS[case][stage]} -> {got[stage]}"
+        )
 
 
 def test_wrapper_and_generic_entry_agree():
@@ -168,8 +200,7 @@ def test_a_one_shot_matmul_is_staged_resident_on_every_target():
     res = lower_repeated_rhs_matmul(reuse=1, m=16, k=16, n=16, target="saturn")
     assert _fingerprint(res)["command_buffer"] == STAGE_GOLDENS["saturn_reuse1"]["command_buffer"]
 
-    target_ops = {op.name for op in res.target_module.walk()} - {
-        "builtin.module", "func.func", "func.return"}
+    target_ops = {op.name for op in res.target_module.walk()} - {"builtin.module", "func.func", "func.return"}
     assert any(name.endswith(".pack") for name in target_ops), target_ops
 
     # The cost, stated as data rather than left implicit: a pack and an evict for one use.
@@ -186,8 +217,7 @@ def _epilogue_module(m: int = 16, k: int = 16, n: int = 16):
     from xdsl.dialects.linalg import ops as linalg_ops
     from xdsl.ir import Block, Region
 
-    At, Wt, Ot, Tt = (TensorType(i8, [m, k]), TensorType(i8, [k, n]),
-                      TensorType(i32, [m, n]), TensorType(i32, [n, m]))
+    At, Wt, Ot, Tt = (TensorType(i8, [m, k]), TensorType(i8, [k, n]), TensorType(i32, [m, n]), TensorType(i32, [n, m]))
     arg_types = [At, At, Wt]
     blk = Block(arg_types=arg_types)
     a0, a1, w = blk.args
@@ -195,11 +225,9 @@ def _epilogue_module(m: int = 16, k: int = 16, n: int = 16):
     ops, outs = [zp], []
     for a in (a0, a1):
         init = tensor_d.EmptyOp((), Ot)
-        mm = linalg_ops.QuantizedMatmulOp(inputs=(a, w, zp.result, zp.result),
-                                          outputs=(init.tensor,), res=(Ot,))
+        mm = linalg_ops.QuantizedMatmulOp(inputs=(a, w, zp.result, zp.result), outputs=(init.tensor,), res=(Ot,))
         tinit = tensor_d.EmptyOp((), Tt)
-        tr = linalg_ops.TransposeOp(mm.results[0], tinit.tensor,
-                                    permutation=DenseArrayBase.from_list(i64, [1, 0]))
+        tr = linalg_ops.TransposeOp(mm.results[0], tinit.tensor, permutation=DenseArrayBase.from_list(i64, [1, 0]))
         ops += [init, mm, tinit, tr]
         outs.append(tr.results[0])
     ops.append(ReturnOp(*outs))
@@ -251,9 +279,9 @@ def test_multiple_functions_are_rejected():
 
     fns = []
     for name in ("a", "b"):
-        fn = next(op for op in build_input_module(reuse=2, m=8, k=8, n=8).walk()
-                  if op.name == "func.func").clone()
+        fn = next(op for op in build_input_module(reuse=2, m=8, k=8, n=8).walk() if op.name == "func.func").clone()
         from xdsl.dialects.builtin import StringAttr
+
         fn.properties["sym_name"] = StringAttr(name)
         fns.append(fn)
     with pytest.raises(LoweringError) as exc:
@@ -322,8 +350,8 @@ def test_an_uncovered_payload_routes_to_llvm_even_on_an_accelerator_target():
 
     route = choose_route(_vector_add_module(), target=_reference_target())
     assert route.kind == "llvm" and route.payload == ("elementwise",)
-    assert "matmul" in route.materializable        # the target DOES accelerate matmul...
-    assert "elementwise" not in route.covered      # ...but never declared this payload
+    assert "matmul" in route.materializable  # the target DOES accelerate matmul...
+    assert "elementwise" not in route.covered  # ...but never declared this payload
     assert "elementwise" not in route.materializable
 
 
@@ -361,8 +389,7 @@ def test_out_of_tree_package_routes_to_staged():
         pytest.skip("no out-of-tree target package present")
     from merlin.targetgen.registry import load_target
 
-    route = choose_route(build_input_module(reuse=2, m=16, k=16, n=16),
-                         target_package=load_target(pkg_dir))
+    route = choose_route(build_input_module(reuse=2, m=16, k=16, n=16), target_package=load_target(pkg_dir))
     assert route.kind == "staged" and "matmul" in route.materializable
 
 

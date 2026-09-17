@@ -20,6 +20,7 @@ Two properties are pinned here, and they pull in opposite directions on purpose:
 The rule is derived from each capsule's own declared tiers and the adapters present. No engine and no
 target is named in it.
 """
+
 from __future__ import annotations
 
 import ast
@@ -36,8 +37,9 @@ def _src() -> str:
 def test_a_tier_the_selection_cannot_reach_is_not_scored_as_failure():
     s = _src()
     assert "_blocked_by_selection" in s
-    assert 'NOT_RUN_IS_NOT_PASS' in s and 'tier_status") == "unavailable"' in s, (
-        "the screened case must key on the tier being UNAVAILABLE, not on any engine name")
+    assert "NOT_RUN_IS_NOT_PASS" in s and 'tier_status") == "unavailable"' in s, (
+        "the screened case must key on the tier being UNAVAILABLE, not on any engine name"
+    )
 
 
 def test_only_a_capsule_whose_every_run_tier_passed_may_be_screened():
@@ -45,13 +47,15 @@ def test_only_a_capsule_whose_every_run_tier_passed_may_be_screened():
     s = _src()
     assert "_ran_clean" in s
     assert 'all(v == "pass" for v in _ran.values())' in s, (
-        "screened must require that every tier which actually ran passed")
+        "screened must require that every tier which actually ran passed"
+    )
 
 
 def test_all_pass_requires_certification_not_merely_screening():
     s = _src()
     assert '"all_pass": ncert == n and n > 0' in s, (
-        "a screen must never be able to declare done -- all_pass keys on the certified count")
+        "a screen must never be able to declare done -- all_pass keys on the certified count"
+    )
 
 
 def test_the_report_separates_measured_from_certified():
@@ -72,5 +76,6 @@ def test_the_rule_names_no_engine_and_no_target():
     for banned in ("spike", "verilator", "vcs", "cyclotron", "gsim"):
         assert banned not in block, (
             f"the screened/failed decision must not branch on the engine name {banned!r}; "
-            f"it must read the capsule's declared tiers and whether an adapter was present")
+            f"it must read the capsule's declared tiers and whether an adapter was present"
+        )
     assert "tiers" in block and "unavailable" in block, "the rule must key on declared tiers + availability"

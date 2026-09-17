@@ -10,13 +10,15 @@ left to be noticed. The dtype is derived from the target's own declaration, not 
 radiance declares `movement` over fp32/fp16/bf16 only, while int8 appears in its contraction formats,
 which is exactly the gap that makes an int8 movement graded-but-unservable.
 """
+
 from __future__ import annotations
 
 import pytest
 import yaml
 
 from merlin.common.paths import merlin_dir
-from merlin.targetgen import coverage_report as CR, eligibility as EL
+from merlin.targetgen import coverage_report as CR
+from merlin.targetgen import eligibility as EL
 from merlin.targetgen.capsule_runner import _split_ineligible
 
 PROFILE = merlin_dir() / "contract/capsules/profiles/radiance.yaml"
@@ -79,8 +81,7 @@ def test_a_minted_cross_backend_capsule_is_graded_not_withheld():
     import tempfile
     from pathlib import Path
 
-    te = load_target_experiment(
-        merlin_dir() / "experiments/capsule_bench/targets/radiance/target_experiment.yaml")
+    te = load_target_experiment(merlin_dir() / "experiments/capsule_bench/targets/radiance/target_experiment.yaml")
     profile = yaml.safe_load(PROFILE.read_text())
     binding = CS.derive_binding(te, profile.get("datapath", {}))
     out = Path(tempfile.mkdtemp(prefix="rx_caps_"))
@@ -95,8 +96,8 @@ def test_a_minted_cross_backend_capsule_is_graded_not_withheld():
     cmap = EL.capability_map_for_target("radiance")
     for c in caps:
         v = EL.is_eligible(CR._capsule_region(c), cmap)
-        assert getattr(v, "eligible", True) is False, (
-            f"{c['name']} IS accelerator-eligible — it forces nothing")
+        assert getattr(v, "eligible", True) is False, f"{c['name']} IS accelerator-eligible — it forces nothing"
     keep, withheld = _split_ineligible(caps, "radiance")
     assert len(keep) == len(caps) and not withheld, (
-        f"cross-backend capsules must be GRADED; withheld={[w['capsule'] for w in withheld]}")
+        f"cross-backend capsules must be GRADED; withheld={[w['capsule'] for w in withheld]}"
+    )

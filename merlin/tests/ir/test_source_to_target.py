@@ -10,6 +10,7 @@ The negative controls are the load-bearing tests. A validator that has never rej
 not been shown to work, and the zero-point control in particular exists because "assume the zero
 points are zero" is the single easiest way to make this check silently vacuous.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -19,7 +20,8 @@ from merlin.verify.tools import find_mlir_tool
 
 pytestmark = pytest.mark.skipif(
     not (HAS_XDSL and HAS_Z3 and find_mlir_tool("mlir-translate")),
-    reason="needs the verify extra (xdsl + z3) and mlir-translate")
+    reason="needs the verify extra (xdsl + z3) and mlir-translate",
+)
 
 
 #: Pinned explicitly, not left to a default. Refutation (finding a `sat` model) costs far more than
@@ -55,13 +57,14 @@ def _assert_refuted(verdict, label):
         pytest.fail(
             f"solver ABSTAINED on {label} at {_SHAPE} within {_TIMEOUT_MS} ms — this is a "
             f"budget/tractability failure, NOT the validator accepting the miscompilation. Shrink "
-            f"the shape or raise the bound; do not read it as a correctness result.")
-    assert verdict.refuted, (
-        f"validator ACCEPTED a miscompilation ({label}) at {_SHAPE}: status={verdict.status}")
+            f"the shape or raise the bound; do not read it as a correctness result."
+        )
+    assert verdict.refuted, f"validator ACCEPTED a miscompilation ({label}) at {_SHAPE}: status={verdict.status}"
     assert verdict.model_values, f"refuted {label} but produced no counterexample"
 
 
 # --- positive control ----------------------------------------------------------------------------
+
 
 def test_the_real_pass_is_semantics_preserving_on_its_own_source():
     """unsat = source and output agree on EVERY integer input at this shape.
@@ -116,8 +119,8 @@ def test_the_source_side_is_the_linalg_ir_not_a_respecification():
 # Reusing the corpus operators rather than re-writing them, so the fault a test exercises is the same
 # object the detection matrix reports on.
 
-@pytest.mark.parametrize("fault_name", [
-    "miswired_commit", "swapped_matmul_operands", "dropped_activation"])
+
+@pytest.mark.parametrize("fault_name", ["miswired_commit", "swapped_matmul_operands", "dropped_activation"])
 def test_interface_mutations_are_refuted(fault_name):
     from merlin.verify import faults
     from merlin.verify.refine import validate_pass
@@ -130,6 +133,7 @@ def test_interface_mutations_are_refuted(fault_name):
 
 
 # --- negative control: mutate the SOURCE side -----------------------------------------------------
+
 
 def test_a_non_zero_zero_point_is_read_from_the_source_not_assumed():
     """Change the source's zero point and the (unchanged, previously verified) output must REFUTE.
@@ -152,6 +156,7 @@ def test_a_non_zero_zero_point_is_read_from_the_source_not_assumed():
 
 
 # --- abstentions ----------------------------------------------------------------------------------
+
 
 def _module_with_symbolic_zero_point():
     """``func @f(%a, %w, %zp: i32)`` — a runtime zero point, which is legal quantized ``linalg``."""
@@ -182,8 +187,7 @@ def test_a_symbolic_zero_point_abstains_rather_than_assuming_zero():
 
     r = _lowered(reuse=1)
     with pytest.raises(UnsupportedSemantics) as excinfo:
-        validate_pass(_module_with_symbolic_zero_point(), r.interface_module,
-                      timeout_ms=_TIMEOUT_MS)
+        validate_pass(_module_with_symbolic_zero_point(), r.interface_module, timeout_ms=_TIMEOUT_MS)
     message = str(excinfo.value)
     assert "zero point" in message
     assert "assuming it is zero" in message

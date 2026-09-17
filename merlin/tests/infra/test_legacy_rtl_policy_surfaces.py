@@ -1,4 +1,5 @@
 """Legacy audit/demo surfaces must not escape the experiment-wide RTL-engine policy."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -8,7 +9,6 @@ from pathlib import Path
 import pytest
 
 from merlin.common.paths import merlin_dir
-
 
 HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
 TASK = merlin_dir() / "experiments/capsule_bench/targets/gemmini/task/TASK_realistic.md"
@@ -38,9 +38,7 @@ def test_full_suite_audit_uses_the_central_policy_adapter(monkeypatch):
     monkeypatch.setattr(
         audit.CR,
         "_spike_verilator_adapter",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("the audit bypassed central engine policy")
-        ),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("the audit bypassed central engine policy")),
     )
 
     assert audit._adapters_for(["L3"]) == {"L3": gsim}
@@ -59,6 +57,7 @@ def test_full_suite_gsim_required_path_never_dispatches_verilator(monkeypatch, t
     monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
     monkeypatch.setattr(audit, "_sim_via", lambda: "chipyard")
     from merlin.runtime.backends import base as backends
+
     monkeypatch.setattr(backends, "get_backend", lambda _target: Backend())
     monkeypatch.setattr(
         audit.CR.oot_compile,

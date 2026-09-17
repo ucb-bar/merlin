@@ -7,6 +7,7 @@ former hard-coded paths byte-for-byte. Mirrors ``test_generate_prompt`` for the 
 The harness is import-isolated (imports zero ``merlin.*``); we load its ``render`` module via the repo
 root, never by a ``Path(__file__).parents[N]`` walk.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -18,10 +19,14 @@ from merlin.common.paths import repo_root
 
 _EVALS = repo_root() / "merlin" / "experiments" / "targetgen_evals"
 
-_TEMPLATED_METHODS = ["v0_naive_claude", "v2_schema_generator", "v3_evidence_graph",
-                      "v5_kernel_miner", "v6_full"]
-_TEMPLATED_SKILLS = ["dialect_design_reviewer", "evidence_extractor", "schema_dialect_planner",
-                     "validation_repairer", "xdsl_target_generator"]
+_TEMPLATED_METHODS = ["v0_naive_claude", "v2_schema_generator", "v3_evidence_graph", "v5_kernel_miner", "v6_full"]
+_TEMPLATED_SKILLS = [
+    "dialect_design_reviewer",
+    "evidence_extractor",
+    "schema_dialect_planner",
+    "validation_repairer",
+    "xdsl_target_generator",
+]
 
 
 def _render():

@@ -6,6 +6,7 @@ present, it carries no GPU-layout or target dialect, and it does not change when
 does. If any of those stopped holding, TTIR would no longer be a legal place to enter Merlin and the
 architecture would need revisiting rather than patching.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -53,7 +54,8 @@ def test_the_masked_tail_is_visible_in_the_ir(add_ttir):
     loads = [op for op in source.walk_ops(add_ttir) if op.get_name() == "tt.load"]
     assert loads, "no tt.load to inspect"
     assert any(op.get_num_operands() > 1 for op in loads), (
-        "every tt.load is single-operand, so the mask is not in the IR the bridge sees")
+        "every tt.load is single-operand, so the mask is not in the IR the bridge sees"
+    )
 
 
 def test_matmul_ttir_carries_a_dot(dot_ttir):
@@ -67,7 +69,8 @@ def test_no_gpu_dialect_survives_into_ttir(add_ttir, dot_ttir):
         offenders = [op for op in ttir.ops if op.startswith(FORBIDDEN_PREFIXES)]
         assert not offenders, f"{ttir.kernel_name} carries {offenders}"
         assert "#ttg." not in ttir.text and "#triton_gpu." not in ttir.text, (
-            f"{ttir.kernel_name} carries a GPU layout attribute")
+            f"{ttir.kernel_name} carries a GPU layout attribute"
+        )
 
 
 def test_ttir_is_reproducible():
@@ -103,7 +106,8 @@ def test_ttir_is_independent_of_the_nominal_backend(monkeypatch):
         pytest.skip(f"no second backend in this wheel: {exc}")
     assert other.text == baseline.text, (
         "TTIR changed with the nominal backend — it is not machine-independent, and the TTIR seam "
-        "is no longer a valid place to enter Merlin")
+        "is no longer a valid place to enter Merlin"
+    )
 
 
 def test_a_non_jit_function_is_rejected_with_a_useful_message():
@@ -111,7 +115,8 @@ def test_a_non_jit_function_is_rejected_with_a_useful_message():
     spec = TritonKernelSpec(
         function=lambda x_ptr: None,
         args=(KernelArg("x_ptr", "pointer", "fp32", shape=(8,), effect="write"),),
-        grid=K.GridSpec(dims=(1,)))
+        grid=K.GridSpec(dims=(1,)),
+    )
     with pytest.raises(source.TritonFrontendError) as exc:
         source.make_ttir(spec)
     assert "@triton.jit" in str(exc.value)
@@ -120,8 +125,9 @@ def test_a_non_jit_function_is_rejected_with_a_useful_message():
 def test_a_kernel_triton_rejects_is_attributed_to_the_kernel():
     """`tl.dot` enforces K >= 32; the rejection must name the kernel, not surface raw."""
     spec = K.matmul_one_tile_spec()
-    spec = TritonKernelSpec(function=spec.function, args=spec.args, grid=spec.grid,
-                            constexprs={"BM": 16, "BN": 16, "BK": 16})
+    spec = TritonKernelSpec(
+        function=spec.function, args=spec.args, grid=spec.grid, constexprs={"BM": 16, "BN": 16, "BK": 16}
+    )
     with pytest.raises(source.TritonFrontendError) as exc:
         source.make_ttir(spec)
     assert "matmul_one_tile" in str(exc.value)

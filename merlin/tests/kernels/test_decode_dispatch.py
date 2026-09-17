@@ -10,6 +10,7 @@ The cost of that confusion is specific: the mining loop compares an expert CCA a
 expert side that silently lifts to nothing yields NO divergence, so the loop reports agreement with
 an expert it never actually read.
 """
+
 from __future__ import annotations
 
 import collections
@@ -42,10 +43,12 @@ class TestTheDispatcherCoversEveryDeclaredEncodingSource:
         unhandled = declared - handled - {"isa_model"}
         assert not unhandled, (
             f"endpoint encoding source(s) {sorted(unhandled)} have no branch in "
-            "decode.decode_for_endpoint; a caller will read the empty result as an empty corpus")
+            "decode.decode_for_endpoint; a caller will read the empty result as an empty corpus"
+        )
 
     def test_an_unknown_source_yields_empty_not_a_wrong_decode(self):
         """NEGATIVE CASE: refusing is correct; guessing a decoder would invent semantics."""
+
         class _Fake:
             name = "__no_such_endpoint__"
             engine = "vector"

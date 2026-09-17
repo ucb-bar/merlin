@@ -17,6 +17,7 @@ capsules that lose their cert. A matrix where everything invalidates everything 
 one where nothing invalidates anything is a stale certificate presented as valid, which is strictly worse.
 Both fail here. `test_the_matrix_discriminates` guards the guard.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -58,7 +59,7 @@ FILES = {
     "mlir_oot/cb_main.py": "from mlir_oot import shared\nfrom mlir_oot import cmdbuf\n",
     "mlir_oot/artifact_main.py": "from mlir_oot import shared\nfrom mlir_oot import codegen\n",
     "mlir_oot/__init__.py": "",
-    "mlir_oot/shared.py": "TILE = 16\n",                     # imported by all four
+    "mlir_oot/shared.py": "TILE = 16\n",  # imported by all four
     "mlir_oot/frontend.py": "def parse(t): return t\n",
     "mlir_oot/lowering/__init__.py": "",
     "mlir_oot/lowering/tile.py": "def tile(x): return x\n",
@@ -109,7 +110,7 @@ def test_a_submission_with_no_components_block_is_decomposed_by_the_harness(tmp_
 
 
 def test_a_declared_block_is_preferred_over_the_derivation(tmp_path):
-    """"Both: declare, else derive" -- an agent that says where its code lives is believed."""
+    """ "Both: declare, else derive" -- an agent that says where its code lives is believed."""
     B = _mod()
     files = dict(FILES)
     files["manifest.yaml"] = MANIFEST + (
@@ -117,7 +118,8 @@ def test_a_declared_block_is_preferred_over_the_derivation(tmp_path):
         "  parse: [mlir_oot/frontend.py]\n"
         "  lower_interface_to_target: [mlir_oot/lowering/]\n"
         "  emit_command_buffer: [mlir_oot/cmdbuf.py]\n"
-        "  lower_target_to_llvm: [mlir_oot/codegen.py]\n")
+        "  lower_target_to_llvm: [mlir_oot/codegen.py]\n"
+    )
     d = B.decomposition(_ws(tmp_path, files))
     assert d["source"] == "declared"
     # under the DECLARATION the entrypoint scripts belong to nobody, so they are unattributed; under the
@@ -254,9 +256,16 @@ TOUCHES = {
 def _states(B, before, after, declared):
     (dw, cw, _), (dn, cn, _) = before, after
     default = tuple(sorted(cn)) or None
-    return [CapsuleState(name=n, digest=dn, components=cn, depends_on=dep or default,
-                         verdicts={"L2": Verdict(PASS, dw, cw), "L3": Verdict(PASS, dw, cw)})
-            for n, dep in declared.items()]
+    return [
+        CapsuleState(
+            name=n,
+            digest=dn,
+            components=cn,
+            depends_on=dep or default,
+            verdicts={"L2": Verdict(PASS, dw, cw), "L3": Verdict(PASS, dw, cw)},
+        )
+        for n, dep in declared.items()
+    ]
 
 
 def _touch(B, tmp_path, path, name):
@@ -279,7 +288,7 @@ def test_reconciliation_matrix(tmp_path, touched):
     states = _states(B, before, after, DECLARED)
     lost = {s.name for s in states if s.known("L3") == UNKNOWN}
     assert lost == TOUCHES[touched]
-    for s in states:                       # survivors are CERTIFIED, not merely "not requeued"
+    for s in states:  # survivors are CERTIFIED, not merely "not requeued"
         if s.name not in lost:
             assert s.known("L3") == PASS and s.known("L2") == PASS
 
@@ -292,8 +301,7 @@ def test_the_matrix_discriminates(tmp_path):
     seen = set()
     for i, touched in enumerate(sorted(TOUCHES)):
         after = _touch(B, tmp_path, touched, f"a{i}")
-        seen.add(frozenset(s.name for s in _states(B, before, after, DECLARED)
-                           if s.known("L3") == UNKNOWN))
+        seen.add(frozenset(s.name for s in _states(B, before, after, DECLARED) if s.known("L3") == UNKNOWN))
     assert len(seen) >= 4, f"rows are not discriminating: {seen}"
 
 
@@ -345,8 +353,7 @@ def test_an_inert_edit_requeues_nothing_through_promote(tmp_path, monkeypatch, c
     assert "invalidated by" not in capsys.readouterr().err
 
 
-def test_a_live_edit_requeues_every_capsule_not_only_the_declared_dependents(tmp_path, monkeypatch,
-                                                                             capsys):
+def test_a_live_edit_requeues_every_capsule_not_only_the_declared_dependents(tmp_path, monkeypatch, capsys):
     """The negative half of the same run, and the shape of the retired `depends_on`.
 
     The edit lands on the tiling pass. `matmul_tile` still carries a stale `depends_on` naming that
@@ -370,8 +377,11 @@ def test_a_live_edit_requeues_every_capsule_not_only_the_declared_dependents(tmp
     capsys.readouterr()
     (ws / "submission" / "mlir_oot" / "lowering" / "tile.py").write_text("def tile(x): return x + 1\n")
     assert sorted(_promote_once(B, ws, ch, sys.stderr)) == ["conv_codegen", "matmul_tile", "whole_model"]
-    assert sorted(json.loads(f.read_text())["capsules"] for f in ch.glob("simreq_*.json")) == \
-        ["conv_codegen", "matmul_tile", "whole_model"]
+    assert sorted(json.loads(f.read_text())["capsules"] for f in ch.glob("simreq_*.json")) == [
+        "conv_codegen",
+        "matmul_tile",
+        "whole_model",
+    ]
     err = capsys.readouterr().err
     for name in ("matmul_tile", "conv_codegen", "whole_model"):
         assert f"{name} L3 invalidated by lower_interface_to_target (changed)" in err
@@ -392,8 +402,7 @@ def test_promote_says_where_the_decomposition_came_from(tmp_path, monkeypatch, c
 # ---------------------------------------------------------------------------------------------
 # 6. the invariant the whole scheme rests on: a cert belongs to the bytes that earned it
 # ---------------------------------------------------------------------------------------------
-def test_a_completed_cert_is_recorded_against_the_pending_bytes_not_the_current_ones(tmp_path,
-                                                                                     monkeypatch):
+def test_a_completed_cert_is_recorded_against_the_pending_bytes_not_the_current_ones(tmp_path, monkeypatch):
     """`record_cert` must never re-hash. The job was enqueued for the bytes that were pending; crediting
     the result to whatever is on disk when it lands is exactly the attribution bug the run must not have.
     """
@@ -414,9 +423,13 @@ def test_a_completed_cert_is_recorded_against_the_pending_bytes_not_the_current_
     assert entry["digest"] == pending["digest"] and entry["components"] == pending["components"]
     # and that recorded cert is NOT credited to the edited bytes
     now, comps, _ = B.submission_digests(ws)
-    s = CapsuleState(name="matmul_tile", digest=now, components=comps,
-                     depends_on=("lower_interface_to_target",),
-                     verdicts={"L3": Verdict(entry["status"], entry["digest"], entry["components"])})
+    s = CapsuleState(
+        name="matmul_tile",
+        digest=now,
+        components=comps,
+        depends_on=("lower_interface_to_target",),
+        verdicts={"L3": Verdict(entry["status"], entry["digest"], entry["components"])},
+    )
     assert s.known("L3") == UNKNOWN
 
 

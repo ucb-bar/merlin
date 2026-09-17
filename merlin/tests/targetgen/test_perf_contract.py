@@ -10,19 +10,25 @@ The fixtures mirror ``test_perf_profile``: two synthetic machines of different a
 anti-overfit property holds on any host), plus the two real targets as regression fixtures, which
 SKIP rather than pass where their facts artifact is not on this host.
 """
+
 from __future__ import annotations
 
 import json
 
 import pytest
+from test_perf_profile import (
+    HOST_QUEUED_TARGET,
+    SELF_HOSTED_TARGET,
+    _host_queued_facts,
+    _host_queued_residual,
+    _self_hosted_facts,
+    _self_hosted_residual,
+    _timing,
+)
 
 from merlin.perf.contract import PerformanceContract, contract_table, derive_contract
 from merlin.perf.decompose import ResourceKind
 from merlin.perf.term import UNKNOWN, UnknownValueError
-
-from test_perf_profile import (HOST_QUEUED_TARGET, SELF_HOSTED_TARGET, _host_queued_facts,
-                            _host_queued_residual, _self_hosted_facts, _self_hosted_residual,
-                            _timing)
 
 
 def _synthetic_contract(kind: str, **over) -> PerformanceContract:
@@ -30,18 +36,21 @@ def _synthetic_contract(kind: str, **over) -> PerformanceContract:
         facts, residual = _self_hosted_facts(), _self_hosted_residual()
     else:
         facts, residual = _host_queued_facts(), _host_queued_residual()
-    return derive_contract(f"a_{kind}_machine", facts=over.get("facts", facts),
-                           residual=over.get("residual", residual))
+    return derive_contract(f"a_{kind}_machine", facts=over.get("facts", facts), residual=over.get("residual", residual))
 
 
 def _real_or_skip(target: str) -> PerformanceContract:
     c = derive_contract(target)
     if not c.profile.sources.body:
-        pytest.skip(f"no RTL facts artifact for {target!r} on this host: the fixture could not "
-                    "run, which is not_run and never a pass")
+        pytest.skip(
+            f"no RTL facts artifact for {target!r} on this host: the fixture could not "
+            "run, which is not_run and never a pass"
+        )
     if c.profile.timing.status != "present":
-        pytest.skip(f"{target}: the timing fact class is {c.profile.timing.status} on this host "
-                    "(uncached, not absent) -- the fixture could not run")
+        pytest.skip(
+            f"{target}: the timing fact class is {c.profile.timing.status} on this host "
+            "(uncached, not absent) -- the fixture could not run"
+        )
     return c
 
 
@@ -107,7 +116,7 @@ def test_a_refused_walk_never_becomes_a_zero():
     with pytest.raises(UnknownValueError):
         float(fill.value)
     with pytest.raises(UnknownValueError):
-        _ = fill.value or 0                 # the exact line this whole design exists to break
+        _ = fill.value or 0  # the exact line this whole design exists to break
     assert fill.unknown_reason, "a refusal must say why"
 
 
@@ -117,16 +126,24 @@ def test_a_zero_depth_term_is_a_value_not_a_hole():
     assert element.value == 0
     assert not element.is_unknown
     assert element.unknown_reason == ""
-    assert float(element.value) == 0.0      # a real number, and it may be read as one
+    assert float(element.value) == 0.0  # a real number, and it may be read as one
 
 
 def test_a_partial_depth_does_not_fill_a_refused_fill():
     facts = _host_queued_facts()
-    facts["facts"]["timing"] = _timing([
-        {"module": "Mesh", "pipeline_depth": None, "partial_depth": 12, "n_outputs": 36,
-         "n_cyclic": 4, "evidence": "4 of 36 hw.output operands are reached through feedback"},
-        {"module": "Tile", "pipeline_depth": 0, "n_outputs": 10},
-    ])
+    facts["facts"]["timing"] = _timing(
+        [
+            {
+                "module": "Mesh",
+                "pipeline_depth": None,
+                "partial_depth": 12,
+                "n_outputs": 36,
+                "n_cyclic": 4,
+                "evidence": "4 of 36 hw.output operands are reached through feedback",
+            },
+            {"module": "Tile", "pipeline_depth": 0, "n_outputs": 10},
+        ]
+    )
     c = _synthetic_contract("host_queued", facts=facts)
     depth = c.resource("systolic_mesh").term("container_depth_cycles")
     assert depth.is_unknown
@@ -217,7 +234,7 @@ def test_a_declared_only_capacity_is_marked_as_declared():
     c = _synthetic_contract("self_hosted", residual=residual)
     cap = c.resource("operand_store").term("capacity_bytes")
     assert cap.value == 1572864
-    assert cap.provenance.kind == "assumed"          # a declaration is intent, not evidence
+    assert cap.provenance.kind == "assumed"  # a declaration is intent, not evidence
     assert "DECLARED" in cap.validity.validated_regime
 
 
@@ -308,7 +325,7 @@ def test_the_contract_serializes_and_lists_its_unknowns():
     assert d["target"] == "a_host_queued_machine"
     assert {r["name"] for r in d["resources"]} >= {"systolic_mesh", "data_movement", "scratchpad"}
     assert d["unknown_terms"], "the backlog is the product; an empty one would be a lie here"
-    assert json.loads(json.dumps(d))          # round-trips
+    assert json.loads(json.dumps(d))  # round-trips
     for key, why in c.unknown_terms().items():
         assert why, f"{key} is UNKNOWN with no reason"
 

@@ -9,6 +9,7 @@ Separately, the CLI lifted every target through the vector lifter. That does not
 accelerator's command stream: it returns an EMPTY vector facet, and an empty facet compares equal to
 anything, so the pipeline reported no divergence for a kernel it had never read.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -59,12 +60,15 @@ class TestGeometryIsDerivedNotGuessed:
         """An uncorroborated reading is a ranking, not a fact — the measured case being a 17x17 mesh
         that was 289 flip-flops in a divide/sqrt unit. Feeding that into a facet publishes it."""
         from merlin.targetgen.rtl import facts as F
-        monkeypatch.setattr(F, "load_facts", lambda t: {
-            "facts": {"arrays": [{"name": "mesh", "rows": 17, "cols": 17}]}})
+
+        monkeypatch.setattr(
+            F, "load_facts", lambda t: {"facts": {"arrays": [{"name": "mesh", "rows": 17, "cols": 17}]}}
+        )
         assert mine._geometry_for("anything") == {}
 
     def test_an_absent_fact_bundle_yields_no_geometry(self, monkeypatch):
         from merlin.targetgen.rtl import facts as F
+
         monkeypatch.setattr(F, "load_facts", lambda t: None)
         assert mine._geometry_for("anything") == {}
 
@@ -88,6 +92,7 @@ class TestNothingDecodedIsNotACleanResult:
                 return []
 
         from merlin.kernels.decode import rvv as rvv_decode
+
         # Accepts the disassembly settings the caller now pins (triple/mattr): a stub narrower than
         # the real signature fails the CALLER rather than the behaviour under test.
         monkeypatch.setattr(rvv_decode, "decode", lambda p, **kw: _S())
@@ -118,12 +123,15 @@ class TestTheRunRecordsWhichLevelItReached:
         compared two streams, and the difference has to be legible in the artifact rather than
         inferred from which fields happen to be filled."""
         import inspect
+
         src = inspect.getsource(mine.mine_run)
         assert '"expert_level"' in src and '"our_level"' in src
         assert '"endpoint"' in src
 
     def test_asm_is_preferred_over_the_policy_summary(self):
         import inspect
+
         src = inspect.getsource(mine.mine_run)
         assert src.index("expert_cca_from_asm") < src.index("expert_cca_from_policies"), (
-            "the policy summary must be the FALLBACK, not the first choice")
+            "the policy summary must be the FALLBACK, not the first choice"
+        )

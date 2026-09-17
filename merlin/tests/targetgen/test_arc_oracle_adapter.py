@@ -3,6 +3,7 @@
 The arc model (RTL-derived functional model) lets ANY mlc target be graded with no bespoke sim; a target
 that declares a bespoke sim (chipyard) additionally gets spike/verilator. These are board-free structural
 tests (the full cb-round-trip grade is exercised in the 2nd-target cross-target proof, P4)."""
+
 from __future__ import annotations
 
 import time
@@ -75,8 +76,8 @@ def test_required_rtl_engine_pin_overrides_cost_order_and_binds_adapter(monkeypa
 
     monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
     monkeypatch.setattr(
-        backends, "get_backend",
-        lambda _target: type("Backend", (), {"available": lambda _self, _engine: True})())
+        backends, "get_backend", lambda _target: type("Backend", (), {"available": lambda _self, _engine: True})()
+    )
 
     selected = CR.chipyard_l3_selection("synthetic")
     adapter = CR._sim_engine_adapters("chipyard", "synthetic")["L3"]
@@ -97,19 +98,24 @@ def test_arc_adapter_fails_closed_for_unknown_target():
 
 # --- AW3: the external_backend kernel is assembled by STOCK LLVM (.word/.insn), not a bespoke assembler -
 
+
 def test_stock_llvm_assembles_word_insn_kernel(tmp_path):
     # the program oracle assembles the agent's emitted `.word`/`.insn` kernel with the prebuilt stock LLVM
     # (llvm-mc + llvm-objcopy). This is the target-agnostic assembly path — merlin holds no opcode table;
     # the encoding lives in the emitted directives. `#`/`//` comments + labels are accepted (no bytes).
     from merlin.targetgen.contract import toolchain as mlir_tc
+
     if not (mlir_tc.mlir_bin("llvm-mc").is_file() and mlir_tc.mlir_bin("llvm-objcopy").is_file()):
         pytest.skip("prebuilt stock LLVM (llvm-mc/llvm-objcopy) unavailable")
     from merlin.targetgen.program_oracle import _assemble_kernel_words
+
     ks = tmp_path / "kernel.S"
-    ks.write_text(".text\nmain:  # label\n"
-                  "  .word 0x00000013   // encoded insn\n"
-                  "  .insn r 0x77, 0x0, 0x0a, x0, x1, x2\n"
-                  "  .word 0xdeadbeef\n")
+    ks.write_text(
+        ".text\nmain:  # label\n"
+        "  .word 0x00000013   // encoded insn\n"
+        "  .insn r 0x77, 0x0, 0x0a, x0, x1, x2\n"
+        "  .word 0xdeadbeef\n"
+    )
     words = _assemble_kernel_words(ks, tmp_path)
     # little-endian u32 stream; labels/comments emit no .text bytes
     assert words == [0x00000013, 0x14208077, 0xDEADBEEF]
@@ -118,9 +124,11 @@ def test_stock_llvm_assembles_word_insn_kernel(tmp_path):
 def test_stock_llvm_rejects_empty_kernel(tmp_path):
     # an all-comment / empty kernel assembles to zero .text words -> fail closed (never a false green).
     from merlin.targetgen.contract import toolchain as mlir_tc
+
     if not mlir_tc.mlir_bin("llvm-mc").is_file():
         pytest.skip("prebuilt stock LLVM unavailable")
-    from merlin.targetgen.program_oracle import _assemble_kernel_words, OracleUnavailable
+    from merlin.targetgen.program_oracle import OracleUnavailable, _assemble_kernel_words
+
     ks = tmp_path / "empty.S"
     ks.write_text("# only comments\n.text\n")
     with pytest.raises(OracleUnavailable):
@@ -129,19 +137,24 @@ def test_stock_llvm_rejects_empty_kernel(tmp_path):
 
 # --- AW5: the program oracle preloads the capsule's CANONICAL operands (golden raws), not int 0..3 ----
 
+
 def test_program_oracle_preloads_canonical_cb_operands():
     # the grader attaches each leaf's canonical bytes to the cb as `preload_b64`; the program oracle
     # turns those into (base, bytes) DRAM preload keyed by the cb-declared base. Output tensors + tensors
     # without preload_b64/base are ignored.
-    from merlin.targetgen.program_oracle import _preload_from_cb
     import base64
+
+    from merlin.targetgen.program_oracle import _preload_from_cb
+
     a, w = bytes([0x38, 0x40, 0x44, 0x42]), bytes([0x44, 0x44])
-    cb = {"tensors": {
-        "A0": {"role": "input", "base": 0x0, "preload_b64": base64.b64encode(a).decode()},
-        "W":  {"role": "weight", "base": 0x400, "preload_b64": base64.b64encode(w).decode()},
-        "Y0": {"role": "output", "base": 0x800},                       # output: no preload
-        "S":  {"role": "input", "base": 0x900},                        # input w/o bytes: skipped
-    }}
+    cb = {
+        "tensors": {
+            "A0": {"role": "input", "base": 0x0, "preload_b64": base64.b64encode(a).decode()},
+            "W": {"role": "weight", "base": 0x400, "preload_b64": base64.b64encode(w).decode()},
+            "Y0": {"role": "output", "base": 0x800},  # output: no preload
+            "S": {"role": "input", "base": 0x900},  # input w/o bytes: skipped
+        }
+    }
     pre = dict(_preload_from_cb(cb))
     assert pre == {0x0: a, 0x400: w}
 
@@ -150,8 +163,10 @@ def test_canonical_input_raws_reads_golden_fp8():
     # canonical_input_raws pulls the exact fp8 operand bytes the independent golden used from golden.yaml
     # (NOT Tensor.deterministic's int 0..3). Gated on the atlas corpus being present.
     from pathlib import Path
+
     from merlin.common.paths import repo_root
     from merlin.targetgen import capsule_golden as CG
+
     cdir = repo_root() / "merlin/contract/capsules/atlas/isa/AT3_k_accumulation"
     if not (cdir / "golden.yaml").is_file():
         pytest.skip("atlas corpus not present")
@@ -164,10 +179,11 @@ def test_canonical_input_raws_reads_golden_fp8():
 def test_arc_adapter_available_for_gemmini_when_mlc_present():
     # gemmini has a prebuilt arc model; if mlc is present, arc_available is True (gate the assertion).
     if B.mlc_available()[0] and B.arc_available("gemmini"):
-        assert CR.mlc_arc_adapter("gemmini") is not None    # constructs; the run needs a real cb (P4)
+        assert CR.mlc_arc_adapter("gemmini") is not None  # constructs; the run needs a real cb (P4)
 
 
 # --- the QA-gate loop/checkpoint split is manifest/descriptor-resolved, not hardwired ---------------
+
 
 def _factory(adp) -> str:
     return adp.__qualname__.split(".")[0]
@@ -181,8 +197,7 @@ def _closed_over(adapter) -> set[str]:
     nothing to do with what it was checking. Both values matter — an adapter bound to the
     wrong target would grade one accelerator against another's toolchain.
     """
-    return {c.cell_contents for c in (adapter.__closure__ or ())
-            if isinstance(c.cell_contents, str)}
+    return {c.cell_contents for c in (adapter.__closure__ or ()) if isinstance(c.cell_contents, str)}
 
 
 def test_qa_loop_gate_is_fastest_tier_only_for_chipyard():

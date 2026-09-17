@@ -7,7 +7,6 @@ import pytest
 
 from merlin.common.paths import repo_root
 
-
 SCRIPT = repo_root() / "build_tools" / "scripts" / "k1_int8_fair_compare.py"
 
 
@@ -63,7 +62,13 @@ def test_shared_bar_not_the_stricter_internal_tier_controls_certification(monkey
     )
     pkg = type("Package", (), {"run_id": "fixture"})()
     result = module.ours_arm(
-        tmp_path, pkg, {}, tmp_path / "work", n=1, warmup=1, iters=3,
+        tmp_path,
+        pkg,
+        {},
+        tmp_path / "work",
+        n=1,
+        warmup=1,
+        iters=3,
         dump_cap=None,
         shared_bar={"cos_threshold": 0.99, "rel_threshold": 0.05, "basis": "fixture"},
     )
@@ -75,14 +80,20 @@ def test_shared_bar_not_the_stricter_internal_tier_controls_certification(monkey
 def test_prepared_certification_executes_the_same_binary_without_rebuilding(monkeypatch, tmp_path):
     module = _module()
     gate = {
-        "fp32_cos": 0.995, "fp32_rel": 0.04, "comparison_complete": True,
-        "cos": 0.995, "rel": 0.04, "tiers": ["fp32"], "tier_ok": "fp32",
+        "fp32_cos": 0.995,
+        "fp32_rel": 0.04,
+        "comparison_complete": True,
+        "cos": 0.995,
+        "rel": 0.04,
+        "tiers": ["fp32"],
+        "tier_ok": "fp32",
     }
     calls = []
     monkeypatch.setattr(module, "_conditions", lambda: {})
     monkeypatch.setattr(module.zm, "_gate", lambda *_args, **_kwargs: gate)
     monkeypatch.setattr(
-        module.k1, "run_on_k1",
+        module.k1,
+        "run_on_k1",
         lambda *_args, **_kwargs: pytest.fail("a prepared campaign must not rebuild"),
     )
 
@@ -92,11 +103,17 @@ def test_prepared_certification_executes_the_same_binary_without_rebuilding(monk
 
     monkeypatch.setattr(module.k1, "run_binary_on_k1", run_binary)
     pkg = type("Package", (), {"run_id": "fixture"})()
-    prepared = {"binary": str(tmp_path / "same.elf"), "work": str(tmp_path / "build"),
-                "multi_program": False}
+    prepared = {"binary": str(tmp_path / "same.elf"), "work": str(tmp_path / "build"), "multi_program": False}
     result = module.ours_arm(
-        tmp_path, pkg, {}, tmp_path / "pairs", n=2, warmup=1, iters=3,
-        dump_cap=None, prepared=prepared,
+        tmp_path,
+        pkg,
+        {},
+        tmp_path / "pairs",
+        n=2,
+        warmup=1,
+        iters=3,
+        dump_cap=None,
+        prepared=prepared,
         shared_bar={"cos_threshold": 0.99, "rel_threshold": 0.05, "basis": "fixture"},
     )
 
@@ -104,8 +121,7 @@ def test_prepared_certification_executes_the_same_binary_without_rebuilding(monk
     assert len(calls) == 2
     assert all(call[0][3] == Path(prepared["binary"]) for call in calls)
     assert all(call[1]["capture_full_output"] is True for call in calls)
-    assert all(call[1]["env"] == {"MERLIN_ITERS": "3", "MERLIN_WARMUP": "1"}
-               for call in calls)
+    assert all(call[1]["env"] == {"MERLIN_ITERS": "3", "MERLIN_WARMUP": "1"} for call in calls)
 
 
 def test_reference_warm_slope_reuses_the_export(monkeypatch):
@@ -139,8 +155,9 @@ def test_reference_warm_slope_reuses_the_export(monkeypatch):
     assert all(call["reuse_export"] is True for call in calls)
 
 
-def _verdict_fixture(*, ours_bundle="fixture", ref_bundle="fixture",
-                     ref_recipe="pt2e_qd8", ref_accuracy="capture_golden_fp32"):
+def _verdict_fixture(
+    *, ours_bundle="fixture", ref_bundle="fixture", ref_recipe="pt2e_qd8", ref_accuracy="capture_golden_fp32"
+):
     module = _module()
     ours = {
         "min_wall_ns": 90,
@@ -149,14 +166,16 @@ def _verdict_fixture(*, ours_bundle="fixture", ref_bundle="fixture",
     }
     arm = {
         "warm_ns": 100,
-        "runs": [{
-            "bundle_id": ref_bundle,
-            "quant_recipe": ref_recipe,
-            "accuracy_reference": ref_accuracy,
-            "cos": 0.9998,
-            "rel": 0.002,
-            "load_ns": 5,
-        }],
+        "runs": [
+            {
+                "bundle_id": ref_bundle,
+                "quant_recipe": ref_recipe,
+                "accuracy_reference": ref_accuracy,
+                "cos": 0.9998,
+                "rel": 0.002,
+                "load_ns": 5,
+            }
+        ],
     }
     return module.verdict(ours, arm, ours_bundle)
 

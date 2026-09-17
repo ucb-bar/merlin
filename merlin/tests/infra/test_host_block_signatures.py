@@ -8,6 +8,7 @@ patterns), a ten-integer-op round-to-even, and an im2col row loop peeling coordi
 primitive, not only the family. Every case below is built so the correct answer is unambiguous,
 and one is a mutation that must FAIL if grouping or trip weighting breaks.
 """
+
 from __future__ import annotations
 
 from xdsl.context import Context
@@ -22,12 +23,11 @@ def _module(text: str):
     for d in (builtin.Builtin, llvm.LLVM, func.Func):
         ctx.load_dialect(d)
     module = Parser(ctx, text).parse_module()
-    return next(o for o in module.walk()
-                if o.name in ("llvm.func", "func.func") and o.regions and o.regions[0].blocks)
+    return next(o for o in module.walk() if o.name in ("llvm.func", "func.func") and o.regions and o.regions[0].blocks)
 
 
 # One counted loop of 10 trips whose body is `mul add` (an addressing shape), then a return.
-_LOOP = '''
+_LOOP = """
 "builtin.module"() ({
   "llvm.func"() <{sym_name = "k", function_type = !llvm.func<void (!llvm.ptr)>}> ({
   ^entry(%p: !llvm.ptr):
@@ -47,7 +47,7 @@ _LOOP = '''
     "llvm.return"() : () -> ()
   }) : () -> ()
 }) : () -> ()
-'''
+"""
 
 
 def test_signatures_are_grouped_by_operation_sequence_and_weighted_by_trips() -> None:
@@ -58,7 +58,7 @@ def test_signatures_are_grouped_by_operation_sequence_and_weighted_by_trips() ->
     assert body["blocks"] == 1
     assert body["trips"] == 10
     assert body["operations_per_trip"] == 4
-    assert body["dynamic_operations"]["integer_arithmetic"] == 30   # mul + 2 add, x10 trips
+    assert body["dynamic_operations"]["integer_arithmetic"] == 30  # mul + 2 add, x10 trips
     assert body["dynamic_operations"]["branch"] == 10
     assert body["dynamic_total"] == 40
 
@@ -67,7 +67,7 @@ def test_signatures_are_ranked_by_dynamic_total_descending() -> None:
     rows = analyze_host_cfg_activity(_module(_LOOP))["block_signatures"]
     totals = [r["dynamic_total"] for r in rows]
     assert totals == sorted(totals, reverse=True)
-    assert rows[0]["signature"] == "mul add add br"          # the loop body dominates a 1-trip entry
+    assert rows[0]["signature"] == "mul add add br"  # the loop body dominates a 1-trip entry
 
 
 def test_signature_totals_partition_the_family_totals() -> None:

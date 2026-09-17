@@ -8,6 +8,7 @@ Measured on merlincirct_atlas_feedback_v3_20260906 by hand while it was still ru
 false`, 16 expired, 3 stranded, 6 broker starts, and the last completed self-check 5.5 h earlier while
 the agent kept editing. Every one of those was computable hours earlier by a function already written.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -48,7 +49,7 @@ def test_an_unhealthy_channel_is_recorded_and_announced(loop, tmp_path, capsys):
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True)
     run_dir.mkdir()
-    _req(ch, "expired", mtime=10)                      # long past its timeout, never answered
+    _req(ch, "expired", mtime=10)  # long past its timeout, never answered
     loop._record_feedback_health(ws, run_dir)
 
     doc = json.loads((run_dir / "feedback_health.json").read_text())
@@ -75,9 +76,10 @@ def test_it_is_checked_during_the_run_not_only_at_the_end(loop):
     has no rounds — reports nothing until it is over."""
     src = (HARNESS / "run_baseline_qa_loop.py").read_text()
     assert src.count("_record_feedback_health(ws, run_dir)") >= 2, (
-        "health must be recorded where grades land, not only in the end-of-run summary")
+        "health must be recorded where grades land, not only in the end-of-run summary"
+    )
     # and the end-of-run use must still be there: it gates whether the official grade counts
-    assert 'feedback_health = _feedback_health(ws)' in src
+    assert "feedback_health = _feedback_health(ws)" in src
 
 
 def test_it_never_reaches_the_agent(loop):

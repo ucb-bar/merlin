@@ -20,6 +20,7 @@ tests here check the FLAGS, and for a long time that was the whole gate: `--cont
 and the round cap stayed lifted, while the certified schedule quietly ran the round loop with no
 grader at all. A flag test cannot see that; keep both files.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -56,10 +57,11 @@ def test_the_legacy_single_session_path_is_not_the_default():
     impossible for every run.
     """
     src = (HARNESS / "run_baseline_qa_loop.py").read_text(encoding="utf-8")
-    decl = src[src.index('"--continuous"'):][:400]
-    assert "action=\"store_true\"" in decl, (
+    decl = src[src.index('"--continuous"') :][:400]
+    assert 'action="store_true"' in decl, (
         "--continuous is no longer opt-in; the legacy progress-only path must not be the default "
-        "because it cannot run the post-freeze public+hidden L3 grade")
+        "because it cannot run the post-freeze public+hidden L3 grade"
+    )
 
 
 def test_the_certified_continuous_path_still_ignores_the_round_cap():
@@ -77,26 +79,26 @@ def test_the_certified_continuous_path_still_ignores_the_round_cap():
     assert cap_lines, "the round-cap computation is gone"
     assert any("1_000_000" in ln for ln in cap_lines), (
         "continuous mode no longer lifts the round cap, so a productive run can be cut at "
-        f"--max-rounds; cap computation reads: {cap_lines}")
+        f"--max-rounds; cap computation reads: {cap_lines}"
+    )
 
 
 def test_a_loop_pass_still_enqueues_the_cert_tier_immediately():
     """The per-capsule promise: clearing the loop tier launches the cert tier, not next round."""
     TP = _mod("tier_promote")
     assert hasattr(TP, "promote"), "promotion entry point is gone"
-    assert hasattr(TP, "cert_sim"), (
-        "cert_sim is gone: promotion would fall back to a sim the broker rejects")
+    assert hasattr(TP, "cert_sim"), "cert_sim is gone: promotion would fall back to a sim the broker rejects"
     assert hasattr(TP, "record_cert"), (
-        "record_cert is gone: a completed promotion's certificate would be discarded again")
+        "record_cert is gone: a completed promotion's certificate would be discarded again"
+    )
 
 
 def test_the_broker_records_a_completed_promotion():
     """Wiring, not just presence -- promotion's try/except hides a missing call as 'nothing to do'."""
     src = (HARNESS / "simjob_broker.py").read_text(encoding="utf-8")
     assert "_TP.record_cert(" in src, "the broker never records a completed promotion"
-    reap = src[src.index('if not j.get("promoted")'):]
-    assert 'elif j.get("promoted")' in reap[:800], (
-        "record_cert is not on the promoted-job branch of the reap")
+    reap = src[src.index('if not j.get("promoted")') :]
+    assert 'elif j.get("promoted")' in reap[:800], "record_cert is not on the promoted-job branch of the reap"
 
 
 def test_the_cert_sim_is_one_the_broker_accepts():
@@ -106,4 +108,5 @@ def test_the_cert_sim_is_one_the_broker_accepts():
     allowed = tuple(SB._allowed_sims())
     sim = TP.cert_sim("L3")
     assert sim is None or sim in allowed, (
-        f"promotion would enqueue --sim {sim!r}, which this broker rejects; it accepts {allowed}")
+        f"promotion would enqueue --sim {sim!r}, which this broker rejects; it accepts {allowed}"
+    )

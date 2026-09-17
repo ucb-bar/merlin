@@ -6,17 +6,19 @@ observed MVIN count and flags gross operand re-streaming — a data-movement ine
 to and that otherwise needs a perf sim. It is INFO severity: pure feedback, it must never move the
 verdict (which rides the correctness checks). It fails closed (skipped) when mlc is unavailable.
 """
+
 from __future__ import annotations
 
-import yaml
-import pytest
+import json
 
+import pytest
+import yaml
+
+from merlin.targetgen import rtl_check_compiler as CC
+from merlin.targetgen import rtl_check_runner as RR
 from merlin.targetgen import rtl_checks as RC
-from merlin.targetgen import rtl_check_runner as RR, rtl_check_compiler as CC
 from merlin.targetgen.rtl import mlc_bridge
 from merlin.targetgen.rtl.facts import load_facts
-
-import json
 
 _FACTS = CC._facts_to_rc(load_facts("gemmini"))
 
@@ -42,33 +44,37 @@ def _dm(rep):
     return next(c for c in rep.checks if c.id == "T0.data_movement_reuse")
 
 
-@pytest.mark.skipif(mlc_bridge.matmul_reuse_prediction(16, 16, 16, dim=16, capacity_bytes=262144) is None,
-                    reason="mlc Model-3 reuse model unavailable")
+@pytest.mark.skipif(
+    mlc_bridge.matmul_reuse_prediction(16, 16, 16, dim=16, capacity_bytes=262144) is None,
+    reason="mlc Model-3 reuse model unavailable",
+)
 def test_reuse_within_budget_passes_and_verdict_ok():
     cap = _matmul_capsule()
     assert cap is not None
     M, N, K = RC._declared_mkn(cap)
-    pred = mlc_bridge.matmul_reuse_prediction(M, N, K, dim=RC._mesh(_FACTS)[0],
-                                              capacity_bytes=_FACTS["scratchpad_bytes"],
-                                              elem_bytes=RC._elem_bytes(cap))
+    pred = mlc_bridge.matmul_reuse_prediction(
+        M, N, K, dim=RC._mesh(_FACTS)[0], capacity_bytes=_FACTS["scratchpad_bytes"], elem_bytes=RC._elem_bytes(cap)
+    )
     ideal = pred["footprint_tiles"] * pred["refetch"]
     rep = RC.screen(_clean_single_tile_trace(ideal), cap, _FACTS, target="gemmini")
     assert _dm(rep).severity == "info" and _dm(rep).status == "pass"
-    assert rep.verdict == "ok"                              # otherwise-clean trace, nothing gates
+    assert rep.verdict == "ok"  # otherwise-clean trace, nothing gates
 
 
-@pytest.mark.skipif(mlc_bridge.matmul_reuse_prediction(16, 16, 16, dim=16, capacity_bytes=262144) is None,
-                    reason="mlc Model-3 reuse model unavailable")
+@pytest.mark.skipif(
+    mlc_bridge.matmul_reuse_prediction(16, 16, 16, dim=16, capacity_bytes=262144) is None,
+    reason="mlc Model-3 reuse model unavailable",
+)
 def test_gross_restream_flagged_but_never_gates_verdict():
     cap = _matmul_capsule()
     M, N, K = RC._declared_mkn(cap)
-    pred = mlc_bridge.matmul_reuse_prediction(M, N, K, dim=RC._mesh(_FACTS)[0],
-                                              capacity_bytes=_FACTS["scratchpad_bytes"],
-                                              elem_bytes=RC._elem_bytes(cap))
+    pred = mlc_bridge.matmul_reuse_prediction(
+        M, N, K, dim=RC._mesh(_FACTS)[0], capacity_bytes=_FACTS["scratchpad_bytes"], elem_bytes=RC._elem_bytes(cap)
+    )
     ideal = max(pred["footprint_tiles"] * pred["refetch"], 1)
-    rep = RC.screen(_clean_single_tile_trace(6 * ideal), cap, _FACTS, target="gemmini")   # 6x -> well past the 3x slack
+    rep = RC.screen(_clean_single_tile_trace(6 * ideal), cap, _FACTS, target="gemmini")  # 6x -> well past the 3x slack
     dm = _dm(rep)
-    assert dm.severity == "info" and dm.status == "fail"    # flagged as feedback
+    assert dm.severity == "info" and dm.status == "fail"  # flagged as feedback
     assert dm.ratio and dm.ratio >= 3
     # ...yet the verdict is unchanged: an info fail contributes to neither the error nor warn count.
     assert rep.n_error == 0 and rep.verdict == "ok"

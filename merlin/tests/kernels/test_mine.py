@@ -1,5 +1,6 @@
 """R6: merlin-rvv-mine driver — abstraction(policies) -> expert CCA -> divergences -> actions,
 minted as a versioned run folder."""
+
 from __future__ import annotations
 
 import yaml
@@ -32,11 +33,14 @@ def test_mine_run_mints_versioned_folder(tmp_path, monkeypatch):
     (mined / "policy_rules.yaml").write_text(yaml.safe_dump(_POLICIES))
     # fake an "ours" CCA so the run is self-contained (no toolchain/object needed)
     from merlin.kernels import cca as ccamod
-    ours = ccamod.CCA(op="matmul", backend=["rvv"],
-                      compute=ccamod.ComputeFacet(op="matmul", contraction_form="mul_add",
-                                                  widening=False),
-                      vector=ccamod.VectorFacet(sew=32, lmul=2.0, vl_strategy="vsetivli_fixed"),
-                      provenance={"level": "asm"})
+
+    ours = ccamod.CCA(
+        op="matmul",
+        backend=["rvv"],
+        compute=ccamod.ComputeFacet(op="matmul", contraction_form="mul_add", widening=False),
+        vector=ccamod.VectorFacet(sew=32, lmul=2.0, vl_strategy="vsetivli_fixed"),
+        provenance={"level": "asm"},
+    )
     monkeypatch.setattr(mine, "_our_cca_from_run", lambda *a, **k: (ours, "hand_v0_matmul"))
     out = tmp_path / "out"
     run = mine.mine_run("rvv", "matmul", tmp_path, mined, out)

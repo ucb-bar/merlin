@@ -1,4 +1,5 @@
 """Relative IR proof with independent completion ABIs and conservative visibility outcomes."""
+
 import hashlib
 import io
 
@@ -24,8 +25,9 @@ def artifact(spec, *, completion="wait_tiles", host_value=7):
             value = llvm.ConstantOp(IntegerAttr(host_value, i32), i32)
             block.add_ops([count, storage, value, llvm.StoreOp(value, storage)])
             continue
-        op = llvm.InlineAsmOp(completion if kind == "complete" else "device_work",
-                              "~{memory}", [], [], has_side_effects=True)
+        op = llvm.InlineAsmOp(
+            completion if kind == "complete" else "device_work", "~{memory}", [], [], has_side_effects=True
+        )
         op.attributes["merlin.global_task"] = IntegerAttr(task, i64)
         block.add_op(op)
         rows.append({"class": kind})
@@ -39,35 +41,54 @@ def bundle(module, rows):
     Printer(stream=stream).print_op(module)
     text = stream.getvalue()
     sha = hashlib.sha256(text.encode()).hexdigest()
-    plan = {"status": "verified", "candidate_lowered_sha256": sha,
-            "candidate_command_buffer_sha256": "a" * 64, "source_sha256": "b" * 64}
-    return ({"emission": {"candidate_lowered_sha256": sha},
-             "diagnostics": {"verified_global_plan_emission": plan}},
-            {"lowered_text": text, "candidate_lowered_sha256": sha,
-             "candidate_command_buffer_sha256": "a" * 64,
-             "decoded_trace": {"instructions": rows}, "parsed_lowered_module": module})
+    plan = {
+        "status": "verified",
+        "candidate_lowered_sha256": sha,
+        "candidate_command_buffer_sha256": "a" * 64,
+        "source_sha256": "b" * 64,
+    }
+    return (
+        {"emission": {"candidate_lowered_sha256": sha}, "diagnostics": {"verified_global_plan_emission": plan}},
+        {
+            "lowered_text": text,
+            "candidate_lowered_sha256": sha,
+            "candidate_command_buffer_sha256": "a" * 64,
+            "decoded_trace": {"instructions": rows},
+            "parsed_lowered_module": module,
+        },
+    )
 
 
 def contract(assembly):
     return CompletionContract(
-        "fixture-completion-contract", {"source": "independent test ABI"},
+        "fixture-completion-contract",
+        {"source": "independent test ABI"},
         lambda row: row.get("class") == "complete",
-        lambda op, row: row.get("class") == "complete" and op.asm_string.data == assembly
-        and op.constraints.data == "~{memory}" and op.has_side_effects is not None)
+        lambda op, row: (
+            row.get("class") == "complete"
+            and op.asm_string.data == assembly
+            and op.constraints.data == "~{memory}"
+            and op.has_side_effects is not None
+        ),
+    )
 
 
 def run(before, after, assembly="wait_tiles"):
-    return qualify_relative_completion_delta(previous_analysis=before[0], current_analysis=after[0],
-                                             previous_artifacts=before[1], current_artifacts=after[1],
-                                             contract=contract(assembly))
+    return qualify_relative_completion_delta(
+        previous_analysis=before[0],
+        current_analysis=after[0],
+        previous_artifacts=before[1],
+        current_artifacts=after[1],
+        contract=contract(assembly),
+    )
 
 
 @pytest.mark.parametrize("assembly", ["wait_tiles", "join_packets"])
 def test_relative_completion_with_later_visibility_barrier(assembly):
-    before = artifact([(0, "complete"), (0, "host"), (1, "complete"),
-                       (2, "complete"), (2, "device")], completion=assembly)
-    after = artifact([(0, "complete"), (0, "host"), (2, "complete"), (2, "device")],
-                     completion=assembly)
+    before = artifact(
+        [(0, "complete"), (0, "host"), (1, "complete"), (2, "complete"), (2, "device")], completion=assembly
+    )
+    after = artifact([(0, "complete"), (0, "host"), (2, "complete"), (2, "device")], completion=assembly)
     original_count = sum(1 for _ in before[1]["parsed_lowered_module"].walk())
     result = run(before, after, assembly)
     assert result["device_completion_redundancy"] == "verified"
@@ -111,13 +132,16 @@ def test_terminal_exit_host_stores_do_not_acquire_caller_ordering_authority():
     assert not result["relative_synchronization_qualified"]
 
 
-@pytest.mark.parametrize("before_spec,after_spec", [
-    ([(-1, "complete"), (0, "host")], [(0, "host")]),
-    ([(0, "complete"), (-1, "complete")], [(0, "complete")]),
-    ([(0, "complete"), (-3, "complete")], [(0, "complete")]),
-    ([(0, "complete"), (-2, "complete"), (0, "host")], [(0, "complete"), (0, "host")]),
-    ([(0, "complete"), (1, "device"), (-2, "complete")], [(0, "complete"), (1, "device")]),
-])
+@pytest.mark.parametrize(
+    "before_spec,after_spec",
+    [
+        ([(-1, "complete"), (0, "host")], [(0, "host")]),
+        ([(0, "complete"), (-1, "complete")], [(0, "complete")]),
+        ([(0, "complete"), (-3, "complete")], [(0, "complete")]),
+        ([(0, "complete"), (-2, "complete"), (0, "host")], [(0, "complete"), (0, "host")]),
+        ([(0, "complete"), (1, "device"), (-2, "complete")], [(0, "complete"), (1, "device")]),
+    ],
+)
 def test_unsupported_wrapper_and_device_issue_are_not_partial_proofs(before_spec, after_spec):
     result = run(artifact(before_spec), artifact(after_spec))
     assert result["status"] == "unresolved"
@@ -185,8 +209,7 @@ def test_lexically_preceding_completion_does_not_prove_cfg_domination(deleted_ow
     deleted = llvm.InlineAsmOp("wait_tiles", "~{memory}", [], [], has_side_effects=True)
     deleted.attributes["merlin.global_task"] = IntegerAttr(deleted_owner, i64)
     join.add_ops([deleted, llvm.ReturnOp()])
-    module = ModuleOp([llvm.FuncOp("kernel", llvm.LLVMFunctionType([]),
-                                  body=Region([entry, left, right, join]))])
+    module = ModuleOp([llvm.FuncOp("kernel", llvm.LLVMFunctionType([]), body=Region([entry, left, right, join]))])
     before = bundle(module, [{"class": "complete"}, {"class": "complete"}])
     changed = module.clone()
     command = [op for op in changed.walk() if op.name == "llvm.inline_asm"][-1]

@@ -15,12 +15,13 @@ The fix is that ``dump_cap`` is reachable from the outside. These tests hold tha
 * the default is unchanged, so an existing caller's emitted C is byte-identical;
 * a partial verdict cannot be mistaken for a complete one at the gate.
 """
+
 from __future__ import annotations
 
 import ast
 import inspect
-import subprocess
 import struct
+import subprocess
 import sys
 
 import numpy as np
@@ -36,8 +37,7 @@ _CAP_DEFINE = "#define MERLIN_DUMP_CAP"
 # than assume it: the guard self-activates the moment the function lands, so this is not a check
 # that can only pass. `_needs_session` reports which of the two it is at collection time.
 _HAS_SESSION = hasattr(k1, "main_linux_session_c") and hasattr(k1, "build_k1_session_binary")
-_needs_session = pytest.mark.skipif(
-    not _HAS_SESSION, reason="k1 has no multi-program session harness in this revision")
+_needs_session = pytest.mark.skipif(not _HAS_SESSION, reason="k1 has no multi-program session harness in this revision")
 
 
 def _cap_lines(text: str) -> list[str]:
@@ -47,6 +47,7 @@ def _cap_lines(text: str) -> list[str]:
 # ---------------------------------------------------------------------------------------------
 # 1. a caller can request full coverage, and it is DERIVED
 # ---------------------------------------------------------------------------------------------
+
 
 def test_default_cap_is_a_literal_ceiling() -> None:
     """The default still emits a fixed numeric ceiling — this is the state being escaped."""
@@ -78,13 +79,14 @@ def test_full_coverage_can_travel_as_a_binary_file_not_a_giant_console_line() ->
     assert 'printf("OUT 0\\n")' in source
 
 
-def test_binary_output_transfer_replaces_both_parser_views_and_proves_length(
-        monkeypatch, tmp_path) -> None:
+def test_binary_output_transfer_replaces_both_parser_views_and_proves_length(monkeypatch, tmp_path) -> None:
     """The file transfer is the graded output, not an unused side channel."""
     values = np.array([1.25, -2.5, 7.0], dtype=np.float32)
-    result = {"outputs": np.array([], dtype=np.float32),
-              "prefix": np.array([], dtype=np.float32),
-              "metrics": {"output_file_elems": len(values)}}
+    result = {
+        "outputs": np.array([], dtype=np.float32),
+        "prefix": np.array([], dtype=np.float32),
+        "metrics": {"output_file_elems": len(values)},
+    }
 
     def fake_run(command, **_kwargs):
         assert command[0] == "scp"
@@ -204,6 +206,7 @@ def test_a_non_positive_cap_is_refused(bad: int) -> None:
 # 2. the parameter is actually THREADED — reachable from run_on_k1, not just from the generator
 # ---------------------------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "func",
     [k1.run_on_k1, k1.build_k1_binary, k1.main_linux_c]
@@ -280,6 +283,7 @@ def test_no_caller_in_the_tree_hard_wires_the_generator_without_a_cap() -> None:
 # 3. a partial verdict cannot be mistaken for a complete one
 # ---------------------------------------------------------------------------------------------
 
+
 def _console(values: np.ndarray) -> str:
     """The exact OUT/METRIC/DONE console the generated harness prints for ``values``."""
     bits = np.ascontiguousarray(values, dtype="<f4").view(np.uint32)
@@ -315,10 +319,8 @@ def test_a_declared_coverage_floor_vetoes_the_truncated_verdict() -> None:
     reference = rng.standard_normal(256_000).astype(np.float32)
     board = (reference * 1.0001).astype(np.float32)
 
-    short = zm._gate(zm._parse_console(_console(board[:4096]), 0)["outputs"],
-                     {"fp32": reference}, min_coverage=1.0)
-    full = zm._gate(zm._parse_console(_console(board), 0)["outputs"],
-                    {"fp32": reference}, min_coverage=1.0)
+    short = zm._gate(zm._parse_console(_console(board[:4096]), 0)["outputs"], {"fp32": reference}, min_coverage=1.0)
+    full = zm._gate(zm._parse_console(_console(board), 0)["outputs"], {"fp32": reference}, min_coverage=1.0)
     assert short["coverage_ok"] is False and short["ok"] is False
     assert full["coverage_ok"] is True and full["ok"] is True
 
@@ -326,6 +328,7 @@ def test_a_declared_coverage_floor_vetoes_the_truncated_verdict() -> None:
 # ---------------------------------------------------------------------------------------------
 # 4. the transport survives the larger dump
 # ---------------------------------------------------------------------------------------------
+
 
 def test_the_parser_itself_can_still_read_a_full_lm_console_dump() -> None:
     """Keep the legacy/capped stdout parser capable of reading a large synthetic dump.

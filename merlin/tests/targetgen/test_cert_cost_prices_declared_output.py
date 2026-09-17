@@ -21,6 +21,7 @@ AND THE SECOND HALF, in ``check_cert_affordability``: an over-budget capsule was
 whose adapter registry offers only the cert tier has none to cap onto, so that advice is a fix its
 runner would refuse. Which remedies are open is therefore derived per row.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -48,14 +49,14 @@ def _gate():
 #: A convolution whose ACTIVATION is 64x lts result: exactly the shape the window axis produces, since
 #: it solves the image from the kernel for a fixed output. Written out rather than read from the corpus
 #: so the property is pinned even in a checkout whose corpus has not been regenerated.
-_CONV = '''module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
+_CONV = """module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
   %IFM = merlin_iface.tensor {name = "IFM", role = "input"} : tensor<1x64x64x4xi8>
   %W = merlin_iface.tensor {name = "W", role = "weight"} : tensor<1024x16xi8>
   %W_res = merlin_iface.resident_pack %W {layout = "packed_conv_rhs"} : (tensor<1024x16xi8>) -> !merlin_iface.resident
   %Y0 = merlin_iface.conv2d %IFM, %W_res {kernel = [16, 16, 4, 16], stride = [16, 16], padding = [0, 0, 0, 0], dilation = [1, 1], name = "Y0", epilogue = [], output_dtype = "i32", layout = "nhwc"} : (tensor<1x64x64x4xi8>, !merlin_iface.resident) -> tensor<16x16xi32>
   merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()
 }
-'''
+"""
 
 
 def test_a_convolution_is_priced_by_what_it_writes_not_by_the_image_it_reads():
@@ -64,10 +65,12 @@ def test_a_convolution_is_priced_by_what_it_writes_not_by_the_image_it_reads():
     assert got == 256, (
         f"a 4x4x16 convolution result priced at {got} elements; the activation it reads is 16,384, "
         f"and pricing by that predicts {CC.predict_seconds_from_output(16384)[0]:,.0f}s of "
-        f"cycle-accurate time for a capsule worth {CC.predict_seconds_from_output(256)[0]:,.0f}s")
+        f"cycle-accurate time for a capsule worth {CC.predict_seconds_from_output(256)[0]:,.0f}s"
+    )
     secs, extrapolated = CC.predict_seconds_from_output(got)
     assert not extrapolated and secs < 300.0, (
-        "a fixed-4x4-output convolution must be affordable at the corpus's own budget")
+        "a fixed-4x4-output convolution must be affordable at the corpus's own budget"
+    )
 
 
 def test_the_declared_extent_is_read_from_the_module_not_recomputed():
@@ -82,8 +85,7 @@ def test_the_declared_extent_is_read_from_the_module_not_recomputed():
 
 def test_a_terminal_write_whose_result_type_cannot_be_read_is_refused_not_guessed():
     """FAIL CLOSED. Pricing an unreadable write by an operand it read is what this refusal replaces."""
-    untyped = _CONV.replace(
-        ' : (tensor<1x64x64x4xi8>, !merlin_iface.resident) -> tensor<16x16xi32>', '')
+    untyped = _CONV.replace(" : (tensor<1x64x64x4xi8>, !merlin_iface.resident) -> tensor<16x16xi32>", "")
     assert "-> tensor<16x16xi32>" not in untyped, "the fixture did not actually drop the result type"
     with pytest.raises(ValueError) as exc:
         CC.capsule_output_elements(untyped)
@@ -96,6 +98,7 @@ def test_the_corpus_prices_agree_with_the_goldens_it_ships():
     Bounded to the families the operand inference got wrong -- convolution, batched contraction and
     the per-channel sweep -- so it stays a fast unit test rather than a corpus walk.
     """
+
     def _nelem(v):
         if isinstance(v, list):
             return sum(_nelem(x) for x in v) if v and isinstance(v[0], list) else len(v)
@@ -115,12 +118,13 @@ def test_the_corpus_prices_agree_with_the_goldens_it_ships():
             continue
         try:
             got = CC.capsule_output_elements(ifc.read_text(encoding="utf-8"))
-        except IE.InterfaceGrammarError:           # a linalg capsule is priced by another path
+        except IE.InterfaceGrammarError:  # a linalg capsule is priced by another path
             continue
         want = sum(_nelem(v) for v in outs.values())
         assert got == want, (
             f"{cy.parent.relative_to(_CAPSULES)}: priced at {got} written elements while its own "
-            f"golden carries {want} -- the price and the answer key disagree about what it writes")
+            f"golden carries {want} -- the price and the answer key disagree about what it writes"
+        )
         checked += 1
     if not checked:
         pytest.skip("no convolution or batched capsule with a golden in this checkout")
@@ -142,20 +146,25 @@ def test_a_capsule_is_not_advised_a_cap_its_target_cannot_take():
         tiers = [str(t) for t in (_declared_oracle_tiers(d.name) or ())]
         (single if len(tiers) <= 1 else laddered).append(d.name)
     if not single or not laddered:
-        pytest.skip("this roster does not contain both a single-tier and a laddered target, so the "
-                    "distinction cannot be exercised here")
+        pytest.skip(
+            "this roster does not contain both a single-tier and a laddered target, so the "
+            "distinction cannot be exercised here"
+        )
 
     cache: dict = {}
     for name in single:
         cheaper = gate._cheaper_tier(name, cache)
         assert cheaper is None or cheaper == gate._TIER_UNKNOWN, (
-            f"{name} declares no tier below its cert tier, so no cap is available to it")
+            f"{name} declares no tier below its cert tier, so no cap is available to it"
+        )
         remedies = gate._remedies({"needs_cycle_accurate": False}, cheaper)
         assert "cap_onto_cheaper_tier" not in remedies, (
-            f"{name} was advised to cap onto a cheaper tier it does not declare: {remedies}")
+            f"{name} was advised to cap onto a cheaper tier it does not declare: {remedies}"
+        )
         assert "smaller_shape" in remedies and "accepted_cost" in remedies, (
             "a target with no cheaper tier keeps the other two remedies; reporting none would read "
-            "as an unfixable capsule")
+            "as an unfixable capsule"
+        )
     for name in laddered:
         cheaper = gate._cheaper_tier(name, cache)
         assert cheaper, f"{name} declares a tier ladder, so a cap onto its cheaper tier IS available"
@@ -176,5 +185,4 @@ def test_an_unresolvable_tier_ladder_is_unknown_and_not_an_absent_cap():
     cache = {"nobody": gate._TIER_UNKNOWN}
     remedies = gate._remedies({"needs_cycle_accurate": False}, gate._cheaper_tier("nobody", cache))
     assert "cap_onto_cheaper_tier_UNRESOLVED" in remedies, remedies
-    assert "cap_onto_cheaper_tier" not in remedies, (
-        "an unresolved ladder must not read as a cap that is available")
+    assert "cap_onto_cheaper_tier" not in remedies, "an unresolved ladder must not read as a cap that is available"

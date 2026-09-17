@@ -3,6 +3,7 @@
 Composition legality lived in one proposer as a single ad-hoc rule ("two full-schedule replacement
 features clobber"), so every other caller that bundled actions had no way to learn it.
 """
+
 from __future__ import annotations
 
 from merlin.kernels.action_catalog import (
@@ -15,8 +16,16 @@ from merlin.kernels.action_catalog import (
 
 
 def _a(axis, seam, **kw):
-    return CompilerAction(divergence_axis=axis, action_class="KNOB", target_seam=seam,
-                          change="c", forkable_now=True, expected_effect="e", backend="b", **kw)
+    return CompilerAction(
+        divergence_axis=axis,
+        action_class="KNOB",
+        target_seam=seam,
+        change="c",
+        forkable_now=True,
+        expected_effect="e",
+        backend="b",
+        **kw,
+    )
 
 
 class TestComposition:
@@ -27,9 +36,9 @@ class TestComposition:
         assert any("same seam" in p for p in probs), probs
 
     def test_a_declared_conflict_is_refused(self):
-        probs = composition_problems([
-            _a("a", "s:1", action_family="tiling", conflicts=("fusion",)),
-            _a("b", "s:2", action_family="fusion")])
+        probs = composition_problems(
+            [_a("a", "s:1", action_family="tiling", conflicts=("fusion",)), _a("b", "s:2", action_family="fusion")]
+        )
         assert any("conflict" in p for p in probs), probs
 
     def test_an_unmet_requirement_is_refused(self):
@@ -39,8 +48,7 @@ class TestComposition:
         assert any("requires" in p for p in probs), probs
 
     def test_a_met_requirement_composes(self):
-        assert composable([_a("a", "s:1", requires=("prepack",)),
-                           _a("b", "s:2", action_family="prepack")])
+        assert composable([_a("a", "s:1", requires=("prepack",)), _a("b", "s:2", action_family="prepack")])
 
     def test_distinct_seams_with_no_declarations_compose(self):
         assert composable([_a("a", "s:1"), _a("b", "s:2")])

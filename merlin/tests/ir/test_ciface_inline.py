@@ -19,11 +19,13 @@ def test_wide_ciface_implementation_is_forced_inline():
     assert report == {
         "schema": "wide_ciface_inline_v1",
         "max_flattened_arguments": 256,
-        "inlined": [{
-            "implementation": "forward",
-            "wrapper": "_mlir_ciface_forward",
-            "flattened_arguments": 257,
-        }],
+        "inlined": [
+            {
+                "implementation": "forward",
+                "wrapper": "_mlir_ciface_forward",
+                "flattened_arguments": 257,
+            }
+        ],
         "count": 1,
     }
 
@@ -57,7 +59,6 @@ def test_aggregate_argument_commas_do_not_inflate_width():
         "define void @forward({ ptr, ptr, i64, [2 x i64], [2 x i64] } %0) {\n  ret void\n}\n"
         "define void @_mlir_ciface_forward(ptr %0) {\n  ret void\n}\n"
     )
-    repaired, report = inline_wide_ciface_implementations(
-        source, max_flattened_arguments=1)
+    repaired, report = inline_wide_ciface_implementations(source, max_flattened_arguments=1)
     assert repaired == source
     assert report["count"] == 0

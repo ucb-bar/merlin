@@ -1,8 +1,9 @@
 """Pinned capture reader refuses ambiguous or malformed state; no model runtime."""
-from dataclasses import FrozenInstanceError
+
 import hashlib
 import json
 import struct
+from dataclasses import FrozenInstanceError
 
 import pytest
 
@@ -13,23 +14,32 @@ def _sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def _files(tmp_path, *, manifest=None, header=None, payload=b"\x01\xff\x02\x80",
-           raw_manifest=None, raw_header=None):
-    manifest = manifest if manifest is not None else {
-        "0": {"kind": "input", "name": "activation"},
-        "1": {"kind": "buffer", "weight": "state", "shape": [2, 2], "dtype": "int8"}}
-    header = header if header is not None else {
-        "state": {"dtype": "I8", "shape": [2, 2], "data_offsets": [0, 4]}}
+def _files(tmp_path, *, manifest=None, header=None, payload=b"\x01\xff\x02\x80", raw_manifest=None, raw_header=None):
+    manifest = (
+        manifest
+        if manifest is not None
+        else {
+            "0": {"kind": "input", "name": "activation"},
+            "1": {"kind": "buffer", "weight": "state", "shape": [2, 2], "dtype": "int8"},
+        }
+    )
+    header = header if header is not None else {"state": {"dtype": "I8", "shape": [2, 2], "data_offsets": [0, 4]}}
     manifest_bytes = raw_manifest if raw_manifest is not None else json.dumps(manifest).encode()
     header_bytes = raw_header if raw_header is not None else json.dumps(header).encode()
     blob = struct.pack("<Q", len(header_bytes)) + header_bytes + payload
     mp, bp = tmp_path / "state.manifest.json", tmp_path / "state.safetensors"
     mp.write_bytes(manifest_bytes)
     bp.write_bytes(blob)
-    return {"manifest_path": mp, "manifest_sha256": _sha(manifest_bytes),
-            "safetensors_path": bp, "safetensors_sha256": _sha(blob),
-            "entry_argument_index": 1, "source_shape": [2, 2],
-            "source_dtype": "i8", "max_payload_bytes": 4}
+    return {
+        "manifest_path": mp,
+        "manifest_sha256": _sha(manifest_bytes),
+        "safetensors_path": bp,
+        "safetensors_sha256": _sha(blob),
+        "entry_argument_index": 1,
+        "source_shape": [2, 2],
+        "source_dtype": "i8",
+        "max_payload_bytes": 4,
+    }
 
 
 def test_exact_bytes_and_evidence_not_authorization(tmp_path):
@@ -54,22 +64,31 @@ def test_stale_pins_refused(tmp_path, field):
         verify_capture_constant(**args)
 
 
-@pytest.mark.parametrize("entry", [
-    {"kind": "input", "name": "state"},
-    {"kind": "buffer", "weight": "state", "shape": [2, 2], "dtype": "int8", "stub": True},
-    {"kind": "param", "weight": "state", "shape": [2, 2], "dtype": "int8", "error": "missing"},
-    {"kind": "buffer", "shape": [2, 2], "dtype": "int8"},
-])
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"kind": "input", "name": "state"},
+        {"kind": "buffer", "weight": "state", "shape": [2, 2], "dtype": "int8", "stub": True},
+        {"kind": "param", "weight": "state", "shape": [2, 2], "dtype": "int8", "error": "missing"},
+        {"kind": "buffer", "shape": [2, 2], "dtype": "int8"},
+    ],
+)
 def test_missing_dynamic_or_stub_constant_refused(tmp_path, entry):
     with pytest.raises(ValueError, match="concrete captured"):
         verify_capture_constant(**_files(tmp_path, manifest={"1": entry}))
 
 
-@pytest.mark.parametrize("field,value", [
-    ("entry_argument_index", 9), ("entry_argument_index", True),
-    ("source_shape", [4]), ("source_shape", [True, 2]),
-    ("source_dtype", "f32"), ("max_payload_bytes", 3),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("entry_argument_index", 9),
+        ("entry_argument_index", True),
+        ("source_shape", [4]),
+        ("source_shape", [True, 2]),
+        ("source_dtype", "f32"),
+        ("max_payload_bytes", 3),
+    ],
+)
 def test_source_identity_or_budget_mismatch_refused(tmp_path, field, value):
     args = _files(tmp_path)
     args[field] = value
@@ -120,9 +139,12 @@ def test_unselected_payload_still_hash_verified(tmp_path):
 
 def test_scalar_f32_bit_pattern_preserved_without_numeric_conversion(tmp_path):
     payload = b"\x00\x00\x00\x80"  # Negative zero, copied as bits.
-    args = _files(tmp_path,
+    args = _files(
+        tmp_path,
         manifest={"1": {"kind": "param", "weight": "state", "shape": [], "dtype": "float32"}},
-        header={"state": {"dtype": "F32", "shape": [], "data_offsets": [0, 4]}}, payload=payload)
+        header={"state": {"dtype": "F32", "shape": [], "data_offsets": [0, 4]}},
+        payload=payload,
+    )
     args.update(source_shape=[], source_dtype="f32")
     assert verify_capture_constant(**args).logical_payload == payload
 
@@ -137,7 +159,9 @@ def test_oversized_header_rejected_before_allocation(tmp_path):
 
 
 def test_missing_blob_key_and_unknown_dtype_refused(tmp_path):
-    for header in ({"other": {"dtype": "I8", "shape": [4], "data_offsets": [0, 4]}},
-                   {"state": {"dtype": "UNKNOWN", "shape": [4], "data_offsets": [0, 4]}}):
+    for header in (
+        {"other": {"dtype": "I8", "shape": [4], "data_offsets": [0, 4]}},
+        {"state": {"dtype": "UNKNOWN", "shape": [4], "data_offsets": [0, 4]}},
+    ):
         with pytest.raises(ValueError):
             verify_capture_constant(**_files(tmp_path, header=header))

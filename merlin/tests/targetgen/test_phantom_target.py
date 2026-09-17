@@ -12,6 +12,7 @@ The headline proof: the SAME ``circt_introspect._rocc_custom_opcode`` slot->opco
 ``0x2b`` for phantom5's slot 1 and ``0x7b`` for gemmini's slot 3 — the opcode is slot-derived, never a
 baked gemmini constant.
 """
+
 from __future__ import annotations
 
 import json
@@ -94,7 +95,7 @@ def test_derive_manifest_is_pure_data_for_a_novel_target(monkeypatch):
     (from the <=0x7f funct table, 2a's decode-width signal), the 8x8 mesh (NOT 16), the fp16-derived run
     dtype token (2b), and — the headline — ``custom_opcode == 0x2b`` (slot-1 derived, not gemmini 0x7b)."""
     facts = _load_facts()
-    opcode = _stamp_opcode_from_slot(facts, monkeypatch)   # honest slot->opcode, mimics introspection
+    opcode = _stamp_opcode_from_slot(facts, monkeypatch)  # honest slot->opcode, mimics introspection
     assert opcode == 0x2B
 
     m = cm.derive_manifest({"target": "phantom5"}, facts, residual=_load_contract())
@@ -112,9 +113,9 @@ def test_derive_manifest_is_pure_data_for_a_novel_target(monkeypatch):
     assert token == "fp16xfp16_f32" and "fp16" in token
     # HEADLINE: the encoding opcode is the slot-1 derivation (0x2b/43), NOT gemmini's slot-3 0x7b/123.
     assert m["encoding"]["custom_opcode"] == 0x2B == 43
-    assert m["encoding"]["custom_opcode"] != 0x7B          # explicitly NOT the gemmini opcode
-    assert m["encoding"]["rocc_custom_slot"] == 1          # residual ABI fact carried through
-    assert m["encoding"]["legal_funct"] == [0, 2, 4, 6]    # facts codes
+    assert m["encoding"]["custom_opcode"] != 0x7B  # explicitly NOT the gemmini opcode
+    assert m["encoding"]["rocc_custom_slot"] == 1  # residual ABI fact carried through
+    assert m["encoding"]["legal_funct"] == [0, 2, 4, 6]  # facts codes
 
 
 def test_derive_manifest_grounds_float_datapath_not_int8(monkeypatch):
@@ -125,9 +126,10 @@ def test_derive_manifest_grounds_float_datapath_not_int8(monkeypatch):
     _stamp_opcode_from_slot(facts, monkeypatch)
     m = cm.derive_manifest({"target": "phantom5"}, facts, residual=_load_contract())
     primary = cu.compute_units(m)[0]
-    assert primary.dtypes == ("fp16",)                     # fp16, not int8
-    assert [{"in": r.inp, "weight": r.weight, "acc": r.acc} for r in primary.accumulate] == \
-        [{"in": "fp16", "weight": "fp16", "acc": "f32"}]
+    assert primary.dtypes == ("fp16",)  # fp16, not int8
+    assert [{"in": r.inp, "weight": r.weight, "acc": r.acc} for r in primary.accumulate] == [
+        {"in": "fp16", "weight": "fp16", "acc": "f32"}
+    ]
 
 
 # --------------------------------------------------------------------------- routing (pure data lookup)
@@ -142,12 +144,11 @@ def test_routing_splits_ops_across_lanes_by_data_only(monkeypatch):
     _stamp_opcode_from_slot(facts, monkeypatch)
     units = cu.compute_units(cm.derive_manifest({"target": "phantom5"}, facts, residual=_load_contract()))
 
-    plan = routing.route_plan_on(
-        [routing.OpDemand("matmul", "fp16", "fp16"), routing.OpDemand("add", "fp16")], units)
+    plan = routing.route_plan_on([routing.OpDemand("matmul", "fp16", "fp16"), routing.OpDemand("add", "fp16")], units)
     # matmul -> the systolic mesh; add (elementwise, unsupported on the mesh) -> the vector lane.
     assert [r.unit for r in plan["mesh"]] == ["systolic_mesh"]
     assert [r.unit for r in plan["fallback"]] == ["vector_lane"]
-    assert plan["scalar_rvv"] == []                        # nothing gapped: both ops found a legal lane
+    assert plan["scalar_rvv"] == []  # nothing gapped: both ops found a legal lane
 
     # And the matched matmul rule carries the fp16 accumulate: the router reads the fact, not a default.
     matmul = plan["mesh"][0]
@@ -203,4 +204,4 @@ def test_sim_oracle_absent_without_the_target_path():
     honest (data-driven), not a hardcoded fallback. Proves the built-ins never silently gain phantomsim."""
     res = _run_probe(None)
     assert res["phantom_present"] is False, res["engines"]
-    assert "chipyard" in res["engines"]                    # the core registry is still intact
+    assert "chipyard" in res["engines"]  # the core registry is still intact

@@ -17,6 +17,7 @@ These tests pin the distinction that replaces it, in BOTH directions:
   against 2 downstream. A short ratio that shrank the denominator to `passed` would read as full
   coverage -- a worse defect than the refusal being fixed.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -54,62 +55,96 @@ def _clean_run(tmp_path: Path, run_id: str = "arm4_ratio") -> tuple[Path, str]:
     run = tmp_path / "merlin_assisted" / run_id
     sub = run / "submission"
     sub.mkdir(parents=True)
-    (sub / "manifest.yaml").write_text(yaml.safe_dump({
-        "artifact_type": "mlir_oot_target_backend",
-        "target": "fixture",
-        "language": "python",
-        "entrypoints": {"tool": "tool.py"},
-        "commands": {},
-    }))
+    (sub / "manifest.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "artifact_type": "mlir_oot_target_backend",
+                "target": "fixture",
+                "language": "python",
+                "entrypoints": {"tool": "tool.py"},
+                "commands": {},
+            }
+        )
+    )
     (sub / "tool.py").write_text("print('fixture')\n")
     digest = hash_tree(sub)["sha256"]
 
-    (run / "environment.yaml").write_text(yaml.safe_dump({
-        "run_id": run_id,
-        "bundle_id": "merlin_assisted_rtlchecks_hwbringup_v0",
-        "sandbox": "bwrap",
-        "bundle_input_snapshot": {
-            "version": 2, "content_sha256": "a" * 64, "n_files": 7, "n_bytes": 41,
-        },
-        "task_scope": {"target": "fixture", "required_public_dev_capsules": 2,
-                       "held_out_capsules": 1},
-        "isolation_violations": [],
-        "golden_mask_selftest": {"n_answer_files_masked": 3, "leaked_answer_files": []},
-    }))
-    (run / "qa_loop_summary.yaml").write_text(yaml.safe_dump({
-        "converged": True,
-        "rounds": [{"answer_access_clean": True, "audit_hits": []}],
-        "finalize": {"answer_access_clean": True, "audit_hits": [], "regrade_all_pass": True},
-    }))
-    (run / "freeze.json").write_text(json.dumps({
-        "submission_sha256": digest, "submission_sha256_recheck": digest,
-        "workspace_mutable_after_freeze": False, "frozen_at": "2026-08-31T00:00:00Z",
-    }))
-    (run / "run_manifest.yaml").write_text(yaml.safe_dump({
-        "run_id": run_id,
-        "submission_sha256": digest,
-        "integrity_status": "clean",
-        "integrity_exempt": False,
-        "gradeable": True,
-        "public_dev": {"functional_pass": 1, "passed": "2/2", "highest_tier": "L3"},
-        "hidden": {"functional_pass": 1, "passed": "1/1"},
-    }))
+    (run / "environment.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "run_id": run_id,
+                "bundle_id": "merlin_assisted_rtlchecks_hwbringup_v0",
+                "sandbox": "bwrap",
+                "bundle_input_snapshot": {
+                    "version": 2,
+                    "content_sha256": "a" * 64,
+                    "n_files": 7,
+                    "n_bytes": 41,
+                },
+                "task_scope": {"target": "fixture", "required_public_dev_capsules": 2, "held_out_capsules": 1},
+                "isolation_violations": [],
+                "golden_mask_selftest": {"n_answer_files_masked": 3, "leaked_answer_files": []},
+            }
+        )
+    )
+    (run / "qa_loop_summary.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "converged": True,
+                "rounds": [{"answer_access_clean": True, "audit_hits": []}],
+                "finalize": {"answer_access_clean": True, "audit_hits": [], "regrade_all_pass": True},
+            }
+        )
+    )
+    (run / "freeze.json").write_text(
+        json.dumps(
+            {
+                "submission_sha256": digest,
+                "submission_sha256_recheck": digest,
+                "workspace_mutable_after_freeze": False,
+                "frozen_at": "2026-08-31T00:00:00Z",
+            }
+        )
+    )
+    (run / "run_manifest.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "run_id": run_id,
+                "submission_sha256": digest,
+                "integrity_status": "clean",
+                "integrity_exempt": False,
+                "gradeable": True,
+                "public_dev": {"functional_pass": 1, "passed": "2/2", "highest_tier": "L3"},
+                "hidden": {"functional_pass": 1, "passed": "1/1"},
+            }
+        )
+    )
     for phase, names in (("public", ("p0", "p1")), ("hidden", ("h0",))):
         d = run / f"grading_{phase}"
         d.mkdir()
-        rows = [{"capsule": n, "status": "pass", "tiers": {"L2": "pass", "L3": "pass"}}
-                for n in names]
-        (d / "score_capsule.json").write_text(json.dumps({
-            "n_capsules": len(rows), "n_passed": len(rows), "functional_pass": 1,
-            "gradeable": True, "integrity_status": "clean", "integrity_exempt": False,
-            "per_capsule": rows,
-            "cohort_admission": {
-                "version": 1, "policy": "all_discovered",
-                "n_source_capsules": len(rows), "n_admitted_capsules": len(rows),
-                "n_capability_excluded": 0, "n_resource_excluded": 0,
-                "admitted_name_set_sha256": "b" * 64,
-            },
-        }))
+        rows = [{"capsule": n, "status": "pass", "tiers": {"L2": "pass", "L3": "pass"}} for n in names]
+        (d / "score_capsule.json").write_text(
+            json.dumps(
+                {
+                    "n_capsules": len(rows),
+                    "n_passed": len(rows),
+                    "functional_pass": 1,
+                    "gradeable": True,
+                    "integrity_status": "clean",
+                    "integrity_exempt": False,
+                    "per_capsule": rows,
+                    "cohort_admission": {
+                        "version": 1,
+                        "policy": "all_discovered",
+                        "n_source_capsules": len(rows),
+                        "n_admitted_capsules": len(rows),
+                        "n_capability_excluded": 0,
+                        "n_resource_excluded": 0,
+                        "admitted_name_set_sha256": "b" * 64,
+                    },
+                }
+            )
+        )
     return run, digest
 
 
@@ -137,14 +172,14 @@ def test_a_short_ratio_is_refused_without_the_waiver(tmp_path: Path) -> None:
 def test_a_short_ratio_passes_when_the_predicate_is_named_and_is_recorded(tmp_path: Path) -> None:
     run, digest = _clean_run(tmp_path)
     _set_public_ratio(run, "1/2")
-    rec = PC.inspect_functional_run(tmp_path, run.name, digest,
-                                    waive=frozenset({"phase_grade_incomplete"}))
+    rec = PC.inspect_functional_run(tmp_path, run.name, digest, waive=frozenset({"phase_grade_incomplete"}))
     assert not rec.gate_clean, "a waived result must never read as a clean one"
     waived = {d.predicate: d.detail for d in rec.deviations}
     assert set(waived) == {"phase_grade_incomplete"}
     assert "1/2" in waived["phase_grade_incomplete"], "the record must carry what was observed"
     assert [d.to_dict() for d in rec.deviations] == [
-        {"predicate": "phase_grade_incomplete", "detail": waived["phase_grade_incomplete"]}]
+        {"predicate": "phase_grade_incomplete", "detail": waived["phase_grade_incomplete"]}
+    ]
 
 
 def test_the_new_predicate_is_deliberately_waivable_and_never_an_integrity_one() -> None:
@@ -152,23 +187,26 @@ def test_the_new_predicate_is_deliberately_waivable_and_never_an_integrity_one()
     assert "phase_grade_incomplete" not in PC.UNWAIVABLE
     assert not (PC._WAIVABLE_PREDICATES & PC.UNWAIVABLE)
     with pytest.raises(PC.CampaignGateError, match="UNWAIVABLE"):
-        PC.inspect_functional_run(Path("/nonexistent"), "x", "0" * 64,
-                                  waive=frozenset({"score_integrity_failed"}))
+        PC.inspect_functional_run(Path("/nonexistent"), "x", "0" * 64, waive=frozenset({"score_integrity_failed"}))
 
 
-@pytest.mark.parametrize("ratio,message", [
-    ("0/0", "non-vacuous"),          # vacuous: nothing was graded
-    ("1/0", "non-vacuous"),
-    ("3/2", "impossible"),           # more passes than capsules graded
-    ("-1/2", "impossible"),
-    ("x/2", "malformed"),            # non-numeric
-    ("1/2/3", "explicit passed/total"),
-    ("2", "explicit passed/total"),
-    ("", "explicit passed/total"),   # absent
-    (None, "explicit passed/total"),
-])
+@pytest.mark.parametrize(
+    "ratio,message",
+    [
+        ("0/0", "non-vacuous"),  # vacuous: nothing was graded
+        ("1/0", "non-vacuous"),
+        ("3/2", "impossible"),  # more passes than capsules graded
+        ("-1/2", "impossible"),
+        ("x/2", "malformed"),  # non-numeric
+        ("1/2/3", "explicit passed/total"),
+        ("2", "explicit passed/total"),
+        ("", "explicit passed/total"),  # absent
+        (None, "explicit passed/total"),
+    ],
+)
 def test_broken_evidence_still_raises_even_with_every_predicate_waived(
-        tmp_path: Path, ratio: object, message: str) -> None:
+    tmp_path: Path, ratio: object, message: str
+) -> None:
     """A ratio that is not a grade is not a SHORT grade, and no waiver reaches it.
 
     Every waivable name is passed here, so a raise cannot come from an un-waived predicate; and the
@@ -177,8 +215,7 @@ def test_broken_evidence_still_raises_even_with_every_predicate_waived(
     run, digest = _clean_run(tmp_path)
     _set_public_ratio(run, ratio)
     with pytest.raises(PC.CampaignGateError, match=message):
-        PC.inspect_functional_run(tmp_path, run.name, digest,
-                                  waive=frozenset(PC._WAIVABLE_PREDICATES))
+        PC.inspect_functional_run(tmp_path, run.name, digest, waive=frozenset(PC._WAIVABLE_PREDICATES))
 
 
 def test_a_short_ratio_keeps_the_declared_denominator(tmp_path: Path) -> None:
@@ -190,8 +227,7 @@ def test_a_short_ratio_keeps_the_declared_denominator(tmp_path: Path) -> None:
     """
     run, digest = _clean_run(tmp_path)
     _set_public_ratio(run, "1/2")
-    rec = PC.inspect_functional_run(tmp_path, run.name, digest,
-                                    waive=frozenset({"phase_grade_incomplete"}))
+    rec = PC.inspect_functional_run(tmp_path, run.name, digest, waive=frozenset({"phase_grade_incomplete"}))
     assert rec.public_capsules == 2
 
     # Now shrink the public grade itself to match `passed`. If the denominator followed `passed`, this
@@ -205,5 +241,4 @@ def test_a_short_ratio_keeps_the_declared_denominator(tmp_path: Path) -> None:
     score["cohort_admission"]["n_admitted_capsules"] = 1
     path.write_text(json.dumps(score))
     with pytest.raises(PC.CampaignGateError, match="score_evidence_incomplete"):
-        PC.inspect_functional_run(tmp_path, run.name, digest,
-                                  waive=frozenset({"phase_grade_incomplete"}))
+        PC.inspect_functional_run(tmp_path, run.name, digest, waive=frozenset({"phase_grade_incomplete"}))

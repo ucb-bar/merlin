@@ -5,6 +5,7 @@ matmul layers fell back to the host and the whole model failed its must_accelera
 tiler that fixes this already existed and was wired into the tile CERTIFICATION path only -- so the tile
 record reported "runs at this shape" about a shape the model itself never got to run.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -13,8 +14,14 @@ from merlin.compile_cli import _capacity_fit_tile, _operand_store_capacity_elems
 
 # (M, K, N, does the whole layer fit on chip?) — measured against the real gemmini oracle: every shape
 # marked True ran, every shape marked False was declined by the mesh.
-_OBSERVED = [(1, 16, 16, True), (1, 16, 512, True), (1, 512, 16, True),
-             (1, 512, 512, False), (1, 528, 512, False), (1, 4608, 512, False)]
+_OBSERVED = [
+    (1, 16, 16, True),
+    (1, 16, 512, True),
+    (1, 512, 16, True),
+    (1, 512, 512, False),
+    (1, 528, 512, False),
+    (1, 4608, 512, False),
+]
 
 
 def _cap():
@@ -28,8 +35,9 @@ def _cap():
 def test_the_capacity_model_predicts_what_the_mesh_declined(m, k, n, fits):
     """The derived capacity must explain the observed declines, or the blocking decision is a guess."""
     mt, kt, nt, _n = _capacity_fit_tile(m, k, n, 16, _cap())
-    assert ((mt, kt, nt) == (m, k, n)) is fits, \
+    assert ((mt, kt, nt) == (m, k, n)) is fits, (
         f"{m}x{k}x{n}: capacity model says fits={(mt, kt, nt) == (m, k, n)}, mesh said fits={fits}"
+    )
 
 
 def test_a_blocked_layer_covers_every_element_exactly_once():
@@ -48,8 +56,9 @@ def test_a_blocked_layer_covers_every_element_exactly_once():
                         seen[(i, j)] = seen.get((i, j), 0) + 1
     k_blocks = -(-K // kt)
     assert len(seen) == M * N, "every output element must be produced"
-    assert set(seen.values()) == {k_blocks}, \
+    assert set(seen.values()) == {k_blocks}, (
         f"each element must accumulate exactly {k_blocks} K-blocks, saw {sorted(set(seen.values()))}"
+    )
 
 
 def test_an_accumulator_epilogue_is_not_split_across_k():
@@ -58,7 +67,9 @@ def test_an_accumulator_epilogue_is_not_split_across_k():
     import inspect
 
     from merlin import compile_cli
+
     src = inspect.getsource(compile_cli.run_matmul_on_mesh)
-    assert "if epilogue:" in src.split("_capacity_fit_tile")[-1], \
+    assert "if epilogue:" in src.split("_capacity_fit_tile")[-1], (
         "the blocking path must refuse an epilogue rather than split it"
+    )
     assert "cannot be split across K blocks" in src, "and must say why it refused"

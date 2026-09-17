@@ -10,14 +10,22 @@ The rest guard the arithmetic against the ways a reuse number gets flattered: a 
 declared, a node whose sources could not be read counted as reuse, and a cycle turning the closure into
 everything.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from merlin.common.paths import repo_root
 from merlin.targetgen import artifact_dag as AD
-from merlin.targetgen.artifact_dag import (UNKNOWN_HASH, ArtifactGraph, Node, TargetDelta,
-                                           changed_from_hashes, content_hashes, pipeline_graph)
+from merlin.targetgen.artifact_dag import (
+    UNKNOWN_HASH,
+    ArtifactGraph,
+    Node,
+    TargetDelta,
+    changed_from_hashes,
+    content_hashes,
+    pipeline_graph,
+)
 
 #: The nodes a hardware change must never reach. Each is either reused literally (guarded in-tree by a
 #: byte-identity invariant) or target-independent.
@@ -68,10 +76,12 @@ class TestTheReuseClaimIsFalsifiable:
         for changed in sorted(_HARDWARE_DELTA):
             assert not graph.reaches(changed, parent), (
                 f"{changed} now reaches {parent}: the delta is no longer additive, and the design's "
-                "reuse claim is what has become false")
+                "reuse claim is what has become false"
+            )
 
-    @pytest.mark.parametrize("expected", ["capability_routing", "unit_lowering", "unit_codegen",
-                                          "unit_cca", "unit_certification"])
+    @pytest.mark.parametrize(
+        "expected", ["capability_routing", "unit_lowering", "unit_codegen", "unit_cca", "unit_certification"]
+    )
     def test_a_hardware_change_does_reach_what_it_should(self, graph, expected):
         # The mirror of the test above. A graph where the delta reached nothing would satisfy every
         # "must not reach" test perfectly, and mean nothing at all.
@@ -92,6 +102,7 @@ class TestTheGraphTracksThePipeline:
         # Otherwise a layer added upstream is silently outside the invalidation model, and a stale
         # artifact would be reported as reuse.
         from merlin.targetgen.pipeline import EMIT_LAYERS
+
         have = set(graph.of_kind("emit"))
         want = {f"emit_{layer.replace('-', '_')}" for layer in EMIT_LAYERS}
         assert want == have, f"missing {want - have}, unexpected {have - want}"
@@ -121,11 +132,14 @@ class TestChangeIsMeasuredNotDeclared:
     def test_a_disappeared_node_counts_as_changed(self):
         assert changed_from_hashes({"a": "1"}, {}) == {"a"}
 
-    @pytest.mark.parametrize("recorded,current", [
-        ({"a": UNKNOWN_HASH}, {"a": "1"}),
-        ({"a": "1"}, {"a": UNKNOWN_HASH}),
-        ({"a": UNKNOWN_HASH}, {"a": UNKNOWN_HASH}),
-    ])
+    @pytest.mark.parametrize(
+        "recorded,current",
+        [
+            ({"a": UNKNOWN_HASH}, {"a": "1"}),
+            ({"a": "1"}, {"a": UNKNOWN_HASH}),
+            ({"a": UNKNOWN_HASH}, {"a": UNKNOWN_HASH}),
+        ],
+    )
     def test_an_unreadable_source_never_counts_as_reuse(self, recorded, current):
         # Two UNKNOWNs are equal as strings. Treating that as "unchanged" would hand back free reuse for
         # precisely the nodes nothing is known about.
@@ -164,8 +178,7 @@ class TestTheDeltaArithmetic:
     @pytest.fixture
     def chain(self):
         # a -> b -> c, with an unrelated root d.
-        return ArtifactGraph.of([Node("a", "k"), Node("b", "k", ("a",)),
-                                 Node("c", "k", ("b",)), Node("d", "k")])
+        return ArtifactGraph.of([Node("a", "k"), Node("b", "k", ("a",)), Node("c", "k", ("b",)), Node("d", "k")])
 
     def test_invalidation_is_transitive_and_includes_the_changed_node(self, chain):
         assert TargetDelta({"a"}).invalidated(chain) == {"a", "b", "c"}
@@ -219,4 +232,5 @@ class TestTheRealDeltaMeasurement:
         m = TargetDelta(_HARDWARE_DELTA).measure(graph, graph.nodes)
         assert 0.0 < m.reuse_ratio < 1.0
         assert len(m.invalidated) > len(m.reused), (
-            "if this flips, check whether the graph got finer-grained or merely more flattering")
+            "if this flips, check whether the graph got finer-grained or merely more flattering"
+        )

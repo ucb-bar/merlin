@@ -4,6 +4,7 @@ The bounds fail in different directions and so are tested in both. A sizing func
 returned 1 would satisfy "does not overload the host"; one that always returned the core count would
 satisfy "uses the machine". Every test here pins a bound against its opposite.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -11,7 +12,7 @@ import pytest
 from merlin.targetgen import capsule_grade as CG
 
 CPUS = 48
-GB = 1024 ** 3
+GB = 1024**3
 
 #: The real reader, captured before the autouse fixture stubs it out for the sizing tests.
 _REAL_CORES_IN_USE = CG._cores_in_use
@@ -95,14 +96,20 @@ def test_a_small_host_leaves_cores_for_the_driver(host):
 # reading the host
 # --------------------------------------------------------------------------------------------
 
+
 def _loadavg(monkeypatch, text: str):
     """Point the reader at a synthetic /proc/loadavg, and un-stub it from the autouse fixture."""
     import merlin.targetgen.capsule_grade as mod
+
     monkeypatch.setattr(mod, "_cores_in_use", _REAL_CORES_IN_USE)
 
     class _P:
-        def __init__(self, *a): pass
-        def read_text(self, *a, **k): return text
+        def __init__(self, *a):
+            pass
+
+        def read_text(self, *a, **k):
+            return text
+
     monkeypatch.setattr(mod, "Path", _P)
 
 
@@ -110,9 +117,9 @@ def test_cores_in_use_prefers_whichever_reading_is_higher(monkeypatch):
     """Smoothed load survives a dip but lags a burst; nr_running catches the burst but is one noisy
     sample. Taking the larger is what makes the pair safe in both directions."""
     _loadavg(monkeypatch, "37.94 32.65 25.42 15/3988 4103694")
-    assert _REAL_CORES_IN_USE() == pytest.approx(37.94)        # average dominates
+    assert _REAL_CORES_IN_USE() == pytest.approx(37.94)  # average dominates
     _loadavg(monkeypatch, "0.50 0.40 0.30 31/3988 4103694")
-    assert _REAL_CORES_IN_USE() == pytest.approx(30.0)         # instantaneous burst dominates
+    assert _REAL_CORES_IN_USE() == pytest.approx(30.0)  # instantaneous burst dominates
 
 
 def test_cores_in_use_discounts_this_process(monkeypatch):
@@ -128,7 +135,11 @@ def test_cores_in_use_is_none_when_it_cannot_be_read(monkeypatch):
     import merlin.targetgen.capsule_grade as mod
 
     class _Boom:
-        def __init__(self, *a): pass
-        def read_text(self, *a, **k): raise OSError("no /proc here")
+        def __init__(self, *a):
+            pass
+
+        def read_text(self, *a, **k):
+            raise OSError("no /proc here")
+
     monkeypatch.setattr(mod, "Path", _Boom)
     assert _REAL_CORES_IN_USE() is None

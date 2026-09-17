@@ -11,6 +11,7 @@ The acceptance runs twice: once on a synthetic instrument whose constants are kn
 fixture chose them, so the mechanism is exercised on every host; and once on the pinned measured
 corpus, which is the real claim and skips where that checkout is absent.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -23,7 +24,6 @@ from merlin.perf import harvest as H
 from merlin.perf.profile import derive_profile
 from merlin.perf.term import UNKNOWN
 
-
 # ---------------------------------------------------------------------------------------------
 # the registry is DATA, and it is well-formed
 # ---------------------------------------------------------------------------------------------
@@ -32,8 +32,7 @@ from merlin.perf.term import UNKNOWN
 def test_the_registry_directory_holds_only_yaml():
     """A ``.py`` here would be scanned by the target-name gate; more to the point, a rule expressed
     as code is a rule that eventually gets a target baked into it."""
-    stray = sorted(p.name for p in H.registry_dir().iterdir()
-                   if p.is_file() and p.suffix not in (".yaml", ".yml"))
+    stray = sorted(p.name for p in H.registry_dir().iterdir() if p.is_file() and p.suffix not in (".yaml", ".yml"))
     assert stray == [], f"non-YAML files in the rule registry: {stray}"
 
 
@@ -63,10 +62,26 @@ def test_no_rule_names_a_target():
 
 
 def test_a_rule_that_reaches_an_undeclared_axis_is_reported_not_ignored(tmp_path):
-    (tmp_path / "bad.yaml").write_text(json.dumps({"rules": [{
-        "id": "r", "constant": "c", "term": "t", "axis": "no_such_axis", "fit_form": "affine",
-        "recover": {"from": "slope"}, "optimization_family": "nope",
-        "experiment_family": "nope", "rationale": "  "}]}), encoding="utf-8")
+    (tmp_path / "bad.yaml").write_text(
+        json.dumps(
+            {
+                "rules": [
+                    {
+                        "id": "r",
+                        "constant": "c",
+                        "term": "t",
+                        "axis": "no_such_axis",
+                        "fit_form": "affine",
+                        "recover": {"from": "slope"},
+                        "optimization_family": "nope",
+                        "experiment_family": "nope",
+                        "rationale": "  ",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     problems = H.load_registry(tmp_path).validate()
     assert any("axis" in p for p in problems)
     assert any("optimization family" in p for p in problems)
@@ -90,31 +105,45 @@ def _synthetic_suite():
     for i, (groups, beats) in enumerate(plan):
         ops = []
         for _ in range(groups):
-            ops += [["Feed", "load", 0], ["Sched", "delay", 3],
-                    ["Feed", "mac", 0], ["Sched", "delay", 10],
-                    ["Feed", "drain", 0], ["Sched", "delay", 3]]
+            ops += [
+                ["Feed", "load", 0],
+                ["Sched", "delay", 3],
+                ["Feed", "mac", 0],
+                ["Sched", "delay", 10],
+                ["Feed", "drain", 0],
+                ["Sched", "delay", 3],
+            ]
         ops += [["Move", "xfer", 0]]
         move = _FIXTURE["beat_rate"] * beats + _FIXTURE["base_latency"]
         grid = groups * (_FIXTURE["fill"] + 10)
         kernels[f"k{i}"] = {
             "op_stream": ops,
-            "arc": {"truth": move + grid, "none": 0, "reads": beats // 2,
-                    "writes": beats - beats // 2, "halt_reason": 1,
-                    "mover": move, "grid": grid},
+            "arc": {
+                "truth": move + grid,
+                "none": 0,
+                "reads": beats // 2,
+                "writes": beats - beats // 2,
+                "halt_reason": 1,
+                "mover": move,
+                "grid": grid,
+            },
             "footprint_bytes": beats * _FIXTURE["beat_bytes"],
         }
-    return {"_meta": {"beat_bytes": _FIXTURE["beat_bytes"], "mxu_dim": _FIXTURE["dim"]},
-            "kernels": kernels}
+    return {"_meta": {"beat_bytes": _FIXTURE["beat_bytes"], "mxu_dim": _FIXTURE["dim"]}, "kernels": kernels}
 
 
 def _synthetic_profile():
     """A systolic device whose facts carry a timing block -- no target on this host is involved."""
     return derive_profile(
         "fixture",
-        facts={"facts": {"timing": [{"module": "grid", "pipeline_depth": 3}],
-                         "arrays": [{"name": "grid", "container": "grid"}]}},
-        residual={"compute_units": [{"name": "grid", "kind": "systolic"}],
-                  "endpoint_kind": "external_backend"})
+        facts={
+            "facts": {
+                "timing": [{"module": "grid", "pipeline_depth": 3}],
+                "arrays": [{"name": "grid", "container": "grid"}],
+            }
+        },
+        residual={"compute_units": [{"name": "grid", "kind": "systolic"}], "endpoint_kind": "external_backend"},
+    )
 
 
 def _emit(suite, profile):
@@ -122,10 +151,15 @@ def _emit(suite, profile):
     axes, _refusals, deriv = H.axes_from_suite(suite, movement_policy=reg.movement_policy)
     detected = H.detected_traits(axes, deriv)
     experiments, deferred = H.emit_experiments(reg, axes=axes, profile=profile, detected=detected)
-    recoveries = {r.constant: r for r in
-                  (H.run_experiment(e, cross_check=suite.get("_meta") or {},
-                                    tolerance=float(reg.tolerances.get("relative", 0.0)))
-                   for e in experiments)}
+    recoveries = {
+        r.constant: r
+        for r in (
+            H.run_experiment(
+                e, cross_check=suite.get("_meta") or {}, tolerance=float(reg.tolerances.get("relative", 0.0))
+            )
+            for e in experiments
+        )
+    }
     return reg, axes, deriv, experiments, deferred, recoveries
 
 
@@ -136,8 +170,7 @@ _EXPECTED = {"datapath_dimension", "pipeline_fill_cycles", "beat_bytes", "base_l
 
 
 def test_a_synthetic_instrument_emits_exactly_the_four_structural_constants():
-    _reg, _axes, _deriv, experiments, _deferred, _rec = _emit(_synthetic_suite(),
-                                                              _synthetic_profile())
+    _reg, _axes, _deriv, experiments, _deferred, _rec = _emit(_synthetic_suite(), _synthetic_profile())
     assert {e.rule.constant for e in experiments} == _EXPECTED
 
 
@@ -166,7 +199,7 @@ def test_the_deferred_rules_name_what_would_settle_them():
         assert d.reason
         assert d.rule.constant not in _EXPECTED
     ids = {d.rule.id for d in deferred}
-    assert "fixed_startup" in ids                # no program in the corpus does zero engine work
+    assert "fixed_startup" in ids  # no program in the corpus does zero engine work
     assert "datapath_initiation_interval" in ids  # every drain takes exactly one compute op
 
 
@@ -206,8 +239,13 @@ def test_every_emitted_experiment_declares_a_point_budget_it_actually_meets():
 def test_an_experiment_whose_fit_refuses_recovers_unknown_not_a_number():
     reg = H.load_registry()
     rule = reg.rule("movement_base_latency")
-    thin = H.AxisEvidence(axis=rule.axis, x_name="beats", y_name="busy", y_unit="cycles",
-                          points=(H.Point(1.0, 10.0, "a"), H.Point(2.0, 20.0, "b")))
+    thin = H.AxisEvidence(
+        axis=rule.axis,
+        x_name="beats",
+        y_name="busy",
+        y_unit="cycles",
+        points=(H.Point(1.0, 10.0, "a"), H.Point(2.0, 20.0, "b")),
+    )
     rec = H.run_experiment(H.Experiment(rule=rule, axis=thin, points_required=4, levels_required=2))
     assert rec.value is UNKNOWN and ">=4 points" in rec.note
 
@@ -229,13 +267,13 @@ def _pinned_suite_path():
 def _tensor_dataflow_target():
     """The target whose profile is a tensor/dataflow machine, found by ASKING the profiles."""
     from merlin.targetgen.target_registry import all_targets as list_targets
+
     for name in sorted(list_targets()):
         try:
             prof = derive_profile(name)
-        except Exception:                                   # noqa: BLE001
+        except Exception:  # noqa: BLE001
             continue
-        if prof.archetype.datapath_kind in ("systolic", "spatial") \
-                and prof.archetype.dispatch == "device_native":
+        if prof.archetype.datapath_kind in ("systolic", "spatial") and prof.archetype.dispatch == "device_native":
             return name, prof
     return None, None
 
@@ -268,8 +306,8 @@ def test_the_pinned_corpus_recovers_the_constants_its_own_metadata_declares(pinn
     assert rec["beat_bytes"].value == pytest.approx(meta["beat_bytes"], rel=tol)
     # the fill is the dimension's own law, recovered independently by the same fit
     from merlin.perf.record import fill_cycles
-    assert rec["pipeline_fill_cycles"].value == pytest.approx(fill_cycles("systolic_2d",
-                                                                         int(meta["mxu_dim"])))
+
+    assert rec["pipeline_fill_cycles"].value == pytest.approx(fill_cycles("systolic_2d", int(meta["mxu_dim"])))
     # a fixed per-transfer cost exists and is small next to the per-beat rate
     base = rec["base_latency_cycles"]
     assert base.value is not UNKNOWN and base.value > 0
@@ -297,8 +335,16 @@ def test_the_pinned_corpus_fill_fit_is_exact_and_excludes_the_accumulating_progr
     suite, _name, prof = pinned
     _reg, axes, _deriv, _exp, _def, rec = _emit(suite, prof)
     assert rec["pipeline_fill_cycles"].fit.residuals["r2"] == pytest.approx(1.0)
-    assert max(abs(v) for v in (rec["pipeline_fill_cycles"].fit.residuals["min"],
-                                rec["pipeline_fill_cycles"].fit.residuals["max"])) == 0
+    assert (
+        max(
+            abs(v)
+            for v in (
+                rec["pipeline_fill_cycles"].fit.residuals["min"],
+                rec["pipeline_fill_cycles"].fit.residuals["max"],
+            )
+        )
+        == 0
+    )
     excluded = axes["compute_group_count"].excluded
     assert excluded, "a corpus with an accumulating program must exclude it, not fit through it"
     assert all("accumulates" in r.reason for r in excluded)

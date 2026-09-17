@@ -6,6 +6,7 @@ model weights wrote those identical bytes once per run -- 12.8 GB per run, 235 G
 campaign. These tests hold the replacement to both halves of the claim: the disk cost of the
 second run is a directory entry, and the frozen bytes are still frozen.
 """
+
 from __future__ import annotations
 
 import os
@@ -46,8 +47,9 @@ def test_a_second_run_granting_the_same_inputs_adds_no_bytes(tmp_path, monkeypat
     assert first["content_sha256"] == second["content_sha256"]
     assert first["n_bytes"] == second["n_bytes"] == 4096 + len("encoding\n")
 
-    weights = [BW.bundle_snapshot_root(tmp_path / f"run{n}" / "workspace")
-               / "repo" / "inputs" / "weights.bin" for n in (1, 2)]
+    weights = [
+        BW.bundle_snapshot_root(tmp_path / f"run{n}" / "workspace") / "repo" / "inputs" / "weights.bin" for n in (1, 2)
+    ]
     assert weights[0].read_bytes() == weights[1].read_bytes()
     assert weights[0].stat().st_ino == weights[1].stat().st_ino, "the bytes were stored twice"
 
@@ -147,6 +149,7 @@ def test_the_store_location_is_purgeable_by_convention(tmp_path, monkeypatch):
     monkeypatch.delenv("MERLIN_BUNDLE_CAS", raising=False)
     from merlin.common import content_store
     from merlin.common.paths import artifacts_dir
+
     assert content_store.default_root() == artifacts_dir() / "cache" / content_store.NAMESPACE
 
     _store(tmp_path, monkeypatch)
@@ -170,7 +173,7 @@ def test_an_executable_grant_keeps_its_bit_and_never_shares_a_plain_object(tmp_p
     tool.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
     tool.chmod(0o755)
     plain = repo / "bin" / "notes"
-    plain.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")       # identical bytes, not runnable
+    plain.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")  # identical bytes, not runnable
     plain.chmod(0o644)
 
     bundle = {"allowed": [{"path": "bin"}]}

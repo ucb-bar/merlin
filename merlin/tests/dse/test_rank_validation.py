@@ -6,6 +6,7 @@ cost model at 39.3%, both below chance on within-workload ordering. The second i
 scorer passes, an inverted one fails LOUDLY rather than quietly, and a scorer that decides nothing is
 never credited for its ties.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -36,7 +37,7 @@ def _inverted():
 def test_pairs_are_within_workload_only():
     """Comparing across workloads asks a question the search never asks."""
     pairs = RV.ordered_pairs(_programs())
-    assert len(pairs) == 6                       # C(3,2) per workload, two workloads
+    assert len(pairs) == 6  # C(3,2) per workload, two workloads
     assert all(a.workload == b.workload for a, b in pairs)
 
 
@@ -80,7 +81,7 @@ def test_a_margin_trades_decided_count_for_confidence_and_reports_both():
 def test_slices_expose_a_scorer_that_learned_only_one_workload():
     """Good overall, useless on a held-out slice, is exactly what leave-one-out is for."""
     scores = dict(_perfect())
-    for name in ("b1", "b2", "b3"):              # invert workload B only
+    for name in ("b1", "b2", "b3"):  # invert workload B only
         scores[name] = -scores[name]
     per = RV.held_out(_programs(), scores, by="workload")
     assert per["A"].rate == 1.0
@@ -99,6 +100,7 @@ def test_an_unknown_slice_key_is_refused():
 
 
 # ------------------------------------------------------------------ the verdict
+
 
 def _verdict(scores, **over):
     kwargs = {"minimum_rate": 0.70, "minimum_decided": 4, "minimum_slice_decided": 2}
@@ -142,31 +144,31 @@ def test_the_verdict_always_carries_the_counts_it_was_based_on():
 
 # ------------------------------------------------------------------ one slice is not evidence
 
+
 def test_a_scorer_evidenced_by_only_one_slice_is_refused():
     """Measured case: a heuristic scored 0.804 overall on 158 decided pairs, ALL from one family,
     while a workload inside that same family scored 0.486 -- below chance. Every other slice decided
     nothing, so a check that only fails slices with evidence would have called it exposable. Silence
     from the other slices is missing evidence, not a pass."""
-    lone = RV.Agreement(pairs=200, decided=158, agreed=127, undecided=42)   # 0.804
+    lone = RV.Agreement(pairs=200, decided=158, agreed=127, undecided=42)  # 0.804
     silent = RV.Agreement(pairs=40, decided=0, agreed=0, undecided=40)
-    out = RV.verdict(lone, {"PK": lone, "PM": silent, "PR": silent},
-                     minimum_rate=0.70, minimum_decided=100, minimum_slice_decided=20)
+    out = RV.verdict(
+        lone, {"PK": lone, "PM": silent, "PR": silent}, minimum_rate=0.70, minimum_decided=100, minimum_slice_decided=20
+    )
     assert out["exposable"] is False
     assert any("below the required 2" in r for r in out["reasons"])
     assert out["qualifying_slices"] == ["PK"]
 
 
 def test_two_qualifying_slices_that_both_pass_are_exposable():
-    good = RV.Agreement(pairs=200, decided=150, agreed=120, undecided=50)   # 0.80
-    out = RV.verdict(good, {"A": good, "B": good},
-                     minimum_rate=0.70, minimum_decided=100, minimum_slice_decided=20)
+    good = RV.Agreement(pairs=200, decided=150, agreed=120, undecided=50)  # 0.80
+    out = RV.verdict(good, {"A": good, "B": good}, minimum_rate=0.70, minimum_decided=100, minimum_slice_decided=20)
     assert out["exposable"] is True
 
 
 def test_a_qualifying_slice_below_the_bar_still_refuses():
     good = RV.Agreement(pairs=200, decided=150, agreed=120, undecided=50)
-    poor = RV.Agreement(pairs=200, decided=100, agreed=48, undecided=100)   # 0.48
-    out = RV.verdict(good, {"A": good, "B": poor},
-                     minimum_rate=0.70, minimum_decided=100, minimum_slice_decided=20)
+    poor = RV.Agreement(pairs=200, decided=100, agreed=48, undecided=100)  # 0.48
+    out = RV.verdict(good, {"A": good, "B": poor}, minimum_rate=0.70, minimum_decided=100, minimum_slice_decided=20)
     assert out["exposable"] is False
     assert any("fall below the bar" in r for r in out["reasons"])

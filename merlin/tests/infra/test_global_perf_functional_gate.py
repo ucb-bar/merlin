@@ -6,6 +6,7 @@ must exclude that revision from ``best_authored_candidate`` (and so from sealing
 recorded, while ``not_run`` stays visible and never excludes. These tests inject a stub gate runner
 so no toolchain is needed.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -31,6 +32,7 @@ COSTS = {"candidate": 1000, "candidate-v2": 500, "candidate-v3": 900}
 
 def _analyzer(calls):
     """Publishes retained artifacts (lowered_text + command_buffer) like the production analyzer."""
+
     def analyzer(base, current, objective, **kwargs):
         candidate_sha = hash_tree(current)["sha256"]
         revision = Path(current, "source.txt").read_text()
@@ -41,37 +43,56 @@ def _analyzer(calls):
         lowered_sha = PAS._sha256(lowered.encode())
         command_sha = PAS._sha256(command_text.encode())
         source = Path(objective.frozen_source_path) / "capsule.interface.mlir"
-        plan = {"status": "verified", "plan_digest": PAS._document_sha256({"r": revision}),
-                "candidate_sha256": candidate_sha, "logical_dispatch_digest": SHA["graph"],
-                "source_sha256": PAS._sha256_file(source),
-                "candidate_lowered_sha256": lowered_sha,
-                "candidate_command_buffer_sha256": command_sha, "emitted_dispatches": 2,
-                "host_activity": {"status": "derived", "load_payload_bytes": COSTS[revision],
-                                  "store_payload_bytes": 0, "static_allocation_payload_bytes": 0,
-                                  "static_operations": {"allocation": 1},
-                                  "dynamic_operations": {"llvm.load": COSTS[revision]}}}
+        plan = {
+            "status": "verified",
+            "plan_digest": PAS._document_sha256({"r": revision}),
+            "candidate_sha256": candidate_sha,
+            "logical_dispatch_digest": SHA["graph"],
+            "source_sha256": PAS._sha256_file(source),
+            "candidate_lowered_sha256": lowered_sha,
+            "candidate_command_buffer_sha256": command_sha,
+            "emitted_dispatches": 2,
+            "host_activity": {
+                "status": "derived",
+                "load_payload_bytes": COSTS[revision],
+                "store_payload_bytes": 0,
+                "static_allocation_payload_bytes": 0,
+                "static_operations": {"allocation": 1},
+                "dynamic_operations": {"llvm.load": COSTS[revision]},
+            },
+        }
         analysis = {
             "candidate_sha256": candidate_sha,
             "workload": {"capsule_sha256": objective.capsule_sha256},
-            "emission": {"candidate_lowered_sha256": lowered_sha,
-                         "candidate_command_buffer_sha256": command_sha},
+            "emission": {"candidate_lowered_sha256": lowered_sha, "candidate_command_buffer_sha256": command_sha},
             "diagnostics": {
-                "captured_logical_graph": {"status": "verified",
-                                           "logical_dispatch_digest": SHA["graph"]},
+                "captured_logical_graph": {"status": "verified", "logical_dispatch_digest": SHA["graph"]},
                 "verified_global_plan_emission": plan,
-                "arms": {"candidate": {"status": "emitted", "macs": 8192, "exact": True,
-                                       "movement": {"known_bytes": 128, "exact_bytes": True}}},
+                "arms": {
+                    "candidate": {
+                        "status": "emitted",
+                        "macs": 8192,
+                        "exact": True,
+                        "movement": {"known_bytes": 128, "exact_bytes": True},
+                    }
+                },
             },
         }
-        kwargs["artifact_sink"]({
-            "lowered_text": lowered, "decoded_trace": {"instructions": []},
-            "command_buffer": command_buffer, "command_buffer_text": command_text,
-            "interface": str(source), "candidate_sha256": candidate_sha,
-            "candidate_lowered_sha256": lowered_sha,
-            "candidate_command_buffer_sha256": command_sha,
-            "task_instruction_evidence": {"status": "verified", "tasks": []},
-        })
+        kwargs["artifact_sink"](
+            {
+                "lowered_text": lowered,
+                "decoded_trace": {"instructions": []},
+                "command_buffer": command_buffer,
+                "command_buffer_text": command_text,
+                "interface": str(source),
+                "candidate_sha256": candidate_sha,
+                "candidate_lowered_sha256": lowered_sha,
+                "candidate_command_buffer_sha256": command_sha,
+                "task_instruction_evidence": {"status": "verified", "tasks": []},
+            }
+        )
         return analysis
+
     return analyzer
 
 
@@ -82,31 +103,60 @@ class _StubRunner:
         self.verdicts = list(verdicts)
         self.invocations = []
 
-    def __call__(self, artifact_text, command_buffer, *, model_payload_dir, toolchain, gate_spec,
-                 workdir, timeout, keep_elf=False):
-        self.invocations.append({"artifact_text": artifact_text, "command_buffer": command_buffer,
-                                 "workdir": Path(workdir), "timeout": timeout,
-                                 "payload": Path(model_payload_dir)})
+    def __call__(
+        self,
+        artifact_text,
+        command_buffer,
+        *,
+        model_payload_dir,
+        toolchain,
+        gate_spec,
+        workdir,
+        timeout,
+        keep_elf=False,
+    ):
+        self.invocations.append(
+            {
+                "artifact_text": artifact_text,
+                "command_buffer": command_buffer,
+                "workdir": Path(workdir),
+                "timeout": timeout,
+                "payload": Path(model_payload_dir),
+            }
+        )
         verdict = self.verdicts.pop(0)
         if isinstance(verdict, Exception):
             raise verdict
         status, reason = verdict
         return FG.FunctionalGateResult(
-            status=status, reason=reason, stage="evaluate" if status != "not_run" else "simulate",
+            status=status,
+            reason=reason,
+            stage="evaluate" if status != "not_run" else "simulate",
             fields={"bad": "1000", "top1": "556"} if status == "failed" else {"bad": "0", "top1": "258"},
-            expected=gate_spec.to_dict(), simulation_executed=status != "not_run",
-            artifact_sha256=PAS._sha256(artifact_text.encode()), workdir=str(workdir))
+            expected=gate_spec.to_dict(),
+            simulation_executed=status != "not_run",
+            artifact_sha256=PAS._sha256(artifact_text.encode()),
+            workdir=str(workdir),
+        )
 
 
 def _config(tmp_path):
     return FG.FunctionalGateConfig(
         model_payload_dir=tmp_path / "payload_bundle",
         toolchain=FG.FunctionalGateToolchain(
-            mlir_translate=tmp_path / "mlir-translate", clang=tmp_path / "clang",
-            simulator=tmp_path / "sim", clang_target="riscv64-unknown-elf", march="rv64gc",
-            mabi="lp64d", simulator_isa="rv64gc_zicntr"),
-        gate_spec=FG.FunctionalGateSpec({"bad": 0, "top1": 258}), timeout_seconds=90,
-        source_path=tmp_path / "gate.json", source_sha256="a" * 64)
+            mlir_translate=tmp_path / "mlir-translate",
+            clang=tmp_path / "clang",
+            simulator=tmp_path / "sim",
+            clang_target="riscv64-unknown-elf",
+            march="rv64gc",
+            mabi="lp64d",
+            simulator_isa="rv64gc_zicntr",
+        ),
+        gate_spec=FG.FunctionalGateSpec({"bad": 0, "top1": 258}),
+        timeout_seconds=90,
+        source_path=tmp_path / "gate.json",
+        source_sha256="a" * 64,
+    )
 
 
 def _experiment(tmp_path, monkeypatch, **options):
@@ -118,14 +168,21 @@ def _experiment(tmp_path, monkeypatch, **options):
     source.mkdir()
     (source / "capsule.yaml").write_text("interface_mlir: capsule.interface.mlir\n")
     (source / "capsule.interface.mlir").write_text("module {}\n")
-    sentinel = PAS.StageE2ESentinel("real-model", str(source), str(source),
-                                   PAS._exact_tree_record(source)["sha256"], ("lane",), ("L2",))
+    sentinel = PAS.StageE2ESentinel(
+        "real-model", str(source), str(source), PAS._exact_tree_record(source)["sha256"], ("lane",), ("L2",)
+    )
     calls = []
     monkeypatch.setattr(PAS, "analyze_whole_model_emission", _analyzer(calls))
     experiment = G.GlobalPerfExperiment(
-        baseline=baseline, baseline_sha256=hash_tree(baseline)["sha256"], sentinel=sentinel,
-        target="test-target", target_sha256=SHA["target"], output=tmp_path / "run",
-        analyzer=PAS.analyze_whole_model_emission, **options)
+        baseline=baseline,
+        baseline_sha256=hash_tree(baseline)["sha256"],
+        sentinel=sentinel,
+        target="test-target",
+        target_sha256=SHA["target"],
+        output=tmp_path / "run",
+        analyzer=PAS.analyze_whole_model_emission,
+        **options,
+    )
     return experiment, candidate, calls
 
 
@@ -150,18 +207,20 @@ def test_without_a_gate_every_iteration_says_so_and_nothing_is_excluded(tmp_path
 
 
 def test_failed_gate_excludes_the_cheapest_revision_and_records_why(tmp_path, monkeypatch):
-    runner = _StubRunner([("passed", "ok"), ("failed", "gated field mismatch: bad=1000 (1000 != 0)"),
-                          ("passed", "ok")])
+    runner = _StubRunner([("passed", "ok"), ("failed", "gated field mismatch: bad=1000 (1000 != 0)"), ("passed", "ok")])
     experiment, candidate, _ = _experiment(
-        tmp_path, monkeypatch, functional_gate=_config(tmp_path), functional_gate_runner=runner)
-    seed = experiment.analyze(candidate, hypothesis="seed")                      # cost 1000, passed
+        tmp_path, monkeypatch, functional_gate=_config(tmp_path), functional_gate_runner=runner
+    )
+    seed = experiment.analyze(candidate, hypothesis="seed")  # cost 1000, passed
     win = _revise(experiment, candidate, "candidate-v2", "cheapest -- but it miscompiles")  # 500, FAILED
-    okay = _revise(experiment, candidate, "candidate-v3", "a smaller, valid win")   # 900, passed
+    okay = _revise(experiment, candidate, "candidate-v3", "a smaller, valid win")  # 900, passed
 
     # the runner was handed the objective's retained emission, per iteration, under the run dir
     assert [row["artifact_text"] for row in runner.invocations] == [
-        "llvm.func @main() {} // candidate\n", "llvm.func @main() {} // candidate-v2\n",
-        "llvm.func @main() {} // candidate-v3\n"]
+        "llvm.func @main() {} // candidate\n",
+        "llvm.func @main() {} // candidate-v2\n",
+        "llvm.func @main() {} // candidate-v3\n",
+    ]
     assert runner.invocations[1]["command_buffer"]["params"] == {"revision": "candidate-v2"}
     assert runner.invocations[1]["workdir"] == tmp_path / "run" / "functional_gate_0001"
     assert runner.invocations[1]["timeout"] == 90
@@ -191,9 +250,13 @@ def test_failed_gate_excludes_the_cheapest_revision_and_records_why(tmp_path, mo
     best = experiment.best_authored_candidate()
     assert best["iteration"] == 2 and best["host_payload_bytes"] == 900
     assert best["functional_gate"] == "passed"
-    assert best["excluded_functional_gate_failures"] == [{
-        "iteration": 1, "candidate_sha256": win["candidate_sha256"],
-        "reason": "gated field mismatch: bad=1000 (1000 != 0)"}]
+    assert best["excluded_functional_gate_failures"] == [
+        {
+            "iteration": 1,
+            "candidate_sha256": win["candidate_sha256"],
+            "reason": "gated field mismatch: bad=1000 (1000 != 0)",
+        }
+    ]
     # ... and the failed revision cannot be sealed even when asked for by content
     (candidate / "source.txt").write_text("candidate-v2")
     with pytest.raises(ValueError):
@@ -220,10 +283,10 @@ def test_exclusion_holds_even_if_readiness_were_left_ready(tmp_path, monkeypatch
 
 
 def test_not_run_and_a_broken_runner_stay_visible_but_never_exclude(tmp_path, monkeypatch):
-    runner = _StubRunner([("not_run", "simulator exceeded the 90s budget"),
-                          RuntimeError("toolchain exploded")])
+    runner = _StubRunner([("not_run", "simulator exceeded the 90s budget"), RuntimeError("toolchain exploded")])
     experiment, candidate, _ = _experiment(
-        tmp_path, monkeypatch, functional_gate=_config(tmp_path), functional_gate_runner=runner)
+        tmp_path, monkeypatch, functional_gate=_config(tmp_path), functional_gate_runner=runner
+    )
     timed_out = experiment.analyze(candidate, hypothesis="seed")
     broken = _revise(experiment, candidate, "candidate-v2", "cheapest")
     assert timed_out["functional_gate"]["status"] == "not_run"
@@ -236,26 +299,26 @@ def test_not_run_and_a_broken_runner_stay_visible_but_never_exclude(tmp_path, mo
         assert record["static_comparison"]["functional_gate"]["simulation_executed"] is False
         assert "NOT executed" in record["static_comparison"]["functional_gate"]["reading"]
     best = experiment.best_authored_candidate()
-    assert best["iteration"] == 1 and best["host_payload_bytes"] == 500   # eligible, and visible
+    assert best["iteration"] == 1 and best["host_payload_bytes"] == 500  # eligible, and visible
     assert best["functional_gate"] == "not_run"
 
 
 def test_exact_reuse_inherits_the_source_verdict_without_re_running(tmp_path, monkeypatch):
-    runner = _StubRunner([("passed", "ok"), ("failed", "bad=1000"), ("passed", "ok"),
-                          ("failed", "bad=1000 again")])
+    runner = _StubRunner([("passed", "ok"), ("failed", "bad=1000"), ("passed", "ok"), ("failed", "bad=1000 again")])
     experiment, candidate, _ = _experiment(
-        tmp_path, monkeypatch, functional_gate=_config(tmp_path), functional_gate_runner=runner)
+        tmp_path, monkeypatch, functional_gate=_config(tmp_path), functional_gate_runner=runner
+    )
     experiment.analyze(candidate, hypothesis="seed")
     _revise(experiment, candidate, "candidate-v2", "fails")
     _revise(experiment, candidate, "candidate-v3", "passes")
-    experiment.analyze(candidate, hypothesis="v3 again")   # same bytes: in-place duplicate
+    experiment.analyze(candidate, hypothesis="v3 again")  # same bytes: in-place duplicate
     # Revisiting the PASSING bytes after another revision is an exact reuse: the same emission was
     # already executed, so the verdict is inherited rather than re-measured.
     _revise(experiment, candidate, "candidate", "back to the seed bytes")
     revisit = _revise(experiment, candidate, "candidate-v3", "revisit the passing bytes")
     assert revisit["exact_analysis_reused"] is True
     passing_runs = [row for row in runner.invocations if "candidate-v3" in row["artifact_text"]]
-    assert len(passing_runs) == 1                          # v3 was executed exactly once
+    assert len(passing_runs) == 1  # v3 was executed exactly once
     assert revisit["functional_gate"]["status"] == "passed"
     assert revisit["functional_gate"]["reused_from_iteration"] == 2
     assert revisit["functional_gate"]["iteration"] == revisit["iteration"]

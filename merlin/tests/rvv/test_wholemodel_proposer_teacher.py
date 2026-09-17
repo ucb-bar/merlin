@@ -12,6 +12,7 @@ divergences and emitting a fixed lever list:
 
 All CCAs here are lifted from the committed asm fixtures (no toolchain) or crafted mocks — board-free.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -31,6 +32,7 @@ def _feature_sets(forks):
 
 # --- expert-fixture lifts (the harvested teachers) ------------------------------------------------
 
+
 def test_expert_fixtures_lift_the_teachable_property():
     """gelu -> vectorized_polynomial; reduce -> vredsum_tree; matmul -> fused_fma. No-teacher -> None."""
     assert W.expert_family_cca("gelu").compute.activation_vectorization == "vectorized_polynomial"
@@ -45,14 +47,18 @@ def test_expert_fixtures_lift_the_teachable_property():
 
 # --- engine 1: routing a real teacher divergence into a fork --------------------------------------
 
+
 def test_gelu_teacher_routes_activation_fork():
     expert = W.expert_family_cca("gelu")
     ours = _ours("gelu", activation_vectorization="scalar_libm_call")
     divs = cca_compare.compare(expert, ours, evidence=["xnnpack:gelu"])
     assert any(d.axis == "compute.activation_vectorization" for d in divs)
     forks = W.route_divergence_forks(divs, {"compiler_features": []})
-    feats = [f for f in forks if f.forkable and
-             "vectorized_transcendental_activation" in f.overrides.get("compiler_features", [])]
+    feats = [
+        f
+        for f in forks
+        if f.forkable and "vectorized_transcendental_activation" in f.overrides.get("compiler_features", [])
+    ]
     assert feats, "gelu teacher divergence did not route to the activation-vectorization feature"
     assert "teacher:xnnpack-cca" in feats[0].evidence
 
@@ -62,11 +68,11 @@ def test_reduce_teacher_routes_vectorize_reduction():
     ours = _ours("reduce", reduction_form="none")
     divs = cca_compare.compare(expert, ours, evidence=["xnnpack:reduce"])
     forks = W.route_divergence_forks(divs, {"compiler_features": []})
-    assert any("vectorize_reduction" in f.overrides.get("compiler_features", [])
-               for f in forks if f.forkable)
+    assert any("vectorize_reduction" in f.overrides.get("compiler_features", []) for f in forks if f.forkable)
 
 
 # --- the hybrid: teacher UNION census hardcodes ---------------------------------------------------
+
 
 def test_hybrid_unions_teacher_and_census_hardcodes():
     """propose_wholemodel_levers consumes the beam's divergences AND emits the census hardcodes."""
@@ -91,7 +97,7 @@ def test_empty_divergences_degrades_to_census_hardcodes():
 
 def test_no_duplicate_feature_forks():
     """A teacher fork and a census hardcode for the SAME feature collapse to one fork."""
-    expert = W.expert_family_cca("reduce")   # routes to vectorize_reduction, also a hardcode lever
+    expert = W.expert_family_cca("reduce")  # routes to vectorize_reduction, also a hardcode lever
     ours = _ours("reduce", reduction_form="none")
     divs = cca_compare.compare(expert, ours)
     forks = W.propose_wholemodel_levers(divs, {"compiler_features": []})
@@ -101,11 +107,13 @@ def test_no_duplicate_feature_forks():
 
 # --- composition: never two full-schedule-replacement features ------------------------------------
 
+
 def test_composition_never_stacks_two_schedule_replace():
     from merlin.llvmlower import impr_features as I
+
     # parent already carries a schedule-replacement feature.
     parent = {"compiler_features": ["accumulator_resident_wholemodel_vf_mrpad"]}
-    expert = W.expert_family_cca("reduce")   # vectorize_reduction is also schedule_replace
+    expert = W.expert_family_cca("reduce")  # vectorize_reduction is also schedule_replace
     ours = _ours("reduce", reduction_form="none")
     divs = cca_compare.compare(expert, ours)
     forks = W.propose_wholemodel_levers(divs, parent)
@@ -116,14 +124,19 @@ def test_composition_never_stacks_two_schedule_replace():
 
 # --- honest no-teacher path -----------------------------------------------------------------------
 
+
 def test_no_teacher_families_recorded_not_faked():
     """A family with no XNNPACK primitive yields a no-teacher NOTE, no divergence."""
+
     def expert_fn(fam):
-        return None                      # simulate: no teacher for any family
+        return None  # simulate: no teacher for any family
+
     def ours_fn(fam):
         return _ours(fam)
+
     divs, notes = W.per_family_teacher_divergences(
-        "unused", families=["sdpa", "layer_norm"], expert_fn=expert_fn, ours_fn=ours_fn)
+        "unused", families=["sdpa", "layer_norm"], expert_fn=expert_fn, ours_fn=ours_fn
+    )
     assert divs == []
     fams = {n[0] for n in notes}
     assert {"sdpa", "layer_norm"} <= fams
@@ -135,14 +148,13 @@ def test_make_per_op_teacher_proposer_precomputed():
     ours = _ours("gelu", activation_vectorization="scalar_libm_call")
     teacher_divs = cca_compare.compare(expert, ours)
     notes = [("sdpa", "no XNNPACK attention primitive")]
-    proposer = W.make_per_op_teacher_proposer(
-        precomputed_divergences=teacher_divs, no_teacher_notes=notes)
+    proposer = W.make_per_op_teacher_proposer(precomputed_divergences=teacher_divs, no_teacher_notes=notes)
     forks = proposer([], {"compiler_features": []})
     flat = {f for s in _feature_sets(forks) for f in s}
-    assert "vectorized_transcendental_activation" in flat        # teacher
-    assert "fuse_transpose_b" in flat                            # hardcode
+    assert "vectorized_transcendental_activation" in flat  # teacher
+    assert "fuse_transpose_b" in flat  # hardcode
     noteacher = [f for f in forks if not f.forkable and f.targets == "noteacher:sdpa"]
-    assert noteacher and "attention" in noteacher[0].note        # honest record, not a fork
+    assert noteacher and "attention" in noteacher[0].note  # honest record, not a fork
 
 
 # --- the section-lift path wiring (board-free via a mock build_fn) --------------------------------
@@ -179,6 +191,7 @@ def test_ours_section_cca_wiring(tmp_path, monkeypatch):
         seen["region_ids"] = list(region_ids)
         seen["out_dir"] = str(out_dir)
         return {"region_ids": list(region_ids)}
+
     monkeypatch.setattr(SB, "build_section_bundle", fake_build_section_bundle)
 
     # the "emitted" section asm: reuse the committed gelu fixture text as a stand-in for our object.
@@ -189,9 +202,9 @@ def test_ours_section_cca_wiring(tmp_path, monkeypatch):
         return fixture_text, ("some_undef_sym",)
 
     result = W.ours_section_cca(tmp_path, "gelu", build_fn=fake_build_fn, work_root=tmp_path / "work")
-    assert seen["region_ids"] == ["r_gelu"]                 # scoped to the gelu region only
-    assert seen["build_fn_dir"].endswith("section_gelu")    # section bundle dir passed to build_fn
-    assert result is not None and result.op == "gelu"       # CCA lifted from the emitted asm
+    assert seen["region_ids"] == ["r_gelu"]  # scoped to the gelu region only
+    assert seen["build_fn_dir"].endswith("section_gelu")  # section bundle dir passed to build_fn
+    assert result is not None and result.op == "gelu"  # CCA lifted from the emitted asm
 
 
 def test_ours_section_cca_none_when_family_absent(tmp_path):
@@ -209,7 +222,7 @@ def test_ours_section_cca_none_when_family_absent(tmp_path):
 
 def test_make_per_op_teacher_proposer_requires_inputs():
     with pytest.raises(ValueError):
-        W.make_per_op_teacher_proposer()   # no precomputed divergences and no model_dir+build_fn
+        W.make_per_op_teacher_proposer()  # no precomputed divergences and no model_dir+build_fn
 
 
 # ---------------------------------------------------------------------------------------
@@ -219,6 +232,7 @@ def test_make_per_op_teacher_proposer_requires_inputs():
 # So "is every ranked lever registered" is not a tidiness check -- it is the difference
 # between a searchable lever and an inert one.
 # ---------------------------------------------------------------------------------------
+
 
 def test_every_ranked_lever_is_registered_so_the_beam_can_actually_propose_it():
     from merlin.llvmlower import impr_features as I
@@ -234,8 +248,7 @@ def test_every_ranked_lever_actually_yields_a_forkable_proposal():
     forkable, with the lever in its feature set."""
     from merlin.mining.wholemodel_proposer import RANKED_LEVERS, census_hardcode_forks
 
-    proposed = {tuple(sorted(fp.overrides.get("compiler_features") or ())): fp
-                for fp in census_hardcode_forks([])}
+    proposed = {tuple(sorted(fp.overrides.get("compiler_features") or ())): fp for fp in census_hardcode_forks([])}
     for feat, _ in RANKED_LEVERS:
         fp = proposed.get((feat,))
         assert fp is not None, f"{feat} produced no fork"
@@ -281,11 +294,12 @@ def test_the_sentinel_fails_loud_if_it_ever_reaches_lowering_unresolved():
 # and __ieee754_sqrt per element.
 # ---------------------------------------------------------------------------------------
 
+
 def test_the_transformer_tail_families_are_registered_one_way_or_the_other():
     """A census family that is in neither registry is INVISIBLE, which is the failure this closes.
     Being registered with fixture=None is fine -- that is an honest no-teacher record."""
-    from merlin.mining.wholemodel_proposer import (FAMILY_TEACHERS, NO_TEACHER_FAMILIES,
-                                                   _coverage_maps)
+    from merlin.mining.wholemodel_proposer import FAMILY_TEACHERS, NO_TEACHER_FAMILIES, _coverage_maps
+
     fam_map, _ = _coverage_maps()
     known = set(FAMILY_TEACHERS) | set(NO_TEACHER_FAMILIES)
     for f in ("sin", "cos", "rsqrt"):
@@ -353,12 +367,13 @@ def test_the_loop_closes_from_harvested_expert_to_the_agent_leaf():
         pytest.skip("rsqrt fixture not harvested in this checkout")
     expert = cca.lift_asm(rvv.decode_text(fx.read_text()), op="rsqrt", source="expert")
     ours = cca.lift_asm(
-        rvv.decode_text("0000000000000000 <rmsnorm>:\n   0:\t000000ef     \tjal\tra, 0x100 "
-                        "<__ieee754_sqrtf>\n"), op="rsqrt", source="ours")
+        rvv.decode_text("0000000000000000 <rmsnorm>:\n   0:\t000000ef     \tjal\tra, 0x100 <__ieee754_sqrtf>\n"),
+        op="rsqrt",
+        source="ours",
+    )
 
     axis = "compute.activation_vectorization"
-    d = Divergence(axis=axis, backend="rvv",
-                   ours=ac._facet_value(ours, axis), expert=ac._facet_value(expert, axis))
+    d = Divergence(axis=axis, backend="rvv", ours=ac._facet_value(ours, axis), expert=ac._facet_value(expert, axis))
     assert (d.ours, d.expert) == ("scalar_libm_call", "vectorized_polynomial")
 
     a = ac.route(d)
@@ -379,6 +394,7 @@ def test_the_loop_closes_from_harvested_expert_to_the_agent_leaf():
 # ours='requant_narrow' expert='none'`, both of which only restate that one side is int8.
 # Same comparand-integrity failure the bundle_id guard catches on the wall axis.
 # ---------------------------------------------------------------------------------------
+
 
 def test_the_expert_fixture_is_selected_by_dtype():
     from merlin.mining.wholemodel_proposer import expert_fixture_for
@@ -423,8 +439,10 @@ def test_the_matched_expert_removes_the_spurious_widening_divergence():
 # of the same model -- and the matmul-only run reported that axis as uncomparable.
 # ---------------------------------------------------------------------------------------
 
+
 def _ours_with(**compute):
     from merlin.kernels.cca import CCA, ComputeFacet
+
     return CCA(op="matmul", backend=["rvv"], compute=ComputeFacet(op="matmul", **compute))
 
 
@@ -432,16 +450,16 @@ def test_consulting_every_teacher_finds_what_one_teacher_cannot():
     """The activation axis is answerable by the gelu/sigmoid teachers and not by matmul, so it must be
     found when all are consulted and missed when only matmul is."""
     from merlin.kernels import cca_compare
-    from merlin.mining.wholemodel_proposer import (divergences_across_teachers, expert_family_cca)
+    from merlin.mining.wholemodel_proposer import divergences_across_teachers, expert_family_cca
 
     ours = _ours_with(activation_vectorization="scalar_libm_call")
     if expert_family_cca("gelu") is None or expert_family_cca("matmul", dtype="fp32") is None:
         pytest.skip("fixtures not harvested in this checkout")
 
-    matmul_only = [d.axis for d in cca_compare.compare(
-        expert_family_cca("matmul", dtype="fp32"), ours)]
+    matmul_only = [d.axis for d in cca_compare.compare(expert_family_cca("matmul", dtype="fp32"), ours)]
     assert "compute.activation_vectorization" not in matmul_only, (
-        "a GEMM expert cannot answer the activation axis — that is the premise")
+        "a GEMM expert cannot answer the activation axis — that is the premise"
+    )
 
     divs, taught, unanswered = divergences_across_teachers(ours, dtype="fp32")
     axes = {d.axis for d in divs}
@@ -487,7 +505,8 @@ def test_an_axis_no_teacher_can_answer_is_still_reported():
     _divs, _taught, unanswered = divergences_across_teachers(ours, dtype="fp32")
     assert "compute.mr_adapts_to_m" in unanswered, (
         "an axis ours populates that no teacher can answer must be REPORTED, or the loop silently "
-        "treats a teacher-coverage gap as 'no gap found'")
+        "treats a teacher-coverage gap as 'no gap found'"
+    )
 
 
 def test_every_ranked_lever_names_a_registered_feature():
@@ -496,6 +515,7 @@ def test_every_ranked_lever_names_a_registered_feature():
     rather than failing loudly. Exactly one seam was dead that way before a test caught it."""
     from merlin.llvmlower import impr_features as F
     from merlin.mining.wholemodel_proposer import RANKED_LEVERS
+
     missing = [n for n, _sr in RANKED_LEVERS if n not in F._REGISTRY]
     assert not missing, f"RANKED_LEVERS names unregistered feature(s): {missing}"
 
@@ -503,6 +523,7 @@ def test_every_ranked_lever_names_a_registered_feature():
 def test_ranked_levers_have_no_duplicates():
     """A duplicate would spend a generation's width twice on the same idea."""
     from merlin.mining.wholemodel_proposer import RANKED_LEVERS
+
     names = [n for n, _ in RANKED_LEVERS]
     assert len(names) == len(set(names)), f"duplicate levers: {sorted(set(n for n in names if names.count(n) > 1))}"
 
@@ -513,6 +534,7 @@ def test_the_locality_lever_is_searched_not_defaulted():
     to the search, which measures per model."""
     from merlin.llvmlower import impr_features as F
     from merlin.mining.wholemodel_proposer import RANKED_LEVERS
+
     assert "promote_buffers_to_stack" in [n for n, _ in RANKED_LEVERS]
     assert F._REGISTRY["promote_buffers_to_stack"].edit_pipeline is not None
 
@@ -552,7 +574,7 @@ def test_a_refinement_replaces_the_magnitude_it_retunes_rather_than_stacking_it(
 
     for fp in refinement_forks(["perop_register_block", "erase_self_copy"]):
         if not fp.targets.endswith(":mr_cap"):
-            continue            # the named-op tile axis replaces the block; it is not an MR cap
+            continue  # the named-op tile axis replaces the block; it is not an MR cap
         feats = fp.overrides["compiler_features"]
         assert I.PEROP_BLOCK_NAME not in feats, "the unpinned sentinel must be replaced, not kept"
         assert sum(I.parse_perop_mr_sentinel(f) is not None for f in feats) == 1
@@ -574,13 +596,12 @@ def test_a_refinement_replaces_the_magnitude_it_retunes_rather_than_stacking_it(
 def test_openmp_coarsening_is_only_proposed_after_full_residual_parallelism():
     from merlin.mining.wholemodel_proposer import refinement_forks
 
-    assert not any(fp.targets == "wholemodel:coarsen_openmp_regions"
-                   for fp in refinement_forks([]))
+    assert not any(fp.targets == "wholemodel:coarsen_openmp_regions" for fp in refinement_forks([]))
     proposals = refinement_forks(["parallelize_residual_loops_0"])
-    coarsen = next(fp for fp in proposals
-                   if fp.targets == "wholemodel:coarsen_openmp_regions")
+    coarsen = next(fp for fp in proposals if fp.targets == "wholemodel:coarsen_openmp_regions")
     assert set(coarsen.overrides["compiler_features"]) == {
-        "parallelize_residual_loops_0", "coarsen_openmp_regions",
+        "parallelize_residual_loops_0",
+        "coarsen_openmp_regions",
     }
 
 
@@ -613,8 +634,7 @@ def test_a_tile_replaces_the_register_block_it_conflicts_with():
     from merlin.llvmlower.impr_features import MRPAD_INT8_TILES, PEROP_BLOCK_NAME
     from merlin.mining.wholemodel_proposer import refinement_forks
 
-    forks = [f for f in refinement_forks(["perop_register_block", "promote_buffers_to_stack"])
-             if "tile" in f.targets]
+    forks = [f for f in refinement_forks(["perop_register_block", "promote_buffers_to_stack"]) if "tile" in f.targets]
     assert forks
     for f in forks:
         feats = set(f.overrides["compiler_features"])
@@ -627,6 +647,7 @@ def test_a_tile_replaces_the_register_block_it_conflicts_with():
 def test_the_experts_own_tile_is_among_the_proposals():
     """XNNPACK's int8 ukernel is 1x4v. A ladder that cannot express MR=1 cannot converge on it."""
     from merlin.mining.wholemodel_proposer import refinement_forks
+
     forks = [f for f in refinement_forks(["perop_register_block"]) if "tile" in f.targets]
     tiles = {t for f in forks for t in f.overrides["compiler_features"] if "mrpad_i8" in t}
     assert any("_mr1_" in t for t in tiles), "the expert's MR=1 is not proposed"

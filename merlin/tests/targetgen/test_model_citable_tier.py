@@ -13,6 +13,7 @@ FLAWLESS model run, admission failed, and the campaign raised before measuring a
 ``model_citable_rtl_tier`` is the supported way to ask which tier that is, and these tests pin that it
 cannot drift away from what the emitter actually produces.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -50,8 +51,9 @@ def test_the_citable_tier_is_exactly_the_tier_the_emitter_produces(target: str) 
     perfect = {"matmul_layers_on_mesh": 3, "matmul_layers_host_fallback": 0}
     for declared in (["L0", "L1", "L2", "L3"], ["L2", "L3"], ["L0", "L1", "L2", "L3", "L4"]):
         citable = CR.model_citable_rtl_tier(declared, target)
-        emitted = {name for name, tier in CR._model_tier_map(declared, target, perfect).items()
-                   if not tier.not_applicable}
+        emitted = {
+            name for name, tier in CR._model_tier_map(declared, target, perfect).items() if not tier.not_applicable
+        }
         if citable is None:
             # No declared tier is RTL here: the emitter still names a tier so a refusal stays
             # attributable, but that label is not a citable hardware verdict.
@@ -78,6 +80,5 @@ def test_l0_and_l1_are_never_citable_because_a_model_has_no_command_buffer() -> 
     assert resolved, "vacuous without a resolvable target"
     for target in resolved:
         assert CR.model_citable_rtl_tier(["L0", "L1"], target) is None
-        tiers = CR._model_tier_map(["L0", "L1"], target, {"matmul_layers_on_mesh": 2,
-                                                          "matmul_layers_host_fallback": 0})
+        tiers = CR._model_tier_map(["L0", "L1"], target, {"matmul_layers_on_mesh": 2, "matmul_layers_host_fallback": 0})
         assert all(tier.not_applicable for tier in tiers.values())

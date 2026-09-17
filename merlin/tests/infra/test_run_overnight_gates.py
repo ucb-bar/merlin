@@ -1,4 +1,5 @@
 """The unattended chain must propagate a refused/failed stage to its process status."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -44,6 +45,7 @@ def _prepare(monkeypatch, tmp_path: Path, outcomes: dict[str, bool]):
         def run(*_args, **_kwargs):
             calls.append(name)
             return outcomes[name]
+
         return run
 
     monkeypatch.setattr(RO, "stage_grade_and_freeze", stage("grade"))
@@ -53,23 +55,20 @@ def _prepare(monkeypatch, tmp_path: Path, outcomes: dict[str, bool]):
 
 
 def test_grade_failure_stops_the_chain(monkeypatch, tmp_path: Path) -> None:
-    journal, calls = _prepare(
-        monkeypatch, tmp_path, {"grade": False, "calibration": True, "performance": True})
+    journal, calls = _prepare(monkeypatch, tmp_path, {"grade": False, "calibration": True, "performance": True})
     assert RO.main(["--tag", "test"]) == 4
     assert calls == ["grade"]
     assert journal.stages[-1] == ("chain", "failed")
 
 
 def test_calibration_failure_stops_the_chain(monkeypatch, tmp_path: Path) -> None:
-    _journal, calls = _prepare(
-        monkeypatch, tmp_path, {"grade": True, "calibration": False, "performance": True})
+    _journal, calls = _prepare(monkeypatch, tmp_path, {"grade": True, "calibration": False, "performance": True})
     assert RO.main(["--tag", "test"]) == 5
     assert calls == ["grade", "calibration"]
 
 
 def test_performance_refusal_is_a_nonzero_chain_result(monkeypatch, tmp_path: Path) -> None:
-    journal, calls = _prepare(
-        monkeypatch, tmp_path, {"grade": True, "calibration": True, "performance": False})
+    journal, calls = _prepare(monkeypatch, tmp_path, {"grade": True, "calibration": True, "performance": False})
     assert RO.main(["--tag", "test"]) == 6
     assert calls == ["grade", "calibration", "performance"]
     assert journal.stages[-1] == ("chain", "failed")

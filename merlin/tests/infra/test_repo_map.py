@@ -5,6 +5,7 @@ describes the intended shape and `module_index.md` lists importable packages, bu
 much is where, so a directory could appear, grow to a thousand files and show up in neither. The map
 reads `git ls-files` and each directory's own AGENT.md, so there is nothing to keep in sync.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -18,8 +19,9 @@ MAP = ROOT / "docs" / "reference" / "repo_map.md"
 
 
 def test_the_committed_map_is_current():
-    r = subprocess.run([sys.executable, str(SCRIPTS / "gen_repo_map.py"), "--check"],
-                       capture_output=True, text=True, cwd=ROOT)
+    r = subprocess.run(
+        [sys.executable, str(SCRIPTS / "gen_repo_map.py"), "--check"], capture_output=True, text=True, cwd=ROOT
+    )
     assert r.returncode == 0, r.stderr + r.stdout
 
 
@@ -33,11 +35,13 @@ def test_it_counts_what_git_actually_tracks():
     staged. The map is read from HEAD, which is the same revision in both places.
     """
     import sys as _sys
+
     _sys.path.insert(0, str(SCRIPTS))
     import gen_repo_map as R
 
-    tracked = subprocess.run(["git", "ls-tree", "-r", "HEAD", "--name-only"], cwd=ROOT,
-                             capture_output=True, text=True, check=True).stdout.splitlines()
+    tracked = subprocess.run(
+        ["git", "ls-tree", "-r", "HEAD", "--name-only"], cwd=ROOT, capture_output=True, text=True, check=True
+    ).stdout.splitlines()
     body = MAP.read_text(encoding="utf-8")
     assert f"**{R._approx(len(tracked))} tracked files**" in body
     assert R._approx(7) == "7" and R._approx(6814) == "~6.8k" and R._approx(293) == "~290"
@@ -69,6 +73,7 @@ def test_a_wrapped_purpose_is_not_cut_mid_sentence():
 
 def test_every_package_agent_md_names_its_own_directory():
     """Four survived a rename pointing at the old path; mining/ still called itself rvvgen."""
-    r = subprocess.run([sys.executable, str(SCRIPTS / "gen_package_docs.py"), "--check"],
-                       capture_output=True, text=True, cwd=ROOT)
+    r = subprocess.run(
+        [sys.executable, str(SCRIPTS / "gen_package_docs.py"), "--check"], capture_output=True, text=True, cwd=ROOT
+    )
     assert r.returncode == 0, r.stderr + r.stdout

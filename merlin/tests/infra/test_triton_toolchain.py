@@ -5,10 +5,12 @@ public API, so the version is exact-pinned and checked before anything touches i
 the pin honest in the two ways it can rot: the declared version drifting from the installed one, and
 the pin drifting from the `triton` extra that installs it.
 """
+
 from __future__ import annotations
 
-import pytest
 import tomllib
+
+import pytest
 
 from merlin.common.paths import repo_root
 from merlin.triton import toolchain
@@ -20,7 +22,8 @@ def test_pin_matches_the_pyproject_extra():
     extra = data["project"]["optional-dependencies"]["triton"]
     assert extra == [f"triton=={toolchain.PINNED_TRITON}"], (
         f"pyproject `triton` extra {extra} disagrees with toolchain.PINNED_TRITON "
-        f"{toolchain.PINNED_TRITON!r}; bump both together")
+        f"{toolchain.PINNED_TRITON!r}; bump both together"
+    )
 
 
 def test_probe_reports_without_raising():
@@ -69,4 +72,4 @@ def test_a_stripped_install_is_reported_separately_from_a_version_mismatch(monke
     p = toolchain.probe()
     assert not p.compatible
     assert any("libtriton" in n for n in p.notes), p.notes
-    assert "mismatch" not in p.reason      # not a version problem, and must not be reported as one
+    assert "mismatch" not in p.reason  # not a version problem, and must not be reported as one

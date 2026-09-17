@@ -11,6 +11,7 @@ gates produced ``{"decision": "block", ...}``.
 The roster is READ FROM THE SETTINGS FILE, never listed here: a gate added to the Stop hook tomorrow is
 covered by these tests without editing them, which is the whole point of catching this class once.
 """
+
 from __future__ import annotations
 
 import json
@@ -42,11 +43,18 @@ def _stop_hook_scripts() -> list[str]:
 
 def _run(script: str, *args: str, env_extra: dict | None = None) -> subprocess.CompletedProcess:
     import os
+
     env = dict(os.environ)
     if env_extra:
         env.update(env_extra)
-    return subprocess.run([str(REPO / ".venv" / "bin" / "python"), str(REPO / script), *args],
-                          capture_output=True, text=True, cwd=str(REPO), env=env, timeout=900)
+    return subprocess.run(
+        [str(REPO / ".venv" / "bin" / "python"), str(REPO / script), *args],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO),
+        env=env,
+        timeout=900,
+    )
 
 
 def test_the_settings_file_actually_wires_stop_hook_gates():
@@ -65,17 +73,19 @@ def test_a_stop_hook_gate_speaks_the_hook_protocol(script):
     r = _run(script, "--stop-hook")
     assert r.returncode == 0, (
         f"{script} --stop-hook exited {r.returncode}; a Stop hook signals through JSON on stdout, and "
-        f"a non-zero exit is a NON-blocking error there.\nstdout: {r.stdout[:400]}")
+        f"a non-zero exit is a NON-blocking error there.\nstdout: {r.stdout[:400]}"
+    )
     try:
         payload = json.loads(r.stdout)
     except json.JSONDecodeError as e:
         raise AssertionError(
-            f"{script} --stop-hook wrote non-JSON to stdout ({e}); it cannot block.\n"
-            f"stdout: {r.stdout[:400]}") from None
+            f"{script} --stop-hook wrote non-JSON to stdout ({e}); it cannot block.\nstdout: {r.stdout[:400]}"
+        ) from None
     assert isinstance(payload, dict), f"{script} --stop-hook must emit a JSON object, got {type(payload)}"
     if payload:
         assert payload.get("decision") == "block", (
-            f"{script} --stop-hook emitted a non-empty payload without decision=block: {payload}")
+            f"{script} --stop-hook emitted a non-empty payload without decision=block: {payload}"
+        )
         assert payload.get("reason"), f"{script} blocks without saying why: {payload}"
 
 
@@ -88,11 +98,21 @@ def _index_with(tmp_path, path_in_repo: str, content: str) -> dict:
     idx = tmp_path / "throwaway.index"
     shutil.copy(REPO / ".git" / "index", idx)
     env = {"GIT_INDEX_FILE": str(idx)}
-    blob = subprocess.run(["git", "hash-object", "-w", "--stdin"], input=content, text=True,
-                          capture_output=True, cwd=str(REPO), check=True).stdout.strip()
-    subprocess.run(["git", "update-index", "--add", "--cacheinfo", f"100644,{blob},{path_in_repo}"],
-                   cwd=str(REPO), env={**__import__("os").environ, **env}, check=True,
-                   capture_output=True)
+    blob = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        input=content,
+        text=True,
+        capture_output=True,
+        cwd=str(REPO),
+        check=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "update-index", "--add", "--cacheinfo", f"100644,{blob},{path_in_repo}"],
+        cwd=str(REPO),
+        env={**__import__("os").environ, **env},
+        check=True,
+        capture_output=True,
+    )
     return env
 
 
@@ -107,7 +127,8 @@ def test_a_tracked_answer_key_blocks_the_stop_hook(tmp_path):
     r = _run("build_tools/scripts/check_no_answer_keys.py", "--stop-hook", env_extra=env)
     payload = json.loads(r.stdout)
     assert payload.get("decision") == "block", (
-        f"a TRACKED answer key did not block the Stop hook; payload={payload!r} rc={r.returncode}")
+        f"a TRACKED answer key did not block the Stop hook; payload={payload!r} rc={r.returncode}"
+    )
     assert leak in payload.get("reason", ""), "the block does not name the leaked path"
 
 
@@ -120,7 +141,7 @@ def test_a_tracked_answer_key_fails_the_plain_gate(tmp_path):
 
 
 def test_an_unreadable_index_is_a_refusal_not_a_pass(tmp_path):
-    """"We could not look" must never read as "there is nothing to find".
+    """ "We could not look" must never read as "there is nothing to find".
 
     The gate used to return 0 when ``git ls-files`` failed, making an unexaminable tree indistinguishable
     from a clean one -- a green that cannot fail, on the repo's highest-severity invariant.
@@ -131,6 +152,7 @@ def test_an_unreadable_index_is_a_refusal_not_a_pass(tmp_path):
     r = _run("build_tools/scripts/check_no_answer_keys.py", env_extra=env)
     assert r.returncode != 0, (
         "the answer-key gate passed while it could not read the index; an unexamined surface is a "
-        f"refusal, not a clean bill of health. stdout={r.stdout!r} stderr={r.stderr[:300]!r}")
+        f"refusal, not a clean bill of health. stdout={r.stdout!r} stderr={r.stderr[:300]!r}"
+    )
     r = _run("build_tools/scripts/check_no_answer_keys.py", "--stop-hook", env_extra=env)
     assert json.loads(r.stdout).get("decision") == "block", "unreadable index did not block the hook"

@@ -2,6 +2,7 @@
 
 Two defects that made the SMT counterexample path dead on arrival, and one that was live and wider.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -48,13 +49,12 @@ def test_the_smt_sidecar_is_in_the_chain_load_profile_reads(tmp_path, monkeypatc
     exactly three filenames and that was not one of them, so every solver-found counterexample went to
     a file nothing opened. The module's own docstring asserted a glob that does not exist."""
     _profiles(tmp_path, monkeypatch)
-    (tmp_path / "t.yaml").write_text(yaml.safe_dump(
-        {"datapath": {}, "capsules": [{"name": "A0_base"}]}))
-    (tmp_path / "t.smt.yaml").write_text(yaml.safe_dump(
-        {"capsules": [{"name": "CX_contraction_i8_16x16x16"}]}))
+    (tmp_path / "t.yaml").write_text(yaml.safe_dump({"datapath": {}, "capsules": [{"name": "A0_base"}]}))
+    (tmp_path / "t.smt.yaml").write_text(yaml.safe_dump({"capsules": [{"name": "CX_contraction_i8_16x16x16"}]}))
     names = [c["name"] for c in GC.load_profile("t")["capsules"]]
     assert "CX_contraction_i8_16x16x16" in names, (
-        "a counterexample entry written by verify.counterexamples must reach the generator")
+        "a counterexample entry written by verify.counterexamples must reach the generator"
+    )
     assert "A0_base" in names, "the public profile must still be merged"
 
 
@@ -81,4 +81,5 @@ def test_the_counterexample_writer_and_the_reader_agree_on_the_filename():
     written = profile_path("t").name
     assert written == "t.smt.yaml"
     assert ".smt.yaml" in inspect.getsource(GC.load_profile), (
-        f"{written} is written by counterexamples.profile_path and not read by load_profile")
+        f"{written} is written by counterexamples.profile_path and not read by load_profile"
+    )

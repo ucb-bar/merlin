@@ -16,6 +16,7 @@ The fixtures, and what each one would catch:
 * **A second target of a different archetype gets a different, correct answer** rather than this
   one's.
 """
+
 from __future__ import annotations
 
 import functools
@@ -26,6 +27,15 @@ import pytest
 
 from merlin.common.paths import env, repo_root
 from merlin.perf.attribution import RESIDUAL, buckets_from_kinds
+from merlin.perf.composer import (
+    Coverage,
+    compose_corpus,
+    coverage,
+    fixed_terms_from_timing,
+    operator_sensitivity,
+    peaks_from_observations,
+    structural_unit_time,
+)
 from merlin.perf.decompose import (
     UNKNOWN,
     ResourceKind,
@@ -42,15 +52,6 @@ from merlin.perf.envelope import (
     resource_time,
 )
 from merlin.perf.headroom import Composition, composition_operator
-from merlin.perf.composer import (
-    Coverage,
-    compose_corpus,
-    coverage,
-    fixed_terms_from_timing,
-    operator_sensitivity,
-    peaks_from_observations,
-    structural_unit_time,
-)
 
 BUCKET_KINDS = {
     "dma": ResourceKind.MOVEMENT,
@@ -92,11 +93,17 @@ def _sources() -> tuple:
     out = []
     for name, body in _suite()["kernels"].items():
         arc = body["arc"]
-        out.append(activity_from_busy(
-            name, arc["truth"],
-            {"dma": arc["dma_busy"], "mxu": arc["mxu"], "vpu": arc["vpu"], "none": arc["none"]},
-            BUCKET_KINDS, partitioned=True, completion_observable=True,
-            provenance="per-cycle activity decomposition from the cycle-accurate model"))
+        out.append(
+            activity_from_busy(
+                name,
+                arc["truth"],
+                {"dma": arc["dma_busy"], "mxu": arc["mxu"], "vpu": arc["vpu"], "none": arc["none"]},
+                BUCKET_KINDS,
+                partitioned=True,
+                completion_observable=True,
+                provenance="per-cycle activity decomposition from the cycle-accurate model",
+            )
+        )
     return tuple(out)
 
 
@@ -108,8 +115,7 @@ def _operator() -> tuple[Composition, float]:
     zero on every workload, which is what makes ``sum`` the derived answer here rather than the
     textbook ``max``.
     """
-    got = composition_operator(list(_sources()),
-                               observed_overlap_cycles={s.workload: 0 for s in _sources()})
+    got = composition_operator(list(_sources()), observed_overlap_cycles={s.workload: 0 for s in _sources()})
     assert not isinstance(got, Unavailable)
     return got
 
@@ -131,12 +137,22 @@ def _demands() -> dict[str, dict[str, ResourceDemand]]:
     for name, body in _suite()["kernels"].items():
         arc = body["arc"]
         out[name] = {
-            "dma": ResourceDemand("dma", ResourceKind.MOVEMENT,
-                                  arc["reads"] + arc["writes"], "beats", basis=Basis.MOVED,
-                                  provenance="measured read/write beats x the port width"),
-            "vpu": ResourceDemand("vpu", ResourceKind.COMPUTE,
-                                  sum(1 for fam, _m, _i in body["op_stream"] if fam == "Vector"),
-                                  "ops", basis=Basis.MOVED, provenance="program op stream"),
+            "dma": ResourceDemand(
+                "dma",
+                ResourceKind.MOVEMENT,
+                arc["reads"] + arc["writes"],
+                "beats",
+                basis=Basis.MOVED,
+                provenance="measured read/write beats x the port width",
+            ),
+            "vpu": ResourceDemand(
+                "vpu",
+                ResourceKind.COMPUTE,
+                sum(1 for fam, _m, _i in body["op_stream"] if fam == "Vector"),
+                "ops",
+                basis=Basis.MOVED,
+                provenance="program op stream",
+            ),
         }
     return out
 
@@ -150,19 +166,30 @@ def _times() -> dict[str, tuple]:
     suite = _suite()
     delay, roles, fill = _mxu_law()
     demands = _demands()
-    peaks = peaks_from_observations(demands, _sources(), units={"dma": "beats", "vpu": "ops"},
-                                    provenance="per-cycle activity decomposition")
+    peaks = peaks_from_observations(
+        demands, _sources(), units={"dma": "beats", "vpu": "ops"}, provenance="per-cycle activity decomposition"
+    )
     out: dict[str, tuple] = {}
     for name, body in suite["kernels"].items():
-        ts = [resource_time(demands[name]["dma"], peaks["dma"]),
-              structural_unit_time("mxu", ResourceKind.COMPUTE,
-                                   compose_unit_busy(body["op_stream"], roles, fill, delay),
-                                   provenance=f"fill={fill} plus the program's scheduled delays"),
-              resource_time(demands[name]["vpu"], peaks["vpu"]),
-              ResourceTime(resource="none", kind=ResourceKind.FIXED,
-                           cycles=float(suite["_meta"]["reset_cycles"]), unit="cycles",
-                           basis=Basis.MOVED, evidence_kind="measured",
-                           provenance="reset_cycles declared by the measurement source")]
+        ts = [
+            resource_time(demands[name]["dma"], peaks["dma"]),
+            structural_unit_time(
+                "mxu",
+                ResourceKind.COMPUTE,
+                compose_unit_busy(body["op_stream"], roles, fill, delay),
+                provenance=f"fill={fill} plus the program's scheduled delays",
+            ),
+            resource_time(demands[name]["vpu"], peaks["vpu"]),
+            ResourceTime(
+                resource="none",
+                kind=ResourceKind.FIXED,
+                cycles=float(suite["_meta"]["reset_cycles"]),
+                unit="cycles",
+                basis=Basis.MOVED,
+                evidence_kind="measured",
+                provenance="reset_cycles declared by the measurement source",
+            ),
+        ]
         out[name] = tuple(ts)
     return out
 
@@ -172,9 +199,14 @@ def _prediction():
     op, eta = _operator()
     structural, refused = fixed_terms_from_timing(_timing("atlas"), RESOURCE_MODULES)
     return compose_corpus(
-        list(_sources()), times={k: list(v) for k, v in _times().items()}, operator=op, eta=eta,
+        list(_sources()),
+        times={k: list(v) for k, v in _times().items()},
+        operator=op,
+        eta=eta,
         buckets=buckets_from_kinds(BUCKET_KINDS, fixed_bucket="control"),
-        timing_records=_timing("atlas"), structural_resources=list(structural)), refused
+        timing_records=_timing("atlas"),
+        structural_resources=list(structural),
+    ), refused
 
 
 # --- fixture 1: the 6/7 prediction, zero fitting ---------------------------------------------------
@@ -303,8 +335,7 @@ def test_coverage_exposes_no_field_called_confidence():
 
 def test_the_structural_time_share_is_unknown_when_nobody_said_which_resources_resolved():
     op, eta = _operator()
-    pred = compose_corpus(list(_sources()), times={k: list(v) for k, v in _times().items()},
-                          operator=op, eta=eta)
+    pred = compose_corpus(list(_sources()), times={k: list(v) for k, v in _times().items()}, operator=op, eta=eta)
     assert is_unknown(pred.coverage.structurally_resolved_time_share), "not established, not zero"
 
 
@@ -335,10 +366,17 @@ def _measured_times() -> dict[str, list[ResourceTime]]:
     out: dict[str, list[ResourceTime]] = {}
     for s in _sources():
         out[s.workload] = [
-            ResourceTime(resource=r.name, kind=r.kind, cycles=float(r.busy_cycles), unit="cycles",
-                         basis=Basis.MOVED, evidence_kind="measured",
-                         provenance="per-cycle activity decomposition")
-            for r in s.resources]
+            ResourceTime(
+                resource=r.name,
+                kind=r.kind,
+                cycles=float(r.busy_cycles),
+                unit="cycles",
+                basis=Basis.MOVED,
+                evidence_kind="measured",
+                provenance="per-cycle activity decomposition",
+            )
+            for r in s.resources
+        ]
     return out
 
 
@@ -358,8 +396,9 @@ def test_the_textbook_max_understates_the_corpus_runtime_by_thirteen_percent():
 def test_operator_sensitivity_refuses_over_partially_resolved_terms():
     # The structural times leave the vector engine UNKNOWN on most workloads; comparing operators
     # there would compare two different sets of terms.
-    got = operator_sensitivity([s for s in _sources() if s.workload == "gemma_attention"],
-                               times={k: list(v) for k, v in _times().items()})
+    got = operator_sensitivity(
+        [s for s in _sources() if s.workload == "gemma_attention"], times={k: list(v) for k, v in _times().items()}
+    )
     assert isinstance(got, Unavailable)
     assert "two different sets of terms" in got.detail
 
@@ -384,17 +423,33 @@ def test_the_same_code_gives_a_different_correct_answer_on_the_second_archetype(
     assert structural == {}
     assert "feedback" in refused["mesh"].detail
 
-    src = activity_from_busy("G01_multitile_sq", 7439, {"mesh": 7439},
-                             {"mesh": ResourceKind.COMPUTE},
-                             partitioned=None, completion_observable=None,
-                             provenance="cycle-accurate RTL simulation, total cycles only")
-    times = {src.workload: [resource_time(
-        ResourceDemand("mesh", ResourceKind.COMPUTE, 4096, "macs", basis=Basis.MOVED,
-                       provenance="tile geometry"),
-        Peak.unknown("mesh", "macs", refused["mesh"].detail,
-                     provenance="rtl timing walk"))]}
-    pred = compose_corpus([src], times=times, operator=Composition.SUM, eta=0.0,
-                          timing_records=records, structural_resources=list(structural))
+    src = activity_from_busy(
+        "G01_multitile_sq",
+        7439,
+        {"mesh": 7439},
+        {"mesh": ResourceKind.COMPUTE},
+        partitioned=None,
+        completion_observable=None,
+        provenance="cycle-accurate RTL simulation, total cycles only",
+    )
+    times = {
+        src.workload: [
+            resource_time(
+                ResourceDemand(
+                    "mesh", ResourceKind.COMPUTE, 4096, "macs", basis=Basis.MOVED, provenance="tile geometry"
+                ),
+                Peak.unknown("mesh", "macs", refused["mesh"].detail, provenance="rtl timing walk"),
+            )
+        ]
+    }
+    pred = compose_corpus(
+        [src],
+        times=times,
+        operator=Composition.SUM,
+        eta=0.0,
+        timing_records=records,
+        structural_resources=list(structural),
+    )
 
     p = pred.predictions[src.workload]
     assert is_unknown(p.predicted_cycles), "no peak, so no bound -- and no fabricated one"
@@ -410,9 +465,13 @@ def test_the_same_code_gives_a_different_correct_answer_on_the_second_archetype(
 def test_on_the_second_archetype_the_operator_is_unobservable_rather_than_defaulted():
     # One engine group, so there is no pair whose overlap could be observed. The refusal names that
     # -- distinct both from "nobody looked" and from a quietly assumed `max`.
-    src = activity_from_busy("G01_multitile_sq", 7439, {"mesh": 7439},
-                             {"mesh": ResourceKind.COMPUTE},
-                             provenance="cycle-accurate RTL simulation, total cycles only")
+    src = activity_from_busy(
+        "G01_multitile_sq",
+        7439,
+        {"mesh": 7439},
+        {"mesh": ResourceKind.COMPUTE},
+        provenance="cycle-accurate RTL simulation, total cycles only",
+    )
     bare = composition_operator([src])
     assert isinstance(bare, Unavailable)
     assert "independent of the activity buckets" in " ".join(bare.missing)
@@ -438,6 +497,5 @@ def test_coverage_is_a_frozen_record_that_serializes_both_units_side_by_side():
     pred, _ = _prediction()
     assert isinstance(pred.coverage, Coverage)
     body = pred.to_dict()["coverage"]
-    assert set(body) >= {"module_count_share", "time_weighted_resolved_share",
-                         "structurally_resolved_time_share"}
+    assert set(body) >= {"module_count_share", "time_weighted_resolved_share", "structurally_resolved_time_share"}
     assert body["module_count_share"] != body["structurally_resolved_time_share"]

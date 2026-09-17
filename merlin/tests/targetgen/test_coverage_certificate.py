@@ -8,6 +8,7 @@ been told about it.
 
 So it must state its own evidence, and carry the run beside the plan when a run exists.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen import coverage_certificate as CC
@@ -27,25 +28,31 @@ def test_without_an_execution_record_the_crosscheck_is_absent_not_agreeing():
 
 def test_a_plan_the_run_did_not_carry_out_is_reported_as_disagreeing():
     """15 assigned, 0 executed: the recalls describe an intent that did not happen."""
-    x = CC.build(_EMPTY_PLAN, {}, target="t",
-                 execution={"matmul_layers_routed": 15, "matmul_layers_on_mesh": 0,
-                            "matmul_layers_host_fallback": 15})["execution_crosscheck"]
+    x = CC.build(
+        _EMPTY_PLAN,
+        {},
+        target="t",
+        execution={"matmul_layers_routed": 15, "matmul_layers_on_mesh": 0, "matmul_layers_host_fallback": 15},
+    )["execution_crosscheck"]
     assert x["agrees"] is False
     assert x["matmul_layers_on_mesh"] == 0 and x["matmul_layers_host_fallback"] == 15
 
 
 def test_a_plan_the_run_carried_out_agrees():
-    x = CC.build(_EMPTY_PLAN, {}, target="t",
-                 execution={"matmul_layers_routed": 15, "matmul_layers_on_mesh": 15,
-                            "matmul_layers_host_fallback": 0})["execution_crosscheck"]
+    x = CC.build(
+        _EMPTY_PLAN,
+        {},
+        target="t",
+        execution={"matmul_layers_routed": 15, "matmul_layers_on_mesh": 15, "matmul_layers_host_fallback": 0},
+    )["execution_crosscheck"]
     assert x["agrees"] is True
 
 
 def test_an_unknown_count_leaves_agreement_undecided_rather_than_true():
     """`UNKNOWN` is a sentinel string, not a number, and "nobody could tell" is not "they agree"."""
-    x = CC.build(_EMPTY_PLAN, {}, target="t",
-                 execution={"matmul_layers_routed": "UNKNOWN",
-                            "matmul_layers_on_mesh": 3})["execution_crosscheck"]
+    x = CC.build(
+        _EMPTY_PLAN, {}, target="t", execution={"matmul_layers_routed": "UNKNOWN", "matmul_layers_on_mesh": 3}
+    )["execution_crosscheck"]
     assert x["agrees"] is None
 
 
@@ -54,10 +61,14 @@ def test_an_unknown_count_leaves_agreement_undecided_rather_than_true():
 # `mesh_route_symbols` and the dispatch ledger key on the KERNEL SYMBOL, so "which assigned kernel did
 # not run on the accelerator" is answerable without inventing the join that does not exist.
 
+
 def _exec(routed, ran):
-    return {"mesh_route_symbols": list(routed),
-            "dispatch_ledger": [{"ordinal": i, "symbol": s, "lane": "on_mesh", "status": "pass"}
-                                for i, s in enumerate(ran)]}
+    return {
+        "mesh_route_symbols": list(routed),
+        "dispatch_ledger": [
+            {"ordinal": i, "symbol": s, "lane": "on_mesh", "status": "pass"} for i, s in enumerate(ran)
+        ],
+    }
 
 
 def test_an_assigned_kernel_that_never_ran_on_the_accelerator_is_named():
@@ -73,15 +84,17 @@ def test_every_assigned_kernel_running_there_is_no_false_fallback():
 
 
 def test_a_missing_ledger_is_not_measured_rather_than_no_fallbacks():
-    """"No symbols fell back" and "nobody recorded which symbols ran" are opposite conclusions."""
+    """ "No symbols fell back" and "nobody recorded which symbols ran" are opposite conclusions."""
     assert CC.executed_false_fallbacks({"mesh_route_symbols": ["a"]})["status"] == "not_measured"
     assert CC.executed_false_fallbacks({"dispatch_ledger": []})["status"] == "not_measured"
     assert CC.executed_false_fallbacks(None)["status"] == "not_measured"
 
 
 def test_a_call_that_did_not_pass_does_not_count_as_having_run_there():
-    ex = {"mesh_route_symbols": ["a"],
-          "dispatch_ledger": [{"ordinal": 0, "symbol": "a", "lane": "on_mesh", "status": "fail"}]}
+    ex = {
+        "mesh_route_symbols": ["a"],
+        "dispatch_ledger": [{"ordinal": 0, "symbol": "a", "lane": "on_mesh", "status": "fail"}],
+    }
     assert CC.executed_false_fallbacks(ex)["n_false_fallback"] == 1
 
 

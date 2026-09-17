@@ -1,4 +1,5 @@
 """The post-freeze whole-program GSIM runner preserves every evidence binding."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -10,7 +11,6 @@ from pathlib import Path
 import pytest
 
 from merlin.common.paths import merlin_dir
-
 
 _SCRIPTS = merlin_dir() / "experiments/gemmini_perf_bench/scripts"
 if str(_SCRIPTS) not in sys.path:
@@ -44,7 +44,8 @@ class _Backend:
 
 
 def test_main_executes_the_retained_candidate_and_writes_bound_result(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     candidate_sha256 = "a" * 64
     iteration = tmp_path / "iteration"
     retained = iteration / "compiler_scratch/candidate"
@@ -57,16 +58,21 @@ def test_main_executes_the_retained_candidate_and_writes_bound_result(
     (retained / "command_buffer.json").write_text(command_buffer_text, encoding="utf-8")
     lowered = "module {}\n"
     worker_result = iteration / "analysis_worker_result.json"
-    worker_result.write_text(json.dumps({
-        "analysis": {"candidate_sha256": candidate_sha256},
-        "artifacts": {
-            "candidate_sha256": candidate_sha256,
-            "candidate_command_buffer_sha256": sha256(command_buffer_text.encode()).hexdigest(),
-            "candidate_lowered_sha256": sha256(lowered.encode()).hexdigest(),
-            "command_buffer": command_buffer,
-            "lowered_text": lowered,
-        },
-    }), encoding="utf-8")
+    worker_result.write_text(
+        json.dumps(
+            {
+                "analysis": {"candidate_sha256": candidate_sha256},
+                "artifacts": {
+                    "candidate_sha256": candidate_sha256,
+                    "candidate_command_buffer_sha256": sha256(command_buffer_text.encode()).hexdigest(),
+                    "candidate_lowered_sha256": sha256(lowered.encode()).hexdigest(),
+                    "command_buffer": command_buffer,
+                    "lowered_text": lowered,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     capsule = tmp_path / "capsule.yaml"
     capsule.write_text("name: frozen-model\n", encoding="utf-8")
 
@@ -74,7 +80,9 @@ def test_main_executes_the_retained_candidate_and_writes_bound_result(
         RUNNER.PGC,
         "_semantic_oracle",
         lambda manifest, cb: (
-            dict(cb), {"Y0": [[7]]}, lambda observed: observed == {"Y0": [[7]]},
+            dict(cb),
+            {"Y0": [[7]]},
+            lambda observed: observed == {"Y0": [[7]]},
             {"kind": "frozen_model_test", "manifest": str(manifest)},
         ),
     )
@@ -88,18 +96,31 @@ def test_main_executes_the_retained_candidate_and_writes_bound_result(
 
     monkeypatch.setattr(compile_module, "compile_lowered_to_elf", compile_candidate)
     from merlin.runtime.backends import base
+
     monkeypatch.setattr(base, "get_backend", lambda target: _Backend())
 
     output = tmp_path / "result.json"
-    assert RUNNER.main([
-        "--analysis-worker-result", str(worker_result),
-        "--capsule-manifest", str(capsule),
-        "--candidate-sha256", candidate_sha256,
-        "--target", "test_target",
-        "--workdir", str(tmp_path / "execution"),
-        "--output", str(output),
-        "--timeout", "17",
-    ]) == 0
+    assert (
+        RUNNER.main(
+            [
+                "--analysis-worker-result",
+                str(worker_result),
+                "--capsule-manifest",
+                str(capsule),
+                "--candidate-sha256",
+                candidate_sha256,
+                "--target",
+                "test_target",
+                "--workdir",
+                str(tmp_path / "execution"),
+                "--output",
+                str(output),
+                "--timeout",
+                "17",
+            ]
+        )
+        == 0
+    )
     result = json.loads(output.read_text(encoding="utf-8"))
     assert result["status"] == "passed"
     assert result["candidate_sha256"] == candidate_sha256
@@ -108,5 +129,4 @@ def test_main_executes_the_retained_candidate_and_writes_bound_result(
     assert result["elf_sha256"] == sha256(b"bound elf").hexdigest()
     assert result["metrics"] == {"cycles": 1234}
     assert result["outputs"] == result["expected"] == {"Y0": [[7]]}
-    assert (tmp_path / "execution/gsim_console.txt").read_text(encoding="utf-8") \
-        == "exact console"
+    assert (tmp_path / "execution/gsim_console.txt").read_text(encoding="utf-8") == "exact console"

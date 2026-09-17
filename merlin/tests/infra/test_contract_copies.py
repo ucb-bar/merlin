@@ -10,6 +10,7 @@ hands back the repo copy: it compared a tree to itself and reported "35 files id
 deliberate divergence sitting in the packaged copy. These tests exist so that cannot recur -- they build
 both trees and inject a difference, rather than trusting the gate's own green output.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -57,14 +58,16 @@ class TestTheGateCanFail:
     def test_a_file_only_the_reviewer_sees_is_reported(self, tmp_path):
         # Present in the repo copy, absent from the wheel: the reviewer approves an op the installed
         # package does not have.
-        root = _fake_repo(tmp_path, source={"abi.yaml": "a: 1\n", "new.yaml": "b: 1\n"},
-                          packaged={"abi.yaml": "a: 1\n"})
+        root = _fake_repo(
+            tmp_path, source={"abi.yaml": "a: 1\n", "new.yaml": "b: 1\n"}, packaged={"abi.yaml": "a: 1\n"}
+        )
         assert _gate().audit(root)["only_in_source"] == ["new.yaml"]
 
     def test_a_file_only_the_package_has_is_reported(self, tmp_path):
         # The opposite, and the more dangerous direction: nobody reviewing the repo can see it.
-        root = _fake_repo(tmp_path, source={"abi.yaml": "a: 1\n"},
-                          packaged={"abi.yaml": "a: 1\n", "ghost.yaml": "b: 1\n"})
+        root = _fake_repo(
+            tmp_path, source={"abi.yaml": "a: 1\n"}, packaged={"abi.yaml": "a: 1\n", "ghost.yaml": "b: 1\n"}
+        )
         assert _gate().audit(root)["only_in_packaged"] == ["ghost.yaml"]
 
     def test_a_missing_packaged_tree_is_unknown_not_clean(self, tmp_path):
@@ -79,9 +82,11 @@ class TestTheGateCanFail:
         # The two corpora are deliberately different -- the packaged one is curated, and goldens and
         # holdouts must never ship. Requiring equality would demand the answer-key leak the
         # no-answer-keys gate forbids, so the exemption carries its reason as data.
-        root = _fake_repo(tmp_path,
-                          source={"abi.yaml": "a: 1\n", "capsules/x/golden.yaml": "secret\n"},
-                          packaged={"abi.yaml": "a: 1\n"})
+        root = _fake_repo(
+            tmp_path,
+            source={"abi.yaml": "a: 1\n", "capsules/x/golden.yaml": "secret\n"},
+            packaged={"abi.yaml": "a: 1\n"},
+        )
         rep = _gate().audit(root)
         assert rep["differing"] == [] and rep["only_in_source"] == []
         assert "capsules" in rep["exempt"] and rep["exempt"]["capsules"]

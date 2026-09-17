@@ -1,12 +1,12 @@
 """R3: Common Compute Abstraction lift + cross-level agreement (target-agnostic)."""
+
 from __future__ import annotations
 
 from pathlib import Path
 
-from merlin.common.paths import merlin_dir
-
 import pytest
 
+from merlin.common.paths import merlin_dir
 from merlin.kernels import cca
 from merlin.kernels.decode import objdump, rvv
 
@@ -67,7 +67,7 @@ def _cca_op(monkeypatch, snippet, op):
 
 def test_activation_vectorization_scalar_libm(monkeypatch):
     c = _cca_op(monkeypatch, _SCALAR_LIBM_ACT, "gelu")
-    assert c.compute.activation_vectorization == "scalar_libm_call"   # calls <expf>
+    assert c.compute.activation_vectorization == "scalar_libm_call"  # calls <expf>
 
 
 def test_activation_vectorization_vectorized_poly(monkeypatch):
@@ -84,7 +84,7 @@ def test_activation_vectorization_none_for_matmul(monkeypatch):
 def test_lift_asm_mul_add(monkeypatch):
     c = _cca(monkeypatch, _MUL_ADD, "ours")
     assert c.backend == ["rvv"]
-    assert c.compute.contraction_form == "mul_add"   # no vfmacc -> mul_add
+    assert c.compute.contraction_form == "mul_add"  # no vfmacc -> mul_add
     assert c.vector.sew == 32 and c.vector.lmul == 2.0
     assert c.vector.vl_strategy == "vsetivli_fixed"
 
@@ -101,8 +101,8 @@ def test_agreement_flags_divergences(monkeypatch):
     rep = cca.cca_agree(expert, ours)
     assert not rep.agree
     axes = {d.split(":")[0] for d in rep.disagreements}
-    assert "compute.contraction_form" in axes   # the vfmacc gap
-    assert "vector.lmul" in axes                 # 4 vs 2
+    assert "compute.contraction_form" in axes  # the vfmacc gap
+    assert "vector.lmul" in axes  # 4 vs 2
     # self-agreement is the validity baseline
     assert cca.cca_agree(ours, ours).agree
 
@@ -122,6 +122,7 @@ def test_composite_backend_supported():
 # (does the CCA *see* the gap?), not a memorized shape — the asm fixtures are whole-kernel
 # disassembly built from the expert ceiling drivers + our own baseline / impr-feature codegen
 # (provenance in data/cca_asm/AGENT.md).
+
 
 def _lift_fixture(monkeypatch, name: str) -> cca.CCA:
     text = (_ASM_DIR / name).read_text()
@@ -164,15 +165,22 @@ def test_memory_divergence_surfaces_packed_vs_strided():
     # the whole point: a kernel whose COMPUTE matches the expert but fetches operands STRIDED now
     # surfaces a memory.access_pattern divergence — the dimension that used to be invisible (the
     # '72% slower with no divergences' case). This is what the CCA had to capture.
-    expert = cca.CCA(op="matmul", backend=["rvv"],
-                     compute=cca.ComputeFacet(op="matmul", contraction_form="fused_fma"),
-                     memory=cca.MemoryFacet(access_pattern="unit_stride"))
-    ours = cca.CCA(op="matmul", backend=["rvv"],
-                   compute=cca.ComputeFacet(op="matmul", contraction_form="fused_fma"),
-                   memory=cca.MemoryFacet(access_pattern="strided"))
+    expert = cca.CCA(
+        op="matmul",
+        backend=["rvv"],
+        compute=cca.ComputeFacet(op="matmul", contraction_form="fused_fma"),
+        memory=cca.MemoryFacet(access_pattern="unit_stride"),
+    )
+    ours = cca.CCA(
+        op="matmul",
+        backend=["rvv"],
+        compute=cca.ComputeFacet(op="matmul", contraction_form="fused_fma"),
+        memory=cca.MemoryFacet(access_pattern="strided"),
+    )
     from merlin.kernels import cca_compare
+
     axes = {d.axis for d in cca_compare.compare(expert, ours)}
-    assert axes == {"memory.access_pattern"}      # compute matches; ONLY the memory dimension differs
+    assert axes == {"memory.access_pattern"}  # compute matches; ONLY the memory dimension differs
 
 
 def test_decode_text_matches_object_path(monkeypatch):
@@ -189,15 +197,26 @@ def test_decode_text_matches_object_path(monkeypatch):
 
 def _matmul_record(dtype: str):
     from merlin.frontends.linalg_mlir import MatmulRecord
-    return MatmulRecord(kind="linalg.matmul", m=64, k=64, n=64, lhs_shape=(64, 64), rhs_shape=(64, 64),
-                        dtype=dtype, weight_arg_index=1, weight_name="w", prov={"prov.op": "matmul"})
+
+    return MatmulRecord(
+        kind="linalg.matmul",
+        m=64,
+        k=64,
+        n=64,
+        lhs_shape=(64, 64),
+        rhs_shape=(64, 64),
+        dtype=dtype,
+        weight_arg_index=1,
+        weight_name="w",
+        prov={"prov.op": "matmul"},
+    )
 
 
 def test_lift_graph_partial_from_dtype():
     # the flat-graph analyzer derives only op + dtype datapath facets (partial, by design)
     g = cca.lift_graph(_matmul_record("f32"))
     assert g.compute.op == "matmul" and g.compute.accumulator_dtype == "f32"
-    assert g.compute.widening is None                          # f32 -> not a widening MAC
+    assert g.compute.widening is None  # f32 -> not a widening MAC
     g8 = cca.lift_graph(_matmul_record("i8"))
     assert g8.compute.accumulator_dtype == "i32" and g8.compute.widening is True
 
@@ -205,11 +224,11 @@ def test_lift_graph_partial_from_dtype():
 def test_asm_and_graph_analyzers_agree(monkeypatch):
     # the two DETERMINISTIC analyzers (asm decode + flat graph) must agree on the shared populated
     # facets — cca_agree is the validity gate that quarantines a bad reconstruction on either side.
-    asm = _lift_fixture(monkeypatch, "openblas_sgemm_rvv.objdump")   # f32 GEMM -> acc f32
+    asm = _lift_fixture(monkeypatch, "openblas_sgemm_rvv.objdump")  # f32 GEMM -> acc f32
     graph = cca.lift_graph(_matmul_record("f32"))
     rep = cca.cca_agree(asm, graph)
     assert rep.agree, rep.disagreements
-    assert "compute.accumulator_dtype" in rep.compared_fields    # the shared facet actually compared
+    assert "compute.accumulator_dtype" in rep.compared_fields  # the shared facet actually compared
 
 
 def test_lift_reads_vector_tail(monkeypatch):
@@ -225,14 +244,14 @@ def test_lift_reads_xnnpack_nr_tracks_vsetvlmax(monkeypatch):
     c = _lift_fixture(monkeypatch, "xnnpack_f32_gemm_rvv.objdump")
     assert c.vector.vl_strategy == "vsetvl_loop"
     assert c.compute.nr_is_vsetvlmax is True
-    assert c.compute.register_block[0] == 1            # MR=1 (one accumulator), 1x4v
+    assert c.compute.register_block[0] == 1  # MR=1 (one accumulator), 1x4v
 
 
 def test_lift_reads_ours_baseline_not_resident(monkeypatch):
     # Our FROZEN baseline lowering does not even form a fused MAC (vfmul+vfadd) — the deepest gap.
     c = _lift_fixture(monkeypatch, "ours_baseline_matmul.objdump")
     assert c.compute.contraction_form == "mul_add"
-    assert c.compute.accumulator_resident is not True   # None/False — never the expert's True
+    assert c.compute.accumulator_resident is not True  # None/False — never the expert's True
 
 
 def test_lift_reads_ours_accum_feature_still_not_resident(monkeypatch):
@@ -264,8 +283,12 @@ def test_accumulator_resident_is_target_agnostic_compute_field():
 
 @pytest.mark.skipif(not _ASM_DIR.is_dir(), reason="cca asm fixtures absent")
 def test_fixtures_present():
-    for fx in ("openblas_sgemm_rvv.objdump", "xnnpack_f32_gemm_rvv.objdump",
-               "ours_baseline_matmul.objdump", "ours_accum_resident_matmul.objdump"):
+    for fx in (
+        "openblas_sgemm_rvv.objdump",
+        "xnnpack_f32_gemm_rvv.objdump",
+        "ours_baseline_matmul.objdump",
+        "ours_accum_resident_matmul.objdump",
+    ):
         assert (_ASM_DIR / fx).is_file()
 
 
@@ -281,27 +304,37 @@ def test_fixtures_present():
 # beam never proposed the lever that was forkable the whole time.
 # ---------------------------------------------------------------------------------------
 
+
 def test_the_decorated_libc_spellings_are_classified():
     """These are the exact symbols small_llama int8 calls. Every one of them used to return None."""
     from merlin.kernels.cca import math_call_kind
 
-    assert math_call_kind("__ieee754_sqrt") == "algebraic"          # RMSNorm normaliser
+    assert math_call_kind("__ieee754_sqrt") == "algebraic"  # RMSNorm normaliser
     assert math_call_kind("__ieee754_sqrtf") == "algebraic"
-    assert math_call_kind("__kernel_sinf") == "transcendental"      # RoPE
+    assert math_call_kind("__kernel_sinf") == "transcendental"  # RoPE
     assert math_call_kind("__kernel_cosf") == "transcendental"
     # glibc's argument reduction for sin/cos is its OWN symbol, so a model can pay for it
     # without any sin/cos call being visible at the call site.
     assert math_call_kind("__kernel_rem_pio2f") == "transcendental"
     assert math_call_kind("__ieee754_rem_pio2f") == "transcendental"
-    assert math_call_kind("__extendbfsf2") == "softfloat"           # bf16 -> f32 soft conversion
+    assert math_call_kind("__extendbfsf2") == "softfloat"  # bf16 -> f32 soft conversion
 
 
 def test_a_stem_that_merely_appears_inside_a_symbol_is_not_a_math_call():
     """The retired substring test would have called all of these math."""
     from merlin.kernels.cca import math_call_kind
 
-    for sym in ("merlin_single_step", "log_write", "cosine_table", "single", "forward",
-                "memcpy", "__errno", "expand_shape", "powerdown_hook"):
+    for sym in (
+        "merlin_single_step",
+        "log_write",
+        "cosine_table",
+        "single",
+        "forward",
+        "memcpy",
+        "__errno",
+        "expand_shape",
+        "powerdown_hook",
+    ):
         assert math_call_kind(sym) is None, sym
 
 
@@ -358,8 +391,9 @@ def test_the_ladder_escalates_past_the_pass_that_cannot_cover_these_ops():
     from merlin.kernels import action_catalog as ac
     from merlin.kernels.cca_compare import Divergence
 
-    d = Divergence(axis="compute.activation_vectorization", backend="rvv",
-                   ours="scalar_libm_call", expert="vectorized_polynomial")
+    d = Divergence(
+        axis="compute.activation_vectorization", backend="rvv", ours="scalar_libm_call", expert="vectorized_polynomial"
+    )
     cheap = ac.route(d)
     assert cheap.action_class == "PASS" and cheap.forkable_now is True
 
@@ -420,8 +454,15 @@ def test_libc_internals_that_merely_look_mathy_are_still_not_math():
     replaced would have classified several of them."""
     from merlin.kernels.cca import math_call_kind
 
-    for sym in ("expand_dynamic_string_token", "_nl_expand_alias", "_nl_explode_name",
-                "sysinfo", "__gettext_free_exp", "_IO_vtable_check", "__libc_assert_fail"):
+    for sym in (
+        "expand_dynamic_string_token",
+        "_nl_expand_alias",
+        "_nl_explode_name",
+        "sysinfo",
+        "__gettext_free_exp",
+        "_IO_vtable_check",
+        "__libc_assert_fail",
+    ):
         assert math_call_kind(sym) is None, sym
 
 
@@ -433,15 +474,20 @@ def test_libc_internals_that_merely_look_mathy_are_still_not_math():
 # "expert blocks, ours doesn't" never surfaced); every other axis kept the blindness.
 # ---------------------------------------------------------------------------------------
 
+
 def test_an_axis_only_one_side_can_answer_is_reported_not_silently_skipped():
     from merlin.kernels import cca_compare as cc
     from merlin.kernels.cca import CCA, ComputeFacet, MemoryFacet
 
-    full = CCA(op="matmul", backend=["rvv"],
-               compute=ComputeFacet(op="matmul", register_block=(4, 16), accumulator_resident=True),
-               memory=MemoryFacet(access_pattern="unit_stride"))
-    partial = CCA(op="matmul", backend=["rvv"],
-                  compute=ComputeFacet(op="matmul"))          # no block, no residency, no memory facet
+    full = CCA(
+        op="matmul",
+        backend=["rvv"],
+        compute=ComputeFacet(op="matmul", register_block=(4, 16), accumulator_resident=True),
+        memory=MemoryFacet(access_pattern="unit_stride"),
+    )
+    partial = CCA(
+        op="matmul", backend=["rvv"], compute=ComputeFacet(op="matmul")
+    )  # no block, no residency, no memory facet
 
     axes = dict(cc.uncomparable_axes(partial, full))
     assert axes.get("compute.register_block") == "expert"
@@ -505,24 +551,26 @@ def test_the_activation_axis_reads_undefined_symbols_not_only_resolved_calls():
     stream = rvv.decode_text(
         "0000000000000000 <forward>:\n"
         "   0:\t000000ef          \tjal\tra, 0x0 <forward+0x4>\n"
-        "   4:\t02b7f0d7          \tvfmacc.vv\tv1, v2, v3\n")
+        "   4:\t02b7f0d7          \tvfmacc.vv\tv1, v2, v3\n"
+    )
     blind = cca.lift_asm(stream, op="matmul", source="ours")
-    seeing = cca.lift_asm(stream, op="matmul", source="ours",
-                          undefined_symbols=("expf", "cosf", "sinf", "rsqrtf"))
+    seeing = cca.lift_asm(stream, op="matmul", source="ours", undefined_symbols=("expf", "cosf", "sinf", "rsqrtf"))
     assert blind.compute.activation_vectorization is None, "no symbol table -> nothing to classify"
     assert seeing.compute.activation_vectorization == "scalar_libm_call", (
         "an undefined expf IS a scalar transcendental call; reporting None here is what made the "
-        "single largest fp32-specific cost invisible to the search")
+        "single largest fp32-specific cost invisible to the search"
+    )
 
 
 def test_a_non_math_undefined_symbol_does_not_invent_an_activation():
     """Fail closed the other way too: `memrefCopy` and `malloc` are undefined symbols but are not
     transcendentals, and a matmul must not be reclassified as an activation because it allocates."""
     from merlin.kernels.decode import rvv
+
     stream = rvv.decode_text(
         "0000000000000000 <forward>:\n"
         "   0:\t000000ef          \tjal\tra, 0x0 <forward+0x4>\n"
-        "   4:\t02b7f0d7          \tvfmacc.vv\tv1, v2, v3\n")
-    c = cca.lift_asm(stream, op="matmul", source="ours",
-                     undefined_symbols=("malloc", "free", "memrefCopy", "memset"))
+        "   4:\t02b7f0d7          \tvfmacc.vv\tv1, v2, v3\n"
+    )
+    c = cca.lift_asm(stream, op="matmul", source="ours", undefined_symbols=("malloc", "free", "memrefCopy", "memset"))
     assert c.compute.activation_vectorization is None

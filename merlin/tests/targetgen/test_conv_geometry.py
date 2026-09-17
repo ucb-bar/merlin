@@ -5,6 +5,7 @@ real: the first version dropped every strided convolution, and the second mislab
 a 2x3 one. Both produced a plausible-looking class list, which is why they need tests rather than
 review.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -16,6 +17,7 @@ pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 def _mod(text: str):
     from merlin.common import mlir_query as mq
+
     return mq.parse(text)
 
 
@@ -118,30 +120,66 @@ def test_the_signature_ignores_extents_and_keeps_every_axis_that_changes_code():
 
 
 def test_asymmetric_padding_is_visible_in_the_signature():
-    g = CG.ConvGeometry(kernel=(3, 3), stride=(1, 1), dilation=(1, 1),
-                        pad_before=(1, 1), pad_after=(2, 2), input_dilation=(1, 1),
-                        pad_known=True, in_spatial=(16, 16), out_spatial=(32, 32),
-                        channels_in=64, dtype="f32")
+    g = CG.ConvGeometry(
+        kernel=(3, 3),
+        stride=(1, 1),
+        dilation=(1, 1),
+        pad_before=(1, 1),
+        pad_after=(2, 2),
+        input_dilation=(1, 1),
+        pad_known=True,
+        in_spatial=(16, 16),
+        out_spatial=(32, 32),
+        channels_in=64,
+        dtype="f32",
+    )
     assert g.symmetric_pad is False
     assert "pad1x1_2x2" in g.signature(), "an asymmetric pad must not read as a symmetric one"
-    sym = CG.ConvGeometry(kernel=(3, 3), stride=(1, 1), dilation=(1, 1),
-                          pad_before=(1, 1), pad_after=(1, 1), input_dilation=(1, 1),
-                          pad_known=True, in_spatial=(16, 16), out_spatial=(16, 16),
-                          channels_in=64, dtype="f32")
+    sym = CG.ConvGeometry(
+        kernel=(3, 3),
+        stride=(1, 1),
+        dilation=(1, 1),
+        pad_before=(1, 1),
+        pad_after=(1, 1),
+        input_dilation=(1, 1),
+        pad_known=True,
+        in_spatial=(16, 16),
+        out_spatial=(16, 16),
+        channels_in=64,
+        dtype="f32",
+    )
     assert sym.signature() != g.signature()
 
 
 def test_an_input_dilated_transposed_convolution_is_its_own_class():
     """A transposed convolution spaces its input out before padding it. That is a different lowering
     from an ordinary padded convolution and must not collapse into one."""
-    t = CG.ConvGeometry(kernel=(3, 3), stride=(1, 1), dilation=(1, 1),
-                        pad_before=(1, 1), pad_after=(2, 2), input_dilation=(2, 2),
-                        pad_known=True, in_spatial=(16, 16), out_spatial=(32, 32),
-                        channels_in=64, dtype="f32")
-    plain = CG.ConvGeometry(kernel=(3, 3), stride=(1, 1), dilation=(1, 1),
-                            pad_before=(1, 1), pad_after=(2, 2), input_dilation=(1, 1),
-                            pad_known=True, in_spatial=(16, 16), out_spatial=(32, 32),
-                            channels_in=64, dtype="f32")
+    t = CG.ConvGeometry(
+        kernel=(3, 3),
+        stride=(1, 1),
+        dilation=(1, 1),
+        pad_before=(1, 1),
+        pad_after=(2, 2),
+        input_dilation=(2, 2),
+        pad_known=True,
+        in_spatial=(16, 16),
+        out_spatial=(32, 32),
+        channels_in=64,
+        dtype="f32",
+    )
+    plain = CG.ConvGeometry(
+        kernel=(3, 3),
+        stride=(1, 1),
+        dilation=(1, 1),
+        pad_before=(1, 1),
+        pad_after=(2, 2),
+        input_dilation=(1, 1),
+        pad_known=True,
+        in_spatial=(16, 16),
+        out_spatial=(32, 32),
+        channels_in=64,
+        dtype="f32",
+    )
     assert "indilated2x2" in t.signature()
     assert t.signature() != plain.signature()
 
@@ -183,19 +221,37 @@ def test_the_window_axis_synthesizes_one_member_per_class():
 
     spec = {
         "target": "t",
-        "cells": [{"cell": "contraction/i8/aligned", "family": "contraction", "dtype": "i8",
-                   "alignment": "aligned"}],
-        "boundaries": {"tile_edge": 16,
-                       "extent_probes": [{"boundary": "tile_edge", "edge": 16,
-                                          "points": [1, 4, 8, 15, 16, 17, 32]}]},
-        "conv_geometry": {"required": [
-            {"signature": "k3x3/s2x2/d1x1/pad1x1", "kernel": [3, 3], "stride": [2, 2],
-             "dilation": [1, 1], "pad_before": [1, 1], "pad_after": [1, 1], "pad_known": True,
-             "n_regions": 6, "sources": ["deepjscc_int8"]},
-            {"signature": "k7x7/s1x1/d1x1/padUNKNOWN", "kernel": [7, 7], "stride": [1, 1],
-             "dilation": [1, 1], "pad_before": [0, 0], "pad_after": [0, 0], "pad_known": False,
-             "n_regions": 1, "sources": ["deepjscc_int8"]},
-        ]},
+        "cells": [{"cell": "contraction/i8/aligned", "family": "contraction", "dtype": "i8", "alignment": "aligned"}],
+        "boundaries": {
+            "tile_edge": 16,
+            "extent_probes": [{"boundary": "tile_edge", "edge": 16, "points": [1, 4, 8, 15, 16, 17, 32]}],
+        },
+        "conv_geometry": {
+            "required": [
+                {
+                    "signature": "k3x3/s2x2/d1x1/pad1x1",
+                    "kernel": [3, 3],
+                    "stride": [2, 2],
+                    "dilation": [1, 1],
+                    "pad_before": [1, 1],
+                    "pad_after": [1, 1],
+                    "pad_known": True,
+                    "n_regions": 6,
+                    "sources": ["deepjscc_int8"],
+                },
+                {
+                    "signature": "k7x7/s1x1/d1x1/padUNKNOWN",
+                    "kernel": [7, 7],
+                    "stride": [1, 1],
+                    "dilation": [1, 1],
+                    "pad_before": [0, 0],
+                    "pad_after": [0, 0],
+                    "pad_known": False,
+                    "n_regions": 1,
+                    "sources": ["deepjscc_int8"],
+                },
+            ]
+        },
     }
     out = CS.synthesize(spec, workload_spec={"models": [], "precision_preference": ["int8"]})
     entries = out["capsules"] if isinstance(out, dict) else out
@@ -206,7 +262,8 @@ def test_the_window_axis_synthesizes_one_member_per_class():
     assert (strided["kh"], strided["kw"]) == (3, 3)
     assert list(strided["stride"]) == [2, 2]
     assert list(strided["padding"]) == [1, 1, 1, 1], (
-        "a strided AND padded member is the whole point; a padding of zero here would recreate the gap")
+        "a strided AND padded member is the whole point; a padding of zero here would recreate the gap"
+    )
 
 
 def test_an_unknown_padding_member_says_it_asserts_nothing_about_the_identity():
@@ -217,21 +274,30 @@ def test_an_unknown_padding_member_says_it_asserts_nothing_about_the_identity():
 
     spec = {
         "target": "t",
-        "cells": [{"cell": "contraction/i8/aligned", "family": "contraction", "dtype": "i8",
-                   "alignment": "aligned"}],
-        "boundaries": {"tile_edge": 16,
-                       "extent_probes": [{"boundary": "tile_edge", "edge": 16,
-                                          "points": [1, 4, 8, 15, 16, 17, 32]}]},
-        "conv_geometry": {"required": [
-            {"signature": "k7x7/s1x1/d1x1/padUNKNOWN", "kernel": [7, 7], "stride": [1, 1],
-             "dilation": [1, 1], "pad_before": [0, 0], "pad_after": [0, 0], "pad_known": False,
-             "n_regions": 1, "sources": ["deepjscc_int8"]},
-        ]},
+        "cells": [{"cell": "contraction/i8/aligned", "family": "contraction", "dtype": "i8", "alignment": "aligned"}],
+        "boundaries": {
+            "tile_edge": 16,
+            "extent_probes": [{"boundary": "tile_edge", "edge": 16, "points": [1, 4, 8, 15, 16, 17, 32]}],
+        },
+        "conv_geometry": {
+            "required": [
+                {
+                    "signature": "k7x7/s1x1/d1x1/padUNKNOWN",
+                    "kernel": [7, 7],
+                    "stride": [1, 1],
+                    "dilation": [1, 1],
+                    "pad_before": [0, 0],
+                    "pad_after": [0, 0],
+                    "pad_known": False,
+                    "n_regions": 1,
+                    "sources": ["deepjscc_int8"],
+                },
+            ]
+        },
     }
     out = CS.synthesize(spec, workload_spec={"models": [], "precision_preference": ["int8"]})
     entries = out["capsules"] if isinstance(out, dict) else out
-    member = next(e for e in entries
-                  if (e.get("generalization") or {}).get("generalization_axis") == "conv_window")
+    member = next(e for e in entries if (e.get("generalization") or {}).get("generalization_axis") == "conv_window")
     ref = member["source_reference"]
     assert "NOT READABLE" in ref
     assert "asserts nothing about a padding identity that is not zero" in ref
@@ -255,10 +321,10 @@ def test_every_window_gets_an_image_that_actually_produces_output():
         ((5, 5), (1, 1), (1, 1), (0, 0), (0, 0)),
     ]:
         h, w = _image_for_window(kernel, stride, dilation, pb, pa)
-        ho, wo = conv_out_dims(h, w, kernel[0], kernel[1], list(stride),
-                               list(pb) + list(pa), list(dilation))
+        ho, wo = conv_out_dims(h, w, kernel[0], kernel[1], list(stride), list(pb) + list(pa), list(dilation))
         assert (ho, wo) == (_CONV_WINDOW_OUT, _CONV_WINDOW_OUT), (
-            f"window k{kernel} s{stride} pad{pb}/{pa} on a {h}x{w} image writes {ho}x{wo} rows")
+            f"window k{kernel} s{stride} pad{pb}/{pa} on a {h}x{w} image writes {ho}x{wo} rows"
+        )
 
 
 def test_the_synthesized_member_carries_the_solved_image():
@@ -267,22 +333,32 @@ def test_the_synthesized_member_carries_the_solved_image():
 
     spec = {
         "target": "t",
-        "cells": [{"cell": "contraction/i8/aligned", "family": "contraction", "dtype": "i8",
-                   "alignment": "aligned"}],
-        "boundaries": {"tile_edge": 16,
-                       "extent_probes": [{"boundary": "tile_edge", "edge": 16,
-                                          "points": [1, 4, 8, 15, 16, 17, 32]}]},
-        "conv_geometry": {"required": [
-            {"signature": "k16x16/s16x16/d1x1/padUNKNOWN", "kernel": [16, 16], "stride": [16, 16],
-             "dilation": [1, 1], "pad_before": [0, 0], "pad_after": [0, 0], "pad_known": False,
-             "n_regions": 6, "sources": ["smolvla"]},
-        ]},
+        "cells": [{"cell": "contraction/i8/aligned", "family": "contraction", "dtype": "i8", "alignment": "aligned"}],
+        "boundaries": {
+            "tile_edge": 16,
+            "extent_probes": [{"boundary": "tile_edge", "edge": 16, "points": [1, 4, 8, 15, 16, 17, 32]}],
+        },
+        "conv_geometry": {
+            "required": [
+                {
+                    "signature": "k16x16/s16x16/d1x1/padUNKNOWN",
+                    "kernel": [16, 16],
+                    "stride": [16, 16],
+                    "dilation": [1, 1],
+                    "pad_before": [0, 0],
+                    "pad_after": [0, 0],
+                    "pad_known": False,
+                    "n_regions": 6,
+                    "sources": ["smolvla"],
+                },
+            ]
+        },
     }
     out = CS.synthesize(spec, workload_spec={"models": [], "precision_preference": ["int8"]})
     entries = out["capsules"] if isinstance(out, dict) else out
-    m = next(e for e in entries
-             if (e.get("generalization") or {}).get("generalization_axis") == "conv_window")
-    ho, wo = conv_out_dims(m["Himg"], m["Wimg"], m["kh"], m["kw"], list(m["stride"]),
-                           list(m["padding"]), list(m["dilation"]))
+    m = next(e for e in entries if (e.get("generalization") or {}).get("generalization_axis") == "conv_window")
+    ho, wo = conv_out_dims(
+        m["Himg"], m["Wimg"], m["kh"], m["kw"], list(m["stride"]), list(m["padding"]), list(m["dilation"])
+    )
     assert ho > 0 and wo > 0, "a member writing no rows tests nothing while passing"
     assert (ho, wo) == (CS._CONV_WINDOW_OUT, CS._CONV_WINDOW_OUT)

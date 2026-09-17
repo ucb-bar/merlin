@@ -5,6 +5,7 @@ given double the LMUL a VLEN=256 core needs — doubling vector-register pressur
 running each vector instruction at half of VLMAX. These tests pin the contract; the measured effect
 is recorded in :func:`merlin.mining.k1.codegen_march`'s docstring.
 """
+
 from merlin.mining import k1
 
 
@@ -35,11 +36,11 @@ def test_pinned_vlen_is_verified_against_the_board_not_assumed():
     the true value is observable — there is no reason to keep trusting a constant."""
     import pytest
 
-    k1.verify_vlen(k1.VLEN // 8)                    # agreeing board: fine
+    k1.verify_vlen(k1.VLEN // 8)  # agreeing board: fine
     with pytest.raises(k1.VlenMismatch):
-        k1.verify_vlen(k1.VLEN // 8 // 2)           # half the width: refuse, never measure
+        k1.verify_vlen(k1.VLEN // 8 // 2)  # half the width: refuse, never measure
     with pytest.raises(k1.VlenMismatch):
-        k1.verify_vlen(k1.VLEN // 8 * 2)            # wider board: refuse too (we'd idle lanes)
+        k1.verify_vlen(k1.VLEN // 8 * 2)  # wider board: refuse too (we'd idle lanes)
 
 
 def test_vlen_is_a_declaration_not_a_baked_constant():

@@ -5,13 +5,23 @@ previous state of this contract passed review by inspection while rejecting *eve
 (`irdl.type @"!acc"` names the type `!acc`, so `!merlin_iface.acc` did not resolve), and nothing
 noticed because no gate ever invoked the file. A source-string assertion would not have caught it.
 """
+
 from __future__ import annotations
+
 import subprocess
+
 import pytest
+
 from merlin.common.paths import repo_root
 from merlin.targetgen.contract.interface_emit import op_mnemonics
 from merlin.targetgen.rtl.gen_iface_irdl import (
-    _CAPSULES, _header, _restore_type_params, _strip_type_sigil, lower_c_preds, verify)
+    _CAPSULES,
+    _header,
+    _restore_type_params,
+    _strip_type_sigil,
+    lower_c_preds,
+    verify,
+)
 
 _IRDL = repo_root() / "merlin/contract/merlin_iface.irdl.mlir"
 _MLIROPT = repo_root() / "third_party/llvm-install/bin/mlir-opt"
@@ -32,8 +42,9 @@ _VALID = """module attributes {merlin_iface.version = "0.1"} {
 def _run(tmp_path, src: str) -> int:
     f = tmp_path / "m.mlir"
     f.write_text(src)
-    return subprocess.run([str(_MLIROPT), f"--irdl-file={_IRDL}", str(f), "-o", "/dev/null"],
-                          capture_output=True, text=True).returncode
+    return subprocess.run(
+        [str(_MLIROPT), f"--irdl-file={_IRDL}", str(f), "-o", "/dev/null"], capture_output=True, text=True
+    ).returncode
 
 
 pytestmark = pytest.mark.skipif(not _MLIROPT.exists(), reason="LLVM mlir-opt not installed")
@@ -49,10 +60,13 @@ def test_the_parameterised_acc_type_keeps_its_parameter(tmp_path):
     assert _run(tmp_path, _VALID.replace("!merlin_iface.acc<bf16>", "!merlin_iface.acc")) == 1
 
 
-@pytest.mark.parametrize("bad,why", [
-    ("!merlin_iface.resident", "undeclared type"),
-    ("merlin_iface", "undeclared dialect-qualified type"),
-])
+@pytest.mark.parametrize(
+    "bad,why",
+    [
+        ("!merlin_iface.resident", "undeclared type"),
+        ("merlin_iface", "undeclared dialect-qualified type"),
+    ],
+)
 def test_an_undeclared_type_is_rejected(tmp_path, bad, why):
     assert _run(tmp_path, _VALID.replace(bad, bad + "_NOPE")) == 1, why
 
@@ -61,7 +75,8 @@ def test_a_wrong_operand_type_is_rejected(tmp_path):
     """matmul's rhs must be the resident handle, not the raw weight tensor."""
     src = _VALID.replace(
         '"merlin_iface.matmul"(%A, %R) : (tensor<32x63xf8E4M3FN>, !merlin_iface.resident)',
-        '"merlin_iface.matmul"(%A, %W) : (tensor<32x63xf8E4M3FN>, tensor<63x31xf8E4M3FN>)')
+        '"merlin_iface.matmul"(%A, %W) : (tensor<32x63xf8E4M3FN>, tensor<63x31xf8E4M3FN>)',
+    )
     assert _run(tmp_path, src) == 1
 
 
@@ -89,10 +104,10 @@ def test_a_type_without_declared_parameters_is_left_alone():
 # lowered those predicates into IRDL's own vocabulary. Each is behavioural for the same reason the
 # tests above are: a source-string assertion would pass on a spec that checks nothing.
 
+
 def test_a_result_that_is_not_a_tensor_is_rejected(tmp_path):
     """`commit` must produce a ranked tensor. Was `irdl.c_pred isa<RankedTensorType>`, i.e. inert."""
-    src = _VALID.replace("(!merlin_iface.acc<bf16>) -> tensor<32x31xbf16>",
-                         "(!merlin_iface.acc<bf16>) -> i32")
+    src = _VALID.replace("(!merlin_iface.acc<bf16>) -> tensor<32x31xbf16>", "(!merlin_iface.acc<bf16>) -> i32")
     assert _run(tmp_path, src) == 1
 
 
@@ -137,7 +152,7 @@ def test_the_contract_states_what_it_does_not_check():
 # `lower_c_preds` unit behaviour -- in particular that it FAILS LOUD on an unknown predicate.
 # --------------------------------------------------------------------------------------------
 
-_RAW_OP = '''module {
+_RAW_OP = """module {
   irdl.dialect @d {
     irdl.operation @o {
       %0 = irdl.c_pred "(::llvm::isa<::mlir::RankedTensorType>($_self))"
@@ -148,7 +163,7 @@ _RAW_OP = '''module {
     }
   }
 }
-'''
+"""
 
 
 def test_an_expressible_predicate_becomes_an_irdl_base():
@@ -169,11 +184,12 @@ def test_an_inexpressible_predicate_leaves_the_all_of_and_enters_the_header():
     raw = _RAW_OP.replace(
         '"SOMETHING THE TABLE HAS NEVER SEEN"',
         '"[](::mlir::Type elementType) { return !((::llvm::isa<::mlir::TokenType>(elementType))); }'
-        '(::llvm::cast<::mlir::ShapedType>($_self).getElementType())"')
+        '(::llvm::cast<::mlir::ShapedType>($_self).getElementType())"',
+    )
     out, notes, unknown = lower_c_preds(raw)
     assert not unknown
     assert "irdl.c_pred" not in out
-    assert "%3 = irdl.all_of(%1)" in out          # the dropped arg is gone, the kept one remains
+    assert "%3 = irdl.all_of(%1)" in out  # the dropped arg is gone, the kept one remains
     assert notes and notes[0][0] == "o"
     assert "must not be a token" in _header(notes, unknown)
 
@@ -181,7 +197,7 @@ def test_an_inexpressible_predicate_leaves_the_all_of_and_enters_the_header():
 def test_a_slot_naming_only_a_dropped_constraint_keeps_a_named_any(tmp_path):
     """A dropped constraint referenced straight from `irdl.results(...)` cannot just vanish -- the
     slot would dangle and the file would not parse. It becomes an explicit `irdl.any`."""
-    raw = '''module {
+    raw = """module {
   irdl.dialect @d {
     irdl.operation @o {
       %0 = irdl.c_pred "[](::mlir::Type elementType) { return !((::llvm::isa<::mlir::TokenType>(elementType))); }(::llvm::cast<::mlir::ShapedType>($_self).getElementType())"
@@ -189,20 +205,25 @@ def test_a_slot_naming_only_a_dropped_constraint_keeps_a_named_any(tmp_path):
     }
   }
 }
-'''
+"""
     out, _, _ = lower_c_preds(raw)
     assert "%0 = irdl.any" in out
     f = tmp_path / "d.irdl.mlir"
     f.write_text(out)
     m = tmp_path / "m.mlir"
     m.write_text('module {\n  %0 = "d.o"() : () -> i32\n}\n')
-    assert subprocess.run([str(_MLIROPT), f"--irdl-file={f}", str(m), "-o", "/dev/null"],
-                          capture_output=True, text=True).returncode == 0
+    assert (
+        subprocess.run(
+            [str(_MLIROPT), f"--irdl-file={f}", str(m), "-o", "/dev/null"], capture_output=True, text=True
+        ).returncode
+        == 0
+    )
 
 
 # --------------------------------------------------------------------------------------------
 # The corpus, not the fixtures.
 # --------------------------------------------------------------------------------------------
+
 
 def test_every_capsule_the_contract_declares_ops_for_parses_and_verifies():
     """The whole point of the contract: it must hold against the shipped corpus.
@@ -213,11 +234,12 @@ def test_every_capsule_the_contract_declares_ops_for_parses_and_verifies():
     number, so the corpus can grow without editing this test.
     """
     ok, n, fails, _ = verify(_IRDL)
-    caps = [c for c in sorted(_CAPSULES.rglob("capsule.interface.mlir"))
-            if "merlin_iface." in c.read_text()]
-    declared = {line.strip().split("@", 1)[1].split()[0].rstrip("{").strip()
-                for line in _IRDL.read_text().splitlines()
-                if line.strip().startswith("irdl.operation @")}
+    caps = [c for c in sorted(_CAPSULES.rglob("capsule.interface.mlir")) if "merlin_iface." in c.read_text()]
+    declared = {
+        line.strip().split("@", 1)[1].split()[0].rstrip("{").strip()
+        for line in _IRDL.read_text().splitlines()
+        if line.strip().startswith("irdl.operation @")
+    }
     in_scope = [c for c in caps if set(op_mnemonics(c.read_text())) <= declared]
     assert in_scope, "no capsule uses only ops the contract declares -- the check is vacuous"
     assert ok == len(in_scope), f"{len(in_scope) - ok} in-scope capsule(s) failed: {fails[:5]}"

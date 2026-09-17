@@ -7,6 +7,7 @@ every declared instruction gets a counter even at zero, a word that is neither n
 surfaced instead of dropped, and the identity digest can distinguish two extension instructions that a
 disassembler renders identically.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ from merlin.kernels.decode import opu as OA
 @dataclass(frozen=True)
 class _Enc:
     """Stand-in for a derived encoding — only the three matched fields matter to the audit."""
+
     opcode: int
     funct3: int
     funct6: int
@@ -26,13 +28,16 @@ class _Enc:
 
 #: The four-instruction shape this extension has: an accumulate (funct3 2) and three moves (funct3 6),
 #: in reserved even funct6 slots.
-_TABLE = {"ACC": _Enc(0x57, 2, 40), "MOVEIN": _Enc(0x57, 6, 42),
-          "BCAST": _Enc(0x57, 6, 44), "READOUT": _Enc(0x57, 6, 46)}
+_TABLE = {
+    "ACC": _Enc(0x57, 2, 40),
+    "MOVEIN": _Enc(0x57, 6, 42),
+    "BCAST": _Enc(0x57, 6, 44),
+    "READOUT": _Enc(0x57, 6, 46),
+}
 
 
 def _word(opcode: int, funct3: int, funct6: int, rd: int = 1, rs1: int = 5, rs2: int = 4) -> str:
-    word = ((funct6 << 26) | (1 << 25) | (rs2 << 20) | (rs1 << 15)
-            | (funct3 << 12) | (rd << 7) | opcode)
+    word = (funct6 << 26) | (1 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode
     return f"{word:08x}"
 
 
@@ -53,7 +58,7 @@ _READOUT = (_word(0x57, 6, 46), "<unknown>", "")
 
 class TestFieldDecode:
     def test_decodes_the_vector_format_fields_of_a_word(self):
-        got = OA.fields_of(0xa242a0d7)
+        got = OA.fields_of(0xA242A0D7)
         assert got["opcode"] == 0x57 and got["funct3"] == 2 and got["funct6"] == 40
         assert got["vm"] == 1
         assert (got["rd"], got["rs1"], got["rs2"]) == (1, 5, 4)
@@ -94,7 +99,7 @@ class TestUnaccountedWords:
     def test_a_word_that_is_neither_nameable_nor_ours_is_surfaced(self):
         # A mis-encoded instruction looks exactly like this. Counting it as absent would report a clean
         # audit for a broken kernel.
-        bogus = (_word(0x57, 2, 41), "<unknown>", "")     # the ODD neighbour of the accumulate
+        bogus = (_word(0x57, 2, 41), "<unknown>", "")  # the ODD neighbour of the accumulate
         a = OA.audit_text(_dis(_CFG, bogus), _TABLE)
         assert len(a.unaccounted) == 1
         assert a.unaccounted[0]["fields"]["funct6"] == 41
@@ -151,12 +156,14 @@ class TestDigest:
 class TestDecodeStream:
     def test_names_extension_instructions_and_leaves_others_alone(self):
         from merlin.kernels.decode.objdump import tokenize_text
+
         got = OA.decode_stream(tokenize_text(_dis(_CFG, _ACC)), _TABLE)
         assert [d.identity for d in got] == ["vsetvli", "ACC"]
         assert [d.from_extension for d in got] == [False, True]
 
     def test_an_empty_table_names_nothing_as_ours(self):
         from merlin.kernels.decode.objdump import tokenize_text
+
         got = OA.decode_stream(tokenize_text(_dis(_ACC)), {})
         assert got[0].from_extension is False
 
@@ -168,7 +175,9 @@ class TestAgainstRealAssembledCode:
     @pytest.fixture
     def obj(self, tmp_path):
         import subprocess
+
         from merlin.llvmlower import toolchain
+
         if not toolchain.available():
             pytest.skip("needs the pinned clang")
         src = tmp_path / "k.c"
@@ -180,11 +189,25 @@ class TestAgainstRealAssembledCode:
             '  asm volatile("vsetvli zero, %0, e8, m1, ta, ma" : : "r"(nl));\n'
             '  asm volatile(".insn r 0x57, 0x2, 0x51, x1, x5, x4");\n'
             '  asm volatile(".insn r 0x57, 0x6, 0x5d, x0, x0, x1");\n'
-            "}\n", encoding="utf-8")
+            "}\n",
+            encoding="utf-8",
+        )
         out = tmp_path / "k.o"
-        p = subprocess.run([toolchain.clang(), "--target=riscv64-unknown-elf", "-march=rv64gcv",
-                            "-mabi=lp64d", "-O2", "-c", str(src), "-o", str(out)],
-                           capture_output=True, text=True)
+        p = subprocess.run(
+            [
+                toolchain.clang(),
+                "--target=riscv64-unknown-elf",
+                "-march=rv64gcv",
+                "-mabi=lp64d",
+                "-O2",
+                "-c",
+                str(src),
+                "-o",
+                str(out),
+            ],
+            capture_output=True,
+            text=True,
+        )
         if p.returncode != 0:
             pytest.skip(f"cross-compile unavailable: {p.stderr[-300:]}")
         return out
@@ -198,6 +221,7 @@ class TestAgainstRealAssembledCode:
         # If this ever fails, the disassembler learned the extension and a mnemonic-based audit would
         # start working -- worth knowing, because it changes what this module has to do.
         from merlin.kernels.decode.objdump import tokenize
+
         words = {i.hexcode for i in tokenize(obj)}
         named = [i.mnemonic for i in tokenize(obj) if i.mnemonic != OA.UNKNOWN_MNEMONIC]
         assert words, "expected a non-empty disassembly"

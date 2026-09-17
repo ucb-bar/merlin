@@ -9,6 +9,7 @@ no brokered calls".
 Measured on the v15 run once the path was fixed: 15 brokered calls and 3,115 seconds of tool time,
 including three `qualify-changed-region` calls that had each been refused.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,15 +20,12 @@ from merlin.agentreport import phase2
 def _receipts(stage, dirname, round_name, rows):
     d = stage / dirname / round_name
     d.mkdir(parents=True)
-    (d / "receipts.jsonl").write_text(
-        "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    (d / "receipts.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
 
 
 ROWS = [
-    {"index": 0, "action": "analyze-whole-model", "elapsed_s": 240.5, "returncode": 0,
-     "state": "complete"},
-    {"index": 1, "action": "qualify-changed-region", "elapsed_s": 945.4, "returncode": 125,
-     "state": "complete"},
+    {"index": 0, "action": "analyze-whole-model", "elapsed_s": 240.5, "returncode": 0, "state": "complete"},
+    {"index": 1, "action": "qualify-changed-region", "elapsed_s": 945.4, "returncode": 125, "state": "complete"},
 ]
 
 

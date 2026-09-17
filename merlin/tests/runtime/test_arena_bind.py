@@ -16,6 +16,7 @@ The second thing these tests defend is that the pass is not vacuous. Refusing ev
 deallocation block was folded away: with the never-taken edge kept, no free provably ran, no buffer
 was ever provably dead, and the arena degenerated to one slot per allocation.
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -60,7 +61,9 @@ def _guarded_free(name: str, here: str, nxt: str) -> str:
 #: ``a`` is still live when ``b`` is allocated: ``b``'s malloc sits inside ``a``'s window. The
 #: function returns ``a[0] + b[0]``, so seating them on the same bytes turns 1.0 + 2.0 = 3.0 into
 #: 2.0 + 2.0 = 4.0 — a wrong number, not a crash, which is the whole point.
-OVERLAPPING = _PROLOGUE + f"""
+OVERLAPPING = (
+    _PROLOGUE
+    + f"""
 define void @forward(ptr %out) {{
 {_alloc("a", 128)}
   store float 1.000000e+00, ptr %ap, align 4
@@ -75,9 +78,12 @@ define void @forward(ptr %out) {{
   ret void
 }}
 """
+)
 
 #: ``a`` is dead before ``b`` is allocated, so one slot must serve both.
-SEQUENTIAL = _PROLOGUE + f"""
+SEQUENTIAL = (
+    _PROLOGUE
+    + f"""
 define void @forward(ptr %out) {{
 {_alloc("a", 128)}
   store float 1.000000e+00, ptr %ap, align 4
@@ -92,6 +98,7 @@ define void @forward(ptr %out) {{
   ret void
 }}
 """
+)
 
 
 def _bind(text: str):
@@ -101,6 +108,7 @@ def _bind(text: str):
 # ---------------------------------------------------------------------------------------------
 # The property the pass exists for
 # ---------------------------------------------------------------------------------------------
+
 
 def test_a_buffer_still_live_never_shares_bytes_with_the_next_allocation():
     """The deliberate overlap: ``b`` is allocated while ``a`` is still live, so the two may not
@@ -124,8 +132,7 @@ def test_the_overlap_guard_can_actually_fail():
     offsets, total = pack_disjoint([("a", 128), ("b", 128)], {"a": set(), "b": set()})
     assert offsets == {"a": 0, "b": 0} and total == 128, (offsets, total)
     with pytest.raises(ab.ArenaBindError) as exc:
-        ab._assert_no_conflicting_overlap(offsets, {"a": 128, "b": 128},
-                                          {"a": {"b"}, "b": {"a"}})
+        ab._assert_no_conflicting_overlap(offsets, {"a": 128, "b": 128}, {"a": {"b"}, "b": {"a"}})
     assert "overlapping bytes" in str(exc.value)
 
 
@@ -184,9 +191,18 @@ def _conflicts_of(text: str) -> dict:
                 continue
             mb, mp = line_block[li]
             fb, fp = line_block[frees[m[0]]]
-            allocs.append(ab._Alloc(name=m[0], size=m[1], malloc_line=li, malloc_block=mb,
-                                    malloc_pos=mp, free_line=frees[m[0]], free_block=fb,
-                                    free_pos=fp))
+            allocs.append(
+                ab._Alloc(
+                    name=m[0],
+                    size=m[1],
+                    malloc_line=li,
+                    malloc_block=mb,
+                    malloc_pos=mp,
+                    free_line=frees[m[0]],
+                    free_block=fb,
+                    free_pos=fp,
+                )
+            )
     win = {a.name: ab._window_blocks(a, succs) for a in allocs}
 
     def inside(a, blk, pos):
@@ -200,7 +216,7 @@ def _conflicts_of(text: str) -> dict:
 
     out = {a.name: set() for a in allocs}
     for i, a in enumerate(allocs):
-        for b in allocs[i + 1:]:
+        for b in allocs[i + 1 :]:
             if inside(a, b.malloc_block, b.malloc_pos) or inside(b, a.malloc_block, a.malloc_pos):
                 out[a.name].add(b.name)
                 out[b.name].add(a.name)
@@ -211,11 +227,13 @@ def _conflicts_of(text: str) -> dict:
 # Executable evidence: the rewritten module must compute what the heap version computes
 # ---------------------------------------------------------------------------------------------
 
+
 def _clang():
     from merlin.llvmlower import toolchain
+
     try:
         return str(toolchain.clang())
-    except Exception:                      # noqa: BLE001 -- no toolchain in this checkout
+    except Exception:  # noqa: BLE001 -- no toolchain in this checkout
         return None
 
 
@@ -234,8 +252,7 @@ def test_the_rewritten_module_computes_the_same_number(tmp_path, source, expecte
         ll = tmp_path / f"{tag}.ll"
         so = tmp_path / f"{tag}.so"
         ll.write_text(text)
-        proc = subprocess.run([cc, "-O0", "-shared", "-fPIC", str(ll), "-o", str(so)],
-                              capture_output=True, text=True)
+        proc = subprocess.run([cc, "-O0", "-shared", "-fPIC", str(ll), "-o", str(so)], capture_output=True, text=True)
         assert proc.returncode == 0, proc.stderr
         lib = ctypes.CDLL(str(so))
         out = ctypes.c_float(0.0)
@@ -249,7 +266,9 @@ def test_the_rewritten_module_computes_the_same_number(tmp_path, source, expecte
 # Fail-closed: everything the analysis cannot prove stays on the heap
 # ---------------------------------------------------------------------------------------------
 
-LOOPED = _PROLOGUE + f"""
+LOOPED = (
+    _PROLOGUE
+    + f"""
 define void @forward(ptr %out) {{
   br label %top
 
@@ -269,6 +288,7 @@ done:
   ret void
 }}
 """
+)
 
 
 def test_an_allocation_inside_a_loop_is_left_on_the_heap():
@@ -280,7 +300,9 @@ def test_an_allocation_inside_a_loop_is_left_on_the_heap():
     assert out == LOOPED, "a module with nothing bindable must come back byte-identical"
 
 
-ESCAPING = _PROLOGUE + """
+ESCAPING = (
+    _PROLOGUE
+    + """
 declare void @sink(ptr)
 
 define void @forward(ptr %out) {
@@ -299,6 +321,7 @@ m1:
   ret void
 }
 """
+)
 
 
 def test_a_raw_pointer_written_to_caller_memory_is_left_on_the_heap():
@@ -309,7 +332,9 @@ def test_a_raw_pointer_written_to_caller_memory_is_left_on_the_heap():
     assert out == ESCAPING
 
 
-DESCRIPTOR = _PROLOGUE + """
+DESCRIPTOR = (
+    _PROLOGUE
+    + """
 declare void @memrefCopy(i64, ptr, ptr)
 declare void @capture(ptr)
 
@@ -330,6 +355,7 @@ m1:
   ret void
 }
 """
+)
 
 
 def test_a_memref_descriptor_use_is_admitted_only_when_no_callee_can_capture():
@@ -342,14 +368,17 @@ def test_a_memref_descriptor_use_is_admitted_only_when_no_callee_can_capture():
     assert rep.bound == 1 and rep.refusals == {}, rep.to_dict()
     assert "@merlin_arena" in out
 
-    hostile = DESCRIPTOR.replace("  br i1 true, label %fa, label %m1",
-                                 "  call void @capture(ptr %ap)\n  br i1 true, label %fa, label %m1")
+    hostile = DESCRIPTOR.replace(
+        "  br i1 true, label %fa, label %m1", "  call void @capture(ptr %ap)\n  br i1 true, label %fa, label %m1"
+    )
     out2, rep2 = _bind(hostile)
     assert rep2.bound == 0 and rep2.refusals == {"raw_pointer_escapes": 1}, rep2.to_dict()
     assert out2 == hostile
 
 
-DESCRIPTOR_ESCAPES = _PROLOGUE + """
+DESCRIPTOR_ESCAPES = (
+    _PROLOGUE
+    + """
 declare void @memrefCopy(i64, ptr, ptr)
 
 define void @forward(ptr %out) {
@@ -369,6 +398,7 @@ m1:
   ret void
 }
 """
+)
 
 
 def test_a_descriptor_written_through_a_caller_pointer_is_left_on_the_heap():
@@ -386,10 +416,11 @@ def test_a_descriptor_written_through_a_caller_pointer_is_left_on_the_heap():
     # ...and the same module with a LOCAL spill destination is accepted, so the check is discriminating
     local = DESCRIPTOR_ESCAPES.replace(
         "  %a = call ptr @malloc(i64 128)",
-        "  %slot = alloca { ptr, ptr, i64 }, align 8\n  %a = call ptr @malloc(i64 128)").replace(
+        "  %slot = alloca { ptr, ptr, i64 }, align 8\n  %a = call ptr @malloc(i64 128)",
+    ).replace(
         "store { ptr, ptr, i64 } %d2, ptr %out, align 8",
-        "store { ptr, ptr, i64 } %d2, ptr %slot, align 8\n"
-        "  call void @memrefCopy(i64 4, ptr %slot, ptr %slot)")
+        "store { ptr, ptr, i64 } %d2, ptr %slot, align 8\n  call void @memrefCopy(i64 4, ptr %slot, ptr %slot)",
+    )
     _, rep2 = _bind(local)
     assert rep2.bound == 1 and rep2.refusals == {}, rep2.to_dict()
 
@@ -397,8 +428,7 @@ def test_a_descriptor_written_through_a_caller_pointer_is_left_on_the_heap():
 def test_a_store_destination_is_read_structurally():
     """An aggregate type spells its members ``", ptr,"``; the destination operand is ``", ptr %x"``.
     Reading the wrong one would name a member type as the destination and refuse everything."""
-    assert ab._store_destination(
-        "store { ptr, ptr, i64 } %d2, ptr %slot, align 8") == "%slot"
+    assert ab._store_destination("store { ptr, ptr, i64 } %d2, ptr %slot, align 8") == "%slot"
     assert ab._store_destination("store ptr %a, ptr %out, align 8") == "%out"
     assert ab._store_destination("%x = load ptr, ptr %y") is None
 
@@ -425,12 +455,15 @@ def test_a_computed_malloc_size_is_left_on_the_heap():
 def test_a_function_that_returns_a_value_is_refused_outright():
     """A returned value could carry an arena pointer past the point the plan gives those bytes to
     somebody else. That is a property of the whole module, not of one allocation, so it raises."""
-    bad = _PROLOGUE + """
+    bad = (
+        _PROLOGUE
+        + """
 define ptr @forward(ptr %out) {
   %a = call ptr @malloc(i64 128)
   ret ptr %a
 }
 """
+    )
     with pytest.raises(ab.ArenaBindError):
         _bind(bad)
 
@@ -439,8 +472,7 @@ def test_a_branch_whose_successors_cannot_be_read_raises_rather_than_binding():
     """A missing CFG edge produces a reachability answer that is wrong in the one direction nothing
     else checks — it makes windows look smaller than they are, which is how two live buffers end up
     sharing bytes. Refuse the module instead of transforming it on a partial CFG."""
-    broken = OVERLAPPING.replace("  br i1 true, label %fb, label %m1",
-                                 "  br unknownform")
+    broken = OVERLAPPING.replace("  br i1 true, label %fb, label %m1", "  br unknownform")
     with pytest.raises(ab.ArenaBindError):
         _bind(broken)
 
@@ -448,6 +480,7 @@ def test_a_branch_whose_successors_cannot_be_read_raises_rather_than_binding():
 # ---------------------------------------------------------------------------------------------
 # The frozen-baseline invariant at the seam that calls this
 # ---------------------------------------------------------------------------------------------
+
 
 def test_lower_model_does_not_touch_the_ll_unless_the_flag_is_set(tmp_path, monkeypatch):
     """With the flag off the emitted ``.ll`` must be what the pipeline produced, byte for byte —

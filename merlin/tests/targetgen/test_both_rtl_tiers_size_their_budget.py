@@ -5,6 +5,7 @@ adapter passed nothing, so every capsule ran against a 20000 default there. A co
 more raised `ProgramDidNotHalt`, and the runner attributes that to the submission -- so a harness
 limit was reported as the agent's bug. Two tiers of one target had different budgets for no reason.
 """
+
 from __future__ import annotations
 
 import inspect

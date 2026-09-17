@@ -1,8 +1,9 @@
 """Offline tests for the resume-safe prelaunch functional GSIM certificate producer."""
+
 from __future__ import annotations
 
-import importlib.util
 import copy
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -13,7 +14,6 @@ import yaml
 
 from merlin.benchharness import hash_tree
 from merlin.common.paths import merlin_dir
-
 
 SCRIPTS = merlin_dir() / "experiments/gemmini_perf_bench/scripts"
 sys.path.insert(0, str(SCRIPTS))
@@ -34,9 +34,10 @@ def _capsule(root: Path, name: str, *, m: int, n: int, k: int) -> Path:
             {"name": "W", "role": "weight", "shape": [k, n], "dtype": "i8"},
             {"name": "X", "role": "input", "shape": [m, k], "dtype": "i8"},
         ],
-        "operation": {"op": "matmul", "attributes": {
-            "lhs": "X", "weight": "W", "out": "Y0", "epilogue": [],
-            "output_dtype": "i32"}},
+        "operation": {
+            "op": "matmul",
+            "attributes": {"lhs": "X", "weight": "W", "out": "Y0", "epilogue": [], "output_dtype": "i32"},
+        },
         "numeric_policy": {"compare": "exact_int", "dtype": "i32"},
     }
     path = directory / "capsule.yaml"
@@ -47,9 +48,12 @@ def _capsule(root: Path, name: str, *, m: int, n: int, k: int) -> Path:
 def _functional_capsule(path: Path, *, kind: str = "op"):
     workload = QUAL.PRODUCER.derive_workload(path)
     return QUAL.ORCH.FunctionalCapsule(
-        name=path.parent.name, kind=kind, manifest=path.resolve(),
+        name=path.parent.name,
+        kind=kind,
+        manifest=path.resolve(),
         manifest_sha256=QUAL._sha_file(path),
-        workload_sha256=QUAL.GATE.workload_sha256(workload))
+        workload_sha256=QUAL.GATE.workload_sha256(workload),
+    )
 
 
 def _capture(path: Path, pins: dict[str, dict[str, str]]) -> dict:
@@ -57,25 +61,42 @@ def _capture(path: Path, pins: dict[str, dict[str, str]]) -> dict:
     identity = QUAL.GATE.workload_sha256(workload)
     output = identity[1:] + identity[:1]
     elf = identity[2:] + identity[:2]
-    tensors = [{"name": "Y0", "shape": [1], "dtype": "i32", "n_bytes": 4,
-                "sha256": output}]
-    common = {"ran": True, "verdict": "pass", "elf_sha256": elf,
-              "derived_from_rtl": True, "cycle_accurate": True,
-              "output_sha256": output, "output_encoding": QUAL.PRODUCER.OUTPUT_ENCODING,
-              "output_tensors": tensors}
+    tensors = [{"name": "Y0", "shape": [1], "dtype": "i32", "n_bytes": 4, "sha256": output}]
+    common = {
+        "ran": True,
+        "verdict": "pass",
+        "elf_sha256": elf,
+        "derived_from_rtl": True,
+        "cycle_accurate": True,
+        "output_sha256": output,
+        "output_encoding": QUAL.PRODUCER.OUTPUT_ENCODING,
+        "output_tensors": tensors,
+    }
     return {
-        "schema_version": QUAL.PRODUCER.CAPTURE_SCHEMA, "target": "gemmini",
-        "capsule": path.parent.name, "capsule_manifest_path": str(path.resolve()),
-        "capsule_manifest_sha256": QUAL._sha_file(path), "workload": workload,
-        "workload_sha256": identity, "elf_sha256": elf, "agreement": "AGREE",
-        "evidence": QUAL.GATE.STRONG_EVIDENCE, "bytes_match": True,
-        "reference": {**common, "engine": "verilator",
-                      "binary_sha256": pins["verilator_binary"]["sha256"],
-                      "firrtl_sha256": pins["verilator_firrtl"]["sha256"]},
-        "candidate": {**common, "engine": "gsim",
-                      "binary_sha256": pins["gsim_binary"]["sha256"],
-                      "firrtl_sha256": pins["gsim_firrtl"]["sha256"],
-                      "model_sha256": pins["gsim_model"]["sha256"]},
+        "schema_version": QUAL.PRODUCER.CAPTURE_SCHEMA,
+        "target": "gemmini",
+        "capsule": path.parent.name,
+        "capsule_manifest_path": str(path.resolve()),
+        "capsule_manifest_sha256": QUAL._sha_file(path),
+        "workload": workload,
+        "workload_sha256": identity,
+        "elf_sha256": elf,
+        "agreement": "AGREE",
+        "evidence": QUAL.GATE.STRONG_EVIDENCE,
+        "bytes_match": True,
+        "reference": {
+            **common,
+            "engine": "verilator",
+            "binary_sha256": pins["verilator_binary"]["sha256"],
+            "firrtl_sha256": pins["verilator_firrtl"]["sha256"],
+        },
+        "candidate": {
+            **common,
+            "engine": "gsim",
+            "binary_sha256": pins["gsim_binary"]["sha256"],
+            "firrtl_sha256": pins["gsim_firrtl"]["sha256"],
+            "model_sha256": pins["gsim_model"]["sha256"],
+        },
     }
 
 
@@ -83,26 +104,39 @@ def _source_certificate(tmp_path: Path, manifests: list[Path]):
     model = tmp_path / "model"
     model.mkdir()
     (model / "TestHarness.h").write_text("generated model\n", encoding="utf-8")
-    model_manifest = QUAL.PRODUCER.write_model_manifest(
-        model, ["TestHarness.h"], tmp_path / "model-manifest.json")
+    model_manifest = QUAL.PRODUCER.write_model_manifest(model, ["TestHarness.h"], tmp_path / "model-manifest.json")
     files = {}
-    for name in ("gsim_firrtl", "verilator_firrtl", "gsim_binary", "verilator_binary",
-                 "emitter", "wrapper", "compiler", "harness"):
+    for name in (
+        "gsim_firrtl",
+        "verilator_firrtl",
+        "gsim_binary",
+        "verilator_binary",
+        "emitter",
+        "wrapper",
+        "compiler",
+        "harness",
+    ):
         files[name] = tmp_path / name
         files[name].write_text(name + "\n", encoding="utf-8")
     artifacts = QUAL.PRODUCER.ArtifactPaths(
-        files["gsim_firrtl"], files["verilator_firrtl"], model_manifest,
-        files["gsim_binary"], files["verilator_binary"])
+        files["gsim_firrtl"], files["verilator_firrtl"], model_manifest, files["gsim_binary"], files["verilator_binary"]
+    )
     receipt = QUAL.PRODUCER.write_build_receipt(
-        output=tmp_path / "build-receipt.json", firrtl=files["gsim_firrtl"],
-        model_manifest=model_manifest, binary=files["gsim_binary"], emitter=files["emitter"],
-        cxx_wrapper=files["wrapper"], cxx_compiler=files["compiler"],
-        inputs=[("harness", files["harness"])], commands=[
+        output=tmp_path / "build-receipt.json",
+        firrtl=files["gsim_firrtl"],
+        model_manifest=model_manifest,
+        binary=files["gsim_binary"],
+        emitter=files["emitter"],
+        cxx_wrapper=files["wrapper"],
+        cxx_compiler=files["compiler"],
+        inputs=[("harness", files["harness"])],
+        commands=[
             {"stage": "elaborate", "cwd": str(tmp_path), "argv": ["elaborate"]},
             {"stage": "emit", "cwd": str(tmp_path), "argv": ["emit"]},
             {"stage": "compile", "cwd": str(tmp_path), "argv": ["compile"]},
             {"stage": "link", "cwd": str(tmp_path), "argv": ["link"]},
-        ])
+        ],
+    )
     pins = artifacts.pinned()
     capture_paths = []
     for index, manifest in enumerate(manifests):
@@ -110,7 +144,8 @@ def _source_certificate(tmp_path: Path, manifests: list[Path]):
         path.write_text(json.dumps(_capture(manifest, pins)), encoding="utf-8")
         capture_paths.append(path)
     document = QUAL.PRODUCER.produce_certificate(
-        target="gemmini", captures=capture_paths, artifacts=artifacts, build_receipt=receipt)
+        target="gemmini", captures=capture_paths, artifacts=artifacts, build_receipt=receipt
+    )
     path = tmp_path / "source-certificate.json"
     path.write_text(QUAL.GATE.canonical_json(document) + "\n", encoding="utf-8")
     return path, QUAL._sha_file(path)
@@ -139,7 +174,9 @@ def test_cases_fold_duplicate_public_hidden_workloads_deterministically(tmp_path
     cohort = QUAL.ORCH.FunctionalGradeCohort(
         public=(_functional_capsule(first),),
         hidden=(_functional_capsule(distinct), _functional_capsule(duplicate)),
-        public_source_count=1, hidden_source_count=2)
+        public_source_count=1,
+        hidden_source_count=2,
+    )
 
     cases = QUAL.derive_cases(cohort)
 
@@ -155,7 +192,10 @@ def test_cases_leave_whole_models_to_dynamic_gsim_regrade(tmp_path: Path) -> Non
     model = _capsule(tmp_path, "whole_model", m=31, n=17, k=9)
     cohort = QUAL.ORCH.FunctionalGradeCohort(
         public=(_functional_capsule(operation), _functional_capsule(model, kind="model")),
-        hidden=(), public_source_count=2, hidden_source_count=0)
+        hidden=(),
+        public_source_count=2,
+        hidden_source_count=0,
+    )
 
     cases = QUAL.derive_cases(cohort)
 
@@ -170,8 +210,11 @@ def test_exact_certificate_reuses_overlap_filters_extra_and_captures_missing(tmp
     baseline, baseline_sha = _baseline(tmp_path)
     descriptor = _descriptor(tmp_path)
     cohort = QUAL.ORCH.FunctionalGradeCohort(
-        public=(_functional_capsule(member),), hidden=(_functional_capsule(missing),),
-        public_source_count=1, hidden_source_count=1)
+        public=(_functional_capsule(member),),
+        hidden=(_functional_capsule(missing),),
+        public_source_count=1,
+        hidden_source_count=1,
+    )
     lowered = []
 
     def lowerer(base, case, output, timeout):
@@ -187,11 +230,20 @@ def test_exact_certificate_reuses_overlap_filters_extra_and_captures_missing(tmp
         return _capture(Path(kwargs["capsule_manifest"]), source_record.pins)
 
     certificate, digest = QUAL.produce_functional_certificate(
-        descriptor=descriptor, functional_base=baseline, functional_base_sha256=baseline_sha,
-        source_certificate=source, source_certificate_sha256=source_sha,
-        root=tmp_path / "qualification", timeout=19, workers=2,
-        target_experiment=SimpleNamespace(target="gemmini"), cohort=cohort,
-        lowerer=lowerer, capturer=capturer, backend=object())
+        descriptor=descriptor,
+        functional_base=baseline,
+        functional_base_sha256=baseline_sha,
+        source_certificate=source,
+        source_certificate_sha256=source_sha,
+        root=tmp_path / "qualification",
+        timeout=19,
+        workers=2,
+        target_experiment=SimpleNamespace(target="gemmini"),
+        cohort=cohort,
+        lowerer=lowerer,
+        capturer=capturer,
+        backend=object(),
+    )
 
     record = QUAL.GATE.load_certificate(certificate, expected_sha256=digest)
     expected = {capsule.workload_sha256 for capsule in (*cohort.public, *cohort.hidden)}
@@ -208,8 +260,7 @@ def test_failed_attempt_is_retained_and_resume_uses_fresh_attempt(tmp_path: Path
     baseline, baseline_sha = _baseline(tmp_path)
     descriptor = _descriptor(tmp_path)
     capsule = _functional_capsule(member)
-    cohort = QUAL.ORCH.FunctionalGradeCohort(
-        public=(capsule,), hidden=(), public_source_count=1, hidden_source_count=0)
+    cohort = QUAL.ORCH.FunctionalGradeCohort(public=(capsule,), hidden=(), public_source_count=1, hidden_source_count=0)
     source_record = QUAL.GATE.load_certificate(source, expected_sha256=source_sha)
     calls = 0
 
@@ -227,16 +278,24 @@ def test_failed_attempt_is_retained_and_resume_uses_fresh_attempt(tmp_path: Path
         return _capture(Path(kwargs["capsule_manifest"]), source_record.pins)
 
     arguments = dict(
-        descriptor=descriptor, functional_base=baseline, functional_base_sha256=baseline_sha,
-        source_certificate=source, source_certificate_sha256=source_sha,
-        root=tmp_path / "qualification", timeout=19, workers=1,
-        target_experiment=SimpleNamespace(target="gemmini"), cohort=cohort,
-        lowerer=lowerer, capturer=capturer, backend=object())
+        descriptor=descriptor,
+        functional_base=baseline,
+        functional_base_sha256=baseline_sha,
+        source_certificate=source,
+        source_certificate_sha256=source_sha,
+        root=tmp_path / "qualification",
+        timeout=19,
+        workers=1,
+        target_experiment=SimpleNamespace(target="gemmini"),
+        cohort=cohort,
+        lowerer=lowerer,
+        capturer=capturer,
+        backend=object(),
+    )
     with pytest.raises(QUAL.FunctionalQualificationError, match="attempts were retained"):
         QUAL.produce_functional_certificate(**arguments)
 
-    declaration = json.loads(next((tmp_path / "qualification").glob(
-        "declaration.*.json")).read_text())
+    declaration = json.loads(next((tmp_path / "qualification").glob("declaration.*.json")).read_text())
     frozen_descriptor = Path(declaration["target_descriptor"]["path"])
     frozen_manifest = Path(declaration["cases"][0]["representative_manifest"])
     assert frozen_descriptor.is_relative_to(tmp_path / "qualification/inputs")
@@ -253,16 +312,17 @@ def test_failed_attempt_is_retained_and_resume_uses_fresh_attempt(tmp_path: Path
     attempts = sorted((tmp_path / "qualification/attempts" / capsule.workload_sha256).iterdir())
     assert [path.name for path in attempts] == ["attempt-000", "attempt-001"]
     assert len(list(attempts[0].glob("failure.*.json"))) == 1
-    assert QUAL.GATE.load_certificate(certificate, expected_sha256=digest).members.keys() == {
-        capsule.workload_sha256}
+    assert QUAL.GATE.load_certificate(certificate, expected_sha256=digest).members.keys() == {capsule.workload_sha256}
     assert not (tmp_path / "qualification").stat().st_mode & 0o222
     assert not frozen_descriptor.stat().st_mode & 0o222
     assert not frozen_manifest.stat().st_mode & 0o222
 
 
 def _sample_cohort(tmp_path):
-    paths = [_capsule(tmp_path / "capsules", name, m=16, n=16, k=k)
-             for name, k in (("small", 16), ("large", 256), ("relu", 32))]
+    paths = [
+        _capsule(tmp_path / "capsules", name, m=16, n=16, k=k)
+        for name, k in (("small", 16), ("large", 256), ("relu", 32))
+    ]
     relu = yaml.safe_load(paths[2].read_text())
     relu["operation"]["attributes"]["epilogue"] = ["relu"]
     paths[2].write_text(yaml.safe_dump(relu))
@@ -293,10 +353,19 @@ def test_stratified_certificate_seals_selection_before_captures_and_resumes(tmp_
         return _capture(manifest, source_record.pins)
 
     arguments = dict(
-        descriptor=descriptor, functional_base=baseline, functional_base_sha256=baseline_sha,
-        source_certificate=source, source_certificate_sha256=source_sha, root=root,
-        coverage="stratified", target_experiment=SimpleNamespace(target="gemmini"),
-        cohort=cohort, lowerer=lowerer, capturer=capturer, backend=object())
+        descriptor=descriptor,
+        functional_base=baseline,
+        functional_base_sha256=baseline_sha,
+        source_certificate=source,
+        source_certificate_sha256=source_sha,
+        root=root,
+        coverage="stratified",
+        target_experiment=SimpleNamespace(target="gemmini"),
+        cohort=cohort,
+        lowerer=lowerer,
+        capturer=capturer,
+        backend=object(),
+    )
     path, digest = QUAL.produce_functional_certificate(**arguments)
     record = QUAL.GATE.load_certificate(path, expected_sha256=digest)
     expected = {_functional_capsule(p).workload_sha256 for p in (paths[0], paths[2])}
@@ -338,8 +407,11 @@ def test_sample_cost_ranking_is_pinned_and_partial_strata_use_size(tmp_path):
     cases = [(case.identity, case.manifest) for case in QUAL.derive_cases(cohort)]
     small, large, relu = [_functional_capsule(p).workload_sha256 for p in paths]
     pins = {name: {"sha256": "a" * 64} for name in QUAL.GATE.REQUIRED_PINS}
-    model = {"engine": "verilator", "pins": {k: v["sha256"] for k, v in pins.items()},
-             "seconds": {small: 20, large: 10}}
+    model = {
+        "engine": "verilator",
+        "pins": {k: v["sha256"] for k, v in pins.items()},
+        "seconds": {small: 20, large: 10},
+    }
     sample = QUAL.COVERAGE.derive(cases, reference_cost_model=model, pins=pins)
     assert set(sample["selected"]) == {large, relu}
     assert QUAL.COVERAGE.derive(list(reversed(cases)), reference_cost_model=model, pins=pins) == sample

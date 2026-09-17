@@ -17,6 +17,7 @@ baseline build does not.
 
 The occupancy test a strided insert has to pass is ``offset + (size - 1) * stride < extent``.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -47,7 +48,10 @@ def _insert_slice_module(c: int, h: int, w: int, s: int, *, pad: int = 0) -> tup
         f"{_STRIDES}1, 1, {s}, {s}>, "
         f"operandSegmentSizes = array<i32: 1, 1, 0, 0, 0>}}> "
         f": (tensor<{src}>, tensor<{dst}>) -> tensor<{dst}> "
-        f"func.return %r : tensor<{dst}> }} }}", oh, ow)
+        f"func.return %r : tensor<{dst}> }} }}",
+        oh,
+        ow,
+    )
 
 
 @pytest.mark.parametrize("pad", [0, 1])
@@ -55,8 +59,7 @@ def test_legal_strided_insert_slice_keeps_its_stride(pad):
     """The upsample fits (``offset + (size-1)*stride < extent``), so nothing may be reset."""
     text, _oh, _ow = _insert_slice_module(2, 16, 16, 2, pad=pad)
     out, _stats = preprocess_text_textual(text)
-    assert f"{_STRIDES}1, 1, 2, 2>" in out, (
-        "a legal ConvTranspose upsample lost its stride in preprocessing:\n" + out)
+    assert f"{_STRIDES}1, 1, 2, 2>" in out, "a legal ConvTranspose upsample lost its stride in preprocessing:\n" + out
 
 
 def test_overrunning_stride_is_still_repaired():
@@ -65,14 +68,16 @@ def test_overrunning_stride_is_still_repaired():
     ``size == extent`` with ``stride == extent`` cannot fit: element 1 would land at ``extent``.
     """
     src, dst = "1x2x4x4xf32", "1x2x4x4xf32"
-    text = (f"builtin.module {{ func.func @forward(%s: tensor<{src}>) -> tensor<{dst}> {{ "
-            f"%z = arith.constant 0.0 : f32 %d = tensor.splat %z : tensor<{dst}> "
-            f'%r = "tensor.insert_slice"(%s, %d) <{{'
-            f"static_offsets = array<i64: 0, 0, 0, 0>, "
-            f"static_sizes = array<i64: 1, 2, 4, 4>, {_STRIDES}1, 1, 4, 4>, "
-            f"operandSegmentSizes = array<i32: 1, 1, 0, 0, 0>}}> "
-            f": (tensor<{src}>, tensor<{dst}>) -> tensor<{dst}> "
-            f"func.return %r : tensor<{dst}> }} }}")
+    text = (
+        f"builtin.module {{ func.func @forward(%s: tensor<{src}>) -> tensor<{dst}> {{ "
+        f"%z = arith.constant 0.0 : f32 %d = tensor.splat %z : tensor<{dst}> "
+        f'%r = "tensor.insert_slice"(%s, %d) <{{'
+        f"static_offsets = array<i64: 0, 0, 0, 0>, "
+        f"static_sizes = array<i64: 1, 2, 4, 4>, {_STRIDES}1, 1, 4, 4>, "
+        f"operandSegmentSizes = array<i32: 1, 1, 0, 0, 0>}}> "
+        f": (tensor<{src}>, tensor<{dst}>) -> tensor<{dst}> "
+        f"func.return %r : tensor<{dst}> }} }}"
+    )
     out, _stats = preprocess_text_textual(text)
     assert f"{_STRIDES}1, 1, 1, 1>" in out, "the legacy overrunning-stride repair stopped firing"
 
@@ -95,5 +100,4 @@ def test_strided_insert_slice_lowers_to_a_scatter(tmp_path):
     HostModel.load(str(res.host_so))([(a.ctypes.data, a.shape), (y.ctypes.data, y.shape)])
     expected = np.zeros((1, c, oh, ow), np.float32)
     expected[:, :, ::s, ::s] = a
-    assert np.array_equal(y, expected), (
-        f"strided insert_slice did not scatter:\ngot\n{y[0, 0]}\nwant\n{expected[0, 0]}")
+    assert np.array_equal(y, expected), f"strided insert_slice did not scatter:\ngot\n{y[0, 0]}\nwant\n{expected[0, 0]}"

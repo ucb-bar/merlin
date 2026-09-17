@@ -4,20 +4,20 @@ The generated compiler package is supplied explicitly because Phase-2 candidates
 artifacts, not importable repository modules.  The test exercises the normal package CLI and then the
 shared structural verifier; it does not inspect a model name or rely on a portfolio shape.
 """
+
 from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 from merlin.perf.compiler_plan_evidence import verify_compiler_global_plan
 
-
-SOURCE = '''builtin.module {
+SOURCE = """builtin.module {
   func.func @forward(%a: tensor<2x3xi8>, %b: tensor<3x4xi8>, %passthrough: tensor<2xi32>) -> (tensor<2x4xi32>, tensor<2xi32>) {
     %empty = tensor.empty() : tensor<2x4xi32>
     %zero = arith.constant 0 : i32
@@ -32,7 +32,7 @@ SOURCE = '''builtin.module {
     } -> tensor<2x4xi32>
     func.return %result, %passthrough : tensor<2x4xi32>, tensor<2xi32>
   }
-}'''
+}"""
 
 
 def test_directly_returned_argument_has_one_readwrite_physical_buffer(tmp_path: Path) -> None:
@@ -43,12 +43,21 @@ def test_directly_returned_argument_has_one_readwrite_physical_buffer(tmp_path: 
     source = tmp_path / "direct_return_alias.mlir"
     command_buffer = tmp_path / "command_buffer.json"
     source.write_text(SOURCE, encoding="utf-8")
-    result = subprocess.run([
-        sys.executable, str(package / "gemmini-opt"), "--source-convolution",
-        "--convert-iface-to-gemmini", f"--emit-command-buffer={command_buffer}",
-        "--emit-target-artifact", str(source),
-    ], capture_output=True, text=True, timeout=60,
-       env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(package / "gemmini-opt"),
+            "--source-convolution",
+            "--convert-iface-to-gemmini",
+            f"--emit-command-buffer={command_buffer}",
+            "--emit-target-artifact",
+            str(source),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+    )
     assert result.returncode == 0, result.stderr
     cb = json.loads(command_buffer.read_text(encoding="utf-8"))
     plan = cb["params"]["global_program_plan"]
@@ -56,9 +65,8 @@ def test_directly_returned_argument_has_one_readwrite_physical_buffer(tmp_path: 
     assert plan["entry_bindings"] == ["arg0", "arg1", "Y1"]
     assert plan["output_bindings"] == ["Y0", "Y1"]
     assert "arg2" not in cb["tensors"]
-    assert next(arg for arg in cb["kernel_abi"]["args"]
-                if arg["tensor"] == "Y1")["access"] == "readwrite"
+    assert next(arg for arg in cb["kernel_abi"]["args"] if arg["tensor"] == "Y1")["access"] == "readwrite"
     evidence = verify_compiler_global_plan(
-        source_text=SOURCE, lowered_text=result.stdout, command_buffer=cb,
-        candidate_sha256="a" * 64)
+        source_text=SOURCE, lowered_text=result.stdout, command_buffer=cb, candidate_sha256="a" * 64
+    )
     assert evidence["status"] == "verified", evidence["problems"]

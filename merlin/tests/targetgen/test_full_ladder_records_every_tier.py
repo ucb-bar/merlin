@@ -15,6 +15,7 @@ ran. That makes "these 12 capsules failed" unanswerable at the other tier — wh
 is exactly the question to ask once a shared defect is fixed. `not_run_is_not_pass` already says an
 unrun tier is not a pass; this says it must also not be INVISIBLE.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -42,7 +43,7 @@ def test_a_mandatory_failure_does_not_raise_from_inside_the_tier_loop():
     """The literal regression: `raise CertFailure` under `if not okt and mand` inside the loop."""
     src = inspect.getsource(CR.run_capsule)
     i = src.index("if not okt and mand:")
-    seg = src[i:i + 1600]
+    seg = src[i : i + 1600]
     assert "_first_cert_failure" in seg, "the deferral is gone — the ladder aborts again"
     assert "if not _complete_ladder:" in seg, "the abort is no longer conditional on the opt-out"
 
@@ -58,9 +59,10 @@ def test_the_deferred_failure_is_still_raised():
 def test_the_first_refuting_plane_is_the_one_reported():
     """Completing the ladder must not relabel WHICH tier refuted the capsule."""
     src = inspect.getsource(CR.run_capsule)
-    seg = src[src.index("if not okt and mand:"):src.index("if not _complete_ladder:")]
-    assert "if _first_cert_failure is None:" in seg, \
+    seg = src[src.index("if not okt and mand:") : src.index("if not _complete_ladder:")]
+    assert "if _first_cert_failure is None:" in seg, (
         "a later tier could overwrite the first refuter and misreport the failure plane"
+    )
 
 
 # --- the OPT-OUT path must still record ------------------------------------------------------------
@@ -72,11 +74,13 @@ def test_the_first_refuting_plane_is_the_one_reported():
 # recorded fail as evidence the capsule WAS certified at that tier and found wrong, which would put a
 # cycle-accurate verdict on a capsule no RTL ever saw.
 
+
 def test_the_short_circuit_path_fills_the_tiers_it_skipped():
     src = inspect.getsource(CR.run_capsule)
-    seg = src[src.index("if not _complete_ladder:"):src.index("raise _cf")]
-    assert "suppressed_tier_result" in seg, \
+    seg = src[src.index("if not _complete_ladder:") : src.index("raise _cf")]
+    assert "suppressed_tier_result" in seg, (
         "the opt-out path raises without recording the tiers it skipped — absent tiers are back"
+    )
 
 
 def test_a_suppressed_tier_is_skipped_never_failed():

@@ -9,6 +9,7 @@ somebody else's memory.
 So these build the real C and drive it through ctypes with descriptors laid out exactly as MLIR's lowering
 emits them. A test that only read the source could not tell a correct index from a wild one.
 """
+
 from __future__ import annotations
 
 import ctypes
@@ -28,8 +29,9 @@ def rt(tmp_path_factory):
         pytest.skip(f"no runtime source at {src}")
     work = tmp_path_factory.mktemp("mlir_rt")
     so = work / "libmlir_rt.so"
-    got = subprocess.run(["cc", "-O1", "-fPIC", "-shared", "-Wall", str(src), "-o", str(so), "-lm"],
-                         capture_output=True, text=True)
+    got = subprocess.run(
+        ["cc", "-O1", "-fPIC", "-shared", "-Wall", str(src), "-o", str(so), "-lm"], capture_output=True, text=True
+    )
     if got.returncode != 0:
         pytest.fail(f"the runtime does not build for the host:\n{got.stderr[-2000:]}")
     return ctypes.CDLL(str(so))
@@ -88,8 +90,7 @@ class TestItCopiesWhatItShould:
     def test_a_rank_zero_copy_moves_one_element(self, rt):
         src = np.array([7], dtype=np.int32)
         dst = np.array([0], dtype=np.int32)
-        _copy(rt, 4, _unranked(0, _ranked(src.ctypes.data, [], [])),
-              _unranked(0, _ranked(dst.ctypes.data, [], [])))
+        _copy(rt, 4, _unranked(0, _ranked(src.ctypes.data, [], [])), _unranked(0, _ranked(dst.ctypes.data, [], [])))
         assert dst[0] == 7
 
 
@@ -115,11 +116,12 @@ class TestARankDisagreementIsRefusedNotComputed:
         dst = np.zeros(6, dtype=np.int32)
         s = _ranked(src.ctypes.data, [1, 2, 3], [6, 3, 1])
         d_words = list(_ranked(dst.ctypes.data, [6], [1]))
-        d_words += [0x0000_7F00_0000_0000, 0x0000_7F00_0000_0000]   # what a stray read would find
+        d_words += [0x0000_7F00_0000_0000, 0x0000_7F00_0000_0000]  # what a stray read would find
         d = (ctypes.c_int64 * len(d_words))(*d_words)
         _copy(rt, 4, _unranked(3, s), _unranked(1, d))
-        np.testing.assert_array_equal(dst, np.zeros(6, dtype=np.int32),
-                                      err_msg="the copy must be refused, not attempted")
+        np.testing.assert_array_equal(
+            dst, np.zeros(6, dtype=np.int32), err_msg="the copy must be refused, not attempted"
+        )
 
     def test_the_refusal_is_counted(self, rt):
         # Refusing is still a wrong answer -- the copy did not happen -- so a run that silently skipped
@@ -128,8 +130,12 @@ class TestARankDisagreementIsRefusedNotComputed:
         before = rt.merlin_memref_rank_mismatches()
         src = np.arange(4, dtype=np.int32)
         dst = np.zeros(4, dtype=np.int32)
-        _copy(rt, 4, _unranked(2, _ranked(src.ctypes.data, [2, 2], [2, 1])),
-              _unranked(1, _ranked(dst.ctypes.data, [4], [1])))
+        _copy(
+            rt,
+            4,
+            _unranked(2, _ranked(src.ctypes.data, [2, 2], [2, 1])),
+            _unranked(1, _ranked(dst.ctypes.data, [4], [1])),
+        )
         assert rt.merlin_memref_rank_mismatches() == before + 1
 
     def test_matching_ranks_are_not_counted(self, rt):
@@ -138,8 +144,7 @@ class TestARankDisagreementIsRefusedNotComputed:
         before = rt.merlin_memref_rank_mismatches()
         src = np.arange(4, dtype=np.int32)
         dst = np.zeros(4, dtype=np.int32)
-        _copy(rt, 4, _unranked(1, _ranked(src.ctypes.data, [4], [1])),
-              _unranked(1, _ranked(dst.ctypes.data, [4], [1])))
+        _copy(rt, 4, _unranked(1, _ranked(src.ctypes.data, [4], [1])), _unranked(1, _ranked(dst.ctypes.data, [4], [1])))
         assert rt.merlin_memref_rank_mismatches() == before
         np.testing.assert_array_equal(dst, src)
 
@@ -168,10 +173,14 @@ class TestTheDescriptorTraceIsOptIn:
 
     def test_the_default_build_has_no_trace(self, tmp_path):
         from merlin.common.paths import runtime_dir
+
         src = runtime_dir() / "abi" / "mlir_runtime.c"
         so = tmp_path / "plain.so"
-        got = subprocess.run(["cc", "-O1", "-fPIC", "-shared", "-Wall", "-Werror", str(src),
-                              "-o", str(so), "-lm"], capture_output=True, text=True)
+        got = subprocess.run(
+            ["cc", "-O1", "-fPIC", "-shared", "-Wall", "-Werror", str(src), "-o", str(so), "-lm"],
+            capture_output=True,
+            text=True,
+        )
         assert got.returncode == 0, got.stderr[-1500:]
         syms = subprocess.run(["nm", "-D", str(so)], capture_output=True, text=True)
         if syms.returncode == 0:
@@ -181,11 +190,26 @@ class TestTheDescriptorTraceIsOptIn:
         # In the host shared object htif_puts/htif_putd are absent, so the weak references are null and the
         # trace is skipped. If that were wrong, every host copy would jump through a null pointer.
         from merlin.common.paths import runtime_dir
+
         src = runtime_dir() / "abi" / "mlir_runtime.c"
         so = tmp_path / "traced.so"
-        got = subprocess.run(["cc", "-O1", "-fPIC", "-shared", "-Wall", "-Werror",
-                              "-DMERLIN_MEMREF_TRACE", str(src), "-o", str(so), "-lm"],
-                             capture_output=True, text=True)
+        got = subprocess.run(
+            [
+                "cc",
+                "-O1",
+                "-fPIC",
+                "-shared",
+                "-Wall",
+                "-Werror",
+                "-DMERLIN_MEMREF_TRACE",
+                str(src),
+                "-o",
+                str(so),
+                "-lm",
+            ],
+            capture_output=True,
+            text=True,
+        )
         assert got.returncode == 0, got.stderr[-1500:]
         rt = ctypes.CDLL(str(so))
         src_a = np.arange(6, dtype=np.int32).reshape(2, 3)
@@ -207,26 +231,34 @@ class TestTheSimulatorMustAgreeWithTheBuildOnVectorLength:
 
     def test_run_appends_the_vector_length_to_the_isa(self):
         import inspect
+
         from merlin.runtime.backends import spike_model as SM
+
         src = inspect.getsource(SM.run)
         assert 'f"zvl{int(vlen)}b"' in src
         assert "vlen: int | None = None" in inspect.signature(SM.run).__str__() or True
 
     def test_run_accepts_a_vlen_argument(self):
         import inspect
+
         from merlin.runtime.backends import spike_model as SM
+
         assert "vlen" in inspect.signature(SM.run).parameters
 
     def test_build_reports_the_vlen_it_used(self):
         # Reported so a caller cannot get this wrong by omission -- which is exactly how every whole-model
         # run so far executed at half its declared width.
         import inspect
+
         from merlin.runtime.backends import spike_model as SM
+
         assert '"vlen": vlen' in inspect.getsource(SM.build)
 
     def test_build_and_run_threads_it(self):
         import inspect
+
         from merlin.runtime.backends import spike_model as SM
+
         assert 'vlen=b.get("vlen")' in inspect.getsource(SM.build_and_run)
 
 
@@ -241,6 +273,7 @@ class TestAGarbledConsoleIsStillReadable:
 
     def test_a_run_whose_console_has_invalid_utf8_still_reports_it(self, monkeypatch):
         import subprocess as sp
+
         from merlin.runtime.backends import spike_model as SM
 
         class _Done:
@@ -258,7 +291,9 @@ class TestAGarbledConsoleIsStillReadable:
 
     def test_a_clean_console_is_unaffected(self, monkeypatch):
         import struct
+
         from merlin.runtime.backends import spike_model as SM
+
         bits = struct.unpack("<I", struct.pack("<f", 1.5))[0]
 
         class _Done:
@@ -285,16 +320,21 @@ class TestRankBeyondTheIndexBuffer:
     def test_a_rank_past_the_buffer_is_refused_and_counted(self, rt):
         rt.merlin_memref_ranks_too_large.restype = ctypes.c_ulonglong
         before = rt.merlin_memref_ranks_too_large()
-        rank = 17                                  # one past MERLIN_MEMREF_MAX_RANK
+        rank = 17  # one past MERLIN_MEMREF_MAX_RANK
         sizes = [1] * rank
         strides = [1] * rank
         src = np.arange(4, dtype=np.int32)
         dst = np.zeros(4, dtype=np.int32)
-        _copy(rt, 4, _unranked(rank, _ranked(src.ctypes.data, sizes, strides)),
-              _unranked(rank, _ranked(dst.ctypes.data, sizes, strides)))
+        _copy(
+            rt,
+            4,
+            _unranked(rank, _ranked(src.ctypes.data, sizes, strides)),
+            _unranked(rank, _ranked(dst.ctypes.data, sizes, strides)),
+        )
         assert rt.merlin_memref_ranks_too_large() == before + 1
-        np.testing.assert_array_equal(dst, np.zeros(4, dtype=np.int32),
-                                      err_msg="the copy must be refused, not attempted")
+        np.testing.assert_array_equal(
+            dst, np.zeros(4, dtype=np.int32), err_msg="the copy must be refused, not attempted"
+        )
 
     def test_the_largest_supported_rank_still_copies(self, rt):
         """The bound must not cost a rank the buffer can hold -- otherwise it is a regression, not a guard."""
@@ -305,7 +345,11 @@ class TestRankBeyondTheIndexBuffer:
         strides = [4] * (rank - 1) + [1]
         src = np.arange(4, dtype=np.int32)
         dst = np.zeros(4, dtype=np.int32)
-        _copy(rt, 4, _unranked(rank, _ranked(src.ctypes.data, sizes, strides)),
-              _unranked(rank, _ranked(dst.ctypes.data, sizes, strides)))
+        _copy(
+            rt,
+            4,
+            _unranked(rank, _ranked(src.ctypes.data, sizes, strides)),
+            _unranked(rank, _ranked(dst.ctypes.data, sizes, strides)),
+        )
         assert rt.merlin_memref_ranks_too_large() == before
         np.testing.assert_array_equal(dst, src)

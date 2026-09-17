@@ -10,6 +10,7 @@ Two measured defects, both of which made a model look stubborn when it was simpl
 
 The leak guard these protect is real and stays: a bare number can echo a golden value and must scrub.
 """
+
 import json
 import sys
 from pathlib import Path
@@ -96,8 +97,9 @@ def test_result_events_accumulate_across_rounds(tmp_path):
     from merlin.targetgen import experiment_tokens as ET
 
     def result(inp, out, cost):
-        return json.dumps({"type": "result", "total_cost_usd": cost,
-                           "modelUsage": {"m": {"inputTokens": inp, "outputTokens": out}}})
+        return json.dumps(
+            {"type": "result", "total_cost_usd": cost, "modelUsage": {"m": {"inputTokens": inp, "outputTokens": out}}}
+        )
 
     p = tmp_path / "t.jsonl"
     p.write_text("\n".join([result(100, 10, 1.0), result(200, 20, 2.0), result(300, 30, 3.0)]))
@@ -110,14 +112,19 @@ def test_result_events_accumulate_across_rounds(tmp_path):
 
 def test_single_result_event_is_unchanged(tmp_path):
     from merlin.targetgen import experiment_tokens as ET
+
     p = tmp_path / "t.jsonl"
-    p.write_text(json.dumps({"type": "result", "total_cost_usd": 1.5,
-                             "modelUsage": {"m": {"inputTokens": 100, "outputTokens": 10}}}))
+    p.write_text(
+        json.dumps(
+            {"type": "result", "total_cost_usd": 1.5, "modelUsage": {"m": {"inputTokens": 100, "outputTokens": 10}}}
+        )
+    )
     s = ET.parse_transcript(p, trust_cli_cost=True)
     assert (s["tokens_input"], s["tokens_output"], s["estimated_cost_usd"]) == (100, 10, 1.5)
 
 
 # ---------------------------------------------------------------- traceback positions
+
 
 def test_a_traceback_line_number_survives():
     """MEASURED on a live re-run: after the rest of the scrub was fixed, every Python traceback the

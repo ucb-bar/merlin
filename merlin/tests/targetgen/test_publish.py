@@ -5,6 +5,7 @@ under an isolated ``MERLIN_OUT_ROOT`` tmp tree and verifies the publish flow aga
 git remote (``file://…``) — never an external/GitHub remote. The clone+cmake build proof skips
 cleanly if a cmake / C++ toolchain is unavailable.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -17,7 +18,6 @@ from merlin.common import paths
 from merlin.common.yaml import dump_yaml, load_yaml
 from merlin.targetgen import publish as pub
 
-
 # --------------------------------------------------------------------------- fixtures
 
 
@@ -26,6 +26,7 @@ def _cxx_toolchain_available() -> bool:
     # a cmake 3.3.2 on PATH that is linked against a libidn.so.11 no current distro ships, so
     # shutil.which succeeds and every configure step then dies with a loader error.
     from merlin.targetgen.oot_runner import usable_cmake
+
     if usable_cmake() == "cmake" and not shutil.which("cmake"):
         return False
     if subprocess.run([usable_cmake(), "--version"], capture_output=True).returncode != 0:
@@ -63,8 +64,10 @@ def _make_rvv_package(targets_root: Path, package_id: str = "hand_v0") -> Path:
     _write(d / "manifest.yaml", dump_yaml(manifest))
     _write(d / "knobs.yaml", dump_yaml(knobs))
     _write(d / "schedule.mlir", "module attributes {transform.with_named_sequence} {\n}\n")
-    _write(d / "baseline_runs" / "matmul_f32_64" / "results.yaml",
-           dump_yaml({"status": "pass", "workload": "matmul_f32_64"}))
+    _write(
+        d / "baseline_runs" / "matmul_f32_64" / "results.yaml",
+        dump_yaml({"status": "pass", "workload": "matmul_f32_64"}),
+    )
     return d
 
 
@@ -124,8 +127,8 @@ def test_select_champion_ranks_and_honors_package_id(out_root):
 
 def test_resolve_branch_policy_and_precedence(out_root, monkeypatch):
     troot = out_root / "artifacts" / "targets"
-    _make_rvv_package(troot, "hand_v0")          # a frozen baseline id
-    _make_rvv_package(troot, "impr_tuned_a")     # a champion id
+    _make_rvv_package(troot, "hand_v0")  # a frozen baseline id
+    _make_rvv_package(troot, "impr_tuned_a")  # a champion id
     base = pub.select_champion("rvv", package_id="hand_v0")
     champ = pub.select_champion("rvv", package_id="impr_tuned_a")
     # default policy: frozen baseline -> shared `baseline`; champion -> `stable/<pkg>`
@@ -133,6 +136,7 @@ def test_resolve_branch_policy_and_precedence(out_root, monkeypatch):
     assert pub.resolve_branch(champ) == "stable/impr_tuned_a"
     # a manifest publication.role: baseline opts a renamed control into the baseline branch
     from merlin.common.yaml import load_yaml, write_yaml
+
     man = load_yaml(troot / "rvv" / "impr_tuned_a" / "manifest.yaml")
     man["publication"] = {"role": "baseline"}
     write_yaml(troot / "rvv" / "impr_tuned_a" / "manifest.yaml", man)
@@ -172,7 +176,7 @@ def test_dry_run_makes_no_network_calls(out_root, monkeypatch):
     assert any("DRY-RUN" in a for a in res.actions)
     # the assembled tree exists, but the remote received nothing
     assert (res.repo_dir / "manifest.yaml").is_file()
-    bare = remote[len("file://"):]
+    bare = remote[len("file://") :]
     log = subprocess.run(["git", "-C", bare, "log", "--oneline"], capture_output=True, text=True)
     assert log.returncode != 0 or not log.stdout.strip()  # empty bare repo
 
@@ -184,7 +188,7 @@ def test_publish_commits_tags_and_is_idempotent(out_root, monkeypatch):
     troot = out_root / "artifacts" / "targets"
     _make_rvv_package(troot)
     remote = _bare_remote(out_root, "rvv", monkeypatch)
-    bare = remote[len("file://"):]
+    bare = remote[len("file://") :]
 
     res = pub.publish("rvv", dry_run=False)
     assert res.committed and not res.noop and res.commit_sha
@@ -197,8 +201,9 @@ def test_publish_commits_tags_and_is_idempotent(out_root, monkeypatch):
     tags = subprocess.run(["git", "-C", bare, "tag"], capture_output=True, text=True).stdout.split()
     assert res.tag in tags
     # fingerprint trailer embedded in the commit message
-    body = subprocess.run(["git", "-C", bare, "log", "-1", "--format=%B", res.branch],
-                          capture_output=True, text=True).stdout
+    body = subprocess.run(
+        ["git", "-C", bare, "log", "-1", "--format=%B", res.branch], capture_output=True, text=True
+    ).stdout
     assert f"Merlin-Publish-Fingerprint: {res.fingerprint}" in body
     # a publish event was recorded as a versioned product
     assert res.product_dir is not None and (res.product_dir / "manifest.yaml").is_file()
@@ -206,8 +211,9 @@ def test_publish_commits_tags_and_is_idempotent(out_root, monkeypatch):
     # (d) idempotent re-publish -> no-op (per-branch fingerprint match)
     res2 = pub.publish("rvv", dry_run=False)
     assert res2.noop and not res2.committed
-    count = subprocess.run(["git", "-C", bare, "rev-list", "--count", res.branch],
-                           capture_output=True, text=True).stdout.strip()
+    count = subprocess.run(
+        ["git", "-C", bare, "rev-list", "--count", res.branch], capture_output=True, text=True
+    ).stdout.strip()
     assert count == "1"
 
 
@@ -226,7 +232,8 @@ def test_needs_push_confirmation_classifies_remotes(tmp_path):
 
 
 def test_require_push_confirmation_token_must_match_fingerprint(tmp_path):
-    repo = tmp_path / "repo"; repo.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
     (repo / "manifest.yaml").write_text("x: 1\n")
     fp = "abc123"
     # non-local + wrong/absent token -> refuse (and the message lists the assembled tree)
@@ -270,15 +277,25 @@ def test_family_parity_same_top_level_skeleton(out_root, monkeypatch):
 
     rvv_top, gem_top = top(rvv.repo_dir), top(gem.repo_dir)
     assert rvv_top == gem_top
-    for required in {"CMakeLists.txt", "README.md", "include", "lib", "tools", "test",
-                     "payload", "manifest.yaml", ".merlin"}:
+    for required in {
+        "CMakeLists.txt",
+        "README.md",
+        "include",
+        "lib",
+        "tools",
+        "test",
+        "payload",
+        "manifest.yaml",
+        ".merlin",
+    }:
         assert required in rvv_top
     # family-specific payloads differ
     assert (rvv.repo_dir / "payload" / "schedule.mlir").is_file()
     assert (gem.repo_dir / "payload" / "dialect.py").is_file()
     # both manifests validate against the contract manifest schema (repo root == {package})
-    from merlin.targetgen.contract import schemas
     from merlin.common.yaml import load_yaml
+    from merlin.targetgen.contract import schemas
+
     for r in (rvv, gem):
         schemas.validate_manifest(load_yaml(r.repo_dir / "manifest.yaml"))
 
@@ -292,6 +309,7 @@ def test_promote_sets_single_champion(out_root):
     _make_rvv_package(troot, "cand_b")
     pub.promote("rvv", "hand_v0")
     from merlin.common.yaml import load_yaml
+
     m1 = load_yaml(troot / "rvv" / "hand_v0" / "manifest.yaml")
     assert m1["publication"]["champion"] is True
     assert m1["publication"]["fingerprint"]
@@ -311,6 +329,7 @@ def test_gate_refuses_uncertified(out_root, monkeypatch):
     d = _make_rvv_package(troot, "wip")
     # downgrade status below the gate
     from merlin.common.yaml import load_yaml, write_yaml
+
     man = load_yaml(d / "manifest.yaml")
     man["status"] = "draft"
     write_yaml(d / "manifest.yaml", man)
@@ -329,10 +348,11 @@ def test_gate_refuses_uncertified(out_root, monkeypatch):
 @pytest.mark.parametrize("target,maker", [("rvv", _make_rvv_package), ("gemmini", _make_gemmini_package)])
 def test_fresh_clone_builds_tool(out_root, monkeypatch, target, maker):
     from merlin.targetgen import oot_runner
+
     troot = out_root / "artifacts" / "targets"
     maker(troot)
     remote = _bare_remote(out_root, target, monkeypatch)
-    bare = remote[len("file://"):]
+    bare = remote[len("file://") :]
     res = pub.publish(target, dry_run=False)
     assert res.committed
 
@@ -361,8 +381,7 @@ def test_repo_name_defaults_to_target_and_is_overridable(out_root, monkeypatch, 
     """
     assert pub.resolve_repo_name("gemmini") == "gemmini-mlir"
     cfg = tmp_path / "publish.yaml"
-    cfg.write_text(dump_yaml({"targets": {"rvv": "git@example:x.git"},
-                              "repo_names": {"rvv": "host-mlir"}}))
+    cfg.write_text(dump_yaml({"targets": {"rvv": "git@example:x.git"}, "repo_names": {"rvv": "host-mlir"}}))
     assert pub.resolve_repo_name("rvv", config=cfg) == "host-mlir"
     assert pub.resolve_repo_name("rvv", config=cfg, override="other") == "other"
     monkeypatch.setenv("MERLIN_PUBLISH_REPO_NAME_RVV", "env-mlir")
@@ -370,11 +389,23 @@ def test_repo_name_defaults_to_target_and_is_overridable(out_root, monkeypatch, 
 
 
 def _cert_results(d: Path, run_id: str, *, status="pass", rtl=True, cycles=100) -> Path:
-    _write(d / "results.yaml", dump_yaml({
-        "status": status, "rung": run_id, "run_id": run_id,
-        "oracle": {"kind": "rtl_verilator" if rtl else "spike_gemmini_functional",
-                   "derived_from_rtl": rtl, "cycle_accurate": rtl,
-                   "result": status, "cycles": cycles}}))
+    _write(
+        d / "results.yaml",
+        dump_yaml(
+            {
+                "status": status,
+                "rung": run_id,
+                "run_id": run_id,
+                "oracle": {
+                    "kind": "rtl_verilator" if rtl else "spike_gemmini_functional",
+                    "derived_from_rtl": rtl,
+                    "cycle_accurate": rtl,
+                    "result": status,
+                    "cycles": cycles,
+                },
+            }
+        ),
+    )
     return d
 
 
@@ -389,14 +420,17 @@ def test_record_certification_breaks_the_promote_gate_circularity(out_root, tmp_
     _make_gemmini_package(troot, "oot_pkg")
     # strip the fixture's pre-baked status so only a recorded certification can open the gate
     man_path = troot / "gemmini" / "oot_pkg" / "manifest.yaml"
-    man = load_yaml(man_path); man["status"] = ""; _write(man_path, dump_yaml(man))
+    man = load_yaml(man_path)
+    man["status"] = ""
+    _write(man_path, dump_yaml(man))
 
     with pytest.raises(pub.PublishError):
         pub.promote("gemmini", "oot_pkg")
 
-    pub.record_certification("gemmini", "oot_pkg",
-                             [_cert_results(tmp_path / "r1", "g3"), _cert_results(tmp_path / "r2", "g4")])
-    pub.promote("gemmini", "oot_pkg")        # no longer refused
+    pub.record_certification(
+        "gemmini", "oot_pkg", [_cert_results(tmp_path / "r1", "g3"), _cert_results(tmp_path / "r2", "g4")]
+    )
+    pub.promote("gemmini", "oot_pkg")  # no longer refused
     sel = pub.select_champion("gemmini", package_id="oot_pkg")
     assert sel.cert_status == "pass"
 
@@ -406,8 +440,7 @@ def test_recorded_certification_keeps_its_tier(out_root, tmp_path):
     troot = out_root / "artifacts" / "targets"
     _make_gemmini_package(troot, "p")
     got = pub.record_certification("gemmini", "p", [_cert_results(tmp_path / "r", "g3", rtl=True)])
-    assert got["certification_tier"] == {"derived_from_rtl": True, "cycle_accurate": True,
-                                         "oracles": ["rtl_verilator"]}
+    assert got["certification_tier"] == {"derived_from_rtl": True, "cycle_accurate": True, "oracles": ["rtl_verilator"]}
     assert "cycle-accurate RTL" in pub._tier_phrase(got["certification_tier"])
 
 
@@ -415,9 +448,9 @@ def test_a_mixed_tier_records_as_the_weakest_rung(out_root, tmp_path):
     """A package is only as certified as its least-certified rung; quoting the best one overclaims."""
     troot = out_root / "artifacts" / "targets"
     _make_gemmini_package(troot, "p")
-    got = pub.record_certification("gemmini", "p", [
-        _cert_results(tmp_path / "a", "g3", rtl=True),
-        _cert_results(tmp_path / "b", "g4", rtl=False)])
+    got = pub.record_certification(
+        "gemmini", "p", [_cert_results(tmp_path / "a", "g3", rtl=True), _cert_results(tmp_path / "b", "g4", rtl=False)]
+    )
     assert got["certification"] == "pass"
     assert got["certification_tier"]["derived_from_rtl"] is False
     assert "not** an RTL" in pub._tier_phrase(got["certification_tier"])
@@ -426,9 +459,9 @@ def test_a_mixed_tier_records_as_the_weakest_rung(out_root, tmp_path):
 def test_a_failing_rung_fails_the_whole_certification(out_root, tmp_path):
     troot = out_root / "artifacts" / "targets"
     _make_gemmini_package(troot, "p")
-    got = pub.record_certification("gemmini", "p", [
-        _cert_results(tmp_path / "a", "g3"),
-        _cert_results(tmp_path / "b", "g4", status="fail")])
+    got = pub.record_certification(
+        "gemmini", "p", [_cert_results(tmp_path / "a", "g3"), _cert_results(tmp_path / "b", "g4", status="fail")]
+    )
     assert got["certification"] == "fail"
 
 

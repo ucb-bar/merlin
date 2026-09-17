@@ -10,6 +10,7 @@ Every look is a whole turn, so this is a prompt defect with a token price.
 These assertions are on the RENDERED prompt (`render_prompt`), because that is what is served in the
 `full` experiment — the on-disk `STARTER_PROMPT.md` is write-if-absent and never read there.
 """
+
 from __future__ import annotations
 
 import functools
@@ -24,8 +25,12 @@ from merlin.targetgen.target_experiment import load_capability_manifest, load_ta
 TARGET = "gemmini"
 DESCRIPTOR = merlin_dir() / "experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
 BUNDLES = merlin_dir() / "experiments/capsule_bench/targets/gemmini/input_bundles"
-ARMS = ("raw_baseline_public_v0", "cpp_merlininfra_public_v0",
-        "merlin_assisted_public_v0", "merlin_assisted_rtlchecks_public_v0")
+ARMS = (
+    "raw_baseline_public_v0",
+    "cpp_merlininfra_public_v0",
+    "merlin_assisted_public_v0",
+    "merlin_assisted_rtlchecks_public_v0",
+)
 
 
 @functools.lru_cache(maxsize=None)
@@ -40,8 +45,9 @@ def _rendered(stem: str) -> str:
     allowed = BUNDLES / stem / "allowed_files.txt"
     granted = []
     if allowed.is_file():
-        granted = [ln.strip() for ln in allowed.read_text().splitlines()
-                   if ln.strip().startswith(("merlin/", "experiments/"))]
+        granted = [
+            ln.strip() for ln in allowed.read_text().splitlines() if ln.strip().startswith(("merlin/", "experiments/"))
+        ]
     return render_prompt(te, manifest, "full", stem, granted_tools=granted)
 
 
@@ -71,8 +77,7 @@ def test_the_rtl_arm_is_pointed_at_the_wait_too():
     """arm-4 carries an EXTRA verdict-reading directive; it must not become an extra poll."""
     text = _rendered("merlin_assisted_rtlchecks_public_v0")
     assert "rtl_checks" in text
-    assert text.count("await_verdict") >= 3, \
-        "arm-4's rtl_checks directive must itself point at the blocking wait"
+    assert text.count("await_verdict") >= 3, "arm-4's rtl_checks directive must itself point at the blocking wait"
 
 
 def test_the_cadence_is_arm_invariant():

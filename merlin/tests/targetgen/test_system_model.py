@@ -18,21 +18,23 @@ These tests pin the two properties that make the model usable rather than decora
 Tests SKIP (never fail) when a target's derived facts are absent -- facts are generated during
 experiments and gitignored, so a fresh checkout legitimately has none.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from merlin.system import device_for, host_from_board, link_for, system_for
-from merlin.system.model import (ADDRESS_TRANSLATIONS, COMMAND_TRANSPORTS, OPERAND_PLACEMENTS,
-                                 Device, Host, Link, System)
-
+from merlin.system.model import ADDRESS_TRANSLATIONS, COMMAND_TRANSPORTS, OPERAND_PLACEMENTS, Device, Host, Link, System
 
 # ------------------------------------------------------------------ fail-closed vocabularies
 
+
 def test_an_unknown_token_is_refused_not_stored():
-    for kwargs in ({"command_transport": "carrier_pigeon"},
-                   {"operand_placement": "telepathy"},
-                   {"address_translation": "vibes"}):
+    for kwargs in (
+        {"command_transport": "carrier_pigeon"},
+        {"operand_placement": "telepathy"},
+        {"address_translation": "vibes"},
+    ):
         with pytest.raises(ValueError):
             Link(**kwargs)
 
@@ -42,7 +44,7 @@ def test_an_offset_translation_must_carry_its_offset():
     with pytest.raises(ValueError):
         Link(address_translation="offset")
     with pytest.raises(ValueError):
-        Link(address_offset=0x100)                      # an offset with no translation kind
+        Link(address_offset=0x100)  # an offset with no translation kind
     assert Link(address_translation="offset", address_offset=0x100).to_device_address(0x180) == 0x80
 
 
@@ -59,11 +61,16 @@ def test_every_vocabulary_is_a_closed_set():
 
 # ------------------------------------------------------------------ derived or None
 
+
 def test_an_unresolvable_target_derives_nothing_and_says_so():
     d = device_for("definitely_not_a_target")
     assert (d.kind, d.endpoint_kind) == (None, None)
-    assert set(d.link.unknowns()) == {"command_transport", "operand_placement",
-                                      "address_translation", "emitted_artifact"}
+    assert set(d.link.unknowns()) == {
+        "command_transport",
+        "operand_placement",
+        "address_translation",
+        "emitted_artifact",
+    }
     assert d.evidence.get("source"), "even a failure records what was consulted"
 
 
@@ -76,6 +83,7 @@ def test_every_underived_axis_is_none_and_leaves_evidence():
 
 
 # ------------------------------------------------------------------ the decomposition earns its keep
+
 
 def _resolved(name):
     d = device_for(name)
@@ -90,7 +98,7 @@ def test_a_host_decoded_device_and_a_self_hosted_one_derive_different_transports
     for name in ("gemmini", "radiance", "atlas"):
         try:
             d = _resolved(name)
-        except Exception:                                # noqa: BLE001
+        except Exception:  # noqa: BLE001
             continue
         kinds.setdefault(d.link.command_transport, []).append(name)
     if len(kinds) < 2:
@@ -104,18 +112,18 @@ def test_sharing_an_endpoint_kind_does_not_force_an_identical_link():
     for name in ("gemmini", "radiance", "atlas", "saturn"):
         try:
             d = _resolved(name)
-        except Exception:                                # noqa: BLE001
+        except Exception:  # noqa: BLE001
             continue
         same_endpoint.setdefault(d.endpoint_kind, []).append(d)
     pairs = [v for v in same_endpoint.values() if len(v) > 1]
     if not pairs:
         pytest.skip("no two resolvable targets share an endpoint kind here")
     group = pairs[0]
-    axes = {(d.link.operand_placement, d.link.address_translation, d.link.device_dram_base)
-            for d in group}
+    axes = {(d.link.operand_placement, d.link.address_translation, d.link.device_dram_base) for d in group}
     assert len(axes) > 1, (
         f"targets sharing endpoint {group[0].endpoint_kind!r} derived identical links; the four "
-        f"axes are not separating anything")
+        f"axes are not separating anything"
+    )
 
 
 def test_a_derived_link_reads_the_interface_facts_nothing_else_reads():
@@ -123,7 +131,7 @@ def test_a_derived_link_reads_the_interface_facts_nothing_else_reads():
     first consumer: a DMA/TLB interface is what makes 'hand it a pointer' true."""
     try:
         d = _resolved("gemmini")
-    except Exception:                                    # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pytest.skip("target not resolvable here")
     if d.link.operand_placement != "pointer_args":
         pytest.skip("no dma interface derived in this checkout's facts")
@@ -131,6 +139,7 @@ def test_a_derived_link_reads_the_interface_facts_nothing_else_reads():
 
 
 # ------------------------------------------------------------------ the host
+
 
 def test_vector_capability_is_tri_state():
     """`vlen=None` on a board means 'unknown, assume the V minimum', NOT 'no vector unit'.
@@ -151,6 +160,7 @@ def test_a_heterogeneous_host_is_representable():
 
 
 # ------------------------------------------------------------------ plural by construction
+
 
 def test_the_system_is_plural_shaped_even_with_one_device():
     s = system_for("definitely_not_a_target")

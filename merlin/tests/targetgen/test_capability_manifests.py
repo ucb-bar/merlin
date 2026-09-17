@@ -5,6 +5,7 @@ the target's ``contracts/residual.yaml`` side-input + family defaults (+ RTL fac
 tests pin that the derive path reproduces the residual field-for-field and that ``MANIFESTS`` /
 ``write_all`` iterate the DISCOVERED targets, not a hardcoded list.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen import capability_manifests as cm
@@ -16,7 +17,7 @@ from merlin.targetgen.target_experiment import _primary_kind
 
 def test_manifests_are_schema_valid():
     for name in cm.MANIFESTS:
-        cm.validate(cm.MANIFESTS[name]())   # raises on any problem
+        cm.validate(cm.MANIFESTS[name]())  # raises on any problem
 
 
 def test_manifests_are_discovered_not_a_hardcoded_list():
@@ -34,7 +35,7 @@ def test_prototype_manifests_reproduce_residual_plus_inert_family_defaults():
     — see test_radiance_and_mx_gemmini_endpoints_are_derived_not_defaulted)."""
     for name in ("rvv",):
         residual = cm._load_residual(name)
-        assert "facts_source" not in residual                # a prototype grounds nothing from RTL
+        assert "facts_source" not in residual  # a prototype grounds nothing from RTL
         m = cm.manifest_for(name)
         # every residual field is reproduced verbatim (runtime only GAINS an inert 'backends' key)
         for key, val in residual.items():
@@ -47,10 +48,15 @@ def test_prototype_manifests_reproduce_residual_plus_inert_family_defaults():
         # every run. These are derivation
         # RESULTS, not curated content: they are deliberately absent from the residual so a stale
         # committed evidence block can never masquerade as fresh.
-        assert set(m) - set(residual) == {"endpoint_kind", "runner",
-                                          "operation_capabilities",
-                                          "capability_evidence", "semantic_capabilities_derived",
-        "semantic_capabilities_unknown", "unmapped_observations"}
+        assert set(m) - set(residual) == {
+            "endpoint_kind",
+            "runner",
+            "operation_capabilities",
+            "capability_evidence",
+            "semantic_capabilities_derived",
+            "semantic_capabilities_unknown",
+            "unmapped_observations",
+        }
         prof = fam.family_profile(_primary_kind(cu.compute_units(m)))
         assert m["endpoint_kind"] == prof.endpoint_kind_default
         assert m["runner"]["suite"] == f"{name}-capsule-bench"
@@ -80,9 +86,9 @@ def test_atlas_manifest_reproduced_from_residual_and_facts():
     assert {k: m["runner"][k] for k in residual["runner"]} == residual["runner"]
     assert m["runner"]["suite"] == "atlas-capsule-bench"
     # facts-grounded fields the residual deliberately omits
-    assert m["endpoint_kind"] == "external_backend"              # 14-bit decode -> self-hosted ISA
+    assert m["endpoint_kind"] == "external_backend"  # 14-bit decode -> self-hosted ISA
     assert m["capabilities"]["mesh"] == {"rows": 32, "cols": 32}  # from the facts mesh array
-    assert len(m["encoding"]["legal_funct"]) == 42               # from the decode table
+    assert len(m["encoding"]["legal_funct"]) == 42  # from the decode table
 
 
 def test_endpoint_from_facts_covers_rocc_and_self_hosted_isa():
@@ -93,8 +99,10 @@ def test_endpoint_from_facts_covers_rocc_and_self_hosted_isa():
     ef = cm._endpoint_from_facts
     assert ef({"interfaces": [{"name": "funct_decode_table", "legal_funct": [0, 3, 126]}]}) == "inline_asm_insn"
     assert ef({"interfaces": [{"name": "funct_decode_table", "legal_funct": [0, 9943]}]}) == "external_backend"
-    assert ef({"interfaces": [{"name": "self_hosted_isa", "encoding_bits": 64,
-                               "instruction_classes": ["FMA", "TMC"]}]}) == "external_backend"
+    assert (
+        ef({"interfaces": [{"name": "self_hosted_isa", "encoding_bits": 64, "instruction_classes": ["FMA", "TMC"]}]})
+        == "external_backend"
+    )
     # a self_hosted_isa carrying no instruction encoding is not a groundable signal -> None
     assert ef({"interfaces": [{"name": "self_hosted_isa", "instruction_classes": []}]}) is None
     assert ef({"interfaces": []}) is None
@@ -106,20 +114,21 @@ def test_radiance_and_mx_gemmini_endpoints_are_derived_not_defaulted():
     mx_gemmini -> inline_asm_insn from gemmini's RoCC decode table (facts_source: rtl + facts_target:
     gemmini), which also grounds mesh 16x16 while the MX dtypes stay put (not gemmini int8)."""
     import pytest
+
     try:
         rad = cm.manifest_for("radiance")
         mxg = cm.manifest_for("mx_gemmini")
     except Exception as e:  # noqa: BLE001 — SIMT introspect / mlc facts unavailable in this env
         pytest.skip(f"manifest derivation unavailable: {type(e).__name__}: {e}")
-    assert rad["endpoint_kind"] == "external_backend"            # SIMT self-hosted, NOT the simt default
-    assert mxg["endpoint_kind"] == "inline_asm_insn"             # RoCC decode, derived
-    assert mxg["capabilities"]["mesh"] == {"rows": 16, "cols": 16}   # from gemmini's facts mesh array
+    assert rad["endpoint_kind"] == "external_backend"  # SIMT self-hosted, NOT the simt default
+    assert mxg["endpoint_kind"] == "inline_asm_insn"  # RoCC decode, derived
+    assert mxg["capabilities"]["mesh"] == {"rows": 16, "cols": 16}  # from gemmini's facts mesh array
     mxpe = next(u for u in mxg["compute_units"] if u["name"] == "mx_pe")
-    assert {"mxfp4", "mxfp6", "mxfp8"} <= set(mxpe["dtypes"])    # MX dtypes preserved, not int8-only
+    assert {"mxfp4", "mxfp6", "mxfp8"} <= set(mxpe["dtypes"])  # MX dtypes preserved, not int8-only
     # radiance SIMT geometry is DERIVED from the introspect (facts_source: simt), not a residual literal
     assert rad["capabilities"]["simt"]["lanes_per_warp"] == 16
     assert "lanes_per_warp" not in str(cm._load_residual("radiance").get("capabilities", {}).get("simt", {}))
-    assert rad["memory_model"].get("shared_memory_bytes") == 131072   # SMEM capacity derived (not base)
+    assert rad["memory_model"].get("shared_memory_bytes") == 131072  # SMEM capacity derived (not base)
 
 
 def _units(name):
@@ -128,11 +137,14 @@ def _units(name):
 
 def test_rvv_accepts_regular_formats_rejects_low_bit():
     units = _units("rvv")
-    ok = rt.route([
-        rt.OpDemand("matmul", "int8", "int8"),
-        rt.OpDemand("matmul", "fp16", "fp16"),
-        rt.OpDemand("matmul", "bf16", "bf16"),
-    ], units)
+    ok = rt.route(
+        [
+            rt.OpDemand("matmul", "int8", "int8"),
+            rt.OpDemand("matmul", "fp16", "fp16"),
+            rt.OpDemand("matmul", "bf16", "bf16"),
+        ],
+        units,
+    )
     assert rt.is_fully_routed(ok)
     # RVV has no fp4/fp6/native-fp8 datapath -> honest gaps.
     for fmt in ("mxfp4", "mxfp6", "fp4_e2m1", "fp8_e4m3"):
@@ -142,12 +154,15 @@ def test_rvv_accepts_regular_formats_rejects_low_bit():
 
 def test_mx_gemmini_accepts_low_bit_and_mixed():
     units = _units("mx_gemmini")
-    ok = rt.route([
-        rt.OpDemand("matmul", "mxfp4", "mxfp4"),
-        rt.OpDemand("matmul", "mxfp6", "mxfp6"),
-        rt.OpDemand("matmul", "mxfp8", "mxfp8"),
-        rt.OpDemand("matmul", "int8", "int8"),
-    ], units)
+    ok = rt.route(
+        [
+            rt.OpDemand("matmul", "mxfp4", "mxfp4"),
+            rt.OpDemand("matmul", "mxfp6", "mxfp6"),
+            rt.OpDemand("matmul", "mxfp8", "mxfp8"),
+            rt.OpDemand("matmul", "int8", "int8"),
+        ],
+        units,
+    )
     assert rt.is_fully_routed(ok)
 
 
@@ -161,6 +176,7 @@ def test_cross_target_contrast():
 def test_write_and_route_target(tmp_path):
     # Writing to a temp base and resolving via a plugged-in path proves the end-to-end plumbing.
     import os
+
     from merlin.targetgen import target_registry as tr
 
     cm.write_all(base_root=tmp_path)
@@ -191,13 +207,14 @@ def test_residual_target_materializes_contract_on_resolve(monkeypatch):
     info = tr.resolve("mx_gemmini")
     if not info.contract_path.is_file():
         import pytest
+
         pytest.skip("mlc could not derive mx_gemmini facts in this env (fallback failed closed)")
 
     contract_doc = info.load_contract()
     assert contract_doc["name"] == "mx_gemmini"
-    assert contract_doc["endpoint_kind"] == "inline_asm_insn"        # gemmini's RoCC decode, via facts
+    assert contract_doc["endpoint_kind"] == "inline_asm_insn"  # gemmini's RoCC decode, via facts
     unit = contract_doc["compute_units"][0]
-    assert unit["name"] == "mx_pe" and "mxfp8" in unit["dtypes"]     # the MX datapath, from the residual
+    assert unit["name"] == "mx_pe" and "mxfp8" in unit["dtypes"]  # the MX datapath, from the residual
 
 
 def test_radiance_composes_mx_gemmini():
@@ -205,8 +222,8 @@ def test_radiance_composes_mx_gemmini():
     units = cu.compute_units(cm.manifest_for("radiance"))
     simt = next(u for u in units if u.name == "simt_cluster")
     eff = cu.effective(simt, units)
-    assert {"fp16", "bf16", "fp32"} <= set(eff.dtypes)          # SIMT regular floats
-    assert {"mxfp4", "mxfp6", "mxfp8"} <= set(eff.dtypes)       # via the contained gemmini-mx PE
+    assert {"fp16", "bf16", "fp32"} <= set(eff.dtypes)  # SIMT regular floats
+    assert {"mxfp4", "mxfp6", "mxfp8"} <= set(eff.dtypes)  # via the contained gemmini-mx PE
     # the contained unit is the exact gemmini-mx PE (standalone OR embedded)
     assert cm.manifest_for("mx_gemmini")["compute_units"][0]["name"] == "mx_pe"
 

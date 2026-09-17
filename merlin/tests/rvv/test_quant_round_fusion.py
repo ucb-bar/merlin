@@ -9,6 +9,7 @@ Four properties, each of which has a matching failure mode this repo has already
 * it turns the tagger's `skip_math` refusal into tags, which is the entire point of it and the
   one thing a "the pass ran" counter cannot tell you.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -18,6 +19,7 @@ from merlin.common.paths import repo_root
 
 def _parse(text):
     from merlin.frontends.linalg_mlir import parse_mlir_text
+
     return parse_mlir_text(text)
 
 
@@ -48,8 +50,7 @@ module {
 
 _PROVED_NONZERO_SCALE_QUANTIZE = _QUANTIZE.replace(
     "      %d = arith.divf %x, %sv : f32\n",
-    "      %safe_s = arith.constant 1.000000e+00 : f32\n"
-    "      %d = arith.divf %x, %safe_s : f32\n",
+    "      %safe_s = arith.constant 1.000000e+00 : f32\n      %d = arith.divf %x, %safe_s : f32\n",
 )
 
 
@@ -94,15 +95,18 @@ def test_the_quantize_chain_is_fused_and_leaves_no_math_op():
     assert report["rewrites"] == 1
 
 
-@pytest.mark.parametrize("mutation,reason", [
-    # a non-integral bound: the clamp no longer commutes with round-half-to-even (Lemma 1), so the
-    # clamp cannot be moved in front of the round and the inline form has no bounded range.
-    ("1.270000e+02 : f32", "clamp_bound_not_integral"),
-    # a one-sided clamp: the argument is unbounded below, so `c - trunc(c)` is not exact.
-    ("__drop_lower__", "clamp_not_two_sided"),
-    # a bound the destination integer type cannot hold: `t` would overflow i8.
-    ("__wide_bound__", "clamp_bound_outside_dest_int"),
-])
+@pytest.mark.parametrize(
+    "mutation,reason",
+    [
+        # a non-integral bound: the clamp no longer commutes with round-half-to-even (Lemma 1), so the
+        # clamp cannot be moved in front of the round and the inline form has no bounded range.
+        ("1.270000e+02 : f32", "clamp_bound_not_integral"),
+        # a one-sided clamp: the argument is unbounded below, so `c - trunc(c)` is not exact.
+        ("__drop_lower__", "clamp_not_two_sided"),
+        # a bound the destination integer type cannot hold: `t` would overflow i8.
+        ("__wide_bound__", "clamp_bound_outside_dest_int"),
+    ],
+)
 def test_an_unprovable_chain_is_refused_and_counted(mutation, reason):
     """Each refusal is a case where the equivalence argument FAILS. It must decline and say which,
     not approximate -- an approximation here is an integer-valued op answering a different number."""
@@ -196,9 +200,31 @@ def test_the_emitted_arithmetic_equals_the_chain_it_replaces():
             start += n
     assert checked > 2_000_000_000, checked
 
-    edge = np.array([127.5, -127.5, 126.5, -126.5, 128.0, -128.0, 1e30, -1e30,
-                     np.inf, -np.inf, 2.0 ** 23, -(2.0 ** 23), 2.5, -2.5, 3.5, -3.5,
-                     0.5, -0.5, 0.0, -0.0], dtype=np.float32)
+    edge = np.array(
+        [
+            127.5,
+            -127.5,
+            126.5,
+            -126.5,
+            128.0,
+            -128.0,
+            1e30,
+            -1e30,
+            np.inf,
+            -np.inf,
+            2.0**23,
+            -(2.0**23),
+            2.5,
+            -2.5,
+            3.5,
+            -3.5,
+            0.5,
+            -0.5,
+            0.0,
+            -0.0,
+        ],
+        dtype=np.float32,
+    )
     assert np.array_equal(baseline(edge), fused(edge))
 
 
@@ -212,9 +238,9 @@ def test_the_lever_resolves_in_a_process_that_imports_no_proposer():
 
     code = (
         "from merlin.llvmlower.impr_features import normalize\n"
-        "print(','.join(sorted(normalize({'fuse_quantize_round_convert'}))))\n")
-    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                         cwd=str(repo_root()))
+        "print(','.join(sorted(normalize({'fuse_quantize_round_convert'}))))\n"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, cwd=str(repo_root()))
     assert out.returncode == 0, out.stderr
     got = out.stdout.strip().split(",")
     assert "fuse_quantize_round_convert" in got

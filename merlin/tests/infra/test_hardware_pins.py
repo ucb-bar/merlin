@@ -7,6 +7,7 @@ situation (right repo, plausible branch, wrong content) and requires it to be ca
 
 Everything here uses throwaway git repositories, so it runs with no hardware and no external checkout.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -20,18 +21,23 @@ def _repo(tmp_path, name="src"):
     """A tiny git repo with one commit; returns (path, sha)."""
     root = tmp_path / name
     root.mkdir(parents=True, exist_ok=True)
-    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
-           "GIT_COMMITTER_EMAIL": "t@t"}
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+
     def git(*args):
-        return subprocess.run(("git", "-C", str(root)) + args, capture_output=True, text=True,
-                              env={**env, "PATH": "/usr/bin:/bin"}, check=False)
+        return subprocess.run(
+            ("git", "-C", str(root)) + args,
+            capture_output=True,
+            text=True,
+            env={**env, "PATH": "/usr/bin:/bin"},
+            check=False,
+        )
+
     git("init", "-q", "-b", "main")
     (root / "kept.txt").write_text("hello", encoding="utf-8")
     git("add", "-A")
     git("commit", "-qm", "one")
     git("remote", "add", "origin", "https://example.invalid/canonical.git")
-    sha = subprocess.run(("git", "-C", str(root), "rev-parse", "HEAD"), capture_output=True,
-                         text=True).stdout.strip()
+    sha = subprocess.run(("git", "-C", str(root), "rev-parse", "HEAD"), capture_output=True, text=True).stdout.strip()
     return root, sha
 
 
@@ -107,10 +113,13 @@ class TestVerificationCatchesTheRealMistake:
         # the revision it claims to be, however the revision was spelled.
         root, sha = _repo(tmp_path)
         (root / "OuterProductUnit.scala").write_text("// the unit", encoding="utf-8")
-        pins = _pins(tmp_path, f"""  tapeout:
+        pins = _pins(
+            tmp_path,
+            f"""  tapeout:
     commit: {sha}
     forbids_paths: [OuterProductUnit.scala]
-""")
+""",
+        )
         got = P.verify("tapeout", checkout=root, path=pins)
         assert not got.ok
         assert got.forbidden_present == ("OuterProductUnit.scala",)
@@ -118,10 +127,13 @@ class TestVerificationCatchesTheRealMistake:
     def test_a_missing_required_path_is_caught(self, tmp_path):
         # The mirror: the OPU pin needs the unit, and a checkout lacking it cannot support the work.
         root, sha = _repo(tmp_path)
-        pins = _pins(tmp_path, f"""  opu:
+        pins = _pins(
+            tmp_path,
+            f"""  opu:
     commit: {sha}
     requires_paths: [src/OuterProductUnit.scala]
-""")
+""",
+        )
         got = P.verify("opu", checkout=root, path=pins)
         assert not got.ok and got.missing_paths == ("src/OuterProductUnit.scala",)
 
@@ -176,8 +188,10 @@ class TestVerificationCatchesTheRealMistake:
         root, sha = _repo(tmp_path)
         (root / "kept.txt").write_text("edited", encoding="utf-8")
         digest = P.file_digest(root / "kept.txt")
-        pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n    requires_paths: [kept.txt]\n"
-                               f'    local_edits:\n      kept.txt: "{digest}"\n')
+        pins = _pins(
+            tmp_path,
+            f'  x:\n    commit: {sha}\n    requires_paths: [kept.txt]\n    local_edits:\n      kept.txt: "{digest}"\n',
+        )
         got = P.verify("x", checkout=root, path=pins)
         assert got.ok, got.drift
         # The edit is not swept away: it is reported, with the instruction that a result must cite it.
@@ -191,8 +205,10 @@ class TestVerificationCatchesTheRealMistake:
         (root / "kept.txt").write_text("edited", encoding="utf-8")
         digest = P.file_digest(root / "kept.txt")
         (root / "kept.txt").write_text("edited AGAIN, by someone else", encoding="utf-8")
-        pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n    requires_paths: [kept.txt]\n"
-                               f'    local_edits:\n      kept.txt: "{digest}"\n')
+        pins = _pins(
+            tmp_path,
+            f'  x:\n    commit: {sha}\n    requires_paths: [kept.txt]\n    local_edits:\n      kept.txt: "{digest}"\n',
+        )
         got = P.verify("x", checkout=root, path=pins)
         assert not got.ok
         assert any("no longer match the digest" in d for d in got.drift), got.drift
@@ -204,9 +220,12 @@ class TestVerificationCatchesTheRealMistake:
         (root / "kept.txt").write_text("edited", encoding="utf-8")
         (root / "other.txt").write_text("also read, and NOT declared", encoding="utf-8")
         digest = P.file_digest(root / "kept.txt")
-        pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n"
-                               f"    requires_paths: [kept.txt, other.txt]\n"
-                               f'    local_edits:\n      kept.txt: "{digest}"\n')
+        pins = _pins(
+            tmp_path,
+            f"  x:\n    commit: {sha}\n"
+            f"    requires_paths: [kept.txt, other.txt]\n"
+            f'    local_edits:\n      kept.txt: "{digest}"\n',
+        )
         got = P.verify("x", checkout=root, path=pins)
         assert not got.ok
         assert any("other.txt" in d for d in got.drift), got.drift
@@ -216,13 +235,14 @@ class TestVerificationCatchesTheRealMistake:
         # Same trap as the commit: an all-digit digest is valid hex and YAML reads it as a number, and a
         # truncated digest does not identify content. Both fail at load rather than verifying loosely.
         root, sha = _repo(tmp_path)
-        numeric = _pins(tmp_path, f"  x:\n    commit: {sha}\n"
-                                  f"    local_edits:\n      kept.txt: {'1' * 64}\n")
+        numeric = _pins(tmp_path, f"  x:\n    commit: {sha}\n    local_edits:\n      kept.txt: {'1' * 64}\n")
         with pytest.raises(P.PinsError, match="quoted sha256"):
             P.load_pins(numeric)
         short = tmp_path / "short.yaml"
-        short.write_text(f'version: 1\npins:\n  x:\n    commit: {sha}\n'
-                         f'    local_edits:\n      kept.txt: "abc123"\n', encoding="utf-8")
+        short.write_text(
+            f'version: 1\npins:\n  x:\n    commit: {sha}\n    local_edits:\n      kept.txt: "abc123"\n',
+            encoding="utf-8",
+        )
         with pytest.raises(P.PinsError, match="sha256"):
             P.load_pins(short)
 
@@ -230,7 +250,7 @@ class TestVerificationCatchesTheRealMistake:
         # A build reads a specific set of files, which is usually narrower than everything the pin requires
         # to be present. Answering about THIS build is what makes the verdict actionable.
         root, sha = _repo(tmp_path)
-        (root / "a.txt").write_text("x", encoding="utf-8")     # the only dirty file
+        (root / "a.txt").write_text("x", encoding="utf-8")  # the only dirty file
         pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n")
         assert P.verify("x", checkout=root, path=pins, reads=["b.txt"]).ok
         assert not P.verify("x", checkout=root, path=pins, reads=["a.txt"]).ok
@@ -253,37 +273,39 @@ class TestVerificationCatchesTheRealMistake:
 
     def test_a_different_origin_is_caught_unless_the_pin_explains_it(self, tmp_path):
         root, sha = _repo(tmp_path)
-        strict = _pins(tmp_path, f"  x:\n    commit: {sha}\n"
-                                 "    repo_canonical: https://example.invalid/other.git\n")
+        strict = _pins(tmp_path, f"  x:\n    commit: {sha}\n    repo_canonical: https://example.invalid/other.git\n")
         assert any("origin is" in d for d in P.verify("x", checkout=root, path=strict).drift)
         # A pin that documents the fork does not re-report it as a surprise.
         explained = tmp_path / "explained.yaml"
-        explained.write_text("version: 1\npins:\n"
-                             f"  x:\n    commit: {sha}\n"
-                             "    repo_canonical: https://example.invalid/other.git\n"
-                             "    repo_observed_note: lives on a fork\n", encoding="utf-8")
+        explained.write_text(
+            "version: 1\npins:\n"
+            f"  x:\n    commit: {sha}\n"
+            "    repo_canonical: https://example.invalid/other.git\n"
+            "    repo_observed_note: lives on a fork\n",
+            encoding="utf-8",
+        )
         assert not any("origin is" in d for d in P.verify("x", checkout=root, path=explained).drift)
 
     def test_a_clean_matching_checkout_verifies(self, tmp_path):
         root, sha = _repo(tmp_path)
-        pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n    branch: main\n"
-                               "    requires_paths: [kept.txt]\n")
+        pins = _pins(tmp_path, f"  x:\n    commit: {sha}\n    branch: main\n    requires_paths: [kept.txt]\n")
         got = P.verify("x", checkout=root, path=pins)
         assert got.ok and not got.drift
 
     def test_require_raises_and_names_every_disagreement(self, tmp_path):
         root, _ = _repo(tmp_path)
         (root / "bad.scala").write_text("x", encoding="utf-8")
-        pins = _pins(tmp_path, '  x:\n    commit: "' + "0" * 40 + '"\n'
-                     "    requires_paths: [absent.txt]\n    forbids_paths: [bad.scala]\n")
+        pins = _pins(
+            tmp_path,
+            '  x:\n    commit: "' + "0" * 40 + '"\n    requires_paths: [absent.txt]\n    forbids_paths: [bad.scala]\n',
+        )
         with pytest.raises(P.PinsError) as exc:
             P.require("x", checkout=root, path=pins)
         msg = str(exc.value)
         assert "commit is" in msg and "missing required path" in msg and "declares them absent" in msg
 
     def test_an_unset_root_env_is_drift_not_a_crash(self, tmp_path):
-        pins = _pins(tmp_path, '  x:\n    commit: "' + "0" * 40 + '"\n'
-                     "    root_env: MERLIN_DEFINITELY_UNSET_VAR_XYZ\n")
+        pins = _pins(tmp_path, '  x:\n    commit: "' + "0" * 40 + '"\n    root_env: MERLIN_DEFINITELY_UNSET_VAR_XYZ\n')
         got = P.verify("x", path=pins)
         assert not got.ok and any("unset" in d for d in got.drift)
 
@@ -330,6 +352,7 @@ class TestWhatGetsRecorded:
 
     def test_the_record_is_json_serialisable(self):
         import json
+
         json.dumps(P.record(pins={}, sources=[]))
 
 
@@ -367,7 +390,7 @@ class TestArtifactsAreIdentifiedByContent:
         assert any("digest is" in g for g in got.gaps)
 
     def test_an_absent_artifact_is_not_a_pass(self, tmp_path):
-        reg = self._reg(tmp_path, f'  bit:\n    path: "{tmp_path / "nope.tar.gz"}"\n    digest: "{"a"*64}"\n')
+        reg = self._reg(tmp_path, f'  bit:\n    path: "{tmp_path / "nope.tar.gz"}"\n    digest: "{"a" * 64}"\n')
         got = P.verify_artifact("bit", path=reg)
         assert not got.ok and not got.present
         assert any("no file at" in g for g in got.gaps)
@@ -388,14 +411,17 @@ class TestArtifactsAreIdentifiedByContent:
         # rather than repeating their shas keeps one source of truth for each.
         blob = tmp_path / "b.tar.gz"
         blob.write_bytes(b"x")
-        reg = self._reg(tmp_path, f'  bit:\n    path: "{blob}"\n    built_from: [saturn_opu_int8]\n'
-                                  f'    config: FireSimOPUV256D128ShuttleConfig\n')
+        reg = self._reg(
+            tmp_path,
+            f'  bit:\n    path: "{blob}"\n    built_from: [saturn_opu_int8]\n'
+            f"    config: FireSimOPUV256D128ShuttleConfig\n",
+        )
         got = P.load_artifacts(reg)["bit"]
         assert got.built_from == ("saturn_opu_int8",)
         assert got.config == "FireSimOPUV256D128ShuttleConfig"
 
     def test_an_artifact_without_a_path_is_refused(self, tmp_path):
-        reg = self._reg(tmp_path, "  bit:\n    digest: \"" + "a" * 64 + "\"\n")
+        reg = self._reg(tmp_path, '  bit:\n    digest: "' + "a" * 64 + '"\n')
         with pytest.raises(P.PinsError, match="no path"):
             P.load_artifacts(reg)
 
@@ -406,7 +432,8 @@ class TestArtifactsAreIdentifiedByContent:
             P.load_artifacts(reg)
 
     def test_an_unknown_artifact_lists_what_exists(self, tmp_path):
-        blob = tmp_path / "b"; blob.write_bytes(b"x")
+        blob = tmp_path / "b"
+        blob.write_bytes(b"x")
         reg = self._reg(tmp_path, f'  bit:\n    path: "{blob}"\n')
         with pytest.raises(P.PinsError, match="declared"):
             P.verify_artifact("other", path=reg)

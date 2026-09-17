@@ -1,4 +1,5 @@
 """The family-agnostic affine PREDICTS procedure reads its bounds and never invents one."""
+
 from __future__ import annotations
 
 import copy
@@ -9,11 +10,9 @@ import yaml
 
 from merlin.common.paths import repo_root
 
-
 SCRIPTS = repo_root() / "merlin/experiments/gemmini_perf_bench/scripts"
 sys.path.insert(0, str(SCRIPTS))
 import perf_affine_claim as AF  # noqa: E402
-
 
 METRIC = "gsim_L3_cycles"
 REPLICATES = tuple(__import__("perf_pk_claim")._ACCEPTANCE_BASE["replicates"]["identities"])
@@ -38,8 +37,10 @@ def _contract() -> dict:
         },
         "replicates": {"exact_count": len(REPLICATES), "identities": list(REPLICATES)},
         "evidence": {
-            "correctness_simulator": "spike", "correctness_tier": "L2",
-            "timing_simulator": "gsim", "timing_tier": "L3",
+            "correctness_simulator": "spike",
+            "correctness_tier": "L2",
+            "timing_simulator": "gsim",
+            "timing_tier": "L3",
             "spike_cycles_citable": False,
         },
         "thresholds": {
@@ -66,8 +67,7 @@ def _descriptor(index: int, m: int) -> dict:
         ],
         "operation": {
             "op": "matmul",
-            "attributes": {"lhs": "A0", "weight": "W", "out": "Y0", "epilogue": [],
-                           "output_dtype": "i32"},
+            "attributes": {"lhs": "A0", "weight": "W", "out": "Y0", "epilogue": [], "output_dtype": "i32"},
         },
         "numeric_policy": {"compare": "exact_int", "dtype": "i32"},
         "required_oracle_tiers": ["L0", "L1", "L2", "L3"],
@@ -76,8 +76,7 @@ def _descriptor(index: int, m: int) -> dict:
             "family": "PM",
             "lever": "parallel_extents",
             "claim": "PREDICTS",
-            "comparand": {"kind": "fitted_prediction",
-                          "against": "measured_cycles_same_member"},
+            "comparand": {"kind": "fitted_prediction", "against": "measured_cycles_same_member"},
             "falsifier": {
                 "observation": "residual_cycles_by_output_tile_count",
                 "fires_when": "residuals_are_not_bounded_after_rate_and_intercept_fit",
@@ -100,15 +99,20 @@ def _x(descriptor: dict) -> int:
 
 def _rows(descriptors: list[dict], cycles=lambda x: 3 * x + 200) -> list[dict]:
     return [
-        {"capsule": descriptor["name"], "replicate": replicate, "tier": "L3",
-         "simulator": "gsim", METRIC: cycles(_x(descriptor))}
-        for descriptor in descriptors for replicate in REPLICATES
+        {
+            "capsule": descriptor["name"],
+            "replicate": replicate,
+            "tier": "L3",
+            "simulator": "gsim",
+            METRIC: cycles(_x(descriptor)),
+        }
+        for descriptor in descriptors
+        for replicate in REPLICATES
     ]
 
 
 def _row(rows: list[dict], capsule: str, replicate: str = "r000") -> dict:
-    return next(row for row in rows
-                if row["capsule"] == capsule and row["replicate"] == replicate)
+    return next(row for row in rows if row["capsule"] == capsule and row["replicate"] == replicate)
 
 
 def _retune(descriptors: list[dict], **thresholds) -> None:
@@ -120,6 +124,7 @@ def _retune(descriptors: list[dict], **thresholds) -> None:
 # --------------------------------------------------------------------------------------
 # ACCEPTED
 # --------------------------------------------------------------------------------------
+
 
 def test_exact_affine_evidence_inside_every_bound_is_accepted(descriptors):
     result = AF.analyze_affine_claim(descriptors, _rows(descriptors))
@@ -139,9 +144,7 @@ def test_exact_affine_evidence_inside_every_bound_is_accepted(descriptors):
 def test_a_verdict_is_always_one_of_the_modules_own_three_constants(descriptors):
     """Guards the spelling itself: a test asserting literals once passed against a mismatch."""
     assert len({AF.ACCEPTED, AF.REFUTED, AF.REFUSED}) == 3
-    for evidence in (_rows(descriptors),
-                     _rows(descriptors, lambda x: 5000 - 2 * x),
-                     _rows(descriptors)[:-1]):
+    for evidence in (_rows(descriptors), _rows(descriptors, lambda x: 5000 - 2 * x), _rows(descriptors)[:-1]):
         verdict = AF.analyze_affine_claim(descriptors, evidence)["verdict"]
         assert verdict in {AF.ACCEPTED, AF.REFUTED, AF.REFUSED}
 
@@ -154,8 +157,7 @@ def test_a_real_frozen_contract_from_the_profile_is_decided_by_this_analyzer():
     this test, is now recorded blocked_unimplemented: the integer reference engine has no CONV2D
     definition, so no PV member can be captured at all.
     """
-    profile = yaml.safe_load(
-        (repo_root() / "merlin/contract/capsules/profiles/_perf.yaml").read_text())
+    profile = yaml.safe_load((repo_root() / "merlin/contract/capsules/profiles/_perf.yaml").read_text())
     sweep = next(row for row in profile["sweeps"] if row["id"] == "PM")
     acceptance = sweep["base"]["performance"]["acceptance"]
     assert acceptance["analyzer"] == AF.ANALYZER
@@ -167,19 +169,21 @@ def test_a_real_frozen_contract_from_the_profile_is_decided_by_this_analyzer():
     assert len(extents) == acceptance["cohort"]["exact_points"]
     for index, (m, n) in enumerate(extents):
         name = f"PM{index:02d}_m{m}n{n}"
-        members.append({
-            "name": name,
-            "inputs": [
-                {"name": "A0", "role": "input", "shape": [m, tile], "dtype": "i8"},
-                {"name": "W", "role": "weight", "shape": [tile, n], "dtype": "i8"},
-            ],
-            "performance": {"family": "PM", "claim": "PREDICTS",
-                            "acceptance": copy.deepcopy(acceptance)},
-        })
+        members.append(
+            {
+                "name": name,
+                "inputs": [
+                    {"name": "A0", "role": "input", "shape": [m, tile], "dtype": "i8"},
+                    {"name": "W", "role": "weight", "shape": [tile, n], "dtype": "i8"},
+                ],
+                "performance": {"family": "PM", "claim": "PREDICTS", "acceptance": copy.deepcopy(acceptance)},
+            }
+        )
         # cycles affine in the output extent, which is exactly what the contract fits
-        rows += [{"capsule": name, "replicate": replicate,
-                  acceptance["fit"]["dependent_metric"]: 3 * (m * n) + 200}
-                 for replicate in acceptance["replicates"]["identities"]]
+        rows += [
+            {"capsule": name, "replicate": replicate, acceptance["fit"]["dependent_metric"]: 3 * (m * n) + 200}
+            for replicate in acceptance["replicates"]["identities"]
+        ]
 
     result = AF.analyze_affine_claim(members, rows)
     assert result["verdict"] == AF.ACCEPTED
@@ -189,6 +193,7 @@ def test_a_real_frozen_contract_from_the_profile_is_decided_by_this_analyzer():
 # --------------------------------------------------------------------------------------
 # REFUTED -- complete evidence that misses a bound is a refutation, never a refusal
 # --------------------------------------------------------------------------------------
+
 
 def _assert_refuted_not_refused(result: dict) -> dict:
     assert result["verdict"] == AF.REFUTED
@@ -201,15 +206,15 @@ def _assert_refuted_not_refused(result: dict) -> dict:
 
 def test_slope_at_or_below_the_predeclared_floor_refutes(descriptors):
     result = _assert_refuted_not_refused(
-        AF.analyze_affine_claim(descriptors, _rows(descriptors, lambda x: 5000 - 2 * x)))
+        AF.analyze_affine_claim(descriptors, _rows(descriptors, lambda x: 5000 - 2 * x))
+    )
     assert result["measured"]["slope_cycles_per_unit"] == pytest.approx(-2.0)
     assert any("slope" in reason for reason in result["reasons"])
     assert result["breaches"] == []
 
 
 def test_flat_evidence_refutes_the_required_positive_slope(descriptors):
-    result = _assert_refuted_not_refused(
-        AF.analyze_affine_claim(descriptors, _rows(descriptors, lambda x: 900)))
+    result = _assert_refuted_not_refused(AF.analyze_affine_claim(descriptors, _rows(descriptors, lambda x: 900)))
     assert result["measured"]["slope_cycles_per_unit"] == pytest.approx(0.0)
     assert any("slope" in reason for reason in result["reasons"])
 
@@ -241,6 +246,7 @@ def test_a_residual_outside_the_predeclared_bound_refutes(descriptors):
 # --------------------------------------------------------------------------------------
 # REFUSED -- incomplete or malformed evidence is never scored
 # --------------------------------------------------------------------------------------
+
 
 def _drop_acceptance(ds, rows):
     ds[1]["performance"]["acceptance"] = None
@@ -333,6 +339,7 @@ def test_a_replicate_cohort_of_the_wrong_size_is_refused(descriptors):
 # Thresholds are read, never defaulted
 # --------------------------------------------------------------------------------------
 
+
 def _pop_thresholds(contract):
     contract.pop("thresholds")
 
@@ -371,12 +378,19 @@ def _pop_exact_points(contract):
 
 @pytest.mark.parametrize(
     "strip",
-    [_pop_thresholds, _pop_slope_min, _pop_r2_min, _pop_residual_bound,
-     _pop_residual_floor, _pop_residual_fraction, _pop_variable_source,
-     _pop_dependent_metric, _pop_exact_points],
+    [
+        _pop_thresholds,
+        _pop_slope_min,
+        _pop_r2_min,
+        _pop_residual_bound,
+        _pop_residual_floor,
+        _pop_residual_fraction,
+        _pop_variable_source,
+        _pop_dependent_metric,
+        _pop_exact_points,
+    ],
 )
-def test_a_contract_that_omits_a_bound_is_refused_not_scored_against_a_default(
-        descriptors, strip):
+def test_a_contract_that_omits_a_bound_is_refused_not_scored_against_a_default(descriptors, strip):
     for descriptor in descriptors:
         strip(descriptor["performance"]["acceptance"])
     result = AF.analyze_affine_claim(descriptors, _rows(descriptors))
@@ -445,9 +459,11 @@ def test_independent_value_returns_none_rather_than_guessing(source):
 
 def test_independent_value_returns_none_when_the_descriptor_declares_no_inputs():
     for descriptor in ({}, {"inputs": None}, {"inputs": [{"role": "weight"}]}):
-        for source in ({"kind": "output_elements", "lhs": "A0", "weight": "W"},
-                       {"kind": "input_elements", "input": "IFM"},
-                       {"kind": "input_dim", "input": "IFM", "axis": 0}):
+        for source in (
+            {"kind": "output_elements", "lhs": "A0", "weight": "W"},
+            {"kind": "input_elements", "input": "IFM"},
+            {"kind": "input_dim", "input": "IFM", "axis": 0},
+        ):
             assert AF.independent_value(descriptor, source) is None
 
 
@@ -463,13 +479,13 @@ def test_an_underivable_independent_variable_refuses_the_whole_claim(descriptors
 # Determinism
 # --------------------------------------------------------------------------------------
 
+
 def test_the_verdict_and_the_fit_do_not_depend_on_input_order(descriptors):
     rows = _rows(descriptors)
     forward = AF.analyze_affine_claim(descriptors, rows)
     reverse = AF.analyze_affine_claim(list(reversed(descriptors)), list(reversed(rows)))
     assert reverse["verdict"] == forward["verdict"] == AF.ACCEPTED
-    assert reverse["measured"]["slope_cycles_per_unit"] == pytest.approx(
-        forward["measured"]["slope_cycles_per_unit"])
+    assert reverse["measured"]["slope_cycles_per_unit"] == pytest.approx(forward["measured"]["slope_cycles_per_unit"])
     assert reverse["measured"]["distinct_x"] == forward["measured"]["distinct_x"]
     assert reverse == forward
 
@@ -482,8 +498,7 @@ def test_a_refutation_is_also_order_independent(descriptors):
     reverse = AF.analyze_affine_claim(list(reversed(descriptors)), list(reversed(rows)))
     assert reverse["verdict"] == forward["verdict"] == AF.REFUTED
     assert reverse["reasons"] == forward["reasons"]
-    assert reverse["measured"]["slope_cycles_per_unit"] == pytest.approx(
-        forward["measured"]["slope_cycles_per_unit"])
+    assert reverse["measured"]["slope_cycles_per_unit"] == pytest.approx(forward["measured"]["slope_cycles_per_unit"])
 
 
 # --------------------------------------------------------------------------------------
@@ -496,10 +511,10 @@ def test_a_refutation_is_also_order_independent(descriptors):
 # reported as proof.
 # --------------------------------------------------------------------------------------
 
+
 def test_evidence_that_covers_only_part_of_the_cohort_must_not_be_accepted(descriptors):
     rows = [
-        {"capsule": descriptor["name"], "replicate": f"r{index:03d}",
-         METRIC: 3 * _x(descriptor) + 200}
+        {"capsule": descriptor["name"], "replicate": f"r{index:03d}", METRIC: 3 * _x(descriptor) + 200}
         for descriptor in (descriptors[0], descriptors[3])
         for index in range(6)
     ]
@@ -507,7 +522,8 @@ def test_evidence_that_covers_only_part_of_the_cohort_must_not_be_accepted(descr
     result = AF.analyze_affine_claim(descriptors, rows)
     assert result["verdict"] == AF.REFUSED, (
         "two of four cohort members carry no evidence and the replicate identities are "
-        f"undeclared, yet the claim was {result['verdict']}")
+        f"undeclared, yet the claim was {result['verdict']}"
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -518,6 +534,7 @@ def test_evidence_that_covers_only_part_of_the_cohort_must_not_be_accepted(descr
 # fail is worth nothing, and this repo has shipped several.
 # --------------------------------------------------------------------------------------
 
+
 def _refusal(result: dict) -> str:
     assert result["status"] == AF.REFUSED, result
     assert result["declaration"] is None and result["expected_identities"] == []
@@ -526,8 +543,7 @@ def _refusal(result: dict) -> str:
 
 def test_the_module_publishes_exactly_one_preflight_entry_point():
     """The reporting gate resolves the entry point by prefix and requires exactly one."""
-    names = sorted(name for name in dir(AF)
-                   if name.startswith("preflight_") and callable(getattr(AF, name)))
+    names = sorted(name for name in dir(AF) if name.startswith("preflight_") and callable(getattr(AF, name)))
     assert names == ["preflight_affine_claim"]
 
 
@@ -563,10 +579,8 @@ def test_a_missing_threshold_is_refused_rather_than_defaulted(descriptors):
 
     without_floor = copy.deepcopy(descriptors)
     for descriptor in without_floor:
-        descriptor["performance"]["acceptance"]["thresholds"]["residual_bound"].pop(
-            "absolute_floor_cycles")
-    assert "residual bound is not fully specified" in _refusal(
-        AF.preflight_affine_claim(without_floor))
+        descriptor["performance"]["acceptance"]["thresholds"]["residual_bound"].pop("absolute_floor_cycles")
+    assert "residual bound is not fully specified" in _refusal(AF.preflight_affine_claim(without_floor))
 
 
 def test_a_cohort_that_never_moves_its_independent_variable_is_refused(descriptors):
@@ -582,7 +596,7 @@ def test_a_second_moving_quantity_breaks_the_cohort_control(descriptors):
     """The declared control is that only the fitted variable moves; K moving too is refused."""
     assert AF.preflight_affine_claim(descriptors)["status"] == "READY"
     drifted = copy.deepcopy(descriptors)
-    drifted[1]["inputs"][1]["shape"][1] = 32      # the contracted extent, which must stay fixed
+    drifted[1]["inputs"][1]["shape"][1] = 32  # the contracted extent, which must stay fixed
     drifted[1]["inputs"][0]["shape"][0] = 32
     assert "does not hold operand" in _refusal(AF.preflight_affine_claim(drifted))
 
@@ -597,8 +611,8 @@ def test_an_axis_that_moves_in_proportion_to_the_variable_is_admitted(descriptor
     proportional = copy.deepcopy(descriptors)
     for descriptor in proportional:
         m = descriptor["inputs"][1]["shape"][0]
-        descriptor["inputs"][0]["shape"][1] = 16          # N stays fixed; x = M*16
-        descriptor["inputs"][1]["shape"][1] = m // 8      # K tracks M, hence tracks x
+        descriptor["inputs"][0]["shape"][1] = 16  # N stays fixed; x = M*16
+        descriptor["inputs"][1]["shape"][1] = m // 8  # K tracks M, hence tracks x
         descriptor["inputs"][0]["shape"][0] = m // 8
     admitted = AF.preflight_affine_claim(proportional)
     assert admitted["status"] == "READY", admitted["refusal_reasons"]
@@ -630,8 +644,7 @@ def test_a_single_replicate_leaves_the_dispersion_undeterminable(descriptors):
     assert AF.preflight_affine_claim(descriptors)["status"] == "READY"
     thin = copy.deepcopy(descriptors)
     for descriptor in thin:
-        descriptor["performance"]["acceptance"]["replicates"] = {
-            "exact_count": 1, "identities": ["r000"]}
+        descriptor["performance"]["acceptance"]["replicates"] = {"exact_count": 1, "identities": ["r000"]}
     assert "UNDETERMINABLE" in _refusal(AF.preflight_affine_claim(thin))
 
 

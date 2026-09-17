@@ -14,6 +14,7 @@ Every defect pinned here presented as "no reachable oracle" for a target whose o
 * the scalar/RVV package was chosen from the dtype token naming how the model was QUANTIZED rather than
   from what the compiled IR carries.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -25,9 +26,18 @@ def _binding(*, accum_dtype: str, operand_dtype: str = "fp8_e4m3", flush: bool =
     """A minimal CorpusBinding for the numeric-reference tests. Built through the real dataclass (not a
     stub) so a field added to the datapath contract shows up here rather than being quietly absent."""
     from merlin.targetgen.corpus_spec import CorpusBinding
-    return CorpusBinding(target="t", tile_dim=16, operand_dtype=operand_dtype, accum_dtype=accum_dtype,
-                         integer=False, tiers=[], compare="tolerance_float",
-                         subnormal_operand_flush=flush)
+
+    return CorpusBinding(
+        target="t",
+        tile_dim=16,
+        operand_dtype=operand_dtype,
+        accum_dtype=accum_dtype,
+        integer=False,
+        tiers=[],
+        compare="tolerance_float",
+        subnormal_operand_flush=flush,
+    )
+
 
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
 
@@ -37,12 +47,9 @@ def test_the_cycle_budget_grows_with_the_declared_work():
     """A constant cap turns a big-but-healthy program into a fake unavailability."""
     from merlin.targetgen.program_oracle import derive_cycle_budget
 
-    tile = {"tensors": {"A0": {"shape": [32, 32]}, "W": {"shape": [32, 32]},
-                        "Y0": {"shape": [32, 32]}}}
-    layer = {"tensors": {"A0": {"shape": [32, 352]}, "W": {"shape": [352, 128]},
-                         "Y0": {"shape": [256, 16]}}}
-    assert derive_cycle_budget(layer) > derive_cycle_budget(tile), \
-        "a larger program must get a larger halt budget"
+    tile = {"tensors": {"A0": {"shape": [32, 32]}, "W": {"shape": [32, 32]}, "Y0": {"shape": [32, 32]}}}
+    layer = {"tensors": {"A0": {"shape": [32, 352]}, "W": {"shape": [352, 128]}, "Y0": {"shape": [256, 16]}}}
+    assert derive_cycle_budget(layer) > derive_cycle_budget(tile), "a larger program must get a larger halt budget"
     # and the layer that actually hung at the old constant must now clear it by a wide margin
     assert derive_cycle_budget(layer) > 20000 * 10
 
@@ -62,11 +69,14 @@ def test_a_hung_program_is_a_verdict_not_an_absent_oracle():
 
     assert issubclass(PO.ProgramDidNotHalt, PO.OracleUnavailable)
     src = __import__("inspect").getsource(
-        __import__("merlin.targetgen.mesh_program_run", fromlist=["x"]).matmul_on_program_oracle)
-    assert "except PO.ProgramDidNotHalt" in src, \
+        __import__("merlin.targetgen.mesh_program_run", fromlist=["x"]).matmul_on_program_oracle
+    )
+    assert "except PO.ProgramDidNotHalt" in src, (
         "the hung-program verdict must be handled BEFORE the generic unavailability"
-    assert src.index("except PO.ProgramDidNotHalt") < src.index("except PO.OracleUnavailable"), \
+    )
+    assert src.index("except PO.ProgramDidNotHalt") < src.index("except PO.OracleUnavailable"), (
         "a subclass handler placed after its parent never runs"
+    )
 
 
 # --------------------------------------------------------------------------- scalar-lane dtype
@@ -78,21 +88,25 @@ def test_the_scalar_datapath_follows_the_ir_not_the_bundle_name(tmp_path):
     weight_only_int8 = tmp_path / "int8_bundle"
     weight_only_int8.mkdir()
     (weight_only_int8 / "model.mlir").write_text(
-        "".join(["tensor<4x4xf32>\n"] * 1190 + ["tensor<4x4xi8>\n"] * 46), encoding="utf-8")
-    assert ir_scalar_dtype(weight_only_int8) == "int8", \
+        "".join(["tensor<4x4xf32>\n"] * 1190 + ["tensor<4x4xi8>\n"] * 46), encoding="utf-8"
+    )
+    assert ir_scalar_dtype(weight_only_int8) == "int8", (
         "46 i8 tensors against 1190 f32 ones still require the int8 datapath"
+    )
 
     fake_quant_fp8 = tmp_path / "fp8_bundle"
     fake_quant_fp8.mkdir()
     (fake_quant_fp8 / "model.mlir").write_text("tensor<4x4xf32>\n" * 1303, encoding="utf-8")
-    assert ir_scalar_dtype(fake_quant_fp8) == "fp32", \
+    assert ir_scalar_dtype(fake_quant_fp8) == "fp32", (
         "a dequantized fp8 capture carries no fp8 in its IR: its datapath is f32"
+    )
 
 
 def test_an_unreadable_bundle_yields_no_dtype_rather_than_a_guess(tmp_path):
     empty = tmp_path / "nothing"
     empty.mkdir()
     from merlin.compile_cli import ir_scalar_dtype
+
     assert ir_scalar_dtype(empty) is None, "a missing model.mlir must fail closed, not default"
 
 
@@ -103,16 +117,16 @@ def test_a_dtype_with_no_scalar_datapath_is_refused_not_substituted():
     from merlin.mining.tuning_agent import _DTYPE_STRATEGIES
 
     unsatisfiable = {d: s for d, s in _DTYPE_STRATEGY.items() if s not in _DTYPE_STRATEGIES}
-    assert not unsatisfiable, \
-        f"these dtypes map to strategies no package may declare: {unsatisfiable}"
+    assert not unsatisfiable, f"these dtypes map to strategies no package may declare: {unsatisfiable}"
 
 
 def test_every_ir_spelling_maps_to_a_real_strategy():
     from merlin.compile_cli import _DTYPE_STRATEGY, _IR_ELEMENT_ORDER, _IR_ELEMENT_SPELLING
 
     assert set(_IR_ELEMENT_ORDER) == set(_IR_ELEMENT_SPELLING)
-    assert set(_IR_ELEMENT_SPELLING) <= set(_DTYPE_STRATEGY), \
+    assert set(_IR_ELEMENT_SPELLING) <= set(_DTYPE_STRATEGY), (
         "an IR spelling that selects a dtype with no strategy cannot be acted on"
+    )
 
 
 # --------------------------------------------------------------------------- endpoint dispatch
@@ -124,20 +138,20 @@ def test_mesh_verify_picks_the_oracle_from_the_endpoint_not_a_fixed_path():
 
     src = inspect.getsource(compile_cli._mesh_verify)
     assert "_endpoint_of" in src, "the tile oracle must be chosen from the DERIVED endpoint"
-    assert "_certify_tile_via_executor" in src, \
+    assert "_certify_tile_via_executor" in src, (
         "a non-OOT endpoint needs the shared endpoint-aware executor, not oot_runner.certify"
+    )
 
 
 @pytest.mark.parametrize("target,expect_oot", [("gemmini", True), ("atlas", False)])
 def test_each_targets_endpoint_selects_its_own_certifier(target, expect_oot):
     """Derived per target, never a target-name branch: a RoCC endpoint certifies through the OOT package,
     a self-hosted-ISA endpoint through its own program oracle."""
-    from merlin.targetgen.capsule_runner import _bespoke_sim_via, _endpoint_of, _SIM_ORACLES
+    from merlin.targetgen.capsule_runner import _SIM_ORACLES, _bespoke_sim_via, _endpoint_of
 
     so = _SIM_ORACLES.get(_bespoke_sim_via(target))
     endpoint, _ = _endpoint_of(target)
-    via_oot = not (so is not None and so.exclusive) and endpoint in (
-        None, "inline_asm_insn", "upstream_target")
+    via_oot = not (so is not None and so.exclusive) and endpoint in (None, "inline_asm_insn", "upstream_target")
     assert via_oot is expect_oot, f"{target}: endpoint {endpoint!r} routed to the wrong certifier"
 
 
@@ -151,8 +165,9 @@ def test_the_tile_gate_tolerance_is_derived_from_the_accumulator_format():
     assert _accum_rel_tolerance("int8", 64) == 0.0
     deep, shallow = _accum_rel_tolerance("bf16", 352), _accum_rel_tolerance("bf16", 32)
     assert deep > shallow > 0.0, "a deeper reduction admits more accumulated rounding"
-    assert _accum_rel_tolerance("fp32", 352) < _accum_rel_tolerance("bf16", 352), \
+    assert _accum_rel_tolerance("fp32", 352) < _accum_rel_tolerance("bf16", 352), (
         "a wider accumulator must gate tighter than a narrower one"
+    )
 
 
 def test_an_unresolvable_accumulator_refuses_to_pick_a_tolerance():
@@ -223,7 +238,7 @@ def test_the_reference_reads_operands_the_way_the_datapath_does():
     from merlin.runtime.fp8_formats import normal_range
 
     min_normal, _mx = normal_range("fp8_e4m3")
-    sub = min_normal / 2.0                                # a subnormal the format still represents
+    sub = min_normal / 2.0  # a subnormal the format still represents
     A = np.full((4, 4), sub, dtype=np.float32)
     W = np.ones((4, 4), dtype=np.float32)
 
@@ -242,10 +257,10 @@ def test_the_strongest_gate_is_tried_first():
     from merlin import compile_cli
 
     src = inspect.getsource(compile_cli._certify_tile_via_executor)
-    assert src.index("_reference_on_datapath") < src.index("_accum_rel_tolerance"), \
+    assert src.index("_reference_on_datapath") < src.index("_accum_rel_tolerance"), (
         "the exact gate must be attempted before falling back to a tolerance"
-    assert "bit-exact vs" in src and "tolerance" in src, \
-        "the record must name which gate produced the verdict"
+    )
+    assert "bit-exact vs" in src and "tolerance" in src, "the record must name which gate produced the verdict"
 
 
 # --------------------------------------------------------------------------- sub-tile extents
@@ -283,5 +298,4 @@ def test_padding_a_contraction_does_not_change_it():
     Ap[:M, :K] = A
     Wp = np.zeros((up(K), up(N)), dtype=np.float32)
     Wp[:K, :N] = W
-    assert np.array_equal((Ap @ Wp)[:M, :N], A @ W), \
-        "zero padding must leave every retained output element untouched"
+    assert np.array_equal((Ap @ Wp)[:M, :N], A @ W), "zero padding must leave every retained output element untouched"

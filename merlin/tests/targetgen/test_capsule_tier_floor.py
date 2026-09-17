@@ -13,6 +13,7 @@ real verdicts. The fix is upstream: the loop tier is the fastest endpoint tier T
 capping never has to remove the numeric floor in the first place — and where no declared tier is
 reachable, the harness fails closed and says so.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen.contract.materialize import _cap_required, _cap_tiers
@@ -32,7 +33,7 @@ def test_float_cert_capped_below_reach_is_never_substituted():
 
 def test_checkpoint_ceiling_keeps_the_cert_mandatory():
     kept, unreachable = _cap(["L0", "L1", "L3"], "L3")
-    assert kept == ["L0", "L1", "L3"]           # the cert stays required when it IS reachable
+    assert kept == ["L0", "L1", "L3"]  # the cert stays required when it IS reachable
     assert unreachable == []
 
 
@@ -55,9 +56,11 @@ def test_derived_loop_set_enforces_a_declared_numeric_tier_on_every_capsule():
     tier must be one the capsule declared."""
     import pytest
     import yaml
+
     from merlin.common.paths import repo_root
     from merlin.targetgen.contract.materialize import declared_oracle_tiers, public_capsules_for
     from merlin.targetgen.target_experiment import load_target_experiment
+
     targets = repo_root() / "merlin/experiments/capsule_bench/targets"
     checked = 0
     for d in sorted(targets.iterdir()):
@@ -66,18 +69,19 @@ def test_derived_loop_set_enforces_a_declared_numeric_tier_on_every_capsule():
         te = load_target_experiment(d / "target_experiment.yaml")
         try:
             dest = public_capsules_for(te)
-        except Exception:                        # noqa: BLE001 — endpoint/corpus not resolvable here
+        except Exception:  # noqa: BLE001 — endpoint/corpus not resolvable here
             continue
         declared = declared_oracle_tiers(*te.graded_roots())
         caps = list(dest.rglob("capsule.yaml"))
         for cap_yaml in caps:
             tiers = yaml.safe_load(cap_yaml.read_text()).get("required_oracle_tiers", [])
             assert any(t in ("L2", "L3", "L4", "L5") for t in tiers), (
-                f"{te.target}/{cap_yaml.parent.name} loop grade enforces no numeric tier: {tiers} "
-                f"(crash-pass risk)")
+                f"{te.target}/{cap_yaml.parent.name} loop grade enforces no numeric tier: {tiers} (crash-pass risk)"
+            )
             assert set(tiers) <= declared, (
                 f"{te.target}/{cap_yaml.parent.name} requires {sorted(set(tiers) - declared)}, which its "
-                f"corpus never declared — that is the substitution this module exists to prevent")
+                f"corpus never declared — that is the substitution this module exists to prevent"
+            )
             checked += 1
     if not checked:
         pytest.skip("no target's corpus materialized in this environment")

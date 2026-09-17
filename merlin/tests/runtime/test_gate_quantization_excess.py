@@ -21,6 +21,7 @@ localized blow-up -- the exact hole the per-element term was introduced to close
 untouched whenever it reached that tier. These tests pin the veto in both directions, and pin that it
 stays OFF (rather than guessing) when the floor cannot be measured.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -52,7 +53,7 @@ def test_a_localized_blowup_is_caught_though_cosine_stays_near_perfect():
     """The 1209% shape at the tier that previously had no per-element term."""
     p, f, q = _model()
     p = p.copy()
-    p[7] += 12.0 * float(np.abs(q - f).max())      # one element far outside the floor, yet invisible to cosine
+    p[7] += 12.0 * float(np.abs(q - f).max())  # one element far outside the floor, yet invisible to cosine
     g = _gate(p, {"fp32": f, "w8a8": q})
     assert g["fp32_cos"] > 0.9999, f"cosine must still look fine: {g['fp32_cos']}"
     assert g["ok"] is False, "a localized blow-up must not pass on cosine alone"
@@ -92,7 +93,8 @@ def test_the_relative_veto_still_owns_the_tiers_where_it_is_meaningful():
 def test_the_veto_can_be_disabled(monkeypatch, excess):
     monkeypatch.setattr("merlin.runtime.backends.zephyr_model._GATE_QUANT_EXCESS", float(excess or 0))
     p, f, q = _model()
-    p = p.copy(); p[7] += 12.0 * float(np.abs(q - f).max())
+    p = p.copy()
+    p[7] += 12.0 * float(np.abs(q - f).max())
     g = _gate(p, {"fp32": f, "w8a8": q})
     assert g["ok"] is True, "disabled veto must restore the previous cosine-only behaviour"
     assert g["per_element_guarded"] is False

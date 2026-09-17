@@ -1,18 +1,20 @@
 """The selector decides what a generation's width is SPENT on. Every test here is about a way the
 old ``[:width]`` truncation spent it wrongly, plus the negative cases where the selector must
 decline to invent evidence it does not have."""
+
 from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
 
 from merlin.kernels.action_catalog import CompilerAction, composition_problems, lineage_problems
-from merlin.mining.select import (BAND_NAMES, Rejection, select_proposals)
+from merlin.mining.select import BAND_NAMES, Rejection, select_proposals
 
 
 @dataclass
 class _Prop:
     """Stand-in for knobs.ForkProposal — the selector reads it structurally, never by type."""
+
     targets: str
     forkable: bool = True
     lever: str = "knob"
@@ -22,13 +24,23 @@ class _Prop:
 
 
 def _action(axis, *, family="", prior=None, seam="schedule:x", requires=(), conflicts=()):
-    return CompilerAction(divergence_axis=axis, action_class="KNOB", target_seam=seam,
-                          change=f"change {axis}", forkable_now=True, expected_effect="faster",
-                          backend="test", action_family=family, evidence_prior=prior,
-                          requires=tuple(requires), conflicts=tuple(conflicts))
+    return CompilerAction(
+        divergence_axis=axis,
+        action_class="KNOB",
+        target_seam=seam,
+        change=f"change {axis}",
+        forkable_now=True,
+        expected_effect="faster",
+        backend="test",
+        action_family=family,
+        evidence_prior=prior,
+        requires=tuple(requires),
+        conflicts=tuple(conflicts),
+    )
 
 
 # --------------------------------------------------------------------------- evidence ordering
+
 
 def test_measured_winner_outranks_an_unmeasured_proposal_that_came_first():
     """The old truncation was list order. A proposal the corpus measured as helping must be built
@@ -61,32 +73,40 @@ def test_unmeasured_is_its_own_band_and_is_not_treated_as_a_coin_flip():
 
 # --------------------------------------------------------------------------- family diversity
 
+
 def test_width_buys_distinct_ideas_not_variants_of_one():
     """Six spellings of one tile change are one idea. With width=2 the selector must not spend both
     slots inside a single action family while another family waits."""
-    props = [_Prop("t1", action=_action("t1", family="tiling")),
-             _Prop("t2", action=_action("t2", family="tiling")),
-             _Prop("d1", action=_action("d1", family="dtype"))]
+    props = [
+        _Prop("t1", action=_action("t1", family="tiling")),
+        _Prop("t2", action=_action("t2", family="tiling")),
+        _Prop("d1", action=_action("d1", family="dtype")),
+    ]
     chosen, _ = select_proposals(props, width=2)
     assert {p.targets for p in chosen} == {"t1", "d1"}
 
 
 def test_a_family_with_depth_backfills_once_every_family_was_offered_a_slot():
-    props = [_Prop("t1", action=_action("t1", family="tiling")),
-             _Prop("t2", action=_action("t2", family="tiling")),
-             _Prop("d1", action=_action("d1", family="dtype"))]
+    props = [
+        _Prop("t1", action=_action("t1", family="tiling")),
+        _Prop("t2", action=_action("t2", family="tiling")),
+        _Prop("d1", action=_action("d1", family="dtype")),
+    ]
     chosen, _ = select_proposals(props, width=3)
     assert [p.targets for p in chosen] == ["t1", "d1", "t2"]
 
 
 def test_a_family_holding_a_measured_winner_is_visited_first():
-    props = [_Prop("t1", action=_action("t1", family="tiling")),
-             _Prop("d1", action=_action("d1", family="dtype", prior=0.8))]
+    props = [
+        _Prop("t1", action=_action("t1", family="tiling")),
+        _Prop("d1", action=_action("d1", family="dtype", prior=0.8)),
+    ]
     chosen, _ = select_proposals(props, width=1)
     assert [p.targets for p in chosen] == ["d1"]
 
 
 # --------------------------------------------------------------------------- legality on the parent
+
 
 def test_a_proposal_conflicting_with_the_parent_lineage_is_not_built():
     parent = _action("p", family="full_schedule", seam="schedule:all")
@@ -120,11 +140,12 @@ def test_lineage_does_NOT_apply_the_bundle_same_seam_rule():
     to a lineage would reject every deepening step, which is what the beam exists to do."""
     parent = _action("p", family="tiling", seam="schedule:tile")
     child = _action("c", family="tiling", seam="schedule:tile")
-    assert composition_problems([parent, child])          # as a BUNDLE: ambiguous credit
-    assert lineage_problems([parent], child) == ()        # as a LINEAGE: legitimate refinement
+    assert composition_problems([parent, child])  # as a BUNDLE: ambiguous credit
+    assert lineage_problems([parent], child) == ()  # as a LINEAGE: legitimate refinement
 
 
 # --------------------------------------------------------------------------- honesty / negatives
+
 
 def test_nothing_is_dropped_silently_when_width_is_exceeded():
     props = [_Prop(f"t{i}", action=_action(f"t{i}", family=f"f{i}")) for i in range(5)]
@@ -171,8 +192,7 @@ def test_injected_prior_supplies_evidence_the_action_lacks():
     prior; the corpus does."""
     a = _Prop("a", action=_action("a", family="fa"))
     b = _Prop("b", action=_action("b", family="fb"))
-    chosen, _ = select_proposals([a, b], width=1,
-                                 prior_fn=lambda p: 0.9 if p.targets == "b" else None)
+    chosen, _ = select_proposals([a, b], width=1, prior_fn=lambda p: 0.9 if p.targets == "b" else None)
     assert [p.targets for p in chosen] == ["b"]
 
 
@@ -194,11 +214,12 @@ def test_prior_fn_returning_none_does_not_become_a_number():
 
 # --------------------------------------------------------------------------- starvation
 
+
 def _gen(props, width, starved):
     """One generation: select, then charge the width losers so the next generation sees them aged."""
     from merlin.mining.select import proposal_key
-    chosen, rejected = select_proposals(props, width=width,
-                                        starved_fn=lambda p: starved[proposal_key(p)])
+
+    chosen, rejected = select_proposals(props, width=width, starved_fn=lambda p: starved[proposal_key(p)])
     for r in rejected:
         if r.reason == "over_width":
             starved[(r.family, r.targets)] += 1
@@ -228,6 +249,7 @@ def test_without_aging_the_tail_of_the_proposal_list_is_unreachable_at_any_depth
 def test_aging_a_deferred_proposal_lets_depth_widen_coverage():
     """With the aging term the same four generations reach the whole set, still deterministically."""
     from collections import Counter
+
     props = [_Prop(t, action=_action(t, family=f"fam_{t}")) for t in "abcdef"]
     starved: Counter = Counter()
     reached = set()
@@ -252,11 +274,13 @@ def test_age_never_lifts_a_proposal_out_of_its_band():
     """A refuted lever must not climb over a promising one merely by being passed over repeatedly.
     Aging breaks ties INSIDE a band; the band ordering is evidence and outranks queue position."""
     from collections import Counter
+
     refuted = _Prop("refuted", action=_action("refuted", family="fa", prior=0.05))
     unmeasured = _Prop("unmeasured", action=_action("unmeasured", family="fb"))
     starved = Counter({("fa", "refuted"): 99})
-    chosen, _ = select_proposals([refuted, unmeasured], width=1,
-                                 starved_fn=lambda p: starved[(p.action.action_family, p.targets)])
+    chosen, _ = select_proposals(
+        [refuted, unmeasured], width=1, starved_fn=lambda p: starved[(p.action.action_family, p.targets)]
+    )
     assert [p.targets for p in chosen] == ["unmeasured"]
 
 
@@ -264,9 +288,9 @@ def test_only_width_losers_age_not_illegal_ones():
     """An illegal-on-parent rejection is a permanent verdict on the lineage, not a queue position.
     Aging it would push a proposal that can never be built ahead of ones that can."""
     from collections import Counter
+
     applied = _action("x", family="fa", seam="schedule:s")
-    clashing = _Prop("clash", action=_action("y", family="fb", seam="schedule:s",
-                                             conflicts=("x",)))
+    clashing = _Prop("clash", action=_action("y", family="fb", seam="schedule:s", conflicts=("x",)))
     ok = _Prop("ok", action=_action("z", family="fc"))
     starved: Counter = Counter()
     _gen([clashing, ok], 2, starved)

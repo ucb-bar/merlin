@@ -15,6 +15,7 @@ reported success. With the rewrite in place the same IR compiles to a 2,663,634-
 The structural tests run everywhere xDSL is present; the numerical one compiles and executes both
 forms on the host (auto-skips without the toolchain).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -31,19 +32,20 @@ def _bool_cast_src(dtype: str = "f32") -> str:
         "builtin.module { func.func @forward(%x: tensor<4x" + dtype + ">) -> tensor<4xf32> { "
         "%e = tensor.empty() : tensor<4xi1> "
         "%b = linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, "
-        "affine_map<(d0) -> (d0)>], iterator_types = [\"parallel\"]} "
+        'affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} '
         "ins(%x : tensor<4x" + dtype + ">) outs(%e : tensor<4xi1>) { "
         "^bb0(%xv: " + dtype + ", %o: i1): "
         "%c = arith.fptosi %xv : " + dtype + " to i1 "
         "linalg.yield %c : i1 } -> tensor<4xi1> "
         "%e2 = tensor.empty() : tensor<4xf32> "
         "%r = linalg.generic {indexing_maps = [affine_map<(d0) -> (d0)>, "
-        "affine_map<(d0) -> (d0)>], iterator_types = [\"parallel\"]} "
+        'affine_map<(d0) -> (d0)>], iterator_types = ["parallel"]} '
         "ins(%b : tensor<4xi1>) outs(%e2 : tensor<4xf32>) { "
         "^bb0(%bv: i1, %o2: f32): "
         "%f = arith.uitofp %bv : i1 to f32 "
         "linalg.yield %f : f32 } -> tensor<4xf32> "
-        "func.return %r : tensor<4xf32> } }")
+        "func.return %r : tensor<4xf32> } }"
+    )
 
 
 def test_pass_rewrites_float_to_i1_fptosi_as_ne_zero():
@@ -68,12 +70,15 @@ def test_pass_leaves_wider_integer_conversions_alone():
     from merlin.llvmlower.passes_xdsl import fix_bool_fptosi
 
     for width in ("i8", "i32"):
-        m = parse_mlir_text(_bool_cast_src().replace("to i1", f"to {width}")
-                            .replace("tensor<4xi1>", f"tensor<4x{width}>")
-                            .replace("%o: i1", f"%o: {width}")
-                            .replace("linalg.yield %c : i1", f"linalg.yield %c : {width}")
-                            .replace("%bv: i1", f"%bv: {width}")
-                            .replace("arith.uitofp %bv : i1", f"arith.uitofp %bv : {width}"))
+        m = parse_mlir_text(
+            _bool_cast_src()
+            .replace("to i1", f"to {width}")
+            .replace("tensor<4xi1>", f"tensor<4x{width}>")
+            .replace("%o: i1", f"%o: {width}")
+            .replace("linalg.yield %c : i1", f"linalg.yield %c : {width}")
+            .replace("%bv: i1", f"%bv: {width}")
+            .replace("arith.uitofp %bv : i1", f"arith.uitofp %bv : {width}")
+        )
         assert fix_bool_fptosi(m) == 0
 
 
@@ -123,7 +128,7 @@ def test_bool_cast_values_match_torch_after_fix(tmp_path):
     model = HostModel.load(str(res.host_so))
     out = np.zeros(4, np.float32)
     model([(x.ctypes.data, (4,)), (out.ctypes.data, (4,))])
-    assert list(out) == [0.0, 1.0, 1.0, 1.0]        # torch: (x != 0).float()
+    assert list(out) == [0.0, 1.0, 1.0, 1.0]  # torch: (x != 0).float()
 
 
 @pytest.mark.skipif(not _toolchain(), reason="m2m venv / clang-23 missing")

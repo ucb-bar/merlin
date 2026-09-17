@@ -15,6 +15,7 @@ So the hop belongs in the RESOLVER, where every caller inherits it, rather than 
 tried LAST so it can never shadow a target that resolves on its own, and exactly once so a descriptor
 naming itself cannot loop.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -74,10 +75,11 @@ def test_resolving_by_either_name_finds_the_same_contract():
     for directory, declared in pairs:
         by_declared = TR.resolve(declared)
         if not by_declared.contract_path.is_file():
-            continue                       # this target's package is not generated in this checkout
+            continue  # this target's package is not generated in this checkout
         by_directory = TR.resolve(directory)
         assert by_directory.contract_path == by_declared.contract_path, (
-            f"{directory!r} and {declared!r} resolved to different contracts")
+            f"{directory!r} and {declared!r} resolved to different contracts"
+        )
         assert by_directory.contract_path.is_file()
         checked += 1
     if not checked:

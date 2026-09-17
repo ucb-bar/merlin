@@ -7,6 +7,7 @@ declaration to the syntax actually written, and ruff could not say so either: it
 `target-version` was pinned two releases lower still, so it reported those seven working f-strings
 as invalid syntax rather than reporting the floor as wrong.
 """
+
 from __future__ import annotations
 
 import tomllib

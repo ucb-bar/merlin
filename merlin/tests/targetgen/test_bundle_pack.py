@@ -15,6 +15,7 @@ The other four classes each pin a defect that would have failed silently on a se
 * the row pitch, which is a mesh dimension and must be supplied rather than defaulted — a wrong
   pitch does not fail, it mis-sizes everything.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -41,7 +42,8 @@ class TestTheArgumentIndexIsParsedNotPositional:
         buf = _buffer(
             [_arg("arg0"), _arg("arg1"), _arg("arg3")],
             {"arg0": _t([16]), "arg1": _t([16]), "arg3": _t([16])},
-            params={"global_program_plan": {"entry_bindings": ["arg0", "arg1", "arg2", "arg3"]}})
+            params={"global_program_plan": {"entry_bindings": ["arg0", "arg1", "arg2", "arg3"]}},
+        )
         got = BP.plan(buf, row_pitch_elements=16)
         assert got.absent_indices == (2,)
         assert any("ABSENT from the kernel ABI" in n for n in got.notes)
@@ -56,8 +58,9 @@ class TestTheArgumentIndexIsParsedNotPositional:
 
     def test_the_abi_declaration_order_is_preserved_not_sorted(self):
         """It is the order the harness passes pointers in; re-ordering breaks the kernel."""
-        buf = _buffer([_arg("arg5"), _arg("arg2"), _arg("arg9")],
-                      {"arg5": _t([16]), "arg2": _t([16]), "arg9": _t([16])})
+        buf = _buffer(
+            [_arg("arg5"), _arg("arg2"), _arg("arg9")], {"arg5": _t([16]), "arg2": _t([16]), "arg9": _t([16])}
+        )
         got = BP.plan(buf, row_pitch_elements=16)
         assert [t.tensor for t in got.const] == ["arg5", "arg2", "arg9"]
 
@@ -65,26 +68,24 @@ class TestTheArgumentIndexIsParsedNotPositional:
         buf = _buffer([_arg("arg0"), _arg("arg3")], {"arg0": _t([16]), "arg3": _t([16])})
         # Two entries, right count, WRONG indices -- a count check would have passed this.
         with pytest.raises(BundlePackError, match=r"no entry for read argument index"):
-            BP.plan(buf, row_pitch_elements=16,
-                    weight_manifest={"0": {"weight": "a"}, "1": {"weight": "b"}})
+            BP.plan(buf, row_pitch_elements=16, weight_manifest={"0": {"weight": "a"}, "1": {"weight": "b"}})
 
     def test_manifest_entries_the_abi_never_reads_are_noted_not_packed(self):
         buf = _buffer([_arg("arg0")], {"arg0": _t([16])})
-        got = BP.plan(buf, row_pitch_elements=16,
-                      weight_manifest={"0": {"weight": "a"}, "7": {"weight": "unused"}})
+        got = BP.plan(buf, row_pitch_elements=16, weight_manifest={"0": {"weight": "a"}, "7": {"weight": "unused"}})
         assert len(got.const) == 1
         assert any("the ABI never reads" in n for n in got.notes)
 
     def test_the_weight_key_travels_with_the_tensor(self):
         buf = _buffer([_arg("arg0")], {"arg0": _t([16])})
-        got = BP.plan(buf, row_pitch_elements=16,
-                      weight_manifest={"0": {"weight": "model.conv1.weight"}})
+        got = BP.plan(buf, row_pitch_elements=16, weight_manifest={"0": {"weight": "model.conv1.weight"}})
         assert got.const[0].weight == "model.conv1.weight"
 
 
 class TestEveryDtypeHasADeclaredWidth:
-    @pytest.mark.parametrize("dtype,width", [("i1", 1), ("i8", 1), ("bf16", 2), ("f16", 2),
-                                             ("i32", 4), ("f32", 4), ("i64", 8)])
+    @pytest.mark.parametrize(
+        "dtype,width", [("i1", 1), ("i8", 1), ("bf16", 2), ("f16", 2), ("i32", 4), ("f32", 4), ("i64", 8)]
+    )
     def test_the_widths_the_shipped_table_omitted(self, dtype, width):
         assert BP.element_bytes(dtype) == width
 
@@ -103,8 +104,11 @@ class TestEveryDtypeHasADeclaredWidth:
 
 class TestSizingRules:
     def test_the_declared_storage_encoding_wins_when_present(self):
-        buf = _buffer([_arg("arg0")], {"arg0": _t([4, 4], "i32")},
-                      params={"storage_encodings": {"arg0": {"storage_elements": 100}}})
+        buf = _buffer(
+            [_arg("arg0")],
+            {"arg0": _t([4, 4], "i32")},
+            params={"storage_encodings": {"arg0": {"storage_elements": 100}}},
+        )
         got = BP.plan(buf, row_pitch_elements=16)
         assert got.const[0].physical_bytes == 400
         assert got.const[0].sizing == "declared_storage_encoding"
@@ -125,8 +129,7 @@ class TestSizingRules:
         assert got.const[0].physical_bytes > got.const[0].logical_bytes
 
     def test_tensors_are_aligned_between_each_other(self):
-        buf = _buffer([_arg("arg0"), _arg("arg1")],
-                      {"arg0": _t([1, 1], "i8"), "arg1": _t([1, 1], "i8")})
+        buf = _buffer([_arg("arg0"), _arg("arg1")], {"arg0": _t([1, 1], "i8"), "arg1": _t([1, 1], "i8")})
         got = BP.plan(buf, row_pitch_elements=16, alignment=64)
         assert got.const[0].offset == 0 and got.const[1].offset == 64
 
@@ -135,11 +138,17 @@ class TestTheRowPitchIsRequiredNeverGuessed:
     def test_a_manifest_that_states_its_mesh_supplies_the_pitch(self):
         assert BP.row_pitch_from_manifest({"capabilities": {"mesh": {"rows": 16, "cols": 16}}}) == 16
 
-    @pytest.mark.parametrize("manifest", [
-        {}, {"capabilities": {}}, {"capabilities": {"mesh": {}}},
-        {"capabilities": {"mesh": {"cols": 0}}}, {"capabilities": {"mesh": {"cols": "16"}}},
-        {"capabilities": {"mesh": {"cols": True}}},
-    ])
+    @pytest.mark.parametrize(
+        "manifest",
+        [
+            {},
+            {"capabilities": {}},
+            {"capabilities": {"mesh": {}}},
+            {"capabilities": {"mesh": {"cols": 0}}},
+            {"capabilities": {"mesh": {"cols": "16"}}},
+            {"capabilities": {"mesh": {"cols": True}}},
+        ],
+    )
     def test_a_manifest_without_it_refuses_rather_than_defaulting(self, manifest):
         """A wrong pitch does not fail -- it mis-sizes every tensor and looks plausible."""
         with pytest.raises(BundlePackError, match="row pitch cannot be derived"):
@@ -157,8 +166,9 @@ class TestTheRowPitchIsRequiredNeverGuessed:
 
 class TestWhatItRefuses:
     def test_an_interleaved_read_write_order_has_no_read_only_prefix(self):
-        buf = _buffer([_arg("arg0"), _arg("out", "write"), _arg("arg1")],
-                      {"arg0": _t([16]), "out": _t([16]), "arg1": _t([16])})
+        buf = _buffer(
+            [_arg("arg0"), _arg("out", "write"), _arg("arg1")], {"arg0": _t([16]), "out": _t([16]), "arg1": _t([16])}
+        )
         with pytest.raises(BundlePackError, match="appears after a write argument"):
             BP.plan(buf, row_pitch_elements=16)
 
@@ -197,16 +207,16 @@ class TestReadwriteIsAThirdAccessClassNotAnError:
 
     def test_a_readwrite_argument_groups_with_the_writes(self):
         """It is WRITTEN, so it can never live in the read-only blob."""
-        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")],
-                      {"arg0": _t([16]), "Y0": _t([16])})
+        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")], {"arg0": _t([16]), "Y0": _t([16])})
         plan = BP.plan(buf, row_pitch_elements=16)
         assert [row.tensor for row in plan.const] == ["arg0"]
         assert [row.tensor for row in plan.mutable] == ["Y0"]
 
     def test_a_readwrite_argument_still_closes_the_read_only_prefix(self):
         """A read after it is as much an interleaving as a read after a plain write."""
-        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite"), _arg("arg1")],
-                      {"arg0": _t([16]), "Y0": _t([16]), "arg1": _t([16])})
+        buf = _buffer(
+            [_arg("arg0"), _arg("Y0", "readwrite"), _arg("arg1")], {"arg0": _t([16]), "Y0": _t([16]), "arg1": _t([16])}
+        )
         with pytest.raises(BundlePackError, match="appears after a write argument"):
             BP.plan(buf, row_pitch_elements=16)
 
@@ -218,8 +228,7 @@ class TestReadwriteIsAThirdAccessClassNotAnError:
         `{"kind": "input", "name": "prefix_kv_cache"}` -- so the seed is synthesised at that index
         and capture_source resolves it, re-encoding f32 to the declared bf16.
         """
-        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")],
-                      {"arg0": _t([16]), "Y0": _t([16])})
+        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")], {"arg0": _t([16]), "Y0": _t([16])})
         state = BP.SessionState(name="kv", input_arg=809, output_index=0)
         plan = BP.plan(buf, row_pitch_elements=16, session_states=[state])
         assert [row["state"] for row in plan.carried] == ["kv"]
@@ -232,8 +241,7 @@ class TestReadwriteIsAThirdAccessClassNotAnError:
         weight manifest still resolve it: the entry at that index is the state itself, e.g.
         SmolVLA's `{"kind": "input", "name": "prefix_kv_cache"}`.
         """
-        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")],
-                      {"arg0": _t([16]), "Y0": _t([16])})
+        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")], {"arg0": _t([16]), "Y0": _t([16])})
         state = BP.SessionState(name="kv", input_arg=809, output_index=0)
         plan = BP.plan(buf, row_pitch_elements=16, session_states=[state])
         seeds = [row for row in plan.const if row.role == "seed"]
@@ -243,8 +251,7 @@ class TestReadwriteIsAThirdAccessClassNotAnError:
 
     def test_the_in_place_row_says_so_and_aliases_its_own_output(self):
         """working_offset == output_offset is the in-place case; it is declared, not left to infer."""
-        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")],
-                      {"arg0": _t([16]), "Y0": _t([16])})
+        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")], {"arg0": _t([16]), "Y0": _t([16])})
         state = BP.SessionState(name="kv", input_arg=809, output_index=0)
         plan = BP.plan(buf, row_pitch_elements=16, session_states=[state])
         (row,) = plan.carried
@@ -255,8 +262,9 @@ class TestReadwriteIsAThirdAccessClassNotAnError:
 
     def test_an_ordinary_carry_is_NOT_marked_in_place(self):
         """Both kinds can appear in one plan, so the flag has to distinguish them."""
-        buf = _buffer([_arg("arg0"), _arg("arg1"), _arg("Y0", "write")],
-                      {"arg0": _t([16]), "arg1": _t([16]), "Y0": _t([16])})
+        buf = _buffer(
+            [_arg("arg0"), _arg("arg1"), _arg("Y0", "write")], {"arg0": _t([16]), "arg1": _t([16]), "Y0": _t([16])}
+        )
         state = BP.SessionState(name="s", input_arg=1, output_index=0)
         plan = BP.plan(buf, row_pitch_elements=16, session_states=[state])
         (row,) = plan.carried
@@ -265,8 +273,7 @@ class TestReadwriteIsAThirdAccessClassNotAnError:
 
     def test_the_synthesised_seed_is_charged_to_the_const_blob(self):
         """It occupies real bytes; a plan that forgot them would overrun the blob it wrote."""
-        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")],
-                      {"arg0": _t([16]), "Y0": _t([16])})
+        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")], {"arg0": _t([16]), "Y0": _t([16])})
         state = BP.SessionState(name="kv", input_arg=809, output_index=0)
         without = BP.plan(buf, row_pitch_elements=16)
         with_seed = BP.plan(buf, row_pitch_elements=16, session_states=[state])
@@ -275,8 +282,7 @@ class TestReadwriteIsAThirdAccessClassNotAnError:
     def test_a_still_unexplained_input_arg_keeps_blaming_the_contract(self):
         """Only a readwrite OUTPUT makes it an in-place carry; anything else is a contract mismatch,
         and the two must not collapse into one message."""
-        buf = _buffer([_arg("arg0"), _arg("Y0", "write")],
-                      {"arg0": _t([16]), "Y0": _t([16])})
+        buf = _buffer([_arg("arg0"), _arg("Y0", "write")], {"arg0": _t([16]), "Y0": _t([16])})
         state = BP.SessionState(name="kv", input_arg=809, output_index=0)
         with pytest.raises(BundlePackError, match="does not describe this program"):
             BP.plan(buf, row_pitch_elements=16, session_states=[state])
@@ -294,14 +300,18 @@ class TestItReproducesTheShippedResNetBundleExactly:
 
     def test_declared_encodings_and_64_byte_alignment_reproduce_the_arithmetic(self):
         # Three read tensors whose declared storage lands on non-aligned sizes, as the real ones do.
-        params = {"storage_encodings": {
-            "arg0": {"storage_elements": 147 * 64},      # conv1: 9408 i8 -> 9408 B -> aligned 9408
-            "arg1": {"storage_elements": 100},           # 100 B -> aligned 128
-            "Y0": {"storage_elements": 1000},            # f32 output
-        }}
-        buf = _buffer([_arg("arg0"), _arg("arg1"), _arg("Y0", "write")],
-                      {"arg0": _t([64, 147], "i8"), "arg1": _t([100], "i8"),
-                       "Y0": _t([1, 1000], "f32")}, params=params)
+        params = {
+            "storage_encodings": {
+                "arg0": {"storage_elements": 147 * 64},  # conv1: 9408 i8 -> 9408 B -> aligned 9408
+                "arg1": {"storage_elements": 100},  # 100 B -> aligned 128
+                "Y0": {"storage_elements": 1000},  # f32 output
+            }
+        }
+        buf = _buffer(
+            [_arg("arg0"), _arg("arg1"), _arg("Y0", "write")],
+            {"arg0": _t([64, 147], "i8"), "arg1": _t([100], "i8"), "Y0": _t([1, 1000], "f32")},
+            params=params,
+        )
         got = BP.plan(buf, row_pitch_elements=16, alignment=64)
         assert [t.sizing for t in (*got.const, *got.mutable)] == ["declared_storage_encoding"] * 3
         assert got.const[0].offset == 0 and got.const[0].physical_bytes == 9408
@@ -312,14 +322,12 @@ class TestItReproducesTheShippedResNetBundleExactly:
 
     def test_the_plan_digest_is_stable_across_identical_inputs(self):
         buf = _buffer([_arg("arg0")], {"arg0": _t([4, 4])})
-        assert BP.plan(buf, row_pitch_elements=16).digest() == \
-            BP.plan(buf, row_pitch_elements=16).digest()
+        assert BP.plan(buf, row_pitch_elements=16).digest() == BP.plan(buf, row_pitch_elements=16).digest()
 
     def test_a_different_pitch_changes_the_digest(self):
         """So a layout packed against the wrong mesh width cannot be mistaken for the right one."""
         buf = _buffer([_arg("arg0")], {"arg0": _t([4, 4])})
-        assert BP.plan(buf, row_pitch_elements=16).digest() != \
-            BP.plan(buf, row_pitch_elements=32).digest()
+        assert BP.plan(buf, row_pitch_elements=16).digest() != BP.plan(buf, row_pitch_elements=32).digest()
 
 
 class TestWritingTheBytes:
@@ -342,20 +350,20 @@ class TestWritingTheBytes:
             if key not in payload:
                 raise KeyError(key)
             return payload[key]
+
         return source
 
     def test_it_writes_exactly_the_planned_size(self, tmp_path):
         plan = self._plan()
-        receipt = BP.write_const_blob(plan, self._source({"arg0": bytes(32)}),
-                                      tmp_path / "const.bin")
+        receipt = BP.write_const_blob(plan, self._source({"arg0": bytes(32)}), tmp_path / "const.bin")
         assert receipt["bytes"] == plan.const_bytes
         assert (tmp_path / "const.bin").stat().st_size == plan.const_bytes
 
     def test_the_receipt_digests_the_bytes_actually_written(self, tmp_path):
         import hashlib
+
         plan = self._plan()
-        receipt = BP.write_const_blob(plan, self._source({"arg0": bytes(range(32))}),
-                                      tmp_path / "const.bin")
+        receipt = BP.write_const_blob(plan, self._source({"arg0": bytes(range(32))}), tmp_path / "const.bin")
         on_disk = hashlib.sha256((tmp_path / "const.bin").read_bytes()).hexdigest()
         assert receipt["sha256"] == on_disk
 
@@ -367,12 +375,11 @@ class TestWritingTheBytes:
     def test_a_short_or_long_source_is_refused(self, tmp_path):
         for wrong in (bytes(31), bytes(33)):
             with pytest.raises(BundlePackError, match="byte\\(s\\) and the source supplied"):
-                BP.write_const_blob(self._plan(), self._source({"arg0": wrong}),
-                                    tmp_path / "const.bin")
+                BP.write_const_blob(self._plan(), self._source({"arg0": wrong}), tmp_path / "const.bin")
 
     def test_row_padding_is_written_explicitly_as_zeros(self, tmp_path):
         """A reader cannot tell an intentional zero from an uninitialised one."""
-        plan = self._plan(shape=(2, 4), dtype="i8")          # 4 cols padded to a 16-element pitch
+        plan = self._plan(shape=(2, 4), dtype="i8")  # 4 cols padded to a 16-element pitch
         BP.write_const_blob(plan, self._source({"arg0": bytes([7] * 8)}), tmp_path / "const.bin")
         written = (tmp_path / "const.bin").read_bytes()
         assert written[:4] == bytes([7] * 4), "the row's real bytes"
@@ -383,68 +390,112 @@ class TestWritingTheBytes:
         plan = self._plan()
         for field in ("weight", "name"):
             receipt = BP.write_const_blob(
-                plan, self._source({"the_source": bytes(32)}), tmp_path / f"c_{field}.bin",
-                weight_manifest={"0": {field: "the_source"}})
+                plan,
+                self._source({"the_source": bytes(32)}),
+                tmp_path / f"c_{field}.bin",
+                weight_manifest={"0": {field: "the_source"}},
+            )
             assert receipt["tensors"][0]["weight"] == "the_source"
 
 
 class TestThePrepackIsAppliedFromTheDeclaredRecipe:
     def test_a_reshape_transition_leaves_the_bytes_alone(self):
         raw = bytes(range(24))
-        recipe = {"tensor": "w", "source_shape": [2, 3, 2, 2], "packed_shape": [2, 12],
-                  "source_layout": "OIHW", "packed_layout": "CoK_dim_padded"}
+        recipe = {
+            "tensor": "w",
+            "source_shape": [2, 3, 2, 2],
+            "packed_shape": [2, 12],
+            "source_layout": "OIHW",
+            "packed_layout": "CoK_dim_padded",
+        }
         assert BP.prepack_bytes(raw, recipe, dtype="i8") == raw
 
     def test_a_transpose_transition_moves_the_elements(self):
         """The dense layer: NK [1000,2048] -> KN_dim_padded [2048,1000]."""
-        raw = bytes([0, 1, 2, 3, 4, 5])                       # 2x3, row-major
-        recipe = {"tensor": "w", "source_shape": [2, 3], "packed_shape": [3, 2],
-                  "source_layout": "NK", "packed_layout": "KN_dim_padded"}
+        raw = bytes([0, 1, 2, 3, 4, 5])  # 2x3, row-major
+        recipe = {
+            "tensor": "w",
+            "source_shape": [2, 3],
+            "packed_shape": [3, 2],
+            "source_layout": "NK",
+            "packed_layout": "KN_dim_padded",
+        }
         assert BP.prepack_bytes(raw, recipe, dtype="i8") == bytes([0, 3, 1, 4, 2, 5])
 
     def test_a_transpose_carries_multi_byte_elements_intact(self):
         """Byte-wise, so a dtype numpy cannot represent (bf16) permutes losslessly."""
-        raw = bytes([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22])   # 2x2 of 2-byte elements
-        recipe = {"tensor": "w", "source_shape": [2, 2], "packed_shape": [2, 2],
-                  "source_layout": "NK", "packed_layout": "KN_dim_padded"}
+        raw = bytes([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22])  # 2x2 of 2-byte elements
+        recipe = {
+            "tensor": "w",
+            "source_shape": [2, 2],
+            "packed_shape": [2, 2],
+            "source_layout": "NK",
+            "packed_layout": "KN_dim_padded",
+        }
         got = BP.prepack_bytes(raw, recipe, dtype="bf16")
         assert got == bytes([0xAA, 0xBB, 0xEE, 0xFF, 0xCC, 0xDD, 0x11, 0x22])
 
     def test_an_undeclared_transition_is_refused_not_assumed_to_be_a_reshape(self):
         """A permutation assumed away is invisible: the element count always matches."""
-        recipe = {"tensor": "w", "source_shape": [2, 3], "packed_shape": [3, 2],
-                  "source_layout": "HWIO", "packed_layout": "something_new"}
+        recipe = {
+            "tensor": "w",
+            "source_shape": [2, 3],
+            "packed_shape": [3, 2],
+            "source_layout": "HWIO",
+            "packed_layout": "something_new",
+        }
         with pytest.raises(BundlePackError, match="does not describe"):
             BP.prepack_bytes(bytes(6), recipe, dtype="i8")
 
     def test_a_source_shape_of_the_wrong_rank_is_refused(self):
-        recipe = {"tensor": "w", "source_shape": [6], "packed_shape": [3, 2],
-                  "source_layout": "NK", "packed_layout": "KN_dim_padded"}
+        recipe = {
+            "tensor": "w",
+            "source_shape": [6],
+            "packed_shape": [3, 2],
+            "source_layout": "NK",
+            "packed_layout": "KN_dim_padded",
+        }
         with pytest.raises(BundlePackError, match="permutes 2 axes"):
             BP.prepack_bytes(bytes(6), recipe, dtype="i8")
 
     def test_a_source_of_the_wrong_size_is_refused(self):
-        recipe = {"tensor": "w", "source_shape": [2, 3], "packed_shape": [3, 2],
-                  "source_layout": "NK", "packed_layout": "KN_dim_padded"}
+        recipe = {
+            "tensor": "w",
+            "source_shape": [2, 3],
+            "packed_shape": [3, 2],
+            "source_layout": "NK",
+            "packed_layout": "KN_dim_padded",
+        }
         with pytest.raises(BundlePackError, match="needs 6 source byte"):
             BP.prepack_bytes(bytes(5), recipe, dtype="i8")
 
     def test_the_receipt_records_which_transition_was_applied(self, tmp_path):
         tensors = {"arg0": _t((3, 2), "i8"), "Y0": _t((1, 4), "i32")}
-        plan = BP.plan(_buffer([_arg("arg0"), _arg("Y0", "write")], tensors),
-                       row_pitch_elements=16)
+        plan = BP.plan(_buffer([_arg("arg0"), _arg("Y0", "write")], tensors), row_pitch_elements=16)
         receipt = BP.write_const_blob(
-            plan, lambda k: bytes(range(6)), tmp_path / "c.bin",
-            prepack_recipes=[{"tensor": "arg0", "source_shape": [2, 3], "packed_shape": [3, 2],
-                              "source_layout": "NK", "packed_layout": "KN_dim_padded"}])
+            plan,
+            lambda k: bytes(range(6)),
+            tmp_path / "c.bin",
+            prepack_recipes=[
+                {
+                    "tensor": "arg0",
+                    "source_shape": [2, 3],
+                    "packed_shape": [3, 2],
+                    "source_layout": "NK",
+                    "packed_layout": "KN_dim_padded",
+                }
+            ],
+        )
         assert receipt["tensors"][0]["prepack"] == "NK->KN_dim_padded"
 
     def test_a_tensor_with_no_recipe_is_left_alone(self, tmp_path):
-        plan = BP.plan(_buffer([_arg("arg0"), _arg("Y0", "write")],
-                               {"arg0": _t((1, 16), "i8"), "Y0": _t((1, 4), "i32")}),
-                       row_pitch_elements=16)
-        receipt = BP.write_const_blob(plan, lambda k: bytes(range(16)), tmp_path / "c.bin",
-                                      prepack_recipes=[{"tensor": "somethingelse"}])
+        plan = BP.plan(
+            _buffer([_arg("arg0"), _arg("Y0", "write")], {"arg0": _t((1, 16), "i8"), "Y0": _t((1, 4), "i32")}),
+            row_pitch_elements=16,
+        )
+        receipt = BP.write_const_blob(
+            plan, lambda k: bytes(range(16)), tmp_path / "c.bin", prepack_recipes=[{"tensor": "somethingelse"}]
+        )
         assert receipt["tensors"][0]["prepack"] is None
 
 
@@ -462,10 +513,13 @@ class TestARecurrentSessionsCarriedStateCannotLiveInReadOnlyMemory:
     """
 
     def _buffer(self):
-        tensors = {"arg0": _t((4, 4), "i8"), "arg1": _t((1, 8), "f32"),
-                   "Y0": _t((1, 8), "f32"), "Y1": _t((1, 4), "i32")}
-        return _buffer([_arg("arg0"), _arg("arg1"),
-                        _arg("Y0", "write"), _arg("Y1", "write")], tensors)
+        tensors = {
+            "arg0": _t((4, 4), "i8"),
+            "arg1": _t((1, 8), "f32"),
+            "Y0": _t((1, 8), "f32"),
+            "Y1": _t((1, 4), "i32"),
+        }
+        return _buffer([_arg("arg0"), _arg("arg1"), _arg("Y0", "write"), _arg("Y1", "write")], tensors)
 
     def _states(self):
         return (BP.SessionState(name="hidden", input_arg=1, output_index=0),)
@@ -502,14 +556,17 @@ class TestARecurrentSessionsCarriedStateCannotLiveInReadOnlyMemory:
         assert plan.abi_order == ("arg0", "arg1", "Y0", "Y1")
         assert [t.tensor for t in plan.arguments] == list(plan.abi_order)
         concatenated = [t.tensor for t in (*plan.const, *plan.mutable)]
-        assert concatenated != list(plan.abi_order), \
+        assert concatenated != list(plan.abi_order), (
             "if these agree the test proves nothing; the whole point is that they diverge"
+        )
 
     def test_a_feed_forward_plan_is_BYTE_FOR_BYTE_unchanged(self):
         """No carries declared must mean nothing moves -- the ResNet-50 acceptance test still holds."""
         buffer = self._buffer()
-        assert BP.plan(buffer, row_pitch_elements=16).digest() == \
-            BP.plan(buffer, row_pitch_elements=16, session_states=()).digest()
+        assert (
+            BP.plan(buffer, row_pitch_elements=16).digest()
+            == BP.plan(buffer, row_pitch_elements=16, session_states=()).digest()
+        )
 
     def test_the_const_blob_size_is_unchanged_by_the_reclassification(self):
         """The seed keeps the bytes, so a packed const blob is identical; only mutable grows."""
@@ -520,32 +577,43 @@ class TestARecurrentSessionsCarriedStateCannotLiveInReadOnlyMemory:
 
     def test_a_state_naming_an_input_the_ABI_does_not_READ_is_REFUSED(self):
         with pytest.raises(BundlePackError, match="does not describe this program"):
-            BP.plan(self._buffer(), row_pitch_elements=16,
-                    session_states=(BP.SessionState("bogus", input_arg=97, output_index=0),))
+            BP.plan(
+                self._buffer(),
+                row_pitch_elements=16,
+                session_states=(BP.SessionState("bogus", input_arg=97, output_index=0),),
+            )
 
     def test_an_out_of_range_output_index_is_REFUSED(self):
         with pytest.raises(BundlePackError, match="out-of-range carry"):
-            BP.plan(self._buffer(), row_pitch_elements=16,
-                    session_states=(BP.SessionState("hidden", input_arg=1, output_index=9),))
+            BP.plan(
+                self._buffer(),
+                row_pitch_elements=16,
+                session_states=(BP.SessionState("hidden", input_arg=1, output_index=9),),
+            )
 
     def test_a_carry_between_MISMATCHED_layouts_is_REFUSED(self):
         """The failure no size check can see: Y1 is i32[1,4] = 16 B and arg1 is f32[1,8] = 32 B, but
         a carry between two tensors of the SAME byte count and different shapes copies the right
         number of bytes into the wrong elements."""
-        tensors = {"arg0": _t((4, 4), "i8"), "arg1": _t((1, 8), "f32"),
-                   "Y0": _t((2, 4), "f32"), "Y1": _t((1, 4), "i32")}
-        buffer = _buffer([_arg("arg0"), _arg("arg1"),
-                          _arg("Y0", "write"), _arg("Y1", "write")], tensors)
+        tensors = {
+            "arg0": _t((4, 4), "i8"),
+            "arg1": _t((1, 8), "f32"),
+            "Y0": _t((2, 4), "f32"),
+            "Y1": _t((1, 4), "i32"),
+        }
+        buffer = _buffer([_arg("arg0"), _arg("arg1"), _arg("Y0", "write"), _arg("Y1", "write")], tensors)
         with pytest.raises(BundlePackError, match="copies the right byte count into the wrong"):
-            BP.plan(buffer, row_pitch_elements=16,
-                    session_states=(BP.SessionState("hidden", input_arg=1, output_index=0),))
+            BP.plan(
+                buffer, row_pitch_elements=16, session_states=(BP.SessionState("hidden", input_arg=1, output_index=0),)
+            )
 
     def test_a_state_whose_input_is_ALREADY_a_write_argument_needs_no_move(self):
         """A backend that emits the carried state as a write argument has already done the work."""
         tensors = {"arg0": _t((4, 4), "i8"), "arg5": _t((1, 8), "f32")}
         buffer = _buffer([_arg("arg0"), _arg("arg5", "write")], tensors)
-        plan = BP.plan(buffer, row_pitch_elements=16,
-                       session_states=(BP.SessionState("s", input_arg=5, output_index=0),))
+        plan = BP.plan(
+            buffer, row_pitch_elements=16, session_states=(BP.SessionState("s", input_arg=5, output_index=0),)
+        )
         assert plan.carried == ()
         assert [t.tensor for t in plan.mutable] == ["arg5"]
         assert all(t.role == "argument" for t in (*plan.const, *plan.mutable))
@@ -554,8 +622,13 @@ class TestARecurrentSessionsCarriedStateCannotLiveInReadOnlyMemory:
 class TestTheContractsStateListIsParsedStructurally:
     def test_it_reads_the_declared_states(self):
         states = BP.session_states_from_contract(
-            {"states": [{"name": "kv", "input_arg": 809, "output_index": 1},
-                        {"name": "flow", "input_arg": 810, "output_index": 0}]})
+            {
+                "states": [
+                    {"name": "kv", "input_arg": 809, "output_index": 1},
+                    {"name": "flow", "input_arg": 810, "output_index": 0},
+                ]
+            }
+        )
         assert [s.name for s in states] == ["kv", "flow"]
         assert [s.input_arg for s in states] == [809, 810]
 
@@ -570,12 +643,22 @@ class TestTheContractsStateListIsParsedStructurally:
     def test_two_states_sharing_an_endpoint_are_REFUSED(self):
         with pytest.raises(BundlePackError, match="overwrite the other's carry"):
             BP.session_states_from_contract(
-                {"states": [{"name": "a", "input_arg": 1, "output_index": 0},
-                            {"name": "b", "input_arg": 1, "output_index": 1}]})
+                {
+                    "states": [
+                        {"name": "a", "input_arg": 1, "output_index": 0},
+                        {"name": "b", "input_arg": 1, "output_index": 1},
+                    ]
+                }
+            )
         with pytest.raises(BundlePackError, match="overwrite the other's carry"):
             BP.session_states_from_contract(
-                {"states": [{"name": "a", "input_arg": 1, "output_index": 0},
-                            {"name": "b", "input_arg": 2, "output_index": 0}]})
+                {
+                    "states": [
+                        {"name": "a", "input_arg": 1, "output_index": 0},
+                        {"name": "b", "input_arg": 2, "output_index": 0},
+                    ]
+                }
+            )
 
     def test_a_non_list_states_field_is_REFUSED(self):
         with pytest.raises(BundlePackError, match="not a list"):
@@ -591,13 +674,20 @@ class TestTheRealSmolVLAContractPlansAgainstTheRealCommandBuffer:
 
         from merlin.common.paths import artifacts_dir
         from merlin.common.yaml import load_yaml
-        capture = (artifacts_dir() / "recaptures" / "smolvla_int8_w8a8_consistent"
-                   / "stages" / "flow_denoise")
+
+        capture = artifacts_dir() / "recaptures" / "smolvla_int8_w8a8_consistent" / "stages" / "flow_denoise"
         if not capture.is_dir():
             pytest.skip("no smolvla recapture in this tree")
-        found = glob.glob(str(artifacts_dir() / "perf-bench" / "gemmini"
-                              / "_global_phase2_baseline_emission_cache_v1" / "*"
-                              / "command_buffer.json"))
+        found = glob.glob(
+            str(
+                artifacts_dir()
+                / "perf-bench"
+                / "gemmini"
+                / "_global_phase2_baseline_emission_cache_v1"
+                / "*"
+                / "command_buffer.json"
+            )
+        )
         buffers = []
         for path in sorted(found):
             with open(path, encoding="utf-8") as handle:
@@ -614,14 +704,12 @@ class TestTheRealSmolVLAContractPlansAgainstTheRealCommandBuffer:
         states = BP.session_states_from_contract(contract)
         assert len(states) == 3
         plan = BP.plan(buffer, row_pitch_elements=16, session_states=states)
-        assert {row["state"] for row in plan.carried} == {"prefix_kv_cache", "flow_state",
-                                                          "timestep"}
+        assert {row["state"] for row in plan.carried} == {"prefix_kv_cache", "flow_state", "timestep"}
         assert len([t for t in plan.const if t.role == "seed"]) == 3
 
     def test_the_concatenation_the_harness_used_to_build_DISAGREES_with_the_ABI(self):
         buffer, contract = self._inputs()
-        plan = BP.plan(buffer, row_pitch_elements=16,
-                       session_states=BP.session_states_from_contract(contract))
+        plan = BP.plan(buffer, row_pitch_elements=16, session_states=BP.session_states_from_contract(contract))
         assert [t.tensor for t in plan.arguments] == list(plan.abi_order)
         assert [t.tensor for t in (*plan.const, *plan.mutable)] != list(plan.abi_order)
 
@@ -635,17 +723,18 @@ class TestAnImageTooLargeForTheCodeModelIsCaughtBEFOREItIsLinked:
     """
 
     def test_the_projection_is_const_plus_mutable_plus_what_the_plan_cannot_know(self):
-        plan = BP.plan(_buffer([_arg("arg0"), _arg("Y0", "write")],
-                               {"arg0": _t((1, 16), "i8"), "Y0": _t((1, 4), "i32")}),
-                       row_pitch_elements=16)
+        plan = BP.plan(
+            _buffer([_arg("arg0"), _arg("Y0", "write")], {"arg0": _t((1, 16), "i8"), "Y0": _t((1, 4), "i32")}),
+            row_pitch_elements=16,
+        )
         assert plan.projected_image_bytes() == plan.const_bytes + plan.mutable_bytes
-        assert plan.projected_image_bytes(additional_bytes=1024) == \
-            plan.const_bytes + plan.mutable_bytes + 1024
+        assert plan.projected_image_bytes(additional_bytes=1024) == plan.const_bytes + plan.mutable_bytes + 1024
 
     def test_a_negative_allowance_is_refused(self):
-        plan = BP.plan(_buffer([_arg("arg0"), _arg("Y0", "write")],
-                               {"arg0": _t((1, 16), "i8"), "Y0": _t((1, 4), "i32")}),
-                       row_pitch_elements=16)
+        plan = BP.plan(
+            _buffer([_arg("arg0"), _arg("Y0", "write")], {"arg0": _t((1, 16), "i8"), "Y0": _t((1, 4), "i32")}),
+            row_pitch_elements=16,
+        )
         with pytest.raises(BundlePackError):
             plan.projected_image_bytes(additional_bytes=-1)
 
@@ -661,16 +750,16 @@ class TestAnImageTooLargeForTheCodeModelIsCaughtBEFOREItIsLinked:
 
     def test_an_image_inside_the_window_yields_NO_finding(self):
         from merlin.liveness.preconditions import medany_span
+
         plan = self._plan_for([1024])
-        assert medany_span(uses_medany=True,
-                           image_span_bytes=plan.projected_image_bytes()) == []
+        assert medany_span(uses_medany=True, image_span_bytes=plan.projected_image_bytes()) == []
 
     def test_an_image_PAST_the_window_is_a_FAULT_naming_the_fix(self):
         from merlin.liveness.preconditions import medany_span
+
         # One 2.5 GiB read argument: past the ±2 GiB PC-relative reach.
         plan = self._plan_for([(5 * (1 << 30)) // (2 * 16)])
-        findings = medany_span(uses_medany=True,
-                               image_span_bytes=plan.projected_image_bytes())
+        findings = medany_span(uses_medany=True, image_span_bytes=plan.projected_image_bytes())
         assert len(findings) == 1
         assert findings[0].severity.name == "FAULT"
         assert "mis-address" in findings[0].message
@@ -678,9 +767,9 @@ class TestAnImageTooLargeForTheCodeModelIsCaughtBEFOREItIsLinked:
 
     def test_a_target_that_is_not_medany_is_not_judged_by_this_rule(self):
         from merlin.liveness.preconditions import medany_span
+
         plan = self._plan_for([(5 * (1 << 30)) // (2 * 16)])
-        assert medany_span(uses_medany=False,
-                           image_span_bytes=plan.projected_image_bytes()) == []
+        assert medany_span(uses_medany=False, image_span_bytes=plan.projected_image_bytes()) == []
 
 
 class TestTheRealTinyLlamaPlanIsPastTheMedanyWindow:
@@ -691,19 +780,28 @@ class TestTheRealTinyLlamaPlanIsPastTheMedanyWindow:
         import json
 
         from merlin.common.paths import artifacts_dir
-        found = glob.glob(str(artifacts_dir() / "perf-bench" / "gemmini"
-                              / "_global_phase2_baseline_emission_cache_v1" / "*"
-                              / "command_buffer.json"))
+
+        found = glob.glob(
+            str(
+                artifacts_dir()
+                / "perf-bench"
+                / "gemmini"
+                / "_global_phase2_baseline_emission_cache_v1"
+                / "*"
+                / "command_buffer.json"
+            )
+        )
         for path in sorted(found):
             with open(path, encoding="utf-8") as handle:
                 buffer = json.load(handle)
             abi = (buffer.get("kernel_abi") or {}).get("args") or []
-            if len(abi) == 825:                      # tiny_llama's argument count
+            if len(abi) == 825:  # tiny_llama's argument count
                 return BP.plan(buffer, row_pitch_elements=16)
         pytest.skip("no emitted tiny_llama command buffer in this tree")
 
     def test_its_projected_image_exceeds_the_two_gigabyte_reach(self):
         from merlin.liveness.preconditions import medany_span
+
         plan = self._plan()
         span = plan.projected_image_bytes(additional_bytes=48_976_384 + 2 * 1024 * 1024)
         assert span > (1 << 31), f"{span} bytes; the finding this pins is no longer present"
@@ -723,14 +821,14 @@ class TestTheRealTinyLlamaPlanIsPastTheMedanyWindow:
         rejecting its own remedy.
         """
         from merlin.liveness.preconditions import medany_span
+
         plan = self._plan()
         extra = 48_976_384 + 2 * 1024 * 1024
         near = plan.projected_image_bytes(additional_bytes=extra)
         far = plan.projected_image_bytes(additional_bytes=extra, const_is_far=True)
         assert far == near - plan.const_bytes
         assert far < (1 << 31), "the far build must be inside the window or it is no remedy"
-        severities = [f.severity.name for f in
-                      medany_span(uses_medany=True, image_span_bytes=far)]
+        severities = [f.severity.name for f in medany_span(uses_medany=True, image_span_bytes=far)]
         # Still over half the window, so it WARNs -- a bigger blob or a further symbol would push
         # it out. That is a real caution and is deliberately not silenced.
         assert "FAULT" not in severities

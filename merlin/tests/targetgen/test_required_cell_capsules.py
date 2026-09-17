@@ -18,6 +18,7 @@ moment the target it was derived from changes. So this file re-derives every one
 target's own store and its own capability map and asserts the capsule still lands where the requirement
 asked — rather than asserting the extents, which would only restate the profile.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -25,7 +26,7 @@ import yaml
 
 from merlin.common.paths import repo_root
 
-TARGET = "gemmini"          # target-ok: this file is ABOUT one target's derived requirement
+TARGET = "gemmini"  # target-ok: this file is ABOUT one target's derived requirement
 
 #: The capsules authored to discharge a requirement, and the regime each was sized for.
 _MEMORY_CAPSULES = {
@@ -65,7 +66,8 @@ def test_the_capsule_lands_in_the_regime_it_was_sized_for(rel, want):
         pytest.skip(f"no operand-store capacity derivable for {TARGET!r}: {got.get('why')}")
     assert got["regime"] == want, (
         f"{rel} was sized for {want!r} but occupies {got['rows']} of {got['capacity_rows']} rows "
-        f"({100.0 * got['fraction_of_capacity']:.2f}% of capacity), which is {got['regime']!r}")
+        f"({100.0 * got['fraction_of_capacity']:.2f}% of capacity), which is {got['regime']!r}"
+    )
 
 
 def test_the_two_regimes_the_corpus_lacked_are_now_reached_by_some_capsule():
@@ -78,16 +80,18 @@ def test_the_two_regimes_the_corpus_lacked_are_now_reached_by_some_capsule():
     from merlin.targetgen import memory_regime as MR
     from merlin.targetgen.target_experiment import load_target_experiment
 
-    te = load_target_experiment(repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets"
-                                / TARGET / "target_experiment.yaml")
-    corpus = MR.corpus_regimes(list(te.graded_roots()), TARGET, labels={"public", "dev"},
-                               exclude=set(getattr(te, "graded_exclude", ()) or ()))
+    te = load_target_experiment(
+        repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / TARGET / "target_experiment.yaml"
+    )
+    corpus = MR.corpus_regimes(
+        list(te.graded_roots()), TARGET, labels={"public", "dev"}, exclude=set(getattr(te, "graded_exclude", ()) or ())
+    )
     if not corpus.get("capacity_rows"):
         pytest.skip(f"no operand-store capacity derivable for {TARGET!r}")
     reached = set(corpus["by_regime"])
     assert {MR.FITS_SINGLE, MR.SPILLS} <= reached, (
-        f"the corpus reaches only {sorted(reached)}; largest working set "
-        f"{corpus['largest_working_set']}")
+        f"the corpus reaches only {sorted(reached)}; largest working set {corpus['largest_working_set']}"
+    )
 
 
 def test_the_spilling_capsule_actually_violates_the_capacity_obligation():
@@ -107,12 +111,10 @@ def test_the_spilling_capsule_actually_violates_the_capacity_obligation():
     m, k = shapes[attrs["lhs"]]
     _k, n = shapes[attrs["weight"]]
     tile = _tile_edge()
-    v = capacity_fit(TARGET, m, k, n, cap["inputs"][0]["dtype"], tile,
-                     cap["numeric_policy"]["dtype"])
+    v = capacity_fit(TARGET, m, k, n, cap["inputs"][0]["dtype"], tile, cap["numeric_policy"]["dtype"])
     if v["operands_hold"] is None:
         pytest.skip(f"{TARGET!r} declares no operand-store capacity")
-    assert v["operands_hold"] is False, (
-        f"the capsule the corpus calls a spill satisfies capacity_fit: {v}")
+    assert v["operands_hold"] is False, f"the capsule the corpus calls a spill satisfies capacity_fit: {v}"
 
 
 def test_the_fitting_capsule_does_not_also_spill():
@@ -128,8 +130,7 @@ def test_the_fitting_capsule_does_not_also_spill():
     shapes = {t["name"]: t["shape"] for t in cap["inputs"]}
     m, k = shapes[attrs["lhs"]]
     _k, n = shapes[attrs["weight"]]
-    v = capacity_fit(TARGET, m, k, n, cap["inputs"][0]["dtype"], _tile_edge(),
-                     cap["numeric_policy"]["dtype"])
+    v = capacity_fit(TARGET, m, k, n, cap["inputs"][0]["dtype"], _tile_edge(), cap["numeric_policy"]["dtype"])
     if v["operands_hold"] is None:
         pytest.skip(f"{TARGET!r} declares no operand-store capacity")
     assert v["operands_hold"] is True, v
@@ -186,7 +187,8 @@ def test_the_island_is_host_work_because_the_hardware_cannot_do_it():
     assert "normalization" not in cap_map, (
         "the target now declares a normalization capability, so this island is no longer honest host "
         "work -- pick a family the manifest still does not admit, or the capsule charges a submission "
-        "for declining work the hardware can do")
+        "for declining work the hardware can do"
+    )
 
 
 def test_both_sides_of_the_seam_are_accelerator_work_the_target_admits():
@@ -199,12 +201,12 @@ def test_both_sides_of_the_seam_are_accelerator_work_the_target_admits():
         pytest.skip(f"{_SEAM_CAPSULE} is not generated in this checkout")
     cap_map = capability_map_for_target(TARGET)
     regions = list(regions_from_module(load_module(d / "capsule.interface.mlir")))
-    accel = [r for r in regions
-             if r.resolved_family() in cap_map and is_eligible(r, cap_map).eligible]
+    accel = [r for r in regions if r.resolved_family() in cap_map and is_eligible(r, cap_map).eligible]
     contractions = [r for r in accel if r.resolved_family() == "contraction"]
     assert len(contractions) >= 2, (
         f"the seam needs an admitted contraction on BOTH sides; found {len(contractions)} "
-        f"among {len(regions)} region(s)")
+        f"among {len(regions)} region(s)"
+    )
 
 
 def test_the_seam_capsule_demands_its_accelerator_regions_actually_accelerate():
@@ -216,7 +218,8 @@ def test_the_seam_capsule_demands_its_accelerator_regions_actually_accelerate():
     cap = _capsule(_SEAM_CAPSULE)
     sem = cap.get("semantic") or {}
     assert sem.get("must_accelerate") is True, (
-        f"{_SEAM_CAPSULE} does not require its eligible regions to run on the accelerator: {sem}")
+        f"{_SEAM_CAPSULE} does not require its eligible regions to run on the accelerator: {sem}"
+    )
     assert cap.get("required_oracle_tiers"), "a capsule with no required tier is graded by nothing"
 
 
@@ -255,11 +258,11 @@ def test_the_seam_capsule_is_affordable_at_the_cycle_accurate_tier():
     assert mine_out > 0, "a capsule that writes nothing cannot prove a seam"
     assert mine_s <= _DEFAULT_CERT_BUDGET_S, (
         f"{_SEAM_CAPSULE} writes {mine_out:,} elements, predicted {mine_s:.0f}s to certify, over the "
-        f"{_DEFAULT_CERT_BUDGET_S:.0f}s budget; it exists to be the affordable one")
+        f"{_DEFAULT_CERT_BUDGET_S:.0f}s budget; it exists to be the affordable one"
+    )
 
     others = {}
-    for iface in sorted((repo_root() / "merlin" / "contract" / "capsules" / "model").glob(
-            "*/capsule.interface.mlir")):
+    for iface in sorted((repo_root() / "merlin" / "contract" / "capsules" / "model").glob("*/capsule.interface.mlir")):
         if iface.parent.name == d.name:
             continue
         out, secs = _cost(iface)
@@ -270,7 +273,8 @@ def test_the_seam_capsule_is_affordable_at_the_cycle_accurate_tier():
     unaffordable = {k: round(v) for k, v in others.items() if v > _DEFAULT_CERT_BUDGET_S}
     assert unaffordable, (
         f"no whole-model capsule exceeds the {_DEFAULT_CERT_BUDGET_S:.0f}s budget, so the seam capsule "
-        f"has no cost reason to exist: { {k: round(v) for k, v in others.items()} }")
+        f"has no cost reason to exist: { {k: round(v) for k, v in others.items()} }"
+    )
     assert all(mine_s < v for v in unaffordable.values()), (
-        f"{_SEAM_CAPSULE} at {mine_s:.0f}s is not cheaper than the whole models it substitutes for: "
-        f"{unaffordable}")
+        f"{_SEAM_CAPSULE} at {mine_s:.0f}s is not cheaper than the whole models it substitutes for: {unaffordable}"
+    )

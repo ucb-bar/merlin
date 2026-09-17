@@ -5,6 +5,7 @@ and no workflow. That is worse than not having them, because a directory of chec
 coverage. `check_no_holdout_names` was one of the fifteen, and it was not merely idle -- it was
 FAILING, on a tracked ratchet that named two held-out capsules outright.
 """
+
 from __future__ import annotations
 
 from merlin.common.paths import repo_root
@@ -38,9 +39,9 @@ def _callers(exclude: str) -> str:
 
 def test_every_gate_is_wired_or_explained():
     orphans = [g for g in _gates() if g not in _callers(exclude=g)]
-    assert not orphans, (
-        "these gates run nowhere and are not explained in .github/workflows/README.md: "
-        + ", ".join(orphans))
+    assert not orphans, "these gates run nowhere and are not explained in .github/workflows/README.md: " + ", ".join(
+        orphans
+    )
 
 
 def test_the_readme_explains_the_ones_that_stay_out():

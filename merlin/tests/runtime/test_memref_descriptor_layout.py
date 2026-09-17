@@ -7,6 +7,7 @@ read them and every lower-rank argument read uninitialized stack instead. It sta
 models whose kernels recompute their own strides from static shapes, and faulted the moment one
 materialized a descriptor (an unranked ``memrefCopy``, i.e. copying an input into a buffer).
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -102,7 +103,9 @@ def test_descriptors_are_packed_to_each_argument_rank(tmp_path):
     exe = tmp_path / "fixture"
     build = subprocess.run(
         ["cc", "-std=c11", "-O1", f"-I{rt}", str(src), str(rt / "merlin_model.c"), "-o", str(exe)],
-        capture_output=True, text=True)
+        capture_output=True,
+        text=True,
+    )
     if build.returncode != 0 and "cc: not found" in (build.stderr or ""):
         pytest.skip("no host C compiler")
     assert build.returncode == 0, build.stderr
@@ -120,9 +123,16 @@ def test_large_session_descriptor_pointer_table_does_not_use_heap(tmp_path):
     exe = tmp_path / "large_session_fixture"
     build = subprocess.run(
         [
-            "cc", "-std=c11", "-O1", f"-I{rt}", str(src),
-            str(rt / "merlin_model.c"), "-Wl,--wrap=malloc", "-Wl,--wrap=free",
-            "-o", str(exe),
+            "cc",
+            "-std=c11",
+            "-O1",
+            f"-I{rt}",
+            str(src),
+            str(rt / "merlin_model.c"),
+            "-Wl,--wrap=malloc",
+            "-Wl,--wrap=free",
+            "-o",
+            str(exe),
         ],
         capture_output=True,
         text=True,

@@ -4,13 +4,17 @@ A work total without a traffic total is not a roofline: it says how much arithme
 nothing about whether the machine could feed it. These tests pin the counting rules that decide
 whether a movement lever is visible at all.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.perf.movement_volume import (ProgramMovement, movement_evidence,
-                                         movement_from_command_buffer,
-                                         NO_COMMAND_BUFFER_REFUSAL)
+from merlin.perf.movement_volume import (
+    NO_COMMAND_BUFFER_REFUSAL,
+    ProgramMovement,
+    movement_evidence,
+    movement_from_command_buffer,
+)
 from merlin.perf.work_volume import work_from_command_buffer
 
 
@@ -18,21 +22,28 @@ def _resident_matmul(k: int = 2048, uses: int = 1) -> dict:
     """A resident-weight matmul: pack W once, read A0 per use, commit Y0."""
     commands = [{"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}}]
     for i in range(uses):
-        commands.append({"opcode": "MATMUL_RESIDENT",
-                         "operands": {"lhs": "A0", "rhs": "W_res", "dst": f"acc{i}"}})
-    commands += [{"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"}},
-                 {"opcode": "EVICT", "operands": {"handle": "W_res"}}]
-    return {"abi_version": 1, "target": "t", "backend": "b",
-            "tensors": {"W": {"shape": [k, 16], "dtype": "i8", "role": "weight"},
-                        "A0": {"shape": [16, k], "dtype": "i8", "role": "input"},
-                        "Y0": {"shape": [16, 16], "dtype": "i32", "role": "output"}},
-            "commands": commands}
+        commands.append({"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "W_res", "dst": f"acc{i}"}})
+    commands += [
+        {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"}},
+        {"opcode": "EVICT", "operands": {"handle": "W_res"}},
+    ]
+    return {
+        "abi_version": 1,
+        "target": "t",
+        "backend": "b",
+        "tensors": {
+            "W": {"shape": [k, 16], "dtype": "i8", "role": "weight"},
+            "A0": {"shape": [16, k], "dtype": "i8", "role": "input"},
+            "Y0": {"shape": [16, 16], "dtype": "i32", "role": "output"},
+        },
+        "commands": commands,
+    }
 
 
 def test_traffic_is_the_declared_tensor_bytes_that_crossed_the_boundary():
     mv = movement_from_command_buffer(_resident_matmul())
-    assert mv.known_bytes_in == 2048 * 16 + 16 * 2048          # W packed once, A0 read once
-    assert mv.known_bytes_out == 16 * 16 * 4                   # Y0 is i32
+    assert mv.known_bytes_in == 2048 * 16 + 16 * 2048  # W packed once, A0 read once
+    assert mv.known_bytes_out == 16 * 16 * 4  # Y0 is i32
     assert mv.exact_bytes == 66560
     assert not mv.is_lower_bound and not mv.refusals
 
@@ -98,8 +109,9 @@ def test_the_block_declares_what_it_cannot_measure() -> None:
     able to tell that residency is NOT evidenced by it. Without these fields the module reports
     intent and reads as measurement, which is the failure this repository keeps paying for.
     """
-    block = ProgramMovement(commands=(), known_bytes_in=0, known_bytes_out=0,
-                            is_lower_bound=False, refusals=()).to_dict()
+    block = ProgramMovement(
+        commands=(), known_bytes_in=0, known_bytes_out=0, is_lower_bound=False, refusals=()
+    ).to_dict()
     assert block["counts"] == "declared_by_command_buffer"
     assert block["resident_operand_charged"] == "once_at_pack"
     assert "re-loads a resident operand" in block["cannot_detect"]

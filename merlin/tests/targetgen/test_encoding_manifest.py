@@ -3,14 +3,15 @@ replacing. This is the gate that lets the triplicated ABI constants (rocc_decode
 / GemminiToLLVM.cpp) be retired in favor of the single manifest-sourced generated ISA module — no
 guessed encoding: the manifest is proven to reproduce today's numbers exactly.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.targetgen.target_experiment import load_capability_manifest, derived_readout_bits
 from merlin.targetgen.rocc import decode as RD
 from merlin.targetgen.rtl import circt_introspect as CI
 from merlin.targetgen.rtl import mlc_bridge as MB
+from merlin.targetgen.target_experiment import derived_readout_bits, load_capability_manifest
 
 
 def test_readout_bits_match_the_decoder_constants():
@@ -42,8 +43,13 @@ def test_dim_and_opcode_stay_in_the_fact_bundle_not_the_encoding_block():
 
 
 # --- Step D: readout_bits are DERIVED (addr_len + flag-bit convention + 1.0f), not hand-declared hex ----
-_FROZEN_HEX = {"f1": 0x3F800000, "c_acc": 0xA0000000, "acc_i8": 0x80000000,
-               "acc_accum": 0x40000000, "full_c_bit": 0x20000000}
+_FROZEN_HEX = {
+    "f1": 0x3F800000,
+    "c_acc": 0xA0000000,
+    "acc_i8": 0x80000000,
+    "acc_accum": 0x40000000,
+    "full_c_bit": 0x20000000,
+}
 
 
 def test_readout_bits_are_not_declared_in_the_contract_yaml():
@@ -65,6 +71,7 @@ def test_readout_bit_roles_follow_the_addr_len_convention():
     assert rb["acc_i8"] == 1 << 31 and rb["acc_accum"] == 1 << 30 and rb["full_c_bit"] == 1 << 29
     assert rb["c_acc"] == rb["acc_i8"] | rb["full_c_bit"]
     import struct
+
     assert rb["f1"] == struct.unpack("<I", struct.pack("<f", 1.0))[0]
 
 

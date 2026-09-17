@@ -10,6 +10,7 @@ synthesized capsule was labelled by kind alone: measured on a regenerated corpus
 The corpus-wide ``generalization_axis`` census was therefore blind to every derived axis -- it did not
 report them as empty, it reported them as something else, which is worse.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -18,17 +19,36 @@ from merlin.targetgen import corpus_synth as CS
 
 _SPEC = {
     "target": "t",
-    "cells": [{"cell": "contraction/i8/aligned", "family": "contraction", "dtype": "i8",
-               "alignment": "aligned"}],
-    "boundaries": {"tile_edge": 16,
-                   "extent_probes": [{"boundary": "tile_edge", "edge": 16,
-                                      "points": [1, 4, 8, 15, 16, 17, 32]}]},
-    "epilogue": {"required": [{"stage": "relu", "family": "elementwise_map", "isa_classes": [],
-                               "evidenced_by": ["manifest_composed_with"]}]},
-    "conv_geometry": {"required": [
-        {"signature": "k3x3/s2x2/d1x1/pad1x1", "kernel": [3, 3], "stride": [2, 2],
-         "dilation": [1, 1], "pad_before": [1, 1], "pad_after": [1, 1], "pad_known": True,
-         "n_regions": 6, "sources": ["a_capture"]}]},
+    "cells": [{"cell": "contraction/i8/aligned", "family": "contraction", "dtype": "i8", "alignment": "aligned"}],
+    "boundaries": {
+        "tile_edge": 16,
+        "extent_probes": [{"boundary": "tile_edge", "edge": 16, "points": [1, 4, 8, 15, 16, 17, 32]}],
+    },
+    "epilogue": {
+        "required": [
+            {
+                "stage": "relu",
+                "family": "elementwise_map",
+                "isa_classes": [],
+                "evidenced_by": ["manifest_composed_with"],
+            }
+        ]
+    },
+    "conv_geometry": {
+        "required": [
+            {
+                "signature": "k3x3/s2x2/d1x1/pad1x1",
+                "kernel": [3, 3],
+                "stride": [2, 2],
+                "dilation": [1, 1],
+                "pad_before": [1, 1],
+                "pad_after": [1, 1],
+                "pad_known": True,
+                "n_regions": 6,
+                "sources": ["a_capture"],
+            }
+        ]
+    },
 }
 
 
@@ -45,26 +65,26 @@ def test_no_axis_annotation_uses_the_colliding_semantic_key():
 
     src = inspect.getsource(CS)
     assert '"semantic": {"generalization_axis"' not in src, (
-        "an axis annotated under `semantic` is silently discarded by the generator")
+        "an axis annotated under `semantic` is silently discarded by the generator"
+    )
     assert '"generalization": {"generalization_axis"' in src
 
 
 @pytest.mark.parametrize("axis", ["epilogue", "conv_window"])
 def test_the_entry_declares_its_axis_under_the_key_the_generator_reads(axis):
-    got = [e for e in _entries()
-           if (e.get("generalization") or {}).get("generalization_axis") == axis]
+    got = [e for e in _entries() if (e.get("generalization") or {}).get("generalization_axis") == axis]
     assert got, f"no entry annotated {axis!r} under `generalization`"
     for e in got:
         assert "semantic" not in e or not isinstance(e.get("semantic"), dict), (
-            "the op-semantics key must not be reused for generalization intent")
+            "the op-semantics key must not be reused for generalization intent"
+        )
 
 
 def test_the_declared_obligation_reference_survives_into_the_capsule():
     """A `padUNKNOWN` window cannot be matched by re-deriving a signature from the member's
     attributes -- the member can only spell zero padding, so it would re-derive as `pad0x0` and the
     obligation it was built for could never be satisfied by it. The reference has to survive."""
-    conv = [e for e in _entries()
-            if (e.get("generalization") or {}).get("generalization_axis") == "conv_window"]
+    conv = [e for e in _entries() if (e.get("generalization") or {}).get("generalization_axis") == "conv_window"]
     assert conv
     assert conv[0]["generalization"]["conv_window"] == "k3x3/s2x2/d1x1/pad1x1"
 
@@ -74,10 +94,14 @@ def test_an_authored_key_the_semantic_block_does_not_consume_is_not_dropped():
     obligation reference could not reach disk."""
     from merlin.targetgen import corpus_spec as CSp
 
-    src = __import__("inspect").getsource(CSp._semantic_block) if hasattr(CSp, "_semantic_block") \
+    src = (
+        __import__("inspect").getsource(CSp._semantic_block)
+        if hasattr(CSp, "_semantic_block")
         else __import__("inspect").getsource(CSp)
+    )
     assert "for key, value in authored.items()" in src, (
-        "authored keys outside the known set must be carried, not discarded")
+        "authored keys outside the known set must be carried, not discarded"
+    )
 
 
 def test_every_extends_names_a_capsule_that_the_same_synthesis_emits():
@@ -105,13 +129,15 @@ def test_every_extends_names_a_capsule_that_the_same_synthesis_emits():
             continue
         try:
             res = CS.synthesize(doc)
-        except Exception:                          # noqa: BLE001 -- a target that cannot synthesize
-            continue                               # is a different test's problem
+        except Exception:  # noqa: BLE001 -- a target that cannot synthesize
+            continue  # is a different test's problem
         names = {e["name"] for e in res["capsules"]}
-        unresolvable = [(e["name"], e["extends"]) for e in res["capsules"]
-                        if e.get("extends") and e["extends"] not in names]
+        unresolvable = [
+            (e["name"], e["extends"]) for e in res["capsules"] if e.get("extends") and e["extends"] not in names
+        ]
         assert not unresolvable, (
             f"{path.stem}: `extends` naming something that is not a capsule this synthesis emits: "
-            f"{unresolvable[:4]}. verify_extends resolves a CAPSULE; a class key can never resolve.")
+            f"{unresolvable[:4]}. verify_extends resolves a CAPSULE; a class key can never resolve."
+        )
         checked += 1
     assert checked, "no conformance spec was checkable"

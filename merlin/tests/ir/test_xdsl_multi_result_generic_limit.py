@@ -29,6 +29,7 @@ So the limitation stands, the failure is legible (`aten_coverage._parse_failure`
 the line), and this test is the ratchet: it asserts the limitation, so it FAILS the day xdsl gains the
 parenthesised form -- at which point delete it and smolvla's routing evidence comes back for free.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -85,8 +86,9 @@ def test_the_capture_that_this_costs_is_named():
     capture = artifacts_dir() / "recaptures" / "smolvla_fp32_consistent" / "model.mlir"
     if not capture.is_file():
         pytest.skip("smolvla is not captured on this host")
-    from merlin.targetgen.model_coverage import load_module
     from xdsl.utils.exceptions import ParseError
+
+    from merlin.targetgen.model_coverage import load_module
 
     with pytest.raises(ParseError):
         load_module(capture)

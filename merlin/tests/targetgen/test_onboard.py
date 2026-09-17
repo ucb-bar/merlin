@@ -10,6 +10,7 @@ Hermetic: OOT contracts are regenerated into ``tmp_path`` from the generator (th
 never depending on the gitignored dev working tree; mlc is never required (its facts are reported, not
 gated).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -21,8 +22,7 @@ from merlin.targetgen.target_experiment import load_target_experiment
 
 
 def _real_desc(target: str) -> str:
-    return str(repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target
-               / "target_experiment.yaml")
+    return str(repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / target / "target_experiment.yaml")
 
 
 def _write_desc(tmp_path, body: str):
@@ -37,7 +37,7 @@ def test_existing_descriptors_load_with_rtl_repo_none():
     for t in ("gemmini", "radiance", "atlas", "mx_gemmini"):
         te = load_target_experiment(_real_desc(t))
         assert te.rtl_repo is None
-        assert te.rtl_via == "mlc"          # legacy field unchanged
+        assert te.rtl_via == "mlc"  # legacy field unchanged
 
 
 def test_rtl_repo_field_is_parsed_when_present(tmp_path):
@@ -52,6 +52,7 @@ def test_curated_reference_contract_resolves_outside_the_answer_surface():
     a PermissionError at round 0 (the historical bug). gemmini is the curated in-tree reference case."""
     from merlin.common.paths import artifacts_dir
     from merlin.targetgen import target_registry
+
     info = target_registry.resolve("gemmini")
     assert info.kind == "reference"
     assert artifacts_dir() / "targets" / "gemmini" not in info.contract_path.parents
@@ -64,26 +65,30 @@ def test_generated_oot_target_resolves_via_search_path_outside_the_answer_surfac
     contract outside ``out/artifacts/targets/atlas`` — so the launcher can read it under the lock."""
     from merlin.common.paths import artifacts_dir
     from merlin.targetgen import capability_manifests, target_registry
+
     pkg = tmp_path / "atlas-mlir-v0"
-    capability_manifests.write_oot_target("atlas", pkg)   # the interchange OOT-package format
+    capability_manifests.write_oot_target("atlas", pkg)  # the interchange OOT-package format
     monkeypatch.setenv("MERLIN_TARGET_PATH", str(pkg))
     info = target_registry.resolve("atlas")
     assert info.kind == "external"
     assert info.contract_path == pkg / "contracts" / "target_contract.yaml"
     assert artifacts_dir() / "targets" / "atlas" not in info.contract_path.parents
-    assert info.load_contract()["endpoint_kind"] == "external_backend"   # still derived from facts
+    assert info.load_contract()["endpoint_kind"] == "external_backend"  # still derived from facts
 
 
 # --------------------------------------------------------------------------- Delta 2: onboard flow
-@pytest.mark.parametrize("target,kind,endpoint,mesh_key", [
-    # radiance SIMT (Muon) is a self-hosted 64-bit re-encoded ISA — its whole instruction stream is emitted
-    # as words (like atlas' kernel.S), NOT stock RISC-V .insn on a stock substrate (proven: stock LLVM
-    # cannot emit a valid Muon instruction; the core re-encodes every op to 64 bits). So endpoint_kind is
-    # external_backend, derived from facts — not inline_asm_insn.
-    ("radiance", "simt", "external_backend", None),
-    ("atlas", "systolic", "external_backend", "rows"),   # self-hosted ISA (kernel.S), not RoCC .insn
-    ("mx_gemmini", "systolic", "inline_asm_insn", "rows"),
-])
+@pytest.mark.parametrize(
+    "target,kind,endpoint,mesh_key",
+    [
+        # radiance SIMT (Muon) is a self-hosted 64-bit re-encoded ISA — its whole instruction stream is emitted
+        # as words (like atlas' kernel.S), NOT stock RISC-V .insn on a stock substrate (proven: stock LLVM
+        # cannot emit a valid Muon instruction; the core re-encodes every op to 64 bits). So endpoint_kind is
+        # external_backend, derived from facts — not inline_asm_insn.
+        ("radiance", "simt", "external_backend", None),
+        ("atlas", "systolic", "external_backend", "rows"),  # self-hosted ISA (kernel.S), not RoCC .insn
+        ("mx_gemmini", "systolic", "inline_asm_insn", "rows"),
+    ],
+)
 def test_onboard_regenerates_manifest_and_routes(tmp_path, monkeypatch, target, kind, endpoint, mesh_key):
     """The same target-agnostic flow onboards a SIMT and two systolic targets — kind/endpoint are DERIVED
     from the regenerated manifest via the family registry, never a per-target branch."""
@@ -94,13 +99,14 @@ def test_onboard_regenerates_manifest_and_routes(tmp_path, monkeypatch, target, 
     assert (res.oot_root / "contracts" / "target_contract.yaml").is_file()
     assert res.manifest.kind == kind and res.manifest.kind in families.known_kinds()
     assert res.manifest.endpoint_kind == endpoint
-    assert res.dtypes                                     # a non-empty derived dtype set
+    assert res.dtypes  # a non-empty derived dtype set
     if mesh_key is None:
-        assert res.mesh is None or "dim" in res.mesh      # SIMT: no static mesh
+        assert res.mesh is None or "dim" in res.mesh  # SIMT: no static mesh
     else:
-        assert res.mesh and res.mesh.get("rows")          # systolic mesh geometry present
+        assert res.mesh and res.mesh.get("rows")  # systolic mesh geometry present
     assert "OK — the target routes through the capability spine." in __import__(
-        "merlin.targetgen.onboard", fromlist=["render"]).render(res)
+        "merlin.targetgen.onboard", fromlist=["render"]
+    ).render(res)
 
 
 def test_onboard_fails_honestly_on_unresolvable_rtl_repo(tmp_path, monkeypatch):
@@ -122,12 +128,11 @@ def test_onboard_fails_honestly_when_no_manifest_can_be_grounded(tmp_path, monke
 
 def test_onboard_accepts_remote_url_pointer_and_emits_registration_step(tmp_path, monkeypatch):
     monkeypatch.delenv("MERLIN_TARGET_PATH", raising=False)
-    desc = _write_desc(
-        tmp_path, "target: radiance\nrtl:\n  via: mlc\n  repo: https://example.com/acme/radiance.git\n")
+    desc = _write_desc(tmp_path, "target: radiance\nrtl:\n  via: mlc\n  repo: https://example.com/acme/radiance.git\n")
     res = onboard(desc, oot_root=tmp_path / "out")
     assert res.manifest.kind == "simt"
     assert any("remote URL" in n for n in res.rtl_notes)
-    assert any("circt-arc/radiance" in n for n in res.rtl_notes)   # exact, honest mlc step
+    assert any("circt-arc/radiance" in n for n in res.rtl_notes)  # exact, honest mlc step
 
 
 def test_onboard_rejects_malformed_rtl_pointer(tmp_path, monkeypatch):

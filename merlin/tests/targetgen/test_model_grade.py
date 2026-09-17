@@ -8,6 +8,7 @@ executed on the target mesh can. Before this, a model capsule graded merlin's co
 golden and reported `pass` with an empty `tiers` block, which is how a suite could read 40/40 while the
 submitted backend never ran at all.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -44,31 +45,45 @@ def _frozen_bundle_double(monkeypatch):
 
 # Real model capsules declare [L0, L1, L2] (see merlin/contract/capsules/radiance/model/*/capsule.yaml).
 # A fixture without them would make every fail-closed gate vacuous and hide exactly what these tests check.
-_CAP = {"name": "M0_small_llama", "kind": "model", "label": "public",
-        "required_oracle_tiers": ["L0", "L1", "L2"],
-        "operation": {"op": "model", "attributes": {"model": "small_llama", "compile_dtype": "fp32"}}}
-_CAP_INT8 = {"name": "M0_small_llama_int8", "kind": "model", "label": "public",
-             "required_oracle_tiers": ["L0", "L1", "L2"],
-             "operation": {"op": "model", "attributes": {"model": "small_llama", "compile_dtype": "int8"}}}
+_CAP = {
+    "name": "M0_small_llama",
+    "kind": "model",
+    "label": "public",
+    "required_oracle_tiers": ["L0", "L1", "L2"],
+    "operation": {"op": "model", "attributes": {"model": "small_llama", "compile_dtype": "fp32"}},
+}
+_CAP_INT8 = {
+    "name": "M0_small_llama_int8",
+    "kind": "model",
+    "label": "public",
+    "required_oracle_tiers": ["L0", "L1", "L2"],
+    "operation": {"op": "model", "attributes": {"model": "small_llama", "compile_dtype": "int8"}},
+}
 
 
 def _mesh(monkeypatch, *, ran, fell, status="verified", gate=True, verify=None, unrouted=0):
     """Patch compile_rvv to look like a mesh run that placed `ran` layers and fell back on `fell`."""
-    out = {"status": status, "verify": verify if verify is not None else {"gate_ok": gate},
-           "mesh_execution": {"target": "radiance", "matmul_layers_on_mesh": ran,
-                              "matmul_layers_host_fallback": fell,
-                              "matmul_layers_unrouted": unrouted}}
+    out = {
+        "status": status,
+        "verify": verify if verify is not None else {"gate_ok": gate},
+        "mesh_execution": {
+            "target": "radiance",
+            "matmul_layers_on_mesh": ran,
+            "matmul_layers_host_fallback": fell,
+            "matmul_layers_unrouted": unrouted,
+        },
+    }
     monkeypatch.setattr(cc, "compile_rvv", lambda *a, **k: out)
 
 
 # ---------------------------------------------------------------- host: a withheld verdict, never a pass
 
+
 def test_a_host_reference_run_never_passes_a_model_capsule(monkeypatch):
     """The host dispatch runtime IS merlin's own compiler. However well it does, it is evidence about us,
     not about the submission — so the numeric verdict is withheld rather than granted."""
-    monkeypatch.setattr(cc, "compile_rvv",
-                        lambda *a, **k: {"status": "verified", "verify": {"gate_ok": True}})
-    r = R._grade_model_capsule(_CAP, timeout=60)          # no target -> host
+    monkeypatch.setattr(cc, "compile_rvv", lambda *a, **k: {"status": "verified", "verify": {"gate_ok": True}})
+    r = R._grade_model_capsule(_CAP, timeout=60)  # no target -> host
     assert r["status"] == "not_gradeable_no_oracle"
     assert r["numeric"]["status"] == "not_compared"
     assert r["host_reference"]["status"] == "verified", "the diagnostic is recorded, not discarded"
@@ -77,8 +92,7 @@ def test_a_host_reference_run_never_passes_a_model_capsule(monkeypatch):
 def test_a_host_mismatch_is_also_withheld_not_blamed_on_the_submission(monkeypatch):
     """A host-side mismatch is a defect in OUR reference compiler. Reporting it as the capsule's `fail`
     would attribute it to a backend that never executed."""
-    monkeypatch.setattr(cc, "compile_rvv",
-                        lambda *a, **k: {"status": "run_mismatch", "verify": {"gate_ok": False}})
+    monkeypatch.setattr(cc, "compile_rvv", lambda *a, **k: {"status": "run_mismatch", "verify": {"gate_ok": False}})
     r = R._grade_model_capsule(_CAP, timeout=60)
     assert r["status"] == "not_gradeable_no_oracle"
     assert r["host_reference"]["status"] == "run_mismatch"
@@ -86,13 +100,15 @@ def test_a_host_mismatch_is_also_withheld_not_blamed_on_the_submission(monkeypat
 
 # ---------------------------------------------------------------------- mesh: a real, earned verdict
 
+
 def test_a_model_whose_layers_ran_on_the_mesh_and_matched_passes(monkeypatch):
     _mesh(monkeypatch, ran=15, fell=0)
     r = R._grade_model_capsule(_CAP, target="radiance", timeout=60)
     assert r["status"] == "pass"
     assert r["tiers"]["L2"]["status"] == "pass"
-    assert r["tiers"]["L0"]["not_applicable"] and r["tiers"]["L1"]["not_applicable"], \
+    assert r["tiers"]["L0"]["not_applicable"] and r["tiers"]["L1"]["not_applicable"], (
         "L0/L1 interpret a command buffer; a whole model has none — N/A, not 'did not run'"
+    )
 
 
 def test_a_passing_model_verdict_records_the_tree_that_produced_it(monkeypatch):
@@ -104,9 +120,8 @@ def test_a_passing_model_verdict_records_the_tree_that_produced_it(monkeypatch):
     assert r["status"] == "pass"
     assert r["provenance"], "a mesh pass is a hardware claim and must be attributable"
 
-    monkeypatch.setattr(cc, "compile_rvv",
-                        lambda *a, **k: {"status": "verified", "verify": {"gate_ok": True}})
-    withheld = R._grade_model_capsule(_CAP, timeout=60)          # host -> no hardware claim
+    monkeypatch.setattr(cc, "compile_rvv", lambda *a, **k: {"status": "verified", "verify": {"gate_ok": True}})
+    withheld = R._grade_model_capsule(_CAP, timeout=60)  # host -> no hardware claim
     assert "provenance" not in withheld
 
 
@@ -128,8 +143,7 @@ def test_a_partial_fallback_is_not_a_pass(monkeypatch):
 
 def test_unreachable_mesh_counters_fail_closed(monkeypatch):
     """Counters absent means nobody could tell whether the mesh ran — which must not read as zero."""
-    monkeypatch.setattr(cc, "compile_rvv",
-                        lambda *a, **k: {"status": "verified", "verify": {"gate_ok": True}})
+    monkeypatch.setattr(cc, "compile_rvv", lambda *a, **k: {"status": "verified", "verify": {"gate_ok": True}})
     r = R._grade_model_capsule(_CAP, target="radiance", timeout=60)
     assert r["status"] != "pass"
     assert r["tiers"]["L2"]["status"] == "unavailable"
@@ -144,6 +158,7 @@ def test_a_numeric_mismatch_on_the_mesh_is_a_real_fail(monkeypatch):
 def test_toolchain_absent_is_incomplete_never_a_silent_pass(monkeypatch):
     def _boom(*a, **k):
         raise SystemExit("no clang-23 / no m2m venv")
+
     monkeypatch.setattr(cc, "compile_rvv", _boom)
     r = R._grade_model_capsule(_CAP, target="radiance", timeout=60)
     assert r["status"] == "incomplete" and r["failure"]["category"] == "NOT_RUN_IS_NOT_PASS"
@@ -152,21 +167,35 @@ def test_toolchain_absent_is_incomplete_never_a_silent_pass(monkeypatch):
 def test_quantized_drop_within_tolerance_still_passes_when_it_ran_on_the_mesh(monkeypatch):
     """The quant-tolerance allowance survives — but it now also requires the layers to have RUN."""
     from pathlib import Path
+
     from merlin.targetgen.target_experiment import TargetExperiment
-    monkeypatch.setattr(TargetExperiment, "resolve_host_lane", lambda self, *, root=None, dtype=None: (
-        Path("/frozen/int8"), {"package_sha256": "a" * 64, "dtype_strategy": "int8_w8a8"}))
-    _mesh(monkeypatch, ran=15, fell=0, status="run_mismatch",
-          verify={"gate_ok": False, "fp32_cos": 0.962})
+
+    monkeypatch.setattr(
+        TargetExperiment,
+        "resolve_host_lane",
+        lambda self, *, root=None, dtype=None: (
+            Path("/frozen/int8"),
+            {"package_sha256": "a" * 64, "dtype_strategy": "int8_w8a8"},
+        ),
+    )
+    _mesh(monkeypatch, ran=15, fell=0, status="run_mismatch", verify={"gate_ok": False, "fp32_cos": 0.962})
     r = R._grade_model_capsule(_CAP_INT8, target="radiance", timeout=60)
     assert r["status"] == "pass" and r["numeric"]["quant_tolerance"]["cos"] == 0.962
 
 
 def test_quantized_gross_defect_still_fails(monkeypatch):
     from pathlib import Path
+
     from merlin.targetgen.target_experiment import TargetExperiment
-    monkeypatch.setattr(TargetExperiment, "resolve_host_lane", lambda self, *, root=None, dtype=None: (
-        Path("/frozen/int8"), {"package_sha256": "a" * 64, "dtype_strategy": "int8_w8a8"}))
-    _mesh(monkeypatch, ran=15, fell=0, status="run_mismatch",
-          verify={"gate_ok": False, "fp32_cos": 0.42})
+
+    monkeypatch.setattr(
+        TargetExperiment,
+        "resolve_host_lane",
+        lambda self, *, root=None, dtype=None: (
+            Path("/frozen/int8"),
+            {"package_sha256": "a" * 64, "dtype_strategy": "int8_w8a8"},
+        ),
+    )
+    _mesh(monkeypatch, ran=15, fell=0, status="run_mismatch", verify={"gate_ok": False, "fp32_cos": 0.42})
     r = R._grade_model_capsule(_CAP_INT8, target="radiance", timeout=60)
     assert r["status"] == "fail" and r["failure"]["category"] == "FUNCTIONAL_MISMATCH"

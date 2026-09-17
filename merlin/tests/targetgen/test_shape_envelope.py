@@ -11,6 +11,7 @@ never narrows**. A producer that supplies no rank must not thereby make a unit r
 and a unit that declares no envelope must refuse nothing. Every demand producer in the tree omits the
 rank today, so this is inert until one starts supplying it.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -22,12 +23,17 @@ _I8 = {"in_fmt": "int8", "weight_fmt": "int8", "op": "matmul"}
 
 
 def _unit(**caps):
-    return ComputeUnit(name="u", kind="systolic", dtypes=("int8",), ops=("matmul",),
-                       semantic_capabilities=(SemanticCapability(family="contraction",
-                                                                 dtypes=("int8",), **caps),))
+    return ComputeUnit(
+        name="u",
+        kind="systolic",
+        dtypes=("int8",),
+        ops=("matmul",),
+        semantic_capabilities=(SemanticCapability(family="contraction", dtypes=("int8",), **caps),),
+    )
 
 
 # ------------------------------------------------------------------ unknown never narrows
+
 
 def test_a_demand_with_no_rank_is_never_refused_by_an_envelope():
     """The inert case, and the one every producer in the tree hits today."""
@@ -43,6 +49,7 @@ def test_a_unit_declaring_no_envelope_refuses_nothing():
 
 
 # ------------------------------------------------------------------ a declared envelope is enforced
+
 
 def test_a_rank_outside_the_declared_set_is_refused():
     unit = _unit(ranks=(2,))
@@ -67,14 +74,18 @@ def test_batchedness_is_tri_state():
 
 # ------------------------------------------------------------------ against the real targets
 
+
 def test_a_real_targets_declared_ranks_are_honoured():
-    from merlin.targetgen import compute_units as cu, target_registry as tr
+    from merlin.targetgen import compute_units as cu
+    from merlin.targetgen import target_registry as tr
+
     try:
         units = cu.compute_units(tr.load_contract("gemmini"))
-    except Exception:                                     # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pytest.skip("target not resolvable here")
-    declared = {r for u in units for c in (u.semantic_capabilities or ())
-                if c.family == "contraction" for r in (c.ranks or ())}
+    declared = {
+        r for u in units for c in (u.semantic_capabilities or ()) if c.family == "contraction" for r in (c.ranks or ())
+    }
     if not declared:
         pytest.skip("this target declares no contraction rank envelope")
     outside = next((r for r in (2, 3, 4, 5) if r not in declared), None)

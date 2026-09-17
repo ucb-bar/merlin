@@ -7,6 +7,7 @@ subexpressions. On the small_llama int8 capture that is 33 extra `linalg.generic
 rotary embedding's 8 identical `math.cos` and 8 identical `math.sin` — 1024 libm `cosf` and 1024
 `sinf` calls per inference where 128 each suffice.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -43,9 +44,9 @@ module {
 """
 
 #: The same module with no provenance at all — the fail-closed case.
-NO_PROV = DUPES.replace(
-    'attrs = {prov.region_id = "cos_0", prov.op = "cos", prov.fqn = "blocks.0.attn"} ', "").replace(
-    'attrs = {prov.region_id = "cos_1", prov.op = "cos", prov.fqn = "blocks.0.attn"} ', "")
+NO_PROV = DUPES.replace('attrs = {prov.region_id = "cos_0", prov.op = "cos", prov.fqn = "blocks.0.attn"} ', "").replace(
+    'attrs = {prov.region_id = "cos_1", prov.op = "cos", prov.fqn = "blocks.0.attn"} ', ""
+)
 
 
 def test_feature_is_registered_by_the_lowering_entry_point_and_off_by_default():
@@ -80,9 +81,12 @@ def _count_generics(mlir_text: str, tmp_path, *, strip: bool) -> int:
         "mod = ir.Module.parse(open(sys.argv[1]).read(), ctx)\n"
         "with ctx:\n"
         "    PassManager.parse('builtin.module(canonicalize,cse)', ctx).run(mod.operation)\n"
-        "print('GENERICS', str(mod.operation).count('linalg.generic'))\n", encoding="utf-8")
-    proc = subprocess.run([str(toolchain.m2m_python()), str(script), str(src)],
-                          capture_output=True, text=True, timeout=600)
+        "print('GENERICS', str(mod.operation).count('linalg.generic'))\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        [str(toolchain.m2m_python()), str(script), str(src)], capture_output=True, text=True, timeout=600
+    )
     assert proc.returncode == 0, proc.stderr
     line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("GENERICS"))
     return int(line.split()[1])
@@ -135,15 +139,13 @@ def test_the_strip_runs_after_every_provenance_consuming_derivation():
     """
     from merlin.common.paths import merlin_dir
 
-    src = (merlin_dir() / "python" / "merlin" / "runtime" / "backends"
-           / "zephyr_model.py").read_text(encoding="utf-8")
-    prepare = src[src.index("def prepare_for_lowering("):src.index("def _strip_provenance(")]
+    src = (merlin_dir() / "python" / "merlin" / "runtime" / "backends" / "zephyr_model.py").read_text(encoding="utf-8")
+    prepare = src[src.index("def prepare_for_lowering(") : src.index("def _strip_provenance(")]
     uses = [ln.strip() for ln in prepare.splitlines() if "_strip_provenance(" in ln]
     assert uses, "prepare_for_lowering no longer strips provenance at all"
     # Only ever ON THE WAY OUT. A mid-function `prepared = _strip_provenance(...)` would put the
     # unparseable module in front of a derivation that still has to read it.
-    assert all(ln.startswith("return ") for ln in uses), (
-        f"the provenance strip is not a terminal rewrite: {uses}")
-    assert len(uses) == len([ln for ln in prepare.splitlines()
-                             if ln.strip().startswith("return ") and "features" in ln]), (
-        "prepare_for_lowering has a return path that does not strip provenance")
+    assert all(ln.startswith("return ") for ln in uses), f"the provenance strip is not a terminal rewrite: {uses}"
+    assert len(uses) == len(
+        [ln for ln in prepare.splitlines() if ln.strip().startswith("return ") and "features" in ln]
+    ), "prepare_for_lowering has a return path that does not strip provenance"

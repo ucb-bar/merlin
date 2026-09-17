@@ -12,6 +12,7 @@ that muon's gsim adapter already used. This pins the three-state rule, because t
 state: an explicit ``False`` must beat the name, while an ABSENT flag must still fall back to it (a
 model capsule records its tier as a bare string and would otherwise lose its RTL credit).
 """
+
 from __future__ import annotations
 
 from merlin.targetgen import capsule_grade as CG
@@ -24,8 +25,7 @@ def _score(monkeypatch, results, target="atlas"):
     monkeypatch.setattr(CG, "integrity_scan", lambda *a, **k: None)
     monkeypatch.setattr(CG, "build_package", lambda *a, **k: None)
     monkeypatch.setattr(CG, "source_experiment_env", lambda *a, **k: None)
-    monkeypatch.setattr(CG.CR, "discover_capsules", lambda *a, **k: [{"name": r["capsule"]}
-                                                                     for r in results])
+    monkeypatch.setattr(CG.CR, "discover_capsules", lambda *a, **k: [{"name": r["capsule"]} for r in results])
     monkeypatch.setattr(CG.CR, "run_suite", lambda *a, **k: results)
     # every target in this test declares L3/L4/L5 as its RTL tiers BY NAME -- that is exactly the
     # classification the oracle's own word has to be able to override.
@@ -34,8 +34,15 @@ def _score(monkeypatch, results, target="atlas"):
 
 
 def _op(name, tiers, status="pass"):
-    return {"capsule": name, "kind": "op", "label": "public", "status": status,
-            "tiers": tiers, "numeric": {"status": status}, "trace_check": {"status": status}}
+    return {
+        "capsule": name,
+        "kind": "op",
+        "label": "public",
+        "status": status,
+        "tiers": tiers,
+        "numeric": {"status": status},
+        "trace_check": {"status": status},
+    }
 
 
 _MODEL_L3 = {"status": "pass", "derived_from_rtl": False, "fidelity": "rtl_derived_model"}

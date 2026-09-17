@@ -12,6 +12,7 @@ Two levels:
 - slow on-hardware: ``run_whole_model_on_mesh`` runs the matmul layers on the real gemmini oracle (spike),
   bit-exact vs the engine reference (small-integer operands make the integer mesh reproduce it exactly).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -24,10 +25,20 @@ pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed
 # Same synthetic f32 mesh + vector contract as the engine splice test: target-agnostic lane routing.
 _F32_UNITS = {
     "compute_units": [
-        {"name": "mesh", "kind": "systolic", "dtypes": ["f32", "fp32"], "ops": ["matmul"],
-         "accumulate": [{"in": "f32", "weight": "f32", "acc": "f32"}]},
-        {"name": "vec", "kind": "vector", "dtypes": ["f32", "fp32"],
-         "ops": ["relu", "add", "mul", "elementwise"], "accumulate": []},
+        {
+            "name": "mesh",
+            "kind": "systolic",
+            "dtypes": ["f32", "fp32"],
+            "ops": ["matmul"],
+            "accumulate": [{"in": "f32", "weight": "f32", "acc": "f32"}],
+        },
+        {
+            "name": "vec",
+            "kind": "vector",
+            "dtypes": ["f32", "fp32"],
+            "ops": ["relu", "add", "mul", "elementwise"],
+            "accumulate": [],
+        },
     ]
 }
 _REF_TARGET = "toy_npu"
@@ -35,17 +46,20 @@ _REF_TARGET = "toy_npu"
 
 def _units():
     from merlin.targetgen import compute_units as cu
+
     return cu.compute_units(_F32_UNITS)
 
 
 def _vecblock(combine="add", relu=True, m=4, k=4):
     from merlin.xdsl_dialects.lowering.input_workload import build_vector_block
+
     return build_vector_block(m=m, k=k, elem="f32", combine=combine, relu=relu)
 
 
 def _program(mod):
     from merlin.targetgen import mesh_program_run as mp
     from merlin.targetgen import routing as rt
+
     demands = mp.demands_from_module(mod, "f32")
     plan = rt.route_plan_on(demands, _units())
     return mp.build_whole_model_program(plan, _REF_TARGET, mod)
@@ -53,8 +67,7 @@ def _program(mod):
 
 def _seed_leaves(prog, seed=0):
     rng = np.random.default_rng(seed)
-    return {lid: rng.standard_normal(tuple(meta["shape"])).astype(np.float32)
-            for lid, meta in prog.leaves.items()}
+    return {lid: rng.standard_normal(tuple(meta["shape"])).astype(np.float32) for lid, meta in prog.leaves.items()}
 
 
 # --------------------------------------------------------------------------- fast plumbing
@@ -71,7 +84,7 @@ def test_injected_mesh_executor_threads_layer_outputs_between_lanes():
     calls: list = []
 
     def fake_oracle(lhs, rhs, step):
-        calls.append(step.index)                 # record which steps used the "oracle"
+        calls.append(step.index)  # record which steps used the "oracle"
         return np.asarray(lhs) @ np.asarray(rhs)  # an exact-matmul stand-in for the device
 
     run = mp.run_whole_model_program(prog, leaves, mesh_exec=fake_oracle)
@@ -79,7 +92,7 @@ def test_injected_mesh_executor_threads_layer_outputs_between_lanes():
     A, W1, W2 = leaves["L0"], leaves["L1"], leaves["L2"]
     expected = np.maximum(A @ W1, 0.0) + (A @ W2)
     assert np.allclose(run["outputs"][prog.output], expected, rtol=1e-5, atol=1e-5)
-    assert calls == [0, 2]                        # only the two matmul steps hit the mesh executor
+    assert calls == [0, 2]  # only the two matmul steps hit the mesh executor
 
 
 def test_mesh_executor_none_fails_closed():
@@ -98,8 +111,7 @@ def test_default_mesh_lane_still_runs_on_engine():
     """Omitting mesh_exec keeps the engine path (backward compatible with the pure-orchestration proof)."""
     from merlin.targetgen import mesh_program_run as mp
 
-    r = mp.verify_whole_model_program(_vecblock("add", True), target=_REF_TARGET, in_fmt="f32",
-                                      units=_units())
+    r = mp.verify_whole_model_program(_vecblock("add", True), target=_REF_TARGET, in_fmt="f32", units=_units())
     assert r["exact"] is True and r["n_mesh"] == 2
 
 
@@ -117,7 +129,7 @@ def test_int8_chain_reference_is_deterministic_and_saturating():
     r1 = compile_cli._int8_chain_reference(A0, Ws, 0.25)
     r2 = compile_cli._int8_chain_reference(A0, Ws, 0.25)
     assert np.array_equal(r1, r2)
-    assert r1.min() >= -128 and r1.max() <= 127        # requant kept every layer in i8 range
+    assert r1.min() >= -128 and r1.max() <= 127  # requant kept every layer in i8 range
 
 
 @pytest.mark.slow
@@ -132,9 +144,9 @@ def test_int8_chain_on_gemmini_mesh_bit_exact():
     A0 = np.rint(rng.standard_normal((4, 4)) * 4).clip(-8, 7).astype(int).tolist()
     Ws = [np.rint(rng.standard_normal((4, 4)) * 4).clip(-8, 7).astype(int).tolist() for _ in range(3)]
 
-    res = compile_cli.run_int8_chain_on_mesh("gemmini", A0, Ws, acc_scale=0.25,
-                                             operand_dtype="i8", accum_dtype="i32",
-                                             simulator="spike", timeout=900)
+    res = compile_cli.run_int8_chain_on_mesh(
+        "gemmini", A0, Ws, acc_scale=0.25, operand_dtype="i8", accum_dtype="i32", simulator="spike", timeout=900
+    )
     if res["status"] == "oracle_unavailable":
         pytest.skip(res.get("reason", "mesh oracle unavailable"))
     assert res["status"] == "pass", res
@@ -150,14 +162,22 @@ def test_whole_model_matmuls_on_gemmini_mesh_bit_exact():
     from merlin import compile_cli
 
     res = compile_cli.run_whole_model_on_mesh(
-        "gemmini", _vecblock("add", True), in_fmt="int8", weight_fmt="int8",
-        operand_dtype="i8", accum_dtype="i32", simulator="spike", ref_target=_REF_TARGET,
-        seed=0, timeout=900)
+        "gemmini",
+        _vecblock("add", True),
+        in_fmt="int8",
+        weight_fmt="int8",
+        operand_dtype="i8",
+        accum_dtype="i32",
+        simulator="spike",
+        ref_target=_REF_TARGET,
+        seed=0,
+        timeout=900,
+    )
 
     if res["status"] == "oracle_unavailable":
         pytest.skip(res.get("reason", "mesh oracle unavailable"))
     assert res["status"] == "pass", res
-    assert res["exact"] is True                       # int mesh reproduces the f32 reference bit-for-bit
+    assert res["exact"] is True  # int mesh reproduces the f32 reference bit-for-bit
     assert res["n_mesh"] == 2 and res["n_scalar"] == 2
     assert all(layer["oracle"] == "ok" for layer in res["per_layer"])
 
@@ -181,15 +201,14 @@ _WHOLE_MODEL_TARGETS = ("gemmini", "atlas")
 @pytest.mark.parametrize("target", _WHOLE_MODEL_TARGETS)
 def test_whole_model_matmuls_run_on_any_targets_mesh(target, sizing):
     from merlin import compile_cli
-    from merlin.runtime.dispatch_runtime import mesh_datapath
-
     from merlin.compile_cli import _mesh_tile_binding
+    from merlin.runtime.dispatch_runtime import mesh_datapath
     from merlin.targetgen.capsule_runner import _TIER_SIM, oracle_adapters
 
     try:
         _b = mesh_datapath(target)
         op_dt, acc_dt, integer = _b.operand_dtype, _b.accum_dtype, bool(_b.integer)
-    except Exception as e:                                   # noqa: BLE001 — unresolvable target
+    except Exception as e:  # noqa: BLE001 — unresolvable target
         pytest.skip(f"{target}: no derivable mesh datapath ({type(e).__name__}: {e})")
 
     # The cheapest tier this target actually resolves, through the shared tier->simulator map. Naming a
@@ -208,9 +227,17 @@ def test_whole_model_matmuls_run_on_any_targets_mesh(target, sizing):
     if sizing == "sub_tile":
         edge = 4
     res = compile_cli.run_whole_model_on_mesh(
-        target, _vecblock("add", True, m=edge, k=edge), in_fmt=op_dt, weight_fmt=op_dt,
-        operand_dtype=op_dt, accum_dtype=acc_dt, simulator=sim,
-        ref_target=_REF_TARGET, seed=0, timeout=3600)
+        target,
+        _vecblock("add", True, m=edge, k=edge),
+        in_fmt=op_dt,
+        weight_fmt=op_dt,
+        operand_dtype=op_dt,
+        accum_dtype=acc_dt,
+        simulator=sim,
+        ref_target=_REF_TARGET,
+        seed=0,
+        timeout=3600,
+    )
 
     if res["status"] == "oracle_unavailable":
         pytest.skip(f"{target}: {res.get('reason', 'mesh oracle unavailable')}")
@@ -218,8 +245,7 @@ def test_whole_model_matmuls_run_on_any_targets_mesh(target, sizing):
     assert res["n_mesh"] == 2 and res["n_scalar"] == 2
     assert all(layer["oracle"] == "ok" for layer in res["per_layer"]), res["per_layer"]
     if integer:
-        assert res["exact"] is True, \
-            f"{target}: an integer mesh must reproduce the small-integer reference bit-for-bit"
+        assert res["exact"] is True, f"{target}: an integer mesh must reproduce the small-integer reference bit-for-bit"
 
     # The report must name the executor that ACTUALLY ran, not the one requested. Two of the three
     # dispatch paths ignore ``simulator`` (a self-hosted-ISA target runs on its mlc-derived cosim, an
@@ -230,8 +256,10 @@ def test_whole_model_matmuls_run_on_any_targets_mesh(target, sizing):
         assert lay["executed_on"], f"{target}: layer {lay['index']} ran with no executor recorded: {lay}"
         assert lay["path"], f"{target}: layer {lay['index']} ran with no dispatch path recorded: {lay}"
     # and the executor identity is the device's, not the bare request token
-    assert all(e != res["simulator_requested"] or lay["path"] == "oot_cert"
-               for e, lay in zip(res["mesh_executors"], res["per_layer"])), res
+    assert all(
+        e != res["simulator_requested"] or lay["path"] == "oot_cert"
+        for e, lay in zip(res["mesh_executors"], res["per_layer"])
+    ), res
 
 
 def test_an_unreachable_mesh_records_no_executor():

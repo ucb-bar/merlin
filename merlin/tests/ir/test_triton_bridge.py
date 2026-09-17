@@ -10,6 +10,7 @@ the same bridge, the same grid arithmetic: only the declared extent differs. A b
 masks would accept both, and would be wrong exactly when the block size does not divide the tensor —
 which is the case nobody tests by hand.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -39,7 +40,8 @@ def test_vector_add_becomes_a_whole_tensor_elementwise_add():
     assert result.report.grid == (4, 1, 1)
     assert "scf." not in result.text and "affine." not in result.text, (
         "the grid was lowered to a loop instead of normalized away — that is a scheduling decision "
-        "and it belongs to Merlin, not to the frontend")
+        "and it belongs to Merlin, not to the frontend"
+    )
 
 
 def test_a_write_only_pointer_becomes_a_result_not_an_argument():
@@ -98,7 +100,8 @@ def test_every_ttir_op_is_accounted_for():
         report = bridge(spec).report
         assert not report.unaccounted, report.as_dict()
         assert sum(report.ttir_ops_seen.values()) == (
-            sum(report.ttir_ops_lowered.values()) + sum(report.ttir_ops_discarded.values()))
+            sum(report.ttir_ops_lowered.values()) + sum(report.ttir_ops_discarded.values())
+        )
         assert report.ttir_ops_discarded, "triton's dead range checks should have been discarded"
 
 
@@ -143,8 +146,9 @@ def test_a_runtime_scalar_with_no_declared_value_is_refused():
     from merlin.triton.spec import TritonKernelSpec
 
     base = K.vector_add_spec(n=1024)
-    blind = TritonKernelSpec(function=base.function, args=base.args,
-                             grid=K.GridSpec(dims=(4,)), constexprs=base.constexprs)
+    blind = TritonKernelSpec(
+        function=base.function, args=base.args, grid=K.GridSpec(dims=(4,)), constexprs=base.constexprs
+    )
     with pytest.raises(BridgeError) as exc:
         bridge(blind)
     assert "n_elements" in str(exc.value) and "assumptions" in str(exc.value)
@@ -158,8 +162,7 @@ def test_a_mis_declared_effect_is_refused():
     args = list(base.args)
     args[2] = KernelArg("c_ptr", "pointer", "i32", shape=(16, 16), effect="read")
     args[0] = KernelArg("a_ptr", "pointer", "i8", shape=(16, 32), effect="write")
-    lying = TritonKernelSpec(function=base.function, args=tuple(args), grid=base.grid,
-                             constexprs=base.constexprs)
+    lying = TritonKernelSpec(function=base.function, args=tuple(args), grid=base.grid, constexprs=base.constexprs)
     with pytest.raises(BridgeError) as exc:
         bridge(lying)
     assert "effect" in str(exc.value) or "write-only" in str(exc.value)
@@ -171,8 +174,7 @@ def test_a_declared_shape_that_disagrees_with_the_kernel_is_refused():
     base = K.matmul_one_tile_spec()
     args = list(base.args)
     args[0] = KernelArg("a_ptr", "pointer", "i8", shape=(16, 64), effect="read")
-    wrong = TritonKernelSpec(function=base.function, args=tuple(args), grid=base.grid,
-                             constexprs=base.constexprs)
+    wrong = TritonKernelSpec(function=base.function, args=tuple(args), grid=base.grid, constexprs=base.constexprs)
     with pytest.raises(BridgeError) as exc:
         bridge(wrong)
     assert "a_ptr" in str(exc.value)
@@ -191,8 +193,7 @@ def test_a_spec_paired_with_the_wrong_ttir_is_refused():
     ttir = source.make_ttir(base)
     args = list(base.args)
     args[0] = KernelArg("a_ptr", "pointer", "fp32", shape=(16, 32), effect="read")
-    other = TritonKernelSpec(function=base.function, args=tuple(args), grid=base.grid,
-                             constexprs=base.constexprs)
+    other = TritonKernelSpec(function=base.function, args=tuple(args), grid=base.grid, constexprs=base.constexprs)
     with pytest.raises(BridgeError) as exc:
         to_linalg(ttir, other)
     assert "a_ptr" in str(exc.value) and "fp32" in str(exc.value)

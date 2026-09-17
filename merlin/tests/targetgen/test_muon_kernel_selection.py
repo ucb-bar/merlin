@@ -1,4 +1,5 @@
 """Compiler-side selection of schedule families mined from the pinned kernel library."""
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -10,12 +11,8 @@ from merlin.runtime.backends.base import get_backend
 from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
 from merlin.targetgen.linalg_lower import lower_linalg_to_cb
 
-
 KS = get_backend("muon").muon_kernel_selection
-CONTRACT = (
-    repo_root()
-    / "merlin/experiments/capsule_bench/targets/radiance/contracts/kernel_library_pr1_v1.yaml"
-)
+CONTRACT = repo_root() / "merlin/experiments/capsule_bench/targets/radiance/contracts/kernel_library_pr1_v1.yaml"
 
 
 def _contract():
@@ -32,9 +29,7 @@ def _decision(report, family: str):
 
 def _bias_add_cb():
     capsule = (
-        repo_root()
-        / "merlin/contract/capsules/radiance/model_slices/RP16_bias_add_fp32_pt"
-        / "capsule.interface.mlir"
+        repo_root() / "merlin/contract/capsules/radiance/model_slices/RP16_bias_add_fp32_pt" / "capsule.interface.mlir"
     )
     parsed = parse_linalg_mlir(capsule.read_text(encoding="utf-8"))
     return lower_linalg_to_cb(parsed, target="radiance")
@@ -42,9 +37,7 @@ def _bias_add_cb():
 
 def _layernorm_cb():
     capsule = (
-        repo_root()
-        / "merlin/contract/capsules/radiance/model_slices/RP5_layernorm_fp32_pt"
-        / "capsule.interface.mlir"
+        repo_root() / "merlin/contract/capsules/radiance/model_slices/RP5_layernorm_fp32_pt" / "capsule.interface.mlir"
     )
     parsed = parse_linalg_mlir(capsule.read_text(encoding="utf-8"))
     return lower_linalg_to_cb(parsed, target="radiance")
@@ -110,21 +103,25 @@ def test_shape_specific_batched_strategy_fails_closed_outside_qualified_shape():
     ("semantic_request", "family", "blocked_reason"),
     [
         (
-            {"op": "attention_gqa_softcap_window", "dtype": "mxfp8",
-             "shape": {"Sq": 64, "Sk": 256, "D": 256, "QH": 8, "KVH": 4}},
+            {
+                "op": "attention_gqa_softcap_window",
+                "dtype": "mxfp8",
+                "shape": {"Sq": 64, "Sk": 256, "D": 256, "QH": 8, "KVH": 4},
+            },
             "kernels/flash_attention_mx_gemma",
             "mesh-written output lacks reliable numeric readback",
         ),
         (
-            {"op": "quantized_matmul", "dtype": "mxfp6",
-             "shape": {"M": 64, "K": 256, "N": 64}},
+            {"op": "quantized_matmul", "dtype": "mxfp6", "shape": {"M": 64, "K": 256, "N": 64}},
             "kernels/flash_attention_mx_fp6",
             "final-tile store stalls and does not complete RTL simulation",
         ),
     ],
 )
 def test_experimental_families_are_unconditionally_fail_closed(
-    semantic_request, family, blocked_reason,
+    semantic_request,
+    family,
+    blocked_reason,
 ):
     report = KS.select_kernel_family(
         semantic_request,
@@ -159,8 +156,7 @@ def test_registry_hole_is_a_contract_error_not_silent_missing_coverage():
 
 def test_unknown_shape_dimension_is_a_recorded_refusal():
     report = KS.select_kernel_family(
-        {"op": "patch_embed", "dtype": "fp32",
-         "shape": {"channels": 3, "patch_h": 16, "patch_w": 16}},
+        {"op": "patch_embed", "dtype": "fp32", "shape": {"channels": 3, "patch_h": 16, "patch_w": 16}},
         _hardware("simt", "shared_memory"),
         _contract(),
     )
@@ -181,8 +177,7 @@ def test_real_bias_add_lowering_selects_at_muon_emission_seam():
         },
     )
     report = cb["params"]["kernel_family_selection"]
-    assert report["request"] == {
-        "op": "bias_add", "dtype": "fp32", "shape": {"cols": 16, "rows": 16}}
+    assert report["request"] == {"op": "bias_add", "dtype": "fp32", "shape": {"cols": 16, "rows": 16}}
     assert report["derived_hardware_features"] == ["shared_memory", "simt"]
     assert report["selected_family"] == "kernels/bias_add"
     assert len(report["decisions"]) == 23
@@ -226,8 +221,7 @@ def test_real_layernorm_lowering_selects_at_muon_emission_seam():
         hardware_contract={"features": ["simt"]},
     )
     report = cb["params"]["kernel_family_selection"]
-    assert report["request"] == {
-        "op": "layernorm", "dtype": "fp32", "shape": {"cols": 16, "rows": 16}}
+    assert report["request"] == {"op": "layernorm", "dtype": "fp32", "shape": {"cols": 16, "rows": 16}}
     assert report["selected_family"] == "kernels/layernorm"
     assert len(report["decisions"]) == 23
     assert "llvm.intr.sqrt" in mlir
@@ -245,7 +239,6 @@ def test_four_norm_is_recognized_but_unqualified_emitter_fails_closed():
             hardware_contract={"features": ["simt"]},
         )
     report = cb["params"]["kernel_family_selection"]
-    assert report["request"] == {
-        "op": "decoder_four_norm", "dtype": "fp32", "shape": {"cols": 16, "rows": 16}}
+    assert report["request"] == {"op": "decoder_four_norm", "dtype": "fp32", "shape": {"cols": 16, "rows": 16}}
     assert report["selected_family"] == "kernels/gemma_4norm"
     assert [command["opcode"] for command in cb["commands"]] == ["RMSNORM", "RMSNORM"]

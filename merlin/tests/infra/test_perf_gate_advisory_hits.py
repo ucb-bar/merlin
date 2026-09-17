@@ -7,6 +7,7 @@ demanded ``audit_hits == []``, under an UNWAIVABLE predicate, so a round the aud
 was unwaivably disqualified (measured: round 0 of merlincirct_g4p1_20260905 -- clean, two advisory
 hits). These tests pin both directions: advisories pass, violations and malformed evidence fail.
 """
+
 from __future__ import annotations
 
 import sys
@@ -24,36 +25,52 @@ def gate():
     if str(_SCRIPTS) not in sys.path:
         sys.path.insert(0, str(_SCRIPTS))
     import perf_campaign as PC  # noqa: PLC0415
+
     return PC
 
 
 def _predicates(gate, rounds, finalize=None):
     """Run the conduct validator over a minimal record and return the predicate names it emitted."""
-    summary = {"converged": True, "rounds": rounds,
-               "finalize": finalize or {"answer_access_clean": True, "audit_hits": [],
-                                        "regrade_all_pass": True}}
+    summary = {
+        "converged": True,
+        "rounds": rounds,
+        "finalize": finalize or {"answer_access_clean": True, "audit_hits": [], "regrade_all_pass": True},
+    }
     return [d.predicate for d in gate._validate_clean_run({}, summary)]
 
 
 # ------------------------------------------------------------------------- advisories must PASS
 @pytest.mark.parametrize("kind", sorted(AUDIT_ADVISORY_KINDS))
 def test_an_advisory_hit_does_not_disqualify_a_clean_round(gate, kind):
-    rounds = [{"answer_access_clean": True, "audit_hits": [{"tool": "Bash", "kind": kind,
-                                                            "token": "golden.yaml", "input": "cat x"}]}]
+    rounds = [
+        {
+            "answer_access_clean": True,
+            "audit_hits": [{"tool": "Bash", "kind": kind, "token": "golden.yaml", "input": "cat x"}],
+        }
+    ]
     assert "round_answer_access_unclean" not in _predicates(gate, rounds)
 
 
 def test_the_measured_round_zero_shape_is_not_disqualified(gate):
     """The exact evidence shape the gate rejected: clean verdict, one recon + one blocked probe."""
-    rounds = [{"answer_access_clean": True, "audit_hits": [
-        {"tool": "Bash", "kind": "recon_probe", "token": "expected_command_buffer"},
-        {"tool": "Bash", "kind": "blocked_probe", "token": "capsule_dram"}]}]
+    rounds = [
+        {
+            "answer_access_clean": True,
+            "audit_hits": [
+                {"tool": "Bash", "kind": "recon_probe", "token": "expected_command_buffer"},
+                {"tool": "Bash", "kind": "blocked_probe", "token": "capsule_dram"},
+            ],
+        }
+    ]
     assert "round_answer_access_unclean" not in _predicates(gate, rounds)
 
 
 def test_advisory_hits_do_not_disqualify_the_finalize_turn(gate):
-    finalize = {"answer_access_clean": True, "regrade_all_pass": True,
-                "audit_hits": [{"tool": "Bash", "kind": "blocked_probe", "token": "golden.yaml"}]}
+    finalize = {
+        "answer_access_clean": True,
+        "regrade_all_pass": True,
+        "audit_hits": [{"tool": "Bash", "kind": "blocked_probe", "token": "golden.yaml"}],
+    }
     preds = _predicates(gate, [{"answer_access_clean": True, "audit_hits": []}], finalize)
     assert "finalize_answer_access_unclean" not in preds
 
@@ -61,14 +78,17 @@ def test_advisory_hits_do_not_disqualify_the_finalize_turn(gate):
 # ------------------------------------------------------------------------ violations must FAIL
 @pytest.mark.parametrize("kind", sorted(AUDIT_VIOLATION_KINDS))
 def test_a_violation_hit_still_disqualifies(gate, kind):
-    rounds = [{"answer_access_clean": True, "audit_hits": [{"tool": "Bash", "kind": kind,
-                                                            "token": "golden.yaml"}]}]
+    rounds = [{"answer_access_clean": True, "audit_hits": [{"tool": "Bash", "kind": kind, "token": "golden.yaml"}]}]
     assert "round_answer_access_unclean" in _predicates(gate, rounds)
 
 
 def test_a_violation_disqualifies_even_next_to_advisories(gate):
-    rounds = [{"answer_access_clean": True, "audit_hits": [
-        {"kind": "blocked_probe"}, {"kind": "path_read", "token": "golden.yaml"}]}]
+    rounds = [
+        {
+            "answer_access_clean": True,
+            "audit_hits": [{"kind": "blocked_probe"}, {"kind": "path_read", "token": "golden.yaml"}],
+        }
+    ]
     assert "round_answer_access_unclean" in _predicates(gate, rounds)
 
 
@@ -79,8 +99,11 @@ def test_an_unclean_verdict_still_disqualifies_with_no_hits_recorded(gate):
 
 
 def test_a_violation_disqualifies_the_finalize_turn(gate):
-    finalize = {"answer_access_clean": True, "regrade_all_pass": True,
-                "audit_hits": [{"kind": "oracle_use", "token": "merlin.runtime.reference"}]}
+    finalize = {
+        "answer_access_clean": True,
+        "regrade_all_pass": True,
+        "audit_hits": [{"kind": "oracle_use", "token": "merlin.runtime.reference"}],
+    }
     preds = _predicates(gate, [{"answer_access_clean": True, "audit_hits": []}], finalize)
     assert "finalize_answer_access_unclean" in preds
 
@@ -127,10 +150,13 @@ def test_the_two_hit_classes_are_disjoint(gate):
 def test_the_auditor_and_the_gate_share_one_vocabulary(monkeypatch):
     """The gate must not re-derive the split -- that is how it drifted from the audit in the first
     place. The QA auditor's advisory set IS the declared constant this gate consumes."""
-    monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(
-        merlin_dir() / "experiments/capsule_bench/targets/gemmini/target_experiment.yaml"))
+    monkeypatch.setenv(
+        "MERLIN_TARGET_EXPERIMENT",
+        str(merlin_dir() / "experiments/capsule_bench/targets/gemmini/target_experiment.yaml"),
+    )
     harness = merlin_dir() / "experiments/capsule_bench/harness"
     if str(harness) not in sys.path:
         sys.path.insert(0, str(harness))
     import run_baseline_qa_loop as L  # noqa: PLC0415
+
     assert L._ADVISORY_KINDS is AUDIT_ADVISORY_KINDS

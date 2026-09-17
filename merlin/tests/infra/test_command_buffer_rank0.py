@@ -15,6 +15,7 @@ Spelling a scalar ``[1]`` instead is NOT the fix and these tests do not accept i
 that ``validate_interface_tensor_dtypes`` (dtype-only) would not catch, and it diverges from the
 interface MLIR type any future shape cross-check would compare against.
 """
+
 from __future__ import annotations
 
 import json

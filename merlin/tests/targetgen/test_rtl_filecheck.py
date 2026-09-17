@@ -10,6 +10,7 @@ The flagship is `test_phantom_funct_25_rejected_without_verilator`: a trace usin
 by spike functionally, but the RTL decoder (module ReservationStation) never matches funct 25, so on
 real hardware/verilator it is a no-op. Our decoder-derived legal set catches it statically.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,9 @@ import math
 import pytest
 import yaml
 
-from merlin.targetgen import rtl_check_compiler as CC, rtl_check_runner as RR, rtl_checks as RC
+from merlin.targetgen import rtl_check_compiler as CC
+from merlin.targetgen import rtl_check_runner as RR
+from merlin.targetgen import rtl_checks as RC
 from merlin.targetgen.rtl import mlc_bridge as MB
 from merlin.targetgen.rtl.facts import load_facts
 
@@ -44,8 +47,10 @@ def _matmul_capsule(min_tiles: int = 1):
 
 
 def _trace(seq, abi=None):
-    return {"abi": abi or {"custom_opcode": "0x7b", "funct3": "0x3"},
-            "instructions": [{"index": i, "class": c, "funct": f} for i, (c, f) in enumerate(seq)]}
+    return {
+        "abi": abi or {"custom_opcode": "0x7b", "funct3": "0x3"},
+        "instructions": [{"index": i, "class": c, "funct": f} for i, (c, f) in enumerate(seq)],
+    }
 
 
 def _good_matmul_trace(cap):
@@ -77,9 +82,9 @@ def test_phantom_funct_25_rejected_without_verilator():
     tr = _good_matmul_trace(cap)
     tr["instructions"].append({"index": 999, "class": "UNKNOWN", "funct": 25})
     rendered = RR.render_trace(tr, _FACTS)
-    assert "ILLEGAL_FUNCT_COUNT 1" in rendered      # the decoder-derived set flags 25
+    assert "ILLEGAL_FUNCT_COUNT 1" in rendered  # the decoder-derived set flags 25
     ok, _ = _fc(cap, tr)
-    assert not ok                                    # rejected statically
+    assert not ok  # rejected statically
 
 
 def test_real_funct_126_is_legal():
@@ -99,7 +104,7 @@ def test_wrong_tile_count_rejected_without_verilator():
     it statically."""
     cap = _matmul_capsule()
     tr = _good_matmul_trace(cap)
-    tr["instructions"].append({"index": 997, "class": "MVOUT", "funct": 3})   # one extra tile store
+    tr["instructions"].append({"index": 997, "class": "MVOUT", "funct": 3})  # one extra tile store
     ok, _ = _fc(cap, tr)
     assert not ok
 
@@ -110,7 +115,7 @@ def test_compiled_checks_are_memoized():
     RR._COMPILED_CACHE.clear()
     a = RR.compiled_checks(_FACTS, cap, "gemmini")
     b = RR.compiled_checks(_FACTS, cap, "gemmini")
-    assert a is b                                        # same object -> served from cache
+    assert a is b  # same object -> served from cache
     assert (cap.get("name"), RR._facts_sha(_FACTS), "gemmini") in RR._COMPILED_CACHE
 
 
@@ -126,9 +131,9 @@ def test_provenance_flags_derived_vs_handpicked():
     assert prov["isa_legality"]["derived"] is True
     assert prov["abi_encoding"]["derived"] is True
     assert prov["tile_coverage"]["derived"] is True
-    assert prov["semantic_roles"]["derived"] is True         # regenerated behavioural probe -> derived
+    assert prov["semantic_roles"]["derived"] is True  # regenerated behavioural probe -> derived
     assert prov["semantic_roles"]["n_roles"] >= 9
-    assert MB.crosscheck_semantic_class("gemmini") == []     # derived roles verify the hand ABI labels
+    assert MB.crosscheck_semantic_class("gemmini") == []  # derived roles verify the hand ABI labels
 
 
 @pytest.mark.skipif(not _ARC, reason="gemmini arc/mlc unavailable — cannot derive behavioural roles")

@@ -20,9 +20,11 @@ def test_contract_digest_follows_content_through_archived_symlinks(tmp_path):
     regrade = _module()
     live = tmp_path / "live/isa/C0"
     live.mkdir(parents=True)
-    for name, body in (("capsule.yaml", "label: public\n"),
-                       ("capsule.interface.mlir", "module {}\n"),
-                       ("README.md", "contract\n")):
+    for name, body in (
+        ("capsule.yaml", "label: public\n"),
+        ("capsule.interface.mlir", "module {}\n"),
+        ("README.md", "contract\n"),
+    ):
         (live / name).write_text(body)
     archived = tmp_path / "archived/isa/C0"
     archived.mkdir(parents=True)
@@ -34,12 +36,30 @@ def test_contract_digest_follows_content_through_archived_symlinks(tmp_path):
 
 def test_verdict_signature_ignores_timing_but_not_outcomes():
     regrade = _module()
-    first = {"per_capsule": [{"capsule": "C0", "status": "fail", "failure_plane": "L3",
-                              "mismatch_count": 2, "elapsed_s": 1.0,
-                              "tiers": {"L3": {"status": "fail", "cycles": 10}}}]}
-    later = {"per_capsule": [{"capsule": "C0", "status": "fail", "failure_plane": "L3",
-                              "mismatch_count": 2, "elapsed_s": 9.0,
-                              "tiers": {"L3": {"status": "fail", "cycles": 999}}}]}
+    first = {
+        "per_capsule": [
+            {
+                "capsule": "C0",
+                "status": "fail",
+                "failure_plane": "L3",
+                "mismatch_count": 2,
+                "elapsed_s": 1.0,
+                "tiers": {"L3": {"status": "fail", "cycles": 10}},
+            }
+        ]
+    }
+    later = {
+        "per_capsule": [
+            {
+                "capsule": "C0",
+                "status": "fail",
+                "failure_plane": "L3",
+                "mismatch_count": 2,
+                "elapsed_s": 9.0,
+                "tiers": {"L3": {"status": "fail", "cycles": 999}},
+            }
+        ]
+    }
     assert regrade._signature(first) == regrade._signature(later)
     later["per_capsule"][0]["mismatch_count"] = 1
     assert regrade._signature(first) != regrade._signature(later)
@@ -47,8 +67,17 @@ def test_verdict_signature_ignores_timing_but_not_outcomes():
 
 def test_verdict_signature_accepts_score_files_with_scalar_tier_statuses():
     regrade = _module()
-    score = {"per_capsule": [{"capsule": "C0", "status": "fail", "numeric": "fail",
-                               "trace": "skipped", "tiers": {"L2": "fail", "L3": "fail"}}]}
+    score = {
+        "per_capsule": [
+            {
+                "capsule": "C0",
+                "status": "fail",
+                "numeric": "fail",
+                "trace": "skipped",
+                "tiers": {"L2": "fail", "L3": "fail"},
+            }
+        ]
+    }
 
     assert regrade._signature(score)[0]["tiers"] == {"L2": "fail", "L3": "fail"}
 

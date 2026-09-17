@@ -27,6 +27,7 @@ Two boundaries were deliberately NOT crossed:
   Refusing outright is what made a residual add between two matmul layers — a whole model's actual
   shape — unlowerable, and with it the whole-model-on-mesh and multi-layer-chain tests.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -81,13 +82,21 @@ def test_the_interface_dialect_now_registers_elementwise():
 
 def _vector_map_buffer(combine: str, n: int = 4) -> dict:
     return {
-        "abi_version": "0.1", "target": "toy_npu", "backend": "simulator",
-        "tensors": {"A0": {"shape": [1, n], "dtype": "i32", "role": "input"},
-                    "A1": {"shape": [1, n], "dtype": "i32", "role": "input"},
-                    "Y0": {"shape": [1, n], "dtype": "i32", "role": "output"}},
-        "commands": [{"opcode": "VECTOR_MAP",
-                      "operands": {"lhs": "A0", "rhs": "A1", "dst": "Y0"},
-                      "attributes": {"combine": combine}}],
+        "abi_version": "0.1",
+        "target": "toy_npu",
+        "backend": "simulator",
+        "tensors": {
+            "A0": {"shape": [1, n], "dtype": "i32", "role": "input"},
+            "A1": {"shape": [1, n], "dtype": "i32", "role": "input"},
+            "Y0": {"shape": [1, n], "dtype": "i32", "role": "output"},
+        },
+        "commands": [
+            {
+                "opcode": "VECTOR_MAP",
+                "operands": {"lhs": "A0", "rhs": "A1", "dst": "Y0"},
+                "attributes": {"combine": combine},
+            }
+        ],
     }
 
 
@@ -117,7 +126,8 @@ def test_a_combine_outside_the_accepted_set_is_not_silently_accepted():
     outputs = simulate(_vector_map_buffer("xor"))["outputs"]
     add = simulate(_vector_map_buffer("add"))["outputs"]
     assert outputs.get("Y0") != add.get("Y0") or outputs.get("Y0") is None, (
-        "an unknown combine silently behaved like `add`")
+        "an unknown combine silently behaved like `add`"
+    )
 
 
 def test_a_combine_the_runtime_cannot_do_is_refused():
@@ -126,7 +136,8 @@ def test_a_combine_the_runtime_cannot_do_is_refused():
 
     module = hand_written("sub")
     assert compile_core.payload_classes(module) == ("generic",), (
-        "linalg.sub is being treated as a materializable elementwise payload")
+        "linalg.sub is being treated as a materializable elementwise payload"
+    )
     with pytest.raises(LoweringError):
         lower_to_interface(module)
 
@@ -138,8 +149,7 @@ def test_a_combine_the_runtime_cannot_do_is_refused():
 def test_a_target_whose_plan_omits_elementwise_still_routes_to_the_generic_path(path):
     package = _package(path)
     spec = K.vector_add_i32_spec()
-    route = compile_core.choose_route(
-        to_linalg(source.make_ttir(spec), spec).module, target_package=package)
+    route = compile_core.choose_route(to_linalg(source.make_ttir(spec), spec).module, target_package=package)
     assert route.kind == "llvm"
     assert "elementwise" not in route.covered
     assert "elementwise" in route.reason or "generic" in route.reason
@@ -149,8 +159,7 @@ def test_a_hand_written_linalg_add_is_routed_identically():
     """The original decisive comparison, kept: no Triton involved, same decision."""
     package = _package(GEMMINI_PACKAGE)
     spec = K.vector_add_i32_spec()
-    triton_route = compile_core.choose_route(
-        to_linalg(source.make_ttir(spec), spec).module, target_package=package)
+    triton_route = compile_core.choose_route(to_linalg(source.make_ttir(spec), spec).module, target_package=package)
     hand_route = compile_core.choose_route(hand_written("add"), target_package=package)
     assert hand_route.kind == triton_route.kind == "llvm"
     assert hand_route.payload == triton_route.payload == ("elementwise",)
@@ -230,11 +239,9 @@ def test_a_fused_matmul_and_elementwise_payload_becomes_its_own_dispatch():
     t = TensorType(i32, [8, 8])
     block = Block(arg_types=[t, t, t])
     empty_mm = tensor_d.EmptyOp((), t)
-    matmul = linalg_ops.MatmulOp(inputs=(block.args[0], block.args[1]),
-                                 outputs=(empty_mm.tensor,), res=(t,))
+    matmul = linalg_ops.MatmulOp(inputs=(block.args[0], block.args[1]), outputs=(empty_mm.tensor,), res=(t,))
     empty_add = tensor_d.EmptyOp((), t)
-    add = linalg_ops.AddOp(inputs=(matmul.results[0], block.args[2]),
-                           outputs=(empty_add.tensor,), res=(t,))
+    add = linalg_ops.AddOp(inputs=(matmul.results[0], block.args[2]), outputs=(empty_add.tensor,), res=(t,))
     block.add_ops([empty_mm, matmul, empty_add, add, ReturnOp(add.results[0])])
     module = ModuleOp([FuncOp("fused", FunctionType.from_lists([t, t, t], [t]), Region([block]))])
 
@@ -245,9 +252,15 @@ def test_a_fused_matmul_and_elementwise_payload_becomes_its_own_dispatch():
     assert "interface.matmul" in names and "interface.vector_map" in names
     # The combine is its OWN dispatch, in order after the commit -- not folded into it.
     assert [c["opcode"] for c in res.command_buffer["commands"]] == [
-        "RES_PACK", "MATMUL_RESIDENT", "COMMIT", "VECTOR_MAP", "EVICT"]
+        "RES_PACK",
+        "MATMUL_RESIDENT",
+        "COMMIT",
+        "VECTOR_MAP",
+        "EVICT",
+    ]
     # The guard's real concern: an accidental fusion would show up as a non-empty commit epilogue.
     commits = [op for op in res.interface_module.walk() if op.name == "interface.commit"]
-    assert commits and all(len(op.properties["epilogue"]) == 0 for op in commits), \
+    assert commits and all(len(op.properties["epilogue"]) == 0 for op in commits), (
         "the combine must not have been folded into the commit epilogue"
+    )
     assert LoweringError is not None  # imported above; the refusal path is gone, not the error type

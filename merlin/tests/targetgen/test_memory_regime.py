@@ -5,6 +5,7 @@ of 16 bytes): 90.1% of 1829 contraction regions across 20 real captures exceed i
 allocated, while 100% of that target's 37 public capsules fit it TWICE over and the largest uses 2.34%
 of capacity. The corpus exercises the rare regime exclusively and the common one never.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -13,14 +14,17 @@ from merlin.targetgen import memory_regime as MR
 
 
 class TestClassification:
-    @pytest.mark.parametrize("live,total,cap,regime", [
-        (10, 10, 100, MR.FITS_DOUBLE),      # fits twice: staging is possible, so not staging is a defect
-        (60, 60, 100, MR.FITS_SINGLE),      # fits once: staging is impossible, so serialising is correct
-        (60, 300, 100, MR.FITS_ON_REUSE),   # only an allocator that reuses freed rows works
-        (300, 300, 100, MR.SPILLS),         # exceeds capacity however it is allocated
-        (50, 50, 100, MR.FITS_DOUBLE),      # exactly half still fits twice
-        (51, 51, 100, MR.FITS_SINGLE),
-    ])
+    @pytest.mark.parametrize(
+        "live,total,cap,regime",
+        [
+            (10, 10, 100, MR.FITS_DOUBLE),  # fits twice: staging is possible, so not staging is a defect
+            (60, 60, 100, MR.FITS_SINGLE),  # fits once: staging is impossible, so serialising is correct
+            (60, 300, 100, MR.FITS_ON_REUSE),  # only an allocator that reuses freed rows works
+            (300, 300, 100, MR.SPILLS),  # exceeds capacity however it is allocated
+            (50, 50, 100, MR.FITS_DOUBLE),  # exactly half still fits twice
+            (51, 51, 100, MR.FITS_SINGLE),
+        ],
+    )
     def test_each_regime_is_named(self, live, total, cap, regime):
         assert MR.classify(live, total, cap) == regime
 
@@ -42,10 +46,13 @@ class TestClassification:
 class TestGapReport:
     def test_a_regime_real_models_occupy_and_no_capsule_reaches_is_reported(self):
         req = {"by_regime": {MR.FITS_DOUBLE: ["m"], MR.SPILLS: ["m"], MR.FITS_SINGLE: ["m"]}}
-        corpus = {"by_regime": {MR.FITS_DOUBLE: ["c0"]}, "capacity_rows": 16384,
-                  "largest_working_set": {"name": "c0", "rows": 384, "fraction_of_capacity": 0.023}}
+        corpus = {
+            "by_regime": {MR.FITS_DOUBLE: ["c0"]},
+            "capacity_rows": 16384,
+            "largest_working_set": {"name": "c0", "rows": 384, "fraction_of_capacity": 0.023},
+        }
         gap = MR.uncovered_regimes(req, corpus)
-        assert gap["uncovered"] == [MR.FITS_SINGLE, MR.SPILLS]     # reported weakest-demand first
+        assert gap["uncovered"] == [MR.FITS_SINGLE, MR.SPILLS]  # reported weakest-demand first
         assert gap["n_covered"] == 1 and gap["n_required"] == 3
 
     def test_unknown_is_never_a_requirement_and_never_a_coverage(self):
@@ -72,9 +79,10 @@ class TestOperandStoreSelection:
         if store is None:
             pytest.skip("this target declares no derivable operand store")
         assert store.row_bytes == min(
-            s.row_bytes for s in __import__(
-                "merlin.targetgen.address_space", fromlist=["x"]
-            ).derive_address_space("gemmini").stores if s.row_bytes)
+            s.row_bytes
+            for s in __import__("merlin.targetgen.address_space", fromlist=["x"]).derive_address_space("gemmini").stores
+            if s.row_bytes
+        )
         assert cap and cap > 0
 
     def test_an_unresolvable_target_yields_no_store_rather_than_a_default(self):

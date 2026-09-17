@@ -8,6 +8,7 @@ it was told to do. That is worse than no audit: a signal that cries wolf on the 
 real leak read as more noise. Tokens are therefore path-qualified (``gemmini/backend``), which still
 matches a genuine read of the evicted route.
 """
+
 from __future__ import annotations
 
 import pytest

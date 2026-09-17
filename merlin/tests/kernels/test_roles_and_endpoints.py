@@ -6,6 +6,7 @@ ways across its own corpus, and a Gemmini kernel looks IDENTICAL in C whether it
 loop FSM or to a fine-grained preload/compute sequence. What every endpoint DOES have is a derived
 encoding table and a role per entry, so roles are the only cross-target vocabulary.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -33,18 +34,21 @@ class TestTheVocabularyIsClosed:
 
     def test_engine_facets_agree_with_the_engine_model(self):
         from merlin.kernels import engines as E
+
         assert set(R.ROLE_EVIDENCES_ENGINE.values()) <= E.ENGINE_FACETS
 
     def test_the_role_engine_map_agrees_with_the_isa_census(self):
         """Two modules read the same distinction off different inputs. A duplicate table that drifted
         once already let a target which merely pushes weights claim it could multiply."""
         from merlin.targetgen import capability_derive as cd
+
         for isa_role, facet in cd._ROLE_ENGINE.items():
             role = R.from_isa_role(isa_role)
             if role is None or role not in R.ROLE_EVIDENCES_ENGINE:
                 continue
             assert R.ROLE_EVIDENCES_ENGINE[role] == facet, (
-                f"{isa_role!r}: census says {facet}, role table says {R.ROLE_EVIDENCES_ENGINE[role]}")
+                f"{isa_role!r}: census says {facet}, role table says {R.ROLE_EVIDENCES_ENGINE[role]}"
+            )
 
     def test_a_scalar_isa_role_drives_no_endpoint(self):
         # Scalar code is the envelope AROUND the loop. Giving it a role would make every target look

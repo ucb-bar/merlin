@@ -17,6 +17,7 @@ not scale with the row's own quantization step, which the second assertion check
 Compiles and runs on the host through the ordinary lowering path, with ``RTLD_LOCAL`` (no
 ``n_args``), so it coexists with other model loads in the same pytest process.
 """
+
 from __future__ import annotations
 
 import io
@@ -71,16 +72,18 @@ def _run_igelu(tmp_path):
     from merlin.llvmlower.passes_quant_int import lower_gelu_int
 
     mod = parse_mlir_text(_SRC)
-    assert lower_gelu_int(mod) == 1                 # the whole GELU region, not the bare erf
-    s = io.StringIO(); Printer(stream=s).print_op(mod)
+    assert lower_gelu_int(mod) == 1  # the whole GELU region, not the bare erf
+    s = io.StringIO()
+    Printer(stream=s).print_op(mod)
     res = lower_model(s.getvalue(), tmp_path / "igelu", targets=("host",))
-    model = HostModel.load(str(res.host_so))        # RTLD_LOCAL: no n_args
+    model = HostModel.load(str(res.host_so))  # RTLD_LOCAL: no n_args
 
     def call(X: np.ndarray) -> np.ndarray:
         X = np.ascontiguousarray(X, dtype=np.float32)
         Y = np.zeros_like(X)
         model([(X.ctypes.data, X.shape), (Y.ctypes.data, Y.shape)])
         return Y
+
     return call
 
 

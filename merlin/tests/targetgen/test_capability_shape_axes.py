@@ -11,6 +11,7 @@ These tests pin the two things ``reconcile`` now says instead of staying silent:
 shows and the contract omits (``missing_axis``), and an axis the contract claims that no rung could
 confirm (``unaudited_axis``). The second is not an error -- it is the review obligation, written down.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen import capability_derive as cd
@@ -19,8 +20,12 @@ from merlin.targetgen.compute_units import SemanticCapability
 
 def _derived(**kw) -> cd.DerivedCapabilities:
     out = cd.DerivedCapabilities()
-    cd._record(out, cd.FamilyEvidence(family="contraction", status="supported", source="rtl_facts",
-                                      evidence="RTL array 'mesh' 16x16", **kw))
+    cd._record(
+        out,
+        cd.FamilyEvidence(
+            family="contraction", status="supported", source="rtl_facts", evidence="RTL array 'mesh' 16x16", **kw
+        ),
+    )
     return out
 
 
@@ -52,8 +57,9 @@ def test_dtypes_are_compared_through_the_format_registry_not_as_strings():
     finding under noise on every target at once."""
     declared = {"contraction": SemanticCapability(family="contraction", dtypes=("int8",), ranks=(2,))}
     findings = cd.reconcile(declared, _derived(dtypes=("i8",), ranks=(2,)))
-    assert not [f for f in findings if f.get("axis") == "dtypes"], \
+    assert not [f for f in findings if f.get("axis") == "dtypes"], (
         "an alias of a declared format is not an axis finding"
+    )
 
 
 def test_an_axis_neither_declared_nor_evidenced_is_silent():
@@ -67,10 +73,14 @@ def test_ranks_union_across_rungs_rather_than_first_wins():
     """Two rungs may each evidence a different rank. Keeping only the first rung's ranks drops an axis
     inside the deriver -- the same narrowing error, one layer earlier."""
     out = cd.DerivedCapabilities()
-    cd._record(out, cd.FamilyEvidence(family="contraction", status="supported", source="rtl_facts",
-                                      evidence="array", ranks=(2,)))
-    cd._record(out, cd.FamilyEvidence(family="contraction", status="supported", source="unit_intent",
-                                      evidence="unit", ranks=(4,)))
+    cd._record(
+        out,
+        cd.FamilyEvidence(family="contraction", status="supported", source="rtl_facts", evidence="array", ranks=(2,)),
+    )
+    cd._record(
+        out,
+        cd.FamilyEvidence(family="contraction", status="supported", source="unit_intent", evidence="unit", ranks=(4,)),
+    )
     assert out.supported["contraction"].ranks == (2, 4)
 
 
@@ -86,10 +96,10 @@ def test_an_unconstrained_axis_is_not_reported_as_narrowing():
     """
     declared = {"contraction": SemanticCapability(family="contraction", dtypes=("int8",), ranks=())}
     findings = cd.reconcile(declared, _derived(dtypes=("int8",), ranks=(2, 4)))
-    assert not _kinds(findings, "missing_axis"), \
-        "an axis that constrains nothing cannot be under-declared"
-    assert not [f for f in findings if f.get("axis") == "ranks"], \
+    assert not _kinds(findings, "missing_axis"), "an axis that constrains nothing cannot be under-declared"
+    assert not [f for f in findings if f.get("axis") == "ranks"], (
         "there is no claim on an undeclared axis, so there is nothing to audit either"
+    )
 
 
 def test_a_narrowing_axis_left_empty_is_still_reported():
@@ -98,8 +108,9 @@ def test_a_narrowing_axis_left_empty_is_still_reported():
     Without this, the fix above would silence both axes and reopen the hole it was written to close."""
     declared = {"contraction": SemanticCapability(family="contraction", dtypes=(), ranks=(2,))}
     found = _kinds(cd.reconcile(declared, _derived(dtypes=("int8",), ranks=(2,))), "missing_axis")
-    assert [f for f in found if f["axis"] == "dtypes"], \
+    assert [f for f in found if f["axis"] == "dtypes"], (
         "an empty dtype declaration admits nothing, so an evidenced dtype it omits is narrowing"
+    )
 
 
 def test_empty_declaration_semantics_agree_with_the_grader():
@@ -115,7 +126,8 @@ def test_empty_declaration_semantics_agree_with_the_grader():
         excluded = not el.is_eligible(region, cap).eligible
         assert excluded == el.empty_declaration_is_narrowing(axis), (
             f"empty_declaration_is_narrowing({axis!r}) says "
-            f"{el.empty_declaration_is_narrowing(axis)} but is_eligible excluded={excluded}")
+            f"{el.empty_declaration_is_narrowing(axis)} but is_eligible excluded={excluded}"
+        )
 
 
 def test_an_unknown_shape_axis_has_no_assumed_semantics():
@@ -124,5 +136,6 @@ def test_an_unknown_shape_axis_has_no_assumed_semantics():
     import pytest
 
     from merlin.targetgen import eligibility as el
+
     with pytest.raises(KeyError):
         el.empty_declaration_is_narrowing("strides")

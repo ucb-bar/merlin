@@ -9,6 +9,7 @@ Every test here defends one of three properties, each of which a plausible imple
 * the IR stage that was read is recorded, because an int8 model's element types are decided by a pass
   and a census of the capture answers a different question than a census of what gets compiled.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -35,13 +36,19 @@ _MATMUL_F32 = _MATMUL_I8.replace("xi8", "xf32").replace("xi32", "xf32")
 
 #: What the int8 rewrite leaves behind: the contraction it split out of `enc.l0`, tagged with the role
 #: that distinguishes it from the requant epilogue sharing that same fqn.
-_MATMUL_I8_ROLED = _MATMUL_I8.replace('prov.fqn = "enc.l0"',
-                                      'prov.fqn = "enc.l0", prov.role = "contraction"')
+_MATMUL_I8_ROLED = _MATMUL_I8.replace('prov.fqn = "enc.l0"', 'prov.fqn = "enc.l0", prov.role = "contraction"')
 
 
 def _units(dtypes=("int8",), ops=("matmul",), accumulate=(("int8", "int8", "i32"),)):
-    return [cu.ComputeUnit(name="tile", kind="spatial", dtypes=tuple(dtypes), ops=tuple(ops),
-                           accumulate=tuple(cu.AccumRule(*a) for a in accumulate))]
+    return [
+        cu.ComputeUnit(
+            name="tile",
+            kind="spatial",
+            dtypes=tuple(dtypes),
+            ops=tuple(ops),
+            accumulate=tuple(cu.AccumRule(*a) for a in accumulate),
+        )
+    ]
 
 
 class TestLegalityVerdicts:
@@ -54,8 +61,7 @@ class TestLegalityVerdicts:
     def test_a_verdict_always_names_the_axes_it_covers(self):
         # The contract expresses op name and element types and nothing about tile geometry, so a
         # "legal" row must not be readable as "this shape fits the unit".
-        got = cs.legality_of(ContractionShape("linalg.matmul", (8, 32), (64,), ("i8", "i8", "i32")),
-                             _units())
+        got = cs.legality_of(ContractionShape("linalg.matmul", (8, 32), (64,), ("i8", "i8", "i32")), _units())
         assert got.scope == cs.ROUTING_SCOPE
         assert "element_types" in got.scope and "op_name" in got.scope
 
@@ -134,18 +140,24 @@ class TestCensusRows:
         i8 = cs.census(_MATMUL_I8, model="m").rows[0]
         f32 = cs.census(_MATMUL_F32, model="m").rows[0]
         assert i8.dtypes != f32.dtypes
-        assert cs.legality_of(ContractionShape(i8.op_class, i8.parallel, i8.reduction, i8.dtypes),
-                              _units()).verdict == cs.LEGAL
-        assert cs.legality_of(ContractionShape(f32.op_class, f32.parallel, f32.reduction, f32.dtypes),
-                              _units()).verdict == cs.ILLEGAL
+        assert (
+            cs.legality_of(ContractionShape(i8.op_class, i8.parallel, i8.reduction, i8.dtypes), _units()).verdict
+            == cs.LEGAL
+        )
+        assert (
+            cs.legality_of(ContractionShape(f32.op_class, f32.parallel, f32.reduction, f32.dtypes), _units()).verdict
+            == cs.ILLEGAL
+        )
 
 
 class TestTickJoin:
     #: One captured layer that a rewrite split in two: both pieces carry the layer's fqn, and only
     #: `prov.role` tells them apart.
-    _TABLE = [{"id": 0, "fqn": "enc.l0", "role": "contraction", "mlir_op": "linalg.generic"},
-              {"id": 1, "fqn": "enc.l0", "role": "requant", "mlir_op": "linalg.generic"},
-              {"id": 2, "fqn": "enc.act", "mlir_op": "linalg.generic"}]
+    _TABLE = [
+        {"id": 0, "fqn": "enc.l0", "role": "contraction", "mlir_op": "linalg.generic"},
+        {"id": 1, "fqn": "enc.l0", "role": "requant", "mlir_op": "linalg.generic"},
+        {"id": 2, "fqn": "enc.act", "mlir_op": "linalg.generic"},
+    ]
     _TICKS = {0: (700, 1), 1: (200, 1), 2: (100, 1)}
 
     def test_role_keeps_a_split_ops_pieces_apart(self):
@@ -165,8 +177,10 @@ class TestTickJoin:
     def test_a_row_joined_on_a_shared_key_is_flagged_as_an_upper_bound(self):
         # A contraction whose profiled op has no role falls back to the layer bucket, which covers two
         # ops; the census must say so rather than presenting the sum as the contraction's cost.
-        table = [{"id": 0, "fqn": "enc.l0", "mlir_op": "linalg.matmul"},
-                 {"id": 1, "fqn": "enc.l0", "mlir_op": "linalg.generic"}]
+        table = [
+            {"id": 0, "fqn": "enc.l0", "mlir_op": "linalg.matmul"},
+            {"id": 1, "fqn": "enc.l0", "mlir_op": "linalg.generic"},
+        ]
         got = cs.census(_MATMUL_I8, model="m", prof_table=table, prof_ticks={0: (700, 1), 1: (300, 1)})
         row = got.rows[0]
         assert row.ticks == 1000 and row.ticks_ops == 2
@@ -234,8 +248,10 @@ class TestBundle:
 class TestMeasuredShare:
     """Per-row percentages are not additive, and a summary that adds them exceeds 100%."""
 
-    _TABLE = [{"id": 0, "fqn": "layer", "mlir_op": "linalg.batch_matmul"},
-              {"id": 1, "fqn": "other", "mlir_op": "linalg.generic"}]
+    _TABLE = [
+        {"id": 0, "fqn": "layer", "mlir_op": "linalg.batch_matmul"},
+        {"id": 1, "fqn": "other", "mlir_op": "linalg.generic"},
+    ]
     _TICKS = {0: (600, 1), 1: (400, 1)}
 
     _TWO_IN_ONE_LAYER = """
@@ -252,8 +268,7 @@ class TestMeasuredShare:
     """
 
     def _census(self):
-        return cs.census(self._TWO_IN_ONE_LAYER, model="m",
-                         prof_table=self._TABLE, prof_ticks=self._TICKS)
+        return cs.census(self._TWO_IN_ONE_LAYER, model="m", prof_table=self._TABLE, prof_ticks=self._TICKS)
 
     def test_two_contractions_in_one_layer_each_report_the_whole_bucket(self):
         got = self._census()
@@ -285,13 +300,15 @@ class TestProfileUsability:
     _TABLE = [{"id": 0, "fqn": "enc.l0", "mlir_op": "linalg.matmul", "ticks": 700, "hits": 1}]
 
     def _doc(self, *, gated=True, pert_ok=True, delta=0.4):
-        return {"profiled": {"ok": gated, "blocker": "" if gated else "gate failed: cos=0.9"},
-                "breakdown": {"perturbation": {"perturbation_ok": pert_ok, "delta_pct": delta,
-                                               "noise_floor_pct": 1.9}},
-                "op_table": self._TABLE}
+        return {
+            "profiled": {"ok": gated, "blocker": "" if gated else "gate failed: cos=0.9"},
+            "breakdown": {"perturbation": {"perturbation_ok": pert_ok, "delta_pct": delta, "noise_floor_pct": 1.9}},
+            "op_table": self._TABLE,
+        }
 
     def _write(self, tmp_path, doc):
         import json as _json
+
         p = tmp_path / "prof.json"
         p.write_text(_json.dumps(doc), encoding="utf-8")
         return p
@@ -320,8 +337,7 @@ class TestProfileUsability:
         assert table is None and ticks is None and why
 
     def test_it_can_be_joined_deliberately_and_is_then_labelled(self, tmp_path):
-        table, ticks, why = cs.load_profile(self._write(tmp_path, self._doc(pert_ok=False)),
-                                            require_usable=False)
+        table, ticks, why = cs.load_profile(self._write(tmp_path, self._doc(pert_ok=False)), require_usable=False)
         assert table and ticks
         assert why.startswith("ACCEPTED AN UNUSABLE PROFILE")
 
@@ -332,7 +348,6 @@ class TestProfileUsability:
 
     def test_an_op_the_board_never_reported_is_skipped_not_counted_as_free(self, tmp_path):
         doc = self._doc()
-        doc["op_table"] = [*self._TABLE, {"id": 1, "fqn": "x", "mlir_op": "linalg.generic",
-                                          "ticks": None}]
+        doc["op_table"] = [*self._TABLE, {"id": 1, "fqn": "x", "mlir_op": "linalg.generic", "ticks": None}]
         _, ticks, _ = cs.load_profile(self._write(tmp_path, doc))
         assert set(ticks) == {0}, "a missing measurement is unmeasured, not zero"

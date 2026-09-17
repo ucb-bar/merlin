@@ -6,6 +6,7 @@ Regression for the atlas 0/11 blind-loop: agent_selfcheck re-globbed `<runs_root
 found nothing, so every self-check returned n_capsules:0 / per_capsule:[] and the agent iterated blind
 (flat 0/11, 12 rounds) even though the driver's in-memory grade was correct. The fix is CR.suite_for(target).
 """
+
 from __future__ import annotations
 
 import json
@@ -32,13 +33,14 @@ def test_read_suite_matches_write_suite(target):
     write_parent, rr = _write_parent(target)
     read_root = rr / "runs" / CR.suite_for(target)
     assert read_root == write_parent, (
-        f"{target}: self-check would glob {read_root} but results are written under {write_parent}")
+        f"{target}: self-check would glob {read_root} but results are written under {write_parent}"
+    )
 
 
 def test_suite_for_is_target_derived_not_the_gemmini_literal():
     # atlas must NOT resolve to the gemmini suite literal — that identity was the whole bug.
     assert CR.suite_for("atlas") != CR.SUITE
-    assert CR.suite_for("gemmini") == CR.SUITE          # gemmini legitimately owns the literal
+    assert CR.suite_for("gemmini") == CR.SUITE  # gemmini legitimately owns the literal
     assert "atlas" in CR.suite_for("atlas")
 
 
@@ -50,9 +52,10 @@ def test_reader_finds_a_result_written_under_the_target_suite():
     suite = CR.suite_for("atlas")
     cap_dir = rr / "runs" / suite / "AT2_single_tile_matmul"
     cap_dir.mkdir(parents=True)
-    (cap_dir / "capsule_result.json").write_text(json.dumps({"capsule": "AT2_single_tile_matmul",
-                                                             "status": "fail", "tiers": {}}))
+    (cap_dir / "capsule_result.json").write_text(
+        json.dumps({"capsule": "AT2_single_tile_matmul", "status": "fail", "tiers": {}})
+    )
     fixed = list((rr / "runs" / CR.suite_for("atlas")).glob("*/capsule_result.json"))
     old = list((rr / "runs" / CR.SUITE).glob("*/capsule_result.json"))
-    assert len(fixed) == 1                              # the fix finds the atlas result
-    assert len(old) == 0                                # the old gemmini-literal glob was blind
+    assert len(fixed) == 1  # the fix finds the atlas result
+    assert len(old) == 0  # the old gemmini-literal glob was blind

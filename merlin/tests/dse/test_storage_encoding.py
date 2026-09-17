@@ -1,4 +1,5 @@
 """Physical encodings are explicit address contracts, never volume-only waivers."""
+
 from dataclasses import replace
 from itertools import permutations, product
 
@@ -27,8 +28,7 @@ def test_axis_permutation_is_not_silently_sorted_or_assumed():
     assert second.logical_strides_elements == (16, 1, 6, 3)
     data = bytes(range(24))
     assert first.pack_bytes(data, max_storage_bytes=32) != second.pack_bytes(data, max_storage_bytes=32)
-    assert second.unpack_bytes(second.pack_bytes(data, max_storage_bytes=32),
-                               max_storage_bytes=32) == data
+    assert second.unpack_bytes(second.pack_bytes(data, max_storage_bytes=32), max_storage_bytes=32) == data
 
 
 def test_transpose_mapping_matches_independent_nested_loop():
@@ -37,7 +37,7 @@ def test_transpose_mapping_matches_independent_nested_loop():
     expected = bytearray(20)
     for n in range(3):
         for k in range(2):
-            expected[(k * 5 + n) * 2:(k * 5 + n + 1) * 2] = data[(n * 2 + k) * 2:(n * 2 + k + 1) * 2]
+            expected[(k * 5 + n) * 2 : (k * 5 + n + 1) * 2] = data[(n * 2 + k) * 2 : (n * 2 + k + 1) * 2]
     assert layout.pack_bytes(data, max_storage_bytes=20) == expected
 
 
@@ -59,23 +59,40 @@ def test_all_permutations_have_unique_bounded_addresses():
         assert offsets == set(range(24))
 
 
-@pytest.mark.parametrize("changes", [
-    {"axis_groups": ((0,), (1, 1, 3))}, {"axis_groups": ((0,), (1, 2))},
-    {"axis_groups": ((0,), (1, 2, 4))}, {"axis_groups": ((False,), (1, 2, 3))},
-    {"physical_shape": (3, 8)}, {"logical_shape": (2, 3, 0, 2)},
-    {"strides_elements": (8, 1)}, {"strides_elements": (16, -1)},
-    {"strides_elements": (16,)}, {"storage_elements": 27}, {"storage_elements": True},
-    {"offset_elements": -1}, {"offset_elements": 5}, {"dtype": "i3"},
-])
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"axis_groups": ((0,), (1, 1, 3))},
+        {"axis_groups": ((0,), (1, 2))},
+        {"axis_groups": ((0,), (1, 2, 4))},
+        {"axis_groups": ((False,), (1, 2, 3))},
+        {"physical_shape": (3, 8)},
+        {"logical_shape": (2, 3, 0, 2)},
+        {"strides_elements": (8, 1)},
+        {"strides_elements": (16, -1)},
+        {"strides_elements": (16,)},
+        {"storage_elements": 27},
+        {"storage_elements": True},
+        {"offset_elements": -1},
+        {"offset_elements": 5},
+        {"dtype": "i3"},
+    ],
+)
 def test_invalid_encoding_refuses(changes):
     with pytest.raises(ValueError):
         replace(_layout(), **changes).validate()
 
 
-@pytest.mark.parametrize("change", [
-    {"schema": "future"}, {"unknown": 3}, {"axis_groups": "dense"},
-    {"logical_shape": [2, True, 2, 2]}, {"physical_shape": None},
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"schema": "future"},
+        {"unknown": 3},
+        {"axis_groups": "dense"},
+        {"logical_shape": [2, True, 2, 2]},
+        {"physical_shape": None},
+    ],
+)
 def test_malformed_contract_refuses(change):
     record = _layout().to_dict()
     record.update(change)

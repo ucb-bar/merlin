@@ -13,6 +13,7 @@ bit-identical everywhere -- that claim held on deepjscc and lstmnetvit and was f
 (a packed vector<Nxi1> store read back per-byte; cos 0.968, layout-dependent; fixed d4f86238). That
 negative result is the reason the axis is routed — the loop has to be able to try it and reject it.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -32,7 +33,8 @@ def test_it_is_additive_so_it_layers_on_a_micro_kernel_recipe():
     pkg = load_rvv_package("out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8")
     base = impr.apply_schedule(pkg.schedule_text, frozenset(pkg.compiler_features))
     with_lever = impr.apply_schedule(
-        pkg.schedule_text, frozenset([*pkg.compiler_features, impr.VEC_NONCONTRACTION_NAME]))
+        pkg.schedule_text, frozenset([*pkg.compiler_features, impr.VEC_NONCONTRACTION_NAME])
+    )
     assert "merlin.vec_r" not in base, "the baseline must be untouched (default-off)"
     assert "merlin.vec_r" in with_lever
     # every contraction arm of the base schedule survives

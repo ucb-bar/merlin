@@ -4,6 +4,7 @@ Measured base rate this exists for: of 1509 recorded transform attempts, 203 imp
 365 failed to compile, 719 were incorrect -- 13.45% improvement. A loop that promotes a corpus
 reading straight to a compiler rule is wrong most of the time, and keeps no record of it.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -36,38 +37,65 @@ class TestARungIsRefusedWithoutItsEvidence:
 
     def test_a_validated_policy_needs_a_control(self):
         """A delta against nothing is not a delta."""
-        r = _rec(evidence=("k1", "k2"), cca_axes=("memory.onchip_resident",),
-                 measured_cycles=100, delta_vs_control=0.2,
-                 measurement_authority="spike", correctness_ok=True)
+        r = _rec(
+            evidence=("k1", "k2"),
+            cca_axes=("memory.onchip_resident",),
+            measured_cycles=100,
+            delta_vs_control=0.2,
+            measurement_authority="spike",
+            correctness_ok=True,
+        )
         with pytest.raises(ValueError, match="matched control"):
             promote(r, "validated_policy")
 
     def test_a_validated_policy_needs_a_measurement_not_an_expectation(self):
-        r = _rec(evidence=("k1", "k2"), cca_axes=("memory.onchip_resident",),
-                 control="baseline", measurement_authority="spike", correctness_ok=True)
+        r = _rec(
+            evidence=("k1", "k2"),
+            cca_axes=("memory.onchip_resident",),
+            control="baseline",
+            measurement_authority="spike",
+            correctness_ok=True,
+        )
         with pytest.raises(ValueError, match="MEASURED"):
             promote(r, "validated_policy")
 
     def test_a_measured_number_must_name_its_substrate(self):
-        r = _rec(evidence=("k1", "k2"), cca_axes=("memory.onchip_resident",),
-                 control="baseline", measured_cycles=100, delta_vs_control=0.2,
-                 correctness_ok=True)
+        r = _rec(
+            evidence=("k1", "k2"),
+            cca_axes=("memory.onchip_resident",),
+            control="baseline",
+            measured_cycles=100,
+            delta_vs_control=0.2,
+            correctness_ok=True,
+        )
         with pytest.raises(ValueError, match="substrate"):
             promote(r, "validated_policy")
 
     @pytest.mark.parametrize("gate", [None, False])
     def test_no_speedup_is_credited_without_a_passing_correctness_gate(self, gate):
         """NEGATIVE CASE, both ways: an unrun gate is not a passing one."""
-        r = _rec(evidence=("k1", "k2"), cca_axes=("memory.onchip_resident",),
-                 control="baseline", measured_cycles=100, delta_vs_control=0.9,
-                 measurement_authority="spike", correctness_ok=gate)
+        r = _rec(
+            evidence=("k1", "k2"),
+            cca_axes=("memory.onchip_resident",),
+            control="baseline",
+            measured_cycles=100,
+            delta_vs_control=0.9,
+            measurement_authority="spike",
+            correctness_ok=gate,
+        )
         with pytest.raises(ValueError, match="correctness"):
             promote(r, "validated_policy")
 
     def test_a_fully_evidenced_policy_is_allowed(self):
-        r = _rec(evidence=("k1", "k2"), cca_axes=("memory.onchip_resident",),
-                 control="baseline", measured_cycles=100, delta_vs_control=0.2,
-                 measurement_authority="spike", correctness_ok=True)
+        r = _rec(
+            evidence=("k1", "k2"),
+            cca_axes=("memory.onchip_resident",),
+            control="baseline",
+            measured_cycles=100,
+            delta_vs_control=0.2,
+            measurement_authority="spike",
+            correctness_ok=True,
+        )
         assert promote(r, "validated_policy").status == "validated_policy"
 
 

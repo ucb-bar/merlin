@@ -8,8 +8,8 @@ where the un-clamped variant hits the LLVM-23 masked-transfer_write PipelineErro
 the riscv toolchain. Build-only (no slow whole-model spike boot); bit-exact spike verification is
 recorded in output/kernels/ceiling/scalable_gap_result.md.
 """
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 import tempfile
 from dataclasses import replace
@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.xdsl_dialects import _common
 
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
@@ -31,6 +32,7 @@ def _toolchain() -> bool:
     try:
         from merlin.kernels import build_asm
         from merlin.runtime.backends import zephyr_model
+
         return build_asm.asm_toolchain_available() and zephyr_model.available()
     except Exception:
         return False
@@ -51,16 +53,19 @@ def _build(features, bundle):
 
 def _conv_bundle():
     from merlin.mining import workloads
+
     return workloads.gen_conv2d_as_matmul_f32(tempfile.mkdtemp(), M=64, N=16, K=27)
 
 
 def _attn_bundle(N: int):
     from merlin.mining import workloads
+
     return workloads.gen_batch_matmul_f32(tempfile.mkdtemp(), B=4, M=32, N=N, K=32)
 
 
 def _matmul_bundle(M: int, N: int = 64, K: int = 64):
     from merlin.mining import workloads
+
     return workloads.gen_matmul_f32(tempfile.mkdtemp(), M=M, N=N, K=K)
 
 
@@ -79,9 +84,9 @@ def test_attention_small_n_needs_ntail():
     # masked vector.transfer_write PipelineError (NR=16 > N=8). The N-tail-safe variant clamps
     # NR_bmm<=N so the inner vectorize is full -> it builds AND forms vfmacc.
     bundle = _attn_bundle(8)
-    with pytest.raises(Exception):                       # masked-transfer_write PipelineError
+    with pytest.raises(Exception):  # masked-transfer_write PipelineError
         _build(["accumulator_resident_microkernel"], bundle)
-    s = _build(["accumulator_resident_ntail"], bundle)   # the N-tail fix
+    s = _build(["accumulator_resident_ntail"], bundle)  # the N-tail fix
     assert s.count("vfmacc", "vmacc") > 0
     assert s.count("vfmul") == 0
 
@@ -101,9 +106,9 @@ def test_m1_matmul_needs_mtail():
     # tensor<1xNR>). The M-tail-safe variant clamps MR_mm<=M so the inner vectorize is full -> it
     # builds AND forms vfmacc.
     bundle = _matmul_bundle(M=1)
-    with pytest.raises(Exception):                          # masked-transfer_write PipelineError
+    with pytest.raises(Exception):  # masked-transfer_write PipelineError
         _build(["accumulator_resident_microkernel"], bundle)
-    s = _build(["accumulator_resident_mtail"], bundle)      # the M-tail fix
+    s = _build(["accumulator_resident_mtail"], bundle)  # the M-tail fix
     assert s.count("vfmacc", "vmacc") > 0
     assert s.count("vfmul") == 0
 

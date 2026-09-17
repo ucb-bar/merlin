@@ -15,6 +15,7 @@ Deriving from the registry also fixes the safety direction: e4m3 and e5m2 are bo
 same element width, and only their exponent/mantissa split distinguishes them. A name-matched encoder
 that fell through to "the fp8 codec" would encode one as the other and produce plausible wrong numbers.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -65,8 +66,9 @@ def test_an_alias_encodes_identically_to_its_canonical_name():
         if (f.element_bits or 0) % 8 or _encode_operand(vals, name) is None:
             continue
         for alias in f.aliases:
-            assert _encode_operand(vals, alias) == _encode_operand(vals, name), \
+            assert _encode_operand(vals, alias) == _encode_operand(vals, name), (
                 f"{alias} encodes differently from {name}"
+            )
             checked += 1
     assert checked, "no aliases exercised"
 
@@ -81,12 +83,15 @@ def test_two_eight_bit_float_formats_do_not_encode_alike():
     assert a != b, "e4m3 and e5m2 produced identical bytes — the encoder is name-matching, not deriving"
 
 
-@pytest.mark.parametrize("dtype,expect", [
-    ("f32", "0000803f000000c00000003f00005040"),
-    ("bf16", "803f00c0003f5040"),
-    ("fp16", "003c00c000388042"),
-    ("int8", "01fe0003"),
-])
+@pytest.mark.parametrize(
+    "dtype,expect",
+    [
+        ("f32", "0000803f000000c00000003f00005040"),
+        ("bf16", "803f00c0003f5040"),
+        ("fp16", "003c00c000388042"),
+        ("int8", "01fe0003"),
+    ],
+)
 def test_known_encodings_are_bit_exact(dtype, expect):
     """Pinned against hand-computed IEEE/two's-complement bit patterns, so a plausible-looking but wrong
     encoder (byte order, rounding mode, truncation instead of round-to-nearest-even) is caught."""
@@ -115,8 +120,7 @@ def test_an_unsigned_format_refuses_a_negative_rather_than_dropping_the_sign():
     block by the wrong number and still produces plausible output. Refusing is the same posture the
     module header describes for e4m3-encoded-as-e5m2.
     """
-    unsigned = [n for n, f in qf.registry().items()
-                if f.kind == "fp_ocp" and not getattr(f, "signed", True)]
+    unsigned = [n for n, f in qf.registry().items() if f.kind == "fp_ocp" and not getattr(f, "signed", True)]
     if not unsigned:
         pytest.skip("no unsigned OCP format in this registry")
     for name in unsigned:
@@ -129,8 +133,7 @@ def test_the_block_scale_round_trips_as_a_power_of_two():
     """What the scale type means: the whole field is a biased exponent, so the grid is 2^k exactly."""
     from merlin.targetgen.fp8_codec import ocp_decode, ocp_encode
 
-    unsigned = [(n, f) for n, f in qf.registry().items()
-                if f.kind == "fp_ocp" and not getattr(f, "signed", True)]
+    unsigned = [(n, f) for n, f in qf.registry().items() if f.kind == "fp_ocp" and not getattr(f, "signed", True)]
     if not unsigned:
         pytest.skip("no unsigned OCP format in this registry")
     _, f = unsigned[0]

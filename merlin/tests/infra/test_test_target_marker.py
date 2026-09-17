@@ -1,4 +1,5 @@
 """check_structure "test target marker": a target-heavy test in a subsystem bucket must declare its target."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -22,6 +23,7 @@ def _tree(tmp_path):
     (tmp_path / "merlin/targets/foo_hw/contracts/target_contract.yaml").write_text("name: foo_hw\n")
     (tmp_path / "build_tools/scripts").mkdir(parents=True)
     import shutil
+
     shutil.copy(repo_root() / "build_tools/scripts/_target_roster.py", tmp_path / "build_tools/scripts/")
     (tmp_path / "merlin/tests/infra").mkdir(parents=True)
     return tmp_path

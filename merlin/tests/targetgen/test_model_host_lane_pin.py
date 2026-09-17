@@ -4,6 +4,7 @@ The accelerator submission and the host package are intentionally different arti
 arrives as ``mesh_package``; the latter is frozen experiment infrastructure declared by
 ``target_experiment.yaml``.  Neither may silently select the other's default.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,6 @@ from merlin.common.paths import repo_root
 from merlin.targetgen import capsule_runner
 from merlin.targetgen.sandbox import bwrap
 from merlin.targetgen.target_experiment import load_target_experiment
-
 
 #: A REAL frozen model capsule, not a synthetic dict.
 #:
@@ -36,8 +36,13 @@ _FROZEN_MODEL_DIR = "merlin/contract/capsules/model/M3_host_island_seam_gemmini"
 #: (answer surfaces never enter the public repo). A fresh git worktree therefore has the capsule but
 #: not its golden, and without this guard these tests would fail there for a reason that has nothing
 #: to do with the host lane. Skip and name the absent asset -- "we cannot tell", never a verdict.
-_REQUIRED_ASSETS = ("capsule.yaml", "capsule.interface.mlir", "capsule.pytorch.py",
-                    "capsule.weights.safetensors", "golden.yaml")
+_REQUIRED_ASSETS = (
+    "capsule.yaml",
+    "capsule.interface.mlir",
+    "capsule.pytorch.py",
+    "capsule.weights.safetensors",
+    "golden.yaml",
+)
 
 
 @pytest.fixture
@@ -45,14 +50,16 @@ def frozen_capsule() -> dict:
     root = repo_root() / _FROZEN_MODEL_DIR
     missing = [n for n in _REQUIRED_ASSETS if not (root / n).is_file()]
     if missing:
-        pytest.skip(f"frozen model capsule at {_FROZEN_MODEL_DIR} is missing {missing} "
-                    f"(golden.yaml and other answer surfaces are untracked by design, so a "
-                    f"fresh worktree has none)")
+        pytest.skip(
+            f"frozen model capsule at {_FROZEN_MODEL_DIR} is missing {missing} "
+            f"(golden.yaml and other answer surfaces are untracked by design, so a "
+            f"fresh worktree has none)"
+        )
     return capsule_runner.load_capsule(root)
 
+
 def _gemmini_descriptor():
-    return (repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/"
-            "target_experiment.yaml")
+    return repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
 
 
 def _snapshot_package(tmp_path, package_rel: str):
@@ -62,13 +69,18 @@ def _snapshot_package(tmp_path, package_rel: str):
     package.parent.mkdir(parents=True)
     shutil.copytree(repo_root() / package_rel, package)
     digest, n_files, n_bytes = bwrap._snapshot_content(root)
-    (root / "snapshot.json").write_text(json.dumps({
-        "version": 2,
-        "repo": str(repo_root()),
-        "content_sha256": digest,
-        "n_files": n_files,
-        "n_bytes": n_bytes,
-    }), encoding="utf-8")
+    (root / "snapshot.json").write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "repo": str(repo_root()),
+                "content_sha256": digest,
+                "n_files": n_files,
+                "n_bytes": n_bytes,
+            }
+        ),
+        encoding="utf-8",
+    )
     return root, package, digest
 
 
@@ -77,11 +89,9 @@ def test_target_experiment_owns_and_resolves_the_frozen_host_lane():
 
     package, identity = te.resolve_host_lane()
 
-    assert package == (repo_root() /
-                       "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8").resolve()
+    assert package == (repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8").resolve()
     assert identity["package"] == te.host_lane.package
-    assert identity["package_sha256"] == \
-        "32d265324cba85abc6760a151d56b03bdc3e95c79e8ebf0bc392207c0a041d8b"
+    assert identity["package_sha256"] == "32d265324cba85abc6760a151d56b03bdc3e95c79e8ebf0bc392207c0a041d8b"
     assert identity["run_id"] == "impr_tuned_wholemodel_vf_int8"
     assert identity["dtype_strategy"] == "int8_w8a8"
 
@@ -111,19 +121,19 @@ def test_materialized_gemmini_bundles_lock_the_same_read_only_package():
         if manifest_path.parent.name == "grader_private_v0":
             continue
         manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
-        grants = [entry for entry in manifest.get("allowed", [])
-                  if str(entry.get("path", "")).rstrip("/") == package.rstrip("/")]
+        grants = [
+            entry
+            for entry in manifest.get("allowed", [])
+            if str(entry.get("path", "")).rstrip("/") == package.rstrip("/")
+        ]
         assert len(grants) == 1 and grants[0].get("mode") == "ro", manifest_path
-        lock = yaml.safe_load((manifest_path.parent / "bundle_lock.yaml").read_text(
-            encoding="utf-8")) or {}
-        assert (lock.get("allowed_tree_sha256") or {}).get(package.rstrip("/")) == \
-            identity["package_sha256"]
+        lock = yaml.safe_load((manifest_path.parent / "bundle_lock.yaml").read_text(encoding="utf-8")) or {}
+        assert (lock.get("allowed_tree_sha256") or {}).get(package.rstrip("/")) == identity["package_sha256"]
         checked.append(manifest_path.parent.name)
     assert checked, "no agent input bundles were checked"
 
 
-def test_targeted_model_grade_passes_exact_descriptor_package_and_records_it(
-        monkeypatch, frozen_capsule):
+def test_targeted_model_grade_passes_exact_descriptor_package_and_records_it(monkeypatch, frozen_capsule):
     seen = {}
 
     def fake_compile_model(*args, **kwargs):
@@ -136,18 +146,16 @@ def test_targeted_model_grade_passes_exact_descriptor_package_and_records_it(
     monkeypatch.setenv("MERLIN_MODEL_GRADE_RUN", "host")
 
     result = capsule_runner._grade_model_capsule_inline(
-        frozen_capsule, target="gemmini", timeout=1, package_dir="submission-under-test")
+        frozen_capsule, target="gemmini", timeout=1, package_dir="submission-under-test"
+    )
 
-    expected = (repo_root() /
-                "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8").resolve()
+    expected = (repo_root() / "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8").resolve()
     assert seen["package"] == str(expected)
     assert seen["mesh_package"] == "submission-under-test"
-    assert result["host_lane"]["package_sha256"] == \
-        "32d265324cba85abc6760a151d56b03bdc3e95c79e8ebf0bc392207c0a041d8b"
+    assert result["host_lane"]["package_sha256"] == "32d265324cba85abc6760a151d56b03bdc3e95c79e8ebf0bc392207c0a041d8b"
 
 
-def test_bwrap_model_grade_executes_run_snapshot_not_live_package(
-        monkeypatch, tmp_path, frozen_capsule):
+def test_bwrap_model_grade_executes_run_snapshot_not_live_package(monkeypatch, tmp_path, frozen_capsule):
     package_rel = "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8"
     snapshot_root, snapshot_package, snapshot_digest = _snapshot_package(tmp_path, package_rel)
 
@@ -163,6 +171,7 @@ def test_bwrap_model_grade_executes_run_snapshot_not_live_package(
     descriptor.write_text(_gemmini_descriptor().read_text(encoding="utf-8"), encoding="utf-8")
 
     from merlin.targetgen import target_experiment
+
     monkeypatch.setattr(target_experiment, "repo_root", lambda: live_root)
     monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(descriptor))
     monkeypatch.setenv("MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT", str(snapshot_root))
@@ -178,7 +187,8 @@ def test_bwrap_model_grade_executes_run_snapshot_not_live_package(
 
     monkeypatch.setattr(compile_cli, "compile_model", fake_compile_model)
     result = capsule_runner._grade_model_capsule_inline(
-        frozen_capsule, target="gemmini", timeout=1, package_dir="submission-under-test")
+        frozen_capsule, target="gemmini", timeout=1, package_dir="submission-under-test"
+    )
 
     assert seen["package"] == snapshot_package.resolve()
     assert seen["schedule"] != "LIVE WORKTREE DRIFT\n"
@@ -188,7 +198,8 @@ def test_bwrap_model_grade_executes_run_snapshot_not_live_package(
 
 @pytest.mark.parametrize("malformed", [False, True], ids=["missing-pointer", "bad-snapshot"])
 def test_bwrap_model_grade_never_falls_back_when_snapshot_is_missing_or_malformed(
-        monkeypatch, tmp_path, malformed, frozen_capsule):
+    monkeypatch, tmp_path, malformed, frozen_capsule
+):
     called = False
 
     def fake_compile_model(*args, **kwargs):
@@ -207,7 +218,8 @@ def test_bwrap_model_grade_never_falls_back_when_snapshot_is_missing_or_malforme
         monkeypatch.delenv("MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT", raising=False)
 
     result = capsule_runner._grade_model_capsule_inline(
-        frozen_capsule, target="gemmini", timeout=1, package_dir="submission-under-test")
+        frozen_capsule, target="gemmini", timeout=1, package_dir="submission-under-test"
+    )
 
     assert result["status"] == "incomplete"
     assert "snapshot" in result["failure"]["detail"]
@@ -215,18 +227,18 @@ def test_bwrap_model_grade_never_falls_back_when_snapshot_is_missing_or_malforme
 
 
 def test_qa_loop_exports_verified_snapshot_only_to_host_grading():
-    loop = (repo_root() / "merlin/experiments/capsule_bench/harness/"
-            "run_baseline_qa_loop.py").read_text(encoding="utf-8")
+    loop = (repo_root() / "merlin/experiments/capsule_bench/harness/run_baseline_qa_loop.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "_BWS.verify_bundle_snapshot(ws, bundle, repo=C.REPO)" in loop
     assert '"model_host_lane_snapshot": _model_host_lane_snapshot' in loop
-    assert 'os.environ[_MODEL_HOST_SNAPSHOT_ROOT_ENV] = str(_snapshot_root)' in loop
+    assert "os.environ[_MODEL_HOST_SNAPSHOT_ROOT_ENV] = str(_snapshot_root)" in loop
     assert 'os.environ[_MODEL_HOST_SNAPSHOT_REQUIRED_ENV] = "1"' in loop
     assert 'parts += ["--unsetenv", _MODEL_HOST_SNAPSHOT_ROOT_ENV' in loop
 
 
-def test_model_grade_refuses_descriptor_package_of_the_wrong_datatype(
-        monkeypatch, tmp_path, frozen_capsule):
+def test_model_grade_refuses_descriptor_package_of_the_wrong_datatype(monkeypatch, tmp_path, frozen_capsule):
     called = False
 
     def fake_compile_model(*args, **kwargs):
@@ -243,7 +255,8 @@ def test_model_grade_refuses_descriptor_package_of_the_wrong_datatype(
     descriptor.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
     monkeypatch.setenv("MERLIN_TARGET_EXPERIMENT", str(descriptor))
     result = capsule_runner._grade_model_capsule_inline(
-        frozen_capsule, target="gemmini", timeout=1, package_dir="submission-under-test")
+        frozen_capsule, target="gemmini", timeout=1, package_dir="submission-under-test"
+    )
 
     assert result["status"] == "incomplete"
     # The refusal now happens EARLIER -- at host-lane resolution, where the descriptor's declared
@@ -264,14 +277,23 @@ def test_model_grade_refuses_host_package_drift_during_compile(monkeypatch, froz
         def resolve_host_lane(self, *, root=None, dtype=None):
             return repo_root() / "frozen-test-host", after
 
-    monkeypatch.setattr(capsule_runner, "_resolve_model_host_lane", lambda target, dtype: (
-        Experiment(), repo_root() / "frozen-test-host", before))
-    monkeypatch.setattr(compile_cli, "compile_model", lambda *args, **kwargs: {
-        "status": "verified", "verify": {"gate_ok": True},
-    })
+    monkeypatch.setattr(
+        capsule_runner,
+        "_resolve_model_host_lane",
+        lambda target, dtype: (Experiment(), repo_root() / "frozen-test-host", before),
+    )
+    monkeypatch.setattr(
+        compile_cli,
+        "compile_model",
+        lambda *args, **kwargs: {
+            "status": "verified",
+            "verify": {"gate_ok": True},
+        },
+    )
 
     result = capsule_runner._grade_model_capsule_inline(
-        frozen_capsule, target="gemmini", timeout=1, package_dir="submission-under-test")
+        frozen_capsule, target="gemmini", timeout=1, package_dir="submission-under-test"
+    )
 
     assert result["status"] == "incomplete"
     assert "changed during grading" in result["failure"]["detail"]

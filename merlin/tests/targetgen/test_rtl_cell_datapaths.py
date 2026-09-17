@@ -17,6 +17,7 @@ Three properties, each of which failed silently in the family of readers this on
   directly and are what every consumer has been calibrated against; a second opinion that silently
   displaced them would move numbers nobody asked to move.
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -56,13 +57,11 @@ _MAC_CELL = textwrap.dedent("""\
 # The same cell with the arithmetic children renamed to say nothing about format. The geometry is
 # identical, so a reader that answered from the width alone would answer identically here — which is
 # exactly the failure this fixture exists to catch.
-_UNNAMED_CELL = (_MAC_CELL
-                 .replace("E4M3ProdAddBF16", "ProdAddRound")
-                 .replace("E4M3Mul", "Mul")
-                 .replace("E4M3FMA", "FusedMulAdd"))
+_UNNAMED_CELL = (
+    _MAC_CELL.replace("E4M3ProdAddBF16", "ProdAddRound").replace("E4M3Mul", "Mul").replace("E4M3FMA", "FusedMulAdd")
+)
 
-_ARRAY_FACTS = {"arrays": [{"name": "mesh", "element": "Cell", "container": "Grid", "rows": 4,
-                            "cols": 4}]}
+_ARRAY_FACTS = {"arrays": [{"name": "mesh", "element": "Cell", "container": "Grid", "rows": 4, "cols": 4}]}
 
 
 def _fir(tmp_path, text: str, name: str = "Grid.fir"):
@@ -148,6 +147,7 @@ class TestTheNameDisambiguatesTheWidth:
 
     def test_the_dtype_tokens_are_registry_names(self):
         from merlin.common import quant_formats as qf
+
         rec, _ = DP.cell_datapath(_MAC_CELL, "Cell")
         for token, bits in ((rec.operand_dtype, 8), (rec.accum_dtype, 16)):
             assert qf.get(token).element_bits == bits, "the token must resolve, and to that width"
@@ -190,7 +190,8 @@ class TestAnAmbiguousWidthIsRefused:
     def test_two_formats_at_one_width_fail_closed(self):
         # A design naming BOTH fp8 encodings at 8 bits: a vote between two encodings is not evidence.
         both = _MAC_CELL.replace("module E4M3Mul :", "module E5M2Mul :").replace(
-            "inst mul of E4M3Mul", "inst mul of E5M2Mul")
+            "inst mul of E4M3Mul", "inst mul of E5M2Mul"
+        )
         rec, _ = DP.cell_datapath(both, "Cell")
         assert rec.operand_dtype is None
         assert "fp8_e4m3" in rec.operand_dtype_why and "fp8_e5m2" in rec.operand_dtype_why
@@ -208,17 +209,20 @@ class TestAnAmbiguousWidthIsRefused:
 class TestTheElementIsFoundByKindNotByName:
     def test_every_known_kind_declares_how_its_element_is_located(self):
         for kind in families.known_kinds():
-            assert families.family_profile(kind).compute_element in (
-                "array_element", "lane_replication", "none")
+            assert families.family_profile(kind).compute_element in ("array_element", "lane_replication", "none")
 
     def test_an_array_kind_takes_the_element_from_the_discovered_array(self):
         found, notes = DP.compute_elements(("systolic",), _ARRAY_FACTS)
         assert found == ("Cell",) and not notes
 
     def test_a_lane_kind_takes_the_group_replicated_once_per_lane(self):
-        facts = {"simt": {"lanes_per_warp": 16},
-                 "replication_groups": [{"container": "Core", "element": "Lane", "instances": 16},
-                                        {"container": "Core", "element": "Bank", "instances": 4}]}
+        facts = {
+            "simt": {"lanes_per_warp": 16},
+            "replication_groups": [
+                {"container": "Core", "element": "Lane", "instances": 16},
+                {"container": "Core", "element": "Bank", "instances": 4},
+            ],
+        }
         found, notes = DP.compute_elements(("simt",), facts)
         assert found == ("Lane",) and not notes
 
@@ -227,9 +231,10 @@ class TestTheElementIsFoundByKindNotByName:
         # all but one are per-lane INTERCONNECT. Taking the first would publish a bus monitor's port
         # widths as the machine's arithmetic, which is the exact shape of wrong number this whole
         # derivation exists to stop.
-        facts = {"simt": {"lanes_per_warp": 16},
-                 "replication_groups": [{"element": "Lane", "instances": 16},
-                                        {"element": "LaneQueue", "instances": 16}]}
+        facts = {
+            "simt": {"lanes_per_warp": 16},
+            "replication_groups": [{"element": "Lane", "instances": 16}, {"element": "LaneQueue", "instances": 16}],
+        }
         found, notes = DP.compute_elements(("simt",), facts)
         assert found == ()
         assert notes and "UNKNOWN" in notes[0] and "interconnect" in notes[0]
@@ -237,8 +242,15 @@ class TestTheElementIsFoundByKindNotByName:
     def test_a_replication_the_array_discovery_declined_is_not_the_element(self):
         # `geometry_unknown` is the array discovery saying "this is the widest sibling group and I will
         # not call it the compute array". Reading its element as the compute cell takes that back.
-        facts = {"arrays": [{"name": "widest_replication", "element": "ComparePipe",
-                             "geometry_unknown": "18 is not a perfect square"}]}
+        facts = {
+            "arrays": [
+                {
+                    "name": "widest_replication",
+                    "element": "ComparePipe",
+                    "geometry_unknown": "18 is not a perfect square",
+                }
+            ]
+        }
         found, notes = DP.compute_elements(("systolic",), facts)
         assert found == () and notes and "declined" in notes[0]
 
@@ -264,11 +276,12 @@ class TestTheElementIsFoundByKindNotByName:
 
 class TestFactAssembly:
     def test_the_entries_are_census_shaped_and_tagged(self, tmp_path):
-        dps, notes = DP.datapaths_from_compute_cells(
-            _ARRAY_FACTS, [_fir(tmp_path, _MAC_CELL)], ("systolic",))
+        dps, notes = DP.datapaths_from_compute_cells(_ARRAY_FACTS, [_fir(tmp_path, _MAC_CELL)], ("systolic",))
         assert not notes
         assert [(d["name"], d["dtype"], d["elem_bits"]) for d in dps] == [
-            ("input", "fp8_e4m3", 8), ("accumulator", "bf16", 16)]
+            ("input", "fp8_e4m3", 8),
+            ("accumulator", "bf16", 16),
+        ]
         for d in dps:
             # Same keys a census entry carries, so no consumer needs to know where it came from -- plus
             # a source tag, so a reader who cares CAN tell.
@@ -280,16 +293,16 @@ class TestFactAssembly:
         # which one is under test is UNKNOWN. Publishing either would attribute a number to a device
         # that may not be the one being graded.
         other = _MAC_CELL.replace("flip addend : UInt<16>", "flip addend : UInt<32>").replace(
-            "mac : UInt<16>", "mac : UInt<32>")
+            "mac : UInt<16>", "mac : UInt<32>"
+        )
         dps, notes = DP.datapaths_from_compute_cells(
-            _ARRAY_FACTS, [_fir(tmp_path, _MAC_CELL), _fir(tmp_path, other, "Grid2.fir")],
-            ("systolic",))
+            _ARRAY_FACTS, [_fir(tmp_path, _MAC_CELL), _fir(tmp_path, other, "Grid2.fir")], ("systolic",)
+        )
         assert dps == []
         assert any("disagree" in n for n in notes)
 
     def test_an_unreadable_elaboration_contributes_a_reason(self, tmp_path):
-        dps, notes = DP.datapaths_from_compute_cells(
-            _ARRAY_FACTS, [tmp_path / "absent.fir"], ("systolic",))
+        dps, notes = DP.datapaths_from_compute_cells(_ARRAY_FACTS, [tmp_path / "absent.fir"], ("systolic",))
         assert dps == [] and notes
 
 
@@ -297,9 +310,13 @@ class TestACensusTargetIsUntouched:
     """A target whose facts already carry datapaths must come out of the fact assembly bit-identical."""
 
     def _facts_with_census_datapaths(self) -> dict:
-        return {"arrays": [{"name": "mesh", "element": "Cell"}],
-                "datapaths": [{"name": "input", "dtype": "i8", "evidence": "operand smem UInt<8>"},
-                              {"name": "accumulator", "dtype": "i32", "evidence": "accum SInt<32>"}]}
+        return {
+            "arrays": [{"name": "mesh", "element": "Cell"}],
+            "datapaths": [
+                {"name": "input", "dtype": "i8", "evidence": "operand smem UInt<8>"},
+                {"name": "accumulator", "dtype": "i32", "evidence": "accum SInt<32>"},
+            ],
+        }
 
     def test_existing_datapaths_are_not_displaced(self, monkeypatch, tmp_path):
         facts = self._facts_with_census_datapaths()

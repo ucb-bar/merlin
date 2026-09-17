@@ -5,6 +5,7 @@ Every other wait in the agent's toolbox blocks -- the self-check returns when th
 was to look again, and an agent that must look again writes a polling loop. Measured on one 6.1 h run:
 89 commands aimed at qa/verdict.json, ~15.5 min of sleeping, and each look also a model round trip.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,13 +20,18 @@ import pytest
 from merlin.common.paths import merlin_dir
 
 TOOL = merlin_dir() / "experiments" / "capsule_bench" / "harness" / "await_verdict.py"
-VERDICT = {"n_passed": 82, "n_capsules": 96, "all_pass": False,
-           "per_capsule": {"A0": "pass", "B1": "fail", "C2": "fail"}}
+VERDICT = {
+    "n_passed": 82,
+    "n_capsules": 96,
+    "all_pass": False,
+    "per_capsule": {"A0": "pass", "B1": "fail", "C2": "fail"},
+}
 
 
 def _run(cwd, *args, timeout=60):
-    got = subprocess.run([sys.executable, str(TOOL), *args], cwd=str(cwd),
-                         capture_output=True, text=True, timeout=timeout)
+    got = subprocess.run(
+        [sys.executable, str(TOOL), *args], cwd=str(cwd), capture_output=True, text=True, timeout=timeout
+    )
     try:
         return got.returncode, json.loads(got.stdout)
     except ValueError:
@@ -42,6 +48,7 @@ def ws(tmp_path):
 def test_it_imports_nothing_from_merlin():
     """It is staged INSIDE the sandbox, where merlin is masked. An import would make it unstageable."""
     import ast
+
     tree = ast.parse(TOOL.read_text())
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -54,6 +61,7 @@ def _tool_module():
     """Import the staged script directly, to test its stamp resolution without a subprocess."""
     import importlib.util
     import sys
+
     spec = importlib.util.spec_from_file_location("await_verdict", TOOL)
     mod = importlib.util.module_from_spec(spec)
     sys.modules.setdefault("await_verdict", mod)
@@ -74,16 +82,18 @@ def test_two_grades_inside_one_second_are_distinguishable(ws):
     that wrote twice and demanded different stamps failed on the storage rather than on the code.
     """
     import os
+
     mod = _tool_module()
     path = ws / "qa" / "verdict.json"
     os.utime(path, ns=(1_000_000_000, 1_000_000_000))
     before = mod._stamp(path)
-    os.utime(path, ns=(1_000_000_000, 1_001_000_000))          # one millisecond later
+    os.utime(path, ns=(1_000_000_000, 1_001_000_000))  # one millisecond later
     after = mod._stamp(path)
     assert before is not None and after is not None
     assert after > before, (
         "two grades one millisecond apart were not distinguishable; a whole-second stamp would report "
-        "no new grade and the agent would sleep through it")
+        "no new grade and the agent would sleep through it"
+    )
 
 
 def test_an_absent_verdict_has_no_stamp(ws):
@@ -93,9 +103,11 @@ def test_an_absent_verdict_has_no_stamp(ws):
 
 def test_a_new_grade_returns_immediately(ws):
     """The paired direction for the timeout test: it must actually WAKE, and quickly."""
+
     def _grade():
         time.sleep(1.0)
         (ws / "qa" / "verdict.json").write_text(json.dumps({**VERDICT, "n_passed": 92}))
+
     t = threading.Thread(target=_grade, daemon=True)
     started = time.monotonic()
     t.start()
@@ -138,8 +150,10 @@ def test_no_verdict_yet_is_absent_not_a_crash(tmp_path):
 def test_it_reports_the_score_and_what_is_failing(ws):
     def _grade():
         time.sleep(0.8)
-        (ws / "qa" / "verdict.json").write_text(json.dumps(
-            {**VERDICT, "n_passed": 95, "per_capsule": {"A0": "pass", "B1": "pass", "C2": "fail"}}))
+        (ws / "qa" / "verdict.json").write_text(
+            json.dumps({**VERDICT, "n_passed": 95, "per_capsule": {"A0": "pass", "B1": "pass", "C2": "fail"}})
+        )
+
     threading.Thread(target=_grade, daemon=True).start()
     rc, got = _run(ws, "--timeout", "30")
     assert rc == 0 and got["n_passed"] == 95 and got["failing"] == ["C2"]
@@ -148,9 +162,11 @@ def test_it_reports_the_score_and_what_is_failing(ws):
 def test_an_unreadable_verdict_still_reports_the_grade(ws):
     """A grade DID land; that fact is what was waited for. Refusing to say so because the bytes could
     not be parsed would leave the agent polling again for an event that already happened."""
+
     def _grade():
         time.sleep(0.8)
         (ws / "qa" / "verdict.json").write_text("{ truncated")
+
     threading.Thread(target=_grade, daemon=True).start()
     rc, got = _run(ws, "--timeout", "30")
     assert rc == 0 and got["waited"] == "graded"
@@ -166,8 +182,7 @@ def test_a_caller_supplied_stamp_is_honoured(ws):
 
 def test_it_is_staged_into_the_workspace():
     """A tool the agent cannot invoke is not a tool. It must be copied in beside the other shims."""
-    loop = (merlin_dir() / "experiments" / "capsule_bench" / "harness"
-            / "run_baseline_qa_loop.py").read_text()
+    loop = (merlin_dir() / "experiments" / "capsule_bench" / "harness" / "run_baseline_qa_loop.py").read_text()
     assert '_stage_shim(ws, "await_verdict.py", "await_verdict.py")' in loop
 
 
@@ -175,9 +190,8 @@ def test_the_agent_is_told_it_exists():
     """The launch-generated task block is authoritative over bundled prose, so the tool is named there
     -- and the same block corrects the stale "you are relaunched each round" framing that made an
     agent look for a new verdict instead of waiting for one."""
-    loop = (merlin_dir() / "experiments" / "capsule_bench" / "harness"
-            / "run_baseline_qa_loop.py").read_text()
+    loop = (merlin_dir() / "experiments" / "capsule_bench" / "harness" / "run_baseline_qa_loop.py").read_text()
     i = loop.index("_task_runtime_scope_block")
-    block = loop[i:i + 4000]
+    block = loop[i : i + 4000]
     assert "await_verdict.py" in block
     assert "not relaunched" in block.lower() or "NOT relaunched" in block

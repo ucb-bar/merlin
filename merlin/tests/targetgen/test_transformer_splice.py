@@ -17,6 +17,7 @@ softmax/rmsnorm/rope/attention chains gradeable at all.
 Target-agnostic: the lane of each op is READ from the routing plan, never assumed from an op name; the
 routing units are a synthetic f32 mesh + vector contract passed as data, so the tests bind to no target.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -33,23 +34,36 @@ _REF_TARGET = "toy_npu"
 # so they route to the scalar/RVV lane — exactly the honest split a matmul mesh produces for a real model.
 _F32_UNITS = {
     "compute_units": [
-        {"name": "mesh", "kind": "systolic", "dtypes": ["f32", "fp32"], "ops": ["matmul"],
-         "accumulate": [{"in": "f32", "weight": "f32", "acc": "f32"}]},
-        {"name": "vec", "kind": "vector", "dtypes": ["f32", "fp32"],
-         "ops": ["relu", "add", "mul", "elementwise"], "accumulate": []},
+        {
+            "name": "mesh",
+            "kind": "systolic",
+            "dtypes": ["f32", "fp32"],
+            "ops": ["matmul"],
+            "accumulate": [{"in": "f32", "weight": "f32", "acc": "f32"}],
+        },
+        {
+            "name": "vec",
+            "kind": "vector",
+            "dtypes": ["f32", "fp32"],
+            "ops": ["relu", "add", "mul", "elementwise"],
+            "accumulate": [],
+        },
     ]
 }
 
 
 def _units():
     from merlin.targetgen import compute_units as cu
+
     return cu.compute_units(_F32_UNITS)
 
 
 # --------------------------------------------------------------------------- module builders
 
+
 def _f32(shape):
     from xdsl.dialects.builtin import TensorType, f32
+
     return TensorType(f32, list(shape))
 
 
@@ -69,9 +83,15 @@ def _tagged_generic(family, inputs, out_type):
     maps = [AffineMapAttr(AffineMap.identity(len(v.type.get_shape()))) for v in inputs]
     maps.append(AffineMapAttr(AffineMap.identity(len(out_type.get_shape()))))
     iters = [StringAttr("parallel")] * len(out_type.get_shape())
-    g = lo.GenericOp(inputs=tuple(inputs), outputs=(init.tensor,), body=Region([body]),
-                     indexing_maps=maps, iterator_types=iters, result_types=[out_type],
-                     library_call=StringAttr(family))
+    g = lo.GenericOp(
+        inputs=tuple(inputs),
+        outputs=(init.tensor,),
+        body=Region([body]),
+        indexing_maps=maps,
+        iterator_types=iters,
+        result_types=[out_type],
+        library_call=StringAttr(family),
+    )
     return [init, g], g.results[0]
 
 
@@ -91,6 +111,7 @@ def _module(arg_types, build):
 def _matmul(lhs, rhs, out_type):
     from xdsl.dialects import tensor as td
     from xdsl.dialects.linalg import ops as lo
+
     e = td.EmptyOp((), out_type)
     mm = lo.MatmulOp(inputs=(lhs, rhs), outputs=(e.tensor,), res=(out_type,))
     return [e, mm], mm.results[0]
@@ -99,6 +120,7 @@ def _matmul(lhs, rhs, out_type):
 def _add(lhs, rhs, out_type):
     from xdsl.dialects import tensor as td
     from xdsl.dialects.linalg import ops as lo
+
     e = td.EmptyOp((), out_type)
     a = lo.AddOp(inputs=(lhs, rhs), outputs=(e.tensor,), res=(out_type,))
     return [e, a], a.results[0]
@@ -169,6 +191,7 @@ def _geglu(s=4, d=8, h=8):
 
 # --------------------------------------------------------------------------- op-vocabulary recognition
 
+
 def test_op_family_reads_library_call_tag():
     """``_op_family`` recognizes a tagged ``linalg.generic`` structurally by its ``library_call``."""
     from merlin.targetgen import mesh_program_run as mp
@@ -198,8 +221,12 @@ def test_program_lane_tagging_and_matmul_extents():
     prog = mp.build_whole_model_program(plan, _REF_TARGET, mod)
 
     assert [(s.family, s.lane) for s in prog.steps] == [
-        ("rmsnorm", "scalar"), ("matmul", "mesh"), ("softmax", "scalar"),
-        ("matmul", "mesh"), ("add", "scalar")]
+        ("rmsnorm", "scalar"),
+        ("matmul", "mesh"),
+        ("softmax", "scalar"),
+        ("matmul", "mesh"),
+        ("add", "scalar"),
+    ]
     mm = [s for s in prog.steps if s.family == "matmul"]
     assert (mm[0].m, mm[0].k, mm[0].n) == (4, 8, 8)
     # the residual add consumes the model input leaf (L0) alongside the second matmul's output.
@@ -208,29 +235,39 @@ def test_program_lane_tagging_and_matmul_extents():
 
 # --------------------------------------------------------------------------- graded end-to-end (engine mesh)
 
+
 def test_softmax_after_matmul_is_bit_exact():
     """X@W -> softmax with small-integer operands: the matmul is integer-exact through the f32 mesh and the
     softmax is the same numpy op on both sides, so the spliced whole-model result equals the host-eager
     numpy reference BIT-FOR-BIT — and the reference was selected host-eager, not engine."""
     from merlin.targetgen import mesh_program_run as mp
 
-    r = mp.verify_whole_model_program(_softmax_after_matmul(), target=_REF_TARGET, in_fmt="f32",
-                                      units=_units(), int_operands=True)
+    r = mp.verify_whole_model_program(
+        _softmax_after_matmul(), target=_REF_TARGET, in_fmt="f32", units=_units(), int_operands=True
+    )
     assert r["ref_kind"] == "host_eager"
     assert r["exact"] is True
     assert r["n_mesh"] == 1 and r["n_scalar"] == 1
 
 
-@pytest.mark.parametrize("family,aux", [
-    ("rmsnorm", [[8]]), ("layernorm", [[8], [8]]), ("rope", []), ("silu", []), ("gelu", []),
-])
+@pytest.mark.parametrize(
+    "family,aux",
+    [
+        ("rmsnorm", [[8]]),
+        ("layernorm", [[8], [8]]),
+        ("rope", []),
+        ("silu", []),
+        ("gelu", []),
+    ],
+)
 def test_scalar_family_leaf_op_is_bit_exact(family, aux):
     """Each scalar-lane family (norm / rotary / activation) as a final op reproduces the host-eager numpy
     reference bit-for-bit — the splice executes it inline, gated against the same numpy math."""
     from merlin.targetgen import mesh_program_run as mp
 
-    r = mp.verify_whole_model_program(_leaf_op(family, aux), target=_REF_TARGET, in_fmt="f32",
-                                      units=_units(), int_operands=True)
+    r = mp.verify_whole_model_program(
+        _leaf_op(family, aux), target=_REF_TARGET, in_fmt="f32", units=_units(), int_operands=True
+    )
     assert r["ref_kind"] == "host_eager"
     assert r["exact"] is True
     assert r["n_mesh"] == 0 and r["n_scalar"] == 1
@@ -243,8 +280,7 @@ def test_transformer_block_matches_host_eager_reference():
     the float activations that feed the matmuls — the expected float-lane tolerance, not a bug)."""
     from merlin.targetgen import mesh_program_run as mp
 
-    r = mp.verify_whole_model_program(_transformer_block(), target=_REF_TARGET, in_fmt="f32",
-                                      units=_units())
+    r = mp.verify_whole_model_program(_transformer_block(), target=_REF_TARGET, in_fmt="f32", units=_units())
     assert r["ref_kind"] == "host_eager"
     assert r["match"] is True
     assert r["n_mesh"] == 2 and r["n_scalar"] == 3
@@ -265,6 +301,7 @@ def test_fused_op_decomposes_and_matches_reference(mod_fn, n_matmul):
 
 # --------------------------------------------------------------------------- splice plumbing (no engine)
 
+
 def test_fused_op_routes_matmul_subops_through_injected_mesh_executor():
     """With a mesh executor injected (standing in for a real oracle), attention's two matmul sub-ops
     dispatch through it while its softmax runs inline — proving the fused op's matmul sub-ops route to the
@@ -276,8 +313,7 @@ def test_fused_op_routes_matmul_subops_through_injected_mesh_executor():
     plan = rt.route_plan_on(mp.demands_from_module(mod, "f32"), _units())
     prog = mp.build_whole_model_program(plan, _REF_TARGET, mod)
     rng = np.random.default_rng(0)
-    leaves = {lid: rng.standard_normal(tuple(meta["shape"])).astype(np.float32)
-              for lid, meta in prog.leaves.items()}
+    leaves = {lid: rng.standard_normal(tuple(meta["shape"])).astype(np.float32) for lid, meta in prog.leaves.items()}
 
     calls: list = []
 
@@ -301,13 +337,13 @@ def test_fused_op_fails_closed_when_mesh_layer_unavailable():
     mod = _attention()
     plan = rt.route_plan_on(mp.demands_from_module(mod, "f32"), _units())
     prog = mp.build_whole_model_program(plan, _REF_TARGET, mod)
-    leaves = {lid: np.zeros(tuple(meta["shape"]), dtype=np.float32)
-              for lid, meta in prog.leaves.items()}
+    leaves = {lid: np.zeros(tuple(meta["shape"]), dtype=np.float32) for lid, meta in prog.leaves.items()}
     with pytest.raises(mp.MeshLayerUnavailable):
         mp.run_whole_model_program(prog, leaves, mesh_exec=lambda lhs, rhs, step: None)
 
 
 # --------------------------------------------------------------------------- on real hardware (radiance)
+
 
 @pytest.mark.slow
 def test_transformer_matmuls_on_radiance_mesh():
@@ -332,13 +368,20 @@ def test_transformer_matmuls_on_radiance_mesh():
 
     # the fp32-family token radiance's SIMT mesh actually declares (f32 vs fp32 are distinct router tokens).
     units = cu.compute_units(tr.load_contract(target))
-    tok = next((d for u in units if u.kind == "simt" for d in u.dtypes if d.startswith("f") and "32" in d),
-               None)
+    tok = next((d for u in units if u.kind == "simt" for d in u.dtypes if d.startswith("f") and "32" in d), None)
     assert tok is not None, "radiance contract declares no fp32-family SIMT mesh dtype"
 
     res = compile_cli.run_whole_model_on_mesh(
-        target, _transformer_block(), in_fmt=tok, weight_fmt=tok,
-        operand_dtype=tok, accum_dtype=tok, ref_target=_REF_TARGET, seed=0, timeout=900)
+        target,
+        _transformer_block(),
+        in_fmt=tok,
+        weight_fmt=tok,
+        operand_dtype=tok,
+        accum_dtype=tok,
+        ref_target=_REF_TARGET,
+        seed=0,
+        timeout=900,
+    )
 
     if res.get("status") == "oracle_unavailable":
         pytest.skip(res.get("reason", "radiance mesh oracle unavailable at run time"))

@@ -23,6 +23,7 @@ history happened to contain. Measured on that target's real history, 105 wall-cl
 r2 0.0065 with a NEGATIVE per-element slope, and the same capsule appears at 12.106 s and 0.809 s
 across two runs because ``adapter_wall_s`` includes ``oracle_wait_s``.
 """
+
 from __future__ import annotations
 
 import json
@@ -42,13 +43,27 @@ def _result(dirpath, capsule, *, sim_active_s=None, adapter_wall_s=None, tier="L
     """
     d = dirpath / f"{capsule}-{tier}"
     d.mkdir(parents=True, exist_ok=True)
-    (d / "capsule_result.json").write_text(json.dumps({
-        "capsule": capsule,
-        "tiers": {tier: {"status": "pass", "cycle_accurate": True, "derived_from_rtl": True,
-                         "timing": {"build_s": None, "sim_active_s": sim_active_s,
-                                    "oracle_wait_s": adapter_wall_s,
-                                    "adapter_wall_s": adapter_wall_s}}},
-    }), encoding="utf-8")
+    (d / "capsule_result.json").write_text(
+        json.dumps(
+            {
+                "capsule": capsule,
+                "tiers": {
+                    tier: {
+                        "status": "pass",
+                        "cycle_accurate": True,
+                        "derived_from_rtl": True,
+                        "timing": {
+                            "build_s": None,
+                            "sim_active_s": sim_active_s,
+                            "oracle_wait_s": adapter_wall_s,
+                            "adapter_wall_s": adapter_wall_s,
+                        },
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def _fit(tmp_path, monkeypatch, sizes, **kw):
@@ -63,9 +78,15 @@ def test_the_reshaping_carries_the_wall_clock_number_it_used_to_drop():
     """``_per_tier_from_result`` PROJECTS a subset of keys, and everything outside that subset is
     silently gone. Dropping ``adapter_wall_s`` is how a thousand timed runs read as no runs at all:
     the record had the number and the projection threw it away."""
-    doc = {"capsule": "C", "tiers": {"L3": {
-        "cycle_accurate": True,
-        "timing": {"sim_active_s": None, "adapter_wall_s": 42.5, "oracle_wait_s": 42.5}}}}
+    doc = {
+        "capsule": "C",
+        "tiers": {
+            "L3": {
+                "cycle_accurate": True,
+                "timing": {"sim_active_s": None, "adapter_wall_s": 42.5, "oracle_wait_s": 42.5},
+            }
+        },
+    }
     assert CC._per_tier_from_result(doc)["L3"]["adapter_wall_s"] == 42.5
 
 
@@ -73,10 +94,11 @@ def test_a_wall_clock_sample_is_marked_as_one_in_its_basis():
     """A weaker measurement has to SAY it is weaker at the point of use, not in a docstring. The
     basis is the string every caller already keeps beside the number."""
     precise = CC._cycle_accurate_pick(
-        {"by_tier": {"L3": {"cycle_accurate": True,
-                            "timing": {}, "sim_active_s": 7.0, "adapter_wall_s": 90.0}}})
+        {"by_tier": {"L3": {"cycle_accurate": True, "timing": {}, "sim_active_s": 7.0, "adapter_wall_s": 90.0}}}
+    )
     fallback = CC._cycle_accurate_pick(
-        {"by_tier": {"L3": {"cycle_accurate": True, "sim_active_s": None, "adapter_wall_s": 90.0}}})
+        {"by_tier": {"L3": {"cycle_accurate": True, "sim_active_s": None, "adapter_wall_s": 90.0}}}
+    )
     assert precise[0] == 7.0 and "wall_clock" not in precise[1]
     assert fallback[0] == 90.0 and "wall_clock" in fallback[1]
 
@@ -121,7 +143,7 @@ def test_queue_noise_is_refused_rather_than_returned_as_a_cheap_capsule(tmp_path
     for i in range(CC._MIN_SAMPLES + 2):
         name = f"C{i}"
         sizes[name] = 100 * (i + 1)
-        _result(tmp_path, name, adapter_wall_s=500.0 - 3.0 * i)   # bigger capsules, LESS wall time
+        _result(tmp_path, name, adapter_wall_s=500.0 - 3.0 * i)  # bigger capsules, LESS wall time
     assert _fit(tmp_path, monkeypatch, sizes) is None
 
 
@@ -151,8 +173,7 @@ def test_a_weak_but_real_simulator_fit_is_not_held_to_the_wall_clock_bar(tmp_pat
     assert fit is not None and fit.r2 < CC._WALL_CLOCK_MIN_R2
 
 
-def test_the_refusal_asks_about_the_samples_under_the_fit_not_the_whole_history(tmp_path,
-                                                                                monkeypatch):
+def test_the_refusal_asks_about_the_samples_under_the_fit_not_the_whole_history(tmp_path, monkeypatch):
     """SCOPING, and it is load-bearing. One simulator-timed record that the fit DISCARDS -- here,
     a capsule whose size cannot be read -- was enough to answer "not wall-clock only" for a line
     drawn entirely through wall-clock points, and the guard then let the queue noise through."""
@@ -161,7 +182,7 @@ def test_the_refusal_asks_about_the_samples_under_the_fit_not_the_whole_history(
         name = f"C{i}"
         sizes[name] = 100 * (i + 1)
         _result(tmp_path, name, adapter_wall_s=500.0 - 3.0 * i)
-    _result(tmp_path, "UNSIZED", sim_active_s=1.0)          # timed, but no size -> not in the fit
+    _result(tmp_path, "UNSIZED", sim_active_s=1.0)  # timed, but no size -> not in the fit
     assert "UNSIZED" not in sizes
     assert _fit(tmp_path, monkeypatch, sizes) is None
 
@@ -181,8 +202,7 @@ def test_a_program_oracle_records_the_seconds_the_cost_model_reads():
     assert block["oracle_wait_s"] == 0.0
 
     # The tier record capsule_runner assembles from it, read back by the cost model.
-    seconds, basis, _engine = CC._cycle_accurate_pick(
-        {"by_tier": {"L3": dict(block, cycle_accurate=True)}})
+    seconds, basis, _engine = CC._cycle_accurate_pick({"by_tier": {"L3": dict(block, cycle_accurate=True)}})
     assert seconds == 1.45, "the cost model must read the adapter's own simulator seconds"
     assert "wall_clock" not in basis, "a timed adapter must not be priced off the fallback"
 

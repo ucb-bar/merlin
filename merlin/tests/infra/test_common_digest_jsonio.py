@@ -4,6 +4,7 @@ Each ORIGINAL spelling found in the tree is reproduced verbatim below and compar
 over a corpus that includes non-ASCII text, floats, nesting and booleans -- so migrating a call site onto
 the shared helper cannot change a persisted digest. Pinned vectors guard the helpers themselves.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -13,8 +14,7 @@ import math
 import pytest
 
 from merlin.common.digest import is_sha256, sha256_bytes, sha256_file, sha256_text
-from merlin.common.jsonio import (canonical_json, canonical_sha256, write_canonical_json,
-                                  write_pretty_json)
+from merlin.common.jsonio import canonical_json, canonical_sha256, write_canonical_json, write_pretty_json
 
 CORPUS = [
     {"b": 1, "a": [1, 2.5, None, True]},
@@ -28,10 +28,10 @@ CORPUS = [
 ORIGINAL_ASCII_EQUIVALENT = {
     "lax .encode('utf-8')": lambda v: json.dumps(v, sort_keys=True, separators=(",", ":")).encode("utf-8"),
     "lax .encode()": lambda v: json.dumps(v, sort_keys=True, separators=(",", ":")).encode(),
-    "strict ascii": lambda v: json.dumps(v, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
-                                         allow_nan=False).encode("ascii"),
-    "strict .encode()": lambda v: json.dumps(v, sort_keys=True, separators=(",", ":"),
-                                             allow_nan=False).encode(),
+    "strict ascii": lambda v: json.dumps(
+        v, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
+    ).encode("ascii"),
+    "strict .encode()": lambda v: json.dumps(v, sort_keys=True, separators=(",", ":"), allow_nan=False).encode(),
 }
 
 
@@ -45,9 +45,9 @@ def test_every_ascii_spelling_is_byte_identical(name, value):
 @pytest.mark.parametrize("value", CORPUS, ids=range(len(CORPUS)))
 def test_raw_utf8_and_newline_contracts_keep_their_own_bytes(value):
     raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    assert canonical_json(value, ensure_ascii=False) == raw.encode("utf-8")        # targetgen/gsim_emulator
+    assert canonical_json(value, ensure_ascii=False) == raw.encode("utf-8")  # targetgen/gsim_emulator
     nl = (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode("utf-8")
-    assert canonical_json(value, trailing_newline=True) == nl                       # compare/frozen_environment
+    assert canonical_json(value, trailing_newline=True) == nl  # compare/frozen_environment
     nl_raw = (raw + "\n").encode("utf-8")
     assert canonical_json(value, ensure_ascii=False, trailing_newline=True) == nl_raw  # perf/deployment_admissibility
 
@@ -69,7 +69,7 @@ def test_pinned_vectors():
 
 def test_sha256_file_streams_and_matches_the_whole_read(tmp_path):
     p = tmp_path / "big.bin"
-    p.write_bytes(bytes(range(256)) * 9000)          # > one 1 MiB chunk
+    p.write_bytes(bytes(range(256)) * 9000)  # > one 1 MiB chunk
     assert sha256_file(p) == hashlib.sha256(p.read_bytes()).hexdigest()
     with pytest.raises(OSError):
         sha256_file(tmp_path / "absent")

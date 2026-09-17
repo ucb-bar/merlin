@@ -5,6 +5,7 @@ every ML-shaped operand identical — 4 of 6 deliberately wrong gemmini matmuls 
 These tests pin the properties that failure violated, so a future "simplification" of the fill cannot
 quietly reintroduce it.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -18,7 +19,7 @@ from merlin.runtime.tensor import Tensor
 
 
 def _rows(t: Tensor, cols: int) -> list[tuple]:
-    return [tuple(t.data[r * cols:(r + 1) * cols]) for r in range(len(t.data) // cols)]
+    return [tuple(t.data[r * cols : (r + 1) * cols]) for r in range(len(t.data) // cols)]
 
 
 def test_fill_is_deterministic_across_calls():
@@ -67,10 +68,10 @@ def test_a_wrong_matmul_changes_the_output():
     M = K = N = 16
     A = Tensor.deterministic("A0", (M, K), "i8")
     W = Tensor.deterministic("W", (K, N), "i8")
-    ref = [sum(A.data[m * K + k] * W.data[k * N + n] for k in range(K))
-           for m in range(M) for n in range(N)]
-    reversed_m = [sum(A.data[(M - 1 - m) * K + k] * W.data[k * N + n] for k in range(K))
-                  for m in range(M) for n in range(N)]
+    ref = [sum(A.data[m * K + k] * W.data[k * N + n] for k in range(K)) for m in range(M) for n in range(N)]
+    reversed_m = [
+        sum(A.data[(M - 1 - m) * K + k] * W.data[k * N + n] for k in range(K)) for m in range(M) for n in range(N)
+    ]
     assert reversed_m != ref
 
 
@@ -83,20 +84,25 @@ def test_emitted_c_fill_matches_the_python_fill(tmp_path):
     src.write_text(
         "#include <stdint.h>\n#include <stdio.h>\ntypedef signed char elem_t;\n"
         f"#define R {rows}\n#define C {cols}\n#define S {STIM.det_seed(name)}\n"
-        "static elem_t A[R][C];\n" + STIM.C_MIX_FN + "int main(void){\n"
-        + STIM.c_fill_loop_2d("A", "R", "C", "S") + "\n"
-        "for(int r=0;r<R;r++)for(int c=0;c<C;c++)printf(\"%d\\n\",(int)A[r][c]);return 0;}\n")
+        "static elem_t A[R][C];\n"
+        + STIM.C_MIX_FN
+        + "int main(void){\n"
+        + STIM.c_fill_loop_2d("A", "R", "C", "S")
+        + "\n"
+        'for(int r=0;r<R;r++)for(int c=0;c<C;c++)printf("%d\\n",(int)A[r][c]);return 0;}\n'
+    )
     exe = tmp_path / "fill"
     subprocess.run(["gcc", "-O2", "-o", str(exe), str(src)], check=True, capture_output=True)
-    got = [int(x) for x in subprocess.run([str(exe)], check=True, capture_output=True,
-                                          text=True).stdout.split()]
+    got = [int(x) for x in subprocess.run([str(exe)], check=True, capture_output=True, text=True).stdout.split()]
     assert got == Tensor.deterministic(name, (rows, cols), "i8").data
 
 
 def test_no_capsule_operand_of_the_graded_corpus_is_degenerate():
     """Corpus-level guard: the shipped gemmini capsules must not regress to hiding bugs."""
     import yaml
+
     from merlin.targetgen.corpus_operands import rigor_findings
+
     root = repo_root() / "merlin" / "contract" / "capsules"
     flagged = []
     for cat in ("isa", "layers", "model_slices"):

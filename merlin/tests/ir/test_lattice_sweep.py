@@ -4,6 +4,7 @@ The claim this supports is "the verified set is generated, not curated" — the 
 review comment that the capsules are case-specific. That claim is only worth anything if the extents
 really come from the hardware and the coverage number really counts distinct work.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -13,7 +14,8 @@ from merlin.verify.tools import find_mlir_tool
 
 pytestmark = pytest.mark.skipif(
     not (HAS_XDSL and HAS_Z3 and find_mlir_tool("mlir-translate")),
-    reason="needs the verify extra (xdsl + z3) and mlir-translate")
+    reason="needs the verify extra (xdsl + z3) and mlir-translate",
+)
 
 
 def _a_target_with_a_derived_edge() -> str:
@@ -72,7 +74,8 @@ def test_the_coverage_count_does_not_triple_count_one_query():
     rec = sweep(target, max_points=2, timeout_ms=120_000)
     assert rec["points_total"] == rec["cell_groups_swept"] * len(rec["lattice_points"])
     assert len(rec["cells_covered"]) >= rec["cell_groups_swept"], (
-        "a query group must cover at least the cell it came from")
+        "a query group must cover at least the cell it came from"
+    )
 
 
 def test_every_declared_cell_is_either_swept_or_omitted_with_a_reason():
@@ -98,7 +101,7 @@ def test_a_refutation_makes_the_sweep_fail():
 
 
 def test_an_omitted_family_names_the_real_blocker_not_a_generic_reason():
-    """"We have not written a builder" and "the target cannot represent this" need different work.
+    """ "We have not written a builder" and "the target cannot represent this" need different work.
 
     Measured 2026-09-05: the in-tree reference target declares exactly four ops, so `lower_to_target`
     refuses every non-contraction family and no command buffer exists to validate. The SMT encoder is

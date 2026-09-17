@@ -1,4 +1,5 @@
 """check_ratchets_shrink: a may-only-shrink ledger that grows must fail, in every mode it runs in."""
+
 from __future__ import annotations
 
 import subprocess
@@ -69,7 +70,7 @@ def test_same_count_swap_passes_but_is_reported(repo):
 
 def test_staged_mode_reads_the_index_not_the_working_tree(repo):
     root, led = repo
-    led.write_text("a.py\nb.py\nc.py\n")          # grown on disk, not staged
+    led.write_text("a.py\nb.py\nc.py\n")  # grown on disk, not staged
     assert _gate(root, "--staged")[0] == 0
     _git(root, "add", str(led))
     rc, out = _gate(root, "--staged")

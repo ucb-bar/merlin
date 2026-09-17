@@ -15,19 +15,39 @@ Two things then have to be true and neither is true by default:
 the exact set of capsules that lost their certificate. A matrix where every touch invalidates
 everything -- or nothing -- would prove nothing, so the assertion is on the whole matrix.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from merlin.perf.falsifier import (
-    ACCEPT, REJECT, UNDETERMINABLE as ETA_UNDETERMINABLE, ab_decision, eta_from_occupancy,
+    ACCEPT,
+    REJECT,
+    ab_decision,
+    eta_from_occupancy,
+)
+from merlin.perf.falsifier import (
+    UNDETERMINABLE as ETA_UNDETERMINABLE,
 )
 from merlin.perf.fork import (
-    HELD, UNDETERMINABLE, WEAKENED, ForkPoint, candidate_states, changed_components,
-    check_invariants, fork_from, fork_from_dict, requeue,
+    HELD,
+    UNDETERMINABLE,
+    WEAKENED,
+    ForkPoint,
+    candidate_states,
+    changed_components,
+    check_invariants,
+    fork_from,
+    fork_from_dict,
+    requeue,
 )
 from merlin.targetgen.oracle_schedule import (
-    CHANGED, FAIL, PASS, UNATTRIBUTED, CapsuleState, Verdict,
+    CHANGED,
+    FAIL,
+    PASS,
+    UNATTRIBUTED,
+    CapsuleState,
+    Verdict,
 )
 
 TIERS = ["L2", "L3"]
@@ -54,10 +74,15 @@ def _phase_f(digest=FORK_DIGEST, components=None, statuses=None) -> list[Capsule
     out = []
     for name, deps in DEPENDS.items():
         st = (statuses or {}).get(name, {"L2": PASS, "L3": PASS})
-        out.append(CapsuleState(
-            name=name, digest=digest, components=comps, depends_on=deps,
-            verdicts={t: Verdict(status=s, digest=digest, components=comps)
-                      for t, s in st.items()}))
+        out.append(
+            CapsuleState(
+                name=name,
+                digest=digest,
+                components=comps,
+                depends_on=deps,
+                verdicts={t: Verdict(status=s, digest=digest, components=comps) for t, s in st.items()},
+            )
+        )
     return out
 
 
@@ -82,7 +107,7 @@ def test_the_fork_pins_the_submission_by_content_and_by_component():
     assert f.capsules == tuple(sorted(DEPENDS))
     assert f.invariants["cap_parse"] == {"L2": PASS, "L3": PASS}
     assert f.depends_on["cap_parse"] == (C1,)
-    assert "cap_undeclared" not in f.depends_on          # declared nothing -> nothing recorded
+    assert "cap_undeclared" not in f.depends_on  # declared nothing -> nothing recorded
 
 
 def test_a_stale_certificate_is_not_promoted_to_an_invariant_by_forking():
@@ -90,10 +115,9 @@ def test_a_stale_certificate_is_not_promoted_to_an_invariant_by_forking():
     Phase P a correctness budget Phase F never actually established."""
     states = _phase_f()
     stale = states[0]
-    stale.verdicts["L3"] = Verdict(status=PASS, digest="some-older-submission",
-                                   components={C1: "different"})
+    stale.verdicts["L3"] = Verdict(status=PASS, digest="some-older-submission", components={C1: "different"})
     f = fork_from(states, tier_order=TIERS, recorded_at="20260830T000000Z")
-    assert f.invariants[stale.name] == {"L2": PASS}      # L3 dropped: it is not about these bytes
+    assert f.invariants[stale.name] == {"L2": PASS}  # L3 dropped: it is not about these bytes
 
 
 def test_a_failing_capsule_contributes_no_invariant():
@@ -130,8 +154,15 @@ def test_changed_components_names_what_moved():
 # -------------------------------------------------------------------------------------------------
 def _queued(component):
     digest, comps = _touch(component)
-    r = requeue(_fork(), digest=digest, components=comps, tier_order=TIERS, cert_tiers=CERT,
-                cert_cover={WORKLOAD, *DEPENDS}, cost_s=COST)
+    r = requeue(
+        _fork(),
+        digest=digest,
+        components=comps,
+        tier_order=TIERS,
+        cert_tiers=CERT,
+        cert_cover={WORKLOAD, *DEPENDS},
+        cost_s=COST,
+    )
     return r, {q["capsule"] for q in r["queue"]}
 
 
@@ -179,9 +210,15 @@ def test_a_capsule_that_declares_nothing_is_invalidated_by_any_edit():
 
 def test_re_earned_verdicts_take_the_capsule_back_out_of_the_queue():
     digest, comps = _touch(C1)
-    r = requeue(_fork(), digest=digest, components=comps, tier_order=TIERS, cert_tiers=CERT,
-                cost_s=COST, verdicts={"cap_parse": {"L2": PASS, "L3": PASS},
-                                       "cap_undeclared": {"L2": PASS, "L3": PASS}})
+    r = requeue(
+        _fork(),
+        digest=digest,
+        components=comps,
+        tier_order=TIERS,
+        cert_tiers=CERT,
+        cost_s=COST,
+        verdicts={"cap_parse": {"L2": PASS, "L3": PASS}, "cap_undeclared": {"L2": PASS, "L3": PASS}},
+    )
     assert r["queue"] == [] and set(r["unchanged"]) == set(DEPENDS)
 
 
@@ -191,8 +228,7 @@ def test_re_earned_verdicts_take_the_capsule_back_out_of_the_queue():
 def _check(component=C1, verdicts=None, **kw):
     f = _fork()
     digest, comps = _touch(component)
-    return check_invariants(f, candidate_states(f, digest=digest, components=comps,
-                                                verdicts=verdicts), **kw)
+    return check_invariants(f, candidate_states(f, digest=digest, components=comps, verdicts=verdicts), **kw)
 
 
 def test_nothing_re_run_is_undeterminable_not_held():
@@ -200,14 +236,17 @@ def test_nothing_re_run_is_undeterminable_not_held():
     certificates are not evidence about these bytes."""
     c = _check(C1)
     assert c.state == UNDETERMINABLE and c.ok is None
-    assert {(n, t) for n, t, _ in c.unproven} == {("cap_parse", "L2"), ("cap_parse", "L3"),
-                                                  ("cap_undeclared", "L2"), ("cap_undeclared", "L3")}
-    assert ("cap_cmdbuf", "L2") in c.held               # untouched, so still about these bytes
+    assert {(n, t) for n, t, _ in c.unproven} == {
+        ("cap_parse", "L2"),
+        ("cap_parse", "L3"),
+        ("cap_undeclared", "L2"),
+        ("cap_undeclared", "L3"),
+    }
+    assert ("cap_cmdbuf", "L2") in c.held  # untouched, so still about these bytes
 
 
 def test_a_re_earned_invariant_holds():
-    c = _check(C1, verdicts={"cap_parse": {"L2": PASS, "L3": PASS},
-                             "cap_undeclared": {"L2": PASS, "L3": PASS}})
+    c = _check(C1, verdicts={"cap_parse": {"L2": PASS, "L3": PASS}, "cap_undeclared": {"L2": PASS, "L3": PASS}})
     assert c.state == HELD and c.ok is True and not c.unproven
     assert len(c.held) == 8
 
@@ -216,13 +255,12 @@ def test_a_regression_weakens_the_fork_and_dominates_the_unproven():
     c = _check(C1, verdicts={"cap_parse": {"L2": FAIL}})
     assert c.state == WEAKENED and c.ok is False
     assert ("cap_parse", "L2") in c.weakened
-    assert c.unproven                                   # present, and does not change the verdict
+    assert c.unproven  # present, and does not change the verdict
 
 
 def test_a_capsule_the_candidate_never_reported_is_unproven():
     f = _fork()
-    states = [s for s in candidate_states(f, digest="sub-v2", components=FORK_COMPONENTS)
-              if s.name != "cap_codegen"]
+    states = [s for s in candidate_states(f, digest="sub-v2", components=FORK_COMPONENTS) if s.name != "cap_codegen"]
     c = check_invariants(f, states)
     assert c.missing == ("cap_codegen",) and c.state == UNDETERMINABLE
 
@@ -254,9 +292,9 @@ BIND = {"mv": "E_move", "ar": "E_arith"}
 
 
 def _eta(label, mover, arith):
-    return eta_from_occupancy(label, {"mv": [c == "1" for c in mover],
-                                      "ar": [c == "1" for c in arith]},
-                              unit_of=BIND, work="w")
+    return eta_from_occupancy(
+        label, {"mv": [c == "1" for c in mover], "ar": [c == "1" for c in arith]}, unit_of=BIND, work="w"
+    )
 
 
 BASE = _eta("base", "11110000", "00001111")
@@ -277,9 +315,7 @@ def test_a_weakened_fork_is_rejected_however_good_eta_is():
 
 
 def test_held_invariants_plus_a_risen_eta_accept():
-    c = _check(C1, verdicts={"cap_parse": {"L2": PASS, "L3": PASS},
-                             "cap_undeclared": {"L2": PASS, "L3": PASS}})
+    c = _check(C1, verdicts={"cap_parse": {"L2": PASS, "L3": PASS}, "cap_undeclared": {"L2": PASS, "L3": PASS}})
     assert ab_decision(BASE, BETTER, bit_exact=True, invariants_held=c.ok).state == ACCEPT
     # and the same held fork still rejects a schedule that bought no overlap
-    assert ab_decision(BASE, _eta("same", "11110000", "00001111"), bit_exact=True,
-                       invariants_held=c.ok).state == REJECT
+    assert ab_decision(BASE, _eta("same", "11110000", "00001111"), bit_exact=True, invariants_held=c.ok).state == REJECT

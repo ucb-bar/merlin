@@ -5,6 +5,7 @@ pass — correctness rests entirely on these shapes. That makes two failure mode
 specifically: a case that claims to exercise something it does not (the reason the overflow case was
 removed rather than kept), and a case silently disappearing from the frozen file.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -20,8 +21,8 @@ _TILE = 32
 class TestReference:
     def test_contracts_two_k_major_operands(self):
         # Both operands K-major is the layout the hardware forces; the result is (M, N).
-        lhs = np.array([[1, 2], [3, 4]], dtype=np.int8)     # (K=2, M=2)
-        rhs = np.array([[5], [6]], dtype=np.int8)           # (K=2, N=1)
+        lhs = np.array([[1, 2], [3, 4]], dtype=np.int8)  # (K=2, M=2)
+        rhs = np.array([[5], [6]], dtype=np.int8)  # (K=2, N=1)
         got = OC.reference(lhs, rhs)
         assert got.shape == (2, 1)
         assert got.tolist() == [[1 * 5 + 3 * 6], [2 * 5 + 4 * 6]]
@@ -86,12 +87,13 @@ class TestOverflowIsUnreachable:
         asserted rather than the adjective.
         """
         longest = max(c.resolved(_TILE).k for c in OC.load_corpus())
-        assert longest * (127 * 127) < 2**31 - 1, \
-            f"K={longest} at full int8 amplitude overflows the int32 accumulator"
+        assert longest * (127 * 127) < 2**31 - 1, f"K={longest} at full int8 amplitude overflows the int32 accumulator"
         headroom = OC.ACC_OVERFLOW_UNREACHABLE_ABOVE_K / longest
-        assert headroom > 10, (f"longest corpus reduction K={longest} leaves only {headroom:.1f}x of "
-                               "accumulator headroom; the missing saturation stops being a retired "
-                               "hazard well before this reaches 1x")
+        assert headroom > 10, (
+            f"longest corpus reduction K={longest} leaves only {headroom:.1f}x of "
+            "accumulator headroom; the missing saturation stops being a retired "
+            "hazard well before this reaches 1x"
+        )
 
 
 class TestCorpusContents:
@@ -291,6 +293,7 @@ class TestTheRequantEpilogue:
 
     def test_it_narrows_to_int8(self):
         import numpy as np
+
         acc = np.array([[0, 1000, -1000]], dtype=np.int64)
         mult = np.array([1 << OC.REQUANT_SHIFT] * 3, dtype=np.int64)
         got = OC.requantize(acc, mult)
@@ -298,6 +301,7 @@ class TestTheRequantEpilogue:
 
     def test_it_clamps_both_ways(self):
         import numpy as np
+
         acc = np.array([[1 << 20, -(1 << 20)]], dtype=np.int64)
         mult = np.array([1 << OC.REQUANT_SHIFT] * 2, dtype=np.int64)
         got = OC.requantize(acc, mult)
@@ -305,6 +309,7 @@ class TestTheRequantEpilogue:
 
     def test_a_unit_multiplier_is_the_identity_within_range(self):
         import numpy as np
+
         acc = np.array([[0, 5, -5, 100, -100]], dtype=np.int64)
         mult = np.array([1 << OC.REQUANT_SHIFT] * 5, dtype=np.int64)
         np.testing.assert_array_equal(OC.requantize(acc, mult), acc.astype(np.int8))
@@ -313,6 +318,7 @@ class TestTheRequantEpilogue:
         # THE case the C must match: exactly half an LSB, positive and negative. Half-up means +0.5 rounds
         # away from zero and -0.5 rounds TOWARD zero, which is what add-then-arithmetic-shift does.
         import numpy as np
+
         half = 1 << (OC.REQUANT_SHIFT - 1)
         acc = np.array([[half, -half]], dtype=np.int64)
         mult = np.array([1, 1], dtype=np.int64)
@@ -323,17 +329,18 @@ class TestTheRequantEpilogue:
     def test_the_multiplier_is_per_column_and_indexed_by_column(self):
         # A multiplier applied to the wrong axis is invisible when every column shares one value.
         import numpy as np
+
         # acc of 1 so the result is the multiplier scaled down -- with acc also at 1<<SHIFT the product
         # saturates and every column reads 127, which is what a first attempt at this test did.
         acc = np.ones((2, 3), dtype=np.int64)
-        mult = np.array([1 << OC.REQUANT_SHIFT, 2 << OC.REQUANT_SHIFT, 3 << OC.REQUANT_SHIFT],
-                        dtype=np.int64)
+        mult = np.array([1 << OC.REQUANT_SHIFT, 2 << OC.REQUANT_SHIFT, 3 << OC.REQUANT_SHIFT], dtype=np.int64)
         got = OC.requantize(acc, mult)
         np.testing.assert_array_equal(got[0], np.array([1, 2, 3], dtype=np.int8))
         np.testing.assert_array_equal(got[1], got[0])
 
     def test_a_wrong_length_multiplier_is_refused(self):
         import numpy as np
+
         with pytest.raises(ValueError, match="one per output column"):
             OC.requantize(np.zeros((2, 3), dtype=np.int64), np.array([1, 2], dtype=np.int64))
 
@@ -348,6 +355,7 @@ class TestTheRequantEpilogue:
         rq = [c for c in run if c.requant]
         assert len(rq) >= 5, f"only {len(rq)} epilogue case(s)"
         import numpy as np
+
         saturating = 0
         for c in rq:
             out = OC.requantize(OC.reference(*c.operands()[:2], c.operands()[2]), c.multiplier())

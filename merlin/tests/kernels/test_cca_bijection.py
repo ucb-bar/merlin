@@ -9,6 +9,7 @@ allowlisted in ``cca_contract.KNOWN_OPEN`` while WS-C Phase 2 closes them, so th
 fails the moment NEW drift appears. The reverse tripwire (``test_known_open_is_not_stale``) fails if an
 allowlisted gap is actually already closed — forcing KNOWN_OPEN to shrink to empty as the roadmap lands.
 """
+
 from __future__ import annotations
 
 from merlin.kernels import cca_contract as cc
@@ -33,7 +34,8 @@ def test_no_unexpected_bijection_drift_rvv():
         f"NEW bijection drift (not in cca_contract.KNOWN_OPEN):\n"
         f"  orphan_fields (LEVER field, no route): {unexpected.orphan_fields}\n"
         f"  orphan_routes (route, no backing field): {unexpected.orphan_routes}\n"
-        "Either add the missing route/field, or (if intentionally deferred) document it in KNOWN_OPEN.")
+        "Either add the missing route/field, or (if intentionally deferred) document it in KNOWN_OPEN."
+    )
 
 
 def test_known_open_is_not_stale():
@@ -61,13 +63,15 @@ def test_no_unexpected_bijection_drift_gemmini():
     residency) are backed and there is no orphan. Fixed mesh geometry is IDENTITY, excluded. The routes
     come from the discovered hardware, not per-target Python."""
     from merlin.targetgen import rtl_backend
+
     rtl_backend.register("gemmini")
     unexpected = cc.check_bijection("gemmini").unexpected()
     assert unexpected.clean, (
         f"NEW bijection drift (not in cca_contract.KNOWN_OPEN['gemmini']):\n"
         f"  orphan_fields (LEVER field, no route): {unexpected.orphan_fields}\n"
         f"  orphan_routes (route, no backing field): {unexpected.orphan_routes}\n"
-        "Either the derived routes changed, or document it in KNOWN_OPEN['gemmini'].")
+        "Either the derived routes changed, or document it in KNOWN_OPEN['gemmini']."
+    )
 
 
 def test_known_open_is_not_stale_gemmini():
@@ -126,7 +130,8 @@ def _registered_backends() -> list[str]:
     tables). Registering it in the test keeps its bijection checked in the meantime rather than
     checked never; when the real caller lands, this line becomes redundant, not wrong.
     """
-    from merlin.kernels import action_catalog as AC, cca_matrix
+    from merlin.kernels import action_catalog as AC
+    from merlin.kernels import cca_matrix
 
     cca_matrix.register_routes()
     return sorted(b for b, routes in AC._ROUTES.items() if routes)
@@ -167,7 +172,8 @@ def test_no_unexpected_bijection_drift_on_any_backend():
         "NEW bijection drift (not in cca_contract.KNOWN_OPEN), per backend "
         "(orphan_fields = LEVER with no route, orphan_routes = route with no backing field):\n"
         + "\n".join(f"  {b}: fields={f} routes={r}" for b, (f, r) in sorted(dirty.items()))
-        + "\nEither add the missing route/field, or (if intentionally deferred) document it in KNOWN_OPEN.")
+        + "\nEither add the missing route/field, or (if intentionally deferred) document it in KNOWN_OPEN."
+    )
 
 
 def test_a_family_tagged_axis_is_not_inherited_without_a_route():
@@ -181,16 +187,25 @@ def test_a_family_tagged_axis_is_not_inherited_without_a_route():
     from merlin.kernels import action_catalog as AC
 
     backend = "family_probe_backend"
-    AC._ROUTES.setdefault(backend, []).append(AC._Route(
-        axis="compute.contraction_form", when=lambda d: True, action_class="KNOB",
-        target_seam="knob:probe", change="probe", forkable_now=False, expected_effect="probe"))
+    AC._ROUTES.setdefault(backend, []).append(
+        AC._Route(
+            axis="compute.contraction_form",
+            when=lambda d: True,
+            action_class="KNOB",
+            target_seam="knob:probe",
+            change="probe",
+            forkable_now=False,
+            expected_effect="probe",
+        )
+    )
     try:
         leverable = cc.leverable_axes(backend)
         assert "compute.contraction_form" in leverable, "a ROUTED family axis must be leverable"
         # ... but nothing else in the family comes along for the ride.
         assert "compute.epilogue" not in leverable, (
             "an UNROUTED family axis leaked in — family tags would then force every backend to route "
-            "every compute lever, which is the opposite of what they are for")
+            "every compute lever, which is the opposite of what they are for"
+        )
         assert cc.check_bijection(backend).orphan_routes == []
     finally:
         AC._ROUTES.pop(backend, None)
@@ -212,23 +227,24 @@ class TestTheContractSeesEveryFacetTheCCAHas:
         from merlin.kernels import cca as ccamod
         from merlin.kernels.cca_contract import FACET_CLASSES
 
-        facet_types = {n for n, o in vars(ccamod).items()
-                       if dataclasses.is_dataclass(o) and n.endswith("Facet")}
-        on_cca = {f.name for f in dataclasses.fields(ccamod.CCA)
-                  if any(t in str(f.type) for t in facet_types)}
+        facet_types = {n for n, o in vars(ccamod).items() if dataclasses.is_dataclass(o) and n.endswith("Facet")}
+        on_cca = {f.name for f in dataclasses.fields(ccamod.CCA) if any(t in str(f.type) for t in facet_types)}
         assert set(FACET_CLASSES) == on_cca, (
             f"the contract sees {sorted(set(FACET_CLASSES))} but the CCA has {sorted(on_cca)}; a "
-            "facet the contract cannot see has fields it cannot require to be classified")
+            "facet the contract cannot see has fields it cannot require to be classified"
+        )
 
     def test_every_field_of_every_facet_has_a_row(self):
         import dataclasses
 
         from merlin.kernels.cca_contract import FACET_CLASSES, FIELD_REGISTRY
 
-        missing = [f"{fname}.{fld.name}"
-                   for fname, cls in FACET_CLASSES.items()
-                   for fld in dataclasses.fields(cls)
-                   if f"{fname}.{fld.name}" not in FIELD_REGISTRY]
+        missing = [
+            f"{fname}.{fld.name}"
+            for fname, cls in FACET_CLASSES.items()
+            for fld in dataclasses.fields(cls)
+            if f"{fname}.{fld.name}" not in FIELD_REGISTRY
+        ]
         assert not missing, f"unclassified facet field(s): {missing}"
 
     def test_the_facet_that_exposed_this_is_visible_without_a_list_entry(self):

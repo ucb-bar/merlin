@@ -10,6 +10,7 @@ corpus reported 40/40 where 9 of those passes were the fixture rather than the s
 nothing in the artifact recorded the difference. `TierResult.toolchain` carries what the adapter actually
 built, so a reader can subtract the fixture passes instead of taking the headline at face value.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen.capsule_runner import TierResult
@@ -19,7 +20,8 @@ def test_a_reported_toolchain_rides_the_tier_record():
     d = TierResult("L2", "pass", True, toolchain="mx-reference-kernel(not-the-submission;fork)").to_dict()
     assert d["toolchain"] == "mx-reference-kernel(not-the-submission;fork)", (
         "the graded program must reach capsule_result.json — without it a fixture pass and a real pass "
-        "are indistinguishable in a finished score")
+        "are indistinguishable in a finished score"
+    )
 
 
 def test_the_stamp_names_that_it_is_not_the_submission():
@@ -32,8 +34,17 @@ def test_output_is_unchanged_when_no_toolchain_was_reported():
     """Most adapters report nothing; their rows must stay byte-identical to before the field existed."""
     d = TierResult("L2", "pass", True).to_dict()
     assert "toolchain" not in d
-    assert set(d) == {"status", "mandatory", "not_run_is_not_pass", "reason", "cycles",
-                      "derived_from_rtl", "cycle_accurate", "evidence", "timing"}
+    assert set(d) == {
+        "status",
+        "mandatory",
+        "not_run_is_not_pass",
+        "reason",
+        "cycles",
+        "derived_from_rtl",
+        "cycle_accurate",
+        "evidence",
+        "timing",
+    }
 
 
 def test_the_mx_branch_precedes_the_artifact_branch():
@@ -50,14 +61,14 @@ def test_the_mx_branch_precedes_the_artifact_branch():
 
     muon = _bk.get_backend("muon")
     import importlib
+
     src = inspect.getsource(importlib.import_module(muon.__name__ + ".muon_oracles"))
     tree = ast.parse(src)
     mx_line = mlir_line = None
     for node in ast.walk(tree):
         # the MX gate is the assignment of _mxprog; it keys off the golden-derived mx_operands bundle
         # rather than any dtype the agent wrote (see test_mx_route_is_spelling_independent).
-        if isinstance(node, ast.Assign) and any(
-                isinstance(t, ast.Name) and t.id == "_mxprog" for t in node.targets):
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "_mxprog" for t in node.targets):
             if mx_line is None:
                 mx_line = node.lineno
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
@@ -67,4 +78,5 @@ def test_the_mx_branch_precedes_the_artifact_branch():
     assert mlir_line is not None, "the MLIR artifact branch disappeared"
     assert mx_line < mlir_line, (
         "the MX route must be decided before is_mlir_artifact, or an MLIR submission skips the reference "
-        "kernel and the capsule becomes unwinnable again")
+        "kernel and the capsule becomes unwinnable again"
+    )

@@ -16,6 +16,7 @@ search can PROPOSE but a fresh process cannot RESOLVE by name is not a reproduci
 The test is written against the MODULES, not against a list of names, so a lever added tomorrow is
 covered the day it lands.
 """
+
 from __future__ import annotations
 
 import ast
@@ -43,11 +44,14 @@ def _lever_modules() -> dict[str, str]:
         features: list[str] = []
         has_ensure = False
         for node in tree.body:
-            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) \
-                    and isinstance(node.value.value, str) \
-                    and any(isinstance(t, ast.Name)
-                            and (t.id == "FEATURE" or t.id.endswith("_FEATURE"))
-                            for t in node.targets):
+            if (
+                isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+                and any(
+                    isinstance(t, ast.Name) and (t.id == "FEATURE" or t.id.endswith("_FEATURE")) for t in node.targets
+                )
+            ):
                 features.append(node.value.value)
             elif isinstance(node, ast.FunctionDef) and node.name == "ensure_registered":
                 has_ensure = True
@@ -73,13 +77,18 @@ def test_lever_resolves_by_name_in_a_fresh_process(name: str) -> None:
     only ever registers as a side effect of something else this test session already imported.
     """
     proc = subprocess.run(
-        [sys.executable, "-c",
-         "import sys\n"
-         "from merlin.llvmlower import impr_features as F\n"
-         f"f = F.get({name!r})\n"
-         f"assert f.name == {name!r}, f.name\n"
-         "print('resolved')\n"],
-        capture_output=True, text=True, timeout=300,
+        [
+            sys.executable,
+            "-c",
+            "import sys\n"
+            "from merlin.llvmlower import impr_features as F\n"
+            f"f = F.get({name!r})\n"
+            f"assert f.name == {name!r}, f.name\n"
+            "print('resolved')\n",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
         cwd=str(Path(merlin_dir()).parent),
     )
     assert proc.returncode == 0, f"{name} did not resolve by name: {proc.stderr[-1500:]}"

@@ -15,11 +15,22 @@ that make it worth having:
 
 The third state is asserted as a distinct value everywhere, never as "not rose".
 """
+
 from __future__ import annotations
 
 from merlin.perf.falsifier import (
-    ACCEPT, DID_NOT_RISE, ENGINE_AXIS, KIND_AXIS, REJECT, ROSE, UNDETERMINABLE, EtaObservation,
-    ab_decision, compare_eta, eta_from_occupancy, eta_from_timing_block,
+    ACCEPT,
+    DID_NOT_RISE,
+    ENGINE_AXIS,
+    KIND_AXIS,
+    REJECT,
+    ROSE,
+    UNDETERMINABLE,
+    EtaObservation,
+    ab_decision,
+    compare_eta,
+    eta_from_occupancy,
+    eta_from_timing_block,
 )
 
 # Two decoupled engines with a nested third, declared by the producer. No target, no unit name from
@@ -64,7 +75,7 @@ def test_eta_is_realised_over_available_overlap():
     # available overlap cycles are realised. Both engines are busy 8 cycles in both schedules.
     assert (o2.realised_cycles, o2.available_cycles) == (4, 8)
     assert o2.eta == 0.5
-    assert o.busy == o2.busy == _obs("reshuffled", RESHUFFLED).busy   # identical work, resequenced
+    assert o.busy == o2.busy == _obs("reshuffled", RESHUFFLED).busy  # identical work, resequenced
 
 
 def test_a_denominator_of_zero_is_none_not_zero():
@@ -74,10 +85,9 @@ def test_a_denominator_of_zero_is_none_not_zero():
     o = EtaObservation("hand-built", realised_cycles=0, available_cycles=0, engines=("a", "b"))
     assert o.eta is None and not o.measured
 
-    solo = eta_from_occupancy("solo", _vec("1111000011110000", "0000000000000000"),
-                              unit_of=BIND, kinds=KINDS)
+    solo = eta_from_occupancy("solo", _vec("1111000011110000", "0000000000000000"), unit_of=BIND, kinds=KINDS)
     assert solo.eta is None and solo.realised_cycles is None
-    assert "live column" in solo.detail          # the earlier, more specific refusal
+    assert "live column" in solo.detail  # the earlier, more specific refusal
 
 
 # -------------------------------------------------------------------------------------------------
@@ -87,11 +97,11 @@ def test_the_falsifier_fires_on_a_bit_exact_reordering_that_bought_nothing():
     """The whole point. The candidate is a real, different schedule; the hardware's reservation
     station makes it bit-exact; and it is REJECTED because eta did not move."""
     base, cand = _obs("serial", SERIAL), _obs("reshuffled", RESHUFFLED)
-    assert base.eta == 0.0 and cand.eta == 0.0            # both measured, both zero -- comparable
+    assert base.eta == 0.0 and cand.eta == 0.0  # both measured, both zero -- comparable
 
     verdict = compare_eta(base, cand)
     assert verdict.state == DID_NOT_RISE
-    assert verdict.state != UNDETERMINABLE                # the two must never be collapsed
+    assert verdict.state != UNDETERMINABLE  # the two must never be collapsed
     assert verdict.delta == 0.0 and not verdict.fell
 
     decision = ab_decision(base, cand, bit_exact=True, invariants_held=True)
@@ -117,9 +127,10 @@ def test_bit_exactness_alone_never_accepts():
     """The archetype's trap, stated as a test: on this machine bit_exact is True for every candidate,
     so a gate that stopped there would accept all three of these."""
     base = _obs("serial", SERIAL)
-    states = {name: ab_decision(base, _obs(name, v), bit_exact=True, invariants_held=True).state
-              for name, v in (("serial", SERIAL), ("reshuffled", RESHUFFLED),
-                              ("overlapped", OVERLAPPED))}
+    states = {
+        name: ab_decision(base, _obs(name, v), bit_exact=True, invariants_held=True).state
+        for name, v in (("serial", SERIAL), ("reshuffled", RESHUFFLED), ("overlapped", OVERLAPPED))
+    }
     assert states == {"serial": REJECT, "reshuffled": REJECT, "overlapped": ACCEPT}
 
 
@@ -129,13 +140,11 @@ def test_bit_exactness_alone_never_accepts():
 def test_a_vector_that_could_not_show_overlap_is_undeterminable_not_zero():
     """A joint vector with fewer than two live columns reports zero ARITHMETICALLY, and that zero is
     indistinguishable from a machine that genuinely serialises."""
-    one = eta_from_occupancy("one-column", {"mover.busy": [True, True, False, False]},
-                             unit_of=BIND, kinds=KINDS)
+    one = eta_from_occupancy("one-column", {"mover.busy": [True, True, False, False]}, unit_of=BIND, kinds=KINDS)
     assert one.eta is None
     v = compare_eta(one, _obs("overlapped", OVERLAPPED))
     assert v.state == UNDETERMINABLE
-    assert ab_decision(one, _obs("o", OVERLAPPED), bit_exact=True,
-                       invariants_held=True).state == UNDETERMINABLE
+    assert ab_decision(one, _obs("o", OVERLAPPED), bit_exact=True, invariants_held=True).state == UNDETERMINABLE
 
 
 def test_two_live_columns_inside_one_engine_cannot_show_engine_overlap():
@@ -160,8 +169,7 @@ def test_an_unbound_busy_column_is_undeterminable():
 def test_an_unread_unit_refuses_the_reading_rather_than_shrinking_it():
     """A unit with no top-level busy port reads as permanently idle; including one such unit moved a
     measured kernel's idle fraction from 89.9% to 39.2%. UNKNOWN, never idle."""
-    o = eta_from_occupancy("partial", OVERLAPPED, unit_of=BIND, kinds=KINDS,
-                           unmeasured=("E_vector",))
+    o = eta_from_occupancy("partial", OVERLAPPED, unit_of=BIND, kinds=KINDS, unmeasured=("E_vector",))
     assert o.eta is None and "E_vector" in o.detail
 
 
@@ -170,8 +178,9 @@ def test_different_engine_sets_are_undeterminable_never_scored_zero():
     moving work off an engine as speeding that engine up."""
     third = dict(OVERLAPPED)
     third["extra.busy"] = [False] * 10 + [True] * 6
-    cand = eta_from_occupancy("three", third, unit_of={**BIND, "extra.busy": "E_other"},
-                              kinds={**KINDS, "extra.busy": "compute"}, work="w")
+    cand = eta_from_occupancy(
+        "three", third, unit_of={**BIND, "extra.busy": "E_other"}, kinds={**KINDS, "extra.busy": "compute"}, work="w"
+    )
     v = compare_eta(_obs("serial", SERIAL), cand)
     assert v.state == UNDETERMINABLE and "E_other" in v.reason
 
@@ -189,7 +198,7 @@ def test_two_axes_are_two_instruments():
     kind_axis = eta_from_timing_block("blocky", _RECORD)
     assert kind_axis.axis == KIND_AXIS and a.axis == ENGINE_AXIS
     assert compare_eta(a, kind_axis).state == UNDETERMINABLE
-    assert compare_eta(a, b).state == ROSE            # same axis still compares
+    assert compare_eta(a, b).state == ROSE  # same axis still compares
 
 
 # -------------------------------------------------------------------------------------------------
@@ -202,7 +211,7 @@ def test_a_sub_signal_does_not_manufacture_self_overlap():
     hot = dict(SERIAL)
     hot["mover.load"] = [c and i < 4 for i, c in enumerate(hot["mover.busy"])]
     o = eta_from_occupancy("nested-signal", hot, unit_of=BIND, kinds=KINDS, work="w")
-    assert o.realised_cycles == 0                     # the fold happened; no self-overlap counted
+    assert o.realised_cycles == 0  # the fold happened; no self-overlap counted
     assert o.busy["E_move"] == 8
 
 
@@ -211,10 +220,14 @@ def test_a_nested_engine_is_structure_and_is_not_folded_away():
     nests exactly like a sub-signal -- and its concurrency with the host IS the measurement. The
     engines are DECLARED apart, so the inner one survives and the overlap is counted."""
     hot = {"outer.busy": [True] * 10 + [False] * 6, "inner.busy": [False] * 2 + [True] * 6 + [False] * 8}
-    o = eta_from_occupancy("nested-engine", hot,
-                           unit_of={"outer.busy": "E_cluster", "inner.busy": "E_array"},
-                           kinds={"outer.busy": "compute", "inner.busy": "compute"}, work="w")
-    assert o.realised_cycles == 6                     # not 0 -- the inner engine was not deleted
+    o = eta_from_occupancy(
+        "nested-engine",
+        hot,
+        unit_of={"outer.busy": "E_cluster", "inner.busy": "E_array"},
+        kinds={"outer.busy": "compute", "inner.busy": "compute"},
+        work="w",
+    )
+    assert o.realised_cycles == 6  # not 0 -- the inner engine was not deleted
     assert set(o.engines) == {"E_cluster", "E_array"}
 
 
@@ -229,8 +242,11 @@ def _record(*, partitioned: bool, overlap: int, unmeasured=(), alias=0, mover=8,
             {"quantity": "overlap_cycles.across_kinds", "value": overlap},
             {"quantity": "sampled_cycles.dbg_tap", "value": 16},
         ],
-        "timing_capability": {"unmeasured_units": list(unmeasured), "partitioned": partitioned,
-                              "alias_collisions": alias},
+        "timing_capability": {
+            "unmeasured_units": list(unmeasured),
+            "partitioned": partitioned,
+            "alias_collisions": alias,
+        },
     }
 
 
@@ -287,8 +303,7 @@ def test_unchecked_phase_f_invariants_do_not_promote():
     undeterminable, and defaulting them to held is how an unmeasured thing becomes a measured pass."""
     d = ab_decision(_obs("s", SERIAL), _obs("o", OVERLAPPED), bit_exact=True)
     assert d.state == UNDETERMINABLE and "not checked" in d.reason
-    assert ab_decision(_obs("s", SERIAL), _obs("o", OVERLAPPED), bit_exact=True,
-                       invariants_held=False).state == REJECT
+    assert ab_decision(_obs("s", SERIAL), _obs("o", OVERLAPPED), bit_exact=True, invariants_held=False).state == REJECT
 
 
 def test_the_three_states_are_three_distinct_values():

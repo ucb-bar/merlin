@@ -7,12 +7,14 @@ golden. The artifacts must already be captured under ``output/small_consistent``
 seeded, consistent inputs+golden+MLIR+weights bundle). Skips when the chipyard toolchain
 or the captured model is absent.
 """
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 from pathlib import Path
 
 import pytest
+
+from merlin.common.paths import merlin_dir, repo_root
 
 REPO = repo_root()
 MODEL = REPO / "out/artifacts/recaptures/small_consistent"
@@ -24,8 +26,7 @@ def _toolchain():
     return spike.available()
 
 
-pytestmark = pytest.mark.skipif(
-    not (MODEL / "model.mlir").is_file(), reason="small_llama capture not present")
+pytestmark = pytest.mark.skipif(not (MODEL / "model.mlir").is_file(), reason="small_llama capture not present")
 
 
 def test_c_runtime_generation_is_data_driven(tmp_path):
@@ -35,10 +36,10 @@ def test_c_runtime_generation_is_data_driven(tmp_path):
     info = c_runtime.generate(MODEL, tmp_path, MODEL / "inputs.npz")
     assert info["out_shape"] == [1, 8, 256]
     gen = (tmp_path / "model_gen.h").read_text()
-    assert "MERLIN_N_ARGS 23" in gen          # 22 forward args + output
+    assert "MERLIN_N_ARGS 23" in gen  # 22 forward args + output
     assert "MERLIN_ARGS" in gen
     call = (tmp_path / "model_call.c").read_text()
-    assert call.count("d[") == 23             # unrolled ciface arity
+    assert call.count("d[") == 23  # unrolled ciface arity
     assert (tmp_path / "weights.bin").stat().st_size == info["weights_bytes"]
 
 

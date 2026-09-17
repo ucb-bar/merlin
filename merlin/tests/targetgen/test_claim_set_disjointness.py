@@ -11,6 +11,7 @@ SUBSTANCE: the requirement derived from the derivation set alone is the same one
 substance is satisfiable by holding out nothing that mattered; substance is the property a reader of
 the claim actually needs.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -36,7 +37,8 @@ def test_the_declaration_names_the_four_claim_models():
     assert set(CM.claim_models()) == {"resnet50_v1_5", "lstmnetvit", "smolvla", "tiny_llama"}
     assert CM.exclusion_rule(), "the standard a reviewer applies must be stated, not implied"
     assert "claim_captures" in CM.forbidden_sources(), (
-        "a name is not enough to exclude a model; the artifact classes carrying its facts must be named")
+        "a name is not enough to exclude a model; the artifact classes carrying its facts must be named"
+    )
 
 
 def test_matching_is_on_token_boundaries_not_substrings():
@@ -57,8 +59,12 @@ def test_matching_is_on_token_boundaries_not_substrings():
 
 
 def test_the_partition_puts_every_bundle_on_exactly_one_side():
-    caps = {"gemma2_2b_int8_full": Path("a"), "tiny_llama_fp32_full": Path("b"),
-            "small_llama_int8_consistent": Path("c"), "smolvla_fp32_consistent": Path("d")}
+    caps = {
+        "gemma2_2b_int8_full": Path("a"),
+        "tiny_llama_fp32_full": Path("b"),
+        "small_llama_int8_consistent": Path("c"),
+        "smolvla_fp32_consistent": Path("d"),
+    }
     derivation, claim = CM.partition(caps)
     assert set(derivation) | set(claim) == set(caps)
     assert not (set(derivation) & set(claim))
@@ -87,10 +93,11 @@ def test_the_coverage_gate_derives_from_the_derivation_set_only():
     everything = mod._captures(include_claim_models=True)
     assert derivation, "the derivation set must not be empty"
     assert not [n for n in derivation if CM.is_claim_bundle(n)], (
-        f"held-out models reached requirement derivation: "
-        f"{[n for n in derivation if CM.is_claim_bundle(n)]}")
+        f"held-out models reached requirement derivation: {[n for n in derivation if CM.is_claim_bundle(n)]}"
+    )
     assert len(everything) > len(derivation), (
-        "the unfiltered view must actually include the claim models, or the filter is untested")
+        "the unfiltered view must actually include the claim models, or the filter is untested"
+    )
 
 
 def test_the_gate_reports_the_requirement_as_independent_of_the_held_out_models():
@@ -118,12 +125,12 @@ def test_the_gate_reports_the_requirement_as_independent_of_the_held_out_models(
             continue
         assert row["requirement_is_independent"] is True
         assert row["cells_depending_on_a_claim_model"] == []
-        assert row["n_cells_derivation_only"] > 0, (
-            "a derivation that yields no cell has established nothing")
+        assert row["n_cells_derivation_only"] > 0, "a derivation that yields no cell has established nothing"
         verified += 1
     assert verified, (
         f"no target among {targets} could be verified, so this test established nothing; that is the "
-        f"failure mode it is written against, not a pass")
+        f"failure mode it is written against, not a pass"
+    )
 
 
 def test_holding_out_everything_is_not_a_pass():
@@ -156,7 +163,7 @@ def test_the_conv_derivation_gap_is_recorded_rather_than_hidden():
 
 
 def test_an_unresolvable_contract_is_not_an_empty_requirement():
-    """"Nothing admitted" has two causes and they license opposite actions.
+    """ "Nothing admitted" has two causes and they license opposite actions.
 
     "This target's manifest admits no family a capture contains" is a final answer. "This target has no
     generated contract to read" is a missing artifact, and a requirement derived from it is UNKNOWN,
@@ -173,8 +180,7 @@ def test_an_unresolvable_contract_is_not_an_empty_requirement():
 
     missing, why_missing = CF.admitted_with_reason("definitely_not_a_target")
     assert missing == {}
-    assert why_missing.startswith("unresolvable:"), (
-        f"an unresolvable contract must say so, got {why_missing!r}")
+    assert why_missing.startswith("unresolvable:"), f"an unresolvable contract must say so, got {why_missing!r}"
 
 
 def test_a_zero_cell_derivation_is_never_reported_ok():
@@ -208,4 +214,5 @@ def test_the_written_specs_cite_no_held_out_model():
         # citation would contain.
         assert not cited, (
             f"{spec.name} cites held-out model(s) {cited} as requirement evidence; regenerate it with "
-            f"--write so the requirement is derived from the derivation set alone")
+            f"--write so the requirement is derived from the derivation set alone"
+        )

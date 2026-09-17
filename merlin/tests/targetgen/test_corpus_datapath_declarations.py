@@ -10,6 +10,7 @@ reference: it fails a correct compiler forever, with a number nobody can act on.
   * ``inapplicable_oracle_tiers`` — a tier that cannot corroborate a result is reported skipped/N/A with
     its reason, not failed every round. Guarded so it can never silence a REQUIRED oracle.
 """
+
 from __future__ import annotations
 
 import sys
@@ -31,6 +32,7 @@ import generate_corpus as GC  # noqa: E402
 @dataclass(frozen=True)
 class _Fmt:
     """The shape of a refmodel float format: only the two fields the decoder derives from."""
+
     exp_bits: int
     mant_bits: int
 
@@ -43,12 +45,13 @@ class _D:
 
     def decode_float_exact(self, raw, fmt):
         self.calls.append(int(raw))
-        return Fraction(int(raw))            # a sentinel value, not real arithmetic
+        return Fraction(int(raw))  # a sentinel value, not real arithmetic
 
 
 # --------------------------------------------------------------------------------------------------
 # operand decode
 # --------------------------------------------------------------------------------------------------
+
 
 def test_exact_decode_is_the_default_and_delegates_untouched():
     d = _D()
@@ -61,7 +64,7 @@ def test_exact_decode_is_the_default_and_delegates_untouched():
 def test_declared_flush_sends_every_zero_exponent_code_to_zero():
     d = _D()
     dec = GC._operand_decoder(d, _Fmt(exp_bits=4, mant_bits=3), flush_subnormals=True)
-    for code in (0x00, 0x06, 0x07, 0x80, 0x86, 0x87):     # exponent field zero, both signs
+    for code in (0x00, 0x06, 0x07, 0x80, 0x86, 0x87):  # exponent field zero, both signs
         assert dec(code) == 0, f"code {code:#04x} should flush"
     assert d.calls == [], "a flushed code must not reach the refmodel decode at all"
 
@@ -69,7 +72,7 @@ def test_declared_flush_sends_every_zero_exponent_code_to_zero():
 def test_declared_flush_leaves_normal_codes_alone():
     d = _D()
     dec = GC._operand_decoder(d, _Fmt(exp_bits=4, mant_bits=3), flush_subnormals=True)
-    assert dec(0x08) == Fraction(0x08)       # smallest NORMAL e4m3 (exponent field 1)
+    assert dec(0x08) == Fraction(0x08)  # smallest NORMAL e4m3 (exponent field 1)
     assert dec(0x7F) == Fraction(0x7F)
     assert d.calls == [0x08, 0x7F]
 
@@ -97,9 +100,11 @@ def test_binding_defaults_to_no_flush():
 # inapplicable oracle tiers
 # --------------------------------------------------------------------------------------------------
 
+
 def test_inapplicable_tiers_are_carried_with_their_reason():
-    got = CS._inapplicable_tiers({"inapplicable_oracle_tiers": {"L2": "  the model is a different machine  "}},
-                                 ["L0", "L3"])
+    got = CS._inapplicable_tiers(
+        {"inapplicable_oracle_tiers": {"L2": "  the model is a different machine  "}}, ["L0", "L3"]
+    )
     assert got == {"L2": "the model is a different machine"}
 
 

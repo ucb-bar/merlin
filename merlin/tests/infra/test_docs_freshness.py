@@ -3,6 +3,7 @@
 Asserts the committed tree is self-consistent: generated docs are fresh, front-matter is
 schema-valid, the hub is in sync, no retired paths, and the drift detector actually fires.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -15,8 +16,7 @@ SCRIPTS = ROOT / "build_tools" / "scripts"
 
 
 def _run(script: str, *args: str):
-    return subprocess.run([sys.executable, str(SCRIPTS / script), *args],
-                          capture_output=True, text=True)
+    return subprocess.run([sys.executable, str(SCRIPTS / script), *args], capture_output=True, text=True)
 
 
 def test_docs_aggregator_clean():
@@ -25,8 +25,7 @@ def test_docs_aggregator_clean():
 
 
 def test_hub_and_generated_docs_fresh():
-    for script in ("gen_docs_index.py", "gen_cli_docs.py",
-                   "gen_package_docs.py", "gen_schema_docs.py"):
+    for script in ("gen_docs_index.py", "gen_cli_docs.py", "gen_package_docs.py", "gen_schema_docs.py"):
         r = _run(script, "--check")
         assert r.returncode == 0, f"{script} stale:\n{r.stderr}{r.stdout}"
 
@@ -44,6 +43,7 @@ def test_no_retired_paths():
 def test_drift_detector_reports_json():
     """--json must return a well-formed worklist (the docs-doctor backbone)."""
     import json
+
     r = _run("check_docs_freshness.py", "--json")
     assert r.returncode == 0, r.stderr
     data = json.loads(r.stdout)
@@ -55,6 +55,7 @@ def test_freshness_ratchet_fails_on_new_drift_and_passes_when_ratcheted(tmp_path
     """--ratchet must fail on a drifted doc that is not in the ledger, pass once it is, and say so
     when a ratcheted doc has healed. Built in a throwaway repo so real-tree drift cannot mask it."""
     import shutil
+
     scripts = tmp_path / "build_tools" / "scripts"
     scripts.mkdir(parents=True)
     for name in ("check_docs_freshness.py", "_front_matter.py"):
@@ -63,10 +64,17 @@ def test_freshness_ratchet_fails_on_new_drift_and_passes_when_ratcheted(tmp_path
     (tmp_path / "src" / "a.py").write_text("x = 1\n")
     doc = tmp_path / "docs" / "guides" / "g.md"
     doc.parent.mkdir(parents=True)
-    doc.write_text("---\ntitle: g\nkind: guide\nstatus: current\nowner: core\n"
-                   "last_verified: 2000-01-01\ncode_refs: [src/a.py]\n---\n# g\n")
-    for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"],
-                 ["add", "-A"], ["commit", "-qm", "c"]):
+    doc.write_text(
+        "---\ntitle: g\nkind: guide\nstatus: current\nowner: core\n"
+        "last_verified: 2000-01-01\ncode_refs: [src/a.py]\n---\n# g\n"
+    )
+    for args in (
+        ["init", "-q"],
+        ["config", "user.email", "t@t"],
+        ["config", "user.name", "t"],
+        ["add", "-A"],
+        ["commit", "-qm", "c"],
+    ):
         subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
     gate = [sys.executable, str(scripts / "check_docs_freshness.py"), "--ratchet"]
     r = subprocess.run(gate, cwd=tmp_path, capture_output=True, text=True)
@@ -88,6 +96,7 @@ def test_every_front_matter_spelling_of_a_list_is_read_the_same():
     Both are valid YAML, so the parser is what has to change.
     """
     import sys as _sys
+
     _sys.path.insert(0, str(SCRIPTS))
     import _front_matter
 
@@ -105,6 +114,7 @@ def test_a_quoted_scalar_reaches_the_reader_unquoted():
     """`title: "Design: ..."` was reaching the generated hub with its quotes still attached, and
     sorting under `"` instead of under D."""
     import sys as _sys
+
     _sys.path.insert(0, str(SCRIPTS))
     import _front_matter
 
@@ -116,20 +126,31 @@ def test_a_code_ref_that_does_not_resolve_is_a_schema_error(tmp_path):
     """A doc citing a file that is not there cannot be checked for drift at all -- so it fails
     closed rather than reading as drifted forever."""
     import shutil
+
     scripts = tmp_path / "build_tools" / "scripts"
     scripts.mkdir(parents=True)
     for name in ("check_docs_freshness.py", "_front_matter.py"):
         shutil.copy(SCRIPTS / name, scripts / name)
     doc = tmp_path / "docs" / "guides" / "g.md"
     doc.parent.mkdir(parents=True)
-    doc.write_text("---\ntitle: g\nkind: guide\nstatus: current\nowner: core\n"
-                   "last_verified: 2026-01-01\ncode_refs: [src/gone.py]\n---\n# g\n")
-    r = subprocess.run([sys.executable, str(scripts / "check_docs_freshness.py"), "--check"],
-                       cwd=tmp_path, capture_output=True, text=True)
+    doc.write_text(
+        "---\ntitle: g\nkind: guide\nstatus: current\nowner: core\n"
+        "last_verified: 2026-01-01\ncode_refs: [src/gone.py]\n---\n# g\n"
+    )
+    r = subprocess.run(
+        [sys.executable, str(scripts / "check_docs_freshness.py"), "--check"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
     assert r.returncode == 1 and "does not exist" in (r.stdout + r.stderr)
 
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "gone.py").write_text("x = 1\n")
-    r = subprocess.run([sys.executable, str(scripts / "check_docs_freshness.py"), "--check"],
-                       cwd=tmp_path, capture_output=True, text=True)
+    r = subprocess.run(
+        [sys.executable, str(scripts / "check_docs_freshness.py"), "--check"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
     assert r.returncode == 0, r.stdout + r.stderr

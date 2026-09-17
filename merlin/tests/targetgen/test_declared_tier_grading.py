@@ -19,6 +19,7 @@ Every assertion here is driven by the corpus + endpoint, never by a target liter
 whichever tiers the descriptors declare rather than asserting a particular target reaches a particular
 tier.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -27,8 +28,7 @@ from merlin.common.paths import repo_root
 from merlin.targetgen import capsule_runner as CR
 from merlin.targetgen.capsule_common import load_capsule
 from merlin.targetgen.contract import schemas
-from merlin.targetgen.contract.materialize import (_cap_required, _cap_tiers, declared_oracle_tiers,
-                                                   public_capsules_for)
+from merlin.targetgen.contract.materialize import _cap_required, _cap_tiers, declared_oracle_tiers, public_capsules_for
 from merlin.targetgen.program_oracle import OracleUnavailable, ProgramDidNotHalt
 from merlin.targetgen.runner_config import RunnerConfig
 from merlin.targetgen.target_experiment import load_target_experiment
@@ -72,7 +72,7 @@ def test_loop_tier_is_a_tier_the_corpus_declares():
         te = load_target_experiment(d / "target_experiment.yaml")
         try:
             full = CR.oracle_adapters(te.target, te.sim_via)
-        except Exception:                       # noqa: BLE001 — endpoint not resolvable in this env
+        except Exception:  # noqa: BLE001 — endpoint not resolvable in this env
             continue
         declared = declared_oracle_tiers(*te.graded_roots())
         if not full or not declared:
@@ -83,12 +83,14 @@ def test_loop_tier_is_a_tier_the_corpus_declares():
             assert loop, f"{te.target}: a declared tier is reachable but no loop tier was chosen"
             assert set(loop) <= declared, (
                 f"{te.target}: loop tier {sorted(loop)} is NOT declared by its corpus "
-                f"{sorted(declared)} — that is the silent substitution")
+                f"{sorted(declared)} — that is the silent substitution"
+            )
             assert len(loop) == 1, "the fast loop still rides exactly one tier"
         else:
             assert loop == {}, (
                 f"{te.target}: no declared tier is reachable, so the loop must fail closed, not "
-                f"substitute one of {sorted(full)}")
+                f"substitute one of {sorted(full)}"
+            )
     if not checked:
         pytest.skip("no target's endpoint resolved in this environment")
 
@@ -97,16 +99,18 @@ def test_unreachable_declared_tier_fails_closed_and_names_both_sets(tmp_path):
     """When the endpoint reaches none of the declared tiers the loop returns nothing (never a
     substitute), and materialization raises naming declared-vs-reachable."""
     import yaml
+
     te = _te("gemmini")
     # L5 (firesim) is declared by no capsule here and reached by no endpoint in this environment.
     assert CR.qa_loop_adapters(te.target, te.sim_via, declared_tiers={"L5"}) == {}
 
     corpus = tmp_path / "isa"
     (corpus / "X0_unreachable").mkdir(parents=True)
-    (corpus / "X0_unreachable" / "capsule.yaml").write_text(yaml.safe_dump(
-        {"name": "X0_unreachable", "label": "public", "required_oracle_tiers": ["L0", "L5"]}))
+    (corpus / "X0_unreachable" / "capsule.yaml").write_text(
+        yaml.safe_dump({"name": "X0_unreachable", "label": "public", "required_oracle_tiers": ["L0", "L5"]})
+    )
 
-    class _Fake:                                 # a descriptor whose corpus declares an unreachable tier
+    class _Fake:  # a descriptor whose corpus declares an unreachable tier
         target, sim_via, capsule_corpus = te.target, te.sim_via, corpus
 
         def corpus_siblings(self):
@@ -127,9 +131,16 @@ def _atlas_shaped_config(tier: str) -> RunnerConfig:
     """A float/self-hosted-ISA grading config whose single RTL tier is ``tier``. Shape, not identity —
     the target name is a label here, the behavior under test is tier-independent."""
     return RunnerConfig(
-        target="atlas", suite="atlas-capsule-bench", dtype="fp8_e4m3",
-        fourth_output_name="kernel.S", tier_sim={tier: "endpoint-sim"},
-        rtl_tiers=frozenset({tier}), oracle_tiers=(tier,), perf_fields=(), trace_gate=None)
+        target="atlas",
+        suite="atlas-capsule-bench",
+        dtype="fp8_e4m3",
+        fourth_output_name="kernel.S",
+        tier_sim={tier: "endpoint-sim"},
+        rtl_tiers=frozenset({tier}),
+        oracle_tiers=(tier,),
+        perf_fields=(),
+        trace_gate=None,
+    )
 
 
 def _stub_front_half(monkeypatch):
@@ -153,16 +164,23 @@ def test_did_not_halt_is_its_own_plane_not_oracle_unavailable(tmp_path, monkeypa
     def hung(cb, llvm_text, workdir, timeout):
         raise ProgramDidNotHalt("target program did not halt within 20000 instructions (functional)")
 
-    res = CR.run_capsule(_capsule_declaring(tier), "unused-package", runs_root=tmp_path,
-                         run_id="hung", config=_atlas_shaped_config(tier),
-                         oracle_adapters={tier: hung})
+    res = CR.run_capsule(
+        _capsule_declaring(tier),
+        "unused-package",
+        runs_root=tmp_path,
+        run_id="hung",
+        config=_atlas_shaped_config(tier),
+        oracle_adapters={tier: hung},
+    )
 
     assert res["failure"]["plane"] == CR.DID_NOT_HALT_PLANE
     assert res["failure"]["plane"] != "oracle_unavailable", (
-        "a program that RAN and hung must not be reported as an absent oracle")
+        "a program that RAN and hung must not be reported as an absent oracle"
+    )
     assert "did not halt" in res["failure"]["detail"]
     assert "halt/terminate instruction" in res["failure"]["detail"], (
-        "the detail must name the fix, not just the symptom")
+        "the detail must name the fix, not just the symptom"
+    )
     # the tier itself records a FAIL (a verdict), never 'unavailable' (an absence).
     assert res["tiers"][tier]["status"] == "fail"
     assert res["status"] == "fail"
@@ -177,9 +195,14 @@ def test_absent_oracle_is_still_reported_as_unavailable(tmp_path, monkeypatch):
     def absent(cb, llvm_text, workdir, timeout):
         raise OracleUnavailable("model venv python absent")
 
-    res = CR.run_capsule(_capsule_declaring(tier), "unused-package", runs_root=tmp_path,
-                         run_id="absent", config=_atlas_shaped_config(tier),
-                         oracle_adapters={tier: absent})
+    res = CR.run_capsule(
+        _capsule_declaring(tier),
+        "unused-package",
+        runs_root=tmp_path,
+        run_id="absent",
+        config=_atlas_shaped_config(tier),
+        oracle_adapters={tier: absent},
+    )
 
     assert res["tiers"][tier]["status"] == "unavailable"
     assert res["status"] == "incomplete"
@@ -199,13 +222,12 @@ def test_declared_aware_selection_is_a_noop_when_the_fastest_tier_is_declared():
     te = _te("gemmini")
     try:
         full = CR.oracle_adapters(te.target, te.sim_via)
-    except Exception:                            # noqa: BLE001
+    except Exception:  # noqa: BLE001
         pytest.skip("endpoint not resolvable in this environment")
     if not full:
         pytest.skip("no oracle adapters in this environment")
     declared = declared_oracle_tiers(*te.graded_roots())
-    assert min(full) in declared, (
-        "precondition: this target's corpus declares its fastest reachable tier")
+    assert min(full) in declared, "precondition: this target's corpus declares its fastest reachable tier"
     legacy = sorted(CR.qa_loop_adapters(te.target, te.sim_via))
     aware = sorted(CR.qa_loop_adapters(te.target, te.sim_via, declared_tiers=declared))
     assert legacy == aware, f"loop tier changed for an in-flight target: {legacy} -> {aware}"
@@ -220,16 +242,18 @@ def test_materialized_required_tiers_are_a_subset_of_the_declared_ones():
         te = load_target_experiment(d / "target_experiment.yaml")
         try:
             dest = public_capsules_for(te)
-        except Exception:                        # noqa: BLE001 — endpoint/corpus not resolvable here
+        except Exception:  # noqa: BLE001 — endpoint/corpus not resolvable here
             continue
         import yaml
-        declared = declared_oracle_tiers(*te.graded_roots())      # the ORIGINAL corpus's declaration
+
+        declared = declared_oracle_tiers(*te.graded_roots())  # the ORIGINAL corpus's declaration
         for cap_yaml in sorted(dest.glob("*/capsule.yaml")):
             doc = yaml.safe_load(cap_yaml.read_text()) or {}
             got = set(doc.get("required_oracle_tiers") or [])
             assert got <= declared, (
                 f"{te.target}/{cap_yaml.parent.name}: graded tiers {sorted(got)} include one the corpus "
-                f"never declared ({sorted(got - declared)}) — a substitution")
+                f"never declared ({sorted(got - declared)}) — a substitution"
+            )
             checked += 1
     if not checked:
         pytest.skip("no target's corpus materialized in this environment")

@@ -13,6 +13,7 @@ Four layers, cheapest first:
 4. NUMERICS — the whole int8 capture, lowered both ways to a host object and run: BIT-IDENTICAL
    output, and both arms gating against the fp32 AND w8a8 goldens. Slow, behind ``MERLIN_RUN_SLOW``.
 """
+
 from __future__ import annotations
 
 import os
@@ -25,7 +26,8 @@ from merlin.common.paths import artifacts_dir
 from merlin.llvmlower import perop_blocks as PB
 from merlin.llvmlower import requant_fuse as RF
 from merlin.llvmlower.impr_features import ensure_perop_block, get, known
-from merlin.llvmlower.toolchain import available as _toolchain_available, mlir_translate
+from merlin.llvmlower.toolchain import available as _toolchain_available
+from merlin.llvmlower.toolchain import mlir_translate
 
 BUNDLE = artifacts_dir() / "recaptures" / "lstmnetvit_int8_consistent"
 
@@ -71,6 +73,7 @@ def _mlir_opt():
 # 1. registration / default-off
 # ---------------------------------------------------------------------------------------------
 
+
 def test_feature_is_registered_and_is_a_pass():
     assert RF.ensure_registered() == RF.FEATURE
     assert RF.FEATURE in known()
@@ -93,10 +96,16 @@ def test_naming_both_points_is_refused(tmp_path):
     """Two spellings of one fusion in one feature set describe two builds; there is no correct way to
     pick one, so the preparation must refuse rather than let sorted order decide."""
     from merlin.runtime.backends.zephyr_model import prepare_for_lowering
+
     with pytest.raises(ValueError) as e:
-        prepare_for_lowering(BUNDLE / "model.mlir", tmp_path, int8_compute=True,
-                             features=frozenset(["perop_register_block", RF.FEATURE,
-                                                 RF.VEC_FEATURE]), harts=1, vlen=256)
+        prepare_for_lowering(
+            BUNDLE / "model.mlir",
+            tmp_path,
+            int8_compute=True,
+            features=frozenset(["perop_register_block", RF.FEATURE, RF.VEC_FEATURE]),
+            harts=1,
+            vlen=256,
+        )
     assert RF.VEC_FEATURE in str(e.value)
 
 
@@ -106,10 +115,12 @@ def test_either_point_without_the_block_request_is_refused(tmp_path):
     """The pair tags come from the per-op tagger; named alone the lever would tag nothing, build the
     baseline and report as applied."""
     from merlin.runtime.backends.zephyr_model import prepare_for_lowering
+
     for name in (RF.FEATURE, RF.VEC_FEATURE):
         with pytest.raises(ValueError) as e:
-            prepare_for_lowering(BUNDLE / "model.mlir", tmp_path, int8_compute=True,
-                                 features=frozenset([name]), harts=1, vlen=256)
+            prepare_for_lowering(
+                BUNDLE / "model.mlir", tmp_path, int8_compute=True, features=frozenset([name]), harts=1, vlen=256
+            )
         assert "perop_register_block" in str(e.value)
 
 
@@ -125,6 +136,7 @@ def test_only_the_epilogue_vectorize_differs_between_the_points():
     extra = [l for l in vec.split("\n") if l not in plain.split("\n")]
     assert len(extra) == 1 and "vectorize" in extra[0], extra
     from merlin.llvmlower.impr_features import ensure_perop_block as _e
+
     assert _e(_TABLE, 16, [[0, 4, 8, 2]]) != _e(_TABLE, 16, [[0, 4, 8, 2]], True)
 
 
@@ -133,12 +145,17 @@ def test_name_resolves_without_importing_the_proposer():
     a lever registered only by `wholemodel_proposer` raises there while resolving fine in the parent.
     Asserted in a real fresh interpreter rather than by reading the hook."""
     import sys
+
     for name in (RF.FEATURE, RF.VEC_FEATURE):
         proc = subprocess.run(
-            [sys.executable, "-c",
-             "from merlin.llvmlower.impr_features import normalize;"
-             f"print(sorted(normalize([{name!r}])))"],
-            capture_output=True, text=True)
+            [
+                sys.executable,
+                "-c",
+                f"from merlin.llvmlower.impr_features import normalize;print(sorted(normalize([{name!r}])))",
+            ],
+            capture_output=True,
+            text=True,
+        )
         assert proc.returncode == 0, (name, proc.stderr)
         assert name in proc.stdout
 
@@ -175,16 +192,13 @@ def test_pairing_removes_the_generic_parallel_tag_from_its_contraction(tmp_path)
     """The fused arm owns the same shard, so the generic arm must not also claim it."""
     src = tmp_path / "model.mlir"
     aliases, function = _TRIPLE.split("func.func", 1)
-    src.write_text(aliases + "builtin.module {\n  func.func" + function + "\n}\n",
-                   encoding="utf-8")
+    src.write_text(aliases + "builtin.module {\n  func.func" + function + "\n}\n", encoding="utf-8")
     pairs = []
     tagged = PB.tag_prepared_mlir(
-        src, _TABLE, work=tmp_path,
-        par_table={"linalg.matmul:8x32:64": (0, 8)},
-        pair_fuse=True, pairs_out=pairs)
+        src, _TABLE, work=tmp_path, par_table={"linalg.matmul:8x32:64": (0, 8)}, pair_fuse=True, pairs_out=pairs
+    )
     text = tagged.read_text(encoding="utf-8")
-    contraction = next(line for line in text.splitlines()
-                       if RF.tag_for(0, RF.ROLE_CONTRACTION) in line)
+    contraction = next(line for line in text.splitlines() if RF.tag_for(0, RF.ROLE_CONTRACTION) in line)
     assert PB.PAR_TAG_PREFIX not in contraction, contraction
     assert pairs == [[0, 4, 8, 2, 0, 8]], pairs
 
@@ -201,6 +215,7 @@ def test_tiling_is_derived_from_the_parallel_rank_and_refuses_anything_else():
 # ---------------------------------------------------------------------------------------------
 # 2. the pairing predicate, over the real IR shape
 # ---------------------------------------------------------------------------------------------
+
 
 def _pair_probe(module_text: str) -> tuple[list, dict]:
     """Run the TAGGER's own pairing phase in the m2m venv and return ``(pairs, refused)``.
@@ -220,17 +235,20 @@ def _pair_probe(module_text: str) -> tuple[list, dict]:
             "import sys, json\n"
             "from torch_mlir import ir\n"
             "from torch_mlir.passmanager import PassManager\n"
-            + PB.runner_rewrite_src(_TABLE, pair_fuse=True) +
-            "\nctx = ir.Context()\nctx.allow_unregistered_dialects = True\n"
+            + PB.runner_rewrite_src(_TABLE, pair_fuse=True)
+            + "\nctx = ir.Context()\nctx.allow_unregistered_dialects = True\n"
             "mod = ir.Module.parse(open(sys.argv[1]).read(), ctx)\n"
             "with ctx, ir.Location.unknown():\n"
             "    pairs, refused = tag_requant_pairs(mod, ctx)\n"
-            "print('PAIRS', json.dumps([pairs, refused]))\n", encoding="utf-8")
-        proc = subprocess.run([str(m2m_python()), str(td / "probe.py"), str(td / "m.mlir")],
-                              capture_output=True, text=True)
+            "print('PAIRS', json.dumps([pairs, refused]))\n",
+            encoding="utf-8",
+        )
+        proc = subprocess.run(
+            [str(m2m_python()), str(td / "probe.py"), str(td / "m.mlir")], capture_output=True, text=True
+        )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     line = next(l for l in proc.stdout.splitlines() if l.startswith("PAIRS "))
-    return tuple(json.loads(line[len("PAIRS "):]))
+    return tuple(json.loads(line[len("PAIRS ") :]))
 
 
 @pytest.mark.skipif(not _toolchain_available(), reason="m2m venv not configured")
@@ -248,14 +266,15 @@ def test_a_second_consumer_of_the_accumulator_refuses():
         "  return %rq : tensor<8x32xf32>",
         "  %oe2 = tensor.empty() : tensor<8x32xf32>\n"
         "  %rq2 = linalg.generic {indexing_maps = [#par, #par],\n"
-        "                         iterator_types = [\"parallel\", \"parallel\"]}\n"
+        '                         iterator_types = ["parallel", "parallel"]}\n'
         "      ins(%mm : tensor<8x32xi32>) outs(%oe2 : tensor<8x32xf32>) {\n"
         "  ^bb0(%ac: i32, %o: f32):\n"
         "    %fv = arith.sitofp %ac : i32 to f32\n"
         "    linalg.yield %fv : f32\n"
         "  } -> tensor<8x32xf32>\n"
         "  %s = arith.addf %rq, %rq2 : tensor<8x32xf32>\n"
-        "  return %s : tensor<8x32xf32>")
+        "  return %s : tensor<8x32xf32>",
+    )
     pairs, refused = _pair_probe(text)
     assert pairs == [], pairs
     assert refused == {"accumulator_has_2_uses": 1}, refused
@@ -267,11 +286,12 @@ def test_a_reducing_consumer_refuses():
     the contraction in would change which reductions are complete when the consumer runs."""
     text = _TRIPLE.replace(
         'iterator_types = ["parallel", "parallel"]}\n'
-        '      ins(%mm, %sa, %sb : tensor<8x32xi32>, tensor<8xf32>, tensor<32xf32>)\n'
-        '      outs(%oe : tensor<8x32xf32>)',
+        "      ins(%mm, %sa, %sb : tensor<8x32xi32>, tensor<8xf32>, tensor<32xf32>)\n"
+        "      outs(%oe : tensor<8x32xf32>)",
         'iterator_types = ["parallel", "reduction"]}\n'
-        '      ins(%mm, %sa, %sb : tensor<8x32xi32>, tensor<8xf32>, tensor<32xf32>)\n'
-        '      outs(%oe : tensor<8x32xf32>)')
+        "      ins(%mm, %sa, %sb : tensor<8x32xi32>, tensor<8xf32>, tensor<32xf32>)\n"
+        "      outs(%oe : tensor<8x32xf32>)",
+    )
     pairs, refused = _pair_probe(text)
     assert pairs == [], pairs
     assert refused == {"consumer_has_reduction": 1}, refused
@@ -284,14 +304,15 @@ def test_a_shared_accumulator_fill_refuses():
     text = _TRIPLE.replace(
         "  return %rq : tensor<8x32xf32>",
         "  %keep = linalg.generic {indexing_maps = [#par, #par],\n"
-        "                          iterator_types = [\"parallel\", \"parallel\"]}\n"
+        '                          iterator_types = ["parallel", "parallel"]}\n'
         "      ins(%fl : tensor<8x32xi32>) outs(%oe : tensor<8x32xf32>) {\n"
         "  ^bb0(%ac: i32, %o: f32):\n"
         "    %fv = arith.sitofp %ac : i32 to f32\n"
         "    linalg.yield %fv : f32\n"
         "  } -> tensor<8x32xf32>\n"
         "  %s = arith.addf %rq, %keep : tensor<8x32xf32>\n"
-        "  return %s : tensor<8x32xf32>")
+        "  return %s : tensor<8x32xf32>",
+    )
     pairs, refused = _pair_probe(text)
     assert pairs == [], pairs
     assert refused == {"fill_shared": 1}, refused
@@ -301,36 +322,48 @@ def test_a_shared_accumulator_fill_refuses():
 # 3. IR — the epilogue lands in the tile loop and the model-sized i32 tensor is gone
 # ---------------------------------------------------------------------------------------------
 
+
 def _tagged_triple() -> str:
     """``_TRIPLE`` with the three pair attributes applied by hand, in the tagger's own spelling.
 
     Hand-applied rather than tagger-applied so this layer needs only ``mlir-opt``: what it is testing
     is the ARMS, and the tagger's own output is what layer 2 asserts.
     """
-    text = _TRIPLE.replace("{merlin.blk_mm_4x8}",
-                           "{" + RF.tag_for(0, RF.ROLE_CONTRACTION) + "}")
-    text = text.replace("%fl = linalg.fill ins",
-                        "%fl = linalg.fill {" + RF.tag_for(0, RF.ROLE_FILL) + "} ins")
-    return text.replace("%rq = linalg.generic {indexing_maps",
-                        "%rq = linalg.generic {" + RF.tag_for(0, RF.ROLE_REQUANT)
-                        + ", indexing_maps")
+    text = _TRIPLE.replace("{merlin.blk_mm_4x8}", "{" + RF.tag_for(0, RF.ROLE_CONTRACTION) + "}")
+    text = text.replace("%fl = linalg.fill ins", "%fl = linalg.fill {" + RF.tag_for(0, RF.ROLE_FILL) + "} ins")
+    return text.replace(
+        "%rq = linalg.generic {indexing_maps",
+        "%rq = linalg.generic {" + RF.tag_for(0, RF.ROLE_REQUANT) + ", indexing_maps",
+    )
 
 
 def _run_sched(tmp_path, arms: str, tag: str) -> str:
     src = tmp_path / f"{tag}.mlir"
     src.write_text(_tagged_triple(), encoding="utf-8")
     lib = tmp_path / f"{tag}_sched.mlir"
-    lib.write_text("module attributes {transform.with_named_sequence} {\n"
-                   "  transform.named_sequence @__transform_main"
-                   "(%arg0: !transform.any_op {transform.readonly}) {\n"
-                   f"{arms}"
-                   "    transform.yield\n  }\n}\n", encoding="utf-8")
+    lib.write_text(
+        "module attributes {transform.with_named_sequence} {\n"
+        "  transform.named_sequence @__transform_main"
+        "(%arg0: !transform.any_op {transform.readonly}) {\n"
+        f"{arms}"
+        "    transform.yield\n  }\n}\n",
+        encoding="utf-8",
+    )
     out = tmp_path / f"{tag}.out.mlir"
     proc = subprocess.run(
-        [str(_mlir_opt()), str(src),
-         f"--transform-preload-library=transform-library-paths={lib}",
-         "--transform-interpreter", "--canonicalize", "--cse", "-o", str(out)],
-        capture_output=True, text=True)
+        [
+            str(_mlir_opt()),
+            str(src),
+            f"--transform-preload-library=transform-library-paths={lib}",
+            "--transform-interpreter",
+            "--canonicalize",
+            "--cse",
+            "-o",
+            str(out),
+        ],
+        capture_output=True,
+        text=True,
+    )
     assert proc.returncode == 0, proc.stderr
     return out.read_text(encoding="utf-8")
 
@@ -343,7 +376,7 @@ def test_the_accumulator_is_tile_sized_and_the_epilogue_is_in_the_tile_loop(tmp_
     assert "tensor<8x32xi32>" not in text
     assert "tensor<4x8xi32>" in text
     # and the epilogue's arithmetic is inside the tile loop, after the K loop
-    body = text[text.index("scf.for"):]
+    body = text[text.index("scf.for") :]
     assert "arith.sitofp" in body and "arith.mulf" in body
     # the contraction is vectorized either way; only the epilogue's own shape follows the knob
     assert "vector<4x8xi32>" in text
@@ -365,9 +398,14 @@ def test_parallel_fused_arm_has_forall_outside_the_serial_register_tile(tmp_path
 def test_control_without_the_two_fusions_keeps_the_model_sized_accumulator(tmp_path):
     """CONTROL. Tiling the epilogue ALONE must leave the whole i32 accumulator in place — otherwise a
     passing fused case would be evidence of the tiling, not of the fusion."""
-    arms = "\n".join(l for l in RF.fused_arms([[0, 4, 8, 2]]).split("\n")
-                     if "fuse_into_containing_op" not in l
-                     and "%q0ck" not in l and "%q0cf" not in l) + "\n"
+    arms = (
+        "\n".join(
+            l
+            for l in RF.fused_arms([[0, 4, 8, 2]]).split("\n")
+            if "fuse_into_containing_op" not in l and "%q0ck" not in l and "%q0cf" not in l
+        )
+        + "\n"
+    )
     text = _run_sched(tmp_path, arms, "control")
     assert "tensor<8x32xi32>" in text
 
@@ -375,6 +413,7 @@ def test_control_without_the_two_fusions_keeps_the_model_sized_accumulator(tmp_p
 # ---------------------------------------------------------------------------------------------
 # 4. numerics — whole model, both goldens, bit-identical
 # ---------------------------------------------------------------------------------------------
+
 
 @pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"), reason="whole-model lowering; MERLIN_RUN_SLOW=1")
 @pytest.mark.skipif(not _toolchain_available(), reason="m2m venv / clang not configured")
@@ -391,17 +430,24 @@ def test_whole_model_output_is_bit_identical_and_gates(tmp_path):
     golden_w8a8 = np.load(BUNDLE / "golden_w8a8.npy")
     args = resolve_forward_args(BUNDLE)
     outs = {}
-    for name, feats in (("base", ["perop_register_block"]),
-                        ("fused", ["perop_register_block", RF.FEATURE])):
+    for name, feats in (("base", ["perop_register_block"]), ("fused", ["perop_register_block", RF.FEATURE])):
         work = tmp_path / name
         work.mkdir(parents=True, exist_ok=True)
-        prepared, concrete = prepare_for_lowering(BUNDLE / "model.mlir", work, int8_compute=True,
-                                                  features=frozenset(feats), harts=1, vlen=256)
+        prepared, concrete = prepare_for_lowering(
+            BUNDLE / "model.mlir", work, int8_compute=True, features=frozenset(feats), harts=1, vlen=256
+        )
         upstream, _ = preprocess_text_textual(prepared.read_text(encoding="utf-8"))
         ll = work / "model.ll"
-        ll.write_text(lower_to_llvm_ir(upstream, workdir=work, vectorize=True,
-                                       transform_schedule=RVV_TRANSFORM_SCHEDULE,
-                                       features=frozenset(concrete or ())), encoding="utf-8")
+        ll.write_text(
+            lower_to_llvm_ir(
+                upstream,
+                workdir=work,
+                vectorize=True,
+                transform_schedule=RVV_TRANSFORM_SCHEDULE,
+                features=frozenset(concrete or ()),
+            ),
+            encoding="utf-8",
+        )
         so = build_host_shared(ll, work / "model_host.so")
         out = np.zeros(golden.shape, dtype=np.float32)
         bufs = [(a.ctypes.data, list(a.shape)) for a in args] + [(out.ctypes.data, list(out.shape))]
@@ -423,11 +469,17 @@ def test_every_contraction_of_the_int8_capture_pairs(tmp_path):
     tagged contraction pairs, so a later change that quietly stops pairing them is a test failure and
     not a lever that measures as a no-op."""
     from merlin.runtime.backends.zephyr_model import prepare_for_lowering
+
     work = tmp_path / "prep"
     work.mkdir(parents=True, exist_ok=True)
     _prepared, _ = prepare_for_lowering(
-        BUNDLE / "model.mlir", work, int8_compute=True,
-        features=frozenset(["perop_register_block", RF.FEATURE]), harts=1, vlen=256)
+        BUNDLE / "model.mlir",
+        work,
+        int8_compute=True,
+        features=frozenset(["perop_register_block", RF.FEATURE]),
+        harts=1,
+        vlen=256,
+    )
     tagged = (work / "model.perop_tagged.mlir").read_text(encoding="utf-8")
     n_pairs = tagged.count(RF.TAG_PREFIX) // 3
     assert n_pairs >= 40, n_pairs

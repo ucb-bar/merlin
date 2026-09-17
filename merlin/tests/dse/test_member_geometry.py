@@ -5,15 +5,20 @@ cheaply ask whether real models present its shape -- which was true of 27 of the
 OBJECTIVE members on this corpus, every one of them in a geometric class the target's measured census
 does not contain at all.
 """
+
 from __future__ import annotations
 
 from merlin.perf import member_geometry as MG
 
 
 def _matmul_capsule(*, m: int, k: int, n: int, op: str = "matmul") -> dict:
-    return {"operation": {"op": op, "attributes": {"weight": "W", "lhs": "A0"}},
-            "inputs": [{"name": "W", "role": "weight", "shape": [k, n], "dtype": "i8"},
-                       {"name": "A0", "role": "input", "shape": [m, k], "dtype": "i8"}]}
+    return {
+        "operation": {"op": op, "attributes": {"weight": "W", "lhs": "A0"}},
+        "inputs": [
+            {"name": "W", "role": "weight", "shape": [k, n], "dtype": "i8"},
+            {"name": "A0", "role": "input", "shape": [m, k], "dtype": "i8"},
+        ],
+    }
 
 
 class TestGeometryComesFromTheCapsuleNotTheEntry:
@@ -38,8 +43,10 @@ class TestGeometryComesFromTheCapsuleNotTheEntry:
 
     def test_an_op_with_no_contraction_operands_is_refused_with_its_reason(self):
         """An elementwise member has no (M,K,N); inventing one would misattribute it."""
-        cap = {"operation": {"op": "bias_add", "attributes": {}},
-               "inputs": [{"name": "X", "role": "input", "shape": [16, 16], "dtype": "i8"}]}
+        cap = {
+            "operation": {"op": "bias_add", "attributes": {}},
+            "inputs": [{"name": "X", "role": "input", "shape": [16, 16], "dtype": "i8"}],
+        }
         g = MG.declared_geometry(cap)
         assert g["status"] == "refused" and "bias_add" in g["reason"]
 

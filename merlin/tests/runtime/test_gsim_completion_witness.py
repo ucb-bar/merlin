@@ -13,6 +13,7 @@ That is the recurring shape in this repo: a check that could not run reporting s
 sibling has always required its positive marker, so requiring one here brings the two engines of the
 same tier to one standard rather than inventing a new bar.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -25,14 +26,21 @@ MO = get_backend("muon").muon_oracles
 muon = get_backend("muon").muon
 
 
-@pytest.mark.parametrize("console, why", [
-    pytest.param("", "an empty console", id="empty"),
-    pytest.param("[gsim-stats] dram_aw=0 dram_w=0 uart_chars=0\n",
-                 "the exact console the measured radiance run produced: the emulator ran and stopped, "
-                 "the kernel wrote nothing and printed nothing", id="measured-radiance-shape"),
-    pytest.param("C0: 386090 [1] pc=[8000002c] inst=[b7e5]\n", "a carrier spin loop and nothing else",
-                 id="spin-only"),
-])
+@pytest.mark.parametrize(
+    "console, why",
+    [
+        pytest.param("", "an empty console", id="empty"),
+        pytest.param(
+            "[gsim-stats] dram_aw=0 dram_w=0 uart_chars=0\n",
+            "the exact console the measured radiance run produced: the emulator ran and stopped, "
+            "the kernel wrote nothing and printed nothing",
+            id="measured-radiance-shape",
+        ),
+        pytest.param(
+            "C0: 386090 [1] pc=[8000002c] inst=[b7e5]\n", "a carrier spin loop and nothing else", id="spin-only"
+        ),
+    ],
+)
 def test_a_console_with_no_witness_and_no_failure_is_refused(console, why, monkeypatch, tmp_path):
     """Neither-passed-nor-failed is an unread instrument, and the tier must report unavailable."""
     with pytest.raises(muon.MuonUnavailable) as exc:
@@ -40,11 +48,14 @@ def test_a_console_with_no_witness_and_no_failure_is_refused(console, why, monke
     assert "no completion witness" in str(exc.value), why
 
 
-@pytest.mark.parametrize("witness", [
-    "Cycles: 12345\n",
-    "Muon core 0 finished execution.\n",
-    "GSIM model finished execution.\n",
-])
+@pytest.mark.parametrize(
+    "witness",
+    [
+        "Cycles: 12345\n",
+        "Muon core 0 finished execution.\n",
+        "GSIM model finished execution.\n",
+    ],
+)
 def test_either_positive_witness_is_accepted(witness, monkeypatch, tmp_path):
     res = _drive(monkeypatch, tmp_path, witness)
     assert res["oracle"]["kind"] == "rtl_gsim_muon"
@@ -57,10 +68,13 @@ def test_nonzero_emulator_exit_is_refused_even_with_a_completion_witness(monkeyp
     assert "exited nonzero (17)" in str(exc.value)
 
 
-@pytest.mark.parametrize("console", [
-    "Cycles: 1\nTimeout exceeded\n",
-    "Cycles: 1\nFINISHED: cycles=2000000\n",
-])
+@pytest.mark.parametrize(
+    "console",
+    [
+        "Cycles: 1\nTimeout exceeded\n",
+        "Cycles: 1\nFINISHED: cycles=2000000\n",
+    ],
+)
 def test_a_failure_marker_still_loses_even_beside_a_witness(console, monkeypatch, tmp_path):
     """A witness does not rescue a run the RTL watchdog killed or that hit the cap."""
     with pytest.raises(muon.MuonUnavailable) as exc:
@@ -75,6 +89,7 @@ def _drive(monkeypatch, tmp_path, console: str, *, returncode: int = 0):
     monkeypatch.setenv("MERLIN_MUON_GSIM_MAXCYCLES", "2000000")
     monkeypatch.setattr(MO, "gsim_status", lambda target: (True, "stub"))
     from merlin.targetgen import gsim_emulator as GE
+
     monkeypatch.setattr(GE, "emulator_path", lambda *a, **k: tmp_path / "emu")
     monkeypatch.setattr(muon, "is_mlir_artifact", lambda src: True)
     monkeypatch.setattr(muon, "compile_mlir_forkfree", lambda *a, **k: tmp_path / "k.elf")

@@ -16,6 +16,7 @@ over.
 The bound is DERIVED (mlc's discovered ``accumulator_bytes``), never a literal, so a target that
 declares no accumulator stays undecidable rather than being assumed to fit.
 """
+
 from __future__ import annotations
 
 import pytest

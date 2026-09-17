@@ -9,6 +9,7 @@ block", "exactly one block", "one past a block", and several tails, because the 
 design is exposed to — a mask dropped during pointer re-raising — is invisible at every size where
 the block divides the extent, and only those sizes get tested by hand.
 """
+
 from __future__ import annotations
 
 import numpy as np

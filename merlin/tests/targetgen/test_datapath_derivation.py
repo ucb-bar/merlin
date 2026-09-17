@@ -12,6 +12,7 @@ Honest boundaries (asserted as skips, not failures): radiance's CVFPU is PULP fp
 is a compile parameter absent from the HW dialect) and mx_gemmini's only dialect is a fused SoC — neither is
 structurally resolvable today, so they are out of scope here rather than faked.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -47,6 +48,7 @@ def test_gemmini_datapaths_derived_match_the_tracked_contract():
 
 def test_atlas_datapaths_derived_match_the_declared_manifest():
     from merlin.targetgen.capability_manifests import manifest_for
+
     kind, dt = _derive("atlas")
     # the fp8-e4m3 / bf16 / E8M0 the atlas manifest declares are recovered structurally from the MXU RTL
     assert kind == "mac_mesh"

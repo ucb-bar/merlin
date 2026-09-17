@@ -22,6 +22,7 @@ in the command buffer's resource table. Those names are minted two stages later,
 lowering all the way to the emitted buffer and reading the name back out of it, so a change to that
 naming rule turns this red instead of producing a commit that names a tensor no engine has heard of.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -31,12 +32,14 @@ pytest.importorskip("xdsl")
 
 from merlin.frontends.linalg_mlir import parse_mlir_text  # noqa: E402
 from merlin.xdsl_dialects.lowering.interface_lowering import (  # noqa: E402
-    LoweringError, find_bias_epilogues, lower_to_interface)
+    LoweringError,
+    find_bias_epilogues,
+    lower_to_interface,
+)
 from merlin.xdsl_dialects.lowering.pipeline import execute, lower_module  # noqa: E402
 
 
-def _mm_then(epilogue_body: str, *, extra_args: str = "", extra_ops: str = "",
-             returns: str = "%s") -> str:
+def _mm_then(epilogue_body: str, *, extra_args: str = "", extra_ops: str = "", returns: str = "%s") -> str:
     """``@forward(%a, %b[, ...]) -> a 16x16 matmul %r, then whatever ``epilogue_body`` spells."""
     return f"""
 module {{
@@ -98,6 +101,7 @@ def _stages(commit) -> list[str]:
 # What the pattern ACCEPTS
 # --------------------------------------------------------------------------------------------
 
+
 def test_bias_add_generic_becomes_a_commit_epilogue_stage():
     """The whole point: the stage is declared AND populated, with the bias named."""
     out = lower_to_interface(parse_mlir_text(MM_BIAS))
@@ -155,8 +159,7 @@ def test_the_lowered_program_computes_matmul_plus_bias():
 
     res = lower_module(parse_mlir_text(MM_BIAS))
     cb = res.command_buffer
-    bias_name = [c for c in cb["commands"]
-                 if c["opcode"] == "COMMIT"][0]["operands"]["bias"]
+    bias_name = [c for c in cb["commands"] if c["opcode"] == "COMMIT"][0]["operands"]["bias"]
     inputs = {"A0": a.tolist(), "W": w.tolist(), bias_name: bias.tolist()}
     got = np.array(execute(res, inputs)["outputs"][cb["outputs"][0]], dtype=float)
 
@@ -207,18 +210,21 @@ MASKED_STORE = """
 """
 
 
-@pytest.mark.parametrize("label, module_text", [
-    # A ROW bias. The engine's bias stage adds a length-n vector to every row (per COLUMN); a row
-    # bias is a different computation no engine here implements, so matching it would emit a stage
-    # executed against the wrong axis.
-    ("row bias", _mm_then(ROW_BIAS, extra_args=", %bias: tensor<16xf32>")),
-    # An elementwise epilogue that is not an add at all.
-    ("multiply body", _mm_then(MUL_BODY, extra_args=", %bias: tensor<16xf32>")),
-    # A body that does more than the add.
-    ("two-op body", _mm_then(TWO_OP_BODY, extra_args=", %bias: tensor<16xf32>")),
-    # A masked store.
-    ("masked store", _mm_then(MASKED_STORE)),
-])
+@pytest.mark.parametrize(
+    "label, module_text",
+    [
+        # A ROW bias. The engine's bias stage adds a length-n vector to every row (per COLUMN); a row
+        # bias is a different computation no engine here implements, so matching it would emit a stage
+        # executed against the wrong axis.
+        ("row bias", _mm_then(ROW_BIAS, extra_args=", %bias: tensor<16xf32>")),
+        # An elementwise epilogue that is not an add at all.
+        ("multiply body", _mm_then(MUL_BODY, extra_args=", %bias: tensor<16xf32>")),
+        # A body that does more than the add.
+        ("two-op body", _mm_then(TWO_OP_BODY, extra_args=", %bias: tensor<16xf32>")),
+        # A masked store.
+        ("masked store", _mm_then(MASKED_STORE)),
+    ],
+)
 def test_an_epilogue_that_is_not_a_bias_add_is_still_refused(label, module_text):
     with pytest.raises(LoweringError):
         lower_to_interface(parse_mlir_text(module_text))

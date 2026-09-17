@@ -8,10 +8,12 @@ capsules failed with "no canonical_inputs"; and ``capsule_golden.canonical_input
 on a list block-scale entry and raised ``AttributeError``. Target-agnostic (nothing here names a target
 except as a kernel-symbol parameter).
 """
+
 from __future__ import annotations
 
 from merlin.runtime.backends.base import get_backend
-MC = get_backend("muon").muon_codegen_mlir      # evicted SIMT backend, resolved via plugin discovery
+
+MC = get_backend("muon").muon_codegen_mlir  # evicted SIMT backend, resolved via plugin discovery
 MH = get_backend("muon").muon_harness
 from merlin.targetgen import capsule_golden as CG
 
@@ -23,8 +25,13 @@ def _attn_cb():
             "Q": {"role": "input", "shape": [16, 32], "dtype": "f16"},
             "K": {"role": "input", "shape": [16, 32], "dtype": "f16"},
         },
-        "commands": [{"opcode": "ATTENTION_QK", "operands": {"q": "Q", "k": "K", "dst": "Y0"},
-                      "attributes": {"output_dtype": "f32"}}],
+        "commands": [
+            {
+                "opcode": "ATTENTION_QK",
+                "operands": {"q": "Q", "k": "K", "dst": "Y0"},
+                "attributes": {"output_dtype": "f32"},
+            }
+        ],
     }
 
 
@@ -35,8 +42,13 @@ def _rms_cb():
             "X": {"role": "input", "shape": [16, 16], "dtype": "f32"},
             "G": {"role": "weight", "shape": [1, 16], "dtype": "f32"},
         },
-        "commands": [{"opcode": "RMSNORM", "operands": {"src": "X", "gamma": "G", "dst": "Y0"},
-                      "attributes": {"output_dtype": "f32", "eps": 1e-05}}],
+        "commands": [
+            {
+                "opcode": "RMSNORM",
+                "operands": {"src": "X", "gamma": "G", "dst": "Y0"},
+                "attributes": {"output_dtype": "f32", "eps": 1e-05},
+            }
+        ],
     }
 
 
@@ -60,20 +72,24 @@ def test_rmsnorm_emits_reduce_then_scale_kernel():
 
 def test_args_from_cb_attention_operands_and_output_shape():
     cb = _attn_cb()
-    cb["canonical_inputs"] = {"Q": {"shape": [16, 32], "values": [0.5] * 512},
-                              "K": {"shape": [16, 32], "values": [0.25] * 512}}
+    cb["canonical_inputs"] = {
+        "Q": {"shape": [16, 32], "values": [0.5] * 512},
+        "K": {"shape": [16, 32], "values": [0.25] * 512},
+    }
     ins, outs = MH.args_from_cb(cb)
     assert [a.name for a in ins] == ["Q", "K"]
     assert ins[0].values[0] == 0.5 and len(ins[0].values) == 512
-    assert (outs[0].name, outs[0].rows, outs[0].cols) == ("Y0", 16, 16)   # (Qrows, Krows)
+    assert (outs[0].name, outs[0].rows, outs[0].cols) == ("Y0", 16, 16)  # (Qrows, Krows)
 
 
 def test_args_from_cb_rmsnorm_is_weight_first():
     cb = _rms_cb()
-    cb["canonical_inputs"] = {"X": {"shape": [16, 16], "values": [1.0] * 256},
-                              "G": {"shape": [1, 16], "values": [2.0] * 16}}
+    cb["canonical_inputs"] = {
+        "X": {"shape": [16, 16], "values": [1.0] * 256},
+        "G": {"shape": [1, 16], "values": [2.0] * 16},
+    }
     ins, outs = MH.args_from_cb(cb)
-    assert [a.name for a in ins] == ["G", "X"]   # gamma (weight) first
+    assert [a.name for a in ins] == ["G", "X"]  # gamma (weight) first
     assert (ins[0].rows, ins[0].cols) == (1, 16)
     assert (outs[0].name, outs[0].rows, outs[0].cols) == ("Y0", 16, 16)
 
@@ -89,7 +105,8 @@ def test_canonical_input_raws_skips_non_tensor_blockscale_entries(tmp_path):
         "    SA_e8m0_codes:\n"
         "    - [125, 130]\n"
         "    scale_example: {SA0: 125, as_scale: 0.25}\n",
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     raws = CG.canonical_input_raws({}, tmp_path)
     vals = CG.canonical_input_values({}, tmp_path)
     assert set(raws) == {"A0"} and raws["A0"] == bytes([0x38, 0x34])

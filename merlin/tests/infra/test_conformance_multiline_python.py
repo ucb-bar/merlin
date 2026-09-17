@@ -11,6 +11,7 @@ four RTL conformance checks reported False for all six rounds. The SINGLE-line s
 correctly throughout, which is why the earlier fix for this same check family tested green and left
 this open -- so these tests pin the multi-line spelling specifically.
 """
+
 from __future__ import annotations
 
 import sys
@@ -24,8 +25,14 @@ import conformance as C  # noqa: E402
 
 
 def _call(command: str, result: str = "") -> C.ToolCall:
-    return C.ToolCall(name="Bash", input={"command": command}, tool_use_id="t",
-                      result_present=True, succeeded=True, result_text=result)
+    return C.ToolCall(
+        name="Bash",
+        input={"command": command},
+        tool_use_id="t",
+        result_present=True,
+        succeeded=True,
+        result_text=result,
+    )
 
 
 SINGLE = 'python3 -c "import json; v=json.load(open(1)); print(v)"'
@@ -54,9 +61,11 @@ class TestARejoinDoesNotSwallowTheNextCommand:
         A newline is a command separator and shlex drops it, so a tail-swallowing rejoin lost a second
         ``python3 -c`` whose segment then resolved to whatever followed a pipe.
         """
-        cmd = ('python3 -c "\nfrom x import target_profile\nprint(target_profile())\n" 2>&1 | tail -20\n'
-               'echo "=== facts ==="\n'
-               'python3 -c "\nfrom y import load_facts\nprint(load_facts())\n"')
+        cmd = (
+            'python3 -c "\nfrom x import target_profile\nprint(target_profile())\n" 2>&1 | tail -20\n'
+            'echo "=== facts ==="\n'
+            'python3 -c "\nfrom y import load_facts\nprint(load_facts())\n"'
+        )
         names = C._python_call_names(_call(cmd))
         assert "target_profile" in names, "the first probe was lost"
         assert "load_facts" in names, "the second probe after the newline was lost"
@@ -65,11 +74,14 @@ class TestARejoinDoesNotSwallowTheNextCommand:
 class TestForgeryIsStillRejected:
     """The anti-forgery property must survive the fix: only EXECUTED python yields call names."""
 
-    @pytest.mark.parametrize("cmd", [
-        "echo 'load_facts(\"gemmini\")'",
-        "true # derived_levers(profile)",
-        "cat <<'EOF'\nload_facts('gemmini')\nEOF",
-    ])
+    @pytest.mark.parametrize(
+        "cmd",
+        [
+            "echo 'load_facts(\"gemmini\")'",
+            "true # derived_levers(profile)",
+            "cat <<'EOF'\nload_facts('gemmini')\nEOF",
+        ],
+    )
     def test_a_mention_is_not_an_invocation(self, cmd):
         assert "load_facts" not in C._python_call_names(_call(cmd))
         assert "derived_levers" not in C._python_call_names(_call(cmd))
@@ -83,4 +95,4 @@ class TestABracketLaterInTheOutputCannotHideAnEarlierList:
         assert C._literal_string_list(text) == ["a.b", "c.d"]
 
     def test_a_result_with_no_string_list_still_returns_none(self):
-        assert C._literal_string_list("{ \"legal\": [1, 2, 3] }") is None
+        assert C._literal_string_list('{ "legal": [1, 2, 3] }') is None

@@ -21,6 +21,7 @@ SILENTLY rather than loudly:
 
 Every test here is written so that undoing one of those three fixes turns it red.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -49,18 +50,33 @@ _OVERRIDE_SHIFT = 5
 
 
 def _binding(**over) -> CS.CorpusBinding:
-    kw = dict(target=_TARGET, tile_dim=16, operand_dtype="int8", accum_dtype="i32",
-              integer=True, tiers=["L0", "L1", "L2", "L3"], compare="exact_int",
-              requant_output_dtype="i8", requant_shift=_DECLARED_SHIFT,
-              classes_for=lambda **_: [])
+    kw = dict(
+        target=_TARGET,
+        tile_dim=16,
+        operand_dtype="int8",
+        accum_dtype="i32",
+        integer=True,
+        tiers=["L0", "L1", "L2", "L3"],
+        compare="exact_int",
+        requant_output_dtype="i8",
+        requant_shift=_DECLARED_SHIFT,
+        classes_for=lambda **_: [],
+    )
     kw.update(over)
     return CS.CorpusBinding(**kw)
 
 
 def _entry(**over) -> dict:
     entry = {
-        "name": "RQ", "kind": "layer", "op": "matmul",
-        "M": 16, "K": 32, "N": 16, "lhs": "A0", "weight": "W", "out": "Y0",
+        "name": "RQ",
+        "kind": "layer",
+        "op": "matmul",
+        "M": 16,
+        "K": 32,
+        "N": 16,
+        "lhs": "A0",
+        "weight": "W",
+        "out": "Y0",
         "epilogue": ["requant"],
         "source_role": "handauthored_compiler_test",
         "source_reference": "requant epilogue declaration test",
@@ -73,12 +89,12 @@ def _entry(**over) -> dict:
 # 1. the shift is declared, and it is the DECLARED one that both engines apply
 # ---------------------------------------------------------------------------------------------
 
+
 def test_capsule_and_interface_both_carry_the_declared_shift():
     capsule, mlir = CS.build_matmul(_entry(), _binding())
 
     assert capsule["operation"]["attributes"]["requant_shift"] == _DECLARED_SHIFT
-    commit = next(c for c in IE.parse_interface_mlir(mlir)["commands"]
-                  if c["opcode"] == "COMMIT")
+    commit = next(c for c in IE.parse_interface_mlir(mlir)["commands"] if c["opcode"] == "COMMIT")
     assert commit["attributes"]["requant_shift"] == _DECLARED_SHIFT
     assert commit["attributes"]["epilogue"] == ["requant"]
 
@@ -108,7 +124,8 @@ def test_golden_and_reference_agree_because_they_read_the_same_declared_shift():
     assert undeclared != golden, (
         "with the declaration removed the reference falls back to its own shift and still matched the "
         "golden -- so this capsule cannot tell a backend that read the declared shift from one that "
-        "invented its own")
+        "invented its own"
+    )
 
 
 def test_a_requant_stage_without_any_declared_shift_fails_closed():
@@ -126,11 +143,21 @@ def test_a_declared_shift_without_the_stage_fails_closed():
 
 def test_the_emitter_refuses_each_half_of_the_pair():
     with pytest.raises(ValueError, match="requant_shift"):
-        MSE.emit_interface_mlir(lhs="A0", weight="W", out="Y0", M=16, K=16, N=16,
-                                epilogue=["requant"], output_dtype="i8")
+        MSE.emit_interface_mlir(
+            lhs="A0", weight="W", out="Y0", M=16, K=16, N=16, epilogue=["requant"], output_dtype="i8"
+        )
     with pytest.raises(ValueError, match="requant"):
-        MSE.emit_interface_mlir(lhs="A0", weight="W", out="Y0", M=16, K=16, N=16,
-                                epilogue=[], output_dtype="i32", requant_shift=_DECLARED_SHIFT)
+        MSE.emit_interface_mlir(
+            lhs="A0",
+            weight="W",
+            out="Y0",
+            M=16,
+            K=16,
+            N=16,
+            epilogue=[],
+            output_dtype="i32",
+            requant_shift=_DECLARED_SHIFT,
+        )
 
 
 def test_the_golden_engine_refuses_an_undeclared_shift():
@@ -144,6 +171,7 @@ def test_the_golden_engine_refuses_an_undeclared_shift():
 # ---------------------------------------------------------------------------------------------
 # 2. the commit narrows
 # ---------------------------------------------------------------------------------------------
+
 
 def test_a_requant_commit_narrows_to_the_targets_declared_output_dtype():
     """The stage exists to commit the wide accumulator back to the operand width. A capsule declaring
@@ -172,8 +200,18 @@ def test_the_convolution_builder_threads_the_shift_too():
     an untested branch here would carry the stage into the capsule and drop it from the module."""
     binding = _binding()
     entry = {
-        "name": "RQC", "kind": "layer", "op": "conv2d", "ifm": "IFM", "weight": "W", "out": "Y0",
-        "ci": 4, "N": 16, "Himg": 6, "Wimg": 6, "kh": 3, "kw": 3,
+        "name": "RQC",
+        "kind": "layer",
+        "op": "conv2d",
+        "ifm": "IFM",
+        "weight": "W",
+        "out": "Y0",
+        "ci": 4,
+        "N": 16,
+        "Himg": 6,
+        "Wimg": 6,
+        "kh": 3,
+        "kw": 3,
         "epilogue": ["requant"],
         "source_role": "handauthored_compiler_test",
         "source_reference": "requant epilogue declaration test (conv)",
@@ -190,6 +228,7 @@ def test_the_convolution_builder_threads_the_shift_too():
 # 3. the requirement demands it
 # ---------------------------------------------------------------------------------------------
 
+
 def test_requant_is_in_the_builder_vocabulary_and_there_is_only_one_of_it():
     """Two hand-kept copies of this tuple, each annotated as mirroring the other, are what let the
     stage go missing. Both consumers must read the SAME object."""
@@ -203,7 +242,8 @@ def test_the_derived_epilogue_requirement_demands_the_requant_stage():
     required = {str(r.get("stage")): r for r in (axis.get("required") or ())}
     assert "requant" in required, (
         f"{_TARGET} declares the stage's family fused-only, so a corpus that never asks for it lets a "
-        f"backend that cannot emit it fail nothing: {sorted(required)}")
+        f"backend that cannot emit it fail nothing: {sorted(required)}"
+    )
     assert required["requant"]["evidenced_by"], "a required stage with no evidence is a guess"
 
 
@@ -215,12 +255,20 @@ def _synthesized_requant_entry() -> dict:
     """
     import yaml
 
-    spec = yaml.safe_load(
-        (repo_root() / "merlin" / "contract" / "capsules" / "conformance"
-         / f"{_TARGET}.yaml").read_text(encoding="utf-8")) or {}
+    spec = (
+        yaml.safe_load(
+            (repo_root() / "merlin" / "contract" / "capsules" / "conformance" / f"{_TARGET}.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        or {}
+    )
     spec["epilogue"] = CF._epilogue_axis(_TARGET)
-    entries = [e for e in (CSY.synthesize(spec).get("capsules") or ())
-               if "requant" in [str(x) for x in (e.get("epilogue") or ())]]
+    entries = [
+        e
+        for e in (CSY.synthesize(spec).get("capsules") or ())
+        if "requant" in [str(x) for x in (e.get("epilogue") or ())]
+    ]
     assert entries, "the epilogue axis wrote no member for the required 'requant' stage"
     return entries[0]
 
@@ -254,6 +302,7 @@ def test_the_synthesized_obligation_builds_into_a_narrowing_capsule_with_a_decla
 # ---------------------------------------------------------------------------------------------
 # 4. the defect class is reachable
 # ---------------------------------------------------------------------------------------------
+
 
 def _defect_reach():
     path = repo_root() / "build_tools" / "scripts" / "check_defect_reach.py"

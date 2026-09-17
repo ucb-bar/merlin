@@ -16,18 +16,18 @@ These tests pin the policy, not the plumbing. The three rules:
 And the rule that keeps it honest: nothing is dropped silently. A scheduler that quietly stops scheduling
 is indistinguishable from one that has finished.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen.oracle_schedule import CapsuleState, Verdict, explain, schedule
 
 TIERS = ["L2", "L3"]
 CERT = ("L3",)
-COST = {"L2": 2.5, "L3": 300.0}          # measured order of magnitude: seconds vs minutes
+COST = {"L2": 2.5, "L3": 300.0}  # measured order of magnitude: seconds vs minutes
 
 
 def _st(name, digest="d1", **verdicts):
-    return CapsuleState(name=name, digest=digest,
-                        verdicts={t: Verdict(s, digest) for t, s in verdicts.items()})
+    return CapsuleState(name=name, digest=digest, verdicts={t: Verdict(s, digest) for t, s in verdicts.items()})
 
 
 # ---------------------------------------------------------------------------------------------
@@ -42,7 +42,7 @@ def test_unchanged_bytes_are_never_rescheduled():
 
 def test_changed_bytes_invalidate_only_that_capsule():
     done = _st("A", L2="pass", L3="pass")
-    edited = CapsuleState("B", digest="d2", verdicts={"L2": Verdict("pass", "d1")})   # bytes moved on
+    edited = CapsuleState("B", digest="d2", verdicts={"L2": Verdict("pass", "d1")})  # bytes moved on
     q = schedule([done, edited], tier_order=TIERS, cert_tiers=CERT, cost_s=COST)
     assert [(w.capsule, w.tier) for w in q] == [("B", "L2")]
 
@@ -50,8 +50,7 @@ def test_changed_bytes_invalidate_only_that_capsule():
 def test_an_l3_driven_edit_reopens_l2():
     """The ratchet guard: a fix made to satisfy RTL can break numerics, so changed bytes must re-open the
     functional tier rather than letting a stale L2 pass stand as if it still held."""
-    s = CapsuleState("A", digest="d2",
-                     verdicts={"L2": Verdict("pass", "d1"), "L3": Verdict("fail", "d1")})
+    s = CapsuleState("A", digest="d2", verdicts={"L2": Verdict("pass", "d1"), "L3": Verdict("fail", "d1")})
     q = schedule([s], tier_order=TIERS, cert_tiers=CERT, cost_s=COST)
     assert [(w.capsule, w.tier) for w in q] == [("A", "L2")]
 
@@ -83,8 +82,9 @@ def test_a_passing_shallow_tier_promotes_immediately():
 # 3. the deep tier runs a representative cover
 # ---------------------------------------------------------------------------------------------
 def test_outside_the_cover_is_not_certified():
-    q = schedule([_st("A", L2="pass"), _st("B", L2="pass")],
-                 tier_order=TIERS, cert_tiers=CERT, cert_cover={"A"}, cost_s=COST)
+    q = schedule(
+        [_st("A", L2="pass"), _st("B", L2="pass")], tier_order=TIERS, cert_tiers=CERT, cert_cover={"A"}, cost_s=COST
+    )
     assert [(w.capsule, w.tier) for w in q] == [("A", "L3")]
 
 
@@ -101,8 +101,7 @@ def test_no_cover_is_permissive_not_silent():
 def test_cheap_gating_work_outranks_expensive_work():
     """Information per second: an unknown L2 costs ~2.5 s and can unlock a promotion; an unknown L3 costs
     minutes. Doing the cheap one first strictly dominates."""
-    q = schedule([_st("Slow", L2="pass"), _st("Fast")],
-                 tier_order=TIERS, cert_tiers=CERT, cost_s=COST)
+    q = schedule([_st("Slow", L2="pass"), _st("Fast")], tier_order=TIERS, cert_tiers=CERT, cost_s=COST)
     assert [(w.capsule, w.tier) for w in q] == [("Fast", "L2"), ("Slow", "L3")]
 
 
@@ -117,7 +116,7 @@ def test_a_budget_defers_rather_than_truncates_silently():
     states = [_st("A", L2="pass"), _st("B", L2="pass"), _st("C", L2="pass")]
     rep = explain(states, tier_order=TIERS, cert_tiers=CERT, cost_s=COST, budget_s=650.0)
     assert len(rep["queue"]) == 2
-    assert rep["deferred_over_budget"] == [("C", "L3")]      # named, not vanished
+    assert rep["deferred_over_budget"] == [("C", "L3")]  # named, not vanished
 
 
 # ---------------------------------------------------------------------------------------------
@@ -125,9 +124,7 @@ def test_a_budget_defers_rather_than_truncates_silently():
 # ---------------------------------------------------------------------------------------------
 def test_every_exclusion_is_named_and_counted():
     """A quiet scheduler and a finished scheduler look identical in a log. They must not."""
-    states = [_st("done", L2="pass", L3="pass"),
-              _st("failed", L2="fail"),
-              _st("uncovered", L2="pass")]
+    states = [_st("done", L2="pass", L3="pass"), _st("failed", L2="fail"), _st("uncovered", L2="pass")]
     rep = explain(states, tier_order=TIERS, cert_tiers=CERT, cert_cover={"done"}, cost_s=COST)
     assert rep["queue"] == []
     assert rep["unchanged"] == ["done"]

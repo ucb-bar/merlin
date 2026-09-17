@@ -9,6 +9,7 @@ would be in the wrong place.
 Outputs come back as raw bit patterns over the console, so "spike agrees with host" is exact
 equality rather than a tolerance, and a difference means a real codegen divergence.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -61,8 +62,7 @@ def test_the_emitted_object_really_contains_vector_instructions(tmp_path):
     x = rng.standard_normal(1024).astype(np.float32)
     run = kernel_spike.run(result.module, [x, x], tmp_path)
     assert "vsetvli" in run.vector_ops, run.vector_ops
-    assert "vfadd.vv" in run.vector_ops, (
-        f"the add was not vectorized; emitted {run.vector_ops}")
+    assert "vfadd.vv" in run.vector_ops, f"the add was not vectorized; emitted {run.vector_ops}"
 
 
 def test_the_int8_matmul_runs_on_spike(tmp_path):

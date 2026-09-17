@@ -10,6 +10,7 @@ reader.
 Target-agnostic by construction: it walks whichever corpora have a ``perf/`` category, so a second
 target's performance corpus is checked by the same file without an edit.
 """
+
 from __future__ import annotations
 
 import sys
@@ -66,9 +67,9 @@ class TestThePerfCorpusIsWellFormed:
         came from operand sizes typed in by hand."""
         from merlin.perf import preflight as PF
         from merlin.targetgen import capsule_dram as DR
+
         for cap in _load(root):
-            specs = PF.operands_from_declaration(cap["inputs"],
-                                                 element_bytes_of=lambda d: DR.dtype_bits(d) / 8)
+            specs = PF.operands_from_declaration(cap["inputs"], element_bytes_of=lambda d: DR.dtype_bits(d) / 8)
             assert specs and all(s.nbytes > 0 for s in specs), cap["name"]
 
     def test_a_reduction_sweep_carries_at_least_four_points(self, root):
@@ -106,7 +107,8 @@ class TestTheComparisonGroupsAreUsable:
             assert len(roles.get(C.PART) or []) >= 1, (name, roles)
             assert not roles.get("unspecified"), (
                 f"{name} has a member declaring the group as a bare name with no role; which capsule "
-                f"is the fused implementation would then have to be guessed")
+                f"is the fused implementation would then have to be guessed"
+            )
 
     def test_every_member_of_a_group_sits_at_the_same_shape(self, root):
         """The comparand subtracts these numbers from one another, so a shape difference between the
@@ -154,11 +156,11 @@ def test_the_generated_capsules_match_their_profile_declaration():
         if not profile_path.is_file():
             continue
         doc = GC.load_profile(root.parent.name, include_holdouts=False)
-        declared_levels = {(s.get("base") or {}).get("performance", {}).get("level")
-                           for s in (doc.get("sweeps") or [])}
+        declared_levels = {(s.get("base") or {}).get("performance", {}).get("level") for s in (doc.get("sweeps") or [])}
         declared_levels |= {
             (row.get("performance") or {}).get("level")
-            for row in (doc.get("_performance_template") or {}).get("blocked_unimplemented", [])}
+            for row in (doc.get("_performance_template") or {}).get("blocked_unimplemented", [])
+        }
         declared_levels.discard(None)
         on_disk = {(c.get("performance") or {}).get("level") for c in _load(root)}
         assert on_disk <= declared_levels or not declared_levels, (on_disk, declared_levels)

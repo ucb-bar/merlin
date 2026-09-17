@@ -15,6 +15,7 @@ The counts stay -- n_samples, r2, range -- because those are what make a fit aud
 provenance list is withheld, and a caller that genuinely needs it (a local diagnostic, never a tracked
 artifact) passes `with_sources=True`.
 """
+
 from __future__ import annotations
 
 import yaml
@@ -54,9 +55,17 @@ def test_a_cost_fit_withholds_its_source_paths_by_default():
     """The narrow fix, tested at the unit rather than only through the artifact."""
     from merlin.targetgen.cert_cost import CostFit
 
-    fit = CostFit(target="t", intercept_s=1.0, per_element_s=0.1, r2=0.9, n_samples=5,
-                  elements_min=1, elements_max=10, metric="written_output_elements",
-                  sources=["/abs/path/grading_hidden/runs/H0_matmul_hidden/capsule_result.json"])
+    fit = CostFit(
+        target="t",
+        intercept_s=1.0,
+        per_element_s=0.1,
+        r2=0.9,
+        n_samples=5,
+        elements_min=1,
+        elements_max=10,
+        metric="written_output_elements",
+        sources=["/abs/path/grading_hidden/runs/H0_matmul_hidden/capsule_result.json"],
+    )
     assert "sources" not in fit.to_dict(), "the provenance list is an answer key in a tracked artifact"
     assert "n_samples" in fit.to_dict(), "the counts are what make a fit auditable and must stay"
     assert "sources" in fit.to_dict(with_sources=True), "a local diagnostic may still ask for it"
@@ -66,6 +75,7 @@ def test_no_tracked_conformance_spec_names_a_held_out_capsule():
     held = _holdout_names()
     if not held:
         import pytest
+
         pytest.skip("no held-out capsules in this checkout (a worktree has no goldens/holdouts)")
     offenders = []
     for path in sorted(_SPEC_DIR.glob("*.yaml")):
@@ -77,7 +87,8 @@ def test_no_tracked_conformance_spec_names_a_held_out_capsule():
     assert not offenders, (
         f"tracked conformance spec(s) name held-out capsules: {offenders[:6]}. A holdout's NAME is an "
         f"answer key -- knowing which shapes are graded privately is most of the advantage the holdout "
-        f"exists to deny.")
+        f"exists to deny."
+    )
 
 
 def test_no_tracked_conformance_spec_embeds_a_local_absolute_path():
@@ -93,4 +104,5 @@ def test_no_tracked_conformance_spec_embeds_a_local_absolute_path():
                 offenders.append((path.name, where, text[:80]))
     assert not offenders, (
         f"tracked conformance spec(s) embed local absolute paths: {offenders[:4]}. These files are "
-        f"published; a path under someone's scratch root is neither portable nor reviewable.")
+        f"published; a path under someone's scratch root is neither portable nor reviewable."
+    )

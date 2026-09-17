@@ -6,6 +6,7 @@ mis-graded). These tests assert the mnemonics parse to the command-buffer opcode
 target codegen reads, schema-validate, reach the reference emitter, and that an unsupported FUSED
 combination fails loud instead of silently emitting one half.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -81,20 +82,19 @@ module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merl
 """
     cb = parse_interface_mlir(mb)
     assert cb["commands"][0]["opcode"] == "BATCHED_MATMUL"
-    assert cb["tensors"]["Y0"] == {
-        "shape": [2, 16, 16], "dtype": "bf16", "role": "output"}
+    assert cb["tensors"]["Y0"] == {"shape": [2, 16, 16], "dtype": "bf16", "role": "output"}
     schemas.validate_command_buffer(cb)
 
 
 @pytest.mark.parametrize("operands", ["%A0", "%A0, %W, %A0"])
 def test_matmul_batched_parser_refuses_noncanonical_operand_arity(operands):
-    mb = f'''\
+    mb = f"""\
 module attributes {{merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"}} {{
   %A0 = merlin_iface.tensor {{name = "A0", role = "input"}} : tensor<2x16x32xi8>
   %W = merlin_iface.tensor {{name = "W", role = "weight"}} : tensor<2x32x16xi8>
   %Y0 = merlin_iface.matmul_batched {operands} {{name = "Y0", batch = 2 : i64, output_dtype = "i32"}} : (tensor<2x16x32xi8>, tensor<2x32x16xi8>) -> tensor<2x16x16xi32>
 }}
-'''
+"""
     with pytest.raises(ValueError, match="needs exactly 2 operand"):
         parse_interface_mlir(mb)
 
@@ -143,7 +143,7 @@ def test_fused_matmul_rope_emits_both_stages():
     cb = parse_interface_mlir(_FUSED_MATMUL_ROPE)
     mlir = codegen.emit_kernel_mlir(cb, target="t")
     assert "llvm.func @t_kernel(%Wqkv: !llvm.ptr, %X: !llvm.ptr, %Y0: !llvm.ptr)" in mlir
-    assert "%ocos" in mlir and "%osin" in mlir     # rope stage (prefix o) present
+    assert "%ocos" in mlir and "%osin" in mlir  # rope stage (prefix o) present
 
 
 def test_named_ops_do_not_disturb_the_residency_grammar():
@@ -176,11 +176,19 @@ def test_vector_map_elementwise_emits_add_and_mul():
     codegen = muon.get_backend("muon").muon_codegen_mlir
     for combine, fop in (("add", "llvm.fadd"), ("mul", "llvm.fmul")):
         cb = {
-            "abi_version": "0.1", "target": "t",
-            "tensors": {"A": {"shape": [16, 16], "dtype": "f32", "role": "input"},
-                        "B": {"shape": [16, 16], "dtype": "f32", "role": "input"}},
-            "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y"},
-                          "attributes": {"combine": combine}}],
+            "abi_version": "0.1",
+            "target": "t",
+            "tensors": {
+                "A": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+                "B": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+            },
+            "commands": [
+                {
+                    "opcode": "VECTOR_MAP",
+                    "operands": {"lhs": "A", "rhs": "B", "dst": "Y"},
+                    "attributes": {"combine": combine},
+                }
+            ],
             "outputs": ["Y"],
         }
         mlir = codegen.emit_kernel_mlir(cb, target="t")
@@ -193,11 +201,15 @@ def test_vector_map_row_broadcast_bias_add_emits():
     muon = pytest.importorskip("merlin.runtime.backends.base")
     codegen = muon.get_backend("muon").muon_codegen_mlir
     cb = {
-        "abi_version": "0.1", "target": "t",
-        "tensors": {"A": {"shape": [16, 16], "dtype": "f32", "role": "input"},
-                    "B": {"shape": [16], "dtype": "f32", "role": "bias"}},
-        "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y"},
-                      "attributes": {"combine": "add"}}],
+        "abi_version": "0.1",
+        "target": "t",
+        "tensors": {
+            "A": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+            "B": {"shape": [16], "dtype": "f32", "role": "bias"},
+        },
+        "commands": [
+            {"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y"}, "attributes": {"combine": "add"}}
+        ],
     }
     mlir = codegen.emit_kernel_mlir(cb, target="t")
     assert "llvm.func @t_kernel(%A: !llvm.ptr, %B: !llvm.ptr, %Y: !llvm.ptr)" in mlir
@@ -208,11 +220,15 @@ def test_vector_map_rejects_incompatible_shapes():
     muon = pytest.importorskip("merlin.runtime.backends.base")
     codegen = muon.get_backend("muon").muon_codegen_mlir
     cb = {
-        "abi_version": "0.1", "target": "t",
-        "tensors": {"A": {"shape": [16, 16], "dtype": "f32", "role": "input"},
-                    "B": {"shape": [8], "dtype": "f32", "role": "input"}},
-        "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y"},
-                      "attributes": {"combine": "add"}}],
+        "abi_version": "0.1",
+        "target": "t",
+        "tensors": {
+            "A": {"shape": [16, 16], "dtype": "f32", "role": "input"},
+            "B": {"shape": [8], "dtype": "f32", "role": "input"},
+        },
+        "commands": [
+            {"opcode": "VECTOR_MAP", "operands": {"lhs": "A", "rhs": "B", "dst": "Y"}, "attributes": {"combine": "add"}}
+        ],
     }
     with pytest.raises(Exception, match="equal-shape or a row-broadcast"):
         codegen.emit_kernel_mlir(cb, target="t")
@@ -223,24 +239,22 @@ def test_fused_rmsnorm_matmul_emits():
     muon = pytest.importorskip("merlin.runtime.backends.base")
     codegen = muon.get_backend("muon").muon_codegen_mlir
     cb = {
-        "abi_version": "0.1", "target": "t",
+        "abi_version": "0.1",
+        "target": "t",
         "tensors": {
             "X": {"shape": [16, 16], "dtype": "f32", "role": "input"},
             "G": {"shape": [1, 16], "dtype": "f32", "role": "weight"},
             "W": {"shape": [16, 16], "dtype": "f32", "role": "weight"},
         },
         "commands": [
-            {"opcode": "RMSNORM", "operands": {"src": "X", "gamma": "G", "dst": "H"},
-             "attributes": {"eps": 1e-5}},
-            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "Wp"},
-             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "RMSNORM", "operands": {"src": "X", "gamma": "G", "dst": "H"}, "attributes": {"eps": 1e-5}},
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "Wp"}, "attributes": {"layout": "packed_rhs"}},
             {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "H", "rhs": "Wp", "dst": "acc"}},
-            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y"},
-             "attributes": {"output_dtype": "f32"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y"}, "attributes": {"output_dtype": "f32"}},
         ],
     }
     mlir = codegen.emit_kernel_mlir(cb, target="t")
-    assert "llvm.func @t_kernel(" in mlir and "llvm.intr.sqrt" in mlir   # rmsnorm stage present
+    assert "llvm.func @t_kernel(" in mlir and "llvm.intr.sqrt" in mlir  # rmsnorm stage present
 
 
 def test_unsupported_fused_op_plus_matmul_fails_loud_not_silent():
@@ -249,20 +263,18 @@ def test_unsupported_fused_op_plus_matmul_fails_loud_not_silent():
     muon = pytest.importorskip("merlin.runtime.backends.base")
     codegen = muon.get_backend("muon").muon_codegen_mlir
     cb = {
-        "abi_version": "0.1", "target": "t",
+        "abi_version": "0.1",
+        "target": "t",
         "tensors": {
             "Q": {"shape": [16, 16], "dtype": "f32", "role": "input"},
             "K": {"shape": [16, 16], "dtype": "f32", "role": "input"},
             "W": {"shape": [16, 16], "dtype": "f32", "role": "weight"},
         },
         "commands": [
-            {"opcode": "ATTENTION_QK", "operands": {"q": "Q", "k": "K", "dst": "S"},
-             "attributes": {}},
-            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "Wp"},
-             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "ATTENTION_QK", "operands": {"q": "Q", "k": "K", "dst": "S"}, "attributes": {}},
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "Wp"}, "attributes": {"layout": "packed_rhs"}},
             {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "S", "rhs": "Wp", "dst": "acc"}},
-            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y"},
-             "attributes": {"output_dtype": "f32"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y"}, "attributes": {"output_dtype": "f32"}},
         ],
     }
     with pytest.raises(Exception, match="fused"):

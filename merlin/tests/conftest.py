@@ -26,6 +26,7 @@ Those kernels are shared deliberately: the portability claim is that the *byte-i
 source compiles to RVV, to Gemmini and to Radiance, and that only holds if the arms in `rvv/`,
 `gemmini/` and `targetgen/` all import the same module instead of each keeping a copy.
 """
+
 from __future__ import annotations
 
 import os
@@ -123,12 +124,12 @@ def _assert_library_is_this_checkout() -> None:
     import merlin
 
     pkg_file = getattr(merlin, "__file__", None)
-    if not pkg_file:                      # namespace package: nothing to compare, do not invent a verdict
+    if not pkg_file:  # namespace package: nothing to compare, do not invent a verdict
         return
     tests_checkout = _checkout_containing(Path(__file__).resolve())
     pkg_checkout = _checkout_containing(Path(pkg_file).resolve())
     if tests_checkout is None or pkg_checkout is None:
-        return                            # installed non-editable, or an unrecognized layout
+        return  # installed non-editable, or an unrecognized layout
     if tests_checkout == pkg_checkout:
         return
     raise RuntimeError(

@@ -1,4 +1,5 @@
 """Agent-accessible selfchecks cannot escape an experiment-wide RTL-engine pin."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -10,7 +11,6 @@ import time
 from pathlib import Path
 
 from merlin.common.paths import merlin_dir
-
 
 HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
 
@@ -29,7 +29,8 @@ def test_direct_selfcheck_refuses_verilator_and_builds_gsim_adapter(monkeypatch)
     selected = []
     monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
     monkeypatch.setattr(
-        selfcheck.CR, "_spike_verilator_adapter",
+        selfcheck.CR,
+        "_spike_verilator_adapter",
         lambda engine, target: selected.append((engine, target)) or object(),
     )
 
@@ -53,7 +54,8 @@ def test_required_vcs_never_constructs_the_legacy_verilator_rung(monkeypatch):
     selected = []
     monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "vcs")
     monkeypatch.setattr(
-        selfcheck.CR, "_spike_verilator_adapter",
+        selfcheck.CR,
+        "_spike_verilator_adapter",
         lambda engine, target: selected.append((engine, target)) or object(),
     )
 
@@ -94,15 +96,22 @@ def test_sync_broker_rejects_verilator_without_launching_a_child(tmp_path, monke
     broker = _module("selfcheck_broker")
     monkeypatch.setenv("MERLIN_REQUIRED_RTL_ENGINE", "gsim")
     monkeypatch.setattr(
-        broker.subprocess, "Popen",
+        broker.subprocess,
+        "Popen",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("child must not launch")),
     )
     ws = tmp_path / "ws"
     ch = ws / ".qa_channel"
     ch.mkdir(parents=True)
-    (ch / "req_bad.json").write_text(json.dumps({
-        "sim": "verilator", "capsules": "all", "timeout": 30,
-    }))
+    (ch / "req_bad.json").write_text(
+        json.dumps(
+            {
+                "sim": "verilator",
+                "capsules": "all",
+                "timeout": 30,
+            }
+        )
+    )
     thread = threading.Thread(target=broker.main, args=(["--ws", str(ws), "--poll", "0.01"],))
     thread.start()
     try:
@@ -135,9 +144,16 @@ def test_sync_broker_forwards_gsim_to_the_real_selfcheck_boundary(tmp_path, monk
     )
     monkeypatch.setenv("FORWARD_RECORD", str(record))
     monkeypatch.setattr(broker, "SELFCHECK", fake)
-    (ch / "req_good.json").write_text(json.dumps({
-        "sim": "gsim", "capsules": "all", "workers": 1, "timeout": 30,
-    }))
+    (ch / "req_good.json").write_text(
+        json.dumps(
+            {
+                "sim": "gsim",
+                "capsules": "all",
+                "workers": 1,
+                "timeout": 30,
+            }
+        )
+    )
     thread = threading.Thread(target=broker.main, args=(["--ws", str(ws), "--poll", "0.01"],))
     thread.start()
     try:

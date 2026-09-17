@@ -13,6 +13,7 @@ The second is the damaging one. `tiny_llama` is a whole MODEL, and this function
 `compiled` back, wrote no files, and had every reason to believe a model had been compiled for
 gemmini. A status that cannot be false is not a status.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -55,8 +56,9 @@ def test_the_refusal_happens_before_any_package_build(monkeypatch):
     assert built == [], "the backend package was built before the workload was validated"
 
 
-@pytest.mark.skipif(not (CORPUS / "A0_config_smoke").is_dir(),
-                    reason="isa corpus capsule A0_config_smoke not present in this checkout")
+@pytest.mark.skipif(
+    not (CORPUS / "A0_config_smoke").is_dir(), reason="isa corpus capsule A0_config_smoke not present in this checkout"
+)
 def test_a_real_capsule_still_compiles():
     """The guard must not break the legitimate compile-only path."""
     out = _compile_oot("A0_config_smoke")

@@ -14,6 +14,7 @@ and then could not fail on it:
 Both decisions now live in a pure function so a test can assert them directly instead of paying for a
 full multi-target derivation, and so a sixth axis or a new status cannot go missing unnoticed.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -48,9 +49,15 @@ _AXES = [
 
 def _report(**axes) -> dict:
     """A clean `status: ok` report, with only the named axes carrying a gap."""
-    r = {"target": "T", "status": "ok", "uncovered": [],
-         "composition": {"uncovered": []}, "memory_mapping": {"uncovered": []},
-         "host_only": {"uncovered": []}, "shape_geometry": {"uncovered": []}}
+    r = {
+        "target": "T",
+        "status": "ok",
+        "uncovered": [],
+        "composition": {"uncovered": []},
+        "memory_mapping": {"uncovered": []},
+        "host_only": {"uncovered": []},
+        "shape_geometry": {"uncovered": []},
+    }
     r.update(axes)
     return r
 
@@ -64,7 +71,8 @@ def test_an_uncovered_gap_on_each_axis_reaches_the_verdict(key, tag):
     debt = CC.uncovered_debt([_report(**{key: {"uncovered": ["probe_gap"]}})], set())
     assert debt == [f"T {tag}:probe_gap"], (
         f"an uncovered {tag} gap did not reach the gate's verdict; --fail-on-uncovered cannot fail "
-        f"on this axis. got: {debt}")
+        f"on this axis. got: {debt}"
+    )
 
 
 def test_the_cell_axis_still_reaches_the_verdict():
@@ -106,7 +114,8 @@ _STATUS_VERDICTS = [
 def test_every_status_the_audit_emits_has_a_verdict(status, want):
     assert CS.verdict_bucket(status) == want, (
         f"status {status!r} does not map to {want!r}; a status that maps to nothing cannot change the "
-        f"exit code, which is how check #2 (claim_model_uncaptured) came to be unfailable")
+        f"exit code, which is how check #2 (claim_model_uncaptured) came to be unfailable"
+    )
 
 
 def test_an_unknown_status_is_unmeasured_never_clean():

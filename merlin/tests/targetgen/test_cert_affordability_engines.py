@@ -18,6 +18,7 @@ FAILS against the behaviour it replaces:
 Plus a drift guard: over a history that is entirely one engine, this module must reproduce
 ``cert_cost.fit_for`` exactly, since the two fit the same law over the same metric.
 """
+
 from __future__ import annotations
 
 import json
@@ -42,8 +43,8 @@ def _corpus(tmp_path):
         d = root / name
         d.mkdir(parents=True, exist_ok=True)
         (d / "capsule.yaml").write_text(
-            f"name: {name}\nkind: isa\nlabel: public\ninputs:\n  - name: a\n    shape: [{n}]\n",
-            encoding="utf-8")
+            f"name: {name}\nkind: isa\nlabel: public\ninputs:\n  - name: a\n    shape: [{n}]\n", encoding="utf-8"
+        )
     return root
 
 
@@ -53,21 +54,27 @@ def _timings(tmp_path, rows, *, name="timings"):
     for i, (capsule, engine, seconds) in enumerate(rows):
         d = root / f"run{i}"
         d.mkdir(parents=True, exist_ok=True)
-        tier = {"cycle_accurate": True, "timing": {"sim_active_s": seconds},
-                # The only trace an older record carries of its engine, and deliberately a LIE here:
-                # a run-time substitution writes the console under the DECLARED engine's name.
-                "evidence": f"{SLOW}_console.log"}
+        tier = {
+            "cycle_accurate": True,
+            "timing": {"sim_active_s": seconds},
+            # The only trace an older record carries of its engine, and deliberately a LIE here:
+            # a run-time substitution writes the console under the DECLARED engine's name.
+            "evidence": f"{SLOW}_console.log",
+        }
         if engine is not None:
             tier["engine"] = engine
         (d / "capsule_result.json").write_text(
-            json.dumps({"capsule": capsule, "tiers": {"L3": tier}}), encoding="utf-8")
+            json.dumps({"capsule": capsule, "tiers": {"L3": tier}}), encoding="utf-8"
+        )
     return root
 
 
 def _both_engines(tmp_path):
     """Every capsule certified on BOTH engines: the fast one at 0.01 s/element, the slow one at 0.26."""
-    return _timings(tmp_path, [(c, FAST, 5.0 + 0.01 * n) for c, n in SIZES.items()]
-                    + [(c, SLOW, 40.0 + 0.26 * n) for c, n in SIZES.items()])
+    return _timings(
+        tmp_path,
+        [(c, FAST, 5.0 + 0.01 * n) for c, n in SIZES.items()] + [(c, SLOW, 40.0 + 0.26 * n) for c, n in SIZES.items()],
+    )
 
 
 def _fit(tmp_path, engine, timing_root):
@@ -94,8 +101,10 @@ def test_a_fit_never_crosses_engines(tmp_path):
     assert fast.intercept_s == pytest.approx(5.0, abs=1e-6)
     assert slow.intercept_s == pytest.approx(40.0, abs=1e-6)
     # a sample belongs to exactly one fit
-    assert {s.engine for s in CA.samples_for(TARGET, corpus_roots=[_corpus(tmp_path)],
-                                             timing_root=timing)["by_engine"][FAST]} == {FAST}
+    assert {
+        s.engine
+        for s in CA.samples_for(TARGET, corpus_roots=[_corpus(tmp_path)], timing_root=timing)["by_engine"][FAST]
+    } == {FAST}
 
     # THE FALSIFIER: the same seconds fitted with no engine axis describe neither engine.
     mixed = CC.fit_for(TARGET, corpus_roots=[_corpus(tmp_path)], timing_root=timing)
@@ -169,10 +178,14 @@ def test_a_record_with_only_a_filename_is_attributed_by_inference_and_says_so(tm
     for i, (capsule, n) in enumerate(SIZES.items()):
         d = root / f"run{i}"
         d.mkdir(parents=True, exist_ok=True)
-        tier = {"cycle_accurate": True, "timing": {"sim_active_s": 40.0 + 0.26 * n},
-                "evidence": "verilator_console.log"}
-        (d / "capsule_result.json").write_text(json.dumps({"capsule": capsule, "tiers": {"L3": tier}}),
-                                               encoding="utf-8")
+        tier = {
+            "cycle_accurate": True,
+            "timing": {"sim_active_s": 40.0 + 0.26 * n},
+            "evidence": "verilator_console.log",
+        }
+        (d / "capsule_result.json").write_text(
+            json.dumps({"capsule": capsule, "tiers": {"L3": tier}}), encoding="utf-8"
+        )
     got = CA.fits_for(TARGET, corpus_roots=[_corpus(tmp_path)], timing_root=root)
     assert set(got["engines"]) == {"verilator"} and got["unattributed_samples"] == 0
     assert got["engines"]["verilator"].to_dict()["attributed_by"] == {"evidence": len(SIZES)}
@@ -184,8 +197,9 @@ def test_a_record_with_neither_is_counted_and_fits_nothing(tmp_path):
         d = root / f"run{i}"
         d.mkdir(parents=True, exist_ok=True)
         tier = {"cycle_accurate": True, "timing": {"sim_active_s": 40.0 + 0.26 * n}}
-        (d / "capsule_result.json").write_text(json.dumps({"capsule": capsule, "tiers": {"L3": tier}}),
-                                               encoding="utf-8")
+        (d / "capsule_result.json").write_text(
+            json.dumps({"capsule": capsule, "tiers": {"L3": tier}}), encoding="utf-8"
+        )
     got = CA.fits_for(TARGET, corpus_roots=[_corpus(tmp_path)], timing_root=root)
     assert got["engines"] == {} and got["unattributed_samples"] == len(SIZES)
 
@@ -199,8 +213,7 @@ def test_engine_of_prefers_the_statement_then_the_filename():
 
 
 def test_a_measurement_whose_capsule_is_not_in_the_corpus_is_reported_not_dropped(tmp_path):
-    timing = _timings(tmp_path, [(c, FAST, 5.0 + 0.01 * n) for c, n in SIZES.items()]
-                      + [("not_in_corpus", FAST, 99.0)])
+    timing = _timings(tmp_path, [(c, FAST, 5.0 + 0.01 * n) for c, n in SIZES.items()] + [("not_in_corpus", FAST, 99.0)])
     got = CA.samples_for(TARGET, corpus_roots=[_corpus(tmp_path)], timing_root=timing)
     assert got["unsized"] == 1
     assert len(got["by_engine"][FAST]) == len(SIZES)
@@ -237,7 +250,7 @@ def _gate():
     mod = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(mod)
-    except Exception as exc:                       # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         pytest.skip(f"gate not importable here: {type(exc).__name__}: {exc}")
     return mod
 
@@ -252,8 +265,16 @@ def test_the_gate_prices_with_a_measured_fit_when_it_has_one():
     """
     gate = _gate()
     metric = CC.CostFit.__dataclass_fields__["metric"].default
-    fit = CC.CostFit(target=TARGET, intercept_s=10.0, per_element_s=0.5, r2=0.9, n_samples=12,
-                     elements_min=64, elements_max=1024, metric=metric)
+    fit = CC.CostFit(
+        target=TARGET,
+        intercept_s=10.0,
+        per_element_s=0.5,
+        r2=0.9,
+        n_samples=12,
+        elements_min=64,
+        elements_max=1024,
+        metric=metric,
+    )
     secs, basis = gate._price(fit, 100)
     assert secs == pytest.approx(60.0)
     assert "fitted" in basis and "12 samples" in basis

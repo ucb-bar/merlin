@@ -9,6 +9,7 @@ The concrete way in: `discover_capsules` walks with `Path.rglob`, which does NOT
 symlinked directories. A cohort root assembled out of symlinks to real capsule dirs -- the obvious
 way to build an ad-hoc subset -- therefore discovers zero capsules and, before this, exited 0.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,10 +37,18 @@ def test_empty_cohort_refuses_a_verdict(tmp_path: Path, capsys):
     """A root that matches nothing exits non-zero and says so, instead of reporting 0/0 pass."""
     empty = tmp_path / "empty_root"
     empty.mkdir()
-    rc = runner_main(["--package", str(tmp_path / "unused_pkg"),
-                      "--capsules-root", str(empty),
-                      "--contract", "merlin/contract",
-                      "--target", "gemmini"])
+    rc = runner_main(
+        [
+            "--package",
+            str(tmp_path / "unused_pkg"),
+            "--capsules-root",
+            str(empty),
+            "--contract",
+            "merlin/contract",
+            "--target",
+            "gemmini",
+        ]
+    )
     assert rc != 0, "an empty cohort must not exit 0"
     err = capsys.readouterr().err
     assert "empty cohort" in err
@@ -50,6 +59,7 @@ def test_empty_cohort_refuses_a_verdict(tmp_path: Path, capsys):
 def test_neither_capsule_nor_root_is_rejected(tmp_path: Path):
     """Omitting both selectors used to reach `Path(None)`; argparse should reject it up front."""
     import pytest
+
     with pytest.raises(SystemExit) as e:
         runner_main(["--package", str(tmp_path / "unused_pkg"), "--target", "gemmini"])
     assert e.value.code != 0

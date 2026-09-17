@@ -9,6 +9,7 @@ the smoke FAILS CLOSED (raises OracleUnavailable) when the program ships no gold
 A gated end-to-end assertion actually runs the smoke and checks the bit-exact verdict, skipping cleanly when
 the model venv / cosim is absent.
 """
+
 from __future__ import annotations
 
 import tempfile
@@ -47,7 +48,8 @@ def test_external_backend_target_declares_a_known_good_smoke_program():
     te = load_target_experiment(desc)
     assert te.preflight_smoke_program, (
         f"{te.target}: external_backend target declares no preflight.smoke_program — the pre-flight cannot "
-        f"run an end-to-end oracle smoke and would have to guess a program (forbidden)")
+        f"run an end-to-end oracle smoke and would have to guess a program (forbidden)"
+    )
 
 
 def test_loader_defaults_smoke_program_to_none_when_unset():
@@ -63,6 +65,7 @@ def test_smoke_takes_program_as_a_parameter_no_literal():
     """The reusable smoke is target-agnostic: ``program`` is a keyword PARAMETER (the concrete known-good
     name lives in the descriptor, not baked into the library)."""
     import inspect
+
     sig = inspect.signature(PO.run_program_oracle_smoke)
     assert "program" in sig.parameters and "target" in sig.parameters and "model_ext" in sig.parameters
 
@@ -70,12 +73,12 @@ def test_smoke_takes_program_as_a_parameter_no_literal():
 def test_smoke_fails_closed_when_program_ships_no_golden(monkeypatch):
     """If the model program ships no ``golden_result``, there is nothing to compare bit-exact against — the
     smoke must raise OracleUnavailable (a NO_GO the caller surfaces), never return a silent ``ok``."""
-    monkeypatch.setattr(PO, "emit_bundle",
-                        lambda **kw: {"words": [0], "inputs": [], "output": None, "golden": None})
+    monkeypatch.setattr(PO, "emit_bundle", lambda **kw: {"words": [0], "inputs": [], "output": None, "golden": None})
     with tempfile.TemporaryDirectory() as td:
         with pytest.raises(PO.OracleUnavailable):
-            PO.run_program_oracle_smoke("any_target", model_ext="whatever", program="NoGoldenProgram",
-                                        workdir=Path(td), timeout=5)
+            PO.run_program_oracle_smoke(
+                "any_target", model_ext="whatever", program="NoGoldenProgram", workdir=Path(td), timeout=5
+            )
 
 
 def test_program_oracle_smoke_bit_exact_end_to_end():
@@ -83,6 +86,7 @@ def test_program_oracle_smoke_bit_exact_end_to_end():
     path and require a bit-exact match to its own golden. Skips cleanly when the model venv / cosim is
     absent (CI without the heavy deps), so it never blocks the hermetic suite."""
     from merlin.targetgen.rtl import mlc_bridge
+
     desc = _external_backend_descriptor()
     if desc is None:
         pytest.skip("no external_backend target descriptor present")
@@ -97,8 +101,7 @@ def test_program_oracle_smoke_bit_exact_end_to_end():
 
     try:
         with tempfile.TemporaryDirectory() as td:
-            r = PO.run_program_oracle_smoke(target, model_ext=model_ext, program=program,
-                                            workdir=Path(td), timeout=600)
+            r = PO.run_program_oracle_smoke(target, model_ext=model_ext, program=program, workdir=Path(td), timeout=600)
     except PO.OracleUnavailable as e:
         pytest.skip(f"program oracle infra unavailable: {e}")
 

@@ -5,6 +5,7 @@ The tool exists because two disk incidents were each diagnosed slowly: the numbe
 declared regenerable -- were never printed. A tool that got those numbers wrong, or that reclaimed
 something a run still needed, would be worse than the absence it replaces.
 """
+
 from __future__ import annotations
 
 import os
@@ -27,8 +28,7 @@ def rooted(tmp_path, monkeypatch):
     left exactly as it ships.
     """
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
-    monkeypatch.setenv("MERLIN_BUNDLE_CAS", str(tmp_path / "out" / "artifacts" / "cache"
-                                               / CS.NAMESPACE))
+    monkeypatch.setenv("MERLIN_BUNDLE_CAS", str(tmp_path / "out" / "artifacts" / "cache" / CS.NAMESPACE))
     (tmp_path / "out" / "artifacts" / "cache").mkdir(parents=True)
     declared = dict(SC.contract(), scan_roots=[])
     monkeypatch.setattr(SC, "contract", lambda: declared)
@@ -136,7 +136,7 @@ def test_report_names_the_pre_store_snapshots_it_cannot_explain(rooted, capsys):
     for name in ("run1", "run2"):
         root = rooted / "out" / "runs" / "t" / "s" / name / "bundle_inputs"
         root.mkdir(parents=True)
-        (root / "weights.bin").write_bytes(b"d" * 4096)     # separate inodes, identical content
+        (root / "weights.bin").write_bytes(b"d" * 4096)  # separate inodes, identical content
 
     assert SC.main(["report"]) == 0
     out = capsys.readouterr().out
@@ -191,7 +191,8 @@ def test_the_scan_reaches_workspaces_that_live_outside_the_out_root(tmp_path, mo
     merlin = tmp_path / "merlin"
     (merlin / "contract").mkdir(parents=True)
     (merlin / "contract" / "storage.yaml").write_text(
-        "scan_roots:\n  - experiments/capsule_bench/targets/*/_qa_ws\n", encoding="utf-8")
+        "scan_roots:\n  - experiments/capsule_bench/targets/*/_qa_ws\n", encoding="utf-8"
+    )
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
     (tmp_path / "out").mkdir()
 
@@ -217,7 +218,8 @@ def test_a_declared_root_that_is_not_on_disk_is_skipped(tmp_path, monkeypatch):
     monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))
     (tmp_path / "merlin" / "contract").mkdir(parents=True)
     (tmp_path / "merlin" / "contract" / "storage.yaml").write_text(
-        "scan_roots:\n  - experiments/nothing/here/*\n", encoding="utf-8")
+        "scan_roots:\n  - experiments/nothing/here/*\n", encoding="utf-8"
+    )
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
     (tmp_path / "out").mkdir()
 

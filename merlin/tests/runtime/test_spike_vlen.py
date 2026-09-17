@@ -10,6 +10,7 @@ Measured end to end on spectformer int8: VLEN 128 and 256 both build, both pass 
 bit-identical output (spike is functional, so cycles are unchanged -- it validates correctness at the
 board's vector length, not its cost).
 """
+
 from __future__ import annotations
 
 import pytest

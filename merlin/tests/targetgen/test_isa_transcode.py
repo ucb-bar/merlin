@@ -1,6 +1,7 @@
 """Fork-free wide-word SIMT codegen: transcode STOCK rv32 machine code into the target's fixed-format
 words using ONLY the RTL-derived IsaModel. Hermetic transcode checks + a gated stock-clang→transcode→
 decode-clean regression (the proof pipeline's compile+transcode half)."""
+
 from __future__ import annotations
 
 import struct
@@ -10,15 +11,23 @@ from pathlib import Path
 
 import pytest
 
-from merlin.targetgen.isa_model import isa_model_from_encoding
 from merlin.targetgen import isa_disasm
+from merlin.targetgen.isa_model import isa_model_from_encoding
 from merlin.targetgen.isa_transcode import FixedFormatTranscoder, TranscodeError, _decode_rv32, derive_march
 
 # a Muon-shaped fixed-format model (the field positions the derived radiance fact carries)
 MUON_FACT = {
     "inst_width": 64,
-    "fields": {"opcode": [6, 0], "ext2": [8, 7], "rd": [16, 9], "f3": [19, 17],
-               "rs1": [27, 20], "rs2": [35, 28], "f7": [58, 52], "imm24": [59, 36]},
+    "fields": {
+        "opcode": [6, 0],
+        "ext2": [8, 7],
+        "rd": [16, 9],
+        "f3": [19, 17],
+        "rs1": [27, 20],
+        "rs2": [35, 28],
+        "f7": [58, 52],
+        "imm24": [59, 36],
+    },
     "opcodes": {"LOAD": 0x03, "OP_IMM": 0x13, "STORE": 0x23, "OP": 0x33, "BRANCH": 0x63, "JAL": 0x6F},
 }
 
@@ -28,8 +37,9 @@ def test_derive_march_reads_the_fp_mode_from_the_opcode_table():
     m = isa_model_from_encoding("synth", {**MUON_FACT, "opcodes": {**MUON_FACT["opcodes"], "OP_FP": 0x53}})
     assert derive_march(m) == "rv32im_zfinx"
     # OP_FP + a FP load/store opcode -> a separate FP register file ('f').
-    m2 = isa_model_from_encoding("synth", {**MUON_FACT,
-                                           "opcodes": {**MUON_FACT["opcodes"], "OP_FP": 0x53, "LOAD_FP": 0x07}})
+    m2 = isa_model_from_encoding(
+        "synth", {**MUON_FACT, "opcodes": {**MUON_FACT["opcodes"], "OP_FP": 0x53, "LOAD_FP": 0x07}}
+    )
     assert derive_march(m2) == "rv32imf"
     # no OP_FP -> integer only.
     assert derive_march(isa_model_from_encoding("synth", MUON_FACT)) == "rv32im"
@@ -42,10 +52,10 @@ def test_transcode_custom0_simt_op_as_register_form():
     fact = {**MUON_FACT, "opcodes": {**MUON_FACT["opcodes"], "CUSTOM0": 0x0B}}
     m = isa_model_from_encoding("synth", fact)
     d = _decode_rv32(0x0B | (5 << 15), m.inst_width // 8 // 4)
-    assert d.opcode == 0x0B and not d.has_imm and d.rs1 == 5      # register form, no immediate
+    assert d.opcode == 0x0B and not d.has_imm and d.rs1 == 5  # register form, no immediate
     w = FixedFormatTranscoder(m).encode(d)
-    assert (w & 0x7F) == 0x0B                                     # opcode packed from the derived table
-    assert (w >> 20) & 0xFF == 5                                  # rs1 (the mask) at the derived position
+    assert (w & 0x7F) == 0x0B  # opcode packed from the derived table
+    assert (w >> 20) & 0xFF == 5  # rs1 (the mask) at the derived position
 
 
 def test_transcode_addi_places_fields_at_target_positions():
@@ -57,8 +67,8 @@ def test_transcode_addi_places_fields_at_target_positions():
     assert rec["mnemonic"] == "OP_IMM"
     assert rec["operands"]["rd"] == 10 and rec["operands"]["rs1"] == 10
     assert rec["operands"]["f3"] == 0
-    assert rec["operands"]["imm24"] == 11           # low 24 bits of the immediate, contiguous
-    assert rec["operands"]["rs2"] == 0              # high immediate byte = 0 here
+    assert rec["operands"]["imm24"] == 11  # low 24 bits of the immediate, contiguous
+    assert rec["operands"]["rs2"] == 0  # high immediate byte = 0 here
 
 
 def test_transcode_negative_store_immediate_high_byte_in_rd():
@@ -83,14 +93,20 @@ def test_transcode_jal_clears_funct3():
     # the fixed format carries the whole displacement in the contiguous immediate.
     m = isa_model_from_encoding("synth", MUON_FACT)
     tc = FixedFormatTranscoder(m)
-    off = -144                                       # displacement whose bits [14:12] are nonzero
+    off = -144  # displacement whose bits [14:12] are nonzero
     o = off & 0x1FFFFF
-    word32 = ((((o >> 20) & 1) << 31) | (((o >> 1) & 0x3FF) << 21) | (((o >> 11) & 1) << 20)
-              | (((o >> 12) & 0xFF) << 12) | (1 << 7) | 0x6F)   # jal ra, -144
-    assert (word32 >> 12) & 0x7 != 0                 # rv32 word really has stray bits at [14:12]
+    word32 = (
+        (((o >> 20) & 1) << 31)
+        | (((o >> 1) & 0x3FF) << 21)
+        | (((o >> 11) & 1) << 20)
+        | (((o >> 12) & 0xFF) << 12)
+        | (1 << 7)
+        | 0x6F
+    )  # jal ra, -144
+    assert (word32 >> 12) & 0x7 != 0  # rv32 word really has stray bits at [14:12]
     rec = isa_disasm.disassemble(m, tc.transcode_text(struct.pack("<I", word32)))[0]
     assert rec["mnemonic"] == "JAL"
-    assert rec["operands"]["f3"] == 0                # the fix: funct3 cleared for J-type
+    assert rec["operands"]["f3"] == 0  # the fix: funct3 cleared for J-type
     # displacement is scaled by the 4->8 byte stride ratio, reconstructed from imm24 + rs2 high byte
     imm32 = (rec["operands"]["rs2"] << 24) | rec["operands"]["imm24"]
     assert imm32 - (1 << 32) == off * tc.stride_ratio
@@ -98,9 +114,11 @@ def test_transcode_jal_clears_funct3():
 
 def test_transcode_fma_places_third_source():
     # a 4-register FMA re-maps to the target's rs3 field; the 2-bit format lands in f7.
-    fact = {**MUON_FACT,
-            "fields": {**MUON_FACT["fields"], "rs3": [43, 36]},
-            "opcodes": {**MUON_FACT["opcodes"], "MADD": 0x43}}
+    fact = {
+        **MUON_FACT,
+        "fields": {**MUON_FACT["fields"], "rs3": [43, 36]},
+        "opcodes": {**MUON_FACT["opcodes"], "MADD": 0x43},
+    }
     m = isa_model_from_encoding("synth", fact)
     tc = FixedFormatTranscoder(m)
     # fmadd  rd=1, rs1=2, rs2=3, rs3=4, rm=0, fmt=0
@@ -150,7 +168,7 @@ def test_fence_fails_closed_when_the_target_declares_no_misc_mem():
     Nothing target-specific gates this: `encode` compares against the DERIVED opcode table, so leaving
     MISC_MEM out of the fact is enough to make the refusal happen.
     """
-    m = isa_model_from_encoding("synth", MUON_FACT)          # MUON_FACT declares no MISC_MEM
+    m = isa_model_from_encoding("synth", MUON_FACT)  # MUON_FACT declares no MISC_MEM
     tc = FixedFormatTranscoder(m)
     with pytest.raises(TranscodeError, match="not in the target's derived opcode table"):
         tc.transcode_text(struct.pack("<I", 0x0FF0000F))
@@ -159,7 +177,7 @@ def test_fence_fails_closed_when_the_target_declares_no_misc_mem():
 def test_transcode_fails_closed_on_auipc():
     m = isa_model_from_encoding("synth", MUON_FACT)
     tc = FixedFormatTranscoder(m)
-    auipc = (0 << 12) | (5 << 7) | 0x17            # auipc x5, 0
+    auipc = (0 << 12) | (5 << 7) | 0x17  # auipc x5, 0
     with pytest.raises(TranscodeError):
         tc.transcode_text(struct.pack("<I", auipc))
 
@@ -167,20 +185,22 @@ def test_transcode_fails_closed_on_auipc():
 def test_branch_displacement_scaled_by_stride():
     # a branch's PC-relative displacement is scaled by the target/rv32 byte ratio (8/4 = 2 for a 64-bit
     # word), so it lands on the same instruction index.
-    d = _decode_rv32(0x00000463, stride_ratio=2)   # beq x0,x0,+8  (imm=8) -> scaled to 16
+    d = _decode_rv32(0x00000463, stride_ratio=2)  # beq x0,x0,+8  (imm=8) -> scaled to 16
     assert d.imm == 16
 
 
 def test_requires_fixed_format_model():
     from merlin.targetgen.isa_model import IsaModel
+
     with pytest.raises(TranscodeError):
-        FixedFormatTranscoder(IsaModel(target="x"))       # empty / not fixed-format
+        FixedFormatTranscoder(IsaModel(target="x"))  # empty / not fixed-format
 
 
 def _stock_clang():
     """The in-tree stock clang, resolved from the repo root rather than an absolute path -- this test
     is skipped when it is absent, so a baked path silently skipped everywhere except one checkout."""
     from merlin.common.paths import repo_root
+
     p = repo_root() / "third_party" / "llvm-install" / "bin" / "clang"
     return str(p) if p.is_file() else None
 
@@ -188,24 +208,40 @@ def _stock_clang():
 def test_stock_rv32_kernel_transcodes_to_clean_muon(tmp_path):
     """The compile+transcode half of the fork-free pipeline: a tiny kernel built with STOCK clang to rv32,
     transcoded via the RTL-derived model, decodes with zero illegal instructions (no auipc in this kernel)."""
-    from merlin.targetgen.rtl import mlc_bridge
     from merlin.targetgen.contract.toolchain import mlir_bin
+    from merlin.targetgen.rtl import mlc_bridge
+
     fact = mlc_bridge.isa_encoding_for("radiance")
     clang, objcopy = _stock_clang(), mlir_bin("llvm-objcopy")
     if not (fact and clang and objcopy.is_file()):
         pytest.skip("mlc fact / stock clang / llvm-objcopy not all present")
     src = tmp_path / "k.c"
-    src.write_text("void main(void){volatile int*p=(int*)0x100;int s=0;"
-                   "for(int i=0;i<8;i++)s+=i;*p=s;}")
+    src.write_text("void main(void){volatile int*p=(int*)0x100;int s=0;for(int i=0;i<8;i++)s+=i;*p=s;}")
     obj = tmp_path / "k.o"
-    r = subprocess.run([clang, "--target=riscv32", "-march=rv32im", "-mabi=ilp32", "-mno-relax",
-                        "-fno-pic", "-fno-jump-tables", "-mcmodel=medany", "-O2", "-ffreestanding",
-                        "-c", str(src), "-o", str(obj)], capture_output=True, text=True)
+    r = subprocess.run(
+        [
+            clang,
+            "--target=riscv32",
+            "-march=rv32im",
+            "-mabi=ilp32",
+            "-mno-relax",
+            "-fno-pic",
+            "-fno-jump-tables",
+            "-mcmodel=medany",
+            "-O2",
+            "-ffreestanding",
+            "-c",
+            str(src),
+            "-o",
+            str(obj),
+        ],
+        capture_output=True,
+        text=True,
+    )
     if r.returncode != 0:
         pytest.skip(f"stock rv32 compile unavailable: {r.stderr[-200:]}")
     binf = tmp_path / "k.bin"
-    subprocess.run([str(objcopy), "-O", "binary", "--only-section=.text", str(obj), str(binf)],
-                   capture_output=True)
+    subprocess.run([str(objcopy), "-O", "binary", "--only-section=.text", str(obj), str(binf)], capture_output=True)
     text = binf.read_bytes()
     if not text:
         pytest.skip("empty .text")
@@ -218,4 +254,4 @@ def test_stock_rv32_kernel_transcodes_to_clean_muon(tmp_path):
     recs = isa_disasm.disassemble(m, words)
     illegal = [r for r in recs if r.get("illegal")]
     assert not illegal, f"{len(illegal)} transcoded words did not decode"
-    assert len(words) == len(text) // 4     # 1:1 transcode
+    assert len(words) == len(text) // 4  # 1:1 transcode

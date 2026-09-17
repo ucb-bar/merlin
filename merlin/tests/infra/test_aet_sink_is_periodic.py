@@ -22,6 +22,7 @@ The sink is wrapped in ``try/except`` because telemetry must never gate a run. T
 needs a test: five defects once hid in this file's other soft-failing path, and every one of them
 presented as "nothing needed doing".
 """
+
 from __future__ import annotations
 
 import ast
@@ -57,8 +58,9 @@ def test_in_turn_grader_offers_a_tick_hook() -> None:
         "_start_in_turn_grader lost its on_tick hook; under --schedule continuous this is the only "
         "loop running while the agent works, so nothing can be sunk mid-run without it"
     )
-    calls = [n for n in ast.walk(fn)
-             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "on_tick"]
+    calls = [
+        n for n in ast.walk(fn) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "on_tick"
+    ]
     assert calls, "_start_in_turn_grader accepts on_tick but never calls it"
 
 
@@ -71,8 +73,9 @@ def test_the_continuous_call_site_passes_the_sink() -> None:
     tree = _tree()
     wired = []
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                and node.func.id == "_start_in_turn_grader"):
+        if not (
+            isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_start_in_turn_grader"
+        ):
             continue
         kwargs = {k.arg for k in node.keywords if k.arg}
         if "interval_grades" in kwargs:
@@ -93,9 +96,11 @@ def test_the_sink_helper_uses_the_sticky_check_and_never_raises() -> None:
     only ever consult the env var, and the run goes quiet.
     """
     tree = _tree()
-    calls = [n for n in ast.walk(tree)
-             if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
-             and n.func.attr == "aet_sink_enabled"]
+    calls = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "aet_sink_enabled"
+    ]
     assert calls, "no aet_sink_enabled() call in the loop"
     for call in calls:
         assert call.args, (
@@ -120,22 +125,44 @@ def test_emit_writes_a_record_from_per_round_transcripts_alone(tmp_path, monkeyp
 
     rounds = tmp_path / "rounds"
     rounds.mkdir()
-    (rounds / "round_00.transcript.jsonl").write_text("".join(json.dumps(r) + "\n" for r in [
-        {"type": "system", "subtype": "init", "session_id": "s1"},
-        {"type": "assistant", "message": {"model": "gpt-5.6-sol", "content": [
-            {"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}],
-            "usage": {"input_tokens": 100, "output_tokens": 20,
-                      "cache_read_input_tokens": 900, "cache_creation_input_tokens": 0}}},
-        {"type": "user", "message": {"content": [
-            {"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]}},
-        {"type": "result", "subtype": "success", "session_id": "s1", "num_turns": 1},
-    ]))
+    (rounds / "round_00.transcript.jsonl").write_text(
+        "".join(
+            json.dumps(r) + "\n"
+            for r in [
+                {"type": "system", "subtype": "init", "session_id": "s1"},
+                {
+                    "type": "assistant",
+                    "message": {
+                        "model": "gpt-5.6-sol",
+                        "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}],
+                        "usage": {
+                            "input_tokens": 100,
+                            "output_tokens": 20,
+                            "cache_read_input_tokens": 900,
+                            "cache_creation_input_tokens": 0,
+                        },
+                    },
+                },
+                {
+                    "type": "user",
+                    "message": {"content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]},
+                },
+                {"type": "result", "subtype": "success", "session_id": "s1", "num_turns": 1},
+            ]
+        )
+    )
     assert not (tmp_path / "transcript.jsonl").exists()
 
     monkeypatch.setenv("MERLIN_AET_SINK", "1")
-    assert AB.emit_to_aet(run_dir=tmp_path, run_id="unit", method="raw_baseline",
-                          model="gpt-5.6-sol", target="gemmini", suite="capsule-bench",
-                          billing_mode="subscription_notional")
+    assert AB.emit_to_aet(
+        run_dir=tmp_path,
+        run_id="unit",
+        method="raw_baseline",
+        model="gpt-5.6-sol",
+        target="gemmini",
+        suite="capsule-bench",
+        billing_mode="subscription_notional",
+    )
     assert (tmp_path / "logs" / "metrics.jsonl").is_file()
     assert (tmp_path / "metrics" / "trajectory.json").is_file()
 
@@ -157,20 +184,41 @@ def test_re_emitting_on_a_cadence_supersedes_it_does_not_accumulate(tmp_path, mo
     from merlin.targetgen import aet_bridge as AB
 
     def _round(path, inp, out, cache):
-        path.write_text("".join(json.dumps(r) + "\n" for r in [
-            {"type": "assistant", "message": {"model": "gpt-5.6-sol", "content": [],
-                "usage": {"input_tokens": inp, "output_tokens": out,
-                          "cache_read_input_tokens": cache, "cache_creation_input_tokens": 0}}},
-            {"type": "result", "subtype": "success", "session_id": "s1", "num_turns": 1},
-        ]))
+        path.write_text(
+            "".join(
+                json.dumps(r) + "\n"
+                for r in [
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "model": "gpt-5.6-sol",
+                            "content": [],
+                            "usage": {
+                                "input_tokens": inp,
+                                "output_tokens": out,
+                                "cache_read_input_tokens": cache,
+                                "cache_creation_input_tokens": 0,
+                            },
+                        },
+                    },
+                    {"type": "result", "subtype": "success", "session_id": "s1", "num_turns": 1},
+                ]
+            )
+        )
 
     rounds = tmp_path / "rounds"
     rounds.mkdir()
     _round(rounds / "round_00.transcript.jsonl", 100, 20, 900)
 
     monkeypatch.setenv("MERLIN_AET_SINK", "1")
-    kw = dict(run_id="unit", method="raw_baseline", model="gpt-5.6-sol", target="gemmini",
-              suite="capsule-bench", billing_mode="subscription_notional")
+    kw = dict(
+        run_id="unit",
+        method="raw_baseline",
+        model="gpt-5.6-sol",
+        target="gemmini",
+        suite="capsule-bench",
+        billing_mode="subscription_notional",
+    )
     assert AB.emit_to_aet(run_dir=tmp_path, **kw)
     _, tok, _, _ = _read_metrics(tmp_path)
     assert (tok.input, tok.output, tok.cache_read) == (100, 20, 900)

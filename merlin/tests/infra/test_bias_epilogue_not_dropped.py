@@ -19,6 +19,7 @@ The tests below fire on the real corpus capsules rather than on synthetic buffer
 asserts the bias is ACTUALLY LOAD-BEARING first — a bias of all zeros would let a dropped-bias
 engine pass this file and prove nothing.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -63,6 +64,7 @@ def _flat(x):
 # The bug itself: the bias must reach the arithmetic, on every capsule in the group.
 # --------------------------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("name", _FUSION_GROUP)
 def test_fusion_group_member_is_bit_exact_at_the_math_floor(name):
     """L0 (reference) and L1 (simulate) reproduce the independent golden EXACTLY.
@@ -80,8 +82,7 @@ def test_fusion_group_member_is_bit_exact_at_the_math_floor(name):
         assert _flat(sim[out]) == _flat(want), f"{name}: simulate does not match golden for {out}"
 
 
-@pytest.mark.parametrize("fused,part", [(_FUSED[0], "PF01_matmul_m16k16n16"),
-                                        (_FUSED[1], "PF04_matmul_m16k32n16")])
+@pytest.mark.parametrize("fused,part", [(_FUSED[0], "PF01_matmul_m16k16n16"), (_FUSED[1], "PF04_matmul_m16k32n16")])
 def test_the_bias_is_load_bearing_so_the_exactness_test_can_fail(fused, part):
     """Guard against a vacuous suite: the fused golden must actually DIFFER from the unfused matmul.
 
@@ -95,10 +96,12 @@ def test_the_bias_is_load_bearing_so_the_exactness_test_can_fail(fused, part):
     differing = sum(1 for a, b in zip(f, p) if a != b)
     assert differing > 0, (
         f"{fused} and {part} have identical goldens: the bias contributes nothing, so no engine "
-        f"can be caught dropping it")
+        f"can be caught dropping it"
+    )
     # The exact signature the defect produced, asserted as the thing this test is sensitive to.
     assert differing >= len(f) // 2, (
-        f"only {differing}/{len(f)} elements carry the bias — too weak to detect a dropped stage")
+        f"only {differing}/{len(f)} elements carry the bias — too weak to detect a dropped stage"
+    )
 
 
 @pytest.mark.parametrize("name", _FUSED)
@@ -124,10 +127,11 @@ def test_dropping_the_bias_is_detected_rather_than_tolerated(name):
 # The shared resolver.
 # --------------------------------------------------------------------------------------------
 
+
 def test_bias_name_resolves_from_either_spelling():
     """Both placements are legitimate and both are produced by this tree's own emitters."""
-    assert bias_tensor_name({}, {"bias": "B"}, op="t") == "B"           # interface-grammar buffer
-    assert bias_tensor_name({"bias": "B"}, {}, op="t") == "B"           # directly-built buffer
+    assert bias_tensor_name({}, {"bias": "B"}, op="t") == "B"  # interface-grammar buffer
+    assert bias_tensor_name({"bias": "B"}, {}, op="t") == "B"  # directly-built buffer
     assert bias_tensor_name({"bias": "B"}, {"bias": "B"}, op="t") == "B"
 
 
@@ -141,6 +145,7 @@ def test_bias_name_fails_closed_when_no_tensor_is_named():
 # --------------------------------------------------------------------------------------------
 # The protocol gate that rejected the unfused parts.
 # --------------------------------------------------------------------------------------------
+
 
 def test_schema_accepts_every_opcode_the_interface_grammar_can_emit():
     """DERIVED coverage, so this cannot drift again.
@@ -157,7 +162,8 @@ def test_schema_accepts_every_opcode_the_interface_grammar_can_emit():
     emittable = set(IE._NAMED_OP_TO_OPCODE.values())
     assert not (emittable - enum), (
         f"the interface grammar emits {sorted(emittable - enum)}, which the command_buffer schema "
-        f"rejects; a conformant buffer would be scored a protocol violation")
+        f"rejects; a conformant buffer would be scored a protocol violation"
+    )
 
 
 @pytest.mark.parametrize("name", ["PF02_bias_add_m16k16n16", "PF05_bias_add_m16k32n16"])
@@ -167,8 +173,7 @@ def test_standalone_bias_add_is_schema_valid(name):
     from merlin.targetgen.contract.schemas import load_schema
 
     cb, _ = _capsule(name)
-    assert any(c["opcode"] == "BIAS_ADD" for c in cb["commands"]), \
-        f"{name} no longer lowers to a standalone BIAS_ADD"
+    assert any(c["opcode"] == "BIAS_ADD" for c in cb["commands"]), f"{name} no longer lowers to a standalone BIAS_ADD"
     jsonschema.validate(cb, load_schema("command_buffer"))
 
 

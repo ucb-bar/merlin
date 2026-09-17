@@ -9,6 +9,7 @@ Three properties, each locking a real failure mode:
    result transplanted back into the module the pass API mutates).
 3. A broken catalog entry fails startup rather than vanishing from the list.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -20,6 +21,7 @@ pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed
 
 def _catalog():
     from merlin.xdsl_dialects.lowering import passes as P
+
     return P.all_catalogs()
 
 
@@ -30,7 +32,8 @@ def test_every_catalog_pass_is_registered_or_explained():
     reasons = dict(skipped)
     for info in _catalog():
         assert info.name in ok or info.name in reasons, (
-            f"{info.name} is neither registered nor reported: a pass cannot silently disappear")
+            f"{info.name} is neither registered nor reported: a pass cannot silently disappear"
+        )
     for name, reason in reasons.items():
         assert reason and reason.strip(), f"{name} skipped with an empty reason"
 
@@ -48,7 +51,8 @@ def test_unregistrable_passes_are_the_non_ir_ones():
     for name, _reason in skipped:
         info = by_name[name]
         assert "dispatch-program" in (info.input_dialect + info.output_dialect), (
-            f"{name} was skipped but its declared dialects claim it is IR-to-IR")
+            f"{name} was skipped but its declared dialects claim it is IR-to-IR"
+        )
 
 
 def test_registered_pass_transforms_the_module():
@@ -62,6 +66,7 @@ def test_registered_pass_transforms_the_module():
 
     pass_cls = ok["merlin-apply-schedule"]()
     from xdsl.context import Context
+
     pass_cls().apply(Context(), module)
 
     after = _common.text(module)

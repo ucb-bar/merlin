@@ -8,6 +8,7 @@ the refusals: an audit hit cannot be cleared, a non-passing source cannot be re-
 frozen corpus no longer holds cannot be reproduced, and the original score files are never carried
 forward as if they were the new grade.  No simulator is launched here.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -24,8 +25,7 @@ from merlin.common.paths import repo_root
 def _load_refreeze():
     scripts = repo_root() / "merlin/experiments/gemmini_perf_bench/scripts"
     sys.path.insert(0, str(scripts))
-    spec = importlib.util.spec_from_file_location(
-        "_refreeze_functional_run", scripts / "refreeze_functional_run.py")
+    spec = importlib.util.spec_from_file_location("_refreeze_functional_run", scripts / "refreeze_functional_run.py")
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -37,25 +37,37 @@ RF = _load_refreeze()
 
 
 def _round(**over):
-    row = {"round": 0, "all_pass": True, "answer_access_clean": True, "audit_hits": [],
-           "conformance": {"conformant": True, "checks": {"no_regex_ok": True, "asm_used": None}}}
+    row = {
+        "round": 0,
+        "all_pass": True,
+        "answer_access_clean": True,
+        "audit_hits": [],
+        "conformance": {"conformant": True, "checks": {"no_regex_ok": True, "asm_used": None}},
+    }
     row.update(over)
     return row
 
 
 def _summary(**over):
-    doc = {"rounds": [_round()], "converged": True,
-           "finalize": {"answer_access_clean": True, "audit_hits": [], "regrade_all_pass": True}}
+    doc = {
+        "rounds": [_round()],
+        "converged": True,
+        "finalize": {"answer_access_clean": True, "audit_hits": [], "regrade_all_pass": True},
+    }
     doc.update(over)
     return doc
 
 
 def _score(names, **over):
     doc = {
-        "functional_pass": 1, "gradeable": True, "n_capsules": len(names), "n_passed": len(names),
-        "per_capsule": [{"capsule": n, "status": "pass",
-                         "tiers": {"L0": "pass", "L1": "pass", "L2": "pass", "L3": "pass"}}
-                        for n in names],
+        "functional_pass": 1,
+        "gradeable": True,
+        "n_capsules": len(names),
+        "n_passed": len(names),
+        "per_capsule": [
+            {"capsule": n, "status": "pass", "tiers": {"L0": "pass", "L1": "pass", "L2": "pass", "L3": "pass"}}
+            for n in names
+        ],
     }
     doc.update(over)
     return doc
@@ -83,16 +95,18 @@ def test_migration_refuses_a_summary_that_disagrees_with_its_own_round():
         RF.migrate_qa_loop_summary(_summary(numeric_all_pass=False))
 
 
-@pytest.mark.parametrize("summary", [
-    _summary(rounds=[_round(audit_hits=[{"tool": "Bash", "kind": "path_read"}],
-                            answer_access_clean=False)]),
-    _summary(converged=False),
-    _summary(rounds=[_round(all_pass=False)]),
-    _summary(rounds=[_round(conformance={"conformant": False, "checks": {}})]),
-    _summary(rounds=[_round(conformance={"conformant": True, "checks": {"isa_tools_used": False}})]),
-    _summary(finalize={"answer_access_clean": True, "audit_hits": [], "regrade_all_pass": False}),
-    _summary(rounds=[]),
-])
+@pytest.mark.parametrize(
+    "summary",
+    [
+        _summary(rounds=[_round(audit_hits=[{"tool": "Bash", "kind": "path_read"}], answer_access_clean=False)]),
+        _summary(converged=False),
+        _summary(rounds=[_round(all_pass=False)]),
+        _summary(rounds=[_round(conformance={"conformant": False, "checks": {}})]),
+        _summary(rounds=[_round(conformance={"conformant": True, "checks": {"isa_tools_used": False}})]),
+        _summary(finalize={"answer_access_clean": True, "audit_hits": [], "regrade_all_pass": False}),
+        _summary(rounds=[]),
+    ],
+)
 def test_migration_refuses_every_unclean_source(summary):
     """A re-freeze must not launder the original authoring session's recorded failures."""
     with pytest.raises(RF.RefreezeError):
@@ -104,16 +118,18 @@ def test_cohort_is_the_capsule_identities_not_a_count():
     assert RF._capsule_names(_score(["B0", "A0"]), label="public") == ["A0", "B0"]
 
 
-@pytest.mark.parametrize("score", [
-    _score(["A0"], per_capsule=[{"capsule": "A0", "status": "fail",
-                                 "tiers": {"L2": "pass", "L3": "pass"}}]),
-    _score(["A0"], per_capsule=[{"capsule": "A0", "status": "pass", "tiers": {"L2": "pass"}}]),
-    _score(["A0"], functional_pass=0),
-    _score(["A0"], gradeable=False),
-    _score(["A0"], n_capsules=2),
-    _score(["A0", "A0"]),
-    _score([]),
-])
+@pytest.mark.parametrize(
+    "score",
+    [
+        _score(["A0"], per_capsule=[{"capsule": "A0", "status": "fail", "tiers": {"L2": "pass", "L3": "pass"}}]),
+        _score(["A0"], per_capsule=[{"capsule": "A0", "status": "pass", "tiers": {"L2": "pass"}}]),
+        _score(["A0"], functional_pass=0),
+        _score(["A0"], gradeable=False),
+        _score(["A0"], n_capsules=2),
+        _score(["A0", "A0"]),
+        _score([]),
+    ],
+)
 def test_cohort_refuses_a_source_that_was_not_already_certified(score):
     with pytest.raises(RF.RefreezeError):
         RF._capsule_names(score, label="public")
@@ -124,8 +140,9 @@ def _corpus(root: Path, names, *, label="public"):
     for name in names:
         d = root / name
         d.mkdir(parents=True)
-        (d / "capsule.yaml").write_text(yaml.safe_dump(
-            {"name": name, "label": label, "required_oracle_tiers": ["L0", "L1", "L2", "L3"]}))
+        (d / "capsule.yaml").write_text(
+            yaml.safe_dump({"name": name, "label": label, "required_oracle_tiers": ["L0", "L1", "L2", "L3"]})
+        )
         (d / "golden.yaml").write_text("values: [1]\n")
 
 
@@ -139,9 +156,9 @@ def _snapshot(tmp_path: Path, public, hidden):
         dst = snapshot / "repo" / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         import shutil as _sh
+
         _sh.copytree(repo / rel, dst)
-    te = SimpleNamespace(capsule_corpus=corpus, corpus_siblings=lambda: [],
-                         hidden_corpus=lambda: "caps/hidden/")
+    te = SimpleNamespace(capsule_corpus=corpus, corpus_siblings=lambda: [], hidden_corpus=lambda: "caps/hidden/")
     return repo, snapshot, te
 
 
@@ -202,22 +219,24 @@ def test_carried_provenance_never_includes_the_source_grade(tmp_path):
 
 def test_the_record_declares_itself_a_refreeze(tmp_path):
     env = RF.build_environment(
-        {"run_id": "old", "sandbox": "bwrap", "model": "m"}, new_run_id="new",
+        {"run_id": "old", "sandbox": "bwrap", "model": "m"},
+        new_run_id="new",
         snapshot_record={"version": 2, "content_sha256": "0" * 64, "n_files": 1, "n_bytes": 1},
         host_lane={"package": "p"},
-        refreeze={"kind": "functional_refreeze", "of_run_id": "old",
-                  "is_independent_result": False})
+        refreeze={"kind": "functional_refreeze", "of_run_id": "old", "is_independent_result": False},
+    )
     assert env["run_id"] == "new"
     assert env["refreeze"]["of_run_id"] == "old"
     assert env["refreeze"]["is_independent_result"] is False
     assert env["bundle_input_snapshot"]["version"] == 2
     assert env["model_host_lane_snapshot"] == {"package": "p"}
-    assert env["sandbox"] == "bwrap"       # the original treatment record is carried, not rewritten
+    assert env["sandbox"] == "bwrap"  # the original treatment record is carried, not rewritten
 
 
 def test_snapshot_record_must_be_v2(tmp_path, monkeypatch):
     """A snapshot the machinery reports at another version is a refusal, not something to relabel."""
     import merlin.targetgen.sandbox.bwrap as BW
+
     monkeypatch.setattr(BW, "materialize_bundle_inputs", lambda *a, **k: {})
     monkeypatch.setattr(BW, "verify_bundle_snapshot", lambda *a, **k: {})
     root = tmp_path / "bundle_inputs"
@@ -231,6 +250,7 @@ def test_snapshot_record_must_be_v2(tmp_path, monkeypatch):
 # ------------------------------------------- grading writes bytecode back into the frozen submission
 def _submission(tmp_path: Path) -> tuple[Path, str]:
     from merlin.benchharness import hash_tree
+
     sub = tmp_path / "submission" / "mlir_oot"
     sub.mkdir(parents=True)
     (sub / "tool.py").write_text("x = 1\n")
@@ -253,7 +273,7 @@ def test_bytecode_written_by_grading_is_removed_and_the_digest_is_unchanged(tmp_
     assert not cache.exists()
     assert not (submission / "mlir_oot" / "stray.pyc").exists()
     assert any("__pycache__" in r for r in removed) and any(r.endswith("stray.pyc") for r in removed)
-    assert (submission / "mlir_oot" / "tool.py").is_file()   # hashed bytes are untouched
+    assert (submission / "mlir_oot" / "tool.py").is_file()  # hashed bytes are untouched
 
 
 def test_purge_is_idempotent(tmp_path):
@@ -274,6 +294,6 @@ def test_purge_refuses_to_sweep_build_or_git_state(tmp_path):
 
 def test_purge_refuses_when_the_graded_digest_would_change(tmp_path):
     submission, digest = _submission(tmp_path)
-    (submission / "mlir_oot" / "extra.py").write_text("y = 2\n")   # a real, hashed addition
+    (submission / "mlir_oot" / "extra.py").write_text("y = 2\n")  # a real, hashed addition
     with pytest.raises(RF.RefreezeError):
         RF.purge_interpreter_bytecode(submission, digest)

@@ -14,6 +14,7 @@ normalization shows up as a mismatch; valid-looking IR does not hide it.
 Whole-model runs compile hundreds to thousands of kernels, so they are behind
 ``MERLIN_RUN_SLOW`` like the other whole-model tests here.
 """
+
 from __future__ import annotations
 
 import os
@@ -62,9 +63,13 @@ def test_bundle_is_fully_lowered(workload, reason):
     if not (d / "model.mlir").is_file():
         pytest.skip(f"{workload} fp32 bundle not captured")
     text = (d / "model.mlir").read_text()
-    opaque = sorted({line.split("@")[1].split("(")[0]
-                     for line in text.splitlines()
-                     if line.lstrip().startswith("func.func private @aten_")})
+    opaque = sorted(
+        {
+            line.split("@")[1].split("(")[0]
+            for line in text.splitlines()
+            if line.lstrip().startswith("func.func private @aten_")
+        }
+    )
     assert not opaque, f"{workload} ({reason}) still has opaque calls: {opaque}"
 
 
@@ -87,8 +92,9 @@ def test_spectral_and_conv_land_on_contractions(workload, reason):
 @pytest.mark.parametrize("dtype", ["fp32", "int8"])
 @pytest.mark.parametrize("workload,reason", WORKLOADS, ids=[w for w, _ in WORKLOADS])
 @pytest.mark.skipif(not _toolchain(), reason="m2m venv / clang-23 missing")
-@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"),
-                    reason="set MERLIN_RUN_SLOW=1 (compiles hundreds of kernels per model)")
+@pytest.mark.skipif(
+    not os.environ.get("MERLIN_RUN_SLOW"), reason="set MERLIN_RUN_SLOW=1 (compiles hundreds of kernels per model)"
+)
 def test_host_matches_torch_golden(workload, reason, dtype, tmp_path):
     """Whole model on the host == the torch golden captured with it.
 

@@ -34,6 +34,7 @@ not.
 
 Deliberately NOT asserted here: that the lever is a speedup. That is a board measurement.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -48,13 +49,12 @@ import numpy as np
 import pytest
 
 from merlin.common.paths import artifacts_dir, repo_root
-from merlin.llvmlower import lower as _lower_mod  # noqa: F401  (registers runner-gated features)
 from merlin.llvmlower import impr_features as impr
+from merlin.llvmlower import lower as _lower_mod  # noqa: F401  (registers runner-gated features)
 from merlin.llvmlower import pipeline as P
 from merlin.llvmlower.toolchain import available as _toolchain_available
 
-_needs_m2m = pytest.mark.skipif(not _toolchain_available(),
-                                reason="m2m venv / clang not configured")
+_needs_m2m = pytest.mark.skipif(not _toolchain_available(), reason="m2m venv / clang not configured")
 
 VEC = impr.VEC_NONCONTRACTION_NAME
 
@@ -87,11 +87,9 @@ func.func @forward(%a: tensor<8x8xi32>, %x: tensor<8x8xf32>) -> tensor<8x8xf32> 
 #: The READ hazard, minimal: the same pair with the tags swapped. The mask is written by a scalar
 #: loop (one byte per element) and read by a vectorized consumer (``load <8 x i1>``, one byte for
 #: eight lanes). Checking only the destination would let this one through.
-MASK_READ = (MASK_WRITE
-             .replace("outs(%m : tensor<8x8xi1>) attrs = {merlin.vec_r2}",
-                      "outs(%m : tensor<8x8xi1>)")
-             .replace("outs(%e : tensor<8x8xf32>) {",
-                      "outs(%e : tensor<8x8xf32>) attrs = {merlin.vec_r2} {"))
+MASK_READ = MASK_WRITE.replace(
+    "outs(%m : tensor<8x8xi1>) attrs = {merlin.vec_r2}", "outs(%m : tensor<8x8xi1>)"
+).replace("outs(%e : tensor<8x8xf32>) {", "outs(%e : tensor<8x8xf32>) attrs = {merlin.vec_r2} {")
 
 #: The POSITIVE CONTROL: same shape, no sub-byte tensor anywhere. The refusal must not swallow this
 #: one, or every assertion above is satisfied by a lever that does nothing.
@@ -116,6 +114,7 @@ func.func @forward(%a: tensor<8x8xi32>, %x: tensor<8x8xf32>) -> tensor<8x8xf32> 
 # 1. the schedule -- cheap, always runs
 # ---------------------------------------------------------------------------------------------
 
+
 def _armed() -> str:
     return impr.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, impr.normalize([VEC]))
 
@@ -125,8 +124,7 @@ def test_every_arm_is_gated_on_the_bytewise_attribute():
     refusal, not one or two of them."""
     armed = _armed()
     for rank in (2, 3, 4):
-        line = [ln for ln in armed.splitlines()
-                if f"merlin.vec_r{rank}" in ln and "structured.match" in ln]
+        line = [ln for ln in armed.splitlines() if f"merlin.vec_r{rank}" in ln and "structured.match" in ln]
         assert len(line) == 1, (rank, line)
         assert impr.VEC_BYTEWISE_ATTR in line[0], line[0]
 
@@ -161,10 +159,8 @@ def test_the_two_libraries_get_distinct_matcher_symbols():
     pre = P.vec_pre_schedule(feats)
     assert pre is not None
     main = _armed()
-    pre_syms = {ln.split("@", 1)[1].split("(", 1)[0]
-                for ln in pre.splitlines() if "transform.named_sequence @" in ln}
-    main_syms = {ln.split("@", 1)[1].split("(", 1)[0]
-                 for ln in main.splitlines() if "transform.named_sequence @" in ln}
+    pre_syms = {ln.split("@", 1)[1].split("(", 1)[0] for ln in pre.splitlines() if "transform.named_sequence @" in ln}
+    main_syms = {ln.split("@", 1)[1].split("(", 1)[0] for ln in main.splitlines() if "transform.named_sequence @" in ln}
     assert pre_syms and main_syms
     assert not (pre_syms & main_syms), sorted(pre_syms & main_syms)
 
@@ -172,8 +168,7 @@ def test_the_two_libraries_get_distinct_matcher_symbols():
 def test_a_schedule_with_no_module_to_hold_the_matchers_gets_no_arms():
     """FAIL CLOSED. Arming without the refusal is the miscompile; a lever that stayed off is
     recoverable, a lever that is silently wrong is not."""
-    headless = "\n".join(ln for ln in P.RVV_TRANSFORM_SCHEDULE.splitlines()
-                         if not ln.strip().startswith("module"))
+    headless = "\n".join(ln for ln in P.RVV_TRANSFORM_SCHEDULE.splitlines() if not ln.strip().startswith("module"))
     out = impr._splice_vec_rank_arms(headless)
     assert out == headless
     assert "merlin.vec_r" not in out
@@ -203,12 +198,13 @@ def test_the_minimum_width_is_the_byte_not_a_tuning_choice():
 # 2. the emitted code -- is the packed store gone, and is the lever still doing its job?
 # ---------------------------------------------------------------------------------------------
 
+
 def _lower(text: str, features, tmp_path, **kw) -> str:
     from merlin.llvmlower.passes_xdsl import preprocess_text_textual
+
     ciface, _ = preprocess_text_textual(text)
     work = Path(tempfile.mkdtemp(prefix="subbyte_", dir=str(tmp_path)))
-    return P.lower_to_llvm_ir(ciface, workdir=work, vectorize=True,
-                              features=impr.normalize(features), **kw)
+    return P.lower_to_llvm_ir(ciface, workdir=work, vectorize=True, features=impr.normalize(features), **kw)
 
 
 def _i1_vector_memory_ops(ll_text: str) -> list[str]:
@@ -232,16 +228,14 @@ def _i1_vector_memory_ops(ll_text: str) -> list[str]:
         for kind in ("store <", "load <"):
             if not body.startswith(kind):
                 continue
-            if body[len(kind):].split(">", 1)[0].endswith("x i1"):
+            if body[len(kind) :].split(">", 1)[0].endswith("x i1"):
                 out.append(stripped)
     return out
 
 
-@pytest.mark.parametrize("name,src", [("write", MASK_WRITE), ("read", MASK_READ)],
-                         ids=["write", "read"])
+@pytest.mark.parametrize("name,src", [("write", MASK_WRITE), ("read", MASK_READ)], ids=["write", "read"])
 @_needs_m2m
-def test_a_sub_byte_tensor_is_never_written_or_read_as_a_packed_vector(name, src, tmp_path,
-                                                                      monkeypatch):
+def test_a_sub_byte_tensor_is_never_written_or_read_as_a_packed_vector(name, src, tmp_path, monkeypatch):
     """BOTH placements. The arms' position decides which ops they see; it must not decide whether
     the emitted code is sound."""
     for after_specialize in (False, True):
@@ -252,8 +246,7 @@ def test_a_sub_byte_tensor_is_never_written_or_read_as_a_packed_vector(name, src
         off = _lower(src, frozenset(), tmp_path)
         on = _lower(src, [VEC], tmp_path)
         assert _i1_vector_memory_ops(off) == [], (name, after_specialize)
-        assert _i1_vector_memory_ops(on) == [], (name, after_specialize,
-                                                 _i1_vector_memory_ops(on))
+        assert _i1_vector_memory_ops(on) == [], (name, after_specialize, _i1_vector_memory_ops(on))
 
 
 @_needs_m2m
@@ -263,8 +256,10 @@ def test_the_refusal_does_not_swallow_a_byte_wide_op(tmp_path, monkeypatch):
     off = _lower(BYTEWISE_OK, frozenset(), tmp_path)
     on = _lower(BYTEWISE_OK, [VEC], tmp_path)
     assert on != off, "the lever vectorized nothing on an op it is supposed to accept"
-    assert on.count("load <8 x float>") > off.count("load <8 x float>"), \
-        (on.count("load <8 x float>"), off.count("load <8 x float>"))
+    assert on.count("load <8 x float>") > off.count("load <8 x float>"), (
+        on.count("load <8 x float>"),
+        off.count("load <8 x float>"),
+    )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -278,7 +273,7 @@ def test_the_refusal_does_not_swallow_a_byte_wide_op(tmp_path, monkeypatch):
 #: once cannot catch this class at all.
 _LAYOUT_PADS = (0, 512, 3072)
 
-_RUN_FIXTURE = '''
+_RUN_FIXTURE = """
 import hashlib, json, sys
 import numpy as np
 from merlin.llvmlower.abi import HostModel
@@ -295,11 +290,12 @@ print(json.dumps({
     "digest": hashlib.sha256(np.ascontiguousarray(out).tobytes()).hexdigest(),
     "matches_reference": bool(np.array_equal(out, expect)),
 }))
-'''
+"""
 
 
 def _build_so(src: str, features, work: Path) -> Path:
     from merlin.llvmlower.codegen import build_host_shared
+
     work.mkdir(parents=True, exist_ok=True)
     ll = work / "model.ll"
     ll.write_text(_lower(src, features, work), encoding="utf-8")
@@ -312,16 +308,20 @@ def _run_under_layouts(runner: Path, so: Path, *argv: str) -> list[dict]:
     got = []
     for pad in _LAYOUT_PADS:
         env = dict(os.environ, MERLIN_VEC_LAYOUT_PAD="x" * pad)
-        proc = subprocess.run([sys.executable, str(runner), str(so), *argv],
-                              capture_output=True, text=True, timeout=1800,
-                              cwd=str(repo_root()), env=env)
+        proc = subprocess.run(
+            [sys.executable, str(runner), str(so), *argv],
+            capture_output=True,
+            text=True,
+            timeout=1800,
+            cwd=str(repo_root()),
+            env=env,
+        )
         assert proc.returncode == 0, proc.stdout + proc.stderr
         got.append(json.loads(proc.stdout.strip().splitlines()[-1]))
     return got
 
 
-@pytest.mark.parametrize("name,src", [("write", MASK_WRITE), ("read", MASK_READ)],
-                         ids=["write", "read"])
+@pytest.mark.parametrize("name,src", [("write", MASK_WRITE), ("read", MASK_READ)], ids=["write", "read"])
 @_needs_m2m
 def test_the_answer_does_not_depend_on_the_initial_memory_layout(name, src, tmp_path, monkeypatch):
     """The whole defect in one assertion, on both arm placements: the lever's output must equal the
@@ -335,14 +335,13 @@ def test_the_answer_does_not_depend_on_the_initial_memory_layout(name, src, tmp_
             monkeypatch.setenv("MERLIN_VEC_AFTER_SPECIALIZE", "1")
         else:
             monkeypatch.delenv("MERLIN_VEC_AFTER_SPECIALIZE", raising=False)
-        base = _run_under_layouts(runner,
-                                  _build_so(src, frozenset(), tmp_path / f"{name}_{tag}_off"))
-        lever = _run_under_layouts(runner,
-                                   _build_so(src, [VEC], tmp_path / f"{name}_{tag}_on"))
+        base = _run_under_layouts(runner, _build_so(src, frozenset(), tmp_path / f"{name}_{tag}_off"))
+        lever = _run_under_layouts(runner, _build_so(src, [VEC], tmp_path / f"{name}_{tag}_on"))
         assert all(r["matches_reference"] for r in base), (name, tag, base)
         assert len({r["digest"] for r in base}) == 1, (name, tag, base)
-        assert len({r["digest"] for r in lever}) == 1, \
+        assert len({r["digest"] for r in lever}) == 1, (
             f"{name}/{tag}: the lever's output moved with the memory layout: {lever}"
+        )
         assert lever[0]["digest"] == base[0]["digest"], (name, tag, lever, base)
         assert all(r["matches_reference"] for r in lever), (name, tag, lever)
 
@@ -353,7 +352,7 @@ def test_the_answer_does_not_depend_on_the_initial_memory_layout(name, src, tmp_
 
 BUNDLE = artifacts_dir() / "recaptures" / "small_llama_int8_consistent"
 
-_RUN_MODEL = '''
+_RUN_MODEL = """
 import hashlib, json, resource, sys
 import numpy as np
 resource.setrlimit(resource.RLIMIT_STACK, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
@@ -371,11 +370,10 @@ HostModel.load(so, n_args=len(bufs))(bufs)
 print(json.dumps({
     "digest": hashlib.sha256(np.ascontiguousarray(out).tobytes()).hexdigest(),
 }))
-'''
+"""
 
 
-@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"),
-                    reason="whole-model lowering; MERLIN_RUN_SLOW=1")
+@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"), reason="whole-model lowering; MERLIN_RUN_SLOW=1")
 @_needs_m2m
 @pytest.mark.skipif(not (BUNDLE / "golden.npy").is_file(), reason="int8 capture bundle absent")
 def test_whole_model_is_layout_independent_in_both_placements(tmp_path, monkeypatch):
@@ -396,21 +394,23 @@ def test_whole_model_is_layout_independent_in_both_placements(tmp_path, monkeypa
 
     digests: dict[str, set[str]] = {}
     i1_ops: dict[str, int] = {}
-    for tag, feats, after in (("base", frozenset(), False),
-                              ("lever_new", impr.normalize([VEC]), False),
-                              ("lever_old", impr.normalize([VEC]), True)):
+    for tag, feats, after in (
+        ("base", frozenset(), False),
+        ("lever_new", impr.normalize([VEC]), False),
+        ("lever_old", impr.normalize([VEC]), True),
+    ):
         if after:
             monkeypatch.setenv("MERLIN_VEC_AFTER_SPECIALIZE", "1")
         else:
             monkeypatch.delenv("MERLIN_VEC_AFTER_SPECIALIZE", raising=False)
         work = tmp_path / tag
         work.mkdir(parents=True, exist_ok=True)
-        prepared, _ = prepare_for_lowering(BUNDLE / "model.mlir", work, int8_compute=True,
-                                           features=feats, blocking=False)
+        prepared, _ = prepare_for_lowering(
+            BUNDLE / "model.mlir", work, int8_compute=True, features=feats, blocking=False
+        )
         upstream, _ = preprocess_text_textual(prepared.read_text(encoding="utf-8"))
         ll = work / "model.ll"
-        ll.write_text(P.lower_to_llvm_ir(upstream, workdir=work, vectorize=True, features=feats),
-                      encoding="utf-8")
+        ll.write_text(P.lower_to_llvm_ir(upstream, workdir=work, vectorize=True, features=feats), encoding="utf-8")
         i1_ops[tag] = len(_i1_vector_memory_ops(ll.read_text(encoding="utf-8")))
         so = build_host_shared(ll, work / "model_host.so")
         digests[tag] = {r["digest"] for r in _run_under_layouts(runner, so, BUNDLE.name)}

@@ -5,33 +5,46 @@ member alone carries an explicit scalar-only integer map between them; the ``no_
 the first contraction directly into the second.  The standard linalg surface makes this portable to
 any backend that declares the generic whole-program ABI capability.
 """
+
 from __future__ import annotations
+
+from xdsl.parser import Parser
 
 from merlin.runtime.tensor import Tensor
 from merlin.targetgen import capsule_golden as CG
 from merlin.targetgen import corpus_spec as CS
-from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
-from merlin.targetgen.contract.linalg_iface import make_linalg_context
-from xdsl.parser import Parser
+from merlin.targetgen.contract.linalg_iface import make_linalg_context, parse_linalg_mlir
 
 
 def _binding() -> CS.CorpusBinding:
     return CS.CorpusBinding(
-        target="fixture", tile_dim=4, operand_dtype="int8", accum_dtype="i32",
-        integer=True, tiers=["L0", "L1", "L2", "L3"], compare="exact_int",
+        target="fixture",
+        tile_dim=4,
+        operand_dtype="int8",
+        accum_dtype="i32",
+        integer=True,
+        tiers=["L0", "L1", "L2", "L3"],
+        compare="exact_int",
         classes_for=lambda **_: ["CONTRACTION"],
     )
 
 
 def _entry(role: str) -> dict:
     return {
-        "name": f"PB_{role}", "kind": "model_slice", "source_role": "derived_sweep",
-        "source_reference": "paired host-island fixture", "label": "dev",
-        "op": "host_island_seam", "M": 4, "K": 8, "H": 4, "N": 4,
-        "comparison_role": role, "host_transform": ("xor_low_bit" if role == "island" else "none"),
+        "name": f"PB_{role}",
+        "kind": "model_slice",
+        "source_role": "derived_sweep",
+        "source_reference": "paired host-island fixture",
+        "label": "dev",
+        "op": "host_island_seam",
+        "M": 4,
+        "K": 8,
+        "H": 4,
+        "N": 4,
+        "comparison_role": role,
+        "host_transform": ("xor_low_bit" if role == "island" else "none"),
         "xor_mask": 1,
-        "semantic": {"semantic_family": "contraction", "generalization_axis": "composition",
-                     "must_accelerate": True},
+        "semantic": {"semantic_family": "contraction", "generalization_axis": "composition", "must_accelerate": True},
     }
 
 
@@ -46,10 +59,8 @@ def test_pair_has_identical_external_work_and_only_one_host_map() -> None:
 
     iops = parse_linalg_mlir(island_mlir)["ops"]
     cops = parse_linalg_mlir(control_mlir)["ops"]
-    assert [op["family"] for op in iops] == [
-        "contraction", "elementwise_map", "host_scalar", "contraction"]
-    assert [op["family"] for op in cops] == [
-        "contraction", "elementwise_map", "contraction"]
+    assert [op["family"] for op in iops] == ["contraction", "elementwise_map", "host_scalar", "contraction"]
+    assert [op["family"] for op in cops] == ["contraction", "elementwise_map", "contraction"]
     assert iops[2]["body_ops"] == ["arith.xori"]
     assert "arith.xori" not in control_mlir
     # Parsing an inventory is weaker than verifying the actual IR. In particular, named matmul's

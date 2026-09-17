@@ -14,6 +14,7 @@ supplies and the kernel reads in place -- no initializer, no copy, no stack.
 These tests pin all three properties that matter: small operands are untouched, large ones stop being
 emitted as text, and the linked result still computes the right answer.
 """
+
 import base64
 
 import numpy as np
@@ -63,10 +64,13 @@ def _matmul_cb(n: int, a: np.ndarray, w: np.ndarray) -> dict:
     }
 
 
-@pytest.mark.parametrize(("dtype", "raw"), [
-    ("fp16", bytes.fromhex("003c00c00038")),
-    ("bf16", bytes.fromhex("803f00c0003f")),
-])
+@pytest.mark.parametrize(
+    ("dtype", "raw"),
+    [
+        ("fp16", bytes.fromhex("003c00c00038")),
+        ("bf16", bytes.fromhex("803f00c0003f")),
+    ],
+)
 def test_canonical_16bit_preloads_decode_by_their_declared_format(dtype, raw):
     """FP16 and BF16 share a width, not an encoding.
 
@@ -74,19 +78,19 @@ def test_canonical_16bit_preloads_decode_by_their_declared_format(dtype, raw):
     treating either format as generic FP8 changes the submitted stimulus while
     leaving the output comparison apparently well formed.
     """
-    decoded = H._decode_preload({
-        "dtype": dtype,
-        "preload_b64": base64.b64encode(raw).decode("ascii"),
-    })
+    decoded = H._decode_preload(
+        {
+            "dtype": dtype,
+            "preload_b64": base64.b64encode(raw).decode("ascii"),
+        }
+    )
     assert decoded == [1.0, -2.0, 0.5]
 
 
 def test_small_operand_stays_element_wise():
     """Below the threshold nothing changes, so no capsule that passes today can regress."""
     model = _model()
-    h = H.build_external_kernel_main(
-        [_arg("A", 8, 8)], [_arg("Y", 8, 8, 0.0)], kernel_symbol="k", model=model
-    )
+    h = H.build_external_kernel_main([_arg("A", 8, 8)], [_arg("Y", 8, 8, 0.0)], kernel_symbol="k", model=model)
     assert h.blobs == {}, "a small operand must not become a blob"
     assert "_in_A[0]=" in h.source, "a small operand must stay element-wise on the stack"
 
@@ -99,9 +103,7 @@ def test_large_operand_becomes_a_blob_and_leaves_the_source_small():
     """
     model = _model()
     n = 2048  # the shape that produced 124.7 MB of C and never finished compiling
-    h = H.build_external_kernel_main(
-        [_arg("W", n, n)], [_arg("Y", n, 1, 0.0)], kernel_symbol="k", model=model
-    )
+    h = H.build_external_kernel_main([_arg("W", n, n)], [_arg("Y", n, 1, 0.0)], kernel_symbol="k", model=model)
     assert set(h.blobs) == {"_in_W"}
     assert len(h.blobs["_in_W"]) == n * n * 4, "blob must hold every element as a 32-bit word"
     assert "_in_W[0]=" not in h.source, "the operand must not be materialized element-wise"
@@ -114,9 +116,7 @@ def test_large_operand_becomes_a_blob_and_leaves_the_source_small():
 def test_large_output_moves_off_the_stack():
     """A big output is the same stack hazard as a big input and must land in .bss."""
     model = _model()
-    h = H.build_external_kernel_main(
-        [_arg("A", 4, 4)], [_arg("Y", 4096, 1, 0.0)], kernel_symbol="k", model=model
-    )
+    h = H.build_external_kernel_main([_arg("A", 4, 4)], [_arg("Y", 4096, 1, 0.0)], kernel_symbol="k", model=model)
     assert "static volatile uint32_t _out_Y[4096];" in h.source
     assert "  volatile uint32_t _out_Y[4096];" not in h.source
 
@@ -134,9 +134,7 @@ def test_blob_operands_build_and_compute_the_right_answer(tmp_path):
     w = rng.integers(-3, 4, size=(n, n)).astype("f4")
     cb = _matmul_cb(n, a, w)
 
-    elf = muon.compile_mlir_forkfree(
-        CG.emit_kernel_mlir(cb, target="radiance"), cb, tmp_path, target="radiance"
-    )
+    elf = muon.compile_mlir_forkfree(CG.emit_kernel_mlir(cb, target="radiance"), cb, tmp_path, target="radiance")
     main_c = (tmp_path / "main.c").read_text()
     assert "_in_A[0]=" not in main_c, "operands should have been linked in, not emitted as text"
 

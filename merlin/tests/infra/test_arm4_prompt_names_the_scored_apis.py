@@ -11,6 +11,7 @@ the prompt never named the shipped ISA files. An arm graded on calls it was neve
 prompt quality, not the treatment -- so this is a gate, not a comment. If a check in `conformance.py`
 starts scoring a new API, this test is where the prompt is made to name it.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -22,8 +23,10 @@ from merlin.targetgen.generate_prompt import _enforced_workflow
 SCORED = [
     ("rtl_facts_used", ["load_facts"]),
     ("rtl_derived_levers_used", ["derived_levers"]),
-    ("scaffold_generators_used", ["mlir_scaffold.generate", "llvm_plan.generate",
-                                  "target_repo.generate_skeleton", "generate_skeleton"]),
+    (
+        "scaffold_generators_used",
+        ["mlir_scaffold.generate", "llvm_plan.generate", "target_repo.generate_skeleton", "generate_skeleton"],
+    ),
     ("rtl_checks_read", ["rtl_checks"]),
 ]
 
@@ -39,7 +42,8 @@ def test_the_arm4_workflow_names_the_api_the_check_scores(check, tokens):
     text = _arm4_text()
     assert any(t in text for t in tokens), (
         f"conformance.{check} scores a call the arm-4 task text never names ({tokens}); an agent "
-        f"cannot be graded on an API it was not told about")
+        f"cannot be graded on an API it was not told about"
+    )
 
 
 def test_the_verdict_readback_surface_is_named_not_just_the_block():

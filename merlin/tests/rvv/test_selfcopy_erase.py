@@ -20,6 +20,7 @@ MEASURED consequence on the live K1, int8 GEMM kernel region, correctness-gated 
    128^3  4,230,288 -> 3,002,346 retired ins   85,760 ->  69,428 ticks
    256^3 27,423,003 -> 22,519,524 retired ins 567,986 -> 503,434 ticks
 """
+
 from __future__ import annotations
 
 import tempfile
@@ -38,6 +39,7 @@ def _m2m() -> bool:
     """The lowering runs in the model2mlir venv; skip cleanly when it is not installed."""
     try:
         from merlin.llvmlower.pipeline import m2m_python
+
         return Path(m2m_python()).is_file()
     except Exception:  # noqa: BLE001
         return False
@@ -52,9 +54,16 @@ def _lower_ir(features: list[str], *, int8: bool, M: int = 64, N: int = 64, K: i
     bundle = workloads.gen_matmul_f32(tempfile.mkdtemp(prefix="selfcopy_wl_"), M=M, N=N, K=K)
     work = Path(tempfile.mkdtemp(prefix="selfcopy_"))
     prepared = zm._prepare_model_mlir(bundle / "model.mlir", work, int8_compute=int8)
-    res = lower_model_file(prepared, work / "lower", targets=(), textual=True, vectorize=True,
-                           transform_schedule=None, hoist_static_allocs=False,
-                           features=frozenset(features))
+    res = lower_model_file(
+        prepared,
+        work / "lower",
+        targets=(),
+        textual=True,
+        vectorize=True,
+        transform_schedule=None,
+        hoist_static_allocs=False,
+        features=frozenset(features),
+    )
     return res.ll_path.read_text(encoding="utf-8")
 
 
@@ -89,7 +98,8 @@ def test_the_v3_self_copy_is_real_and_the_implied_hygiene_is_what_removes_it(int
     try:
         assert "memrefCopy" in _lower_ir([_V3], int8=int8), (
             "without the implication the per-tile self-copy must still be there — if it is not, this "
-            "test no longer proves the implication does anything")
+            "test no longer proves the implication does anything"
+        )
         assert "memrefCopy" not in _lower_ir([_V3, _ERASE], int8=int8)
     finally:
         F._REGISTRY[_V3] = saved
@@ -128,8 +138,7 @@ def test_the_microkernel_knob_block_delivers_the_erase_for_int8_and_f32_alike():
     if not pkg_dir.is_dir():
         pytest.skip("hand_v0_int8 package not present")
     base = load_rvv_package(pkg_dir)
-    assert base.is_int8 and base.compiler_features == []      # the frozen int8 control is unchanged
-    feats = _resolve_features({**base.knobs, "microkernel": {"MR": 4, "NR": 16, "KC": 16}},
-                              base.manifest)
+    assert base.is_int8 and base.compiler_features == []  # the frozen int8 control is unchanged
+    feats = _resolve_features({**base.knobs, "microkernel": {"MR": 4, "NR": 16, "KC": 16}}, base.manifest)
     assert feats == [_V3, _ERASE]
     assert "memrefCopy" not in _lower_ir(feats, int8=True)

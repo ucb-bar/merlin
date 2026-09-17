@@ -9,6 +9,7 @@ Llama RMSNorm ``ReduceMean(axis=-1)`` silently reduces over all axes and the who
 (tiny_llama int8 went cos 0.22 -> ~1.0 with the fix). That test is skipped when the built TVM tree is
 not importable (CI without the TVM build), so the suite stays green regardless of TVM build state.
 """
+
 from __future__ import annotations
 
 import os
@@ -20,8 +21,8 @@ import pytest
 
 from merlin.baselines import tvm as tvm_arm
 
-
 # --- bundle resolution -------------------------------------------------------------------------
+
 
 def test_resolve_bundle_int8_convention():
     b = tvm_arm.resolve_bundle("tiny_llama", "int8")
@@ -38,6 +39,7 @@ def test_region_of_symbol_mapping():
 
 def test_golden_path_prefers_w8a8(tmp_path):
     import merlin.baselines.bundle as _bundle
+
     b = _bundle.CaptureBundle(model="m", variant="int8", root=tmp_path)
     (tmp_path / "golden.npy").write_bytes(b"x")
     assert tvm_arm.golden_path(b).name == "golden.npy"
@@ -46,6 +48,7 @@ def test_golden_path_prefers_w8a8(tmp_path):
 
 
 # --- ONNX frontend reduce-axes regression (the core patch this arm needs) -----------------------
+
 
 def _import_built_tvm():
     """Import ``tvm`` from the built (uninstalled) submodule tree, or return None if unavailable."""
@@ -62,8 +65,10 @@ def _import_built_tvm():
         return None
     # onnx 1.22 removed onnx.mapping which the frontend imports; reconstruct the faithful dtype table.
     import onnx as _onnx
+
     if not hasattr(_onnx, "mapping"):
         from onnx import helper as _oh
+
         mm = types.ModuleType("onnx.mapping")
         mm.TENSOR_TYPE_TO_NP_TYPE = {dt: _oh.tensor_dtype_to_np_dtype(dt) for dt in _oh.get_all_tensor_dtypes()}
         sys.modules["onnx.mapping"] = mm
@@ -71,8 +76,9 @@ def _import_built_tvm():
     return _onnx
 
 
-@pytest.mark.parametrize("op,axis,keepdims", [("ReduceMean", [-1], 1), ("ReduceSum", [-1], 1),
-                                              ("ReduceMean", [1], 0), ("ReduceL2", [2], 1)])
+@pytest.mark.parametrize(
+    "op,axis,keepdims", [("ReduceMean", [-1], 1), ("ReduceSum", [-1], 1), ("ReduceMean", [1], 0), ("ReduceL2", [2], 1)]
+)
 def test_onnx_opset18_reducer_reads_axes_input(op, axis, keepdims):
     """opset-18 reducers take ``axes`` as an input; the frontend must honor it (not reduce all axes).
 
@@ -82,19 +88,21 @@ def test_onnx_opset18_reducer_reads_axes_input(op, axis, keepdims):
     if _onnx is None:
         pytest.skip("built TVM tree not importable (no build/baselines/tvm)")
     import tvm
+    from onnx import TensorProto, helper
     from tvm import relax
     from tvm.relax.frontend.onnx import from_onnx
-    from onnx import helper, TensorProto
 
     data = np.random.randn(1, 8, 16).astype(np.float32)
     axes_t = helper.make_tensor("axes", TensorProto.INT64, [len(axis)], list(axis))
-    node = helper.make_node(op, inputs=["x", "axes"], outputs=["y"], keepdims=keepdims,
-                            noop_with_empty_axes=0)
+    node = helper.make_node(op, inputs=["x", "axes"], outputs=["y"], keepdims=keepdims, noop_with_empty_axes=0)
     exp = np.sum(data, axis=tuple(axis), keepdims=bool(keepdims))
-    graph = helper.make_graph([node], "r",
-                              [helper.make_tensor_value_info("x", TensorProto.FLOAT, list(data.shape))],
-                              [helper.make_tensor_value_info("y", TensorProto.FLOAT, list(exp.shape))],
-                              initializer=[axes_t])
+    graph = helper.make_graph(
+        [node],
+        "r",
+        [helper.make_tensor_value_info("x", TensorProto.FLOAT, list(data.shape))],
+        [helper.make_tensor_value_info("y", TensorProto.FLOAT, list(exp.shape))],
+        initializer=[axes_t],
+    )
     model = helper.make_model(graph, producer_name="r")
     model.opset_import[0].version = 18
 
@@ -116,7 +124,7 @@ def test_onnx_binary_primvalue_broadcast_to_array(op_name):
         pytest.skip("built TVM tree not importable (no build/baselines/tvm)")
     import tvm
     from tvm import relax, tir
-    from tvm.relax.frontend.onnx.onnx_frontend import Add, Sub, Mul, Div
+    from tvm.relax.frontend.onnx.onnx_frontend import Add, Div, Mul, Sub
 
     conv = {"Add": Add, "Sub": Sub, "Mul": Mul, "Div": Div}[op_name]
     scalar = relax.PrimValue(tir.IntImm("int64", 3))
@@ -124,7 +132,8 @@ def test_onnx_binary_primvalue_broadcast_to_array(op_name):
     out = conv.base_impl(None, [scalar, arr], {}, [{}, {}])
     assert isinstance(out, relax.Constant), f"{op_name}: expected folded Constant, got {type(out)}"
     ref = {"Add": np.add, "Sub": np.subtract, "Mul": np.multiply, "Div": np.divide}[op_name](
-        np.array(3), np.array([1.0, 2.0, 3.0, 4.0], dtype="float32"))
+        np.array(3), np.array([1.0, 2.0, 3.0, 4.0], dtype="float32")
+    )
     np.testing.assert_allclose(out.data.numpy(), ref, rtol=1e-6)
 
 
@@ -136,18 +145,21 @@ def test_onnx_gather_negative_index(neg_index):
     if _import_built_tvm() is None:
         pytest.skip("built TVM tree not importable (no build/baselines/tvm)")
     import tvm
+    from onnx import TensorProto, helper
     from tvm import relax
     from tvm.relax.frontend.onnx import from_onnx
-    from onnx import helper, TensorProto
 
     data = np.random.randn(1, 1, 32, 32).astype("float32")
     idx = helper.make_tensor("idx", TensorProto.INT64, [], [neg_index])
     node = helper.make_node("Gather", ["data", "idx"], ["y"], axis=2)
     exp = np.take(data, neg_index, axis=2)  # numpy handles negatives = ORT semantics
-    graph = helper.make_graph([node], "g",
-                              [helper.make_tensor_value_info("data", TensorProto.FLOAT, list(data.shape))],
-                              [helper.make_tensor_value_info("y", TensorProto.FLOAT, list(exp.shape))],
-                              initializer=[idx])
+    graph = helper.make_graph(
+        [node],
+        "g",
+        [helper.make_tensor_value_info("data", TensorProto.FLOAT, list(data.shape))],
+        [helper.make_tensor_value_info("y", TensorProto.FLOAT, list(exp.shape))],
+        initializer=[idx],
+    )
     model = helper.make_model(graph, producer_name="g")
     ex = relax.build(from_onnx(model, keep_params_in_input=False), target=tvm.target.Target("llvm"))
     vm = relax.VirtualMachine(ex, tvm.cpu())

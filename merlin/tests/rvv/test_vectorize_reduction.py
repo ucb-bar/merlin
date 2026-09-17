@@ -20,6 +20,7 @@ reduction seen is MLIR-emitted by the feature, not clang re-vectorizing a scalar
 APPROXIMATION: `reassociate-fp-reductions` reorders the fp sum (the unordered tree reduction XNNPACK
 et al. also use) — gated on cos/rel error, never claimed bit-exact.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -74,9 +75,10 @@ def _can_decode() -> bool:
     """Needs the model2MLIR venv (LLVM-23 passes), a riscv-capable clang, and an llvm-objdump that can
     disassemble riscv64 — the full lower -> compile -> decode path this proof exercises."""
     try:
+        from merlin.kernels.decode.objdump import objdump_bin
         from merlin.llvmlower import toolchain
         from merlin.llvmlower.pipeline import m2m_python
-        from merlin.kernels.decode.objdump import objdump_bin
+
         if not (Path(m2m_python()).is_file() and Path(toolchain.clang()).is_file()):
             return False
         ob = objdump_bin()
@@ -92,48 +94,70 @@ def _can_decode() -> bool:
 def _decode(features, gen_fn):
     """Lower a reduction workload through the real compiler with `features`, compile it with the REAL
     RVV cflags (-fno-vectorize, so any vector reduction is MLIR-emitted), and decode the object."""
+    from merlin.kernels.decode import rvv
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.lower import lower_model_file
-    from merlin.kernels.decode import rvv
     from merlin.runtime.backends import zephyr_model as zm
 
     bundle = gen_fn(tempfile.mkdtemp(prefix="red_wl_"))
     work = Path(tempfile.mkdtemp(prefix="red_"))
     prepared = zm._prepare_model_mlir(bundle / "model.mlir", work, int8_compute=False)
-    res = lower_model_file(prepared, work / "lower", targets=(), textual=True, vectorize=True,
-                           hoist_static_allocs=False,
-                           features=(frozenset(features) or None))
+    res = lower_model_file(
+        prepared,
+        work / "lower",
+        targets=(),
+        textual=True,
+        vectorize=True,
+        hoist_static_allocs=False,
+        features=(frozenset(features) or None),
+    )
     obj = work / "model.o"
-    subprocess.run([str(toolchain.clang()), "--target=riscv64-unknown-elf", *zm.RVV_CFLAGS,
-                    "-Wno-override-module", "-c", str(res.ll_path), "-o", str(obj)],
-                   check=True, capture_output=True)
+    subprocess.run(
+        [
+            str(toolchain.clang()),
+            "--target=riscv64-unknown-elf",
+            *zm.RVV_CFLAGS,
+            "-Wno-override-module",
+            "-c",
+            str(res.ll_path),
+            "-o",
+            str(obj),
+        ],
+        check=True,
+        capture_output=True,
+    )
     return rvv.decode(str(obj))
 
 
 def _reduce_sum(d):
     from merlin.mining import workloads
+
     return workloads.gen_reduce_f32(d, op="sum", M=64, N=256)
 
 
 def _softmax(d):
     from merlin.mining import workloads
+
     return workloads.gen_softmax_f32(d, M=64, N=256)
 
 
 def _matmul(d):
     from merlin.mining import workloads
+
     return workloads.gen_matmul_f32(d, M=64, N=64, K=64)
 
 
 @pytest.mark.skipif(not _can_decode(), reason="m2m venv / clang / riscv objdump missing")
 def test_reduce_emits_vfredusum_where_baseline_emits_nothing():
     base = _decode([], _reduce_sum)
-    assert base.count("vfredusum", "vfredosum", "vredsum") == 0, \
+    assert base.count("vfredusum", "vfredosum", "vredsum") == 0, (
         "baseline must leave the reduction scalar (no vector reduce; -fno-vectorize)"
+    )
     on = _decode([_FEAT], _reduce_sum)
     assert on.count("vfredusum") > 0, "feature must emit the unordered vfredusum.vs (MLIR-vectorized)"
     # ... and the CCA lifted from the decoded stream now SEES a reduction (the lever's promise).
     from merlin.kernels import cca
+
     c = cca.lift_asm(on, op="reduce", source="ours_reduction")
     assert c.compute is not None and c.compute.reduction_form not in (None, "none")
 
@@ -145,6 +169,7 @@ def test_softmax_vectorizes_both_reductions():
     assert on.count("vfredusum") > 0, "softmax sum-reduce must emit vfredusum.vs"
     assert on.count("vfredmax") > 0, "softmax max-reduce must emit vfredmax.vs"
     from merlin.kernels import cca
+
     c = cca.lift_asm(on, op="softmax", source="ours_reduction")
     assert c.compute is not None and c.compute.reduction_form not in (None, "none")
 

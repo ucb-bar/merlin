@@ -1,4 +1,5 @@
 """Scalar-memory semantics come from instruction behavior, never mnemonic tables."""
+
 from __future__ import annotations
 
 from merlin.targetgen.oracle_helpers.isa_introspect import scalar_memory_semantics
@@ -100,8 +101,11 @@ class _TensorRead(_TensorMovePattern):
 
 
 def test_tensor_memory_operation_is_not_misreported_as_scalar_memory():
-    assert scalar_memory_semantics(
-        _TensorRead,
-        _TensorMovePattern,
-        {"vd": list(range(6)), "rs1": list(range(5)), "imm": list(range(12))},
-    ) is None
+    assert (
+        scalar_memory_semantics(
+            _TensorRead,
+            _TensorMovePattern,
+            {"vd": list(range(6)), "rs1": list(range(5)), "imm": list(range(12))},
+        )
+        is None
+    )

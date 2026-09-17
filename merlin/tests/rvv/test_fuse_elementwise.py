@@ -18,6 +18,7 @@ And the fail-closed one: with no anchor pass to insert against there is no posit
 the transform interpreter and before bufferization, so the splice RAISES rather than inserting at a
 guessed index and reporting the feature as applied.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -44,7 +45,7 @@ BEST = [
     "cse_through_provenance",
 ]
 
-_SCHED = "/nonexistent/schedule.mlir"      # never read: build_rvv_pipeline only interpolates the path
+_SCHED = "/nonexistent/schedule.mlir"  # never read: build_rvv_pipeline only interpolates the path
 
 
 def test_registered_eagerly() -> None:
@@ -80,11 +81,10 @@ def test_stage_is_spliced_immediately_before_the_anchor() -> None:
     """
     # deliberately NO bare "canonicalize"/"cse" here: the stage carries its own, and a survival
     # check written over names the stage also contains would pass on a list it never inspected.
-    passes = ["transform-interpreter{entry-point=__transform_main}",
-              FUSE_ELEMENTWISE_ANCHOR, "one-shot-bufferize"]
+    passes = ["transform-interpreter{entry-point=__transform_main}", FUSE_ELEMENTWISE_ANCHOR, "one-shot-bufferize"]
     out = apply_pipeline(passes, frozenset({FUSE_ELEMENTWISE_NAME}))
     at = out.index(FUSE_ELEMENTWISE_ANCHOR)
-    assert tuple(out[at - len(FUSE_ELEMENTWISE_STAGE):at]) == FUSE_ELEMENTWISE_STAGE
+    assert tuple(out[at - len(FUSE_ELEMENTWISE_STAGE) : at]) == FUSE_ELEMENTWISE_STAGE
     assert out.index("transform-interpreter{entry-point=__transform_main}") < at
     assert out.index("one-shot-bufferize") > at
     # every original pass survives, in order — the edit inserts, it never reorders or drops
@@ -163,8 +163,7 @@ def test_distinct_from_the_refuted_after_generalize_lever() -> None:
     from merlin.llvmlower.impr_features import FUSE_AFTER_GENERALIZE_NAME
 
     assert FUSE_AFTER_GENERALIZE_NAME != FUSE_ELEMENTWISE_NAME
-    passes = ["transform-interpreter{entry-point=__transform_main}",
-              FUSE_ELEMENTWISE_ANCHOR, "one-shot-bufferize"]
+    passes = ["transform-interpreter{entry-point=__transform_main}", FUSE_ELEMENTWISE_ANCHOR, "one-shot-bufferize"]
     mine = apply_pipeline(passes, frozenset({FUSE_ELEMENTWISE_NAME}))
     theirs = apply_pipeline(passes, frozenset({FUSE_AFTER_GENERALIZE_NAME}))
     fuse = FUSE_ELEMENTWISE_STAGE[0]

@@ -15,6 +15,7 @@ Target names appear here deliberately: a test is the "genuine edge where that ta
 the subject", and the point of these assertions is that shared code produced the right answer for two
 targets with different silicon and a third whose facts are empty.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -23,18 +24,17 @@ from merlin.kernels import knobs as K
 from merlin.targetgen import address_space as AS
 from merlin.targetgen import memory_regime as MR
 
-
 # ---- fixtures over REAL targets ---------------------------------------------------------------
 #
 # Skipped rather than faked when a target's artifact is unavailable in this checkout: a knob-derivation
 # test that silently passes against a synthesized address space would assert nothing about derivation,
 # which is the only thing it is here to assert.
 
+
 def _require_derived(target: str):
     space = AS.derive_address_space(target)
     if space.stores_status != AS.DERIVED:
-        pytest.skip(f"{target}: no derived on-chip stores in this checkout "
-                    f"(stores_status={space.stores_status})")
+        pytest.skip(f"{target}: no derived on-chip stores in this checkout (stores_status={space.stores_status})")
     return space
 
 
@@ -52,6 +52,7 @@ def inv(array_target):
 
 # ---- 1. the surfaces are closed -----------------------------------------------------------------
 
+
 def test_exactly_four_surfaces_and_every_knob_is_on_one(inv):
     assert K.SURFACES == (K.TILE, K.LAYER, K.PLACEMENT, K.GLOBAL)
     assert len(K.SURFACES) == 4
@@ -68,6 +69,7 @@ def test_every_declared_surface_maps_to_cca_facets():
     facet can be routed to a surface. A tag naming a facet the CCA does not have would make that
     routing silently empty."""
     from merlin.kernels import cca as CCA
+
     facet_fields = set(CCA.CCA.__dataclass_fields__)
     for surface, facets in K.SURFACE_FACETS.items():
         assert surface in K.SURFACES
@@ -91,14 +93,16 @@ def test_a_knob_with_a_known_domain_may_not_omit_a_default_silently():
 
 # ---- 2. domains are DERIVED, and match the source they cite -------------------------------------
 
+
 def test_tile_extents_come_from_the_targets_own_array_geometry(array_target, inv):
     space = AS.derive_address_space(array_target)
     for axis, extent in (("rows", space.array_rows), ("cols", space.array_cols)):
         knob = inv.get(f"tile.extent_{axis}")
         assert knob.domain.kind == K.RANGE
         assert (knob.domain.lo, knob.domain.hi) == (1, extent), (
-            f"tile.extent_{axis} must be bounded by the array's own {axis} extent")
-        assert knob.default == extent          # tiling TO the array edge is the derived default
+            f"tile.extent_{axis} must be bounded by the array's own {axis} extent"
+        )
+        assert knob.default == extent  # tiling TO the array edge is the derived default
         assert "derive_address_space" in knob.domain.source
 
 
@@ -145,13 +149,14 @@ def test_loop_order_axes_are_derived_not_listed(array_target, inv):
     assert knob.domain.kind == K.SET
     for order in knob.domain.values:
         assert set(order) == {"rows", "cols", "reduction"}
-    assert len(knob.domain.values) == 6            # 3! permutations of the three DERIVED axes
+    assert len(knob.domain.values) == 6  # 3! permutations of the three DERIVED axes
     assert len(set(knob.domain.values)) == 6
 
 
 def test_placement_sites_and_transfers_come_from_declared_compute_units(array_target, inv):
     from merlin.targetgen import target_registry as tr
     from merlin.targetgen.compute_units import compute_units
+
     units = compute_units(tr.load_contract(array_target) or {})
     sites = set(inv.get("placement.site").domain.values)
     for u in units:
@@ -170,6 +175,7 @@ def test_loop_offload_and_dispatch_group_key_on_the_targets_own_role_census(arra
     one-value domain — the lever exists in the vocabulary and has no room on that silicon. Read off
     roles, never off an opcode name."""
     from merlin.kernels import endpoints as EP
+
     roles = set()
     for e in EP.endpoints_for(array_target):
         roles.update(getattr(e, "roles", {}) or {})
@@ -191,6 +197,7 @@ def test_loop_offload_and_dispatch_group_key_on_the_targets_own_role_census(arra
 def test_global_formats_are_the_union_over_declared_units(array_target, inv):
     from merlin.targetgen import target_registry as tr
     from merlin.targetgen.compute_units import compute_units
+
     declared = {d for u in compute_units(tr.load_contract(array_target) or {}) for d in u.dtypes}
     assert set(inv.get("global.element_format").domain.values) == declared
     # A single declared format IS the default (the silicon accepts nothing else); several is a
@@ -229,13 +236,13 @@ def test_a_second_target_with_different_silicon_derives_a_different_inventory(ar
         pytest.skip(f"{other}: no array geometry in this checkout")
     a, b = K.derive_knobs(array_target), K.derive_knobs(other)
     assert a.names() == b.names(), "the knob VOCABULARY is target-agnostic"
-    assert (set(a.get("global.element_format").domain.values)
-            != set(b.get("global.element_format").domain.values))
+    assert set(a.get("global.element_format").domain.values) != set(b.get("global.element_format").domain.values)
     # The other target declares two engines, so partitioning is a lever there and pinned here.
     assert b.get("global.partition_count").domain.hi > a.get("global.partition_count").domain.hi
 
 
 # ---- 3. UNKNOWN is reported, never defaulted ----------------------------------------------------
+
 
 def test_an_underivable_domain_is_unknown_with_a_reason_and_no_default(array_target):
     """Requirement 1's teeth. Fusion depth is a property of the op graph, not of any target, so with
@@ -245,7 +252,7 @@ def test_an_underivable_domain_is_unknown_with_a_reason_and_no_default(array_tar
     assert knob.domain.kind == K.UNKNOWN_DOMAIN
     assert knob.default is None
     assert "op graph" in knob.domain.why_unknown
-    assert knob.admits(2) is None                  # not False — nothing was checked
+    assert knob.admits(2) is None  # not False — nothing was checked
 
 
 def test_every_unknown_knob_carries_a_reason_and_is_still_enumerable(array_target):
@@ -284,6 +291,7 @@ def test_stores_absent_and_stores_unknown_are_not_conflated():
 
 # ---- 4. ENFORCEMENT: three states, and the falsifier --------------------------------------------
 
+
 def test_a_mutation_on_a_declared_surface_is_allowed(array_target, inv):
     v = K.check_mutation({"tile.extent_rows": 8, "layer.prepack": True}, inv)
     assert v.state == K.ALLOWED and v.allowed
@@ -302,8 +310,8 @@ def test_falsifier_a_mutation_outside_every_declared_surface_is_refused_naming_i
     refusals = v.refusals()
     assert len(refusals) == 1
     outside = refusals[0].outside
-    assert "llvm.unroll_threshold" in outside                 # names WHAT was outside
-    assert "no declared CCA surface exposes" in outside       # ... and WHY
+    assert "llvm.unroll_threshold" in outside  # names WHAT was outside
+    assert "no declared CCA surface exposes" in outside  # ... and WHY
     assert "llvm.unroll_threshold" in v.reason()
 
 
@@ -312,8 +320,8 @@ def test_a_value_outside_a_derived_domain_is_refused_naming_the_domain(array_tar
     v = K.check_mutation({"tile.reduction_rows": capacity + 1}, inv)
     assert v.state == K.REFUSED
     outside = v.refusals()[0].outside
-    assert str(capacity) in outside                      # the derived bound is quoted back
-    assert "memory_regime.operand_store" in outside      # ... with the source that produced it
+    assert str(capacity) in outside  # the derived bound is quoted back
+    assert "memory_regime.operand_store" in outside  # ... with the source that produced it
 
 
 def test_an_underivable_knob_is_undeterminable_and_never_reported_as_allowed(array_target, inv):
@@ -351,6 +359,7 @@ def test_a_boolean_knob_does_not_admit_an_integer(inv):
 
 # ---- 5. attribution -----------------------------------------------------------------------------
 
+
 def test_the_ledger_records_the_knob_a_mutation_is_attributed_to(inv):
     led = K.AttributionLedger(inv)
     v = led.record({"tile.extent_rows": 8}, note="round 1")
@@ -358,7 +367,7 @@ def test_the_ledger_records_the_knob_a_mutation_is_attributed_to(inv):
     assert len(led.entries) == 1
     e = led.entries[0]
     assert (e.knob, e.surface, e.after) == ("tile.extent_rows", K.TILE, 8)
-    assert e.before == inv.get("tile.extent_rows").default   # the derived starting point
+    assert e.before == inv.get("tile.extent_rows").default  # the derived starting point
 
 
 def test_a_refused_mutation_is_never_given_an_attribution(inv):
@@ -390,8 +399,7 @@ def test_an_unmeasured_entry_reports_unmeasured_not_zero(inv):
 def test_an_observed_entry_becomes_measured_and_lands_on_its_surface(inv):
     led = K.AttributionLedger(inv)
     led.record({"tile.extent_rows": 8, "placement.loop_offload": True})
-    assert led.observe("placement.loop_offload", metric="cycles",
-                       metric_before=1000.0, metric_after=650.0) is True
+    assert led.observe("placement.loop_offload", metric="cycles", metric_before=1000.0, metric_after=650.0) is True
     summary = led.by_surface()
     assert summary["status"] == "measured"
     assert summary["by_surface"][K.PLACEMENT]["n_measured"] == 1
@@ -404,8 +412,7 @@ def test_an_observed_entry_becomes_measured_and_lands_on_its_surface(inv):
 
 def test_a_measurement_with_nothing_to_attribute_it_to_is_dropped_not_invented(inv):
     led = K.AttributionLedger(inv)
-    assert led.observe("tile.extent_rows", metric="cycles",
-                       metric_before=1.0, metric_after=2.0) is False
+    assert led.observe("tile.extent_rows", metric="cycles", metric_before=1.0, metric_after=2.0) is False
     assert led.entries == []
 
 
@@ -431,7 +438,7 @@ def test_a_zero_working_set_does_not_tighten_a_hardware_bound(array_target):
     verdict for something nobody sized."""
     store, _cap = MR.operand_store(array_target)
     inv = K.derive_knobs(array_target, working_set=(0, 0))
-    assert inv.get("tile.stage_depth").domain.hi == store.banks    # the bank bound, unmodified
+    assert inv.get("tile.stage_depth").domain.hi == store.banks  # the bank bound, unmodified
     assert "classify" not in inv.get("tile.stage_depth").domain.source
     assert not inv.get("layer.fusion_depth").determinable
 

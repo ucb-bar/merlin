@@ -8,6 +8,7 @@ They also pin the fail-closed direction. Enabling the feature with nothing to ro
 model that grades correctly and reports a capability it never used, which is the failure mode that is
 hardest to notice and easiest to cite.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -72,8 +73,7 @@ class TestTheRoutingIsInertUnlessAsked:
     def test_without_the_feature_nothing_is_routed_and_no_sidecar_appears(self, tmp_path):
         # The whole-model build must be byte-identical when the feature is off; a sidecar left behind
         # would make a later build think something had been routed.
-        prepared, _feats = prepare_for_lowering(_model(tmp_path), tmp_path, features=frozenset(),
-                                               blocking=False)
+        prepared, _feats = prepare_for_lowering(_model(tmp_path), tmp_path, features=frozenset(), blocking=False)
         assert "merlin_opu_gemm_i8" not in prepared.read_text()
         assert not (tmp_path / PO.SIDECAR_NAME).exists()
 
@@ -81,8 +81,7 @@ class TestTheRoutingIsInertUnlessAsked:
         # Silently not routing would be indistinguishable from a feature that did nothing, and the model
         # would grade correctly while reporting a capability it never used.
         with pytest.raises(ValueError, match="no `matrix=` routing"):
-            prepare_for_lowering(_model(tmp_path), tmp_path,
-                                 features=frozenset({OPU_MATMUL_NAME}), blocking=False)
+            prepare_for_lowering(_model(tmp_path), tmp_path, features=frozenset({OPU_MATMUL_NAME}), blocking=False)
 
 
 class TestTheGeometryHasOneSource:
@@ -96,6 +95,7 @@ class TestTheGeometryHasOneSource:
     @pytest.fixture
     def routing(self):
         from merlin.common.paths import env as _env
+
         if not _env("MERLIN_CHIPYARD"):
             pytest.skip("needs the hardware checkout ($MERLIN_CHIPYARD)")
         return MatrixRouting(unit="saturn_opu", config="OPUV256D128ShuttleConfig")
@@ -105,6 +105,7 @@ class TestTheGeometryHasOneSource:
 
     def test_a_wider_configuration_gives_a_wider_edge(self, routing):
         from dataclasses import replace
+
         assert replace(routing, config="OPUV512D256ShuttleConfig").tile_edge() == 64
 
     def test_the_default_selector_declines_a_contraction_narrower_than_a_tile(self, routing):
@@ -121,6 +122,7 @@ class TestTheGeometryHasOneSource:
     def test_a_supplied_selector_overrides_the_default(self, routing):
         # This is the seam the cost model and the e-graph plug into; nothing here decides profitability.
         from dataclasses import replace
+
         assert replace(routing, select=lambda _s: False).selector()(object()) is False
 
 
@@ -128,11 +130,16 @@ class TestTheRewriteAndTheSidecarAgree:
     @pytest.fixture
     def routed(self, tmp_path):
         from merlin.common.paths import env as _env
+
         if not _env("MERLIN_CHIPYARD"):
             pytest.skip("needs the hardware checkout ($MERLIN_CHIPYARD)")
         prepared, _feats = prepare_for_lowering(
-            _model(tmp_path), tmp_path, features=frozenset({OPU_MATMUL_NAME}), blocking=False,
-            matrix=MatrixRouting(unit="saturn_opu", config="OPUV256D128ShuttleConfig"))
+            _model(tmp_path),
+            tmp_path,
+            features=frozenset({OPU_MATMUL_NAME}),
+            blocking=False,
+            matrix=MatrixRouting(unit="saturn_opu", config="OPUV256D128ShuttleConfig"),
+        )
         return prepared, PO.load_sidecar(tmp_path)
 
     def test_only_the_tile_filling_contraction_moves(self, routed):

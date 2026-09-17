@@ -4,6 +4,7 @@ resnet50's 256-step, 154 MB `session_inputs.npz` becomes a 770 MB `model_io.h` a
 at compile. Streams and the trajectory references must shrink TOGETHER, or step k grades against
 reference k of a longer corpus.
 """
+
 from __future__ import annotations
 
 import json
@@ -42,33 +43,48 @@ def _bundle(tmp_path, *, with_scale: bool = True, steps: int = 0):
     header = json.dumps({}).encode("utf-8")
     (model / "weights.safetensors").write_bytes(struct.pack("<Q", len(header)) + header)
     (model / "weights.safetensors.manifest.json").write_text(
-        json.dumps({"0": {"kind": "input", "name": "x"}}), encoding="utf-8")
+        json.dumps({"0": {"kind": "input", "name": "x"}}), encoding="utf-8"
+    )
     (model / "input_order.json").write_text(json.dumps({"x": 0}), encoding="utf-8")
     np.savez(model / "inputs.npz", in0=np.ones(4, np.float32))
     extra = {"qinner::fc.tensor_impl.scale": SCALE} if with_scale else {}
     np.savez(model / "extra.npz", **extra)
     if steps:
-        np.savez(model / "session_inputs.npz",
-                 frames=np.arange(steps * 4, dtype=np.float32).reshape(steps, 4))
-        np.savez(model / "session_goldens.npz",
-                 output0=np.zeros((steps, 4), np.float32))
-        (model / "session_contract.yaml").write_text(yaml.safe_dump({
-            "version": 1, "kind": "frames", "paper_ready": False, "stages": ["step"],
-            "inputs": "session_inputs.npz", "states": [],
-            "streams": [{"name": "x", "input_arg": 0, "key": "frames"}],
-            "correctness": {"scope": "trajectory", "golden": "session_goldens.npz",
-                            "key": "output0", "output_index": 0},
-            "quality": {"scope": "trajectory", "golden": "session_goldens.npz",
-                        "key": "output0", "output_index": 0},
-        }), encoding="utf-8")
+        np.savez(model / "session_inputs.npz", frames=np.arange(steps * 4, dtype=np.float32).reshape(steps, 4))
+        np.savez(model / "session_goldens.npz", output0=np.zeros((steps, 4), np.float32))
+        (model / "session_contract.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "version": 1,
+                    "kind": "frames",
+                    "paper_ready": False,
+                    "stages": ["step"],
+                    "inputs": "session_inputs.npz",
+                    "states": [],
+                    "streams": [{"name": "x", "input_arg": 0, "key": "frames"}],
+                    "correctness": {
+                        "scope": "trajectory",
+                        "golden": "session_goldens.npz",
+                        "key": "output0",
+                        "output_index": 0,
+                    },
+                    "quality": {
+                        "scope": "trajectory",
+                        "golden": "session_goldens.npz",
+                        "key": "output0",
+                        "output_index": 0,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
     return model
 
 
 def test_session_step_budget_truncates_streams_and_references_together(tmp_path):
     model = _bundle(tmp_path, steps=8)
     full = c_runtime.generate(model, tmp_path / "full", model / "inputs.npz")
-    capped = c_runtime.generate(model, tmp_path / "capped", model / "inputs.npz",
-                                max_session_steps=2)
+    capped = c_runtime.generate(model, tmp_path / "capped", model / "inputs.npz", max_session_steps=2)
     assert "MERLIN_SESSION_STEPS 8" in (tmp_path / "full" / "model_gen.h").read_text()
     assert "MERLIN_SESSION_STEPS 2" in (tmp_path / "capped" / "model_gen.h").read_text()
     assert full["has_session_correctness"] and capped["has_session_correctness"]

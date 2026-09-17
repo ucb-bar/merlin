@@ -4,6 +4,7 @@ The decode is a pure function of the text and the ISA constants derived from the
 grade calls it with the same text repeatedly. Measured on one 24-capsule grade: 13.5 s in the decoder,
 of which 13.1 s was the xDSL parse of IR that same grade had just parsed in order to compile it.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -30,7 +31,7 @@ def clean():
 #: than inventing a thin one the decode cannot use.
 try:
     _REAL_ISA = dict(RD.isa_constants("gemmini"))
-except Exception:                                      # noqa: BLE001
+except Exception:  # noqa: BLE001
     _REAL_ISA = None
 
 
@@ -51,6 +52,7 @@ def stub(monkeypatch):
     def mod(module, *, target, source=None):
         calls.append("module")
         return real_mod(module, target=target, source=source)
+
     monkeypatch.setattr(RD, "_decode_by_text_scan", scan)
     monkeypatch.setattr(RD, "decode_module", mod)
     return calls
@@ -82,8 +84,7 @@ def test_different_isa_constants_are_a_different_key(stub, monkeypatch):
     """The same target re-elaborated from different RTL derives different constants. Keying on the
     target's NAME alone would decode one revision's trace against another's."""
     RD.decode_text(MODULE, target="t")
-    monkeypatch.setattr(RD, "isa_constants",
-                        lambda target: {**_REAL_ISA, "CUSTOM_OPCODE": 0x2B})
+    monkeypatch.setattr(RD, "isa_constants", lambda target: {**_REAL_ISA, "CUSTOM_OPCODE": 0x2B})
     RD.decode_text(MODULE, target="t")
     assert len(stub) == 2, "a change in the derived ISA constants did not invalidate the memo"
 
@@ -108,8 +109,8 @@ def test_unestablished_constants_decode_afresh_every_time(stub, monkeypatch):
 def test_a_key_cannot_be_formed_without_the_constants():
     """The guard inside _decode_key itself: unresolvable facts yield no key, not a partial one."""
     import unittest.mock as _m
-    with _m.patch.object(RD, "isa_constants",
-                         side_effect=RuntimeError("no facts")):
+
+    with _m.patch.object(RD, "isa_constants", side_effect=RuntimeError("no facts")):
         assert RD._decode_key(MODULE, "t") is None
 
 
@@ -122,7 +123,7 @@ def test_the_memo_never_aliases_a_callers_dict(stub):
     way out happens to absorb it.
     """
     first = RD.decode_text(MODULE, target="t")
-    key, = RD._DECODE_MEMO
+    (key,) = RD._DECODE_MEMO
     stored = RD._DECODE_MEMO[key]
     assert first is not stored, "the memo stored the very dict it handed back"
     second = RD.decode_text(MODULE, target="t")

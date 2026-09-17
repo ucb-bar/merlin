@@ -1,4 +1,5 @@
 """Index folding must preserve integer semantics and refuse runtime input."""
+
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import IntegerAttr, i8, i64
 from xdsl.ir import Block

@@ -5,6 +5,7 @@ used to spell the board label themselves; each now reads it from the board adapt
 or checks it against the contract that consumes it. These tests hold the two sides together, so a
 relabelled adapter or a changed authority breaks here instead of silently yielding no wall time.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -34,8 +35,9 @@ def test_op_sweep_hands_the_beam_its_default_board_leg(tmp_path):
         seen.update(kw)
         return {"best": {}, "parent_run_dir": None}
 
-    cell = op_sweep.OpCell(op="matmul", dtype="f32", shape_regime="s", workload_dir=tmp_path,
-                           expert_objdump=tmp_path / "x.objdump")
+    cell = op_sweep.OpCell(
+        op="matmul", dtype="f32", shape_regime="s", workload_dir=tmp_path, expert_objdump=tmp_path / "x.objdump"
+    )
     op_sweep.run_cell(cell, beam_fn=beam)
     assert seen["targets"] == beam_cli.DEFAULT_TARGETS
 

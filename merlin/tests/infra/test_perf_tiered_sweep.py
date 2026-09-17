@@ -9,6 +9,7 @@ The stop is one-directional and that is the whole safety argument: it may end a 
 losing everywhere it has been asked, and it may never shorten one for a candidate that is winning,
 because a winning prefix predicts nothing about a member not yet measured.
 """
+
 from __future__ import annotations
 
 import json
@@ -28,6 +29,7 @@ class _Member:
 
 class _Feedback:
     """Only the attributes the predicate reads."""
+
     MINIMUM_REFUTING_PREFIX = PAS.DevelopmentGsimFeedback.MINIMUM_REFUTING_PREFIX
     _refuted_so_far = PAS.DevelopmentGsimFeedback._refuted_so_far
 
@@ -41,6 +43,7 @@ def _losing(n):
 
 
 # ---------------------------------------------------------------- ordering
+
 
 def test_the_sweep_orders_cheapest_measured_member_first():
     members = [_Member("slow"), _Member("cheap"), _Member("mid")]
@@ -65,6 +68,7 @@ def test_without_history_the_declared_order_stands_and_says_so():
 
 
 # ---------------------------------------------------------------- the stop
+
 
 def test_a_candidate_losing_on_every_measured_member_stops_the_sweep():
     fb = _Feedback()
@@ -105,6 +109,7 @@ def test_the_last_member_never_triggers_a_stop():
 
 # ---------------------------------------------------------------- the record
 
+
 def test_an_unmeasured_member_is_recorded_not_omitted():
     """A missing cell and an unmeasured one are different claims; only one is honest."""
     row = PAS._unmeasured_cell(_Member("PM15_m64n64", family="PM"), reason="already behind")
@@ -112,8 +117,7 @@ def test_an_unmeasured_member_is_recorded_not_omitted():
     assert row["skip_reason"] == "already behind"
     assert row["capsule"] == "PM15_m64n64"
     # every measurement-valued field is null, never zero
-    for field in ("baseline_gsim_cycles", "candidate_gsim_cycles",
-                  "candidate_minus_baseline_cycles", "declared_macs"):
+    for field in ("baseline_gsim_cycles", "candidate_gsim_cycles", "candidate_minus_baseline_cycles", "declared_macs"):
         assert row[field] is None, field
     assert row["comparable"] is False
     assert row["verdict"] == "refused"
@@ -122,10 +126,11 @@ def test_an_unmeasured_member_is_recorded_not_omitted():
 def test_the_unmeasured_cell_matches_the_redacted_schema_exactly():
     """The schema is an exact key set, so a skipped cell must be the same shape as a measured one."""
     row = PAS._unmeasured_cell(_Member("x"), reason="r")
-    source = (merlin_dir() / "experiments" / "gemmini_perf_bench" / "scripts"
-              / "perf_agent_stage.py").read_text(encoding="utf-8")
+    source = (merlin_dir() / "experiments" / "gemmini_perf_bench" / "scripts" / "perf_agent_stage.py").read_text(
+        encoding="utf-8"
+    )
     start = source.index("cell_fields = {")
-    declared = source[start:source.index("}", start)]
+    declared = source[start : source.index("}", start)]
     for key in row:
         assert f'"{key}"' in declared, f"the redacted schema does not admit {key!r}"
 
@@ -139,7 +144,7 @@ def test_harvest_takes_the_median_of_repeated_measurements(tmp_path):
     for i, seconds in enumerate((10.0, 30.0, 20.0)):
         d = tmp_path / f"r{i}"
         d.mkdir()
-        (d / "capsule_result.json").write_text(json.dumps({
-            "capsule": "K", "tiers": {"L3": {"timing": {"sim_active_s": seconds}}}}),
-            encoding="utf-8")
+        (d / "capsule_result.json").write_text(
+            json.dumps({"capsule": "K", "tiers": {"L3": {"timing": {"sim_active_s": seconds}}}}), encoding="utf-8"
+        )
     assert PAS.harvest_member_cost([tmp_path]) == {"K": 20.0}

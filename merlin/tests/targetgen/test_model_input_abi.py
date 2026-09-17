@@ -4,6 +4,7 @@ JSON erases tensor dtype (the capture intentionally serializes through float64),
 float input and an int tensor can carry identical decoded values.  These tests bind all three records:
 the live loader tensors, the captured linalg ``@forward`` runtime arguments, and ``capsule.yaml``.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -20,7 +21,6 @@ from merlin.common.paths import merlin_dir
 from merlin.targetgen import capsule_source as S
 from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
 
-
 ROOT = merlin_dir() / "contract/capsules/model"
 MODELS = ("M2_microvit_gemmini", "M3_host_island_seam_gemmini")
 
@@ -34,7 +34,7 @@ def _loader_abi(name: str) -> list[dict]:
     python = S._m2m_python()
     if not python.is_file():
         pytest.skip(f"model2MLIR python is unavailable: {python}")
-    script = r'''
+    script = r"""
 import importlib.util, json, sys, torch
 p = sys.argv[1]
 s = importlib.util.spec_from_file_location("_loader_abi_test", p)
@@ -45,9 +45,14 @@ spelling = {torch.bool:"i1", torch.int8:"i8", torch.uint8:"ui8", torch.int16:"i1
             torch.int32:"i32", torch.int64:"i64", torch.float16:"f16", torch.bfloat16:"bf16",
             torch.float32:"f32", torch.float64:"f64"}
 print(json.dumps([{"shape":list(x.shape), "dtype":spelling[x.dtype]} for x in leaves]))
-'''
-    proc = subprocess.run([str(python), "-c", script, str(_dir(name) / "capsule.pytorch.py")],
-                          check=True, capture_output=True, text=True, timeout=60)
+"""
+    proc = subprocess.run(
+        [str(python), "-c", script, str(_dir(name) / "capsule.pytorch.py")],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
     return json.loads(proc.stdout.splitlines()[-1])
 
 
@@ -57,7 +62,7 @@ def test_shipped_model_input_declarations_equal_loader_and_interface_abi(name):
     cap = yaml.safe_load((d / "capsule.yaml").read_text(encoding="utf-8"))
     loader = _loader_abi(name)
     parsed = parse_linalg_mlir((d / "capsule.interface.mlir").read_text(encoding="utf-8"))
-    runtime = parsed["args"][-len(loader):]
+    runtime = parsed["args"][-len(loader) :]
     declared = [{"shape": x["shape"], "dtype": x["dtype"]} for x in cap["inputs"]]
     interface = [{"shape": x["shape"], "dtype": x["dtype"]} for x in runtime]
     assert declared == loader == interface
@@ -70,10 +75,12 @@ def _artifact(name: str, abi: list[dict] | None = None) -> S.CapsuleArtifacts:
     prov = golden["oracle_provenance"]["inputs"]
     inputs = [np.asarray(prov[n]["decoded"]).reshape(prov[n]["shape"]).tolist() for n in order]
     return S.CapsuleArtifacts(
-        op="model", dtype="int8",
+        op="model",
+        dtype="int8",
         pytorch_src=(d / "capsule.pytorch.py").read_text(encoding="utf-8"),
         linalg_mlir=(d / "capsule.interface.mlir").read_text(encoding="utf-8"),
-        inputs=inputs, golden=next(iter(golden["outputs"].values())),
+        inputs=inputs,
+        golden=next(iter(golden["outputs"].values())),
         weights_path=str(d / "capsule.weights.safetensors"),
         meta={"input_abi": abi if abi is not None else _loader_abi(name)},
     )
@@ -90,29 +97,47 @@ def test_model_input_abi_refuses_loader_interface_dtype_drift(name):
 
 def _binding():
     from merlin.targetgen.corpus_spec import CorpusBinding
-    classes = ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST", "PRELOAD",
-               "COMPUTE_PRELOADED", "MVOUT"]
+
+    classes = ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST", "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"]
     return CorpusBinding(
-        target="gemmini", tile_dim=16, operand_dtype="int8", accum_dtype="i32", integer=True,
-        tiers=["L0", "L1", "L2", "L3"], compare="exact_int", atol=0.03125, rtol=0.02,
-        classes_for=lambda **_: classes)
+        target="gemmini",
+        tile_dim=16,
+        operand_dtype="int8",
+        accum_dtype="i32",
+        integer=True,
+        tiers=["L0", "L1", "L2", "L3"],
+        compare="exact_int",
+        atol=0.03125,
+        rtol=0.02,
+        classes_for=lambda **_: classes,
+    )
 
 
 def _entry(name: str) -> dict:
     cap = yaml.safe_load((_dir(name) / "capsule.yaml").read_text(encoding="utf-8"))
     attrs = cap["operation"]["attributes"]
     return {
-        "name": name, "cat": "model", "kind": "model", "op": "model",
-        "model": attrs["model"], "loader": str(_dir(name) / "capsule.pytorch.py"),
-        "operand_dtype": "int8", "out": attrs["out"], "label": cap["label"],
-        "source_reference": cap["source_reference"], "gate": cap["gate"],
+        "name": name,
+        "cat": "model",
+        "kind": "model",
+        "op": "model",
+        "model": attrs["model"],
+        "loader": str(_dir(name) / "capsule.pytorch.py"),
+        "operand_dtype": "int8",
+        "out": attrs["out"],
+        "label": cap["label"],
+        "source_reference": cap["source_reference"],
+        "gate": cap["gate"],
         **({"lanes": cap["lanes"]} if cap.get("lanes") else {}),
     }
 
 
 def _tree_digest(root: Path) -> dict[str, str]:
-    return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
-            for p in sorted(root.rglob("*")) if p.is_file()}
+    return {
+        str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in sorted(root.rglob("*"))
+        if p.is_file()
+    }
 
 
 @pytest.mark.parametrize("name", MODELS)
@@ -127,8 +152,13 @@ def test_model_writer_roundtrip_is_byte_stable_and_preserves_grounded_assets(nam
     assert _tree_digest(d1) == _tree_digest(d2)
 
     shipped = _dir(name)
-    for leaf in ("capsule.interface.mlir", "capsule.pytorch.py", "capsule.weights.safetensors",
-                 "golden.yaml", "expected_instruction_coverage.yaml"):
+    for leaf in (
+        "capsule.interface.mlir",
+        "capsule.pytorch.py",
+        "capsule.weights.safetensors",
+        "golden.yaml",
+        "expected_instruction_coverage.yaml",
+    ):
         assert (d1 / leaf).read_bytes() == (shipped / leaf).read_bytes(), leaf
     generated = yaml.safe_load((d1 / "capsule.yaml").read_text(encoding="utf-8"))
     current = yaml.safe_load((shipped / "capsule.yaml").read_text(encoding="utf-8"))

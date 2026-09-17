@@ -1,10 +1,11 @@
 """Tests for the compute-unit capability model (merlin.targetgen.compute_units) + RTL cross-check."""
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.common.yaml import load_yaml
 from merlin.common.paths import targets_dir
+from merlin.common.yaml import load_yaml
 from merlin.targetgen import compute_units as cu
 
 
@@ -41,10 +42,20 @@ def test_unknown_format_or_kind_rejected():
 def test_composition_union():
     contract = {
         "compute_units": [
-            {"name": "mx_pe", "kind": "systolic", "dtypes": ["mxfp4", "mxfp6", "mxfp8"],
-             "ops": ["matmul"], "accumulate": [{"in": "mxfp8", "weight": "mxfp8", "acc": "f32"}]},
-            {"name": "cluster", "kind": "simt", "dtypes": ["fp16", "bf16"], "ops": ["matmul", "elementwise"],
-             "contains": ["mx_pe"]},
+            {
+                "name": "mx_pe",
+                "kind": "systolic",
+                "dtypes": ["mxfp4", "mxfp6", "mxfp8"],
+                "ops": ["matmul"],
+                "accumulate": [{"in": "mxfp8", "weight": "mxfp8", "acc": "f32"}],
+            },
+            {
+                "name": "cluster",
+                "kind": "simt",
+                "dtypes": ["fp16", "bf16"],
+                "ops": ["matmul", "elementwise"],
+                "contains": ["mx_pe"],
+            },
         ]
     }
     units = cu.compute_units(contract)

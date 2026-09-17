@@ -1,10 +1,10 @@
 """Host resource admission is explicit, measured, and target independent."""
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.perf.host_resources import (HostResourcePolicy, HostResourceTripwire,
-                                        parse_proc_meminfo, summarize_samples)
+from merlin.perf.host_resources import HostResourcePolicy, HostResourceTripwire, parse_proc_meminfo, summarize_samples
 
 
 def _sample(*, available_kib: int = 80, swap_free_kib: int = 8):
@@ -13,7 +13,9 @@ def _sample(*, available_kib: int = 80, swap_free_kib: int = 8):
 MemAvailable:   {available_kib} kB
 SwapTotal:       10 kB
 SwapFree:        {swap_free_kib} kB
-""", observed_at_unix_s=1.0)
+""",
+        observed_at_unix_s=1.0,
+    )
 
 
 def test_proc_sample_records_physical_bytes_and_swap_use():

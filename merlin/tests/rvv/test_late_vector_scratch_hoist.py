@@ -5,6 +5,7 @@ hoisting stage.  If that scratch remains inside a reduction loop, LLVM gives eve
 stack address and reclaims none of them until ``forward`` returns.  A single ordinary contraction
 then exhausts the process stack even though its static frame is small.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -13,9 +14,7 @@ from merlin.llvmlower import pipeline as P
 from merlin.llvmlower.passes_xdsl import preprocess_text_textual
 from merlin.llvmlower.toolchain import available as toolchain_available
 
-
-_needs_toolchain = pytest.mark.skipif(
-    not toolchain_available(), reason="m2m lowering toolchain unavailable")
+_needs_toolchain = pytest.mark.skipif(not toolchain_available(), reason="m2m lowering toolchain unavailable")
 
 
 _INT8_MATMUL = """

@@ -14,6 +14,7 @@ modules are already byte-identical, SSA numbering included. That only holds beca
 `linalg.quantized_matmul` with zero points — Merlin's own idiom — instead of an equivalent spelling
 of its own.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,8 +48,7 @@ def both_paths():
     triton_path = compile_core.compile_core_mlir(bridged.module, target_package=package).staged
     # Same shapes, same reuse — and the kernel is deliberately named after this workload, so even
     # the function symbol matches and the comparison needs no renaming step.
-    hand_path = lower_repeated_rhs_matmul(reuse=2, m=K.TILE_M, k=K.TILE_K, n=K.TILE_N,
-                                          target_package=package)
+    hand_path = lower_repeated_rhs_matmul(reuse=2, m=K.TILE_M, k=K.TILE_K, n=K.TILE_N, target_package=package)
     return hand_path, triton_path
 
 
@@ -61,8 +61,7 @@ def test_the_two_frontends_produce_identical_stage_modules(both_paths, stage):
 def test_the_two_frontends_produce_identical_command_buffers(both_paths):
     """The command buffer is what the hardware executes, so identity here is the real claim."""
     hand, triton = both_paths
-    assert json.dumps(triton.command_buffer, sort_keys=True) == json.dumps(
-        hand.command_buffer, sort_keys=True)
+    assert json.dumps(triton.command_buffer, sort_keys=True) == json.dumps(hand.command_buffer, sort_keys=True)
 
 
 def test_the_input_modules_differ_only_in_accumulator_initialization(both_paths):
@@ -87,8 +86,8 @@ def test_convergence_holds_for_the_generic_target_too(both_paths):
     spec = K.repeated_rhs_matmul_spec()
     bridged = to_linalg(source.make_ttir(spec), spec)
     triton_path = compile_core.compile_core_mlir(bridged.module, target="saturn").staged
-    hand_path = lower_repeated_rhs_matmul(reuse=2, m=K.TILE_M, k=K.TILE_K, n=K.TILE_N,
-                                          target="saturn")
+    hand_path = lower_repeated_rhs_matmul(reuse=2, m=K.TILE_M, k=K.TILE_K, n=K.TILE_N, target="saturn")
     assert text(triton_path.target_module) == text(hand_path.target_module)
     assert json.dumps(triton_path.command_buffer, sort_keys=True) == json.dumps(
-        hand_path.command_buffer, sort_keys=True)
+        hand_path.command_buffer, sort_keys=True
+    )

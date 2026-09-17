@@ -9,12 +9,14 @@ The feature under test used to be a module constant, so the driver could only ev
 historical lever and its number went stale the moment a better one landed. These tests pin the
 parameterisation and the arm shape, without needing a board.
 """
+
 import importlib.util
 
 from merlin.common.paths import repo_root
 
 _spec = importlib.util.spec_from_file_location(
-    "_cvh", repo_root() / "build_tools" / "scripts" / "k1_codegen_vs_handc.py")
+    "_cvh", repo_root() / "build_tools" / "scripts" / "k1_codegen_vs_handc.py"
+)
 
 
 def _mod():
@@ -30,10 +32,12 @@ def test_the_arms_form_a_complete_2x2_plus_a_control():
     lowering = {t: bool(f) for t, (f, _kb) in arms.items()}
     matmul = {t: (kb == "ours") for t, (_f, kb) in arms.items()}
     cells = {(lowering[t], matmul[t]) for t in ("A_base", "B_vf", "C_base_shim", "D_vf_shim")}
-    assert cells == {(False, False), (True, False), (False, True), (True, True)}, \
+    assert cells == {(False, False), (True, False), (False, True), (True, True)}, (
         "the 2x2 is incomplete, so codegen_matmul cannot be isolated"
-    assert arms["ctrl"] == arms["C_base_shim"], \
+    )
+    assert arms["ctrl"] == arms["C_base_shim"], (
         "the control must be C's exact configuration -- it is the board noise floor"
+    )
 
 
 def test_the_feature_under_test_is_a_parameter():
@@ -58,6 +62,7 @@ def test_every_feature_the_driver_can_be_pointed_at_is_registered():
     """A typo'd feature name would die deep inside a board build, after the arms had been built and
     the toolchain invoked. The registry is the authority and it is cheap to consult."""
     from merlin.llvmlower import impr_features as F
+
     m = _mod()
     assert m.DEFAULT_FEATURE in F._REGISTRY
     for feat in ("accumulator_resident_wholemodel_vf_mrpad", "perop_register_block"):

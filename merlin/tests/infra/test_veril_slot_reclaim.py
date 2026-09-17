@@ -17,6 +17,7 @@ the exact resource the semaphore exists to bound, which is worse than failing to
 uncertain case -- unreadable slot, malformed contents, a pid that exists, a pid owned by another user
 -- must leave the slot alone. Those are the cases this file pins alongside the reclaim itself.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -78,7 +79,7 @@ def test_every_slot_leaked_still_leaves_l3_runnable(broker):
 def test_a_live_holder_is_never_robbed(broker):
     """Failing to acquire is safe; oversubscribing verilator is not."""
     mod, slots = broker
-    (slots / "slot_0").write_text(str(os.getpid()))   # this very process: certainly alive
+    (slots / "slot_0").write_text(str(os.getpid()))  # this very process: certainly alive
     assert mod._veril_acquire(1) is None
     assert (slots / "slot_0").read_text().strip() == str(os.getpid()), "a live slot was stolen"
 
@@ -99,7 +100,7 @@ def test_a_free_slot_still_acquires_and_records_this_pid(broker):
 
 
 def test_an_unwritable_slot_dir_is_named_not_reported_as_busy(broker):
-    """"All busy" and "misconfigured" must not look alike -- the /tmp-squat failure."""
+    """ "All busy" and "misconfigured" must not look alike -- the /tmp-squat failure."""
     mod, slots = broker
     os.chmod(slots, 0o500)
     try:

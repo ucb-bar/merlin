@@ -9,6 +9,7 @@ that the result is numerically exact vs numpy on both reference targets. The rel
 ``max(x, 0)`` is recognized structurally (no regex); a max of two real tensors — which the engine's
 vector path does not model — fails closed.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -23,8 +24,7 @@ def _lower(combine="add", relu=True, target="toy_npu"):
     from merlin.xdsl_dialects.lowering import lower_module
     from merlin.xdsl_dialects.lowering.input_workload import build_vector_block
 
-    return lower_module(build_vector_block(m=8, k=16, elem="f32", combine=combine, relu=relu),
-                        target=target)
+    return lower_module(build_vector_block(m=8, k=16, elem="f32", combine=combine, relu=relu), target=target)
 
 
 def _numpy_ref(A, W1, W2, combine, relu):
@@ -99,11 +99,11 @@ def test_vector_block_runs_on_saturn():
 def test_max_of_two_tensors_fails_closed():
     """A linalg.max of two real tensors is NOT relu; the engine's vector path does not model a
     two-tensor max, so lowering fails closed rather than silently miscompiling."""
-    from xdsl.ir import Block, Region
     from xdsl.dialects import tensor as td
     from xdsl.dialects.builtin import FunctionType, ModuleOp, TensorType, f32
     from xdsl.dialects.func import FuncOp, ReturnOp
     from xdsl.dialects.linalg import ops as lo
+    from xdsl.ir import Block, Region
 
     from merlin.xdsl_dialects.lowering import lower_module
     from merlin.xdsl_dialects.lowering.interface_lowering import LoweringError

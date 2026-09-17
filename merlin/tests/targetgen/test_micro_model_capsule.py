@@ -22,6 +22,7 @@ from the target rather than one its author happened to think of:
   * the golden is not a degenerate answer. A quantized micro-network is one bad scale away from emitting
     all zeros, and an all-zero golden passes every tolerance check while proving nothing.
 """
+
 from __future__ import annotations
 
 import json
@@ -68,8 +69,9 @@ def _profile_entry() -> dict:
 #: present in a generated checkout and ABSENT in a clean clone or a sandbox worktree. Tests that read
 #: them skip there rather than erroring, because "the answer key is masked" is not a capsule defect.
 _HAS_GOLDEN = (CAPSULE / "golden.yaml").is_file()
-_HAS_WEIGHTS = ((CAPSULE / "capsule.weights.safetensors").is_file()
-                and (REFERENCE / "capsule.weights.safetensors").is_file())
+_HAS_WEIGHTS = (CAPSULE / "capsule.weights.safetensors").is_file() and (
+    REFERENCE / "capsule.weights.safetensors"
+).is_file()
 
 
 def _real_captures() -> dict:
@@ -88,8 +90,7 @@ def _present_cells() -> set:
 
 def _missing_cells() -> list:
     present = _present_cells()
-    return sorted((fam, dt) for fam, dtypes in CF.admitted(TARGET).items() for dt in dtypes
-                  if (fam, dt) not in present)
+    return sorted((fam, dt) for fam, dtypes in CF.admitted(TARGET).items() for dt in dtypes if (fam, dt) not in present)
 
 
 #: The families this capsule was BUILT to reach, and which it must never stop reaching. Kept separate
@@ -101,11 +102,11 @@ _DESIGNED_FOR = ("contraction", "elementwise_map", "movement")
 def test_the_capability_cells_the_model_was_built_for_stay_reached():
     present = _present_cells()
     admitted = CF.admitted(TARGET)
-    missing = [(fam, dt) for fam in _DESIGNED_FOR for dt in admitted.get(fam, ())
-               if (fam, dt) not in present]
+    missing = [(fam, dt) for fam in _DESIGNED_FOR for dt in admitted.get(fam, ()) if (fam, dt) not in present]
     assert not missing, (
         f"{CAPSULE.name} no longer reaches {missing}; the manifest declares the hardware computes those "
-        f"cells, so a whole-model capsule that never touches one leaves that claim untested")
+        f"cells, so a whole-model capsule that never touches one leaves that claim untested"
+    )
 
 
 def test_every_admitted_capability_cell_is_present_in_the_model():
@@ -113,8 +114,7 @@ def test_every_admitted_capability_cell_is_present_in_the_model():
 
     This is a hard functional gate: once the target admits a cell, the whole-model capstone must reach
     it with the admitted dtype rather than carrying a permanent deferral."""
-    assert not _missing_cells(), (
-        f"{CAPSULE.name} never reaches {_missing_cells()}")
+    assert not _missing_cells(), f"{CAPSULE.name} never reaches {_missing_cells()}"
 
 
 def test_the_families_the_target_can_run_standalone_are_actually_eligible():
@@ -125,23 +125,24 @@ def test_the_families_the_target_can_run_standalone_are_actually_eligible():
     cap_map = EL.capability_map_for_target(TARGET)
     regions = _regions()
     admitted = CF.admitted(TARGET)
-    for family in _DESIGNED_FOR:            # the deferred cells are named by the xfail above
+    for family in _DESIGNED_FOR:  # the deferred cells are named by the xfail above
         dtypes = admitted.get(family, ())
         assert dtypes, f"{family!r} is no longer admitted by {TARGET}; the model was built around it"
         cap = cap_map.get(family)
         assert cap is not None, f"{family!r} is admitted but absent from the capability map"
-        hits = [r for r in regions
-                if r.resolved_family() == family and r.in_dtype in dtypes]
+        hits = [r for r in regions if r.resolved_family() == family and r.in_dtype in dtypes]
         assert hits, f"no {family}/{dtypes} region in {CAPSULE.name}"
         eligible = [r for r in hits if EL.is_eligible(r, cap_map).eligible]
         if cap.composed_with:
             assert not eligible, (
                 f"{family} is declared reachable only fused with {list(cap.composed_with)}, so a "
-                f"standalone {family} region must NOT read as eligible")
+                f"standalone {family} region must NOT read as eligible"
+            )
         else:
             assert eligible, (
                 f"{CAPSULE.name} has {len(hits)} {family} region(s) but none the target can execute; "
-                f"the capability is present in the model and unreachable on the hardware")
+                f"the capability is present in the model and unreachable on the hardware"
+            )
 
 
 def test_the_host_work_is_work_this_target_genuinely_refuses():
@@ -162,7 +163,8 @@ def test_the_host_work_is_work_this_target_genuinely_refuses():
     for family, reason in sorted(reasons.items()):
         assert reason and "unrecognized" not in reason, (
             f"{family} landed on the host for reason {reason!r}, which is not a statement about the "
-            f"hardware; host placement must be something the target declared")
+            f"hardware; host placement must be something the target declared"
+        )
 
 
 @pytest.mark.skipif(not _real_captures(), reason="no real model captures on this checkout")
@@ -192,7 +194,8 @@ def test_extents_are_multiples_of_the_targets_own_tile_edge():
         trailing = [int(d) for d in spec["shape"] if int(d) > 1]
         assert trailing, f"input {spec['name']} has no extent to check"
         assert all(d % edge == 0 for d in trailing), (
-            f"input {spec['name']} shape {spec['shape']} is not a multiple of the tile edge {edge}")
+            f"input {spec['name']} shape {spec['shape']} is not a multiple of the tile edge {edge}"
+        )
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -204,10 +207,12 @@ def test_the_composition_contains_the_seam_nothing_else_exercises():
     patterns = BD.patterns_in_sequence(_sequence())
     assert BD.A_H_A in patterns, (
         f"{CAPSULE.name} composes as {profile.kind} with patterns {sorted(patterns)}; the point of the "
-        f"capsule is the accelerator -> host island -> accelerator seam, and it is not there")
+        f"capsule is the accelerator -> host island -> accelerator seam, and it is not there"
+    )
     assert profile.accel_segments >= 2 and profile.host_segments >= 2, (
         f"host work must sit BETWEEN accelerator work, not around it "
-        f"(accel_segments={profile.accel_segments}, host_segments={profile.host_segments})")
+        f"(accel_segments={profile.accel_segments}, host_segments={profile.host_segments})"
+    )
 
 
 def _sequence() -> list:
@@ -218,8 +223,7 @@ def _sequence() -> list:
         if family is None:
             out.append("?")
             continue
-        out.append(BD.ACCEL if (family in cap_map and EL.is_eligible(region, cap_map).eligible)
-                   else BD.HOST)
+        out.append(BD.ACCEL if (family in cap_map and EL.is_eligible(region, cap_map).eligible) else BD.HOST)
     return out
 
 
@@ -228,7 +232,8 @@ def test_no_region_goes_unnamed():
     profile = BD.profile_capsule(CAPSULE, TARGET)
     assert profile.n_unresolved == 0, (
         f"{profile.n_unresolved} region(s) name no semantic family; each one is invisible to the "
-        f"boundary axis and to the coverage certificate")
+        f"boundary axis and to the coverage certificate"
+    )
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -237,12 +242,13 @@ def test_no_region_goes_unnamed():
 def test_it_demands_the_cycle_accurate_tier():
     cap = _capsule()
     assert "L3" in (cap.get("required_oracle_tiers") or []), (
-        "the capsule exists to be run at the cycle-accurate tier; not requiring it makes the whole "
-        "point optional")
+        "the capsule exists to be run at the cycle-accurate tier; not requiring it makes the whole point optional"
+    )
     assert cap.get("label") == "public"
     assert (cap.get("lanes") or {}).get("require"), (
         "a model capsule carries no must_accelerate, so lanes.require is the only thing that can demand "
-        "both lanes carried work")
+        "both lanes carried work"
+    )
 
 
 def test_the_required_lanes_are_ones_this_target_can_populate():
@@ -252,7 +258,8 @@ def test_the_required_lanes_are_ones_this_target_can_populate():
     have = set(reachable_lanes(TARGET))
     assert want <= have, (
         f"lanes {sorted(want - have)} cannot be populated on {TARGET} (reachable: {sorted(have)}); a "
-        f"required lane the router can put nothing on is unpassable however good the backend is")
+        f"required lane the router can put nothing on is unpassable however good the backend is"
+    )
 
 
 def test_the_interface_fits_the_tier_it_asks_for():
@@ -260,7 +267,8 @@ def test_the_interface_fits_the_tier_it_asks_for():
     ref_iface = (REFERENCE / "capsule.interface.mlir").stat().st_size
     assert iface <= MAX_INTERFACE_BYTES, f"interface MLIR {iface} B over budget"
     assert iface * 3 < ref_iface, (
-        f"interface MLIR {iface} B is not decisively smaller than {REFERENCE.name}'s {ref_iface} B")
+        f"interface MLIR {iface} B is not decisively smaller than {REFERENCE.name}'s {ref_iface} B"
+    )
 
 
 @pytest.mark.skipif(not _HAS_WEIGHTS, reason="externalized weights are masked here")
@@ -270,7 +278,8 @@ def test_the_weight_footprint_fits_the_tier_it_asks_for():
     ref_weights = (REFERENCE / "capsule.weights.safetensors").stat().st_size
     assert weights <= MAX_WEIGHT_BYTES, f"weights {weights} B over budget"
     assert weights * 20 < ref_weights, (
-        f"weights {weights} B is not decisively smaller than {REFERENCE.name}'s {ref_weights} B")
+        f"weights {weights} B is not decisively smaller than {REFERENCE.name}'s {ref_weights} B"
+    )
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -284,13 +293,15 @@ def test_the_network_is_defined_in_the_capsule_itself():
     loader = entry.get("loader")
     assert loader, f"{CAPSULE.name} must name its own loader rather than an out-of-tree workload"
     assert (repo_root() / loader).resolve() == (CAPSULE / "capsule.pytorch.py").resolve(), (
-        f"the profile's loader {loader!r} must be the capsule's own capsule.pytorch.py")
+        f"the profile's loader {loader!r} must be the capsule's own capsule.pytorch.py"
+    )
     src = (CAPSULE / "capsule.pytorch.py").read_text(encoding="utf-8")
     assert "def get_model_and_inputs" in src
     for forbidden in ("os.environ", "sys.path.insert", "nn.LSTM("):
         assert forbidden not in src, (
             f"{forbidden} in capsule.pytorch.py: the network must be defined inline (nn.LSTM in "
-            f"particular is what torch.export refuses on the reference capsule)")
+            f"particular is what torch.export refuses on the reference capsule)"
+        )
 
 
 @pytest.mark.skipif(not _HAS_GOLDEN, reason="the golden is masked here")
@@ -302,7 +313,8 @@ def test_the_golden_is_not_a_degenerate_answer():
     assert values, "the golden carries no output values"
     assert any(v != 0 for v in values), "the golden output is all zeros"
     assert len(set(values)) >= 3, (
-        f"the golden output takes only {len(set(values))} distinct value(s); the network collapsed")
+        f"the golden output takes only {len(set(values))} distinct value(s); the network collapsed"
+    )
 
 
 def _flat(nested) -> list:
@@ -321,6 +333,7 @@ def test_the_capsule_validates_against_the_capsule_schema():
 # `spec` derived what a minimal whole-model capsule must contain and stopped there, so the one capsule
 # small enough for the cycle-accurate tier was hand-authored and merely CHECKED against the derivation.
 
+
 def _spec(layers, extent=32, tile=16):
     from merlin.targetgen import micro_model as MM
 
@@ -338,9 +351,15 @@ def test_the_emitted_source_parses_and_exposes_the_loader_contract():
 
     from merlin.targetgen import micro_model as MM
 
-    src = MM.emit_pytorch(_spec([_layer("contraction", MM.ACCELERATOR, "matmul"),
-                                 _layer("normalization", MM.HOST),
-                                 _layer("elementwise_map", MM.ACCELERATOR)]))
+    src = MM.emit_pytorch(
+        _spec(
+            [
+                _layer("contraction", MM.ACCELERATOR, "matmul"),
+                _layer("normalization", MM.HOST),
+                _layer("elementwise_map", MM.ACCELERATOR),
+            ]
+        )
+    )
     tree = ast.parse(src)
     fns = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
     assert "get_model_and_inputs" in fns, "the loader contract every capture path calls"
@@ -352,10 +371,12 @@ def test_every_layer_in_the_inventory_reaches_the_forward():
     capsule would then test a different shape than its name claims."""
     from merlin.targetgen import micro_model as MM
 
-    layers = [_layer("contraction", MM.ACCELERATOR, "matmul"),
-              _layer("normalization", MM.HOST),
-              _layer("reduction", MM.ACCELERATOR),
-              _layer("movement", MM.ACCELERATOR)]
+    layers = [
+        _layer("contraction", MM.ACCELERATOR, "matmul"),
+        _layer("normalization", MM.HOST),
+        _layer("reduction", MM.ACCELERATOR),
+        _layer("movement", MM.ACCELERATOR),
+    ]
     src = MM.emit_pytorch(_spec(layers))
     for layer in layers:
         assert f"{layer.side}: {layer.family}" in src, f"{layer.family} never reached the forward"
@@ -366,11 +387,13 @@ def test_the_host_layer_lands_in_the_interior():
     it is where keeping an intermediate resident and paying to move it out differ."""
     from merlin.targetgen import micro_model as MM
 
-    layers = [_layer("contraction", MM.ACCELERATOR, "matmul"),
-              _layer("normalization", MM.HOST),
-              _layer("elementwise_map", MM.ACCELERATOR)]
+    layers = [
+        _layer("contraction", MM.ACCELERATOR, "matmul"),
+        _layer("normalization", MM.HOST),
+        _layer("elementwise_map", MM.ACCELERATOR),
+    ]
     src = MM.emit_pytorch(_spec(layers))
-    body = src[src.index("def forward"):]
+    body = src[src.index("def forward") :]
     sides = [ln.split(":")[0].split("# ")[-1] for ln in body.splitlines() if ln.strip().startswith("# ")]
     assert sides[0] == MM.ACCELERATOR and sides[-1] == MM.ACCELERATOR
     assert MM.HOST in sides[1:-1]

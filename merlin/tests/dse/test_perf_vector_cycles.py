@@ -4,13 +4,14 @@ Why it matters: the envelope refuses a resource it cannot price, and a vector un
 to divide a demand by -- its cost is a per-instruction schedule. Refusing it left most workloads with
 no end-to-end bound while the unit was demonstrably busy in the machine.
 """
+
 from __future__ import annotations
 
 import json
 
 import pytest
 
-from merlin.perf.vector_cycles import (VectorModelUnavailable, op_class_for, vector_term)
+from merlin.perf.vector_cycles import VectorModelUnavailable, op_class_for, vector_term
 from merlin.targetgen.rtl import mlc_bridge
 
 _KNOWN = ("add", "mul", "sub", "rsum", "rmax", "exp", "cos", "rcp", "vliAll", "fp8pack")
@@ -36,7 +37,7 @@ def test_the_op_class_comes_from_splitting_the_mnemonic() -> None:
 def test_a_variant_that_costs_differently_is_kept_apart() -> None:
     """An immediate load writing a register pair is not the one writing a single register."""
     assert op_class_for("vli.all", _KNOWN) == "vliAll"
-    assert op_class_for("vli.col", _KNOWN) is None      # not in this reduced known-set
+    assert op_class_for("vli.col", _KNOWN) is None  # not in this reduced known-set
 
 
 def test_an_unknown_instruction_is_unmapped_not_priced_as_a_known_one() -> None:
@@ -76,5 +77,6 @@ def test_the_compiled_term_reproduces_the_measured_vector_cycles() -> None:
 def test_an_unreachable_model_is_unavailable_not_a_free_engine() -> None:
     """A vector unit that cannot be priced must raise, never contribute zero cycles."""
     with pytest.raises(VectorModelUnavailable):
-        vector_term("atlas", [("Vector", "vadd.bf16", 0)], base=None) if mlc_bridge.mlc_dir() is None \
-            else (_ for _ in ()).throw(VectorModelUnavailable("simulated: model unreachable"))
+        vector_term("atlas", [("Vector", "vadd.bf16", 0)], base=None) if mlc_bridge.mlc_dir() is None else (
+            _ for _ in ()
+        ).throw(VectorModelUnavailable("simulated: model unreachable"))

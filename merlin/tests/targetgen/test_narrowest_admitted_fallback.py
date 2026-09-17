@@ -13,6 +13,7 @@ than a wide one, so the alphabet was silently choosing the opposite of the inten
 `capsule_dram.dtype_bits`, which already knows the sub-byte packed widths (mxfp4 -> 4, mxfp6 -> 6).
 A declared preference still wins outright.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -39,7 +40,7 @@ def test_nothing_admitted_yields_no_dtype_rather_than_raising():
 
 def test_ties_break_deterministically_so_regeneration_stays_byte_stable():
     """Two formats of equal width must not reorder between runs."""
-    same_width = {d for d in ("fp8_e4m3", "fp8_e5m2", "i8") }
+    same_width = {d for d in ("fp8_e4m3", "fp8_e5m2", "i8")}
     widths = {d: dtype_bits(d) for d in same_width}
     if len(set(widths.values())) != 1:
         pytest.skip(f"fixture is not a tie: {widths}")

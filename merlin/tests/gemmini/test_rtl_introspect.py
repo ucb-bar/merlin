@@ -1,12 +1,13 @@
 """merlin-rtl-introspect: structure-only FIRRTL fact extraction + contract reproduction."""
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 from pathlib import Path
 
 import pytest
 import yaml
 
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.targetgen.rtl import introspect
 
 REPO = repo_root()
@@ -26,8 +27,7 @@ def test_validate_logic_unit():
     good = {
         "arrays": [{"name": "mesh", "rows": 16, "cols": 16}],
         "memories": [{"name": "scratchpad", "bytes": 262144}],
-        "datapaths": [{"name": "input", "dtype": "i8"},
-                      {"name": "accumulator", "dtype": "i32"}],
+        "datapaths": [{"name": "input", "dtype": "i8"}, {"name": "accumulator", "dtype": "i32"}],
     }
     assert introspect.validate_against_contract(good, contract) == []
 
@@ -35,8 +35,7 @@ def test_validate_logic_unit():
     bad = {
         "arrays": [{"name": "mesh", "rows": 16, "cols": 16}],
         "memories": [{"name": "scratchpad", "bytes": 262144}],
-        "datapaths": [{"name": "input", "dtype": "bf16"},
-                      {"name": "accumulator", "dtype": "i32"}],
+        "datapaths": [{"name": "input", "dtype": "bf16"}, {"name": "accumulator", "dtype": "i32"}],
     }
     problems = introspect.validate_against_contract(bad, contract)
     assert any("datapath input" in p and "not covered" in p for p in problems)
@@ -65,7 +64,7 @@ def test_dump_facts_is_reproducible_record(tmp_path):
     rec = introspect.dump_facts(tmp_path / "rtl_facts.yaml", target="gemmini")
     assert (tmp_path / "rtl_facts.yaml").is_file()
     assert rec["generator"]["version"] == introspect.GENERATOR_VERSION
-    assert "grep" in rec["generator"]["method"].lower()        # honest: NOT a CIRCT pass yet
+    assert "grep" in rec["generator"]["method"].lower()  # honest: NOT a CIRCT pass yet
     assert set(rec["source_shas"]) == {"chipyard", "gemmini"}
     assert introspect.validate_against_contract(rec["facts"], _contract()) == []
 

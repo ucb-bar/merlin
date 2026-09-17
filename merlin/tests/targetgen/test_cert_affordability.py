@@ -15,6 +15,7 @@ The two failure modes this pins are the ones that actually happened while buildi
 no commit at all), and a linalg-on-tensors capsule parsed by a bare builtin context left another 54 at
 zero. A capsule priced at zero reads as free, which is the most dangerous possible error here.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -87,7 +88,8 @@ def test_every_l3_demanding_capsule_in_the_corpus_can_be_priced():
     assert rep["n_demanding_l3"] > 0, "nothing demanded L3, so this test established nothing"
     assert rep["unpriceable"] == [], (
         f"{len(rep['unpriceable'])} capsule(s) demand L3 and cannot be priced: "
-        f"{[u['capsule'] for u in rep['unpriceable'][:8]]}")
+        f"{[u['capsule'] for u in rep['unpriceable'][:8]]}"
+    )
 
 
 def test_an_over_budget_capsule_is_excused_only_by_an_l2_cap_or_an_extends():
@@ -96,10 +98,12 @@ def test_an_over_budget_capsule_is_excused_only_by_an_l2_cap_or_an_extends():
     rep = gate.audit(budget_s=900.0)
     for row in rep["over_budget"]:
         assert not row["extends"] and str(row["max_oracle_tier"] or "").upper() != "L2", (
-            f"{row['capsule']} declares a remedy yet is reported over budget")
+            f"{row['capsule']} declares a remedy yet is reported over budget"
+        )
     # And the gate must actually be able to fail, or it is decoration.
     assert gate.main(["--budget-s", "900", "--fail-on-unaffordable"]) == 1, (
-        "with 12 known over-budget capsules the gate must exit non-zero")
+        "with 12 known over-budget capsules the gate must exit non-zero"
+    )
 
 
 def test_a_generous_budget_admits_the_whole_corpus():
@@ -107,8 +111,7 @@ def test_a_generous_budget_admits_the_whole_corpus():
     gate = _gate()
     tight = gate.audit(budget_s=900.0)
     loose = gate.audit(budget_s=10_000_000.0)
-    assert len(loose["over_budget"]) < len(tight["over_budget"]), (
-        "raising the budget must shrink the over-budget set")
+    assert len(loose["over_budget"]) < len(tight["over_budget"]), "raising the budget must shrink the over-budget set"
     assert loose["over_budget"] == [], loose["over_budget"]
 
 
@@ -125,7 +128,8 @@ def test_the_declared_remedy_fields_are_the_ones_the_corpus_uses():
                 used[k] += 1
     assert used["max_oracle_tier"] or used["extends"], (
         "neither remedy field appears anywhere in the corpus, so the gate would be asking for "
-        f"something no capsule can express: {used}")
+        f"something no capsule can express: {used}"
+    )
 
 
 def test_the_cost_law_reproduces_the_calibration_runs():
@@ -151,7 +155,8 @@ def test_the_law_is_superlinear_and_beats_a_flat_rate_at_the_top():
     law, _ = CC.predict_seconds_from_output(4096)
     assert law > flat, "the law must not be cheaper than the flat rate at the top rung"
     assert abs(law - 1682.6) < abs(flat - 1682.6), (
-        f"the law ({law:.0f}s) must be closer to the measured 1682.6s than the flat rate ({flat:.0f}s)")
+        f"the law ({law:.0f}s) must be closer to the measured 1682.6s than the flat rate ({flat:.0f}s)"
+    )
     # And doubling the output must cost MORE than double.
     a, _ = CC.predict_seconds_from_output(2048)
     b, _ = CC.predict_seconds_from_output(4096)
@@ -170,7 +175,8 @@ def test_the_gate_reports_how_much_of_the_bill_is_extrapolated():
     rep = gate.audit(budget_s=900.0)
     assert rep["n_extrapolated"] > 0
     assert rep["extrapolated_hours"] > 0.5 * (rep["total_predicted_s"] / 3600.0), (
-        "most of this corpus's cost is beyond the calibrated range, and the report must say so")
+        "most of this corpus's cost is beyond the calibrated range, and the report must say so"
+    )
 
 
 def test_no_capsule_is_priced_at_zero():
@@ -203,7 +209,8 @@ def test_a_cycle_bound_perf_capsule_is_never_told_to_cap_itself_at_l2():
     # And they must NOT appear in the cappable list, or the advice is contradictory.
     cappable = {r["capsule"] for r in rep["over_budget"]}
     assert not (cappable & {r["capsule"] for r in cycle_bound}), (
-        "a capsule cannot be both cappable at L2 and dependent on a cycle-accurate tier")
+        "a capsule cannot be both cappable at L2 and dependent on a cycle-accurate tier"
+    )
 
 
 def test_a_capsule_with_no_perf_instrument_is_cappable():

@@ -4,6 +4,7 @@ The dialect's verifier compares two strings; that is all it can do. These tests 
 between a token existing and a token being backed by a verification result, because conflating them
 is exactly how "we have a proof obligation system" becomes an overclaim.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -16,6 +17,7 @@ pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed
 @pytest.fixture(scope="module")
 def contract_module():
     from merlin.xdsl_dialects.lowering import pipeline
+
     return pipeline.lower_repeated_rhs_matmul(reuse=2, m=2, k=2, n=2).contract_module
 
 

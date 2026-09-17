@@ -8,6 +8,7 @@ The artefact of that failure is a SPECTACULAR speedup: a kernel that does no wor
 immediately, so anyone benchmarking the compiler on their own models would measure a huge win on
 exactly the inputs it cannot compile. Hence a check that runs before any measurement.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,7 +40,8 @@ def _package(tmp_path, buffer: dict | None, *, returncode: int = 0):
     body.append(f"sys.exit({returncode})")
     tool.write_text("\n".join(body), encoding="utf-8")
     (package / "manifest.yaml").write_text(
-        yaml.safe_dump({"entrypoints": {"tool": "mlir_oot/gemmini-opt"}}), encoding="utf-8")
+        yaml.safe_dump({"entrypoints": {"tool": "mlir_oot/gemmini-opt"}}), encoding="utf-8"
+    )
     return package
 
 

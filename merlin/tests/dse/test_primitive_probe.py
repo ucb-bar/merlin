@@ -1,4 +1,5 @@
 """Completion comes from the decoded source contract, never a shared host-ISA fallback."""
+
 import pytest
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp
@@ -18,17 +19,24 @@ def source(monkeypatch, *, completion=True, ordered=True):
         block.add_op(llvm.InlineAsmOp(name, constraints, [], [], has_side_effects=True))
     block.add_op(llvm.ReturnOp())
     module = ModuleOp([llvm.FuncOp("original", llvm.LLVMFunctionType([]), body=Region([block]))])
-    rows = [{"class": "init"}, {"class": "stage"}, {"class": "execute"},
-            {"class": "store_config", "decoded": {"subtype": "ST"}},
-            {"class": "readback", "decoded": {"acc_addr": 0}}]
+    rows = [
+        {"class": "init"},
+        {"class": "stage"},
+        {"class": "execute"},
+        {"class": "store_config", "decoded": {"subtype": "ST"}},
+        {"class": "readback", "decoded": {"acc_addr": 0}},
+    ]
     if completion:
         rows.append({"class": "FENCE"})
     # This unit tests the generic IR transform's completion handling; the target decoder's
     # independent correctness is not claimed. A real emitted-artifact witness accompanies it.
     monkeypatch.setattr(decode, "decode_module", lambda *a, **kw: {"instructions": rows})
     monkeypatch.setattr(decode, "isa_constants", lambda target: {"CONFIG_SUBTYPE": {0: "store_config"}})
-    monkeypatch.setattr(primitive_probe, "initialized_compute_primitives", lambda *a, **kw: [
-        {"missing": [], "instruction_indices": [1, 2], "domain_digest": "1" * 64}])
+    monkeypatch.setattr(
+        primitive_probe,
+        "initialized_compute_primitives",
+        lambda *a, **kw: [{"missing": [], "instruction_indices": [1, 2], "domain_digest": "1" * 64}],
+    )
     return module
 
 
@@ -55,9 +63,14 @@ def test_unordered_completion_is_not_silently_strengthened(monkeypatch):
 def test_optional_counters_do_not_enter_compute_timer(monkeypatch):
     program = primitive_probe.extract_primitive_program(source(monkeypatch), target="fixture")
     text = primitive_probe.render_primitive_host_wrapper(
-        program, declarations="/* host-owned declarations */", argument_expressions=[],
-        cycle_reader="host_timer", verify_call="host_verify()",
-        before_measurement="  counters_reset();\n", after_measurement="  counters_snapshot();\n")
+        program,
+        declarations="/* host-owned declarations */",
+        argument_expressions=[],
+        cycle_reader="host_timer",
+        verify_call="host_verify()",
+        before_measurement="  counters_reset();\n",
+        after_measurement="  counters_snapshot();\n",
+    )
     warm = text.index(f"  {program.body_symbol}();")
     begin, end = text.index("const uint64_t begin"), text.index("const uint64_t end")
     assert warm < text.index("counters_reset();") < begin < end
@@ -77,8 +90,13 @@ def test_context_keeps_loads_in_body_and_restores_setup_after_warmup(monkeypatch
     assert names(functions[1]) == ["initialize", "stage", "execute", "target_completion_instruction"]
     assert program.timed_instruction_indices == (0, 1, 2)
     text = primitive_probe.render_primitive_host_wrapper(
-        program, declarations="/* host-owned declarations */", argument_expressions=[],
-        cycle_reader="host_timer", verify_call="host_verify()", before_measurement="  counters_reset();\n")
+        program,
+        declarations="/* host-owned declarations */",
+        argument_expressions=[],
+        cycle_reader="host_timer",
+        verify_call="host_verify()",
+        before_measurement="  counters_reset();\n",
+    )
     warm = text.index(f"  {program.body_symbol}();")
     restored = text.index(f"  {program.setup_symbol}();", warm)
     assert warm < restored < text.index("counters_reset();") < text.index("const uint64_t begin")
@@ -99,11 +117,13 @@ def test_fixed_work_drains_trailing_loads_inside_body(monkeypatch, unsupported):
         block.insert_op_after(extra, execute)
         rows.insert(3, {"class": "execute", "decoded": {}})
         with pytest.raises(ValueError, match="another compute or unsupported effect"):
-            primitive_probe.extract_primitive_program(module, target="fixture",
-                include_operand_movement=True, include_trailing_operand_movement=True)
+            primitive_probe.extract_primitive_program(
+                module, target="fixture", include_operand_movement=True, include_trailing_operand_movement=True
+            )
         return
-    program = primitive_probe.extract_primitive_program(module, target="fixture",
-        include_operand_movement=True, include_trailing_operand_movement=True)
+    program = primitive_probe.extract_primitive_program(
+        module, target="fixture", include_operand_movement=True, include_trailing_operand_movement=True
+    )
     body = list(program.module.body.block.ops)[1]
     names = [op.asm_string.data for op in body.body.block.ops if op.name == "llvm.inline_asm"]
     assert names == ["initialize", "stage", "execute", "retained_competing_load", "target_completion_instruction"]

@@ -12,6 +12,7 @@ These tests also pin the shape of the guard, because the first version of it was
 is hardest to see: an unimported name inside a broad ``except`` made EVERY call return "no capability",
 so the negative cases passed for the wrong reason and the positive case silently never fired.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen.contract import compile as C
@@ -20,14 +21,16 @@ _RTL = {"kind": "t-rtl", "derived_from_rtl": True}
 _MODEL = {"kind": "t-model", "derived_from_rtl": False}
 
 #: A console recorded verbatim from a real bracketed RTL run (306 cycles).
-_CONSOLE = ("MERLIN_HWCOUNTER MAIN_EX_CYCLES 70\n"
-            "MERLIN_HWCOUNTER MAIN_LD_EX_CYCLES 28\n"
-            "MERLIN_HWCOUNTER MAIN_LD_ST_EX_CYCLES 0\n"
-            "MERLIN_HWCOUNTER MAIN_ST_EX_CYCLES 0\n"
-            "MERLIN_HWCOUNTER MAIN_LD_CYCLES 39\n"
-            "MERLIN_HWCOUNTER MAIN_LD_ST_CYCLES 0\n"
-            "MERLIN_HWCOUNTER MAIN_ST_CYCLES 44\n"
-            "METRIC cycles 306\nDONE\n")
+_CONSOLE = (
+    "MERLIN_HWCOUNTER MAIN_EX_CYCLES 70\n"
+    "MERLIN_HWCOUNTER MAIN_LD_EX_CYCLES 28\n"
+    "MERLIN_HWCOUNTER MAIN_LD_ST_EX_CYCLES 0\n"
+    "MERLIN_HWCOUNTER MAIN_ST_EX_CYCLES 0\n"
+    "MERLIN_HWCOUNTER MAIN_LD_CYCLES 39\n"
+    "MERLIN_HWCOUNTER MAIN_LD_ST_CYCLES 0\n"
+    "MERLIN_HWCOUNTER MAIN_ST_CYCLES 44\n"
+    "METRIC cycles 306\nDONE\n"
+)
 
 
 def _target_with_counters() -> str | None:
@@ -38,39 +41,46 @@ def _target_with_counters() -> str | None:
     """
     from merlin.common.paths import merlin_dir
     from merlin.perf import hw_counters as H
+
     names = sorted(p.name for p in (merlin_dir() / "targets").iterdir() if p.is_dir())
     for name in names:
         try:
             if H.counters_for_target(name).get("status") == "derived":
                 return name
-        except Exception:                                      # noqa: BLE001
+        except Exception:  # noqa: BLE001
             continue
     return None
 
 
 class TestOracleProvenanceGate:
     def test_a_functional_model_carries_no_activity_block(self):
-        assert C._counter_observations(_CONSOLE, target="anything", simulator="model",
-                                       cycles=52, oracle=_MODEL) == (None, None)
+        assert C._counter_observations(_CONSOLE, target="anything", simulator="model", cycles=52, oracle=_MODEL) == (
+            None,
+            None,
+        )
 
     def test_an_unstated_oracle_fails_closed(self):
-        assert C._counter_observations(_CONSOLE, target="anything", simulator="x",
-                                       cycles=1, oracle=None) == (None, None)
+        assert C._counter_observations(_CONSOLE, target="anything", simulator="x", cycles=1, oracle=None) == (
+            None,
+            None,
+        )
 
     def test_an_unbracketed_rtl_run_is_byte_identical_to_before(self):
-        assert C._counter_observations("METRIC cycles 5\nDONE\n", target="anything",
-                                       simulator="rtl", cycles=5, oracle=_RTL) == (None, None)
+        assert C._counter_observations(
+            "METRIC cycles 5\nDONE\n", target="anything", simulator="rtl", cycles=5, oracle=_RTL
+        ) == (None, None)
 
     def test_an_rtl_run_with_readings_does_carry_one(self):
         """The positive case. Without it the guard above can pass for the wrong reason."""
         target = _target_with_counters()
         if target is None:
             import pytest
+
             pytest.skip("no target on this checkout derives a counter set from its shipped header")
-        obs, cap = C._counter_observations(_CONSOLE, target=target, simulator="rtl",
-                                           cycles=306, oracle=_RTL)
+        obs, cap = C._counter_observations(_CONSOLE, target=target, simulator="rtl", cycles=306, oracle=_RTL)
         assert obs, "an RTL oracle with counter readings must produce an activity block"
         quantities = {e["quantity"] for e in obs}
         assert any(q.startswith("busy_cycles.") for q in quantities)
         assert cap is not None and cap["partitioned"] is False, (
-            "the block must declare itself non-partitioned or its overlap reading is refused")
+            "the block must declare itself non-partitioned or its overlap reading is refused"
+        )

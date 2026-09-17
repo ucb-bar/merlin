@@ -10,6 +10,7 @@ gate reported it comfortably under.
 The cap cannot be enforced against a number nobody has. What it can do is refuse to pretend the number is
 zero: unmeasured rounds are recorded as such, counted separately, and surfaced as a lower bound.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -27,8 +28,7 @@ HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
 def _loop_mod():
     if str(HARNESS) not in sys.path:
         sys.path.insert(0, str(HARNESS))
-    spec = importlib.util.spec_from_file_location("run_baseline_qa_loop",
-                                                  HARNESS / "run_baseline_qa_loop.py")
+    spec = importlib.util.spec_from_file_location("run_baseline_qa_loop", HARNESS / "run_baseline_qa_loop.py")
     mod = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(mod)
@@ -71,7 +71,7 @@ def test_an_unmeasured_round_does_not_inflate_the_measured_total(ledger):
 def test_the_cap_still_trips_on_measured_spend(ledger):
     M = _loop_mod()
     M._spend_over_cap(6.0)
-    M._spend_over_cap(None)                       # unknown, neither free nor counted
+    M._spend_over_cap(None)  # unknown, neither free nor counted
     over, total, _ = M._spend_over_cap(5.0)
     assert over is True and total == 11.0
 

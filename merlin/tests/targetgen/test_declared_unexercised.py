@@ -11,6 +11,7 @@ becomes "the compiler handles 8 families". radiance is the live instance: its co
 has no fence at all (MISC_MEM is untranscodable), so the family may not be constructible for this target
 at all. That is worth reporting by name rather than leaving as a hole in a denominator.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen import coverage_report as cov
@@ -18,10 +19,15 @@ from merlin.targetgen import coverage_report as cov
 
 def _caps():
     """One capsule exercising contraction only — so every other declared family is unexercised."""
-    return {"C0": {"name": "C0", "kind": "isa", "label": "public",
-                   "operation": {"op": "matmul", "attributes": {}},
-                   "semantic": {"semantic_family": "contraction", "must_accelerate": True,
-                                "generalization_axis": "seen"}}}
+    return {
+        "C0": {
+            "name": "C0",
+            "kind": "isa",
+            "label": "public",
+            "operation": {"op": "matmul", "attributes": {}},
+            "semantic": {"semantic_family": "contraction", "must_accelerate": True, "generalization_axis": "seen"},
+        }
+    }
 
 
 def test_a_declared_family_no_capsule_exercises_is_named():
@@ -41,7 +47,8 @@ def test_synchronization_is_reported_for_radiance_rather_than_being_invisible():
     arr = cov._acceleratable_coverage(results, caps, "radiance")
     assert "synchronization" in arr["declared_unexercised_families"], (
         "the contract declares it; with no capsule exercising it the report must say so, because the "
-        "recall ratio cannot")
+        "recall ratio cannot"
+    )
 
 
 def test_it_is_distinct_from_the_fused_only_exclusion():
@@ -50,6 +57,7 @@ def test_it_is_distinct_from_the_fused_only_exclusion():
     caps = _caps()
     results = [{"capsule": "C0", "tiers": {"L2": {"status": "pass"}}}]
     arr = cov._acceleratable_coverage(results, caps, "gemmini")
-    assert set(arr.get("fused_only_families") or []).isdisjoint(
-        arr.get("declared_unexercised_families") or []) or True, "the two lists answer different questions"
+    assert (
+        set(arr.get("fused_only_families") or []).isdisjoint(arr.get("declared_unexercised_families") or []) or True
+    ), "the two lists answer different questions"
     assert "declared_unexercised_families" in arr and "fused_only_families" in arr

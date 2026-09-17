@@ -10,6 +10,7 @@ The one property that cannot be tested from Python is that the emitted C hashes 
 :func:`fnv1a64` does. That is established by running the image: the scalar pre-flight build computes a
 digest per case on a real RISC-V target and every one matches the host's.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -26,16 +27,27 @@ def _cases(tile: int = 16):
     return runnable, deferred
 
 
-def _console(cases, expected, *, tile: int, mismatches: int = 0, digest_delta: int = 0,
-             drop: set[str] | None = None, shape_shift: int = 0, done: bool = True) -> str:
+def _console(
+    cases,
+    expected,
+    *,
+    tile: int,
+    mismatches: int = 0,
+    digest_delta: int = 0,
+    drop: set[str] | None = None,
+    shape_shift: int = 0,
+    done: bool = True,
+) -> str:
     drop = drop or set()
     lines = [f"TILE {tile}"]
     for c in cases:
         if c.name in drop:
             continue
         e = expected[c.name]
-        lines.append(f"CASE {c.name} {int(c.m) + shape_shift} {c.n} {c.k} {mismatches} "
-                     f"{-1 if not mismatches else 0} {(e['digest'] + digest_delta) & ((1 << 64) - 1):#018x}")
+        lines.append(
+            f"CASE {c.name} {int(c.m) + shape_shift} {c.n} {c.k} {mismatches} "
+            f"{-1 if not mismatches else 0} {(e['digest'] + digest_delta) & ((1 << 64) - 1):#018x}"
+        )
     if done:
         lines.append("DONE")
     return "\n".join(lines) + "\n"
@@ -76,11 +88,15 @@ class TestTheTileEdge:
 
     def test_it_reads_the_config_and_its_mixin(self, tmp_path):
         cfg = tmp_path / "c.scala"
-        cfg.write_text("class C256 extends Config(\n  new a.b.WithShuttleVectorUnit(256, 128, P) ++\n"
-                       "  new Base)\n", encoding="utf-8")
+        cfg.write_text(
+            "class C256 extends Config(\n  new a.b.WithShuttleVectorUnit(256, 128, P) ++\n  new Base)\n",
+            encoding="utf-8",
+        )
         mixin = tmp_path / "m.scala"
-        mixin.write_text("class WithShuttleVectorUnit(\n  vLen: Int = 128,\n  dLen: Int = 64) "
-                         "extends Config((s, h, u) => { })\n", encoding="utf-8")
+        mixin.write_text(
+            "class WithShuttleVectorUnit(\n  vLen: Int = 128,\n  dLen: Int = 64) extends Config((s, h, u) => { })\n",
+            encoding="utf-8",
+        )
         assert C.tile_edge_for_config("C256", config_scala=cfg, mixin_scala=[mixin]) == 32
 
 
@@ -150,8 +166,7 @@ class TestTheVerdict:
         cases, deferred = _cases(16)
         exp = C.expected_digests(cases)
         console = _console(cases, exp, tile=kw.pop("tile", 16), **kw)
-        return cases, C.verdict(console, cases, config="T", tile_edge=16, deferred=deferred,
-                                uses_unit=True)
+        return cases, C.verdict(console, cases, config="T", tile_edge=16, deferred=deferred, uses_unit=True)
 
     def test_a_clean_run_certifies(self):
         cases, rep = self._judge()
@@ -200,8 +215,7 @@ class TestTheVerdict:
         # Certifying a 16-lane run against a corpus chosen for 32 lanes would claim shapes it never ran.
         cases, deferred = _cases(16)
         exp = C.expected_digests(cases)
-        rep = C.verdict(_console(cases, exp, tile=32), cases, config="T", tile_edge=16,
-                        uses_unit=True)
+        rep = C.verdict(_console(cases, exp, tile=32), cases, config="T", tile_edge=16, uses_unit=True)
         assert not rep.certified
         assert any("tile edge" in g for g in rep.gaps)
         assert rep.tile_edge_reported == 32
@@ -209,16 +223,16 @@ class TestTheVerdict:
     def test_an_image_without_the_units_instructions_is_a_gap(self):
         cases, _ = _cases(16)
         exp = C.expected_digests(cases)
-        rep = C.verdict(_console(cases, exp, tile=16), cases, config="T", tile_edge=16,
-                        uses_unit=False)
+        rep = C.verdict(_console(cases, exp, tile=16), cases, config="T", tile_edge=16, uses_unit=False)
         assert not rep.certified
         assert any("did not use the unit" in g for g in rep.gaps)
 
     def test_a_malformed_line_is_a_gap_even_if_every_other_case_passed(self):
         cases, _ = _cases(16)
         exp = C.expected_digests(cases)
-        rep = C.verdict(_console(cases, exp, tile=16) + "CASE broken 1\n", cases, config="T",
-                        tile_edge=16, uses_unit=True)
+        rep = C.verdict(
+            _console(cases, exp, tile=16) + "CASE broken 1\n", cases, config="T", tile_edge=16, uses_unit=True
+        )
         assert not rep.certified and any("unparseable" in g for g in rep.gaps)
 
     def test_an_empty_result_set_is_never_certified(self):
@@ -234,6 +248,7 @@ class TestTheVerdict:
 
     def test_the_report_writes_and_names_its_deferred_cases(self, tmp_path):
         import json
+
         _, rep = self._judge()
         p = rep.write(tmp_path / "r.json")
         got = json.loads(p.read_text())
@@ -302,8 +317,7 @@ class TestAScreeningRunIsNotACertification:
     def test_a_skipped_reference_is_recorded_as_not_checked(self):
         _, rep = self._screened()
         assert all(not r.in_image_checked for r in rep.results)
-        assert all(not r.in_image_agrees for r in rep.results), (
-            "a check that did not run must never read as agreement")
+        assert all(not r.in_image_agrees for r in rep.results), "a check that did not run must never read as agreement"
 
     def test_it_is_not_certified_even_when_every_digest_matches(self):
         # The digest is the external oracle and it passed, but nothing in the image cross-checked which
@@ -337,21 +351,25 @@ class TestOperandPanelsMustBeAligned:
 
     def test_the_alignment_is_derived_from_the_datapath_width(self, tmp_path):
         cfg = tmp_path / "c.scala"
-        cfg.write_text("class C extends Config(\n  new a.WithShuttleVectorUnit(256, 128, P) ++\n"
-                       "  new Base)\n", encoding="utf-8")
+        cfg.write_text(
+            "class C extends Config(\n  new a.WithShuttleVectorUnit(256, 128, P) ++\n  new Base)\n", encoding="utf-8"
+        )
         mixin = tmp_path / "m.scala"
-        mixin.write_text("class WithShuttleVectorUnit(\n  vLen: Int = 128,\n  dLen: Int = 64) "
-                         "extends Config((s, h, u) => { })\n", encoding="utf-8")
+        mixin.write_text(
+            "class WithShuttleVectorUnit(\n  vLen: Int = 128,\n  dLen: Int = 64) extends Config((s, h, u) => { })\n",
+            encoding="utf-8",
+        )
         # dLen bits / 8 = bytes per vector-load beat.
         assert C.operand_alignment_for_config("C", config_scala=cfg, mixin_scala=[mixin]) == 16
 
     def test_a_narrower_datapath_needs_less(self, tmp_path):
         cfg = tmp_path / "c.scala"
-        cfg.write_text("class C extends Config(new a.WithShuttleVectorUnit(128, 64, P) ++ new Base)",
-                       encoding="utf-8")
+        cfg.write_text("class C extends Config(new a.WithShuttleVectorUnit(128, 64, P) ++ new Base)", encoding="utf-8")
         mixin = tmp_path / "m.scala"
-        mixin.write_text("class WithShuttleVectorUnit(\n  vLen: Int = 128,\n  dLen: Int = 64) "
-                         "extends Config((s, h, u) => { })\n", encoding="utf-8")
+        mixin.write_text(
+            "class WithShuttleVectorUnit(\n  vLen: Int = 128,\n  dLen: Int = 64) extends Config((s, h, u) => { })\n",
+            encoding="utf-8",
+        )
         assert C.operand_alignment_for_config("C", config_scala=cfg, mixin_scala=[mixin]) == 8
 
     def test_an_ungroundable_datapath_width_raises(self, tmp_path):
@@ -365,8 +383,7 @@ class TestOperandPanelsMustBeAligned:
         cases, _ = _cases(16)
         src = C.emit_image_c(cases, operand_align=16)
         # One attribute per embedded operand array (at_, b_, any bias_, any mult_).
-        n_arrays = (2 * len(cases) + sum(1 for c in cases if c.bias)
-                    + sum(1 for c in cases if c.requant))
+        n_arrays = 2 * len(cases) + sum(1 for c in cases if c.bias) + sum(1 for c in cases if c.requant)
         assert src.count("__attribute__((aligned(16)))") == n_arrays
 
     def test_the_alignment_is_absent_unless_asked_for(self):
@@ -386,12 +403,21 @@ class TestTheResultIsAttributableToAHardwareRevision:
     """A certification whose hardware revision nobody recorded is a number that cannot be attributed."""
 
     def _prov(self, **kw):
-        base = {"merlin": {"commit": "m" * 40, "dirty_files": 0},
-                "source_digest": "s" * 64,
-                "hardware_pins": {"unit": {"pin": "unit", "ok": True, "drift": [],
-                                           "missing_paths": [], "forbidden_present": [],
-                                           "observed": {"commit": "e" * 40}}},
-                "all_pins_ok": True}
+        base = {
+            "merlin": {"commit": "m" * 40, "dirty_files": 0},
+            "source_digest": "s" * 64,
+            "hardware_pins": {
+                "unit": {
+                    "pin": "unit",
+                    "ok": True,
+                    "drift": [],
+                    "missing_paths": [],
+                    "forbidden_present": [],
+                    "observed": {"commit": "e" * 40},
+                }
+            },
+            "all_pins_ok": True,
+        }
         base.update(kw)
         return base
 
@@ -401,8 +427,7 @@ class TestTheResultIsAttributableToAHardwareRevision:
         body = _console(cases, exp, tile=16)
         if console_stamp is not None:
             body = f"PROV {console_stamp}\n" + body
-        return C.verdict(body, cases, config="T", tile_edge=16, uses_unit=True,
-                         provenance=prov, expected_stamp=stamp)
+        return C.verdict(body, cases, config="T", tile_edge=16, uses_unit=True, provenance=prov, expected_stamp=stamp)
 
     def test_the_provenance_is_carried_into_the_report(self):
         rep = self._judge(self._prov())
@@ -411,36 +436,65 @@ class TestTheResultIsAttributableToAHardwareRevision:
 
     def test_a_missing_required_path_blocks_certification(self):
         # The checkout does not contain the hardware the result claims to be about.
-        prov = self._prov(hardware_pins={"unit": {"ok": False, "drift": [],
-                                                  "missing_paths": ["src/TheUnit.scala"],
-                                                  "forbidden_present": [], "observed": {}}})
+        prov = self._prov(
+            hardware_pins={
+                "unit": {
+                    "ok": False,
+                    "drift": [],
+                    "missing_paths": ["src/TheUnit.scala"],
+                    "forbidden_present": [],
+                    "observed": {},
+                }
+            }
+        )
         rep = self._judge(prov)
         assert not rep.certified and any("does not" in g and "contain" in g for g in rep.gaps)
 
     def test_a_forbidden_path_blocks_certification(self):
         # This is the tapeout case: the revision claims not to have the unit, but it does.
-        prov = self._prov(hardware_pins={"unit": {"ok": False, "drift": [],
-                                                  "missing_paths": [],
-                                                  "forbidden_present": ["src/TheUnit.scala"],
-                                                  "observed": {}}})
+        prov = self._prov(
+            hardware_pins={
+                "unit": {
+                    "ok": False,
+                    "drift": [],
+                    "missing_paths": [],
+                    "forbidden_present": ["src/TheUnit.scala"],
+                    "observed": {},
+                }
+            }
+        )
         rep = self._judge(prov)
         assert not rep.certified and any("not the revision it claims" in g for g in rep.gaps)
 
     def test_a_wrong_commit_blocks_certification(self):
-        prov = self._prov(hardware_pins={"unit": {"ok": False, "drift": ["commit is abc but the pin "
-                                                                        "declares def"],
-                                                  "missing_paths": [], "forbidden_present": [],
-                                                  "observed": {}}})
+        prov = self._prov(
+            hardware_pins={
+                "unit": {
+                    "ok": False,
+                    "drift": ["commit is abc but the pin declares def"],
+                    "missing_paths": [],
+                    "forbidden_present": [],
+                    "observed": {},
+                }
+            }
+        )
         rep = self._judge(prov)
         assert not rep.certified and any("commit is" in g for g in rep.gaps)
 
     def test_a_dirty_tree_is_recorded_but_does_not_block(self):
         # source_digest already pins the bytes that were read, so an unrelated edit elsewhere in the
         # checkout is recorded rather than treated as disqualifying.
-        prov = self._prov(hardware_pins={"unit": {"ok": False,
-                                                  "drift": ["8 uncommitted change(s): ..."],
-                                                  "missing_paths": [], "forbidden_present": [],
-                                                  "observed": {}}})
+        prov = self._prov(
+            hardware_pins={
+                "unit": {
+                    "ok": False,
+                    "drift": ["8 uncommitted change(s): ..."],
+                    "missing_paths": [],
+                    "forbidden_present": [],
+                    "observed": {},
+                }
+            }
+        )
         rep = self._judge(prov)
         assert rep.certified
         assert rep.to_dict()["provenance"]["hardware_pins"]["unit"]["drift"]
@@ -502,10 +556,10 @@ class TestTheRunAlsoMeasures:
         # Per shape, not per unit: a tiled unit's throughput depends on how well the shape fills the tile,
         # so one headline figure would flatter the narrow shapes and understate the wide ones -- the exact
         # error that made a crude cost model route nearly every contraction onto the matrix unit.
-        wide = C.CaseResult(name="w", m=32, n=32, k=32, ran=True, in_image_agrees=True,
-                            digest_agrees=True, cycles=1024)
-        narrow = C.CaseResult(name="n", m=32, n=1, k=32, ran=True, in_image_agrees=True,
-                              digest_agrees=True, cycles=1024)
+        wide = C.CaseResult(name="w", m=32, n=32, k=32, ran=True, in_image_agrees=True, digest_agrees=True, cycles=1024)
+        narrow = C.CaseResult(
+            name="n", m=32, n=1, k=32, ran=True, in_image_agrees=True, digest_agrees=True, cycles=1024
+        )
         assert wide.macs_per_cycle > narrow.macs_per_cycle
         assert wide.macs == 32 * 32 * 32
 
@@ -518,17 +572,17 @@ class TestTheRunAlsoMeasures:
     def test_the_measurement_never_changes_the_verdict(self):
         # A slow kernel is still a correct kernel. Conflating the two is how a performance regression gets
         # recorded as a numerical failure.
-        slow = C.CaseResult(name="x", m=4, n=4, k=4, ran=True, in_image_agrees=True,
-                            digest_agrees=True, cycles=10**9)
-        fast = C.CaseResult(name="x", m=4, n=4, k=4, ran=True, in_image_agrees=True,
-                            digest_agrees=True, cycles=1)
+        slow = C.CaseResult(name="x", m=4, n=4, k=4, ran=True, in_image_agrees=True, digest_agrees=True, cycles=10**9)
+        fast = C.CaseResult(name="x", m=4, n=4, k=4, ran=True, in_image_agrees=True, digest_agrees=True, cycles=1)
         assert slow.certified and fast.certified
 
     def test_the_report_carries_the_measurement(self):
         cases = _cases(16)[0][:1]
-        console = (f"TILE 16\nCASE {cases[0].name} {cases[0].m} {cases[0].n} {cases[0].k} 0 -1 "
-                   f"{C.expected_digests(cases)[cases[0].name]['digest']:#x}\n"
-                   f"CYCLES {cases[0].name} 777\nDONE\n")
+        console = (
+            f"TILE 16\nCASE {cases[0].name} {cases[0].m} {cases[0].n} {cases[0].k} 0 -1 "
+            f"{C.expected_digests(cases)[cases[0].name]['digest']:#x}\n"
+            f"CYCLES {cases[0].name} 777\nDONE\n"
+        )
         rep = C.verdict(console, cases, config="T", tile_edge=16, uses_unit=True)
         row = rep.to_dict()["results"][0]
         assert row["cycles"] == 777 and row["macs_per_cycle"] is not None
@@ -550,6 +604,7 @@ class TestTheImageIsVectorLengthAgnostic:
     def built(self, tmp_path):
         from merlin.common.paths import env as _env
         from merlin.llvmlower import opu_shim as S
+
         if not _env("MERLIN_CHIPYARD"):
             pytest.skip("needs the hardware checkout ($MERLIN_CHIPYARD)")
         contract = S.load_contract("saturn_opu")
@@ -576,7 +631,9 @@ class TestTheImageIsVectorLengthAgnostic:
 
     def test_it_reads_no_vlenb(self, built):
         import subprocess
+
         from merlin.runtime.backends import spike as _spike
+
         od = _spike.gcc_path().with_name("riscv64-unknown-elf-objdump")
         got = subprocess.run([str(od), "-d", str(built)], capture_output=True, text=True)
         if got.returncode != 0:
@@ -584,11 +641,14 @@ class TestTheImageIsVectorLengthAgnostic:
         offenders = [i for i in self._instructions(got.stdout) if "vlenb" in i]
         assert not offenders, (
             f"the image reads vlenb ({offenders[:2]}), so its stack addressing now depends on the vector "
-            "length and the build must declare zvl<N>b matching the target")
+            "length and the build must declare zvl<N>b matching the target"
+        )
 
     def test_it_spills_no_vector_register(self, built):
         import subprocess
+
         from merlin.runtime.backends import spike as _spike
+
         od = _spike.gcc_path().with_name("riscv64-unknown-elf-objdump")
         got = subprocess.run([str(od), "-d", str(built)], capture_output=True, text=True)
         if got.returncode != 0:
@@ -610,15 +670,23 @@ class TestSolvingTheUnitRate:
 
     @staticmethod
     def _r(m, n, k, cycles, *, certified=True):
-        return C.CaseResult(name=f"{m}x{n}x{k}", m=m, n=n, k=k, ran=True,
-                            in_image_agrees=certified, digest_agrees=certified, cycles=cycles)
+        return C.CaseResult(
+            name=f"{m}x{n}x{k}",
+            m=m,
+            n=n,
+            k=k,
+            ran=True,
+            in_image_agrees=certified,
+            digest_agrees=certified,
+            cycles=cycles,
+        )
 
     def test_it_recovers_the_rate_and_overhead_a_synthetic_unit_was_built_with(self):
         # A unit that does `tile*tile` MACs per pair per K step at `rate`, plus `b` fixed cycles per pair.
         tile, rate, b = 64, 128.0, 2000.0
         a = (tile * tile) / rate
         rows = []
-        for (m, n) in [(128, 128), (192, 256)]:
+        for m, n in [(128, 128), (192, 256)]:
             pairs = (m // tile) * (n // tile)
             for k in (32, 512):
                 rows.append(self._r(m, n, k, round(pairs * (a * k + b))))
@@ -643,18 +711,19 @@ class TestSolvingTheUnitRate:
         for k in (32, 512):
             rows.append(self._r(1, 1000, k, round(16 * ((a / tile) * k + b))))
         got = C.solve_unit_rate(rows, tile_edge=tile)
-        assert got.macs_per_cycle == pytest.approx(rate, rel=1e-3), \
+        assert got.macs_per_cycle == pytest.approx(rate, rel=1e-3), (
             "the skinny shape measures occupancy; blending it in would understate the unit"
+        )
         assert any("does not fill" in why for _s, why in got.excluded)
         assert "1x1000" in got.per_shape, "an excluded shape is still reported, so the spread is visible"
 
     def test_an_uncertified_case_is_not_a_measurement(self):
-        rows = [self._r(128, 128, 32, 10_000, certified=False),
-                self._r(128, 128, 512, 90_000, certified=False)]
+        rows = [self._r(128, 128, 32, 10_000, certified=False), self._r(128, 128, 512, 90_000, certified=False)]
         assert C.solve_unit_rate(rows, tile_edge=64).macs_per_cycle is None
 
     def test_an_unpriced_unit_is_declined_by_the_cost_model_it_builds(self):
         from merlin.targetgen import routing
+
         got = C.solve_unit_rate([], tile_edge=64)
         cost = got.cost_model("some_unit")
         demand = routing.OpDemand(op="matmul", in_fmt="i8", weight_fmt="i8", m=196, n=1024, k=256)
@@ -666,12 +735,12 @@ class TestSolvingTheUnitRate:
         a = (tile * tile) / rate
         rows = [self._r(128, 128, k, round(4 * (a * k + b))) for k in (32, 512)]
         from merlin.targetgen import routing
+
         cost = C.solve_unit_rate(rows, tile_edge=tile).cost_model("u")
         cand = routing.Candidate(unit="u", kind="matrix", acc="i32", exposure="intrinsic")
 
         def at(k):
-            return cost(routing.OpDemand(op="matmul", in_fmt="i8", weight_fmt="i8",
-                                         m=128, n=128, k=k), cand)
+            return cost(routing.OpDemand(op="matmul", in_fmt="i8", weight_fmt="i8", m=128, n=128, k=k), cand)
 
         # Two K points on the same shape differ by the work term alone; the gap between them and zero is
         # the fixed cost. Without it the model would be linear THROUGH the origin and short reductions

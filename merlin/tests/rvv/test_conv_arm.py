@@ -15,6 +15,7 @@ of them measured on deepjscc int8 lowered at ``M2M_IM2COL_MAX_ELEMS=147456``:
 3. That the arm is default-OFF: with the request feature absent the block table -- and every tag and
    schedule derived from it -- is byte-identical.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -56,15 +57,20 @@ module {
 
 # FP32 pointwise convolutions specialize to a NAMED conv before tagging. The mixed-type
 # integer fixture above does not, so it never exercised the same form as a ResNet recapture.
-POINTWISE_F32 = (CONV_MLIR.replace("18x18", "16x16").replace("3x3xi8", "1x1xi8")
-    .replace("xi8", "xf32").replace("xi32", "xf32").replace("0 : i32", "0.0 : f32")
+POINTWISE_F32 = (
+    CONV_MLIR.replace("18x18", "16x16")
+    .replace("3x3xi8", "1x1xi8")
+    .replace("xi8", "xf32")
+    .replace("xi32", "xf32")
+    .replace("0 : i32", "0.0 : f32")
     .replace("ins(%z : i32)", "ins(%z : f32)")
     .replace("%x: i8, %y: i8, %acc: i32", "%x: f32, %y: f32, %acc: f32")
     .replace("      %xe = arith.extsi %x : i8 to i32\n", "")
     .replace("      %ye = arith.extsi %y : i8 to i32\n", "")
     .replace("arith.muli %xe, %ye : i32", "arith.mulf %x, %y : f32")
     .replace("arith.addi %m, %acc : i32", "arith.addf %acc, %m : f32")
-    .replace("linalg.yield %s : i32", "linalg.yield %s : f32"))
+    .replace("linalg.yield %s : i32", "linalg.yield %s : f32")
+)
 
 #: Grouped direct convolution as emitted by model2MLIR after the im2col-removal path.  G and F/G
 #: are separate output/parallel dimensions so the output map stays an identity; the following
@@ -141,15 +147,18 @@ def _run_schedule(tmp_path, module_text: str, schedule_text: str):
     src.write_text(module_text, encoding="utf-8")
     sched.write_text(schedule_text, encoding="utf-8")
     proc = subprocess.run(
-        [str(exe), str(src), f"--transform-preload-library=transform-library-paths={sched}",
-         "--transform-interpreter"],
-        capture_output=True, text=True, timeout=600)
+        [str(exe), str(src), f"--transform-preload-library=transform-library-paths={sched}", "--transform-interpreter"],
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
     return proc.returncode, proc.stdout, proc.stderr
 
 
 # --------------------------------------------------------------------------------------------------
 # 1. THE FORM. What a direct conv looks like, and why nothing saw it.
 # --------------------------------------------------------------------------------------------------
+
 
 def test_the_direct_conv_is_invisible_to_the_contraction_observer():
     """`contraction_shapes` cannot see a direct conv -- which is exactly why it was never tagged.
@@ -158,9 +167,11 @@ def test_the_direct_conv_is_invisible_to_the_contraction_observer():
     not a bug in that observer, it is why the conv needed its own reader.
     """
     from merlin.kernels.shapes import contraction_shapes
+
     assert contraction_shapes(CONV_MLIR) == [], (
         "if the contraction observer starts claiming convs, block_table will price them with the "
-        "matmul tile-size vector (3 sizes for a 7-dim op) and the schedule will die")
+        "matmul tile-size vector (3 sizes for a 7-dim op) and the schedule will die"
+    )
 
 
 def test_conv_shapes_reads_the_direct_form_off_the_ir():
@@ -200,10 +211,8 @@ def test_conv_geometry_solves_the_window_and_rejects_what_is_not_a_conv():
     # Shapes alone cannot choose among several legal strides: do not invent one.
     assert pb.conv_geometry([1, 32, 2, 2], [1, 64, 11, 11], [32, 64, 3, 3]) is None
     # ResNet's real stride-2 forms leave one trailing padded element outside the last window.
-    assert pb.conv_geometry([1, 128, 28, 28], [1, 128, 58, 58],
-                            [128, 128, 3, 3]) == (2, 2)
-    assert pb.conv_geometry([1, 512, 28, 28], [1, 256, 56, 56],
-                            [512, 256, 1, 1]) == (2, 2)
+    assert pb.conv_geometry([1, 128, 28, 28], [1, 128, 58, 58], [128, 128, 3, 3]) == (2, 2)
+    assert pb.conv_geometry([1, 512, 28, 28], [1, 256, 56, 56], [512, 256, 1, 1]) == (2, 2)
     # channel mismatch is not this conv
     assert pb.conv_geometry([1, 32, 16, 16], [1, 63, 18, 18], [32, 64, 3, 3]) is None
     # an input too small for the window
@@ -218,24 +227,25 @@ def test_conv_geometry_solves_the_window_and_rejects_what_is_not_a_conv():
 
 def test_stride2_geometry_uses_the_channel_vector_arm():
     """A scaled Ow map keeps NR scalar while MR safely vectorizes output channels."""
-    stride2 = (CONV_MLIR
-               .replace("d2 + d5", "d2 * 2 + d5")
-               .replace("d3 + d6", "d3 * 2 + d6")
-               .replace("1x64x18x18", "1x64x58x58")
-               .replace("1x32x16x16", "1x32x28x28"))
-    assert pb.conv_geometry([1, 32, 28, 28], [1, 64, 58, 58],
-                            [32, 64, 3, 3]) == (2, 2)
+    stride2 = (
+        CONV_MLIR.replace("d2 + d5", "d2 * 2 + d5")
+        .replace("d3 + d6", "d3 * 2 + d6")
+        .replace("1x64x18x18", "1x64x58x58")
+        .replace("1x32x16x16", "1x32x28x28")
+    )
+    assert pb.conv_geometry([1, 32, 28, 28], [1, 64, 58, 58], [32, 64, 3, 3]) == (2, 2)
     shapes = pb.conv_shapes(stride2)
     assert len(shapes) == 1
     assert shapes[0].parallel == (1, 32, 28, 28)
-    assert pb.conv_block_table(
-        stride2, [pb.CONV_ARM_FEATURE], mr_cap=4, nr_cap=16
-    ) == {"linalg.conv2d_direct:1x32x28x28:64x3x3": (4, 1)}
+    assert pb.conv_block_table(stride2, [pb.CONV_ARM_FEATURE], mr_cap=4, nr_cap=16) == {
+        "linalg.conv2d_direct:1x32x28x28:64x3x3": (4, 1)
+    }
 
 
 # --------------------------------------------------------------------------------------------------
 # 2. DEFAULT-OFF. The whole arm is inert without the request.
 # --------------------------------------------------------------------------------------------------
+
 
 def test_the_arm_prices_nothing_without_the_request_feature():
     assert pb.conv_block_table(CONV_MLIR, (), nr_cap=16) == {}
@@ -254,12 +264,13 @@ def test_a_conv_free_table_emits_the_tagger_that_always_tagged():
     """The tagger walks convs now, but with no conv key in the table it tags none of them."""
     src = pb.runner_rewrite_src({"linalg.matmul:8x128:344": (4, 16)})
     assert "merlin.blk_conv" not in src
-    compile(src, "<runner>", "exec")     # it is spliced into a script; it must at least parse
+    compile(src, "<runner>", "exec")  # it is spliced into a script; it must at least parse
 
 
 # --------------------------------------------------------------------------------------------------
 # 3. THE ARM ITSELF. What it emits, and that the emitted schedule really tiles and vectorizes.
 # --------------------------------------------------------------------------------------------------
+
 
 def test_the_conv_arm_tiles_ow_and_f_and_folds_before_vectorizing():
     """The three stages, in the order the measurement forced.
@@ -273,13 +284,15 @@ def test_the_conv_arm_tiles_ow_and_f_and_folds_before_vectorizing():
     assert "tile_sizes [0, 0, 0, 0, 1, 1, 1]" in text, text
     assert "transform.apply_patterns.linalg.fold_unit_extent_dims_via_slices" in text, text
     assert 'match ops{["func.func"]}' not in text.split("%f =", 1)[0], (
-        "the conv-only fold must not be applied to unrelated linalg ops in the whole function")
+        "the conv-only fold must not be applied to unrelated linalg ops in the whole function"
+    )
     assert "transform.apply_patterns to %c0one" in text, text
     assert "vector_sizes [4, 16]" in text, text
     # the fold drops the op's tag, so the vectorize must find the op through the annotated nest
-    assert 'transform.annotate' in text and pb.conv_nest_tag(4, 16) in text, text
+    assert "transform.annotate" in text and pb.conv_nest_tag(4, 16) in text, text
     assert text.index("fold_unit_extent_dims_via_slices") < text.index("vector_sizes [4, 16]"), (
-        "the fold must run BEFORE the vectorize, or the vectorize has nothing it can accept")
+        "the fold must run BEFORE the vectorize, or the vectorize has nothing it can accept"
+    )
 
 
 def test_the_grouped_conv_arm_tiles_group_local_f_and_ow():
@@ -356,8 +369,8 @@ def test_the_conv_arm_actually_vectorizes_the_conv(tmp_path):
     # the module needs the tag the tagger would have applied
     tagged = CONV_MLIR.replace(
         "outs(%f : tensor<1x32x16x16xi32>) {",
-        "outs(%f : tensor<1x32x16x16xi32>) attrs = {"
-        + pb.tag_for(pb.CONV_CLASS, 1, 16) + "} {")
+        "outs(%f : tensor<1x32x16x16xi32>) attrs = {" + pb.tag_for(pb.CONV_CLASS, 1, 16) + "} {",
+    )
     text = pb.schedule_text({"linalg.conv2d_direct:1x32x16x16:64x3x3": (1, 16)}, 64)
     rc, out, err = _run_schedule(tmp_path, tagged, text)
     assert rc == 0, err
@@ -366,14 +379,15 @@ def test_the_conv_arm_actually_vectorizes_the_conv(tmp_path):
     assert "arith.muli %" in out and "vector<16xi32>" in out
     assert "linalg.generic" not in out, (
         "the conv must be gone from linalg -- if it survives it falls to convert-linalg-to-loops "
-        "and lowers scalar, which is the state this arm exists to fix")
+        "and lowers scalar, which is the state this arm exists to fix"
+    )
 
 
 def test_the_grouped_conv_arm_actually_vectorizes_without_im2col(tmp_path):
     tagged = GROUPED_CONV_MLIR.replace(
         "outs(%f : tensor<1x32x8x15x23xi32>) {",
-        "outs(%f : tensor<1x32x8x15x23xi32>) attrs = {"
-        + pb.tag_for(pb.GROUPED_CONV_CLASS, 4, 23) + "} {")
+        "outs(%f : tensor<1x32x8x15x23xi32>) attrs = {" + pb.tag_for(pb.GROUPED_CONV_CLASS, 4, 23) + "} {",
+    )
     table = {"linalg.conv2d_grouped_direct:1x32x8x15x23:8x3x3": (4, 23)}
     rc, out, err = _run_schedule(tmp_path, tagged, pb.schedule_text(table, 64))
     assert rc == 0, err
@@ -391,6 +405,7 @@ def test_the_tagger_tags_a_priced_conv(tmp_path):
     guard exists to catch.
     """
     from merlin.llvmlower.toolchain import m2m_python
+
     if not m2m_python().is_file():
         pytest.skip("no model2MLIR venv (MERLIN_M2M_DIR)")
     src = tmp_path / "model.mlir"
@@ -404,6 +419,7 @@ def test_the_tagger_tags_a_priced_conv(tmp_path):
 def test_the_tagger_leaves_an_unpriced_conv_alone(tmp_path):
     """With no conv key in the table the same tagger tags nothing -- the default build is untouched."""
     from merlin.llvmlower.toolchain import m2m_python
+
     if not m2m_python().is_file():
         pytest.skip("no model2MLIR venv (MERLIN_M2M_DIR)")
     src = tmp_path / "model.mlir"
@@ -426,16 +442,22 @@ def test_the_tagger_names_an_unpriced_conv_instead_of_ignoring_it():
     assert src.count("def conv_geometry") == 1, src[:2000]
 
 
-@pytest.mark.parametrize("mlir", [
-    POINTWISE_F32,
-    POINTWISE_F32.replace("16x16", "8x8").replace("1x1xf32", "3x3xf32")
+@pytest.mark.parametrize(
+    "mlir",
+    [
+        POINTWISE_F32,
+        POINTWISE_F32.replace("16x16", "8x8")
+        .replace("1x1xf32", "3x3xf32")
         .replace("tensor<1x64x8x8xf32>", "tensor<1x64x18x18xf32>")
-        .replace("d2 + d5", "d2 * 2 + d5").replace("d3 + d6", "d3 * 2 + d6"),
-    POINTWISE_F32.replace("16x16", "1x1")
-        .replace("d2 + d5", "d2 * 2 + d5").replace("d3 + d6", "d3 * 2 + d6"),
-], ids=["pointwise", "strided-unused-trailing-input", "singleton-stride-is-irrelevant"])
+        .replace("d2 + d5", "d2 * 2 + d5")
+        .replace("d3 + d6", "d3 * 2 + d6"),
+        POINTWISE_F32.replace("16x16", "1x1").replace("d2 + d5", "d2 * 2 + d5").replace("d3 + d6", "d3 * 2 + d6"),
+    ],
+    ids=["pointwise", "strided-unused-trailing-input", "singleton-stride-is-irrelevant"],
+)
 def test_fp32_conv_survives_specialization_and_vectorizes(tmp_path, mlir):
     from merlin.llvmlower.toolchain import m2m_python
+
     if not m2m_python().is_file():
         pytest.skip("no model2MLIR venv")
     source = tmp_path / "model.mlir"
@@ -453,12 +475,14 @@ def test_fp32_conv_survives_specialization_and_vectorizes(tmp_path, mlir):
     # Compile the same tagged schedule through bufferization and the host ABI, not just the
     # transform interpreter. Integer-valued fp32 data keeps the reference exact across reductions.
     import numpy as np
+
     from merlin.frontends.linalg_mlir import parse_mlir_file
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.abi import HostModel
     from merlin.llvmlower.codegen import build_host_shared
     from merlin.llvmlower.passes_xdsl import preprocess_text_textual
     from merlin.llvmlower.pipeline import lower_to_llvm_ir
+
     if not toolchain.available():
         pytest.skip("host compilation toolchain unavailable")
     func = next(op for op in parse_mlir_file(source).walk() if op.name == "func.func")
@@ -473,16 +497,15 @@ def test_fp32_conv_survives_specialization_and_vectorizes(tmp_path, mlir):
     kh, kw = weight_shape[-2:]
     for h in range(output_shape[2]):
         for w in range(output_shape[3]):
-            patch = activation[:, :, h * stride[0]:h * stride[0] + kh,
-                               w * stride[1]:w * stride[1] + kw]
+            patch = activation[:, :, h * stride[0] : h * stride[0] + kh, w * stride[1] : w * stride[1] + kw]
             expected[:, :, h, w] = np.einsum("nchw,fchw->nf", patch, weight)
     upstream, _ = preprocess_text_textual(tagged.read_text())
     ll = tmp_path / "model.ll"
-    ll.write_text(lower_to_llvm_ir(upstream, workdir=tmp_path, vectorize=True,
-                                   transform_schedule=pb.schedule_text(table, 64)))
+    ll.write_text(
+        lower_to_llvm_ir(upstream, workdir=tmp_path, vectorize=True, transform_schedule=pb.schedule_text(table, 64))
+    )
     so = build_host_shared(ll, tmp_path / "model.so")
-    HostModel.load(str(so), n_args=3)([(a.ctypes.data, list(a.shape))
-                                      for a in (activation, weight, result)])
+    HostModel.load(str(so), n_args=3)([(a.ctypes.data, list(a.shape)) for a in (activation, weight, result)])
     np.testing.assert_array_equal(result, expected)
 
 
@@ -490,6 +513,7 @@ def test_fp32_conv_survives_specialization_and_vectorizes(tmp_path, mlir):
 def test_integer_direct_conv_matches_independent_full_range_reference(tmp_path, stride, input_hw):
     """Signed i8 arithmetic, batch and channel tails, including unused strided input edges."""
     import numpy as np
+
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.abi import HostModel
     from merlin.llvmlower.codegen import build_host_shared
@@ -499,10 +523,13 @@ def test_integer_direct_conv_matches_independent_full_range_reference(tmp_path, 
     if not toolchain.available():
         pytest.skip("host compilation toolchain unavailable")
     ih, iw = input_hw
-    text = (CONV_MLIR.replace("1x64x18x18", f"2x3x{ih}x{iw}")
-            .replace("32x64x3x3", "6x3x3x3").replace("1x32x16x16", "2x6x3x5")
-            .replace("d2 + d5", f"d2 * {stride} + d5")
-            .replace("d3 + d6", f"d3 * {stride} + d6"))
+    text = (
+        CONV_MLIR.replace("1x64x18x18", f"2x3x{ih}x{iw}")
+        .replace("32x64x3x3", "6x3x3x3")
+        .replace("1x32x16x16", "2x6x3x5")
+        .replace("d2 + d5", f"d2 * {stride} + d5")
+        .replace("d3 + d6", f"d3 * {stride} + d6")
+    )
     source = tmp_path / "input.mlir"
     source.write_text(text)
     table = pb.conv_block_table(source, (pb.CONV_ARM_FEATURE,), mr_cap=4, nr_cap=16)
@@ -515,8 +542,7 @@ def test_integer_direct_conv_matches_independent_full_range_reference(tmp_path, 
     assert "linalg.generic" not in transformed
     upstream, _ = preprocess_text_textual(tagged.read_text())
     llvm = tmp_path / "integer.ll"
-    llvm.write_text(lower_to_llvm_ir(upstream, workdir=tmp_path, vectorize=True,
-                                    transform_schedule=schedule))
+    llvm.write_text(lower_to_llvm_ir(upstream, workdir=tmp_path, vectorize=True, transform_schedule=schedule))
     model = HostModel.load(str(build_host_shared(llvm, tmp_path / "integer.so")), n_args=3)
     rng = np.random.default_rng(456)
     activation = rng.integers(-128, 128, size=(2, 3, ih, iw), dtype=np.int8)
@@ -524,9 +550,8 @@ def test_integer_direct_conv_matches_independent_full_range_reference(tmp_path, 
     expected = np.empty((2, 6, 3, 5), dtype=np.int32)
     for h in range(3):
         for w in range(5):
-            patch = activation[:, :, h * stride:h * stride + 3, w * stride:w * stride + 3]
-            expected[:, :, h, w] = np.einsum("nchw,fchw->nf", patch.astype(np.int32),
-                                             weight.astype(np.int32))
+            patch = activation[:, :, h * stride : h * stride + 3, w * stride : w * stride + 3]
+            expected[:, :, h, w] = np.einsum("nchw,fchw->nf", patch.astype(np.int32), weight.astype(np.int32))
     output = np.zeros_like(expected)
     buffers = [(a.ctypes.data, list(a.shape)) for a in (activation, weight, output)]
     for _ in range(3):

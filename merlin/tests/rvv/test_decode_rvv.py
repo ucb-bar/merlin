@@ -3,13 +3,14 @@
 Core tests run with no toolchain (synthetic objdump text). An optional integration test decodes a
 real built object when present.
 """
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 from pathlib import Path
 
 import pytest
 
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.kernels.decode import objdump, rvv
 
 # A canonical llvm-objdump -d --no-aliases snippet (riscv64 RVV), mixed vtypes + a loop back-edge.
@@ -40,7 +41,7 @@ def test_tokenize_structured(tmp_path, monkeypatch):
     raws = objdump.tokenize("ignored.o")
     mnem = [r.mnemonic for r in raws]
     assert mnem == ["vsetivli", "vle32.v", "vsetivli", "vfmul.vv", "vfadd.vv", "bne"]
-    assert raws[0].operands[2:4] == ["e32", "m2"]   # comma-split operands, not regex
+    assert raws[0].operands[2:4] == ["e32", "m2"]  # comma-split operands, not regex
     assert raws[-1].addr == 0x14 and raws[-1].operands[-1] == "0x0"
 
 
@@ -53,18 +54,17 @@ def test_decode_tracks_effective_vtype(tmp_path, monkeypatch):
     # vle32 ran under the earlier m2 vtype.
     vle = next(i for i in s.insns if i.raw.mnemonic == "vle32.v")
     assert vle.vtype.lmul == 2.0
-    assert s.has_loop()                       # bne to 0x0 < 0x14 = back-edge
-    assert s.count("vfmacc") == 0 and s.count("vfmul") == 1   # the fused-MAC gap, structurally
+    assert s.has_loop()  # bne to 0x0 < 0x14 = back-edge
+    assert s.count("vfmacc") == 0 and s.count("vfmul") == 1  # the fused-MAC gap, structurally
 
 
 @pytest.mark.skipif(
-    not (repo_root()
-         / "out/runs/rvv_experiment/hand_v0_matmul_f32_64x64x64/generated/model.o").is_file(),
-    reason="built matmul object not present")
+    not (repo_root() / "out/runs/rvv_experiment/hand_v0_matmul_f32_64x64x64/generated/model.o").is_file(),
+    reason="built matmul object not present",
+)
 def test_decode_real_object():
-    obj = (repo_root()
-           / "out/runs/rvv_experiment/hand_v0_matmul_f32_64x64x64/generated/model.o")
+    obj = repo_root() / "out/runs/rvv_experiment/hand_v0_matmul_f32_64x64x64/generated/model.o"
     s = rvv.decode(obj)
     assert sum(1 for i in s.insns if i.is_vector) > 0
     vt = s.vtype_histogram()
-    assert any(k.startswith("e32") for k in vt)   # recovered real vtype, not guessed
+    assert any(k.startswith("e32") for k in vt)  # recovered real vtype, not guessed

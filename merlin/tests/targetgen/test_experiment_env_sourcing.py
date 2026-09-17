@@ -8,6 +8,7 @@ and its own profile spells out what happens when the variable is absent -- no ad
 whole suite reported incomplete because a path was not sourced is a tooling artifact wearing a verdict's
 clothes.
 """
+
 from __future__ import annotations
 
 import os
@@ -62,6 +63,8 @@ def test_the_grader_sources_before_resolving_adapters():
     import inspect
 
     from merlin.targetgen import capsule_grade as CG
+
     src = inspect.getsource(CG.grade)
-    assert src.index("source_experiment_env") < src.index("load_package"), \
+    assert src.index("source_experiment_env") < src.index("load_package"), (
         "tooling paths must be present before the package/adapters are resolved"
+    )

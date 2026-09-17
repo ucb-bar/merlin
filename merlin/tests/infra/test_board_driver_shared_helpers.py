@@ -8,6 +8,7 @@ Two ways that lift can regress without anything else failing:
   * a driver may not grow a copy of a shared helper back. Two copies are how one silently drifts
     from the other while both drivers keep producing numbers.
 """
+
 from __future__ import annotations
 
 import ast
@@ -31,8 +32,11 @@ def _defs_without_docstrings(source: str) -> dict[str, str]:
         if isinstance(node, ast.FunctionDef):
             node = ast.parse(ast.unparse(node)).body[0]
             first = node.body[0] if node.body else None
-            if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
-                    and isinstance(first.value.value, str)):
+            if (
+                isinstance(first, ast.Expr)
+                and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)
+            ):
                 node.body = node.body[1:]
             out[node.name] = ast.dump(node)
     return out
@@ -68,7 +72,7 @@ def test_a_driver_loaded_by_path_exposes_the_shared_helper(path, monkeypatch):
     name = f"_shared_helper_probe_{path.stem}"
     spec = importlib.util.spec_from_file_location(name, path)
     driver = importlib.util.module_from_spec(spec)
-    monkeypatch.setitem(sys.modules, name, driver)   # registered before exec: some drivers define dataclasses
+    monkeypatch.setitem(sys.modules, name, driver)  # registered before exec: some drivers define dataclasses
     spec.loader.exec_module(driver)
     common = sys.modules[MODULE]
     for helper in _importers()[path]:
@@ -81,6 +85,11 @@ def test_the_copy_detector_can_fire():
 
 
 def test_no_driver_redefines_a_shared_helper():
-    copies = {p.name: found for p in sorted(SCRIPTS.glob("*.py")) if p != COMMON
-              for found in [_copies_of_shared(p.read_text(encoding="utf-8"))] if found}
+    copies = {
+        p.name: found
+        for p in sorted(SCRIPTS.glob("*.py"))
+        if p != COMMON
+        for found in [_copies_of_shared(p.read_text(encoding="utf-8"))]
+        if found
+    }
     assert not copies, f"import these from {COMMON.name} instead of redefining them: {copies}"

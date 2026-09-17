@@ -9,6 +9,7 @@ respect, so half of it was silently missing.
 Selection now reads the engine SET. Single-datapath targets must be untouched — that is most of the
 tree, and a "fix" that perturbs gemmini's bundle would be a regression wearing a fix's clothes.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -55,7 +56,6 @@ def hybrid_bundle():
 
 
 class TestTheMergeKeepsBothHalves:
-
     def test_the_hybrid_bundle_carries_facts_from_both_datapaths(self, hybrid_bundle):
         b = hybrid_bundle
         fields = b.get("fields") or {}
@@ -101,5 +101,6 @@ class TestSingleDatapathTargetsAreUntouched:
     def test_the_bundle_shape_gains_nothing_for_a_non_hybrid(self):
         b = M.fact_bundle_for("gemmini")
         assert "extractors" not in b and "conflicts" not in b, (
-            "a single-datapath bundle must be byte-identical to the pre-dispatch path")
+            "a single-datapath bundle must be byte-identical to the pre-dispatch path"
+        )
         assert set(b) == {"target", "method", "fields", "n_derived"}

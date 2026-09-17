@@ -10,14 +10,14 @@ both Bedrock and the Google API, so the driver alone does not say which budget a
 has to be route-aware about model ids, since the same id means different things by route --
 `gpt-5.6-sol` is the ChatGPT seat's own model on codex and an OpenAI-on-Bedrock profile on converse.
 """
+
 import importlib.util
 
 import pytest
 
 from merlin.common.paths import repo_root
 
-_SCRIPT = (repo_root() / "merlin" / "experiments" / "llm_kernel_vs_compiler_v0"
-           / "scripts" / "check_method_models.py")
+_SCRIPT = repo_root() / "merlin" / "experiments" / "llm_kernel_vs_compiler_v0" / "scripts" / "check_method_models.py"
 
 
 def _load():
@@ -33,12 +33,14 @@ def _v(cfg):
     return _load().violations(cfg, where="t")
 
 
-CODEX = {"driver": "codex", "provider": "subscription", "model": "gpt-5.6-sol",
-         "billing_mode": "subscription_notional"}
-BEDROCK = {"driver": "converse", "provider": "bedrock",
-           "model": "qwen.qwen3-coder-480b-a35b-v1:0", "billing_mode": "metered"}
-GEMINI = {"driver": "opencode", "provider": "google", "model": "google/gemini-3.5-flash",
-          "billing_mode": "metered"}
+CODEX = {"driver": "codex", "provider": "subscription", "model": "gpt-5.6-sol", "billing_mode": "subscription_notional"}
+BEDROCK = {
+    "driver": "converse",
+    "provider": "bedrock",
+    "model": "qwen.qwen3-coder-480b-a35b-v1:0",
+    "billing_mode": "metered",
+}
+GEMINI = {"driver": "opencode", "provider": "google", "model": "google/gemini-3.5-flash", "billing_mode": "metered"}
 
 
 def test_the_three_configured_arms_are_allowed():
@@ -50,6 +52,7 @@ def test_the_three_configured_arms_are_allowed():
 def test_the_shipped_method_configs_pass():
     """The real configs, not just hand-built dicts -- a config can drift without a test noticing."""
     import yaml
+
     mod = _load()
     methods = _SCRIPT.parent.parent / "methods"
     found = sorted(methods.glob("*/method.yaml"))
@@ -61,8 +64,14 @@ def test_the_shipped_method_configs_pass():
 
 @pytest.mark.parametrize("provider", ["anthropic", "claude", "vertex", ""])
 def test_an_unapproved_provider_is_refused(provider):
-    out = _v({"driver": "claudecode", "provider": provider, "model": "claude-opus-5",
-              "billing_mode": "subscription_notional"})
+    out = _v(
+        {
+            "driver": "claudecode",
+            "provider": provider,
+            "model": "claude-opus-5",
+            "billing_mode": "subscription_notional",
+        }
+    )
     assert out and "not approved" in out[0]
 
 
@@ -78,14 +87,16 @@ def test_the_google_route_is_metered_on_its_own_budget():
     assert any("billing_mode" in o for o in out), out
 
 
-@pytest.mark.parametrize("model", [
-    "us.anthropic.claude-sonnet-4-6",
-    "anthropic.claude-haiku-4-5-20251001-v1:0",
-    "openai.gpt-5.6-sol",          # the SAME model is fine on codex, refused metered on Bedrock
-])
+@pytest.mark.parametrize(
+    "model",
+    [
+        "us.anthropic.claude-sonnet-4-6",
+        "anthropic.claude-haiku-4-5-20251001-v1:0",
+        "openai.gpt-5.6-sol",  # the SAME model is fine on codex, refused metered on Bedrock
+    ],
+)
 def test_a_rate_capping_vendor_is_refused_on_bedrock(model):
-    out = _v({"driver": "converse", "provider": "bedrock", "model": model,
-              "billing_mode": "metered"})
+    out = _v({"driver": "converse", "provider": "bedrock", "model": model, "billing_mode": "metered"})
     assert any("rate-cap" in o for o in out), out
 
 
@@ -110,7 +121,16 @@ def test_vendor_is_read_as_a_segment_not_a_substring():
     assert mod._vendor_of("qwen.qwen3-coder-480b-a35b-v1:0") == "qwen"
     # a vendor name inside the MODEL segment is not the vendor
     assert mod._vendor_of("qwen.not-anthropic-at-all") == "qwen"
-    assert _v({"driver": "converse", "provider": "bedrock",
-               "model": "qwen.not-anthropic-at-all", "billing_mode": "metered"}) == []
+    assert (
+        _v(
+            {
+                "driver": "converse",
+                "provider": "bedrock",
+                "model": "qwen.not-anthropic-at-all",
+                "billing_mode": "metered",
+            }
+        )
+        == []
+    )
     # provider/model ids must resolve too: splitting on "." would give "google/gemini-3"
     assert mod._vendor_of("google/gemini-3.5-flash") == "google"

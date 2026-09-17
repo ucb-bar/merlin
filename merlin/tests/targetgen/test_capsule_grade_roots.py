@@ -9,6 +9,7 @@ because the defaults were relative string literals.
 Both defaults now come from `merlin.common.paths.data_path`, per the repo rule that roots are asked
 for rather than spelled out.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,6 +21,7 @@ from merlin.targetgen import capsule_grade
 def test_defaults_are_absolute():
     """The parser's own defaults must not be relative strings."""
     import inspect
+
     src = inspect.getsource(capsule_grade.main)
     assert 'default="merlin/contract"' not in src, "relative contract default reintroduced"
     assert 'default="merlin/contract/capsules"' not in src, "relative capsules default reintroduced"

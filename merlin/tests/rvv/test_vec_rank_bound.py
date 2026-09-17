@@ -37,6 +37,7 @@ So what is pinned here is the knob's SAFETY, not a payoff:
 Deliberately NOT asserted here: any speedup. That is a board measurement, and the emitted-code
 delta above is what these changes are entitled to claim.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -55,6 +56,7 @@ VEC = impr.VEC_NONCONTRACTION_NAME
 # 1. the default is byte-identical
 # ---------------------------------------------------------------------------------------------
 
+
 def test_the_default_arms_cover_exactly_ranks_two_to_four():
     arms = impr._vec_rank_arms(8, "PFX_")
     for rank in range(impr.VEC_NONCONTRACTION_MIN_RANK, impr.VEC_NONCONTRACTION_MAX_RANK + 1):
@@ -70,8 +72,7 @@ def test_the_generated_arms_reproduce_the_hand_written_tile_shapes():
     assert "tile_sizes [1, 1, 1, 8]" in arms
     assert "%gt2, %gl2:2 = " in arms and "%gt4, %gl4:4 = " in arms
     # rank 2 tiles two dims -> the tiled op plus two loop handles.
-    assert arms.count("(!transform.any_op) -> (!transform.any_op, !transform.any_op, "
-                      "!transform.any_op)\n") == 1
+    assert arms.count("(!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)\n") == 1
 
 
 def test_the_frozen_baseline_never_reaches_the_tagger():
@@ -88,6 +89,7 @@ def test_the_bare_name_still_means_the_old_bound():
 # ---------------------------------------------------------------------------------------------
 # 2. the raised bound actually adds arms, and the gate comes with them
 # ---------------------------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("max_rank", [5, 6, 8])
 def test_raising_the_bound_adds_one_gated_arm_per_rank(max_rank):
@@ -118,19 +120,22 @@ def test_splicing_stays_idempotent_at_a_raised_bound():
 # 3. the point is derivable from its name
 # ---------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("name,expect", [
-    (VEC, (impr.VEC_NONCONTRACTION_LANES, impr.VEC_NONCONTRACTION_MAX_RANK)),
-    (f"{VEC}_l16", (16, impr.VEC_NONCONTRACTION_MAX_RANK)),
-    (f"{VEC}_r8", (impr.VEC_NONCONTRACTION_LANES, 8)),
-    (f"{VEC}_l16_r6", (16, 6)),
-    (f"{VEC}_r6_l32", (32, 6)),
-])
+
+@pytest.mark.parametrize(
+    "name,expect",
+    [
+        (VEC, (impr.VEC_NONCONTRACTION_LANES, impr.VEC_NONCONTRACTION_MAX_RANK)),
+        (f"{VEC}_l16", (16, impr.VEC_NONCONTRACTION_MAX_RANK)),
+        (f"{VEC}_r8", (impr.VEC_NONCONTRACTION_LANES, 8)),
+        (f"{VEC}_l16_r6", (16, 6)),
+        (f"{VEC}_r6_l32", (32, 6)),
+    ],
+)
 def test_a_point_is_read_off_its_name(name, expect):
     assert impr._vec_noncontraction_point(name) == expect
 
 
-@pytest.mark.parametrize("name", [f"{VEC}_z3", f"{VEC}_l", f"{VEC}_r0", f"{VEC}_lx",
-                                  "erase_self_copy", f"{VEC}_l8_"])
+@pytest.mark.parametrize("name", [f"{VEC}_z3", f"{VEC}_l", f"{VEC}_r0", f"{VEC}_lx", "erase_self_copy", f"{VEC}_l8_"])
 def test_an_unparsable_point_is_refused_rather_than_defaulted(name):
     """Reading a mistyped point as the default is how an experiment measures the baseline and
     reports it as the lever."""
@@ -150,9 +155,9 @@ def test_a_named_point_resolves_in_a_fresh_process(tmp_path):
         "f = impr.get('vectorize_non_contraction_generics_r7')\n"
         "sched = f.edit_schedule(P.RVV_TRANSFORM_SCHEDULE)\n"
         "print('r7' if 'merlin.vec_r7' in sched else 'MISSING')\n",
-        encoding="utf-8")
-    proc = subprocess.run([sys.executable, str(script)], capture_output=True, text=True,
-                          timeout=300)
+        encoding="utf-8",
+    )
+    proc = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, timeout=300)
     assert proc.returncode == 0, proc.stdout + proc.stderr
     assert proc.stdout.strip().splitlines()[-1] == "r7", proc.stdout
 
@@ -258,8 +263,7 @@ def _tags(tmp_path, src: str, name: str, max_rank: int = 8) -> str:
     f.write_text(src, encoding="utf-8")
     work = tmp_path / f"w_{name}"
     work.mkdir(parents=True, exist_ok=True)
-    return _prepare_model_mlir(f, work, tag_vec_ranks=True,
-                               vec_max_rank=max_rank).read_text(encoding="utf-8")
+    return _prepare_model_mlir(f, work, tag_vec_ranks=True, vec_max_rank=max_rank).read_text(encoding="utf-8")
 
 
 def test_a_window_read_is_refused_even_though_its_body_holds_no_gather(tmp_path):

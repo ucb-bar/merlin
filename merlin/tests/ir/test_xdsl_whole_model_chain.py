@@ -6,6 +6,7 @@ input -> contract -> schedule -> interface -> target -> runtime -> command buffe
 chained intermediates, place every weight resident (not just reused ones), commit in float, and
 surface EXACTLY the function's returned tensor — not every intermediate commit.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -38,8 +39,7 @@ def test_chain_command_buffer_surfaces_only_final_output():
     dsts = [c["operands"]["dst"] for c in cb["commands"] if c["opcode"] == "COMMIT"]
     assert dsts == ["Y0", "Y1"]
     # The chain is real: layer-2's matmul consumes layer-1's committed output as its LHS.
-    mm_lhs = [c["operands"]["lhs"] for c in cb["commands"]
-              if c["opcode"] in ("MATMUL", "MATMUL_RESIDENT")]
+    mm_lhs = [c["operands"]["lhs"] for c in cb["commands"] if c["opcode"] in ("MATMUL", "MATMUL_RESIDENT")]
     assert "Y0" in mm_lhs
 
 

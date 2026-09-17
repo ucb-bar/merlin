@@ -10,6 +10,7 @@ The last link is what makes it provenance rather than trivia: a divergence trace
 region has no forkable seam is a finding, not a task, and saying so beats routing it somewhere that
 does not exist.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -21,7 +22,7 @@ from merlin.kernels import roles as R
 class TestTheChainIsComplete:
     def test_every_role_in_the_vocabulary_has_a_chain(self):
         for role in R.ROLES:
-            P.provenance_of_role(role)          # raises if the role is unknown
+            P.provenance_of_role(role)  # raises if the role is unknown
 
     def test_no_role_is_left_unowned(self):
         """An instruction we can read but cannot attribute to an owner is a dead end: the loop can see
@@ -54,9 +55,9 @@ class TestActionabilityIsHonest:
 
     def test_the_reader_has_no_default_for_a_missing_attribute(self):
         import inspect
+
         src = inspect.getsource(P.provenance_of_role)
-        assert 'getattr(ep, "forkable"' not in src, (
-            "a default here turns a declared gap into a fork-ready seam")
+        assert 'getattr(ep, "forkable"' not in src, "a default here turns a declared gap into a fork-ready seam"
 
 
 class TestOpportunitiesComeFromTheAssembly:
@@ -85,8 +86,9 @@ class TestOpportunitiesComeFromTheAssembly:
 
     def test_a_healthy_stream_proposes_nothing_spurious(self):
         # A balanced contraction on a lane engine should not trigger the shape rules.
-        opps = P.opportunities({"accumulate": 40, "readout": 2, "operand_load": 12, "config": 1},
-                               engine="vector", total=100)
+        opps = P.opportunities(
+            {"accumulate": 40, "readout": 2, "operand_load": 12, "config": 1}, engine="vector", total=100
+        )
         assert [o.axis for o in opps] == [], [o.axis for o in opps]
 
     def test_every_opportunity_names_a_lever_not_a_metric(self):
@@ -94,16 +96,21 @@ class TestOpportunitiesComeFromTheAssembly:
         Found by running this: the broadcast rule named memory.a_broadcast_vf, which is classified
         METRIC and correctly governed by no region."""
         from merlin.kernels.cca_contract import FIELD_REGISTRY
+
         seen = []
-        for hist in ({"elementwise": 9}, {"accumulate": 6}, {"accumulate": 2, "broadcast": 200},
-                     {"config": 20, "accumulate": 4, "readout": 1},
-                     {"accumulate": 1, "sync": 9}, {"control": 60}):
+        for hist in (
+            {"elementwise": 9},
+            {"accumulate": 6},
+            {"accumulate": 2, "broadcast": 200},
+            {"config": 20, "accumulate": 4, "readout": 1},
+            {"accumulate": 1, "sync": 9},
+            {"control": 60},
+        ):
             seen += P.opportunities(hist, engine="simt", total=100)
         for o in seen:
             spec = FIELD_REGISTRY.get(o.axis)
             assert spec is not None, f"{o.axis} is not a classified CCA field"
-            assert spec.classification != "METRIC", (
-                f"{o.axis} is a METRIC: it diagnoses, it is not a dial")
+            assert spec.classification != "METRIC", f"{o.axis} is a METRIC: it diagnoses, it is not a dial"
 
     def test_the_status_separates_three_different_failures(self):
         """'no region governs this', 'the seam is a declared gap' and 'this is a metric' are different
@@ -120,8 +127,9 @@ class TestARuleCannotProposeWhatItCannotKnow:
 
     def test_the_fused_mac_rule_needs_the_regions_family(self):
         opps = P.opportunities({"elementwise": 1207, "operand_load": 69}, engine="vector")
-        assert not any(o.axis == "compute.contraction_form" and o.confidence == "high"
-                       for o in opps), [o.to_dict() for o in opps]
+        assert not any(o.axis == "compute.contraction_form" and o.confidence == "high" for o in opps), [
+            o.to_dict() for o in opps
+        ]
 
     def test_it_fires_with_high_confidence_once_the_family_is_known(self):
         opps = P.opportunities({"elementwise": 9}, family="contraction")

@@ -31,6 +31,7 @@ policy STRUCTURALLY — by what they DO — and drives the real functions:
   * and the post-freeze public+hidden L3 grade must still be reachable afterwards, so continuity is not
     bought by quietly adopting the legacy path's "can never report a formal success".
 """
+
 from __future__ import annotations
 
 import ast
@@ -82,8 +83,8 @@ def _agent_loop(main: ast.FunctionDef) -> ast.While:
     """The while-loop that invokes the agent — the certified path, whichever schedule is in force."""
     for node in ast.walk(main):
         if isinstance(node, ast.While) and any(
-                isinstance(c, ast.Call) and getattr(c.func, "id", "") == "launch_agent"
-                for c in ast.walk(node)):
+            isinstance(c, ast.Call) and getattr(c.func, "id", "") == "launch_agent" for c in ast.walk(node)
+        ):
             return node
     raise AssertionError("the agent-invocation loop is gone")
 
@@ -102,21 +103,21 @@ def _stop_policy():
     it, because there is no paraphrase.
     """
     main = _main_ast()
-    fn = next((n for n in ast.walk(main)
-               if isinstance(n, ast.FunctionDef) and n.name == "_keep_going"), None)
+    fn = next((n for n in ast.walk(main) if isinstance(n, ast.FunctionDef) and n.name == "_keep_going"), None)
     assert fn is not None, (
         "main() no longer has a `_keep_going` stop policy; the loop's terminator is unlocatable, so "
-        "neither the round cap nor the wall budget can be gated")
-    src = ("def _factory(a, rnd, active_wall_s, _authoring_complete):\n"
-           + textwrap.indent(ast.unparse(fn), "    ")
-           + "\n    return _keep_going\n")
+        "neither the round cap nor the wall budget can be gated"
+    )
+    src = (
+        "def _factory(a, rnd, active_wall_s, _authoring_complete):\n"
+        + textwrap.indent(ast.unparse(fn), "    ")
+        + "\n    return _keep_going\n"
+    )
     ns: dict = {}
     exec(compile(src, "<_keep_going lifted from main()>", "exec"), ns)  # noqa: S102 -- our own source
 
-    def go(*, schedule, rnd=0, max_rounds=12, active_wall_s=0.0, max_wall_s=0,
-           authoring_complete=False) -> bool:
-        a = types.SimpleNamespace(schedule=schedule, max_rounds=max_rounds, max_wall_s=max_wall_s,
-                                  seal_current=False)
+    def go(*, schedule, rnd=0, max_rounds=12, active_wall_s=0.0, max_wall_s=0, authoring_complete=False) -> bool:
+        a = types.SimpleNamespace(schedule=schedule, max_rounds=max_rounds, max_wall_s=max_wall_s, seal_current=False)
         return ns["_factory"](a, rnd, active_wall_s, lambda: authoring_complete)()
 
     return go
@@ -135,8 +136,7 @@ def _ws(tmp_path, *, with_verdict: bool):
 
 
 def _args(*, grade_interval: int, qa_timeout: int = 60):
-    return types.SimpleNamespace(grade_interval=grade_interval, qa_timeout=qa_timeout,
-                                 no_oracle=False)
+    return types.SimpleNamespace(grade_interval=grade_interval, qa_timeout=qa_timeout, no_oracle=False)
 
 
 def _shrink_waits(monkeypatch, cap: float = 0.01) -> None:
@@ -165,26 +165,27 @@ def test_the_continuous_schedule_launches_one_session_not_rounds():
     """One long agent session per process, so the context is never thrown away at a round boundary."""
     go = _stop_policy()
 
-    assert go(schedule="continuous", rnd=0, max_rounds=12), (
-        "the continuous schedule refuses to launch its session")
+    assert go(schedule="continuous", rnd=0, max_rounds=12), "the continuous schedule refuses to launch its session"
     assert go(schedule="continuous", rnd=10_000, max_rounds=12), (
         "the continuous schedule stopped on the ROUND COUNT — that is the round barrier back again, "
         "and a fresh context each time is exactly the progress loss measured on rb_atlasp1e; "
         "continuous must stop on EVIDENCE (converged/plateaued) or a declared BUDGET, never on an "
-        "arithmetic cap")
+        "arithmetic cap"
+    )
     assert not go(schedule="continuous", rnd=0, max_rounds=12, authoring_complete=True), (
-        "continuous never stops on evidence either; nothing terminates the run")
+        "continuous never stops on evidence either; nothing terminates the run"
+    )
 
     # ...and the invocation it does make is a CONTINUATION, not a fresh session: the schedule is handed
     # to launch_agent, which is what lets a turn-shaped driver (`codex exec`) resume the same thread
     # instead of opening a new context. Without it, "continuous" is a round loop with the cap lifted.
     loop = _agent_loop(_main_ast())
-    launch = next(n for n in ast.walk(loop)
-                  if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "launch_agent")
+    launch = next(n for n in ast.walk(loop) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "launch_agent")
     kw = {k.arg: ast.unparse(k.value) for k in launch.keywords}
     assert "continuous" in kw and "schedule" in kw["continuous"], (
         f"launch_agent is not told the run is continuous ({kw}); each invocation would open a fresh "
-        f"session and the accumulated context would be discarded every turn")
+        f"session and the accumulated context would be discarded every turn"
+    )
 
 
 def test_the_continuous_schedule_honours_the_total_wall_budget():
@@ -192,20 +193,21 @@ def test_the_continuous_schedule_honours_the_total_wall_budget():
     go = _stop_policy()
     assert not go(schedule="continuous", active_wall_s=43_201.0, max_wall_s=43_200)
     assert go(schedule="continuous", active_wall_s=43_199.0, max_wall_s=43_200), (
-        "the wall budget stops the run BEFORE it is spent")
-    assert go(schedule="continuous", active_wall_s=10 ** 9, max_wall_s=0), (
-        "max_wall_s=0 must mean 'no wall cap', not 'stop immediately'")
+        "the wall budget stops the run BEFORE it is spent"
+    )
+    assert go(schedule="continuous", active_wall_s=10**9, max_wall_s=0), (
+        "max_wall_s=0 must mean 'no wall cap', not 'stop immediately'"
+    )
 
 
 def test_the_rounds_schedule_is_unchanged():
     """The default schedule keeps its historical --max-rounds bound, byte-for-byte in behaviour."""
     go = _stop_policy()
     for rnd, expect in ((0, True), (11, True), (12, False)):
-        assert go(schedule="rounds", rnd=rnd, max_rounds=12) is expect, \
-            f"rounds schedule changed at rnd={rnd}"
+        assert go(schedule="rounds", rnd=rnd, max_rounds=12) is expect, f"rounds schedule changed at rnd={rnd}"
     assert go(schedule="rounds", rnd=0, max_rounds=12, authoring_complete=True) is False
     # the wall budget is a CONTINUOUS-only terminator; it must not silently start bounding rounds
-    assert go(schedule="rounds", rnd=0, max_rounds=12, active_wall_s=10 ** 9, max_wall_s=1) is True
+    assert go(schedule="rounds", rnd=0, max_rounds=12, active_wall_s=10**9, max_wall_s=1) is True
 
 
 # --- 2. the mechanism: it really grades, on an interval, and really refreshes the verdict ------------
@@ -218,7 +220,7 @@ def test_the_background_grader_regrades_on_its_interval_while_the_agent_runs(tmp
     still going.
     """
     M = _driver()
-    ws, run_dir = _ws(tmp_path, with_verdict=True)   # phase 1 already satisfied; this is the interval
+    ws, run_dir = _ws(tmp_path, with_verdict=True)  # phase 1 already satisfied; this is the interval
     ticks, labels = [], []
 
     def grade(_ws, _rd, tick, _no_oracle, _timeout, label="round", **_scratch):
@@ -242,14 +244,17 @@ def test_the_background_grader_regrades_on_its_interval_while_the_agent_runs(tmp
     assert len(ticks) >= 3, f"the grader graded {len(ticks)} time(s); it must re-grade on its interval"
     assert ticks == sorted(ticks) and len(set(ticks)) == len(ticks), (
         f"background grade ticks must be distinct and increasing so one grade cannot clobber "
-        f"another's scratch dir: {ticks}")
+        f"another's scratch dir: {ticks}"
+    )
     assert min(ticks) >= M._BG_TICK_BASE, (
         "background grades must be numbered in their own band, or a snapshot grade reuses (and deletes) "
-        "a round grade's _qa_work/cand_NN")
+        "a round grade's _qa_work/cand_NN"
+    )
     assert "round" not in labels, (
         f"an in-turn grade is filed under the ROUND archive namespace ({sorted(set(labels))}); every "
         f"per-round trajectory reader globs verdict_round_*.json and would read a mid-turn progress "
-        f"report as the round's verdict")
+        f"report as the round's verdict"
+    )
     assert not th.is_alive(), "the grader outlived the session"
 
 
@@ -265,8 +270,7 @@ def test_in_turn_snapshots_do_not_collide_across_agent_rounds(tmp_path, monkeypa
     completed: list[str] = []
     snapshots = []
 
-    def grade(_ws, rd, _tick, _no_oracle, _timeout, label="round", *, scratch_key=None,
-              previous_scratch_key=None):
+    def grade(_ws, rd, _tick, _no_oracle, _timeout, label="round", *, scratch_key=None, previous_scratch_key=None):
         assert label == "inturn"
         assert scratch_key is not None
         snap = rd / "_qa_work" / f"cand_{scratch_key}" / "submission"
@@ -280,16 +284,14 @@ def test_in_turn_snapshots_do_not_collide_across_agent_rounds(tmp_path, monkeypa
     monkeypatch.setattr(M, "qa_grade", grade)
     _shrink_waits(monkeypatch)
 
-    first = M._start_in_turn_grader(ws, run_dir, _args(grade_interval=900),
-                                    interval_grades=True, round_index=0)
+    first = M._start_in_turn_grader(ws, run_dir, _args(grade_interval=900), interval_grades=True, round_index=0)
     _spin(lambda: any(k.startswith("r0000_") for k in completed))
     M._stop_in_turn_grader(first)
     for snap, marker in snapshots:
         marker.chmod(0o444)
         snap.chmod(0o555)
 
-    second = M._start_in_turn_grader(ws, run_dir, _args(grade_interval=900),
-                                     interval_grades=True, round_index=1)
+    second = M._start_in_turn_grader(ws, run_dir, _args(grade_interval=900), interval_grades=True, round_index=1)
     _spin(lambda: any(k.startswith("r0001_") for k in completed))
     M._stop_in_turn_grader(second)
 
@@ -297,9 +299,9 @@ def test_in_turn_snapshots_do_not_collide_across_agent_rounds(tmp_path, monkeypa
         round0 = {k for k in completed if k.startswith("r0000_")}
         round1 = {k for k in completed if k.startswith("r0001_")}
         assert round0 and round1, (
-            f"the second agent round could not create a snapshot after round 0 was sealed: {completed}")
-        assert round0.isdisjoint(round1), (
-            f"agent rounds reused an in-turn scratch identity: {sorted(round0 & round1)}")
+            f"the second agent round could not create a snapshot after round 0 was sealed: {completed}"
+        )
+        assert round0.isdisjoint(round1), f"agent rounds reused an in-turn scratch identity: {sorted(round0 & round1)}"
     finally:
         for snap, marker in snapshots:
             snap.chmod(0o755)
@@ -315,8 +317,7 @@ def test_the_rounds_schedule_gets_no_interval_grades(tmp_path, monkeypatch):
     M = _driver()
     ws, run_dir = _ws(tmp_path, with_verdict=True)
     ticks = []
-    monkeypatch.setattr(M, "qa_grade",
-                        lambda *a, **k: ticks.append(a[2]) or {"all_pass": False})
+    monkeypatch.setattr(M, "qa_grade", lambda *a, **k: ticks.append(a[2]) or {"all_pass": False})
     _shrink_waits(monkeypatch)
 
     h = M._start_in_turn_grader(ws, run_dir, _args(grade_interval=900), interval_grades=False)
@@ -345,8 +346,10 @@ def test_a_grade_of_a_half_written_submission_never_kills_the_run(tmp_path, monk
     _spin(lambda: len(calls) >= 3)
     alive = h[0].is_alive()
     M._stop_in_turn_grader(h)
-    assert alive, "a raising grade killed the grader thread; the run would keep going with a silently "\
-                  "dead grader, which looks exactly like an agent that stopped improving"
+    assert alive, (
+        "a raising grade killed the grader thread; the run would keep going with a silently "
+        "dead grader, which looks exactly like an agent that stopped improving"
+    )
     assert len(calls) >= 3, "a raising grade stopped the background grader"
     assert ok, "no grade completed after the raising one"
 
@@ -368,10 +371,12 @@ def test_the_grader_stops_when_the_session_does(tmp_path, monkeypatch):
 
     assert not h[0].is_alive(), (
         "the in-turn grader outlived the turn; it would race the authoritative post-turn grade and the "
-        "L3 barrier's own verdict.json")
+        "L3 barrier's own verdict.json"
+    )
     assert elapsed < 10.0, (
         f"stopping the grader took {elapsed:.1f}s — its interval wait is not interruptible, so every "
-        f"turn ends by blocking on it")
+        f"turn ends by blocking on it"
+    )
     assert not any(t.name.endswith("-grader") and t.is_alive() for t in threading.enumerate())
 
 
@@ -412,14 +417,15 @@ def test_teardown_cannot_abandon_an_inflight_grade():
 
     assert stop.set_called
     assert grade.join_timeout is None, (
-        "grader teardown used a finite join and can return while a full-suite grade is still running")
+        "grader teardown used a finite join and can return while a full-suite grade is still running"
+    )
     assert not grade.is_alive(), (
         "grader teardown returned with an in-flight grade alive; the authoritative grade would now "
-        "run concurrently with it")
+        "run concurrently with it"
+    )
 
 
-def test_a_turn_that_lands_no_first_verdict_is_reported_and_not_graded_on(tmp_path, monkeypatch,
-                                                                          capfd):
+def test_a_turn_that_lands_no_first_verdict_is_reported_and_not_graded_on(tmp_path, monkeypatch, capfd):
     """A turn with no verdict at all means the agent worked BLIND — that must be said, not inferred.
 
     Round 0 has no previous round to inherit feedback from and, under `--schedule continuous`, one turn
@@ -443,20 +449,17 @@ def test_a_turn_that_lands_no_first_verdict_is_reported_and_not_graded_on(tmp_pa
         first.append(tick)
         (w / "qa").mkdir(exist_ok=True)
         (w / "qa" / "verdict.json").write_text('{"n_passed": 1, "n_capsules": 20}')
-        return {"n_passed": 1, "n_capsules": 20, "all_pass": None, "tiers_graded": ["loop"],
-                "tiers_not_run": ["cert"]}
+        return {"n_passed": 1, "n_capsules": 20, "all_pass": None, "tiers_graded": ["loop"], "tiers_not_run": ["cert"]}
 
     monkeypatch.setattr(M, "_fast_loop_verdict", fast)
-    monkeypatch.setattr(M, "qa_grade",
-                        lambda *a, **k: interval.append(a[2]) or {"all_pass": False})
+    monkeypatch.setattr(M, "qa_grade", lambda *a, **k: interval.append(a[2]) or {"all_pass": False})
     with monkeypatch.context() as mp:
         _shrink_waits(mp)
         h = M._start_in_turn_grader(ws, run_dir, _args(grade_interval=900), interval_grades=True)
         _spin(lambda: first and interval)
         M._stop_in_turn_grader(h)
     assert first, "no first (loop-tier) grade was attempted; the agent opens the turn with no verdict"
-    assert (ws / "qa" / "verdict.json").is_file(), (
-        "the first grade never reached the workspace the agent reads")
+    assert (ws / "qa" / "verdict.json").is_file(), "the first grade never reached the workspace the agent reads"
     assert interval, "the interval phase never started after the first verdict landed"
 
     # -- unhappy path: it never lands, so the turn must be reported blind and must not grade on -------
@@ -475,12 +478,14 @@ def test_a_turn_that_lands_no_first_verdict_is_reported_and_not_graded_on(tmp_pa
     out = capfd.readouterr().out
     assert "[first-grade]" in out and "NO verdict landed" in out, (
         "a turn in which NO verdict ever landed said nothing about it; the agent ran blind for the "
-        f"whole turn and the log gives no way to know. Saw:\n{out[-2000:]}")
+        f"whole turn and the log gives no way to know. Saw:\n{out[-2000:]}"
+    )
     assert not (ws2 / "qa" / "verdict.json").exists(), "a verdict was invented without a grade"
     assert interval == [], (
         "the grader went on to the expensive interval phase for a turn it could not grade at all -- "
         "the full mandatory ladder costs tens of minutes per capsule, and a workspace with no "
-        "gradeable submission has nothing for it to measure")
+        "gradeable submission has nothing for it to measure"
+    )
 
 
 # --- 3. the wiring: the CERTIFIED schedule is the one that gets it ----------------------------------
@@ -496,45 +501,59 @@ def test_the_certified_schedule_installs_the_grader_around_the_agent_session():
 
     assert loop.lineno not in legacy, "the agent loop is now inside the legacy branch"
 
-    starts = [n for n in ast.walk(loop)
-              if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_start_in_turn_grader"]
+    starts = [
+        n for n in ast.walk(loop) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_start_in_turn_grader"
+    ]
     assert starts, (
         "the agent loop never starts an in-turn grader; feedback would still only reach the agent by "
-        "ending its session, which is the round barrier `--schedule continuous` exists to remove")
+        "ending its session, which is the round barrier `--schedule continuous` exists to remove"
+    )
     assert all(s.lineno not in legacy for s in starts), (
         "the grader is only started inside the legacy `if a.continuous:` branch, so "
-        "`--schedule continuous` still runs the round loop with no grader under the agent")
+        "`--schedule continuous` still runs the round loop with no grader under the agent"
+    )
 
     # ...and it must re-grade on the interval for the CERTIFIED schedule, not merely land one verdict.
     iv = {ast.unparse(k.value) for s in starts for k in s.keywords if k.arg == "interval_grades"}
     assert iv and all("schedule" in x for x in iv), (
         f"the in-turn grader's interval phase is not keyed to the schedule ({iv or 'absent'}); "
-        f"`--schedule continuous` would land ONE verdict per turn and then go quiet")
+        f"`--schedule continuous` would land ONE verdict per turn and then go quiet"
+    )
     round_ids = {ast.unparse(k.value) for s in starts for k in s.keywords if k.arg == "round_index"}
     assert round_ids == {"rnd"}, (
         f"the in-turn grader is not keyed to the current agent round ({round_ids or 'absent'}); "
-        "every new round would reuse the previous round's sealed cand_901 snapshot")
+        "every new round would reuse the previous round's sealed cand_901 snapshot"
+    )
 
-    stops = [n for n in ast.walk(loop)
-             if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_stop_in_turn_grader"]
+    stops = [
+        n for n in ast.walk(loop) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_stop_in_turn_grader"
+    ]
     assert stops, (
         "the grader is never stopped around the agent launch; it would race the authoritative grade and "
-        "the L3 barrier's own verdict.json")
+        "the L3 barrier's own verdict.json"
+    )
 
     # The stop must be unconditional (a `finally`), or an agent timeout leaks a grader into the next
     # turn -- and it must precede the authoritative post-turn grade, which is a grade of the FINAL
     # submission and cannot be racing an interval tick.
-    assert any(any(n is s for st in ast.walk(loop) if isinstance(st, ast.Try)
-                   for n in ast.walk(ast.Module(body=st.finalbody, type_ignores=[])))
-               for s in stops), (
+    assert any(
+        any(
+            n is s
+            for st in ast.walk(loop)
+            if isinstance(st, ast.Try)
+            for n in ast.walk(ast.Module(body=st.finalbody, type_ignores=[]))
+        )
+        for s in stops
+    ), (
         "the in-turn grader is not stopped in a `finally`; an agent TIMEOUT would leave it grading "
-        "underneath the authoritative grade")
-    authoritative = [n for n in ast.walk(loop)
-                     if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "qa_grade"]
+        "underneath the authoritative grade"
+    )
+    authoritative = [n for n in ast.walk(loop) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "qa_grade"]
     assert authoritative, "the loop no longer takes an authoritative post-turn grade"
     assert min(s.lineno for s in stops) < max(g.lineno for g in authoritative), (
         "the authoritative grade runs while the in-turn grader is still going; the run's verdict would "
-        "describe a moving workspace instead of the submission as the turn left it")
+        "describe a moving workspace instead of the submission as the turn left it"
+    )
 
 
 def test_the_single_session_is_bounded_by_the_total_budget_not_only_by_the_round_timeout():
@@ -548,20 +567,25 @@ def test_the_single_session_is_bounded_by_the_total_budget_not_only_by_the_round
     # turn takes (a statement of the loop body itself), not only inside the early-exit branches for a
     # rate limit or a dead turn: a run that never hits one of those would be unbounded.
     def _adds(stmts) -> bool:
-        return any(isinstance(n, ast.AugAssign) and isinstance(n.op, ast.Add)
-                   and isinstance(n.target, ast.Name) and n.target.id == "active_wall_s"
-                   for n in stmts)
+        return any(
+            isinstance(n, ast.AugAssign)
+            and isinstance(n.op, ast.Add)
+            and isinstance(n.target, ast.Name)
+            and n.target.id == "active_wall_s"
+            for n in stmts
+        )
 
     assert _adds(loop.body), (
         "the agent loop does not add the turn's elapsed time to active_wall_s on the path every "
         "completed turn takes, so --max-wall-s can never be reached and a '12h total' run is really "
-        "bounded only by --round-timeout")
+        "bounded only by --round-timeout"
+    )
 
     go = _stop_policy()
     assert go(schedule="continuous", active_wall_s=0.0, max_wall_s=43_200)
     assert not go(schedule="continuous", active_wall_s=43_200.0, max_wall_s=43_200), (
-        "the stop policy does not consult the total wall budget; the run would be bounded by "
-        "--round-timeout alone")
+        "the stop policy does not consult the total wall budget; the run would be bounded by --round-timeout alone"
+    )
 
 
 # --- 4. and the formal grade survives ---------------------------------------------------------------
@@ -577,19 +601,28 @@ def test_the_certified_schedule_still_reaches_the_post_freeze_public_hidden_grad
     legacy_lines = _span(legacy)
     loop_end = _agent_loop(main).end_lineno
 
-    assert any(isinstance(n, ast.Return) and isinstance(n.value, ast.Constant) and n.value.value == 1
-               for n in ast.walk(legacy)), (
+    assert any(
+        isinstance(n, ast.Return) and isinstance(n.value, ast.Constant) and n.value.value == 1 for n in ast.walk(legacy)
+    ), (
         "the legacy branch no longer owns the progress-only `return 1`; if that exit escaped into the "
-        "certified path, no run could report a formal success")
+        "certified path, no run could report a formal success"
+    )
 
     for needle in ("grade_agent_run.py", "_formal_completion", "_verilator_grade"):
-        hits = [n.lineno for n in ast.walk(main)
-                if isinstance(n, ast.Constant) and n.value == needle
-                or isinstance(n, ast.Name) and n.id == needle
-                or isinstance(n, ast.FunctionDef) and n.name == needle]
+        hits = [
+            n.lineno
+            for n in ast.walk(main)
+            if isinstance(n, ast.Constant)
+            and n.value == needle
+            or isinstance(n, ast.Name)
+            and n.id == needle
+            or isinstance(n, ast.FunctionDef)
+            and n.name == needle
+        ]
         assert hits, f"{needle} is gone from main(); the post-freeze grade is not reachable"
         assert any(h not in legacy_lines for h in hits), f"{needle} is only inside the legacy branch"
         if needle in ("grade_agent_run.py", "_formal_completion"):
             assert any(h > loop_end for h in hits), (
                 f"{needle} no longer runs after the agent loop; the certified continuous path would "
-                f"end without its public+hidden record")
+                f"end without its public+hidden record"
+            )

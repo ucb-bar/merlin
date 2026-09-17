@@ -1,4 +1,5 @@
 """Historical timing is a bound-to-bytes reference, never automatic calibration."""
+
 import hashlib
 import json
 from dataclasses import replace
@@ -15,23 +16,35 @@ def digest(raw):
 
 
 def fixture(target="target-a"):
-    cb = {"tensors": {"a": {"shape": [2, 3]}, "b": {"shape": [3, 4]}},
-          "commands": [{"opcode": "MATMUL", "operands": {"lhs": "a", "rhs": "b"}}]}
+    cb = {
+        "tensors": {"a": {"shape": [2, 3]}, "b": {"shape": [3, 4]}},
+        "commands": [{"opcode": "MATMUL", "operands": {"lhs": "a", "rhs": "b"}}],
+    }
     raw_cb = json.dumps(cb).encode()
     work = work_from_command_buffer(cb).to_dict()
-    doc = {"capsule": "w", "label": "public", "target": target,
-           "toolchain_shas": {"device_revision": "abc"}, "work_volume": work,
-           "tiers": {"L3": {"status": "pass", "cycles": 20, "engine": "engine-a",
-                            "sim_provenance": {"sha256": "e" * 64}}}}
+    doc = {
+        "capsule": "w",
+        "label": "public",
+        "target": target,
+        "toolchain_shas": {"device_revision": "abc"},
+        "work_volume": work,
+        "tiers": {"L3": {"status": "pass", "cycles": 20, "engine": "engine-a", "sim_provenance": {"sha256": "e" * 64}}},
+    }
     raw = json.dumps(doc).encode()
     artifacts = {"kernel.elf": b"ELF", "harness.c": b"caller", "command_buffer.json": raw_cb}
-    observation = Observation("submission", "w", "L3", "console", "rtl",
-                              "total_cycles", 20.0, "cycles", status="pass")
-    kwargs = dict(target=target, receipt=raw, receipt_sha256=digest(raw),
-                  receipt_path="public/w/capsule_result.json", public_workloads={"w"},
-                  artifacts=artifacts, artifact_sha256={k: digest(v) for k, v in artifacts.items()},
-                  executable_names=("kernel.elf",), harness_name="harness.c",
-                  command_buffer_name="command_buffer.json")
+    observation = Observation("submission", "w", "L3", "console", "rtl", "total_cycles", 20.0, "cycles", status="pass")
+    kwargs = dict(
+        target=target,
+        receipt=raw,
+        receipt_sha256=digest(raw),
+        receipt_path="public/w/capsule_result.json",
+        public_workloads={"w"},
+        artifacts=artifacts,
+        artifact_sha256={k: digest(v) for k, v in artifacts.items()},
+        executable_names=("kernel.elf",),
+        harness_name="harness.c",
+        command_buffer_name="command_buffer.json",
+    )
     return observation, kwargs
 
 
@@ -56,8 +69,17 @@ def test_target_parameter_is_preserved(target):
     assert bind_historical_reference(obs, **kwargs)["target"] == target
 
 
-@pytest.mark.parametrize("field,value", [("workload", "wrong"), ("value", 21.0),
-    ("status", "fail"), ("stage", "absent"), ("quantity", "busy"), ("unit", "seconds")])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("workload", "wrong"),
+        ("value", 21.0),
+        ("status", "fail"),
+        ("stage", "absent"),
+        ("quantity", "busy"),
+        ("unit", "seconds"),
+    ],
+)
 def test_observation_must_match_raw_receipt(field, value):
     obs, kwargs = fixture()
     with pytest.raises(ValueError):
@@ -73,9 +95,12 @@ def test_integrity_or_visibility_mismatch_refuses(mutation):
         kwargs["artifacts"]["kernel.elf"] = b"changed"
     else:
         doc = json.loads(kwargs["receipt"])
-        if mutation == "hidden": doc["label"] = "hidden"
-        elif mutation == "target": doc["target"] = "different"
-        else: doc["work_volume"]["artifact_sha256"] = "0" * 64
+        if mutation == "hidden":
+            doc["label"] = "hidden"
+        elif mutation == "target":
+            doc["target"] = "different"
+        else:
+            doc["work_volume"]["artifact_sha256"] = "0" * 64
         kwargs["receipt"] = json.dumps(doc).encode()
         kwargs["receipt_sha256"] = digest(kwargs["receipt"])
     with pytest.raises(ValueError):
@@ -174,8 +199,7 @@ def test_embedded_work_is_bound_to_receipt_not_unbound_generated_file():
     obs, kwargs = fixture()
     doc = json.loads(kwargs["receipt"])
     cb = json.loads(kwargs["artifacts"]["command_buffer.json"])
-    doc["command_buffer_artifact"] = {"command_buffer": cb,
-                                      "artifact_sha256": doc["work_volume"]["artifact_sha256"]}
+    doc["command_buffer_artifact"] = {"command_buffer": cb, "artifact_sha256": doc["work_volume"]["artifact_sha256"]}
     kwargs["receipt"] = json.dumps(doc).encode()
     kwargs["receipt_sha256"] = digest(kwargs["receipt"])
     kwargs["command_buffer_name"] = None

@@ -10,6 +10,7 @@ M1_lstmnetvit_fp32 — one of three models `grading.exclude_capsules` withholds.
 model that actually runs, was therefore absent from the cover and could never be promoted to the cert
 tier: the whole-model capstone could pass its functional tier forever and never reach RTL.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -90,18 +91,21 @@ def test_a_cell_only_disappears_when_no_GRADED_capsule_has_it():
             if (cap.get("name") or cy.parent.name) in exc or cap.get("label") != "public":
                 continue
             fam = (cap.get("semantic") or {}).get("semantic_family")
-            extents = [int(x) for t in (cap.get("inputs") or [])
-                       for x in (t.get("shape") or []) if str(x).lstrip("-").isdigit()]
+            extents = [
+                int(x)
+                for t in (cap.get("inputs") or [])
+                for x in (t.get("shape") or [])
+                if str(x).lstrip("-").isdigit()
+            ]
             align = None
             if tile and tile > 0:
                 align = "partial" if any(e % tile for e in extents) else "aligned"
-            for t in (cap.get("inputs") or []):
+            for t in cap.get("inputs") or []:
                 if t.get("dtype"):
                     graded_cells.add(f"{fam}/{t['dtype']}/{align}")
 
     still_present = sorted(c for c in gone if c in graded_cells)
-    assert not still_present, (
-        f"cells a GRADED capsule still exhibits went missing: {sorted(still_present)}")
+    assert not still_present, f"cells a GRADED capsule still exhibits went missing: {sorted(still_present)}"
 
 
 def test_no_exclusion_is_the_previous_behaviour():

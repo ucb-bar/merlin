@@ -1,4 +1,5 @@
 """A matching signature alone does not prove captured argument identity."""
+
 import hashlib
 import inspect
 from pathlib import Path
@@ -9,11 +10,11 @@ from merlin.frontends.argument_identity import ArgumentIdentityStage, replay_arg
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.xdsl_dialects._common import text as module_text
 
-SOURCE = '''builtin.module {
+SOURCE = """builtin.module {
   func.func @forward(%a: tensor<2xi8>, %b: tensor<2xi8>) -> tensor<2xi8> {
     func.return %a : tensor<2xi8>
   }
-}'''
+}"""
 
 
 def _noop(module):
@@ -32,9 +33,14 @@ def _pins(callback):
 
 
 def _run(stages=(), **changes):
-    args = dict(raw_text=SOURCE, source_sha256=hashlib.sha256(SOURCE.encode()).hexdigest(),
-                normalized_sha256=hashlib.sha256(module_text(parse_mlir_text(SOURCE)).encode()).hexdigest(),
-                entry="forward", stages=stages, source_pins=_pins(_noop))
+    args = dict(
+        raw_text=SOURCE,
+        source_sha256=hashlib.sha256(SOURCE.encode()).hexdigest(),
+        normalized_sha256=hashlib.sha256(module_text(parse_mlir_text(SOURCE)).encode()).hexdigest(),
+        entry="forward",
+        stages=stages,
+        source_pins=_pins(_noop),
+    )
     args.update(changes)
     return replay_argument_identity(**args)
 
@@ -51,9 +57,14 @@ def test_same_signature_replacement_is_not_argument_identity():
         _run((ArgumentIdentityStage(_replace_function),))
 
 
-@pytest.mark.parametrize("change", [
-    {"source_sha256": "0" * 64}, {"normalized_sha256": "0" * 64}, {"entry": "missing"},
-])
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"source_sha256": "0" * 64},
+        {"normalized_sha256": "0" * 64},
+        {"entry": "missing"},
+    ],
+)
 def test_wrong_source_endpoint_or_entry_refuses(change):
     with pytest.raises(ValueError):
         _run(**change)

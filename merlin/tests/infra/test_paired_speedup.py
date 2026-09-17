@@ -53,12 +53,9 @@ def test_bootstrap_is_reproducible():
 
 def test_shared_accuracy_requires_the_complete_fp32_comparison():
     bar = {"cos_threshold": 0.99, "rel_threshold": 0.05, "basis": "fixture"}
-    good = shared_accuracy_verdict(
-        {"fp32_cos": 0.995, "fp32_rel": 0.04, "comparison_complete": True}, bar)
-    partial = shared_accuracy_verdict(
-        {"fp32_cos": 0.999, "fp32_rel": 0.001, "comparison_complete": False}, bar)
-    wrong_tier = shared_accuracy_verdict(
-        {"w8a8_cos": 1.0, "w8a8_rel": 0.0, "comparison_complete": True}, bar)
+    good = shared_accuracy_verdict({"fp32_cos": 0.995, "fp32_rel": 0.04, "comparison_complete": True}, bar)
+    partial = shared_accuracy_verdict({"fp32_cos": 0.999, "fp32_rel": 0.001, "comparison_complete": False}, bar)
+    wrong_tier = shared_accuracy_verdict({"w8a8_cos": 1.0, "w8a8_rel": 0.0, "comparison_complete": True}, bar)
     assert good["passes"] is True
     assert partial["passes"] is False and "complete" in partial["reason"]
     assert wrong_tier["passes"] is False and "fp32" in wrong_tier["reason"]
@@ -66,8 +63,7 @@ def test_shared_accuracy_requires_the_complete_fp32_comparison():
 
 def test_shared_accuracy_names_the_failed_term():
     bar = {"cos_threshold": 0.99, "rel_threshold": 0.05, "basis": "fixture"}
-    result = shared_accuracy_verdict(
-        {"fp32_cos": 0.999, "fp32_rel": 0.06, "comparison_complete": True}, bar)
+    result = shared_accuracy_verdict({"fp32_cos": 0.999, "fp32_rel": 0.06, "comparison_complete": True}, bar)
     assert result["passes"] is False
     assert result["cos_passes"] is True and result["rel_passes"] is False
     assert "relative error" in result["reason"]

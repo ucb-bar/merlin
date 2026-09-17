@@ -12,6 +12,7 @@ exception names against that digest.
 So two things are pinned here: an unmeasured cell validates, and it still cannot be mistaken for a
 measured one.
 """
+
 from __future__ import annotations
 
 import sys
@@ -35,20 +36,32 @@ class _Member:
 
 def _measured_cell(family: str = "PK", capsule: str = "PK00_k16") -> dict:
     return {
-        "family": family, "capsule": capsule,
-        "baseline_correct": True, "candidate_correct": True,
-        "baseline_gsim_cycles": 300, "candidate_gsim_cycles": 250,
-        "candidate_minus_baseline_cycles": -50, "baseline_over_candidate": 300 / 250,
-        "comparable": True, "declared_macs": 4096,
-        "declared_work_basis": "declared operand shapes", "ideal_cycles_at_peak": 16.0,
-        "baseline_utilization": 0.05, "candidate_utilization": 0.06,
-        "baseline_share_of_achievable": 0.1, "candidate_share_of_achievable": 0.2,
+        "family": family,
+        "capsule": capsule,
+        "baseline_correct": True,
+        "candidate_correct": True,
+        "baseline_gsim_cycles": 300,
+        "candidate_gsim_cycles": 250,
+        "candidate_minus_baseline_cycles": -50,
+        "baseline_over_candidate": 300 / 250,
+        "comparable": True,
+        "declared_macs": 4096,
+        "declared_work_basis": "declared operand shapes",
+        "ideal_cycles_at_peak": 16.0,
+        "baseline_utilization": 0.05,
+        "candidate_utilization": 0.06,
+        "baseline_share_of_achievable": 0.1,
+        "candidate_share_of_achievable": 0.2,
         "achievable_macs_per_cycle": 80.0,
         "achievable_basis": "best host-owned rate at the same reduction depth",
-        "verdict": "improved", "verdict_reason": "fewer cycles than the baseline",
-        "factor_to_achievable": 250 / 51.2, "ideal_cycles_at_achievable": 51.2,
-        "cycles_saved": 50, "gap_closed": 50 / (300 - 51.2),
-        "measured": True, "skip_reason": None,
+        "verdict": "improved",
+        "verdict_reason": "fewer cycles than the baseline",
+        "factor_to_achievable": 250 / 51.2,
+        "ideal_cycles_at_achievable": 51.2,
+        "cycles_saved": 50,
+        "gap_closed": 50 / (300 - 51.2),
+        "measured": True,
+        "skip_reason": None,
     }
 
 
@@ -56,19 +69,36 @@ def _document(cells: list[dict]) -> dict:
     measured = [c for c in cells if c.get("measured")]
     comparable = sum(1 for c in cells if c.get("comparable"))
     return {
-        "schema_version": 1, "kind": "host_owned_tuning_gsim_feedback", "round": 0,
-        "invocation": 1, "engine": "gsim",
-        "tuning_corpus_sha256": SHA, "candidate_sha256": SHA, "certificate_sha256": SHA,
+        "schema_version": 1,
+        "kind": "host_owned_tuning_gsim_feedback",
+        "round": 0,
+        "invocation": 1,
+        "engine": "gsim",
+        "tuning_corpus_sha256": SHA,
+        "candidate_sha256": SHA,
+        "certificate_sha256": SHA,
         "cells": cells,
-        "summary": {"members": len(cells), "comparable": comparable,
-                    "all_correct": comparable == len(measured),
-                    "peak_macs_per_cycle": 256, "peak_basis": "facts-derived",
-                    "achievable_macs_per_cycle": 80.0, "achievable_basis": "measured",
-                    "recoverable": PAS.recoverable_cycles(cells, 80.0)},
-        "stopping": {"status": "continue", "verdicts": [], "queries": 1,
-                     "baseline_total_cycles": 300.0, "candidate_total_cycles": 250.0,
-                     "best_total_cycles": 250.0, "previous_best_total_cycles": None,
-                     "attainable_total_cycles": 100.0, "share_of_attainable": 0.4},
+        "summary": {
+            "members": len(cells),
+            "comparable": comparable,
+            "all_correct": comparable == len(measured),
+            "peak_macs_per_cycle": 256,
+            "peak_basis": "facts-derived",
+            "achievable_macs_per_cycle": 80.0,
+            "achievable_basis": "measured",
+            "recoverable": PAS.recoverable_cycles(cells, 80.0),
+        },
+        "stopping": {
+            "status": "continue",
+            "verdicts": [],
+            "queries": 1,
+            "baseline_total_cycles": 300.0,
+            "candidate_total_cycles": 250.0,
+            "best_total_cycles": 250.0,
+            "previous_best_total_cycles": None,
+            "attainable_total_cycles": 100.0,
+            "share_of_attainable": 0.4,
+        },
     }
 
 
@@ -76,7 +106,8 @@ def test_an_unmeasured_cell_has_the_same_field_set_as_a_measured_one():
     """The redacted schema is an EXACT key set, so a differently shaped cell is rejected outright."""
     skipped = PAS._unmeasured_cell(_Member(), reason="the sweep stopped before paying for it")
     assert set(skipped) == set(_measured_cell()), (
-        "an unmeasured cell must differ from a measured one in its VALUES, never in its keys")
+        "an unmeasured cell must differ from a measured one in its VALUES, never in its keys"
+    )
 
 
 def test_a_sweep_that_skipped_a_member_still_validates():
@@ -116,6 +147,7 @@ def test_all_correct_is_a_claim_about_what_was_measured():
 
 def test_a_host_refusal_is_recorded_where_the_host_can_read_it(tmp_path):
     """The agent gets a type; the host must get the reason, or an hour buys one word."""
+
     class _Evaluator:
         work_root = tmp_path
 
@@ -123,8 +155,9 @@ def test_a_host_refusal_is_recorded_where_the_host_can_read_it(tmp_path):
         feedback_evaluator = _Evaluator()
         feedback_round = 0
 
-    PAS._record_host_refusal(_Stage(), PAS.StageGateError("cell 7 has invalid GSIM cycles"),
-                             round_index=0, call_index=8)
+    PAS._record_host_refusal(
+        _Stage(), PAS.StageGateError("cell 7 has invalid GSIM cycles"), round_index=0, call_index=8
+    )
     written = list((tmp_path / "host_refusals").glob("*.txt"))
     assert written, "the refusal left no host-side record"
     text = written[0].read_text()
@@ -144,18 +177,27 @@ def _capsule(tmp_path):
     source.mkdir()
     (source / "capsule.yaml").write_text("name: PK00_k16\n", encoding="utf-8")
     return SimpleNamespace(
-        family="PK", capsule="PK00_k16", source_dir=source,
+        family="PK",
+        capsule="PK00_k16",
+        source_dir=source,
         source_sha256="b" * 64,
-        descriptor={"label": "dev", "required_oracle_tiers": ["L0", "L1", "L2", "L3"]})
+        descriptor={"label": "dev", "required_oracle_tiers": ["L0", "L1", "L2", "L3"]},
+    )
 
 
 def _raw_pass():
-    return {"measurement": {
-        "status": "pass", "numeric": "pass", "failure": None,
-        "per_sim": {"spike": {"correct": True}, "gsim": {"correct": True, "cycles": 400}},
-        "gsim_qualification": {"admitted": True,
-                               "decision": {"selected_engine": "gsim", "certificate_sha256": SHA}},
-    }}
+    return {
+        "measurement": {
+            "status": "pass",
+            "numeric": "pass",
+            "failure": None,
+            "per_sim": {"spike": {"correct": True}, "gsim": {"correct": True, "cycles": 400}},
+            "gsim_qualification": {
+                "admitted": True,
+                "decision": {"selected_engine": "gsim", "certificate_sha256": SHA},
+            },
+        }
+    }
 
 
 def _raw_warm_profile(cycles: int = 400):
@@ -171,74 +213,113 @@ def _raw_warm_profile(cycles: int = 400):
         ],
     }
     byte_fact = lambda field, direction, unit: {  # noqa: E731 - compact exact fact fixture
-        "counter_field": field, "direction": direction, "unit_bytes": unit,
-        "fact_kind": "counter_byte_binding", "artifact_sha256": SHA,
-        "derived_from_rtl": True, "provenance": f"test RTL field {field}",
+        "counter_field": field,
+        "direction": direction,
+        "unit_bytes": unit,
+        "fact_kind": "counter_byte_binding",
+        "artifact_sha256": SHA,
+        "derived_from_rtl": True,
+        "provenance": f"test RTL field {field}",
     }
-    return {"measurement": {
-        "status": "pass", "numeric": "pass", "failure": None,
-        "per_sim": {
-            "spike": {"correct": True},
-            "gsim": {
-                "correct": True, "cycles": cycles,
-                "measurement_conditions": {
-                    "cache_protocol": "one_unmeasured_predecessor",
-                    "requested_cache_condition": "warm",
+    return {
+        "measurement": {
+            "status": "pass",
+            "numeric": "pass",
+            "failure": None,
+            "per_sim": {
+                "spike": {"correct": True},
+                "gsim": {
+                    "correct": True,
+                    "cycles": cycles,
+                    "measurement_conditions": {
+                        "cache_protocol": "one_unmeasured_predecessor",
+                        "requested_cache_condition": "warm",
+                    },
                 },
             },
-        },
-        "gsim_qualification": {
-            "admitted": True,
-            "decision": {"selected_engine": "gsim", "certificate_sha256": SHA},
-        },
-        "linked_counter_evidence": {
-            "status": "linked",
-            "occupancy": {"overlap": {
-                "state": "measured", "busy_cycles": {"compute_0": 300, "transfer_0": 90},
-                "realised_cycles": 50, "available_cycles": 100, "eta": 0.5,
-            }},
-            "physical_byte_counters": {
-                "semantic_resolution": "rtl_bound_physical_bytes",
-                "readings": {"READ": 25, "WRITE": 10},
-                "counter_facts": [byte_fact("READ", "read", 4),
-                                  byte_fact("WRITE", "write", 5)],
+            "gsim_qualification": {
+                "admitted": True,
+                "decision": {"selected_engine": "gsim", "certificate_sha256": SHA},
             },
-        },
-        "command_buffer_artifact": {"command_buffer": command_buffer},
-    }}
+            "linked_counter_evidence": {
+                "status": "linked",
+                "occupancy": {
+                    "overlap": {
+                        "state": "measured",
+                        "busy_cycles": {"compute_0": 300, "transfer_0": 90},
+                        "realised_cycles": 50,
+                        "available_cycles": 100,
+                        "eta": 0.5,
+                    }
+                },
+                "physical_byte_counters": {
+                    "semantic_resolution": "rtl_bound_physical_bytes",
+                    "readings": {"READ": 25, "WRITE": 10},
+                    "counter_facts": [byte_fact("READ", "read", 4), byte_fact("WRITE", "write", 5)],
+                },
+            },
+            "command_buffer_artifact": {"command_buffer": command_buffer},
+        }
+    }
 
 
 def _evaluator(tmp_path, member):
-    decision = SimpleNamespace(selected_engine="gsim", use_gsim=True, eligible=True,
-                               admitted=True, certificate_sha256=SHA,
-                               final_cycle_authority=False)
+    decision = SimpleNamespace(
+        selected_engine="gsim",
+        use_gsim=True,
+        eligible=True,
+        admitted=True,
+        certificate_sha256=SHA,
+        final_cycle_authority=False,
+    )
     return PAS.DevelopmentGsimFeedback(
-        SimpleNamespace(sha256=SHA), SimpleNamespace(capsules=[member], capsules_sha256=SHA),
-        Path("."), SHA, SimpleNamespace(target="t"), {}, tmp_path / "work",
+        SimpleNamespace(sha256=SHA),
+        SimpleNamespace(capsules=[member], capsules_sha256=SHA),
+        Path("."),
+        SHA,
+        SimpleNamespace(target="t"),
+        {},
+        tmp_path / "work",
         {(member.family, member.capsule): decision},
-        peak_macs_per_cycle=256, peak_basis="test",
-        achievable_macs_per_cycle=80.0, achievable_basis="test",
+        peak_macs_per_cycle=256,
+        peak_basis="test",
+        achievable_macs_per_cycle=80.0,
+        achievable_basis="test",
         tuning_call_budget=100,
-        executor=lambda **kw: _raw_pass())
+        executor=lambda **kw: _raw_pass(),
+    )
 
 
 def test_unavailable_execution_retries_same_bytes_once_and_keeps_attempts(tmp_path):
     member = _capsule(tmp_path)
     evaluator = _evaluator(tmp_path, member)
     seen = []
+
     def execute(**kw):
         seen.append(kw)
         if len(seen) == 1:
-            return {"measurement": {"numeric": "pass",
-                "gsim_qualification": {"admitted": False, "kind": "execution_missing"},
-                "execution_outcome": {"gsim": {"status": "not_observed",
-                    "tier_outcome": {"status": "unavailable"}}}}}
+            return {
+                "measurement": {
+                    "numeric": "pass",
+                    "gsim_qualification": {"admitted": False, "kind": "execution_missing"},
+                    "execution_outcome": {
+                        "gsim": {"status": "not_observed", "tier_outcome": {"status": "unavailable"}}
+                    },
+                }
+            }
         return _raw_pass()
+
     evaluator.executor = execute
     decision = evaluator.decisions[(member.family, member.capsule)]
-    result = evaluator._execute(arm="candidate", package=Path("immutable"), package_sha256=SHA,
-                                member=member, decision=decision, workspace=tmp_path / "attempt",
-                                timeout_s=20)
+    result = evaluator._execute(
+        arm="candidate",
+        package=Path("immutable"),
+        package_sha256=SHA,
+        member=member,
+        decision=decision,
+        workspace=tmp_path / "attempt",
+        timeout_s=20,
+    )
     assert len(seen) == 2
     assert seen[0]["package"] == seen[1]["package"]
     assert seen[0]["package_sha256"] == seen[1]["package_sha256"] == SHA
@@ -247,21 +328,32 @@ def test_unavailable_execution_retries_same_bytes_once_and_keeps_attempts(tmp_pa
     assert (tmp_path / "attempt.attempts.json").is_file()
 
 
-@pytest.mark.parametrize("kind,status", [("certificate_rejected", "unavailable"),
-                                        ("execution_missing", "fail")])
+@pytest.mark.parametrize("kind,status", [("certificate_rejected", "unavailable"), ("execution_missing", "fail")])
 def test_evidence_rejection_or_failed_execution_is_not_retried(tmp_path, kind, status):
     member = _capsule(tmp_path)
     evaluator = _evaluator(tmp_path, member)
     seen = []
+
     def execute(**kw):
         seen.append(kw)
-        return {"measurement": {"numeric": "pass",
-            "gsim_qualification": {"admitted": False, "kind": kind},
-            "execution_outcome": {"gsim": {"tier_outcome": {"status": status}}}}}
+        return {
+            "measurement": {
+                "numeric": "pass",
+                "gsim_qualification": {"admitted": False, "kind": kind},
+                "execution_outcome": {"gsim": {"tier_outcome": {"status": status}}},
+            }
+        }
+
     evaluator.executor = execute
-    evaluator._execute(arm="candidate", package=Path("immutable"), package_sha256=SHA,
-                       member=member, decision=evaluator.decisions[(member.family, member.capsule)],
-                       workspace=tmp_path / "attempt", timeout_s=20)
+    evaluator._execute(
+        arm="candidate",
+        package=Path("immutable"),
+        package_sha256=SHA,
+        member=member,
+        decision=evaluator.decisions[(member.family, member.capsule)],
+        workspace=tmp_path / "attempt",
+        timeout_s=20,
+    )
     assert len(seen) == 1
 
 
@@ -282,8 +374,7 @@ def test_a_note_written_while_the_sweep_runs_does_not_void_the_measurement(tmp_p
 
     def edit_then_run(**kw):
         # what the agent does DURING the sweep: append to its own notes
-        (candidate / "performance" / "iteration_notes.md").write_text("tried a thing\n",
-                                                                      encoding="utf-8")
+        (candidate / "performance" / "iteration_notes.md").write_text("tried a thing\n", encoding="utf-8")
         return _raw_pass()
 
     evaluator.executor = edit_then_run
@@ -311,16 +402,15 @@ def test_the_measured_bytes_are_the_ones_the_document_names(tmp_path):
     evaluator.executor = record
     document = evaluator.evaluate(candidate, round_index=0, call_index=1, timeout_s=600)
     assert seen, "no member ran"
-    assert all(p != candidate for p in seen), (
-        "the runs must read the snapshot, not the tree the agent is still editing")
+    assert all(p != candidate for p in seen), "the runs must read the snapshot, not the tree the agent is still editing"
     assert all(p == seen[0] for p in seen), "every member must read the SAME bytes"
     assert (seen[0] / "compiler.py").read_text() == (candidate / "compiler.py").read_text(), (
-        "the snapshot must be a faithful copy of what the agent submitted")
+        "the snapshot must be a faithful copy of what the agent submitted"
+    )
     assert document["candidate_sha256"]
 
 
-def test_reduced_global_profile_is_fixed_warm_minimal_and_counter_grounded(
-        tmp_path, monkeypatch):
+def test_reduced_global_profile_is_fixed_warm_minimal_and_counter_grounded(tmp_path, monkeypatch):
     """The explanatory profile is useful without turning into a second hidden benchmark."""
     member = _capsule(tmp_path)
     member.descriptor["performance"] = {"member_class": "OBJECTIVE"}
@@ -336,22 +426,28 @@ def test_reduced_global_profile_is_fixed_warm_minimal_and_counter_grounded(
 
     evaluator.executor = execute
     import merlin.runtime.backends.base as backend_base
-    monkeypatch.setattr(backend_base, "get_backend", lambda _target: SimpleNamespace(
-        counter_engine_kinds=lambda: {"compute_0": "compute", "transfer_0": "movement"}))
+
+    monkeypatch.setattr(
+        backend_base,
+        "get_backend",
+        lambda _target: SimpleNamespace(
+            counter_engine_kinds=lambda: {"compute_0": "compute", "transfer_0": "movement"}
+        ),
+    )
 
     document = evaluator.profile(candidate, round_index=0, call_index=0, timeout_s=600)
 
     assert document["witness"]["capsule"] == member.capsule
     assert document["witness"]["selected_before_candidate_measurement"] is True
     assert document["profile_contract"] == {
-        "warmup_runs": 1, "measured_runs": 1,
-        "primary_metric": "total_compute_cycles", "maximum_simulator_seconds": 600,
+        "warmup_runs": 1,
+        "measured_runs": 1,
+        "primary_metric": "total_compute_cycles",
+        "maximum_simulator_seconds": 600,
     }
     assert document["cycle_delta"] == -40
-    assert document["candidate"]["resource_busy_cycles"] == {
-        "compute_0": 300, "transfer_0": 90}
-    assert document["candidate"]["resource_kinds"] == {
-        "compute_0": "compute", "transfer_0": "movement"}
+    assert document["candidate"]["resource_busy_cycles"] == {"compute_0": 300, "transfer_0": 90}
+    assert document["candidate"]["resource_kinds"] == {"compute_0": "compute", "transfer_0": "movement"}
     assert document["candidate"]["physical_movement"]["total_bytes"] == 150
     assert document["candidate"]["measurement_conditions"] == {
         "cache_protocol": "one_unmeasured_predecessor",
@@ -388,41 +484,71 @@ def test_a_member_may_beat_the_empirical_ceiling_but_not_the_structural_peak():
 # ---------------------------------------------------------------------------------------------------
 def _many(tmp_path, n=6):
     from types import SimpleNamespace
+
     members = []
     for i in range(n):
         src = tmp_path / f"c{i}"
         src.mkdir()
-        members.append(SimpleNamespace(
-            family="PK", capsule=f"PK{i:02d}", source_dir=src, source_sha256="b" * 64,
-            descriptor={"label": "dev", "required_oracle_tiers": ["L0", "L1", "L2", "L3"]}))
+        members.append(
+            SimpleNamespace(
+                family="PK",
+                capsule=f"PK{i:02d}",
+                source_dir=src,
+                source_sha256="b" * 64,
+                descriptor={"label": "dev", "required_oracle_tiers": ["L0", "L1", "L2", "L3"]},
+            )
+        )
     return members
 
 
 def _evaluator_for(tmp_path, members, *, cycles):
     from types import SimpleNamespace
-    decision = SimpleNamespace(selected_engine="gsim", use_gsim=True, eligible=True,
-                               admitted=True, certificate_sha256=SHA, final_cycle_authority=False)
+
+    decision = SimpleNamespace(
+        selected_engine="gsim",
+        use_gsim=True,
+        eligible=True,
+        admitted=True,
+        certificate_sha256=SHA,
+        final_cycle_authority=False,
+    )
     seen = []
 
     def executor(**kw):
         import threading
+
         seen.append((kw["member"].capsule, kw["arm"], threading.get_ident()))
         n = cycles[kw["member"].capsule][kw["arm"]]
-        return {"measurement": {
-            "status": "pass", "numeric": "pass", "failure": None,
-            "per_sim": {"spike": {"correct": True}, "gsim": {"correct": True, "cycles": n}},
-            "gsim_qualification": {
-                "admitted": True,
-                "decision": {"selected_engine": "gsim", "certificate_sha256": SHA}}}}
+        return {
+            "measurement": {
+                "status": "pass",
+                "numeric": "pass",
+                "failure": None,
+                "per_sim": {"spike": {"correct": True}, "gsim": {"correct": True, "cycles": n}},
+                "gsim_qualification": {
+                    "admitted": True,
+                    "decision": {"selected_engine": "gsim", "certificate_sha256": SHA},
+                },
+            }
+        }
 
     ev = PAS.DevelopmentGsimFeedback(
         SimpleNamespace(sha256=SHA),
         SimpleNamespace(capsules=members, capsules_sha256=SHA),
-        Path("."), SHA, SimpleNamespace(target="t"), {}, tmp_path / "work",
+        Path("."),
+        SHA,
+        SimpleNamespace(target="t"),
+        {},
+        tmp_path / "work",
         {(m.family, m.capsule): decision for m in members},
-        peak_macs_per_cycle=256, peak_basis="t",
-        achievable_macs_per_cycle=80.0, achievable_basis="t", achievable_dispersion=0.2,
-        tuning_call_budget=100, executor=executor)
+        peak_macs_per_cycle=256,
+        peak_basis="t",
+        achievable_macs_per_cycle=80.0,
+        achievable_basis="t",
+        achievable_dispersion=0.2,
+        tuning_call_budget=100,
+        executor=executor,
+    )
     return ev, seen
 
 
@@ -434,8 +560,7 @@ def test_a_parallel_sweep_yields_the_same_cells_as_a_serial_one(tmp_path, monkey
     must agree cell for cell, in the same member order.
     """
     members = _many(tmp_path)
-    cycles = {m.capsule: {"baseline": 100 + i, "candidate": 90 + i}
-              for i, m in enumerate(members)}
+    cycles = {m.capsule: {"baseline": 100 + i, "candidate": 90 + i} for i, m in enumerate(members)}
 
     cand = tmp_path / "cand"
     (cand / "performance").mkdir(parents=True)
@@ -450,8 +575,10 @@ def test_a_parallel_sweep_yields_the_same_cells_as_a_serial_one(tmp_path, monkey
     parallel = parallel_ev.evaluate(cand, round_index=0, call_index=1, timeout_s=600)
 
     def shape(doc):
-        return [(c["capsule"], c["baseline_gsim_cycles"], c["candidate_gsim_cycles"],
-                 c["comparable"], c["measured"]) for c in doc["cells"]]
+        return [
+            (c["capsule"], c["baseline_gsim_cycles"], c["candidate_gsim_cycles"], c["comparable"], c["measured"])
+            for c in doc["cells"]
+        ]
 
     assert shape(parallel) == shape(serial), "fan-out changed the cells or their order"
 
@@ -459,7 +586,8 @@ def test_a_parallel_sweep_yields_the_same_cells_as_a_serial_one(tmp_path, monkey
     # engages -- which is the same as having built nothing.
     assert len({t for _, _, t in serial_seen}) == 1, "the serial sweep used more than one thread"
     assert len({t for _, _, t in parallel_seen}) > 1, (
-        "the declared fan-out measured everything on one thread; the sweep did not parallelise")
+        "the declared fan-out measured everything on one thread; the sweep did not parallelise"
+    )
 
 
 @pytest.mark.parametrize("workers", [1, 4])
@@ -476,8 +604,7 @@ def test_early_stopped_sweep_preserves_measured_correctness(tmp_path, monkeypatc
 
     prefix = evaluator.MINIMUM_REFUTING_PREFIX
     assert len(seen) == 2 * prefix
-    assert [cell["measured"] for cell in document["cells"]] == (
-        [True] * prefix + [False] * (len(members) - prefix))
+    assert [cell["measured"] for cell in document["cells"]] == ([True] * prefix + [False] * (len(members) - prefix))
     assert document["summary"]["all_correct"] is True
     assert document["summary"]["comparable"] == prefix
     assert document["summary"]["members"] == len(members)

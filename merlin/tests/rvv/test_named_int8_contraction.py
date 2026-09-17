@@ -8,6 +8,7 @@ small_llama_int8: 15 matmuls before the pass, 0 after. So the entire register-bl
 nothing on int8 while still reporting as applied, and an 87-fork beam over those levers emitted only
 21 distinct binaries and could not beat the two generic-level levers.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -21,6 +22,7 @@ def test_the_canonical_predicate_matches_what_linalg_matmul_promises():
     predicate must accept exactly that and nothing else, or we would be relabelling a contraction
     into a convention it does not have -- a correctness bug, not a missed optimization."""
     from merlin.llvmlower.passes_quant_int import _is_canonical_matmul as ok
+
     assert ok(3, [[0, 2], [2, 1]], [0, 1], [False, False, True])
     # a transposed B is NOT linalg.matmul
     assert not ok(3, [[0, 2], [1, 2]], [0, 1], [False, False, True])
@@ -33,7 +35,9 @@ def test_the_canonical_predicate_matches_what_linalg_matmul_promises():
 
 
 def test_the_feature_is_registered_and_default_off():
-    from merlin.llvmlower.impr_features import NAMED_INT8_CONTRACTION_NAME as N, get, known
+    from merlin.llvmlower.impr_features import NAMED_INT8_CONTRACTION_NAME as N
+    from merlin.llvmlower.impr_features import get, known
+
     assert N in known()
     f = get(N)
     assert f.action_class == "PASS"
@@ -52,6 +56,7 @@ def test_apply_quant_only_hands_the_flag_to_the_contraction_pass():
 def test_the_flag_restores_the_named_ops_and_the_default_does_not():
     """End-to-end on the real bundle: 15 matmuls erased by default, restored by the feature."""
     import collections
+
     bundle = repo_root() / "out/artifacts/recaptures/small_llama_int8_consistent/model.mlir"
     if not bundle.is_file():
         pytest.skip("small_llama int8 bundle not on disk")

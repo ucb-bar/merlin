@@ -18,6 +18,7 @@ recorded only the rounded value, under the name ``layer_extent``. A model whose 
 15 — the same layer, two paths, opposite verdicts, with only the flattering one written down. A padded
 tile is evidence that the PADDED shape runs; that is a weaker claim and must say so.
 """
+
 from __future__ import annotations
 
 import ast
@@ -39,18 +40,22 @@ _MESH = merlin_dir() / "python/merlin/compile/mesh.py"
 
 def test_model_grading_accepts_the_package_under_test():
     from merlin.targetgen.capsule_runner import _grade_model_capsule
+
     assert "package_dir" in inspect.signature(_grade_model_capsule).parameters, (
-        "the submission being graded must reach whole-model grading")
+        "the submission being graded must reach whole-model grading"
+    )
 
 
 def test_the_package_is_threaded_as_the_accelerator_backend_not_the_codegen_package():
     # the grade itself; `_grade_model_capsule` is the wall-clock budget wrapper around it
     seg = _fn_src(_RUNNER, "_grade_model_capsule_inline")
     assert "mesh_package=_pkg" in seg, (
-        "the submission is the OOT accelerator backend that certifies tiles -> mesh_package")
+        "the submission is the OOT accelerator backend that certifies tiles -> mesh_package"
+    )
     assert "package=_host_package_arg" in seg, (
         "`package` is the descriptor-pinned RVV host lane; it must not fall back to a certified/default "
-        "package merely because the submitted accelerator package is a different artifact")
+        "package merely because the submitted accelerator package is a different artifact"
+    )
 
 
 def test_run_capsule_passes_the_package_to_the_model_path():
@@ -70,4 +75,5 @@ def test_the_padding_note_states_the_weaker_claim():
     seg = _fn_src(_MESH, "_mesh_verify")
     assert "PADDED shape runs" in seg, (
         "a padded tile proves the padded shape runs, not the layer's own extent -- say so where a "
-        "reader of the record will see it")
+        "reader of the record will see it"
+    )

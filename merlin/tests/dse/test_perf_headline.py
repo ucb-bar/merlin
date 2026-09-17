@@ -8,6 +8,7 @@ Two failures this guards against, both of which look like success:
 * reading a lower bound that EXCEEDS its measurement as a good fit. A structural bound above the thing
   it bounds falsifies an input; quoting it as ~1.0 accuracy would turn a refutation into a headline.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -16,7 +17,6 @@ import json
 import pytest
 
 from merlin.common.paths import repo_root
-
 
 _MOD = None
 _BODY = None
@@ -67,9 +67,11 @@ def _report():
         try:
             body = mod.report("atlas", "vsim")
             if not body["claim_7_2_predicts"]["n_shapes_attempted"]:
-                _BODY_SKIP = ("no generated-shape measurements: the purgeable measurement cache "
-                              f"{mod.measure_path('atlas')} is absent, so the PREDICTS claim has no "
-                              "evidence behind it (re-measure with `headline.py measure`)")
+                _BODY_SKIP = (
+                    "no generated-shape measurements: the purgeable measurement cache "
+                    f"{mod.measure_path('atlas')} is absent, so the PREDICTS claim has no "
+                    "evidence behind it (re-measure with `headline.py measure`)"
+                )
             else:
                 _BODY = body
         except (Exception, SystemExit) as exc:  # noqa: BLE001 - absent cache/suite is a skip
@@ -95,7 +97,8 @@ def test_a_bound_above_its_measurement_is_reported_as_falsification() -> None:
     mod = _headline()
     src = (repo_root() / "merlin/experiments/performance_contract/headline.py").read_text()
     assert "falsifies" in src, (
-        "a lower bound exceeding its measurement must be named as falsification, not quoted as accuracy")
+        "a lower bound exceeding its measurement must be named as falsification, not quoted as accuracy"
+    )
 
 
 @pytest.mark.slow
@@ -108,7 +111,8 @@ def test_the_written_result_states_what_it_does_not_support() -> None:
     text = json.dumps(body)
     assert "NOT SUPPORTED" in text, "the result must name what the evidence does not support"
     assert "% of peak" in text or "attainment" in text, (
-        "no-attainment must be stated explicitly: speed_of_light is null for this target")
+        "no-attainment must be stated explicitly: speed_of_light is null for this target"
+    )
 
 
 @pytest.mark.slow
@@ -134,4 +138,5 @@ def test_the_two_claims_are_kept_apart_in_the_written_result() -> None:
     assert "claim_7_1_recovers" in body and "claim_7_2_predicts" in body
     text = " ".join(body["written_result"])
     assert "NOT the same measurement" in text or "not the same measurement" in text.lower(), (
-        "the written result must state that the two claims measure different things")
+        "the written result must state that the two claims measure different things"
+    )

@@ -12,6 +12,7 @@ the tier LABEL "L2" to "L#", so the agent could not even tell which tier blocked
 fully conformant model went into feedback naming nothing it could fix, and its effort decayed round over
 round. An oracle that is ABSENT and a program that RAN AND HUNG are different events.
 """
+
 from __future__ import annotations
 
 import inspect
@@ -34,19 +35,24 @@ def test_the_tier_reason_leads_the_detail(tmp_path):
     from merlin.targetgen import capsule_runner as R
     from merlin.targetgen.capsule_common import make_run_paths
 
-    paths = make_run_paths(tmp_path / "runs", "cap", suite="t", target="radiance",
-                           dtype="fp32", benchmark="cap")
+    paths = make_run_paths(tmp_path / "runs", "cap", suite="t", target="radiance", dtype="fp32", benchmark="cap")
     why = "atlas program did not halt within 20000 instructions (functional)"
     row = R._finalize_capsule_result(
         name="cap",
-        capsule={"name": "cap", "kind": "isa", "label": "public",
-                 "required_oracle_tiers": ["L2"]},
-        status="pass", failure=None,
+        capsule={"name": "cap", "kind": "isa", "label": "public", "required_oracle_tiers": ["L2"]},
+        status="pass",
+        failure=None,
         tiers={"L2": R.TierResult("L2", "unavailable", True, reason=why)},
         trace_check_res={"status": "skipped", "violations": []},
-        numeric={"status": "pass"}, required={"L2"}, no_oracle=False,
-        eff_target="radiance", paths=paths, run_id="cap",
-        cfg=R._config_for_target("radiance", "t", "fp32"), contract=None)
+        numeric={"status": "pass"},
+        required={"L2"},
+        no_oracle=False,
+        eff_target="radiance",
+        paths=paths,
+        run_id="cap",
+        cfg=R._config_for_target("radiance", "t", "fp32"),
+        contract=None,
+    )
 
     assert row["status"] != "pass", "a mandatory tier that did not run cannot yield a pass"
     fail = row["failure"]
@@ -60,8 +66,7 @@ def test_the_tier_label_survives_redaction():
     row_src = inspect.getsource(qc._per_capsule_from_results)
     assert '"failure_tier"' in row_src, "the tier label must be published"
     # the shape guard must accept a tier label and reject anything else
-    guard = (lambda v: v if isinstance(v, str) and len(v) <= 4 and v[:1] == "L"
-             and v[1:].isdigit() else None)
+    guard = lambda v: v if isinstance(v, str) and len(v) <= 4 and v[:1] == "L" and v[1:].isdigit() else None
     assert guard("L2") == "L2"
     assert guard("L15") == "L15"
     assert guard(None) is None
@@ -71,8 +76,7 @@ def test_the_tier_label_survives_redaction():
 
 def test_a_hung_program_still_reads_as_a_hung_program_after_redaction():
     """Numbers are scrubbed, but the sentence must stay actionable."""
-    detail = ("atlas program did not halt within 20000 instructions (functional) "
-              "(mandatory tier L2, status unavailable)")
+    detail = "atlas program did not halt within 20000 instructions (functional) (mandatory tier L2, status unavailable)"
     out = qc._redact_detail(detail)
     assert "did not halt" in out, "the actionable verb must survive"
     assert "20000" not in out, "concrete numbers are still scrubbed"

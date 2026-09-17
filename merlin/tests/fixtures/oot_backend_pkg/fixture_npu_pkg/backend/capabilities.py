@@ -4,6 +4,7 @@ proves a MULTI-MODULE out-of-tree backend package loads with its intra-package r
 intact. If base._load_oot_backend loaded the package's ``__init__`` as a bare single file (no
 ``__path__``), the relative import would raise and the backend would fail to register.
 """
+
 from __future__ import annotations
 
 from merlin.runtime.backends.base import BackendKind, TargetClass

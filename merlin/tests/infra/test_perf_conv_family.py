@@ -11,6 +11,7 @@ Two failures this pins, both of which actually happened:
   because every check counted members rather than comparing them. A fit over points that are
   secretly the same point is not a fit.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -55,7 +56,8 @@ def test_no_blocked_family_claims_convolution_is_unmodelled():
         for opcode in reference.MODELED_OPCODES:
             assert opcode not in reason or "no definition" not in reason, (
                 f"family {entry.get('family')} is blocked on {opcode}, which the reference engine "
-                f"models; the record is false")
+                f"models; the record is false"
+            )
 
 
 def test_the_conv_family_is_live_and_fits_over_four_distinct_points():
@@ -65,7 +67,8 @@ def test_the_conv_family_is_live_and_fits_over_four_distinct_points():
     assert len(fit_axes) == 1, "one varied axis, so the fitted rate is against one quantity"
     points = (sweep.get("axes") or {}).get(fit_axes[0])
     assert len({repr(p) for p in points}) >= 4, (
-        "two distinct points fit a line exactly and cannot refute one; a law needs slack")
+        "two distinct points fit a line exactly and cannot refute one; a law needs slack"
+    )
 
 
 def test_the_fitted_axis_is_derived_from_the_array_not_an_absolute_extent():
@@ -74,7 +77,8 @@ def test_the_fitted_axis_is_derived_from_the_array_not_an_absolute_extent():
     sweep = _conv_sweep()
     points = (sweep.get("axes") or {})[(sweep.get("fit_axes") or [])[0]]
     assert all(isinstance(p, str) and "tile" in p for p in points), (
-        f"every fitted point must be a tile multiple; got {points!r}")
+        f"every fitted point must be a tile multiple; got {points!r}"
+    )
 
 
 def test_the_conv_members_expand_to_distinct_workloads():
@@ -86,8 +90,14 @@ def test_the_conv_members_expand_to_distinct_workloads():
 
     sweep = _conv_sweep()
     binding = corpus_spec.CorpusBinding(
-        target="gemmini", tile_dim=TILE_DIM, operand_dtype="int8", accum_dtype="int32",
-        integer=True, tiers=["L2", "L3"], compare="exact")
+        target="gemmini",
+        tile_dim=TILE_DIM,
+        operand_dtype="int8",
+        accum_dtype="int32",
+        integer=True,
+        tiers=["L2", "L3"],
+        compare="exact",
+    )
     rows = generate_corpus.expand_sweeps({"sweeps": [sweep]}, binding)
     assert len(rows) >= 4
 
@@ -99,4 +109,5 @@ def test_the_conv_members_expand_to_distinct_workloads():
         shapes.add(weight[0])
     assert len(shapes) == len(rows), (
         f"{len(rows)} members collapsed onto {len(shapes)} distinct workload(s); a fit over "
-        f"repeated points is not a fit")
+        f"repeated points is not a fit"
+    )

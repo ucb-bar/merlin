@@ -4,6 +4,7 @@
 is only sound when the transpose is that argument's sole consumer, because anything else reading the
 argument would silently begin seeing transposed data.
 """
+
 from __future__ import annotations
 
 from merlin.common import mlir_query as mq
@@ -60,7 +61,7 @@ def test_a_sole_use_weight_transpose_is_hoistable_and_priced():
     assert r.hoistable and r.reason == ""
     assert r.shape == [256000, 2304] and r.result_shape == [2304, 256000]
     assert r.dtype == "i8"
-    assert r.bytes_moved == 256000 * 2304        # the 562.5 MiB head
+    assert r.bytes_moved == 256000 * 2304  # the 562.5 MiB head
     assert rep.hoistable_bytes == 256000 * 2304
     assert rep.unpriceable == []
 

@@ -9,6 +9,7 @@ lets a stock linker + this patcher replace the fork with a byte-identical, boot-
 The full link+cyclotron proof needs the local radiance toolchain and is exercised out of band; here we
 lock the field math and the fail-closed contract that guard against a silently mis-patched boot.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -18,8 +19,16 @@ from merlin.targetgen.fixed_format import link as ML
 # Fixed-format field layout for the SIMT target (derived from its RTL-derived IsaModel). Kept explicit
 # here so the packing math is tested hermetically; test_derived_layout_matches checks it still equals
 # what the derivation produces, so this can never silently drift from the real target.
-FIELD_LAYOUT = {"opcode": (6, 0), "f3": (19, 17), "f7": (58, 52), "rd": (16, 9),
-                "rs1": (27, 20), "rs2": (35, 28), "rs3": (43, 36), "imm24": (59, 36)}
+FIELD_LAYOUT = {
+    "opcode": (6, 0),
+    "f3": (19, 17),
+    "f7": (58, 52),
+    "rd": (16, 9),
+    "rs1": (27, 20),
+    "rs2": (35, 28),
+    "rs3": (43, 36),
+    "imm24": (59, 36),
+}
 
 
 def test_full_immediate_splits_into_imm24_and_rs2_high_byte():
@@ -51,8 +60,13 @@ def test_field_layout_missing_required_field_fails_closed():
 def test_relocation_type_numbers_are_psabi_constants():
     # These are the ELF/RISC-V psABI numbers (identical for every RISC-V target) -- the values the
     # patcher dispatches on. Guard against an accidental edit that would mis-route a relocation.
-    assert (ML.R_RISCV_BRANCH, ML.R_RISCV_JAL, ML.R_RISCV_CALL_PLT,
-            ML.R_RISCV_PCREL_HI20, ML.R_RISCV_PCREL_LO12_I) == (16, 17, 19, 23, 24)
+    assert (ML.R_RISCV_BRANCH, ML.R_RISCV_JAL, ML.R_RISCV_CALL_PLT, ML.R_RISCV_PCREL_HI20, ML.R_RISCV_PCREL_LO12_I) == (
+        16,
+        17,
+        19,
+        23,
+        24,
+    )
 
 
 def test_resolve_stock_linker_rejects_missing_explicit(tmp_path):
@@ -66,6 +80,7 @@ def test_derived_layout_matches_isamodel():
     try:
         from merlin.targetgen.isa_model import isa_model_from_encoding
         from merlin.targetgen.rtl import mlc_bridge
+
         m = isa_model_from_encoding("radiance", mlc_bridge.isa_encoding_for("radiance"))
     except Exception as exc:  # noqa: BLE001 -- derivation needs the local target encoding
         pytest.skip(f"radiance IsaModel not derivable here: {exc}")

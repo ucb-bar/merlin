@@ -5,23 +5,53 @@ reference logic in build_tools/scripts/run_autonomous_beam_experiment.py — the
 Named with "experiment"/"compare" so the pre-commit -k filter selects them. No board, no ET venv:
 fixtures are hand-written BaselineResult JSONs (pass / not_run / int8 variant-mismatch).
 """
+
 from __future__ import annotations
 
 import importlib.util
 
 from merlin.baselines.contract import BaselineResult
 from merlin.common.paths import repo_root
-from merlin.compare.executorch_column import (EXECUTORCH_LABEL, XNNPACK_KERNELS_LABEL,
-                                              dtype_comparability, executorch_cell, gate_basis)
+from merlin.compare.executorch_column import (
+    EXECUTORCH_LABEL,
+    XNNPACK_KERNELS_LABEL,
+    dtype_comparability,
+    executorch_cell,
+    gate_basis,
+)
 
 
-def _write_result(root, model, variant, *, built, ran, cos=None, rel=None, wall_ns=None,
-                  cos_threshold=0.9999, rel_threshold=2e-3, gap_reason="", ts="20260101T000000Z"):
+def _write_result(
+    root,
+    model,
+    variant,
+    *,
+    built,
+    ran,
+    cos=None,
+    rel=None,
+    wall_ns=None,
+    cos_threshold=0.9999,
+    rel_threshold=2e-3,
+    gap_reason="",
+    ts="20260101T000000Z",
+):
     """Write one baseline_result.json into the measurements tree the ingester reads."""
-    res = BaselineResult(framework="executorch", model=model, variant=variant,
-                         substrate="k1_spacemit", built=built, ran=ran, cos=cos, rel=rel,
-                         e2e_wall_ns=wall_ns, cos_threshold=cos_threshold,
-                         rel_threshold=rel_threshold, gap_reason=gap_reason, timestamp=ts)
+    res = BaselineResult(
+        framework="executorch",
+        model=model,
+        variant=variant,
+        substrate="k1_spacemit",
+        built=built,
+        ran=ran,
+        cos=cos,
+        rel=rel,
+        e2e_wall_ns=wall_ns,
+        cos_threshold=cos_threshold,
+        rel_threshold=rel_threshold,
+        gap_reason=gap_reason,
+        timestamp=ts,
+    )
     d = root / "out/artifacts/measurements/k1_spacemit" / model / f"{model}_{variant}_{ts}"
     d.mkdir(parents=True, exist_ok=True)
     res.write(d)
@@ -40,8 +70,7 @@ def _load_experiment_module():
 # ---------------------------------------------------------------- executorch_cell ingest/labeling
 def test_experiment_executorch_column_passing_cell_is_measured(tmp_path):
     # bitvla is random-init -> gate_basis must say lowering-exactness, not semantic.
-    _write_result(tmp_path, "bitvla", "fp32", built=True, ran=True, cos=0.99999999,
-                  rel=1.6e-6, wall_ns=146_000_000)
+    _write_result(tmp_path, "bitvla", "fp32", built=True, ran=True, cos=0.99999999, rel=1.6e-6, wall_ns=146_000_000)
     cell = executorch_cell("bitvla", "fp32", root=tmp_path)
     assert cell["executorch_status"] == "measured"
     assert cell["executorch_wall_ns"] == 146_000_000.0
@@ -52,8 +81,7 @@ def test_experiment_executorch_column_passing_cell_is_measured(tmp_path):
 
 def test_experiment_executorch_column_semantic_gate_label(tmp_path):
     # rdt2's captured golden IS reproducible -> semantic gate label (not lowering-exactness).
-    _write_result(tmp_path, "rdt2", "fp32", built=True, ran=True, cos=0.99999,
-                  rel=1e-4, wall_ns=855_000_000)
+    _write_result(tmp_path, "rdt2", "fp32", built=True, ran=True, cos=0.99999, rel=1e-4, wall_ns=855_000_000)
     cell = executorch_cell("rdt2", "fp32", root=tmp_path)
     assert cell["executorch_status"] == "measured"
     assert cell["gate_basis"].startswith("semantic")
@@ -61,8 +89,9 @@ def test_experiment_executorch_column_semantic_gate_label(tmp_path):
 
 
 def test_experiment_executorch_column_not_run_is_not_measured(tmp_path):
-    _write_result(tmp_path, "rdt2", "fp32", built=True, ran=False,
-                  gap_reason="K1 board unavailable (MERLIN_K1_HOST unset)")
+    _write_result(
+        tmp_path, "rdt2", "fp32", built=True, ran=False, gap_reason="K1 board unavailable (MERLIN_K1_HOST unset)"
+    )
     cell = executorch_cell("rdt2", "fp32", root=tmp_path)
     assert cell["executorch_status"] == "not_measured"
     assert cell["executorch_wall_ns"] is None
@@ -71,8 +100,7 @@ def test_experiment_executorch_column_not_run_is_not_measured(tmp_path):
 
 def test_experiment_executorch_column_fail_never_reported_as_number(tmp_path):
     # An executed-but-failed run (missed tolerance) is a gap, NEVER a wall number.
-    _write_result(tmp_path, "rdt2", "fp32", built=True, ran=True, cos=0.5, rel=0.9,
-                  wall_ns=999_000_000, gap_reason="")
+    _write_result(tmp_path, "rdt2", "fp32", built=True, ran=True, cos=0.5, rel=0.9, wall_ns=999_000_000, gap_reason="")
     cell = executorch_cell("rdt2", "fp32", root=tmp_path)
     assert cell["executorch_status"] == "not_measured"
     assert cell["executorch_wall_ns"] is None
@@ -83,8 +111,7 @@ def test_experiment_executorch_column_fail_never_reported_as_number(tmp_path):
 def test_experiment_executorch_column_int8_never_borrows_fp32_number(tmp_path):
     # A passing fp32 exists but int8 was NOT run -> the int8 cell must be not_measured, never the
     # fp32 wall (variant-mismatch honesty).
-    _write_result(tmp_path, "rdt2", "fp32", built=True, ran=True, cos=0.99999, rel=1e-4,
-                  wall_ns=855_000_000)
+    _write_result(tmp_path, "rdt2", "fp32", built=True, ran=True, cos=0.99999, rel=1e-4, wall_ns=855_000_000)
     cell = executorch_cell("rdt2", "int8", root=tmp_path)
     assert cell["executorch_status"] == "not_measured"
     assert cell["executorch_wall_ns"] is None
@@ -106,16 +133,26 @@ def test_experiment_executorch_column_ram_infeasible_reason(tmp_path):
 
 
 def test_experiment_gate_basis_matches_random_init_set():
-    assert "lowering-exactness" in gate_basis("bitvla")   # random-init
-    assert gate_basis("rdt2").startswith("semantic")      # reproducible golden
+    assert "lowering-exactness" in gate_basis("bitvla")  # random-init
+    assert gate_basis("rdt2").startswith("semantic")  # reproducible golden
 
 
 # ---------------------------------------------------------------- int8 reference-bug fix
 def test_experiment_reference_int8_uses_executorch_never_fp32_xnnpack(tmp_path):
     mod = _load_experiment_module()
     # A passing ExecuTorch int8 result exists -> it is the int8 reference (int8-vs-int8).
-    _write_result(tmp_path, "rdt2", "int8", built=True, ran=True, cos=0.995, rel=1e-2,
-                  wall_ns=700_000_000, cos_threshold=0.99, rel_threshold=5e-2)
+    _write_result(
+        tmp_path,
+        "rdt2",
+        "int8",
+        built=True,
+        ran=True,
+        cos=0.995,
+        rel=1e-2,
+        wall_ns=700_000_000,
+        cos_threshold=0.99,
+        rel_threshold=5e-2,
+    )
     ref = mod._reference("rdt2", "int8", tmp_path)
     assert ref["kind"] == "executorch_external"
     assert ref["wall_ns"] == 700_000_000.0
@@ -126,8 +163,7 @@ def test_experiment_reference_int8_uses_executorch_never_fp32_xnnpack(tmp_path):
 def test_experiment_reference_int8_without_et_is_none_never_fp32(tmp_path):
     mod = _load_experiment_module()
     # Only a passing fp32 ET result exists -> the int8 reference must be None, NEVER the fp32 wall.
-    _write_result(tmp_path, "rdt2", "fp32", built=True, ran=True, cos=0.99999, rel=1e-4,
-                  wall_ns=855_000_000)
+    _write_result(tmp_path, "rdt2", "fp32", built=True, ran=True, cos=0.99999, rel=1e-4, wall_ns=855_000_000)
     ref = mod._reference("rdt2", "int8", tmp_path)
     assert ref["kind"] is None
     assert ref["wall_ns"] is None
@@ -136,7 +172,7 @@ def test_experiment_reference_int8_without_et_is_none_never_fp32(tmp_path):
 
 def test_experiment_reference_fp32_is_xnnpack_in_runtime_label(tmp_path):
     mod = _load_experiment_module()
-    ref = mod._reference("rdt2", "fp32", tmp_path)   # wall_ns may be None if no local four-way cache
+    ref = mod._reference("rdt2", "fp32", tmp_path)  # wall_ns may be None if no local four-way cache
     assert ref["kind"] == "xnnpack_kernels_in_runtime"
     assert ref["label"] == XNNPACK_KERNELS_LABEL
     assert ref["dtype"] == "fp32"
@@ -158,7 +194,7 @@ def test_dtype_comparability_states_the_per_dtype_caveats():
     assert "NO in-runtime" in int8 and "ExecuTorch" in int8
     # fp16: same storage, DIFFERENT accumulate — must be flagged, never presented as a clean match.
     assert "ACCUMULATE-ASYMMETRIC" in fp16 and "vfwmacc" in fp16
-    assert "not a like-for-like" in fp16 and "caveated" in fp16   # explicitly negated, never clean
+    assert "not a like-for-like" in fp16 and "caveated" in fp16  # explicitly negated, never clean
     # an unknown dtype fails loud rather than implying a match.
     assert "UNKNOWN" in dtype_comparability("fp8")
     # every measured/not-measured cell carries the field.
@@ -176,6 +212,7 @@ def test_dtype_comparability_states_the_per_dtype_caveats():
 # gap is worse) but the number was not citable -- and nothing in the code could say so.
 # ---------------------------------------------------------------------------------------
 
+
 def test_a_bundle_mismatch_is_refused_rather_than_ratioed():
     from merlin.compare.executorch_column import bundle_mismatch_reason
 
@@ -183,7 +220,7 @@ def test_a_bundle_mismatch_is_refused_rather_than_ratioed():
     why = bundle_mismatch_reason("rdt2_int8_consistent", "rdt2_int8_full")
     assert why and "MISMATCH" in why
     assert "rdt2_int8_consistent" in why and "rdt2_int8_full" in why
-    assert "not a speedup" in why          # says what the consequence IS
+    assert "not a speedup" in why  # says what the consequence IS
 
 
 def test_an_unrecorded_bundle_identity_is_refused_not_assumed_to_match():
@@ -225,16 +262,27 @@ def test_the_measurement_record_carries_the_bundle_it_was_taken_on():
 
     from merlin.baselines.contract import BaselineResult
 
-    r = BaselineResult(framework="executorch", model="rdt2", variant="int8",
-                       built=True, ran=True, cos=1.0, e2e_wall_ns=123,
-                       bundle_id="rdt2_int8_full")
+    r = BaselineResult(
+        framework="executorch",
+        model="rdt2",
+        variant="int8",
+        built=True,
+        ran=True,
+        cos=1.0,
+        e2e_wall_ns=123,
+        bundle_id="rdt2_int8_full",
+    )
     d = Path(mkdtemp()) / "baseline_result.json"
-    d.write_text(json.dumps({k: v for k, v in r.__dict__.items()
-                             if k not in ("regions", "scalar_fallbacks")}
-                            | {"regions": [], "scalar_fallbacks": []}))
+    d.write_text(
+        json.dumps(
+            {k: v for k, v in r.__dict__.items() if k not in ("regions", "scalar_fallbacks")}
+            | {"regions": [], "scalar_fallbacks": []}
+        )
+    )
     assert BaselineResult.load(d).bundle_id == "rdt2_int8_full"
     # a record predating the field loads with an EMPTY id, which the guard treats as UNKNOWN
-    raw = json.loads(d.read_text()); raw.pop("bundle_id")
+    raw = json.loads(d.read_text())
+    raw.pop("bundle_id")
     d.write_text(json.dumps(raw))
     assert BaselineResult.load(d).bundle_id == ""
 
@@ -288,14 +336,13 @@ def test_our_recipe_is_never_derived_from_what_the_reference_ran():
     src = (repo_root() / "build_tools" / "scripts" / "k1_int8_fair_compare.py").read_text()
     assert 'OURS_QUANT_RECIPE = "torchao_sym_per_token_w8a8"' in src
     assert "quant_recipe_mismatch_reason(OURS_QUANT_RECIPE, ref_recipe)" in src
-    assert 'recipe_requested"] == "pt2e_qd8"' not in src, (
-        "our recipe is being selected from the reference arm again")
+    assert 'recipe_requested"] == "pt2e_qd8"' not in src, "our recipe is being selected from the reference arm again"
 
 
 def test_torchao_symmetric_and_xnnpack_qd8_are_not_declared_equivalent():
     """Both are dynamic W8A8, but their activation qparam selection differs bit-observably."""
-    from merlin.compare.executorch_column import (QUANT_RECIPE_EQUIVALENT,
-                                                  quant_recipe_mismatch_reason)
+    from merlin.compare.executorch_column import QUANT_RECIPE_EQUIVALENT, quant_recipe_mismatch_reason
+
     assert not QUANT_RECIPE_EQUIVALENT
     for other in ("pt2e_qd8", "weight_only", "pt2e_qs8"):
         why = quant_recipe_mismatch_reason("torchao_sym_per_token_w8a8", other)
@@ -308,6 +355,7 @@ def test_torchao_symmetric_and_xnnpack_qd8_are_not_declared_equivalent():
 def test_an_unknown_recipe_is_still_refused_even_against_an_equivalent_one():
     """The equivalence must not resurrect the UNKNOWN case: empty is refused, as before."""
     from merlin.compare.executorch_column import quant_recipe_mismatch_reason
+
     assert "UNKNOWN" in (quant_recipe_mismatch_reason("", "pt2e_qd8") or "")
     assert "UNKNOWN" in (quant_recipe_mismatch_reason("torchao_sym_per_token_w8a8", "") or "")
 
@@ -321,6 +369,7 @@ def test_accuracy_scored_against_different_references_is_refused_not_ranked():
     produced a false 'ExecuTorch is more accurate than us' in this workstream. Refuse instead.
     """
     from merlin.compare.executorch_column import accuracy_reference_mismatch_reason as why
+
     m = why("capture_golden_w8a8", "recomputed_fp32")
     assert m and "MISMATCH" in m
     assert "cannot be ordered" in m
@@ -355,9 +404,18 @@ def test_the_harness_keeps_every_tier_score_not_the_collapsed_pair():
 
 
 def test_a_reference_failing_on_rel_says_so_and_does_not_read_as_broken_cos(tmp_path):
-    _write_result(tmp_path, "tiny_llama", "int8", built=True, ran=True, cos=0.9943368460376679,
-                  rel=0.10627618720798984, wall_ns=391_514_666,
-                  cos_threshold=0.99, rel_threshold=5e-2)
+    _write_result(
+        tmp_path,
+        "tiny_llama",
+        "int8",
+        built=True,
+        ran=True,
+        cos=0.9943368460376679,
+        rel=0.10627618720798984,
+        wall_ns=391_514_666,
+        cos_threshold=0.99,
+        rel_threshold=5e-2,
+    )
     cell = executorch_cell("tiny_llama", "int8", root=tmp_path)
     assert cell["executorch_status"] == "not_measured"
     assert cell["executorch_wall_ns"] is None, "a failing reference must not carry a number"
@@ -368,15 +426,23 @@ def test_a_reference_failing_on_rel_says_so_and_does_not_read_as_broken_cos(tmp_
 
 
 def test_the_reference_accuracy_bar_is_recorded_so_it_can_be_compared_with_ours(tmp_path):
-    _write_result(tmp_path, "tiny_llama", "int8", built=True, ran=True, cos=0.9943368460376679,
-                  rel=0.10627618720798984, wall_ns=391_514_666,
-                  cos_threshold=0.99, rel_threshold=5e-2)
+    _write_result(
+        tmp_path,
+        "tiny_llama",
+        "int8",
+        built=True,
+        ran=True,
+        cos=0.9943368460376679,
+        rel=0.10627618720798984,
+        wall_ns=391_514_666,
+        cos_threshold=0.99,
+        rel_threshold=5e-2,
+    )
     bar = executorch_cell("tiny_llama", "int8", root=tmp_path)["ref_accuracy_bar"]
     # Our arm's int8 gate is a DIFFERENT SHAPE (cos>0.99 plus argmax plus a per-element term, with
     # no aggregate rel bound at the fp32 tier). Recording the reference's bar is what lets a reader
     # see that "both passed" never meant "both cleared the same test".
-    assert bar == {"cos_threshold": 0.99, "rel_threshold": 5e-2,
-                   "cos": 0.9943368460376679, "rel": 0.10627618720798984}
+    assert bar == {"cos_threshold": 0.99, "rel_threshold": 5e-2, "cos": 0.9943368460376679, "rel": 0.10627618720798984}
 
 
 # ------------------------------------------------- what makes a cosine semantic is TRAINED weights

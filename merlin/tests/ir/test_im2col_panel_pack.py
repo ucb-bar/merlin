@@ -11,6 +11,7 @@ Four things are asserted, in the order they can fail:
 4. **It computes the same thing.** The packed form is evaluated against the unpacked one by
    interpreting both indexing schemes over the same input, element for element.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -21,10 +22,10 @@ from merlin.llvmlower import impr_features as F
 from merlin.llvmlower import perop_blocks as pb
 from merlin.llvmlower import pipeline as P
 
-
 # ---------------------------------------------------------------------------------------------------
 # a minimal im2col chain, in the exact form model2MLIR emits (and passes_quant_int leaves behind)
 # ---------------------------------------------------------------------------------------------------
+
 
 def _module(*, c=2, kh=3, kw=3, n=1, oh=4, ow=32, f=8, sh=1, sw=1, dh=1, dw=1):
     hin, win = (oh - 1) * sh + (kh - 1) * dh + 1, (ow - 1) * sw + (kw - 1) * dw + 1
@@ -79,20 +80,21 @@ def _table(f, m, k, mr, nr):
 # 1. the frozen baseline
 # ---------------------------------------------------------------------------------------------------
 
+
 def test_the_feature_is_registered_so_the_search_can_see_it():
     # `wholemodel_proposer._composes` swallows the KeyError for an unregistered name and answers
     # False, so an unregistered lever is never proposed AND never complains.
     assert ip.ensure_registered() == ip.FEATURE
     assert ip.FEATURE in F.known()
     from merlin.mining.wholemodel_proposer import RANKED_LEVERS, _composes
+
     assert ip.FEATURE in [n for n, _ in RANKED_LEVERS]
     assert _composes(["perop_register_block", ip.FEATURE])
 
 
 def test_empty_feature_set_leaves_the_pipeline_and_schedule_byte_identical():
     ip.ensure_registered()
-    assert P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset()) == \
-        P.build_rvv_pipeline("/tmp/s.mlir")
+    assert P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset()) == P.build_rvv_pipeline("/tmp/s.mlir")
     assert F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset()) == P.RVV_TRANSFORM_SCHEDULE
 
 
@@ -104,8 +106,7 @@ def test_the_feature_edits_no_pipeline_and_no_schedule_of_its_own():
     assert not feat.schedule_replace
     base = P.build_rvv_pipeline("/tmp/s.mlir")
     assert P.build_rvv_pipeline("/tmp/s.mlir", features=frozenset({ip.FEATURE})) == base
-    assert F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset({ip.FEATURE})) == \
-        P.RVV_TRANSFORM_SCHEDULE
+    assert F.apply_schedule(P.RVV_TRANSFORM_SCHEDULE, frozenset({ip.FEATURE})) == P.RVV_TRANSFORM_SCHEDULE
 
 
 def test_a_module_with_no_im2col_chain_is_left_alone():
@@ -143,13 +144,17 @@ module {
 # 2. the rewrite
 # ---------------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("kw_args", [
-    dict(),                                   # stride 1, dilation 1
-    dict(sh=2, sw=2, ow=32, oh=4),            # strided
-    dict(dh=2, dw=2),                         # dilated
-    dict(c=1, kh=1, kw=1),                    # 1x1 (pointwise)
-    dict(f=3),                                # a non-power-of-two M extent
-])
+
+@pytest.mark.parametrize(
+    "kw_args",
+    [
+        dict(),  # stride 1, dilation 1
+        dict(sh=2, sw=2, ow=32, oh=4),  # strided
+        dict(dh=2, dw=2),  # dilated
+        dict(c=1, kh=1, kw=1),  # 1x1 (pointwise)
+        dict(f=3),  # a non-power-of-two M extent
+    ],
+)
 def test_the_chain_is_rewritten_into_a_packed_gather_and_a_panel_loop(kw_args):
     args = dict(c=2, kh=3, kw=3, n=1, oh=4, ow=32, f=8, sh=1, sw=1, dh=1, dw=1)
     args.update(kw_args)
@@ -188,14 +193,20 @@ def _mlir_opt_verifies(text: str) -> None:
     opt = repo_root() / "third_party/llvm-install/bin/mlir-opt"
     if not opt.is_file():
         pytest.skip(f"no mlir-opt at {opt}")
-    proc = subprocess.run([str(opt), "--allow-unregistered-dialect", "-o", "/dev/null"],
-                          input=text, capture_output=True, text=True, timeout=300)
+    proc = subprocess.run(
+        [str(opt), "--allow-unregistered-dialect", "-o", "/dev/null"],
+        input=text,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
     assert proc.returncode == 0, proc.stderr
 
 
 # ---------------------------------------------------------------------------------------------------
 # 3. fail closed
 # ---------------------------------------------------------------------------------------------------
+
 
 def test_a_geometry_the_block_table_did_not_price_is_refused_not_guessed():
     module = mq.parse(_module())
@@ -250,7 +261,8 @@ def test_a_gather_whose_result_has_a_second_consumer_is_refused():
         "    %d = tensor.empty() : tensor<18x128xi8>\n"
         "    %copy = linalg.copy ins(%col : tensor<18x128xi8>) outs(%d : tensor<18x128xi8>)"
         " -> tensor<18x128xi8>\n"
-        "    func.return %mm : tensor<8x128xi32>")
+        "    func.return %mm : tensor<8x128xi32>",
+    )
     module = mq.parse(src)
     report = ip.rewrite_module(module, _table(8, 128, 18, 4, 16))
     assert report.packed == 0
@@ -269,8 +281,10 @@ def test_every_refusal_is_counted_under_a_name():
 # 4. same arithmetic
 # ---------------------------------------------------------------------------------------------------
 
-@pytest.mark.parametrize("sh,sw,dh,dw,ow,oh", [(1, 1, 1, 1, 32, 4), (2, 2, 1, 1, 32, 4),
-                                               (1, 1, 2, 2, 32, 4), (3, 1, 1, 2, 16, 3)])
+
+@pytest.mark.parametrize(
+    "sh,sw,dh,dw,ow,oh", [(1, 1, 1, 1, 32, 4), (2, 2, 1, 1, 32, 4), (1, 1, 2, 2, 32, 4), (3, 1, 1, 2, 16, 3)]
+)
 def test_the_packed_index_scheme_addresses_the_same_element(sh, sw, dh, dw, ow, oh):
     """``col_p[mo][k][mi] == col[k][mo*NR + mi]`` for every element, evaluated from the two schemes.
 
@@ -294,19 +308,20 @@ def test_the_packed_index_scheme_addresses_the_same_element(sh, sw, dh, dw, ow, 
                             assert mo == (nn * oh + o) * (ow // nr) + owo
                             assert mi == owi
                             # ...and the packed gather's own map, as `_rewrite_one` writes it
-                            packed_src = (nn, cc, o * sh + i * dh,
-                                          owo * (sw * nr) + owi * sw + j * dw)
+                            packed_src = (nn, cc, o * sh + i * dh, owo * (sw * nr) + owi * sw + j * dw)
                             assert packed_src == src
 
 
-@pytest.mark.parametrize("ow,oh,sh,sw,dh,dw", [
-    (20, 4, 1, 1, 1, 1),
-    (28, 5, 2, 2, 1, 1),
-    (56, 3, 1, 1, 2, 2),
-    (7, 2, 3, 1, 1, 2),
-])
-def test_full_and_tail_panels_cover_each_output_once_without_out_of_bounds_reads(
-        ow, oh, sh, sw, dh, dw):
+@pytest.mark.parametrize(
+    "ow,oh,sh,sw,dh,dw",
+    [
+        (20, 4, 1, 1, 1, 1),
+        (28, 5, 2, 2, 1, 1),
+        (56, 3, 1, 1, 2, 2),
+        (7, 2, 3, 1, 1, 2),
+    ],
+)
+def test_full_and_tail_panels_cover_each_output_once_without_out_of_bounds_reads(ow, oh, sh, sw, dh, dw):
     """Evaluate the two gather maps and output offsets used by the non-divisible rewrite."""
     c, kh, kw, n, nr = 2, 3, 3, 1, 16
     full, tail = divmod(ow, nr)
@@ -320,8 +335,7 @@ def test_full_and_tail_panels_cover_each_output_once_without_out_of_bounds_reads
                     m = row * ow + w
                     assert m not in seen
                     seen.add(m)
-                    assert (nn, 0, o * sh, w * sw) == (
-                        nn, 0, o * sh, (panel * nr + wi) * sw)
+                    assert (nn, 0, o * sh, w * sw) == (nn, 0, o * sh, (panel * nr + wi) * sw)
             for wi in range(tail):
                 w = full * nr + wi
                 m = row * ow + w
@@ -331,8 +345,6 @@ def test_full_and_tail_panels_cover_each_output_once_without_out_of_bounds_reads
                     for i in range(kh):
                         for j in range(kw):
                             unpacked = (nn, cc, o * sh + i * dh, w * sw + j * dw)
-                            tail_gather = (
-                                nn, cc, o * sh + i * dh,
-                                (full * nr + wi) * sw + j * dw)
+                            tail_gather = (nn, cc, o * sh + i * dh, (full * nr + wi) * sw + j * dw)
                             assert tail_gather == unpacked
     assert seen == set(range(n * oh * ow))

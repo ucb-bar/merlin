@@ -18,6 +18,7 @@ gate -- a compiler blamed for a simulator budget. Unavailability is now its own 
 oracle's own reported cause, with anything unrecognized treated as a genuine refusal (the conservative
 direction: an unknown cause must never excuse a real fallback).
 """
+
 from __future__ import annotations
 
 import inspect
@@ -30,29 +31,40 @@ def test_the_package_survives_every_hop_to_the_oracle():
     from merlin.runtime.dispatch_runtime import execute, run_model
     from merlin.targetgen.capsule_runner import _grade_model_capsule
 
-    hops = [(_grade_model_capsule, "package_dir"), (compile_model, "mesh_package"),
-            (compile_rvv, "mesh_package"), (run_model, "mesh_package"),
-            (execute, "mesh_package"), (run_matmul_on_mesh, "package")]
+    hops = [
+        (_grade_model_capsule, "package_dir"),
+        (compile_model, "mesh_package"),
+        (compile_rvv, "mesh_package"),
+        (run_model, "mesh_package"),
+        (execute, "mesh_package"),
+        (run_matmul_on_mesh, "package"),
+    ]
     missing = [f.__name__ for f, p in hops if p not in inspect.signature(f).parameters]
     assert not missing, f"the package under test cannot reach the oracle; missing at: {missing}"
 
 
 def test_an_unreachable_oracle_is_not_a_refusal():
     from merlin.runtime.dispatch_runtime import _oracle_unreachable
-    for decline in ("oracle verilator invocation failed: Command '[...]' timed out after 600",
-                    "spike binary not found",
-                    "OOT backend build failed: cmake error",
-                    "oracle unavailable"):
+
+    for decline in (
+        "oracle verilator invocation failed: Command '[...]' timed out after 600",
+        "spike binary not found",
+        "OOT backend build failed: cmake error",
+        "oracle unavailable",
+    ):
         assert _oracle_unreachable(decline), f"should read as unmeasured: {decline!r}"
 
 
 def test_a_real_refusal_stays_a_refusal():
     """Conservative by design: an unrecognized cause must not be able to excuse a fallback."""
     from merlin.runtime.dispatch_runtime import _oracle_unreachable
-    for decline in ("oracle spike output != reference == simulate (three-way bit-exact gate)",
-                    "exceeds the on-chip working set (262144 elems)",
-                    "an accumulator epilogue cannot be split across K blocks",
-                    ""):
+
+    for decline in (
+        "oracle spike output != reference == simulate (three-way bit-exact gate)",
+        "exceeds the on-chip working set (262144 elems)",
+        "an accumulator epilogue cannot be split across K blocks",
+        "",
+    ):
         assert not _oracle_unreachable(decline), f"should read as a genuine decline: {decline!r}"
 
 
@@ -60,6 +72,7 @@ def test_the_runtime_counts_unavailability_apart_from_fallback():
     import ast
 
     from merlin.common.paths import merlin_dir
+
     src = (merlin_dir() / "python/merlin/runtime/dispatch_runtime.py").read_text(encoding="utf-8")
     assert "execute.mesh_unavailable" in src
     assert "mesh_unavailable_detail" in src

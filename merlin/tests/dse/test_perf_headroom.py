@@ -8,6 +8,7 @@ and on this target compute is far too small relative to movement for that to be 
 The second target declares one compute unit and publishes no per-unit occupancy, so the concurrency
 traits cannot be established and the answer is UNKNOWN with the missing traits named.
 """
+
 from __future__ import annotations
 
 import functools
@@ -50,16 +51,22 @@ def _sources():
     out = []
     for name, body in _suite()["kernels"].items():
         arc = body["arc"]
-        out.append(activity_from_busy(
-            name, arc["truth"],
-            {"dma": arc["dma_busy"], "mxu": arc["mxu"], "vpu": arc["vpu"], "none": arc["none"]},
-            BUCKET_KINDS,
-            partitioned=True, completion_observable=True,
-            provenance="per-cycle activity decomposition from the cycle-accurate model"))
+        out.append(
+            activity_from_busy(
+                name,
+                arc["truth"],
+                {"dma": arc["dma_busy"], "mxu": arc["mxu"], "vpu": arc["vpu"], "none": arc["none"]},
+                BUCKET_KINDS,
+                partitioned=True,
+                completion_observable=True,
+                provenance="per-cycle activity decomposition from the cycle-accurate model",
+            )
+        )
     return out
 
 
 # --- the hand-derived fixtures -------------------------------------------------------------------
+
 
 def test_total_overlap_headroom_over_the_affected_set_is_4457_cycles_and_147_percent():
     sources = _sources()
@@ -110,6 +117,7 @@ def test_same_kind_engines_are_aggregated_so_the_pair_is_movement_vs_all_compute
 
 # --- the composition operator is never defaulted --------------------------------------------------
 
+
 def test_composition_operator_refuses_to_answer_from_partitioned_buckets():
     result = composition_operator(_sources())
     assert isinstance(result, Unavailable)
@@ -143,6 +151,7 @@ def test_realised_overlap_reduces_the_headroom_rather_than_being_assumed_zero():
 
 # --- the anti-overfit gate: a second target of a different archetype ------------------------------
 
+
 @functools.cache
 def _second_target_manifest():
     cm = pytest.importorskip("merlin.targetgen.capability_manifests")
@@ -164,8 +173,12 @@ def test_second_target_cannot_establish_the_concurrency_traits():
 def test_second_target_headroom_is_unknown_with_the_missing_traits_named():
     manifest = _second_target_manifest()
     src = activity_from_busy(
-        "G01_multitile_sq", 7439, {"mesh": 7439}, {"mesh": ResourceKind.COMPUTE},
-        provenance="cycle-accurate RTL simulation, total cycles only")
+        "G01_multitile_sq",
+        7439,
+        {"mesh": 7439},
+        {"mesh": ResourceKind.COMPUTE},
+        provenance="cycle-accurate RTL simulation, total cycles only",
+    )
     result = headroom(src, manifest=manifest)
     assert isinstance(result, Unavailable)
     joined = " ".join(result.missing)

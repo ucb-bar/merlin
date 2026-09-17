@@ -6,6 +6,7 @@ r-squared 0.99294. What every test here guards is the gap between that number an
 invites -- because the same measurement supports "resnet50 is provably compute-bound" and does NOT
 support "tiny_llama is memory-bound", and only the one-sided licence separates them.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -14,8 +15,7 @@ from merlin.perf import movement_balance as MB
 
 
 def _series(pairs, *, engine="gsim", package="pkg"):
-    return [MB.MovementSample(f"p{i}", b, c, engine, package)
-            for i, (b, c) in enumerate(pairs)]
+    return [MB.MovementSample(f"p{i}", b, c, engine, package) for i, (b, c) in enumerate(pairs)]
 
 
 #: The real measurement, from out/runs/gemmini/movement_balance_probe_20260908.
@@ -119,21 +119,51 @@ class TestWhatTheFitRefuses:
 
 
 class TestHarvestingFromCapsuleRuns:
-    def _run(self, tmp_path, name, *, cycles, engine="gsim", rtl=True, status="pass",
-             opcode="MOVEMENT", shape=(16, 16), dtype="i8"):
+    def _run(
+        self,
+        tmp_path,
+        name,
+        *,
+        cycles,
+        engine="gsim",
+        rtl=True,
+        status="pass",
+        opcode="MOVEMENT",
+        shape=(16, 16),
+        dtype="i8",
+    ):
         import json
+
         d = tmp_path / name
         (d / "generated").mkdir(parents=True)
-        (d / "capsule_result.json").write_text(json.dumps({
-            "tiers": {"L2": {"cycles": 9, "engine": "spike_gemmini_functional",
-                             "derived_from_rtl": False, "status": "pass"},
-                      "L3": {"cycles": cycles, "engine": engine, "derived_from_rtl": rtl,
-                             "status": status}}}), encoding="utf-8")
-        (d / "generated" / "command_buffer.json").write_text(json.dumps({
-            "tensors": {"X": {"shape": list(shape), "dtype": dtype},
-                        "Y": {"shape": list(shape), "dtype": dtype}},
-            "commands": [{"opcode": opcode, "operands": {"src": "X", "dst": "Y"}}]}),
-            encoding="utf-8")
+        (d / "capsule_result.json").write_text(
+            json.dumps(
+                {
+                    "tiers": {
+                        "L2": {
+                            "cycles": 9,
+                            "engine": "spike_gemmini_functional",
+                            "derived_from_rtl": False,
+                            "status": "pass",
+                        },
+                        "L3": {"cycles": cycles, "engine": engine, "derived_from_rtl": rtl, "status": status},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        (d / "generated" / "command_buffer.json").write_text(
+            json.dumps(
+                {
+                    "tensors": {
+                        "X": {"shape": list(shape), "dtype": dtype},
+                        "Y": {"shape": list(shape), "dtype": dtype},
+                    },
+                    "commands": [{"opcode": opcode, "operands": {"src": "X", "dst": "Y"}}],
+                }
+            ),
+            encoding="utf-8",
+        )
         return d
 
     def test_a_passing_cycle_accurate_movement_run_contributes_its_bytes(self, tmp_path):
@@ -168,6 +198,7 @@ class TestHarvestingFromCapsuleRuns:
 
     def test_a_run_with_no_emitted_buffer_is_refused(self, tmp_path):
         import json
+
         d = tmp_path / "a"
         d.mkdir(parents=True)
         (d / "capsule_result.json").write_text(json.dumps({"tiers": {}}), encoding="utf-8")
@@ -205,12 +236,10 @@ class TestSaturatedBandwidthIsTwoSidedOnlyWhenItSaturates:
 
     def test_a_still_rising_curve_refuses_the_two_sided_ridge(self):
         """THE GUARD. Otherwise "the largest transfer we tried" becomes "the machine's peak"."""
-        rising = MB.saturated_bandwidth(((40, 28), (512, 56), (1024, 80)),
-                                        structural_width_bytes=16)
+        rising = MB.saturated_bandwidth(((40, 28), (512, 56), (1024, 80)), structural_width_bytes=16)
         assert not rising.saturated and not rising.two_sided
         assert rising.macs_per_byte(256.0) is None
-        assert any("NOT saturated" in n and "can never prove one memory-bound" in n
-                   for n in rising.notes)
+        assert any("NOT saturated" in n and "can never prove one memory-bound" in n for n in rising.notes)
 
     def test_too_few_observations_cannot_show_a_plateau(self):
         got = MB.saturated_bandwidth(((512, 56), (1280, 80)))

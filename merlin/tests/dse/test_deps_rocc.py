@@ -4,6 +4,7 @@ Every assertion here is against a module constant or a derived value; none spell
 field name or mask as a literal, because a test that hardcodes what the code derives passes when the
 derivation breaks.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -15,15 +16,15 @@ TILE = 16
 
 
 def _issue(cycles: float = 1.0) -> depgraph.IssueModel:
-    return depgraph.IssueModel(issue_cycles=cycles, stall_unit=cycles, tier="test",
-                               provenance="constructed by the test, not measured")
+    return depgraph.IssueModel(
+        issue_cycles=cycles, stall_unit=cycles, tier="test", provenance="constructed by the test, not measured"
+    )
 
 
 def _row(index: int, klass: str, decoded: dict, **operands) -> dict:
     row = {"index": index, "class": klass, "funct": None, "decoded": decoded}
     for name in ("rs1", "rs2"):
-        row[name] = {"raw": None, "kind": operands.get(name, "const"),
-                     "arg_index": None, "offset": None}
+        row[name] = {"raw": None, "kind": operands.get(name, "const"), "arg_index": None, "offset": None}
     return row
 
 
@@ -47,8 +48,7 @@ def _stream(*, acc_flag_bit: int, span: int = TILE, chains: int = 2) -> list[dic
         spad, acc = chain * span, chain * span
         rows += [
             _row(len(rows), "LOAD", {DEFINES_SPAD: spad, rocc.WIDTH_FIELD: span}),
-            _row(len(rows) + 1, STAGER,
-                 {CONSUMES_SPAD: spad, DEFINES_ACC: acc | acc_flag_bit, FLAG_FIELD: True}),
+            _row(len(rows) + 1, STAGER, {CONSUMES_SPAD: spad, DEFINES_ACC: acc | acc_flag_bit, FLAG_FIELD: True}),
             _row(len(rows) + 2, WRITER, {CONSUMES_SPAD: spad}),
             _row(len(rows) + 3, "READOUT", {CONSUMES_ACC: acc, FLAG_FIELD: True}),
         ]
@@ -69,12 +69,11 @@ def test_mode_bits_are_stripped_only_where_a_mask_was_derived():
     """The same accumulator tile addressed with and without a mode bit is ONE tile, or no edge exists."""
     bit = 1 << 30
     masks = {FLAG_FILE: bit}
-    staged = rocc.effects_of_row(
-        _row(1, STAGER, {DEFINES_ACC: bit, FLAG_FIELD: True}), flag_masks=masks)
-    read = rocc.effects_of_row(
-        _row(3, "READOUT", {CONSUMES_ACC: 0, FLAG_FIELD: True}), flag_masks=masks)
+    staged = rocc.effects_of_row(_row(1, STAGER, {DEFINES_ACC: bit, FLAG_FIELD: True}), flag_masks=masks)
+    read = rocc.effects_of_row(_row(3, "READOUT", {CONSUMES_ACC: 0, FLAG_FIELD: True}), flag_masks=masks)
     assert staged.defs[0].slot == read.uses[0].slot, (
-        "with the mask applied the stager and the readout name the same slot")
+        "with the mask applied the stager and the readout name the same slot"
+    )
 
     # Without a derived mask the address cannot be identified, and that is UNRESOLVED -- never the
     # raw address, which would put the two on different slots and delete the dependence silently.
@@ -116,22 +115,27 @@ def test_pricing_the_one_separation_class_makes_the_graph_discriminate():
     from merlin.perf import differential
 
     rows = _stream(acc_flag_bit=0)
-    program = rocc.program_from_trace(rows, flag_masks={FLAG_FILE: 0},
-                                      roles={r["class"]: "accelerator" for r in rows})
+    program = rocc.program_from_trace(rows, flag_masks={FLAG_FILE: 0}, roles={r["class"]: "accelerator" for r in rows})
     order = list(range(len(program.instructions)))
 
-    unpriced = depgraph.build_dag(program.instructions, program.effects, issue=_issue(),
-                                 stall_mnemonic="", roles=program.roles)
+    unpriced = depgraph.build_dag(
+        program.instructions, program.effects, issue=_issue(), stall_mnemonic="", roles=program.roles
+    )
     assert set(unpriced.exposed_classes()) == {f"{depgraph.SEPARATION}.accelerator"}, (
-        "one structural role must yield exactly one unknown, or two candidates cannot cancel it")
+        "one structural role must yield exactly one unknown, or two candidates cannot cancel it"
+    )
 
-    priced = depgraph.build_dag(program.instructions, program.effects, issue=_issue(),
-                                stall_mnemonic="", roles=program.roles,
-                                resolved_separations={f"{depgraph.SEPARATION}.accelerator": 20.0})
+    priced = depgraph.build_dag(
+        program.instructions,
+        program.effects,
+        issue=_issue(),
+        stall_mnemonic="",
+        roles=program.roles,
+        resolved_separations={f"{depgraph.SEPARATION}.accelerator": 20.0},
+    )
     assert priced.exposed_classes() == {}, "pricing the only class leaves nothing exposed"
 
-    schedules = depgraph.candidates_for(priced, order, stall_mnemonic="",
-                                        hoist_role="accelerator", roles=program.roles)
+    schedules = depgraph.candidates_for(priced, order, stall_mnemonic="", hoist_role="accelerator", roles=program.roles)
     costs = {name: depgraph.makespan(priced, seq) for name, seq in schedules.items()}
     flat = {name: depgraph.makespan(unpriced, seq) for name, seq in schedules.items()}
     assert len(set(flat.values())) == 1, "unpriced, every ordering ties -- the old behaviour"
@@ -140,9 +144,14 @@ def test_pricing_the_one_separation_class_makes_the_graph_discriminate():
     composed = {name: depgraph.to_composed(c, priced) for name, c in costs.items()}
     demands = {name: depgraph.demands_of(priced) for name in composed}
     names = sorted(composed)
-    verdict = differential.compare(composed[names[0]], composed[names[-1]],
-                                   demands_a=demands[names[0]], demands_b=demands[names[-1]],
-                                   label_a=names[0], label_b=names[-1])
+    verdict = differential.compare(
+        composed[names[0]],
+        composed[names[-1]],
+        demands_a=demands[names[0]],
+        demands_b=demands[names[-1]],
+        label_a=names[0],
+        label_b=names[-1],
+    )
     assert verdict.basis == "exact"
 
 
@@ -150,10 +159,10 @@ def test_an_illegal_ordering_is_refused_rather_than_priced():
     """A hoist above a real dependence must raise; pricing one produces a number that beats every
     legal ordering, which is how a missing edge turns into a recommendation."""
     rows = _stream(acc_flag_bit=0, chains=1)
-    program = rocc.program_from_trace(rows, flag_masks={FLAG_FILE: 0},
-                                      roles={r["class"]: "accelerator" for r in rows})
-    dag = depgraph.build_dag(program.instructions, program.effects, issue=_issue(),
-                             stall_mnemonic="", roles=program.roles)
+    program = rocc.program_from_trace(rows, flag_masks={FLAG_FILE: 0}, roles={r["class"]: "accelerator" for r in rows})
+    dag = depgraph.build_dag(
+        program.instructions, program.effects, issue=_issue(), stall_mnemonic="", roles=program.roles
+    )
     readout_first = [3, 0, 1, 2]
     with pytest.raises(ValueError):
         depgraph.makespan(dag, readout_first)

@@ -4,11 +4,12 @@ The generator must be faithful (re-rendering hand_v0 knobs == its verbatim sched
 would differ from its parent by more than the intended knob. Minting must produce a new
 lineage-stamped package (never mutate the parent).
 """
+
 import os
 
 from merlin.mining import load_rvv_package
 from merlin.mining.fork import mint_run_id
-from merlin.mining.from_strategy import render_schedule, mint_fork
+from merlin.mining.from_strategy import mint_fork, render_schedule
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 HAND_V0 = os.path.join(ROOT, "out/artifacts/targets", "rvv", "hand_v0")
@@ -31,16 +32,20 @@ def test_contraction_strategy_knob_changes_only_that_line():
     assert 'lower_contraction lowering_strategy = "outerproduct"' in out
     # the tile/vectorize lines are untouched
     assert "tile_sizes [4, 8, 1]" in out
-    assert out.count("transform.structured.vectorize") == pkg.schedule_text.count(
-        "transform.structured.vectorize")
+    assert out.count("transform.structured.vectorize") == pkg.schedule_text.count("transform.structured.vectorize")
 
 
 def test_mint_fork_writes_lineage_and_preserves_parent(tmp_path):
     fork_dir = mint_fork(
-        HAND_V0, {"contraction_strategy": "outerproduct"},
-        version=1, depth=1, timestamp="20260101T000000",
+        HAND_V0,
+        {"contraction_strategy": "outerproduct"},
+        version=1,
+        depth=1,
+        timestamp="20260101T000000",
         source_evidence=["scalar_broadcast_fma", "xnnpack:f32-gemm-1x4v"],
-        lever="lowering_pattern", out_root=tmp_path)
+        lever="lowering_pattern",
+        out_root=tmp_path,
+    )
     assert fork_dir.name == "rvv_tuned_v1_d1_20260101T000000"
     fork = load_rvv_package(fork_dir)
     assert fork.knobs["contraction_strategy"] == "outerproduct"

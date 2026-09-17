@@ -16,6 +16,7 @@ The fix is one derived rule -- a buffer is laid out and printed at its DECLARED 
 width, a float one as its stored bit pattern -- so these tests pin the widths, the refusals, and the
 byte-identity of every integer form that already worked.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -27,23 +28,29 @@ from merlin.runtime.backends import base as bk
 
 gem = bk.get_backend("gemmini")
 CG = sys.modules[gem.__package__ + ".gemmini_codegen_mlir"]
-GB = importlib.import_module(gem.__package__ + ".gemmini")   # the backend module behind the package
+GB = importlib.import_module(gem.__package__ + ".gemmini")  # the backend module behind the package
 DIM = 16
 
 
 def _host_lane_cb(rows=2, cols=4, in_dtype="f32", out_dtype="f32", values=None):
-    cb = {"abi_version": "0.1", "target": "gemmini", "backend": "test",
-          "tensors": {"arg0": {"shape": [rows, cols], "dtype": in_dtype, "role": "input"},
-                      "Y0": {"shape": [rows, cols], "dtype": out_dtype, "role": "output"}},
-          "commands": [], "params": {}}
+    cb = {
+        "abi_version": "0.1",
+        "target": "gemmini",
+        "backend": "test",
+        "tensors": {
+            "arg0": {"shape": [rows, cols], "dtype": in_dtype, "role": "input"},
+            "Y0": {"shape": [rows, cols], "dtype": out_dtype, "role": "output"},
+        },
+        "commands": [],
+        "params": {},
+    }
     if values is not None:
         cb["canonical_inputs"] = {"arg0": {"shape": [rows, cols], "values": list(values)}}
     return cb
 
 
 def _decl(text: str, name: str) -> str:
-    hits = [ln.strip() for ln in text.splitlines()
-            if ln.strip().startswith("static") and f"T_{name}[" in ln]
+    hits = [ln.strip() for ln in text.splitlines() if ln.strip().startswith("static") and f"T_{name}[" in ln]
     assert len(hits) == 1, f"expected one declaration of T_{name}, got {hits}"
     return hits[0]
 
@@ -82,15 +89,25 @@ def test_the_calibration_buffer_is_not_mistaken_for_a_host_lane_program():
     assert not GB._is_host_lane_cb({"tensors": {}, "commands": []})
     assert GB._is_host_lane_cb(_host_lane_cb())
     assert not GB._is_host_lane_cb(
-        {"tensors": {"Y0": {"shape": [2, 2], "dtype": "i8", "role": "output"}},
-         "commands": [{"opcode": "COMMIT", "operands": {"src": "a", "dst": "Y0"}}]})
+        {
+            "tensors": {"Y0": {"shape": [2, 2], "dtype": "i8", "role": "output"}},
+            "commands": [{"opcode": "COMMIT", "operands": {"src": "a", "dst": "Y0"}}],
+        }
+    )
 
 
 # --- buffer widths, derived from the declared dtype ------------------------------------------------
-@pytest.mark.parametrize("dtype,ctype,elems", [
-    ("i8", "elem_t", DIM * DIM), ("i32", "int32_t", DIM * DIM), ("i16", "int16_t", DIM * DIM),
-    ("f32", "uint32_t", DIM * DIM), ("bf16", "uint16_t", DIM * DIM), ("f16", "uint16_t", DIM * DIM),
-])
+@pytest.mark.parametrize(
+    "dtype,ctype,elems",
+    [
+        ("i8", "elem_t", DIM * DIM),
+        ("i32", "int32_t", DIM * DIM),
+        ("i16", "int16_t", DIM * DIM),
+        ("f32", "uint32_t", DIM * DIM),
+        ("bf16", "uint16_t", DIM * DIM),
+        ("f16", "uint16_t", DIM * DIM),
+    ],
+)
 def test_the_destination_is_sized_at_the_declared_width(dtype, ctype, elems):
     """A 2-byte result gets a 2-byte container. Declaring every non-i8 output ``int32_t`` is what read
     a bf16 store back at a 4-byte stride -- half the row, and the wrong half."""
@@ -120,9 +137,9 @@ def test_a_float_leaf_is_embedded_as_its_code_pattern():
     """The device has to see the operand the golden used. A float value written through ``int(v)``
     into an ``elem_t`` array (what every leaf used to get) truncates it to a byte of nonsense."""
     from merlin.runtime import fp8_formats as ff
+
     values = [-1.5, 0.25, 3.0, -0.125, 7.5, 2.0, -0.5, 1.0]
-    c = gem.render_harness(_host_lane_cb(values=values), target="gemmini",
-                           inputs={"arg0": values})
+    c = gem.render_harness(_host_lane_cb(values=values), target="gemmini", inputs={"arg0": values})
     d = _decl(c, "arg0")
     assert d.startswith("static const uint32_t T_arg0[")
     for code in ff.float_to_codes(values, "f32"):
@@ -163,17 +180,26 @@ def test_rows_are_padded_to_the_tile_edge():
     one pitch whichever shape it is handed."""
     c = gem.render_harness(_host_lane_cb(rows=2, cols=4), target="gemmini")
     assert f"T_Y0[{DIM * DIM}]" in c
-    assert f"j++) printf(\" %u\", (unsigned)T_Y0[i * {DIM} + j]);" in c
+    assert f'j++) printf(" %u", (unsigned)T_Y0[i * {DIM} + j]);' in c
 
 
 # --- non-regression: the integer paths that already worked -----------------------------------------
 def _movement_cb(m, n, out_dtype):
-    return {"abi_version": "0.1", "target": "gemmini",
-            "tensors": {"X": {"shape": [m, n], "dtype": "i8", "role": "input"},
-                        "Y0": {"shape": [m, n], "dtype": out_dtype, "role": "output"}},
-            "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "X", "rhs": "X", "dst": "Y0"},
-                          "attributes": {"combine": "identity", "activation": [],
-                                         "output_dtype": out_dtype}}]}
+    return {
+        "abi_version": "0.1",
+        "target": "gemmini",
+        "tensors": {
+            "X": {"shape": [m, n], "dtype": "i8", "role": "input"},
+            "Y0": {"shape": [m, n], "dtype": out_dtype, "role": "output"},
+        },
+        "commands": [
+            {
+                "opcode": "VECTOR_MAP",
+                "operands": {"lhs": "X", "rhs": "X", "dst": "Y0"},
+                "attributes": {"combine": "identity", "activation": [], "output_dtype": out_dtype},
+            }
+        ],
+    }
 
 
 def test_the_movement_harness_is_unchanged_for_the_shipped_integer_capsules():

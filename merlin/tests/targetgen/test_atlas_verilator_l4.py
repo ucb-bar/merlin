@@ -8,6 +8,7 @@ Two checks:
   * cross-tier equivalence (gated on the sim + arc + model venv being present): the SAME self-contained
     program run through the merlin L3 (arc) and L4 (verilator) adapters returns bit-exact identical outputs.
 """
+
 from __future__ import annotations
 
 import tempfile
@@ -36,12 +37,12 @@ def test_verilator_adapter_is_target_agnostic():
 
 def test_atlas_exposes_l4_when_a_vsim_is_registered():
     ad = oracle_adapters("atlas")
-    assert {"L2", "L3"} <= set(ad)                       # the functional + arc-cosim tiers always route
+    assert {"L2", "L3"} <= set(ad)  # the functional + arc-cosim tiers always route
     if _vsim_dir() is not None:
-        assert "L4" in ad and callable(ad["L4"])         # additive RTL tier, present when the sim is built
+        assert "L4" in ad and callable(ad["L4"])  # additive RTL tier, present when the sim is built
         assert ad["L4"].__module__ == "merlin.targetgen.program_oracle"
     else:
-        assert "L4" not in ad                            # honestly absent when no sim is registered
+        assert "L4" not in ad  # honestly absent when no sim is registered
 
 
 @pytest.mark.skipif(_vsim_dir() is None, reason="atlas vsim (MERLIN_EXT_ATLAS_VSIM + built VAtlasCore) absent")
@@ -53,10 +54,10 @@ def test_verilator_l4_matches_arc_l3_bit_exact():
     prog = "MatmulProgram"
     try:
         with tempfile.TemporaryDirectory() as d1, tempfile.TemporaryDirectory() as d2:
-            l3 = PO.run_program_oracle("atlas", model_ext="npu_model", program=prog,
-                                       workdir=Path(d1), timeout=500)
-            l4 = PO.run_program_verilator_oracle("atlas", model_ext="npu_model", vsim_dir=vsim,
-                                                 program=prog, workdir=Path(d2), timeout=500)
+            l3 = PO.run_program_oracle("atlas", model_ext="npu_model", program=prog, workdir=Path(d1), timeout=500)
+            l4 = PO.run_program_verilator_oracle(
+                "atlas", model_ext="npu_model", vsim_dir=vsim, program=prog, workdir=Path(d2), timeout=500
+            )
     except PO.OracleUnavailable as e:
         pytest.skip(f"program oracle infra unavailable: {e}")
 
@@ -69,6 +70,7 @@ def test_verilator_l4_matches_arc_l3_bit_exact():
     # Verilog; L3 runs the arc model DERIVED from it. Only one of them is RTL certification, and
     # classifying by tier NAME credited both.
     from merlin.targetgen.capsule_common import oracle_kind
+
     assert oracle_kind(l4["oracle"]) == "atlas-verilator-rtl"
     assert l4["oracle"]["derived_from_rtl"] is True
     assert l4["oracle"]["fidelity"] == "elaborated_rtl"

@@ -6,6 +6,7 @@ emitter accepts the op token and never reads it. A typo'd or renamed ref therefo
 capsule under whatever name the ref carried. Deriving from a source that fails open is worse than not
 deriving from it.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -13,8 +14,7 @@ import pytest
 from merlin.targetgen.capsule_source import SpecProgramUnavailable, SpecRefSource
 
 _SRC = SpecRefSource()
-pytestmark = pytest.mark.skipif(not _SRC.available(),
-                                reason="no specir checkout in this environment (set SPECIR_ROOT)")
+pytestmark = pytest.mark.skipif(not _SRC.available(), reason="no specir checkout in this environment (set SPECIR_ROOT)")
 
 #: The gen whose ops these tests use. A per-target test is legitimately about one target.
 _GEN = "gemmini"
@@ -23,11 +23,13 @@ _GEN = "gemmini"
 def _module():
     import sys
     from pathlib import Path
+
     if _SRC.root not in sys.path:
         sys.path.insert(0, _SRC.root)
     from specir.gate import load_targets
     from specir.loading import parse_spec_file
     from specir.registry import _SPEC_ROOT
+
     entry = {t.get("id"): t for t in load_targets(_SPEC_ROOT)}[_GEN]
     return parse_spec_file(Path(_SPEC_ROOT) / entry["spec"])
 
@@ -46,7 +48,8 @@ def test_two_different_declared_ops_do_not_yield_the_same_contract():
     a = _SRC.capture(f"{_GEN}:op.matmul", workload=(16, 16, 16))
     b = _SRC.capture(f"{_GEN}:op.isa_flush", workload=(16, 16, 16))
     assert a.coverage_goal != b.coverage_goal, (
-        "two different ops carried an identical coverage contract; the covers linkage is not read")
+        "two different ops carried an identical coverage contract; the covers linkage is not read"
+    )
 
 
 def test_coverage_goals_are_scoped_to_the_op_that_asked():
@@ -57,8 +60,7 @@ def test_coverage_goals_are_scoped_to_the_op_that_asked():
     mod = _module()
     for goal in _coverage_goals(mod, "op.matmul"):
         covers = goal.get("covers") or []
-        assert not covers or "op.matmul" in covers, (
-            f"{goal['node']!r} covers {covers} and was returned for op.matmul")
+        assert not covers or "op.matmul" in covers, f"{goal['node']!r} covers {covers} and was returned for op.matmul"
 
 
 def test_a_gen_wide_goal_covering_nothing_is_still_returned():
@@ -69,9 +71,12 @@ def test_a_gen_wide_goal_covering_nothing_is_still_returned():
     mod = _module()
     goals = _coverage_goals(mod, "op.matmul")
     from specir.graph import all_nodes
-    gen_wide = [n for n in all_nodes(mod)
-                if (getattr(n, "name", "") or "") in ("spec.coverage_goal", "spec.test_intent")
-                and not _covers(n)]
+
+    gen_wide = [
+        n
+        for n in all_nodes(mod)
+        if (getattr(n, "name", "") or "") in ("spec.coverage_goal", "spec.test_intent") and not _covers(n)
+    ]
     if gen_wide:
         assert len(goals) >= len(gen_wide)
 
@@ -81,12 +86,15 @@ def test_the_covers_linkage_is_actually_readable():
     `isinstance(table, dict)`; xDSL's DictionaryAttr holds an `immutabledict`, which is a Mapping and
     NOT a dict subclass, so the check returned "covers nothing" for every node and silently disabled
     the scoping. A guard that cannot pass is the same defect as a check that cannot fail."""
-    from merlin.targetgen.capsule_source import _covers
     from specir.graph import all_nodes
 
-    linked = [n for n in all_nodes(_module())
-              if (getattr(n, "name", "") or "") in ("spec.coverage_goal", "spec.test_intent")
-              and _covers(n)]
+    from merlin.targetgen.capsule_source import _covers
+
+    linked = [
+        n
+        for n in all_nodes(_module())
+        if (getattr(n, "name", "") or "") in ("spec.coverage_goal", "spec.test_intent") and _covers(n)
+    ]
     assert linked, "no coverage node resolved a covers list; the linkage reader is not working"
 
 

@@ -12,6 +12,7 @@ A third property is a design requirement rather than a past bug: an opaque ``fun
 could not decompose must be priced from its declared signature, or reported UNKNOWN -- never zero.
 SmolVLA's single opaque op is its patch embedding at ~1.2 GFLOP.
 """
+
 import importlib.util
 from pathlib import Path
 
@@ -19,8 +20,7 @@ import pytest
 
 from merlin.common.paths import repo_root
 
-_SCRIPT = (repo_root() / "merlin" / "experiments" / "llm_kernel_vs_compiler_v0"
-           / "scripts" / "inventory_models.py")
+_SCRIPT = repo_root() / "merlin" / "experiments" / "llm_kernel_vs_compiler_v0" / "scripts" / "inventory_models.py"
 
 
 def _load():

@@ -19,6 +19,7 @@ free WITH it. Plus the guard: sinking a free is the one edit in this pipeline wh
 wrong numbers rather than a failed build, so `pipeline.dealloc_placement_violations` re-checks the
 result and MUST reject a free moved before a use -- including a use through an alias.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -26,8 +27,9 @@ import pytest
 from merlin.llvmlower import pipeline as P
 from merlin.llvmlower import toolchain
 
-m2m = pytest.mark.skipif(not toolchain.m2m_python().is_file(),
-                         reason="model2MLIR venv (torch-mlir pass registry) not present")
+m2m = pytest.mark.skipif(
+    not toolchain.m2m_python().is_file(), reason="model2MLIR venv (torch-mlir pass registry) not present"
+)
 
 LOWER = "bufferization-lower-deallocations"
 SINK = "optimize-allocation-liveness"
@@ -53,9 +55,11 @@ func.func @forward(%a: tensor<64x64xf32>, %b: tensor<64x64xf32>) -> tensor<64x64
 }
 """
 
-_BUFFERIZE = ("one-shot-bufferize{bufferize-function-boundaries "
-              "function-boundary-type-conversion=identity-layout-map},"
-              "buffer-results-to-out-params{modify-public-functions hoist-static-allocs}")
+_BUFFERIZE = (
+    "one-shot-bufferize{bufferize-function-boundaries "
+    "function-boundary-type-conversion=identity-layout-map},"
+    "buffer-results-to-out-params{modify-public-functions hoist-static-allocs}"
+)
 
 
 def _bufferized_and_deallocated(extra: list[str]) -> str:
@@ -68,20 +72,26 @@ def _stages(text: str) -> list[str]:
 
 # --- the pass list ---------------------------------------------------------------------------
 
+
 def test_the_sinking_stage_is_off_by_default(monkeypatch):
     """An unflagged build must emit the frozen baseline byte for byte, so nothing is added."""
     monkeypatch.delenv("MERLIN_SINK_DEALLOCS", raising=False)
-    assert P._dealloc_passes() == ["ownership-based-buffer-deallocation",
-                                   "buffer-deallocation-simplification", LOWER]
-    for text in (P._upstream_pipeline(), P._parallel_pipeline(),
-                 P.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset())):
+    assert P._dealloc_passes() == ["ownership-based-buffer-deallocation", "buffer-deallocation-simplification", LOWER]
+    for text in (
+        P._upstream_pipeline(),
+        P._parallel_pipeline(),
+        P.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset()),
+    ):
         assert SINK not in text
 
 
 def test_the_env_flag_turns_the_stage_on(monkeypatch):
     monkeypatch.setenv("MERLIN_SINK_DEALLOCS", "1")
-    for text in (P._upstream_pipeline(), P._parallel_pipeline(),
-                 P.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset())):
+    for text in (
+        P._upstream_pipeline(),
+        P._parallel_pipeline(),
+        P.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset()),
+    ):
         assert SINK in text
 
 
@@ -89,10 +99,11 @@ def test_the_canonicalize_runs_between_the_lowering_and_the_sink(monkeypatch):
     """The ordering IS the fix. Without a canonicalize after `bufferization-lower-deallocations`
     every dealloc is still inside an `scf.if`, and the sinking pass silently moves nothing."""
     monkeypatch.setenv("MERLIN_SINK_DEALLOCS", "1")
-    for name, text in (("upstream", P._upstream_pipeline()),
-                       ("parallel", P._parallel_pipeline()),
-                       ("rvv", P.build_rvv_pipeline("", hoist_static_allocs=True,
-                                                    features=frozenset()))):
+    for name, text in (
+        ("upstream", P._upstream_pipeline()),
+        ("parallel", P._parallel_pipeline()),
+        ("rvv", P.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset())),
+    ):
         stages = _stages(text)
         lower = stages.index(LOWER)
         sink = next(i for i, s in enumerate(stages) if SINK in s)
@@ -102,6 +113,7 @@ def test_the_canonicalize_runs_between_the_lowering_and_the_sink(monkeypatch):
 
 
 # --- what the stage does to the IR -----------------------------------------------------------
+
 
 @m2m
 def test_without_the_sink_every_free_is_at_the_end():
@@ -137,6 +149,7 @@ def test_the_stage_frees_a_buffer_after_its_last_use():
 
 
 # --- the guard -------------------------------------------------------------------------------
+
 
 @m2m
 def test_the_placement_check_accepts_what_the_stage_produces():
@@ -204,6 +217,7 @@ def test_a_free_before_a_read_through_an_alias_is_rejected():
 
 # --- the guard cannot be skipped -------------------------------------------------------------
 
+
 def test_every_runner_variant_carries_the_check():
     """The check lives in a `_run_stages` wrapper spliced into the runner source. A variant that
     dropped it would sink every free with nothing verifying the placement."""
@@ -215,6 +229,7 @@ def test_a_sunk_build_whose_runner_never_checked_is_refused(tmp_path, monkeypatc
     """Fail closed. `accum_microkernel`'s runner drives the PassManager itself for its first stage,
     so it can carry the sinking stage without reaching the wrapper -- and an unchecked sink is the
     silent-corruption case. The parent requires the check's own line in the child's output."""
+
     class _Proc:
         returncode = 0
         stderr = ""
@@ -225,6 +240,7 @@ def test_a_sunk_build_whose_runner_never_checked_is_refused(tmp_path, monkeypatc
     def fake(argv, **kw):
         # argv[2] is the runner's output path: create it so only the missing line can fail the build
         from pathlib import Path as _P
+
         _P(argv[3]).write_text("; empty\n", encoding="utf-8")
         return _Proc(fake.stdout)
 

@@ -30,6 +30,7 @@ These tests keep the gap visible and bounded: they assert the allowlist is still
 the known-unmatched spellings are still unmatched. Fixing the model makes them red, which is the
 point — the change should be deliberate and reviewed, not silent.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -46,8 +47,8 @@ def _cost_model_allowlist() -> tuple[str, ...]:
     for line in inspect.getsource(schedule_dispatch).splitlines():
         stripped = line.strip()
         if stripped.startswith("if op in (") and "matmul" in stripped:
-            inner = stripped[stripped.index("(") + 1: stripped.rindex(")")]
-            return tuple(part.strip().strip('"\'') for part in inner.split(",") if part.strip())
+            inner = stripped[stripped.index("(") + 1 : stripped.rindex(")")]
+            return tuple(part.strip().strip("\"'") for part in inner.split(",") if part.strip())
     pytest.skip("could not locate the cost model's op gate; the source shape changed")
     return ()
 
@@ -91,7 +92,8 @@ def test_the_cost_model_still_prices_contractions_by_a_name_allowlist():
     assert "matmul" in allow, f"the contraction gate no longer matches 'matmul': {allow}"
     assert len(allow) <= 4, (
         f"the allowlist grew to {allow} — if contractions are now recognised structurally, delete "
-        f"this file; if more names were merely added, the next spelling will still be missed")
+        f"this file; if more names were merely added, the next spelling will still be missed"
+    )
 
 
 def test_known_contraction_spellings_are_still_unpriced():
@@ -103,12 +105,12 @@ def test_known_contraction_spellings_are_still_unpriced():
     allow = set(_cost_model_allowlist())
     counts = _prov_op_counts()
 
-    unmatched = {op: n for op, n in counts.items()
-                 if "matmul" in op and op not in allow}
+    unmatched = {op: n for op, n in counts.items() if "matmul" in op and op not in allow}
     if not unmatched:
         pytest.fail(
             "no unmatched contraction spelling found — either the cost model was fixed (delete this "
-            "file and the finding it pins) or the captured MLIR changed; do not just relax this test")
+            "file and the finding it pins) or the captured MLIR changed; do not just relax this test"
+        )
 
     total_matched = sum(n for op, n in counts.items() if op in allow)
     total_unmatched = sum(unmatched.values())
@@ -117,7 +119,8 @@ def test_known_contraction_spellings_are_still_unpriced():
     # into an already-known gap.
     assert total_unmatched <= 2 * max(total_matched, 1), (
         f"unpriced contractions ({total_unmatched}) now dwarf priced ones ({total_matched}); the "
-        f"schedule is being built almost entirely from copy-costed nodes: {sorted(unmatched)}")
+        f"schedule is being built almost entirely from copy-costed nodes: {sorted(unmatched)}"
+    )
 
 
 def test_the_pricing_gap_is_orders_of_magnitude_not_a_rounding_error():
@@ -127,4 +130,5 @@ def test_the_pricing_gap_is_orders_of_magnitude_not_a_rounding_error():
     as_copy = m * n
     assert as_contraction // as_copy == k, "the gap is exactly the reduction extent"
     assert as_contraction // as_copy >= 1000, (
-        "for a realistic GEMM the mispricing is at least three orders of magnitude")
+        "for a realistic GEMM the mispricing is at least three orders of magnitude"
+    )

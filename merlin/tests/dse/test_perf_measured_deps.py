@@ -1,4 +1,5 @@
 """Confronting the dependence graph with a measured trace: what one run can and cannot settle."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -103,7 +104,9 @@ class TestTimeAttribution:
 
     def test_mnemonics_aggregate_when_the_program_is_supplied(self):
         class I:
-            def __init__(self, m): self.mnemonic = m
+            def __init__(self, m):
+                self.mnemonic = m
+
         t = time_attribution([0, 0, 1, 2], [I("stall"), I("add"), I("stall")])
         assert t.by_mnemonic == {"stall": 3, "add": 1}
 
@@ -116,17 +119,20 @@ class TestCounterOffset:
 
     def test_the_lead_is_derived_from_which_dwells_moved(self):
         from merlin.perf.deps.measured import derive_counter_offset
+
         # Instructions 4 and 8 got cheaper; the counter values that moved are 6 and 10.
         off = derive_counter_offset({6: 33, 10: 33}, {6: 129, 10: 129}, [4, 8])
         assert off.slots == 2 and off.established is True
 
     def test_a_partial_match_is_not_established(self):
         from merlin.perf.deps.measured import derive_counter_offset
+
         off = derive_counter_offset({6: 33, 99: 5}, {6: 129, 99: 9}, [4, 8])
         assert off.matched < off.total and off.established is False
 
     def test_no_change_pins_nothing(self):
         from merlin.perf.deps.measured import derive_counter_offset
+
         off = derive_counter_offset({1: 2}, {1: 2}, [])
         assert off.established is False and "nothing pins" in off.detail
 
@@ -137,7 +143,7 @@ class TestCounterOffset:
         # The regression this exists for: with the counter read raw, a correctly separated pair
         # looks like it ran 2 cycles apart and refutes a weight it actually respected.
         dag = _Dag([_E(2, 4, cycles=32.0)], n=8)
-        pcs = [2, 3] + [4] * 40 + [5, 6]                 # the counter leads the stall by 2 slots
+        pcs = [2, 3] + [4] * 40 + [5, 6]  # the counter leads the stall by 2 slots
         raw, _ = measured_separations(dag, issue_times(pcs))
         assert raw[0].measured == 2 and raw[0].falsified is True
 

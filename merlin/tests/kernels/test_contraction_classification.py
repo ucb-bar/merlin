@@ -20,6 +20,7 @@ from A's LAST dim. A's last dim is N, not K; the real reduction extent is the 31
 boundary operand. The distinguishing fact is in the INDEXING MAPS, which the test now reads: a
 contraction's A operand carries the reduction dim, and carries it last.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -109,9 +110,13 @@ def _specialized_op_names(text: str) -> list[str]:
     exe = exe if exe.is_file() else shutil.which("mlir-opt")
     if exe is None:
         pytest.skip("no mlir-opt (third_party/llvm-install not built)")
-    proc = subprocess.run([str(exe), "--pass-pipeline=builtin.module(func.func("
-                           "linalg-specialize-generic-ops))"],
-                          input=text, capture_output=True, text=True, timeout=300)
+    proc = subprocess.run(
+        [str(exe), "--pass-pipeline=builtin.module(func.func(linalg-specialize-generic-ops))"],
+        input=text,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
     assert proc.returncode == 0, proc.stderr
     return [tok for tok in ("linalg.matmul", "linalg.generic") if tok in proc.stdout]
 
@@ -125,7 +130,8 @@ def test_a_bucketize_search_is_not_priced_as_a_contraction():
     assert got == [], (
         f"a boundary search was priced as a contraction: {got}. The tagger runs after "
         f"linalg-specialize-generic-ops, which will not name it, so this geometry is priced and "
-        f"un-taggable and BlockAgreementError fails the build.")
+        f"un-taggable and BlockAgreementError fails the build."
+    )
     assert pb.block_table(contraction_shapes(BUCKETIZE), nr_cap=16) == {}
 
 
@@ -142,9 +148,11 @@ def test_a_degenerate_m_contraction_is_still_priced():
 def test_the_classifier_agrees_with_the_pass_the_tagger_runs_behind():
     """One source of truth, checked against the pass itself rather than against a belief about it."""
     assert _specialized_op_names(DEGENERATE_M_MATMUL) == ["linalg.matmul"], (
-        "the real contraction must specialize -- if it does not, pricing it is what is wrong")
+        "the real contraction must specialize -- if it does not, pricing it is what is wrong"
+    )
     assert _specialized_op_names(BUCKETIZE) == ["linalg.generic"], (
-        "the bucketize must NOT specialize -- that is why pricing it is a build failure")
+        "the bucketize must NOT specialize -- that is why pricing it is a build failure"
+    )
 
 
 def test_priced_and_specializable_agree_on_a_module_holding_both():
@@ -153,8 +161,11 @@ def test_priced_and_specializable_agree_on_a_module_holding_both():
     mm = DEGENERATE_M_MATMUL.replace("@forward", "@mm")
     bk = BUCKETIZE.replace("@forward", "@bk")
     for old_alias, new_alias in (("#a", "#ba"), ("#b", "#bb"), ("#out", "#bout")):
-        bk = bk.replace(old_alias + " ", new_alias + " ").replace(old_alias + ",", new_alias + ",") \
-               .replace(old_alias + "]", new_alias + "]")
+        bk = (
+            bk.replace(old_alias + " ", new_alias + " ")
+            .replace(old_alias + ",", new_alias + ",")
+            .replace(old_alias + "]", new_alias + "]")
+        )
     body = _func_body(mm) + "\n" + _func_body(bk)
     both = _aliases(mm) + _aliases(bk) + "module {\n" + body + "\n}\n"
     priced = contraction_shapes(both)

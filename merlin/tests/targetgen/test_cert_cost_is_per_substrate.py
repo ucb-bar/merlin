@@ -13,6 +13,7 @@ tier rather than assuming a tier NAME implies an oracle kind (a target certifies
 contract declares). A capsule whose run never reached a cycle-accurate tier contributes nothing, since
 a fit that absorbed its functional time would read a near-zero cost for a capsule nobody certified.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,10 +32,15 @@ def _entry(by_tier: dict | None, summed: float | None = None) -> dict:
 
 def test_the_functional_tier_is_never_read_as_a_certification_cost():
     """The real shape of the bug: a fast functional tier beside a slow cycle-accurate one."""
-    secs, basis = CC._cycle_accurate_seconds(_entry({
-        "L2": {"sim_active_s": 0.009, "cycle_accurate": False, "derived_from_rtl": False},
-        "L3": {"sim_active_s": 698.234, "cycle_accurate": True, "derived_from_rtl": True},
-    }, summed=698.243))
+    secs, basis = CC._cycle_accurate_seconds(
+        _entry(
+            {
+                "L2": {"sim_active_s": 0.009, "cycle_accurate": False, "derived_from_rtl": False},
+                "L3": {"sim_active_s": 698.234, "cycle_accurate": True, "derived_from_rtl": True},
+            },
+            summed=698.243,
+        )
+    )
     assert secs == 698.234, "the cycle-accurate tier's own time is the certification cost"
     assert "cycle_accurate_tier" in basis and "L3" in basis
     assert secs != 698.243, "the summed value must not be used when a per-tier block exists"
@@ -42,25 +48,38 @@ def test_the_functional_tier_is_never_read_as_a_certification_cost():
 
 def test_a_run_that_never_certified_contributes_nothing():
     """Not its functional time. A near-zero cost for an uncertified capsule is worse than no sample."""
-    secs, basis = CC._cycle_accurate_seconds(_entry({
-        "L2": {"sim_active_s": 0.009, "cycle_accurate": False, "derived_from_rtl": False},
-    }, summed=0.009))
+    secs, basis = CC._cycle_accurate_seconds(
+        _entry(
+            {
+                "L2": {"sim_active_s": 0.009, "cycle_accurate": False, "derived_from_rtl": False},
+            },
+            summed=0.009,
+        )
+    )
     assert secs is None, f"expected no sample, got {secs} ({basis})"
     assert "no cycle-accurate tier" in basis
 
 
 def test_the_tier_is_selected_by_its_declared_kind_not_by_its_name():
     """A target certifies on whichever rung its contract declares, so the NAME cannot be the test."""
-    secs, basis = CC._cycle_accurate_seconds(_entry({
-        "L4": {"sim_active_s": 42.0, "cycle_accurate": True, "derived_from_rtl": True},
-    }))
+    secs, basis = CC._cycle_accurate_seconds(
+        _entry(
+            {
+                "L4": {"sim_active_s": 42.0, "cycle_accurate": True, "derived_from_rtl": True},
+            }
+        )
+    )
     assert secs == 42.0 and "L4" in basis
 
 
 def test_derived_from_rtl_is_accepted_as_the_older_spelling():
-    secs, _ = CC._cycle_accurate_seconds(_entry({
-        "L3": {"sim_active_s": 7.5, "derived_from_rtl": True},
-    }))
+    secs, _ = CC._cycle_accurate_seconds(
+        _entry(
+            {
+                "L3": {"sim_active_s": 7.5, "derived_from_rtl": True},
+            }
+        )
+    )
     assert secs == 7.5
 
 
@@ -86,21 +105,22 @@ def test_a_target_whose_history_is_functional_only_gets_no_fit():
     """The concrete regression: a target must not be priced from another oracle's milliseconds."""
     fit = CC.fit_for("atlas")
     if fit is None:
-        return                                     # the correct answer for such a target
+        return  # the correct answer for such a target
     assert fit.per_element_s > 0.001, (
         f"atlas fitted {fit.per_element_s} s/element from {fit.n_samples} samples, which would price "
         f"a 1000-element certification at {CC.predict_seconds(fit, 1000):.3f}s -- that is a "
-        f"functional oracle's time wearing a certification's provenance")
+        f"functional oracle's time wearing a certification's provenance"
+    )
 
 
 def test_the_grader_records_the_per_tier_block_it_used_to_discard():
     """The producing half: without this the reader above has nothing to select from."""
     from merlin.common.paths import repo_root
 
-    src = (repo_root() / "merlin" / "python" / "merlin" / "targetgen"
-           / "capsule_grade.py").read_text(encoding="utf-8")
+    src = (repo_root() / "merlin" / "python" / "merlin" / "targetgen" / "capsule_grade.py").read_text(encoding="utf-8")
     assert '"by_tier"' in src and 'entry_tm["by_tier"]' in src, (
-        "capsule_grade must write the per-tier timing block, not just the summed scalars")
+        "capsule_grade must write the per-tier timing block, not just the summed scalars"
+    )
     for flag in ("cycle_accurate", "derived_from_rtl", "evidence"):
         assert flag in src, f"the per-tier block must carry {flag!r} so a consumer can select on it"
 
@@ -112,14 +132,25 @@ def test_the_budget_refuses_to_extrapolate_far_past_the_evidence():
     so the honest answer for a large budget is the largest size the evidence supports -- not the
     arithmetic solution of the line.
     """
-    fit = CC.CostFit(target="t", intercept_s=100.0, per_element_s=0.01, r2=0.9, n_samples=10,
-                     elements_min=256, elements_max=4096, metric="max_operand_elements", sources=())
+    fit = CC.CostFit(
+        target="t",
+        intercept_s=100.0,
+        per_element_s=0.01,
+        r2=0.9,
+        n_samples=10,
+        elements_min=256,
+        elements_max=4096,
+        metric="max_operand_elements",
+        sources=(),
+    )
     huge = CC.max_elements_within(fit, 10_000_000.0)
     assert huge is not None and huge <= int(4096 * 2), (
-        f"a budget far beyond the evidence must clamp to the measured range, got {huge}")
+        f"a budget far beyond the evidence must clamp to the measured range, got {huge}"
+    )
     assert CC.max_elements_within(fit, 50.0) is None, (
         "a budget under the fixed floor admits no capsule of any size, which is a statement about "
-        "the budget rather than about the shape")
+        "the budget rather than about the shape"
+    )
 
 
 def test_a_single_capsule_run_is_a_cost_sample(tmp_path):
@@ -135,15 +166,28 @@ def test_a_single_capsule_run_is_a_cost_sample(tmp_path):
 
     run = tmp_path / "runs" / "t-capsule-bench" / "CAL_probe"
     run.mkdir(parents=True)
-    (run / "capsule_result.json").write_text(json.dumps({
-        "capsule": "CAL_probe",
-        "tiers": {
-            "L2": {"timing": {"sim_active_s": 0.006}, "cycle_accurate": False,
-                   "derived_from_rtl": False, "evidence": "spike_console.log"},
-            "L3": {"timing": {"sim_active_s": 177.249}, "cycle_accurate": True,
-                   "derived_from_rtl": True, "evidence": "rtl_verilator_console.log"},
-        },
-    }), encoding="utf-8")
+    (run / "capsule_result.json").write_text(
+        json.dumps(
+            {
+                "capsule": "CAL_probe",
+                "tiers": {
+                    "L2": {
+                        "timing": {"sim_active_s": 0.006},
+                        "cycle_accurate": False,
+                        "derived_from_rtl": False,
+                        "evidence": "spike_console.log",
+                    },
+                    "L3": {
+                        "timing": {"sim_active_s": 177.249},
+                        "cycle_accurate": True,
+                        "derived_from_rtl": True,
+                        "evidence": "rtl_verilator_console.log",
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
 
     recs = CC._timing_records("t", root=tmp_path)
     # Keyed on (capsule, engine): a capsule certified on two engines has two samples, not one that
@@ -162,10 +206,17 @@ def test_a_result_whose_only_tier_is_functional_contributes_nothing(tmp_path):
 
     run = tmp_path / "runs" / "t-capsule-bench" / "FUNC_only"
     run.mkdir(parents=True)
-    (run / "capsule_result.json").write_text(json.dumps({
-        "capsule": "FUNC_only",
-        "tiers": {"L2": {"timing": {"sim_active_s": 0.006}, "cycle_accurate": False,
-                          "derived_from_rtl": False}},
-    }), encoding="utf-8")
+    (run / "capsule_result.json").write_text(
+        json.dumps(
+            {
+                "capsule": "FUNC_only",
+                "tiers": {
+                    "L2": {"timing": {"sim_active_s": 0.006}, "cycle_accurate": False, "derived_from_rtl": False}
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     assert CC._timing_records("t", root=tmp_path) == {}, (
-        "0.006s from a functional oracle must never enter a certification cost model")
+        "0.006s from a functional oracle must never enter a certification cost model"
+    )

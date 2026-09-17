@@ -12,6 +12,7 @@ was defined, dropped by a later commit while ``_perf.yaml`` kept pointing at it,
 restored. The declaration outlived the definition -- which is not the same thing as vapourware, and the
 difference decides whether a test like this is dead or load-bearing.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -23,8 +24,10 @@ _CB = {"commands": [{"opcode": "X"}]}
 
 def _emitter(bodies: dict[str, str]):
     """An emitter whose output is chosen by its ``retire`` keyword, like a target's own."""
+
     def emit(_cb, *, retire):
         return bodies[retire]
+
     return emit
 
 
@@ -34,7 +37,7 @@ class TestAcceptedPairs:
 
         pair = BA.pair_from_emitter(emit, _CB, settings=("once", "per_job"))
 
-        assert pair.barrier_statement == "SYNC"     # read off the diff, not from a vocabulary
+        assert pair.barrier_statement == "SYNC"  # read off the diff, not from a vocabulary
         assert pair.removed == 2
         assert pair.settings == ("once", "per_job")
 
@@ -56,7 +59,7 @@ class TestAcceptedPairs:
 
 class TestRefusals:
     def test_an_emitter_without_the_knob_is_refused_by_name(self):
-        def emit(_cb):                               # no `retire` keyword at all
+        def emit(_cb):  # no `retire` keyword at all
             return "a"
 
         with pytest.raises(BA.RetireArmsError) as excinfo:

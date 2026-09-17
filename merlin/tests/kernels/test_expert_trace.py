@@ -6,6 +6,7 @@ Without the expert's actual build, a divergence bottoms out at "their compiler i
 unactionable — you cannot tell whether the difference came from their `-O` pipeline, their ISA flags,
 or a source-level decision.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -29,6 +30,7 @@ def _stream():
 
 def _endpoint():
     from merlin.kernels import endpoints as EP
+
     return EP.load_endpoint("gemmini_rocc")
 
 
@@ -52,14 +54,29 @@ class TestTheExpertsBuildBecomesSteps:
 
     def test_an_unrecognized_flag_is_not_silently_dropped(self):
         # It does not become a NAMED decision, but it stays in the recorded invocation.
-        tr = T.expert_trace("x", _stream(), op="matmul", kernel_id="k", target="rvv",
-                            endpoint=_endpoint(), build_cmd=["clang", "-fweird-thing"])
+        tr = T.expert_trace(
+            "x",
+            _stream(),
+            op="matmul",
+            kernel_id="k",
+            target="rvv",
+            endpoint=_endpoint(),
+            build_cmd=["clang", "-fweird-thing"],
+        )
         assert "-fweird-thing" in tr.provenance["build_cmd"]
 
     def test_the_whole_invocation_is_recorded(self):
-        tr = T.expert_trace("xnnpack", _stream(), op="matmul", kernel_id="k", target="rvv",
-                            endpoint=_endpoint(), build_cmd=["clang", "-O3", "-c", "k.c"],
-                            tool="clang", version="17")
+        tr = T.expert_trace(
+            "xnnpack",
+            _stream(),
+            op="matmul",
+            kernel_id="k",
+            target="rvv",
+            endpoint=_endpoint(),
+            build_cmd=["clang", "-O3", "-c", "k.c"],
+            tool="clang",
+            version="17",
+        )
         assert tr.provenance["tool"] == "clang" and tr.provenance["tool_version"] == "17"
         assert tr.provenance["level"] == "build+asm"
 
@@ -69,43 +86,79 @@ class TestAHandWrittenCorpusHasNoLowering:
         """A corpus of hand-written assembly was not produced by a compiler, so there is no lowering to
         reconstruct. Stamping that is what keeps someone from later "fixing" it — and what keeps a
         reader from reading an empty step list as a missing feature."""
-        tr = T.expert_trace("atlas-corpus", _stream(), op="matmul", kernel_id="k", target="atlas",
-                            endpoint=_endpoint(), hand_written=True)
+        tr = T.expert_trace(
+            "atlas-corpus",
+            _stream(),
+            op="matmul",
+            kernel_id="k",
+            target="atlas",
+            endpoint=_endpoint(),
+            hand_written=True,
+        )
         assert tr.steps == []
         assert "hand-written assembly" in tr.provenance["no_lowering"]
 
     def test_a_hand_written_trace_records_no_build_command(self):
-        tr = T.expert_trace("atlas-corpus", _stream(), op="m", kernel_id="k", target="atlas",
-                            endpoint=_endpoint(), hand_written=True)
+        tr = T.expert_trace(
+            "atlas-corpus", _stream(), op="m", kernel_id="k", target="atlas", endpoint=_endpoint(), hand_written=True
+        )
         assert "build_cmd" not in tr.provenance
 
 
 class TestTheTwoTracesCanBeCompared:
     def _ours(self):
         return T.LoweringTrace(
-            kernel="matmul", target="rvv", source="ours",
-            steps=[T.TransformStep(name="vectorize", plane="dialect", stage="vectorize",
-                                   modifiable_by="schedule:vector_sizes")],
-            asm=T.AsmRegion(label="matmul"))
+            kernel="matmul",
+            target="rvv",
+            source="ours",
+            steps=[
+                T.TransformStep(
+                    name="vectorize", plane="dialect", stage="vectorize", modifiable_by="schedule:vector_sizes"
+                )
+            ],
+            asm=T.AsmRegion(label="matmul"),
+        )
 
     def test_our_steps_are_editable_and_theirs_are_not(self):
-        theirs = T.expert_trace("xnnpack", _stream(), op="matmul", kernel_id="matmul", target="rvv",
-                                endpoint=_endpoint(), build_cmd=["clang", "-O3"])
+        theirs = T.expert_trace(
+            "xnnpack",
+            _stream(),
+            op="matmul",
+            kernel_id="matmul",
+            target="rvv",
+            endpoint=_endpoint(),
+            build_cmd=["clang", "-O3"],
+        )
         rep = T.traces_agree(self._ours(), theirs)
         assert rep["our_editable_steps"] == ["vectorize"]
         assert rep["their_editable_steps"] == [], (
             "something claimed we can edit the expert's compiler, which would route a divergence to a "
-            "seam that does not exist")
+            "seam that does not exist"
+        )
 
     def test_an_absent_expert_trace_is_reported_with_its_reason(self):
-        theirs = T.expert_trace("atlas-corpus", _stream(), op="matmul", kernel_id="matmul",
-                                target="atlas", endpoint=_endpoint(), hand_written=True)
+        theirs = T.expert_trace(
+            "atlas-corpus",
+            _stream(),
+            op="matmul",
+            kernel_id="matmul",
+            target="atlas",
+            endpoint=_endpoint(),
+            hand_written=True,
+        )
         rep = T.traces_agree(self._ours(), theirs)
         assert rep["their_trace_absent"] is True and rep["notes"], rep
 
     def test_a_digest_that_cannot_be_taken_is_recorded_absent_not_faked(self):
-        tr = T.expert_trace("x", _stream(), op="m", kernel_id="k", target="rvv", endpoint=_endpoint(),
-                            obj="/no/such/object.o", build_cmd=["clang"])
+        tr = T.expert_trace(
+            "x",
+            _stream(),
+            op="m",
+            kernel_id="k",
+            target="rvv",
+            endpoint=_endpoint(),
+            obj="/no/such/object.o",
+            build_cmd=["clang"],
+        )
         assert "source_digest" in tr.provenance
-        assert tr.provenance["source_digest"] in (None, "") or isinstance(
-            tr.provenance["source_digest"], str)
+        assert tr.provenance["source_digest"] in (None, "") or isinstance(tr.provenance["source_digest"], str)

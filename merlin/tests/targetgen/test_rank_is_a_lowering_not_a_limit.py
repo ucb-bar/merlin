@@ -11,6 +11,7 @@ never graded, while `linalg_lower.convolution_im2col_matmul` — which derives t
 operand shapes and emits an (m,k,n) matmul — sat in the tree unused. The withhold reported a hardware
 limit that did not exist.
 """
+
 from __future__ import annotations
 
 import copy
@@ -32,15 +33,16 @@ def test_a_rank_the_target_does_not_declare_is_still_graded():
     caps = _radiance_caps()
     if not caps:
         import pytest
+
         pytest.skip("radiance corpus not present in this checkout")
     keep, withheld = _split_ineligible(caps, "radiance")
     names = {c.get("name") for c in keep}
-    rank4 = [c for c in caps
-             if (getattr(CR._capsule_region(c), "rank", None) or 0) >= 4]
+    rank4 = [c for c in caps if (getattr(CR._capsule_region(c), "rank", None) or 0) >= 4]
     assert rank4, "no rank-4 capsule in the corpus; this test would be vacuous"
     for c in rank4:
         assert c.get("name") in names, (
-            f"{c.get('name')} withheld for its rank; the compiler lowers rank-4 conv via im2col")
+            f"{c.get('name')} withheld for its rank; the compiler lowers rank-4 conv via im2col"
+        )
 
 
 def test_the_compiler_actually_carries_the_lowering_this_relies_on():
@@ -49,6 +51,7 @@ def test_the_compiler_actually_carries_the_lowering_this_relies_on():
     import inspect
 
     from merlin.targetgen import linalg_lower as LL
+
     src = inspect.getsource(LL)
     assert "convolution_im2col_matmul" in src
     assert "linalg.matmul" in src
@@ -60,13 +63,14 @@ def test_an_operand_dtype_with_no_datapath_is_STILL_withheld():
     caps = _radiance_caps()
     if not caps:
         import pytest
+
         pytest.skip("radiance corpus not present in this checkout")
     alien = copy.deepcopy(caps[0])
     alien["name"] = "SYNTH_alien_dtype"
     for key in ("operand_dtype", "dtype"):
         if key in alien:
             alien[key] = "fp64"
-    for t in (alien.get("inputs") or []):
+    for t in alien.get("inputs") or []:
         t["dtype"] = "fp64"
     if isinstance(alien.get("operation"), dict):
         alien["operation"].setdefault("attributes", {})["dtype"] = "fp64"

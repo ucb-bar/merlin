@@ -3,6 +3,7 @@
 Both decode the raw word and compare INTEGERS against a table derived from the target's own sources.
 Neither file contains an opcode, a funct value, or (for muon) even a field position.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -37,6 +38,7 @@ def gemmini():
 class TestRoccDecodesAgainstDerivedFacts:
     def test_nothing_in_this_module_names_an_opcode(self):
         import inspect
+
         src = inspect.getsource(RC)
         assert "custom_opcode" in src, "the opcode must be READ from the derived table"
         assert "0x7b" not in src and "123" not in src, "a baked opcode value"
@@ -51,8 +53,10 @@ class TestRoccDecodesAgainstDerivedFacts:
         two uses of one command. A decoder that pinned them dropped every conformant instruction with
         a different operand shape."""
         _t, ep, word = gemmini
-        insns = [_I(word("COMPUTE_AND_FLIP_CMD", xd=1, xs1=0, xs2=1)),
-                 _I(word("COMPUTE_AND_FLIP_CMD", xd=0, xs1=1, xs2=0))]
+        insns = [
+            _I(word("COMPUTE_AND_FLIP_CMD", xd=1, xs1=0, xs2=1)),
+            _I(word("COMPUTE_AND_FLIP_CMD", xd=0, xs1=1, xs2=0)),
+        ]
         a = RC.audit(insns, "gemmini", ep)
         assert a.counts["COMPUTE_AND_FLIP_CMD"] == 2, "an operand-shape difference dropped an instruction"
 
@@ -72,9 +76,11 @@ class TestRoccDecodesAgainstDerivedFacts:
 class TestTheInstructionLevelIsReadOffTheStream:
     def test_a_fine_grained_stream_reports_fine_grained(self, gemmini):
         _t, ep, word = gemmini
-        a = RC.audit([_I(word(n)) for n in
-                      ("CONFIG_CMD", "LOAD_CMD", "PRELOAD_CMD", "COMPUTE_AND_FLIP_CMD", "STORE_CMD")],
-                     "gemmini", ep)
+        a = RC.audit(
+            [_I(word(n)) for n in ("CONFIG_CMD", "LOAD_CMD", "PRELOAD_CMD", "COMPUTE_AND_FLIP_CMD", "STORE_CMD")],
+            "gemmini",
+            ep,
+        )
         assert a.level == "fine_grained" and a.missing_roles == ()
 
     def test_an_fsm_stream_reports_fsm(self, gemmini):
@@ -82,17 +88,18 @@ class TestTheInstructionLevelIsReadOffTheStream:
         tiled_matmul_auto expands into the FSM inside the library — so the level is a property of the
         EMITTED stream and can only be established by disassembly."""
         _t, ep, word = gemmini
-        a = RC.audit([_I(word(n)) for n in
-                      ("CONFIG_CMD", "LOOP_WS_CONFIG_BOUNDS", "LOOP_WS_CONFIG_ADDRS_AB", "LOOP_WS")],
-                     "gemmini", ep)
+        a = RC.audit(
+            [_I(word(n)) for n in ("CONFIG_CMD", "LOOP_WS_CONFIG_BOUNDS", "LOOP_WS_CONFIG_ADDRS_AB", "LOOP_WS")],
+            "gemmini",
+            ep,
+        )
         assert a.level == "fsm"
 
     def test_a_mixed_stream_reports_both_rather_than_choosing(self, gemmini):
         # A kernel that offloads its inner loop but hand-drives an epilogue is a real and interesting
         # state, not an error to be resolved into one answer.
         _t, ep, word = gemmini
-        a = RC.audit([_I(word(n)) for n in ("LOOP_WS", "PRELOAD_CMD", "COMPUTE_AND_STAY_CMD")],
-                     "gemmini", ep)
+        a = RC.audit([_I(word(n)) for n in ("LOOP_WS", "PRELOAD_CMD", "COMPUTE_AND_STAY_CMD")], "gemmini", ep)
         assert a.level == "both"
 
     def test_the_two_levels_do_not_hash_alike(self, gemmini):
@@ -114,6 +121,7 @@ class TestMuonDecodesAgainstADerivedLayout:
 
     def test_no_field_position_is_written_down(self):
         import inspect
+
         src = inspect.getsource(MU)
         assert "inst_width" in src and "fields" in src
         assert ">> 25" not in src and ">> 12" not in src, "a baked field position"
@@ -130,7 +138,7 @@ class TestMuonDecodesAgainstADerivedLayout:
     def test_the_endpoint_spans_more_than_one_opcode_space(self):
         """Measured: a real kernel's custom words split between the custom space and the REPURPOSED
         standard OP space. A decoder reading only the custom space sees a minority of the target."""
-        block = (EP._spec()["endpoints"]["muon_simt"].get("encoding") or {})
+        block = EP._spec()["endpoints"]["muon_simt"].get("encoding") or {}
         assert len(block.get("spaces") or []) > 1, block
 
     def test_a_word_narrower_than_the_declared_width_is_declined(self, enc):

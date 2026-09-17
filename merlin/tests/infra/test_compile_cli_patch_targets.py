@@ -15,6 +15,7 @@ module, and fails when the patched name is not defined in that module. A name it
 statically (a variable that is not a loop over string literals) is a failure too: an unverifiable patch
 is exactly how this hazard would come back.
 """
+
 from __future__ import annotations
 
 import ast
@@ -100,9 +101,12 @@ def _string_loops(scope: ast.AST) -> dict[str, list[str]]:
     """``for fn in ("a", "b"):`` -> {"fn": ["a", "b"]} (the only non-literal form the suite uses)."""
     out: dict[str, list[str]] = {}
     for node in ast.walk(scope):
-        if (isinstance(node, ast.For) and isinstance(node.target, ast.Name)
-                and isinstance(node.iter, (ast.Tuple, ast.List))
-                and all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in node.iter.elts)):
+        if (
+            isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name)
+            and isinstance(node.iter, (ast.Tuple, ast.List))
+            and all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in node.iter.elts)
+        ):
             out[node.target.id] = [e.value for e in node.iter.elts]
     return out
 
@@ -173,11 +177,13 @@ def test_every_compile_patch_targets_the_defining_module():
                     home = [m for m, names_ in defined.items() if name in names_]
                     problems.append(
                         f"{rel}:{lineno}: patches {mod}.{name}, which {mod} does not define"
-                        + (f" -- it is defined in {home[0]}; patch it there" if home else ""))
+                        + (f" -- it is defined in {home[0]}; patch it there" if home else "")
+                    )
     assert n_patches, "found no compile-module patches at all; the scanner has gone blind"
     assert not problems, (
         "a patch on a re-export does not reach the callers that resolve the name in its defining "
-        "module, so the test stops testing anything:\n  " + "\n  ".join(problems))
+        "module, so the test stops testing anything:\n  " + "\n  ".join(problems)
+    )
 
 
 def test_the_scanner_catches_every_patch_form(tmp_path):
@@ -198,7 +204,8 @@ def test_the_scanner_catches_every_patch_form(tmp_path):
         "    from merlin.compile import mesh as M\n"
         "    monkeypatch.setattr(M, 'capacity_fit', None)\n"
         "    monkeypatch.setattr(M, '_default_oot_package', None)\n",
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     found = [(mod, n) for _, mod, names in _patches(probe) for n in (names or [])]
     assert ("merlin.compile_cli", "_default_oot_package") in found
     assert ("merlin.compile_cli", "_mesh_tile_binding") in found

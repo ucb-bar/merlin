@@ -17,6 +17,7 @@ SCOPE, STATED. This is a PERFORMANCE-member rule and nothing else. A functional 
 whether the arithmetic is right, not how many cycles it took; a recipe there is answering a different
 question and is deliberately left alone. That is asserted below, not merely written here.
 """
+
 from __future__ import annotations
 
 import copy
@@ -26,8 +27,14 @@ import yaml
 
 from merlin.common.paths import merlin_dir
 from merlin.perf import lowering_obligation as LOB
-from merlin.runtime.commandbuffer import (DERIVATION_RECIPE_KEYS, IM2COL_RECIPE_KEY, conv_im2col,
-                                          harness_derived_tensors, materialize_inputs, operand_flow)
+from merlin.runtime.commandbuffer import (
+    DERIVATION_RECIPE_KEYS,
+    IM2COL_RECIPE_KEY,
+    conv_im2col,
+    harness_derived_tensors,
+    materialize_inputs,
+    operand_flow,
+)
 from merlin.runtime.tensor import Tensor
 
 CAPSULES = merlin_dir() / "contract/capsules"
@@ -44,18 +51,25 @@ _IFM_SHAPE = [1, 8, 8, 16]
 _KH = _KW = 3
 _CI = 16
 _CO = 16
-_M = 6 * 6                                # (8 - 3 + 1)^2 output positions
+_M = 6 * 6  # (8 - 3 + 1)^2 output positions
 _K = _KH * _KW * _CI
 
 
 def _conv_capsule(**perf_overrides) -> dict:
     """A minimal PERFORMANCE member shaped like the shipped conv family (no target facts read)."""
-    performance = {"family": _CONV_PERF_FAMILY, "lever": "window_reuse_amplification",
-                   "claim": "PREDICTS", "member_class": "LAW"}
+    performance = {
+        "family": _CONV_PERF_FAMILY,
+        "lever": "window_reuse_amplification",
+        "claim": "PREDICTS",
+        "member_class": "LAW",
+    }
     performance.update(perf_overrides)
-    return {"name": "PVxx_synthetic", "kind": "model_slice",
-            "operation": {"op": "conv2d", "attributes": {"ifm": "IFM", "weight": "W", "out": "Y0"}},
-            "performance": performance}
+    return {
+        "name": "PVxx_synthetic",
+        "kind": "model_slice",
+        "operation": {"op": "conv2d", "attributes": {"ifm": "IFM", "weight": "W", "out": "Y0"}},
+        "performance": performance,
+    }
 
 
 def _functional_conv_capsule() -> dict:
@@ -67,14 +81,25 @@ def _functional_conv_capsule() -> dict:
 
 
 def _leaves() -> dict:
-    return {"IFM": {"shape": _IFM_SHAPE, "dtype": "i8", "role": "input"},
-            "W": {"shape": [_K, _CO], "dtype": "i8", "role": "weight"},
-            "Y0": {"shape": [_M, _CO], "dtype": "i32", "role": "output"}}
+    return {
+        "IFM": {"shape": _IFM_SHAPE, "dtype": "i8", "role": "input"},
+        "W": {"shape": [_K, _CO], "dtype": "i8", "role": "weight"},
+        "Y0": {"shape": [_M, _CO], "dtype": "i32", "role": "output"},
+    }
 
 
 def _recipe() -> dict:
-    return {"target": "IFM_im2col", "source": "IFM", "kh": _KH, "kw": _KW, "ci": _CI,
-            "stride": [1, 1], "padding": [0, 0, 0, 0], "dilation": [1, 1], "layout": "nhwc"}
+    return {
+        "target": "IFM_im2col",
+        "source": "IFM",
+        "kh": _KH,
+        "kw": _KW,
+        "ci": _CI,
+        "stride": [1, 1],
+        "padding": [0, 0, 0, 0],
+        "dilation": [1, 1],
+        "layout": "nhwc",
+    }
 
 
 def _buffer_declaring_a_recipe() -> dict:
@@ -87,37 +112,72 @@ def _buffer_declaring_a_recipe() -> dict:
     """
     tensors = _leaves()
     tensors["IFM_im2col"] = {"shape": [_M, _K], "dtype": "i8", "role": "input"}
-    return {"abi_version": "0.1", "target": "synthetic", "tensors": tensors,
-            "params": {IM2COL_RECIPE_KEY: [_recipe()]},
-            "commands": [
-                {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"},
-                 "attributes": {"layout": "packed_conv_rhs"}},
-                {"opcode": "MATMUL_RESIDENT",
-                 "operands": {"lhs": "IFM_im2col", "rhs": "W_res", "dst": "conv_acc0"}},
-                {"opcode": "COMMIT", "operands": {"src": "conv_acc0", "dst": "Y0"},
-                 "attributes": {"epilogue": [], "output_dtype": "i32"}}]}
+    return {
+        "abi_version": "0.1",
+        "target": "synthetic",
+        "tensors": tensors,
+        "params": {IM2COL_RECIPE_KEY: [_recipe()]},
+        "commands": [
+            {
+                "opcode": "RES_PACK",
+                "operands": {"src": "W", "dst": "W_res"},
+                "attributes": {"layout": "packed_conv_rhs"},
+            },
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "IFM_im2col", "rhs": "W_res", "dst": "conv_acc0"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "conv_acc0", "dst": "Y0"},
+                "attributes": {"epilogue": [], "output_dtype": "i32"},
+            },
+        ],
+    }
 
 
 def _buffer_emitting_the_whole_operation() -> dict:
     """Honest lowering #1: emit the ABI's CONV2D and let the datapath do the windowing."""
-    return {"abi_version": "0.1", "target": "synthetic", "tensors": _leaves(),
-            "commands": [
-                {"opcode": "CONV2D", "operands": {"ifm": "IFM", "weight": "W", "dst": "Y0"},
-                 "attributes": {"kernel": [_KH, _KW, _CI, _CO], "stride": [1, 1],
-                                "padding": [0, 0, 0, 0], "dilation": [1, 1], "layout": "nhwc",
-                                "epilogue": [], "output_dtype": "i32"}}]}
+    return {
+        "abi_version": "0.1",
+        "target": "synthetic",
+        "tensors": _leaves(),
+        "commands": [
+            {
+                "opcode": "CONV2D",
+                "operands": {"ifm": "IFM", "weight": "W", "dst": "Y0"},
+                "attributes": {
+                    "kernel": [_KH, _KW, _CI, _CO],
+                    "stride": [1, 1],
+                    "padding": [0, 0, 0, 0],
+                    "dilation": [1, 1],
+                    "layout": "nhwc",
+                    "epilogue": [],
+                    "output_dtype": "i32",
+                },
+            }
+        ],
+    }
 
 
 def _buffer_emitting_an_explicit_gather() -> dict:
     """Honest lowering #2: a command PRODUCES the column matrix, then the contraction reads it."""
     cb = _buffer_declaring_a_recipe()
     cb.pop("params")
-    cb["tensors"]["IFM_im2col"]["role"] = "output"       # produced, not handed in
-    cb["commands"].insert(0, {"opcode": "GATHER_WINDOWS",
-                              "operands": {"src": "IFM", "dst": "IFM_im2col"},
-                              "attributes": {"kh": _KH, "kw": _KW, "ci": _CI, "stride": [1, 1],
-                                             "padding": [0, 0, 0, 0], "dilation": [1, 1],
-                                             "layout": "nhwc"}})
+    cb["tensors"]["IFM_im2col"]["role"] = "output"  # produced, not handed in
+    cb["commands"].insert(
+        0,
+        {
+            "opcode": "GATHER_WINDOWS",
+            "operands": {"src": "IFM", "dst": "IFM_im2col"},
+            "attributes": {
+                "kh": _KH,
+                "kw": _KW,
+                "ci": _CI,
+                "stride": [1, 1],
+                "padding": [0, 0, 0, 0],
+                "dilation": [1, 1],
+                "layout": "nhwc",
+            },
+        },
+    )
     return cb
 
 
@@ -231,17 +291,18 @@ def test_every_recipe_kind_the_harness_materializes_is_visible_to_the_obligation
         probe = copy.deepcopy(cb)
         probe["params"] = {key: [_recipe()]}
         env = materialize_inputs(probe)
-        expected = conv_im2col(env["IFM"], kh=_KH, kw=_KW, ci=_CI, stride=(1, 1),
-                               padding=(0, 0, 0, 0), dilation=(1, 1))
+        expected = conv_im2col(env["IFM"], kh=_KH, kw=_KW, ci=_CI, stride=(1, 1), padding=(0, 0, 0, 0), dilation=(1, 1))
         assert env["IFM_im2col"].data == expected.data, (
-            f"params.{key} is declared a derivation key but the materializer did not honour it")
+            f"params.{key} is declared a derivation key but the materializer did not honour it"
+        )
         assert set(harness_derived_tensors(probe)) == {"IFM_im2col"}
 
     unlisted = copy.deepcopy(cb)
     unlisted["params"] = {"a_recipe_kind_that_does_not_exist": [_recipe()]}
     env = materialize_inputs(unlisted)
     assert env["IFM_im2col"].data == Tensor.deterministic("IFM_im2col", (_M, _K), "i8").data, (
-        "an unlisted params key must materialize nothing; otherwise the obligation is blind to it")
+        "an unlisted params key must materialize nothing; otherwise the obligation is blind to it"
+    )
     assert harness_derived_tensors(unlisted) == {}
 
 
@@ -274,7 +335,8 @@ def _shared_conv_family_declaration() -> dict:
     assert isinstance(declaration, dict), (
         f"the shared performance template must declare the {_CONV_PERF_FAMILY} family's lowering "
         f"obligation; the capsules are generated from it, so a hand-edited capsule alone would be "
-        f"erased by the next regeneration")
+        f"erased by the next regeneration"
+    )
     return declaration
 
 
@@ -310,16 +372,16 @@ def test_no_shipped_conv_member_declares_a_DIFFERENT_obligation():
         carried = LOB.declared_obligation(cap)
         if carried is None:
             continue
-        assert carried == declaration, (
-            f"{path} declares an obligation that has drifted from the shared template")
+        assert carried == declaration, f"{path} declares an obligation that has drifted from the shared template"
 
 
 def test_the_declaration_actually_reached_the_generated_corpus():
     """Non-vacuity: the drift gate above passes trivially on a corpus that declares nothing."""
-    carrying = [path for path, cap in _shipped_conv_performance_members()
-                if LOB.declared_obligation(cap) is not None]
-    assert carrying, ("no shipped conv performance member carries the obligation the shared template "
-                      "declares, so the declaration reached nothing")
+    carrying = [path for path, cap in _shipped_conv_performance_members() if LOB.declared_obligation(cap) is not None]
+    assert carrying, (
+        "no shipped conv performance member carries the obligation the shared template "
+        "declares, so the declaration reached nothing"
+    )
 
 
 def test_the_declaration_did_not_change_what_the_member_measures():
@@ -346,17 +408,26 @@ def _runner_config():
     """A grading config whose shape, not whose identity, matters here."""
     from merlin.targetgen.runner_config import RunnerConfig
 
-    return RunnerConfig(target="synthetic-endpoint", suite="synthetic-capsule-bench", dtype="i8xi8_i32",
-                        fourth_output_name="kernel.S", tier_sim={}, rtl_tiers=frozenset(),
-                        oracle_tiers=(), perf_fields=(), trace_gate=None)
+    return RunnerConfig(
+        target="synthetic-endpoint",
+        suite="synthetic-capsule-bench",
+        dtype="i8xi8_i32",
+        fourth_output_name="kernel.S",
+        tier_sim={},
+        rtl_tiers=frozenset(),
+        oracle_tiers=(),
+        perf_fields=(),
+        trace_gate=None,
+    )
 
 
 def _run_with_buffer(tmp_path, monkeypatch, capsule: dict, cb: dict) -> dict:
     from merlin.targetgen import capsule_runner as CR
 
     monkeypatch.setattr(CR, "run_entrypoints", lambda *a, **k: (object(), cb, "# kernel.S (stub)\n"))
-    return CR.run_capsule(capsule, "unused-package", runs_root=tmp_path, run_id="lowering",
-                          config=_runner_config(), oracle_adapters={})
+    return CR.run_capsule(
+        capsule, "unused-package", runs_root=tmp_path, run_id="lowering", config=_runner_config(), oracle_adapters={}
+    )
 
 
 def test_the_runner_fails_a_performance_member_whose_program_omits_the_windowing(tmp_path, monkeypatch):
@@ -372,13 +443,11 @@ def test_the_runner_does_not_raise_that_failure_when_the_program_emits_the_gathe
     The run still ends without a verdict here (no oracle adapter is supplied), which is exactly right --
     what must NOT happen is the lowering plane firing on a program that did emit its own gather.
     """
-    res = _run_with_buffer(tmp_path, monkeypatch, _conv_capsule(),
-                           _buffer_emitting_an_explicit_gather())
+    res = _run_with_buffer(tmp_path, monkeypatch, _conv_capsule(), _buffer_emitting_an_explicit_gather())
     assert (res.get("failure") or {}).get("plane") != _LOWERING_PLANE, res.get("failure")
 
 
 def test_the_runner_leaves_a_functional_conv_capsule_alone(tmp_path, monkeypatch):
     """Scope, at the gate: the identical buffer that fails as a performance member passes here."""
-    res = _run_with_buffer(tmp_path, monkeypatch, _functional_conv_capsule(),
-                           _buffer_declaring_a_recipe())
+    res = _run_with_buffer(tmp_path, monkeypatch, _functional_conv_capsule(), _buffer_declaring_a_recipe())
     assert (res.get("failure") or {}).get("plane") != _LOWERING_PLANE, res.get("failure")

@@ -1,4 +1,5 @@
 """Fold only broadcasts left behind by named ``linalg.add``/``linalg.mul`` consumers."""
+
 from __future__ import annotations
 
 import subprocess
@@ -9,7 +10,6 @@ from merlin.llvmlower import toolchain
 from merlin.llvmlower.impr_features import apply_pipeline, normalize
 from merlin.llvmlower.named_broadcast_fold import FEATURE, MARKER, require_report, run_source
 
-
 _needs_m2m = pytest.mark.skipif(not toolchain.available(), reason="m2m toolchain unavailable")
 
 
@@ -18,8 +18,9 @@ def _run(tmp_path, text: str) -> tuple[str, str]:
     driver.write_text(run_source(), encoding="utf-8")
     src, out = tmp_path / "in.mlir", tmp_path / "out.mlir"
     src.write_text(text, encoding="utf-8")
-    proc = subprocess.run([str(toolchain.m2m_python()), str(driver), str(src), str(out)],
-                          capture_output=True, text=True, timeout=300)
+    proc = subprocess.run(
+        [str(toolchain.m2m_python()), str(driver), str(src), str(out)], capture_output=True, text=True, timeout=300
+    )
     assert proc.returncode == 0, proc.stdout + proc.stderr
     return proc.stdout, out.read_text(encoding="utf-8")
 
@@ -42,15 +43,14 @@ def test_stage_is_after_existing_fusion_and_before_generalization():
     from merlin.llvmlower.impr_features import FUSE_ELEMENTWISE_NAME
     from merlin.llvmlower.pipeline import _FUSE_ELEMENTWISE, _GENERALIZE_NAMED
 
-    passes = ["transform-interpreter{entry-point=__transform_main}", _GENERALIZE_NAMED,
-              "one-shot-bufferize"]
+    passes = ["transform-interpreter{entry-point=__transform_main}", _GENERALIZE_NAMED, "one-shot-bufferize"]
     out = apply_pipeline(passes, normalize({FUSE_ELEMENTWISE_NAME, FEATURE}))
     assert out.index(_FUSE_ELEMENTWISE) < out.index(MARKER) < out.index(_GENERALIZE_NAMED)
 
 
 def test_every_runner_carries_the_stage_and_argv15_gate():
     from merlin.llvmlower.accum_microkernel import run_source as accum_runner
-    from merlin.llvmlower.pipeline import EMIT_TRANSLATE, _RUNNER, _activation_poly_runner
+    from merlin.llvmlower.pipeline import _RUNNER, EMIT_TRANSLATE, _activation_poly_runner
 
     for name, source in {
         "plain": _RUNNER,
@@ -123,8 +123,7 @@ def test_contraction_reduction_consumer_is_not_rewritten(tmp_path):
 
 
 def test_receipt_records_exact_real_census(tmp_path):
-    stdout = ("CENSUS targeted_named_broadcast_fold add 52 mul 10\n"
-              "OK targeted_named_broadcast_fold 62\n")
+    stdout = "CENSUS targeted_named_broadcast_fold add 52 mul 10\nOK targeted_named_broadcast_fold 62\n"
     report = require_report(stdout, tmp_path)
     assert report == {"add": 52, "mul": 10, "folded": 62}
     assert "add=52" in (tmp_path / "named_broadcast_fold_report.txt").read_text()
@@ -133,12 +132,13 @@ def test_receipt_records_exact_real_census(tmp_path):
 
 
 def test_receipt_parser_rejects_partial_and_duplicate_lines(tmp_path):
-    partial = ("prefix CENSUS targeted_named_broadcast_fold add 1 mul 2\n"
-               "OK targeted_named_broadcast_fold 3 suffix\n")
+    partial = "prefix CENSUS targeted_named_broadcast_fold add 1 mul 2\nOK targeted_named_broadcast_fold 3 suffix\n"
     with pytest.raises(ValueError, match="missing or inconsistent"):
         require_report(partial, tmp_path)
-    duplicate = ("CENSUS targeted_named_broadcast_fold add 1 mul 2\n"
-                 "CENSUS targeted_named_broadcast_fold add 1 mul 2\n"
-                 "OK targeted_named_broadcast_fold 3\n")
+    duplicate = (
+        "CENSUS targeted_named_broadcast_fold add 1 mul 2\n"
+        "CENSUS targeted_named_broadcast_fold add 1 mul 2\n"
+        "OK targeted_named_broadcast_fold 3\n"
+    )
     with pytest.raises(ValueError, match="missing or inconsistent"):
         require_report(duplicate, tmp_path)

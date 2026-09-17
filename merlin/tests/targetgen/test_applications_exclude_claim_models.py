@@ -6,6 +6,7 @@ there builds the corpus from the model it is then said to generalize to, which i
 raising -- a target would declare five applications and derive from four, with the difference visible
 nowhere.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -17,7 +18,8 @@ from merlin.common.artifacts import recaptures_dir
 from merlin.common.paths import repo_root
 
 _spec = importlib.util.spec_from_file_location(
-    "ccc", repo_root() / "build_tools" / "scripts" / "check_conformance_coverage.py")
+    "ccc", repo_root() / "build_tools" / "scripts" / "check_conformance_coverage.py"
+)
 CCC = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(CCC)
 
@@ -56,8 +58,7 @@ def test_a_non_claim_bundle_list_resolves(monkeypatch, tmp_path):
     assert set(got) == {"some_other_model_int8_consistent"}
 
 
-def test_a_declared_bundle_that_is_absent_is_reported_not_silently_dropped(monkeypatch, tmp_path,
-                                                                          capsys):
+def test_a_declared_bundle_that_is_absent_is_reported_not_silently_dropped(monkeypatch, tmp_path, capsys):
     """A missing bundle means the axis derives from less than the descriptor claims. That difference
     has to be visible, or a shrinking evidence base looks like a stable one."""
     monkeypatch.setattr("merlin.common.artifacts.recaptures_dir", lambda: tmp_path)
@@ -84,7 +85,7 @@ def test_no_target_declares_a_claim_model_as_an_application():
     checked = 0
     for target in ("gemmini", "atlas", "radiance"):
         te = load_target_experiment(descriptor_path(target))
-        CCC._applications(te)          # raises if any declared application is a claim model
+        CCC._applications(te)  # raises if any declared application is a claim model
         checked += 1
     assert checked == 3
 
@@ -115,7 +116,8 @@ def test_the_graded_roster_and_the_derivation_set_are_disjoint():
                 f"{target}: {model!r} is GRADED as the generalization claim, but some of its captures "
                 f"are not held out of derivation: "
                 f"{[b for b in hits if not CM.is_claim_bundle(b)]}. The corpus would be built from the "
-                f"model it is then said to generalize to.")
+                f"model it is then said to generalize to."
+            )
 
         for app in apps:
             assert not CM.is_claim_bundle(app), f"{target}: application {app!r} is a claim model"
@@ -123,4 +125,5 @@ def test_the_graded_roster_and_the_derivation_set_are_disjoint():
         # And the two sets may not overlap through the prefix relation either.
         for model in roster:
             assert not any(a == model or a.startswith(model + "_") for a in apps), (
-                f"{target}: {model!r} is both graded and derived from")
+                f"{target}: {model!r} is both graded and derived from"
+            )

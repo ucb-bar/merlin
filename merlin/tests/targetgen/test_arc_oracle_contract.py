@@ -15,6 +15,7 @@ importable; what was missing was every part of its input contract:
 
 These are structural tests over the translation, so they run with no mlc checkout present.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -34,11 +35,13 @@ def _cb():
             "Y0": {"shape": [1, 2], "dtype": "i32", "role": "output"},
         },
         "commands": [
-            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"},
-             "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "W_res"}, "attributes": {"layout": "packed_rhs"}},
             {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "W_res", "dst": "acc0"}},
-            {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"},
-             "attributes": {"epilogue": [], "output_dtype": "i32"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc0", "dst": "Y0"},
+                "attributes": {"epilogue": [], "output_dtype": "i32"},
+            },
         ],
     }
 
@@ -112,21 +115,27 @@ def test_the_target_reaches_the_backend(monkeypatch):
     seen = {}
 
     class _Ctx:
-        def __enter__(self): return None
-        def __exit__(self, *a): return False
+        def __enter__(self):
+            return None
+
+        def __exit__(self, *a):
+            return False
 
     def _fake_module():
         import types
+
         m = types.ModuleType("mlc.runtime.backend")
 
         def run_command_buffer(cb, *, target="default_model", base=None, **_kw):
             seen["target"] = target
             return {"outputs": {}, "metrics": {}}
+
         m.run_command_buffer = run_command_buffer
         return m
 
     import sys
     import types
+
     for name in ("mlc", "mlc.runtime"):
         monkeypatch.setitem(sys.modules, name, types.ModuleType(name))
     monkeypatch.setitem(sys.modules, "mlc.runtime.backend", _fake_module())
@@ -142,16 +151,21 @@ def test_the_buffers_own_target_is_the_fallback(monkeypatch):
     seen = {}
 
     class _Ctx:
-        def __enter__(self): return None
-        def __exit__(self, *a): return False
+        def __enter__(self):
+            return None
+
+        def __exit__(self, *a):
+            return False
 
     import sys
     import types
+
     m = types.ModuleType("mlc.runtime.backend")
 
     def run_command_buffer(cb, *, target="default_model", base=None, **_kw):
         seen["target"] = target
         return {"outputs": {}, "metrics": {}}
+
     m.run_command_buffer = run_command_buffer
     for name in ("mlc", "mlc.runtime"):
         monkeypatch.setitem(sys.modules, name, types.ModuleType(name))
@@ -182,8 +196,7 @@ class _Bridge:
 
     def arc_run_command_buffer(self, cb, target=None):
         self.runs += 1
-        has_epi = any((c.get("attributes") or {}).get("epilogue")
-                      for c in cb["commands"] if c["opcode"] == "COMMIT")
+        has_epi = any((c.get("attributes") or {}).get("epilogue") for c in cb["commands"] if c["opcode"] == "COMMIT")
         val = 5 if (self.applies and has_epi) else 10
         return {"outputs": {"Y0": [[val, val]]}}
 
@@ -211,8 +224,7 @@ def test_a_failing_probe_never_invents_a_gap():
         def arc_run_command_buffer(self, cb, target=None):
             raise RuntimeError("probe blew up")
 
-    assert CR._epilogue_stages_ignored(_epi_cb(), {"outputs": {"Y0": [[1]]}}, "t",
-                                       _Broken(applies=False)) == set()
+    assert CR._epilogue_stages_ignored(_epi_cb(), {"outputs": {"Y0": [[1]]}}, "t", _Broken(applies=False)) == set()
 
 
 def test_an_unmodeled_epilogue_reports_unavailable_not_fail(monkeypatch):
@@ -221,6 +233,7 @@ def test_an_unmodeled_epilogue_reports_unavailable_not_fail(monkeypatch):
     import types
 
     from merlin.targetgen import rtl as _rtl
+
     fake = types.ModuleType("mlc_bridge")
     fake.arc_available = lambda t: True
     fake.arc_run_command_buffer = b.arc_run_command_buffer
@@ -239,7 +252,9 @@ def test_the_preflight_probe_builds_a_buffer_from_the_derived_tile(monkeypatch):
         def run(cb, llvm_text, workdir, timeout):
             seen["shape"] = cb["tensors"]["probe_a"]["shape"]
             from merlin.runtime.reference import reference_outputs
+
             return {"outputs": reference_outputs(cb)}
+
         return run
 
     monkeypatch.setattr(CR, "mlc_arc_adapter", _fake_adapter)
@@ -253,6 +268,7 @@ def test_a_model_that_disagrees_with_the_reference_is_not_available(monkeypatch)
     def _fake_adapter(target):
         def run(cb, llvm_text, workdir, timeout):
             return {"outputs": {"probe_y": [[0]]}}
+
         return run
 
     monkeypatch.setattr(CR, "mlc_arc_adapter", _fake_adapter)
@@ -263,9 +279,11 @@ def test_a_model_that_disagrees_with_the_reference_is_not_available(monkeypatch)
 
 def test_a_raising_model_is_not_available(monkeypatch):
     """The exact shape of the defect this probe exists for: importable, unusable."""
+
     def _fake_adapter(target):
         def run(cb, llvm_text, workdir, timeout):
             raise KeyError("data")
+
         return run
 
     monkeypatch.setattr(CR, "mlc_arc_adapter", _fake_adapter)
@@ -278,6 +296,7 @@ def test_an_empty_answer_is_not_available(monkeypatch):
     def _fake_adapter(target):
         def run(cb, llvm_text, workdir, timeout):
             return {"outputs": {}}
+
         return run
 
     monkeypatch.setattr(CR, "mlc_arc_adapter", _fake_adapter)

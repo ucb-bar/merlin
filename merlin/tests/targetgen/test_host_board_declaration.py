@@ -45,7 +45,8 @@ def test_the_declared_boards_give_their_targets_a_vector_host():
     for target in declared:
         system, why = system_for_experiment(target)
         assert system.host.vector_capable() is True, (
-            f"{target} declares an RVV host lane, so its board must be vector-capable ({why})")
+            f"{target} declares an RVV host lane, so its board must be vector-capable ({why})"
+        )
         kinds = {u.kind for u in P.host_units(system.host)}
         assert "vector" in kinds, f"{target}: host_units synthesized no vector lane ({sorted(kinds)})"
 
@@ -59,8 +60,7 @@ def test_an_undeclared_target_does_not_silently_become_scalar_only():
     for target in undeclared:
         system, why = system_for_experiment(target)
         assert {u.kind for u in P.host_units(system.host)} == {"scalar"}
-        assert "unknown" in why or "declares no" in why, (
-            f"{target} has no host and no explanation: {why!r}")
+        assert "unknown" in why or "declares no" in why, f"{target} has no host and no explanation: {why!r}"
 
 
 def test_a_bad_board_name_is_reported_not_raised(tmp_path, monkeypatch):
@@ -68,8 +68,7 @@ def test_a_bad_board_name_is_reported_not_raised(tmp_path, monkeypatch):
     than crash every caller that builds a System."""
     import merlin.system.derive as D
 
-    monkeypatch.setattr(D, "host_board_for_experiment",
-                        lambda t: ("definitely_not_a_board", "declared by a test"))
+    monkeypatch.setattr(D, "host_board_for_experiment", lambda t: ("definitely_not_a_board", "declared by a test"))
     system, why = D.system_for_experiment("gemmini")
     assert system.host is None
     assert "did not resolve" in why
@@ -98,5 +97,6 @@ def test_the_descriptor_override_decides_the_board(tmp_path, monkeypatch):
     got, why = host_board_for_experiment("gemmini")
     assert got == other, (
         f"the override named {other} but the resolver returned {got!r}; it is reading the in-tree "
-        f"descriptor ({tracked!r}) and ignoring MERLIN_TARGET_EXPERIMENT")
+        f"descriptor ({tracked!r}) and ignoring MERLIN_TARGET_EXPERIMENT"
+    )
     assert "declared by" in why

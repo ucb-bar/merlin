@@ -13,6 +13,7 @@ directions and on BOTH tiers:
 
 Pure unit tests on the gate math — NO board, NO compile, NO spike boot.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -21,8 +22,7 @@ import pytest
 from merlin.runtime.backends import zephyr_model as zm
 
 
-def _blowup_case(n: int = 100_000, spike: float = 100.0, elem: float = 0.08,
-                 factor: float = 13.09):
+def _blowup_case(n: int = 100_000, spike: float = 100.0, elem: float = 0.08, factor: float = 13.09):
     """A vector that clears EVERY aggregate term of the old gate but is ~1209% wrong on ONE element.
 
     ``r`` is flat 1.0 with a dominant ``spike`` at index 0 (the argmax). ``pref`` copies it but blows
@@ -53,6 +53,7 @@ def _near_perfect_case(n: int = 4096, seed: int = 0, spread: float = 3e-3):
 
 # --------------------------------------------------------------------------- fp32 tier
 
+
 def test_blowup_per_element_recorded_fp32():
     """The per-element term must still MEASURE the localized ~1200% blow-up on a well-scaled output.
 
@@ -66,7 +67,7 @@ def test_blowup_per_element_recorded_fp32():
     pref, r = _blowup_case()
     g = zm._gate(pref, {"fp32": r})
     assert g["fp32_cos"] > 0.999, g["fp32_cos"]
-    assert g["fp32_max_rel"] > 5.0, g["fp32_max_rel"]   # blow-up on the 0.08 element is measured
+    assert g["fp32_max_rel"] > 5.0, g["fp32_max_rel"]  # blow-up on the 0.08 element is measured
     assert g["max_rel"] == g["fp32_max_rel"]
 
 
@@ -74,14 +75,15 @@ def test_regression_output_passes_fp32_via_cosine_tier():
     """A whole-model regression output — cos > 0.9999 but global rel > 1e-3 (fails legacy) and per-
     element-noisy on small elements — passes via the cosine-only T3 tier (the four-way authority)."""
     import numpy as np
+
     rng = np.random.default_rng(11)
     r = rng.uniform(0.3, 3.0, 4096).astype(np.float32)
-    r[7] = 1e-3                                   # a genuine small element -> high per-element rel
+    r[7] = 1e-3  # a genuine small element -> high per-element rel
     pref = (r * (1.0 + rng.uniform(-3e-3, 3e-3, r.shape))).astype(np.float32)
-    pref[7] = 3e-3                                # 200% per-element on the small element (negligible abs)
+    pref[7] = 3e-3  # 200% per-element on the small element (negligible abs)
     g = zm._gate(pref, {"fp32": r})
-    assert g["fp32_cos"] > 0.9999 and g["fp32_rel"] > 1e-3     # would fail legacy
-    assert g["ok"] is True                                      # T3 cosine tier accepts it
+    assert g["fp32_cos"] > 0.9999 and g["fp32_rel"] > 1e-3  # would fail legacy
+    assert g["ok"] is True  # T3 cosine tier accepts it
 
 
 def test_blowup_would_pass_without_per_element_term():
@@ -95,7 +97,7 @@ def test_blowup_would_pass_without_per_element_term():
 def test_near_perfect_passes_fp32():
     pref, r = _near_perfect_case()
     g = zm._gate(pref, {"fp32": r})
-    assert g["fp32_max_rel"] < 0.05, g["fp32_max_rel"]   # genuine ~3e-3 spread clears the ceiling
+    assert g["fp32_max_rel"] < 0.05, g["fp32_max_rel"]  # genuine ~3e-3 spread clears the ceiling
     assert g["ok"] is True
 
 
@@ -109,21 +111,24 @@ def test_legacy_single_reference_passes_and_records_per_element():
     assert zm._gate(pref, r)["ok"] is True
     bpref, br = _blowup_case()
     gb = zm._gate(bpref, br)
-    assert gb["fp32_max_rel"] > 5.0                 # measured
+    assert gb["fp32_max_rel"] > 5.0  # measured
     # a blow-up that ALSO drops cosine below the tier bar is rejected outright
-    big = int(br.argmax()); bad = br.copy(); bad[big] = br[big] * 0.5
+    big = int(br.argmax())
+    bad = br.copy()
+    bad[big] = br[big] * 0.5
     assert zm._gate(bad, br)["ok"] is False
 
 
 # --------------------------------------------------------------------------- w8a8 (int8) tier
 
+
 def test_blowup_rejected_w8a8():
     pref, r = _blowup_case()
     g = zm._gate(pref, {"w8a8": r})
     assert g["w8a8_cos"] > 0.999
-    assert g["w8a8_rel"] < 1e-2                 # would satisfy the old T1 conjunction
+    assert g["w8a8_rel"] < 1e-2  # would satisfy the old T1 conjunction
     assert g["w8a8_max_rel"] > 5.0
-    assert g["ok"] is False                      # per-element term vetoes T1
+    assert g["ok"] is False  # per-element term vetoes T1
 
 
 def test_near_perfect_passes_w8a8():
@@ -136,6 +141,7 @@ def test_near_perfect_passes_w8a8():
 
 
 # --------------------------------------------------------------------------- threshold behavior
+
 
 def test_threshold_is_tunable_both_directions():
     """A per-element spread of ~3e-2 sits between a strict 0.05 ceiling (passes) and a very tight
@@ -150,5 +156,6 @@ def test_threshold_is_tunable_both_directions():
 def test_module_default_matches_env_contract():
     """The default ceiling is the documented 0.05 (unless MERLIN_GATE_MAX_REL overrides it)."""
     import os
+
     if "MERLIN_GATE_MAX_REL" not in os.environ:
         assert zm._GATE_MAX_REL == pytest.approx(0.05)

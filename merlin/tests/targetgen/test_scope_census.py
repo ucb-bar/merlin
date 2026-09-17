@@ -5,6 +5,7 @@ old behaviour would fail it. A census that cannot see a configuration axis repor
 corpus that has one value of it -- which is how every convolution capsule in this repo came to declare
 the same padding, stride and dilation four times over.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -51,6 +52,7 @@ def _mod(text):
 
 # --------------------------------------------------------------------------------- adjacency
 
+
 def test_a_run_of_producers_and_consumers_is_one_chain():
     cs = SC.chains(_mod(_CHAIN))
     assert len(cs) == 1
@@ -94,6 +96,7 @@ def test_a_signature_speaks_the_family_vocabulary_not_the_op_spelling():
 
 # ----------------------------------------------------------------------------- op configuration
 
+
 def test_a_region_carries_its_declared_configuration():
     cfgs = SC.region_configs(_mod(_CHAIN))
     assert len(cfgs) == 3
@@ -127,6 +130,7 @@ def test_an_unparseable_capture_yields_no_observation_rather_than_raising():
 
 
 # ------------------------------------------------------- the requirement must be able to ASK for a chain
+
 
 def test_the_scope_axis_turns_observed_chains_into_an_obligation(tmp_path):
     """The four upper rungs of the optimisation ladder were unrequirable, not merely unpopulated:

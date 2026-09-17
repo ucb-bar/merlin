@@ -2,6 +2,7 @@
 underlying tools are unit-tested in tests/targetgen; here we lock the broker's request routing + error
 handling with a synthetic model (no model venv, no llvm-mc), so the assisted-arm wiring is covered.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -11,8 +12,8 @@ from dataclasses import replace
 import pytest
 
 from merlin.common.paths import merlin_dir
-from merlin.targetgen.isa_model import IsaModel
 from merlin.targetgen import isa_asm as A
+from merlin.targetgen.isa_model import IsaModel
 
 
 def _load_broker():
@@ -35,7 +36,7 @@ def _sig(opcode: int, fields: dict) -> tuple[int, int]:
     for bits in fields.values():
         for b in bits:
             if isinstance(b, int) and b >= 0:
-                var |= (1 << b)
+                var |= 1 << b
     mask = (~var) & 0xFFFFFFFF
     return mask, opcode & mask
 
@@ -44,16 +45,21 @@ def _model() -> IsaModel:
     mm_f = {"rd": [7, 8, 9, 10, 11], "rs1": [15, 16, 17, 18, 19]}
     mm_mask, mm_val = _sig(0x2B, mm_f)
     hl_mask, hl_val = _sig(0x73, {})
-    by = {"MatMul": {"class": "MatMul", "role": "matmul", "fixed_mask": mm_mask, "fixed_value": mm_val,
-                     "fields": mm_f},
-          "Halt": {"class": "Halt", "role": "scalar", "fixed_mask": hl_mask, "fixed_value": hl_val,
-                   "fields": {}}}
+    by = {
+        "MatMul": {"class": "MatMul", "role": "matmul", "fixed_mask": mm_mask, "fixed_value": mm_val, "fields": mm_f},
+        "Halt": {"class": "Halt", "role": "scalar", "fixed_mask": hl_mask, "fixed_value": hl_val, "fields": {}},
+    }
     # `halt_signatures` (the terminator's DERIVED decode signature), not just the mnemonic: the lint
     # detects termination by signature so a terminator and a barrier sharing one coarse class cannot
     # be confused. A model carrying only `halt_mnemonics` is one the terminator was never derived
     # for, and lint then fails closed with `halt_unknown` — see the test below.
-    return IsaModel(target="fake", by_mnemonic=by, roles={"matmul": ["MatMul"]},
-                    halt_mnemonics=("Halt",), halt_signatures=((hl_mask, hl_val),))
+    return IsaModel(
+        target="fake",
+        by_mnemonic=by,
+        roles={"matmul": ["MatMul"]},
+        halt_mnemonics=("Halt",),
+        halt_signatures=((hl_mask, hl_val),),
+    )
 
 
 @pytest.fixture()
@@ -68,8 +74,9 @@ def broker():
     """
     BR = _load_broker()
     m = _model()
-    ctx = BR.BrokerCtx(endpoint="fixed_format", target="fake",
-                       model=lambda: m, assemble=lambda text: A.assemble_text(m, text))
+    ctx = BR.BrokerCtx(
+        endpoint="fixed_format", target="fake", model=lambda: m, assemble=lambda text: A.assemble_text(m, text)
+    )
     return BR, ctx
 
 
@@ -140,15 +147,14 @@ def test_disasm_decodes_own_words(broker):
 def test_lint_flags_missing_halt_and_reports_coverage(broker):
     BR, ctx = broker
     out = BR._handle({"cmd": "lint", "kernel_s": "MatMul rd=1, rs1=1\n", "op": "matmul"}, ctx)
-    assert any(f["rule"] == "no_halt" for f in out["findings"])       # never halts -> flagged
+    assert any(f["rule"] == "no_halt" for f in out["findings"])  # never halts -> flagged
     assert "MatMul" in out["coverage"]["present"]
     assert out["schedule"]["instruction_count"] == 1
 
 
 def test_lint_surfaces_a_static_cycle_budget_refutation(broker):
     BR, ctx = broker
-    out = BR._handle({"cmd": "lint", "kernel_s": "MatMul rd=1, rs1=1\nHalt\n",
-                      "op": "matmul", "cycle_budget": 1}, ctx)
+    out = BR._handle({"cmd": "lint", "kernel_s": "MatMul rd=1, rs1=1\nHalt\n", "op": "matmul", "cycle_budget": 1}, ctx)
     assert any(f["rule"] == "static_cycle_budget_exceeded" for f in out["findings"])
 
 
@@ -158,8 +164,7 @@ def test_lint_fails_closed_when_the_terminator_was_never_derived(broker):
     it has no basis for — the derive-or-report-UNKNOWN contract."""
     BR, ctx = broker
     m = replace(_model(), halt_signatures=())
-    out = BR._handle({"cmd": "lint", "kernel_s": "MatMul rd=1, rs1=1\n", "op": "matmul"},
-                     replace(ctx, model=lambda: m))
+    out = BR._handle({"cmd": "lint", "kernel_s": "MatMul rd=1, rs1=1\n", "op": "matmul"}, replace(ctx, model=lambda: m))
     rules = {f["rule"]: f["severity"] for f in out["findings"]}
     assert rules.get("halt_unknown") == "info"
     assert "no_halt" not in rules

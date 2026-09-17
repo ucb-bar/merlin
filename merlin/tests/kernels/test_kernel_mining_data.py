@@ -2,6 +2,7 @@
 data edit, not a core one: the motif-marker table and the target -> ISA-family map live in
 ``framework_contracts/feature_extraction/<family>.yaml``; expert-corpus locations and source aliases live in
 the corpus registry ``merlin/contract/corpora.yaml`` (read only by ``merlin.targetgen.corpora``)."""
+
 import pytest
 
 from merlin.common.paths import merlin_dir
@@ -36,10 +37,10 @@ def test_a_new_isa_family_is_one_data_file(feature_dir):
     for f in (FC.feature_families.__globals__["_DIR"] / "feature_extraction").glob("*.yaml"):
         (feature_dir / f.name).write_text(f.read_text())
     (feature_dir / "toyisa.yaml").write_text(
-        "family: toyisa\ntargets: [toyisa, Toy_Accel]\n"
-        "markers:\n  accumulator_lifetime: ['toy_mac\\w*']\n")
+        "family: toyisa\ntargets: [toyisa, Toy_Accel]\nmarkers:\n  accumulator_lifetime: ['toy_mac\\w*']\n"
+    )
     assert M.target_family("toy_accel") == "toyisa"
-    assert M.target_family("rvv") == "rvv"                       # the shipped families still resolve
+    assert M.target_family("rvv") == "rvv"  # the shipped families still resolve
     fired = M.fired_markers("for (i = 0; i < n; i++) toy_mac_acc(x);", "TOY_ACCEL")
     assert fired == {"accumulator_lifetime": ["toy_mac_acc"], "tiling_blocking": ["for ("]}
 
@@ -72,14 +73,22 @@ def test_canonical_capsule_corpus_is_first():
 
 
 def test_a_new_corpus_is_a_registry_entry(tmp_path, monkeypatch):
-    reg = {"capsule_corpora": [], "kernel_corpora": {"toyblas": {
-        "sources": ["toyblas", "toy-blas"], "layout": "single_tu", "checkout": "ToyBLAS",
-        "include_subdirs": ["", "inc"]}}}
+    reg = {
+        "capsule_corpora": [],
+        "kernel_corpora": {
+            "toyblas": {
+                "sources": ["toyblas", "toy-blas"],
+                "layout": "single_tu",
+                "checkout": "ToyBLAS",
+                "include_subdirs": ["", "inc"],
+            }
+        },
+    }
     monkeypatch.setattr(C, "_registry", lambda: reg)
     monkeypatch.setenv(C.kernel_corpus_env("toyblas"), str(tmp_path))
     assert C.kernel_corpus_env("toyblas") == "MERLIN_TOYBLAS_REPO"
     assert B.framework_include_roots("Toy-BLAS") == [tmp_path, tmp_path / "inc"]
-    assert B.benchmark_source() is None                  # no standalone-benchmark corpus declared
+    assert B.benchmark_source() is None  # no standalone-benchmark corpus declared
     assert B.benchmarks_dir() is None
     assert B.corpus_root("nope") is None
 

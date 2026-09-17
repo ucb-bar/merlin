@@ -7,6 +7,7 @@ came 27 MB short on a 26-layer model, and that kind of shortfall arrives at the 
 upload, after the layers, on hardware someone waited hours for. So the requirement is read off the IR that
 will actually run.
 """
+
 from __future__ import annotations
 
 from merlin.runtime.backends import zephyr_model as zm
@@ -22,22 +23,32 @@ def test_every_spelling_of_an_allocation_is_counted(tmp_path):
     """The IR spells the same call several ways. A pattern narrow enough to read misses one of them, and a
     missed allocation under-reports the requirement -- which is the direction that produces a broken image
     rather than a wasteful one."""
-    total, dynamic = zm.allocation_bytes(_ll(tmp_path, """
+    total, dynamic = zm.allocation_bytes(
+        _ll(
+            tmp_path,
+            """
   %1 = call ptr @malloc(i64 1024)
   %2 = tail call noalias ptr @malloc(i64 2048) #3
   %3 = call noalias align 16 ptr @malloc(i64 noundef 4096)
   %4 = call ptr @llvm.memcpy(ptr %a, ptr %b, i64 8)
-"""))
+""",
+        )
+    )
     assert (total, dynamic) == (1024 + 2048 + 4096, 0)
 
 
 def test_a_computed_size_is_reported_not_assumed_zero(tmp_path):
     """Its bytes are genuinely unknown at build time. Counting it as nothing would make an incomplete
     answer look like a complete one."""
-    total, dynamic = zm.allocation_bytes(_ll(tmp_path, """
+    total, dynamic = zm.allocation_bytes(
+        _ll(
+            tmp_path,
+            """
   %1 = call ptr @malloc(i64 512)
   %2 = call ptr @malloc(i64 %n)
-"""))
+""",
+        )
+    )
     assert total == 512
     assert dynamic == 1
 
@@ -71,5 +82,4 @@ def test_the_estimate_is_still_used_when_nothing_was_measured():
 
 def test_a_model_whose_buffers_are_small_is_unaffected():
     w = 1200 * 1024 * 1024
-    assert (zm._ram_for_weights(w, 64 * 1024 * 1024, 8 * 1024 * 1024)
-            == zm._ram_for_weights(w, None))
+    assert zm._ram_for_weights(w, 64 * 1024 * 1024, 8 * 1024 * 1024) == zm._ram_for_weights(w, None)

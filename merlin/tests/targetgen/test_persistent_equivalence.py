@@ -16,6 +16,7 @@ The recorded hypothesis statuses are asserted to be UNPROVEN. That is deliberate
 to "established" requires editing this file, which is a much better place for that argument to happen than
 a docstring.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -29,9 +30,13 @@ _BOTH = (_VEC, _MAT)
 
 
 def _model(**kw):
-    base = dict(macs_per_cycle={"vec": 4.0, "mat": 256.0}, dispatch_cycles={"mat": 200.0},
-                pack_cycles_per_element={"mat": 2.0}, requires_k_major=frozenset({"mat"}),
-                tile_edge={"mat": 32})
+    base = dict(
+        macs_per_cycle={"vec": 4.0, "mat": 256.0},
+        dispatch_cycles={"mat": 200.0},
+        pack_cycles_per_element={"mat": 2.0},
+        requires_k_major=frozenset({"mat"}),
+        tile_edge={"mat": 32},
+    )
     base.update(kw)
     return R.MeasuredCost(**base)
 
@@ -92,10 +97,13 @@ class TestTheDecisionIsDeferred:
 
 
 class TestExtractionAgreesWithTheCostModel:
-    @pytest.mark.parametrize("shape,expected", [
-        ((256, 256, 256), "mat"),      # fills the tile
-        ((1, 1, 64), "vec"),           # one cell of a 32x32 tile
-    ])
+    @pytest.mark.parametrize(
+        "shape,expected",
+        [
+            ((256, 256, 256), "mat"),  # fills the tile
+            ((1, 1, 64), "vec"),  # one cell of a 32x32 tile
+        ],
+    )
     def test_the_cheaper_alternative_survives(self, shape, expected):
         got = PE.extract_choice(_demand(*shape), _BOTH, _model())
         assert got.chosen == expected and got.gap is None
@@ -141,7 +149,7 @@ class TestCostScaling:
     def test_costs_are_scaled_to_integers(self):
         _, _, costs, _, _ = PE.build_egraph(_demand(1, 1, 64), _BOTH, _model())
         assert all(isinstance(v, int) for v in costs.values())
-        assert costs["vec"] == 16 * PE.COST_SCALE          # 64 macs / 4 per cycle
+        assert costs["vec"] == 16 * PE.COST_SCALE  # 64 macs / 4 per cycle
 
     def test_sub_cycle_differences_survive_scaling(self):
         # Without the scale factor these would round to the same integer and the ordering would be lost.
@@ -197,8 +205,11 @@ class TestTheHypothesesStayHonest:
 
 def _hybrid_units():
     from merlin.targetgen import compute_units as CU
+
     rule = (CU.AccumRule("int8", "int8", "i32"),)
-    return [CU.ComputeUnit(name="vec", kind="vector", dtypes=("int8",), ops=("matmul",),
-                           accumulate=rule),
-            CU.ComputeUnit(name="mat", kind="spatial", dtypes=("int8",), ops=("matmul",),
-                           accumulate=rule, exposure="inline_asm_insn")]
+    return [
+        CU.ComputeUnit(name="vec", kind="vector", dtypes=("int8",), ops=("matmul",), accumulate=rule),
+        CU.ComputeUnit(
+            name="mat", kind="spatial", dtypes=("int8",), ops=("matmul",), accumulate=rule, exposure="inline_asm_insn"
+        ),
+    ]

@@ -7,6 +7,7 @@ hand-driving the library, and nobody could reproduce them. These tests pin the r
 properties that make it safe to hand to someone else: --dry-run writes nothing, and a bundle with
 nothing to hoist is an honest refusal rather than an empty copy.
 """
+
 from __future__ import annotations
 
 import json
@@ -45,11 +46,11 @@ def test_the_precedence_decision_against_fuse_transpose_b_is_recorded():
     doc = cli.__doc__ or ""
     assert "fuse_transpose_b" in doc
     assert "Prefer THIS" in doc
-    assert "-6.53" in doc                      # the measured regression that decides it
-    assert "BLOCKED" in doc                    # ...and what fusion is still the right answer for
+    assert "-6.53" in doc  # the measured regression that decides it
+    assert "BLOCKED" in doc  # ...and what fusion is still the right answer for
     # and the honest size of the prize: a capacity lever, not a speed lever
     assert "0.4" in doc and "1.2" in doc and "noise band" in doc
-    assert "589824064" in doc                  # the alloc failure it actually fixes
+    assert "589824064" in doc  # the alloc failure it actually fixes
 
 
 @pytest.mark.skipif(_bundle_with_transposes() is None, reason="no bundle with weight transposes")

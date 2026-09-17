@@ -42,6 +42,7 @@ One site is deliberately untouched: `runtime/backends/rvv_codegen.py` still carr
 test. That file is under another workstream's lock. It is named here rather than left to be
 rediscovered.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -55,15 +56,18 @@ def _engines():
     return gold, ref, sim
 
 
-@pytest.mark.parametrize("dtype,expected", [
-    ("i32", 74192),   # wide: nothing to narrow
-    ("i16", 32767),   # saturates to the i16 range -- the case the old exact-i8 test could not express
-    ("i8", 127),
-    ("i4", 7),
-    ("u8", 255),
-    ("f32", 74192),   # not an integer container: pass through, as the golden does
-    ("bf16", 74192),
-])
+@pytest.mark.parametrize(
+    "dtype,expected",
+    [
+        ("i32", 74192),  # wide: nothing to narrow
+        ("i16", 32767),  # saturates to the i16 range -- the case the old exact-i8 test could not express
+        ("i8", 127),
+        ("i4", 7),
+        ("u8", 255),
+        ("f32", 74192),  # not an integer container: pass through, as the golden does
+        ("bf16", 74192),
+    ],
+)
 def test_all_three_engines_agree_on_every_declared_dtype(dtype, expected):
     """The property the L0 comparison depends on. A disagreement here fails a correct backend."""
     from merlin.runtime.tensor import Tensor
@@ -73,7 +77,8 @@ def test_all_three_engines_agree_on_every_declared_dtype(dtype, expected):
     got = (gold(t, dtype).data[0], ref(t, dtype, "COMMIT").data[0], sim(t, dtype, "COMMIT").data[0])
     assert got == (expected, expected, expected), (
         f"output_dtype={dtype!r}: golden/reference/simulator returned {got}; they must agree, or a "
-        f"correct backend is graded against a rule no single engine implements")
+        f"correct backend is graded against a rule no single engine implements"
+    )
 
 
 def test_an_absent_output_dtype_is_refused_rather_than_defaulted():
@@ -120,8 +125,11 @@ def test_the_engines_still_agree_on_absent_if_one_reaches_them():
 
     gold, ref, sim = _engines()
     t = Tensor((1, 1), [74192], "i32")
-    assert (gold(t, "i32").data[0], ref(t, "i32", "COMMIT").data[0], sim(t, "i32", "COMMIT").data[0]) \
-        == (74192, 74192, 74192)
+    assert (gold(t, "i32").data[0], ref(t, "i32", "COMMIT").data[0], sim(t, "i32", "COMMIT").data[0]) == (
+        74192,
+        74192,
+        74192,
+    )
 
 
 def test_every_shipped_capsule_still_declares_output_dtype():
@@ -162,7 +170,8 @@ def test_the_one_unfixed_site_is_named_rather_than_forgotten():
 
     assert 'attrs.get("output_dtype", "i8") == "i8"' in inspect.getsource(rvv_codegen), (
         "rvv_codegen no longer carries the old readout rule -- if it was fixed, delete this test and "
-        "the note in the module docstring above")
+        "the note in the module docstring above"
+    )
 
 
 def test_no_engine_keeps_a_private_readout_rule():
@@ -180,7 +189,8 @@ def test_no_engine_keeps_a_private_readout_rule():
         src = inspect.getsource(module)
         assert 'output_dtype", "i32") == "i8"' not in src, (
             f"{module.__name__} carries a private exact-i8 readout rule again; route it through "
-            f"_narrow_int_readout so it cannot disagree with the golden about i16/i4/u8")
+            f"_narrow_int_readout so it cannot disagree with the golden about i16/i4/u8"
+        )
 
 
 def test_the_validator_demands_a_declared_container_for_exactly_the_narrowing_opcodes():
@@ -198,7 +208,7 @@ def test_the_validator_demands_a_declared_container_for_exactly_the_narrowing_op
 
     narrowed = set()
     for line in inspect.getsource(simulator).splitlines():
-        head, sep, tail = line.partition('_narrow_int_readout(')
+        head, sep, tail = line.partition("_narrow_int_readout(")
         if not sep or "def " in head:
             continue
         # the op name is the last quoted argument on the line
@@ -208,19 +218,24 @@ def test_the_validator_demands_a_declared_container_for_exactly_the_narrowing_op
     assert narrowed, "no narrowing call sites found; this test would be vacuous"
     assert narrowed == set(NARROWING_OPCODES), (
         f"the simulator narrows {sorted(narrowed)} but the validator demands output_dtype for "
-        f"{sorted(NARROWING_OPCODES)}; the two must be the same set")
+        f"{sorted(NARROWING_OPCODES)}; the two must be the same set"
+    )
 
 
 def test_a_narrowing_command_without_output_dtype_is_a_named_problem():
     """The failure this replaces was a numeric mismatch hundreds of lines downstream."""
     from merlin.runtime.commandbuffer import validate_command_buffer
 
-    cb = {"abi_version": "0.1", "target": "t", "tensors": {"A": {}},
-          "commands": [{"opcode": "COMMIT", "operands": {"src": "A", "dst": "Y"},
-                        "attributes": {}}]}
+    cb = {
+        "abi_version": "0.1",
+        "target": "t",
+        "tensors": {"A": {}},
+        "commands": [{"opcode": "COMMIT", "operands": {"src": "A", "dst": "Y"}, "attributes": {}}],
+    }
     problems = validate_command_buffer(cb)
     assert any("output_dtype" in p and "COMMIT" in p for p in problems), (
-        f"an undeclared readout container must be reported by opcode: {problems}")
+        f"an undeclared readout container must be reported by opcode: {problems}"
+    )
 
     cb["commands"][0]["attributes"]["output_dtype"] = "i32"
     assert not validate_command_buffer(cb), "a declared container must validate cleanly"
@@ -231,7 +246,10 @@ def test_a_non_narrowing_command_is_not_asked_for_one():
     from merlin.runtime.commandbuffer import NARROWING_OPCODES, validate_command_buffer
 
     assert "MOVEMENT" not in NARROWING_OPCODES
-    cb = {"abi_version": "0.1", "target": "t", "tensors": {"A": {}},
-          "commands": [{"opcode": "MOVEMENT", "operands": {"src": "A", "dst": "Y"},
-                        "attributes": {}}]}
+    cb = {
+        "abi_version": "0.1",
+        "target": "t",
+        "tensors": {"A": {}},
+        "commands": [{"opcode": "MOVEMENT", "operands": {"src": "A", "dst": "Y"}, "attributes": {}}],
+    }
     assert not validate_command_buffer(cb)

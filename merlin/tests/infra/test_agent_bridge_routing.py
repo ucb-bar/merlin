@@ -10,6 +10,7 @@ manifest claims. Both happened while this was being built:
   * ``codex_agent.resolve_model`` mapped ``nemotron`` onto DEFAULT_CODEX_MODEL, so the run would have
     measured OpenAI's default model under nemotron's name.
 """
+
 from __future__ import annotations
 
 import sys
@@ -28,10 +29,12 @@ def BR(monkeypatch):
     monkeypatch.setenv("MERLIN_PROXY_KEY", "test-key")
     monkeypatch.delenv("MERLIN_FORCE_BRIDGE", raising=False)
     import agent_bridge
+
     return agent_bridge
 
 
 # ---------------------------------------------------------------- vendor derivation
+
 
 def test_vendor_is_derived_not_listed(BR):
     """The vendor set comes from the model registry + proxy config, so adding a model needs no edit."""
@@ -56,6 +59,7 @@ def test_region_prefixed_ids_resolve_to_the_real_vendor(BR):
 
 
 # ---------------------------------------------------------------- routing
+
 
 def test_opencode_never_needs_the_bridge(BR):
     """opencode is natively multi-provider; routing it through a proxy would only add a confound."""
@@ -120,9 +124,11 @@ def test_force_cannot_invent_a_route_the_proxy_cannot_serve(BR):
 
 # ---------------------------------------------------------------- driver wiring
 
+
 def test_codex_resolves_a_bridged_model_instead_of_a_default(BR):
     """resolve_model used to fall through to DEFAULT_CODEX_MODEL for any non-slug name."""
     import codex_agent
+
     assert codex_agent.resolve_model("nemotron") == "nemotron"
     assert codex_agent.resolve_model("glm5") == "glm5"
     assert codex_agent.resolve_model("gpt-5.6-sol") == "gpt-5.6-sol"
@@ -155,12 +161,14 @@ def test_the_record_states_the_bridge_caveats(BR):
 def test_served_models_match_the_proxy_config(BR):
     """SERVED advertising a model the proxy cannot serve is how a run dies on round 0."""
     import yaml
+
     cfg = yaml.safe_load(BR.proxy_config_path().read_text())
     names = {e["model_name"] for e in cfg["model_list"]}
-    assert set(BR.SERVED) <= names, f"SERVED has entries the proxy does not define: {set(BR.SERVED)-names}"
+    assert set(BR.SERVED) <= names, f"SERVED has entries the proxy does not define: {set(BR.SERVED) - names}"
 
 
 # ---------------------------------------------------------------- billing
+
 
 def test_a_bridged_round_is_metered_whatever_the_driver_declares(BR, monkeypatch):
     """Billing follows the ACCOUNT the traffic was bought on, not the CLI that drove it.
@@ -171,6 +179,7 @@ def test_a_bridged_round_is_metered_whatever_the_driver_declares(BR, monkeypatch
     CLI's own total_cost_usd for a model it does not bill.
     """
     import run_baseline_qa_loop as R
+
     from merlin.targetgen import experiment_tokens as ET
 
     monkeypatch.setattr(R, "_DRIVER", "codex", raising=False)
@@ -180,6 +189,7 @@ def test_a_bridged_round_is_metered_whatever_the_driver_declares(BR, monkeypatch
 
 
 # ---------------------------------------------------------------- harness naming
+
 
 def test_the_driver_name_and_the_wiring_name_route_identically(BR):
     """The harness identifier travels under two spellings and both must reach the same decision.
@@ -213,5 +223,6 @@ def test_an_unknown_harness_fails_closed(BR):
     """The old fallthrough guessed, and guessing is what produced the mislabelled Opus round. A harness
     nobody has declared a routing rule for must raise, not silently return a proxy name."""
     import pytest
+
     with pytest.raises(ValueError, match="unknown harness"):
         BR.bridged_name("opus", "some-new-cli")

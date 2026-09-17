@@ -10,6 +10,7 @@ Honesty of the split: the recognizer's rules were written by inspecting the raw 
 tuning. Ground truth is not hand-labeled: it is derived from the prov tags the capture already carries
 (a softmax/sdpa under an attention-module fqn ⇒ that region must be recognized ATTENTION).
 """
+
 from __future__ import annotations
 
 import inspect
@@ -20,9 +21,8 @@ from merlin.common.paths import merlin_dir
 from merlin.dse_guidance import attribution as A
 
 _RECAP = merlin_dir() / "benchmarks" / "dse_guidance" / "recaptures"
-_ALL = ("bitvla", "groot_n1d7", "molmoact", "openvla", "rdt", "rdt2",
-        "small_llama", "tiny_llama", "xr0")
-_DEV = {"openvla", "xr0"}                       # the only captures whose raw MLIR was inspected
+_ALL = ("bitvla", "groot_n1d7", "molmoact", "openvla", "rdt", "rdt2", "small_llama", "tiny_llama", "xr0")
+_DEV = {"openvla", "xr0"}  # the only captures whose raw MLIR was inspected
 _HELD_OUT = tuple(w for w in _ALL if w not in _DEV)
 
 _present = [w for w in _ALL if (_RECAP / w / "model.mlir").is_file()]
@@ -47,7 +47,7 @@ def _attr(line: str, marker: str) -> str | None:
     if i == -1:
         return None
     j = line.find('"', i + len(marker))
-    return line[i + len(marker):j] if j != -1 else None
+    return line[i + len(marker) : j] if j != -1 else None
 
 
 def _expected_attention_groups(w: str) -> set[str]:
@@ -70,8 +70,14 @@ def test_coverage_every_compute_op_lands_in_a_recognized_region(w):
     total = sum(r.contraction_count for r in regs)
     recognized = sum(r.contraction_count for r in regs if r.region_label != A.REGION_OTHER)
     assert total > 0, w
-    assert recognized == total, (w, [(r.region_label, r.contraction_count) for r in regs
-                                     if r.region_label == A.REGION_OTHER and r.contraction_count])
+    assert recognized == total, (
+        w,
+        [
+            (r.region_label, r.contraction_count)
+            for r in regs
+            if r.region_label == A.REGION_OTHER and r.contraction_count
+        ],
+    )
 
 
 @pytest.mark.parametrize("w", _present)
@@ -107,8 +113,7 @@ def test_held_out_models_are_recognized_without_tuning():
 def test_recognizer_source_is_not_overfit():
     """Anti-overfit guard: the recognition logic names NO specific workload and hard-codes NO shape
     literal — it keys only on architectural tokens (attn/mlp/norm/conv) + op-topology."""
-    src = "".join(inspect.getsource(fn) for fn in
-                  (A.recognize_regions, A._region_group_key, A._region_token_type))
+    src = "".join(inspect.getsource(fn) for fn in (A.recognize_regions, A._region_group_key, A._region_token_type))
     low = src.lower()
     for name in _ALL:
         assert name not in low, f"recognizer names a specific workload: {name}"

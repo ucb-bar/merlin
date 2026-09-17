@@ -10,6 +10,7 @@ These pin the repaired contract: operands are supplied for any dtype the shared 
 they are byte-exact against the golden's own recorded values, and a capsule whose values do NOT sit on its
 dtype's grid supplies nothing rather than a quantized approximation the golden never saw.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -73,7 +74,7 @@ def test_every_atlas_capsule_with_representable_float_operands_supplies_them():
             try:
                 enc = ff.encode_bytes(spec["values"], dtype)
             except (KeyError, ValueError):
-                continue                                  # dtype outside the float table / sub-byte
+                continue  # dtype outside the float table / sub-byte
             want = np.asarray(spec["values"], dtype=np.float32).ravel()
             if np.array_equal(_decode_leaf(cap, leaf, enc), want):
                 missing.append(f"{cd.name}/{leaf}")
@@ -83,7 +84,7 @@ def test_every_atlas_capsule_with_representable_float_operands_supplies_them():
 def test_a_lossy_reencoding_is_refused_rather_than_quantized(tmp_path):
     """A golden that stored pre-quantization floats for a narrow format must yield NO preload: handing the
     device quantized operands would grade the kernel against operands the golden never saw."""
-    _, donor = _capsule("AF6_add_bf16_pt")               # a real, schema-valid capsule to vary from
+    _, donor = _capsule("AF6_add_bf16_pt")  # a real, schema-valid capsule to vary from
     spec = yaml.safe_load((donor / "capsule.yaml").read_text())
     spec["name"] = "SYN_offgrid"
     spec["inputs"] = [{"name": "X", "role": "input", "shape": [1, 2], "dtype": "fp8_e4m3"}]
@@ -92,21 +93,29 @@ def test_a_lossy_reencoding_is_refused_rather_than_quantized(tmp_path):
     spec.pop("linalg_mlir", None)
     spec.pop("pytorch_ref", None)
     (tmp_path / "capsule.yaml").write_text(yaml.safe_dump(spec))
-    off_grid = [0.1234567, 0.7654321]                      # not on the e4m3 grid (3 mantissa bits)
-    (tmp_path / "golden.yaml").write_text(yaml.safe_dump({
-        "golden_source": "host_torch_eager",
-        "oracle_provenance": {"inputs": {"X": {"shape": [1, 2], "decoded": off_grid}}},
-        "outputs": {"Y0": [[0.0, 0.0]]},
-    }))
+    off_grid = [0.1234567, 0.7654321]  # not on the e4m3 grid (3 mantissa bits)
+    (tmp_path / "golden.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "golden_source": "host_torch_eager",
+                "oracle_provenance": {"inputs": {"X": {"shape": [1, 2], "decoded": off_grid}}},
+                "outputs": {"Y0": [[0.0, 0.0]]},
+            }
+        )
+    )
     cap = capsule_common.load_capsule(tmp_path)
     assert capsule_golden.canonical_input_raws(cap, tmp_path) == {}
     # and the guard is not vacuous: on-grid values through the SAME path are supplied
     on_grid = [float(v) for v in ff._decode(np.array([0x30, 0x38], dtype=np.uint32), "fp8_e4m3")]
-    (tmp_path / "golden.yaml").write_text(yaml.safe_dump({
-        "golden_source": "host_torch_eager",
-        "oracle_provenance": {"inputs": {"X": {"shape": [1, 2], "decoded": on_grid}}},
-        "outputs": {"Y0": [[0.0, 0.0]]},
-    }))
+    (tmp_path / "golden.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "golden_source": "host_torch_eager",
+                "oracle_provenance": {"inputs": {"X": {"shape": [1, 2], "decoded": on_grid}}},
+                "outputs": {"Y0": [[0.0, 0.0]]},
+            }
+        )
+    )
     assert set(capsule_golden.canonical_input_raws(cap, tmp_path)) == {"X"}
 
 
@@ -114,8 +123,11 @@ def test_recorded_device_bytes_win_over_reencoding():
     """fp8 capsules record the EXACT palette bytes; those must never be replaced by a re-encoding."""
     cap, cd = _capsule("AT2_single_tile_matmul")
     gy = yaml.safe_load((cd / "golden.yaml").read_text())
-    recorded = {n for n, s in (gy["oracle_provenance"]["inputs"] or {}).items()
-                if isinstance(s, dict) and (s.get("fp8_raw_hex") or s.get("raw_hex"))}
+    recorded = {
+        n
+        for n, s in (gy["oracle_provenance"]["inputs"] or {}).items()
+        if isinstance(s, dict) and (s.get("fp8_raw_hex") or s.get("raw_hex"))
+    }
     assert recorded, "fixture no longer records raw hex; pick another fp8 capsule"
     raws = capsule_golden.canonical_input_raws(cap, cd)
     for n in recorded:

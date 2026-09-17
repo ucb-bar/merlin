@@ -1,4 +1,5 @@
 """Every machine-audit tool invocation uses the supplied isolation boundary."""
+
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ def test_machine_audit_requires_a_runner(tmp_path):
 def test_machine_audit_routes_all_tools_through_runner(tmp_path, monkeypatch):
     from merlin.llvmlower import toolchain
     from merlin.runtime.backends import base
+
     tool = tmp_path / "tool"
     tool.write_text("inert test tool identity")
     translator_alias = tmp_path / "granted_translator"
@@ -22,20 +24,21 @@ def test_machine_audit_routes_all_tools_through_runner(tmp_path, monkeypatch):
     monkeypatch.setattr(toolchain, "clang", lambda: tool)
     monkeypatch.setattr(toolchain, "mlir_translate", lambda: translator_alias)
     monkeypatch.setattr(toolchain, "objdump", lambda: tool)
-    monkeypatch.setattr(base, "harness_build_recipe", lambda target: SimpleNamespace(
-        march=lambda: "-march=rv64gc"))
+    monkeypatch.setattr(base, "harness_build_recipe", lambda target: SimpleNamespace(march=lambda: "-march=rv64gc"))
     calls = []
 
     def runner(argv, *, timeout_s):
         assert 0 < timeout_s <= 5
         calls.append(argv)
         if "-o" in argv:
-            Path(argv[argv.index("-o")+1]).write_bytes(b"test artifact")
-        return SimpleNamespace(returncode=0, stderr="", stdout=
-            "00000000 <kernel>:\n 0: 13 00 00 00\tnop\n 4: 0f29307b\t<unknown>\n")
+            Path(argv[argv.index("-o") + 1]).write_bytes(b"test artifact")
+        return SimpleNamespace(
+            returncode=0, stderr="", stdout="00000000 <kernel>:\n 0: 13 00 00 00\tnop\n 4: 0f29307b\t<unknown>\n"
+        )
 
     result = get_backend("gemmini").analyze_machine_artifact(
-        "module {}", workdir=tmp_path / "work", run_command=runner, timeout_seconds=5)
+        "module {}", workdir=tmp_path / "work", run_command=runner, timeout_seconds=5
+    )
     assert len(calls) == 3
     assert calls[0][0] == str(translator_alias)
     assert calls[-1][1] == "-d"
@@ -53,6 +56,5 @@ def test_machine_audit_routes_all_tools_through_runner(tmp_path, monkeypatch):
     tool.write_text("changed tool bytes at same path")
     changed_tool = get_backend("gemmini").machine_artifact_policy_identity()
     assert changed_tool != previous
-    monkeypatch.setattr(base, "harness_build_recipe", lambda target: SimpleNamespace(
-        march=lambda: "-march=rv64gcv"))
+    monkeypatch.setattr(base, "harness_build_recipe", lambda target: SimpleNamespace(march=lambda: "-march=rv64gcv"))
     assert get_backend("gemmini").machine_artifact_policy_identity() != changed_tool

@@ -14,14 +14,14 @@ decoration.
 Skips (never fails) where a target's facts are absent -- they are generated during experiments and
 gitignored, so a fresh checkout legitimately has none.
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
 
 import pytest
 
-from merlin.system.offload import (device_contraction_ranks, device_dtype_triples,
-                                   offloadable_contractions, why_not)
+from merlin.system.offload import device_contraction_ranks, device_dtype_triples, offloadable_contractions, why_not
 
 _TARGETS = ("gemmini", "saturn_opu_mxv256d128", "atlas", "radiance")
 
@@ -34,16 +34,18 @@ def _triples(name):
 
 
 def _shape(dtypes, parallel=(16, 16), reduction=(16,), op="linalg.matmul"):
-    return SimpleNamespace(op=op, dtypes=tuple(dtypes), parallel=tuple(parallel),
-                           reduction=tuple(reduction))
+    return SimpleNamespace(op=op, dtypes=tuple(dtypes), parallel=tuple(parallel), reduction=tuple(reduction))
 
 
 # ------------------------------------------------------------- the equivalence (anti-overfit)
 
+
 def test_the_derivation_reproduces_the_literal_for_the_device_it_was_written_for():
     from merlin.llvmlower.passes_opu import INT8_DTYPES
+
     assert INT8_DTYPES in _triples("saturn_opu_mxv256d128"), (
-        "the hardcoded triple IS that device's first accumulate rule; deriving it must reproduce it")
+        "the hardcoded triple IS that device's first accumulate rule; deriving it must reproduce it"
+    )
 
 
 def test_the_derivation_is_not_merely_reproducing_that_literal_everywhere():
@@ -52,7 +54,7 @@ def test_the_derivation_is_not_merely_reproducing_that_literal_everywhere():
     for name in _TARGETS:
         try:
             seen.add(device_dtype_triples(name))
-        except Exception:                                # noqa: BLE001
+        except Exception:  # noqa: BLE001
             continue
     seen.discard(())
     if len(seen) < 2:
@@ -67,6 +69,7 @@ def test_a_float_device_does_not_derive_an_integer_datapath():
 
 
 # ------------------------------------------------------------- fail closed
+
 
 def test_an_underivable_device_offloads_nothing():
     assert device_dtype_triples("definitely_not_a_target") == ()
@@ -86,6 +89,7 @@ def test_a_dtype_the_registry_cannot_spell_is_skipped_not_approximated():
 
 
 # ------------------------------------------------------------- the three gates
+
 
 def test_a_dtype_outside_the_device_datapath_is_declined_with_its_reason():
     t = _triples("gemmini")
@@ -119,6 +123,7 @@ def test_a_legal_contraction_has_no_reason_against_it():
 
 
 # ------------------------------------------------------------- ranks come from the device
+
 
 def test_ranks_are_read_from_the_devices_own_capability():
     got = {n: device_contraction_ranks(n) for n in _TARGETS}

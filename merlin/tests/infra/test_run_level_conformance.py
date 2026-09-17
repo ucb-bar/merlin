@@ -12,6 +12,7 @@ and never able to be, because tool calls fall 300 -> 37 -> 30 -> 20 as the agent
 The rule these pin is the one `agg_by_model` already reports: every mandated check satisfied in SOME
 round, which is what "the agent developed the way this arm mandates" actually means over a run.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -78,8 +79,10 @@ def test_the_per_round_flag_is_still_recorded():
 
 def _loop():
     import sys
+
     sys.path.insert(0, str(merlin_dir() / "experiments/capsule_bench/harness"))
     import run_baseline_qa_loop  # noqa: PLC0415
+
     return run_baseline_qa_loop
 
 
@@ -99,8 +102,7 @@ def test_the_run_level_view_is_rebuilt_from_the_round_records():
 
 
 def test_a_check_that_never_held_is_false_after_the_fold():
-    rounds = [{"conformance": {"checks": {"cca_used": False}}},
-              {"conformance": {"checks": {"cca_used": False}}}]
+    rounds = [{"conformance": {"checks": {"cca_used": False}}}, {"conformance": {"checks": {"cca_used": False}}}]
     assert _loop()._conformance_ever(rounds) == {"cca_used": False}
 
 
@@ -115,5 +117,6 @@ def test_the_resume_path_persists_and_restores_the_run_level_view():
     src = LOOP.read_text()
     assert '"conformance_ever": dict(_conf_ever)' in src, "the run-level view must be persisted"
     assert 'st.get("conformance_ever")' in src, "a resume must read it back"
-    assert "_conf_ever.update(_conformance_ever(rounds_summary))" in src, \
+    assert "_conf_ever.update(_conformance_ever(rounds_summary))" in src, (
         "and must fall back to re-folding the round records for pre-existing checkpoints"
+    )

@@ -6,6 +6,7 @@ smaller siblings is a RANGE, never a point -- and a range is only worth exposing
 actually land inside it, which is what ``validate_composed_bands.py`` measures on held-out workloads.
 These tests pin the properties that make that measurement meaningful.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -17,14 +18,20 @@ PEAK = 256.0
 
 def _buffer(k: int = 32, opcode: str = "MATMUL_RESIDENT"):
     return {
-        "abi_version": "0.1", "target": "t", "version": "0.1", "params": {},
-        "tensors": {"A0": {"role": "input", "shape": [16, k], "dtype": "i8"},
-                    "W": {"role": "weight", "shape": [k, 16], "dtype": "i8"},
-                    "Y0": {"role": "output", "shape": [16, 16], "dtype": "i32"}},
-        "commands": [{"opcode": "RES_PACK", "operands": {"src": "W", "dst": "h"}, "attributes": {}},
-                     {"opcode": opcode, "operands": {"lhs": "A0", "rhs": "h", "dst": "Y0"},
-                      "attributes": {}},
-                     {"opcode": "COMMIT", "operands": {"src": "Y0", "dst": "Y0"}, "attributes": {}}],
+        "abi_version": "0.1",
+        "target": "t",
+        "version": "0.1",
+        "params": {},
+        "tensors": {
+            "A0": {"role": "input", "shape": [16, k], "dtype": "i8"},
+            "W": {"role": "weight", "shape": [k, 16], "dtype": "i8"},
+            "Y0": {"role": "output", "shape": [16, 16], "dtype": "i32"},
+        },
+        "commands": [
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "h"}, "attributes": {}},
+            {"opcode": opcode, "operands": {"lhs": "A0", "rhs": "h", "dst": "Y0"}, "attributes": {}},
+            {"opcode": "COMMIT", "operands": {"src": "Y0", "dst": "Y0"}, "attributes": {}},
+        ],
         "outputs": ["Y0"],
     }
 
@@ -88,6 +95,7 @@ def test_an_empty_interval_refuses_instead_of_being_reported():
 
 # ------------------------------------------------------------------------ compare: eliminate or stay quiet
 
+
 def test_disjoint_bands_eliminate_in_the_right_direction():
     baseline, candidate = _band(k=2048), _band(k=32)
     assert baseline["lower"] > candidate["upper"], "the fixture must actually be disjoint"
@@ -138,10 +146,17 @@ def test_a_band_that_did_not_derive_never_eliminates():
 
 # ------------------------------------------------------------------------------- the compute class
 
-@pytest.mark.parametrize("opcode,expected", [
-    ("CONV2D", "CONV2D"), ("MATMUL", "MATMUL"), ("MATMUL_RESIDENT", "MATMUL_RESIDENT"),
-    ("BATCHED_MATMUL", "BATCHED_MATMUL"), ("ATTENTION_QK", "ATTENTION_QK"),
-])
+
+@pytest.mark.parametrize(
+    "opcode,expected",
+    [
+        ("CONV2D", "CONV2D"),
+        ("MATMUL", "MATMUL"),
+        ("MATMUL_RESIDENT", "MATMUL_RESIDENT"),
+        ("BATCHED_MATMUL", "BATCHED_MATMUL"),
+        ("ATTENTION_QK", "ATTENTION_QK"),
+    ],
+)
 def test_the_compute_class_is_read_off_the_program(opcode, expected):
     assert CE.compute_class(_buffer(opcode=opcode)) == expected
 
@@ -173,8 +188,8 @@ class TestTheCostClassRefinesTheOpcodeByArithmeticDensity:
     """
 
     def test_two_programs_a_decade_apart_in_density_are_different_cost_classes(self):
-        sparse = CE.cost_class(_buffer(k=16))       # 16*16*16 = 4096 MACs in one command
-        dense = CE.cost_class(_buffer(k=4096))      # 16*4096*16 = 1,048,576 MACs in one command
+        sparse = CE.cost_class(_buffer(k=16))  # 16*16*16 = 4096 MACs in one command
+        dense = CE.cost_class(_buffer(k=4096))  # 16*4096*16 = 1,048,576 MACs in one command
         assert sparse is not None and dense is not None
         assert sparse != dense
         # Both keep the opcode they were read off, so a corpus gap is still about an opcode.
@@ -189,10 +204,8 @@ class TestTheCostClassRefinesTheOpcodeByArithmeticDensity:
         matters is that a class holds many workloads: on the real corpus 12 classes cover 263
         programs, the largest holding 75.
         """
-        assert CE.cost_class(_buffer(k=16)) == CE.cost_class(_buffer(k=32)) \
-            == "MATMUL_RESIDENT/e3"
-        assert CE.cost_class(_buffer(k=48)) == CE.cost_class(_buffer(k=64)) \
-            == "MATMUL_RESIDENT/e4"
+        assert CE.cost_class(_buffer(k=16)) == CE.cost_class(_buffer(k=32)) == "MATMUL_RESIDENT/e3"
+        assert CE.cost_class(_buffer(k=48)) == CE.cost_class(_buffer(k=64)) == "MATMUL_RESIDENT/e4"
 
     def test_the_opcode_still_decides_the_coarse_class(self):
         matmul = CE.cost_class(_buffer(k=32, opcode="MATMUL"))
@@ -202,10 +215,15 @@ class TestTheCostClassRefinesTheOpcodeByArithmeticDensity:
         assert resident.split("/", 1)[0] == "MATMUL_RESIDENT"
 
     def test_a_buffer_with_no_compute_opcode_has_no_cost_class(self):
-        movement = {"abi_version": "0.1", "target": "t", "version": "0.1", "params": {},
-                    "tensors": {"X": {"role": "input", "shape": [4, 4], "dtype": "i8"}},
-                    "commands": [{"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y"}}],
-                    "outputs": ["Y"]}
+        movement = {
+            "abi_version": "0.1",
+            "target": "t",
+            "version": "0.1",
+            "params": {},
+            "tensors": {"X": {"role": "input", "shape": [4, 4], "dtype": "i8"}},
+            "commands": [{"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y"}}],
+            "outputs": ["Y"],
+        }
         assert CE.cost_class(movement) is None
 
     def test_a_program_whose_work_is_only_a_lower_bound_has_no_density(self):
@@ -222,5 +240,6 @@ class TestTheCostClassRefinesTheOpcodeByArithmeticDensity:
         assert not partial and macs
         commands = CE._compute_command_count(buffer)  # noqa: SLF001
         import math
+
         expected = int(math.floor(math.log10(macs / commands)))
         assert CE.cost_class(buffer) == f"MATMUL_RESIDENT/e{expected}"

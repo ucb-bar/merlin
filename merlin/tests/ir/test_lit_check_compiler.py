@@ -5,6 +5,7 @@ either checked or has a recorded reason it is not**. A generator that quietly em
 of six targets is indistinguishable from one that is broken, which is why coverage is a ledger rather
 than a count.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -29,7 +30,8 @@ def test_every_declared_obligation_is_checked_or_explained(target):
     for o in cov["omission_reasons"]:
         assert len(o["reason"]) > 30, (
             f"{target}/{o['obligation']}: an omission reason must say WHY, not just that it was "
-            f"omitted (got {o['reason']!r})")
+            f"omitted (got {o['reason']!r})"
+        )
 
 
 @pytest.mark.slow
@@ -41,7 +43,8 @@ def test_no_check_is_emitted_from_an_underived_fact(target):
     for check in compile_checks(target).checks:
         if check.derived:
             assert "derived" in check.grounded_by or "manifest" in check.grounded_by, (
-                f"{target}/{check.obligation} claims derived=True but names no source")
+                f"{target}/{check.obligation} claims derived=True but names no source"
+            )
 
 
 def test_a_target_without_a_manifest_fails_closed():
@@ -79,6 +82,5 @@ def test_generated_test_uses_one_prefix_per_obligation():
         pytest.skip("gemmini emits fewer than two checks; nothing to disambiguate")
     shape, _ = _shape_for(c)
     text = render_test(c, shape)
-    prefixes = {line.split("--check-prefix=")[1].strip()
-                for line in text.splitlines() if "--check-prefix=" in line}
+    prefixes = {line.split("--check-prefix=")[1].strip() for line in text.splitlines() if "--check-prefix=" in line}
     assert len(prefixes) == len(c.checks), f"expected one prefix per obligation, got {prefixes}"

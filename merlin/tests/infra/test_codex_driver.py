@@ -39,7 +39,6 @@ if str(_HARNESS) not in sys.path:
 
 import codex_agent as CA  # noqa: E402  (path shim above)
 
-
 # The measured shape of a real 0.147.0 turn, used as the scripted reply.
 _REAL_USAGE = {
     "input_tokens": 36767,
@@ -50,10 +49,16 @@ _REAL_USAGE = {
 }
 
 
-def _fake_codex(tmp_path: Path, lines: list[dict], *, final: str = "DONE",
-                exit_code: int = 0, hang: bool = False,
-                orphan_pid_path: Path | None = None,
-                version: str = "codex-cli 0.153.0") -> Path:
+def _fake_codex(
+    tmp_path: Path,
+    lines: list[dict],
+    *,
+    final: str = "DONE",
+    exit_code: int = 0,
+    hang: bool = False,
+    orphan_pid_path: Path | None = None,
+    version: str = "codex-cli 0.153.0",
+) -> Path:
     """Write an executable stand-in for the codex CLI that replays *lines*.
 
     It also honors ``-o <file>`` so the driver's final-message handling is real.
@@ -83,11 +88,16 @@ def _fake_codex(tmp_path: Path, lines: list[dict], *, final: str = "DONE",
         "for line in lines:",
         "    sys.stdout.write(json.dumps(line) + '\\n')",
         "    sys.stdout.flush()",
-        *(["child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'], "
-            "                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, "
-            "                         stderr=subprocess.DEVNULL, close_fds=True)",
-            f"open({str(orphan_pid_path)!r}, 'w').write(str(child.pid))"]
-          if orphan_pid_path is not None else []),
+        *(
+            [
+                "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(600)'], "
+                "                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, "
+                "                         stderr=subprocess.DEVNULL, close_fds=True)",
+                f"open({str(orphan_pid_path)!r}, 'w').write(str(child.pid))",
+            ]
+            if orphan_pid_path is not None
+            else []
+        ),
         *(["time.sleep(600)"] if hang else []),
         "if out:",
         f"    open(out, 'w').write({final!r})",
@@ -102,16 +112,29 @@ def _stream(usage: dict | None = _REAL_USAGE, *, failed: bool = False) -> list[d
     lines: list[dict] = [
         {"type": "thread.started", "thread_id": "01a01161-dead-beef-0000-000000000001"},
         {"type": "turn.started"},
-        {"type": "item.started", "item": {"id": "item_0", "type": "command_execution",
-                                          "command": "/bin/bash -lc 'ls'",
-                                          "aggregated_output": "", "exit_code": None,
-                                          "status": "in_progress"}},
-        {"type": "item.completed", "item": {"id": "item_0", "type": "command_execution",
-                                            "command": "/bin/bash -lc 'ls'",
-                                            "aggregated_output": "TASK.md\n", "exit_code": 0,
-                                            "status": "completed"}},
-        {"type": "item.completed", "item": {"id": "item_1", "type": "agent_message",
-                                            "text": "DONE"}},
+        {
+            "type": "item.started",
+            "item": {
+                "id": "item_0",
+                "type": "command_execution",
+                "command": "/bin/bash -lc 'ls'",
+                "aggregated_output": "",
+                "exit_code": None,
+                "status": "in_progress",
+            },
+        },
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "item_0",
+                "type": "command_execution",
+                "command": "/bin/bash -lc 'ls'",
+                "aggregated_output": "TASK.md\n",
+                "exit_code": 0,
+                "status": "completed",
+            },
+        },
+        {"type": "item.completed", "item": {"id": "item_1", "type": "agent_message", "text": "DONE"}},
     ]
     if failed:
         lines.append({"type": "turn.failed", "error": {"message": "upstream 400"}})
@@ -120,8 +143,14 @@ def _stream(usage: dict | None = _REAL_USAGE, *, failed: bool = False) -> list[d
     return lines
 
 
-def _run(tmp_path: Path, script: Path, *, sandbox: str = "none", timeout: int = 60,
-         instruction_files: tuple[str, ...] = ("TASK.md",)):
+def _run(
+    tmp_path: Path,
+    script: Path,
+    *,
+    sandbox: str = "none",
+    timeout: int = 60,
+    instruction_files: tuple[str, ...] = ("TASK.md",),
+):
     ws = tmp_path / "ws"
     ws.mkdir(exist_ok=True)
     for name in instruction_files:
@@ -130,8 +159,7 @@ def _run(tmp_path: Path, script: Path, *, sandbox: str = "none", timeout: int = 
     run_dir.mkdir(exist_ok=True)
     os.environ["CODEX_BIN"] = str(script)
     try:
-        rc, tpath = CA.run_round(ws, run_dir, "claude-opus-4-8", {}, None, sandbox, 0, timeout,
-                                 effort="low")
+        rc, tpath = CA.run_round(ws, run_dir, "claude-opus-4-8", {}, None, sandbox, 0, timeout, effort="low")
     finally:
         os.environ.pop("CODEX_BIN", None)
     records = [json.loads(l) for l in tpath.read_text().splitlines() if l.strip()]
@@ -150,11 +178,11 @@ def _by_type(records: list[dict], kind: str) -> list[dict]:
 def test_the_nonexistent_approval_flag_is_never_passed():
     """``--ask-for-approval`` was removed by 0.147.0; passing it aborts the run."""
     for sandbox in ("none", "bwrap"):
-        cmd = CA.build_cmd(Path("/ws"), model="gpt-5.6-sol", effort="high",
-                           final_path=Path("/run/final.txt"), sandbox=sandbox)
+        cmd = CA.build_cmd(
+            Path("/ws"), model="gpt-5.6-sol", effort="high", final_path=Path("/run/final.txt"), sandbox=sandbox
+        )
         assert "--ask-for-approval" not in cmd
-    cmd = CA.build_cmd(Path("/ws"), model="gpt-5.6-sol", effort="",
-                       final_path=Path("/run/final.txt"), sandbox="none")
+    cmd = CA.build_cmd(Path("/ws"), model="gpt-5.6-sol", effort="", final_path=Path("/run/final.txt"), sandbox="none")
     # The policy is a config override instead.
     assert "-c" in cmd and "approval_policy=never" in cmd
 
@@ -177,25 +205,28 @@ def test_the_prompt_is_passed_on_stdin_not_as_an_argv_fragment():
 
 
 def test_effort_is_a_config_override_and_absent_when_unset():
-    with_effort = CA.build_cmd(Path("/ws"), model="m", effort="high",
-                               final_path=Path("/f"), sandbox="none")
+    with_effort = CA.build_cmd(Path("/ws"), model="m", effort="high", final_path=Path("/f"), sandbox="none")
     assert 'model_reasoning_effort="high"' in with_effort
     without = CA.build_cmd(Path("/ws"), model="m", effort="", final_path=Path("/f"), sandbox="none")
     assert not any("model_reasoning_effort" in c for c in without)
 
 
-@pytest.mark.parametrize("alias,expected", [
-    ("gpt-5.6-sol", "gpt-5.6-sol"),
-    ("gpt-5.4", "gpt-5.4"),
-    ("claude-opus-4-8", CA.DEFAULT_CODEX_MODEL),
-    ("", CA.DEFAULT_CODEX_MODEL),
-])
+@pytest.mark.parametrize(
+    "alias,expected",
+    [
+        ("gpt-5.6-sol", "gpt-5.6-sol"),
+        ("gpt-5.4", "gpt-5.4"),
+        ("claude-opus-4-8", CA.DEFAULT_CODEX_MODEL),
+        ("", CA.DEFAULT_CODEX_MODEL),
+    ],
+)
 def test_model_aliases_resolve_to_a_slug_this_auth_mode_accepts(alias, expected):
     assert CA.resolve_model(alias) == expected
 
 
 def test_preflighted_effective_model_bypasses_later_ambient_remapping(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     script = _fake_codex(tmp_path, _stream())
     ws = tmp_path / "ws"
     ws.mkdir()
@@ -206,8 +237,8 @@ def test_preflighted_effective_model_bypasses_later_ambient_remapping(
     monkeypatch.setenv("CODEX_MODEL_MAP", "declared-model=wrong-later-model")
 
     rc, transcript = CA.run_round(
-        ws, run_dir, "declared-model", {}, None, "none", 0, 60,
-        effort="high", effective_model="preflighted-model")
+        ws, run_dir, "declared-model", {}, None, "none", 0, 60, effort="high", effective_model="preflighted-model"
+    )
     rows = [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines()]
     init = next(row for row in rows if row.get("subtype") == "init")
 
@@ -245,8 +276,8 @@ def test_reasoning_is_kept_beside_output_never_added_to_it():
 
 def test_cache_write_is_subtracted_from_input_too():
     shaped, _ = CA.usage_to_claude_shape(
-        {"input_tokens": 1000, "cached_input_tokens": 600,
-         "cache_write_input_tokens": 100, "output_tokens": 10})
+        {"input_tokens": 1000, "cached_input_tokens": 600, "cache_write_input_tokens": 100, "output_tokens": 10}
+    )
     assert shaped["input_tokens"] == 300
     assert shaped["cache_creation_input_tokens"] == 100
 
@@ -277,17 +308,19 @@ def test_a_successful_round_translates_the_stream_into_the_harness_transcript(tm
     assert init["model_requested"] == "claude-opus-4-8"
 
     # The tool call became a tool_use + tool_result pair.
-    tool_uses = [b for r in _by_type(records, "assistant")
-                 for b in r["message"].get("content", []) if b.get("type") == "tool_use"]
+    tool_uses = [
+        b
+        for r in _by_type(records, "assistant")
+        for b in r["message"].get("content", [])
+        if b.get("type") == "tool_use"
+    ]
     assert tool_uses and tool_uses[0]["name"] == "Bash"
-    results = [b for r in _by_type(records, "user")
-               for b in r["message"]["content"] if b.get("type") == "tool_result"]
+    results = [b for r in _by_type(records, "user") for b in r["message"]["content"] if b.get("type") == "tool_result"]
     assert results and "TASK.md" in results[0]["content"]
     assert results[0]["is_error"] is False
 
     # Usage landed on an assistant record in the translated shape.
-    usages = [r["message"]["usage"] for r in _by_type(records, "assistant")
-              if "usage" in r["message"]]
+    usages = [r["message"]["usage"] for r in _by_type(records, "assistant") if "usage" in r["message"]]
     assert len(usages) == 1
     assert usages[0]["input_tokens"] == 8607
     assert _by_type(records, "result")[0]["subtype"] == "success"
@@ -327,8 +360,9 @@ def test_the_raw_event_stream_is_persisted_byte_for_byte(tmp_path):
     assert len(raw.splitlines()) == len(_stream())
     assert '"thread.started"' in raw
     # And a timestamped sibling, since the events carry no time of their own.
-    stamped = [json.loads(l) for l in
-               (tpath.parent / "round_00.codex_events.timestamped.jsonl").read_text().splitlines()]
+    stamped = [
+        json.loads(l) for l in (tpath.parent / "round_00.codex_events.timestamped.jsonl").read_text().splitlines()
+    ]
     assert [r["seq"] for r in stamped] == list(range(1, len(_stream()) + 1))
     assert all(r["arrived_at"] for r in stamped)
 
@@ -347,8 +381,7 @@ def test_a_hung_round_times_out_and_still_leaves_the_usage_on_disk(tmp_path):
 
 def test_a_successful_leader_cannot_leave_its_process_group_running(tmp_path):
     pid_path = tmp_path / "descendant.pid"
-    rc, _tpath, _records = _run(
-        tmp_path, _fake_codex(tmp_path, _stream(), orphan_pid_path=pid_path))
+    rc, _tpath, _records = _run(tmp_path, _fake_codex(tmp_path, _stream(), orphan_pid_path=pid_path))
 
     assert rc == 0
     pid = int(pid_path.read_text())
@@ -382,8 +415,10 @@ def test_the_default_prompt_requires_narrow_iteration_before_a_full_sweep(tmp_pa
 
 
 def test_a_missing_codex_binary_fails_the_round_without_raising(tmp_path):
-    ws = tmp_path / "ws"; ws.mkdir()
-    run_dir = tmp_path / "run"; run_dir.mkdir()
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
     os.environ["CODEX_BIN"] = str(tmp_path / "definitely-not-here")
     try:
         rc, tpath = CA.run_round(ws, run_dir, "m", {}, None, "none", 0, 30)
@@ -402,15 +437,13 @@ def test_a_missing_codex_binary_fails_the_round_without_raising(tmp_path):
 def test_workspace_instruction_files_are_recorded_so_asymmetry_is_visible(tmp_path):
     """Codex reads AGENTS.md where Claude reads CLAUDE.md; an arm that quietly
     got extra instructions is not the same arm."""
-    _rc, _tpath, records = _run(tmp_path, _fake_codex(tmp_path, _stream()),
-                                instruction_files=("TASK.md", "AGENTS.md"))
+    _rc, _tpath, records = _run(tmp_path, _fake_codex(tmp_path, _stream()), instruction_files=("TASK.md", "AGENTS.md"))
     init = _by_type(records, "system")[0]
     assert set(init["workspace_instruction_files"]) == {"TASK.md", "AGENTS.md"}
 
 
 def test_the_driver_does_not_author_instruction_files_itself(tmp_path):
-    _rc, _tpath, _records = _run(tmp_path, _fake_codex(tmp_path, _stream()),
-                                 instruction_files=("TASK.md",))
+    _rc, _tpath, _records = _run(tmp_path, _fake_codex(tmp_path, _stream()), instruction_files=("TASK.md",))
     assert not (tmp_path / "ws" / "AGENTS.md").exists(), "parity is recorded, never manufactured"
 
 
@@ -430,8 +463,9 @@ def test_the_isolated_home_holds_a_frozen_config_and_no_credential(tmp_path):
     assert "trust_level" not in config and "[projects" not in config
 
     assert info["auth_copied"] is False
-    assert not (tmp_path / "home" / "auth.json").exists(), \
+    assert not (tmp_path / "home" / "auth.json").exists(), (
         "the credential is bind-mounted read-only, never written into the tree"
+    )
     assert info["config_sha256"] and info["isolated_from_real_home"] is True
 
 
@@ -459,11 +493,11 @@ def test_the_real_dotcodex_directory_is_never_bound_wholesale(tmp_path):
     real = str(CA.real_codex_home())
 
     # The only permitted sources under the real home are packages/ and auth.json.
-    sources = [binds[i + 1] for i, a in enumerate(binds)
-               if a in ("--bind", "--ro-bind") and i + 1 < len(binds)]
+    sources = [binds[i + 1] for i, a in enumerate(binds) if a in ("--bind", "--ro-bind") and i + 1 < len(binds)]
     under_real = [s for s in sources if s.startswith(real)]
-    assert all(s.startswith(f"{real}/packages") or s == f"{real}/auth.json"
-               for s in under_real), f"unexpected bind out of the real home: {under_real}"
+    assert all(s.startswith(f"{real}/packages") or s == f"{real}/auth.json" for s in under_real), (
+        f"unexpected bind out of the real home: {under_real}"
+    )
     assert real not in sources, "the real ~/.codex must never be bound as a whole"
 
 
@@ -500,12 +534,13 @@ def test_a_canary_prompt_can_override_the_graded_instruction_but_is_not_the_defa
     """A measured arm always gets the graded text, so two arms cannot differ in
     what they were asked; only out-of-band uses override it."""
     script = _fake_codex(tmp_path, _stream())
-    ws = tmp_path / "ws"; ws.mkdir()
-    run_dir = tmp_path / "run"; run_dir.mkdir()
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
     os.environ["CODEX_BIN"] = str(script)
     try:
-        _rc, tpath = CA.run_round(ws, run_dir, "m", {}, None, "none", 0, 60,
-                                  prompt="CANARY: run probe.sh")
+        _rc, tpath = CA.run_round(ws, run_dir, "m", {}, None, "none", 0, 60, prompt="CANARY: run probe.sh")
     finally:
         os.environ.pop("CODEX_BIN", None)
     assert (tpath.parent / "round_00.prompt.txt").read_text() == "CANARY: run probe.sh"
@@ -520,13 +555,14 @@ def test_a_canary_prompt_can_override_the_graded_instruction_but_is_not_the_defa
 
 
 def test_an_unsupported_tiering_request_is_recorded_rather_than_silently_dropped(tmp_path):
-    ws = tmp_path / "ws"; ws.mkdir()
+    ws = tmp_path / "ws"
+    ws.mkdir()
     (ws / "TASK.md").write_text("x")
-    run_dir = tmp_path / "run"; run_dir.mkdir()
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
     os.environ["CODEX_BIN"] = str(_fake_codex(tmp_path, _stream()))
     try:
-        _rc, tpath = CA.run_round(ws, run_dir, "m", {}, None, "none", 0, 60,
-                                  subagent_model="gpt-5.4-mini")
+        _rc, tpath = CA.run_round(ws, run_dir, "m", {}, None, "none", 0, 60, subagent_model="gpt-5.4-mini")
     finally:
         os.environ.pop("CODEX_BIN", None)
     records = [json.loads(l) for l in tpath.read_text().splitlines() if l.strip()]
@@ -539,6 +575,7 @@ def test_an_unsupported_tiering_request_is_recorded_rather_than_silently_dropped
 #   Failed to write last message file ".../round_00.final.txt": No such file or directory (os error 2)
 # because `-o` pointed under the run directory, which is on /scratch -- and the sandbox tmpfs-hides
 # /scratch* on purpose. The read is guarded, so nothing failed: the round's `result` was just empty.
+
 
 def test_the_last_message_target_is_writable_inside_the_sandbox(tmp_path):
     ws = tmp_path / "ws"
@@ -583,17 +620,30 @@ def test_a_tool_use_block_carries_the_id_its_result_is_keyed_by():
 def test_aet_counts_the_tool_calls_the_transcript_contains():
     """End-to-end over the parser that actually consumes the transcript, not just the block shape."""
     import json
+
     import codex_agent as CA
+
     parse_stream = pytest.importorskip("aet.tracking.claude_stream").parse_stream
 
     items = [{"type": CA.ITEM_COMMAND_EXECUTION, "command": "ls", "id": f"item_{i}"} for i in range(3)]
     lines = []
     for it in items:
         tid = f"codex_tool_{it['id']}"
-        lines.append(json.dumps({"type": "assistant", "message": {
-            "id": tid, "model": "m", "content": [CA._tool_block(it, tid)]}}))
-        lines.append(json.dumps({"type": "user", "message": {"content": [
-            {"type": "tool_result", "tool_use_id": tid, "content": "ok", "is_error": False}]}}))
+        lines.append(
+            json.dumps(
+                {"type": "assistant", "message": {"id": tid, "model": "m", "content": [CA._tool_block(it, tid)]}}
+            )
+        )
+        lines.append(
+            json.dumps(
+                {
+                    "type": "user",
+                    "message": {
+                        "content": [{"type": "tool_result", "tool_use_id": tid, "content": "ok", "is_error": False}]
+                    },
+                }
+            )
+        )
     result = parse_stream("\n".join(lines))
     assert result.tool_call_count == 3, "every emitted tool_use must reach the telemetry store"
     assert result.unique_tools_used == ["Bash"]

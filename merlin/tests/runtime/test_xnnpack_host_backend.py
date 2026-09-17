@@ -7,6 +7,7 @@ compiled path (so it is a faithful kernel swap, not a behavior change).
 
 Skips cleanly when the XNNPACK source / a host C compiler is unavailable.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,12 +23,13 @@ from merlin.runtime.backends import xnnpack_host
 # so this test needs BOTH the XNNPACK lib AND that toolchain — same guard the other compile tests use
 # (toolchain.available()). Without the second check it hard-fails instead of skipping when model2MLIR
 # is absent (a fresh clone without the prerequisite).
-pytestmark = pytest.mark.skipif(not (xnnpack_host.is_available() and _llvm_tc.available()),
-                                reason="XNNPACK host GEMM lib or the LLVM/model2MLIR toolchain unavailable")
+pytestmark = pytest.mark.skipif(
+    not (xnnpack_host.is_available() and _llvm_tc.available()),
+    reason="XNNPACK host GEMM lib or the LLVM/model2MLIR toolchain unavailable",
+)
 
 
-@pytest.mark.parametrize("M,N,K", [(4, 4, 4), (7, 5, 9), (64, 64, 64),
-                                   (1, 128, 256), (33, 17, 41), (2, 1, 3)])
+@pytest.mark.parametrize("M,N,K", [(4, 4, 4), (7, 5, 9), (64, 64, 64), (1, 128, 256), (33, 17, 41), (2, 1, 3)])
 def test_xnn_gemm_matches_numpy(M, N, K):
     rng = np.random.default_rng(0)
     A = rng.standard_normal((M, K)).astype(np.float32)

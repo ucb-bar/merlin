@@ -1,4 +1,5 @@
 """The per-capsule verdict must decide on evidence, and refuse rather than assume."""
+
 from __future__ import annotations
 
 import sys
@@ -13,8 +14,14 @@ import perf_capsule_verdict as V  # noqa: E402
 
 
 def _call(**over):
-    args = dict(capsule="PK00_k16", declared_macs=4096, achievable_rate=80.0,
-                baseline_cycles=303, candidate_cycles=303, dispersion=0.01)
+    args = dict(
+        capsule="PK00_k16",
+        declared_macs=4096,
+        achievable_rate=80.0,
+        baseline_cycles=303,
+        candidate_cycles=303,
+        dispersion=0.01,
+    )
     args.update(over)
     return V.capsule_verdict(**args)
 
@@ -77,8 +84,7 @@ def test_a_missing_candidate_is_open_headroom_not_a_pass():
 
 def test_dispersion_is_measured_from_the_points_and_refuses_below_two():
     assert V.ceiling_dispersion([{"macs": 100, "cycles": 10}]) is None
-    d = V.ceiling_dispersion([{"macs": 100, "cycles": 10}, {"macs": 90, "cycles": 10},
-                              {"macs": 50, "cycles": 10}])
+    d = V.ceiling_dispersion([{"macs": 100, "cycles": 10}, {"macs": 90, "cycles": 10}, {"macs": 50, "cycles": 10}])
     assert d is not None and 0.0 <= d < 1.0
 
 
@@ -98,17 +104,24 @@ def test_worst_first_ranks_by_remaining_factor():
 # --------------------------------------------------------------------------------------
 # The wiring: a verdict must actually reach the feedback cell, not merely be computable.
 
+
 def _stage():
     sys.path.insert(0, str(merlin_dir() / "experiments" / "gemmini_perf_bench" / "scripts"))
     import perf_agent_stage as PAS
+
     return PAS
 
 
 def test_the_stage_helper_emits_a_decided_verdict_for_a_measured_member():
     PAS = _stage()
     row = PAS._capsule_verdict_fields(
-        capsule="PK00_k16", declared_macs=4096, achievable_rate=80.0,
-        baseline_cycles=400, candidate_cycles=300, dispersion=0.01)
+        capsule="PK00_k16",
+        declared_macs=4096,
+        achievable_rate=80.0,
+        baseline_cycles=400,
+        candidate_cycles=300,
+        dispersion=0.01,
+    )
     assert row["verdict"] == V.IMPROVED
     assert row["verdict_reason"]
 
@@ -117,25 +130,45 @@ def test_the_stage_helper_refuses_rather_than_omitting_the_field():
     """A member that cannot be decided must still carry a verdict key, or the cell schema breaks."""
     PAS = _stage()
     row = PAS._capsule_verdict_fields(
-        capsule="x", declared_macs=None, achievable_rate=None,
-        baseline_cycles=None, candidate_cycles=None, dispersion=None)
-    assert set(row) == {"verdict", "verdict_reason", "factor_to_achievable",
-                        "ideal_cycles_at_achievable", "cycles_saved", "gap_closed"}
+        capsule="x",
+        declared_macs=None,
+        achievable_rate=None,
+        baseline_cycles=None,
+        candidate_cycles=None,
+        dispersion=None,
+    )
+    assert set(row) == {
+        "verdict",
+        "verdict_reason",
+        "factor_to_achievable",
+        "ideal_cycles_at_achievable",
+        "cycles_saved",
+        "gap_closed",
+    }
     assert row["verdict"] == V.REFUSED
     # The point is that the helper never OMITS a key -- a missing one breaks the closed cell schema.
     # An undecidable member carries the headroom keys as None: "not derived" is a different statement
     # from zero, and the schema needs the key either way.
-    assert all(row[k] is None for k in ("factor_to_achievable", "ideal_cycles_at_achievable",
-                                        "cycles_saved", "gap_closed"))
+    assert all(
+        row[k] is None for k in ("factor_to_achievable", "ideal_cycles_at_achievable", "cycles_saved", "gap_closed")
+    )
 
 
 def test_the_feedback_cell_schema_admits_exactly_these_two_keys():
     """Pins the coupling: the helper's keys and the redacted cell schema must agree."""
     PAS = _stage()
-    produced = set(PAS._capsule_verdict_fields(
-        capsule="x", declared_macs=4096, achievable_rate=80.0,
-        baseline_cycles=400, candidate_cycles=300, dispersion=0.01))
-    source = (merlin_dir() / "experiments" / "gemmini_perf_bench" / "scripts"
-              / "perf_agent_stage.py").read_text(encoding="utf-8")
+    produced = set(
+        PAS._capsule_verdict_fields(
+            capsule="x",
+            declared_macs=4096,
+            achievable_rate=80.0,
+            baseline_cycles=400,
+            candidate_cycles=300,
+            dispersion=0.01,
+        )
+    )
+    source = (merlin_dir() / "experiments" / "gemmini_perf_bench" / "scripts" / "perf_agent_stage.py").read_text(
+        encoding="utf-8"
+    )
     for key in produced:
         assert f'"{key}"' in source, f"the cell schema does not admit {key!r}"

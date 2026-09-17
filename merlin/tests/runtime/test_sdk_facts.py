@@ -11,13 +11,20 @@ parser is exercised on the shapes that actually broke it: a ``/** ... */`` descr
 (which silently dropped every second register), casts in enum initialisers, an address spelled as an
 expression over other defines, and a struct whose own offset comments can be used as a check.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from merlin.runtime import sdk_facts
-from merlin.runtime.sdk_facts import (SdkFactError, eval_define, parse_defines, parse_enum,
-                                      parse_struct_offsets, strip_comments)
+from merlin.runtime.sdk_facts import (
+    SdkFactError,
+    eval_define,
+    parse_defines,
+    parse_enum,
+    parse_struct_offsets,
+    strip_comments,
+)
 
 # A UART register map in the vendor style: CMSIS-ish volatile qualifiers and `/** ... */` docs placed
 # AFTER the semicolon, which is what made a naive split read them as part of the next declaration.
@@ -110,16 +117,19 @@ def sdk(tmp_path):
 
 
 # ------------------------------------------------------------------ expression evaluation ---------
-@pytest.mark.parametrize("body,want", [
-    ("0x10020000U", 0x10020000),
-    ("500000000ULL", 500_000_000),
-    ("(31U)", 31),
-    ("(0x1U << 31)", 1 << 31),
-    ("(uint32_t)0", 0),                        # a cast, not a value
-    ("((ClockSel_Type*)(0x100000 + 0x30000))", 0x130000),
-    ("1 | 2 | 4", 7),
-    ("(1 << 3) + 1", 9),
-])
+@pytest.mark.parametrize(
+    "body,want",
+    [
+        ("0x10020000U", 0x10020000),
+        ("500000000ULL", 500_000_000),
+        ("(31U)", 31),
+        ("(0x1U << 31)", 1 << 31),
+        ("(uint32_t)0", 0),  # a cast, not a value
+        ("((ClockSel_Type*)(0x100000 + 0x30000))", 0x130000),
+        ("1 | 2 | 4", 7),
+        ("(1 << 3) + 1", 9),
+    ],
+)
 def test_evaluates_the_constant_forms_vendor_headers_use(body, want):
     assert eval_define("X", {"X": body}) == want
 
@@ -167,8 +177,10 @@ def test_computed_offsets_are_checked_against_the_headers_own_comments():
     assert parse_struct_offsets(PLL_H, "PLL_Type")["PLLFWEN_B"] == 0x20
     # A header whose stated offset disagrees with the layout means the map was misread; that must be
     # loud, because a misread register map writes to a neighbouring register.
-    lying = PLL_H.replace("__IO uint32_t LDO_ENABLE;                             // 0x08",
-                          "__IO uint32_t LDO_ENABLE;                             // 0x40")
+    lying = PLL_H.replace(
+        "__IO uint32_t LDO_ENABLE;                             // 0x08",
+        "__IO uint32_t LDO_ENABLE;                             // 0x40",
+    )
     with pytest.raises(SdkFactError, match="misread"):
         parse_struct_offsets(lying, "PLL_Type")
 
@@ -195,7 +207,7 @@ def test_enum_values_parse_through_casts_and_implicit_increments():
 def test_derives_every_console_fact_from_the_sdk(sdk):
     f = sdk_facts.derive_uart_console(sdk, "chipa")
     assert f.uart_base == 0x10020000
-    assert f.reg["DIV"] == 24                 # the register the baud divisor is written to
+    assert f.reg["DIV"] == 24  # the register the baud divisor is written to
     assert f.tx_full_bit == 31 and f.txen_bit == 0 and f.nstop_bit == 1
     assert f.sys_clk_hz == 50_000_000 and f.mtime_hz == 50_000
     assert f.pll_base == 0x140000 and f.clksel_base == 0x130000
@@ -203,7 +215,7 @@ def test_derives_every_console_fact_from_the_sdk(sdk):
     assert f.pll["RATIO"] == 0x0C
     # Provenance names the files the numbers came from, so a wrong value is traceable to a header.
     assert f.provenance["chip_config.h"] == "platform/chipa/chip_config.h"
-    assert f.provenance["uart.h"].endswith("rocket-chip-blocks/uart/uart.h")   # not the decoy
+    assert f.provenance["uart.h"].endswith("rocket-chip-blocks/uart/uart.h")  # not the decoy
 
 
 def test_unknown_chip_and_missing_sdk_raise(sdk, tmp_path):

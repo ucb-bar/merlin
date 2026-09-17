@@ -1,22 +1,25 @@
 """P1: the per-target bundle generator emits the 4-arm ladder from a descriptor — target-agnostic tool
 blocks + descriptor-derived target-specific paths — and reproduces the hand-authored gemmini bundles."""
+
 from __future__ import annotations
 
-import yaml
 from pathlib import Path
 
-from merlin.targetgen.target_experiment import load_target_experiment
+import yaml
+
+from merlin.common.paths import repo_root
 from merlin.targetgen import tool_registry as TR
 from merlin.targetgen.generate_bundles import (
     _materialize_prompt_and_grants,
     generate_bundles,
 )
-from merlin.common.paths import repo_root
+from merlin.targetgen.target_experiment import load_target_experiment
 
 
 def _te():
     return load_target_experiment(
-        repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
+        repo_root() / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
+    )
 
 
 def _sets(m):
@@ -31,9 +34,13 @@ def test_generates_every_registered_arm():
     gen = generate_bundles(_te())
     assert set(gen) == {f"{stem}_hwbringup_v0" for stem in _ARMS.values()}
     # the arms that exist today, named so a deletion is also visible
-    assert {"raw_baseline_hwbringup_v0", "cpp_merlininfra_hwbringup_v0",
-            "merlin_assisted_hwbringup_v0", "merlin_assisted_rtlchecks_hwbringup_v0",
-            "merlin_assisted_eqsat_hwbringup_v0"} <= set(gen)
+    assert {
+        "raw_baseline_hwbringup_v0",
+        "cpp_merlininfra_hwbringup_v0",
+        "merlin_assisted_hwbringup_v0",
+        "merlin_assisted_rtlchecks_hwbringup_v0",
+        "merlin_assisted_eqsat_hwbringup_v0",
+    } <= set(gen)
 
 
 def _norm(paths):
@@ -51,8 +58,8 @@ def test_reproduces_hand_authored_gemmini_bundles():
         hand = yaml.safe_load((B / bid / "input_bundle_manifest.yaml").read_text())
         ga, gd = _sets(gm)
         ha, hd = _sets(hand)
-        assert ga == ha, f"{bid} allow drift: gen-only={ga-ha} hand-only={ha-ga}"
-        assert _norm(hd) <= _norm(gd), f"{bid} deny missing from generated: {_norm(hd)-_norm(gd)}"
+        assert ga == ha, f"{bid} allow drift: gen-only={ga - ha} hand-only={ha - ga}"
+        assert _norm(hd) <= _norm(gd), f"{bid} deny missing from generated: {_norm(hd) - _norm(gd)}"
 
 
 def test_agnostic_tool_blocks_have_no_target_name():
@@ -72,10 +79,10 @@ def test_increasing_help_gradient():
     mer_a, _ = _sets(gen["merlin_assisted_hwbringup_v0"])
     rtl_a, _ = _sets(gen["merlin_assisted_rtlchecks_hwbringup_v0"])
     py = "merlin/python/merlin/"
-    assert not any(p.startswith(py) for p in raw_a)                    # arm1: no merlin tools
-    assert f"{py}targetgen/generate/mlir_scaffold.py" in cpp_a         # arm2: C++ generators
+    assert not any(p.startswith(py) for p in raw_a)  # arm1: no merlin tools
+    assert f"{py}targetgen/generate/mlir_scaffold.py" in cpp_a  # arm2: C++ generators
     assert f"{py}kernels/cca_contract.py" in mer_a and f"{py}targetgen/rtl_backend.py" in mer_a  # arm3: CCA spine
-    assert f"{py}targetgen/rtl/" in rtl_a and rtl_a > mer_a            # arm4: + CIRCT rtl, superset of arm3
+    assert f"{py}targetgen/rtl/" in rtl_a and rtl_a > mer_a  # arm4: + CIRCT rtl, superset of arm3
 
 
 def test_target_specific_paths_come_from_descriptor():
@@ -89,16 +96,15 @@ def test_target_specific_paths_come_from_descriptor():
 
 def test_radiance_information_treatments_are_structurally_distinct():
     te = load_target_experiment(
-        repo_root() / "merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml")
-    example = ("experiments/capsule_bench/targets/radiance/contracts/"
-               "hwbringup_radiance_v0/example_kernel/")
+        repo_root() / "merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml"
+    )
+    example = "experiments/capsule_bench/targets/radiance/contracts/hwbringup_radiance_v0/example_kernel/"
     library = "out/artifacts/targets/radiance/kernel_library_pr1_v1/"
     kernels = next(iter(generate_bundles(te, variant="hwbringup_v0").values()))
     none = next(iter(generate_bundles(te, variant="hwbringup_nokernel_v0").values()))
     full = next(iter(generate_bundles(te, variant="hwbringup_kernellibrary_v0").values()))
 
-    assert (kernels["condition"], none["condition"], full["condition"]) == (
-        "kernels", "no-kernels", "kernel-library")
+    assert (kernels["condition"], none["condition"], full["condition"]) == ("kernels", "no-kernels", "kernel-library")
     assert example not in _sets(kernels)[1] and example in _sets(none)[1]
     assert library not in _sets(kernels)[0] and library in _sets(full)[0]
     assert full["source_pins"] == ["radiance_kernels"]
@@ -114,13 +120,12 @@ def test_assisted_tool_doc_is_regenerated_from_manifest_without_static_sandbox_c
     }
     written = []
 
-    _materialize_prompt_and_grants(
-        _te(), tmp_path, manifest["bundle_id"], "hwbringup_v0", manifest, None, written)
+    _materialize_prompt_and_grants(_te(), tmp_path, manifest["bundle_id"], "hwbringup_v0", manifest, None, written)
 
     doc = (tmp_path / "ALLOWED_MERLIN_TOOLS.md").read_text()
     assert "does **not** select a sandbox" in doc
     assert "TASK.md" in doc and "environment.yaml" in doc
-    assert "launcher\'s real `--sandbox` argument" in doc
+    assert "launcher's real `--sandbox` argument" in doc
     assert "scored, trusted run requires deny-by-default `bwrap`" in doc
     assert "explicit `none` run is diagnostic only" in doc
     assert "bwrap crashes" not in doc and "the mode both arms run" not in doc
@@ -130,8 +135,6 @@ def test_assisted_tool_doc_is_regenerated_from_manifest_without_static_sandbox_c
 
 
 def test_non_assisted_bundle_does_not_claim_merlin_tooling(tmp_path):
-    manifest = {"bundle_id": "raw_baseline_hwbringup_v0", "arm": "raw_baseline",
-                "allowed": [], "denied": []}
-    _materialize_prompt_and_grants(
-        _te(), tmp_path, manifest["bundle_id"], "hwbringup_v0", manifest, None, [])
+    manifest = {"bundle_id": "raw_baseline_hwbringup_v0", "arm": "raw_baseline", "allowed": [], "denied": []}
+    _materialize_prompt_and_grants(_te(), tmp_path, manifest["bundle_id"], "hwbringup_v0", manifest, None, [])
     assert not (tmp_path / "ALLOWED_MERLIN_TOOLS.md").exists()

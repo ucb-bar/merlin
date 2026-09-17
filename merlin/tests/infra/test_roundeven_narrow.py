@@ -6,14 +6,14 @@ logits. The reference is `numpy.rint` where available (IEEE roundeven, the same 
 `math.roundeven` and the Gemmini header's `ROUND_NEAR_EVEN` compute) and Python's own
 round-half-to-even otherwise.
 """
+
 from __future__ import annotations
 
 import struct
 
 import pytest
 
-from merlin.llvmlower.roundeven_narrow import (MAX_BOUND, bound_is_usable, quantize_affine,
-                                               roundeven_to_int_bounded)
+from merlin.llvmlower.roundeven_narrow import MAX_BOUND, bound_is_usable, quantize_affine, roundeven_to_int_bounded
 
 
 def _f32(x: float) -> float:
@@ -33,9 +33,19 @@ def _reference(x: float) -> int:
 
 
 def test_ties_go_to_even_not_away_from_zero():
-    for value, expected in ((0.5, 0), (1.5, 2), (2.5, 2), (3.5, 4),
-                            (-0.5, 0), (-1.5, -2), (-2.5, -2), (-3.5, -4),
-                            (126.5, 126), (127.5, 128), (-127.5, -128)):
+    for value, expected in (
+        (0.5, 0),
+        (1.5, 2),
+        (2.5, 2),
+        (3.5, 4),
+        (-0.5, 0),
+        (-1.5, -2),
+        (-2.5, -2),
+        (-3.5, -4),
+        (126.5, 126),
+        (127.5, 128),
+        (-127.5, -128),
+    ):
         assert roundeven_to_int_bounded(value) == expected, value
 
 
@@ -68,7 +78,7 @@ def test_round_then_clamp_is_not_clamp_then_round():
     assert quantize_affine(127.6, 1.0, 0, -128, 127) == 127
     assert quantize_affine(126.4, 1.0, 0, -128, 127) == 126
     # and the value that rounds ONTO the limit must reach it
-    assert quantize_affine(126.5, 1.0, 0, -128, 127) == 126     # tie to even
+    assert quantize_affine(126.5, 1.0, 0, -128, 127) == 126  # tie to even
     assert quantize_affine(127.4, 1.0, 0, -128, 127) == 127
 
 

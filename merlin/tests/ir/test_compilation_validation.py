@@ -8,6 +8,7 @@ The negative controls are the point. A validator that has never rejected anythin
 to work, and one that rejects a CORRECT backend is worse than no validator at all — so both directions
 are pinned here.
 """
+
 from __future__ import annotations
 
 import copy
@@ -19,7 +20,8 @@ from merlin.verify.tools import find_mlir_tool
 
 pytestmark = pytest.mark.skipif(
     not (HAS_XDSL and HAS_Z3 and find_mlir_tool("mlir-translate")),
-    reason="needs the verify extra (xdsl + z3) and mlir-translate")
+    reason="needs the verify extra (xdsl + z3) and mlir-translate",
+)
 
 #: Small on purpose. Refutation cost climbs steeply with M*K*N (measured: sat in ~2 s at 4^3, no
 #: verdict at all at 16^3 within 15 minutes), so the shape is pinned rather than left to a default.
@@ -43,7 +45,8 @@ def test_a_faithful_backend_is_verified():
     v = validate_compilation(iface, cb, timeout_ms=_TIMEOUT_MS)
     assert v.status == "unsat", (
         f"the in-tree pipeline's own command buffer was not verified against the interface program "
-        f"it came from (status={v.status}); the validator is rejecting correct output")
+        f"it came from (status={v.status}); the validator is rejecting correct output"
+    )
 
 
 def _cb_fault_names() -> list[str]:
@@ -72,7 +75,8 @@ def test_a_miscompiling_backend_is_refuted_with_a_counterexample(fault_name):
         pytest.fail(
             f"solver ABSTAINED on {fault_name} at {_SHAPE} within {_TIMEOUT_MS} ms — a budget "
             f"failure, NOT the validator accepting the miscompilation. Do not read it as a "
-            f"correctness result.")
+            f"correctness result."
+        )
     assert v.refuted, f"validator ACCEPTED a miscompiling backend ({fault.summary}): {v.status}"
     assert v.model, f"refuted {fault_name} but produced no counterexample"
 

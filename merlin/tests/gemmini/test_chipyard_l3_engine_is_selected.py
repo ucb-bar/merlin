@@ -12,6 +12,7 @@ between a cert tier that runs per-capsule and one affordable once per run.
 
 This does not make GSIM certify gemmini. It makes gemmini ASK, and record the answer.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -25,7 +26,7 @@ def test_the_selection_is_made_in_priority_order_and_records_what_it_passed_over
     assert sel["fidelity"] == POL.ELABORATED_RTL
     considered = [c["engine"] for c in sel["considered"]]
     # probes are tried cheapest-first and STOP at the first available one
-    assert considered == [e for e in POL.ENGINE_PRIORITY][:len(considered)]
+    assert considered == [e for e in POL.ENGINE_PRIORITY][: len(considered)]
     assert sel["engine"] == considered[-1], "the selected engine is the one that probed available"
 
 

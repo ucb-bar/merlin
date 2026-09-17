@@ -10,17 +10,20 @@ capsules as
 where "es" is the last two letters of "shapes". Those capsules read as unexplained infra failures across
 dozens of verdicts while the sentence that named them was discarded every single time.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen.capsule_runner import _clip
 
 # the real message, verbatim in shape: diagnosis first, identical advisory tail
-REAL = ("could not derive harness operands: the declared operands could not be bound to the command's "
-        "shapes (outputs: ['Y0']). Command shape ['MATMUL', 'SOFTMAX'] is NOT the problem — this harness "
-        "binds operands from the `tensors` declarations, not from opcode names, so any opcode is "
-        "acceptable provided every operand and result is declared as {name: {shape: [...], dtype: ..., "
-        "role: input|weight|output}}. If your declarations are complete, this is a TOOLING gap, not a "
-        "defect in the submitted artifact.")
+REAL = (
+    "could not derive harness operands: the declared operands could not be bound to the command's "
+    "shapes (outputs: ['Y0']). Command shape ['MATMUL', 'SOFTMAX'] is NOT the problem — this harness "
+    "binds operands from the `tensors` declarations, not from opcode names, so any opcode is "
+    "acceptable provided every operand and result is declared as {name: {shape: [...], dtype: ..., "
+    "role: input|weight|output}}. If your declarations are complete, this is a TOOLING gap, not a "
+    "defect in the submitted artifact."
+)
 
 
 def test_short_messages_are_untouched():
@@ -30,7 +33,7 @@ def test_short_messages_are_untouched():
 def test_the_head_survives_clipping():
     """The failing behaviour exactly: the cause must be readable, not truncated to a word fragment."""
     out = _clip(REAL, 300)
-    assert len(out) <= 300 + 8            # + the elision marker
+    assert len(out) <= 300 + 8  # + the elision marker
     assert out.startswith("could not derive harness operands:"), out[:60]
     assert "could not be bound" in out, "the specific one of three cases was lost"
 

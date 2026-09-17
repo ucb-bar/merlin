@@ -10,6 +10,7 @@ gate raised `required campaign evidence is absent` against its own corpus.
 Nothing compared the record to the file, so the miss survived a reorg and several template edits.
 These tests do that comparison directly.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -39,8 +40,7 @@ def _generator():
 
 def _document_digest(document: object) -> str:
     """The digest both the generator and the campaign gate agree on: over the PARSED document."""
-    encoded = json.dumps(document, sort_keys=True, separators=(",", ":"),
-                         ensure_ascii=True).encode("utf-8")
+    encoded = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -51,11 +51,13 @@ def _check_record(record: dict, *, owner: str) -> None:
     assert resolved.is_file(), (
         f"{owner}: shared_template.path {path!r} does not resolve to a file from repo_root() "
         f"({resolved}). A repo-root-relative record must be spelled from the repo root, "
-        "`merlin/` prefix included.")
+        "`merlin/` prefix included."
+    )
     document = yaml.safe_load(resolved.read_text(encoding="utf-8"))
     assert record.get("sha256") == _document_digest(document), (
         f"{owner}: recorded template digest is stale relative to {path}; the corpus was generated "
-        "from a materially older template. Regenerate it.")
+        "from a materially older template. Regenerate it."
+    )
 
 
 def test_generator_records_a_template_path_that_resolves_from_repo_root():
@@ -79,12 +81,16 @@ def test_generator_records_every_family_the_template_declares():
     assert {str(row["family"]) for row in template["families"]} == declared
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "MANIFEST.yaml still records the pre-fix, `merlin/`-less template path, because it was last "
-    "written by the generator before this fix. Regenerating it in place was held back while a "
-    "gemmini functional run was grading against merlin/contract/capsules/. Re-run "
-    "`.venv/bin/python merlin/contract/capsules/generate_corpus.py --target gemmini` (and again "
-    "with `--target atlas`) once that run finishes, then delete this marker."))
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "MANIFEST.yaml still records the pre-fix, `merlin/`-less template path, because it was last "
+        "written by the generator before this fix. Regenerating it in place was held back while a "
+        "gemmini functional run was grading against merlin/contract/capsules/. Re-run "
+        "`.venv/bin/python merlin/contract/capsules/generate_corpus.py --target gemmini` (and again "
+        "with `--target atlas`) once that run finishes, then delete this marker."
+    ),
+)
 def test_tracked_manifest_template_provenance_is_current():
     manifest = yaml.safe_load(MANIFEST.read_text(encoding="utf-8"))
     generation = manifest.get("performance_generation") or {}

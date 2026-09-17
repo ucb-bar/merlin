@@ -19,6 +19,7 @@ And it is the cheapest coverage available. By the measured certification cost la
 `aligned` one writes 256 and takes ~81s. Closing the gap costs ~16s on gemmini and ~115s on radiance,
 against a corpus whose predicted total is 181 hours.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -32,8 +33,8 @@ def _resolve(token: str, tile: int) -> int:
     import importlib.util
 
     from merlin.common.paths import merlin_dir
-    spec = importlib.util.spec_from_file_location(
-        "_gc", merlin_dir() / "contract" / "capsules" / "generate_corpus.py")
+
+    spec = importlib.util.spec_from_file_location("_gc", merlin_dir() / "contract" / "capsules" / "generate_corpus.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod.resolve_extent(token, tile)
@@ -52,8 +53,10 @@ def test_sub_tile_is_actually_less_occupied_than_partial():
     """The property that makes it a distinct class rather than a second name for `partial`."""
     probes = CF.boundaries("gemmini").extent_probes()
     tile = CF.boundaries("gemmini").tile_edge or 16
-    got = {a: {k: _resolve(v, tile) for k, v in CS.extents_for(a, probes).items()}
-           for a in ("aligned", "partial", "sub_tile")}
+    got = {
+        a: {k: _resolve(v, tile) for k, v in CS.extents_for(a, probes).items()}
+        for a in ("aligned", "partial", "sub_tile")
+    }
     aligned, partial, sub = got["aligned"], got["partial"], got["sub_tile"]
     # `partial` is nearly full: every axis it rags, it rags by exactly ONE element. It rags K as well
     # as N, and that is not cosmetic -- ragging only the output column left every family that does not
@@ -98,12 +101,14 @@ def test_closing_the_gap_is_cheap_by_the_measured_cost_law():
         secs, _ = CC.predict_seconds_from_output(r["M"] * r["N"])
         cost[a] = secs
     assert cost["sub_tile"] * 5 < cost["aligned"], (
-        f"a sub_tile capsule should be far cheaper to certify than an aligned one: {cost}")
+        f"a sub_tile capsule should be far cheaper to certify than an aligned one: {cost}"
+    )
 
 
 def test_a_narrow_edge_does_not_get_a_duplicate_class():
     """At edge 2, `tile-1` and `tile//2` are the same extent, so a third cell would be a repeat."""
     from dataclasses import replace
+
     bnd = CF.boundaries("gemmini")
     narrow = replace(bnd, tile_edge=2)
     assert narrow.tile_edge == 2

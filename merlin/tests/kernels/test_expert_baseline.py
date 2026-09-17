@@ -1,8 +1,9 @@
 """attainment_vs_expert is the number every headline claim rests on. These tests are about the ways a
 baseline can be the wrong comparand while the arithmetic stays perfectly consistent."""
+
 import pytest
 
-from merlin.mining.baseline import UNRECORDED, ExpertBaseline, attainment, _norm_dtype
+from merlin.mining.baseline import UNRECORDED, ExpertBaseline, _norm_dtype, attainment
 
 
 def _b(**kw):
@@ -11,7 +12,6 @@ def _b(**kw):
 
 
 class TestABaselineCarriesItsOwnIdentity:
-
     def test_a_bare_number_is_usable_but_stamped_unrecorded(self):
         """Existing callers keep working; nothing may mistake the result for a verified comparison."""
         value, problems, recorded = attainment(100.0, 50.0, workload="w", dtype="int8")
@@ -46,8 +46,7 @@ class TestTheMismatchThatActuallyHappened:
 
     def test_a_matching_baseline_still_scores(self):
         b = _b(workload="bitvla_fp32_consistent", dtype="fp32")
-        value, problems, recorded = attainment(b, 50.0, workload="bitvla_fp32_consistent",
-                                               dtype="fp32")
+        value, problems, recorded = attainment(b, 50.0, workload="bitvla_fp32_consistent", dtype="fp32")
         assert value == 2.0 and problems == () and recorded is True
 
 
@@ -78,7 +77,7 @@ class TestAnUnrecordedBaselineCannotBeShownToMismatch:
         assert value == 2.0 and problems == () and recorded is False
 
     def test_partial_declaration_only_checks_what_was_declared(self):
-        b = _b(dtype="fp32")                       # workload deliberately unstated
+        b = _b(dtype="fp32")  # workload deliberately unstated
         value, problems, _ = attainment(b, 50.0, workload="whatever", dtype="fp32")
         assert value == 2.0 and problems == ()
 

@@ -13,6 +13,7 @@ buffer from -- and on nothing target-specific. These tests pin both directions: 
 the value, a wrong one does not (a check that cannot fail is worth nothing), and an integer readback is
 returned untouched so every existing integer capsule parses byte-identically.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -39,7 +40,7 @@ def test_codes_to_f32_inverts_float_to_codes(fmt):
     """Round-trip on values the format itself declares representable, so the assertion is about the
     code<->value mapping and not about whether e5m2's two mantissa bits can hold 7.5 (they cannot)."""
     grid = ff.representable_values(fmt)
-    values = [v for v in grid if 2 ** -8 <= abs(v) <= 2 ** 8][:32]
+    values = [v for v in grid if 2**-8 <= abs(v) <= 2**8][:32]
     assert values, fmt
     assert [float(v) for v in ff.codes_to_f32(ff.float_to_codes(values, fmt), fmt)] == values
 
@@ -60,26 +61,39 @@ def test_an_unregistered_format_fails_closed():
 
 # --- which dtype a readback is decoded against ----------------------------------------------------
 def test_declared_output_dtypes_reads_the_tensor_table():
-    cb = {"tensors": {"X": {"shape": [2, 2], "dtype": "f32", "role": "input"},
-                      "Y0": {"shape": [2, 2], "dtype": "bf16", "role": "output"}},
-          "commands": []}
+    cb = {
+        "tensors": {
+            "X": {"shape": [2, 2], "dtype": "f32", "role": "input"},
+            "Y0": {"shape": [2, 2], "dtype": "bf16", "role": "output"},
+        },
+        "commands": [],
+    }
     assert declared_output_dtypes(cb) == {"X": "f32", "Y0": "bf16"}
 
 
 def test_a_commands_own_output_dtype_wins_for_the_destination_it_names():
     """A movement/commit DECLARES the container its result lands in, and that is what a harness sizes
     the buffer from -- so the readback must read the same declaration, not the tensor's operand dtype."""
-    cb = {"tensors": {"X": {"shape": [2, 2], "dtype": "i8", "role": "input"},
-                      "Y0": {"shape": [2, 2], "dtype": "i8", "role": "output"}},
-          "commands": [{"opcode": "VECTOR_MAP", "operands": {"lhs": "X", "dst": "Y0"},
-                        "attributes": {"combine": "identity", "output_dtype": "i32"}}]}
+    cb = {
+        "tensors": {
+            "X": {"shape": [2, 2], "dtype": "i8", "role": "input"},
+            "Y0": {"shape": [2, 2], "dtype": "i8", "role": "output"},
+        },
+        "commands": [
+            {
+                "opcode": "VECTOR_MAP",
+                "operands": {"lhs": "X", "dst": "Y0"},
+                "attributes": {"combine": "identity", "output_dtype": "i32"},
+            }
+        ],
+    }
     assert declared_output_dtypes(cb)["Y0"] == "i32"
     assert declared_output_dtypes(cb)["X"] == "i8", "a source is not re-declared by the command"
 
 
 # --- the decode at the readback -------------------------------------------------------------------
 def _rows(values, cols):
-    return [values[i:i + cols] for i in range(0, len(values), cols)]
+    return [values[i : i + cols] for i in range(0, len(values), cols)]
 
 
 @pytest.mark.parametrize("dtype", ["f32", "bf16", "fp16"])

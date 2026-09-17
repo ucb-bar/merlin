@@ -11,15 +11,26 @@ from __future__ import annotations
 import pytest
 
 from merlin.runtime.route_partition import (
-    DECLINE_WITHOUT_REASON, DECLINES_AND_EMITS, ROUTE_ACCEPT, ROUTE_DECLINE, ROUTE_VIOLATION,
-    SILENT_NO_WORK, route_of)
+    DECLINE_WITHOUT_REASON,
+    DECLINES_AND_EMITS,
+    ROUTE_ACCEPT,
+    ROUTE_DECLINE,
+    ROUTE_VIOLATION,
+    SILENT_NO_WORK,
+    route_of,
+)
 
 
 def _buffer(**over):
-    cb = {"abi_version": "0.1", "target": "any",
-          "tensors": {"A0": {"shape": [4, 4], "dtype": "i8", "role": "input"},
-                      "Y0": {"shape": [4, 4], "dtype": "i32", "role": "output"}},
-          "commands": [{"opcode": "MATMUL", "operands": {"lhs": "A0", "rhs": "A0", "dst": "Y0"}}]}
+    cb = {
+        "abi_version": "0.1",
+        "target": "any",
+        "tensors": {
+            "A0": {"shape": [4, 4], "dtype": "i8", "role": "input"},
+            "Y0": {"shape": [4, 4], "dtype": "i32", "role": "output"},
+        },
+        "commands": [{"opcode": "MATMUL", "operands": {"lhs": "A0", "rhs": "A0", "dst": "Y0"}}],
+    }
     cb.update(over)
     return cb
 
@@ -74,9 +85,7 @@ def test_a_decline_must_carry_a_readable_reason():
 
 def test_a_violation_is_never_reported_as_a_clean_route():
     """`route` and `violations` cannot disagree — the invariant a caller relies on."""
-    for cb in (_buffer(commands=[]),
-               _buffer(declined={"op": "X", "reason": "r"}),
-               _buffer(commands=[], declined={})):
+    for cb in (_buffer(commands=[]), _buffer(declined={"op": "X", "reason": "r"}), _buffer(commands=[], declined={})):
         v = route_of(cb)
         assert (v.route == ROUTE_VIOLATION) == bool(v.violations)
         assert v.ok == (not v.violations)

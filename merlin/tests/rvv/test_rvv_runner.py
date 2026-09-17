@@ -5,9 +5,10 @@ output/small_llama_int8_consistent (status=pass, gate_ok, 19 RVV mnemonics) — 
 unit suite. Here we lock in: the instruction-histogram parser, the expected-instruction prefix
 match, K0 integrity failure recording (no raise), and K1/K5 not_run when targets are unreachable.
 """
+
 import os
 
-from merlin.mining import runner, k1
+from merlin.mining import k1, runner
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -62,15 +63,15 @@ def test_k0_integrity_failure_is_recorded_not_raised(tmp_path):
     (pkg / "manifest.yaml").write_text(
         "target: rvv\nrun_id: evil\nfamily: vector_schedule\n"
         "authoring: {mode: hand_curated, author: human}\n"
-        "outputs: {schedule: schedule.mlir, knobs: knobs.yaml}\n")
+        "outputs: {schedule: schedule.mlir, knobs: knobs.yaml}\n"
+    )
     (pkg / "schedule.mlir").write_text("module {}\n")
     (pkg / "knobs.yaml").write_text(
-        "schedule_file: schedule.mlir\ndtype_strategy: fp32\n"
-        "cflags: ['-march=rv64gcv', 'rm -rf /']\n")
+        "schedule_file: schedule.mlir\ndtype_strategy: fp32\ncflags: ['-march=rv64gcv', 'rm -rf /']\n"
+    )
     wl = tmp_path / "wl"
     wl.mkdir()
-    rec = runner.certify_rvv(str(pkg), str(wl), runs_root=str(tmp_path / "runs"),
-                             run_id="evil_run", targets=())
+    rec = runner.certify_rvv(str(pkg), str(wl), runs_root=str(tmp_path / "runs"), run_id="evil_run", targets=())
     assert rec["status"] == "fail"
     assert rec["ladder"]["K0"] == "fail"
     assert (tmp_path / "runs" / "evil_run" / "results.yaml").is_file()
@@ -87,11 +88,20 @@ def test_k1_unavailable_is_fail_closed(monkeypatch):
 
 def test_workload_matmul_bundle_is_valid(tmp_path):
     import json
+
     import numpy as np
+
     from merlin.mining import workloads
+
     b = workloads.gen_matmul_f32(tmp_path, M=8, N=8, K=8, seed=1)
-    for f in ("model.mlir", "weights.safetensors", "weights.safetensors.manifest.json",
-              "input_order.json", "inputs.npz", "golden.npy"):
+    for f in (
+        "model.mlir",
+        "weights.safetensors",
+        "weights.safetensors.manifest.json",
+        "input_order.json",
+        "inputs.npz",
+        "golden.npy",
+    ):
         assert (b / f).is_file(), f
     # golden == a @ b (the compiler's job is to reproduce this)
     z = np.load(b / "inputs.npz")
@@ -101,6 +111,7 @@ def test_workload_matmul_bundle_is_valid(tmp_path):
     man = json.loads((b / "weights.safetensors.manifest.json").read_text())
     assert {m["kind"] for m in man.values()} == {"input"}
     from merlin.llvmlower.model_runner import parse_forward_signature
+
     sig = parse_forward_signature(b / "model.mlir")
     assert [s[0] for s in sig] == [[8, 8], [8, 8]]
 
@@ -125,9 +136,9 @@ def test_the_wall_carries_the_conditions_and_protocol_it_was_measured_under():
 
     src = _Source(inspect.getsource(runner.certify_rvv))
     assert '"board_conditions": kr.get("board_conditions")' in src, (
-        "the conditions run_on_k1 already probed must reach the measurement entry")
-    assert '"warmup": warmup, "iters": iters' in src, (
-        "the protocol that produced the wall must be recorded beside it")
+        "the conditions run_on_k1 already probed must reach the measurement entry"
+    )
+    assert '"warmup": warmup, "iters": iters' in src, "the protocol that produced the wall must be recorded beside it"
 
 
 def test_the_beam_node_carries_conditions_from_the_entry_the_wall_came_from():
@@ -142,7 +153,8 @@ def test_the_beam_node_carries_conditions_from_the_entry_the_wall_came_from():
     assert '"board_conditions": _cond' in src
     assert '"measurement_protocol": _proto' in src
     assert 'if _m.get("wall_ns") is not None and _m.get("wall_ns") == k1_wall' in src, (
-        "conditions must come from the entry the reported wall came from")
+        "conditions must come from the entry the reported wall came from"
+    )
 
 
 def test_score_never_invents_conditions_for_a_wall_it_could_not_pick(tmp_path):
@@ -157,12 +169,21 @@ def test_score_never_invents_conditions_for_a_wall_it_could_not_pick(tmp_path):
     result = {
         "target": "k1",
         "correctness": {"gate_ok": True},
-        "measurement": [{"target": "k1", "cycle_accurate": False, "cycles": 10,
-                         "time_ticks": 5, "wall_ns": 12345, "vlen": 256,
-                         "warmup": 2, "iters": 5, "board_conditions": conds}],
+        "measurement": [
+            {
+                "target": "k1",
+                "cycle_accurate": False,
+                "cycles": 10,
+                "time_ticks": 5,
+                "wall_ns": 12345,
+                "vlen": 256,
+                "warmup": 2,
+                "iters": 5,
+                "board_conditions": conds,
+            }
+        ],
     }
-    curated = RvvFingerprint(key={"op": "matmul", "dtype": "int8"}, decisions={}, histogram={},
-                             source="test")
+    curated = RvvFingerprint(key={"op": "matmul", "dtype": "int8"}, decisions={}, histogram={}, source="test")
     out = beam._score(result, tmp_path, curated, {"op": "matmul", "dtype": "int8"}, target="k1")
     # undeclared authority => no wall, and therefore no conditions attributed to one
     assert out["k1_wall_ns"] is None
@@ -180,12 +201,19 @@ def test_a_cli_expert_wall_must_declare_what_it_measured():
     int8 cell carrying its own number reports 0.113. Refuse at the CLI edge instead.
     """
     import argparse
+
     import pytest
+
     from merlin.mining.beam_cli import _declared_expert
 
     def _args(**kw):
-        d = {"expert_wall_ns": None, "expert_workload": None, "expert_dtype": None,
-             "expert_substrate": "k1_spacemit", "expert_note": ""}
+        d = {
+            "expert_wall_ns": None,
+            "expert_workload": None,
+            "expert_dtype": None,
+            "expert_substrate": "k1_spacemit",
+            "expert_note": "",
+        }
         d.update(kw)
         return argparse.Namespace(**d)
 
@@ -199,19 +227,21 @@ def test_a_cli_expert_wall_must_declare_what_it_measured():
     with pytest.raises(SystemExit):
         _declared_expert(_args(expert_wall_ns=1234.0, expert_workload="small_llama_int8_consistent"))
     # fully declared: the baseline carries its identity and CAN now be refused on a real mismatch
-    b = _declared_expert(_args(expert_wall_ns=1234.0, expert_dtype="int8",
-                               expert_workload="small_llama_int8_consistent"))
+    b = _declared_expert(
+        _args(expert_wall_ns=1234.0, expert_dtype="int8", expert_workload="small_llama_int8_consistent")
+    )
     assert b.provenance_recorded
     assert b.mismatches(workload="small_llama_int8_consistent", dtype="int8") == ()
-    assert b.mismatches(workload="small_llama_int8_consistent", dtype="fp32")   # dtype guard fires
-    assert b.mismatches(workload="bitvla_int8_consistent", dtype="int8")        # workload guard fires
+    assert b.mismatches(workload="small_llama_int8_consistent", dtype="fp32")  # dtype guard fires
+    assert b.mismatches(workload="bitvla_int8_consistent", dtype="int8")  # workload guard fires
 
 
 def test_the_beam_driver_declares_its_baseline_and_its_bundle():
     """Both inert guards in the autonomous driver: the bare-float baseline and ours_bundle_id=None."""
     from merlin.common.paths import repo_root
+
     src = _Source((repo_root() / "build_tools" / "scripts" / "run_autonomous_beam_experiment.py").read_text())
-    assert "ExpertBaseline(wall_ns=float(ref[\"wall_ns\"])" in src
+    assert 'ExpertBaseline(wall_ns=float(ref["wall_ns"])' in src
     assert 'xnn = ref["wall_ns"]' not in src, "the baseline is a bare float again"
     # both executorch_cell call sites declare the bundle ours was measured on
     assert src.count("ours_bundle_id=ours_bundle_id") == 2
@@ -227,18 +257,21 @@ def test_a_starved_search_says_so_in_its_summary():
     largest rung is worth 1.34x, and fuse_transpose_b, on a model where weight transposes cost 1.61x.
     """
     from merlin.mining import beam
-    src = (beam.__file__)
+
+    src = beam.__file__
     text = open(src).read()
     assert "deferral_census" in text
     # the census must reach BOTH the persisted tree and the returned dict
     assert text.count("deferral_census") >= 3
     from merlin.mining.beam_cli import __file__ as cli
+
     assert '"deferral_census": res.get("deferral_census")' in open(cli).read()
 
 
 def test_the_census_counts_reasons_and_names_the_starved_families():
     """Shape check on real deferral records: reasons are tallied and over_width families named."""
     import collections
+
     deferred = [
         {"reason": "over_width", "family": "wholemodel:promote_buffers_to_stack:cap"},
         {"reason": "over_width", "family": "wholemodel:fuse_transpose_b"},
@@ -247,8 +280,9 @@ def test_the_census_counts_reasons_and_names_the_starved_families():
         {"lever": "x"},  # not forkable: no reason recorded
     ]
     by_reason = collections.Counter(str(d.get("reason") or "not_forkable") for d in deferred)
-    starved = sorted({str(d.get("family") or d.get("lever") or "?")
-                      for d in deferred if d.get("reason") == "over_width"})
+    starved = sorted(
+        {str(d.get("family") or d.get("lever") or "?") for d in deferred if d.get("reason") == "over_width"}
+    )
     assert by_reason["over_width"] == 3
     assert by_reason["illegal_on_parent"] == 1
     assert by_reason["not_forkable"] == 1
@@ -258,7 +292,9 @@ def test_the_census_counts_reasons_and_names_the_starved_families():
 
 def _beam_driver():
     import importlib.util
+
     from merlin.common.paths import repo_root
+
     path = repo_root() / "build_tools" / "scripts" / "run_autonomous_beam_experiment.py"
     spec = importlib.util.spec_from_file_location("_beam_driver", path)
     mod = importlib.util.module_from_spec(spec)

@@ -1,4 +1,5 @@
 """Smoke test: the package imports and schemas/benchmarks parse."""
+
 import glob
 import os
 
@@ -23,6 +24,7 @@ def test_schemas_parse():
 def _has_yaml():
     try:
         import yaml  # noqa: F401
+
         return True
     except Exception:
         return False

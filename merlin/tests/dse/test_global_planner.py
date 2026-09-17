@@ -1,8 +1,8 @@
 """Whole-model choices include representations, movement, and producer/consumer edges."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from merlin.perf.global_planner import (
     Bound,
@@ -20,7 +20,6 @@ from merlin.xdsl_dialects.lowering.global_plan import (
     TransitionAlternative,
     ValueRepresentation,
 )
-
 
 PLAIN = ValueRepresentation("memory", "row_major", "i8", encoding="plain")
 PACKED = ValueRepresentation("array", "blocked", "i8", encoding="packed")
@@ -43,10 +42,15 @@ def _program() -> DispatchProgram:
     )
 
 
-def _alt(ident: str, nodes: tuple[int, ...], cycles: float, *,
-         inputs: tuple[tuple[str, ValueRepresentation], ...],
-         outputs: tuple[tuple[str, ValueRepresentation], ...],
-         placement: str = "array") -> RegionAlternative:
+def _alt(
+    ident: str,
+    nodes: tuple[int, ...],
+    cycles: float,
+    *,
+    inputs: tuple[tuple[str, ValueRepresentation], ...],
+    outputs: tuple[tuple[str, ValueRepresentation], ...],
+    placement: str = "array",
+) -> RegionAlternative:
     return RegionAlternative(
         id=ident,
         nodes=nodes,
@@ -73,8 +77,7 @@ class SerialAdapter:
     def transition(self, program, *, buffer, producer, consumer, source, destination):
         kind = "encoding" if source.encoding != destination.encoding else "movement"
         return TransitionAlternative(
-            id=f"{buffer}:{producer.id if producer else 'input'}:"
-               f"{consumer.id if consumer else 'output'}",
+            id=f"{buffer}:{producer.id if producer else 'input'}:{consumer.id if consumer else 'output'}",
             kind=kind,
             buffer=buffer,
             producer=producer.id if producer else None,
@@ -111,31 +114,25 @@ class SerialAdapter:
         # non-negative cost, so omitting them keeps this an admissible lower bound.
         total = sum(float(item.cycles.lo) for item in selected)
         for node in uncovered_nodes:
-            total += min(float(item.cycles.lo) / len(item.nodes)
-                         for item in alternatives if node in item.nodes)
+            total += min(float(item.cycles.lo) / len(item.nodes) for item in alternatives if node in item.nodes)
         return Bound(total, provenance=("serial fractional exact-cover relaxation",))
 
     def physical_floor(self, program, alternatives):
-        total = sum(min(float(item.cycles.lo) / len(item.nodes)
-                        for item in alternatives if node in item.nodes)
-                    for node in range(len(program.nodes)))
+        total = sum(
+            min(float(item.cycles.lo) / len(item.nodes) for item in alternatives if node in item.nodes)
+            for node in range(len(program.nodes))
+        )
         return Bound(total, provenance=("fixture physical resource floor",))
 
 
 def test_global_choice_can_reject_the_locally_fast_kernel_when_encoding_dominates() -> None:
-    fast_packed = _alt(
-        "fast_packed", (0,), 10,
-        inputs=(("b0", PLAIN),), outputs=(("b1", PACKED),))
-    coherent = _alt(
-        "coherent", (0,), 25,
-        inputs=(("b0", PLAIN),), outputs=(("b1", PLAIN),))
-    consumer = _alt(
-        "consumer", (1,), 10,
-        inputs=(("b1", PLAIN),), outputs=(("b2", PLAIN),))
+    fast_packed = _alt("fast_packed", (0,), 10, inputs=(("b0", PLAIN),), outputs=(("b1", PACKED),))
+    coherent = _alt("coherent", (0,), 25, inputs=(("b0", PLAIN),), outputs=(("b1", PLAIN),))
+    consumer = _alt("consumer", (1,), 10, inputs=(("b1", PLAIN),), outputs=(("b2", PLAIN),))
 
     result = optimize_program(
-        _program(), SerialAdapter((fast_packed, coherent, consumer)),
-        policy=GlobalPlanPolicy(timeout_s=1))
+        _program(), SerialAdapter((fast_packed, coherent, consumer)), policy=GlobalPlanPolicy(timeout_s=1)
+    )
 
     assert result.resolved
     assert result.plan is not None
@@ -146,19 +143,13 @@ def test_global_choice_can_reject_the_locally_fast_kernel_when_encoding_dominate
 
 
 def test_fused_region_removes_intermediate_movement_and_wins_globally() -> None:
-    producer = _alt(
-        "producer", (0,), 15,
-        inputs=(("b0", PLAIN),), outputs=(("b1", PACKED),))
-    consumer = _alt(
-        "consumer", (1,), 15,
-        inputs=(("b1", PLAIN),), outputs=(("b2", PLAIN),))
-    fused = _alt(
-        "fused", (0, 1), 18,
-        inputs=(("b0", PLAIN),), outputs=(("b2", PLAIN),))
+    producer = _alt("producer", (0,), 15, inputs=(("b0", PLAIN),), outputs=(("b1", PACKED),))
+    consumer = _alt("consumer", (1,), 15, inputs=(("b1", PLAIN),), outputs=(("b2", PLAIN),))
+    fused = _alt("fused", (0, 1), 18, inputs=(("b0", PLAIN),), outputs=(("b2", PLAIN),))
 
     result = optimize_program(
-        _program(), SerialAdapter((producer, consumer, fused)),
-        policy=GlobalPlanPolicy(timeout_s=1))
+        _program(), SerialAdapter((producer, consumer, fused)), policy=GlobalPlanPolicy(timeout_s=1)
+    )
 
     assert result.plan is not None
     assert [item.id for item in result.plan.selected] == ["fused"]
@@ -172,19 +163,13 @@ def test_missing_transition_rejects_only_that_candidate_not_the_complete_fallbac
         def transition(self, *args, **kwargs):
             return None
 
-    packed = _alt(
-        "packed", (0,), 1,
-        inputs=(("b0", PLAIN),), outputs=(("b1", PACKED),))
-    fallback = _alt(
-        "fallback", (0,), 20,
-        inputs=(("b0", PLAIN),), outputs=(("b1", PLAIN),))
-    consumer = _alt(
-        "consumer", (1,), 10,
-        inputs=(("b1", PLAIN),), outputs=(("b2", PLAIN),))
+    packed = _alt("packed", (0,), 1, inputs=(("b0", PLAIN),), outputs=(("b1", PACKED),))
+    fallback = _alt("fallback", (0,), 20, inputs=(("b0", PLAIN),), outputs=(("b1", PLAIN),))
+    consumer = _alt("consumer", (1,), 10, inputs=(("b1", PLAIN),), outputs=(("b2", PLAIN),))
 
     result = optimize_program(
-        _program(), RefusingAdapter((packed, fallback, consumer)),
-        policy=GlobalPlanPolicy(timeout_s=1))
+        _program(), RefusingAdapter((packed, fallback, consumer)), policy=GlobalPlanPolicy(timeout_s=1)
+    )
 
     assert result.resolved
     assert result.plan is not None
@@ -197,15 +182,11 @@ def test_unknown_roofline_never_reads_as_attainment() -> None:
         def physical_floor(self, program, alternatives):
             return Bound.unknown("a measured movement peak")
 
-    producer = _alt(
-        "producer", (0,), 10,
-        inputs=(("b0", PLAIN),), outputs=(("b1", PLAIN),))
-    consumer = _alt(
-        "consumer", (1,), 10,
-        inputs=(("b1", PLAIN),), outputs=(("b2", PLAIN),))
+    producer = _alt("producer", (0,), 10, inputs=(("b0", PLAIN),), outputs=(("b1", PLAIN),))
+    consumer = _alt("consumer", (1,), 10, inputs=(("b1", PLAIN),), outputs=(("b2", PLAIN),))
     result = optimize_program(
-        _program(), UnknownFloorAdapter((producer, consumer)),
-        policy=GlobalPlanPolicy(timeout_s=1))
+        _program(), UnknownFloorAdapter((producer, consumer)), policy=GlobalPlanPolicy(timeout_s=1)
+    )
 
     assert not result.resolved
     assert result.plan is not None
@@ -214,12 +195,8 @@ def test_unknown_roofline_never_reads_as_attainment() -> None:
 
 
 def test_adapter_cost_exception_becomes_a_refusal_not_a_planner_crash() -> None:
-    producer = _alt(
-        "producer", (0,), 10,
-        inputs=(("b0", PLAIN),), outputs=(("b1", PLAIN),))
-    consumer = _alt(
-        "consumer", (1,), 10,
-        inputs=(("b1", PLAIN),), outputs=(("b2", PLAIN),))
+    producer = _alt("producer", (0,), 10, inputs=(("b0", PLAIN),), outputs=(("b1", PLAIN),))
+    consumer = _alt("consumer", (1,), 10, inputs=(("b1", PLAIN),), outputs=(("b2", PLAIN),))
     adapter = SerialAdapter((producer, consumer))
 
     def broken(*_args, **_kwargs):

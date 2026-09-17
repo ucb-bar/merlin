@@ -1,13 +1,14 @@
 """A movement context retains competing commands instead of laundering isolated timing."""
-from copy import deepcopy
+
 import hashlib
+from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
 
-from merlin.perf.context_probe import extract_queued_movement_context
-from merlin.kernels.decode import rocc
 from merlin.kernels import endpoints
+from merlin.kernels.decode import rocc
+from merlin.perf.context_probe import extract_queued_movement_context
 from merlin.targetgen.rocc import decode
 
 
@@ -15,39 +16,84 @@ from merlin.targetgen.rocc import decode
 def context_source(monkeypatch):
     isa = {"CONFIG_SUBTYPE": {0: "CONFIG_EX", 1: "CONFIG_LD"}, "revision": "test-abi"}
     monkeypatch.setattr(decode, "isa_constants", lambda target: isa)
-    monkeypatch.setattr(rocc, "funct_table_for", lambda target: {
-        "names": {0: "ex_config", 1: "load_config", 2: "load", 3: "stage", 4: "compute"}})
-    monkeypatch.setattr(endpoints, "endpoints_for", lambda target: [SimpleNamespace(
-        name="declared_endpoint", engine="unsplit_engine", source="test-derived-abi",
-        roles_of=lambda name: {"load": ("operand_load",), "compute": ("accumulate",),
-                               "stage": ("weight_load",), "ex_config": ("configure",),
-                               "load_config": ("configure",)}.get(name, ()))])
+    monkeypatch.setattr(
+        rocc,
+        "funct_table_for",
+        lambda target: {"names": {0: "ex_config", 1: "load_config", 2: "load", 3: "stage", 4: "compute"}},
+    )
+    monkeypatch.setattr(
+        endpoints,
+        "endpoints_for",
+        lambda target: [
+            SimpleNamespace(
+                name="declared_endpoint",
+                engine="unsplit_engine",
+                source="test-derived-abi",
+                roles_of=lambda name: {
+                    "load": ("operand_load",),
+                    "compute": ("accumulate",),
+                    "stage": ("weight_load",),
+                    "ex_config": ("configure",),
+                    "load_config": ("configure",),
+                }.get(name, ()),
+            )
+        ],
+    )
 
     def constant(value):
         return {"kind": "const", "raw": value}
 
     def load(address, argument):
         pointer = {"kind": "argbase", "arg_index": argument, "offset": 0}
-        return {"class": "MVIN", "funct": 2, "rs1": pointer, "rs2": constant(address),
-                "decoded": {"spad_addr": address, "rows": 4, "cols": 4, "dram": pointer}}
+        return {
+            "class": "MVIN",
+            "funct": 2,
+            "rs1": pointer,
+            "rs2": constant(address),
+            "decoded": {"spad_addr": address, "rows": 4, "cols": 4, "dram": pointer},
+        }
 
-    trace = {"instructions": [
-        {"class": "FENCE", "decoded": {}},
-        {"class": "CONFIG_EX", "funct": 0, "rs1": constant(1), "rs2": constant(2),
-         "decoded": {"subtype": "EX"}},
-        {"class": "CONFIG_LD", "funct": 1, "rs1": constant(3), "rs2": constant(4),
-         "decoded": {"subtype": "LD", "stride": 4}},
-        load(0, 0), load(8, 1), load(16, 2),
-        {"class": "PRELOAD", "funct": 3, "rs1": constant(5), "rs2": constant(6),
-         "decoded": {"weight_spad": 8, "c_addr": 0, "accumulate": False}},
-        {"class": "COMPUTE_PRELOADED", "funct": 4, "rs1": constant(7), "rs2": constant(8),
-         "decoded": {"a_spad": 0}},
-    ]}
-    buffer = {"kernel_abi": {"args": [{"tensor": name} for name in ("a", "b", "other")]},
-              "tensors": {name: {"dtype": "i8"} for name in ("a", "b", "other")}}
+    trace = {
+        "instructions": [
+            {"class": "FENCE", "decoded": {}},
+            {"class": "CONFIG_EX", "funct": 0, "rs1": constant(1), "rs2": constant(2), "decoded": {"subtype": "EX"}},
+            {
+                "class": "CONFIG_LD",
+                "funct": 1,
+                "rs1": constant(3),
+                "rs2": constant(4),
+                "decoded": {"subtype": "LD", "stride": 4},
+            },
+            load(0, 0),
+            load(8, 1),
+            load(16, 2),
+            {
+                "class": "PRELOAD",
+                "funct": 3,
+                "rs1": constant(5),
+                "rs2": constant(6),
+                "decoded": {"weight_spad": 8, "c_addr": 0, "accumulate": False},
+            },
+            {
+                "class": "COMPUTE_PRELOADED",
+                "funct": 4,
+                "rs1": constant(7),
+                "rs2": constant(8),
+                "decoded": {"a_spad": 0},
+            },
+        ]
+    }
+    buffer = {
+        "kernel_abi": {"args": [{"tensor": name} for name in ("a", "b", "other")]},
+        "tensors": {name: {"dtype": "i8"} for name in ("a", "b", "other")},
+    }
     text = "host-retained source fixture"
-    kwargs = {"target": "test-device", "artifact_text": text,
-              "artifact_sha256": hashlib.sha256(text.encode()).hexdigest(), "command_buffer": buffer}
+    kwargs = {
+        "target": "test-device",
+        "artifact_text": text,
+        "artifact_sha256": hashlib.sha256(text.encode()).hexdigest(),
+        "command_buffer": buffer,
+    }
     return trace, kwargs
 
 
@@ -116,6 +162,7 @@ def test_interleaved_host_store_is_not_dropped_from_context(context_source, monk
     from xdsl.dialects import llvm
     from xdsl.dialects.builtin import ModuleOp, i32
     from xdsl.ir import Block, Region
+
     trace, kwargs = context_source
     block = Block(arg_types=[llvm.LLVMPointerType(), i32])
     for index, row in enumerate(trace["instructions"]):
@@ -123,10 +170,12 @@ def test_interleaved_host_store_is_not_dropped_from_context(context_source, monk
             block.add_op(llvm.StoreOp(block.args[1], block.args[0]))
         block.add_op(llvm.InlineAsmOp(row["class"], "", [], [], has_side_effects=True))
     block.add_op(llvm.ReturnOp())
-    module = ModuleOp([llvm.FuncOp("context", llvm.LLVMFunctionType([llvm.LLVMPointerType(), i32]),
-                                  body=Region([block]))])
+    module = ModuleOp(
+        [llvm.FuncOp("context", llvm.LLVMFunctionType([llvm.LLVMPointerType(), i32]), body=Region([block]))]
+    )
     # Real IR work/command interleaving is inspected; decoding is independent of this host-work check.
     monkeypatch.setattr(decode, "decode_module", lambda *args, **kwargs: trace)
     result = extract_queued_movement_context(trace, parsed_module=module, **kwargs)
-    assert any("non-command host work" in reason and "llvm.store" in reason
-               for reason in result["motifs"][0]["state_missing"])
+    assert any(
+        "non-command host work" in reason and "llvm.store" in reason for reason in result["motifs"][0]["state_missing"]
+    )

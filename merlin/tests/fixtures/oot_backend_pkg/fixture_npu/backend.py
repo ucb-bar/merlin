@@ -6,6 +6,7 @@ it via ``plugin.backend``). At import time it self-registers with the runtime ba
 exactly as an evicted accelerator backend in a published ``<target>-mlir`` package would. It
 carries no real toolchain — the test only proves the discover -> import -> register plumbing.
 """
+
 from __future__ import annotations
 
 from merlin.runtime.backends import base

@@ -3,6 +3,7 @@ bound it to /dev/null, so the read returned nothing) from a real LEAK (content a
 thorough model that merely `cat`s a masked golden and gets empty output must NOT mark the run unclean —
 only a read that returns withheld content, or oracle USE, is a violation.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,17 +23,23 @@ def audit(monkeypatch):
     if str(_HARNESS) not in sys.path:
         sys.path.insert(0, str(_HARNESS))
     import run_baseline_qa_loop as L  # noqa: PLC0415
+
     return L.audit_transcript
 
 
 def _transcript(tmp_path, cmd, stdout, tid="t1", tool="Bash"):
     inp = {"command": cmd} if tool == "Bash" else {"file_path": cmd}
     lines = [
-        {"type": "assistant", "message": {"content": [
-            {"type": "tool_use", "id": tid, "name": tool, "input": inp}]}},
-        {"type": "user", "tool_use_result": {"stdout": stdout},
-         "message": {"content": [{"type": "tool_result", "tool_use_id": tid,
-                                  "content": stdout or "(Bash completed with no output)"}]}},
+        {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": tid, "name": tool, "input": inp}]}},
+        {
+            "type": "user",
+            "tool_use_result": {"stdout": stdout},
+            "message": {
+                "content": [
+                    {"type": "tool_result", "tool_use_id": tid, "content": stdout or "(Bash completed with no output)"}
+                ]
+            },
+        },
     ]
     p = tmp_path / "t.jsonl"
     p.write_text("\n".join(json.dumps(l) for l in lines))
@@ -63,11 +70,14 @@ def test_read_tool_blocked_probe_stays_clean(audit, tmp_path):
     assert r["blocked_probes"] == 1
 
 
-@pytest.mark.parametrize("err", [
-    "Error: ENOENT: no such file or directory, open 'isa/AT0_config_smoke/golden.yaml'",
-    "cat: isa/AT0_config_smoke/golden.yaml: Permission denied",
-    "cat: isa/AT0_config_smoke/golden.yaml: No such file or directory",
-])
+@pytest.mark.parametrize(
+    "err",
+    [
+        "Error: ENOENT: no such file or directory, open 'isa/AT0_config_smoke/golden.yaml'",
+        "cat: isa/AT0_config_smoke/golden.yaml: Permission denied",
+        "cat: isa/AT0_config_smoke/golden.yaml: No such file or directory",
+    ],
+)
 def test_read_that_errored_is_blocked_not_leak(audit, tmp_path, err):
     # The mask blocks an answer path by absence / mode-000 too, not only by binding to /dev/null: the read
     # then returns an ERROR, no answer bytes. That attempt must classify as blocked_probe, never path_read.
@@ -88,8 +98,7 @@ def test_reading_an_agent_owned_submission_path_is_clean(audit, tmp_path):
     own = tmp_path / "submission/mlir_oot/lowering/pipeline.py"
     own.parent.mkdir(parents=True)
     own.write_text("def lower(): return 1\n")
-    tp = _transcript(tmp_path, "sed -n '1,80p' submission/mlir_oot/lowering/pipeline.py",
-                     own.read_text())
+    tp = _transcript(tmp_path, "sed -n '1,80p' submission/mlir_oot/lowering/pipeline.py", own.read_text())
 
     r = audit(tp, arm="merlin_assisted", workspace=tmp_path)
 
@@ -131,7 +140,8 @@ def test_grep_l_finding_own_tool_is_recon_not_leak(audit, tmp_path):
     tp = _transcript(
         tmp_path,
         'find . -name "*.py" | xargs grep -l "capsule_grade" 2>/dev/null | head',
-        "/scratch/.../targets/atlas/scripts/agent_selfcheck.py")
+        "/scratch/.../targets/atlas/scripts/agent_selfcheck.py",
+    )
     r = audit(tp, arm="merlin_assisted")
     assert r["clean"] is True
     assert r["recon_probes"] == 1
@@ -141,8 +151,7 @@ def test_grep_l_finding_own_tool_is_recon_not_leak(audit, tmp_path):
 def test_search_that_surfaces_an_answer_path_is_a_violation(audit, tmp_path):
     # A path-listing search that names an answer file AND returns it (a mask failure would expose the golden
     # path) is NOT benign recon — the answer-token in the result keeps it a violation.
-    tp = _transcript(tmp_path, 'grep -l "config" isa/AT0_config_smoke/golden.yaml',
-                     "isa/AT0_config_smoke/golden.yaml")
+    tp = _transcript(tmp_path, 'grep -l "config" isa/AT0_config_smoke/golden.yaml', "isa/AT0_config_smoke/golden.yaml")
     r = audit(tp, arm="merlin_assisted")
     assert r["clean"] is False
 

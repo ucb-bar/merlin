@@ -5,6 +5,7 @@ obvious way to find a reduced extent -- take the input dimension that is missing
 silently undercounted attention's `scores.V` by 196x on the real model, because that op contracts
 over a second 196 while a 196 is also in its result. The extents must come from the indexing maps.
 """
+
 from __future__ import annotations
 
 from merlin.common import mlir_query as mq

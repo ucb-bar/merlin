@@ -7,6 +7,7 @@ cosmetic difference refused an honest resume -- and a refused resume costs the r
 official public+hidden grade.  It must still fail closed on any real change: content,
 presence, or the resolved tool set.
 """
+
 from __future__ import annotations
 
 import sys
@@ -18,7 +19,6 @@ from merlin.common.paths import merlin_dir
 
 sys.path.insert(0, str(merlin_dir() / "experiments/capsule_bench/harness"))
 import run_baseline_qa_loop as loop  # noqa: E402
-
 
 TOOLS = ["merlin_infra", "xdsl_kit"]
 
@@ -97,6 +97,5 @@ def test_changed_tool_set_still_fails_closed(tmp_path):
     ws, run_dir, bundle_dir = _stage(tmp_path)
     expected = _record(ws, run_dir, bundle_dir)
     with pytest.raises(RuntimeError) as err:
-        loop._verify_treatment_snapshot(
-            expected, ws, run_dir, bundle_dir, [*TOOLS, "rtl_facts"])
+        loop._verify_treatment_snapshot(expected, ws, run_dir, bundle_dir, [*TOOLS, "rtl_facts"])
     assert "resolved_tool_ids" in str(err.value)

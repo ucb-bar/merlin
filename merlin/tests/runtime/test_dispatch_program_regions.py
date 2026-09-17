@@ -18,6 +18,7 @@ self-consistent DAG, ``verify_program`` returns ``[]``, and nothing downstream c
    ``prov.region_id == "matmul_1"`` — wrong symbol AND wrong provenance — and the dispatch iterator
    was left holding an unconsumed entry.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -103,15 +104,21 @@ def _build(text: str, n_dispatches: int, *, tagged: bool = False):
 
     suffix = "__rmatmul_{}" if tagged else ""
     table = [
-        DispatchInfo(index=i, symbol=f"forward$kernel_{i}" + (suffix.format(i) if tagged else ""),
-                     root_op="linalg.matmul", n_operands=1,
-                     result_types=["tensor<64x64xf32>"],
-                     prov={"prov.region_id": f"matmul_{i}"} if tagged else {})
-        for i in range(n_dispatches)]
+        DispatchInfo(
+            index=i,
+            symbol=f"forward$kernel_{i}" + (suffix.format(i) if tagged else ""),
+            root_op="linalg.matmul",
+            n_operands=1,
+            result_types=["tensor<64x64xf32>"],
+            prov={"prov.region_id": f"matmul_{i}"} if tagged else {},
+        )
+        for i in range(n_dispatches)
+    ]
     return build_dispatch_program(OutlineResult(module=parse_mlir_text(text), dispatches=table))
 
 
 # ---- 1. under-recorded reads ---------------------------------------------------------------
+
 
 def test_a_value_only_the_loop_body_reads_is_recorded_as_an_input():
     """`%t0` is used inside the scf.for body and is not an operand of the loop. Before the fix it was
@@ -144,9 +151,9 @@ def test_the_planner_does_not_reuse_bytes_a_loop_is_still_reading():
     first_def, last = _live_ranges(prog)
     placed = [(b, plan.offsets[b], plan.sizes[b]) for b in plan.offsets]
     for i, (bi, oi, si) in enumerate(placed):
-        for bj, oj, sj in placed[i + 1:]:
+        for bj, oj, sj in placed[i + 1 :]:
             overlaps = oi < oj + sj and oj < oi + si
-            together = (first_def[bi] <= last[bj] and first_def[bj] <= last[bi])
+            together = first_def[bi] <= last[bj] and first_def[bj] <= last[bi]
             assert not (overlaps and together), (bi, bj, oi, si, oj, sj)
 
 
@@ -157,12 +164,18 @@ def test_the_planner_refuses_a_region_node_whose_captures_were_never_computed():
     from merlin.xdsl_dialects.lowering.arena_plan import ArenaPlanError, plan_arena
     from merlin.xdsl_dialects.lowering.dispatch_program import Buffer, DispatchProgram, Node
 
-    bufs = {b.id: b for b in (
-        Buffer(id="a", shape=[8, 8], dtype="f32", kind="arg", arg_index=0),
-        Buffer(id="t", shape=[8, 8], dtype="f32", kind="intermediate"),
-        Buffer(id="r", shape=[8, 8], dtype="f32", kind="intermediate"))}
-    nodes = [Node(kind="dispatch", op="k0", inputs=["a"], outputs=["t"]),
-             Node(kind="view", op="scf.for", inputs=["t"], outputs=["r"], regions=1)]
+    bufs = {
+        b.id: b
+        for b in (
+            Buffer(id="a", shape=[8, 8], dtype="f32", kind="arg", arg_index=0),
+            Buffer(id="t", shape=[8, 8], dtype="f32", kind="intermediate"),
+            Buffer(id="r", shape=[8, 8], dtype="f32", kind="intermediate"),
+        )
+    }
+    nodes = [
+        Node(kind="dispatch", op="k0", inputs=["a"], outputs=["t"]),
+        Node(kind="view", op="scf.for", inputs=["t"], outputs=["r"], regions=1),
+    ]
     prog = DispatchProgram(entry="forward", args=[0], buffers=bufs, nodes=nodes, results=["r"])
     with pytest.raises(ArenaPlanError) as e:
         plan_arena(prog)
@@ -175,12 +188,12 @@ def test_the_planner_refuses_a_region_node_whose_captures_were_never_computed():
     assert "absent from its inputs" in str(e2.value)
 
     # the same node with the capture folded into inputs plans fine
-    nodes[1] = Node(kind="view", op="scf.for", inputs=["t"], outputs=["r"], regions=1,
-                    captures=["t"])
+    nodes[1] = Node(kind="view", op="scf.for", inputs=["t"], outputs=["r"], regions=1, captures=["t"])
     assert plan_arena(prog).arena_bytes > 0
 
 
 # ---- 2. a kernel call hidden in a region ---------------------------------------------------
+
 
 def test_a_kernel_call_inside_a_region_is_refused_not_misattributed():
     """Before the fix this returned a program in which the third IR call carried the SECOND kernel's
@@ -190,7 +203,7 @@ def test_a_kernel_call_inside_a_region_is_refused_not_misattributed():
     with pytest.raises(OutlineError) as e:
         _build(NESTED_CALL, 3, tagged=True)
     msg = str(e.value)
-    assert "forward$kernel_1__rmatmul_1" in msg      # names the call it found
+    assert "forward$kernel_1__rmatmul_1" in msg  # names the call it found
     assert "scf.for" in msg
 
 
@@ -200,7 +213,7 @@ def test_an_unconsumed_dispatch_entry_is_refused():
     from merlin.xdsl_dialects.lowering.outline import OutlineError
 
     with pytest.raises(OutlineError) as e:
-        _build(FLAT, 3)                               # driver makes 2 calls, table lists 3
+        _build(FLAT, 3)  # driver makes 2 calls, table lists 3
     assert "desynchronised" in str(e.value)
     assert "forward$kernel_2" in str(e.value)
 
@@ -209,11 +222,12 @@ def test_more_driver_calls_than_dispatch_entries_is_refused():
     from merlin.xdsl_dialects.lowering.outline import OutlineError
 
     with pytest.raises(OutlineError) as e:
-        _build(FLAT, 1)                               # driver makes 2 calls, table lists 1
+        _build(FLAT, 1)  # driver makes 2 calls, table lists 1
     assert "exhausted" in str(e.value)
 
 
 # ---- 3. the flat path is untouched ---------------------------------------------------------
+
 
 def test_a_flat_driver_is_unchanged_and_plans_as_before():
     """No region anywhere -> regions == 0, an empty (not unknown) capture set, and a plan."""

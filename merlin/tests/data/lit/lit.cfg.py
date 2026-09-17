@@ -46,8 +46,7 @@ filecheck = _tool("FileCheck")
 mlir_opt = _tool("mlir-opt")
 python = VENV_PY if os.path.isfile(VENV_PY) else shutil.which("python3")
 
-missing = [n for n, v in (("FileCheck", filecheck), ("mlir-opt", mlir_opt), ("python", python))
-           if not v]
+missing = [n for n, v in (("FileCheck", filecheck), ("mlir-opt", mlir_opt), ("python", python)) if not v]
 if missing:
     config.unsupported = True
 else:
@@ -60,11 +59,9 @@ else:
     # actually shipped. Without the override the suite would silently test the current tree and
     # report a clean pass for every historical defect -- a check that could not run reporting success,
     # which is the failure this whole layer exists to avoid. Unset, behaviour is unchanged.
-    config.environment["PYTHONPATH"] = (os.environ.get("MERLIN_LIT_PYTHONPATH")
-                                        or os.path.join(ROOT, "merlin", "python"))
+    config.environment["PYTHONPATH"] = os.environ.get("MERLIN_LIT_PYTHONPATH") or os.path.join(ROOT, "merlin", "python")
     config.environment["HOME"] = os.environ.get("HOME", "/tmp")
-    config.substitutions.append(
-        ("%merlin-opt", "%s -m merlin.xdsl_dialects.opt" % python))
+    config.substitutions.append(("%merlin-opt", "%s -m merlin.xdsl_dialects.opt" % python))
     config.substitutions.append(("%filecheck", filecheck))
     config.substitutions.append(("%mlir-opt", mlir_opt))
     # %iface-irdl points at a SIGIL-NORMALIZED copy of the frozen grammar's IRDL. The tracked file
@@ -74,8 +71,7 @@ else:
     # the generator; until then this normalization (idempotent, a no-op once fixed) lets the frozen
     # grammar actually be verified. See docs/design/compiler_verification.md.
     _irdl_src = os.path.join(ROOT, "merlin", "contract", "merlin_iface.irdl.mlir")
-    _irdl_dst = os.path.join(ROOT, "out", "artifacts", "cache", "verify",
-                             "merlin_iface.normalized.irdl.mlir")
+    _irdl_dst = os.path.join(ROOT, "out", "artifacts", "cache", "verify", "merlin_iface.normalized.irdl.mlir")
     os.makedirs(os.path.dirname(_irdl_dst), exist_ok=True)
     with open(_irdl_src) as _f:
         _txt = _f.read()
@@ -90,6 +86,7 @@ else:
         config.available_features.add("mlir-translate")
     try:
         import subprocess
+
         subprocess.run([python, "-c", "import z3"], check=True, capture_output=True)
         config.available_features.add("z3")
     except Exception:

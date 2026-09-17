@@ -1,4 +1,5 @@
 """Tests for the target-agnostic quantization-format registry (merlin.common.quant_formats)."""
+
 from __future__ import annotations
 
 import pytest
@@ -80,9 +81,7 @@ def test_validate_entry_rejects_bad_encoding():
         qf._validate_entry("bad_kind", {"kind": "nonsense", "element_bits": 8})
     # block scale without a block size.
     with pytest.raises(ValueError):
-        qf._validate_entry(
-            "bad_scale", {"kind": "int_affine", "element_bits": 8, "scale": {"kind": "block_affine"}}
-        )
+        qf._validate_entry("bad_scale", {"kind": "int_affine", "element_bits": 8, "scale": {"kind": "block_affine"}})
 
 
 def test_overlay_merges_and_overrides(tmp_path, monkeypatch):

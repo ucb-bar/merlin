@@ -11,6 +11,7 @@ pin the three ways that can quietly stop being true:
 * the default ladder grows a sixth bundle — every committed bundle dir, run path and A/B report resolves
   against the five stems, so a sixth arriving by default changes the arm set under runs in flight.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -50,8 +51,7 @@ def test_the_verify_arm_is_arm4_plus_exactly_the_seam():
 def test_arm4_did_not_gain_the_seam():
     """The whole point of a new arm rather than a wider one: arm-4's tool set is untouched."""
     assert "verify_seam" not in TR.ARM_TOOLS["merlin_rtlchecks"]
-    assert TR.ARM_TOOLS["merlin_rtlchecks"] == TR.ARM_TOOLS["merlin_assisted"] + ("rtl_generators",
-                                                                                 "rtl_facts")
+    assert TR.ARM_TOOLS["merlin_rtlchecks"] == TR.ARM_TOOLS["merlin_assisted"] + ("rtl_generators", "rtl_facts")
 
 
 def test_the_seam_is_denied_not_merely_absent_on_the_arms_without_it(te):
@@ -92,6 +92,7 @@ def test_the_stem_keeps_the_assisted_seam_menu():
     """``generate_prompt._is_assisted_arm`` is a substring test on the bundle stem, so an assisted arm
     whose stem drops the substring is handed the raw-baseline prompt with none of its tools named."""
     from merlin.targetgen.generate_prompt import _is_assisted_arm
+
     assert _is_assisted_arm(_OPT_IN_ARMS["merlin_verify"])
 
 
@@ -100,14 +101,15 @@ def test_the_stem_resolves_back_to_its_own_arm_by_longest_match():
     inside an existing one. Pin that the FULL table disambiguates it, so graduating the arm is a table
     swap in the resolver rather than a silent downgrade to the arm whose stem it is prefixed by."""
     from merlin.targetgen.generate_bundles import _ALL_ARMS
+
     bundle_id = f"{_OPT_IN_ARMS['merlin_verify']}_hwbringup_v0"
-    best = max((a for a, s in _ALL_ARMS.items() if bundle_id.startswith(s + "_")),
-               key=lambda a: len(_ALL_ARMS[a]))
+    best = max((a for a, s in _ALL_ARMS.items() if bundle_id.startswith(s + "_")), key=lambda a: len(_ALL_ARMS[a]))
     assert best == "merlin_verify"
-    ladder_only = max((a for a, s in _ARMS.items() if bundle_id.startswith(s + "_")),
-                      key=lambda a: len(_ARMS[a]))
-    assert ladder_only == "merlin_assisted", ("the ladder-only table resolves this stem to another arm; "
-                                              "the resolver must read the full table before the arm ships")
+    ladder_only = max((a for a, s in _ARMS.items() if bundle_id.startswith(s + "_")), key=lambda a: len(_ARMS[a]))
+    assert ladder_only == "merlin_assisted", (
+        "the ladder-only table resolves this stem to another arm; "
+        "the resolver must read the full table before the arm ships"
+    )
 
 
 def test_an_unknown_arm_still_fails_closed(te):

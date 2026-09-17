@@ -5,6 +5,7 @@ passes every candidate. The pair's value is entirely in being provably identical
 schedule, and these tests exist to hold that property -- plus the negative control, without which a
 measured rise cannot be attributed to hoisting at all.
 """
+
 from __future__ import annotations
 
 from merlin.perf import command_stream_gen as G
@@ -72,7 +73,13 @@ class TestThePair:
         # lever. The commits are the waits -- the point a value becomes host-visible.
         pair = G.reorder_pair(_STREAM)
         assert [c["opcode"] for c in pair.candidate] == [
-            "RES_PACK", "MATMUL_RESIDENT", "MATMUL_RESIDENT", "COMMIT", "COMMIT", "EVICT"]
+            "RES_PACK",
+            "MATMUL_RESIDENT",
+            "MATMUL_RESIDENT",
+            "COMMIT",
+            "COMMIT",
+            "EVICT",
+        ]
         assert pair.moved_opcode == "MATMUL_RESIDENT" and pair.moved_from == 3 and pair.moved_to == 1
 
     def test_the_two_members_are_identical_work(self):
@@ -88,9 +95,11 @@ class TestThePair:
         assert G.work_fingerprint(_STREAM[:-1]) != fp
 
     def test_a_stream_with_nothing_legal_to_move_refuses_rather_than_inventing_a_pair(self):
-        single = [_c("RES_PACK", src="W", dst="W_res"),
-                  _c("CONV2D", ifm="I", weight="W_res", dst="Y0"),
-                  _c("EVICT", handle="W_res")]
+        single = [
+            _c("RES_PACK", src="W", dst="W_res"),
+            _c("CONV2D", ifm="I", weight="W_res", dst="Y0"),
+            _c("EVICT", handle="W_res"),
+        ]
         pair = G.reorder_pair(single)
         assert pair.candidate == [] and pair.refusal == G.REFUSED_NO_CANDIDATE
         assert not pair.identical_work
@@ -115,10 +124,11 @@ class TestNegativeControl:
 class TestFromInterface:
     def test_a_real_capsule_yields_a_pair_and_a_control(self):
         from merlin.common.paths import repo_root
-        p = (repo_root() / "merlin" / "contract" / "capsules" / "isa" / "A6_resident_reuse"
-             / "capsule.interface.mlir")
+
+        p = repo_root() / "merlin" / "contract" / "capsules" / "isa" / "A6_resident_reuse" / "capsule.interface.mlir"
         if not p.is_file():
             import pytest
+
             pytest.skip("the resident-reuse capsule is not present in this checkout")
         got = G.pair_from_interface(p.read_text(encoding="utf-8"))
         assert got["pair"]["identical_work"] is True

@@ -5,6 +5,7 @@ The defect these gate: a torchao capture parks a quantized subclass's inner tens
 them while it walks the module; a compiled binary has no such moment, so it computed on whatever the
 allocator last left there while the interpreter gated ``cos 1.0`` on the same bundle.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -22,10 +23,11 @@ def _module(*, tag: bool, shape_only: bool = False) -> str:
     ``shape_only`` leaves the operand's block argument UNUSED, which is how a pooling window's
     extent is carried and must not be mistaken for data.
     """
-    body = ("      %m = arith.mulf %a, %b : f32\n"
-            "      linalg.yield %m : f32\n") if not shape_only else (
-            "      %m = arith.mulf %a, %a : f32\n"
-            "      linalg.yield %m : f32\n")
+    body = (
+        ("      %m = arith.mulf %a, %b : f32\n      linalg.yield %m : f32\n")
+        if not shape_only
+        else ("      %m = arith.mulf %a, %a : f32\n      linalg.yield %m : f32\n")
+    )
     attrs = ' attrs = {prov.quant_inner_1 = "fc.weight.tensor_impl.scale"}' if tag else ""
     return (
         "builtin.module {\n"
@@ -42,7 +44,8 @@ def _module(*, tag: bool, shape_only: bool = False) -> str:
         "    } -> tensor<4xf32>\n"
         "    func.return %r : tensor<4xf32>\n"
         "  }\n"
-        "}\n")
+        "}\n"
+    )
 
 
 def test_gate_refuses_a_tensor_empty_that_reaches_computation():
@@ -80,8 +83,7 @@ def test_lift_makes_the_tensor_an_argument_and_clears_the_gate():
 def test_plan_matches_what_lift_appends():
     # The compiled path derives the argument list from the BUNDLE while the object is built from the
     # lifted module. They are only consistent because both come from this one derivation.
-    assert qinner.plan(parse_mlir_text(_module(tag=True))) == \
-        qinner.lift(parse_mlir_text(_module(tag=True)))
+    assert qinner.plan(parse_mlir_text(_module(tag=True))) == qinner.lift(parse_mlir_text(_module(tag=True)))
 
 
 def test_a_module_without_a_quantized_subclass_is_untouched():

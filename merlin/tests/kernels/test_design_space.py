@@ -5,14 +5,14 @@ the interesting half is what they did not run. Separately, a loop that sees only
 the corpus records what an expert KEPT, and a transform ledger is the only record of what was tried and
 discarded.
 """
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 import os
 
-from merlin.common.paths import _dotenv
+import pytest
 
+from merlin.common.paths import _dotenv
 from merlin.kernels import space as S
 from merlin.kernels.ingest import autocomp as A
 
@@ -20,9 +20,11 @@ from merlin.kernels.ingest import autocomp as A
 _REPO = os.environ.get("MERLIN_EXT_AUTOCOMP") or _dotenv().get("MERLIN_EXT_AUTOCOMP") or ""
 
 # The measured shape of a real sweep: deliberately IRREGULAR, which is the normal case.
-_SWEEP = ([{"m": 32, "n": 32, "k": k} for k in (32, 64, 128, 256)]
-          + [{"m": 64, "n": 64, "k": k} for k in (32, 64, 128)]
-          + [{"m": 96, "n": 96, "k": 96}])
+_SWEEP = (
+    [{"m": 32, "n": 32, "k": k} for k in (32, 64, 128, 256)]
+    + [{"m": 64, "n": 64, "k": k} for k in (32, 64, 128)]
+    + [{"m": 96, "n": 96, "k": 96}]
+)
 
 
 class TestTheDesignIsDerivedNotDeclared:
@@ -34,8 +36,9 @@ class TestTheDesignIsDerivedNotDeclared:
     def test_a_constant_axis_is_dropped_with_a_reason(self):
         """A constant is not a dimension. Leaving it in inflates the cross product, so coverage reads
         far worse than it is — and the note is what stops that being read as missing data."""
-        sp = S.space_from_records([{"m": 32, "dtype": "int8"}, {"m": 64, "dtype": "int8"}],
-                                  axes=("m", "dtype"), target="t")
+        sp = S.space_from_records(
+            [{"m": 32, "dtype": "int8"}, {"m": 64, "dtype": "int8"}], axes=("m", "dtype"), target="t"
+        )
         assert "dtype" not in sp.axes
         assert any("constant" in n for n in sp.notes)
 
@@ -78,6 +81,7 @@ class TestTheUnobservedCellsAreTheProduct:
 class TestTheLedgerRecordsWhatFailed:
     def _have(self):
         from pathlib import Path
+
         if not (Path(_REPO) / "output" / "transform_ledger.jsonl").is_file():
             pytest.skip("autocomp ledger not present in this checkout")
 
@@ -114,8 +118,7 @@ class TestTheLedgerRecordsWhatFailed:
 
     def test_speedup_is_never_credited_without_correctness(self):
         self._have()
-        bad = [s for s in A.ledger_search_steps(_REPO, target="muon")
-               if s.speedup is not None and not s.correctness_ok]
+        bad = [s for s in A.ledger_search_steps(_REPO, target="muon") if s.speedup is not None and not s.correctness_ok]
         assert bad == [], f"{len(bad)} rows credited a speedup for a broken attempt"
 
     def test_a_missing_ledger_yields_nothing_rather_than_raising(self):
@@ -134,8 +137,7 @@ class TestAttemptsFoldIntoTheDesign:
     def test_outcomes_accumulate_on_an_observed_cell(self):
         sp = S.space_from_records(_SWEEP, axes=("m", "n", "k"), target="t")
         key = sorted(c.key for c in sp.observed)[0]
-        sp = S.merge_ledger(sp, [{"cell": key, "outcome": "improved"},
-                                 {"cell": key, "outcome": "compile_error"}])
+        sp = S.merge_ledger(sp, [{"cell": key, "outcome": "improved"}, {"cell": key, "outcome": "compile_error"}])
         assert sp.cells[key].improved == 1 and sp.cells[key].failed == 1
         assert sp.cells[key].observed is True, "merging attempts must not un-observe a kept cell"
 
@@ -147,11 +149,17 @@ class TestItActuallyFeedsTheDse:
 
     def _space(self):
         sp = S.space_from_records(_SWEEP, axes=("m", "n", "k"), target="t")
-        return S.merge_ledger(sp, [{"cell": "k=256 m=64 n=64", "outcome": "regressed"},
-                                   {"cell": "k=256 m=64 n=64", "outcome": "compile_error"}])
+        return S.merge_ledger(
+            sp,
+            [
+                {"cell": "k=256 m=64 n=64", "outcome": "regressed"},
+                {"cell": "k=256 m=64 n=64", "outcome": "compile_error"},
+            ],
+        )
 
     def test_the_space_is_the_shape_the_real_grid_search_consumes(self):
         from merlin.dse.search.grid import grid_search
+
         sp = self._space()
         rows = grid_search(S.to_search_space(sp), lambda p: 1.0)
         assert len(rows) == 3 * 3 * 5, "the DSE explorer did not enumerate the corpus design"

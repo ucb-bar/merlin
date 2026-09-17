@@ -15,6 +15,7 @@
 
 Together they made a legal, schema-valid batched capsule ungradeable while looking like an agent defect.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -26,8 +27,7 @@ from merlin.runtime.tensor import Tensor
 
 
 def _flat(x):
-    return list(itertools.chain.from_iterable(
-        _flat(i) if isinstance(i, list) else [i] for i in x))
+    return list(itertools.chain.from_iterable(_flat(i) if isinstance(i, list) else [i] for i in x))
 
 
 # --------------------------------------------------------------------------------------------
@@ -62,6 +62,7 @@ def test_row_major_order_is_preserved_at_every_rank(shape, n):
 # --------------------------------------------------------------------------------------------
 try:
     from merlin.runtime.backends import base as _bk
+
     _muon = _bk.get_backend("muon")
     _MH = importlib.import_module(_muon.__name__ + ".muon_harness")
 except Exception:  # noqa: BLE001 — SIMT backend absent in this env
@@ -73,7 +74,8 @@ pytestmark_backend = pytest.mark.skipif(_MH is None, reason="SIMT backend not pr
 def _batched_cb(opcode: str) -> dict:
     """RP10's shape: A0[2,16,16] @ A1[2,16,1] -> Y0[2,16,1], operands spelled lhs/rhs/dst."""
     return {
-        "abi_version": "1", "target": "radiance",
+        "abi_version": "1",
+        "target": "radiance",
         "tensors": {
             "A0": {"shape": [2, 16, 16], "dtype": "f32", "role": "input"},
             "A1": {"shape": [2, 16, 1], "dtype": "f32", "role": "weight"},

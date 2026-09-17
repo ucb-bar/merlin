@@ -6,6 +6,7 @@ Regression for the radiance suite: capsules declared ``fp16``/``mxfp8`` where ``
 message even lured the agent into probing the grader source). A width has one size regardless of
 spelling; only a genuinely unknown dtype should fail closed.
 """
+
 from __future__ import annotations
 
 import pytest

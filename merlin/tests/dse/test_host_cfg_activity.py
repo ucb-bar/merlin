@@ -1,12 +1,13 @@
 """Dynamic host work must count loop iterations, including nesting and exits."""
+
+import pytest
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import IntegerAttr, ModuleOp, i32, i64
 from xdsl.ir import Block, Region
 from xdsl.irdl.dominance import DominanceInfo
-import pytest
 
-from merlin.perf.host_cfg_index import prepare_host_cfg
 from merlin.perf.host_cfg_activity import analyze_host_cfg_activity
+from merlin.perf.host_cfg_index import prepare_host_cfg
 
 
 def function(*, outer=3, inner=4, dynamic_bound=False, claimed_bytes=16):
@@ -114,8 +115,9 @@ def test_unknown_dynamic_payload_does_not_hide_static_allocation_hotspot():
     assert report["top_buffers_by_scalar_memory_payload"][0]["allocation_operation_index"] is None
 
 
-def carried_function(*, trips=9, induction_first=True, coupled_step=False, coupled_bound=False,
-                     forwarded=False, wrong_forwarding=False):
+def carried_function(
+    *, trips=9, induction_first=True, coupled_step=False, coupled_bound=False, forwarded=False, wrong_forwarding=False
+):
     entry = Block(arg_types=[llvm.LLVMPointerType(), i64])
     head, body, end = Block(arg_types=[i64, i64]), Block(arg_types=[i64, i64] if forwarded else []), Block()
     region = Region([entry, head, body, end])
@@ -165,25 +167,24 @@ def test_recurrence_dependent_induction_is_not_treated_as_constant(coupling):
     assert report["dynamic_operations"] is report["load_payload_bytes"] is None
 
 
-@pytest.mark.parametrize('induction_first', [True, False])
+@pytest.mark.parametrize("induction_first", [True, False])
 def test_body_block_argument_forwarding_preserves_proven_loop_count(induction_first):
     report = analyze_host_cfg_activity(carried_function(forwarded=True, induction_first=induction_first))
-    assert report['status'] == 'derived', report['problems']
-    assert report['dynamic_operations']['load'] == 9
-    assert report['load_payload_bytes'] == 72
+    assert report["status"] == "derived", report["problems"]
+    assert report["dynamic_operations"]["load"] == 9
+    assert report["load_payload_bytes"] == 72
 
 
 def test_forwarding_different_value_does_not_prove_induction_update():
     report = analyze_host_cfg_activity(carried_function(forwarded=True, wrong_forwarding=True))
-    assert report['status'] == 'UNKNOWN'
-    assert report['dynamic_operations'] is None
+    assert report["status"] == "UNKNOWN"
+    assert report["dynamic_operations"] is None
 
 
 def test_prepared_cfg_is_equivalent_and_function_identity_bound():
     fn = function()
     prepared = prepare_host_cfg(fn)
-    assert analyze_host_cfg_activity(
-        fn, prepared_cfg=prepared) == analyze_host_cfg_activity(fn)
+    assert analyze_host_cfg_activity(fn, prepared_cfg=prepared) == analyze_host_cfg_activity(fn)
 
     other = function()
     with pytest.raises(ValueError, match="different function object"):
@@ -197,4 +198,6 @@ def test_prepared_dominance_matches_xdsl_for_every_block_pair():
 
     assert all(
         prepared.dominance.dominates(left, right) == reference.dominates(left, right)
-        for left in fn.body.blocks for right in fn.body.blocks)
+        for left in fn.body.blocks
+        for right in fn.body.blocks
+    )

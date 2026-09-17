@@ -12,6 +12,7 @@ Measured on the first attempt to carry the gemmini whole-model certification ove
 * the element width came from scraping every digit out of the dtype token, and ``fp8_e4m3`` has three
   digit runs -- it concatenated to 843, sizing a 64 KiB operand file as 624 elements.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -19,14 +20,21 @@ import pytest
 from merlin.compile_cli import _dtype_bits, _operand_store_bytes, capacity_fit
 
 
-@pytest.mark.parametrize("tok,bits", [
-    ("i8", 8), ("int8", 8), ("i32", 32), ("bf16", 16), ("f32", 32),
-    ("fp8_e4m3", 8),      # the bug: digit-scraping read "843"
-    ("fp8_e5m2", 8),
-    ("fp4_e2m1", 4),      # sub-byte: must not round up to 8 here
-    ("e4m3", 8),          # an alias spelling still resolves through the registry
-    (None, 8),
-])
+@pytest.mark.parametrize(
+    "tok,bits",
+    [
+        ("i8", 8),
+        ("int8", 8),
+        ("i32", 32),
+        ("bf16", 16),
+        ("f32", 32),
+        ("fp8_e4m3", 8),  # the bug: digit-scraping read "843"
+        ("fp8_e5m2", 8),
+        ("fp4_e2m1", 4),  # sub-byte: must not round up to 8 here
+        ("e4m3", 8),  # an alias spelling still resolves through the registry
+        (None, 8),
+    ],
+)
 def test_element_width_comes_from_the_format_not_the_spelling(tok, bits):
     assert _dtype_bits(tok) == bits
 
@@ -39,6 +47,7 @@ def test_a_float_format_token_does_not_concatenate_its_digit_runs():
     # Stand in for the store where `_operand_store_capacity_elems` looks it up: merlin.compile.capacity
     # defines both. The name merlin.compile_cli re-exports is a separate binding the function never reads.
     from merlin.compile import capacity
+
     real = capacity._operand_store_bytes
     try:
         capacity._operand_store_bytes = lambda _t: 65536
@@ -50,6 +59,7 @@ def test_a_float_format_token_does_not_concatenate_its_digit_runs():
 def test_a_sub_byte_format_is_counted_in_bits():
     """fp4 packs two per byte; counting it a byte apiece halves the capacity for free."""
     from merlin.compile_cli import _operand_store_capacity_elems
+
     b = _operand_store_bytes("gemmini")
     if not b:
         pytest.skip("gemmini operand store not derivable in this checkout")
@@ -72,6 +82,7 @@ def test_an_unclassified_target_reports_undecidable_rather_than_guessing():
     declaring the register file, which would split layers the device handles and, on this bf16
     accumulator, change the reduction order while doing it."""
     from merlin.targetgen.rtl import mlc_bridge as mb
+
     if not mb.discovered_memories("atlas"):
         pytest.skip("atlas RTL discovery unavailable in this checkout")
     assert _operand_store_bytes("atlas") is None
@@ -82,6 +93,7 @@ def test_the_biggest_memory_is_never_taken_as_the_operand_store():
     """Why a store is declared or left unknown, never inferred: this device's INSTRUCTION memory
     (32768 x 4 B = 128 KiB) is its largest SRAM, so 'take the biggest' would answer with IMEM."""
     from merlin.targetgen.rtl import mlc_bridge as mb
+
     mems = mb.discovered_memories("atlas")
     if not mems:
         pytest.skip("atlas RTL discovery unavailable in this checkout")
@@ -99,10 +111,10 @@ def test_run_paths_do_not_depend_on_the_process_cwd(tmp_path, monkeypatch):
     capsule_result.json into a path that existed, because it was created in one cwd and written in
     another."""
     from merlin.targetgen.capsule_common import make_run_paths
+
     (tmp_path / "here").mkdir()
     monkeypatch.chdir(tmp_path / "here")
-    paths = make_run_paths("relative_runs", "cap0", suite="s", target="t",
-                           dtype="int8", benchmark="b")
+    paths = make_run_paths("relative_runs", "cap0", suite="s", target="t", dtype="int8", benchmark="b")
     assert paths.run_path.is_absolute(), paths.run_path
     monkeypatch.chdir(tmp_path)
     assert paths.run_path.is_dir(), "the run dir must still resolve after a chdir"
@@ -113,18 +125,28 @@ def _probe(monkeypatch, target, dtype, m, k, n):
     the assertion is about what the CALLER records, not about any simulator being present."""
     # Patched in merlin.compile.mesh, which defines `run_matmul_on_mesh` and the three paths it calls.
     from merlin.compile import mesh
+
     for fn in ("_matmul_via_oot_cert", "_matmul_via_program_oracle", "_matmul_via_bespoke_sim"):
         monkeypatch.setattr(mesh, fn, lambda *a, **kw: None, raising=True)
     obs: dict = {}
-    mesh.run_matmul_on_mesh(target, [[0.0] * k for _ in range(m)], [[0.0] * n for _ in range(k)],
-                            operand_dtype=dtype, timeout=5, observed=obs)
+    mesh.run_matmul_on_mesh(
+        target,
+        [[0.0] * k for _ in range(m)],
+        [[0.0] * n for _ in range(k)],
+        operand_dtype=dtype,
+        timeout=5,
+        observed=obs,
+    )
     return obs
 
 
-@pytest.mark.parametrize("target,dtype,path,holds", [
-    ("gemmini", "int8", "oot_cert", True),          # declares a store: the obligation has a verdict
-    ("atlas", "fp8_e4m3", "program_oracle", None),  # declares none: evaluated, and the answer is unknown
-])
+@pytest.mark.parametrize(
+    "target,dtype,path,holds",
+    [
+        ("gemmini", "int8", "oot_cert", True),  # declares a store: the obligation has a verdict
+        ("atlas", "fp8_e4m3", "program_oracle", None),  # declares none: evaluated, and the answer is unknown
+    ],
+)
 def test_the_obligation_is_evaluated_on_every_mesh_path(monkeypatch, target, dtype, path, holds):
     """It used to live inside the RoCC/oot-cert path. A self-hosted-ISA target leaves through the
     program oracle, so its layers had no obligation evaluated at all -- an oversized layer there
@@ -162,6 +184,7 @@ def test_an_undecidable_obligation_says_so_instead_of_going_quiet(monkeypatch):
     """`holds: None` is the correct answer for a target that declares no capacity -- and a silent None
     is how a whole class of residency failures came to be reported as an unreachable oracle."""
     from merlin.compile import capacity
+
     monkeypatch.setattr(capacity, "_operand_store_bytes", lambda _t: None, raising=True)
     obs = _probe(monkeypatch, "gemmini", "int8", 32, 512, 512)
     if obs.get("path") is None:
@@ -201,7 +224,8 @@ def test_a_capsule_that_chdirs_cannot_relocate_its_siblings(tmp_path, monkeypatc
     def _fake_run_capsule(cap, package_dir, *, runs_root, **kw):
         seen.append(runs_root)
         import os
-        os.chdir(tmp_path / "elsewhere")          # the sibling-thread chdir, made deterministic
+
+        os.chdir(tmp_path / "elsewhere")  # the sibling-thread chdir, made deterministic
         return {"capsule": cap["name"], "status": "pass", "kind": "op", "tiers": {}}
 
     monkeypatch.setattr(CR, "load_package", lambda *a, **k: object())
@@ -211,8 +235,13 @@ def test_a_capsule_that_chdirs_cannot_relocate_its_siblings(tmp_path, monkeypatc
     monkeypatch.setattr(CR, "run_capsule", _fake_run_capsule)
     monkeypatch.chdir(tmp_path / "here")
 
-    CR.run_suite([{"name": f"c{i}", "kind": "op"} for i in range(4)], "pkg",
-                 runs_root="relative_runs", target="gemmini", max_workers=1)
+    CR.run_suite(
+        [{"name": f"c{i}", "kind": "op"} for i in range(4)],
+        "pkg",
+        runs_root="relative_runs",
+        target="gemmini",
+        max_workers=1,
+    )
 
     assert len(set(seen)) == 1, f"the runs root moved mid-suite: {sorted(set(seen))}"
     assert seen[0] == str((tmp_path / "here" / "relative_runs")), seen[0]
@@ -229,15 +258,16 @@ def test_a_crashed_op_capsule_cannot_leave_the_model_gate_denominator(monkeypatc
     from merlin.targetgen import capsule_runner as CR
 
     ran: list[str] = []
-    caps = ([{"name": f"ok{i}", "kind": "op"} for i in range(7)]
-            + [{"name": "bad", "kind": "op"}]
-            + [{"name": f"crash{i}", "kind": "op"} for i in range(18)]
-            + [{"name": "M0", "kind": "model", "gate": {"after_op_pass_fraction": 0.8}}])
+    caps = (
+        [{"name": f"ok{i}", "kind": "op"} for i in range(7)]
+        + [{"name": "bad", "kind": "op"}]
+        + [{"name": f"crash{i}", "kind": "op"} for i in range(18)]
+        + [{"name": "M0", "kind": "model", "gate": {"after_op_pass_fraction": 0.8}}]
+    )
 
     def _fake(cap, package_dir, **kw):
         ran.append(cap["name"])
-        status = ("pass" if cap["name"].startswith("ok")
-                  else "error" if cap["name"].startswith("crash") else "fail")
+        status = "pass" if cap["name"].startswith("ok") else "error" if cap["name"].startswith("crash") else "fail"
         return {"capsule": cap["name"], "status": status, "kind": cap.get("kind"), "tiers": {}}
 
     monkeypatch.setattr(CR, "load_package", lambda *a, **k: object())

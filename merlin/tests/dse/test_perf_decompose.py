@@ -8,6 +8,7 @@ The second target here is a decoupled-queue systolic accelerator whose published
 total cycles plus a derived array utilization -- one number, not a decomposition. The correct result
 for it is UNKNOWN with the missing trait named. A number would be the failure.
 """
+
 from __future__ import annotations
 
 import functools
@@ -57,12 +58,17 @@ def _sources():
     out = []
     for name, body in suite["kernels"].items():
         arc = body["arc"]
-        out.append(activity_from_busy(
-            name, arc["truth"],
-            {"dma": arc["dma_busy"], "mxu": arc["mxu"], "vpu": arc["vpu"], "none": arc["none"]},
-            BUCKET_KINDS,
-            partitioned=True, completion_observable=True,
-            provenance="per-cycle activity decomposition from the cycle-accurate model"))
+        out.append(
+            activity_from_busy(
+                name,
+                arc["truth"],
+                {"dma": arc["dma_busy"], "mxu": arc["mxu"], "vpu": arc["vpu"], "none": arc["none"]},
+                BUCKET_KINDS,
+                partitioned=True,
+                completion_observable=True,
+                provenance="per-cycle activity decomposition from the cycle-accurate model",
+            )
+        )
     return {s.workload: s for s in out}
 
 
@@ -78,6 +84,7 @@ def _second_target():
 
 
 # --- the hand-derived fixtures -------------------------------------------------------------------
+
 
 def test_matmul_is_movement_bound_at_the_measured_shares():
     d = decompose(_sources()["matmul"])
@@ -118,6 +125,7 @@ def test_busy_by_kind_adds_same_kind_engines():
 
 # --- the anti-overfit gate: a second target of a different archetype ------------------------------
 
+
 def test_second_target_has_no_per_unit_decomposition_and_says_so():
     manifest, facts = _second_target()
     trait = activity_trait([], manifest=manifest, facts=facts)
@@ -130,8 +138,12 @@ def test_second_target_total_cycles_only_is_unavailable_not_a_fabricated_share()
     # All this target publishes per workload is total cycles (plus a derived array utilization).
     # One bucket is a total, not a decomposition.
     src = activity_from_busy(
-        "G00_single_tile", 308, {"mesh": 308}, {"mesh": ResourceKind.COMPUTE},
-        provenance="cycle-accurate RTL simulation, total cycles only")
+        "G00_single_tile",
+        308,
+        {"mesh": 308},
+        {"mesh": ResourceKind.COMPUTE},
+        provenance="cycle-accurate RTL simulation, total cycles only",
+    )
     result = decompose(src)
     assert isinstance(result, Unavailable)
     assert is_unknown(result)

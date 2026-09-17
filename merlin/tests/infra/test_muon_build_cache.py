@@ -9,6 +9,7 @@ The stamp is the delicate part. `compile_for_oracle` records WHICH toolchain pro
 precisely so the vendor fork can never be a silent fallback. A cached build that restored the files
 without the stamp would be the single case where that record went missing.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -28,11 +29,15 @@ def muon(monkeypatch):
     and the package is only a re-export. Reached through the loaded package so its relative imports
     resolve -- loading the file standalone cannot work."""
     from merlin.runtime.backends import base as B
+
     m = B.get_backend("muon").muon
-    monkeypatch.setattr(m, "_build_cache_key",
-                        lambda kind, target, inputs: BC.artifact_identity(
-                            kind=kind, target=target, inputs=inputs,
-                            source_files=[__file__], toolchain="stub-toolchain"))
+    monkeypatch.setattr(
+        m,
+        "_build_cache_key",
+        lambda kind, target, inputs: BC.artifact_identity(
+            kind=kind, target=target, inputs=inputs, source_files=[__file__], toolchain="stub-toolchain"
+        ),
+    )
     return m
 
 
@@ -47,26 +52,23 @@ def _elf(work, name="kernel.radiance.elf", body=b"bytes"):
 # the key
 # --------------------------------------------------------------------------------------------
 
+
 def test_a_generic_identity_needs_every_component():
-    ok = BC.artifact_identity(kind="k", target="t", inputs={"a": 1},
-                              source_files=[__file__], toolchain="tc")
+    ok = BC.artifact_identity(kind="k", target="t", inputs={"a": 1}, source_files=[__file__], toolchain="tc")
     assert ok
-    assert BC.artifact_identity(kind="", target="t", inputs={}, source_files=[__file__],
-                                toolchain="tc") is None
-    assert BC.artifact_identity(kind="k", target="", inputs={}, source_files=[__file__],
-                                toolchain="tc") is None
-    assert BC.artifact_identity(kind="k", target="t", inputs={}, source_files=[],
-                                toolchain="tc") is None
-    assert BC.artifact_identity(kind="k", target="t", inputs={}, source_files=[__file__],
-                                toolchain=None) is None
-    assert BC.artifact_identity(kind="k", target="t", inputs={}, source_files=["/nope/absent.py"],
-                                toolchain="tc") is None
+    assert BC.artifact_identity(kind="", target="t", inputs={}, source_files=[__file__], toolchain="tc") is None
+    assert BC.artifact_identity(kind="k", target="", inputs={}, source_files=[__file__], toolchain="tc") is None
+    assert BC.artifact_identity(kind="k", target="t", inputs={}, source_files=[], toolchain="tc") is None
+    assert BC.artifact_identity(kind="k", target="t", inputs={}, source_files=[__file__], toolchain=None) is None
+    assert (
+        BC.artifact_identity(kind="k", target="t", inputs={}, source_files=["/nope/absent.py"], toolchain="tc") is None
+    )
 
 
 def test_inputs_reach_the_identity():
     def k(**inputs):
-        return BC.artifact_identity(kind="k", target="t", inputs=inputs,
-                                    source_files=[__file__], toolchain="tc")
+        return BC.artifact_identity(kind="k", target="t", inputs=inputs, source_files=[__file__], toolchain="tc")
+
     base = k(src="module {}")
     assert k(src="module {}") == base
     assert k(src="module { // edited }") != base
@@ -76,10 +78,8 @@ def test_inputs_reach_the_identity():
 def test_two_builders_cannot_collide_on_one_key():
     """`kind` separates the namespaces: two different compilers keyed the same would hand one
     builder's output to the other."""
-    a = BC.artifact_identity(kind="one", target="t", inputs={"x": 1},
-                             source_files=[__file__], toolchain="tc")
-    b = BC.artifact_identity(kind="two", target="t", inputs={"x": 1},
-                             source_files=[__file__], toolchain="tc")
+    a = BC.artifact_identity(kind="one", target="t", inputs={"x": 1}, source_files=[__file__], toolchain="tc")
+    b = BC.artifact_identity(kind="two", target="t", inputs={"x": 1}, source_files=[__file__], toolchain="tc")
     assert a and b and a != b
 
 
@@ -93,9 +93,9 @@ def test_a_different_toolchain_is_a_different_key():
 # the stamp
 # --------------------------------------------------------------------------------------------
 
+
 def test_the_stamp_is_stored_and_restored(tmp_path):
-    key = BC.artifact_identity(kind="k", target="t", inputs={"x": 1},
-                               source_files=[__file__], toolchain="tc")
+    key = BC.artifact_identity(kind="k", target="t", inputs={"x": 1}, source_files=[__file__], toolchain="tc")
     work = tmp_path / "w"
     _elf(work)
     BC.store(key, work, "kernel.radiance.elf", metadata={"toolchain": "fork-free"})
@@ -108,8 +108,7 @@ def test_the_stamp_is_stored_and_restored(tmp_path):
 def test_the_primary_output_name_can_come_from_the_record(tmp_path):
     """This builder's output name is not the operator path's, and the caller does not always know it
     -- so a restore must be able to ask the record rather than be told."""
-    key = BC.artifact_identity(kind="k", target="t", inputs={"x": 2},
-                               source_files=[__file__], toolchain="tc")
+    key = BC.artifact_identity(kind="k", target="t", inputs={"x": 2}, source_files=[__file__], toolchain="tc")
     work = tmp_path / "w"
     _elf(work, "kernel.soc.elf")
     BC.store(key, work, "kernel.soc.elf")
@@ -118,8 +117,7 @@ def test_the_primary_output_name_can_come_from_the_record(tmp_path):
 
 
 def test_a_record_for_a_different_primary_output_is_not_used(tmp_path):
-    key = BC.artifact_identity(kind="k", target="t", inputs={"x": 3},
-                               source_files=[__file__], toolchain="tc")
+    key = BC.artifact_identity(kind="k", target="t", inputs={"x": 3}, source_files=[__file__], toolchain="tc")
     work = tmp_path / "w"
     _elf(work, "kernel.soc.elf")
     BC.store(key, work, "kernel.soc.elf")
@@ -135,8 +133,8 @@ def test_metadata_from_another_record_version_is_unavailable(tmp_path):
     """UNAVAILABLE, not empty. The caller rebuilds on unavailable and proceeds on empty, so a record
     this reader does not understand must not be flattened into "there was no stamp"."""
     import json
-    key = BC.artifact_identity(kind="k", target="t", inputs={"x": 9},
-                               source_files=[__file__], toolchain="tc")
+
+    key = BC.artifact_identity(kind="k", target="t", inputs={"x": 9}, source_files=[__file__], toolchain="tc")
     work = tmp_path / "w"
     _elf(work)
     BC.store(key, work, "kernel.radiance.elf", metadata={"toolchain": "fork-free"})
@@ -150,8 +148,8 @@ def test_metadata_from_another_record_version_is_unavailable(tmp_path):
 
 def test_metadata_for_a_mismatched_key_is_unavailable(tmp_path):
     import json
-    key = BC.artifact_identity(kind="k", target="t", inputs={"x": 10},
-                               source_files=[__file__], toolchain="tc")
+
+    key = BC.artifact_identity(kind="k", target="t", inputs={"x": 10}, source_files=[__file__], toolchain="tc")
     work = tmp_path / "w"
     _elf(work)
     BC.store(key, work, "kernel.radiance.elf", metadata={"toolchain": "fork-free"})
@@ -165,8 +163,7 @@ def test_metadata_for_a_mismatched_key_is_unavailable(tmp_path):
 def test_a_build_stored_without_metadata_reports_empty_not_missing(tmp_path):
     """Empty and unavailable are different: the caller rebuilds on unavailable, and must be able to
     tell that from a build that genuinely carried no metadata."""
-    key = BC.artifact_identity(kind="k", target="t", inputs={"x": 4},
-                               source_files=[__file__], toolchain="tc")
+    key = BC.artifact_identity(kind="k", target="t", inputs={"x": 4}, source_files=[__file__], toolchain="tc")
     work = tmp_path / "w"
     _elf(work)
     BC.store(key, work, "kernel.radiance.elf")
@@ -178,12 +175,12 @@ def test_the_oracle_build_refuses_an_unstamped_hit():
     build the one case where a vendor-fork fallback went unrecorded -- which is exactly the
     measurement `compile_for_oracle` exists to make."""
     from merlin.common.paths import repo_root
+
     src = (repo_root() / "merlin" / "targets" / "muon" / "backend" / "muon.py").read_text()
     i = src.index("def compile_for_oracle(")
     j = src.find("\ndef ", i + 1)
-    body = src[i:j if j != -1 else len(src)]
-    assert "if _hit is not None and _stamp:" in body, (
-        "a hit must be used only when it carries a toolchain stamp")
+    body = src[i : j if j != -1 else len(src)]
+    assert "if _hit is not None and _stamp:" in body, "a hit must be used only when it carries a toolchain stamp"
     assert 'metadata={"toolchain": "fork-free"}' in body
     assert 'metadata={"toolchain": "clang-muon-fork"}' in body
 
@@ -192,13 +189,15 @@ def test_both_muon_build_paths_consult_the_cache():
     """Keying a build and never LOOKING UP the key is a cache that cannot hit -- the exact defect this
     whole series has been chasing -- so both the key and the lookup are pinned."""
     from merlin.common.paths import repo_root
+
     src = (repo_root() / "merlin" / "targets" / "muon" / "backend" / "muon.py").read_text()
+
     def _fn_body(text, name):
         i = text.index(f"def {name}(")
         j = text.find("\ndef ", i + 1)
-        return text[i:j if j != -1 else len(text)]
-    for fn, kind in (("compile_mlir_forkfree", "muon-mlir-forkfree"),
-                     ("compile_for_oracle", "muon-oracle")):
+        return text[i : j if j != -1 else len(text)]
+
+    for fn, kind in (("compile_mlir_forkfree", "muon-mlir-forkfree"), ("compile_for_oracle", "muon-oracle")):
         body = _fn_body(src, fn)
         assert kind in body, f"{fn} does not key its build"
         assert "_bc.reuse(" in body, f"{fn} computes a key but never consults the cache"
@@ -209,23 +208,21 @@ def test_the_mlir_path_returns_a_hit_rather_than_rebuilding(muon, tmp_path, monk
     """Behavioural, not textual: with a stored build in place, the compile must return it without
     reaching the toolchain at all."""
     from merlin.targetgen.contract import toolchain as _tc
-    key = muon._build_cache_key("muon-mlir-forkfree", "radiance",
-                                {"mlir": "module {}", "cb": {}, "num_warps": 1})
+
+    key = muon._build_cache_key("muon-mlir-forkfree", "radiance", {"mlir": "module {}", "cb": {}, "num_warps": 1})
     assert key, "the fixture must be able to form a key"
     work = tmp_path / "gen"
     _elf(work, "kernel.radiance.elf", b"prebuilt")
     BC.store(key, work, "kernel.radiance.elf")
 
-    monkeypatch.setattr(_tc, "mlir_bin",
-                        lambda *a, **k: pytest.fail("the toolchain was invoked despite a cache hit"))
+    monkeypatch.setattr(_tc, "mlir_bin", lambda *a, **k: pytest.fail("the toolchain was invoked despite a cache hit"))
     # Private grading payload must neither perturb the old result_page=False key
     # nor become part of the submitted-kernel identity.
     oracle_view = {
         "_oracle_expected_outputs": {"Y0": [[123.0]]},
         "_oracle_numeric_policy": {"compare": "tolerance_float", "atol": 0.1},
     }
-    got = muon.compile_mlir_forkfree(
-        "module {}", oracle_view, tmp_path / "fresh", target="radiance", num_warps=1)
+    got = muon.compile_mlir_forkfree("module {}", oracle_view, tmp_path / "fresh", target="radiance", num_warps=1)
     assert got is not None and got.read_bytes().endswith(b"prebuilt")
 
 
@@ -235,16 +232,20 @@ def test_result_page_kernel_key_ignores_trusted_golden(muon, tmp_path, monkeypat
     from merlin.targetgen.contract import toolchain as _tc
 
     key = muon._build_cache_key(
-        "muon-mlir-forkfree", "radiance",
-        {"mlir": "module {}", "cb": {}, "num_warps": 1, "result_page": True})
+        "muon-mlir-forkfree", "radiance", {"mlir": "module {}", "cb": {}, "num_warps": 1, "result_page": True}
+    )
     assert key
     work = tmp_path / "gen-rp"
     _elf(work, "kernel.radiance.elf", b"result-page-prebuilt")
     BC.store(key, work, "kernel.radiance.elf")
     monkeypatch.setattr(
-        _tc, "mlir_bin",
-        lambda *a, **k: pytest.fail("trusted-golden change rebuilt the submitted kernel"))
+        _tc, "mlir_bin", lambda *a, **k: pytest.fail("trusted-golden change rebuilt the submitted kernel")
+    )
     got = muon.compile_mlir_forkfree(
-        "module {}", {"_oracle_expected_outputs": {"Y0": [[-999.0]]}},
-        tmp_path / "fresh-rp", target="radiance", result_page=True)
+        "module {}",
+        {"_oracle_expected_outputs": {"Y0": [[-999.0]]}},
+        tmp_path / "fresh-rp",
+        target="radiance",
+        result_page=True,
+    )
     assert got.read_bytes().endswith(b"result-page-prebuilt")

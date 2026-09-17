@@ -1,10 +1,11 @@
 """GSIM command construction and stale-pin refusal; no emulator is executed."""
+
 import copy
 import hashlib
 import importlib
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -25,8 +26,15 @@ def inputs(tmp_path, monkeypatch):
     engine.write_bytes(b"never execute this command-construction fixture\n")
     engine.chmod(0o755)
     receipt = tmp_path / "build_receipt.json"
-    receipt.write_text(json.dumps({"schema_version": "merlin.gsim-model-build.v2", "status": "complete",
-                                   "binary_sha256": sha(engine.read_bytes())}))
+    receipt.write_text(
+        json.dumps(
+            {
+                "schema_version": "merlin.gsim-model-build.v2",
+                "status": "complete",
+                "binary_sha256": sha(engine.read_bytes()),
+            }
+        )
+    )
     elf = tmp_path / "short.elf"
     elf.write_bytes(b"exact already-built artifact identity fixture")
     monkeypatch.setenv(backend.GSIM_EMU_ENV, str(engine))
@@ -38,8 +46,9 @@ def inputs(tmp_path, monkeypatch):
 
 def prepare(data, **kwargs):
     _, helper, elf, _, _, engine = data
-    return helper.prepare_gsim_command(elf, expected_elf_sha256=sha(elf.read_bytes()),
-                                       expected_engine_provenance=engine, **kwargs)
+    return helper.prepare_gsim_command(
+        elf, expected_elf_sha256=sha(elf.read_bytes()), expected_engine_provenance=engine, **kwargs
+    )
 
 
 def test_same_emulator_argv_as_legacy_run_elf_without_execution(inputs, monkeypatch):

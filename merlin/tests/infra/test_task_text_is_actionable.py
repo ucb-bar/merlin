@@ -8,6 +8,7 @@ entrypoints", inviting the reader to nest them under `entrypoints`. A live Nemot
 and its package was REJECTED at the contract gate before a single capsule graded -- a run that measured
 nothing about its compiler. The winning codex run avoided it only by going and reading the schema itself.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -26,8 +27,7 @@ def _agent_facing_text():
 def test_no_unresolved_path_placeholder_reaches_an_agent():
     """A `/path/to/...` literal is a scrub artefact: the agent probes it, finds nothing, and burns turns."""
     bad = [f"{p.parent.name}/{p.name}" for p in _agent_facing_text() if "/path/to/" in p.read_text()]
-    assert not bad, ("agent-facing text still contains an unresolved /path/to/ placeholder: "
-                     + ", ".join(bad))
+    assert not bad, "agent-facing text still contains an unresolved /path/to/ placeholder: " + ", ".join(bad)
 
 
 def test_the_arm_task_does_not_tell_the_agent_to_bake_an_interpreter_into_argv():
@@ -36,10 +36,15 @@ def test_the_arm_task_does_not_tell_the_agent_to_bake_an_interpreter_into_argv()
     # ".venv/bin/python"; no file in the corpus matched both, so the assertion executed zero times and
     # the test was green by construction. The forbidden instruction is forbidden everywhere -- and a
     # file that phrases the interpreter differently is exactly the one the guard would have skipped.
-    bad = [f"{p.parent.name}/{p.name}" for p in _agent_facing_text()
-           if "invoke your tool with **that interpreter**" in p.read_text()]
-    assert not bad, ("agent-facing text tells the agent to put an interpreter in argv; the runner "
-                     "already does that for a `language: python` tool: " + ", ".join(bad))
+    bad = [
+        f"{p.parent.name}/{p.name}"
+        for p in _agent_facing_text()
+        if "invoke your tool with **that interpreter**" in p.read_text()
+    ]
+    assert not bad, (
+        "agent-facing text tells the agent to put an interpreter in argv; the runner "
+        "already does that for a `language: python` tool: " + ", ".join(bad)
+    )
 
 
 @pytest.mark.parametrize("bundle", ["merlin_assisted_rtlchecks_hwbringup_v0"])
@@ -51,4 +56,5 @@ def test_the_manifest_shape_is_stated_where_the_agent_will_read_it(bundle):
     text = "\n".join(p.read_text() for p in d.glob("*.md"))
     assert "entrypoints" in text and "tool:" in text, "the manifest's entrypoints shape is never shown"
     assert "manifest.schema.json" in text, (
-        "the task never points at the schema that decides whether the package is accepted")
+        "the task never points at the schema that decides whether the package is accepted"
+    )

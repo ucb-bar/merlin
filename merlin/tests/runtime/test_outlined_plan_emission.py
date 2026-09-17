@@ -1,4 +1,5 @@
 """Full captured graphs undergo global IR fusion without any model execution."""
+
 from dataclasses import replace
 
 import pytest
@@ -9,13 +10,15 @@ from merlin.xdsl_dialects.lowering.dispatch_program import lower_model_to_dispat
 from merlin.xdsl_dialects.lowering.global_plan import ValueRepresentation
 from merlin.xdsl_dialects.lowering.global_plan_emission import emit_global_plan
 from merlin.xdsl_dialects.lowering.outlined_plan_emission import (
-    OutlinedGlobalPlanEmitter, plan_dispatch_fusion,
+    OutlinedGlobalPlanEmitter,
+    plan_dispatch_fusion,
 )
 
 
 # These are captured model inputs, not shortened timing capsules or synthetic operator chains.
-@pytest.fixture(params=["M0_small_llama_gemmini", "M1_lstmnetvit_gemmini",
-                       "M2_microvit_gemmini", "M3_host_island_seam_gemmini"])
+@pytest.fixture(
+    params=["M0_small_llama_gemmini", "M1_lstmnetvit_gemmini", "M2_microvit_gemmini", "M3_host_island_seam_gemmini"]
+)
 def captured_graph(request):
     source = merlin_dir() / "contract" / "capsules" / "model" / request.param / "capsule.interface.mlir"
     module = parse_mlir_text(source.read_text())
@@ -25,11 +28,17 @@ def captured_graph(request):
 def _plan(graph):
     # Chunking is only an emitter stress test: it crosses real fan-outs, residual boundaries,
     # reshapes, scalar glue and dispatches. It is not a target fusion profitability heuristic.
-    groups = [tuple(range(i, min(i + 16, len(graph.nodes))))
-              for i in range(0, len(graph.nodes), 16) if len(graph.nodes) - i > 1]
-    return plan_dispatch_fusion(graph, groups, placement="compiler_function",
-                                representation=lambda b: ValueRepresentation(
-                                    "tensor_ssa", "logical", graph.buffers[b].dtype))
+    groups = [
+        tuple(range(i, min(i + 16, len(graph.nodes))))
+        for i in range(0, len(graph.nodes), 16)
+        if len(graph.nodes) - i > 1
+    ]
+    return plan_dispatch_fusion(
+        graph,
+        groups,
+        placement="compiler_function",
+        representation=lambda b: ValueRepresentation("tensor_ssa", "logical", graph.buffers[b].dtype),
+    )
 
 
 def test_real_full_graph_fusion_preserves_computation_without_simulation(captured_graph) -> None:
@@ -66,9 +75,12 @@ def test_fusion_rejects_an_overlapping_or_nonconvex_region(captured_graph) -> No
     _, graph = captured_graph
     for groups in ([(0, 1), (1, 2)], [(0, 2)]):
         with pytest.raises(ValueError, match="overlap|consecutive"):
-            plan_dispatch_fusion(graph, groups, placement="compiler_function",
-                                 representation=lambda b: ValueRepresentation(
-                                     "tensor_ssa", "logical", graph.buffers[b].dtype))
+            plan_dispatch_fusion(
+                graph,
+                groups,
+                placement="compiler_function",
+                representation=lambda b: ValueRepresentation("tensor_ssa", "logical", graph.buffers[b].dtype),
+            )
 
 
 def test_logical_ir_fusion_cannot_claim_a_physical_encoding_change(captured_graph) -> None:
@@ -76,8 +88,9 @@ def test_logical_ir_fusion_cannot_claim_a_physical_encoding_change(captured_grap
     plan = _plan(graph)
     selected = list(plan.selected)
     region = next(item for item in selected if item.inputs)
-    changed = replace(region.inputs[0], representation=replace(
-        region.inputs[0].representation, encoding="physical_packed"))
+    changed = replace(
+        region.inputs[0], representation=replace(region.inputs[0].representation, encoding="physical_packed")
+    )
     selected[selected.index(region)] = replace(region, inputs=(changed, *region.inputs[1:]))
     plan = replace(plan, selected=tuple(selected))
     with pytest.raises(ValueError, match="physical encodings require"):

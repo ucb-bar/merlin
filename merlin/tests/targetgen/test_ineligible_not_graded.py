@@ -43,18 +43,19 @@ def test_nothing_is_withheld_when_the_target_is_unresolvable():
 
 def test_fails_open_on_an_unparseable_capsule():
     keep, withheld = _split_ineligible([{"name": "junk"}], "gemmini")
-    assert len(keep) == 1 and withheld == []      # graded, never silently withheld
+    assert len(keep) == 1 and withheld == []  # graded, never silently withheld
 
 
 def test_withholding_makes_all_pass_reachable():
     """The arithmetic that matters: with the unpassable capsules counted, all_pass is impossible."""
-    results = ([{"capsule": f"ok{i}", "status": "pass"} for i in range(22)]
-               + [{"capsule": f"bad{i}", "status": "not_graded"} for i in range(15)])
+    results = [{"capsule": f"ok{i}", "status": "pass"} for i in range(22)] + [
+        {"capsule": f"bad{i}", "status": "not_graded"} for i in range(15)
+    ]
     graded = [r for r in results if r["status"] != "not_graded"]
     n_pass = sum(1 for r in graded if r["status"] == "pass")
     assert (n_pass, len(graded)) == (22, 22)
-    assert n_pass == len(graded)                  # all_pass TRUE -> the loop can exit at round 00
-    assert n_pass != len(results)                 # counting them: 22 != 37, all_pass forever false
+    assert n_pass == len(graded)  # all_pass TRUE -> the loop can exit at round 00
+    assert n_pass != len(results)  # counting them: 22 != 37, all_pass forever false
 
 
 def test_only_a_hard_structural_fact_withholds_not_an_undeclared_family():
@@ -70,6 +71,7 @@ def test_dtype_comparison_is_alias_aware():
     """The contract spells the format 'int8'; a capsule region reports 'i8'. A raw string compare reads a
     native-dtype capsule as having no datapath and withholds it for a spelling difference."""
     from merlin.targetgen import eligibility as el
+
     assert el._dtype_ok("i8", ("int8",)) is True
     assert el._dtype_ok("bf16", ("int8",)) is False
 
@@ -89,9 +91,13 @@ def test_the_measured_corpora_split_as_expected():
     the default stimulus alphabet, so a kernel that mis-indexed gamma still passed. Counted from the
     corpus on disk, so it moves whenever the corpus does -- update it with the reason, not silently.
     """
-    import pathlib as _p, yaml as _y
-    from merlin.targetgen.target_experiment import load_target_experiment
+    import pathlib as _p
+
+    import yaml as _y
+
     from merlin.common.paths import repo_root as _rr
+    from merlin.targetgen.target_experiment import load_target_experiment
+
     # gemmini withholds its 11 bf16 capsules: no declared capability holds that operand format.
     # atlas withholds NOTHING -- it declares fp8_e4m3 and bf16, and every capsule in its corpus uses
     # one of them. This read `("atlas", 1)` and had been failing since a36d9fd0 (2026-08-26, "grade a
@@ -100,7 +106,8 @@ def test_the_measured_corpora_split_as_expected():
     # exactly one fact -- an operand dtype no datapath holds.
     for target, expect in (("gemmini", 11), ("atlas", 0)):
         te = load_target_experiment(
-            str(_p.Path(_rr()) / f"merlin/experiments/capsule_bench/targets/{target}/target_experiment.yaml"))
+            str(_p.Path(_rr()) / f"merlin/experiments/capsule_bench/targets/{target}/target_experiment.yaml")
+        )
         caps = []
         for r in [_p.Path(te.capsule_corpus)] + [_p.Path(s) for s in te.corpus_siblings()]:
             if not r.is_dir():

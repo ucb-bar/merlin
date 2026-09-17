@@ -10,6 +10,7 @@ These tests are cardinality-only on purpose, and so is the seal they check: the 
 unpublished. That means neither can see a SWAP — one row added and one removed leaves the count intact —
 which is why the last test asserts the materializer records a name-set digest, the thing that can.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,8 +21,7 @@ from merlin.common.paths import merlin_dir, repo_root
 from merlin.targetgen.contract.materialize import _public_capsule_dirs_in
 from merlin.targetgen.target_experiment import load_target_experiment
 
-DESCRIPTORS = sorted((merlin_dir() / "experiments/capsule_bench/targets").glob(
-    "*/target_experiment.yaml"))
+DESCRIPTORS = sorted((merlin_dir() / "experiments/capsule_bench/targets").glob("*/target_experiment.yaml"))
 
 
 def _sealed():
@@ -36,7 +36,7 @@ def _sealed():
 
 def _discovered(te):
     root = Path(repo_root())
-    roots = ([te.capsule_corpus] if te.capsule_corpus else [])
+    roots = [te.capsule_corpus] if te.capsule_corpus else []
     roots += [root / rel.rstrip("/") for rel in te.corpus_siblings()]
     return sorted(p.name for p in _public_capsule_dirs_in(roots))
 
@@ -56,7 +56,8 @@ def test_the_frozen_source_count_is_what_the_corpus_holds(path, te):
     assert len(names) == te.graded_expected_source_capsules, (
         f"{path}: declares {te.graded_expected_source_capsules} source capsules, corpus holds "
         f"{len(names)}. Re-seal it only after proving the moved rows belong on the side they moved to; "
-        "bumping the integer to match is how an unreviewed row enters a formal denominator.")
+        "bumping the integer to match is how an unreviewed row enters a formal denominator."
+    )
 
 
 @pytest.mark.parametrize("path,te", _sealed(), ids=lambda x: getattr(x, "name", ""))
@@ -67,21 +68,24 @@ def test_the_frozen_admitted_count_matches_the_declared_admission_policy(path, t
     excluded = set(te.effective_exclusions(names))
     assert not (excluded - names), (
         f"{path}: excludes {sorted(excluded - names)}, which is in no corpus root. An exclusion that "
-        "matches nothing silently GROWS the graded set.")
+        "matches nothing silently GROWS the graded set."
+    )
     assert len(names - excluded) == te.graded_expected_admitted_capsules, (
-        f"{path}: declares {te.graded_expected_admitted_capsules} admitted, discovery gives "
-        f"{len(names - excluded)}")
+        f"{path}: declares {te.graded_expected_admitted_capsules} admitted, discovery gives {len(names - excluded)}"
+    )
 
 
 @pytest.mark.parametrize("path,te", _sealed(), ids=lambda x: getattr(x, "name", ""))
 def test_the_admission_record_seals_the_NAMES_the_counts_cannot(path, te):
     """The counts freeze a size; only the name digest freezes a cohort. Both must exist."""
-    from merlin.targetgen.contract.materialize import public_capsules_for
     import json
+
+    from merlin.targetgen.contract.materialize import public_capsules_for
 
     root = public_capsules_for(te)
     record = json.loads((root / ".cohort_admission.json").read_text(encoding="utf-8"))
     for key in ("admitted_name_set_sha256", "excluded_name_set_sha256", "descriptor_sha256"):
         assert len(str(record.get(key, ""))) == 64, (
             f"{path}: the admission record has no {key}, so a one-in-one-out swap of the cohort would "
-            "leave every declared cardinality intact and nothing would notice")
+            "leave every declared cardinality intact and nothing would notice"
+        )

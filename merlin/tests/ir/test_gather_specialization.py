@@ -5,6 +5,7 @@ renumbers the stored index values, so a second reader of that tensor would recei
 and be wrong with no numerical tell. That rejection is the analysis's reason for existing, not a
 corner case.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -16,11 +17,14 @@ from merlin.xdsl_dialects.lowering.gather_specialization import (
     kept_rows,
 )
 
-MAPS = ("indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d1)>, "
-        "affine_map<(d0, d1, d2) -> (d0, d1, d2)>], "
-        'iterator_types = ["parallel", "parallel", "parallel"]')
+MAPS = (
+    "indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d1)>, "
+    "affine_map<(d0, d1, d2) -> (d0, d1, d2)>], "
+    'iterator_types = ["parallel", "parallel", "parallel"]'
+)
 
-GATHER = """
+GATHER = (
+    """
 module {
   func.func @forward(%%w: tensor<1000x4xf32>, %%ids: tensor<1x3xi64>) -> tensor<1x3x4xf32> {
     %%e = tensor.empty() : tensor<1x3x4xf32>
@@ -35,10 +39,13 @@ module {
     return %%g : tensor<1x3x4xf32>
   }
 }
-""" % MAPS
+"""
+    % MAPS
+)
 
 # Same gather, but the ids are ALSO read by a second generic -- the unsound shape.
-TWO_CONSUMERS = """
+TWO_CONSUMERS = (
+    """
 module {
   func.func @forward(%%w: tensor<1000x4xf32>, %%ids: tensor<1x3xi64>)
       -> (tensor<1x3x4xf32>, tensor<1x3xi64>) {
@@ -62,7 +69,9 @@ module {
     return %%g, %%m : tensor<1x3x4xf32>, tensor<1x3xi64>
   }
 }
-""" % MAPS
+"""
+    % MAPS
+)
 
 # A big table read as a contraction, not a gather: nothing to specialize, and no near-miss either.
 MATMUL = """

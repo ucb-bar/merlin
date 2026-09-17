@@ -1,9 +1,10 @@
 """WS-C: the CCA-native fork proposer (action_catalog as the single source of truth for the beam)."""
+
 from __future__ import annotations
 
+from merlin.kernels.action_catalog import route
 from merlin.kernels.cca_compare import Divergence
 from merlin.mining.fork_from_action import action_to_fork, propose_forks_from_cca
-from merlin.kernels.action_catalog import route
 
 _KNOBS = {"op_match": [{"op": "matmul", "tile": [4, 8, 1], "vector": [4, 8, 1]}]}
 
@@ -35,6 +36,7 @@ def test_lmul_maps_to_the_register_group_width_not_a_wider_n():
     # `lmul_register_group` sentinel that prepare_for_lowering resolves from the prepared IR -- and
     # touches no tile.
     from merlin.llvmlower.impr_features import LMUL_GROUP_SENTINEL
+
     p = action_to_fork(route(_div("vector.lmul", 4.0, 2.0)), _KNOBS)
     assert p.forkable is True and p.lever == "feature"
     assert p.overrides == {"compiler_features": [LMUL_GROUP_SENTINEL]}
@@ -60,11 +62,13 @@ def test_deferred_pass_is_honest_work_item_not_a_faked_knob():
 
 
 def test_propose_forks_from_cca_is_beam_compatible():
-    divs = [_div("compute.contraction_form", "fused_fma", "mul_add"),
-            _div("vector.vl_strategy", "vsetvl_loop", "vsetivli_fixed")]
+    divs = [
+        _div("compute.contraction_form", "fused_fma", "mul_add"),
+        _div("vector.vl_strategy", "vsetvl_loop", "vsetivli_fixed"),
+    ]
     props = propose_forks_from_cca(divs, _KNOBS)
     assert len(props) == 2
-    assert [p.forkable for p in props] == [True, False]   # one knob fork + one honest work-item
+    assert [p.forkable for p in props] == [True, False]  # one knob fork + one honest work-item
 
 
 def test_bb1a_previously_demoted_axes_now_fork():
@@ -88,6 +92,7 @@ def test_bb1b_operand_packing_orphan_is_now_a_forkable_lever():
     p = action_to_fork(route(_div("memory.access_pattern", "unit_stride", "strided")), _KNOBS)
     assert p.forkable is True and p.overrides == {"compiler_features": ["vfmacc_packed"]}
     # and it is no longer an orphan in the bijection ledger.
-    from merlin.kernels.cca_contract import check_bijection, KNOWN_OPEN
+    from merlin.kernels.cca_contract import KNOWN_OPEN, check_bijection
+
     assert "memory.access_pattern" not in check_bijection("rvv").orphan_fields
     assert "memory.access_pattern" not in KNOWN_OPEN["rvv"]["orphan_fields"]

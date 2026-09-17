@@ -6,13 +6,14 @@ so this reference path bakes them from the golden's ``operand_codes`` bundle. Pu
 baseline; masked for hidden capsules. These tests assert the emitter recognizes an MX command buffer and
 bakes a compilable co-model kernel with the right datatype for each format.
 """
+
 from __future__ import annotations
 
 import pytest
 
+from merlin.common.paths import repo_root
 from merlin.targetgen import capsule_golden as CG
 from merlin.targetgen.capsule_common import load_capsule
-from merlin.common.paths import repo_root
 
 _ISA = repo_root() / "merlin" / "contract" / "capsules" / "radiance" / "isa"
 _CONTRACT = repo_root() / "merlin" / "contract"
@@ -31,11 +32,14 @@ def test_is_mx_cb_detects_microscaling_operands():
     assert not mx.is_mx_cb({"tensors": {"A": {"dtype": "f32"}, "B": {"dtype": "bf16"}}})
 
 
-@pytest.mark.parametrize("name,datatype,ain", [
-    ("R5_mx_tile_mxfp8", "GemmDatatype::FP8", "A_in[128][128]"),
-    ("R6_mx_tile_mxfp6", "GemmDatatype::FP6", "A_in_hw[64][128]"),
-    ("R7_mx_tile_mxfp4", "GemmDatatype::FP4", "A_in_hw[64][128]"),
-])
+@pytest.mark.parametrize(
+    "name,datatype,ain",
+    [
+        ("R5_mx_tile_mxfp8", "GemmDatatype::FP8", "A_in[128][128]"),
+        ("R6_mx_tile_mxfp6", "GemmDatatype::FP6", "A_in_hw[64][128]"),
+        ("R7_mx_tile_mxfp4", "GemmDatatype::FP4", "A_in_hw[64][128]"),
+    ],
+)
 def test_emit_mx_kernel_bakes_the_format_specific_datatype_and_layout(name, datatype, ain):
     if not (_ISA / name).is_dir():
         pytest.skip(f"{name} capsule not present")
@@ -45,10 +49,10 @@ def test_emit_mx_kernel_bakes_the_format_specific_datatype_and_layout(name, data
     ops = CG.mx_operands(cap, cd)
     assert ops is not None, "golden should carry an MX operand bundle"
     k = mx.emit_mx_kernel(ops, "Y0")
-    assert datatype in k                       # per-format co-model datatype
-    assert ain in k                            # fp8 = byte/elem, fp6/fp4 = nibble-packed A_in_hw
-    assert "mxgemm<CFG>" in k and "int main" in k   # self-contained co-model driver
-    assert "OUT" in k                          # OUT-protocol result print (via vx_putchar)
+    assert datatype in k  # per-format co-model datatype
+    assert ain in k  # fp8 = byte/elem, fp6/fp4 = nibble-packed A_in_hw
+    assert "mxgemm<CFG>" in k and "int main" in k  # self-contained co-model driver
+    assert "OUT" in k  # OUT-protocol result print (via vx_putchar)
 
 
 def test_batched_mx_packs_block_diagonal_single_tile():
@@ -67,7 +71,7 @@ def test_batched_mx_packs_block_diagonal_single_tile():
     b, m, n, h = ops["B"], ops["M"], ops["N"], ops["H"]
     assert bd["M"] == b * m and bd["K"] == b * h and bd["N"] == n
     assert len(bd["A_bytes"]) == bd["M"] * bd["K"] and len(bd["SA"]) == b
-    k = mx.emit_mx_kernel(ops, "Y0")               # emits through the single-tile path
+    k = mx.emit_mx_kernel(ops, "Y0")  # emits through the single-tile path
     assert "mxgemm<CFG>" in k and "int main" in k
 
 
@@ -79,4 +83,4 @@ def test_fp6_bakes_the_lut_palette():
     cap = load_capsule(str(_ISA / name), contract=str(_CONTRACT))
     cd = cap.get("__dir__", str(_ISA / name))
     k = mx.emit_mx_kernel(CG.mx_operands(cap, cd), "Y0")
-    assert "A_lut[64][3]" in k and "B_lut[64][3]" in k    # fp6 packs a 16-entry palette to 96-bit LUT slots
+    assert "A_lut[64][3]" in k and "B_lut[64][3]" in k  # fp6 packs a 16-entry palette to 96-bit LUT slots

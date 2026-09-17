@@ -5,6 +5,7 @@ predeclares still measures every member, still writes every artifact, and simply
 for that family. Measured 2026-09-06, a hand-assembled gemmini performance scope would have produced
 family verdicts for 14 of 38 members while every family read as "fine" by inspection.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -29,16 +30,53 @@ _CAPSULES = merlin_dir() / "contract/capsules/_perf"
 
 #: The gemmini performance corpus as the certified campaign scopes it. PC/PL/PQ deliberately share
 #: one analyzer, PK and PR each predeclare an exact cohort size, and PM is a complete 4x4 grid.
-_FULL = ["PC00_k64", "PC01_k128",
-         "PK00_k16", "PK01_k32", "PK02_k64", "PK03_k128",
-         "PL00_k16", "PL01_k16", "PL02_k32", "PL03_k32",
-         *[f"PM{i:02d}_{n}" for i, n in enumerate(
-             ["m16n16", "m16n32", "m16n48", "m16n64", "m32n16", "m32n32", "m32n48", "m32n64",
-              "m48n16", "m48n32", "m48n48", "m48n64", "m64n16", "m64n32", "m64n48", "m64n64"])],
-         "PQ01_j2_k16", "PQ03_j8_k16", "PQ04_j16_k16",
-         "PQ06_j2_k32", "PQ08_j8_k32", "PQ09_j16_k32",
-         "PR00_fits_double_k16", "PR01_fits_double_k2048", "PR02_fits_double_k4096",
-         "PR03_fits_single_k4112", "PR04_fits_single_k6144", "PR05_fits_single_k8192"]
+_FULL = [
+    "PC00_k64",
+    "PC01_k128",
+    "PK00_k16",
+    "PK01_k32",
+    "PK02_k64",
+    "PK03_k128",
+    "PL00_k16",
+    "PL01_k16",
+    "PL02_k32",
+    "PL03_k32",
+    *[
+        f"PM{i:02d}_{n}"
+        for i, n in enumerate(
+            [
+                "m16n16",
+                "m16n32",
+                "m16n48",
+                "m16n64",
+                "m32n16",
+                "m32n32",
+                "m32n48",
+                "m32n64",
+                "m48n16",
+                "m48n32",
+                "m48n48",
+                "m48n64",
+                "m64n16",
+                "m64n32",
+                "m64n48",
+                "m64n64",
+            ]
+        )
+    ],
+    "PQ01_j2_k16",
+    "PQ03_j8_k16",
+    "PQ04_j16_k16",
+    "PQ06_j2_k32",
+    "PQ08_j8_k32",
+    "PQ09_j16_k32",
+    "PR00_fits_double_k16",
+    "PR01_fits_double_k2048",
+    "PR02_fits_double_k4096",
+    "PR03_fits_single_k4112",
+    "PR04_fits_single_k6144",
+    "PR05_fits_single_k8192",
+]
 
 
 def _members_file(tmp_path, names):
@@ -48,8 +86,7 @@ def _members_file(tmp_path, names):
 
 
 def _run(tmp_path, names, root=_CAPSULES):
-    return PRE.main(["--members", str(_members_file(tmp_path, names)),
-                     "--capsule-root", str(root)])
+    return PRE.main(["--members", str(_members_file(tmp_path, names)), "--capsule-root", str(root)])
 
 
 @pytest.mark.skipif(not _CAPSULES.is_dir(), reason="performance corpus is not present")
@@ -82,8 +119,8 @@ def test_a_capsule_declaring_no_analyzer_is_named_not_skipped(tmp_path) -> None:
     root = tmp_path / "capsules"
     (root / "ZZ00_undeclared").mkdir(parents=True)
     (root / "ZZ00_undeclared" / "capsule.yaml").write_text(
-        yaml.safe_dump({"name": "ZZ00_undeclared", "label": "dev",
-                        "performance": {"family": "ZZ"}}), encoding="utf-8")
+        yaml.safe_dump({"name": "ZZ00_undeclared", "label": "dev", "performance": {"family": "ZZ"}}), encoding="utf-8"
+    )
     assert _run(tmp_path, ["ZZ00_undeclared"], root=root) == 5
 
 

@@ -8,6 +8,7 @@ is timing-dependent: on the first gemmini arm-4 run 15 of 20 capsules crashed an
 that had solved all 20 was graded 5. A flaky isolation/oracle failure that looks like an agent failure
 is the worst kind, so this pins it.
 """
+
 from __future__ import annotations
 
 import concurrent.futures
@@ -29,7 +30,7 @@ def test_concurrent_get_backend_never_sees_a_half_built_registry(attempt, monkey
         futures = [pool.submit(resolve) for _ in range(16)]
         names = []
         for f in futures:
-            names.append(f.result())     # a KeyError here IS the bug
+            names.append(f.result())  # a KeyError here IS the bug
     assert len(set(names)) == 1, f"threads resolved different modules: {set(names)}"
 
 
@@ -48,4 +49,5 @@ def test_the_sentinel_is_published_only_after_discovery(monkeypatch):
     base._ensure_oot_discovered()
     assert all(s != key for s in seen_during_load), (
         "the sentinel already equalled the current key while modules were still loading — another "
-        "thread would have returned early onto an incomplete registry")
+        "thread would have returned early onto an incomplete registry"
+    )

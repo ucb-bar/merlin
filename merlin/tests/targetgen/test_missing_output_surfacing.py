@@ -7,6 +7,7 @@ grader's `compare()` already records the per-output "missing from observed" reas
 carry it into `capsule_result.json`'s `numeric` block (so the self-check shows it) and into the failure
 detail. Reveals no golden VALUE — only the identity of a declared output the agent already holds.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen import capsule_golden as CG
@@ -18,7 +19,7 @@ _POLICY = {"compare": "tolerance_float", "atol": 0.25, "rtol": 0.02}
 def _rep_with_missing_second_output() -> dict:
     """Two declared outputs Y0/Y1; the kernel wrote only Y0 (Y1 absent from observed)."""
     expected = {"Y0": [[1.0, 2.0]], "Y1": [[3.0, 4.0]]}
-    observed = {"Y0": [[1.0, 2.0]]}                        # Y1 never written
+    observed = {"Y0": [[1.0, 2.0]]}  # Y1 never written
     rep = CG.compare(expected, observed, _POLICY, golden_source="specir_refmodel_fp8_bf16")
     return rep, expected, observed
 
@@ -45,7 +46,7 @@ def test_absent_output_detail_names_it_and_counts_written():
     detail = CR._absent_output_detail(rep, "atlas-functional", expected, observed)
     assert detail is not None
     assert "Y1" in detail
-    assert "1 of 2" in detail                              # produced 1 of 2 declared outputs
+    assert "1 of 2" in detail  # produced 1 of 2 declared outputs
     assert "never wrote" in detail
     # honesty: no golden value leaks into the detail
     assert "3.0" not in detail and "4.0" not in detail
@@ -53,7 +54,7 @@ def test_absent_output_detail_names_it_and_counts_written():
 
 def test_length_mismatch_also_flagged_structural():
     expected = {"Y0": [[1.0, 2.0, 3.0]]}
-    observed = {"Y0": [[1.0, 2.0]]}                        # wrong length, not a value error
+    observed = {"Y0": [[1.0, 2.0]]}  # wrong length, not a value error
     rep = CG.compare(expected, observed, _POLICY, golden_source="specir_refmodel_fp8_bf16")
     assert CR._absent_outputs(rep) == ["Y0"]
 
@@ -65,4 +66,4 @@ def test_value_mismatch_is_NOT_flagged_as_absent():
     rep = CG.compare(expected, observed, _POLICY, golden_source="specir_refmodel_fp8_bf16")
     assert CR._absent_outputs(rep) == []
     assert CR._absent_output_detail(rep, "sim", expected, observed) is None
-    assert rep["max_abs_error"] > 0                        # a real magnitude, unlike the dropped-store case
+    assert rep["max_abs_error"] > 0  # a real magnitude, unlike the dropped-store case

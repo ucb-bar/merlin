@@ -3,6 +3,7 @@
 Reported separately from the ``(family, dtype, alignment)`` cells because it answers a different
 question, and derived from each capsule's own interface rather than declared on it.
 """
+
 from __future__ import annotations
 
 import textwrap
@@ -13,17 +14,20 @@ from merlin.targetgen import boundary as B
 
 
 class TestSequenceClassification:
-    @pytest.mark.parametrize("seq,kind", [
-        ("A", B.A),
-        ("AA", B.A_A),
-        ("AAA", B.A_A),
-        ("HAH", B.H_A_H),
-        ("HHAHH", B.H_A_H),
-        ("AHA", B.A_H_A),
-        ("AHHA", B.A_H_A),
-        ("HAHAH", B.ROUTING),
-        ("HHH", B.HOST_ONLY),
-    ])
+    @pytest.mark.parametrize(
+        "seq,kind",
+        [
+            ("A", B.A),
+            ("AA", B.A_A),
+            ("AAA", B.A_A),
+            ("HAH", B.H_A_H),
+            ("HHAHH", B.H_A_H),
+            ("AHA", B.A_H_A),
+            ("AHHA", B.A_H_A),
+            ("HAHAH", B.ROUTING),
+            ("HHH", B.HOST_ONLY),
+        ],
+    )
     def test_each_shape_is_named(self, seq, kind):
         assert B.classify_sequence(list(seq)) == kind
 
@@ -59,7 +63,7 @@ class TestPatternsPresent:
         assert B.patterns_in_sequence([]) == set()
 
 
-_IFACE = textwrap.dedent('''\
+_IFACE = textwrap.dedent("""\
     module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
       %W = merlin_iface.tensor {name = "W", role = "weight"} : tensor<16x16xi8>
       %A0 = merlin_iface.tensor {name = "A0", role = "input"} : tensor<16x16xi8>
@@ -68,7 +72,7 @@ _IFACE = textwrap.dedent('''\
       %Y0 = merlin_iface.commit %acc0 {name = "Y0", epilogue = [], output_dtype = "i32"} : (!merlin_iface.acc<i32>) -> tensor<16x16xi32>
       merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()
     }
-    ''')
+    """)
 
 
 class TestInterfaceGrammar:
@@ -78,19 +82,21 @@ class TestInterfaceGrammar:
 
     def test_two_commits_under_one_resident_weight_is_A_to_A(self):
         two = _IFACE.replace(
-            '  merlin_iface.evict',
-            '  %acc1 = merlin_iface.matmul %A0, %W_res : (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n'
+            "  merlin_iface.evict",
+            "  %acc1 = merlin_iface.matmul %A0, %W_res : (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n"
             '  %Y1 = merlin_iface.commit %acc1 {name = "Y1", epilogue = [], output_dtype = "i32"} : (!merlin_iface.acc<i32>) -> tensor<16x16xi32>\n'
-            '  merlin_iface.evict')
+            "  merlin_iface.evict",
+        )
         assert B.profile_iface_text(two).kind == B.A_A
 
     def test_k_accumulation_is_one_dispatch_not_two(self):
         # Several matmuls feeding ONE commit is K-accumulation: the intermediate never becomes a value the
         # host can see, so counting matmuls would report an accumulation capsule as proving composition.
         acc = _IFACE.replace(
-            '  %Y0 = merlin_iface.commit',
-            '  %acc1 = merlin_iface.matmul %A0, %W_res : (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n'
-            '  %Y0 = merlin_iface.commit')
+            "  %Y0 = merlin_iface.commit",
+            "  %acc1 = merlin_iface.matmul %A0, %W_res : (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n"
+            "  %Y0 = merlin_iface.commit",
+        )
         assert B.profile_iface_text(acc).kind == B.A
 
     def test_a_whole_op_command_is_a_dispatch_even_though_it_never_commits(self):
@@ -100,9 +106,10 @@ class TestInterfaceGrammar:
         # as "configuration or movement only", so a capsule with two convolutions would have read `A`
         # instead of `A->A`.
         conv = _IFACE.replace(
-            '  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n'
+            "  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<16x16xi8>, !merlin_iface.resident) -> !merlin_iface.acc<i32>\n"
             '  %Y0 = merlin_iface.commit %acc0 {name = "Y0", epilogue = [], output_dtype = "i32"} : (!merlin_iface.acc<i32>) -> tensor<16x16xi32>\n',
-            '  %Y0 = merlin_iface.conv2d %A0, %W_res {name = "Y0"} : (tensor<16x16xi8>, !merlin_iface.resident) -> tensor<16x16xi32>\n')
+            '  %Y0 = merlin_iface.conv2d %A0, %W_res {name = "Y0"} : (tensor<16x16xi8>, !merlin_iface.resident) -> tensor<16x16xi32>\n',
+        )
         p = B.profile_iface_text(conv)
         if p.kind == B.UNKNOWN:
             pytest.skip(f"this grammar revision does not define conv2d: {p.detail}")
@@ -114,6 +121,7 @@ class TestInterfaceGrammar:
         whole = B._whole_op_opcodes()
         assert whole, "the parser defines no whole-op classes; the derivation has lost its source"
         from merlin.targetgen.contract import interface_emit as IE
+
         assert whole == frozenset(str(v) for v in IE._NAMED_OP_TO_OPCODE.values())
 
     def test_the_grammar_cannot_express_a_host_seam(self):
@@ -133,12 +141,12 @@ class TestDroppedOpsAreNotAWrongAnswer:
         # The probe mnemonic is deliberately one nobody will ever implement. Naming a real gap here would
         # make this falsifier expire the moment that gap is closed, which is exactly what happened when
         # it was first written against `movement`: the check went green by losing its subject.
-        text = textwrap.dedent('''\
+        text = textwrap.dedent("""\
             module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", merlin_iface.abi_version = "0.1"} {
               %X = merlin_iface.tensor {name = "X", role = "input"} : tensor<16x16xi8>
               %Y0 = merlin_iface.not_an_op_in_any_grammar %X {name = "Y0"} : (tensor<16x16xi8>) -> tensor<16x16xi8>
             }
-            ''')
+            """)
         p = B.profile_iface_text(text)
         assert p.kind == B.UNKNOWN
         assert "not_an_op_in_any_grammar" in p.detail
@@ -208,11 +216,13 @@ class TestUnbuildableSeam:
         # device_native WITH a derivable DRAM window: the seam is an address contract, and a complete
         # one -- device image, host stager, contract -- has been emitted and linked for this target.
         assert boundary_buildable("atlas") is None, (
-            "atlas' seam IS emittable: its DRAM window derives from its own memory map")
+            "atlas' seam IS emittable: its DRAM window derives from its own memory map"
+        )
         # device_native WITHOUT one: nothing here can say where the host should stage an operand, so
         # the crossing stays undeterminable however eligible the regions are.
         assert boundary_buildable("radiance"), (
-            "radiance declares no derivable DRAM window, so its seam is not emittable by any path here")
+            "radiance declares no derivable DRAM window, so its seam is not emittable by any path here"
+        )
 
     def test_the_predicate_is_the_emitters_own_answer_not_a_second_opinion(self):
         # The transport's emitter owns the reasons; `boundary_buildable` delegates to it. Two copies of
@@ -246,7 +256,8 @@ class TestUnbuildableSeam:
         # through to the merlin_iface parser and the test would skip, which is the shape of a check that
         # cannot fail.
         module = tmp_path / "capsule.linalg.mlir"
-        module.write_text(textwrap.dedent("""
+        module.write_text(
+            textwrap.dedent("""
             module attributes {prov.level = "linalg-on-tensors"} {
               func.func @forward(%a: tensor<16x16xbf16>, %b: tensor<16x16xbf16>) -> tensor<16x16xbf16> {
                 %0 = tensor.empty() : tensor<16x16xbf16>
@@ -255,13 +266,17 @@ class TestUnbuildableSeam:
                 return %1 : tensor<16x16xbf16>
               }
             }
-        """).strip(), encoding="utf-8")
+        """).strip(),
+            encoding="utf-8",
+        )
         prof = B.profile_path(module, "radiance")
         assert prof.grammar == "linalg", f"fixture did not reach the linalg path: {prof.detail}"
         assert prof.n_unbuildable >= 1, (
-            f"fixture presented no accelerator-eligible region, so nothing was refused: {prof.detail}")
+            f"fixture presented no accelerator-eligible region, so nothing was refused: {prof.detail}"
+        )
         assert prof.kind == B.UNKNOWN, (
-            f"an eligible region on an unbuildable seam must be UNDETERMINABLE, got {prof.kind!r}")
+            f"an eligible region on an unbuildable seam must be UNDETERMINABLE, got {prof.kind!r}"
+        )
         assert prof.kind != B.HOST_ONLY, "never H: the target did not refuse the work"
         assert "undeterminable" in prof.detail
 
@@ -270,7 +285,8 @@ class TestUnbuildableSeam:
         # measurement rather than a constant: the SAME capsule on a target whose seam IS emittable gets
         # a shape. Without this, "always UNKNOWN" would pass the test above forever.
         module = tmp_path / "capsule.linalg.mlir"
-        module.write_text(textwrap.dedent("""
+        module.write_text(
+            textwrap.dedent("""
             module attributes {prov.level = "linalg-on-tensors"} {
               func.func @forward(%a: tensor<16x16xbf16>, %b: tensor<16x16xbf16>) -> tensor<16x16xbf16> {
                 %0 = tensor.empty() : tensor<16x16xbf16>
@@ -279,7 +295,9 @@ class TestUnbuildableSeam:
                 return %1 : tensor<16x16xbf16>
               }
             }
-        """).strip(), encoding="utf-8")
+        """).strip(),
+            encoding="utf-8",
+        )
         prof = B.profile_path(module, "atlas")
         assert prof.grammar == "linalg", f"fixture did not reach the linalg path: {prof.detail}"
         assert prof.kind == B.A, f"an emittable seam must yield a shape, got {prof.kind!r}"

@@ -18,6 +18,7 @@ Correctness is the point, not speed: these tests assert the indexed result is ID
 it replaces, stream order included, since every loop-scoped CCA facet (residency, spills, register
 block, the whole memory facet) is counted through this method.
 """
+
 import pathlib
 
 import pytest
@@ -30,15 +31,14 @@ def _scan(stream, span):
     """The implementation this replaced, kept as the oracle."""
     lo, hi = span
     sect = stream._span_section(span)
-    return [i for i in stream.insns
-            if lo <= i.raw.addr <= hi and (not sect or i.raw.section == sect)]
+    return [i for i in stream.insns if lo <= i.raw.addr <= hi and (not sect or i.raw.section == sect)]
 
 
 def _assert_same(stream, span):
     a, b = _scan(stream, span), stream.insns_in(span)
     assert [id(x) for x in a] == [id(x) for x in b], (
-        f"span {span}: indexed result differs from the scan "
-        f"({len(a)} vs {len(b)} instructions)")
+        f"span {span}: indexed result differs from the scan ({len(a)} vs {len(b)} instructions)"
+    )
 
 
 _FIXTURES = merlin_dir() / "tests" / "data" / "cca_asm"
@@ -53,36 +53,39 @@ def test_indexed_lookup_matches_the_scan_on_every_loop_span_of_every_fixture(nam
     for sp in spans:
         _assert_same(stream, sp)
     for sp in [(0, 0), (0, 1 << 40), (1 << 40, (1 << 40) + 8), (7, 3)]:
-        _assert_same(stream, sp)          # empty, everything, out-of-range, inverted
+        _assert_same(stream, sp)  # empty, everything, out-of-range, inverted
 
 
 def test_a_span_never_swallows_a_neighbouring_function():
     """The property the section anchoring exists for, and the one an index could most easily break:
     two functions whose address ranges are adjacent must not bleed into each other."""
-    text = ("0000000000000000 <alpha>:\n"
-            "   0:\t02b7f0d7          \tvfmacc.vv\tv1, v2, v3\n"
-            "   4:\t02b7f0d7          \tvfmacc.vv\tv4, v5, v6\n"
-            "\n"
-            "0000000000000008 <beta>:\n"
-            "   8:\t02b7f0d7          \tvfmul.vv\tv7, v8, v9\n"
-            "   c:\t02b7f0d7          \tvfmul.vv\tv10, v11, v12\n")
+    text = (
+        "0000000000000000 <alpha>:\n"
+        "   0:\t02b7f0d7          \tvfmacc.vv\tv1, v2, v3\n"
+        "   4:\t02b7f0d7          \tvfmacc.vv\tv4, v5, v6\n"
+        "\n"
+        "0000000000000008 <beta>:\n"
+        "   8:\t02b7f0d7          \tvfmul.vv\tv7, v8, v9\n"
+        "   c:\t02b7f0d7          \tvfmul.vv\tv10, v11, v12\n"
+    )
     stream = rvv.decode_text(text)
     got = {i.raw.mnemonic for i in stream.insns_in((0, 4))}
     assert got == {"vfmacc.vv"}, f"span (0,4) reached into beta: {got}"
     _assert_same(stream, (0, 4))
-    _assert_same(stream, (0, 12))         # spans both -> whatever the scan said, identically
+    _assert_same(stream, (0, 12))  # spans both -> whatever the scan said, identically
 
 
 def test_an_out_of_order_stream_falls_back_and_still_matches():
     """Bisection is only valid where addresses ascend. A stream assembled out of order must take the
     linear path for that section rather than silently returning a wrong slice."""
-    text = ("0000000000000000 <alpha>:\n"
-            "  10:\t02b7f0d7          \tvfmacc.vv\tv1, v2, v3\n"
-            "   4:\t02b7f0d7          \tvfmul.vv\tv4, v5, v6\n"
-            "   8:\t02b7f0d7          \tvfadd.vv\tv7, v8, v9\n")
+    text = (
+        "0000000000000000 <alpha>:\n"
+        "  10:\t02b7f0d7          \tvfmacc.vv\tv1, v2, v3\n"
+        "   4:\t02b7f0d7          \tvfmul.vv\tv4, v5, v6\n"
+        "   8:\t02b7f0d7          \tvfadd.vv\tv7, v8, v9\n"
+    )
     stream = rvv.decode_text(text)
-    assert stream._section_buckets()[rvv._ALL_SECTIONS][2] is False, (
-        "the ascending flag must detect this")
+    assert stream._section_buckets()[rvv._ALL_SECTIONS][2] is False, "the ascending flag must detect this"
     for sp in [(0, 8), (4, 16), (0, 1 << 40)]:
         _assert_same(stream, sp)
 
@@ -90,8 +93,7 @@ def test_an_out_of_order_stream_falls_back_and_still_matches():
 def test_count_in_is_unchanged_by_the_index():
     stream = rvv.decode_text((_FIXTURES / "xnnpack_f32_gemm_rvv.objdump").read_text())
     for sp in stream.loop_spans():
-        expected = sum(1 for i in _scan(stream, sp)
-                       if i.raw.mnemonic.startswith(("vfmacc", "vle")))
+        expected = sum(1 for i in _scan(stream, sp) if i.raw.mnemonic.startswith(("vfmacc", "vle")))
         assert stream.count_in(sp, "vfmacc", "vle") == expected
 
 
@@ -126,17 +128,22 @@ def test_a_stream_with_no_section_headers_is_not_counted_twice():
     vt = VType(sew=32, lmul=4.0, tail="ta", mask="ma")
 
     def vi(addr, mn, *ops):
-        return VInsn(raw=RawInsn(addr=addr, mnemonic=mn, operands=list(ops)),
-                     is_vector=mn.startswith("v"), vtype=vt if mn.startswith("v") else None)
+        return VInsn(
+            raw=RawInsn(addr=addr, mnemonic=mn, operands=list(ops)),
+            is_vector=mn.startswith("v"),
+            vtype=vt if mn.startswith("v") else None,
+        )
 
-    stream = InsnStream(insns=[
-        vi(0x100, "vle32.v", "v12", "(a3)"),
-        vi(0x104, "flw", "fa5", "0x0(s1)"),
-        vi(0x108, "vfmacc.vf", "v8", "fa5", "v12"),
-        vi(0x10c, "bne", "s1", "a5", "0x100"),
-    ])
+    stream = InsnStream(
+        insns=[
+            vi(0x100, "vle32.v", "v12", "(a3)"),
+            vi(0x104, "flw", "fa5", "0x0(s1)"),
+            vi(0x108, "vfmacc.vf", "v8", "fa5", "v12"),
+            vi(0x10C, "bne", "s1", "a5", "0x100"),
+        ]
+    )
     assert all(i.raw.section == "" for i in stream.insns), "premise: no symbol headers"
-    for sp in [(0x100, 0x10c), (0x100, 0x108), (0, 1 << 40)]:
+    for sp in [(0x100, 0x10C), (0x100, 0x108), (0, 1 << 40)]:
         _assert_same(stream, sp)
     m = analyze_memory(stream)
     assert m is not None and m.fma_in_loop == 1, f"one FMA in the loop, got {m.fma_in_loop}"

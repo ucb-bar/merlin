@@ -4,6 +4,7 @@
 closure and a performance suite's source snapshot. Both had a reason to copy (the frozen bytes must
 not follow a later in-place edit of the source) and no reason to copy *per consumer*.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -69,7 +70,7 @@ def test_a_freeze_that_verifies_by_FILE_MODE_must_not_use_the_store(tmp_path, mo
     first = tmp_path / "first" / "top.txt"
     second = tmp_path / "second" / "top.txt"
     assert first.stat().st_ino == second.stat().st_ino
-    first.chmod(0o600)                     # what a caller does to remove its own frozen tree
+    first.chmod(0o600)  # what a caller does to remove its own frozen tree
     assert second.stat().st_mode & 0o222, "a mode change reached the other consumer -- as documented"
     assert second.read_text() == "top\n", "the BYTES, which is what the store actually promises"
 
@@ -90,8 +91,7 @@ def test_the_perf_bench_snapshot_still_owns_its_own_bytes(tmp_path, monkeypatch)
 
     try:
         for name in ("run1", "run2"):
-            snapshot.create(source, tmp_path / name, output_root=output_root,
-                            source_roots=("merlin/python",))
+            snapshot.create(source, tmp_path / name, output_root=output_root, source_roots=("merlin/python",))
             assert snapshot.verify(tmp_path / name)["schema"] == snapshot.SCHEMA
 
         first = tmp_path / "run1" / "merlin/python/keep/wanted.txt"

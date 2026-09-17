@@ -22,6 +22,7 @@ here is every way the counter path could invent one:
 
 The counter values below are written out so the busy totals and eta are checkable by hand.
 """
+
 from __future__ import annotations
 
 import json
@@ -34,9 +35,7 @@ from merlin.common.paths import merlin_dir, repo_root
 from merlin.perf import calibration as CAL
 from merlin.perf import hw_counters as HC
 
-ONE_ENGINE_CONTRACT = {
-    "compute_units": [{"name": "eng_a", "kind": "systolic", "dtypes": ["int8"], "ops": ["matmul"]}]
-}
+ONE_ENGINE_CONTRACT = {"compute_units": [{"name": "eng_a", "kind": "systolic", "dtypes": ["int8"], "ops": ["matmul"]}]}
 
 #: A synthetic counter header in the shape a target ships one: three singles, three pairs and the
 #: triple, over a prefix. The engine tokens are FACTORED OUT of the names by the library -- nothing
@@ -65,9 +64,15 @@ def _counters():
 #: realised (>=2 engines) = 30 + 10 + 0 + 5 = 45
 #: total = 255; available = min(255 - 145, 255 // 2) = min(110, 127) = 110
 #: eta = 45 / 110 = 0.4090909...
-VALUES = {"UNIT_A_CYCLES": 100, "UNIT_B_CYCLES": 40, "UNIT_C_CYCLES": 20,
-          "UNIT_A_B_CYCLES": 30, "UNIT_A_C_CYCLES": 10, "UNIT_B_C_CYCLES": 0,
-          "UNIT_A_B_C_CYCLES": 5}
+VALUES = {
+    "UNIT_A_CYCLES": 100,
+    "UNIT_B_CYCLES": 40,
+    "UNIT_C_CYCLES": 20,
+    "UNIT_A_B_CYCLES": 30,
+    "UNIT_A_C_CYCLES": 10,
+    "UNIT_B_C_CYCLES": 0,
+    "UNIT_A_B_C_CYCLES": 5,
+}
 BUSY = {"A": 145, "B": 75, "C": 35}
 REALISED, AVAILABLE = 45, 110
 
@@ -78,9 +83,14 @@ def _reading(workload="w0", values=None, **kw):
     # arithmetic below is checking by hand -- and the record labels the resulting eta
     # `declared_by_producer` so the weaker rung stays visible.
     kw.setdefault("exclusivity_declared_by_producer", True)
-    return CAL.CounterReading(workload=workload, values=dict(VALUES if values is None else values),
-                              counters=_counters(), total_cycles=kw.pop("total_cycles", 300),
-                              provenance=kw.pop("provenance", "synthetic counter block"), **kw)
+    return CAL.CounterReading(
+        workload=workload,
+        values=dict(VALUES if values is None else values),
+        counters=_counters(),
+        total_cycles=kw.pop("total_cycles", 300),
+        provenance=kw.pop("provenance", "synthetic counter block"),
+        **kw,
+    )
 
 
 # --------------------------------------------------------------------------- the reading itself
@@ -153,12 +163,16 @@ def test_no_overlappable_time_is_undefined_not_sum():
 
 def test_readings_over_two_different_engine_sets_are_not_summed():
     other = HC.derive_occupancy_counters(
-        "#define OTHER_X_CYCLES 1\n#define OTHER_Y_CYCLES 2\n#define OTHER_X_Y_CYCLES 3\n")
+        "#define OTHER_X_CYCLES 1\n#define OTHER_Y_CYCLES 2\n#define OTHER_X_Y_CYCLES 3\n"
+    )
     a = _reading("a")
-    b = CAL.CounterReading(workload="b", counters=other,
-                           values={"OTHER_X_CYCLES": 10, "OTHER_Y_CYCLES": 10,
-                                   "OTHER_X_Y_CYCLES": 5},
-                           total_cycles=30, provenance="a second, different counter block")
+    b = CAL.CounterReading(
+        workload="b",
+        counters=other,
+        values={"OTHER_X_CYCLES": 10, "OTHER_Y_CYCLES": 10, "OTHER_X_Y_CYCLES": 5},
+        total_cycles=30,
+        provenance="a second, different counter block",
+    )
     got = CAL.counter_calibration([a, b])
     assert got["engines"] == []
     assert got["engine_axis"]["operator"]["state"] == CAL.UNKNOWN
@@ -197,8 +211,7 @@ def test_the_kind_axis_resolves_once_the_producer_declares_the_kinds():
 
 def test_a_declared_kind_is_recorded_as_the_producers_declaration_not_derived():
     """The kinds arrive as an INPUT. Nothing here may read them out of the counter's spelling."""
-    got = CAL.counter_calibration([_reading(kind_of={"A": "compute", "B": "compute",
-                                                     "C": "compute"})])
+    got = CAL.counter_calibration([_reading(kind_of={"A": "compute", "B": "compute", "C": "compute"})])
     # All one kind -> composition_operator collapses them into one group and correctly refuses.
     assert got["kind_axis"]["operator"]["state"] == CAL.UNKNOWN
     assert got["kind_axis"]["operator"]["why"]
@@ -258,8 +271,9 @@ PRODUCER = merlin_dir() / "experiments" / "performance_contract" / "counter_occu
 
 def test_both_drivers_expose_the_counter_seam():
     for script, needle in ((DRIVER, "--counters"), (PRODUCER, "--simulator")):
-        got = subprocess.run([sys.executable, str(script), "--help"], capture_output=True, text=True,
-                             cwd=str(repo_root()), timeout=180)
+        got = subprocess.run(
+            [sys.executable, str(script), "--help"], capture_output=True, text=True, cwd=str(repo_root()), timeout=180
+        )
         assert got.returncode == 0, got.stderr[-2000:]
         assert needle in got.stdout, got.stdout
 
@@ -267,26 +281,32 @@ def test_both_drivers_expose_the_counter_seam():
 def test_driver_drops_an_empty_reading_rather_than_calling_it_zero_overlap(tmp_path):
     """A run the producer marked unusable must not become a run that measured no overlap."""
     target = _a_target_with_counters()
-    doc = {"readings": [{"workload": "no_counters", "values": {},
-                         "dropped": "the bracket did not fire"}]}
+    doc = {"readings": [{"workload": "no_counters", "values": {}, "dropped": "the bracket did not fire"}]}
     f = tmp_path / "counters.json"
     f.write_text(json.dumps(doc))
-    got = subprocess.run([sys.executable, str(DRIVER), "--target", target,
-                          "--counters", str(f), "--dry-run"],
-                         capture_output=True, text=True, cwd=str(repo_root()), timeout=900)
+    got = subprocess.run(
+        [sys.executable, str(DRIVER), "--target", target, "--counters", str(f), "--dry-run"],
+        capture_output=True,
+        text=True,
+        cwd=str(repo_root()),
+        timeout=900,
+    )
     assert got.returncode != 0
     assert "every supplied counter reading was dropped" in (got.stdout + got.stderr)
 
 
 def test_driver_refuses_a_file_recorded_over_a_different_engine_set(tmp_path):
     target = _a_target_with_counters()
-    doc = {"counter_block": {"counters": {"engines": ["NOPE"]}},
-           "readings": [{"workload": "w", "values": {"X": 1}}]}
+    doc = {"counter_block": {"counters": {"engines": ["NOPE"]}}, "readings": [{"workload": "w", "values": {"X": 1}}]}
     f = tmp_path / "counters.json"
     f.write_text(json.dumps(doc))
-    got = subprocess.run([sys.executable, str(DRIVER), "--target", target,
-                          "--counters", str(f), "--dry-run"],
-                         capture_output=True, text=True, cwd=str(repo_root()), timeout=900)
+    got = subprocess.run(
+        [sys.executable, str(DRIVER), "--target", target, "--counters", str(f), "--dry-run"],
+        capture_output=True,
+        text=True,
+        cwd=str(repo_root()),
+        timeout=900,
+    )
     assert got.returncode != 0
     assert "disagree" in (got.stdout + got.stderr)
 
@@ -298,11 +318,12 @@ def _a_target_with_counters() -> str:
     pinning one target the way the repo's cardinal rule forbids.
     """
     from merlin.targetgen import target_registry as TR
+
     for name in TR.all_targets():
         try:
             if HC.counters_for_target(name).get("status") == "derived":
                 return name
-        except Exception:                       # noqa: BLE001 -- an unloadable target is not a match
+        except Exception:  # noqa: BLE001 -- an unloadable target is not a match
             continue
     pytest.skip("no registered target exposes combination counters on this host")
     raise AssertionError("unreachable")
@@ -314,6 +335,7 @@ def _a_target_with_counters() -> str:
 @pytest.fixture(scope="module")
 def producer():
     import importlib.util
+
     spec = importlib.util.spec_from_file_location("_counter_occupancy_under_test", PRODUCER)
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod
@@ -346,8 +368,9 @@ def test_provenance_refuses_an_unknown_pin_rather_than_reporting_a_clean_run(pro
 
 
 def test_a_target_with_no_counter_block_is_refused_not_defaulted(producer, monkeypatch):
-    monkeypatch.setattr(producer.HC, "counters_for_target",
-                        lambda target: {"status": "unavailable", "why": "no header could be read"})
+    monkeypatch.setattr(
+        producer.HC, "counters_for_target", lambda target: {"status": "unavailable", "why": "no header could be read"}
+    )
     with pytest.raises(SystemExit) as exc:
         producer.counter_block("t")
     assert "unavailable" in str(exc.value)

@@ -9,10 +9,16 @@ could not actually read. Two real ways that happened during development are pinn
 
 The disassembly-parsing tests run on fixed text, so they need no toolchain and no board.
 """
+
 from __future__ import annotations
 
 from merlin.kernels.escape_audit import (
-    EscapeReport, EscapeSite, _backedge_spans, _callee, _tokenize_with_symbols, audit,
+    EscapeReport,
+    EscapeSite,
+    _backedge_spans,
+    _callee,
+    _tokenize_with_symbols,
+    audit,
 )
 
 # A miniature linked-ELF disassembly: `forward` with a two-deep loop nest whose inner body calls
@@ -49,18 +55,17 @@ def test_tokenizer_separates_function_headers_from_instructions():
     assert headers == [(0x10000, "forward"), (0x20000, "__libc_helper")]
     insns = [(a, m) for a, s, m, _ in toks if s is None]
     assert (0x10004, "jal") in insns
-    assert len(insns) == 10          # 8 in forward + 2 in the libc helper
+    assert len(insns) == 10  # 8 in forward + 2 in the libc helper
 
 
 def test_backedge_spans_are_intra_procedural_and_nest():
-    insns = [(a, m, o) for a, s, m, o in _tokenize_with_symbols(_DISASM) if s is None
-             and a < 0x20000]
+    insns = [(a, m, o) for a, s, m, o in _tokenize_with_symbols(_DISASM) if s is None and a < 0x20000]
     spans = _backedge_spans(insns)
     # two back-edges: 0x10014 -> 0x1000c (inner) and 0x10018 -> 0x10008 (outer)
     assert sorted(spans) == [(0x10008, 0x10018), (0x1000C, 0x10014)]
     depth = lambda addr: sum(1 for lo, hi in spans if lo <= addr <= hi)  # noqa: E731
-    assert depth(0x10004) == 0        # prologue malloc: outside every loop
-    assert depth(0x10010) == 2        # memrefCopy: inside both loops
+    assert depth(0x10004) == 0  # prologue malloc: outside every loop
+    assert depth(0x10010) == 2  # memrefCopy: inside both loops
 
 
 def test_containment_chain_distinguishes_a_real_nest_from_overlapping_spans():
@@ -89,7 +94,10 @@ def test_unreadable_artifacts_report_unknown_not_clean(tmp_path):
 
 def test_report_separates_in_loop_escapes_from_prologue_escapes():
     rep = EscapeReport(
-        obj="x.o", elf="x", scope=("forward",), undefined=("malloc", "memrefCopy"),
+        obj="x.o",
+        elf="x",
+        scope=("forward",),
+        undefined=("malloc", "memrefCopy"),
         sites=(
             EscapeSite(helper="malloc", caller="forward", addr=0x10004, loop_depth=0),
             EscapeSite(helper="memrefCopy", caller="forward", addr=0x10010, loop_depth=2),
@@ -107,23 +115,29 @@ def test_loopless_compute_scope_is_flagged_suspect_not_clean():
     """The K1-object trap: unrelocated branches yield zero back-edges, so a per-tile escape reads as
     depth 0. A scope with no loop at all must be flagged for re-check, never trusted as clean."""
     loopless = EscapeReport(
-        obj="x.o", elf="x", scope=("forward",), undefined=("memrefCopy",),
+        obj="x.o",
+        elf="x",
+        scope=("forward",),
+        undefined=("memrefCopy",),
         sites=(EscapeSite(helper="memrefCopy", caller="forward", addr=0x100, loop_depth=0),),
         loops_seen=0,
     )
     assert loopless.readable is True
-    assert loopless.in_loop_counts() == {}          # what it *appears* to say...
+    assert loopless.in_loop_counts() == {}  # what it *appears* to say...
     assert loopless.loop_structure_suspect is True  # ...and why that must not be believed
 
     real = EscapeReport(
-        obj="x.o", elf="x", scope=("forward",), undefined=("memrefCopy",),
+        obj="x.o",
+        elf="x",
+        scope=("forward",),
+        undefined=("memrefCopy",),
         sites=(EscapeSite(helper="memrefCopy", caller="forward", addr=0x100, loop_depth=0),),
         loops_seen=7,
     )
-    assert real.loop_structure_suspect is False     # loops exist; depth 0 is a real finding
+    assert real.loop_structure_suspect is False  # loops exist; depth 0 is a real finding
 
 
 def test_helpers_is_none_when_symbol_table_unreadable():
     rep = EscapeReport(obj="x.o", elf="x", scope=("forward",), undefined=None, sites=())
-    assert rep.helpers is None          # UNKNOWN, not "no escapes"
-    assert rep.in_loop_counts() == {}   # sites WERE read and were empty -- that part is known
+    assert rep.helpers is None  # UNKNOWN, not "no escapes"
+    assert rep.in_loop_counts() == {}  # sites WERE read and were empty -- that part is known

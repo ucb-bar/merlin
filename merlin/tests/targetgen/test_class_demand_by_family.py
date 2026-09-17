@@ -14,6 +14,7 @@ prevent it.
 The two directions are tested separately because each has its own failure mode: dropping too little
 fabricates a demand, and dropping too much silently excuses a real one.
 """
+
 from __future__ import annotations
 
 import sys
@@ -31,6 +32,7 @@ sys.path.insert(0, str(merlin_dir() / "contract" / "capsules"))
 
 def _binding(target: str):
     import generate_corpus as GC
+
     prof = GC.load_profile(target)
     te = load_target_experiment(descriptor_path(target))
     return CS.derive_binding(te, prof.get("datapath") or {})
@@ -44,7 +46,7 @@ def _rocc_targets():
             b = _binding(t)
             if b.classes_for(op="matmul", output_dtype=b.cap_dtype(b.accum_dtype)):
                 out.append(t)
-        except Exception:                          # noqa: BLE001 -- an unresolvable target is not a case
+        except Exception:  # noqa: BLE001 -- an unresolvable target is not a case
             continue
     return out
 
@@ -74,7 +76,8 @@ def test_a_non_contraction_op_does_not_owe_the_contraction_classes(rocc):
             assert not _contraction_classes(got), (
                 f"{target}: a {op!r} capsule is required to issue "
                 f"{sorted(_contraction_classes(got))}, which belong to the contraction it does not "
-                f"perform; a conformant backend would be marked non-conformant")
+                f"perform; a conformant backend would be marked non-conformant"
+            )
 
 
 def test_a_contraction_still_owes_the_full_sequence(rocc):
@@ -86,7 +89,8 @@ def test_a_contraction_still_owes_the_full_sequence(rocc):
             got = b.classes_for(op=op, output_dtype=odt)
             assert _contraction_classes(got), (
                 f"{target}: a {op!r} capsule owes NO contraction class, so a backend that never "
-                f"multiplies would satisfy it")
+                f"multiplies would satisfy it"
+            )
 
 
 def test_a_non_contraction_op_still_owes_its_data_motion(rocc):
@@ -119,7 +123,8 @@ def test_a_class_the_shared_vocabulary_cannot_place_is_kept(rocc):
         assert set(unplaceable) <= set(got), (
             f"{target}: classes {sorted(set(unplaceable) - set(got))} were dropped from a movement "
             f"capsule, but the shared vocabulary files them under no family -- silently dropping what "
-            f"cannot be classified is the failure the parsing rule forbids")
+            f"cannot be classified is the failure the parsing rule forbids"
+        )
 
 
 def test_a_union_of_per_op_demands_is_in_the_targets_issue_order(rocc):
@@ -143,4 +148,5 @@ def test_a_union_of_per_op_demands_is_in_the_targets_issue_order(rocc):
         union = first + [c for c in reference if c not in first]
         ordered = _in_issue_order(union, b, odt)
         assert ordered == [c for c in reference if c in set(union)], (
-            f"{target}: the union {ordered} is not in the target's own issue order {reference}")
+            f"{target}: the union {ordered} is not in the target's own issue order {reference}"
+        )

@@ -7,6 +7,7 @@ capsule it lowered. These tests pin the selection rule, which is the whole of th
 capturable exactly when the grade left both artifacts, so a capsule the backend DECLINED to lower -- it
 emitted neither -- is absent rather than attempted and failed.
 """
+
 from __future__ import annotations
 
 import sys
@@ -36,7 +37,7 @@ def test_a_capsule_the_grade_lowered_is_capturable(tmp_path):
 def test_a_declined_capsule_emitted_nothing_and_is_absent(tmp_path):
     """The backend STATED it does not lower these, so there is no program to cross-validate."""
     _grade(tmp_path, "kept")
-    (tmp_path / "declined" / "generated").mkdir(parents=True)      # the dir exists, empty
+    (tmp_path / "declined" / "generated").mkdir(parents=True)  # the dir exists, empty
     assert [name for name, _ in F._graded_capsules(tmp_path)] == ["kept"]
 
 
@@ -49,6 +50,6 @@ def test_half_an_emission_is_not_capturable(tmp_path):
 
 def test_the_generated_dir_is_returned_so_capture_case_reads_the_same_bytes(tmp_path):
     _grade(tmp_path, "capsule_a")
-    (name, generated), = F._graded_capsules(tmp_path)
+    ((name, generated),) = F._graded_capsules(tmp_path)
     assert generated == tmp_path / "capsule_a" / "generated"
     assert (generated / "command_buffer.json").is_file()

@@ -4,11 +4,12 @@ Set MERLIN_SOURCE_CONV_CANDIDATE and MERLIN_SOURCE_CONV_WITNESSES to run this
 integration regression against a pinned package and extracted source witnesses.
 No target code is executed. Missing generated inputs are explicitly skipped.
 """
+
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 import yaml
@@ -23,9 +24,15 @@ def package():
 
 
 @pytest.mark.parametrize("source_index", [18, 48, 73])
-@pytest.mark.parametrize("entrypoint", [
-    "parse", "lower_interface_to_target", "emit_command_buffer", "lower_target_to_llvm",
-])
+@pytest.mark.parametrize(
+    "entrypoint",
+    [
+        "parse",
+        "lower_interface_to_target",
+        "emit_command_buffer",
+        "lower_target_to_llvm",
+    ],
+)
 def test_actual_source_convolution_manifest_entrypoint(package, tmp_path, source_index, entrypoint):
     value = os.environ.get("MERLIN_SOURCE_CONV_WITNESSES")
     if not value:
@@ -33,11 +40,19 @@ def test_actual_source_convolution_manifest_entrypoint(package, tmp_path, source
     source = Path(value).resolve(strict=True) / f"source_{source_index}.mlir"
     manifest = yaml.safe_load((package / "manifest.yaml").read_text())
     output = tmp_path / "command_buffer.json"
-    substitutions = {"tool": str(package / manifest["entrypoints"]["tool"]),
-                     "input_mlir": str(source), "output_json": str(output)}
+    substitutions = {
+        "tool": str(package / manifest["entrypoints"]["tool"]),
+        "input_mlir": str(source),
+        "output_json": str(output),
+    }
     argv = [arg.format(**substitutions) for arg in manifest["commands"][entrypoint]["argv"]]
-    result = subprocess.run([sys.executable, *argv], capture_output=True, text=True,
-                            timeout=30, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+    result = subprocess.run(
+        [sys.executable, *argv],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+    )
     assert result.returncode == 0, result.stderr
     assert "declined" not in result.stdout.lower(), result.stdout[:1000]
     if entrypoint == "emit_command_buffer":
@@ -49,7 +64,11 @@ def test_actual_source_convolution_manifest_entrypoint(package, tmp_path, source
         if source_index != 48:
             assert "gemmini.im2col_row" in result.stdout
         # The target dialect has custom syntax: verify a real print/parse roundtrip.
-        roundtrip = subprocess.run([sys.executable, "-c", '''
+        roundtrip = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                """
 import sys
 from xdsl.context import Context
 from xdsl.dialects import builtin, func, llvm
@@ -63,8 +82,15 @@ text = sys.stdin.read()
 module = Parser(ctx, text).parse_module()
 module.verify()
 assert _print(module).strip() == text.strip()
-'''], cwd=package, input=result.stdout, capture_output=True, text=True, timeout=30,
-            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+""",
+            ],
+            cwd=package,
+            input=result.stdout,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
         assert roundtrip.returncode == 0, roundtrip.stderr
     if entrypoint == "lower_target_to_llvm":
         assert '"llvm.inline_asm"' in result.stdout
@@ -73,7 +99,7 @@ assert _print(module).strip() == text.strip()
 
 def test_source_convolution_dialect_rejects_invalid_geometry(package):
     # Isolate generated module imports from any other compiler package in pytest.
-    check = '''
+    check = """
 from xdsl.dialects.builtin import IntAttr, IntegerAttr, i64
 from xdsl.utils.exceptions import VerifyException
 from mlir_oot.ir import gemmini_dialect as G
@@ -127,10 +153,15 @@ for cls, valid, count in [(G.Im2colRowOp, gather, 2), (G.LoopWsBlockOp, loop, 3)
             pass
         else:
             raise AssertionError(f"invalid typed signature accepted: {kwargs}")
-'''
-    result = subprocess.run([sys.executable, "-c", check], cwd=package,
-        capture_output=True, text=True, timeout=30,
-        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", check],
+        cwd=package,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+    )
     assert result.returncode == 0, result.stderr
 
 
@@ -144,12 +175,15 @@ def test_dialect_repair_preserves_existing_llvm(package, source_index):
     artifacts = []
     for root in (Path(previous).resolve(strict=True), package):
         manifest = yaml.safe_load((root / "manifest.yaml").read_text())
-        substitutions = {"tool": str(root / manifest["entrypoints"]["tool"]),
-                         "input_mlir": str(source)}
-        argv = [arg.format(**substitutions)
-                for arg in manifest["commands"]["lower_target_to_llvm"]["argv"]]
-        result = subprocess.run([sys.executable, *argv], capture_output=True, text=True,
-            timeout=30, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        substitutions = {"tool": str(root / manifest["entrypoints"]["tool"]), "input_mlir": str(source)}
+        argv = [arg.format(**substitutions) for arg in manifest["commands"]["lower_target_to_llvm"]["argv"]]
+        result = subprocess.run(
+            [sys.executable, *argv],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
         assert result.returncode == 0, result.stderr
         assert '"llvm.inline_asm"' in result.stdout
         artifacts.append(result.stdout)

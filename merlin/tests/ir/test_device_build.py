@@ -12,6 +12,7 @@ numbers, and is wrong. `test_each_signature_gets_a_distinct_kernel_symbol` is th
 
 Requires a usable backend package and toolchain; skips (never fails) without them.
 """
+
 from __future__ import annotations
 
 import os
@@ -28,8 +29,10 @@ _DTS = {"d0": ("i8", "i8", "i32"), "d1": ("i8", "i8", "i32")}
 
 
 def _nm():
-    from merlin.llvmlower.toolchain import DEFAULT_LLVM_INSTALL
     from pathlib import Path
+
+    from merlin.llvmlower.toolchain import DEFAULT_LLVM_INSTALL
+
     local = Path(DEFAULT_LLVM_INSTALL) / "bin" / "llvm-nm"
     return str(local) if local.exists() else (shutil.which("llvm-nm") or shutil.which("nm"))
 
@@ -37,8 +40,9 @@ def _nm():
 def _built(tmp_path):
     if not _PKG:
         pytest.skip("set MERLIN_TEST_DEVICE_PACKAGE to a backend package to exercise the build")
-    b = build_device_objects("gemmini", _SIGS, _DTS, package_dir=_PKG, workdir=tmp_path,
-                             operand_dtype="int8", accum_dtype="i32", timeout=900)
+    b = build_device_objects(
+        "gemmini", _SIGS, _DTS, package_dir=_PKG, workdir=tmp_path, operand_dtype="int8", accum_dtype="i32", timeout=900
+    )
     if not b.ok:
         pytest.skip(f"device build unavailable here: {b.skipped}")
     return b
@@ -54,6 +58,7 @@ def _syms(path, kind):
 
 # ------------------------------------------------------------------ symbol distinctness
 
+
 def test_kernel_symbols_are_distinct_by_construction():
     """Pure, so it holds without a package: the naming itself must not collide."""
     assert kernel_symbol("k", 0) != kernel_symbol("k", 1)
@@ -63,7 +68,8 @@ def test_kernel_symbols_are_distinct_by_construction():
 def test_each_signature_gets_a_distinct_kernel_symbol(tmp_path):
     b = _built(tmp_path)
     assert len(set(b.kernels.values())) == len(b.kernels) > 1, (
-        "two signatures sharing a kernel symbol would silently run one layer's kernel for both")
+        "two signatures sharing a kernel symbol would silently run one layer's kernel for both"
+    )
 
 
 def test_every_kernel_object_defines_exactly_its_renamed_symbol(tmp_path):
@@ -83,6 +89,7 @@ def test_the_shim_defines_the_entries_and_needs_the_kernels(tmp_path):
 
 # ------------------------------------------------------------------ the archive
 
+
 def test_the_archive_carries_everything_the_host_link_needs(tmp_path):
     b = _built(tmp_path)
     a = b.archive(tmp_path / "libdevice.a")
@@ -93,14 +100,17 @@ def test_the_archive_carries_everything_the_host_link_needs(tmp_path):
 
 def test_archiving_nothing_yields_nothing_rather_than_an_empty_archive(tmp_path):
     from merlin.llvmlower.device_build import DeviceBuild
+
     assert DeviceBuild(device="d").archive(tmp_path / "x.a") is None
 
 
 # ------------------------------------------------------------------ partial failure is reported
 
+
 def test_an_unusable_package_is_reported_not_raised(tmp_path):
-    b = build_device_objects("gemmini", _SIGS, _DTS, package_dir=tmp_path / "nope",
-                             workdir=tmp_path, operand_dtype="int8", accum_dtype="i32")
+    b = build_device_objects(
+        "gemmini", _SIGS, _DTS, package_dir=tmp_path / "nope", workdir=tmp_path, operand_dtype="int8", accum_dtype="i32"
+    )
     assert not b.ok and b.skipped and any("package" in why for _, why in b.skipped)
 
 
@@ -109,9 +119,16 @@ def test_a_batched_signature_builds_the_same_kernel_as_its_unbatched_form(tmp_pa
     Building a separate kernel per batch size would mint one per B for identical work."""
     if not _PKG:
         pytest.skip("set MERLIN_TEST_DEVICE_PACKAGE to exercise the build")
-    b = build_device_objects("gemmini", {"b0": (4, 16, 16, 32)}, {"b0": ("i8", "i8", "i32")},
-                             package_dir=_PKG, workdir=tmp_path,
-                             operand_dtype="int8", accum_dtype="i32", timeout=900)
+    b = build_device_objects(
+        "gemmini",
+        {"b0": (4, 16, 16, 32)},
+        {"b0": ("i8", "i8", "i32")},
+        package_dir=_PKG,
+        workdir=tmp_path,
+        operand_dtype="int8",
+        accum_dtype="i32",
+        timeout=900,
+    )
     if not b.ok:
         pytest.skip(f"device build unavailable here: {b.skipped}")
     assert set(b.kernels) == {"b0"}, "a batched signature still needs exactly one kernel"
@@ -119,14 +136,21 @@ def test_a_batched_signature_builds_the_same_kernel_as_its_unbatched_form(tmp_pa
 
 def test_a_shape_this_path_cannot_build_is_skipped_with_its_shape(tmp_path):
     """A model whose third extent the path cannot express should still build the other two."""
-    b = build_device_objects("gemmini", {"b0": (2, 3, 16, 16, 32)}, {"b0": ("i8", "i8", "i32")},
-                             package_dir=_PKG or (tmp_path / "nope"), workdir=tmp_path,
-                             operand_dtype="int8", accum_dtype="i32")
+    b = build_device_objects(
+        "gemmini",
+        {"b0": (2, 3, 16, 16, 32)},
+        {"b0": ("i8", "i8", "i32")},
+        package_dir=_PKG or (tmp_path / "nope"),
+        workdir=tmp_path,
+        operand_dtype="int8",
+        accum_dtype="i32",
+    )
     assert not b.ok
     assert any("extents" in why or "package" in why for _, why in b.skipped)
 
 
 # ------------------------------------------------------------------ which devices this path can build
+
 
 def test_a_device_this_path_cannot_compile_is_declined_with_its_transport():
     """The pipeline runs a package's artifact through mlir-translate and clang, so it works exactly
@@ -159,12 +183,18 @@ def test_the_decline_happens_before_any_work(tmp_path):
     """Named early so the reason is the transport, not a confusing failure three tools later."""
     from merlin.llvmlower.device_build import objects_buildable
 
-    target = next((t for t in ("saturn_opu_mxv256d128", "radiance", "atlas")
-                   if objects_buildable(t)), None)
+    target = next((t for t in ("saturn_opu_mxv256d128", "radiance", "atlas") if objects_buildable(t)), None)
     if target is None:
         pytest.skip("no non-compilable device resolvable here")
-    b = build_device_objects(target, _SIGS, _DTS, package_dir=_PKG or (tmp_path / "nope"),
-                             workdir=tmp_path, operand_dtype="int8", accum_dtype="i32")
+    b = build_device_objects(
+        target,
+        _SIGS,
+        _DTS,
+        package_dir=_PKG or (tmp_path / "nope"),
+        workdir=tmp_path,
+        operand_dtype="int8",
+        accum_dtype="i32",
+    )
     assert not b.ok
     assert any("reached by" in why for _s, why in b.skipped)
     assert not list(tmp_path.glob("*.o")), "nothing should have been compiled before declining"

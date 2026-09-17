@@ -17,6 +17,7 @@ Two resolution rules, and the pooling one is the load-bearing half: an explicit 
 would have fixed only the three hand-authored entries — the synthesized one has no author to declare
 anything, and the axis that builds it knows nothing about a store path.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -44,7 +45,7 @@ def _binding(target: str = "gemmini"):
         gen._ensure_contract_on_path(descriptor)
         te = gen.load_target_experiment(descriptor)
         return CS.derive_binding(te, gen.load_profile(target).get("datapath", {}))
-    except Exception as exc:                      # no descriptor / no manifest in this checkout
+    except Exception as exc:  # no descriptor / no manifest in this checkout
         pytest.skip(f"cannot derive a binding for {target!r}: {exc}")
 
 
@@ -54,7 +55,8 @@ def test_an_entry_declaration_wins_over_the_accumulator_width():
     b = _binding()
     assert _resolve_output_dtype(b, [], {}) == b.accum_dtype, "no declaration: the accumulator width"
     assert _resolve_output_dtype(b, [], {"output_dtype": "i8"}) == "i8", (
-        "an entry that declares its committed dtype had the declaration silently discarded")
+        "an entry that declares its committed dtype had the declaration silently discarded"
+    )
 
 
 def test_an_unknown_declared_dtype_fails_generation_rather_than_falling_back():
@@ -71,17 +73,19 @@ def test_a_maxpool_epilogue_commits_at_the_operand_width_not_the_accumulator_wid
 
     b = _binding()
     got = _resolve_output_dtype(b, ["maxpool"], {})
-    assert got == b.operand_dtype, (
-        f"a fused max-pool commits through the store path at the operand width, got {got!r}")
+    assert got == b.operand_dtype, f"a fused max-pool commits through the store path at the operand width, got {got!r}"
     assert got != b.accum_dtype, "this target would not have exposed the defect; pick another"
 
 
-@pytest.mark.parametrize("name", [
-    "GP0_matmul_maxpool_i8",
-    "GP1_matmul_maxpool_tail_i8",
-    "GP2_conv2d_maxpool_i8",
-    "SY_epilogue_maxpool",
-])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "GP0_matmul_maxpool_i8",
+        "GP1_matmul_maxpool_tail_i8",
+        "GP2_conv2d_maxpool_i8",
+        "SY_epilogue_maxpool",
+    ],
+)
 def test_the_shipped_pooling_capsules_declare_the_narrow_store(name):
     """The end state, asserted on the tracked bytes a backend actually reads."""
     from merlin.common.paths import merlin_dir
@@ -89,9 +93,13 @@ def test_the_shipped_pooling_capsules_declare_the_narrow_store(name):
     path = merlin_dir() / "contract" / "capsules" / "layers" / name / "capsule.interface.mlir"
     if not path.is_file():
         pytest.skip(f"{name} is not in this checkout")
-    lines = [ln for ln in path.read_text(encoding="utf-8").splitlines()
-             if "merlin_iface.commit" in ln or "merlin_iface.conv2d" in ln]
+    lines = [
+        ln
+        for ln in path.read_text(encoding="utf-8").splitlines()
+        if "merlin_iface.commit" in ln or "merlin_iface.conv2d" in ln
+    ]
     assert lines, "no committing op found; this test would be vacuous"
     for line in lines:
         assert 'output_dtype = "i8"' in line, (
-            f"{name} commits at a width the native pooling store cannot write: {line.strip()}")
+            f"{name} commits at a width the native pooling store cannot write: {line.strip()}"
+        )

@@ -3,16 +3,19 @@
 The chain is deliberately made of upstream parts, so these tests are mostly guarding the two seams
 where it can silently lie.
 """
+
 from __future__ import annotations
 
 import pytest
 
-from merlin.verify import HAS_XDSL, HAS_Z3, smt_export as E
+from merlin.verify import HAS_XDSL, HAS_Z3
+from merlin.verify import smt_export as E
 from merlin.verify.tools import find_mlir_tool
 
 pytestmark = pytest.mark.skipif(
     not (HAS_XDSL and HAS_Z3 and find_mlir_tool("mlir-translate")),
-    reason="needs the verify extra (xdsl + z3) and mlir-translate")
+    reason="needs the verify extra (xdsl + z3) and mlir-translate",
+)
 
 
 def _query(const: int, width: int = 8):

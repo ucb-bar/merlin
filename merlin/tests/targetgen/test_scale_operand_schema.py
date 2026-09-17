@@ -11,6 +11,7 @@ That is strictly worse than the bug it was meant to fix. Before, the 9 microscal
 (gradeable, wrong answer); after, they were REJECTED at the protocol gate before any grading ran. A
 contract change that the contract itself rejects is inert at best and destructive at worst.
 """
+
 from __future__ import annotations
 
 import json
@@ -53,16 +54,16 @@ def test_a_scale_operand_declares_what_it_scales_and_by_how_much():
     assert props["scale_of"]["type"] == "string", "the pairing must be explicit, not positional"
     assert props["block"]["type"] == "integer" and props["block"]["minimum"] == 1
     cb_props = _cb_tensor_props()
-    assert cb_props["scale_of"]["type"] == "string", \
-        "the semantic command buffer must preserve the explicit pairing"
+    assert cb_props["scale_of"]["type"] == "string", "the semantic command buffer must preserve the explicit pairing"
     assert cb_props["block"]["type"] == "integer" and cb_props["block"]["minimum"] == 1
 
 
 def test_a_declared_scale_operand_validates():
     jsonschema = pytest.importorskip("jsonschema")
     sch = _load(_CAPSULE)["properties"]["inputs"]["items"]
-    jsonschema.validate({"name": "A0_scale", "role": "scale", "shape": [1, 16], "dtype": "e8m0",
-                         "scale_of": "A0", "block": 32}, sch)
+    jsonschema.validate(
+        {"name": "A0_scale", "role": "scale", "shape": [1, 16], "dtype": "e8m0", "scale_of": "A0", "block": 32}, sch
+    )
 
 
 def test_the_shipped_corpus_validates_against_the_capsule_schema():

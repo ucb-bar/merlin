@@ -6,6 +6,7 @@ freely underneath it: 4 undeclared roots and 52 undeclared concerns against 16 d
 reorganization is therefore not a tidy-up but a migration of paths that manifests, reports, figures
 and docs already quote, and the property that makes it safe is that every old name keeps resolving.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -48,8 +49,10 @@ def _unit(path: Path, name: str = "report.md", body: bytes = b"finding") -> Path
 def test_the_old_path_still_reads_after_a_fold(rooted, monkeypatch):
     """The whole reason a fold is allowed: a report that quotes the old path must still open it."""
     _unit(rooted / "artifacts" / "paper-figures" / "set-a")
-    _declare(monkeypatch, [{"from": _g("artifacts", "paper-figures"),
-                            "into": _g("artifacts", "presentation", "paper-figures")}])
+    _declare(
+        monkeypatch,
+        [{"from": _g("artifacts", "paper-figures"), "into": _g("artifacts", "presentation", "paper-figures")}],
+    )
 
     assert SC.main(["organize", "--apply"]) == 0
 
@@ -63,8 +66,9 @@ def test_the_symlink_left_behind_is_relative(rooted, monkeypatch):
     """An absolute link would pin the tree to this machine's path, and the out/ root is relocatable
     by design (MERLIN_OUT_ROOT) and gets mounted into sandboxes at other prefixes."""
     _unit(rooted / "artifacts" / "paper-study" / "one")
-    _declare(monkeypatch, [{"from": _g("artifacts", "paper-study"),
-                            "into": _g("artifacts", "presentation", "paper-study")}])
+    _declare(
+        monkeypatch, [{"from": _g("artifacts", "paper-study"), "into": _g("artifacts", "presentation", "paper-study")}]
+    )
 
     SC.main(["organize", "--apply"])
 
@@ -78,8 +82,13 @@ def test_two_old_names_merge_into_one_concern(rooted, monkeypatch):
     second fold has to move its units ACROSS rather than refuse because the destination exists."""
     _unit(rooted / "audits" / "readiness-a")
     _unit(rooted / "analysis" / "current-readiness")
-    _declare(monkeypatch, [{"from": "audits", "into": _g("artifacts", "audits")},
-                           {"from": "analysis", "into": _g("artifacts", "audits")}])
+    _declare(
+        monkeypatch,
+        [
+            {"from": "audits", "into": _g("artifacts", "audits")},
+            {"from": "analysis", "into": _g("artifacts", "audits")},
+        ],
+    )
 
     assert SC.main(["organize", "--apply"]) == 0
 
@@ -96,8 +105,13 @@ def test_a_name_collision_aborts_the_whole_fold(rooted, monkeypatch):
     # found -- which is the case that has to roll back, not merely refuse.
     _unit(rooted / "analysis" / "aa-moves-first", body=b"safe")
     _unit(rooted / "analysis" / "zz-same-name", body=b"other")
-    _declare(monkeypatch, [{"from": "audits", "into": _g("artifacts", "audits")},
-                           {"from": "analysis", "into": _g("artifacts", "audits")}])
+    _declare(
+        monkeypatch,
+        [
+            {"from": "audits", "into": _g("artifacts", "audits")},
+            {"from": "analysis", "into": _g("artifacts", "audits")},
+        ],
+    )
 
     assert SC.main(["organize", "--apply"]) == 1
 

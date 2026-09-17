@@ -13,6 +13,7 @@ alone still leaves a gate that can pass without asking anything.
 This is the fifth instance in this repo of a check that could not run reporting success. It is spelled
 2 ("cannot decide") to match `check_pass_obligations.py --fail-on-dead` with no log.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -58,7 +59,8 @@ def test_a_descriptor_is_found_by_the_name_it_declares_not_only_its_directory():
     for declared, directory in pairs:
         assert gate._target_experiment(declared) is not None, (
             f"{declared!r} (in directory {directory!r}) did not resolve; the gate would report "
-            f"`no_target_experiment` and, before this was fixed, exit 0 for it")
+            f"`no_target_experiment` and, before this was fixed, exit 0 for it"
+        )
         # The directory name must keep working -- it is the common case and the cheap path.
         assert gate._target_experiment(directory) is not None
 
@@ -78,9 +80,9 @@ def test_the_saturn_targets_now_derive_a_real_requirement():
     gate = _gate()
     for declared, _directory in pairs:
         row = gate.audit(declared)
-        assert row["status"] != "no_target_experiment", (
-            f"{declared}: {row.get('detail')}")
+        assert row["status"] != "no_target_experiment", f"{declared}: {row.get('detail')}"
         # Establishing SOMETHING is the point; whether it is covered is the ratchet's business.
         n_cells = len(row.get("required") or row.get("cells") or ())
         assert n_cells or row.get("composition") or row.get("host_only"), (
-            f"{declared} derived no requirement on any axis, so its verdict would be vacuous: {row}")
+            f"{declared} derived no requirement on any axis, so its verdict would be vacuous: {row}"
+        )

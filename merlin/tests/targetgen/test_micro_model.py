@@ -6,6 +6,7 @@ hand-picked model covers whichever layers its author thought of, and this repo a
 whose only model capsule was a LLaMA decoder -- no tanh, no erf, no convolution, and nothing saying the
 evidence was one architecture wide.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen import boundary as BD
@@ -29,13 +30,13 @@ class TestInterleaving:
         assert [l.side for l in order] == [MM.ACCELERATOR, MM.HOST, MM.ACCELERATOR]
 
     def test_the_sequence_opens_and_closes_on_the_accelerator(self):
-        order = MM.interleave([_acc("contraction"), _acc("movement")],
-                              [_host("normalization"), _host("reduction"), _host("softmax")])
+        order = MM.interleave(
+            [_acc("contraction"), _acc("movement")], [_host("normalization"), _host("reduction"), _host("softmax")]
+        )
         assert order[0].side == MM.ACCELERATOR and order[-1].side == MM.ACCELERATOR
 
     def test_more_host_layers_than_gaps_still_keeps_every_one_an_island(self):
-        order = MM.interleave([_acc("contraction"), _acc("movement")],
-                              [_host(f"h{i}") for i in range(5)])
+        order = MM.interleave([_acc("contraction"), _acc("movement")], [_host(f"h{i}") for i in range(5)])
         assert order[0].side == MM.ACCELERATOR and order[-1].side == MM.ACCELERATOR
         assert sum(1 for l in order if l.side == MM.HOST) == 5
 
@@ -54,17 +55,20 @@ class TestCompositionShape:
     def test_the_inventory_reports_its_own_composition_in_the_boundary_vocabulary(self):
         # One vocabulary for "how is this composed", shared with the coverage axis, so the model's
         # intended shape and the shape the corpus is measured on can never drift apart.
-        s = MM.MicroModelSpec(layers=MM.interleave([_acc("contraction"), _acc("movement")],
-                                                   [_host("normalization")]))
+        s = MM.MicroModelSpec(layers=MM.interleave([_acc("contraction"), _acc("movement")], [_host("normalization")]))
         assert s.composition() == BD.A_H_A
 
     def test_two_host_segments_between_three_accelerator_segments_is_routing(self):
-        s = MM.MicroModelSpec(layers=MM.interleave(
-            [_acc("contraction"), _acc("elementwise_map"), _acc("movement")],
-            [_host("normalization"), _host("reduction")]))
+        s = MM.MicroModelSpec(
+            layers=MM.interleave(
+                [_acc("contraction"), _acc("elementwise_map"), _acc("movement")],
+                [_host("normalization"), _host("reduction")],
+            )
+        )
         assert s.composition() == BD.ROUTING
         assert BD.A_H_A in BD.patterns_in_sequence(
-            [BD.ACCEL if l.side == MM.ACCELERATOR else BD.HOST for l in s.layers])
+            [BD.ACCEL if l.side == MM.ACCELERATOR else BD.HOST for l in s.layers]
+        )
 
 
 class TestSpellingsComeFromCaptures:
@@ -79,6 +83,7 @@ class TestSpellingsComeFromCaptures:
                 return self._f
 
         import merlin.targetgen.model_coverage as mc
+
         seen = {"a": [_R("matmul", "contraction")] * 3 + [_R("conv", "contraction")]}
         old_load, old_regions = mc.load_module, mc.regions_from_module
         try:
@@ -102,8 +107,7 @@ class TestSpecKeepsItsUncertainty:
         assert s.extent is None or s.tile_edge is not None
 
     def test_a_dict_round_trips_with_the_composition_named(self):
-        s = MM.MicroModelSpec(target="t", layers=[_acc("contraction"), _host("reduction"),
-                                                  _acc("movement")])
+        s = MM.MicroModelSpec(target="t", layers=[_acc("contraction"), _host("reduction"), _acc("movement")])
         d = s.to_dict()
         assert d["composition"] == BD.A_H_A
         assert d["n_accelerator_layers"] == 2 and d["n_host_layers"] == 1

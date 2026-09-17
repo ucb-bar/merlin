@@ -1,4 +1,5 @@
 """Launch-critical checks for the promised Arm4 authoring surface."""
+
 from __future__ import annotations
 
 import importlib
@@ -23,9 +24,7 @@ def _module():
 def _bwrap_works() -> bool:
     if not shutil.which("bwrap"):
         return False
-    run = subprocess.run(
-        ["bwrap", "--ro-bind", "/", "/", "--", "true"],
-        capture_output=True, timeout=15)
+    run = subprocess.run(["bwrap", "--ro-bind", "/", "/", "--", "true"], capture_output=True, timeout=15)
     return run.returncode == 0
 
 

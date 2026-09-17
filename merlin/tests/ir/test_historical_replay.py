@@ -3,6 +3,7 @@
 A detection rate is trivially manufacturable: pick the commits, pick the denominator, rerun until the
 number is good. Each test here pins one of the moves that would do that.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -47,7 +48,8 @@ def test_the_population_only_holds_commits_that_touched_an_observed_path():
         assert files, f"{sha[:8]} is in the population with no observed file"
         for f in files:
             assert any(f.startswith(r) for r in OBSERVED_ROOTS), (
-                f"{sha[:8]} contributes {f}, which no layer can observe")
+                f"{sha[:8]} contributes {f}, which no layer can observe"
+            )
 
 
 def test_pytest_exit_codes_separate_a_rejection_from_a_run_that_did_not_happen():
@@ -64,7 +66,8 @@ def test_pytest_exit_codes_separate_a_rejection_from_a_run_that_did_not_happen()
 
     src = inspect.getsource(replay._run_layers)
     assert '{0: "green", 1: "red"}' in src, (
-        "the exit-code mapping changed; a non-1 exit code must not be scored as a rejection")
+        "the exit-code mapping changed; a non-1 exit code must not be scored as a rejection"
+    )
     assert '"error"' in src, "a run that did not happen must have its own verdict, not 'red'"
 
 
@@ -87,7 +90,8 @@ def test_the_shadow_replaces_code_but_never_the_data_paths():
     src = inspect.getsource(replay._run_layers)
     assert "MERLIN_REPO_ROOT=str(repo)" in src, (
         "the shadow must pin the data root to the real checkout; without it every layer reports a "
-        "clean pass because it cannot find its inputs")
+        "clean pass because it cannot find its inputs"
+    )
 
 
 def test_the_instrument_contains_the_layers_that_exist():
@@ -102,7 +106,8 @@ def test_the_instrument_contains_the_layers_that_exist():
     assert "lit-pass-tests" in LAYERS, "the static layer is missing from the instrument"
     assert "numeric-golden" in LAYERS, (
         "the numeric oracle is missing; without it a detection cannot be attributed to the new layer "
-        "rather than to the dynamic check that already existed")
+        "rather than to the dynamic check that already existed"
+    )
 
 
 def test_an_unreplayable_commit_is_reported_and_never_counted_as_a_miss():
@@ -118,20 +123,37 @@ def test_an_unreplayable_commit_is_reported_and_never_counted_as_a_miss():
 
     src = inspect.getsource(replay.replay)
     assert src.count('"unreplayable"') >= 2, (
-        "both unreplayable paths (missing parent files, shadow that will not run) must be recorded")
-    rendered = replay.render({
-        "population_size": 101, "sample_size": 2, "seed": 1,
-        "population_definition": {"ref": "0" * 40},
-        "baseline": {"a-layer": "green"}, "detected_of_replayable": "0/1",
-        "detected_of_replayable_historical": "0/1", "layers_landed": "abc12345",
-        "counts": {"missed": 1, "unreplayable": 1},
-        "results": [
-            {"sha": "aaaaaaaa", "subject": "fix(x): a", "layers_red": [], "outcome": "missed",
-             "predates_layers": True},
-            {"sha": "bbbbbbbb", "subject": "fix(y): b", "layers_red": [], "outcome": "unreplayable",
-             "predates_layers": True},
-        ],
-    })
+        "both unreplayable paths (missing parent files, shadow that will not run) must be recorded"
+    )
+    rendered = replay.render(
+        {
+            "population_size": 101,
+            "sample_size": 2,
+            "seed": 1,
+            "population_definition": {"ref": "0" * 40},
+            "baseline": {"a-layer": "green"},
+            "detected_of_replayable": "0/1",
+            "detected_of_replayable_historical": "0/1",
+            "layers_landed": "abc12345",
+            "counts": {"missed": 1, "unreplayable": 1},
+            "results": [
+                {
+                    "sha": "aaaaaaaa",
+                    "subject": "fix(x): a",
+                    "layers_red": [],
+                    "outcome": "missed",
+                    "predates_layers": True,
+                },
+                {
+                    "sha": "bbbbbbbb",
+                    "subject": "fix(y): b",
+                    "layers_red": [],
+                    "outcome": "unreplayable",
+                    "predates_layers": True,
+                },
+            ],
+        }
+    )
     assert "1 unreplayable" in rendered, "the report must state the unreplayable count"
     assert "never folded into 'missed'" in rendered
 
@@ -149,8 +171,10 @@ def test_a_fix_that_postdates_the_layers_is_flagged_and_excluded_from_the_citabl
         pytest.skip("the commit that introduced the layers is not in this checkout")
     assert LAYERS_LANDED in hist, "a commit is its own ancestor; the boundary is off by one"
     import subprocess
-    head = subprocess.run(("git", "rev-parse", "HEAD"), cwd=repo_root(),
-                          capture_output=True, text=True, check=True).stdout.strip()
+
+    head = subprocess.run(
+        ("git", "rev-parse", "HEAD"), cwd=repo_root(), capture_output=True, text=True, check=True
+    ).stdout.strip()
     assert head not in hist, "HEAD postdates the layers; it must not count as historical"
 
 
@@ -175,4 +199,5 @@ def test_every_declared_layer_can_actually_run():
         else:
             assert argv[0] == "-m", f"layer {name!r} has an unrecognised invocation: {argv}"
             assert importlib.util.find_spec(argv[1]), (
-                f"layer {name!r} runs module {argv[1]!r}, which cannot be imported")
+                f"layer {name!r} runs module {argv[1]!r}, which cannot be imported"
+            )

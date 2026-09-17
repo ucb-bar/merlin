@@ -3,10 +3,11 @@
 Skips if the kernels-ast extra (tree-sitter) is not installed; the extractor is a graceful no-op
 in that case so the mining pipeline degrades to the regex/intrinsic layer.
 """
+
 import pytest
 
+from merlin.kernels.features.ast_struct import available, extract_ast_struct
 from merlin.kernels.types import NormalizedKernel
-from merlin.kernels.features.ast_struct import extract_ast_struct, available
 
 pytestmark = pytest.mark.skipif(not available(), reason="tree-sitter (kernels-ast extra) not installed")
 
@@ -33,19 +34,18 @@ void gemm(const float* a, const float* w, float* c, size_t nc, size_t kc) {
 
 
 def _nk(text, target="rvv"):
-    return NormalizedKernel(source="x", target=target, path="k.c", op="gemm", dtype="f32",
-                            raw_text=text)
+    return NormalizedKernel(source="x", target=target, path="k.c", op="gemm", dtype="f32", raw_text=text)
 
 
 def test_loop_nest_and_order():
     s = extract_ast_struct(_nk(_GEMM), {})["struct"]
     assert s["loop_nest_depth"] == 2
-    assert s["loop_order"][:2] == ["nc", "k"]      # N-tile loop outside the K reduction
+    assert s["loop_order"][:2] == ["nc", "k"]  # N-tile loop outside the K reduction
 
 
 def test_pointer_advance_prepack_detected():
     s = extract_ast_struct(_nk(_GEMM), {})["struct"]
-    assert s["pointer_advance_prepack"] is True    # `w = w + nr` weight streaming
+    assert s["pointer_advance_prepack"] is True  # `w = w + nr` weight streaming
 
 
 def test_ast_op_counts():

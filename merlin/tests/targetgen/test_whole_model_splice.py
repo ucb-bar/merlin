@@ -12,6 +12,7 @@ Target-agnostic: the lane of each op is READ from the routing plan (whether the 
 mesh unit), never assumed from an op name. The routing units here are a synthetic f32 mesh + vector
 contract passed as data, so the test binds to no specific target.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -26,10 +27,20 @@ pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed
 # dtype table.
 _F32_UNITS = {
     "compute_units": [
-        {"name": "mesh", "kind": "systolic", "dtypes": ["f32", "fp32"], "ops": ["matmul"],
-         "accumulate": [{"in": "f32", "weight": "f32", "acc": "f32"}]},
-        {"name": "vec", "kind": "vector", "dtypes": ["f32", "fp32"],
-         "ops": ["relu", "add", "mul", "elementwise"], "accumulate": []},
+        {
+            "name": "mesh",
+            "kind": "systolic",
+            "dtypes": ["f32", "fp32"],
+            "ops": ["matmul"],
+            "accumulate": [{"in": "f32", "weight": "f32", "acc": "f32"}],
+        },
+        {
+            "name": "vec",
+            "kind": "vector",
+            "dtypes": ["f32", "fp32"],
+            "ops": ["relu", "add", "mul", "elementwise"],
+            "accumulate": [],
+        },
     ]
 }
 
@@ -40,16 +51,19 @@ _REF_TARGET = "toy_npu"
 
 def _units():
     from merlin.targetgen import compute_units as cu
+
     return cu.compute_units(_F32_UNITS)
 
 
 def _chain(dims):
     from merlin.xdsl_dialects.lowering.input_workload import build_matmul_chain
+
     return build_matmul_chain(dims=dims, elem="f32")
 
 
 def _vecblock(combine, relu):
     from merlin.xdsl_dialects.lowering.input_workload import build_vector_block
+
     return build_vector_block(m=8, k=16, elem="f32", combine=combine, relu=relu)
 
 
@@ -64,8 +78,8 @@ def test_matmul_chain_splice_matches_single_module(dims):
 
     r = mp.verify_whole_model_program(_chain(dims), target=_REF_TARGET, in_fmt="f32", units=_units())
     assert r["ref_correct"] is True
-    assert r["exact"] is True                        # bit-for-bit == the single-module lower_module result
-    n_layers = len(dims) - 2                          # dims = [m, k_1, ..., k_L] -> L-1 matmuls
+    assert r["exact"] is True  # bit-for-bit == the single-module lower_module result
+    n_layers = len(dims) - 2  # dims = [m, k_1, ..., k_L] -> L-1 matmuls
     assert r["n_steps"] == n_layers and r["n_mesh"] == n_layers and r["n_scalar"] == 0
 
 
@@ -76,12 +90,11 @@ def test_vector_block_splice_matches_single_module(combine, relu):
     correctly: the mesh outputs hand off to the scalar ops and back, final == single-module, exact."""
     from merlin.targetgen import mesh_program_run as mp
 
-    r = mp.verify_whole_model_program(_vecblock(combine, relu), target=_REF_TARGET, in_fmt="f32",
-                                      units=_units())
+    r = mp.verify_whole_model_program(_vecblock(combine, relu), target=_REF_TARGET, in_fmt="f32", units=_units())
     assert r["ref_correct"] is True
     assert r["exact"] is True
-    assert r["n_mesh"] == 2                           # A@W1 and A@W2 on the mesh
-    assert r["n_scalar"] == (2 if relu else 1)        # relu + combine (or just combine)
+    assert r["n_mesh"] == 2  # A@W1 and A@W2 on the mesh
+    assert r["n_scalar"] == (2 if relu else 1)  # relu + combine (or just combine)
 
 
 def test_splice_final_equals_manual_numpy():
@@ -89,8 +102,7 @@ def test_splice_final_equals_manual_numpy():
     whole model, so the exactness is real correctness, not two matching bugs."""
     from merlin.targetgen import mesh_program_run as mp
 
-    r = mp.verify_whole_model_program(_vecblock("add", True), target=_REF_TARGET, in_fmt="f32",
-                                      units=_units())
+    r = mp.verify_whole_model_program(_vecblock("add", True), target=_REF_TARGET, in_fmt="f32", units=_units())
     assert np.allclose(r["ref_final"], r["spliced_final"], rtol=1e-6, atol=1e-6)
 
 
@@ -113,10 +125,10 @@ def test_program_lane_tagging_extents_and_handoff():
 
     # tensor-id handoff: layer-1 matmul -> relu -> combine; layer-2 matmul -> combine.
     s0, s1, s2, s3 = prog.steps
-    assert s0.inputs == ("L0", "L1") and s0.output == "t0"          # A @ W1
-    assert s1.inputs == ("t0",) and s1.output == "t1"              # relu(A@W1)
-    assert s2.inputs == ("L0", "L2") and s2.output == "t2"          # A @ W2 (reuses activation leaf)
-    assert s3.inputs == ("t1", "t2") and s3.output == "t3"          # combine(...)
+    assert s0.inputs == ("L0", "L1") and s0.output == "t0"  # A @ W1
+    assert s1.inputs == ("t0",) and s1.output == "t1"  # relu(A@W1)
+    assert s2.inputs == ("L0", "L2") and s2.output == "t2"  # A @ W2 (reuses activation leaf)
+    assert s3.inputs == ("t1", "t2") and s3.output == "t3"  # combine(...)
     assert prog.output == "t3"
 
     # real extents ride on the mesh matmul steps (8x16x16 for this vector block).
@@ -147,7 +159,7 @@ def test_plan_result_count_must_match_module():
 
     mod = _chain((4, 8, 6, 5))
     demands = mp.demands_from_module(mod, "f32")
-    plan = rt.route_plan_on(demands[:-1], _units())   # drop one op -> misaligned
+    plan = rt.route_plan_on(demands[:-1], _units())  # drop one op -> misaligned
     with pytest.raises(ValueError, match="must be routed from this module"):
         mp.build_whole_model_program(plan, _REF_TARGET, mod)
 
@@ -157,9 +169,11 @@ def test_route_plan_on_matches_route_plan_split():
     the same units, and preserves op order in results."""
     from merlin.targetgen import routing as rt
 
-    demands = [rt.OpDemand("matmul", "f32", "f32", m=4, k=4, n=4),
-               rt.OpDemand("relu", "f32"),
-               rt.OpDemand("add", "f32")]
+    demands = [
+        rt.OpDemand("matmul", "f32", "f32", m=4, k=4, n=4),
+        rt.OpDemand("relu", "f32"),
+        rt.OpDemand("add", "f32"),
+    ]
     plan = rt.route_plan_on(demands, _units())
     assert [r.demand.op for r in plan["results"]] == ["matmul", "relu", "add"]
     assert len(plan["mesh"]) == 1 and plan["mesh"][0].demand.op == "matmul"

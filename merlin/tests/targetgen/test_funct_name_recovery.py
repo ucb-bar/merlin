@@ -10,8 +10,8 @@ rs1-subfield group, and a "cisc-gemmini opcodes" group the file itself comments 
 numbers here overlap with the LOOP_WS commands``), so a whole-file scan would RENAME real functs.
 Only an unambiguous binding is used; anything bound twice stays ``"?"``.
 """
-from merlin.targetgen.rtl import circt_introspect as C
 
+from merlin.targetgen.rtl import circt_introspect as C
 
 _ISA = """
   // funct values
@@ -48,8 +48,7 @@ class TestOutsideBlockNames:
 class TestReconcileRecoversOnlyUnambiguousNames:
     @staticmethod
     def _reconcile(legal):
-        decoder = {"name": "funct_decode_table", "legal_funct": list(legal), "names": {},
-                   "evidence": "test"}
+        decoder = {"name": "funct_decode_table", "legal_funct": list(legal), "names": {}, "evidence": "test"}
         header = C.extract_funct_table(_ISA)
         return C._reconcile_funct(decoder, header)
 
@@ -71,5 +70,6 @@ class TestReconcileRecoversOnlyUnambiguousNames:
 
     def test_the_weaker_provenance_is_recorded_not_hidden(self):
         t = self._reconcile([126])
-        assert "names_recovered_from_outside_block" in t, \
+        assert "names_recovered_from_outside_block" in t, (
             "a name from outside the authoritative block must be visible as such"
+        )

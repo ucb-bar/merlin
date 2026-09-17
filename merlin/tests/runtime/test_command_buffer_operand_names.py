@@ -17,6 +17,7 @@ intermediate) are legitimately absent from `tensors`, so per-name resolution is 
 fail conformant buffers. Measured over every command buffer on disk from prior runs: 309 unaffected, and
 only the probing ones flagged.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -57,9 +58,13 @@ def test_a_conformant_buffer_is_untouched():
 
 def test_a_produced_intermediate_need_not_be_a_declared_tensor():
     """The reason per-name resolution is NOT asserted: an accumulator is produced, not declared."""
-    cb = _cb(tensors={"A0": {"shape": [2, 2], "dtype": "f32"}},
-             commands=[{"opcode": "MATMUL", "operands": {"lhs": "A0", "dst": "acc0"}},
-                       {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"}}])
+    cb = _cb(
+        tensors={"A0": {"shape": [2, 2], "dtype": "f32"}},
+        commands=[
+            {"opcode": "MATMUL", "operands": {"lhs": "A0", "dst": "acc0"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc0", "dst": "Y0"}},
+        ],
+    )
     # Filtered on the tensors complaint SPECIFICALLY. "declares no" alone also matches the readout
     # check added later ("declares no 'output_dtype'"), which this buffer legitimately trips and which
     # is not what this test is about.
@@ -84,7 +89,5 @@ def test_the_contract_validator_refuses_what_the_runner_will_refuse():
 
 
 def test_the_contract_validator_still_accepts_conformant_buffers():
-    S.validate_command_buffer(_cb(tensors={"A0": {"shape": [2, 2], "dtype": "f32"}},
-                                  commands=[_matmul()]))
-    S.validate_command_buffer(_cb(commands=[],
-                                  declined={"reason": "r", "shape": [9], "op": "matmul"}))
+    S.validate_command_buffer(_cb(tensors={"A0": {"shape": [2, 2], "dtype": "f32"}}, commands=[_matmul()]))
+    S.validate_command_buffer(_cb(commands=[], declined={"reason": "r", "shape": [9], "op": "matmul"}))

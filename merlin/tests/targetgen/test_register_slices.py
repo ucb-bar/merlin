@@ -1,9 +1,10 @@
 """Conditional field recovery never promotes unknown data into a layout."""
-from merlin.targetgen.rtl.register_slices import derive_register_slices, decode_register_slices
+
+from merlin.targetgen.rtl.register_slices import decode_register_slices, derive_register_slices
 
 
 def hardware(offset=4, branch="%field", selector=37):
-    return f'''hw.module @Engine(in %clk : !seq.clock, in %command : i7, in %payload : i32, in %ready : i1) {{
+    return f"""hw.module @Engine(in %clk : !seq.clock, in %command : i7, in %payload : i32, in %ready : i1) {{
     %selector = hw.constant {selector} : i7
     %match = comb.icmp bin eq %command, %selector : i7
     %gate = comb.and bin %ready, %match : i1
@@ -11,12 +12,18 @@ def hardware(offset=4, branch="%field", selector=37):
     %next = comb.mux bin %gate, {branch}, %state : i5
     %state = seq.firreg %next clock %clk : i5
     hw.output
-  }}'''
+  }}"""
 
 
 def derive(text, selector=37):
-    return derive_register_slices(text, module="Engine", registers=["%state"],
-        selector="%command", selector_value=selector, inputs={"%payload": ("word", 32)})
+    return derive_register_slices(
+        text,
+        module="Engine",
+        registers=["%state"],
+        selector="%command",
+        selector_value=selector,
+        inputs={"%payload": ("word", 32)},
+    )
 
 
 def test_actual_slice_and_unknown_acceptance_are_separate():
@@ -41,16 +48,22 @@ def test_unknown_data_branch_refuses_field():
 
 
 def test_unknown_alternative_data_branch_refuses_even_with_known_slice():
-    text = hardware().replace("%field = comb.extract", "%choice = comb.mux bin %ready, %field, %unmodeled : i5\n    %field = comb.extract")
+    text = hardware().replace(
+        "%field = comb.extract", "%choice = comb.mux bin %ready, %field, %unmodeled : i5\n    %field = comb.extract"
+    )
     text = text.replace("%next = comb.mux bin %gate, %field", "%next = comb.mux bin %gate, %choice")
     assert derive(text)["registers"][0]["status"] == "UNKNOWN"
 
 
 def test_pointer_slice_keeps_range_obligation():
-    result = decode_register_slices(derive(hardware(0)),
-        {"word": {"kind": "argbase", "arg_index": 2, "offset": 64}})[0]
-    assert result["symbolic_value"] == {"argument": 2, "byte_offset": 64,
-        "extract_offset": 0, "extract_width": 5, "address_range_validated": False}
+    result = decode_register_slices(derive(hardware(0)), {"word": {"kind": "argbase", "arg_index": 2, "offset": 64}})[0]
+    assert result["symbolic_value"] == {
+        "argument": 2,
+        "byte_offset": 64,
+        "extract_offset": 0,
+        "extract_width": 5,
+        "address_range_validated": False,
+    }
 
 
 def test_unresolved_operand_does_not_claim_field_value():

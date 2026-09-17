@@ -27,38 +27,83 @@ def _record():
         "host_verifier_policy_sha256": "8" * 64,
     }
     nodes = [
-        {"kind": "view", "op": "tensor.empty", "inputs": [], "outputs": ["b1"],
-         "prov": {}, "regions": 0, "captures": []},
-        {"kind": "view", "op": "arith.constant", "inputs": [], "outputs": ["b2"],
-         "prov": {}, "regions": 0, "captures": []},
-        {"kind": "view", "op": "tensor.splat", "inputs": ["b2"], "outputs": ["b3"],
-         "prov": {}, "regions": 0, "captures": []},
-        {"kind": "dispatch", "op": "kernel_a", "inputs": ["b0", "b3"], "outputs": ["b4"],
-         "prov": {"prov.family": "quantize", "prov.op": "quantize_per_tensor",
-                  "prov.region_id": "q0"}, "regions": 0, "captures": []},
-        {"kind": "dispatch", "op": "kernel_b", "inputs": ["b4"], "outputs": ["b5"],
-         "prov": {"prov.family": "elementwise", "prov.op": "add", "prov.region_id": "a0"},
-         "regions": 0, "captures": []},
-        {"kind": "dispatch", "op": "kernel_c", "inputs": ["b5"], "outputs": ["b6"],
-         "prov": {"prov.family": "contraction", "prov.op": "matmul", "prov.region_id": "m0"},
-         "regions": 0, "captures": []},
+        {
+            "kind": "view",
+            "op": "tensor.empty",
+            "inputs": [],
+            "outputs": ["b1"],
+            "prov": {},
+            "regions": 0,
+            "captures": [],
+        },
+        {
+            "kind": "view",
+            "op": "arith.constant",
+            "inputs": [],
+            "outputs": ["b2"],
+            "prov": {},
+            "regions": 0,
+            "captures": [],
+        },
+        {
+            "kind": "view",
+            "op": "tensor.splat",
+            "inputs": ["b2"],
+            "outputs": ["b3"],
+            "prov": {},
+            "regions": 0,
+            "captures": [],
+        },
+        {
+            "kind": "dispatch",
+            "op": "kernel_a",
+            "inputs": ["b0", "b3"],
+            "outputs": ["b4"],
+            "prov": {"prov.family": "quantize", "prov.op": "quantize_per_tensor", "prov.region_id": "q0"},
+            "regions": 0,
+            "captures": [],
+        },
+        {
+            "kind": "dispatch",
+            "op": "kernel_b",
+            "inputs": ["b4"],
+            "outputs": ["b5"],
+            "prov": {"prov.family": "elementwise", "prov.op": "add", "prov.region_id": "a0"},
+            "regions": 0,
+            "captures": [],
+        },
+        {
+            "kind": "dispatch",
+            "op": "kernel_c",
+            "inputs": ["b5"],
+            "outputs": ["b6"],
+            "prov": {"prov.family": "contraction", "prov.op": "matmul", "prov.region_id": "m0"},
+            "regions": 0,
+            "captures": [],
+        },
     ]
     buffers = {
         name: {"id": name, "shape": [4], "dtype": "i8", "kind": kind}
         for name, kind in {
-            "b0": "arg", "b1": "intermediate", "b2": "const", "b3": "intermediate",
-            "b4": "intermediate", "b5": "intermediate", "b6": "intermediate",
+            "b0": "arg",
+            "b1": "intermediate",
+            "b2": "const",
+            "b3": "intermediate",
+            "b4": "intermediate",
+            "b5": "intermediate",
+            "b6": "intermediate",
         }.items()
     }
-    program = {"entry": "forward", "args": [0], "buffers": buffers,
-               "nodes": nodes, "results": ["b6"]}
+    program = {"entry": "forward", "args": [0], "buffers": buffers, "nodes": nodes, "results": ["b6"]}
     pins["logical_dispatch_digest"] = _digest(program)
     tasks = [
         {"task_index": 0, "declared_task_kind": "host", "source_op_indices": [0, 1, 2, 3, 4]},
         {"task_index": 1, "declared_task_kind": "matrix", "source_op_indices": [5]},
     ]
     plan = {
-        "status": "verified", "source_operations": len(nodes), "tasks": len(tasks),
+        "status": "verified",
+        "source_operations": len(nodes),
+        "tasks": len(tasks),
         "candidate_sha256": pins["compiler_sha256"],
         "source_sha256": pins["source_sha256"],
         "candidate_lowered_sha256": pins["lowered_sha256"],
@@ -76,19 +121,25 @@ def _record():
         "diagnostics": {
             "verified_global_plan_emission": plan,
             "captured_logical_graph": {
-                "schema": "captured_global_graph_v1", "status": "verified",
+                "schema": "captured_global_graph_v1",
+                "status": "verified",
                 "source_sha256": pins["source_sha256"],
                 "logical_dispatch_digest": pins["logical_dispatch_digest"],
-                "nodes": len(nodes), "dispatch_program": program,
+                "nodes": len(nodes),
+                "dispatch_program": program,
             },
-            "task_instruction_evidence": {"candidate": {
-                "schema": "task_instruction_evidence_v1", "status": "static_ownership_verified",
-                "declared_source_plan_status": "verified", "binding": pins, "tasks": tasks,
-            }},
+            "task_instruction_evidence": {
+                "candidate": {
+                    "schema": "task_instruction_evidence_v1",
+                    "status": "static_ownership_verified",
+                    "declared_source_plan_status": "verified",
+                    "binding": pins,
+                    "tasks": tasks,
+                }
+            },
         },
     }
-    return {"schema": "global_perf_iteration_v1", "candidate_sha256": pins["compiler_sha256"],
-            "analysis": analysis}
+    return {"schema": "global_perf_iteration_v1", "candidate_sha256": pins["compiler_sha256"], "analysis": analysis}
 
 
 def test_inventory_binds_exact_one_use_host_chain_without_workload_names():
@@ -99,13 +150,12 @@ def test_inventory_binds_exact_one_use_host_chain_without_workload_names():
     chain = result["chains"][0]
     assert chain["pointwise_source_operation_ids"] == [3, 4]
     assert chain["materialization_source_operation_ids"] == [2]
-    assert [(edge["producer"], edge["consumer"]) for edge in chain["one_use_edges"]] == [
-        (2, 3), (3, 4)]
+    assert [(edge["producer"], edge["consumer"]) for edge in chain["one_use_edges"]] == [(2, 3), (3, 4)]
     assert chain["output_boundaries"][0]["consumer_task_indices"] == [1]
-    assert any(row["source_operation_id"] == 0 and row["refusal_class"] == "fanout_or_boundary"
-               for row in result["refusals"])
-    assert set(result["bindings"]) >= {"source_sha256", "plan_digest",
-                                       "command_buffer_sha256", "lowered_sha256"}
+    assert any(
+        row["source_operation_id"] == 0 and row["refusal_class"] == "fanout_or_boundary" for row in result["refusals"]
+    )
+    assert set(result["bindings"]) >= {"source_sha256", "plan_digest", "command_buffer_sha256", "lowered_sha256"}
 
 
 def test_inventory_refuses_fanout_and_records_every_consumer():
@@ -143,8 +193,7 @@ def test_inventory_fails_closed_on_hash_drift_or_missing_exact_graph():
     del missing["analysis"]["diagnostics"]["captured_logical_graph"]["dispatch_program"]
     result = inventory_host_epilogue_sites(missing)
     assert result["status"] == "not_ready"
-    assert result["missing_fields"] == [
-        "analysis.diagnostics.captured_logical_graph.dispatch_program"]
+    assert result["missing_fields"] == ["analysis.diagnostics.captured_logical_graph.dispatch_program"]
 
 
 def test_inventory_refuses_unknown_dispatch_semantics_without_guessing_from_symbol():
@@ -158,7 +207,8 @@ def test_inventory_refuses_unknown_dispatch_semantics_without_guessing_from_symb
     plan = record["analysis"]["diagnostics"]["verified_global_plan_emission"]
     plan["logical_dispatch_digest"] = digest
     record["analysis"]["diagnostics"]["task_instruction_evidence"]["candidate"]["binding"][
-        "logical_dispatch_digest"] = digest
+        "logical_dispatch_digest"
+    ] = digest
 
     result = inventory_host_epilogue_sites(record)
     assert result["status"] == "ready_for_source_site_binding"
@@ -198,10 +248,12 @@ def _portfolio_record():
         "required_tiers": ["tier"],
         "role": "training",
     }
-    first_workload = {key: first_identity[key] for key in
-                      ("capsule", "capsule_sha256", "required_lanes", "required_tiers")}
-    second_workload = {key: second_identity[key] for key in
-                       ("capsule", "capsule_sha256", "required_lanes", "required_tiers")}
+    first_workload = {
+        key: first_identity[key] for key in ("capsule", "capsule_sha256", "required_lanes", "required_tiers")
+    }
+    second_workload = {
+        key: second_identity[key] for key in ("capsule", "capsule_sha256", "required_lanes", "required_tiers")
+    }
     record["analysis"]["workload"] = first_workload
     second_analysis = copy.deepcopy(record["analysis"])
     second_analysis["workload"] = second_workload
@@ -231,14 +283,11 @@ def _portfolio_record():
 
 
 def test_portfolio_inventory_resolves_primary_alias_and_embedded_members_in_exact_order():
-    result = inventory_portfolio_host_epilogue_sites(
-        _portfolio_record(), iteration_record_sha256="c" * 64)
+    result = inventory_portfolio_host_epilogue_sites(_portfolio_record(), iteration_record_sha256="c" * 64)
     assert result["status"] == "ready_for_portfolio_source_site_binding"
     assert [row["identity"]["capsule"] for row in result["members"]] == ["first", "second"]
-    assert [row["analysis_location"] for row in result["members"]] == [
-        "/analysis", "/portfolio/members/1/analysis"]
-    assert [row["source_operation_ids"] for row in result["members"]] == [
-        [2, 3, 4], [2, 3, 4]]
+    assert [row["analysis_location"] for row in result["members"]] == ["/analysis", "/portfolio/members/1/analysis"]
+    assert [row["source_operation_ids"] for row in result["members"]] == [[2, 3, 4], [2, 3, 4]]
     asserted = result.pop("portfolio_site_inventory_sha256")
     assert asserted == _digest(result)
 

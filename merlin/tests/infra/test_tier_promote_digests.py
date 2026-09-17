@@ -19,6 +19,7 @@ The falsifier that matters is `test_invalidation_matrix`: it touches each compon
 the exact set of capsules that lost their certificate. A matrix where every touch invalidates everything
 (or nothing) would prove nothing, so the assertion is on the whole matrix, not on a count.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -28,8 +29,17 @@ import pytest
 
 from merlin.common.paths import merlin_dir
 from merlin.targetgen.oracle_schedule import (
-    CHANGED, NO_VERDICT, PASS, UNATTRIBUTED, UNDETERMINABLE, UNKNOWN, WHOLE_SUBMISSION,
-    CapsuleState, Verdict, explain, schedule,
+    CHANGED,
+    NO_VERDICT,
+    PASS,
+    UNATTRIBUTED,
+    UNDETERMINABLE,
+    UNKNOWN,
+    WHOLE_SUBMISSION,
+    CapsuleState,
+    Verdict,
+    explain,
+    schedule,
 )
 
 HARNESS = merlin_dir() / "experiments/capsule_bench/harness"
@@ -59,7 +69,7 @@ components:
 
 FILES = {
     "manifest.yaml": MANIFEST,
-    "mlir_oot/opt": "#!/usr/bin/env python3\n",          # unattributed on purpose: nothing claims it
+    "mlir_oot/opt": "#!/usr/bin/env python3\n",  # unattributed on purpose: nothing claims it
     "mlir_oot/parse.py": "parse v1\n",
     "mlir_oot/lowering/tile.py": "tile v1\n",
     "mlir_oot/lowering/emit.py": "emit v1\n",
@@ -106,7 +116,7 @@ def test_a_target_that_declares_a_fifth_command_gets_a_fifth_component(tmp_path)
     B = _mod()
     files = dict(FILES)
     files["manifest.yaml"] = MANIFEST.replace(
-        "components:\n", "  optimize_target: {argv: [\"{tool}\", \"-O2\", \"{input_mlir}\"]}\ncomponents:\n"
+        "components:\n", '  optimize_target: {argv: ["{tool}", "-O2", "{input_mlir}"]}\ncomponents:\n'
     ).replace("  parse: [mlir_oot/parse.py]", "  parse: [mlir_oot/parse.py]\n  optimize_target: [mlir_oot/opt.py]")
     files["mlir_oot/opt.py"] = "opt v1\n"
     ws = _ws(tmp_path, files)
@@ -138,7 +148,7 @@ def test_a_component_outside_the_vocabulary_is_rejected_and_reported(tmp_path):
 
 
 def test_an_all_rejected_components_block_is_still_reported(tmp_path):
-    """"every name was a typo" must not read as "no components declared" -- both fall through to the
+    """ "every name was a typo" must not read as "no components declared" -- both fall through to the
     harness-derived decomposition, but only one of them is a mistake somebody has to see."""
     B = _mod()
     files = dict(FILES)
@@ -182,8 +192,7 @@ def test_the_longest_declared_prefix_owns_a_file(tmp_path):
     """A nested grant must not be swallowed by its parent, or a whole subtree collapses to one component."""
     B = _mod()
     files = dict(FILES)
-    files["manifest.yaml"] = MANIFEST.replace("  parse: [mlir_oot/parse.py]",
-                                              "  parse: [mlir_oot/]")
+    files["manifest.yaml"] = MANIFEST.replace("  parse: [mlir_oot/parse.py]", "  parse: [mlir_oot/]")
     base = B.submission_digests(_ws(tmp_path, files, name="a"))[1]
     files2 = dict(files)
     files2["mlir_oot/lowering/tile.py"] = "tile v2\n"
@@ -198,9 +207,9 @@ def test_a_file_two_components_claim_equally_falls_to_the_residual(tmp_path):
     certificate would then survive an edit it should not have. Ambiguous ownership means everyone's."""
     B = _mod()
     files = dict(FILES)
-    files["manifest.yaml"] = MANIFEST.replace("  parse: [mlir_oot/parse.py]", "  parse: [mlir_oot/shared/]") \
-                                     .replace("  emit_command_buffer: [mlir_oot/cmdbuf.py]",
-                                              "  emit_command_buffer: [mlir_oot/shared/]")
+    files["manifest.yaml"] = MANIFEST.replace("  parse: [mlir_oot/parse.py]", "  parse: [mlir_oot/shared/]").replace(
+        "  emit_command_buffer: [mlir_oot/cmdbuf.py]", "  emit_command_buffer: [mlir_oot/shared/]"
+    )
     files["mlir_oot/shared/util.py"] = "util v1\n"
     base = B.submission_digests(_ws(tmp_path, files, name="a"))[1]
     files2 = dict(files)
@@ -216,9 +225,16 @@ def test_a_file_two_components_claim_equally_falls_to_the_residual(tmp_path):
 def _states(before, after, declared):
     """One CapsuleState per capsule, certified against `before`, now living on `after`."""
     (dw, cw, _), (dn, cn, _) = before, after
-    return [CapsuleState(name=n, digest=dn, components=cn, depends_on=dep,
-                         verdicts={"L2": Verdict(PASS, dw, cw), "L3": Verdict(PASS, dw, cw)})
-            for n, dep in declared.items()]
+    return [
+        CapsuleState(
+            name=n,
+            digest=dn,
+            components=cn,
+            depends_on=dep,
+            verdicts={"L2": Verdict(PASS, dw, cw), "L3": Verdict(PASS, dw, cw)},
+        )
+        for n, dep in declared.items()
+    ]
 
 
 # capsule -> the dependency set the SCHEDULER is given. `oracle_schedule` policy fixtures, not capsule
@@ -239,7 +255,7 @@ TOUCHES = {
     "mlir_oot/lowering/tile.py": {"matmul_tile", "fused_tile_cb", "whole_model"},
     "mlir_oot/cmdbuf.py": {"matmul_cb", "fused_tile_cb", "whole_model"},
     "mlir_oot/codegen.py": {"conv_codegen", "whole_model"},
-    "mlir_oot/opt": set(DECLARED),          # unattributed: a dependency of EVERY capsule
+    "mlir_oot/opt": set(DECLARED),  # unattributed: a dependency of EVERY capsule
 }
 
 
@@ -276,8 +292,7 @@ def test_the_matrix_is_discriminating(tmp_path):
         files = dict(FILES)
         files[touched] = FILES[touched] + "# edited\n"
         after = B.submission_digests(_ws(tmp_path, files, name=f"a{i}"))
-        seen.add(frozenset(s.name for s in _states(before, after, DECLARED)
-                           if s.known("L3") == UNKNOWN))
+        seen.add(frozenset(s.name for s in _states(before, after, DECLARED) if s.known("L3") == UNKNOWN))
     assert len(seen) == 5, f"touches are not discriminating: {seen}"
 
 
@@ -292,8 +307,13 @@ def test_no_edit_at_all_keeps_every_certificate(tmp_path):
 # ---------------------------------------------------------------------------------------------
 def test_an_undeclared_dependency_set_means_everything():
     for dep in (None, ()):
-        s = CapsuleState("A", digest="d2", depends_on=dep, components={"parse": "p1"},
-                         verdicts={"L2": Verdict(PASS, "d1", {"parse": "p1"})})
+        s = CapsuleState(
+            "A",
+            digest="d2",
+            depends_on=dep,
+            components={"parse": "p1"},
+            verdicts={"L2": Verdict(PASS, "d1", {"parse": "p1"})},
+        )
         # `parse` did NOT move, but the capsule declared nothing, so the whole submission decides
         assert s.known("L2") == UNKNOWN
         assert [x.component for x in s.invalidated_by("L2")] == [WHOLE_SUBMISSION]
@@ -302,16 +322,21 @@ def test_an_undeclared_dependency_set_means_everything():
 def test_a_verdict_predating_the_decomposition_is_undeterminable():
     """Not-yet-known and undeterminable are different states and must not collapse: a verdict with no
     component map is evidence of nothing, so it re-runs."""
-    s = CapsuleState("A", digest="d1", depends_on=("parse",), components={"parse": "p1"},
-                     verdicts={"L2": Verdict(PASS, "d1")})       # legacy row: no components
+    s = CapsuleState(
+        "A", digest="d1", depends_on=("parse",), components={"parse": "p1"}, verdicts={"L2": Verdict(PASS, "d1")}
+    )  # legacy row: no components
     assert s.known("L2") == UNKNOWN
     assert [(x.component, x.reason) for x in s.invalidated_by("L2")] == [("parse", UNDETERMINABLE)]
 
 
 def test_a_dependency_this_submission_does_not_have_is_undeterminable():
-    s = CapsuleState("A", digest="d1", depends_on=("no_such_stage",),
-                     components={"parse": "p1", UNATTRIBUTED: "u1"},
-                     verdicts={"L2": Verdict(PASS, "d1", {"parse": "p1", UNATTRIBUTED: "u1"})})
+    s = CapsuleState(
+        "A",
+        digest="d1",
+        depends_on=("no_such_stage",),
+        components={"parse": "p1", UNATTRIBUTED: "u1"},
+        verdicts={"L2": Verdict(PASS, "d1", {"parse": "p1", UNATTRIBUTED: "u1"})},
+    )
     assert s.known("L2") == UNKNOWN
     assert ("no_such_stage", UNDETERMINABLE) in [(x.component, x.reason) for x in s.invalidated_by("L2")]
 
@@ -325,29 +350,41 @@ def test_no_verdict_is_reported_as_not_yet_known_not_as_changed():
 # 5. the report: WHICH component requeued a capsule
 # ---------------------------------------------------------------------------------------------
 def test_the_queue_names_the_component_that_requeued_the_capsule():
-    s = CapsuleState("matmul_tile", digest="d2", depends_on=("lower_interface_to_target",),
-                     components={"lower_interface_to_target": "l2", UNATTRIBUTED: "u1"},
-                     verdicts={"L2": Verdict(PASS, "d1", {"lower_interface_to_target": "l1",
-                                                          UNATTRIBUTED: "u1"})})
+    s = CapsuleState(
+        "matmul_tile",
+        digest="d2",
+        depends_on=("lower_interface_to_target",),
+        components={"lower_interface_to_target": "l2", UNATTRIBUTED: "u1"},
+        verdicts={"L2": Verdict(PASS, "d1", {"lower_interface_to_target": "l1", UNATTRIBUTED: "u1"})},
+    )
     q = schedule([s], tier_order=["L2", "L3"], cert_tiers=("L3",), cost_s={"L2": 2.5, "L3": 300.0})
     assert len(q) == 1 and q[0].tier == "L2"
     assert "lower_interface_to_target" in q[0].reason and CHANGED in q[0].reason
 
 
 def test_explain_reports_the_invalidating_component_per_capsule():
-    fresh = CapsuleState("A", digest="d2", depends_on=("parse",),
-                         components={"parse": "p1", UNATTRIBUTED: "u1"},
-                         verdicts={"L2": Verdict(PASS, "d1", {"parse": "p1", UNATTRIBUTED: "u1"}),
-                                   "L3": Verdict(PASS, "d1", {"parse": "p1", UNATTRIBUTED: "u1"})})
-    moved = CapsuleState("B", digest="d2", depends_on=("emit_command_buffer",),
-                         components={"emit_command_buffer": "c2", UNATTRIBUTED: "u1"},
-                         verdicts={"L2": Verdict(PASS, "d1", {"emit_command_buffer": "c1",
-                                                              UNATTRIBUTED: "u1"})})
-    rep = explain([fresh, moved], tier_order=["L2", "L3"], cert_tiers=("L3",),
-                  cost_s={"L2": 2.5, "L3": 300.0})
+    fresh = CapsuleState(
+        "A",
+        digest="d2",
+        depends_on=("parse",),
+        components={"parse": "p1", UNATTRIBUTED: "u1"},
+        verdicts={
+            "L2": Verdict(PASS, "d1", {"parse": "p1", UNATTRIBUTED: "u1"}),
+            "L3": Verdict(PASS, "d1", {"parse": "p1", UNATTRIBUTED: "u1"}),
+        },
+    )
+    moved = CapsuleState(
+        "B",
+        digest="d2",
+        depends_on=("emit_command_buffer",),
+        components={"emit_command_buffer": "c2", UNATTRIBUTED: "u1"},
+        verdicts={"L2": Verdict(PASS, "d1", {"emit_command_buffer": "c1", UNATTRIBUTED: "u1"})},
+    )
+    rep = explain([fresh, moved], tier_order=["L2", "L3"], cert_tiers=("L3",), cost_s={"L2": 2.5, "L3": 300.0})
     assert rep["unchanged"] == ["A"]
-    assert rep["invalidated_by"] == [{"capsule": "B", "tier": "L2",
-                                      "component": "emit_command_buffer", "reason": CHANGED}]
+    assert rep["invalidated_by"] == [
+        {"capsule": "B", "tier": "L2", "component": "emit_command_buffer", "reason": CHANGED}
+    ]
 
 
 # ---------------------------------------------------------------------------------------------
@@ -368,8 +405,7 @@ def _corpus(tmp_path):
     for name, dep in CORPUS.items():
         d = root / name
         d.mkdir(parents=True, exist_ok=True)
-        (d / "capsule.yaml").write_text(
-            f"name: {name}\nkind: isa\nlabel: public\ndepends_on: [{dep}]\n")
+        (d / "capsule.yaml").write_text(f"name: {name}\nkind: isa\nlabel: public\ndepends_on: [{dep}]\n")
     (root / "undeclared").mkdir(parents=True, exist_ok=True)
     (root / "undeclared" / "capsule.yaml").write_text("name: undeclared\nkind: isa\nlabel: public\n")
     return root
@@ -383,9 +419,9 @@ def test_the_capsule_schema_offers_no_per_capsule_dependency_set():
     asserting on the build rather than on the contract.
     """
     import json
+
     checked = 0
-    for rel in ("contract/schemas/capsule.schema.json",
-                "python/merlin/_data/contract/schemas/capsule.schema.json"):
+    for rel in ("contract/schemas/capsule.schema.json", "python/merlin/_data/contract/schemas/capsule.schema.json"):
         path = merlin_dir() / rel
         if not path.is_file():
             continue
@@ -468,8 +504,10 @@ def test_a_retired_depends_on_narrows_nothing(tmp_path, monkeypatch, capsys):
 
     (ws / "submission" / "mlir_oot" / "lowering" / "tile.py").write_text("tile v2\n")
     assert sorted(B.promote(ws, ch, v, "L2", "L3", None, sys.stderr)) == ["conv_codegen", "matmul_tile"]
-    assert sorted(json.loads(f.read_text())["capsules"] for f in ch.glob("simreq_*.json")) == \
-        ["conv_codegen", "matmul_tile"]
+    assert sorted(json.loads(f.read_text())["capsules"] for f in ch.glob("simreq_*.json")) == [
+        "conv_codegen",
+        "matmul_tile",
+    ]
     err = capsys.readouterr().err
     assert "matmul_tile L3 invalidated by lower_interface_to_target (changed)" in err
     assert "conv_codegen L3 invalidated by lower_interface_to_target (changed)" in err

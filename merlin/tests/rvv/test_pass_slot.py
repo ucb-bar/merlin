@@ -4,6 +4,7 @@ This is the leaf the escalation ladder terminates in, and the gate is the part t
 is what makes an agentic step safe to run at all. Every check is injected, so these tests exercise the
 real ordering and the real fail-closed semantics without a board, a build, or an agent.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -16,8 +17,7 @@ AXIS = "compute.activation_vectorization"
 
 
 def _action():
-    d = Divergence(axis=AXIS, backend="rvv", ours="scalar_libm_call",
-                   expert="vectorized_polynomial")
+    d = Divergence(axis=AXIS, backend="rvv", ours="scalar_libm_call", expert="vectorized_polynomial")
     return ac.route(d)
 
 
@@ -29,10 +29,12 @@ class _CCA:
 
 
 def _ok_kwargs(cca_value="vectorized_polynomial", **over):
-    kw = dict(frozen_baseline_ok=lambda p: True,
-              bit_exact_ok=lambda p: (True, ""),
-              lift_cca=lambda p: _CCA(cca_value),
-              models=("bitvla", "small_llama"))
+    kw = dict(
+        frozen_baseline_ok=lambda p: True,
+        bit_exact_ok=lambda p: (True, ""),
+        lift_cca=lambda p: _CCA(cca_value),
+        models=("bitvla", "small_llama"),
+    )
     kw.update(over)
     return kw
 
@@ -43,14 +45,19 @@ def _proposal(src="def emit_rsqrt(): return 'vfmacc chain'"):
 
 # ---- ordering: the cheapest disqualifier must fire first -------------------------------
 
+
 def test_a_cheating_proposal_is_refused_before_anything_is_built():
     """If the scan ran last, a proposal that reads the golden would still have consumed a build and a
     board run first. It must be first, and it must not need any of the injected checks."""
+
     def explode(_p):
         raise AssertionError("must not be reached: the cheat scan runs first")
 
-    v = ps.gate(_proposal("x = open('golden.npy')"), _action(),
-                **_ok_kwargs(frozen_baseline_ok=explode, bit_exact_ok=explode, lift_cca=explode))
+    v = ps.gate(
+        _proposal("x = open('golden.npy')"),
+        _action(),
+        **_ok_kwargs(frozen_baseline_ok=explode, bit_exact_ok=explode, lift_cca=explode),
+    )
     assert not v.accepted and v.stage == "cheat"
     assert "golden.npy" in v.detail["tokens"]
 
@@ -67,8 +74,12 @@ def test_a_model_name_in_a_compiler_pass_is_a_cheat():
 
 def test_asserting_its_own_verdict_is_a_cheat():
     """A proposal that imports the gate's own helpers could return an empty residual directly."""
-    for src in ("from merlin.kernels.action_catalog import achieved_residual",
-                "action.intended_facet = {}", "F._REGISTRY['x'] = y", "monkeypatch.setattr(...)"):
+    for src in (
+        "from merlin.kernels.action_catalog import achieved_residual",
+        "action.intended_facet = {}",
+        "F._REGISTRY['x'] = y",
+        "monkeypatch.setattr(...)",
+    ):
         v = ps.gate(_proposal(src), _action(), **_ok_kwargs())
         assert not v.accepted and v.stage == "cheat", src
 
@@ -77,8 +88,7 @@ def test_the_frozen_baseline_is_checked_before_the_expensive_numerics():
     def explode(_p):
         raise AssertionError("bit-exactness must not run once the baseline moved")
 
-    v = ps.gate(_proposal(), _action(),
-                **_ok_kwargs(frozen_baseline_ok=lambda p: False, bit_exact_ok=explode))
+    v = ps.gate(_proposal(), _action(), **_ok_kwargs(frozen_baseline_ok=lambda p: False, bit_exact_ok=explode))
     assert not v.accepted and v.stage == "frozen_baseline"
     assert "control" in v.reason
 
@@ -87,12 +97,12 @@ def test_changed_numerics_are_refused_before_the_facet_is_credited():
     def explode(_p):
         raise AssertionError("the facet must not be credited on a miscompile")
 
-    v = ps.gate(_proposal(), _action(),
-                **_ok_kwargs(bit_exact_ok=lambda p: (False, "cos 0.91"), lift_cca=explode))
+    v = ps.gate(_proposal(), _action(), **_ok_kwargs(bit_exact_ok=lambda p: (False, "cos 0.91"), lift_cca=explode))
     assert not v.accepted and v.stage == "bit_exact" and "cos 0.91" in v.reason
 
 
 # ---- the promise ----------------------------------------------------------------------
+
 
 def test_the_promise_comes_from_the_router_not_from_the_gate():
     """The gate delegates to achieved_residual so it cannot disagree with the router about what was
@@ -110,6 +120,7 @@ def test_a_delivered_facet_is_accepted():
 def test_an_action_with_no_promise_is_refused_not_credited():
     """Accepting an unverifiable change would credit something nothing checked -- the exact failure this
     loop exists to remove. `checkable` must report it, and `accepted` must stay False."""
+
     class _NoPromise:
         intended_facet = None
 
@@ -120,16 +131,16 @@ def test_an_action_with_no_promise_is_refused_not_credited():
 
 # ---- held-out certification ----------------------------------------------------------
 
+
 def test_holding_on_visible_but_not_held_out_is_refused():
     """The anti-overfit step: a proposal tuned to what it could see is exactly what held-out
     certification exists to catch."""
-    v = ps.gate(_proposal(), _action(),
-                **_ok_kwargs(), heldout_ok=lambda p: (False, "regressed on 2 unseen captures"))
+    v = ps.gate(_proposal(), _action(), **_ok_kwargs(), heldout_ok=lambda p: (False, "regressed on 2 unseen captures"))
     assert not v.accepted and v.stage == "heldout" and "unseen" in v.reason
 
 
 def test_the_accept_reason_says_whether_held_out_was_actually_run():
-    """"Accepted" must not read the same with and without held-out certification, or a visible-only
+    """ "Accepted" must not read the same with and without held-out certification, or a visible-only
     pass gets quoted as if it generalised."""
     visible_only = ps.gate(_proposal(), _action(), **_ok_kwargs())
     certified = ps.gate(_proposal(), _action(), **_ok_kwargs(), heldout_ok=lambda p: (True, ""))
@@ -139,6 +150,7 @@ def test_the_accept_reason_says_whether_held_out_was_actually_run():
 
 
 # ---- the default: no agent -----------------------------------------------------------
+
 
 def test_with_no_proposer_the_slot_refuses_honestly():
     """The gate must be usable and testable with no agent budget, and must not report success when it
@@ -162,6 +174,7 @@ _MODELS = ("openvla", "small", "small_llama", "rdt", "rdt2")
 
 def _sc(src):
     from merlin.mining.pass_slot import scan_cheats
+
     return scan_cheats(src, models=_MODELS)
 
 
@@ -192,8 +205,8 @@ def test_a_short_model_token_does_not_flag_an_ordinary_identifier():
     """
     assert _sc("def small_m_fallback(x):\n    return x\n") == []
     assert _sc("t = rdtime()\n") == []
-    assert _sc("rdt2_shape = 1\n") == []          # `rdt` must not match inside `rdt2_shape`
-    assert "model:small" in _sc('small = 1\n')    # but the bare token still counts
+    assert _sc("rdt2_shape = 1\n") == []  # `rdt` must not match inside `rdt2_shape`
+    assert "model:small" in _sc("small = 1\n")  # but the bare token still counts
 
 
 def test_spliced_source_is_scanned_as_source_not_as_a_string():
@@ -210,6 +223,7 @@ def test_the_real_act_poly_module_passes_its_own_cheat_scan():
     could never have an acceptable proposal."""
     from merlin.common.paths import merlin_dir
     from merlin.mining.pass_slot import scan_cheats
+
     src = (merlin_dir() / "python" / "merlin" / "llvmlower" / "act_poly.py").read_text()
     assert scan_cheats(src) == [], "the module under improvement must pass the gate's own cheat scan"
 

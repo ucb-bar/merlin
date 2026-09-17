@@ -15,6 +15,7 @@ target whose own bundle mounted a perfectly good artifact.
 So the invariant under test is agreement: where the sandbox MOUNTS a target's pin and where the accessor
 LOOKS for it must be the same file.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,9 +32,12 @@ def _pin(root, package: str, declares: str):
     """Write a minimal committed facts pin for ``package`` whose body declares target ``declares``."""
     p = root / package / "contracts" / "rtl_facts" / "facts.json"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({"schema_version": "test/v0",
-                             "facts": {"target": declares, "memories": [{"name": "smem", "bytes": 1}]}}),
-                 encoding="utf-8")
+    p.write_text(
+        json.dumps(
+            {"schema_version": "test/v0", "facts": {"target": declares, "memories": [{"name": "smem", "bytes": 1}]}}
+        ),
+        encoding="utf-8",
+    )
     return p
 
 
@@ -88,7 +92,7 @@ def _descriptor_targets_with_pins():
     for cand in sorted(exp.glob("*/targets/*/target_experiment.yaml")):
         try:
             te = load_target_experiment(cand)
-        except Exception:                                   # noqa: BLE001 - a broken descriptor is not this test
+        except Exception:  # noqa: BLE001 - a broken descriptor is not this test
             continue
         if (repo_root() / te.rtl_facts_pin / "facts.json").is_file():
             out.append(pytest.param(te.target, id=te.target))

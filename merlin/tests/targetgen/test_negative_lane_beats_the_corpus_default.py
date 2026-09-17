@@ -17,6 +17,7 @@ The lane declaration is the more specific statement and wins structurally -- the
 `kind == "model"` already gets -- rather than by an exception list, so a new host-only capsule on any
 target is covered without an edit.
 """
+
 from __future__ import annotations
 
 import glob
@@ -31,8 +32,8 @@ from merlin.targetgen import corpus_spec as CS
 def _binding(directory: str):
     from merlin.common.paths import repo_root
     from merlin.targetgen.target_experiment import load_target_experiment
-    desc = (repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets"
-            / directory / "target_experiment.yaml")
+
+    desc = repo_root() / "merlin" / "experiments" / "capsule_bench" / "targets" / directory / "target_experiment.yaml"
     if not desc.is_file():
         pytest.skip(f"no descriptor for {directory}")
     prof = merlin_dir() / "contract" / "capsules" / "profiles" / f"{directory}.yaml"
@@ -49,7 +50,7 @@ def _profile_with_positive_default() -> str | None:
         if p.stem.endswith((".hidden", ".synth")) or p.stem.startswith("_"):
             continue
         doc = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        dflt = ((doc.get("datapath") or {}).get("semantic_defaults") or {})
+        dflt = (doc.get("datapath") or {}).get("semantic_defaults") or {}
         if dflt.get("must_accelerate") is True:
             return p.stem
     return None
@@ -61,11 +62,9 @@ def test_a_host_only_capsule_does_not_inherit_the_corpus_wide_demand():
         pytest.skip("no profile declares must_accelerate true corpus-wide")
     b = _binding(stem)
     plain = CS._semantic_block({"op": "matmul", "kind": "isa"}, b)
-    host = CS._semantic_block({"op": "movement", "kind": "isa",
-                               "lanes": {"forbid": ["on_mesh"]}}, b)
+    host = CS._semantic_block({"op": "movement", "kind": "isa", "lanes": {"forbid": ["on_mesh"]}}, b)
     assert plain["must_accelerate"] is True, "the corpus default must still reach an ordinary capsule"
-    assert host["must_accelerate"] is False, (
-        "a capsule forbidding the mesh must not be handed a demand to reach it")
+    assert host["must_accelerate"] is False, "a capsule forbidding the mesh must not be handed a demand to reach it"
 
 
 def test_an_authored_demand_cannot_override_the_negative_lane_either():
@@ -75,9 +74,16 @@ def test_an_authored_demand_cannot_override_the_negative_lane_either():
         pytest.skip("no profile declares must_accelerate true corpus-wide")
     b = _binding(stem)
     with pytest.raises(ValueError, match="on_mesh"):
-        CS._semantic_block({"op": "movement", "kind": "isa", "name": "X",
-                            "lanes": {"forbid": ["on_mesh"]},
-                            "generalization": {"must_accelerate": True}}, b)
+        CS._semantic_block(
+            {
+                "op": "movement",
+                "kind": "isa",
+                "name": "X",
+                "lanes": {"forbid": ["on_mesh"]},
+                "generalization": {"must_accelerate": True},
+            },
+            b,
+        )
 
 
 def test_a_whole_model_capsule_still_gets_its_own_exemption():
@@ -111,8 +117,7 @@ def test_no_materialized_capsule_carries_both_demands():
     rather than tolerated -- each is a capsule that cannot pass, and the count may only fall.
     """
     offenders, known = [], []
-    for path in glob.glob(str(merlin_dir() / "contract" / "capsules" / "**" / "capsule.yaml"),
-                          recursive=True):
+    for path in glob.glob(str(merlin_dir() / "contract" / "capsules" / "**" / "capsule.yaml"), recursive=True):
         try:
             doc = yaml.safe_load(open(path, encoding="utf-8").read()) or {}
         except yaml.YAMLError:
@@ -124,12 +129,12 @@ def test_no_materialized_capsule_carries_both_demands():
             continue
         name = str(doc.get("name") or Path(path).parent.name)
         (known if name in _PREDATES_THE_FIX else offenders).append(name)
-    assert not offenders, (
-        f"capsule(s) forbid the mesh and demand it at once, so they cannot pass: {offenders}")
+    assert not offenders, f"capsule(s) forbid the mesh and demand it at once, so they cannot pass: {offenders}"
     assert set(known) <= _PREDATES_THE_FIX
     # The ratchet may only shrink: a name that has been fixed must be removed from the set, or the
     # set stops describing the corpus and starts excusing it.
     stale = _PREDATES_THE_FIX - set(known)
     assert not stale, (
         f"{sorted(stale)} no longer carry the contradiction; drop them from _PREDATES_THE_FIX so the "
-        f"set keeps meaning what it says")
+        f"set keeps meaning what it says"
+    )

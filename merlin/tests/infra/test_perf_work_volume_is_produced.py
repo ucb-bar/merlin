@@ -15,6 +15,7 @@ the numbers are `work_volume`'s own and not a second notion of work, an unpricea
 explicit UNKNOWN rather than a zero or an absent key, and the reader accepts exactly the first and
 refuses the second.
 """
+
 from __future__ import annotations
 
 import copy
@@ -30,8 +31,7 @@ from merlin.targetgen import capsule_runner as CR
 
 _SCRIPTS = merlin_dir() / "experiments/gemmini_perf_bench/scripts"
 sys.path.insert(0, str(_SCRIPTS))
-_SPEC = importlib.util.spec_from_file_location(
-    "run_perf_bench_work_volume_under_test", _SCRIPTS / "run_perf_bench.py")
+_SPEC = importlib.util.spec_from_file_location("run_perf_bench_work_volume_under_test", _SCRIPTS / "run_perf_bench.py")
 assert _SPEC is not None and _SPEC.loader is not None
 FIXED = importlib.util.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = FIXED
@@ -44,48 +44,70 @@ def _runner_config():
     """A grading config whose shape, not whose identity, matters here (no target facts read)."""
     from merlin.targetgen.runner_config import RunnerConfig
 
-    return RunnerConfig(target="synthetic-endpoint", suite="synthetic-capsule-bench",
-                        dtype="i8xi8_i32", fourth_output_name="kernel.S", tier_sim={},
-                        rtl_tiers=frozenset(), oracle_tiers=(), perf_fields=(), trace_gate=None)
+    return RunnerConfig(
+        target="synthetic-endpoint",
+        suite="synthetic-capsule-bench",
+        dtype="i8xi8_i32",
+        fourth_output_name="kernel.S",
+        tier_sim={},
+        rtl_tiers=frozenset(),
+        oracle_tiers=(),
+        perf_fields=(),
+        trace_gate=None,
+    )
 
 
 def _capsule() -> dict:
     """A capsule complete enough that the run reaches the L0/L1 floor and finalizes normally."""
-    return {"name": "WV_synthetic_matmul", "kind": "model_slice", "label": "dev",
-            "operation": {"op": "matmul", "attributes": {"lhs": "X", "weight": "W", "out": "Y"}},
-            "inputs": [{"name": "X", "shape": [_M, _K], "dtype": "i8", "role": "input",
-                        "fill": "iota"},
-                       {"name": "W", "shape": [_K, _N], "dtype": "i8", "role": "weight",
-                        "fill": "iota"}],
-            "numeric_policy": {"compare": "exact_int"}}
+    return {
+        "name": "WV_synthetic_matmul",
+        "kind": "model_slice",
+        "label": "dev",
+        "operation": {"op": "matmul", "attributes": {"lhs": "X", "weight": "W", "out": "Y"}},
+        "inputs": [
+            {"name": "X", "shape": [_M, _K], "dtype": "i8", "role": "input", "fill": "iota"},
+            {"name": "W", "shape": [_K, _N], "dtype": "i8", "role": "weight", "fill": "iota"},
+        ],
+        "numeric_policy": {"compare": "exact_int"},
+    }
 
 
 def _countable_buffer() -> dict:
     """A program whose every command has a work-counting rule, so its total is EXACT."""
-    return {"abi_version": "0.1", "target": "synthetic",
-            "tensors": {"X": {"shape": [_M, _K], "dtype": "i8", "role": "input"},
-                        "W": {"shape": [_K, _N], "dtype": "i8", "role": "weight"},
-                        "Y": {"shape": [_M, _N], "dtype": "i32", "role": "output"}},
-            "commands": [
-                {"opcode": "MATMUL", "operands": {"lhs": "X", "rhs": "W", "dst": "acc"}},
-                {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y"},
-                 "attributes": {"epilogue": [], "output_dtype": "i32"}}]}
+    return {
+        "abi_version": "0.1",
+        "target": "synthetic",
+        "tensors": {
+            "X": {"shape": [_M, _K], "dtype": "i8", "role": "input"},
+            "W": {"shape": [_K, _N], "dtype": "i8", "role": "weight"},
+            "Y": {"shape": [_M, _N], "dtype": "i32", "role": "output"},
+        },
+        "commands": [
+            {"opcode": "MATMUL", "operands": {"lhs": "X", "rhs": "W", "dst": "acc"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": "acc", "dst": "Y"},
+                "attributes": {"epilogue": [], "output_dtype": "i32"},
+            },
+        ],
+    }
 
 
 def _uncountable_buffer() -> dict:
     """The same program plus one command the counter has no rule for: the TOTAL becomes UNKNOWN."""
     cb = _countable_buffer()
-    cb["commands"].insert(1, {"opcode": "SOME_UNMODELLED_COMPUTE",
-                              "operands": {"src": "acc", "dst": "acc"}, "attributes": {}})
+    cb["commands"].insert(
+        1, {"opcode": "SOME_UNMODELLED_COMPUTE", "operands": {"src": "acc", "dst": "acc"}, "attributes": {}}
+    )
     return cb
 
 
 def _grade(tmp_path, monkeypatch, cb, *, run_id: str = "wv") -> dict:
     """Drive the real grading path with the build stubbed out; `cb` is what the compiler emitted."""
-    monkeypatch.setattr(CR, "run_entrypoints",
-                        lambda *a, **k: (object(), copy.deepcopy(cb), "# kernel.S (stub)\n"))
-    return CR.run_capsule(_capsule(), "unused-package", runs_root=tmp_path, run_id=run_id,
-                          config=_runner_config(), oracle_adapters={})
+    monkeypatch.setattr(CR, "run_entrypoints", lambda *a, **k: (object(), copy.deepcopy(cb), "# kernel.S (stub)\n"))
+    return CR.run_capsule(
+        _capsule(), "unused-package", runs_root=tmp_path, run_id=run_id, config=_runner_config(), oracle_adapters={}
+    )
 
 
 def _measurement(grade: dict) -> dict:
@@ -122,8 +144,9 @@ def test_a_countable_member_reports_the_counter_s_own_total(tmp_path, monkeypatc
     counted = WV.work_from_command_buffer(cb)
     assert counted.exact_macs == _M * _K * _N, "the fixture is not exactly countable"
     work = grade["work_volume"]
-    assert work["exact_macs"] == counted.exact_macs, \
+    assert work["exact_macs"] == counted.exact_macs, (
         "the grade's total is not work_volume's -- two notions of work that can silently disagree"
+    )
     assert work["basis"] == counted.basis and work["unit"] == counted.unit
     assert work["refusals"] == []
 
@@ -154,9 +177,16 @@ def test_the_measurement_identity_no_longer_refuses_the_program(tmp_path, monkey
     """The refusal `_link_counter_passes` escalates must be gone for a priceable member."""
     grade = _grade(tmp_path, monkeypatch, _countable_buffer())
     _, refusals = FIXED._measurement_identity(
-        package_before="a" * 64, package_after="a" * 64, inputs_before="b" * 64,
-        inputs_after="b" * 64, work_volume=grade["work_volume"], toolchain_shas={"tool": "rev"},
-        target="synthetic-endpoint", expected_package_sha256="a" * 64, rtl_facts_sha256="c" * 64)
+        package_before="a" * 64,
+        package_after="a" * 64,
+        inputs_before="b" * 64,
+        inputs_after="b" * 64,
+        work_volume=grade["work_volume"],
+        toolchain_shas={"tool": "rev"},
+        target="synthetic-endpoint",
+        expected_package_sha256="a" * 64,
+        rtl_facts_sha256="c" * 64,
+    )
     assert refusals == [], refusals
 
 
@@ -189,8 +219,14 @@ def test_a_run_that_produced_no_buffer_still_says_so(tmp_path, monkeypatch):
         raise RuntimeError("the submission's entrypoints did not produce a command buffer")
 
     monkeypatch.setattr(CR, "run_entrypoints", _explode)
-    grade = CR.run_capsule(_capsule(), "unused-package", runs_root=tmp_path, run_id="wv_nobuffer",
-                           config=_runner_config(), oracle_adapters={})
+    grade = CR.run_capsule(
+        _capsule(),
+        "unused-package",
+        runs_root=tmp_path,
+        run_id="wv_nobuffer",
+        config=_runner_config(),
+        oracle_adapters={},
+    )
     assert grade["status"] == "error", grade.get("failure")
     work = grade["work_volume"]
     assert work["exact_macs"] is None and work["is_lower_bound"] is True
@@ -204,18 +240,27 @@ def test_a_run_that_produced_no_buffer_still_says_so(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------------------------
 # NON-VACUITY: the reader's acceptance above is not something it does for any input at all
 # ---------------------------------------------------------------------------------------------
-@pytest.mark.parametrize("corrupt", [
-    pytest.param(lambda row: row["work_volume"].__setitem__("exact_macs", 0), id="zero_total"),
-    pytest.param(lambda row: row["work_volume"].__setitem__("artifact_sha256", "0" * 64),
-                 id="receipt_digest_disagrees"),
-    pytest.param(lambda row: row["command_buffer_artifact"].__setitem__("artifact_sha256", "0" * 64),
-                 id="raw_buffer_digest_disagrees"),
-    pytest.param(lambda row: row["command_buffer_artifact"].__setitem__("command_buffer", None),
-                 id="raw_buffer_withheld"),
-    pytest.param(lambda row: row["work_volume"].__setitem__("exact_macs", _M * _K * _N + 1),
-                 id="total_disagrees_with_the_program"),
-    pytest.param(lambda row: row["work_volume"].__setitem__("basis", ""), id="unnamed_basis"),
-])
+@pytest.mark.parametrize(
+    "corrupt",
+    [
+        pytest.param(lambda row: row["work_volume"].__setitem__("exact_macs", 0), id="zero_total"),
+        pytest.param(
+            lambda row: row["work_volume"].__setitem__("artifact_sha256", "0" * 64), id="receipt_digest_disagrees"
+        ),
+        pytest.param(
+            lambda row: row["command_buffer_artifact"].__setitem__("artifact_sha256", "0" * 64),
+            id="raw_buffer_digest_disagrees",
+        ),
+        pytest.param(
+            lambda row: row["command_buffer_artifact"].__setitem__("command_buffer", None), id="raw_buffer_withheld"
+        ),
+        pytest.param(
+            lambda row: row["work_volume"].__setitem__("exact_macs", _M * _K * _N + 1),
+            id="total_disagrees_with_the_program",
+        ),
+        pytest.param(lambda row: row["work_volume"].__setitem__("basis", ""), id="unnamed_basis"),
+    ],
+)
 def test_the_compute_axis_disappears_when_the_evidence_is_corrupted(tmp_path, monkeypatch, corrupt):
     """Each mutation is one way the pair could disagree; the reader must name no axis for any."""
     grade = _grade(tmp_path, monkeypatch, _countable_buffer(), run_id="wv_mutation")
@@ -228,7 +273,8 @@ def test_the_compute_axis_disappears_when_the_evidence_is_corrupted(tmp_path, mo
 def test_the_helper_refuses_a_buffer_that_is_not_serialisable_evidence():
     """A buffer that cannot be digested cannot be a receipt -- and must not crash the result write."""
     work, artifact = WV.command_buffer_evidence(
-        {"tensors": {}, "commands": [], "opaque": object()}, compiler_provenance="test")
+        {"tensors": {}, "commands": [], "opaque": object()}, compiler_provenance="test"
+    )
     assert work["exact_macs"] is None and artifact["command_buffer"] is None
     assert artifact["refusal"] and "priced" in artifact["refusal"]
 
@@ -242,21 +288,26 @@ def test_the_helper_refuses_a_buffer_that_is_not_serialisable_evidence():
 # denominator on a perf bench reads as infinitely fast. These hold the middle: the run continues,
 # the count sits next to the headline, and every unattributed member is named with its reason.
 
+
 def _cells(tmp_path, monkeypatch, *buffers) -> list[dict]:
     """One roofline cell per buffer, built the way both benches build theirs."""
     out = []
     for index, cb in enumerate(buffers):
         grade = _grade(tmp_path, monkeypatch, cb, run_id=f"cov{index}")
         measurement = _measurement(grade)
-        out.append({"kernel": f"k{index}", "work_volume": grade.get("work_volume"),
-                    "command_buffer_artifact": grade.get("command_buffer_artifact"),
-                    "resource_bindings": FIXED._resource_bindings(measurement)})
+        out.append(
+            {
+                "kernel": f"k{index}",
+                "work_volume": grade.get("work_volume"),
+                "command_buffer_artifact": grade.get("command_buffer_artifact"),
+                "resource_bindings": FIXED._resource_bindings(measurement),
+            }
+        )
     return out
 
 
 def test_coverage_counts_every_member_and_says_which_carry_no_axis(tmp_path, monkeypatch):
-    cells = _cells(tmp_path, monkeypatch, _countable_buffer(), _uncountable_buffer(),
-                   _countable_buffer())
+    cells = _cells(tmp_path, monkeypatch, _countable_buffer(), _uncountable_buffer(), _countable_buffer())
     coverage = FIXED.compute_axis_coverage(cells)
     assert coverage["members"] == 3
     assert coverage["with_compute_axis"] == 2
@@ -276,8 +327,7 @@ def test_an_unattributed_member_is_named_with_the_counter_s_own_reason(tmp_path,
 
 def test_a_receiptless_member_is_named_as_such_and_not_confused_with_a_refusal(tmp_path, monkeypatch):
     """The pre-fix shape. 'the grader emitted nothing' and 'the counter refused' differ."""
-    coverage = FIXED.compute_axis_coverage([{"kernel": "legacy", "work_volume": {},
-                                             "resource_bindings": {}}])
+    coverage = FIXED.compute_axis_coverage([{"kernel": "legacy", "work_volume": {}, "resource_bindings": {}}])
     reasons = coverage["unattributed"][0]["reasons"]
     assert len(reasons) == 1 and "no work-volume receipt" in reasons[0], reasons
 
@@ -305,7 +355,7 @@ def _gating_lines(source: str) -> list[str]:
         # A GATE IS RARELY ONE LINE. `if coverage[...]:` newline `raise ...` is the ordinary
         # spelling, and a scan that only looked at the mentioning line let it straight through --
         # found by the non-vacuity test below, which is the only reason this window exists.
-        for follower in lines[index:index + 3]:
+        for follower in lines[index : index + 3]:
             stripped = follower.lstrip()
             if stripped.startswith("#"):
                 continue
@@ -338,16 +388,16 @@ def test_both_benches_record_the_coverage_and_neither_gates_on_it():
     for source, label in ((fixed, "fixed"), (paired, "paired")):
         assert "compute axis: " in source, f"the {label} bench never prints the count"
         # REPORTED, NOT GATED. A member `work_volume` cannot price must not abort a 12h campaign.
-        assert _gating_lines(source) == [], \
+        assert _gating_lines(source) == [], (
             f"the {label} bench turns the compute-axis count into a refusal: {_gating_lines(source)}"
+        )
 
 
 def test_the_coverage_report_cannot_itself_abort_a_campaign():
     """It runs inside the campaign's try/finally: a raise here would BE the gate it must not be."""
     coverage = FIXED.compute_axis_coverage(
-        ["not a mapping", {"kernel": "ok", "work_volume": {"refusals": ["r"]},
-                           "resource_bindings": {}}, None])
+        ["not a mapping", {"kernel": "ok", "work_volume": {"refusals": ["r"]}, "resource_bindings": {}}, None]
+    )
     assert coverage["members"] == 3, "a malformed cell was dropped, shrinking the denominator"
     assert coverage["without_compute_axis"] == 3
-    assert any("not a mapping" in reason
-               for row in coverage["unattributed"] for reason in row["reasons"])
+    assert any("not a mapping" in reason for row in coverage["unattributed"] for reason in row["reasons"])

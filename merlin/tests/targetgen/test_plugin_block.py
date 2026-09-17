@@ -14,6 +14,7 @@ Three behaviours, each of which was silent before and each of which cost real ti
 The synthetic package below is deliberately minimal: what is under test is the loader and the discovery,
 not any real target's contents.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -31,7 +32,9 @@ def _write_package(root, *, name: str = "synth_npu", residual: bool = True) -> s
     (pkg / "target_contract.yaml").write_text(
         f"name: {name}\nversion: '0.1'\ncapabilities: {{ops: [matmul]}}\n"
         "memory_model: {resident: true}\ncompiler_obligations: []\nhardware_promises: []\n"
-        "runtime_promises: []\nlegality: {}\n", encoding="utf-8")
+        "runtime_promises: []\nlegality: {}\n",
+        encoding="utf-8",
+    )
     if residual:
         (pkg / "residual.yaml").write_text(f"target: {name}\nkind: systolic\n", encoding="utf-8")
     return str(root)

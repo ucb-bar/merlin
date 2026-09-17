@@ -11,6 +11,7 @@ function's source with ``inspect.getsourcelines``; an ``exec``-ed definition rai
 Nothing here imports ``merlin.triton.source`` or triton internals at module scope, so a bucket
 without the ``triton`` extra installed can still import this module to reach the specs.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -56,8 +57,9 @@ if HAS_TRITON:
         tl.store(c_ptr + offs_m[:, None] * BN + offs_n[None, :], tl.dot(a, b, out_dtype=tl.int32))
 
     @triton.jit
-    def repeated_rhs_matmul(a0_ptr, a1_ptr, w_ptr, c0_ptr, c1_ptr, BM: tl.constexpr,
-                            BN: tl.constexpr, BK: tl.constexpr):
+    def repeated_rhs_matmul(
+        a0_ptr, a1_ptr, w_ptr, c0_ptr, c1_ptr, BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr
+    ):
         """Two activations against one immutable weight — Merlin's own reference workload.
 
         Written in Triton so that the accelerator arms compile the workload their target packages
@@ -132,8 +134,7 @@ if HAS_TRITON:
         tl.atomic_add(out_ptr + offsets, tl.load(x_ptr + offsets))
 
     @triton.jit
-    def matmul_one_tile_f32(a_ptr, b_ptr, c_ptr, BM: tl.constexpr, BN: tl.constexpr,
-                            BK: tl.constexpr):
+    def matmul_one_tile_f32(a_ptr, b_ptr, c_ptr, BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr):
         """The f32 twin of :func:`matmul_one_tile`, for targets whose unit is float, not integer."""
         offs_m = tl.arange(0, BM)
         offs_n = tl.arange(0, BN)
@@ -180,8 +181,9 @@ def vector_add_unmasked_spec(n: int, block: int = VECTOR_ADD_BLOCK) -> TritonKer
     )
 
 
-def repeated_rhs_matmul_spec(m: int = TILE_M, k: int = TILE_K, n: int = TILE_N,
-                            dtype: str = "i8", acc_dtype: str = "i32") -> TritonKernelSpec:
+def repeated_rhs_matmul_spec(
+    m: int = TILE_M, k: int = TILE_K, n: int = TILE_N, dtype: str = "i8", acc_dtype: str = "i32"
+) -> TritonKernelSpec:
     """Spec for :func:`repeated_rhs_matmul`.
 
     Argument order matches `build_input_module(reuse=2)` exactly — activations, then the shared

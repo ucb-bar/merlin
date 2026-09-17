@@ -12,6 +12,7 @@ as a genuine capability gap in the target -- a whole capsule family was recorded
 A shrinking oracle is invisible until something asks it to execute the op it lost, so it is asserted
 here instead of discovered downstream.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -40,7 +41,8 @@ def test_the_reference_engine_models_every_opcode_the_corpus_needs(opcode):
     assert opcode in MODELED_OPCODES, (
         f"the correctness oracle no longer models {opcode!r}, needed by {REQUIRED[opcode]}. "
         f"A capsule using it cannot be graded, and the failure appears as an opaque refusal far "
-        f"from whatever removed it. Currently modelled: {sorted(MODELED_OPCODES)}")
+        f"from whatever removed it. Currently modelled: {sorted(MODELED_OPCODES)}"
+    )
 
 
 def test_the_modelled_set_only_grows():
@@ -48,4 +50,5 @@ def test_the_modelled_set_only_grows():
     missing = sorted(set(REQUIRED) - set(MODELED_OPCODES))
     assert not missing, (
         f"the reference engine lost {missing}. If an op was removed deliberately, remove it from "
-        f"REQUIRED in the same change and say why -- do not let the two drift apart silently.")
+        f"REQUIRED in the same change and say why -- do not let the two drift apart silently."
+    )

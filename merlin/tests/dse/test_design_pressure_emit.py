@@ -1,4 +1,5 @@
 """Emitted design-pressure / interface-candidate dicts validate against their schemas."""
+
 import os
 
 from merlin.common import schemas
@@ -26,8 +27,12 @@ def test_emit_design_pressure_validates():
 
 def test_emit_interface_candidate_validates():
     cand = emit_interface_candidate(
-        "resident_packed_tensor", ["resident_pack", "resident_matmul", "evict"],
-        ["resident_packed_tensor"], "vla_action_chunk_decode", ["packed_rhs_policy"])
+        "resident_packed_tensor",
+        ["resident_pack", "resident_matmul", "evict"],
+        ["resident_packed_tensor"],
+        "vla_action_chunk_decode",
+        ["packed_rhs_policy"],
+    )
     assert schemas.validate(cand, "interface_candidate") == []
 
 

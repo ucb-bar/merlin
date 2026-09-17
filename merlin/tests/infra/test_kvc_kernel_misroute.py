@@ -6,6 +6,7 @@ second explanation for the first fact. It has happened once here -- opencode res
 against the enclosing checkout rather than the workspace, and three arms were recorded 0/3 for kernels
 they had written.
 """
+
 import json
 import sys
 
@@ -35,18 +36,20 @@ def test_a_kernel_written_to_another_root_is_found(tmp_path):
     assert R._find_misrouted_kernel(t, expected=_expected(tmp_path)) == stray
 
 
-@pytest.mark.parametrize("dumps", [
-    lambda r: json.dumps(r),                        # compact
-    lambda r: json.dumps(r, indent=None, separators=(", ", ": ")),   # spaced
-])
+@pytest.mark.parametrize(
+    "dumps",
+    [
+        lambda r: json.dumps(r),  # compact
+        lambda r: json.dumps(r, indent=None, separators=(", ", ": ")),  # spaced
+    ],
+)
 def test_detection_does_not_depend_on_the_emitter_s_spacing(tmp_path, dumps):
     """A text match would go blind the day a CLI pretty-printed its output."""
     stray = tmp_path / "elsewhere" / "kernel.llvm.mlir"
     stray.parent.mkdir(parents=True)
     stray.write_text("module {}")
     p = tmp_path / "t.jsonl"
-    p.write_text(dumps({"type": "tool_use", "part": {"tool": "write",
-                                                     "state": {"input": {"filePath": str(stray)}}}}))
+    p.write_text(dumps({"type": "tool_use", "part": {"tool": "write", "state": {"input": {"filePath": str(stray)}}}}))
     assert R._find_misrouted_kernel(p, expected=_expected(tmp_path)) == stray
 
 
@@ -66,8 +69,9 @@ def test_a_write_to_the_expected_path_is_not_a_misroute(tmp_path):
 
 def test_a_path_named_in_the_transcript_but_absent_on_disk_is_not_a_kernel(tmp_path):
     """An attempted-then-failed write must not be scored as a kernel that exists."""
-    t = _transcript(tmp_path, [{"part": {"state": {"input": {
-        "filePath": str(tmp_path / "never" / "kernel.llvm.mlir")}}}}])
+    t = _transcript(
+        tmp_path, [{"part": {"state": {"input": {"filePath": str(tmp_path / "never" / "kernel.llvm.mlir")}}}}]
+    )
     assert R._find_misrouted_kernel(t, expected=_expected(tmp_path)) is None
 
 
@@ -76,6 +80,7 @@ def test_a_malformed_line_does_not_abort_the_scan(tmp_path):
     stray.parent.mkdir(parents=True)
     stray.write_text("module {}")
     p = tmp_path / "t.jsonl"
-    p.write_text("not json at all\n{\"broken\": \n"
-                 + json.dumps({"part": {"state": {"input": {"filePath": str(stray)}}}}))
+    p.write_text(
+        'not json at all\n{"broken": \n' + json.dumps({"part": {"state": {"input": {"filePath": str(stray)}}}})
+    )
     assert R._find_misrouted_kernel(p, expected=_expected(tmp_path)) == stray

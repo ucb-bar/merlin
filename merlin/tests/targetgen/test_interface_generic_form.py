@@ -9,13 +9,18 @@ EMPTY stderr, which is why the gap went unnoticed for months.
 These tests are about the property that makes the bridge trustworthy: the module means the SAME
 thing afterwards, and anything it cannot re-spell raises instead of passing through half-converted.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from merlin.common.paths import repo_root
 from merlin.targetgen.contract.interface_emit import (
-    InterfaceGrammarError, op_mnemonics, parse_interface_mlir, to_generic_form)
+    InterfaceGrammarError,
+    op_mnemonics,
+    parse_interface_mlir,
+    to_generic_form,
+)
 
 _PRETTY = """module attributes {merlin_iface.version = "0.1", merlin_iface.target = "t", \
 merlin_iface.abi_version = "0.1"} {
@@ -48,8 +53,7 @@ def test_the_module_header_is_left_alone():
 def test_an_operandless_op_gains_an_empty_operand_list():
     """`merlin_iface.tensor` prints a BARE result type (`attr-dict : type($result)`); generic form
     needs the functional `() -> T`. Which of the two the op uses is read off the line, not tabled."""
-    assert '"merlin_iface.tensor"() {name = "W", role = "weight"} : () -> tensor<16x16xi8>' \
-        in to_generic_form(_PRETTY)
+    assert '"merlin_iface.tensor"() {name = "W", role = "weight"} : () -> tensor<16x16xi8>' in to_generic_form(_PRETTY)
 
 
 def test_a_resultless_op_keeps_its_operands():

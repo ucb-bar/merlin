@@ -9,6 +9,7 @@ point at.
 These pin the two properties that make the checker worth citing: bounds come from the target's OWN
 facts with the fact quoted, and a field the facts cannot bound is REPORTED rather than passed.
 """
+
 from __future__ import annotations
 
 import pytest

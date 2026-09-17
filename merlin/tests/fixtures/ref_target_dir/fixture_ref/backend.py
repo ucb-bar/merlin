@@ -5,6 +5,7 @@ names it via ``plugin.backend``, and ``base._oot_backend_modules`` now walks ref
 the reference package root as the backend path). Self-registers at import — exactly as the gemmini
 reference backend will once evicted into ``merlin/targets/gemmini/backend/``.
 """
+
 from __future__ import annotations
 
 from merlin.runtime.backends import base

@@ -19,6 +19,7 @@ These tests pin the three properties that close it:
     guessing one (fail closed);
   * an unscaled target's capsules and interface are byte-identical to before.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -33,12 +34,21 @@ from merlin.targetgen import model_slice_export as MSE
 
 
 def _binding(scaling, blk, dtype="mxfp8"):
-    return CS.CorpusBinding(target="t", tile_dim=16, operand_dtype=dtype, accum_dtype="f32",
-                            integer=False, tiers=["L2"], compare="tolerance_float",
-                            scaling=scaling, scale_block=blk)
+    return CS.CorpusBinding(
+        target="t",
+        tile_dim=16,
+        operand_dtype=dtype,
+        accum_dtype="f32",
+        integer=False,
+        tiers=["L2"],
+        compare="tolerance_float",
+        scaling=scaling,
+        scale_block=blk,
+    )
 
 
 # --------------------------------------------------------------- deriving the block length
+
 
 def test_the_block_length_comes_from_the_targets_own_manifest():
     """Never a baked 32: a different microscaling profile uses a different run length."""
@@ -64,6 +74,7 @@ def test_the_group_is_found_by_key_not_by_a_path_spelled_here():
 
 
 # --------------------------------------------------------------- the declared operands
+
 
 def test_a_block_scaled_matmul_declares_a_scale_stream_per_operand():
     ins = CS._matmul_inputs("A0", "W", 16, 32, 16, "mxfp8", _binding("block_e8m0", 32))
@@ -94,35 +105,58 @@ def test_a_depth_that_is_not_whole_blocks_declares_no_scales():
 
 # --------------------------------------------------------------- the interface the backend reads
 
+
 def test_the_interface_declares_the_scale_tensors():
-    m = MSE.emit_interface_mlir(lhs="A0", weight="W", out="Y0", M=16, K=32, N=16, epilogue=[],
-                                output_dtype="bf16", target="t", operand_dtype="f8E4M3FN",
-                                acc_dtype="bf16", scale_block=32)
+    m = MSE.emit_interface_mlir(
+        lhs="A0",
+        weight="W",
+        out="Y0",
+        M=16,
+        K=32,
+        N=16,
+        epilogue=[],
+        output_dtype="bf16",
+        target="t",
+        operand_dtype="f8E4M3FN",
+        acc_dtype="bf16",
+        scale_block=32,
+    )
     assert 'name = "A0_scale", role = "scale"' in m
     assert 'scale_of = "A0", block = 32 : i64' in m
     assert "tensor<1x16xi8>" in m, "the scale stream needs a shape the backend can allocate"
 
 
 def test_the_unscaled_interface_is_unchanged():
-    m = MSE.emit_interface_mlir(lhs="A0", weight="W", out="Y0", M=16, K=32, N=16, epilogue=[],
-                                output_dtype="i32", target="t")
+    m = MSE.emit_interface_mlir(
+        lhs="A0", weight="W", out="Y0", M=16, K=32, N=16, epilogue=[], output_dtype="i32", target="t"
+    )
     assert 'role = "scale"' not in m
 
 
 # --------------------------------------------------------------- the scales actually reach the harness
 
+
 def test_the_scales_arrive_as_ordinary_canonical_operands():
     """The integration point: before, only the reference kernel could see them."""
     d = pathlib.Path(tempfile.mkdtemp())
-    (d / "golden.yaml").write_text(yaml.safe_dump({
-        "oracle_provenance": {"inputs": {
-            "A0": {"shape": [16, 32], "decoded": [0.0] * 512},
-            "W": {"shape": [32, 16], "decoded": [0.0] * 512},
-            "SA_e8m0_codes": [[125] * 16],          # the pre-existing non-tensor provenance
-            "SB_e8m0_codes": [[130] * 16],
-            "A0_scale": {"shape": [1, 16], "decoded": [125] * 16},
-            "W_scale": {"shape": [1, 16], "decoded": [130] * 16},
-        }}, "outputs": {"Y0": [[0.0] * 16] * 16}}), encoding="utf-8")
+    (d / "golden.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "oracle_provenance": {
+                    "inputs": {
+                        "A0": {"shape": [16, 32], "decoded": [0.0] * 512},
+                        "W": {"shape": [32, 16], "decoded": [0.0] * 512},
+                        "SA_e8m0_codes": [[125] * 16],  # the pre-existing non-tensor provenance
+                        "SB_e8m0_codes": [[130] * 16],
+                        "A0_scale": {"shape": [1, 16], "decoded": [125] * 16},
+                        "W_scale": {"shape": [1, 16], "decoded": [130] * 16},
+                    }
+                },
+                "outputs": {"Y0": [[0.0] * 16] * 16},
+            }
+        ),
+        encoding="utf-8",
+    )
     vals = CG.canonical_input_values({"name": "X"}, d)
     assert "A0_scale" in vals and "W_scale" in vals, "the scales must reach a general backend"
     assert vals["A0_scale"]["values"] == [125] * 16
@@ -132,11 +166,21 @@ def test_the_scales_arrive_as_ordinary_canonical_operands():
 def test_the_oracles_own_scale_provenance_is_untouched():
     """Additive: the MX oracle keeps reading the code lists it always read."""
     d = pathlib.Path(tempfile.mkdtemp())
-    (d / "golden.yaml").write_text(yaml.safe_dump({
-        "oracle_provenance": {"inputs": {
-            "SA_e8m0_codes": [[125] * 16], "SB_e8m0_codes": [[130] * 16],
-            "A0_scale": {"shape": [1, 16], "decoded": [125] * 16},
-        }}, "outputs": {}}), encoding="utf-8")
+    (d / "golden.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "oracle_provenance": {
+                    "inputs": {
+                        "SA_e8m0_codes": [[125] * 16],
+                        "SB_e8m0_codes": [[130] * 16],
+                        "A0_scale": {"shape": [1, 16], "decoded": [125] * 16},
+                    }
+                },
+                "outputs": {},
+            }
+        ),
+        encoding="utf-8",
+    )
     gy = yaml.safe_load((d / "golden.yaml").read_text())
     ins = gy["oracle_provenance"]["inputs"]
     assert ins["SA_e8m0_codes"] == [[125] * 16]
@@ -148,6 +192,7 @@ def test_the_oracles_own_scale_provenance_is_untouched():
 # The single GEMM is not the only block-scaled capsule form. A batched GEMM carries one scale stream per
 # batch, and a fused attention capsule has TWO MX stages contracting over different axes. Both were
 # equally scale-blind, so both are pinned here.
+
 
 def test_a_batched_matmul_carries_a_scale_stream_per_batch():
     ins = CS._batched_mx_inputs("A0", "W", 2, 16, 32, 16, "mxfp8", _binding("block_e8m0", 32))
@@ -173,8 +218,10 @@ def test_attention_scales_follow_each_stages_own_contraction_axis():
 def test_the_softmax_intermediates_requant_scale_is_an_operand_too():
     """P is produced by the kernel, but the exponent it is requantized against was chosen when the golden
     was built -- so the kernel cannot derive it, and a value it cannot derive is an input."""
-    by = {i["name"]: i for i in
-          CS._attention_mx_inputs("Q", "K", "V", 16, 32, 32, 16, "mxfp8", _binding("block_e8m0", 32))}
+    by = {
+        i["name"]: i
+        for i in CS._attention_mx_inputs("Q", "K", "V", 16, 32, 32, 16, "mxfp8", _binding("block_e8m0", 32))
+    }
     assert "P_scale" in by
     assert by["P_scale"]["scale_of"] == "P"
     assert by["P_scale"]["shape"] == [1, 16], "Skv/32 groups x M rows"
@@ -182,10 +229,8 @@ def test_the_softmax_intermediates_requant_scale_is_an_operand_too():
 
 def test_attention_declares_no_scales_when_either_axis_is_not_whole_blocks():
     b = _binding("block_e8m0", 32)
-    assert [i["name"] for i in CS._attention_mx_inputs("Q", "K", "V", 16, 24, 32, 16, "mxfp8", b)] \
-        == ["Q", "K", "V"]
-    assert [i["name"] for i in CS._attention_mx_inputs("Q", "K", "V", 16, 32, 24, 16, "mxfp8", b)] \
-        == ["Q", "K", "V"]
+    assert [i["name"] for i in CS._attention_mx_inputs("Q", "K", "V", 16, 24, 32, 16, "mxfp8", b)] == ["Q", "K", "V"]
+    assert [i["name"] for i in CS._attention_mx_inputs("Q", "K", "V", 16, 32, 24, 16, "mxfp8", b)] == ["Q", "K", "V"]
 
 
 # --------------------------------------------------------------- the gate is the CAPSULE's dtype
@@ -195,21 +240,40 @@ def test_attention_declares_no_scales_when_either_axis_is_not_whole_blocks():
 # inert. The dtype of the capsule's own operands is the honest predicate, and it is the same one the
 # corpus generator uses to route an entry to its MX golden.
 
+
 def test_the_gate_is_the_capsules_own_dtype_not_a_target_level_flag():
     unscaled_looking = CS.CorpusBinding(
-        target="t", tile_dim=16, operand_dtype="mxfp8", accum_dtype="f32", integer=False,
-        tiers=["L2"], compare="tolerance_float", scaling=None, scale_block=32)
+        target="t",
+        tile_dim=16,
+        operand_dtype="mxfp8",
+        accum_dtype="f32",
+        integer=False,
+        tiers=["L2"],
+        compare="tolerance_float",
+        scaling=None,
+        scale_block=32,
+    )
     names = [i["name"] for i in CS._matmul_inputs("A0", "W", 16, 32, 16, "mxfp8", unscaled_looking)]
     assert "A0_scale" in names, (
         "a block-scaled capsule must declare its scales even when the target-level scaling flag is unset "
-        "-- that flag reads a single compute unit and is None on a mixed-engine target")
+        "-- that flag reads a single compute unit and is None on a mixed-engine target"
+    )
 
 
 def test_a_float_capsule_on_a_block_scaled_target_declares_no_scales():
     """The other half: scale_block is a TARGET property, so it must not leak onto an fp32 capsule that
     happens to be generated for a target that also owns an MX engine."""
-    b = CS.CorpusBinding(target="t", tile_dim=16, operand_dtype="f32", accum_dtype="f32", integer=False,
-                         tiers=["L2"], compare="tolerance_float", scaling="block_e8m0", scale_block=32)
+    b = CS.CorpusBinding(
+        target="t",
+        tile_dim=16,
+        operand_dtype="f32",
+        accum_dtype="f32",
+        integer=False,
+        tiers=["L2"],
+        compare="tolerance_float",
+        scaling="block_e8m0",
+        scale_block=32,
+    )
     assert [i["name"] for i in CS._matmul_inputs("A0", "W", 16, 32, 16, "f32", b)] == ["W", "A0"]
 
 

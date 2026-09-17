@@ -5,6 +5,7 @@ Target-specific by design: the expected numbers are the pinned systolic target's
 the test is that the Voyager config is read from there -- so a revision that changes the facts changes
 the config with it, and a fact that goes missing is a refusal rather than a default.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -31,14 +32,18 @@ def test_the_config_is_the_derived_address_space() -> None:
     # The sensitivity reading counts only the PE-resident block as weight L1; it must be opt-in.
     variant = accelerator_config_for(TARGET, weight_residency="pe_block").fields
     assert variant["weight_buffer_size"] == space.array_rows
-    assert {k: v for k, v in variant.items() if k != "weight_buffer_size"} == \
-        {k: v for k, v in derived.fields.items() if k != "weight_buffer_size"}
+    assert {k: v for k, v in variant.items() if k != "weight_buffer_size"} == {
+        k: v for k, v in derived.fields.items() if k != "weight_buffer_size"
+    }
     with pytest.raises(VoyagerConfigError):
         accelerator_config_for(TARGET, weight_residency="guess")
     # And those facts are the ones every other consumer of this target reads.
     assert derived.fields["pe_array_size"] == [16, 16]
-    assert (derived.fields["scratchpad_size"], derived.fields["num_banks"],
-            derived.fields["bank_width"]) == (262144, 4, 16)
+    assert (derived.fields["scratchpad_size"], derived.fields["num_banks"], derived.fields["bank_width"]) == (
+        262144,
+        4,
+        16,
+    )
     assert derived.fields["accum_buffer_size"] == 1024
     assert set(derived.sources) == set(derived.fields)
     assert "dram_bandwidth" in derived.not_modelled
@@ -55,7 +60,6 @@ def test_the_bridge_geometry_is_the_same_facts_as_the_config() -> None:
 
 
 def test_a_missing_store_is_refused_not_defaulted() -> None:
-    facts = {"facts": {"arrays": [{"name": "mesh", "rows": 16, "cols": 16}], "memories": [],
-                       "datapaths": []}}
+    facts = {"facts": {"arrays": [{"name": "mesh", "rows": 16, "cols": 16}], "memories": [], "datapaths": []}}
     with pytest.raises(VoyagerConfigError):
         accelerator_config_for(TARGET, facts=facts)

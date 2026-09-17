@@ -1,4 +1,5 @@
 """The hand-written ResNet baseline must be attributable before it is compared to Merlin."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -8,9 +9,7 @@ import pytest
 
 from merlin.common.paths import merlin_dir
 
-
-SOURCE = (merlin_dir()
-          / "experiments/gemmini_perf_bench/scripts/resnet50_library_baseline.py")
+SOURCE = merlin_dir() / "experiments/gemmini_perf_bench/scripts/resnet50_library_baseline.py"
 SPEC = importlib.util.spec_from_file_location("resnet50_library_baseline_under_test", SOURCE)
 BASELINE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
@@ -54,7 +53,7 @@ UART = WARM + MEASURED
 def test_wrapper_selects_arm_without_modifying_upstream_source():
     wrapper = BASELINE.render_wrapper("ws_matmul")
     assert '#include "../source/imagenet/resnet50_profiled.c"' in wrapper
-    assert '#define main merlin_resnet50_upstream_main' in wrapper
+    assert "#define main merlin_resnet50_upstream_main" in wrapper
     assert 'char arg1[] = "ws";' in wrapper
     assert 'char arg2[] = "matmul";' in wrapper
     assert wrapper.count("merlin_resnet50_upstream_main(3, argv)") == 2
@@ -107,8 +106,12 @@ def test_uart_parser_profiles_only_the_post_warmup_inference():
 
 def test_queue_command_pins_the_physical_design():
     command = BASELINE.queue_command(
-        queue=Path("/queue"), chipyard=Path("/chipyard"), elf=Path("/model.elf"),
-        hw_config="the-only-acceptable-bitstream", timeout=123, priority=5,
+        queue=Path("/queue"),
+        chipyard=Path("/chipyard"),
+        elf=Path("/model.elf"),
+        hw_config="the-only-acceptable-bitstream",
+        timeout=123,
+        priority=5,
     )
     assert command[command.index("--hw-config") + 1] == "the-only-acceptable-bitstream"
     assert command[command.index("--stage-from") + 1] == "/model.elf"
@@ -137,7 +140,7 @@ def test_queue_cwd_launcher_forces_firesim_to_use_the_daemon_selected_deploy_dir
     assert 'shadow_deploy="$shadow_firesim/deploy"' in text
     assert 'link_exact "$chipyard_root/generators" "$shadow_chipyard/generators"' in text
     assert 'link_exact "$chipyard_root/env.sh" "$shadow_chipyard/env.sh"' in text
-    assert 'for name in env.sh platforms target-design utils' in text
+    assert "for name in env.sh platforms target-design utils" in text
     assert 'shadow_sim="$shadow_firesim/sim"' in text
     assert '[[ "$(basename "$entry")" == output ]] && continue' in text
     assert 'shadow_driver_dir="$shadow_sim/output/$driver_rel"' in text
@@ -168,19 +171,18 @@ def test_queue_make_launcher_fails_closed_around_the_exact_prebuilt_driver():
 
 def test_queue_contract_requires_exact_atomic_firesim_lifecycle():
     receipt = BASELINE.validate_queue_help(
-        "runworkload-full: atomic kill -> infrasetup -> runworkload -> kill sequence")
-    assert receipt["firesim_lifecycle"] == [
-        "firesim kill", "firesim infrasetup", "firesim runworkload", "firesim kill"]
+        "runworkload-full: atomic kill -> infrasetup -> runworkload -> kill sequence"
+    )
+    assert receipt["firesim_lifecycle"] == ["firesim kill", "firesim infrasetup", "firesim runworkload", "firesim kill"]
     with pytest.raises(BASELINE.BaselineError, match="required"):
         BASELINE.validate_queue_help("runworkload-full: runworkload only")
 
 
 def test_queue_daemon_phases_must_be_in_order():
     log = "\n".join(
-        f"=== [firesim-queue] phase={phase} job_id=9 ==="
-        for phase in ("STAGING", "INFRASETUP", "RUNNING", "TEARDOWN"))
-    assert BASELINE.validate_queue_phases(log) == [
-        "STAGING", "INFRASETUP", "RUNNING", "TEARDOWN"]
+        f"=== [firesim-queue] phase={phase} job_id=9 ===" for phase in ("STAGING", "INFRASETUP", "RUNNING", "TEARDOWN")
+    )
+    assert BASELINE.validate_queue_phases(log) == ["STAGING", "INFRASETUP", "RUNNING", "TEARDOWN"]
     with pytest.raises(BASELINE.BaselineError, match="RUNNING"):
         BASELINE.validate_queue_phases(log.replace("RUNNING", "SKIPPED"))
 
@@ -190,10 +192,14 @@ def test_uart_discovery_prefers_the_cross_user_queue_overlay(tmp_path):
     queue.parent.mkdir(parents=True)
     queue.touch()
     chipyard = tmp_path / "chipyard"
-    overlay_uart = (tmp_path / "queue/jobs/17/deploy_overlay/results-workload"
-                    / "2026-01-01-merlin-perfbench-q17/merlin-perfbench0/uartlog")
-    native_uart = (chipyard / "sims/firesim/deploy/results-workload"
-                   / "2026-01-02-merlin-perfbench-q17/merlin-perfbench0/uartlog")
+    overlay_uart = (
+        tmp_path
+        / "queue/jobs/17/deploy_overlay/results-workload"
+        / "2026-01-01-merlin-perfbench-q17/merlin-perfbench0/uartlog"
+    )
+    native_uart = (
+        chipyard / "sims/firesim/deploy/results-workload" / "2026-01-02-merlin-perfbench-q17/merlin-perfbench0/uartlog"
+    )
     overlay_uart.parent.mkdir(parents=True)
     native_uart.parent.mkdir(parents=True)
     overlay_uart.write_text("overlay", encoding="utf-8")
@@ -219,18 +225,32 @@ def test_comparison_prices_native_conv_against_library_matmul_strategy():
 
 def test_aggregate_selects_one_exact_median_decomposition():
     rows = [
-        {"status": "pass", "arm": "ws_conv", "repetition": 1,
-         "cycles": {"total": 110, "conv": 90}, "component_sum": 110,
-         "component_percent": {"conv": 81.8}},
-        {"status": "pass", "arm": "ws_conv", "repetition": 2,
-         "cycles": {"total": 100, "conv": 80}, "component_sum": 100,
-         "component_percent": {"conv": 80.0}},
-        {"status": "pass", "arm": "ws_conv", "repetition": 3,
-         "cycles": {"total": 120, "conv": 99}, "component_sum": 120,
-         "component_percent": {"conv": 82.5}},
+        {
+            "status": "pass",
+            "arm": "ws_conv",
+            "repetition": 1,
+            "cycles": {"total": 110, "conv": 90},
+            "component_sum": 110,
+            "component_percent": {"conv": 81.8},
+        },
+        {
+            "status": "pass",
+            "arm": "ws_conv",
+            "repetition": 2,
+            "cycles": {"total": 100, "conv": 80},
+            "component_sum": 100,
+            "component_percent": {"conv": 80.0},
+        },
+        {
+            "status": "pass",
+            "arm": "ws_conv",
+            "repetition": 3,
+            "cycles": {"total": 120, "conv": 99},
+            "component_sum": 120,
+            "component_percent": {"conv": 82.5},
+        },
     ]
     got = BASELINE.aggregate_arm(rows)
     assert got["representative_repetition"] == 1
     assert got["cycles"] == rows[0]["cycles"]
-    assert got["total_cycle_distribution"] == {
-        "values": [110, 100, 120], "min": 100, "max": 120, "median": 110}
+    assert got["total_cycle_distribution"] == {"values": [110, 100, 120], "min": 100, "max": 120, "median": 110}

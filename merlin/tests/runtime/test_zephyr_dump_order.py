@@ -10,6 +10,7 @@ So the order is: metrics (tens of bytes), whole-tensor checks (tens of bytes), t
 (tens of kilobytes), the per-op profile (tens of kilobytes). A run truncated at any point has then
 produced the most evidence it could have.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -25,12 +26,20 @@ def _at(src: str, marker: str) -> int:
 
 def test_the_epilogue_is_ordered_by_evidence_per_byte():
     src = zm._main_c(0, debug=True)
-    order = ["METRIC cycles", 'printk("ARGMAX %d', 'printk("SUM %u',
-             'printk("HASH fnv1a32', 'printk("OUT %d', "merlin_prof_dump();", 'printk("DONE']
+    order = [
+        "METRIC cycles",
+        'printk("ARGMAX %d',
+        'printk("SUM %u',
+        'printk("HASH fnv1a32',
+        'printk("OUT %d',
+        "merlin_prof_dump();",
+        'printk("DONE',
+    ]
     pos = [_at(src, m) for m in order]
     assert pos == sorted(pos), (
         "epilogue out of order; cheap decisive evidence must precede expensive evidence:\n"
-        + "\n".join(f"  {p:6d}  {m}" for p, m in zip(pos, order)))
+        + "\n".join(f"  {p:6d}  {m}" for p, m in zip(pos, order))
+    )
 
 
 def test_compute_done_still_marks_the_end_of_compute():
@@ -67,8 +76,7 @@ def test_the_hash_the_harness_computes_is_the_one_the_host_checks():
     # and it distinguishes a one-bit flip in a float tensor, which is the whole point
     a = np.arange(64, dtype=np.float32)
     b = a.copy()
-    b[37] = np.frombuffer(
-        (np.frombuffer(b[37].tobytes(), dtype=np.uint32)[0] ^ 1).tobytes(), dtype=np.float32)[0]
+    b[37] = np.frombuffer((np.frombuffer(b[37].tobytes(), dtype=np.uint32)[0] ^ 1).tobytes(), dtype=np.float32)[0]
     assert fnv1a32(a.tobytes()) != fnv1a32(b.tobytes())
 
 
@@ -76,8 +84,7 @@ def test_the_host_parser_reads_the_whole_tensor_digest():
     """A digest nobody parses is a digest nobody checks."""
     a = np.arange(8, dtype=np.float32)
     h = zm.out_hash_fnv1a32(a)
-    console = (f"METRIC cycles 5\nARGMAX 2 3 4\nSUM 1065353216\n"
-               f"HASH fnv1a32 8 {h}\nOUT 2 0 1065353216\nDONE\n")
+    console = f"METRIC cycles 5\nARGMAX 2 3 4\nSUM 1065353216\nHASH fnv1a32 8 {h}\nOUT 2 0 1065353216\nDONE\n"
     res = zm._parse_console(console, 0)
     assert res["out_hash"] == {"algo": "fnv1a32", "elems": 8, "value": h}
     # and it round-trips: the same array hashes to the value the console carried

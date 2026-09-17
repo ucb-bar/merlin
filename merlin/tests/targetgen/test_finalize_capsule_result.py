@@ -9,6 +9,7 @@ coverage was through capsule grades that need an oracle, so in an environment wi
 executed — which is how a lifted-out-of-scope import survived a full test run and only surfaced when a
 real grade was attempted.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -19,8 +20,7 @@ from merlin.targetgen.capsule_common import make_run_paths
 
 @pytest.fixture()
 def paths(tmp_path):
-    return make_run_paths(tmp_path / "runs", "cap", suite="t", target="radiance",
-                          dtype="fp32", benchmark="cap")
+    return make_run_paths(tmp_path / "runs", "cap", suite="t", target="radiance", dtype="fp32", benchmark="cap")
 
 
 def _cap(**over):
@@ -37,10 +37,21 @@ def _cfg():
 
 def _finalize(paths, *, status, tiers, numeric=None, no_oracle=False, required=("L0", "L2")):
     return R._finalize_capsule_result(
-        name="cap", capsule=_cap(), status=status, failure=None, tiers=tiers,
+        name="cap",
+        capsule=_cap(),
+        status=status,
+        failure=None,
+        tiers=tiers,
         trace_check_res={"status": "skipped", "violations": []},
-        numeric=numeric or {"status": "pass"}, required=set(required), no_oracle=no_oracle,
-        eff_target="radiance", paths=paths, run_id="cap", cfg=_cfg(), contract=None)
+        numeric=numeric or {"status": "pass"},
+        required=set(required),
+        no_oracle=no_oracle,
+        eff_target="radiance",
+        paths=paths,
+        run_id="cap",
+        cfg=_cfg(),
+        contract=None,
+    )
 
 
 def _tier(status, mandatory=True, **kw):
@@ -51,8 +62,9 @@ def test_a_row_carries_the_fields_the_contract_requires(paths):
     """capsule_result.schema.json requires capsule, status, contract_version, tiers, trace_check, numeric.
     A row missing any of them is invalid, and the validator runs INSIDE this function — so a row that
     reaches a caller has already been checked."""
-    r = _finalize(paths, status="pass",
-                  tiers={"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "pass", True)})
+    r = _finalize(
+        paths, status="pass", tiers={"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "pass", True)}
+    )
     for k in ("capsule", "status", "contract_version", "tiers", "trace_check", "numeric"):
         assert k in r, k
     assert r["toolchain_shas"], "a verdict records the toolchain it was produced with"
@@ -65,21 +77,24 @@ def test_every_status_the_finalizer_can_produce_validates(paths):
 
     cases = {
         "pass": {"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "pass", True)},
-        "incomplete": {"L0": R.TierResult("L0", "pass", True),
-                       "L2": R.TierResult("L2", "unavailable", True)},
-        "not_applicable_floor": {"L0": R.TierResult("L0", "skipped", True, not_applicable=True),
-                                 "L2": R.TierResult("L2", "pass", True)},
+        "incomplete": {"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "unavailable", True)},
+        "not_applicable_floor": {
+            "L0": R.TierResult("L0", "skipped", True, not_applicable=True),
+            "L2": R.TierResult("L2", "pass", True),
+        },
     }
     for label, tiers in cases.items():
         r = _finalize(paths, status="pass", tiers=tiers)
-        schemas.validate(r, "capsule_result", contract=None)      # raises on a contract violation
+        schemas.validate(r, "capsule_result", contract=None)  # raises on a contract violation
         assert r["status"] in ("pass", "incomplete", "not_gradeable_no_oracle"), (label, r["status"])
 
 
 def test_a_mandatory_tier_that_did_not_run_is_never_a_pass(paths):
-    r = _finalize(paths, status="pass",
-                  tiers={"L0": R.TierResult("L0", "pass", True),
-                         "L2": R.TierResult("L2", "unavailable", True)})
+    r = _finalize(
+        paths,
+        status="pass",
+        tiers={"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "unavailable", True)},
+    )
     assert r["status"] == "incomplete"
     assert r["failure"]["category"] == "NOT_RUN_IS_NOT_PASS"
 
@@ -87,27 +102,37 @@ def test_a_mandatory_tier_that_did_not_run_is_never_a_pass(paths):
 def test_a_tier_that_is_honestly_not_applicable_does_not_block(paths):
     """The integer L0/L1 floor on a float datapath, and a whole model's absent command buffer: a
     legitimate skip, distinct from a missing oracle."""
-    r = _finalize(paths, status="pass",
-                  tiers={"L0": R.TierResult("L0", "skipped", True, not_applicable=True),
-                         "L2": R.TierResult("L2", "pass", True)})
+    r = _finalize(
+        paths,
+        status="pass",
+        tiers={"L0": R.TierResult("L0", "skipped", True, not_applicable=True), "L2": R.TierResult("L2", "pass", True)},
+    )
     assert r["status"] == "pass"
 
 
 def test_no_runnable_required_tier_refuses_to_pass_on_our_own_engine(paths):
     """The fail-open guard: with every required tier N/A there is no independent oracle, and L0/L1 are our
     own command-buffer interpretation. Passing on that alone is the fail-open this exists to stop."""
-    r = _finalize(paths, status="pass",
-                  tiers={"L0": R.TierResult("L0", "skipped", True, not_applicable=True),
-                         "L2": R.TierResult("L2", "skipped", True, not_applicable=True)})
+    r = _finalize(
+        paths,
+        status="pass",
+        tiers={
+            "L0": R.TierResult("L0", "skipped", True, not_applicable=True),
+            "L2": R.TierResult("L2", "skipped", True, not_applicable=True),
+        },
+    )
     assert r["status"] == "incomplete"
 
 
 def test_no_oracle_withholds_the_verdict_rather_than_failing_it(paths):
     """--no-oracle asked for no numeric tier, so a missing one is not a fixable failure — it is a
     withheld verdict, and must not be handed back as a phantom `oracle_unavailable` to chase."""
-    r = _finalize(paths, status="pass", no_oracle=True,
-                  tiers={"L0": R.TierResult("L0", "pass", True),
-                         "L2": R.TierResult("L2", "skipped", True)})
+    r = _finalize(
+        paths,
+        status="pass",
+        no_oracle=True,
+        tiers={"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "skipped", True)},
+    )
     assert r["status"] == "not_gradeable_no_oracle"
 
 
@@ -115,11 +140,22 @@ def test_extra_fields_ride_along_without_deciding_the_status(paths):
     """The whole-model path attaches a routing plan and mesh counters. They are evidence for a reader,
     never inputs to the verdict."""
     r = R._finalize_capsule_result(
-        name="cap", capsule=_cap(), status="pass", failure=None,
+        name="cap",
+        capsule=_cap(),
+        status="pass",
+        failure=None,
         tiers={"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "pass", True)},
-        trace_check_res={"status": "skipped", "violations": []}, numeric={"status": "pass"},
-        required={"L0", "L2"}, no_oracle=False, eff_target="radiance", paths=paths, run_id="cap",
-        cfg=_cfg(), contract=None, extra={"mesh_execution": {"matmul_layers_on_mesh": 15}})
+        trace_check_res={"status": "skipped", "violations": []},
+        numeric={"status": "pass"},
+        required={"L0", "L2"},
+        no_oracle=False,
+        eff_target="radiance",
+        paths=paths,
+        run_id="cap",
+        cfg=_cfg(),
+        contract=None,
+        extra={"mesh_execution": {"matmul_layers_on_mesh": 15}},
+    )
     assert r["status"] == "pass"
     assert r["mesh_execution"]["matmul_layers_on_mesh"] == 15
 
@@ -136,11 +172,21 @@ def test_a_declared_lane_contract_nothing_evaluated_is_not_a_pass(paths):
     assertion silently ignored -- and the corpus's ONLY negative lane assertion is exactly such a
     capsule, which made ACCELERATED_A_FORBIDDEN_LANE unreachable for it."""
     r = R._finalize_capsule_result(
-        name="cap", capsule=_lane_cap(), status="pass", failure=None,
+        name="cap",
+        capsule=_lane_cap(),
+        status="pass",
+        failure=None,
         tiers={"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "pass", True)},
         trace_check_res={"status": "skipped", "violations": []},
-        numeric={"status": "pass"}, required={"L0", "L2"}, no_oracle=False,
-        eff_target="radiance", paths=paths, run_id="cap", cfg=_cfg(), contract=None)
+        numeric={"status": "pass"},
+        required={"L0", "L2"},
+        no_oracle=False,
+        eff_target="radiance",
+        paths=paths,
+        run_id="cap",
+        cfg=_cfg(),
+        contract=None,
+    )
     assert r["status"] == "incomplete", "an unmeasured lane assertion must never read as a pass"
     assert r["failure"]["category"] == "LANE_CONTRACT_NOT_EVALUATED"
 
@@ -149,17 +195,27 @@ def test_a_lane_report_that_was_produced_leaves_the_verdict_alone(paths):
     """The rule is about ABSENCE of evaluation, not about lanes. A path that did evaluate the contract
     owns the verdict, and this must not second-guess it."""
     r = R._finalize_capsule_result(
-        name="cap", capsule=_lane_cap(), status="pass", failure=None,
+        name="cap",
+        capsule=_lane_cap(),
+        status="pass",
+        failure=None,
         tiers={"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "pass", True)},
         trace_check_res={"status": "skipped", "violations": []},
-        numeric={"status": "pass"}, required={"L0", "L2"}, no_oracle=False,
-        eff_target="radiance", paths=paths, run_id="cap", cfg=_cfg(), contract=None,
-        extra={"lane_report": {"required": ["scalar_rvv_lane"], "unexercised": [],
-                               "observed": ["scalar_rvv_lane"]}})
+        numeric={"status": "pass"},
+        required={"L0", "L2"},
+        no_oracle=False,
+        eff_target="radiance",
+        paths=paths,
+        run_id="cap",
+        cfg=_cfg(),
+        contract=None,
+        extra={"lane_report": {"required": ["scalar_rvv_lane"], "unexercised": [], "observed": ["scalar_rvv_lane"]}},
+    )
     assert r["status"] == "pass"
 
 
 def test_a_capsule_declaring_no_lanes_is_untouched(paths):
-    r = _finalize(paths, status="pass",
-                  tiers={"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "pass", True)})
+    r = _finalize(
+        paths, status="pass", tiers={"L0": R.TierResult("L0", "pass", True), "L2": R.TierResult("L2", "pass", True)}
+    )
     assert r["status"] == "pass"

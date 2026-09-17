@@ -12,6 +12,7 @@ have measured the same program twice and reported agreement. Nothing failed; the
 This pins the property directly: a declared extent must reach the emitted shape, whichever spelling
 declared it, and two points of one axis must not collapse onto each other.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -22,8 +23,15 @@ TILE = 16
 
 
 def _binding():
-    return CS.CorpusBinding(target="t", tile_dim=TILE, operand_dtype="int8", accum_dtype="int32",
-                            integer=True, tiers=["L2", "L3"], compare="exact")
+    return CS.CorpusBinding(
+        target="t",
+        tile_dim=TILE,
+        operand_dtype="int8",
+        accum_dtype="int32",
+        integer=True,
+        tiers=["L2", "L3"],
+        compare="exact",
+    )
 
 
 def _weight_shape(mlir: str) -> str:
@@ -34,11 +42,18 @@ def _weight_shape(mlir: str) -> str:
 
 
 def _resident_entry(**over):
-    entry = {"cat": "_perf", "name": "X", "kind": "model_slice", "op": "resident_reuse",
-             "weight": "W", "label": "dev", "source_role": "derived_sweep",
-             "source": "b", "source_reference": "r",
-             "matmuls": [{"lhs": "A0", "out": "Y0", "M_tiles": 1},
-                         {"lhs": "A1", "out": "Y1", "M_tiles": 1}]}
+    entry = {
+        "cat": "_perf",
+        "name": "X",
+        "kind": "model_slice",
+        "op": "resident_reuse",
+        "weight": "W",
+        "label": "dev",
+        "source_role": "derived_sweep",
+        "source": "b",
+        "source_reference": "r",
+        "matmuls": [{"lhs": "A0", "out": "Y0", "M_tiles": 1}, {"lhs": "A1", "out": "Y1", "M_tiles": 1}],
+    }
     entry.update(over)
     return entry
 
@@ -49,7 +64,8 @@ def test_a_declared_extent_reaches_the_emitted_shape(spelling):
     over = {"K": 4 * TILE, "N": 4 * TILE} if spelling == "bare" else {"K_tiles": 4, "N_tiles": 4}
     _doc, mlir = CS.build_resident_reuse(_resident_entry(**over), _binding())
     assert _weight_shape(mlir).startswith(f"tensor<{4 * TILE}x{4 * TILE}x"), (
-        f"the {spelling} spelling did not reach the emitted weight shape")
+        f"the {spelling} spelling did not reach the emitted weight shape"
+    )
 
 
 def test_two_points_of_one_axis_do_not_collapse_onto_each_other():
@@ -57,21 +73,29 @@ def test_two_points_of_one_axis_do_not_collapse_onto_each_other():
     binding = _binding()
     shapes = set()
     for depth in (4 * TILE, 8 * TILE):
-        _doc, mlir = CS.build_resident_reuse(
-            _resident_entry(K=depth, N=4 * TILE), binding)
+        _doc, mlir = CS.build_resident_reuse(_resident_entry(K=depth, N=4 * TILE), binding)
         shapes.add(_weight_shape(mlir))
     assert len(shapes) == 2, (
         f"two declared contraction depths emitted one shape {shapes}; a fit over them would "
-        f"measure the same program twice and call it agreement")
+        f"measure the same program twice and call it agreement"
+    )
 
 
 def test_the_attention_builder_reads_both_spellings_too():
-    entry = {"cat": "_perf", "name": "X", "kind": "model_slice", "op": "attention_qk",
-             "label": "dev", "source_role": "derived_sweep", "source": "b",
-             "source_reference": "r", "M": 2 * TILE, "K": 4 * TILE}
+    entry = {
+        "cat": "_perf",
+        "name": "X",
+        "kind": "model_slice",
+        "op": "attention_qk",
+        "label": "dev",
+        "source_role": "derived_sweep",
+        "source": "b",
+        "source_reference": "r",
+        "M": 2 * TILE,
+        "K": 4 * TILE,
+    }
     _doc, mlir = CS.build_attention_qk(entry, _binding())
-    assert f"{2 * TILE}x{4 * TILE}" in mlir, (
-        "the bare M/K spelling did not reach the emitted attention shapes")
+    assert f"{2 * TILE}x{4 * TILE}" in mlir, "the bare M/K spelling did not reach the emitted attention shapes"
 
 
 def test_batched_builder_and_integer_golden_preserve_the_batch_axis():
@@ -79,12 +103,19 @@ def test_batched_builder_and_integer_golden_preserve_the_batch_axis():
     from merlin.targetgen.capsule_golden import golden
     from merlin.targetgen.contract.interface_emit import parse_interface_mlir
 
-    entry = {"name": "B", "kind": "layer", "source_role": "derived_sweep",
-             "source_reference": "two independent slices", "label": "dev",
-             "B": 2, "M": 3, "H": 5, "N": 4}
+    entry = {
+        "name": "B",
+        "kind": "layer",
+        "source_role": "derived_sweep",
+        "source_reference": "two independent slices",
+        "label": "dev",
+        "B": 2,
+        "M": 3,
+        "H": 5,
+        "N": 4,
+    }
     capsule, mlir = CS.build_gemv_batched(entry, _binding())
     parsed = parse_interface_mlir(mlir)
-    assert parsed["tensors"]["Y0"] == {
-        "shape": [2, 3, 4], "dtype": "i32", "role": "output"}
+    assert parsed["tensors"]["Y0"] == {"shape": [2, 3, 4], "dtype": "i32", "role": "output"}
     result = golden(capsule)["Y0"]
     assert (len(result), len(result[0]), len(result[0][0])) == (2, 3, 4)

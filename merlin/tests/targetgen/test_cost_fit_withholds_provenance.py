@@ -17,6 +17,7 @@ list at all, not one particular caller.
 So the classes are DISCOVERED from the module rather than listed here. A third fit added later is
 covered the day it appears, instead of being covered only if whoever adds it remembers this file.
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -27,8 +28,10 @@ from merlin.targetgen import cert_cost as CC
 
 #: A source string of exactly the shape that leaked, so a regression is caught by the same substrings
 #: the gate looks for rather than by a stand-in that could not have leaked anything.
-_LEAKY_SOURCE = ("/scratch/u/repo/out/runs/t/capsule-bench/rb/grading_hidden/runs/"
-                 "t-capsule-bench/H0_matmul_hidden/capsule_result.json#cycle_accurate_tier:L3")
+_LEAKY_SOURCE = (
+    "/scratch/u/repo/out/runs/t/capsule-bench/rb/grading_hidden/runs/"
+    "t-capsule-bench/H0_matmul_hidden/capsule_result.json#cycle_accurate_tier:L3"
+)
 
 
 def _fit_classes() -> list[type]:
@@ -67,11 +70,12 @@ def _instantiate(cls: type):
 
 
 def test_the_module_actually_defines_fits_to_check():
-    """"Found nothing" and "looked at nothing" print the same. If the discovery above ever returns an
+    """ "Found nothing" and "looked at nothing" print the same. If the discovery above ever returns an
     empty list, every test below passes vacuously -- so the discovery itself is asserted."""
     assert len(_fit_classes()) >= 2, (
         "expected at least the shape fit and the cycle fit; a discovery that finds none would make "
-        "the rest of this file a check that cannot fail")
+        "the rest of this file a check that cannot fail"
+    )
 
 
 @pytest.mark.parametrize("cls", _fit_classes(), ids=lambda c: c.__name__)
@@ -81,7 +85,8 @@ def test_to_dict_withholds_the_source_list(cls):
     rendered = repr(_instantiate(cls).to_dict())
     assert "sources" not in rendered, (
         f"{cls.__name__}.to_dict() published its source list; those entries name holdout capsules and "
-        f"local absolute paths, and a dict like this is embedded verbatim in a tracked contract file")
+        f"local absolute paths, and a dict like this is embedded verbatim in a tracked contract file"
+    )
     assert "H0_matmul_hidden" not in rendered, "a holdout name reached the default serialization"
     assert "/scratch/" not in rendered, "a local absolute path reached the default serialization"
 

@@ -5,6 +5,7 @@ These tests cover the wiring that supplies the real ones, and the two properties
 the plumbing: the proposal is applied in an isolated OVERLAY that never touches the shared working
 tree, and every verdict rests on a control measured in the same call.
 """
+
 import json
 import os
 import subprocess
@@ -26,6 +27,7 @@ def _prop(source="X = 1\n", module=_REAL_MODULE):
 
 # --------------------------------------------------------------------------- module paths
 
+
 def test_module_to_relpath_round_trips_a_dotted_module():
     assert w.module_to_relpath("merlin.llvmlower.act_poly") == Path("merlin/llvmlower/act_poly.py")
 
@@ -39,6 +41,7 @@ def test_module_to_relpath_rejects_anything_that_is_not_a_dotted_module(bad):
 
 
 # --------------------------------------------------------------------------- the overlay
+
 
 def test_the_overlay_never_writes_the_working_tree():
     """The property this repo requires: several agents build from one shared checkout, so applying a
@@ -67,9 +70,12 @@ def test_a_child_process_actually_imports_the_overlaid_module():
     parent has already imported the real module and sys.modules would keep serving it."""
     with w.overlay_for(_prop("SENTINEL = 'overlaid'\n")) as env:
         out = subprocess.run(
-            [sys.executable, "-c",
-             f"import {_REAL_MODULE} as m; print(getattr(m, 'SENTINEL', 'NOT_SHADOWED'))"],
-            env=env, capture_output=True, text=True, timeout=120)
+            [sys.executable, "-c", f"import {_REAL_MODULE} as m; print(getattr(m, 'SENTINEL', 'NOT_SHADOWED'))"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
     assert out.stdout.strip() == "overlaid", f"overlay did not shadow: {out.stdout} {out.stderr[-300:]}"
 
 
@@ -78,9 +84,16 @@ def test_the_rest_of_the_package_still_resolves_from_the_real_checkout():
     edited must fail here rather than pass on a change nobody reviewed."""
     with w.overlay_for(_prop("SENTINEL = 1\n")) as env:
         out = subprocess.run(
-            [sys.executable, "-c",
-             "import merlin.kernels.cca as c; import merlin.common.paths as p; print('ok', bool(c.CCA and p.repo_root()))"],
-            env=env, capture_output=True, text=True, timeout=120)
+            [
+                sys.executable,
+                "-c",
+                "import merlin.kernels.cca as c; import merlin.common.paths as p; print('ok', bool(c.CCA and p.repo_root()))",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
     assert out.stdout.startswith("ok"), out.stderr[-400:]
 
 
@@ -94,12 +107,22 @@ def test_overlay_refuses_a_module_that_does_not_exist():
 
 # --------------------------------------------------------------------------- the checks
 
+
 class _FakeCertify:
     """Records each certify call and returns a scripted result, so the wiring is testable with no
     toolchain. `digests` maps run_id -> the mnemonic digest that run should appear to emit."""
 
-    def __init__(self, *, digests=None, gate_ok=True, status="ok", failure=None, cos=0.9999999,
-                 imported=(_REAL_MODULE,), inert=False):
+    def __init__(
+        self,
+        *,
+        digests=None,
+        gate_ok=True,
+        status="ok",
+        failure=None,
+        cos=0.9999999,
+        imported=(_REAL_MODULE,),
+        inert=False,
+    ):
         self.imported = imported
         # By default the candidate's emitted code DIFFERS from the control's, so a test about a later
         # stage is not short-circuited by the inert check. `inert=True` makes them identical.
@@ -109,8 +132,14 @@ class _FakeCertify:
         self.gate_ok, self.status, self.failure, self.cos = gate_ok, status, failure, cos
 
     def __call__(self, env, *, package_dir, model_dir, runs_root, run_id, targets, timeout):
-        self.calls.append({"run_id": run_id, "overlaid": env is not None,
-                           "model_dir": Path(model_dir).name, "package_dir": Path(package_dir).name})
+        self.calls.append(
+            {
+                "run_id": run_id,
+                "overlaid": env is not None,
+                "model_dir": Path(model_dir).name,
+                "package_dir": Path(package_dir).name,
+            }
+        )
         d = Path(runs_root) / run_id / "generated"
         d.mkdir(parents=True, exist_ok=True)
         # A GOOD proposal leaves the frozen (empty-feature) build byte-identical while CHANGING the
@@ -120,20 +149,25 @@ class _FakeCertify:
         if not self.inert and run_id == "gate_bitexact_overlay":
             default = "vfmacc.vv v1,v2,v3\n   4:\t02b7f0d7          \tvfmul.vv\tv4,v5,v6"
         mnem = self.digests.get(run_id, default)
-        (d / "objdump.txt").write_text(
-            "0000000000000000 <forward>:\n"
-            f"   0:\t02b7f0d7          \t{mnem}\n")
-        return {"status": self.status, "failure": self.failure,
-                "correctness": {"gate_ok": self.gate_ok, "fp32_cos": self.cos},
-                "measurement": [{"target": "spike", "cycles": 1000}],
-                "_imported": list(self.imported) if self.imported is not None else None}
+        (d / "objdump.txt").write_text(f"0000000000000000 <forward>:\n   0:\t02b7f0d7          \t{mnem}\n")
+        return {
+            "status": self.status,
+            "failure": self.failure,
+            "correctness": {"gate_ok": self.gate_ok, "fp32_cos": self.cos},
+            "measurement": [{"target": "spike", "cycles": 1000}],
+            "_imported": list(self.imported) if self.imported is not None else None,
+        }
 
 
 def _checks(tmp_path, cert, **kw):
     return w.production_gate_checks(
-        frozen_pkg=tmp_path / "frozen", work_pkg=tmp_path / "work",
-        model_dir=tmp_path / "bundle", runs_root=tmp_path / "runs",
-        certify=cert, **kw)
+        frozen_pkg=tmp_path / "frozen",
+        work_pkg=tmp_path / "work",
+        model_dir=tmp_path / "bundle",
+        runs_root=tmp_path / "runs",
+        certify=cert,
+        **kw,
+    )
 
 
 def test_frozen_baseline_check_compares_overlay_against_a_same_session_control(tmp_path):
@@ -144,8 +178,9 @@ def test_frozen_baseline_check_compares_overlay_against_a_same_session_control(t
     assert checks["frozen_baseline_ok"](_prop()) is True
     ids = [c["run_id"] for c in cert.calls]
     assert ids == ["gate_frozen_control", "gate_frozen_overlay"]
-    assert [c["overlaid"] for c in cert.calls] == [False, True], \
+    assert [c["overlaid"] for c in cert.calls] == [False, True], (
         "one run must be WITHOUT the overlay, or there is no control"
+    )
 
 
 def test_frozen_baseline_check_fails_when_the_proposal_moves_the_control(tmp_path):
@@ -157,11 +192,13 @@ def test_frozen_baseline_check_fails_when_the_proposal_moves_the_control(tmp_pat
 def test_frozen_baseline_fails_closed_when_there_is_no_emitted_code_to_compare(tmp_path):
     """No objdump means the invariant was not asserted. Reporting True would be crediting a check
     that could not run -- the exact failure this repo has hit three times."""
+
     class _NoObjdump(_FakeCertify):
         def __call__(self, env, **kw):
             _FakeCertify.__call__(self, env, **kw)
             (Path(kw["runs_root"]) / kw["run_id"] / "generated" / "objdump.txt").unlink()
             return {"status": "error", "failure": "compile failed", "correctness": {}}
+
     checks = _checks(tmp_path, _NoObjdump())
     assert checks["frozen_baseline_ok"](_prop()) is False
 
@@ -175,8 +212,9 @@ def test_bit_exact_check_reports_the_cos_and_fails_on_a_broken_gate(tmp_path):
 
 def test_bit_exact_check_fails_on_a_build_that_crashed(tmp_path):
     """A proposal that breaks the compiler is a recorded refusal, not an exception out of the slot."""
-    ok, why = _checks(tmp_path, _FakeCertify(status="error", failure="PipelineError: bad schedule")
-                      )["bit_exact_ok"](_prop())
+    ok, why = _checks(tmp_path, _FakeCertify(status="error", failure="PipelineError: bad schedule"))["bit_exact_ok"](
+        _prop()
+    )
     assert not ok and "PipelineError" in why
 
 
@@ -193,7 +231,7 @@ def test_lift_cca_reuses_the_run_the_numeric_check_measured(tmp_path):
 
 
 def test_heldout_is_absent_rather_than_vacuously_true_when_nothing_is_held_out(tmp_path):
-    """"held out" has to mean something was held out. The check is omitted entirely, so the caller
+    """ "held out" has to mean something was held out. The check is omitted entirely, so the caller
     passing it must have supplied bundles; a vacuous pass would credit untested generalisation."""
     checks = _checks(tmp_path, _FakeCertify())
     assert "heldout_ok" not in checks
@@ -203,8 +241,7 @@ def test_heldout_is_absent_rather_than_vacuously_true_when_nothing_is_held_out(t
 
 def test_heldout_check_runs_every_supplied_capture_and_names_the_failures(tmp_path):
     cert = _FakeCertify(gate_ok=False, cos=0.5)
-    checks = _checks(tmp_path, cert,
-                     heldout_model_dirs=(tmp_path / "held_a", tmp_path / "held_b"))
+    checks = _checks(tmp_path, cert, heldout_model_dirs=(tmp_path / "held_a", tmp_path / "held_b"))
     ok, why = checks["heldout_ok"](_prop())
     assert not ok
     assert "held_a" in why and "held_b" in why, f"a failing held-out capture must be named: {why}"
@@ -219,9 +256,11 @@ def test_gate_kwargs_drops_the_bookkeeping_key(tmp_path):
 def test_the_wired_gate_runs_end_to_end_and_refuses_an_unverifiable_action(tmp_path):
     """The whole path: real gate, real wiring, fake toolchain. An action with no machine-readable
     promise must be REFUSED, since 'accepted' would credit a change nothing checked."""
+
     class _NoPromise:
         intended_facet = None
         action_class = "CODEGEN"
+
     v = gate(_prop(), _NoPromise(), **w.gate_kwargs(_checks(tmp_path, _FakeCertify())))
     assert not v.accepted and v.stage == "unverifiable"
 
@@ -250,8 +289,7 @@ def test_exactly_one_file_in_the_overlay_is_not_a_symlink():
     rel = w.module_to_relpath(_REAL_MODULE)
     with w.overlay_for(_prop("SENTINEL = 1\n")) as env:
         root = Path(env["MERLIN_PASS_SLOT_OVERLAY"])
-        real_files = [p.relative_to(root) for p in root.rglob("*")
-                      if p.is_file() and not p.is_symlink()]
+        real_files = [p.relative_to(root) for p in root.rglob("*") if p.is_file() and not p.is_symlink()]
         assert real_files == [rel], f"expected only {rel} to be a real file, got {real_files}"
 
 
@@ -260,10 +298,17 @@ def test_the_overlaid_module_resolves_while_its_siblings_stay_real():
     module in the SAME package is still the checkout's."""
     with w.overlay_for(_prop("SENTINEL = 'overlaid'\n")) as env:
         out = subprocess.run(
-            [sys.executable, "-c",
-             f"import {_REAL_MODULE} as m, merlin.llvmlower.impr_features as f;"
-             " print(getattr(m,'SENTINEL','NOT_SHADOWED'), hasattr(f,'normalize'))"],
-            env=env, capture_output=True, text=True, timeout=180)
+            [
+                sys.executable,
+                "-c",
+                f"import {_REAL_MODULE} as m, merlin.llvmlower.impr_features as f;"
+                " print(getattr(m,'SENTINEL','NOT_SHADOWED'), hasattr(f,'normalize'))",
+            ],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
     assert out.stdout.strip() == "overlaid True", f"{out.stdout!r} {out.stderr[-400:]}"
 
 
@@ -280,8 +325,7 @@ def test_bit_exact_refuses_when_the_proposed_module_was_never_imported(tmp_path)
 
 
 def test_bit_exact_still_passes_when_the_module_was_imported(tmp_path):
-    ok, why = _checks(tmp_path, _FakeCertify(imported=(_REAL_MODULE, "merlin.kernels.cca"))
-                      )["bit_exact_ok"](_prop())
+    ok, why = _checks(tmp_path, _FakeCertify(imported=(_REAL_MODULE, "merlin.kernels.cca")))["bit_exact_ok"](_prop())
     assert ok and "cos=" in why
 
 
@@ -295,10 +339,12 @@ def test_an_import_list_that_is_absent_does_not_block(tmp_path):
 def test_importtime_output_is_parsed_on_its_column_separator():
     """Structural parse of the `|` columns, never a pattern. Indentation marks import depth and is
     stripped; non-importtime lines and the header are ignored."""
-    sample = ("import time:       123 |        456 | merlin.llvmlower.act_poly\n"
-              "import time:        11 |         11 |   merlin.kernels.cca\n"
-              "import time: self [us] | cumulative | imported package\n"
-              "some unrelated stderr line\n")
+    sample = (
+        "import time:       123 |        456 | merlin.llvmlower.act_poly\n"
+        "import time:        11 |         11 |   merlin.kernels.cca\n"
+        "import time: self [us] | cumulative | imported package\n"
+        "some unrelated stderr line\n"
+    )
     assert w.imported_modules(sample) == {"merlin.llvmlower.act_poly", "merlin.kernels.cca"}
     assert w.imported_modules("") == set()
 
@@ -308,18 +354,22 @@ def test_module_for_action_joins_the_ladder_to_the_leaf():
     catalog was missing."""
     from merlin.kernels import action_catalog as ac
     from merlin.kernels.cca_compare import Divergence
-    d = Divergence(axis="compute.activation_vectorization", expert="vectorized_polynomial",
-                   ours="scalar_libm_call", backend="rvv")
+
+    d = Divergence(
+        axis="compute.activation_vectorization", expert="vectorized_polynomial", ours="scalar_libm_call", backend="rvv"
+    )
     esc = ac.route_escalated(d, ac.route(d).action_class)
     assert esc is not None and esc.action_class == "CODEGEN"
     assert w.module_for_action(esc) == _REAL_MODULE
 
 
 def test_module_for_action_raises_with_the_declared_reason_when_there_is_no_module():
-    """"There is no module, and here is why" must stay distinct from "here is the module". Collapsing
+    """ "There is no module, and here is why" must stay distinct from "here is the module". Collapsing
     both into None is what let the ladder dead-end in prose unnoticed."""
+
     class _A:
         target_seam = "pass:tile-epilogue-store-once (eliminate the rank-generic copy, not erase it)"
+
     with pytest.raises(w.SeamNotActionable, match="rank-generic"):
         w.module_for_action(_A())
 
@@ -327,6 +377,7 @@ def test_module_for_action_raises_with_the_declared_reason_when_there_is_no_modu
 def test_module_for_action_says_it_is_a_catalog_bug_when_no_reason_is_declared():
     class _A:
         target_seam = "pass:something-nobody-declared"
+
     with pytest.raises(w.SeamNotActionable, match="catalog bug"):
         w.module_for_action(_A())
 
@@ -342,6 +393,7 @@ def test_the_checkout_under_test_is_pinned_for_child_builds():
     one, and "the frozen baseline still lowers byte-identically" would compare two different
     compilers."""
     from merlin.common.paths import merlin_dir
+
     base = w.checkout_pythonpath()
     assert base.split(os.pathsep)[0] == str(merlin_dir() / "python")
     chained = w.checkout_pythonpath("/somewhere/else")
@@ -352,6 +404,7 @@ def test_the_control_arm_gets_the_checkout_even_with_no_overlay_env(tmp_path, mo
     """The control arm is invoked with env=None. It must still receive a PYTHONPATH pinning this
     checkout, or the frozen-baseline digests come from two different compilers."""
     from merlin.common.paths import merlin_dir
+
     seen = {}
 
     class _Proc:
@@ -360,8 +413,9 @@ def test_the_control_arm_gets_the_checkout_even_with_no_overlay_env(tmp_path, mo
         stderr = ""
 
     monkeypatch.setattr(w.subprocess, "run", lambda argv, **kw: (seen.update(kw), _Proc())[1])
-    w._certify(None, package_dir=tmp_path, model_dir=tmp_path, runs_root=tmp_path,
-               run_id="r", targets=("spike",), timeout=10)
+    w._certify(
+        None, package_dir=tmp_path, model_dir=tmp_path, runs_root=tmp_path, run_id="r", targets=("spike",), timeout=10
+    )
     pp = (seen.get("env") or {}).get("PYTHONPATH", "")
     assert str(merlin_dir() / "python") in pp, f"control arm not pinned to this checkout: {pp!r}"
 
@@ -375,12 +429,13 @@ def test_an_inert_proposal_is_named_as_inert_not_as_a_facet_miss(tmp_path):
     baseline and bit-exactness, and produced an object identical to the control down to the
     instruction count (47,988 insns / 10,782 vector, same undefined symbols) -- reported only as
     "facet not achieved"."""
-    from merlin.mining.pass_slot import gate
-
     from merlin.kernels import action_catalog as ac
     from merlin.kernels.cca_compare import Divergence
-    d = Divergence(axis="compute.activation_vectorization", expert="vectorized_polynomial",
-                   ours="scalar_libm_call", backend="rvv")
+    from merlin.mining.pass_slot import gate
+
+    d = Divergence(
+        axis="compute.activation_vectorization", expert="vectorized_polynomial", ours="scalar_libm_call", backend="rvv"
+    )
     action = ac.route_escalated(d, ac.route(d).action_class)
     v = gate(_prop(), action, **w.gate_kwargs(_checks(tmp_path, _FakeCertify(inert=True))))
     assert not v.accepted
@@ -395,8 +450,9 @@ def test_a_changed_proposal_passes_the_inert_check_and_reaches_the_facet_check(t
     from merlin.kernels.cca_compare import Divergence
     from merlin.mining.pass_slot import gate
 
-    d = Divergence(axis="compute.activation_vectorization", expert="vectorized_polynomial",
-                   ours="scalar_libm_call", backend="rvv")
+    d = Divergence(
+        axis="compute.activation_vectorization", expert="vectorized_polynomial", ours="scalar_libm_call", backend="rvv"
+    )
     action = ac.route_escalated(d, ac.route(d).action_class)
     v = gate(_prop(), action, **w.gate_kwargs(_checks(tmp_path, _FakeCertify())))
     assert v.stage == "facet", f"expected to reach the facet check, stopped at {v.stage!r}"
@@ -419,7 +475,7 @@ def test_inert_fails_closed_when_there_is_no_emitted_code(tmp_path):
         def __call__(self, env, **kw):
             _FakeCertify.__call__(self, env, **kw)
             (Path(kw["runs_root"]) / kw["run_id"] / "generated" / "objdump.txt").unlink()
-            return {"status": "ok", "correctness": {"gate_ok": True, "fp32_cos": 1.0},
-                    "_imported": [_REAL_MODULE]}
+            return {"status": "ok", "correctness": {"gate_ok": True, "fp32_cos": 1.0}, "_imported": [_REAL_MODULE]}
+
     ok, why = _checks(tmp_path, _NoObjdump())["inert_ok"](_prop())
     assert not ok and "could not be established" in why

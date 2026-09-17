@@ -17,6 +17,7 @@ So the two writers of such a capsule need opposite handling, and the distinction
 Dropping it silently would be the other failure, and the worse one: the family would vanish between
 the requirement and the corpus with nothing saying so. Hence the recorded hole.
 """
+
 from __future__ import annotations
 
 import sys
@@ -48,8 +49,7 @@ def test_a_hand_authored_capsule_still_aborts(tmp_path):
     """The half that must NOT become lenient. A hand-written forbid on an accelerable program is a
     claim its author made and can fix; swallowing it would let a capsule ship demanding the compiler
     decline work it is entitled to do."""
-    cap = {"name": "HAND_forbids", "lanes": {"forbid": ["on_mesh"]},
-           "source_role": "handauthored_compiler_test"}
+    cap = {"name": "HAND_forbids", "lanes": {"forbid": ["on_mesh"]}, "source_role": "handauthored_compiler_test"}
     with pytest.raises(GC.UnprovableForbid):
         GC._verify_a_forbidden_lane_is_provable(tmp_path, cap, "gemmini")
 
@@ -69,10 +69,14 @@ def test_the_manifest_records_the_dropped_lane_rather_than_omitting_it(tmp_path)
 
     man = tmp_path / "MANIFEST.yaml"
     man.write_text("generated_by: test\n", encoding="utf-8")
-    dropped = [{"capsule": "SY_host_only_normalization", "family": "layernorm",
-                "reason": "classifies as 'A' rather than host-only"}]
-    GC.update_provenance_manifest([], cap_root=tmp_path, target="gemmini",
-                                  unprovable_forbids=dropped)
+    dropped = [
+        {
+            "capsule": "SY_host_only_normalization",
+            "family": "layernorm",
+            "reason": "classifies as 'A' rather than host-only",
+        }
+    ]
+    GC.update_provenance_manifest([], cap_root=tmp_path, target="gemmini", unprovable_forbids=dropped)
     doc = yaml.safe_load(man.read_text(encoding="utf-8")) or {}
     rec = ((doc.get("lane_generation") or {}).get("gemmini") or {}).get("forbid_not_provable")
     assert rec and rec[0]["capsule"] == "SY_host_only_normalization"

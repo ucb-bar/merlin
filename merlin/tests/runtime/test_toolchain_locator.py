@@ -5,6 +5,7 @@ vendor's extracted-release directory name. These tests pin its search order, its
 directory the declaration does not name, its behaviour with no declaration, and the one real
 declaration the board adapter depends on at import time.
 """
+
 from __future__ import annotations
 
 import subprocess

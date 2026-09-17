@@ -15,6 +15,7 @@ This file is the anti-drift link. ``_is_answer_key`` stays the single authority 
 surface IS, and the EXCLUSION DATA is read out of ``setup.py`` by AST so it cannot drift from what the
 build actually uses. Both then run against the real ``merlin/contract`` tree and must agree.
 """
+
 from __future__ import annotations
 
 import ast
@@ -45,11 +46,12 @@ def _setup_literal(name: str):
     """
     tree = ast.parse((REPO / "setup.py").read_text(encoding="utf-8"))
     for node in tree.body:
-        if isinstance(node, ast.Assign) and any(
-                isinstance(t, ast.Name) and t.id == name for t in node.targets):
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
             return ast.literal_eval(node.value)
-    raise AssertionError(f"setup.py no longer defines {name}; the bundle filter has been restructured "
-                         f"and this test must be re-pointed at it")
+    raise AssertionError(
+        f"setup.py no longer defines {name}; the bundle filter has been restructured "
+        f"and this test must be re-pointed at it"
+    )
 
 
 def _bundle_filter(kind: str):
@@ -59,18 +61,21 @@ def _bundle_filter(kind: str):
     code = tuple(_setup_literal("_CODE_SUFFIXES"))
 
     def _ignore(_dir: str, names: list[str]) -> set[str]:
-        return {n for n in names
-                if n == "__pycache__" or n.endswith(code)
-                or any(n.startswith(p) for p in prefixes)
-                or any(n.endswith(x) for x in suffixes)}
+        return {
+            n
+            for n in names
+            if n == "__pycache__"
+            or n.endswith(code)
+            or any(n.startswith(p) for p in prefixes)
+            or any(n.endswith(x) for x in suffixes)
+        }
 
     return _ignore
 
 
 def _answer_surfaces_on_disk() -> list:
     """Real paths under merlin/contract that the answer-key gate classifies as answers."""
-    return [p for p in CONTRACT.rglob("*")
-            if AK._is_answer_key(p.relative_to(REPO).as_posix())]
+    return [p for p in CONTRACT.rglob("*") if AK._is_answer_key(p.relative_to(REPO).as_posix())]
 
 
 def test_the_contract_tree_declares_answer_key_exclusions():
@@ -78,14 +83,16 @@ def test_the_contract_tree_declares_answer_key_exclusions():
     assert _setup_literal("_EXCLUDE").get("contract"), (
         "setup.py's bundle filter declares no exclusions for the `contract` tree, so `uv build` copies "
         "every golden/ and hidden/ answer surface into merlin/_data and `pip install merlin` ships the "
-        "benchmark's answers")
+        "benchmark's answers"
+    )
 
 
 def test_the_tree_actually_contains_answer_surfaces():
     """Guard the guard: if the corpus has none, the agreement test below is vacuously true."""
     assert _answer_surfaces_on_disk(), (
         "no answer surface found under merlin/contract, so the agreement test proves nothing; check "
-        "_is_answer_key or the corpus")
+        "_is_answer_key or the corpus"
+    )
 
 
 def test_every_answer_surface_is_dropped_from_the_bundle():
@@ -107,13 +114,21 @@ def test_every_answer_surface_is_dropped_from_the_bundle():
     leaked = sorted(str(p.relative_to(REPO)) for p in _answer_surfaces_on_disk() if not _excluded(p))
     assert not leaked, (
         f"{len(leaked)} answer surface(s) survive setup.py's bundle filter and would be packaged into "
-        f"the wheel:\n  " + "\n  ".join(leaked[:20]))
+        f"the wheel:\n  " + "\n  ".join(leaked[:20])
+    )
 
 
 def test_the_filter_still_keeps_the_public_contract():
     """Over-exclusion is a real failure too: the wheel must still carry the public contract."""
     ignore = _bundle_filter("contract")
-    keep = ["schemas", "command_buffer.schema.json", "hardware_pins.yaml", "capsule.yaml",
-            "compute_endpoints.yaml", "perf_rules"]
+    keep = [
+        "schemas",
+        "command_buffer.schema.json",
+        "hardware_pins.yaml",
+        "capsule.yaml",
+        "compute_endpoints.yaml",
+        "perf_rules",
+    ]
     assert not ignore(str(CONTRACT), keep), (
-        f"the bundle filter drops public contract data the SDK needs: {ignore(str(CONTRACT), keep)}")
+        f"the bundle filter drops public contract data the SDK needs: {ignore(str(CONTRACT), keep)}"
+    )

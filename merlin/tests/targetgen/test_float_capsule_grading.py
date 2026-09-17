@@ -9,6 +9,7 @@ integer L0-reference / L1-simulate tiers are skipped as inapplicable — the gra
 program-oracle output vs the independent golden (tolerance_float). ``not_run_is_not_pass`` is preserved:
 a required RTL oracle that is unavailable still makes the capsule ``incomplete``.
 """
+
 from __future__ import annotations
 
 import copy
@@ -23,8 +24,8 @@ from merlin.targetgen.contract import schemas
 from merlin.targetgen.runner_config import RunnerConfig
 
 CAPS = repo_root() / "merlin/contract/capsules"
-ATLAS_AT2 = CAPS / "atlas/isa/AT2_single_tile_matmul"          # fp8-e4m3 in / bf16 out, independent golden
-GEMMINI_A2 = CAPS / "isa/A2_single_tile_matmul"                # i8 x i8 -> i32, recomputed golden
+ATLAS_AT2 = CAPS / "atlas/isa/AT2_single_tile_matmul"  # fp8-e4m3 in / bf16 out, independent golden
+GEMMINI_A2 = CAPS / "isa/A2_single_tile_matmul"  # i8 x i8 -> i32, recomputed golden
 
 
 def _atlas_config(capsule=None) -> RunnerConfig:
@@ -33,12 +34,18 @@ def _atlas_config(capsule=None) -> RunnerConfig:
 
     The oracle ladder follows the capsule's own mandatory tiers for the same reason `_oracle_returning`
     does -- a config that names a fixed tier grades a corpus that has since moved on."""
-    tiers = tuple(t for t in (capsule or {}).get("required_oracle_tiers", ["L3"])
-                  if t not in ("L0", "L1")) or ("L3",)
+    tiers = tuple(t for t in (capsule or {}).get("required_oracle_tiers", ["L3"]) if t not in ("L0", "L1")) or ("L3",)
     return RunnerConfig(
-        target="atlas", suite="atlas-capsule-bench", dtype="fp8_e4m3",
-        fourth_output_name="kernel.S", tier_sim={t: "atlas-arc" for t in tiers},
-        rtl_tiers=frozenset(tiers), oracle_tiers=tiers, perf_fields=(), trace_gate=None)
+        target="atlas",
+        suite="atlas-capsule-bench",
+        dtype="fp8_e4m3",
+        fourth_output_name="kernel.S",
+        tier_sim={t: "atlas-arc" for t in tiers},
+        rtl_tiers=frozenset(tiers),
+        oracle_tiers=tiers,
+        perf_fields=(),
+        trace_gate=None,
+    )
 
 
 # --------------------------------------------------------------------------------------------
@@ -76,7 +83,7 @@ def test_float_capsule_reads_independent_golden():
 # --------------------------------------------------------------------------------------------
 def test_compare_tolerance_float_and_source_reported():
     cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
-    pol = cap["numeric_policy"]                                 # tolerance_float, atol 0.25, rtol 0.02
+    pol = cap["numeric_policy"]  # tolerance_float, atol 0.25, rtol 0.02
     g = CG.golden(cap)
     src = CG.golden_source(cap)
 
@@ -84,11 +91,11 @@ def test_compare_tolerance_float_and_source_reported():
     assert ok["status"] == "pass" and ok["golden_source"] == "specir_refmodel_fp8_bf16"
 
     within = copy.deepcopy(g)
-    within["Y0"][0][0] += 0.2                                   # inside atol 0.25 -> still pass
+    within["Y0"][0][0] += 0.2  # inside atol 0.25 -> still pass
     assert CG.compare(g, within, pol, golden_source=src)["status"] == "pass"
 
     bad = copy.deepcopy(g)
-    bad["Y0"][0][0] += 100.0                                    # far outside tolerance -> fail
+    bad["Y0"][0][0] += 100.0  # far outside tolerance -> fail
     rep = CG.compare(g, bad, pol, golden_source=src)
     assert rep["status"] == "fail" and rep["max_abs_error"] == 100.0
 
@@ -99,8 +106,7 @@ def test_compare_tolerance_float_and_source_reported():
 def _stub_front_half(monkeypatch):
     """Bypass the package build + 4 ABI entrypoints — return a minimal (pkg, cb, kernel_text)."""
     cb = {"tensors": {"Y0": {"role": "output", "base": 0, "shape": [32, 32], "dtype": "bf16"}}}
-    monkeypatch.setattr(CR, "run_entrypoints",
-                        lambda *a, **k: (object(), cb, "# kernel.S (stub)\n"))
+    monkeypatch.setattr(CR, "run_entrypoints", lambda *a, **k: (object(), cb, "# kernel.S (stub)\n"))
     return cb
 
 
@@ -115,8 +121,10 @@ def _oracle_returning(outputs, capsule=None):
     tier-completeness to the tests that own it. The integer floor (L0/L1) is skipped as N/A on a float
     datapath and needs no adapter.
     """
+
     def run(cb, llvm_text, workdir, timeout):
         return {"outputs": copy.deepcopy(outputs), "cycles": 123, "oracle": "atlas-arc-test"}
+
     tiers = [t for t in (capsule or {}).get("required_oracle_tiers", ["L3"]) if t not in ("L0", "L1")]
     return {t: run for t in tiers or ["L3"]}
 
@@ -126,8 +134,14 @@ def test_float_run_capsule_grades_pass(tmp_path, monkeypatch):
     cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
     gold = CG.golden(cap)
 
-    res = CR.run_capsule(cap, "unused-package", runs_root=tmp_path, run_id="AT2_pass",
-                         config=_atlas_config(cap), oracle_adapters=_oracle_returning(gold, cap))
+    res = CR.run_capsule(
+        cap,
+        "unused-package",
+        runs_root=tmp_path,
+        run_id="AT2_pass",
+        config=_atlas_config(cap),
+        oracle_adapters=_oracle_returning(gold, cap),
+    )
 
     assert res["status"] == "pass", res.get("failure")
     # integer floor is honestly skipped (N/A for float), not failed.
@@ -147,10 +161,16 @@ def test_float_run_capsule_grades_fail_on_mismatch(tmp_path, monkeypatch):
     cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
     bad = CG.golden(cap)
     bad = copy.deepcopy(bad)
-    bad["Y0"][0][0] += 100.0                                    # outside tolerance
+    bad["Y0"][0][0] += 100.0  # outside tolerance
 
-    res = CR.run_capsule(cap, "unused-package", runs_root=tmp_path, run_id="AT2_fail",
-                         config=_atlas_config(cap), oracle_adapters=_oracle_returning(bad, cap))
+    res = CR.run_capsule(
+        cap,
+        "unused-package",
+        runs_root=tmp_path,
+        run_id="AT2_fail",
+        config=_atlas_config(cap),
+        oracle_adapters=_oracle_returning(bad, cap),
+    )
 
     assert res["status"] == "fail"
     assert res["tiers"]["L3"]["status"] == "fail"
@@ -159,8 +179,7 @@ def test_float_run_capsule_grades_fail_on_mismatch(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("onboard_status", ["pass", "fail"])
-def test_float_run_capsule_accepts_declared_result_page_verdict(
-        onboard_status, tmp_path, monkeypatch):
+def test_float_run_capsule_accepts_declared_result_page_verdict(onboard_status, tmp_path, monkeypatch):
     """An RTL carrier can grade memory without fabricating captured outputs.
 
     This exercises both halves of the production seam: run_capsule attaches the
@@ -190,8 +209,12 @@ def test_float_run_capsule_accepts_declared_result_page_verdict(
 
     tiers = [tier for tier in cap.get("required_oracle_tiers", []) if tier not in ("L0", "L1")]
     result = CR.run_capsule(
-        cap, "unused-package", runs_root=tmp_path, run_id=f"AT2_onboard_{onboard_status}",
-        config=_atlas_config(cap), oracle_adapters={tier: onboard for tier in tiers},
+        cap,
+        "unused-package",
+        runs_root=tmp_path,
+        run_id=f"AT2_onboard_{onboard_status}",
+        config=_atlas_config(cap),
+        oracle_adapters={tier: onboard for tier in tiers},
     )
 
     assert seen and all(item is not cb for item in seen)
@@ -204,15 +227,16 @@ def test_float_run_capsule_accepts_declared_result_page_verdict(
     schemas.validate(result, "capsule_result", contract="merlin/contract")
 
 
-def test_evaluation_stage_passes_sealed_l2_cycles_only_to_oracle_view(
-        tmp_path, monkeypatch) -> None:
+def test_evaluation_stage_passes_sealed_l2_cycles_only_to_oracle_view(tmp_path, monkeypatch) -> None:
     cb = _stub_front_half(monkeypatch)
     cap = copy.deepcopy(load_capsule(ATLAS_AT2, contract="merlin/contract"))
     cap["evaluation_stage"] = {
         "predecessor_l2_cycles": 218_162,
         "cycle_budget": {
-            "source": "sealed_predecessor_tier", "multiplier": 8,
-            "minimum_cycles": 120_000, "compute_floor_multiplier": 2,
+            "source": "sealed_predecessor_tier",
+            "multiplier": 8,
+            "minimum_cycles": 120_000,
+            "compute_floor_multiplier": 2,
         },
     }
     gold = CG.golden(cap)
@@ -220,18 +244,21 @@ def test_evaluation_stage_passes_sealed_l2_cycles_only_to_oracle_view(
 
     def onboard(bound_cb, llvm_text, workdir, timeout):
         seen.append(bound_cb)
-        return {"outputs": copy.deepcopy(gold), "cycles": 123,
-                "oracle": {"kind": "rtl-test", "derived_from_rtl": True}}
+        return {"outputs": copy.deepcopy(gold), "cycles": 123, "oracle": {"kind": "rtl-test", "derived_from_rtl": True}}
 
     tiers = [tier for tier in cap.get("required_oracle_tiers", []) if tier not in ("L0", "L1")]
     result = CR.run_capsule(
-        cap, "unused-package", runs_root=tmp_path, run_id="AT2_sealed_l2_cycles",
-        config=_atlas_config(cap), oracle_adapters={tier: onboard for tier in tiers})
+        cap,
+        "unused-package",
+        runs_root=tmp_path,
+        run_id="AT2_sealed_l2_cycles",
+        config=_atlas_config(cap),
+        oracle_adapters={tier: onboard for tier in tiers},
+    )
 
     assert result["status"] == "pass"
     assert seen and all(bound["_oracle_l2_cycles"] == 218_162 for bound in seen)
-    assert all(bound["_oracle_gsim_cycle_policy"] == cap["evaluation_stage"]["cycle_budget"]
-               for bound in seen)
+    assert all(bound["_oracle_gsim_cycle_policy"] == cap["evaluation_stage"]["cycle_budget"] for bound in seen)
     assert "_oracle_l2_cycles" not in cb
 
 
@@ -241,8 +268,9 @@ def test_float_run_capsule_not_run_is_not_pass(tmp_path, monkeypatch):
     _stub_front_half(monkeypatch)
     cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
 
-    res = CR.run_capsule(cap, "unused-package", runs_root=tmp_path, run_id="AT2_incomplete",
-                         config=_atlas_config(), oracle_adapters={})     # no L3 adapter
+    res = CR.run_capsule(
+        cap, "unused-package", runs_root=tmp_path, run_id="AT2_incomplete", config=_atlas_config(), oracle_adapters={}
+    )  # no L3 adapter
 
     assert res["status"] == "incomplete"
     assert res["failure"]["category"] == "NOT_RUN_IS_NOT_PASS"
@@ -259,11 +287,18 @@ def test_no_oracle_smoke_is_not_gradeable_never_pass(tmp_path, monkeypatch):
     _stub_front_half(monkeypatch)
     cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
 
-    res = CR.run_capsule(cap, "unused-package", runs_root=tmp_path, run_id="AT2_no_oracle",
-                         config=_atlas_config(), oracle_adapters={}, no_oracle=True)
+    res = CR.run_capsule(
+        cap,
+        "unused-package",
+        runs_root=tmp_path,
+        run_id="AT2_no_oracle",
+        config=_atlas_config(),
+        oracle_adapters={},
+        no_oracle=True,
+    )
 
     assert res["status"] == "not_gradeable_no_oracle"
-    assert res["status"] != "pass"                              # HARD INVARIANT: never a numeric pass
+    assert res["status"] != "pass"  # HARD INVARIANT: never a numeric pass
     assert res["failure"]["plane"] == "not_gradeable_no_oracle"
     assert res["failure"]["category"] == "NOT_GRADEABLE_NO_ORACLE"
     assert res["tiers"]["L3"]["status"] == "unavailable"
@@ -272,13 +307,13 @@ def test_no_oracle_smoke_is_not_gradeable_never_pass(tmp_path, monkeypatch):
 
 def test_atlas_oracle_routes_to_program_oracle():
     ad = CR.oracle_adapters("atlas")
-    assert {"L2", "L3"} <= set(ad)                              # model loop + elaborated-RTL cert
+    assert {"L2", "L3"} <= set(ad)  # model loop + elaborated-RTL cert
     assert ad["L2"].__module__ == "merlin.targetgen.program_oracle"
     assert ad["L3"].__module__ == "merlin.targetgen.program_oracle"
-    if "L4" in ad:                                              # additive RTL-certified verilator tier
+    if "L4" in ad:  # additive RTL-certified verilator tier
         assert ad["L4"].__module__ == "merlin.targetgen.program_oracle"
-    assert "program_oracle_adapter" in ad["L2"].__qualname__       # model-backed numeric loop
-    assert "program_verilator_adapter" in ad["L3"].__qualname__    # elaborated-RTL certification
+    assert "program_oracle_adapter" in ad["L2"].__qualname__  # model-backed numeric loop
+    assert "program_verilator_adapter" in ad["L3"].__qualname__  # elaborated-RTL certification
 
 
 def test_external_backend_requires_model_ext_no_target_default(monkeypatch):

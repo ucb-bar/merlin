@@ -5,6 +5,7 @@ a variant that WAS gated, the gate covers its arithmetic. That claim is only wor
 comparison is strict about what it forgives, so this pins both directions -- what counts as the same
 program, and what must be reported as a mismatch.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -44,7 +45,7 @@ def test_a_relaxed_address_materialisation_is_still_the_same_program():
     base = ["addi", "vfmacc.vv", "auipc", "addi", "ld", "vse32.v", "ret"]
     dropped = ["addi", "vfmacc.vv", "addi", "ld", "vse32.v", "ret"]
     assert md.twin_equivalence(base, dropped) == (True, 1)
-    assert md.twin_equivalence(dropped, base) == (True, 1)          # symmetric
+    assert md.twin_equivalence(dropped, base) == (True, 1)  # symmetric
 
 
 def test_any_other_difference_is_a_mismatch():

@@ -11,6 +11,7 @@ fusion is proved on the ACTUAL rewrite output (the shipping RUNNER_PRELUDE, run 
 not on the schedule text. The pure-python part guards the default-off invariant (baseline lowering
 byte-identical) without needing torch-mlir.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -22,7 +23,7 @@ import pytest
 
 from merlin.llvmlower import impr_features as F
 from merlin.llvmlower.impr_features import apply_pipeline, apply_schedule
-from merlin.llvmlower.pipeline import (RVV_TRANSFORM_SCHEDULE, _RUNNER, build_rvv_pipeline)
+from merlin.llvmlower.pipeline import _RUNNER, RVV_TRANSFORM_SCHEDULE, build_rvv_pipeline
 from merlin.llvmlower.transpose_fuse import FEATURE, RUNNER_PRELUDE
 
 _FEAT = "fuse_transpose_b"
@@ -38,8 +39,7 @@ def test_default_off_lowering_is_byte_identical():
     """The rewrite is runner-side and gated by argv[5], so enabling the feature changes NEITHER the
     transform schedule NOR the pass pipeline — the frozen hand_v0 control stays byte-identical."""
     fs = frozenset({_FEAT})
-    assert apply_schedule(RVV_TRANSFORM_SCHEDULE, fs) == apply_schedule(RVV_TRANSFORM_SCHEDULE,
-                                                                        frozenset())
+    assert apply_schedule(RVV_TRANSFORM_SCHEDULE, fs) == apply_schedule(RVV_TRANSFORM_SCHEDULE, frozenset())
     base = build_rvv_pipeline("/tmp/s.mlir", features=frozenset())
     feat = build_rvv_pipeline("/tmp/s.mlir", features=fs)
     assert base == feat
@@ -60,9 +60,11 @@ def test_runner_prelude_is_valid_python():
 
 # ---- emitted-code proof (needs the model2mlir venv / torch-mlir bindings) ------------
 
+
 def _m2m() -> Path | None:
     try:
         from merlin.llvmlower.toolchain import m2m_python
+
         p = Path(m2m_python())
         return p if p.is_file() else None
     except Exception:  # noqa: BLE001
@@ -87,7 +89,10 @@ _TRANSPOSE_B_MODULE = textwrap.dedent("""\
 
 # Driver run INSIDE the m2m venv: parse the module, apply the shipping rewrite, report counts + the
 # rewritten B map, and verify the module still type-checks.
-_PROBE = "import sys\n" + RUNNER_PRELUDE + textwrap.dedent("""\
+_PROBE = (
+    "import sys\n"
+    + RUNNER_PRELUDE
+    + textwrap.dedent("""\
     from torch_mlir import ir
     ctx = ir.Context(); ctx.allow_unregistered_dialects = True
     module = ir.Module.parse(open(sys.argv[1]).read(), ctx)
@@ -99,6 +104,7 @@ _PROBE = "import sys\n" + RUNNER_PRELUDE + textwrap.dedent("""\
     # the B map must now read (d1, d2) = (n, k) of the un-transposed weight
     print("HAS_NK_MAP", "(d0, d1, d2) -> (d1, d2)" in txt)
     """)
+)
 
 
 @pytest.mark.skipif(_m2m() is None, reason="model2mlir venv missing")
@@ -108,10 +114,11 @@ def test_rewrite_folds_the_transpose_into_the_matmul():
     d = Path(tempfile.mkdtemp(prefix="tr_fuse_test_"))
     (d / "m.mlir").write_text(_TRANSPOSE_B_MODULE)
     (d / "probe.py").write_text(_PROBE)
-    out = subprocess.run([str(_m2m()), str(d / "probe.py"), str(d / "m.mlir")],
-                         capture_output=True, text=True, timeout=300)
+    out = subprocess.run(
+        [str(_m2m()), str(d / "probe.py"), str(d / "m.mlir")], capture_output=True, text=True, timeout=300
+    )
     assert out.returncode == 0, out.stderr
     kv = dict(ln.split(maxsplit=1) for ln in out.stdout.splitlines() if " " in ln)
     assert kv.get("FUSED") == "1", out.stdout
-    assert kv.get("TRANSPOSES") == "0", out.stdout          # the dead transpose is erased
-    assert kv.get("HAS_NK_MAP") == "True", out.stdout       # B now read (n, k)
+    assert kv.get("TRANSPOSES") == "0", out.stdout  # the dead transpose is erased
+    assert kv.get("HAS_NK_MAP") == "True", out.stdout  # B now read (n, k)

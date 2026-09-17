@@ -5,6 +5,7 @@ Synthetic-text tests run everywhere. Tests against the real smolVLA artifact ski
 the model2MLIR checkout is absent; the spike execution test additionally skips without
 the chipyard toolchain.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -55,9 +56,8 @@ builtin.module attributes {prov.level = "linalg-on-tensors"} {
 def test_synthetic_parse_and_inventory():
     from merlin.frontends import linalg_mlir as fl
 
-    mod = fl.parse_mlir_text(SYNTHETIC)   # exercises the multi-result paren fix
-    inv = fl.matmul_inventory(mod, {0: {"weight": "model.linear.weight",
-                                        "dtype": "float32", "shape": [32, 720]}})
+    mod = fl.parse_mlir_text(SYNTHETIC)  # exercises the multi-result paren fix
+    inv = fl.matmul_inventory(mod, {0: {"weight": "model.linear.weight", "dtype": "float32", "shape": [32, 720]}})
     assert len(inv) == 1
     rec = inv[0]
     assert (rec.m, rec.k, rec.n) == (50, 720, 32)
@@ -71,9 +71,7 @@ def test_weight_reuse_facts_and_gemm_selection():
     from merlin.frontends import facts as ff
     from merlin.frontends import linalg_mlir as fl
 
-    inv = fl.matmul_inventory(
-        fl.parse_mlir_text(SYNTHETIC),
-        {0: {"weight": "model.linear.weight", "dtype": "float32"}})
+    inv = fl.matmul_inventory(fl.parse_mlir_text(SYNTHETIC), {0: {"weight": "model.linear.weight", "dtype": "float32"}})
     facts = ff.lift_weight_reuse(inv, invocations=10)
     assert len(facts) == 1
     f = facts[0]
@@ -103,10 +101,9 @@ def test_dse_records_resident_variants():
 
     inv = fl.matmul_inventory(fl.parse_mlir_text(SYNTHETIC), {0: {"weight": "w"}})
     rec = inv[0]
-    out = ff.record_dse(rec, ff.drive_pipeline(rec, reuse=4, target="saturn").command_buffer,
-                        workload="synthetic_gemm")
+    out = ff.record_dse(rec, ff.drive_pipeline(rec, reuse=4, target="saturn").command_buffer, workload="synthetic_gemm")
     out["module"].verify()
-    assert out["regime"] == "exploitable"   # reuse=4 amortizes the pack
+    assert out["regime"] == "exploitable"  # reuse=4 amortizes the pack
     sv = out["results"]["variants"]["software_visible"]
     base = out["results"]["variants"]["baseline"]
     assert sv["cycles"] < base["cycles"]
@@ -165,15 +162,13 @@ def test_real_smolvla_gemm_on_spike(tmp_path):
 
     if not spike.available():
         pytest.skip("chipyard toolchain/spike not available")
-    inv = fl.matmul_inventory(fl.parse_mlir_file(SMOLVLA_MLIR),
-                              fl.load_manifest(SMOLVLA_MANIFEST))
+    inv = fl.matmul_inventory(fl.parse_mlir_file(SMOLVLA_MLIR), fl.load_manifest(SMOLVLA_MANIFEST))
     rec = ff.select_gemm(inv, max_macs=2_000_000)
     res = ff.drive_pipeline(rec, reuse=2, target="saturn")
     out = spike.run_command_buffer(res.command_buffer, harts=4, workdir=tmp_path)
     assert out["correct"] is True
     assert out["outputs"] == reference_outputs(res.command_buffer)
     assert out["metrics"]["cycles"] > 0
-    d = ff.record_dse(rec, res.command_buffer, spike_metrics=out["metrics"],
-                      workload="smolvla_action_out_proj")
+    d = ff.record_dse(rec, res.command_buffer, spike_metrics=out["metrics"], workload="smolvla_action_out_proj")
     assert d["regime"] == "exploitable"
     assert "software_visible_spike" in d["results"]["variants"]

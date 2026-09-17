@@ -6,6 +6,7 @@ failing a legitimately self-contained package before any capsule graded. Real ``
 ``from merlin[.…] import`` is detected structurally (AST); the reference/oracle dotted paths stay
 substring-matched (they name the actual surface, not a common word).
 """
+
 from __future__ import annotations
 
 from merlin.targetgen.oot_runner import _py_imports_merlin
@@ -22,8 +23,9 @@ def test_docstring_and_comment_mentions_do_not_count():
 def test_real_harness_imports_are_caught():
     assert _py_imports_merlin("import merlin\n") == "merlin"
     assert _py_imports_merlin("import merlin.runtime.reference as r\n") == "merlin.runtime.reference"
-    assert _py_imports_merlin("from merlin.targetgen.capsule_golden import golden\n") \
-        == "merlin.targetgen.capsule_golden"
+    assert (
+        _py_imports_merlin("from merlin.targetgen.capsule_golden import golden\n") == "merlin.targetgen.capsule_golden"
+    )
     assert _py_imports_merlin("from merlin import runtime\n") == "merlin"
 
 

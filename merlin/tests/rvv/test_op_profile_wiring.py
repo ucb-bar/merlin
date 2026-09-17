@@ -11,6 +11,7 @@ as an empty op table, and the driver reported ``ok: true`` with a breakdown of n
 saying a model has no attributable work, which is not the same statement as "the profiler was never
 linked in". A silently un-instrumented run also costs a full build + board slot to produce it.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -22,12 +23,12 @@ def _session_bundle(tmp_path, version: int):
     d = tmp_path / f"bundle_v{version}"
     d.mkdir()
     (d / "session_contract.yaml").write_text(
-        f"version: {version}\nkind: action_chunk\nstages:\n- only\n", encoding="utf-8")
+        f"version: {version}\nkind: action_chunk\nstages:\n- only\n", encoding="utf-8"
+    )
     return d
 
 
-def test_a_multi_program_session_refuses_a_profile_instead_of_dropping_the_flag(tmp_path,
-                                                                               monkeypatch):
+def test_a_multi_program_session_refuses_a_profile_instead_of_dropping_the_flag(tmp_path, monkeypatch):
     monkeypatch.setattr(k1, "K1_HOST", "unreachable.invalid")
     bundle = _session_bundle(tmp_path, 2)
     with pytest.raises(k1.K1Error) as e:
@@ -42,7 +43,7 @@ def test_the_same_session_without_a_profile_is_untouched(tmp_path, monkeypatch):
     """The refusal is scoped to the profile request: an ordinary run must not start failing."""
     monkeypatch.setattr(k1, "K1_HOST", "unreachable.invalid")
     bundle = _session_bundle(tmp_path, 2)
-    with pytest.raises(Exception) as e:                     # noqa: PT011 - it fails LATER, in build
+    with pytest.raises(Exception) as e:  # noqa: PT011 - it fails LATER, in build
         k1.run_on_k1(bundle, tmp_path / "work", object(), op_profile=False)
     assert "op_profile" not in str(e.value)
 
@@ -53,7 +54,7 @@ def test_a_version_1_session_still_profiles(tmp_path, monkeypatch):
     resnet50/lstmnetvit profiles."""
     monkeypatch.setattr(k1, "K1_HOST", "unreachable.invalid")
     bundle = _session_bundle(tmp_path, 1)
-    with pytest.raises(Exception) as e:                     # noqa: PT011 - fails later, in build
+    with pytest.raises(Exception) as e:  # noqa: PT011 - fails later, in build
         k1.run_on_k1(bundle, tmp_path / "work", object(), op_profile=True)
     assert "op_profile" not in str(e.value)
 

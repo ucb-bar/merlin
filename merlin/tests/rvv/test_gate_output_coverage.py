@@ -19,6 +19,7 @@ cos -0.320 against fp32 there, while tokens 1-7 all sit above 0.988.
 So the gate now reports its coverage on every verdict, and a caller that needs a whole-output verdict
 can declare a floor and get a refusal instead of a prefix score.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -42,8 +43,8 @@ def _tiny_llama_shaped(seed: int = 0):
     # (measured |logits| 267 at position 0 against 640-900 at positions 1-7)
     ref[0] *= 0.2
     run = ref.copy()
-    run[0] = 0.2 * rng.normal(size=VOCAB).astype(np.float32)   # position 0: unrelated
-    run[1:] += 1e-3 * rng.normal(size=(SEQ - 1, VOCAB))        # the rest: faithful
+    run[0] = 0.2 * rng.normal(size=VOCAB).astype(np.float32)  # position 0: unrelated
+    run[1:] += 1e-3 * rng.normal(size=(SEQ - 1, VOCAB))  # the rest: faithful
     return ref.ravel(), run.ravel()
 
 
@@ -87,10 +88,10 @@ def test_a_declared_coverage_floor_refuses_a_prefix_only_verdict():
     """The knob has to be able to FAIL, or it is documentation. A prefix that passes every tier on
     its own numbers is still not a verdict about the model's output."""
     ref = np.random.default_rng(1).normal(size=SEQ * VOCAB).astype(np.float32)
-    run = ref[:DUMP_CAP].copy()                              # a perfect prefix: every tier clears
+    run = ref[:DUMP_CAP].copy()  # a perfect prefix: every tier clears
     passes = _gate(run, {"fp32": ref})
     assert passes["ok"] is True and passes["tier_ok"] is not None
-    assert passes["coverage_ok"] is True                     # default floor is off
+    assert passes["coverage_ok"] is True  # default floor is off
 
     vetoed = _gate(run, {"fp32": ref}, min_coverage=1.0)
     assert vetoed["coverage_ok"] is False

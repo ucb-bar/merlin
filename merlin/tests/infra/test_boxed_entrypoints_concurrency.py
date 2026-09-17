@@ -14,6 +14,7 @@ box. This pins the fixed behaviour: the policy is per-thread, the patch is insta
 long as any thread holds it, and an invocation arriving on an unboxed thread is refused rather than
 falling through.
 """
+
 from __future__ import annotations
 
 import sys
@@ -28,6 +29,7 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 import perf_campaign as PC  # noqa: E402
+
 from merlin.targetgen import oot_runner  # noqa: E402
 
 
@@ -36,8 +38,13 @@ def _policy(tmp_path, name):
     (root / "pkg").mkdir(parents=True)
     (root / "ws").mkdir(parents=True)
     return PC.PackageSandboxPolicy(
-        argv=("true",), package=(root / "pkg").resolve(), workspace=(root / "ws").resolve(),
-        target_experiment=None, coverage_gap=(), required_tools=())
+        argv=("true",),
+        package=(root / "pkg").resolve(),
+        workspace=(root / "ws").resolve(),
+        target_experiment=None,
+        coverage_gap=(),
+        required_tools=(),
+    )
 
 
 def test_each_thread_sees_its_own_policy(tmp_path):
@@ -55,7 +62,8 @@ def test_each_thread_sees_its_own_policy(tmp_path):
 
     ta = threading.Thread(target=worker, args=("a", a, True))
     tb = threading.Thread(target=worker, args=("b", b, False))
-    ta.start(); tb.start()
+    ta.start()
+    tb.start()
     tb.join(timeout=5)
     # B has now EXITED its box while A is still inside it. Under the old save/restore this is the
     # moment A's sandbox was replaced by B's stale "original".
@@ -72,9 +80,11 @@ def test_the_sandbox_survives_another_thread_leaving(tmp_path):
     with PC.boxed_entrypoints(a):
         patched = oot_runner.run_entrypoint
         t = threading.Thread(target=_enter_and_leave, args=(b,))
-        t.start(); t.join(timeout=5)
+        t.start()
+        t.join(timeout=5)
         assert oot_runner.run_entrypoint is patched, (
-            "a second thread leaving its box un-installed the sandbox for the first")
+            "a second thread leaving its box un-installed the sandbox for the first"
+        )
         assert PC.active_sandbox_policy() is a
 
 
@@ -110,7 +120,7 @@ def test_the_old_save_restore_pattern_really_did_have_this_race():
 
     @contextlib.contextmanager
     def old_style(name):
-        saved = box["fn"]          # thread B saves thread A's replacement, not the original
+        saved = box["fn"]  # thread B saves thread A's replacement, not the original
         box["fn"] = name
         try:
             yield
@@ -126,10 +136,11 @@ def test_the_old_save_restore_pattern_really_did_have_this_race():
     # ...and on A's exit the value restored is "ORIGINAL" only because this interleaving nested.
     # Now the genuinely concurrent order, where B enters and leaves while A holds:
     box["fn"] = "ORIGINAL"
-    a = old_style("A"); a.__enter__()
-    b = old_style("B"); b.__enter__()
-    a.__exit__(None, None, None)      # A finishes first: restores "ORIGINAL"
+    a = old_style("A")
+    a.__enter__()
+    b = old_style("B")
+    b.__enter__()
+    a.__exit__(None, None, None)  # A finishes first: restores "ORIGINAL"
     assert box["fn"] == "ORIGINAL", "A's exit un-installed B's sandbox"
-    b.__exit__(None, None, None)      # B restores what it saved: "A"
-    assert box["fn"] == "A", (
-        "the globals are left holding a replacement whose policy points at a deleted workspace")
+    b.__exit__(None, None, None)  # B restores what it saved: "A"
+    assert box["fn"] == "A", "the globals are left holding a replacement whose policy points at a deleted workspace"

@@ -6,6 +6,7 @@ a delegated timer that a bare M-mode image does not have. The first mark took an
 trap (mcause 2, mtval 0xc0102773 = `csrrs a4, time, x0`) a few instructions into the model, and the
 whole run was lost to it. These compile the real C for RISC-V and read the emitted instruction back.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -18,6 +19,7 @@ from merlin.common.paths import runtime_dir
 def _compile_asm(tmp_path, defines):
     """Compile the profiler to assembly for rv64, or skip if the bare-metal toolchain is absent."""
     from merlin.runtime.backends import spike as spike_backend
+
     try:
         gcc = spike_backend.gcc_path()
     except Exception as e:  # noqa: BLE001
@@ -26,9 +28,25 @@ def _compile_asm(tmp_path, defines):
         pytest.skip("no riscv toolchain")
     src = runtime_dir() / "c" / "merlin_op_prof.c"
     out = tmp_path / "prof.s"
-    got = subprocess.run([str(gcc), "-march=rv64gcv", "-mabi=lp64d", "-ffreestanding", "-nostdlib",
-                          "-O2", "-S", *defines, "-I", str(runtime_dir() / "baremetal" / "spike"),
-                          str(src), "-o", str(out)], capture_output=True, text=True)
+    got = subprocess.run(
+        [
+            str(gcc),
+            "-march=rv64gcv",
+            "-mabi=lp64d",
+            "-ffreestanding",
+            "-nostdlib",
+            "-O2",
+            "-S",
+            *defines,
+            "-I",
+            str(runtime_dir() / "baremetal" / "spike"),
+            str(src),
+            "-o",
+            str(out),
+        ],
+        capture_output=True,
+        text=True,
+    )
     if got.returncode != 0:
         pytest.fail(f"the profiler does not compile with {defines}:\n{got.stderr[-2000:]}")
     return out.read_text()
@@ -38,7 +56,8 @@ def test_the_baremetal_backend_reads_mcycle_not_rdtime(tmp_path):
     asm = _compile_asm(tmp_path, ["-DMERLIN_PROF_BAREMETAL"])
     assert "mcycle" in asm, "the bare-metal profiler must read mcycle"
     assert "rdtime" not in asm, (
-        "rdtime needs a delegated timer this substrate does not have; it traps on the first mark")
+        "rdtime needs a delegated timer this substrate does not have; it traps on the first mark"
+    )
 
 
 def test_the_baremetal_backend_prints_through_the_harness_console(tmp_path):

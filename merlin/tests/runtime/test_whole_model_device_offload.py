@@ -9,6 +9,7 @@ These tests pin the seam that changes that, and -- as importantly -- that it is 
 placement decision was actually made. A build that silently started moving contractions onto a device
 would change what every existing image computes.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -31,12 +32,14 @@ module {
 
 
 def _routing(**kw):
-    return DeviceRouting(device=kw.pop("device", "gemmini"), package_dir="/nonexistent",
-                         operand_dtype="int8", accum_dtype="i32", **kw)
+    return DeviceRouting(
+        device=kw.pop("device", "gemmini"), package_dir="/nonexistent", operand_dtype="int8", accum_dtype="i32", **kw
+    )
 
 
 def _prepare(tmp_path, device):
     from merlin.runtime.backends.zephyr_model import prepare_for_lowering
+
     src = tmp_path / "model.mlir"
     src.write_text(_MODEL, encoding="utf-8")
     prepared, _features = prepare_for_lowering(src, tmp_path, blocking=False, device=device)
@@ -74,8 +77,7 @@ def test_the_offloaded_declaration_keeps_its_access_attributes(tmp_path):
 
 def test_a_device_that_declares_no_datapath_moves_nothing(tmp_path):
     """Fail closed: an underivable device offloads nothing rather than assuming a precision."""
-    text, side = _prepare(tmp_path, _routing(device="definitely_not_a_target",
-                                             select=lambda _s: True))
+    text, side = _prepare(tmp_path, _routing(device="definitely_not_a_target", select=lambda _s: True))
     assert "linalg.matmul" in text
     assert not side.get("signatures")
 
@@ -86,9 +88,11 @@ def test_the_link_refuses_offloaded_symbols_it_cannot_build(tmp_path):
     import inspect
 
     from merlin.runtime.backends import spike_model
+
     src = inspect.getsource(spike_model.build)
     assert "were offloaded but no `device=` routing" in src, (
-        "the build must refuse offloaded signatures it has no way to build")
+        "the build must refuse offloaded signatures it has no way to build"
+    )
 
 
 def test_device_objects_are_built_for_the_caller_s_isa(monkeypatch, tmp_path):
@@ -122,9 +126,11 @@ def test_build_device_objects_accepts_cflags():
 
 # ------------------------------------------------- the decision now has a production source
 
+
 def _placement_for(target, demands):
     from merlin.system.derive import system_for_experiment
     from merlin.system.place import place
+
     system, _why = system_for_experiment(target)
     return place(demands, system)
 
@@ -132,8 +138,11 @@ def _placement_for(target, demands):
 def _demands():
     """One contraction the mesh takes and one it cannot, at the extents `_MODEL` actually contains."""
     from merlin.targetgen.routing import OpDemand
-    return [OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="mm", m=16, k=32, n=16),
-            OpDemand(op="matmul", in_fmt="fp32", weight_fmt="fp32", site="host_mm", m=8, k=8, n=8)]
+
+    return [
+        OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="mm", m=16, k=32, n=16),
+        OpDemand(op="matmul", in_fmt="fp32", weight_fmt="fp32", site="host_mm", m=8, k=8, n=8),
+    ]
 
 
 def test_the_selector_moves_what_the_placement_put_on_the_device_and_nothing_else():
@@ -147,8 +156,7 @@ def test_the_selector_moves_what_the_placement_put_on_the_device_and_nothing_els
     select = device_selector(placement)
     shapes = contraction_shapes(_MODEL)
     assert shapes, "the fixture model must contain a contraction to decide about"
-    assert [select(s) for s in shapes] == [True], (
-        "the 16x32x16 i8 contraction is the one the placement put on the mesh")
+    assert [select(s) for s in shapes] == [True], "the 16x32x16 i8 contraction is the one the placement put on the mesh"
 
 
 def test_a_shape_the_placement_never_saw_is_not_moved():
@@ -171,11 +179,14 @@ def test_one_extent_triple_placed_two_ways_is_declined_rather_than_guessed():
     from merlin.system.place import Placed, Placement, device_selector
 
     d = _demands()[0]
-    both = Placement(placed=(
-        Placed(demand=d, device="gemmini", unit="mesh", lane="on_mesh", why="x"),
-        Placed(demand=replace(d, site="elsewhere"), device="host", unit="host_scalar",
-               lane="scalar_rvv_lane", why="y"),
-    ))
+    both = Placement(
+        placed=(
+            Placed(demand=d, device="gemmini", unit="mesh", lane="on_mesh", why="x"),
+            Placed(
+                demand=replace(d, site="elsewhere"), device="host", unit="host_scalar", lane="scalar_rvv_lane", why="y"
+            ),
+        )
+    )
     select = device_selector(both)
     assert select(ContractionShape(op="linalg.matmul", parallel=(16, 16), reduction=(32,))) is False
 
@@ -208,10 +219,18 @@ def test_an_accumulate_format_that_cannot_be_derived_refuses_rather_than_default
     from merlin.system.place import Placed, Placement
     from merlin.targetgen.routing import OpDemand
 
-    exotic = Placement(placed=(
-        Placed(demand=OpDemand(op="matmul", in_fmt="mxfp4", weight_fmt="mxfp4", site="a",
-                               m=16, k=32, n=16),
-               device="gemmini", unit="systolic_mesh", lane="on_mesh", acc=None, why="x"),))
+    exotic = Placement(
+        placed=(
+            Placed(
+                demand=OpDemand(op="matmul", in_fmt="mxfp4", weight_fmt="mxfp4", site="a", m=16, k=32, n=16),
+                device="gemmini",
+                unit="systolic_mesh",
+                lane="on_mesh",
+                acc=None,
+                why="x",
+            ),
+        )
+    )
     with pytest.raises(ValueError, match="underivable"):
         routing_for_placement(exotic, "gemmini", "/nonexistent")
 
@@ -220,8 +239,9 @@ def test_a_placement_that_moved_nothing_is_a_caller_error_not_an_empty_build():
     from merlin.llvmlower.device_build import routing_for_placement
     from merlin.system.place import Placed, Placement
 
-    empty = Placement(placed=(Placed(demand=_demands()[1], device="host", unit="host_scalar",
-                                     lane="scalar_rvv_lane", why="host"),))
+    empty = Placement(
+        placed=(Placed(demand=_demands()[1], device="host", unit="host_scalar", lane="scalar_rvv_lane", why="host"),)
+    )
     with pytest.raises(ValueError, match="nothing to build"):
         routing_for_placement(empty, "gemmini", "/nonexistent")
 
@@ -233,14 +253,26 @@ def test_device_placements_that_disagree_about_the_datapath_refuse_to_become_one
     from merlin.system.place import Placed, Placement
     from merlin.targetgen.routing import OpDemand
 
-    mixed = Placement(placed=(
-        Placed(demand=OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="a",
-                               m=16, k=32, n=16),
-               device="gemmini", unit="mesh", lane="on_mesh", acc="i32", why="x"),
-        Placed(demand=OpDemand(op="matmul", in_fmt="bf16", weight_fmt="bf16", site="b",
-                               m=16, k=32, n=32),
-               device="gemmini", unit="mesh", lane="on_mesh", acc="f32", why="x"),
-    ))
+    mixed = Placement(
+        placed=(
+            Placed(
+                demand=OpDemand(op="matmul", in_fmt="int8", weight_fmt="int8", site="a", m=16, k=32, n=16),
+                device="gemmini",
+                unit="mesh",
+                lane="on_mesh",
+                acc="i32",
+                why="x",
+            ),
+            Placed(
+                demand=OpDemand(op="matmul", in_fmt="bf16", weight_fmt="bf16", site="b", m=16, k=32, n=32),
+                device="gemmini",
+                unit="mesh",
+                lane="on_mesh",
+                acc="f32",
+                why="x",
+            ),
+        )
+    )
     with pytest.raises(ValueError, match="disagree about the datapath"):
         routing_for_placement(mixed, "gemmini", "/nonexistent")
 

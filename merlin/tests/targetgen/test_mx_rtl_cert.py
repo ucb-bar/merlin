@@ -24,6 +24,7 @@ Two independent legs, asserted honestly:
     deliberately loose so the test certifies "the real datapath produces the golden values" without
     over-claiming a clean 100% capture.
 """
+
 from __future__ import annotations
 
 import json
@@ -44,21 +45,27 @@ pytestmark = pytest.mark.skipif(
 
 def _load():
     meta = json.loads((_FIXTURE / "meta.json").read_text())
-    arr = {name: np.load(_FIXTURE / f"{name}.npy") for name in
-           ("A_in", "B_in", "SA", "SB", "golden_bf16", "rtl_bf16")}
+    arr = {name: np.load(_FIXTURE / f"{name}.npy") for name in ("A_in", "B_in", "SA", "SB", "golden_bf16", "rtl_bf16")}
     return meta, arr
 
 
-@pytest.mark.skipif(not mx_oracle.mx_datapath_available(),
-                    reason="mlc MX reference (mlc.validate.mx_ref) not importable")
+@pytest.mark.skipif(
+    not mx_oracle.mx_datapath_available(), reason="mlc MX reference (mlc.validate.mx_ref) not importable"
+)
 def test_mx_oracle_reproduces_golden_bitexact():
     """merlin's mx_oracle, on the exact fp8 codes + E8M0 scales fed to the real RTL, reproduces the
     mx golden bit-exact. Certifies merlin's MX numerical tier against the RTL-mirror reference."""
     meta, arr = _load()
     got = mx_oracle.mx_matmul(
-        arr["A_in"].astype(np.uint8), arr["B_in"].astype(np.uint8),
-        arr["SA"].astype(np.int32), arr["SB"].astype(np.int32),
-        meta["M"], meta["N"], meta["K"], fmt=meta["fmt"], g=meta["G"],
+        arr["A_in"].astype(np.uint8),
+        arr["B_in"].astype(np.uint8),
+        arr["SA"].astype(np.int32),
+        arr["SB"].astype(np.int32),
+        meta["M"],
+        meta["N"],
+        meta["K"],
+        fmt=meta["fmt"],
+        g=meta["G"],
     )
     assert got is not None, "mx_oracle failed closed on the certified operands"
     got_bits = (got.view(np.uint32) >> 16).astype(np.uint16)

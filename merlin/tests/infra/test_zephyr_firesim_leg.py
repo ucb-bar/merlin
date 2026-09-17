@@ -9,6 +9,7 @@ it names no target, and its audit cannot pass an image that measures the wrong t
 Build-free by construction — every assertion is on the CLI contract and the source, so this runs
 without FireSim, a bitstream, or a bundle.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -49,8 +50,9 @@ def _src() -> str:
 
 def test_the_driver_is_tracked_not_a_temp_file():
     assert SCRIPT.is_file()
-    tracked = subprocess.run(["git", "ls-files", "--error-unmatch", str(SCRIPT)],
-                             cwd=repo_root(), capture_output=True, text=True)
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", str(SCRIPT)], cwd=repo_root(), capture_output=True, text=True
+    )
     assert tracked.returncode == 0, "the driver must be TRACKED — that is the whole point"
 
 
@@ -68,16 +70,37 @@ def test_the_unit_and_its_config_are_arguments_not_literals():
 
 
 def test_required_arguments_are_actually_enforced():
-    r = subprocess.run([sys.executable, str(SCRIPT), "some_bundle", "device", "/tmp/x"],
-                       capture_output=True, text=True, cwd=repo_root())
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), "some_bundle", "device", "/tmp/x"],
+        capture_output=True,
+        text=True,
+        cwd=repo_root(),
+    )
     assert r.returncode != 0
     assert "--unit" in (r.stderr + r.stdout)
 
 
 def test_the_leg_choice_is_closed():
-    r = subprocess.run([sys.executable, str(SCRIPT), "b", "sideways", "/tmp/x",
-                        "--unit", "u", "--config", "c", "--board", "d", "--package", "p"],
-                       capture_output=True, text=True, cwd=repo_root())
+    r = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "b",
+            "sideways",
+            "/tmp/x",
+            "--unit",
+            "u",
+            "--config",
+            "c",
+            "--board",
+            "d",
+            "--package",
+            "p",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=repo_root(),
+    )
     assert r.returncode != 0 and "sideways" in (r.stderr + r.stdout)
 
 
@@ -99,12 +122,11 @@ def test_the_arena_is_sized_for_a_no_op_free_not_for_liveness_peak():
     src = _src()
     assert "activation_peak_bytes" in src
     assert "SUM of allocations, not the" in src
-    assert "a.arena_mb or max(" in src          # explicit override still wins
+    assert "a.arena_mb or max(" in src  # explicit override still wins
 
 
 def test_the_help_text_explains_the_board_argument_is_a_correctness_knob():
-    r = subprocess.run([sys.executable, str(SCRIPT), "--help"], capture_output=True, text=True,
-                       cwd=repo_root())
+    r = subprocess.run([sys.executable, str(SCRIPT), "--help"], capture_output=True, text=True, cwd=repo_root())
     assert r.returncode == 0
     assert "DRAM" in r.stdout
 
@@ -116,4 +138,4 @@ def test_the_hart_default_is_safe_on_a_one_hart_board():
     printed. A default that fails on the board the driver exists for is not a default."""
     src = _src()
     assert 'ap.add_argument("--harts", type=int, default=1)' in src
-    assert "deadlock the barrier" in src          # the reason, so nobody raises it back
+    assert "deadlock the barrier" in src  # the reason, so nobody raises it back

@@ -3,6 +3,7 @@
 Hermetic: builds regions directly (no captured model needed), so these run anywhere. The end-to-end sweep
 over real captures is a measurement, not a test.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -51,9 +52,9 @@ def test_family_coverage_is_dtype_agnostic():
     """gemmini declares contraction (int8 only), so an fp32 contraction is family-SUPPORTED and separately
     precision-blocked. Conflating the two is what made a dtype wall look like a missing family."""
     rep = MC.coverage_for(_regions(), "gemmini", model="synthetic")
-    assert rep.family_supported == 2            # both contractions, whatever their dtype
+    assert rep.family_supported == 2  # both contractions, whatever their dtype
     assert rep.unsupported_families["softmax"] == 1
-    assert rep.dtype_ok == 1                    # only the int8 one clears the precision gate
+    assert rep.dtype_ok == 1  # only the int8 one clears the precision gate
     assert rep.dtype_blocked == 1
 
 
@@ -75,12 +76,16 @@ def test_manifest_precision_join_and_unknown_formats_are_dropped(tmp_path):
     import json
 
     manifest = tmp_path / "m.safetensors.manifest.json"
-    manifest.write_text(json.dumps({
-        "0": {"weight": "m.enc.layer0.weight", "dtype": "int8"},
-        "1": {"weight": "m.enc.layer1.weight", "dtype": "float8_e4m3fn"},
-        "2": {"weight": "m.enc.layer2.weight", "dtype": "complex128"},
-        "3": {"nonsense": True},
-    }))
+    manifest.write_text(
+        json.dumps(
+            {
+                "0": {"weight": "m.enc.layer0.weight", "dtype": "int8"},
+                "1": {"weight": "m.enc.layer1.weight", "dtype": "float8_e4m3fn"},
+                "2": {"weight": "m.enc.layer2.weight", "dtype": "complex128"},
+                "3": {"nonsense": True},
+            }
+        )
+    )
     got = MC.weight_precisions(manifest)
     assert got == {"m.enc.layer0": "int8", "m.enc.layer1": "fp8_e4m3"}
 
@@ -91,10 +96,14 @@ def test_compute_precision_is_not_masked_by_a_modules_other_tensors(tmp_path):
     import json
 
     manifest = tmp_path / "m.safetensors.manifest.json"
-    manifest.write_text(json.dumps({
-        "0": {"weight": "m.fc.weight", "dtype": "int8"},
-        "1": {"weight": "m.fc.bias", "dtype": "float32"},
-    }))
+    manifest.write_text(
+        json.dumps(
+            {
+                "0": {"weight": "m.fc.weight", "dtype": "int8"},
+                "1": {"weight": "m.fc.bias", "dtype": "float32"},
+            }
+        )
+    )
     assert MC.weight_precisions(manifest) == {"m.fc": "int8"}
 
 
@@ -107,11 +116,15 @@ def test_storage_precision_is_distinct_from_compute_precision(tmp_path):
     import json
 
     manifest = tmp_path / "m.safetensors.manifest.json"
-    manifest.write_text(json.dumps({
-        "0": {"weight": "m.fc.parametrizations.weight.original0", "dtype": "int8"},
-        "1": {"weight": "m.fc.parametrizations.weight.scale", "dtype": "float32"},
-        "2": {"weight": "m.fc.weight", "dtype": "float32"},
-    }))
+    manifest.write_text(
+        json.dumps(
+            {
+                "0": {"weight": "m.fc.parametrizations.weight.original0", "dtype": "int8"},
+                "1": {"weight": "m.fc.parametrizations.weight.scale", "dtype": "float32"},
+                "2": {"weight": "m.fc.weight", "dtype": "float32"},
+            }
+        )
+    )
     assert MC.storage_precisions(manifest) == {"m.fc": "int8"}
     assert MC.weight_precisions(manifest) == {"m.fc": "fp32"}
 
@@ -123,6 +136,7 @@ def test_short_op_splits_on_the_dialect_separator():
 
 def test_terminators_and_init_ops_are_not_counted_as_regions():
     """linalg.yield/index/init_tensor carry no computation to route; counting them inflates denominators."""
+
     class _Op:
         def __init__(self, name):
             self.name = name
@@ -141,23 +155,34 @@ def test_a_unit_declaring_ops_but_no_semantic_block_still_has_capabilities():
     family contributes nothing (fail closed), and an explicit block always wins."""
     from merlin.targetgen import compute_units as cu
 
-    derived = cu.compute_units({"compute_units": [
-        {"kind": "systolic", "name": "u", "ops": ["matmul"], "dtypes": ["bf16"]}]})
+    derived = cu.compute_units(
+        {"compute_units": [{"kind": "systolic", "name": "u", "ops": ["matmul"], "dtypes": ["bf16"]}]}
+    )
     caps = {c.family: c for c in derived[0].semantic_capabilities}
     assert sorted(caps) == ["contraction"]
     assert caps["contraction"].dtypes == ("bf16",)
 
-    unknown_op = cu.compute_units({"compute_units": [
-        {"kind": "systolic", "name": "u", "ops": ["not_a_known_op"], "dtypes": ["bf16"]}]})
-    assert unknown_op[0].semantic_capabilities == ()          # fail closed, never guessed
+    unknown_op = cu.compute_units(
+        {"compute_units": [{"kind": "systolic", "name": "u", "ops": ["not_a_known_op"], "dtypes": ["bf16"]}]}
+    )
+    assert unknown_op[0].semantic_capabilities == ()  # fail closed, never guessed
 
-    no_ops = cu.compute_units({"compute_units": [
-        {"kind": "systolic", "name": "u", "ops": [], "dtypes": ["bf16"]}]})
+    no_ops = cu.compute_units({"compute_units": [{"kind": "systolic", "name": "u", "ops": [], "dtypes": ["bf16"]}]})
     assert no_ops[0].semantic_capabilities == ()
 
-    explicit = cu.compute_units({"compute_units": [
-        {"kind": "systolic", "name": "u", "ops": ["matmul"], "dtypes": ["bf16"],
-         "semantic_capabilities": [{"family": "movement", "dtypes": ["bf16"]}]}]})
+    explicit = cu.compute_units(
+        {
+            "compute_units": [
+                {
+                    "kind": "systolic",
+                    "name": "u",
+                    "ops": ["matmul"],
+                    "dtypes": ["bf16"],
+                    "semantic_capabilities": [{"family": "movement", "dtypes": ["bf16"]}],
+                }
+            ]
+        }
+    )
     assert [c.family for c in explicit[0].semantic_capabilities] == ["movement"]
 
 
@@ -171,7 +196,7 @@ def test_a_contract_naming_its_ops_with_family_words_keeps_all_of_them():
     from merlin.targetgen import semantic_families as sf
 
     assert sf.from_op("elementwise") == "elementwise_map"
-    derived = cu.compute_units({"compute_units": [
-        {"kind": "simt", "name": "u", "ops": ["matmul", "elementwise"], "dtypes": ["fp32"]}]})
-    assert sorted(c.family for c in derived[0].semantic_capabilities) == \
-        ["contraction", "elementwise_map"]
+    derived = cu.compute_units(
+        {"compute_units": [{"kind": "simt", "name": "u", "ops": ["matmul", "elementwise"], "dtypes": ["fp32"]}]}
+    )
+    assert sorted(c.family for c in derived[0].semantic_capabilities) == ["contraction", "elementwise_map"]

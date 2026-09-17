@@ -5,6 +5,7 @@ Those readings differ by everything. Collapsing them is a recorded failure in th
 turned every failure into "no result" - so a Trace declares what its producer CAN emit, and every
 aggregate over a kind outside that set is UNKNOWN rather than 0.
 """
+
 from __future__ import annotations
 
 from merlin.kernels.dyntrace import EVENT_KINDS, OVERHEAD_KINDS, Trace, TraceEvent
@@ -34,13 +35,13 @@ class TestAbsenceIsNotZero:
 
     def test_a_partially_sized_total_is_not_a_total(self):
         """NEGATIVE CASE: one unsized event makes the sum a lower bound, so it is refused."""
-        t = _t({"dma_read"}, [TraceEvent(kind="dma_read", nbytes=64),
-                              TraceEvent(kind="dma_read", nbytes=None)])
+        t = _t({"dma_read"}, [TraceEvent(kind="dma_read", nbytes=64), TraceEvent(kind="dma_read", nbytes=None)])
         assert t.bytes_moved(kinds=("dma_read",)) is None
 
     def test_a_partially_timed_total_is_not_a_total(self):
-        t = _t({"compute"}, [TraceEvent(kind="compute", start=0, end=5),
-                             TraceEvent(kind="compute", start=None, end=None)])
+        t = _t(
+            {"compute"}, [TraceEvent(kind="compute", start=0, end=5), TraceEvent(kind="compute", start=None, end=None)]
+        )
         assert t.cycles_in("compute") is None
 
 
@@ -52,8 +53,9 @@ class TestOverheadIsAllOrNothing:
         assert partial.overhead_cycles() is None
 
     def test_overhead_sums_when_every_kind_is_visible(self):
-        t = _t(OVERHEAD_KINDS, [TraceEvent(kind="sync", start=0, end=3),
-                                TraceEvent(kind="engine_idle", start=3, end=10)])
+        t = _t(
+            OVERHEAD_KINDS, [TraceEvent(kind="sync", start=0, end=3), TraceEvent(kind="engine_idle", start=3, end=10)]
+        )
         assert t.overhead_cycles() == 10
 
 

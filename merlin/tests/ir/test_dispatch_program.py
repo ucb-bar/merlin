@@ -4,14 +4,15 @@ Flattens the outlined driver into an ordered DAG of kernel dispatches + view nod
 SSA buffer dependencies. Structural + DAG-validity checks run everywhere xDSL is present;
 the real-model checks gate on the captured artifacts.
 """
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 import json
 from pathlib import Path
 
 import pytest
 
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.xdsl_dialects import _common
 
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
@@ -40,8 +41,7 @@ builtin.module {
 
 def _program(text, prune=True):
     from merlin.frontends.linalg_mlir import parse_mlir_text
-    from merlin.xdsl_dialects.lowering.dispatch_program import (
-        lower_model_to_dispatch_program)
+    from merlin.xdsl_dialects.lowering.dispatch_program import lower_model_to_dispatch_program
 
     _, prog = lower_model_to_dispatch_program(parse_mlir_text(text), prune=prune)
     return prog
@@ -110,20 +110,20 @@ builtin.module {
 def test_dispatch_symbol_encodes_region_id():
     """The region_id rides INTO the dispatch symbol (the thread that survives to the ELF), while the
     ``$kernel_<idx>`` marker stays intact so driver-vs-kernel detection is unaffected."""
-    from merlin.xdsl_dialects.lowering.outline import outline_dispatches, region_id_of_symbol
     from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects.lowering.outline import outline_dispatches, region_id_of_symbol
 
     r = outline_dispatches(parse_mlir_text(PROV_CHAIN))
     syms = [d.symbol for d in r.dispatches]
     assert syms == ["forward$kernel_0__rmatmul_0", "forward$kernel_1__rmatmul_1"]
-    assert all("$kernel_" in s for s in syms)                       # marker preserved
+    assert all("$kernel_" in s for s in syms)  # marker preserved
     assert [region_id_of_symbol(s) for s in syms] == ["matmul_0", "matmul_1"]
 
 
 def test_untagged_symbol_is_backward_compatible():
     """No prov.region_id (pre-provenance capture) -> the symbol is byte-identical to before."""
-    from merlin.xdsl_dialects.lowering.outline import outline_dispatches, region_id_of_symbol
     from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects.lowering.outline import outline_dispatches, region_id_of_symbol
 
     r = outline_dispatches(parse_mlir_text(CHAIN))
     assert [d.symbol for d in r.dispatches] == ["forward$kernel_0", "forward$kernel_1"]
@@ -139,13 +139,14 @@ def test_prov_flows_to_dispatch_program_nodes():
 
 # --- C8: selective section slicing (compile whole, profile a section) -------------------------
 
+
 def test_slice_single_region_is_standalone_and_smaller():
     from merlin.xdsl_dialects.lowering.arena_plan import plan_arena
     from merlin.xdsl_dialects.lowering.dispatch_program import slice_program, verify_program
 
     prog = _program(PROV_CHAIN)
     s0 = slice_program(prog, {"matmul_0"}, entry_suffix="$r_matmul_0")
-    assert verify_program(s0) == []                       # a valid standalone DAG
+    assert verify_program(s0) == []  # a valid standalone DAG
     assert s0.n_dispatches == 1
     assert s0.entry == "forward$r_matmul_0"
     # matmul_0's output leaves the slice (matmul_1 consumed it) -> it is the slice's result.
@@ -165,8 +166,8 @@ def test_slice_midgraph_region_reclassifies_upstream_output_as_arg():
     d1 = next(n for n in s1.nodes if n.kind == "dispatch")
     # matmul_1 consumes matmul_0's output (produced OUTSIDE this slice) -> that buffer is a boundary arg.
     boundary = [b for b in d1.inputs if s1.buffers[b].kind == "arg"]
-    assert len(boundary) == len(d1.inputs)                # both inputs enter from the boundary
-    assert s1.results == list(prog.results)               # matmul_1 output is the model output
+    assert len(boundary) == len(d1.inputs)  # both inputs enter from the boundary
+    assert s1.results == list(prog.results)  # matmul_1 output is the model output
 
 
 def test_slice_combined_regions_and_bad_id():
@@ -175,7 +176,7 @@ def test_slice_combined_regions_and_bad_id():
     from merlin.xdsl_dialects.lowering.dispatch_program import slice_program, verify_program
 
     prog = _program(PROV_CHAIN)
-    both = slice_program(prog, {"matmul_0", "matmul_1"})   # combined = one sub-program
+    both = slice_program(prog, {"matmul_0", "matmul_1"})  # combined = one sub-program
     assert both.n_dispatches == 2 and verify_program(both) == []
     assert both.results == list(prog.results)
     with _pt.raises(ValueError):
@@ -184,9 +185,10 @@ def test_slice_combined_regions_and_bad_id():
 
 # --- C8: re-emit a section as its own standalone MLIR @forward (the board-binary route) --------
 
+
 def test_emit_section_module_is_standalone_forward():
-    from merlin.xdsl_dialects._common import text as _text
     from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects._common import text as _text
     from merlin.xdsl_dialects.lowering.outline import outline_dispatches
     from merlin.xdsl_dialects.lowering.section_mlir import emit_section_module
 
@@ -194,11 +196,11 @@ def test_emit_section_module_is_standalone_forward():
     # the mid-graph region: boundary input = the upstream kernel output + the model weight.
     mod, boundary, outputs = emit_section_module(outlined.module, {"matmul_1"})
     txt = _text(mod)
-    assert mod.verify() is None                              # a valid module
-    assert txt.count("func.call") == 1                       # exactly the one section kernel
+    assert mod.verify() is None  # a valid module
+    assert txt.count("func.call") == 1  # exactly the one section kernel
     assert "forward$kernel_1__rmatmul_1" in txt
-    assert "forward$kernel_0__rmatmul_0" not in txt          # the other region is NOT included
-    assert len(boundary) == 2 and len(outputs) == 1          # 2 boundary inputs -> 1 section output
+    assert "forward$kernel_0__rmatmul_0" not in txt  # the other region is NOT included
+    assert len(boundary) == 2 and len(outputs) == 1  # 2 boundary inputs -> 1 section output
     # the section func is a self-contained @forward taking the boundary tensors as arguments.
     assert "func.func @forward(" in txt
 
@@ -206,32 +208,32 @@ def test_emit_section_module_is_standalone_forward():
 def test_emit_section_combined_and_bad_id():
     import pytest as _pt
 
-    from merlin.xdsl_dialects._common import text as _text
     from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.xdsl_dialects._common import text as _text
     from merlin.xdsl_dialects.lowering.outline import OutlineError, outline_dispatches
     from merlin.xdsl_dialects.lowering.section_mlir import emit_section_module
 
     outlined = outline_dispatches(parse_mlir_text(PROV_CHAIN))
     both, _, _ = emit_section_module(outlined.module, {"matmul_0", "matmul_1"})
-    assert _text(both).count("func.call") == 2               # combined section = both kernels
+    assert _text(both).count("func.call") == 2  # combined section = both kernels
     with _pt.raises(OutlineError):
         emit_section_module(outlined.module, {"nope"})
 
 
-@pytest.mark.skipif(not (REPO / "out/artifacts/recaptures/small_consistent/model.mlir").is_file(),
-                    reason="small_llama capture not present")
+@pytest.mark.skipif(
+    not (REPO / "out/artifacts/recaptures/small_consistent/model.mlir").is_file(),
+    reason="small_llama capture not present",
+)
 def test_program_on_real_small_llama():
     from merlin.frontends.linalg_mlir import parse_mlir_file
-    from merlin.xdsl_dialects.lowering.dispatch_program import (
-        lower_model_to_dispatch_program, verify_program)
+    from merlin.xdsl_dialects.lowering.dispatch_program import lower_model_to_dispatch_program, verify_program
 
     m = parse_mlir_file(REPO / "out/artifacts/recaptures/small_consistent/model.mlir")
     _, prog = lower_model_to_dispatch_program(m)
-    assert verify_program(prog) == []           # a well-formed DAG over real buffers
-    matmuls = [n for n in prog.nodes
-               if n.kind == "dispatch" and n.prov.get("prov.op") == "matmul"]
+    assert verify_program(prog) == []  # a well-formed DAG over real buffers
+    matmuls = [n for n in prog.nodes if n.kind == "dispatch" and n.prov.get("prov.op") == "matmul"]
     assert len(matmuls) == 15
-    json.dumps(prog.to_dict())                   # serializes for the runtime
+    json.dumps(prog.to_dict())  # serializes for the runtime
 
 
 class TestARegionIdIsOnlyReadFromASymbolWeEmitted:
@@ -245,8 +247,7 @@ class TestARegionIdIsOnlyReadFromASymbolWeEmitted:
         `..._ukernel_16x4v__rvv`, which split on the separator alone yields region id 'vv'."""
         from merlin.xdsl_dialects.lowering.outline import region_id_of_symbol
 
-        assert region_id_of_symbol(
-            "xnn_qs8_qc8w_gemm_minmax_fp32_ukernel_16x4v__rvv") is None
+        assert region_id_of_symbol("xnn_qs8_qc8w_gemm_minmax_fp32_ukernel_16x4v__rvv") is None
 
     def test_an_outlined_symbol_still_resolves(self):
         from merlin.xdsl_dialects.lowering.outline import region_id_of_symbol

@@ -5,12 +5,13 @@ These never touch a board or require buddy-mlir to be built: they exercise bundl
 audit's libc-ignore behaviour, and the not_built/not_run honesty contract when the toolchain or
 board is absent — so the gate stays green regardless of buddy build state.
 """
+
 from __future__ import annotations
 
 from merlin.baselines import buddy
 
-
 # --- bundle resolution (legacy fp32-LLM fallback) ---------------------------------------------
+
 
 def test_resolve_bundle_convention_path():
     # bitvla resolves to a fp32 recapture — the full-fidelity `_full` (Phase 2) when present, else
@@ -51,6 +52,7 @@ def test_resolve_bundle_no_legacy_for_non_llm(tmp_path, monkeypatch):
 
 # --- symbol -> region mapping -----------------------------------------------------------------
 
+
 def test_region_of_symbol():
     assert buddy._region_of_symbol("forward_matmul_3") == "gemm"
     assert buddy._region_of_symbol("softmax_kernel") == "attention"
@@ -60,6 +62,7 @@ def test_region_of_symbol():
 
 
 # --- object audit ignores libc/harness symbols ------------------------------------------------
+
 
 def test_audit_object_ignores_plumbing(tmp_path, monkeypatch):
     # feed a synthetic objdump text: one scalar model kernel + one scalar libc symbol. Only the
@@ -80,12 +83,13 @@ def test_audit_object_ignores_plumbing(tmp_path, monkeypatch):
     cov, fallbacks, by_symbol = buddy.audit_object(tmp_path / "fake.o")
     syms = {f.symbol for f in fallbacks}
     assert "forward_matmul_0" in syms
-    assert "memcpy" not in syms                       # plumbing ignored
-    assert fallbacks[0].region == "gemm"              # matmul -> gemm bucket
-    assert cov == 0.0                                 # all scalar -> 0% RVV
+    assert "memcpy" not in syms  # plumbing ignored
+    assert fallbacks[0].region == "gemm"  # matmul -> gemm bucket
+    assert cov == 0.0  # all scalar -> 0% RVV
 
 
 # --- honesty contract when toolchain / board absent -------------------------------------------
+
 
 def test_run_model_missing_bundle_is_not_built(monkeypatch):
     # An absent capture bundle -> not_built with an explicit reason, never a fabricated pass.
@@ -114,11 +118,22 @@ def test_default_models_llm_subset_first():
     # The LLM subset must lead the corpus (harness shakedown ordering).
     assert buddy.DEFAULT_MODELS[:2] == ("tiny_llama", "small_llama")
     assert set(buddy.DEFAULT_MODELS) == {
-        "tiny_llama", "small_llama", "bitvla", "rdt2", "rdt", "openvla",
-        "molmoact", "groot_n1d7", "xr0", "pi05", "smolvla"}
+        "tiny_llama",
+        "small_llama",
+        "bitvla",
+        "rdt2",
+        "rdt",
+        "openvla",
+        "molmoact",
+        "groot_n1d7",
+        "xr0",
+        "pi05",
+        "smolvla",
+    }
 
 
 # --- int8 prioritization + golden selection ---------------------------------------------------
+
 
 def test_variant_order_int8_first():
     # int8 must be attempted before fp32 (smaller weights, integer RVV datapath).
@@ -141,7 +156,7 @@ def test_golden_for_int8_falls_back_to_fp32_golden(tmp_path):
 
     root = tmp_path / "m_int8_consistent"
     root.mkdir()
-    (root / "golden.npy").write_bytes(b"x")            # no golden_w8a8.npy
+    (root / "golden.npy").write_bytes(b"x")  # no golden_w8a8.npy
     b = _bundle.CaptureBundle(model="m", variant="int8", root=root)
     assert buddy._golden_for(b).name == "golden.npy"
 
@@ -152,7 +167,7 @@ def test_golden_for_fp32_uses_fp32_golden(tmp_path):
     root = tmp_path / "m_fp32_consistent"
     root.mkdir()
     (root / "golden.npy").write_bytes(b"x")
-    (root / "golden_w8a8.npy").write_bytes(b"y")        # present but ignored for fp32
+    (root / "golden_w8a8.npy").write_bytes(b"y")  # present but ignored for fp32
     b = _bundle.CaptureBundle(model="m", variant="fp32", root=root)
     assert buddy._golden_for(b).name == "golden.npy"
 
@@ -160,16 +175,19 @@ def test_golden_for_fp32_uses_fp32_golden(tmp_path):
 def test_run_all_variants_int8_first_order(monkeypatch):
     # run_all_variants must attempt int8 before fp32 for the whole model set.
     calls = []
-    monkeypatch.setattr(buddy, "_run_one_safe",
-                        lambda m, v, write: calls.append((m, v)) or
-                        buddy.BaselineResult(framework="buddy", model=m, variant=v,
-                                             gap_reason="stub"))
+    monkeypatch.setattr(
+        buddy,
+        "_run_one_safe",
+        lambda m, v, write: (
+            calls.append((m, v)) or buddy.BaselineResult(framework="buddy", model=m, variant=v, gap_reason="stub")
+        ),
+    )
     buddy.run_all_variants(models=("tiny_llama", "bitvla"), write=False)
-    assert calls == [("tiny_llama", "int8"), ("bitvla", "int8"),
-                     ("tiny_llama", "fp32"), ("bitvla", "fp32")]
+    assert calls == [("tiny_llama", "int8"), ("bitvla", "int8"), ("tiny_llama", "fp32"), ("bitvla", "fp32")]
 
 
 # --- native (buddy DynamoCompiler) import path ------------------------------------------------
+
 
 def test_native_import_accessors_return_paths_or_none():
     # These must not raise even when the buddy python packages aren't built (return None/Path).
@@ -183,10 +201,11 @@ def test_native_import_accessors_return_paths_or_none():
 
 def test_native_harness_c_has_ciface_and_markers():
     # The generated buddy-native harness must call the result/params/input ciface and print markers.
-    c = buddy._native_harness_c(out_elems=256000, out_lastdim=32000, in_elems=8,
-                                param_elems=1100048416, input_vals=[1, 2, 3])
+    c = buddy._native_harness_c(
+        out_elems=256000, out_lastdim=32000, in_elems=8, param_elems=1100048416, input_vals=[1, 2, 3]
+    )
     assert "_mlir_ciface_forward(MR *res, MR *params, MR *input)" in c
-    assert "MERLIN_WEIGHTS" in c            # params mmap'd from arg0.data
+    assert "MERLIN_WEIGHTS" in c  # params mmap'd from arg0.data
     assert 'printf("DONE' in c and "METRIC time_ticks" in c
     assert "int64_t IN[IN_ELEMS] = {1,2,3}" in c
 
@@ -200,6 +219,7 @@ def test_native_tosa_to_linalg_pipeline_constant():
 def test_fp32_golden_for_int8_prefers_fp32_recapture(tmp_path, monkeypatch):
     # int8-via-native gates vs the FP32 golden ("what did int8 cost"), not the W8A8 ref.
     import merlin.baselines.bundle as _bundle
+
     (tmp_path / "m_int8_full").mkdir()
     (tmp_path / "m_int8_full" / "golden.npy").write_bytes(b"x")
     (tmp_path / "m_fp32_full").mkdir()
@@ -207,4 +227,4 @@ def test_fp32_golden_for_int8_prefers_fp32_recapture(tmp_path, monkeypatch):
     monkeypatch.setattr(_bundle, "recaptures_dir", lambda: tmp_path)
     b = _bundle.CaptureBundle(model="m", variant="int8", root=tmp_path / "m_int8_full")
     gp = buddy._fp32_golden_for(b)
-    assert gp.parent.name == "m_fp32_full"        # the fp32 recapture, not the int8 one
+    assert gp.parent.name == "m_fp32_full"  # the fp32 recapture, not the int8 one

@@ -12,6 +12,7 @@ cca_used, ...` -- so a provider/name mismatch presented itself as an agent that 
 That is the failure this test exists to prevent, and it is the second time in this bench that a harness
 limitation has been reported as an agent defect.
 """
+
 from __future__ import annotations
 
 import sys
@@ -58,6 +59,7 @@ def test_a_raw_cli_model_name_passes_through_under_both_providers():
 def test_the_loop_threads_the_provider_into_the_cli_invocation():
     """The parameter is useless unless the caller passes it; pin that it does."""
     src = (repo_root() / "merlin/experiments/capsule_bench/harness/run_baseline_qa_loop.py").read_text()
-    assert "claude_model_name(model, provider=_PROVIDER)" in src, \
+    assert "claude_model_name(model, provider=_PROVIDER)" in src, (
         "the claudecode branch must resolve its CLI model name against the run's provider"
+    )
     assert "_PROVIDER = a.provider" in src, "main() must record the provider it was invoked with"

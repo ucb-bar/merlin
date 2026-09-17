@@ -6,13 +6,14 @@ REAL atlas op classes (MXU systolic datapath + tensor load/store) and that a mat
 selected from them — NOT the fabricated CONFIG_EX/GMEM_LD/FMA/GMEM_ST set the corpus used to hardcode.
 Gated on the model venv (npu_model) being present.
 """
+
 from __future__ import annotations
 
 import pytest
 
+from merlin.common.paths import merlin_dir
 from merlin.targetgen import isa_taxonomy as IT
 from merlin.targetgen.target_experiment import load_target_experiment
-from merlin.common.paths import merlin_dir
 
 _ATLAS = merlin_dir() / "experiments/capsule_bench/targets/atlas/target_experiment.yaml"
 
@@ -55,8 +56,7 @@ def test_classes_carry_derived_roles_not_hardcoded_names():
     MXU/tensor structural checks select BY ROLE, not by a hardcoded pattern name. Assert the real atlas
     classes derive the expected roles and role_classes picks the matmul/memory classes by role."""
     tax = _atlas_taxonomy()
-    role_of = {c: next((e.get("role") for e in ents if e.get("role")), None)
-               for c, ents in tax["by_class"].items()}
+    role_of = {c: next((e.get("role") for e in ents if e.get("role")), None) for c, ents in tax["by_class"].items()}
     assert role_of.get("MXUMatMul") == "matmul"
     assert role_of.get("TensorBaseOffset") == "memory"
     assert role_of.get("MXUWeightPush") == "weight_load"
@@ -70,17 +70,18 @@ def test_classes_carry_derived_roles_not_hardcoded_names():
 def test_role_selection_is_name_independent():
     """The selectors key on the derived ROLE only — a target whose ISA names its patterns ANYTHING still
     resolves, proving there is no atlas-name overfit left. Synthetic taxonomy, invented class names."""
-    tax = {"by_class": {
-        "OpFoo":  [{"role": "memory"}],
-        "OpBar":  [{"role": "weight_load"}],
-        "OpBaz":  [{"role": "matmul"}],
-        "OpQux":  [{"role": "acc_readout"}],
-        "OpQuxS": [{"role": "acc_readout_scaled"}],
-        "OpRelu": [{"role": "tensor_compute_unary"}],
-    }}
+    tax = {
+        "by_class": {
+            "OpFoo": [{"role": "memory"}],
+            "OpBar": [{"role": "weight_load"}],
+            "OpBaz": [{"role": "matmul"}],
+            "OpQux": [{"role": "acc_readout"}],
+            "OpQuxS": [{"role": "acc_readout_scaled"}],
+            "OpRelu": [{"role": "tensor_compute_unary"}],
+        }
+    }
     assert IT.role_classes(tax) == {"compute": "OpBaz", "memory": "OpFoo"}
-    assert IT.required_classes_for_op(tax, op="matmul", output_dtype="bf16") == \
-        ["OpFoo", "OpBar", "OpBaz", "OpQux"]
+    assert IT.required_classes_for_op(tax, op="matmul", output_dtype="bf16") == ["OpFoo", "OpBar", "OpBaz", "OpQux"]
     assert IT.required_classes_for_op(tax, op="matmul", output_dtype="fp8_e4m3")[-1] == "OpQuxS"
     assert IT.required_classes_for_op(tax, op="matmul", output_dtype="bf16", epilogue=("relu",))[-1] == "OpRelu"
     assert IT.required_classes_for_op(tax, movement=True) == ["OpFoo"]
@@ -101,7 +102,7 @@ def test_asm_mnemonic_of_reads_the_op_class_classvar():
         asm = "dma.config"
 
     class Unnamed:
-        mnemonic = NotImplemented          # the ClassVar sentinel — not yet named
+        mnemonic = NotImplemented  # the ClassVar sentinel — not yet named
 
     class NonStr:
         mnemonic = 123
@@ -138,8 +139,10 @@ def test_atlas_asm_mnemonics_and_reference_kernel_classes_derive():
 def _atlas_binding():
     """The same per-target binding the corpus generator uses (carries the class deriver)."""
     import yaml as _y
+
     from merlin.targetgen import corpus_spec as _CS
     from merlin.targetgen.target_experiment import load_target_experiment as _lte
+
     prof = merlin_dir() / "contract/capsules/profiles/atlas.yaml"
     datapath = (_y.safe_load(prof.read_text()) or {}).get("datapath") or {}
     return _CS.derive_binding(_lte(_ATLAS), datapath)
@@ -149,6 +152,7 @@ def test_committed_atlas_corpus_matches_the_live_derivation():
     """The atlas capsules' expected.instruction_classes must EQUAL the live derivation — so the corpus is
     derived-and-enforced (never silently re-hardcoded, and an ISA change surfaces as drift here)."""
     import yaml
+
     tax = _atlas_taxonomy()
     cap = merlin_dir() / "contract/capsules/atlas"
     if not cap.is_dir():
@@ -172,6 +176,7 @@ def test_committed_atlas_corpus_matches_the_live_derivation():
             # derived-and-enforced property for the capstone instead of exempting the one capsule the
             # whole suite builds toward.
             from merlin.targetgen.capsule_source import model_accelerator_demand
+
             lin = cy.parent / str(doc.get("linalg_mlir") or doc.get("interface_mlir") or "")
             if not lin.is_file():
                 continue
@@ -179,8 +184,9 @@ def test_committed_atlas_corpus_matches_the_live_derivation():
             assert got == want, f"{cy.parent.name}: corpus classes {got} != model-derived {want}"
             continue
 
-        want = IT.required_classes_for_op(tax, op=op, output_dtype=out_dt,
-                                          epilogue=tuple(attrs.get("epilogue", []) or []), movement=movement)
+        want = IT.required_classes_for_op(
+            tax, op=op, output_dtype=out_dt, epilogue=tuple(attrs.get("epilogue", []) or []), movement=movement
+        )
         assert got == want, f"{cy.parent.name}: corpus classes {got} != derived {want}"
         # the fabricated taxonomy must be gone
         assert not ({"CONFIG_EX", "GMEM_LD", "FMA", "GMEM_ST"} & set(got or []))

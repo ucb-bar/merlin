@@ -5,6 +5,7 @@ rewrite's exactness the way `quant_round` checks its own: not on a sample, but o
 pattern, NaNs included. That is affordable (2**32 patterns, swept in chunks) and it is the only form
 of the claim worth making -- "exact on the values we tried" is what an approximation says.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -38,8 +39,10 @@ def test_absf_sign_mask_is_bit_exact_over_every_f32():
         got = bits & mask
         if not np.array_equal(ref, got):
             bad = int(np.flatnonzero(ref != got)[0])
-            pytest.fail(f"first divergence at bit pattern 0x{int(bits[bad]):08x}: "
-                        f"abs=0x{int(ref[bad]):08x} mask=0x{int(got[bad]):08x}")
+            pytest.fail(
+                f"first divergence at bit pattern 0x{int(bits[bad]):08x}: "
+                f"abs=0x{int(ref[bad]):08x} mask=0x{int(got[bad]):08x}"
+            )
 
 
 def test_max_of_x_and_negx_is_not_bit_exact_which_is_why_it_was_rejected():
@@ -62,8 +65,7 @@ def test_max_of_x_and_negx_is_not_bit_exact_which_is_why_it_was_rejected():
     identity that happens to hold.
     """
     finite = np.array([1.5, -1.5, np.inf, -np.inf], dtype=np.float32)
-    assert np.array_equal(np.abs(finite).view(np.uint32),
-                          np.maximum(finite, -finite).view(np.uint32))
+    assert np.array_equal(np.abs(finite).view(np.uint32), np.maximum(finite, -finite).view(np.uint32))
     # SIGNED ZERO: exact only under IEEE-2019 `maximum`, and numpy's `maximum` is not that.
     zeros = np.array([0.0, -0.0], dtype=np.float32)
     assert list(np.abs(zeros).view(np.uint32)) == [0x0000_0000, 0x0000_0000]
@@ -85,10 +87,12 @@ def test_maximumf_is_order_independent_so_the_reduction_needs_no_reassociation_k
     (both signed zeros, subnormals, infinities, a payload NaN).
     """
     rng = np.random.default_rng(0)
-    hostile = np.concatenate([
-        np.array([0.0, -0.0, np.inf, -np.inf, 5e-324, -1e-45, 1.0, -1.0], dtype=np.float32),
-        rng.standard_normal(1024).astype(np.float32) * 1e3,
-    ])
+    hostile = np.concatenate(
+        [
+            np.array([0.0, -0.0, np.inf, -np.inf, 5e-324, -1e-45, 1.0, -1.0], dtype=np.float32),
+            rng.standard_normal(1024).astype(np.float32) * 1e3,
+        ]
+    )
     a = np.abs(hostile)
     serial = a[0]
     for v in a[1:]:
@@ -101,6 +105,7 @@ def test_maximumf_is_order_independent_so_the_reduction_needs_no_reassociation_k
 
 
 # ---- structure of the emitted arms + the refusal set --------------------------------------------
+
 
 def test_arms_are_bounded_not_whole_tensor():
     """Every emitted arm tiles before it vectorizes, and vectorizes at MACHINE width.
@@ -129,14 +134,16 @@ def test_lanes_and_rank_bound_are_parameters_not_literals():
 
 
 def test_splice_is_additive_and_idempotent():
-    text = ('module {\n'
-            '    %mm = transform.structured.match ops{["linalg.matmul"]} in %arg0\n'
-            '    %f = transform.structured.match ops{["func.func"]} in %arg0\n'
-            '}\n')
+    text = (
+        "module {\n"
+        '    %mm = transform.structured.match ops{["linalg.matmul"]} in %arg0\n'
+        '    %f = transform.structured.match ops{["func.func"]} in %arg0\n'
+        "}\n"
+    )
     once = R.splice_reduction_arms(text, lanes=8, min_rank=2, max_rank=3)
     assert "merlin.vec_red2" in once
-    assert '%mm = transform.structured.match ops{["linalg.matmul"]}' in once   # additive
-    assert once.index("merlin.vec_red2") < once.index('ops{["func.func"]}')     # before the anchor
+    assert '%mm = transform.structured.match ops{["linalg.matmul"]}' in once  # additive
+    assert once.index("merlin.vec_red2") < once.index('ops{["func.func"]}')  # before the anchor
     assert R.splice_reduction_arms(once, lanes=8, min_rank=2, max_rank=3) == once
 
 
@@ -150,16 +157,16 @@ def test_feature_is_registered_eagerly_in_every_process():
     """The registration trap: the lowering subprocess re-imports impr_features and k1 imports no
     proposer, so a name registered at run time in the parent resolves in neither."""
     from merlin.llvmlower import impr_features as F
+
     assert R.FEATURE in F.known()
-    assert F.get(R.FEATURE).edit_pipeline is None      # no pipeline edit => no reassociation knob
+    assert F.get(R.FEATURE).edit_pipeline is None  # no pipeline edit => no reassociation knob
     assert F.get(R.FEATURE).schedule_replace is False  # additive, composes with a tuned recipe
-    assert F.normalize([R.FEATURE]) == frozenset({R.FEATURE})   # implies nothing
+    assert F.normalize([R.FEATURE]) == frozenset({R.FEATURE})  # implies nothing
 
 
 def test_empty_feature_set_leaves_the_schedule_byte_identical():
     """The frozen-baseline invariant."""
     from merlin.llvmlower import impr_features as F
-    text = ('module {\n'
-            '    %f = transform.structured.match ops{["func.func"]} in %arg0\n'
-            '}\n')
+
+    text = 'module {\n    %f = transform.structured.match ops{["func.func"]} in %arg0\n}\n'
     assert F.apply_schedule(text, frozenset()) == text

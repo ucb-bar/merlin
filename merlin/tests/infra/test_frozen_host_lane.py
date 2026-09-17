@@ -14,6 +14,7 @@ Two failure modes are pinned here because this repo has shipped both:
   * a grant voided by its own denial. Deny wins in ``bwrap.base_argv``, so a path on both lists is
     tmpfs-masked and "read-only" silently becomes invisible. Checked by replaying the mount table.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -28,8 +29,11 @@ TARGETS_DIR = repo_root() / "merlin" / "experiments" / "capsule_bench" / "target
 
 
 def _descriptors():
-    return sorted(d / "target_experiment.yaml" for d in TARGETS_DIR.iterdir()
-                  if d.is_dir() and (d / "target_experiment.yaml").is_file())
+    return sorted(
+        d / "target_experiment.yaml"
+        for d in TARGETS_DIR.iterdir()
+        if d.is_dir() and (d / "target_experiment.yaml").is_file()
+    )
 
 
 def _lane(descriptor):
@@ -57,8 +61,7 @@ def test_every_target_declares_a_frozen_host_lane(descriptor):
     lane = _lane(descriptor)
     assert lane, f"{descriptor}: no `host_lane:` block — the host compiler would be unpinned"
     for prof in _profiles(lane):
-        for field in ("description", "repo_canonical", "package",
-                      "requires_paths", "read_only", "deny_modification"):
+        for field in ("description", "repo_canonical", "package", "requires_paths", "read_only", "deny_modification"):
             assert field in prof, f"{descriptor}: host_lane is missing `{field}`"
         assert prof["read_only"], f"{descriptor}: host_lane grants nothing read-only"
         assert prof["deny_modification"], f"{descriptor}: host_lane denies no modification surface"
@@ -85,19 +88,22 @@ def test_the_revision_pin_matches_how_the_package_came_to_exist(descriptor):
     """
     for prof in _profiles(_lane(descriptor)):
         provenance = prof.get("provenance", "published")
-        assert provenance in ("published", "in_tree_minted"), \
+        assert provenance in ("published", "in_tree_minted"), (
             f"{descriptor}: unknown host_lane.provenance {provenance!r}"
+        )
         if provenance == "in_tree_minted":
             assert "branch" not in prof, (
                 f"{descriptor}: an in-tree-minted lane must not name a branch; it never existed "
-                f"upstream, so any value here is a fiction")
+                f"upstream, so any value here is a fiction"
+            )
             continue
         assert prof.get("branch"), f"{descriptor}: a published lane must name its branch"
         commit = prof.get("commit")
         assert commit, f"{descriptor}: host_lane.commit is empty; write the sha or the word UNKNOWN"
         commit = str(commit)
-        assert commit == "UNKNOWN" or (len(commit) == 40 and all(c in "0123456789abcdef" for c in commit)), \
+        assert commit == "UNKNOWN" or (len(commit) == 40 and all(c in "0123456789abcdef" for c in commit)), (
             f"{descriptor}: host_lane.commit {commit!r} is neither a 40-char sha nor UNKNOWN"
+        )
 
 
 @pytest.mark.parametrize("descriptor", DESCRIPTORS, ids=lambda p: p.parent.name)
@@ -115,8 +121,9 @@ def test_every_declared_path_resolves_to_real_content(descriptor):
     silently granted nothing in this repo before. Resolve exactly as the sandbox binder does."""
     lane = _lane(descriptor)
     for rel in list(lane["read_only"]) + list(lane["deny_modification"]):
-        assert BW.path_kind(BW.resolve_grant(rel, repo_root())) != "missing", \
+        assert BW.path_kind(BW.resolve_grant(rel, repo_root())) != "missing", (
             f"{descriptor}: host_lane path {rel!r} resolves to nothing — the grant would bind no bytes"
+        )
 
 
 @pytest.mark.parametrize("descriptor", DESCRIPTORS, ids=lambda p: p.parent.name)
@@ -133,8 +140,10 @@ def test_the_pin_verifies_by_content(descriptor):
         # a SKIP, never as a pass: a check that could not run has established nothing.
         pytest.skip(f"host-lane package {lane['package']} is not materialized here — pin UNVERIFIED")
     missing = [r for r in lane["requires_paths"] if not (pkg / r).exists()]
-    assert not missing, (f"{descriptor}: host-lane package {lane['package']} is missing {missing} — it "
-                         f"is the right path and not the right content")
+    assert not missing, (
+        f"{descriptor}: host-lane package {lane['package']} is missing {missing} — it "
+        f"is the right path and not the right content"
+    )
 
 
 @pytest.mark.parametrize("descriptor", DESCRIPTORS, ids=lambda p: p.parent.name)
@@ -167,8 +176,7 @@ def test_the_sandbox_actually_exposes_the_lane_and_hides_its_implementation(desc
     ws = tmp_path / "ws"
     ws.mkdir()
     for bid, manifest in bundles.items():
-        argv = BW.base_argv(ws, manifest, repo=repo_root(),
-                            _policy_test_live_inputs=True)
+        argv = BW.base_argv(ws, manifest, repo=repo_root(), _policy_test_live_inputs=True)
         for rel in lane["read_only"]:
             p = BW.resolve_grant(rel, repo_root())
             assert BW.is_exposed(argv, p), f"{bid}: the frozen host lane {rel!r} is NOT readable"
@@ -178,8 +186,7 @@ def test_the_sandbox_actually_exposes_the_lane_and_hides_its_implementation(desc
             continue
         for rel in lane["deny_modification"]:
             p = BW.resolve_grant(rel, repo_root())
-            assert not BW.is_exposed(argv, p), \
-                f"{bid}: the host compiler {rel!r} is reachable — it could be rewritten"
+            assert not BW.is_exposed(argv, p), f"{bid}: the host compiler {rel!r} is reachable — it could be rewritten"
 
 
 def test_a_lane_granted_and_denied_at_once_is_refused(tmp_path):

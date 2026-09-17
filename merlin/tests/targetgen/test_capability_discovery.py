@@ -5,6 +5,7 @@ are mostly about the three states and about the parser being structural rather t
 reader that only recognizes one spelling of a define silently drops the others, which is the failure mode
 this repo has paid for repeatedly in its trace decoder.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -120,8 +121,9 @@ def test_typedefs_are_recorded(tmp_path):
 
 
 def test_no_regex_import_in_the_module():
-    src = (repo_root() / "merlin" / "python" / "merlin" / "targetgen"
-           / "capability_discovery.py").read_text(encoding="utf-8")
+    src = (repo_root() / "merlin" / "python" / "merlin" / "targetgen" / "capability_discovery.py").read_text(
+        encoding="utf-8"
+    )
     assert "import re\n" not in src and "import re " not in src
 
 
@@ -136,7 +138,12 @@ def test_activation_modes_are_derived_with_encodings_and_families(header):
     CD._activation_modes([hm], out)
     modes = {f.name: f for f in out if f.axis == "activation_mode"}
     assert {f.name: f.value for f in modes.values()} == {
-        "NO_ACTIVATION": 0, "RELU": 1, "LAYERNORM": 2, "IGELU": 3, "SOFTMAX": 4}
+        "NO_ACTIVATION": 0,
+        "RELU": 1,
+        "LAYERNORM": 2,
+        "IGELU": 3,
+        "SOFTMAX": 4,
+    }
     # the point of the whole module: these two are NOT elementwise activations
     assert modes["LAYERNORM"].family == "normalization"
     assert modes["SOFTMAX"].family == "softmax"
@@ -253,8 +260,15 @@ def test_absent_and_undeterminable_are_never_collapsed(monkeypatch):
 def test_a_family_whose_deciding_rung_never_ran_is_undeterminable_not_over_declared(monkeypatch):
     """The direction that deletes a real capability from a manifest, guarded explicitly."""
     dec = CD.CapabilitySurface(target="t", origin="declared")
-    dec.findings.append(CD.Finding(axis="family", name="softmax", state=CD.PRESENT, family="softmax",
-                                   evidence=(CD.Evidence(rung="contract", locator="c", observed="x"),)))
+    dec.findings.append(
+        CD.Finding(
+            axis="family",
+            name="softmax",
+            state=CD.PRESENT,
+            family="softmax",
+            evidence=(CD.Evidence(rung="contract", locator="c", observed="x"),),
+        )
+    )
     disc = CD.CapabilitySurface(target="t", origin="discovered", rungs_ran=("rtl_facts",))
     monkeypatch.setattr(CD, "discover", lambda t, **k: disc)
     monkeypatch.setattr(CD, "declared", lambda t: dec)
@@ -265,10 +279,16 @@ def test_a_family_whose_deciding_rung_never_ran_is_undeterminable_not_over_decla
 
 def test_a_family_whose_deciding_rung_did_run_is_over_declared(monkeypatch):
     dec = CD.CapabilitySurface(target="t", origin="declared")
-    dec.findings.append(CD.Finding(axis="family", name="softmax", state=CD.PRESENT, family="softmax",
-                                   evidence=(CD.Evidence(rung="contract", locator="c", observed="x"),)))
-    disc = CD.CapabilitySurface(target="t", origin="discovered",
-                                rungs_ran=("rtl_facts", "isa_header"))
+    dec.findings.append(
+        CD.Finding(
+            axis="family",
+            name="softmax",
+            state=CD.PRESENT,
+            family="softmax",
+            evidence=(CD.Evidence(rung="contract", locator="c", observed="x"),),
+        )
+    )
+    disc = CD.CapabilitySurface(target="t", origin="discovered", rungs_ran=("rtl_facts", "isa_header"))
     monkeypatch.setattr(CD, "discover", lambda t, **k: disc)
     monkeypatch.setattr(CD, "declared", lambda t: dec)
     d = CD.delta("t")
@@ -279,10 +299,15 @@ def test_delta_refuses_to_diff_an_unreadable_declaration(monkeypatch):
     dec = CD.CapabilitySurface(target="t", origin="declared", resolved=False)
     dec.notes.append("no target contract resolved")
     disc = CD.CapabilitySurface(target="t", origin="discovered", rungs_ran=("rtl_facts",))
-    disc.findings.append(CD.Finding(axis="family", name="contraction", state=CD.PRESENT,
-                                    family="contraction",
-                                    evidence=(CD.Evidence(rung="rtl_facts", locator="f",
-                                                          observed="mesh"),)))
+    disc.findings.append(
+        CD.Finding(
+            axis="family",
+            name="contraction",
+            state=CD.PRESENT,
+            family="contraction",
+            evidence=(CD.Evidence(rung="rtl_facts", locator="f", observed="mesh"),),
+        )
+    )
     monkeypatch.setattr(CD, "discover", lambda t, **k: disc)
     monkeypatch.setattr(CD, "declared", lambda t: dec)
     d = CD.delta("t")
@@ -292,8 +317,10 @@ def test_delta_refuses_to_diff_an_unreadable_declaration(monkeypatch):
 
 def test_discover_refuses_when_a_pin_does_not_verify(monkeypatch):
     from merlin.common import provenance as P
-    bad = P.Verification(pin="p", observed=P.Observation(path="/nowhere", present=False),
-                         drift=("commit: declared abc, observed def",))
+
+    bad = P.Verification(
+        pin="p", observed=P.Observation(path="/nowhere", present=False), drift=("commit: declared abc, observed def",)
+    )
     monkeypatch.setattr(CD, "_pins_for", lambda t: ["p"])
     monkeypatch.setattr(P, "verify", lambda name, **k: bad)
     with pytest.raises(CD.ProvenanceRefused):
@@ -307,8 +334,7 @@ def test_discover_refuses_when_a_pin_does_not_verify(monkeypatch):
 
 def test_op_class_family_is_never_guessed_from_an_rtl_module_name(monkeypatch):
     """A funct name the contract does not classify yields no family, on purpose."""
-    facts = {"facts": {"interfaces": [{"name": "funct_decode_table",
-                                       "names": {"3": "SOME_VENDOR_MATMUL_CMD"}}]}}
+    facts = {"facts": {"interfaces": [{"name": "funct_decode_table", "names": {"3": "SOME_VENDOR_MATMUL_CMD"}}]}}
     monkeypatch.setattr(CD, "_facts_if_present", lambda t: (facts, "test"))
     monkeypatch.setattr(CD, "_target_contract", lambda t: ({}, None))
     out: list[CD.Finding] = []
@@ -476,15 +502,15 @@ def test_capacity_units_are_read_from_the_wrappers_own_name(scala_tree):
 
 def test_config_and_rtl_geometry_are_cross_checked(scala_tree):
     cfg = CD.elaborated_config("t", {"facts": {"source": {"config": "DefaultSynthConfig"}}})
-    body = {"arrays": [{"name": "mesh", "rows": 16, "cols": 16}],
-            "memories": [{"name": "scratchpad", "bytes": 256 * 1024},
-                         {"name": "accumulator", "bytes": 64 * 1024}]}
+    body = {
+        "arrays": [{"name": "mesh", "rows": 16, "cols": 16}],
+        "memories": [{"name": "scratchpad", "bytes": 256 * 1024}, {"name": "accumulator", "bytes": 64 * 1024}],
+    }
     out: list[CD.Finding] = []
     notes: list[str] = []
     CD._corroborate_config(cfg, body, out, notes)
     got = {f.name for f in out}
-    assert {"array.rows=16", "array.cols=16",
-            "memory.scratchpad=262144", "memory.accumulator=65536"} <= got
+    assert {"array.rows=16", "array.cols=16", "memory.scratchpad=262144", "memory.accumulator=65536"} <= got
     for f in out:
         assert f.evidence and f.evidence[0].line
 
@@ -513,9 +539,11 @@ def test_a_sibling_modes_licence_survives_its_neighbours_being_gated_off(scala_t
     CD._apply_build_gates("t", cfg, findings, [])
     by = {f.name: f for f in findings if f.axis == "activation_mode"}
     assert by["RELU"].state == CD.PRESENT
-    assert by["RELU"].gate == {"status": "built",
-                               "fields": {"has_nonlinear_activations": True},
-                               "config": "DefaultSynthConfig"}
+    assert by["RELU"].gate == {
+        "status": "built",
+        "fields": {"has_nonlinear_activations": True},
+        "config": "DefaultSynthConfig",
+    }
     assert "elementwise_map" in {f.family for f in findings if f.axis == "family"}
 
 
@@ -555,14 +583,26 @@ def test_no_gate_is_inferred_for_a_token_the_sources_never_mention(scala_tree, t
 
 def test_encodable_not_built_makes_a_declared_family_over_declared(monkeypatch):
     dec = CD.CapabilitySurface(target="t", origin="declared")
-    dec.findings.append(CD.Finding(axis="family", name="softmax", state=CD.PRESENT, family="softmax",
-                                   evidence=(CD.Evidence(rung="contract", locator="c", observed="x"),)))
-    disc = CD.CapabilitySurface(target="t", origin="discovered",
-                                rungs_ran=("rtl_facts", "isa_header", "build_config"))
-    disc.findings.append(CD.Finding(
-        axis="activation_mode", name="SOFTMAX", state=CD.ENCODABLE_NOT_BUILT, family="softmax",
-        gate={"status": "not_built", "off": ["has_normalizations"], "config": "C"},
-        evidence=(CD.Evidence(rung="build_config", locator="C.scala", observed="false", line=9),)))
+    dec.findings.append(
+        CD.Finding(
+            axis="family",
+            name="softmax",
+            state=CD.PRESENT,
+            family="softmax",
+            evidence=(CD.Evidence(rung="contract", locator="c", observed="x"),),
+        )
+    )
+    disc = CD.CapabilitySurface(target="t", origin="discovered", rungs_ran=("rtl_facts", "isa_header", "build_config"))
+    disc.findings.append(
+        CD.Finding(
+            axis="activation_mode",
+            name="SOFTMAX",
+            state=CD.ENCODABLE_NOT_BUILT,
+            family="softmax",
+            gate={"status": "not_built", "off": ["has_normalizations"], "config": "C"},
+            evidence=(CD.Evidence(rung="build_config", locator="C.scala", observed="false", line=9),),
+        )
+    )
     monkeypatch.setattr(CD, "discover", lambda t, **k: disc)
     monkeypatch.setattr(CD, "declared", lambda t: dec)
     d = CD.delta("t")
@@ -580,10 +620,19 @@ def test_pin_status_reports_a_nested_checkout_off_its_recorded_gitlink(tmp_path,
     import subprocess
 
     def git(cwd, *args):
-        subprocess.run(("git", "-C", str(cwd)) + args, check=True, capture_output=True,
-                       env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path),
-                            "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
-                            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"})
+        subprocess.run(
+            ("git", "-C", str(cwd)) + args,
+            check=True,
+            capture_output=True,
+            env={
+                "PATH": "/usr/bin:/bin",
+                "HOME": str(tmp_path),
+                "GIT_AUTHOR_NAME": "t",
+                "GIT_AUTHOR_EMAIL": "t@t",
+                "GIT_COMMITTER_NAME": "t",
+                "GIT_COMMITTER_EMAIL": "t@t",
+            },
+        )
 
     inner = tmp_path / "outer" / "nested"
     inner.mkdir(parents=True)
@@ -592,8 +641,9 @@ def test_pin_status_reports_a_nested_checkout_off_its_recorded_gitlink(tmp_path,
     (inner / "h.h").write_text("#define A 1\n", encoding="utf-8")
     git(inner, "add", "h.h")
     git(inner, "commit", "-qm", "one")
-    first = subprocess.run(("git", "-C", str(inner), "rev-parse", "HEAD"),
-                           capture_output=True, text=True).stdout.strip()
+    first = subprocess.run(
+        ("git", "-C", str(inner), "rev-parse", "HEAD"), capture_output=True, text=True
+    ).stdout.strip()
     git(tmp_path / "outer", "add", "nested")
     git(tmp_path / "outer", "commit", "-qm", "record gitlink")
     # the nested tree then moves on, exactly like a submodule left on a newer revision
@@ -601,8 +651,12 @@ def test_pin_status_reports_a_nested_checkout_off_its_recorded_gitlink(tmp_path,
     git(inner, "commit", "-qam", "two")
 
     from merlin.common import provenance as P
-    monkeypatch.setattr(P, "pin", lambda name: P.Pin(name=name, commit="x", root_env="E",
-                                                     path="") if False else _FakePin(tmp_path / "outer"))
+
+    monkeypatch.setattr(
+        P,
+        "pin",
+        lambda name: P.Pin(name=name, commit="x", root_env="E", path="") if False else _FakePin(tmp_path / "outer"),
+    )
     st = CD._pin_status(inner / "h.h", "somepin")
     assert st["status"] == "off_pin"
     assert st["superproject_records"] == first
@@ -624,8 +678,7 @@ def test_a_header_claim_from_an_unpinned_file_is_not_reported_as_pinned():
             surf = CD.discover(target, require_pin=False)
         except CD.ProvenanceRefused:
             continue
-        hdr = [f for f in surf.findings
-               if f.evidence and f.evidence[0].rung == "isa_header"]
+        hdr = [f for f in surf.findings if f.evidence and f.evidence[0].rung == "isa_header"]
         if not hdr:
             continue
         for f in hdr:

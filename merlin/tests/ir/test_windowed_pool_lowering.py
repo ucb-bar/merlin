@@ -13,6 +13,7 @@ Two things are pinned here:
 * the BROKEN shape is diagnosed structurally by op, dim and captured layer, so the next capture
   that drops the window extent is a one-line read rather than a bisection.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -35,8 +36,7 @@ _POOL_MAPS_UNBOUND = (
 
 
 def _module(*, window: bool) -> str:
-    ins = ("%in, %win : tensor<1x2x10x10xf32>, tensor<3x3xf32>" if window
-           else "%in : tensor<1x2x10x10xf32>")
+    ins = "%in, %win : tensor<1x2x10x10xf32>, tensor<3x3xf32>" if window else "%in : tensor<1x2x10x10xf32>"
     block = "^bb0(%a: f32, %k: f32, %b: f32):" if window else "^bb0(%a: f32, %b: f32):"
     acc = "%b" if window else "%b"
     return f"""

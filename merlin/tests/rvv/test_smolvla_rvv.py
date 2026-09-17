@@ -13,14 +13,15 @@ the inherent bf16-vs-torch fidelity gap (our matmul reduction order differs from
 f32 reassociation, which 8-bit bf16 mantissas amplify). All gated on the captured bundles +
 the host toolchain; the whole-model runs are slow (compile ~3-4k kernels) -> MERLIN_RUN_SLOW.
 """
+
 from __future__ import annotations
-from merlin.common.paths import repo_root, merlin_dir
 
 import os
 from pathlib import Path
 
 import pytest
 
+from merlin.common.paths import merlin_dir, repo_root
 from merlin.xdsl_dialects import _common
 
 pytestmark = pytest.mark.skipif(not _common.HAS_XDSL, reason="xDSL not installed")
@@ -36,11 +37,9 @@ def _toolchain():
     return toolchain.available()
 
 
-@pytest.mark.skipif(not (PREFIX / "model.mlir").is_file(),
-                    reason="smolvla prefix bundle not captured")
+@pytest.mark.skipif(not (PREFIX / "model.mlir").is_file(), reason="smolvla prefix bundle not captured")
 @pytest.mark.skipif(not _toolchain(), reason="m2m venv / clang-23 missing")
-@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"),
-                    reason="set MERLIN_RUN_SLOW=1 (compiles ~800 kernels)")
+@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"), reason="set MERLIN_RUN_SLOW=1 (compiles ~800 kernels)")
 def test_smolvla_prefix_exact(tmp_path):
     """Vision encoder + conv + int8 dequant + embeddings (f32) reproduce torch exactly."""
     from merlin.runtime.dispatch_runtime import run_model
@@ -49,15 +48,13 @@ def test_smolvla_prefix_exact(tmp_path):
     assert res["cos"] > 0.9999 and res["rel"] < 1e-2, (res["cos"], res["rel"])
 
 
-@pytest.mark.skipif(not (FULL / "model.mlir").is_file(),
-                    reason="smolvla full int8 bundle not captured")
+@pytest.mark.skipif(not (FULL / "model.mlir").is_file(), reason="smolvla full int8 bundle not captured")
 @pytest.mark.skipif(not _toolchain(), reason="m2m venv / clang-23 missing")
-@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"),
-                    reason="set MERLIN_RUN_SLOW=1 (compiles ~3.7k kernels)")
+@pytest.mark.skipif(not os.environ.get("MERLIN_RUN_SLOW"), reason="set MERLIN_RUN_SLOW=1 (compiles ~3.7k kernels)")
 def test_smolvla_full_runs_at_bf16_fidelity(tmp_path):
     """Whole int8+bf16 VLA executes end to end; bf16 flow-matching head -> cos ~0.978."""
     from merlin.runtime.dispatch_runtime import run_model
 
     res = run_model(FULL, tmp_path, cache_dir=REPO / "out/artifacts/cache/kc_smolvla")
     assert res["artifacts" / "recaptures"].shape == (1, 50, 32)
-    assert res["cos"] > 0.97, res["cos"]          # bf16 fidelity through the denoise head
+    assert res["cos"] > 0.97, res["cos"]  # bf16 fidelity through the denoise head

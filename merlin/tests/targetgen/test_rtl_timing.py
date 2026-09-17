@@ -4,6 +4,7 @@ The load-bearing tests here are the negative ones. A depth walk that returns a N
 sequenced unit is worse than one that returns nothing: the number is finite, plausible, and wrong,
 and a statically-scheduled target compiles it straight into a wrong answer.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -16,7 +17,8 @@ from merlin.targetgen.rtl import timing
 # semantics are testable without mlc, CIRCT, or any target's RTL being present.
 # --------------------------------------------------------------------------------------------
 class _Name:
-    def __init__(self, data): self.data = data
+    def __init__(self, data):
+        self.data = data
 
 
 class _Op:
@@ -35,6 +37,7 @@ class _Module:
 
 class _Graph:
     """Values are plain objects; a value is a block arg unless some op declares it as its result."""
+
     def __init__(self, modules):
         self.modules = {m.name: m for m in modules}
 
@@ -121,7 +124,7 @@ def test_a_feedback_output_yields_UNKNOWN_not_a_number():
     """An FSM/counter reaches its output through itself. 'Longest path' is not finite there, and a
     finite-looking answer is exactly what a statically-scheduled target would mis-compile."""
     reg = _Op("seq.firreg", [])
-    reg.operands = [reg.result]              # state feeding itself
+    reg.operands = [reg.result]  # state feeding itself
     out = _Op("hw.output", [reg.result])
     g, m = _build("Fsm", [reg, out])
     rec = timing.module_timing(g, m)
@@ -177,6 +180,7 @@ def test_unreachable_rtl_is_None_never_an_empty_list(monkeypatch):
     """None is UNKNOWN ('nobody could look'). [] would assert the design HAS no timing -- a claim
     about hardware made from a missing tool."""
     from merlin.targetgen.rtl import mlc_bridge
+
     monkeypatch.setattr(mlc_bridge, "mlc_available", lambda: (False, "not installed"))
     assert timing.discovered_timing("any-target") is None
 

@@ -10,6 +10,7 @@ These pin two things. The three sites must produce the SAME suffix for the same 
 between them is exactly the failure above. And the number itself now has a single typed home on
 `Host.vlen`, derived from the board, rather than each caller rediscovering it.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -39,7 +40,8 @@ def test_every_site_pins_the_same_vector_length(vlen):
     pinned = {k: v for k, v in got.items() if v}
     assert len(set(pinned.values())) == 1, (
         f"the vector length is pinned differently across sites at VLEN={vlen}: {pinned}. "
-        f"A build and a run that disagree on vlenb corrupt every scalable spill slot.")
+        f"A build and a run that disagree on vlenb corrupt every scalable spill slot."
+    )
     assert next(iter(pinned.values())) == f"zvl{vlen}b"
 
 

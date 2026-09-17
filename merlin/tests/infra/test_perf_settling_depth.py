@@ -16,6 +16,7 @@ The band and the confirming-step count are REQUIRED arguments with no defaults. 
 a settling depth quoted without the band it was decided under is not reproducible, and a default band
 is a threshold nobody declared. The tests below hold both fixed and move only the measurements.
 """
+
 from __future__ import annotations
 
 from fractions import Fraction
@@ -42,18 +43,58 @@ COUNTER_HEADER = """
 #: counter readings the same bracketed runs printed. Reduction depth doubling from one tile to eight
 #: at fixed single-tile parallel extents.
 PK_COHORT = {
-    "PK00_k16": (16, 301, {"MAIN_EX_CYCLES": 70, "MAIN_LD_CYCLES": 39, "MAIN_ST_CYCLES": 43,
-                           "MAIN_LD_EX_CYCLES": 28, "MAIN_ST_EX_CYCLES": 0,
-                           "MAIN_LD_ST_CYCLES": 0, "MAIN_LD_ST_EX_CYCLES": 0}),
-    "PK01_k32": (32, 373, {"MAIN_EX_CYCLES": 83, "MAIN_LD_CYCLES": 46, "MAIN_ST_CYCLES": 43,
-                           "MAIN_LD_EX_CYCLES": 51, "MAIN_ST_EX_CYCLES": 0,
-                           "MAIN_LD_ST_CYCLES": 0, "MAIN_LD_ST_EX_CYCLES": 0}),
-    "PK02_k64": (64, 471, {"MAIN_EX_CYCLES": 83, "MAIN_LD_CYCLES": 43, "MAIN_ST_CYCLES": 43,
-                           "MAIN_LD_EX_CYCLES": 128, "MAIN_ST_EX_CYCLES": 0,
-                           "MAIN_LD_ST_CYCLES": 0, "MAIN_LD_ST_EX_CYCLES": 0}),
-    "PK03_k128": (128, 604, {"MAIN_EX_CYCLES": 83, "MAIN_LD_CYCLES": 42, "MAIN_ST_CYCLES": 43,
-                             "MAIN_LD_EX_CYCLES": 281, "MAIN_ST_EX_CYCLES": 0,
-                             "MAIN_LD_ST_CYCLES": 0, "MAIN_LD_ST_EX_CYCLES": 0}),
+    "PK00_k16": (
+        16,
+        301,
+        {
+            "MAIN_EX_CYCLES": 70,
+            "MAIN_LD_CYCLES": 39,
+            "MAIN_ST_CYCLES": 43,
+            "MAIN_LD_EX_CYCLES": 28,
+            "MAIN_ST_EX_CYCLES": 0,
+            "MAIN_LD_ST_CYCLES": 0,
+            "MAIN_LD_ST_EX_CYCLES": 0,
+        },
+    ),
+    "PK01_k32": (
+        32,
+        373,
+        {
+            "MAIN_EX_CYCLES": 83,
+            "MAIN_LD_CYCLES": 46,
+            "MAIN_ST_CYCLES": 43,
+            "MAIN_LD_EX_CYCLES": 51,
+            "MAIN_ST_EX_CYCLES": 0,
+            "MAIN_LD_ST_CYCLES": 0,
+            "MAIN_LD_ST_EX_CYCLES": 0,
+        },
+    ),
+    "PK02_k64": (
+        64,
+        471,
+        {
+            "MAIN_EX_CYCLES": 83,
+            "MAIN_LD_CYCLES": 43,
+            "MAIN_ST_CYCLES": 43,
+            "MAIN_LD_EX_CYCLES": 128,
+            "MAIN_ST_EX_CYCLES": 0,
+            "MAIN_LD_ST_CYCLES": 0,
+            "MAIN_LD_ST_EX_CYCLES": 0,
+        },
+    ),
+    "PK03_k128": (
+        128,
+        604,
+        {
+            "MAIN_EX_CYCLES": 83,
+            "MAIN_LD_CYCLES": 42,
+            "MAIN_ST_CYCLES": 43,
+            "MAIN_LD_EX_CYCLES": 281,
+            "MAIN_ST_EX_CYCLES": 0,
+            "MAIN_LD_ST_CYCLES": 0,
+            "MAIN_LD_ST_EX_CYCLES": 0,
+        },
+    ),
 }
 
 #: The claim decisions this file holds fixed. One percentage point of the overlap ceiling per DOUBLING
@@ -69,15 +110,15 @@ def counters():
 
 
 def _point(label, axis, cycles, realised, available):
-    return FT.Point(label=label, axis=axis, cycles=cycles,
-                    realised_overlap=realised, available_overlap=available)
+    return FT.Point(label=label, axis=axis, cycles=cycles, realised_overlap=realised, available_overlap=available)
 
 
 def pk_points() -> list[FT.Point]:
     derived = counters()
-    return [FT.point_from_counter_values(name, axis, cycles, values, derived,
-                                     exclusivity_declared_by_producer=True)
-            for name, (axis, cycles, values) in PK_COHORT.items()]
+    return [
+        FT.point_from_counter_values(name, axis, cycles, values, derived, exclusivity_declared_by_producer=True)
+        for name, (axis, cycles, values) in PK_COHORT.items()
+    ]
 
 
 def settled_points() -> list[FT.Point]:
@@ -88,13 +129,13 @@ def settled_points() -> list[FT.Point]:
     steps are genuinely flat rather than flat after rounding.
     """
     return [
-        _point("a", 16, 300, 28, 104),            # eta 0.2692...
-        _point("b", 32, 373, 51, 137),            # eta 0.3722...
-        _point("c", 64, 471, 128, 212),           # eta 0.6037...
-        _point("d", 128, 604, 292, 400),          # eta 0.73
-        _point("e", 256, 900, 584, 800),          # eta 0.73     -- step 0
-        _point("f", 512, 1500, 1168, 1600),       # eta 0.73     -- step 0
-        _point("g", 1024, 2700, 2336, 3200),      # eta 0.73     -- step 0
+        _point("a", 16, 300, 28, 104),  # eta 0.2692...
+        _point("b", 32, 373, 51, 137),  # eta 0.3722...
+        _point("c", 64, 471, 128, 212),  # eta 0.6037...
+        _point("d", 128, 604, 292, 400),  # eta 0.73
+        _point("e", 256, 900, 584, 800),  # eta 0.73     -- step 0
+        _point("f", 512, 1500, 1168, 1600),  # eta 0.73     -- step 0
+        _point("g", 1024, 2700, 2336, 3200),  # eta 0.73     -- step 0
     ]
 
 
@@ -118,16 +159,16 @@ def test_the_declared_band_and_confirmation_count_are_echoed_into_the_result():
     """A settling depth quoted without them is not reproducible, so they travel with the number."""
     got = FT.settling_depth(settled_points(), band=BAND, confirming_steps=CONFIRMING_STEPS)
 
-    assert got["declared"] == {"band": 0.01, "band_numerator": 1, "band_denominator": 100,
-                               "confirming_steps": 2}
+    assert got["declared"] == {"band": 0.01, "band_numerator": 1, "band_denominator": 100, "confirming_steps": 2}
 
 
 def test_one_flat_step_at_the_end_of_a_ladder_does_not_count_as_settled():
     """The failure mode a single confirmation cannot tell apart from a ladder that stopped too early."""
-    truncated = settled_points()[:5]                      # ...rises, then exactly one flat step
+    truncated = settled_points()[:5]  # ...rises, then exactly one flat step
     assert FT.settling_depth(truncated, band=BAND, confirming_steps=1)["state"] == FT.SETTLED_AT
-    assert FT.settling_depth(truncated, band=BAND,
-                             confirming_steps=CONFIRMING_STEPS)["state"] == FT.NEVER_SETTLES_IN_RANGE
+    assert (
+        FT.settling_depth(truncated, band=BAND, confirming_steps=CONFIRMING_STEPS)["state"] == FT.NEVER_SETTLES_IN_RANGE
+    )
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -181,8 +222,12 @@ def test_a_point_with_no_overlap_reading_makes_the_depth_undeterminable_not_sett
     the points that happened to read is the most expensive possible place to make that mistake.
     """
     partial = settled_points()
-    partial[4] = FT.Point(label=partial[4].label, axis=partial[4].axis, cycles=partial[4].cycles,
-                          overlap_detail="the bracket did not fire for this point")
+    partial[4] = FT.Point(
+        label=partial[4].label,
+        axis=partial[4].axis,
+        cycles=partial[4].cycles,
+        overlap_detail="the bracket did not fire for this point",
+    )
 
     got = FT.settling_depth(partial, band=BAND, confirming_steps=CONFIRMING_STEPS)
 
@@ -195,7 +240,7 @@ def test_a_band_finer_than_the_instrument_can_resolve_is_flagged_on_the_step_it_
     """Eta moves in steps of 1/available. A band below that asks for a distinction nothing can make."""
     points = settled_points()
     resolutions = FT.eta_resolution(points)
-    assert resolutions[0]["resolution"] == pytest.approx(1 / 104)     # the coarser of the first pair
+    assert resolutions[0]["resolution"] == pytest.approx(1 / 104)  # the coarser of the first pair
 
     coarse = FT.settling_depth(points, band=BAND, confirming_steps=CONFIRMING_STEPS)
     assert coarse["unresolvable_steps"] == []
@@ -235,8 +280,9 @@ FROZEN_RESIDUAL_FRACTION = Fraction(3, 100)
 
 def test_the_frozen_cohorts_marginal_cost_never_stops_changing_inside_itself():
     """Which is the threshold-free half of its refutation, restated as a depth question."""
-    got = FT.marginal_settling_depth(pk_points(), relative_band=FROZEN_RESIDUAL_FRACTION,
-                                     confirming_steps=CONFIRMING_STEPS)
+    got = FT.marginal_settling_depth(
+        pk_points(), relative_band=FROZEN_RESIDUAL_FRACTION, confirming_steps=CONFIRMING_STEPS
+    )
 
     assert got["state"] == FT.NEVER_SETTLES_IN_RANGE
     assert got["settling_axis"] is None
@@ -248,12 +294,13 @@ def test_the_frozen_cohorts_marginal_cost_never_stops_changing_inside_itself():
 def test_a_ladder_whose_marginal_cost_goes_constant_reports_the_depth_it_did_so():
     """The positive case. Cycles become exactly affine from the third point on."""
     settled = [
-        FT.Point("a", 16, 300), FT.Point("b", 32, 380),          # marginal 5.0
-        FT.Point("c", 64, 500), FT.Point("d", 128, 740),         # marginal 3.75, then 3.75
-        FT.Point("e", 256, 1220),                                # marginal 3.75
+        FT.Point("a", 16, 300),
+        FT.Point("b", 32, 380),  # marginal 5.0
+        FT.Point("c", 64, 500),
+        FT.Point("d", 128, 740),  # marginal 3.75, then 3.75
+        FT.Point("e", 256, 1220),  # marginal 3.75
     ]
-    got = FT.marginal_settling_depth(settled, relative_band=FROZEN_RESIDUAL_FRACTION,
-                                     confirming_steps=CONFIRMING_STEPS)
+    got = FT.marginal_settling_depth(settled, relative_band=FROZEN_RESIDUAL_FRACTION, confirming_steps=CONFIRMING_STEPS)
 
     assert got["state"] == FT.SETTLED_AT
     assert got["settling_axis"] == 32
@@ -269,16 +316,17 @@ def test_the_marginal_verdict_needs_no_overlap_reading_at_all():
     """
     unread = [FT.Point(p.label, p.axis, p.cycles) for p in pk_points()]
 
-    assert FT.settling_depth(unread, band=BAND,
-                             confirming_steps=CONFIRMING_STEPS)["state"] == FT.UNDETERMINABLE
-    assert FT.marginal_settling_depth(unread, relative_band=FROZEN_RESIDUAL_FRACTION,
-                                      confirming_steps=CONFIRMING_STEPS)["state"] == \
-        FT.NEVER_SETTLES_IN_RANGE
+    assert FT.settling_depth(unread, band=BAND, confirming_steps=CONFIRMING_STEPS)["state"] == FT.UNDETERMINABLE
+    assert (
+        FT.marginal_settling_depth(unread, relative_band=FROZEN_RESIDUAL_FRACTION, confirming_steps=CONFIRMING_STEPS)[
+            "state"
+        ]
+        == FT.NEVER_SETTLES_IN_RANGE
+    )
 
 
 def test_two_points_cannot_decide_whether_a_marginal_is_changing():
-    got = FT.marginal_settling_depth(pk_points()[:2], relative_band=FROZEN_RESIDUAL_FRACTION,
-                                     confirming_steps=1)
+    got = FT.marginal_settling_depth(pk_points()[:2], relative_band=FROZEN_RESIDUAL_FRACTION, confirming_steps=1)
 
     assert got["state"] == FT.UNDETERMINABLE
     assert "at least two" in got["why"]
@@ -293,9 +341,16 @@ def test_a_marginal_that_goes_constant_and_then_changes_again_reports_its_WINDOW
     residue is the stretch over which it DID hold. A window is still a place a steady-state law can be
     tested; it is simply bounded from both sides rather than only from below.
     """
-    truncated = [FT.Point("a", 16, 220), FT.Point("b", 32, 319), FT.Point("c", 64, 454),
-                 FT.Point("d", 128, 740), FT.Point("e", 256, 1321), FT.Point("f", 512, 2503),
-                 FT.Point("g", 1024, 4828), FT.Point("h", 2048, 9532)]
+    truncated = [
+        FT.Point("a", 16, 220),
+        FT.Point("b", 32, 319),
+        FT.Point("c", 64, 454),
+        FT.Point("d", 128, 740),
+        FT.Point("e", 256, 1321),
+        FT.Point("f", 512, 2503),
+        FT.Point("g", 1024, 4828),
+        FT.Point("h", 2048, 9532),
+    ]
     extended = truncated + [FT.Point("i", 4096, 19493), FT.Point("j", 8192, 42669)]
     kwargs = {"relative_band": FROZEN_RESIDUAL_FRACTION, "confirming_steps": CONFIRMING_STEPS}
 
@@ -314,9 +369,16 @@ def test_a_marginal_that_goes_constant_and_then_changes_again_reports_its_WINDOW
 
 def test_a_window_that_runs_to_the_end_is_not_reported_as_closing():
     full = FT.marginal_settling_depth(
-        [FT.Point("a", 16, 300), FT.Point("b", 32, 380), FT.Point("c", 64, 500),
-         FT.Point("d", 128, 740), FT.Point("e", 256, 1220)],
-        relative_band=FROZEN_RESIDUAL_FRACTION, confirming_steps=CONFIRMING_STEPS)
+        [
+            FT.Point("a", 16, 300),
+            FT.Point("b", 32, 380),
+            FT.Point("c", 64, 500),
+            FT.Point("d", 128, 740),
+            FT.Point("e", 256, 1220),
+        ],
+        relative_band=FROZEN_RESIDUAL_FRACTION,
+        confirming_steps=CONFIRMING_STEPS,
+    )
 
     assert full["state"] == FT.SETTLED_AT
     assert full["longest_within_band_window"]["closes_before_the_deepest_point"] is False

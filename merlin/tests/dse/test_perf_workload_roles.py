@@ -8,6 +8,7 @@ produce a *different* answer on a target that does not expose one.
 Functional eligibility is the wrong axis for a performance corpus: a workload with no headroom is
 not a failed optimization target, it is the wrong instrument.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,16 +48,22 @@ def _sources():
     out = []
     for name, body in _suite()["kernels"].items():
         arc = body["arc"]
-        out.append(activity_from_busy(
-            name, arc["truth"],
-            {"dma": arc["dma_busy"], "mxu": arc["mxu"], "vpu": arc["vpu"], "none": arc["none"]},
-            BUCKET_KINDS,
-            partitioned=True, completion_observable=True,
-            provenance="per-cycle activity decomposition from the cycle-accurate model"))
+        out.append(
+            activity_from_busy(
+                name,
+                arc["truth"],
+                {"dma": arc["dma_busy"], "mxu": arc["mxu"], "vpu": arc["vpu"], "none": arc["none"]},
+                BUCKET_KINDS,
+                partitioned=True,
+                completion_observable=True,
+                provenance="per-cycle activity decomposition from the cycle-accurate model",
+            )
+        )
     return out
 
 
 # --- the hand-derived fixtures -------------------------------------------------------------------
+
 
 def test_the_split_is_twelve_optimize_one_movement_calibration_three_fixed_calibration():
     split = classify_workloads(_sources())
@@ -127,10 +134,15 @@ def test_the_policy_thresholds_are_declared_and_retunable():
 
 # --- the anti-overfit gate: a second target of a different archetype ------------------------------
 
+
 def test_second_target_without_a_decomposition_classifies_nothing_and_says_why():
     src = activity_from_busy(
-        "G01_multitile_sq", 7439, {"mesh": 7439}, {"mesh": ResourceKind.COMPUTE},
-        provenance="cycle-accurate RTL simulation, total cycles only")
+        "G01_multitile_sq",
+        7439,
+        {"mesh": 7439},
+        {"mesh": ResourceKind.COMPUTE},
+        provenance="cycle-accurate RTL simulation, total cycles only",
+    )
     split = classify_workloads([src])
     assert split.roles == {}, "a workload with no decomposition must never default to OPTIMIZE"
     assert "G01_multitile_sq" in split.unavailable
@@ -141,10 +153,9 @@ def test_a_compute_bound_corpus_flips_the_regime_and_the_calibration_term():
     # The regime is corpus-relative, so the same code on a compute-bound corpus makes the
     # movement-bound outlier the calibration instrument -- the mirror image of the first target.
     kinds = {"dma": ResourceKind.MOVEMENT, "pe": ResourceKind.COMPUTE, "idle": ResourceKind.FIXED}
-    corpus = [
-        activity_from_busy(f"c{i}", 1200, {"dma": 400, "pe": 750, "idle": 50}, kinds)
-        for i in range(4)
-    ] + [activity_from_busy("mover", 1000, {"dma": 800, "pe": 150, "idle": 50}, kinds)]
+    corpus = [activity_from_busy(f"c{i}", 1200, {"dma": 400, "pe": 750, "idle": 50}, kinds) for i in range(4)] + [
+        activity_from_busy("mover", 1000, {"dma": 800, "pe": 150, "idle": 50}, kinds)
+    ]
     split = classify_workloads(corpus)
     assert split.modal_binding_kind is ResourceKind.COMPUTE
     assert split.named(Role.CALIBRATION, "movement") == ["mover"]

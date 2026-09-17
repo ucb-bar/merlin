@@ -4,6 +4,7 @@ The failure this guards is the one the previous campaign shipped: receipts sayin
 `global_speedup_proven: False` with `probe_receipts: []`, where nothing distinguished "measured and
 it did not help" from "never measured". A report in which those look alike is worse than no report.
 """
+
 from __future__ import annotations
 
 import json
@@ -11,13 +12,11 @@ import json
 import pytest
 
 from merlin.perf import optimization_ledger as OL
-from merlin.perf.optimization_ledger import (SCOPES, VERDICTS, Attempt, Delta, Ledger,
-                                             arithmetic_intensity)
+from merlin.perf.optimization_ledger import SCOPES, VERDICTS, Attempt, Delta, Ledger, arithmetic_intensity
 
 
 def _delta(**kw):
-    base = {"workload": "w", "metric": "cycles", "before": 100.0, "after": 50.0,
-            "instrument": "spike"}
+    base = {"workload": "w", "metric": "cycles", "before": 100.0, "after": 50.0, "instrument": "spike"}
     base.update(kw)
     return Delta(**base)
 
@@ -55,8 +54,7 @@ def test_unmeasured_needs_no_delta_and_is_not_no_effect():
 
 
 def test_blocked_must_say_what_blocks_it():
-    assert any("must say what blocks" in why
-               for why in Attempt("m", "local", "t", "blocked").problems())
+    assert any("must say what blocks" in why for why in Attempt("m", "local", "t", "blocked").problems())
     assert Attempt("m", "local", "t", "blocked", blocked_by="upstream has no scales").problems() == ()
 
 
@@ -79,8 +77,7 @@ def test_the_ledger_audits_verdicts_scopes_and_instruments():
 def test_the_series_shows_advance_in_recorded_order():
     L = Ledger("t")
     for i, after in ((1, 90.0), (2, 80.0), (3, 75.0)):
-        L.add(Attempt(f"m{i}", "local", "t", "helped", iteration=i,
-                      deltas=(_delta(after=after),)))
+        L.add(Attempt(f"m{i}", "local", "t", "helped", iteration=i, deltas=(_delta(after=after),)))
     assert L.series("cycles", "w") == ((1, 90.0), (2, 80.0), (3, 75.0))
     assert L.series("cycles", "other") == ()
 
@@ -122,16 +119,14 @@ def test_below_an_UPPER_BOUND_ridge_decides_nothing():
 
 def test_a_two_sided_ridge_may_decide_the_memory_side():
     """A caller with an achievable bandwidth, not a marginal rate, gets the symmetric verdict."""
-    sparse = arithmetic_intensity(10, 1000, machine_macs_per_byte=50.0,
-                                  ridge_is_upper_bound=False)
+    sparse = arithmetic_intensity(10, 1000, machine_macs_per_byte=50.0, ridge_is_upper_bound=False)
     assert sparse["bound_by"] == "memory"
     assert sparse["ridge_is_upper_bound"] is False
 
 
 def test_the_compute_side_is_sound_under_either_reading():
     for sided in (True, False):
-        got = arithmetic_intensity(1000, 10, machine_macs_per_byte=50.0,
-                                   ridge_is_upper_bound=sided)
+        got = arithmetic_intensity(1000, 10, machine_macs_per_byte=50.0, ridge_is_upper_bound=sided)
         assert got["bound_by"] == "compute"
 
 
@@ -148,16 +143,24 @@ class TestPersistence:
     """A ledger that cannot be written and read back is not a campaign artifact."""
 
     def _attempt(self, **kw):
-        base = dict(mechanism="m", scope="local", found_by="work_volume", verdict="helped",
-                    deltas=(OL.Delta(workload="w", metric="cycles", before=100.0, after=50.0,
-                                     instrument="firesim"),))
+        base = dict(
+            mechanism="m",
+            scope="local",
+            found_by="work_volume",
+            verdict="helped",
+            deltas=(OL.Delta(workload="w", metric="cycles", before=100.0, after=50.0, instrument="firesim"),),
+        )
         base.update(kw)
         return OL.Attempt(**base)
 
     def test_a_ledger_round_trips_through_disk_unchanged(self, tmp_path):
-        led = OL.Ledger(target="t", attempts=[self._attempt(iteration=0),
-                                              self._attempt(verdict="blocked", blocked_by="upstream",
-                                                            deltas=(), iteration=1)])
+        led = OL.Ledger(
+            target="t",
+            attempts=[
+                self._attempt(iteration=0),
+                self._attempt(verdict="blocked", blocked_by="upstream", deltas=(), iteration=1),
+            ],
+        )
         path = led.write(tmp_path / "ledger.json")
         assert OL.read_ledger(path).to_dict() == led.to_dict()
 
@@ -166,7 +169,7 @@ class TestPersistence:
         assert led.attempts == [] and led.target == "t"
 
     def test_a_corrupt_file_raises_rather_than_reading_as_empty(self, tmp_path):
-        """"The campaign tried nothing" and "the record is corrupt" must not look the same."""
+        """ "The campaign tried nothing" and "the record is corrupt" must not look the same."""
         path = tmp_path / "ledger.json"
         path.write_text("{not json", encoding="utf-8")
         with pytest.raises(ValueError, match="exists but could not be read"):
@@ -174,8 +177,7 @@ class TestPersistence:
 
     def test_an_unknown_schema_is_refused(self, tmp_path):
         path = tmp_path / "ledger.json"
-        path.write_text(json.dumps({"schema": "something_else_v9", "attempts": []}),
-                        encoding="utf-8")
+        path.write_text(json.dumps({"schema": "something_else_v9", "attempts": []}), encoding="utf-8")
         with pytest.raises(ValueError, match="refusing to read a ledger"):
             OL.read_ledger(path)
 
@@ -196,32 +198,83 @@ class TestPersistence:
     def test_a_stored_problems_list_cannot_launder_an_unsound_row(self, tmp_path):
         """`problems` is DERIVED on read, so a row written unsound stays unsound."""
         path = tmp_path / "ledger.json"
-        path.write_text(json.dumps({
-            "schema": OL.SCHEMA, "target": "t",
-            "attempts": [{"mechanism": "m", "scope": "local", "found_by": "",
-                          "verdict": "helped", "deltas": [], "problems": []}]}), encoding="utf-8")
+        path.write_text(
+            json.dumps(
+                {
+                    "schema": OL.SCHEMA,
+                    "target": "t",
+                    "attempts": [
+                        {
+                            "mechanism": "m",
+                            "scope": "local",
+                            "found_by": "",
+                            "verdict": "helped",
+                            "deltas": [],
+                            "problems": [],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
         led = OL.read_ledger(path)
         assert led.problems(), "an evidence-free 'helped' row must still report a problem"
 
     def test_a_stored_ratio_is_recomputed_never_trusted(self, tmp_path):
         """Otherwise the number a reader reports is whichever the writer's arithmetic produced."""
         path = tmp_path / "ledger.json"
-        path.write_text(json.dumps({
-            "schema": OL.SCHEMA, "target": "t",
-            "attempts": [{"mechanism": "m", "scope": "local", "found_by": "i", "verdict": "helped",
-                          "deltas": [{"workload": "w", "metric": "cycles", "before": 100,
-                                      "after": 50, "instrument": "i", "ratio": 999.0}]}]}),
-            encoding="utf-8")
+        path.write_text(
+            json.dumps(
+                {
+                    "schema": OL.SCHEMA,
+                    "target": "t",
+                    "attempts": [
+                        {
+                            "mechanism": "m",
+                            "scope": "local",
+                            "found_by": "i",
+                            "verdict": "helped",
+                            "deltas": [
+                                {
+                                    "workload": "w",
+                                    "metric": "cycles",
+                                    "before": 100,
+                                    "after": 50,
+                                    "instrument": "i",
+                                    "ratio": 999.0,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
         assert OL.read_ledger(path).attempts[0].deltas[0].ratio == pytest.approx(2.0)
 
     @pytest.mark.parametrize("bad", ["not-a-number", float("nan"), float("inf"), True])
     def test_a_non_numeric_metric_value_is_refused_never_coerced(self, tmp_path, bad):
         path = tmp_path / "ledger.json"
-        path.write_text(json.dumps({
-            "schema": OL.SCHEMA, "target": "t",
-            "attempts": [{"mechanism": "m", "scope": "local", "found_by": "i", "verdict": "helped",
-                          "deltas": [{"workload": "w", "metric": "cycles", "before": 100,
-                                      "after": bad, "instrument": "i"}]}]}), encoding="utf-8")
+        path.write_text(
+            json.dumps(
+                {
+                    "schema": OL.SCHEMA,
+                    "target": "t",
+                    "attempts": [
+                        {
+                            "mechanism": "m",
+                            "scope": "local",
+                            "found_by": "i",
+                            "verdict": "helped",
+                            "deltas": [
+                                {"workload": "w", "metric": "cycles", "before": 100, "after": bad, "instrument": "i"}
+                            ],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
         with pytest.raises(ValueError, match="must be a number or null|must be finite"):
             OL.read_ledger(path)
 
@@ -241,14 +294,19 @@ class TestARetiredBlockerStopsLookingLive:
     """
 
     def _blocked(self, mechanism="do the thing"):
-        return Attempt(mechanism=mechanism, scope="global", found_by="census",
-                       verdict="blocked", blocked_by="nothing measures it")
+        return Attempt(
+            mechanism=mechanism, scope="global", found_by="census", verdict="blocked", blocked_by="nothing measures it"
+        )
 
     def _resolver(self, resolves="do the thing"):
-        return Attempt(mechanism="measure it another way", scope="global", found_by="gsim",
-                       verdict="helped", resolves=resolves,
-                       deltas=(Delta(workload="w", metric="m", before=1.0, after=2.0,
-                                     instrument="gsim", lower_is_better=False),))
+        return Attempt(
+            mechanism="measure it another way",
+            scope="global",
+            found_by="gsim",
+            verdict="helped",
+            resolves=resolves,
+            deltas=(Delta(workload="w", metric="m", before=1.0, after=2.0, instrument="gsim", lower_is_better=False),),
+        )
 
     def test_an_unresolved_blocker_is_live(self):
         led = Ledger(target="t", attempts=[self._blocked()])
@@ -275,8 +333,9 @@ class TestARetiredBlockerStopsLookingLive:
     def test_a_blocked_or_unmeasured_row_cannot_retire_anything(self):
         """Only a measured verdict may retire a blocker; otherwise nothing was established."""
         for verdict, extra in (("blocked", {"blocked_by": "still stuck"}), ("unmeasured", {})):
-            bad = Attempt(mechanism="x", scope="global", found_by="f", verdict=verdict,
-                          resolves="do the thing", **extra)
+            bad = Attempt(
+                mechanism="x", scope="global", found_by="f", verdict=verdict, resolves="do the thing", **extra
+            )
             led = Ledger(target="t", attempts=[self._blocked(), bad])
             assert any("cannot resolve an earlier attempt" in p for p in led.problems())
 
@@ -287,7 +346,6 @@ class TestARetiredBlockerStopsLookingLive:
         assert back.resolved() == led.resolved() and back.live_blockers() == ()
 
     def test_the_summary_counts_live_blockers_not_all_blocked_rows(self):
-        led = Ledger(target="t", attempts=[self._blocked(), self._resolver(),
-                                           self._blocked("another thing")])
+        led = Ledger(target="t", attempts=[self._blocked(), self._resolver(), self._blocked("another thing")])
         d = led.to_dict()
         assert d["by_verdict"]["blocked"] == 2 and d["n_live_blockers"] == 1

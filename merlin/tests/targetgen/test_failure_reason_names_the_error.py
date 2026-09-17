@@ -5,6 +5,7 @@ frames and cuts off the LAST line -- the only line carrying the exception type a
 traceback therefore produced a "cause" containing no error at all. That is how a capture failure was
 recorded with a reason nobody could act on.
 """
+
 from __future__ import annotations
 
 from merlin.targetgen.capsule_source import _stderr_cause
@@ -14,7 +15,8 @@ def _deep_traceback(frames: int = 60, *, error: str) -> str:
     body = "".join(
         f'  File "/a/deliberately/long/path/to/module_{i}.py", line {i}, in a_function_name_{i}\n'
         f"    a_source_line_that_is_quite_long_{i}()\n"
-        for i in range(frames))
+        for i in range(frames)
+    )
     return "Traceback (most recent call last)\n" + body + error + "\n"
 
 
@@ -27,7 +29,7 @@ def test_a_deep_traceback_still_names_its_exception():
 
 def test_a_short_traceback_is_returned_whole():
     err = "RuntimeError: boom"
-    text = "Traceback (most recent call last)\n  File \"a.py\", line 1, in f\n    g()\n" + err + "\n"
+    text = 'Traceback (most recent call last)\n  File "a.py", line 1, in f\n    g()\n' + err + "\n"
     got = _stderr_cause(text)
     assert got.endswith(err + "\n")
     assert "elided" not in got, "nothing was dropped, so nothing should claim to have been"
@@ -43,8 +45,10 @@ def test_the_last_traceback_wins_over_a_later_warning():
     """A python subprocess interleaves warnings with tracebacks, so the TAIL of stderr is often a
     benign warning emitted after the real error -- which is how a capture failure came to be
     attributed to an LSTM contiguity UserWarning."""
-    text = (_deep_traceback(frames=3, error="ValueError: the real cause")
-            + "/x/y.py:1: UserWarning: something harmless\n  warnings.warn(...)\n")
+    text = (
+        _deep_traceback(frames=3, error="ValueError: the real cause")
+        + "/x/y.py:1: UserWarning: something harmless\n  warnings.warn(...)\n"
+    )
     got = _stderr_cause(text)
     assert "the real cause" in got
     assert got.startswith("--- last traceback")

@@ -8,6 +8,7 @@ subscription that actually served the round is not billed per token at all. So t
 three distinct things apart: dollars actually owed, dollars the same traffic *would* have cost
 metered (notional), and no figure at all with the gap named.
 """
+
 from __future__ import annotations
 
 import json
@@ -23,16 +24,21 @@ _ATLAS = merlin_dir() / "experiments/capsule_bench/targets/atlas/target_experime
 
 
 def _transcript(tmp_path, model, usage, name="t.jsonl"):
-    line = {"type": "assistant",
-            "message": {"id": "msg_1", "model": model, "usage": usage,
-                        "content": [{"type": "text", "text": "hi"}]}}
+    line = {
+        "type": "assistant",
+        "message": {"id": "msg_1", "model": model, "usage": usage, "content": [{"type": "text", "text": "hi"}]},
+    }
     p = tmp_path / name
     p.write_text(json.dumps(line) + "\n")
     return p
 
 
-_CLAUDE_USAGE = {"input_tokens": 1000, "cache_creation_input_tokens": 0,
-                 "cache_read_input_tokens": 0, "output_tokens": 100}
+_CLAUDE_USAGE = {
+    "input_tokens": 1000,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 100,
+}
 
 
 # --------------------------------------------------------------------------- unpriced models
@@ -115,6 +121,7 @@ def loop(monkeypatch):
     if str(_HARNESS) not in sys.path:
         sys.path.insert(0, str(_HARNESS))
     import run_baseline_qa_loop as L  # noqa: PLC0415
+
     return L
 
 
@@ -159,11 +166,20 @@ def test_a_seat_run_logs_zero_cost_and_a_notional_metric(monkeypatch, tmp_path):
         def start(cls, **_kw):
             return cls()
 
-        def log_token_usage(self, **_kw): pass
-        def log_model_usage(self, *_a): pass
-        def log_agent_turns(self, *_a): pass
-        def log_session_id(self, *_a): pass
-        def close(self): pass
+        def log_token_usage(self, **_kw):
+            pass
+
+        def log_model_usage(self, *_a):
+            pass
+
+        def log_agent_turns(self, *_a):
+            pass
+
+        def log_session_id(self, *_a):
+            pass
+
+        def close(self):
+            pass
 
         def log_cost(self, cost, model=None):
             calls["cost"].append(cost)
@@ -186,26 +202,39 @@ def test_a_seat_run_logs_zero_cost_and_a_notional_metric(monkeypatch, tmp_path):
         session_id = None
         tool_call_count = 0
 
-        def estimated_cost_usd(self): return None
-        def per_model_usage(self): return {}
+        def estimated_cost_usd(self):
+            return None
+
+        def per_model_usage(self):
+            return {}
 
     tp = tmp_path / "t.jsonl"
     tp.write_text('{"type":"assistant"}\n')
     import sys as _sys
     import types as _types
+
     fake = _types.ModuleType("aet.tracking.claude_stream")
     fake.parse_stream = lambda _t: _Result()
     fake_rl = _types.ModuleType("aet.tracking.run_logger")
     fake_rl.EvalRunLogger = _Logger
-    for name, mod in (("aet", _types.ModuleType("aet")),
-                      ("aet.tracking", _types.ModuleType("aet.tracking")),
-                      ("aet.tracking.claude_stream", fake),
-                      ("aet.tracking.run_logger", fake_rl)):
+    for name, mod in (
+        ("aet", _types.ModuleType("aet")),
+        ("aet.tracking", _types.ModuleType("aet.tracking")),
+        ("aet.tracking.claude_stream", fake),
+        ("aet.tracking.run_logger", fake_rl),
+    ):
         monkeypatch.setitem(_sys.modules, name, mod)
 
-    ok = AB.emit_to_aet(run_dir=tmp_path, run_id="r0", method="arm", model="gpt-5.6-sol",
-                        target="t", transcript_paths=[tp], save_trajectory=False,
-                        billing_mode="subscription_notional")
+    ok = AB.emit_to_aet(
+        run_dir=tmp_path,
+        run_id="r0",
+        method="arm",
+        model="gpt-5.6-sol",
+        target="t",
+        transcript_paths=[tp],
+        save_trajectory=False,
+        billing_mode="subscription_notional",
+    )
     assert ok is True
     assert calls["cost"] == [0.0], "a subscription seat must add zero money to the spend store"
     assert calls["metrics"]["cost.subscription_notional_usd"] == 12.5
@@ -214,24 +243,34 @@ def test_a_seat_run_logs_zero_cost_and_a_notional_metric(monkeypatch, tmp_path):
 
 # --- repricing: dollars are re-DERIVED from stored tokens, never hand-edited ----------------------
 
+
 def _cost_rec(**over):
-    rec = {"available": True, "billing_mode": ET.SUBSCRIPTION_NOTIONAL, "model": "gpt-5.6-sol",
-           "tokens_input": 1_000_000, "tokens_cached": 0, "tokens_cache_write": 0,
-           "tokens_output": 100_000, "reasoning_is_subset_of_output": True,
-           "estimated_cost_usd": None,
-           "cost_unavailable_reason": "no price entry for model(s): gpt-5.6-sol"}
+    rec = {
+        "available": True,
+        "billing_mode": ET.SUBSCRIPTION_NOTIONAL,
+        "model": "gpt-5.6-sol",
+        "tokens_input": 1_000_000,
+        "tokens_cached": 0,
+        "tokens_cache_write": 0,
+        "tokens_output": 100_000,
+        "reasoning_is_subset_of_output": True,
+        "estimated_cost_usd": None,
+        "cost_unavailable_reason": "no price entry for model(s): gpt-5.6-sol",
+    }
     rec.update(over)
     return rec
 
 
 def _write_run(tmp_path, rec, manifest_process=None):
     import yaml
+
     d = tmp_path / "a_run"
     d.mkdir()
     (d / "cost_time_toolcalls.yaml").write_text(yaml.safe_dump(rec, sort_keys=False))
     if manifest_process is not None:
         (d / "run_manifest.yaml").write_text(
-            yaml.safe_dump({"run_id": "a_run", "process": manifest_process}, sort_keys=False))
+            yaml.safe_dump({"run_id": "a_run", "process": manifest_process}, sort_keys=False)
+        )
     return d
 
 
@@ -239,8 +278,9 @@ def test_reprice_fills_a_notional_figure_the_table_can_now_price(tmp_path, monke
     monkeypatch.setattr(ET, "_OVERRIDES", {"gpt-5.6-sol": (5e-6, 30e-6)})
     d = _write_run(tmp_path, _cost_rec())
     r = ET.reprice_run(d)
-    assert r["changed"]["subscription_notional_usd"][1] == 8.0   # 1M*$5 + 100k*$30 per 1M
+    assert r["changed"]["subscription_notional_usd"][1] == 8.0  # 1M*$5 + 100k*$30 per 1M
     import yaml
+
     got = yaml.safe_load((d / "cost_time_toolcalls.yaml").read_text())
     assert got["subscription_notional_usd"] == 8.0
     assert got["estimated_cost_usd"] is None, "a seat run never reports a spend"
@@ -250,13 +290,18 @@ def test_reprice_fills_a_notional_figure_the_table_can_now_price(tmp_path, monke
 def test_reprice_syncs_the_manifest_copy_so_the_two_files_cannot_disagree(tmp_path, monkeypatch):
     monkeypatch.setattr(ET, "_OVERRIDES", {"gpt-5.6-sol": (5e-6, 30e-6)})
     # The exact drift seen in the wild: the cost file was repriced, its manifest copy was not.
-    d = _write_run(tmp_path, _cost_rec(subscription_notional_usd=8.0,
-                                       cost_unavailable_reason="subscription_notional: ..."),
-                   manifest_process={"subscription_notional_usd": None,
-                                     "cost_unavailable_reason": "no price entry for model(s): gpt-5.6-sol"})
+    d = _write_run(
+        tmp_path,
+        _cost_rec(subscription_notional_usd=8.0, cost_unavailable_reason="subscription_notional: ..."),
+        manifest_process={
+            "subscription_notional_usd": None,
+            "cost_unavailable_reason": "no price entry for model(s): gpt-5.6-sol",
+        },
+    )
     r = ET.reprice_run(d)
     assert r["manifest_changed"]["subscription_notional_usd"] == (None, 8.0)
     import yaml
+
     man = yaml.safe_load((d / "run_manifest.yaml").read_text())
     assert man["process"]["subscription_notional_usd"] == 8.0
 
@@ -280,6 +325,7 @@ def test_reprice_never_overwrites_a_cost_the_provider_cli_reported(tmp_path, mon
     r = ET.reprice_run(d)
     assert r["changed"] == {}
     import yaml
+
     assert yaml.safe_load((d / "cost_time_toolcalls.yaml").read_text())["estimated_cost_usd"] == 168.541
 
 
@@ -288,6 +334,7 @@ def test_an_unpriced_model_still_yields_no_dollar_figure(tmp_path, monkeypatch):
     d = _write_run(tmp_path, _cost_rec(model="some-unknown-model-id"))
     ET.reprice_run(d)
     import yaml
+
     got = yaml.safe_load((d / "cost_time_toolcalls.yaml").read_text())
     assert "subscription_notional_usd" not in got
     assert "no metered rate" in got["cost_unavailable_reason"]

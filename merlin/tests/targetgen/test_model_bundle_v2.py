@@ -1,4 +1,5 @@
 """Version-2 whole-model bundles preserve capture ABI and every model result."""
+
 from __future__ import annotations
 
 import json
@@ -11,14 +12,12 @@ from merlin.common.paths import merlin_dir
 from merlin.targetgen import capsule_source
 from merlin.targetgen.capsule_runner import _model_runtime_bundle, load_capsule
 
-
 _ROOT = merlin_dir() / "contract/capsules/atlas/model"
 
 
 def _capsule(name: str) -> dict:
     root = _ROOT / name
-    required = (root / "capsule.weights.safetensors",
-                root / "capsule.weights.safetensors.manifest.json")
+    required = (root / "capsule.weights.safetensors", root / "capsule.weights.safetensors.manifest.json")
     if not all(path.is_file() for path in required):
         pytest.skip("local regenerated model answer surfaces are unavailable")
     if not capsule_source._m2m_python().is_file():
@@ -35,8 +34,9 @@ def test_capture_manifest_materializes_without_reexporting_loader_abi(name):
         assert provenance["construction"] == "frozen_capsule_assets_v2"
         assert provenance["validation"]["capture_manifest_validated"] is True
         assert provenance["validation"]["torch_export"] is False
-        assert ((bundle / "weights.safetensors.manifest.json").read_bytes() ==
-                (source / "capsule.weights.safetensors.manifest.json").read_bytes())
+        assert (bundle / "weights.safetensors.manifest.json").read_bytes() == (
+            source / "capsule.weights.safetensors.manifest.json"
+        ).read_bytes()
         verify()
 
 

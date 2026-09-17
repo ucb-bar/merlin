@@ -1,6 +1,7 @@
 """Target-edge pin and emitted-field mutation checks, without execution."""
-import importlib.util
+
 import hashlib
+import importlib.util
 import json
 
 import pytest
@@ -17,7 +18,7 @@ def adapter():
 
 
 def fixture(offset=7):
-    hardware = f'''hw.module @LoopMatmul(in %clk : !seq.clock, in %ready : i1) {{
+    hardware = f"""hw.module @LoopMatmul(in %clk : !seq.clock, in %ready : i1) {{
     %selector = hw.constant 39 : i7
     %match = comb.icmp bin eq %cmd_q.io_deq_bits_cmd_inst_funct, %selector : i7
     %gate = comb.and bin %ready, %match : i1
@@ -26,15 +27,20 @@ def fixture(offset=7):
     %next = comb.mux bin %gate, %a, %loops_0_pad_i : i5
     %loops_0_pad_i = seq.firreg %next clock %clk : i5
     hw.output
-  }}'''
-    facts = {"inputs": {"core_hw_sha256": hashlib.sha256(hardware.encode()).hexdigest()},
-        "facts": {"interfaces": [{"name": "funct_decode_table", "names": {"39": "LOOP_WS_CONFIG_BOUNDS"},
-            "legal_funct": [39]}]}}
+  }}"""
+    facts = {
+        "inputs": {"core_hw_sha256": hashlib.sha256(hardware.encode()).hexdigest()},
+        "facts": {
+            "interfaces": [
+                {"name": "funct_decode_table", "names": {"39": "LOOP_WS_CONFIG_BOUNDS"}, "legal_funct": [39]}
+            ]
+        },
+    }
     return hardware, facts
 
 
 def writeback_fixture():
-    hardware = '''hw.module @LoopMatmul(in %clk : !seq.clock, in %ready : i1) {
+    hardware = """hw.module @LoopMatmul(in %clk : !seq.clock, in %ready : i1) {
     %dc_selector = hw.constant 11 : i7
     %dc_match = comb.icmp bin eq %cmd_q.io_deq_bits_cmd_inst_funct, %dc_selector : i7
     %dc_gate = comb.and bin %ready, %dc_match : i1
@@ -48,7 +54,7 @@ def writeback_fixture():
     %full_next = comb.mux bin %run_gate, %full, %loops_0_full_c : i1
     %loops_0_full_c = seq.firreg %full_next clock %clk : i1
     hw.output
-  }'''
+  }"""
     facts = {
         "inputs": {"core_hw_sha256": hashlib.sha256(hardware.encode()).hexdigest()},
         "facts": {
@@ -62,11 +68,13 @@ def writeback_fixture():
                 {"name": "scratchpad", "bytes": 4096, "depth": 16, "source": "synthetic RTL"},
                 {"name": "accumulator", "bytes": 4096, "depth": 16, "source": "synthetic RTL"},
             ],
-            "interfaces": [{
-                "name": "funct_decode_table",
-                "names": {"8": "LOOP_WS", "11": "LOOP_WS_CONFIG_ADDRS_DC"},
-                "legal_funct": [8, 11],
-            }],
+            "interfaces": [
+                {
+                    "name": "funct_decode_table",
+                    "names": {"8": "LOOP_WS", "11": "LOOP_WS_CONFIG_ADDRS_DC"},
+                    "legal_funct": [8, 11],
+                }
+            ],
         },
     }
     return hardware, facts
@@ -102,47 +110,47 @@ def test_header_only_selector_cannot_become_authority():
 @pytest.mark.parametrize(("full_c", "expected_width"), [(0, 8), (1, 32)])
 def test_actual_loop_descriptor_exposes_abi_destination_and_physical_width(full_c, expected_width):
     hardware, facts = writeback_fixture()
-    layouts = adapter().derive_layouts(
-        facts_text=json.dumps(facts), hardware_text=hardware)
+    layouts = adapter().derive_layouts(facts_text=json.dumps(facts), hardware_text=hardware)
     instructions = [
-        {"index": 0, "funct": 11,
-         "rs1": {"kind": "const", "raw": 0},
-         "rs2": {"kind": "argbase", "arg_index": 4, "offset": 96}},
-        {"index": 1, "funct": 8,
-         "rs1": {"kind": "const", "raw": full_c << 1},
-         "rs2": {"kind": "const", "raw": 0}},
+        {
+            "index": 0,
+            "funct": 11,
+            "rs1": {"kind": "const", "raw": 0},
+            "rs2": {"kind": "argbase", "arg_index": 4, "offset": 96},
+        },
+        {"index": 1, "funct": 8, "rs1": {"kind": "const", "raw": full_c << 1}, "rs2": {"kind": "const", "raw": 0}},
     ]
 
     evidence = adapter().derive_writebacks(instructions, layouts=layouts)
 
     assert evidence["coverage_status"] == "complete"
     assert evidence["covered_instruction_indices"] == [0, 1]
-    assert evidence["writebacks"] == [{
-        "instruction_index": 1,
-        "instruction_name": "LOOP_WS",
-        "destination": {"arg_index": 4, "byte_offset": 96},
-        "physical_readout": {"encoding": "signed_integer", "width_bits": expected_width},
-        "selector": {"field": "full_c", "value": full_c},
-    }]
+    assert evidence["writebacks"] == [
+        {
+            "instruction_index": 1,
+            "instruction_name": "LOOP_WS",
+            "destination": {"arg_index": 4, "byte_offset": 96},
+            "physical_readout": {"encoding": "signed_integer", "width_bits": expected_width},
+            "selector": {"field": "full_c", "value": full_c},
+        }
+    ]
 
 
 def test_unresolved_loop_destination_fails_closed():
     hardware, facts = writeback_fixture()
-    layouts = adapter().derive_layouts(
-        facts_text=json.dumps(facts), hardware_text=hardware)
+    layouts = adapter().derive_layouts(facts_text=json.dumps(facts), hardware_text=hardware)
     instructions = [
-        {"index": 0, "funct": 11,
-         "rs1": {"kind": "const", "raw": 0}, "rs2": {"kind": "unknown"}},
-        {"index": 1, "funct": 8,
-         "rs1": {"kind": "const", "raw": 0},
-         "rs2": {"kind": "const", "raw": 0}},
+        {"index": 0, "funct": 11, "rs1": {"kind": "const", "raw": 0}, "rs2": {"kind": "unknown"}},
+        {"index": 1, "funct": 8, "rs1": {"kind": "const", "raw": 0}, "rs2": {"kind": "const", "raw": 0}},
     ]
 
     evidence = adapter().derive_writebacks(instructions, layouts=layouts)
 
     assert evidence["coverage_status"] == "UNKNOWN"
     assert evidence["writebacks"] == []
-    assert evidence["unresolved_writebacks"] == [{
-        "instruction_index": 1,
-        "reason": "c_dram_addr update is not derived for every possible descriptor slot",
-    }]
+    assert evidence["unresolved_writebacks"] == [
+        {
+            "instruction_index": 1,
+            "reason": "c_dram_addr update is not derived for every possible descriptor slot",
+        }
+    ]

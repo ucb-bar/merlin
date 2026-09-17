@@ -9,6 +9,7 @@ Running the open-weight models at `--sandbox none` while the Codex arm ran under
 the comparison asymmetric in its isolation strength, which is a caveat on every number that follows.
 So the driver gets a per-run isolated data home, exactly as the Codex driver does.
 """
+
 from __future__ import annotations
 
 import sys
@@ -27,6 +28,7 @@ if str(HARNESS) not in sys.path:
 def binds(tmp_path):
     sys.argv = ["x"]
     import opencode_agent as OC
+
     return OC.opencode_runtime_binds(tmp_path / "home"), tmp_path / "home"
 
 
@@ -43,13 +45,15 @@ def test_the_real_data_dir_is_never_bound(binds):
     args, home = binds
     real = str(Path.home() / ".local" / "share" / "opencode")
     assert not any(a == real or a.startswith(real + "/") for a in args), (
-        f"the real opencode data dir {real} is bound into the sandbox; prior sessions would be readable")
+        f"the real opencode data dir {real} is bound into the sandbox; prior sessions would be readable"
+    )
 
 
 def test_each_round_gets_its_own_home(tmp_path):
     """Round-scoped, like the Codex home: state must not leak between rounds or runs."""
     sys.argv = ["x"]
     import opencode_agent as OC
+
     a = OC.opencode_runtime_binds(tmp_path / "run_r00")
     b = OC.opencode_runtime_binds(tmp_path / "run_r01")
     assert a != b and (tmp_path / "run_r00").is_dir() and (tmp_path / "run_r01").is_dir()

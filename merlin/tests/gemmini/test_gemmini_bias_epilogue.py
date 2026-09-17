@@ -11,6 +11,7 @@ address bits from the capability manifest's ``readout_bits``, the accumulator's 
 the CIRCT-extracted memory fact, the funct codes from the RTL funct decode table — and compared as
 integers. Nothing is spelled as a literal opcode, bit or width.
 """
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -59,34 +60,49 @@ def _capsule_dir(name: str = CAPSULE):
 
 
 def _capsule_cb(name: str = CAPSULE) -> dict:
-    return parse_interface_mlir(
-        (_capsule_dir(name) / "capsule.interface.mlir").read_text(encoding="utf-8"))
+    return parse_interface_mlir((_capsule_dir(name) / "capsule.interface.mlir").read_text(encoding="utf-8"))
 
 
 def _capsule_yaml(name: str = CAPSULE) -> dict:
     return yaml.safe_load((_capsule_dir(name) / "capsule.yaml").read_text(encoding="utf-8"))
 
 
-def _cb(m: int, k: int, n: int, *, epilogue: list[str], bias: str | None = "B",
-        bias_dtype: str | None = None, output_dtype: str = "i32", acc_scale: float | None = None):
+def _cb(
+    m: int,
+    k: int,
+    n: int,
+    *,
+    epilogue: list[str],
+    bias: str | None = "B",
+    bias_dtype: str | None = None,
+    output_dtype: str = "i32",
+    acc_scale: float | None = None,
+):
     """A resident-matmul buffer with the requested epilogue. ``bias_dtype`` defaults to the DERIVED
     accumulator container, which is what the command-buffer ABI says a bias operand carries."""
     if bias_dtype is None:
         bias_dtype = _accumulator_container()[0]
-    tensors = {"W": {"shape": [k, n], "dtype": "i8", "role": "weight"},
-               "A0": {"shape": [m, k], "dtype": "i8", "role": "input"}}
+    tensors = {
+        "W": {"shape": [k, n], "dtype": "i8", "role": "weight"},
+        "A0": {"shape": [m, k], "dtype": "i8", "role": "input"},
+    }
     attrs: dict = {"epilogue": list(epilogue), "output_dtype": output_dtype}
     if bias is not None:
         tensors[bias] = {"shape": [n], "dtype": bias_dtype, "role": "bias"}
         attrs["bias"] = bias
     if acc_scale is not None:
         attrs["acc_scale"] = acc_scale
-    return {"abi_version": "0.1", "target": "gemmini", "tensors": tensors, "commands": [
-        {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "R"},
-         "attributes": {"layout": "packed_rhs"}},
-        {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "R", "dst": "acc"}},
-        {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y0"}, "attributes": attrs},
-        {"opcode": "EVICT", "operands": {"handle": "R"}}]}
+    return {
+        "abi_version": "0.1",
+        "target": "gemmini",
+        "tensors": tensors,
+        "commands": [
+            {"opcode": "RES_PACK", "operands": {"src": "W", "dst": "R"}, "attributes": {"layout": "packed_rhs"}},
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": "A0", "rhs": "R", "dst": "acc"}},
+            {"opcode": "COMMIT", "operands": {"src": "acc", "dst": "Y0"}, "attributes": attrs},
+            {"opcode": "EVICT", "operands": {"handle": "R"}},
+        ],
+    }
 
 
 def _trace(cb: dict) -> list[dict]:
@@ -110,9 +126,9 @@ def test_harness_accepts_separately_packed_bias_from_oot_compiler(shape):
     """The frozen compiler packs bias too; that handle is not a matrix RHS/ABI group."""
     cb = _cb(16, 32, 16, epilogue=["bias_add"])
     cb["tensors"]["B"]["shape"] = shape
-    cb["commands"].insert(2, {
-        "opcode": "RES_PACK", "operands": {"src": "B", "dst": "B_res"},
-        "attributes": {"layout": "packed_bias"}})
+    cb["commands"].insert(
+        2, {"opcode": "RES_PACK", "operands": {"src": "B", "dst": "B_res"}, "attributes": {"layout": "packed_bias"}}
+    )
     source = gem.render_harness(cb, target="gemmini")
     assert "gemmini_kernel((void*)T_W, (void*)T_A0, (void*)T_Y0, (void*)T_B)" in source
     assert gm.emit_kernel_mlir(cb)[1] == ["W", "A0", "Y0", "B"]
@@ -134,7 +150,7 @@ def test_bias_is_moved_into_the_accumulator_with_a_repeating_row_stride():
     row — the target's own repeating-bias move-in."""
     rb = _readout_bits()
     acc_base = rb["c_acc"] & ~rb["full_c_bit"]
-    assert acc_base == rb["acc_i8"]                       # the two derived encodings agree
+    assert acc_base == rb["acc_i8"]  # the two derived encodings agree
 
     instrs = _trace(_capsule_cb())
     stride = None
@@ -147,20 +163,19 @@ def test_bias_is_moved_into_the_accumulator_with_a_repeating_row_stride():
     assert len(bias_moves) == 1, "one output tile, one bias move-in"
     move, move_stride = bias_moves[0]
     assert move["funct"] == _funct_code("MVIN")
-    assert move["decoded"]["addr"] == acc_base            # no accumulate bit, no full-C bit
-    assert move_stride == 0                              # repeating bias
+    assert move["decoded"]["addr"] == acc_base  # no accumulate bit, no full-C bit
+    assert move_stride == 0  # repeating bias
     assert move["decoded"]["dram"]["kind"] == "argbase"
-    assert move["decoded"]["dram"]["arg_index"] == 3      # the trailing bias argument
+    assert move["decoded"]["dram"]["arg_index"] == 3  # the trailing bias argument
     # ...and it is the ONLY move into the accumulator: the operands go to the scratchpad.
-    assert sum(1 for i in instrs
-               if i["class"] == "MVIN" and i["decoded"]["addr"] & rb["acc_i8"]) == 1
+    assert sum(1 for i in instrs if i["class"] == "MVIN" and i["decoded"]["addr"] & rb["acc_i8"]) == 1
 
 
 def test_every_k_tile_accumulates_onto_the_bias_including_the_first():
     """With a bias seeded in the accumulator, k=0 must ACCUMULATE, not overwrite — otherwise the mesh
     erases the bias it was supposed to add. Without a bias, k=0 must still overwrite."""
     rb = _readout_bits()
-    deep = _cb(16, 32, 16, epilogue=["bias_add"])          # Kt = 2: a first tile and a later one
+    deep = _cb(16, 32, 16, epilogue=["bias_add"])  # Kt = 2: a first tile and a later one
     accum = [i["decoded"]["accumulate"] for i in _trace(deep) if i["class"] == "PRELOAD"]
     assert accum == [True, True]
 
@@ -170,8 +185,7 @@ def test_every_k_tile_accumulates_onto_the_bias_including_the_first():
     plain_accum = [i["decoded"]["accumulate"] for i in _trace(plain) if i["class"] == "PRELOAD"]
     assert plain_accum == [False, True], "a bias-free kernel must still OVERWRITE on its first k-tile"
     # ...and it moves nothing into the accumulator.
-    assert not [i for i in _trace(plain)
-                if i["class"] == "MVIN" and i["decoded"]["addr"] & rb["acc_i8"]]
+    assert not [i for i in _trace(plain) if i["class"] == "MVIN" and i["decoded"]["addr"] & rb["acc_i8"]]
 
 
 def test_a_biased_kernel_restores_the_activation_row_stride():
@@ -179,8 +193,8 @@ def test_a_biased_kernel_restores_the_activation_row_stride():
     stride, and the activation row-panel move-in for the NEXT output row used to inherit it — so every
     row of that panel read the same DRAM row and the whole tile came back wrong (rows 17..31 of a
     32-row output). Every activation move must be preceded by the activation pitch."""
-    cb = _cb(32, 16, 16, epilogue=["bias_add"])            # Mt = 2: a second row panel
-    kp = 16                                                # padded K, the activation row pitch
+    cb = _cb(32, 16, 16, epilogue=["bias_add"])  # Mt = 2: a second row panel
+    kp = 16  # padded K, the activation row pitch
     stride = None
     seen = []
     for ins in _trace(cb):
@@ -280,8 +294,9 @@ def test_the_advisory_screen_binds_the_output_to_its_contract_argument():
     cb, capsule = _capsule_cb(), _capsule_yaml()
     outs, why = rtl_checks.declared_outputs(capsule, cb)
     assert outs and outs[0]["arg_index"] == 2, why
-    report = rtl_checks.screen(decode_text(gm.emit_kernel_mlir(cb)[0], target="gemmini"),
-                               capsule, target="gemmini", command_buffer=cb)
+    report = rtl_checks.screen(
+        decode_text(gm.emit_kernel_mlir(cb)[0], target="gemmini"), capsule, target="gemmini", command_buffer=cb
+    )
     by_id = {c.id: c.to_dict() for c in report.checks}
     assert by_id["T0.output_store_coverage"]["status"] == "pass", by_id["T0.output_store_coverage"]
 
@@ -289,8 +304,7 @@ def test_the_advisory_screen_binds_the_output_to_its_contract_argument():
 def test_the_declared_trace_expectations_still_hold():
     cb, capsule = _capsule_cb(), _capsule_yaml()
     trace = decode_text(gm.emit_kernel_mlir(cb)[0], target="gemmini")
-    assert check(trace, capsule["expected"], cb, address_model="pointer_args") == {
-        "status": "pass", "violations": []}
+    assert check(trace, capsule["expected"], cb, address_model="pointer_args") == {"status": "pass", "violations": []}
 
 
 # --------------------------------------------------------------------------------------------------
@@ -344,7 +358,7 @@ def _gemmini_capsule_buffers():
             continue
         try:
             cb = parse_interface_mlir(text)
-        except Exception:                        # noqa: BLE001 — a corpus this emitter never sees
+        except Exception:  # noqa: BLE001 — a corpus this emitter never sees
             continue
         yield path.parent.name, cb
 
@@ -360,16 +374,19 @@ def test_no_bias_free_capsule_gained_an_accumulator_move_in():
     acc_bit = _readout_bits()["acc_i8"]
     checked = 0
     for name, cb in _gemmini_capsule_buffers():
-        stages = [s for c in cb.get("commands", []) if c.get("opcode") == "COMMIT"
-                  for s in (c.get("attributes", {}).get("epilogue") or [])]
+        stages = [
+            s
+            for c in cb.get("commands", [])
+            if c.get("opcode") == "COMMIT"
+            for s in (c.get("attributes", {}).get("epilogue") or [])
+        ]
         if any(s in ("bias_add", "bias") for s in stages):
             continue
         try:
             instrs = _trace(cb)
         except CodegenError:
-            continue                             # a shape this emitter refuses, before and after
+            continue  # a shape this emitter refuses, before and after
         checked += 1
-        assert not [i for i in instrs
-                    if i["class"] == "MVIN" and i["decoded"]["addr"] & acc_bit], name
+        assert not [i for i in instrs if i["class"] == "MVIN" and i["decoded"]["addr"] & acc_bit], name
         assert 0 not in [i["decoded"]["stride"] for i in instrs if i["class"] == "CONFIG_LD"], name
     assert checked > 100, f"only {checked} bias-free capsules emitted; the sweep proved little"

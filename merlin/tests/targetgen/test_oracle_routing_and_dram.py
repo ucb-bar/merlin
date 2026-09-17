@@ -7,29 +7,30 @@ These lock the two harness bugs that made an atlas run score 0/11 without ever g
   * the emitted command buffer's output tensor carried no DRAM base, so the program oracle crashed
     ('L3 crash: base') before comparing numerics.
 """
+
 from __future__ import annotations
 
-import yaml
 import pytest
+import yaml
 
-from merlin.targetgen import capsule_runner as CR
-from merlin.targetgen import capsule_dram as D
 from merlin.common.paths import merlin_dir
-
+from merlin.targetgen import capsule_dram as D
+from merlin.targetgen import capsule_runner as CR
 
 # ---- FAULT 1: oracle routing is contract-derived, never a silent gemmini fallback ----------------
+
 
 def test_bare_oracle_adapters_self_routes_from_the_contract():
     # atlas (external_backend) -> model-backed numeric L2 + elaborated-RTL L3 certification;
     # gemmini -> spike/verilator.
     atlas = CR.oracle_adapters("atlas")
-    assert {"L2", "L3"} <= set(atlas) <= {"L2", "L3", "L4"}   # program-oracle ladder (+ additive L4 vsim)
+    assert {"L2", "L3"} <= set(atlas) <= {"L2", "L3", "L4"}  # program-oracle ladder (+ additive L4 vsim)
     assert "program_oracle_adapter" in getattr(atlas["L2"], "__qualname__", "")
     assert "program_verilator_adapter" in getattr(atlas["L3"], "__qualname__", "")
-    if "L4" in atlas:                                          # RTL-certified verilator tier, if registered
+    if "L4" in atlas:  # RTL-certified verilator tier, if registered
         assert "program_verilator_adapter" in getattr(atlas["L4"], "__qualname__", "")
     gem = CR.oracle_adapters("gemmini")
-    assert set(gem) == {"L2", "L3"}                      # chipyard spike/verilator, recovered from tier_sim
+    assert set(gem) == {"L2", "L3"}  # chipyard spike/verilator, recovered from tier_sim
 
 
 def test_explicit_sim_via_is_honored_and_arc_only_not_reresolved():
@@ -45,7 +46,7 @@ def test_run_capsule_default_is_contract_routed_not_gemmini_default():
     # external_backend target is NEVER graded by the gemmini default_adapters (the 0/11 mis-route).
     a3 = CR._resolve_oracle_adapters("atlas")
     ref = CR.oracle_adapters("atlas")
-    assert set(a3) == set(ref)                           # same tier routing (closures differ by identity)
+    assert set(a3) == set(ref)  # same tier routing (closures differ by identity)
     assert {k: v.__qualname__ for k, v in a3.items()} == {k: v.__qualname__ for k, v in ref.items()}
     assert "program_verilator" in getattr(a3["L3"], "__qualname__", "")
     # default_adapters is retained for the explicitly-gemmini perf-bench, but is NOT the atlas route
@@ -53,6 +54,7 @@ def test_run_capsule_default_is_contract_routed_not_gemmini_default():
 
 
 # ---- FAULT 2/3: the DRAM address map is harness-owned, deterministic, agent-respecting -----------
+
 
 def _atlas_matmul_capsule() -> dict:
     p = merlin_dir() / "contract/capsules/atlas/isa/AT2_single_tile_matmul/capsule.yaml"
@@ -81,13 +83,15 @@ def test_layout_is_deterministic_and_non_overlapping():
 
 def test_inject_fills_missing_base_but_never_clobbers_agent_declared():
     cap = _atlas_matmul_capsule()
-    cb = {"tensors": {
-        "A0": {"shape": [32, 32], "dtype": "fp8_e4m3", "role": "input"},           # no base -> filled
-        "Y0": {"shape": [32, 32], "dtype": "bf16", "role": "output", "base": 0xBEEF},  # declared -> kept
-    }}
+    cb = {
+        "tensors": {
+            "A0": {"shape": [32, 32], "dtype": "fp8_e4m3", "role": "input"},  # no base -> filled
+            "Y0": {"shape": [32, 32], "dtype": "bf16", "role": "output", "base": 0xBEEF},  # declared -> kept
+        }
+    }
     D.inject_bases(cb, cap)
-    assert cb["tensors"]["A0"]["base"] == D.layout(cap)["A0"]     # harness default supplied
-    assert cb["tensors"]["Y0"]["base"] == 0xBEEF                  # agent's choice preserved
+    assert cb["tensors"]["A0"]["base"] == D.layout(cap)["A0"]  # harness default supplied
+    assert cb["tensors"]["Y0"]["base"] == 0xBEEF  # agent's choice preserved
 
 
 def test_output_tensor_resolves_for_matmul_even_when_not_in_inputs():
@@ -99,15 +103,23 @@ def test_output_tensor_resolves_for_matmul_even_when_not_in_inputs():
 
 def test_command_buffer_schema_accepts_fp8_and_base():
     from merlin.targetgen.contract import schemas
-    cb = {"abi_version": "0.1", "target": "atlas", "commands": [{"opcode": "COMMIT"}],
-          "tensors": {"A0": {"shape": [32, 32], "dtype": "fp8_e4m3", "role": "input", "base": 4096},
-                      "Y0": {"shape": [32, 32], "dtype": "bf16", "role": "output", "base": 6144}}}
+
+    cb = {
+        "abi_version": "0.1",
+        "target": "atlas",
+        "commands": [{"opcode": "COMMIT"}],
+        "tensors": {
+            "A0": {"shape": [32, 32], "dtype": "fp8_e4m3", "role": "input", "base": 4096},
+            "Y0": {"shape": [32, 32], "dtype": "bf16", "role": "output", "base": 6144},
+        },
+    }
     schemas.validate_command_buffer(cb, contract=str(merlin_dir() / "contract"))  # must not raise
 
 
 def test_external_backend_prompt_declares_the_dram_contract():
     from merlin.targetgen.generate_prompt import render_prompt
-    from merlin.targetgen.target_experiment import load_target_experiment, load_capability_manifest
+    from merlin.targetgen.target_experiment import load_capability_manifest, load_target_experiment
+
     desc = merlin_dir() / "experiments/capsule_bench/targets/atlas/target_experiment.yaml"
     if not desc.is_file():
         pytest.skip("atlas descriptor absent")
@@ -118,6 +130,10 @@ def test_external_backend_prompt_declares_the_dram_contract():
     # a non-external_backend target must NOT get the block
     gdesc = merlin_dir() / "experiments/capsule_bench/targets/gemmini/target_experiment.yaml"
     if gdesc.is_file():
-        gp = render_prompt(load_target_experiment(gdesc), load_capability_manifest("gemmini"),
-                           experiment="full", arm="merlin_rtlchecks")
+        gp = render_prompt(
+            load_target_experiment(gdesc),
+            load_capability_manifest("gemmini"),
+            experiment="full",
+            arm="merlin_rtlchecks",
+        )
         assert "DRAM address map" not in gp

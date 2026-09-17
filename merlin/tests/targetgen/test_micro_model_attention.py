@@ -16,6 +16,7 @@ Two near misses make this worth pinning rather than trusting:
 ``_STATEMENT`` membership is the writability filter (``available_ops() & set(_STATEMENT)``), so these
 tests check the SELECTION, which is the thing that silently goes wrong.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -59,13 +60,16 @@ class TestTheOtherFamiliesDidNotMove:
     would silently rewrite their models and invalidate goldens that are graded, not regenerated.
     """
 
-    @pytest.mark.parametrize("family,expected", [
-        ("contraction", "matmul"),
-        ("elementwise_map", "gelu"),
-        ("reduction", "reduce_sum"),
-        ("movement", "movement"),
-        ("normalization", "rmsnorm"),
-    ])
+    @pytest.mark.parametrize(
+        "family,expected",
+        [
+            ("contraction", "matmul"),
+            ("elementwise_map", "gelu"),
+            ("reduction", "reduce_sum"),
+            ("movement", "movement"),
+            ("normalization", "rmsnorm"),
+        ],
+    )
     def test_representative_is_unchanged(self, family, expected):
         assert CS.op_for_family(family, admitted_ops=_statement_pool()) == expected
 
@@ -79,9 +83,12 @@ class TestTheEmittedLayerComposes:
         assert init, "this layer carries parameters, so it must emit an init line"
         E = 32
         scope: dict = {"torch": torch, "nn": torch.nn, "E": E}
-        exec(f"import torch.nn as nn\nclass _M(nn.Module):\n"
-             f"    def __init__(self):\n        super().__init__()\n        {init.format(i=0)}\n"
-             f"    def forward(self, x):\n        {fwd.format(i=0)}\n        return x\n", scope)
+        exec(
+            f"import torch.nn as nn\nclass _M(nn.Module):\n"
+            f"    def __init__(self):\n        super().__init__()\n        {init.format(i=0)}\n"
+            f"    def forward(self, x):\n        {fwd.format(i=0)}\n        return x\n",
+            scope,
+        )
         torch.manual_seed(0)
         model = scope["_M"]().eval()
         x = torch.randn(E, E)

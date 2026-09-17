@@ -24,8 +24,7 @@ def test_rewrite_changes_only_roundeven_to_the_exact_llvm_intrinsic():
 
 def test_feature_places_the_runner_marker_after_linalg_becomes_loops():
     ensure_registered()
-    passes = F.apply_pipeline(["canonicalize", "func.func(convert-linalg-to-loops)",
-                               "convert-scf-to-cf"], {FEATURE})
+    passes = F.apply_pipeline(["canonicalize", "func.func(convert-linalg-to-loops)", "convert-scf-to-cf"], {FEATURE})
     assert passes.index(MARKER) == passes.index("func.func(convert-linalg-to-loops)") + 1
     assert passes.index(MARKER) < passes.index("convert-scf-to-cf")
 
@@ -52,5 +51,6 @@ def test_real_lowering_reaches_llvm_intrinsic_not_libm(tmp_path):
 def test_roundeven_intrinsic_and_arithmetic_expansion_are_explicit_alternatives(tmp_path):
     ensure_registered()
     with pytest.raises(Exception, match="alternative exact lowerings"):
-        lower_to_llvm_ir("module {}", workdir=tmp_path, vectorize=True,
-                         features={FEATURE, "fuse_quantize_round_convert"})
+        lower_to_llvm_ir(
+            "module {}", workdir=tmp_path, vectorize=True, features={FEATURE, "fuse_quantize_round_convert"}
+        )
