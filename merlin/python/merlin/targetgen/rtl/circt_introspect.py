@@ -28,18 +28,20 @@ CLI::
 
     python -m merlin.targetgen.rtl.circt_introspect [--target <t>] [--out facts.json] [--hw <t.hw.mlir>]
 """
+
 from __future__ import annotations
 
 import ast
 import hashlib
 import json
 from pathlib import Path
-from merlin.common.paths import repo_root
 from typing import Any, Iterable
+
+from merlin.common.facts_view import interface as _facts_interface
+from merlin.common.paths import repo_root
 
 from . import introspect as V1
 from .facts import rtl_cache_dir
-from merlin.common.facts_view import interface as _facts_interface
 
 _REPO = repo_root()  # the repo root (contains merlin/)
 
@@ -49,7 +51,7 @@ GENERATOR_VERSION = "rtl-introspect-v7-elaborated-features"
 # from the target's own reviewed encoding (contract ``encoding.rocc_custom_slot``) — never a baked
 # gemmini=custom3 assumption. The major opcode is a SoC-config (OpcodeSet) fact the accelerator's own
 # decoder does not carry, so it cannot be recovered from the core HW dialect the funct fan-out uses.
-_RISCV_CUSTOM_OPCODES = {0: 0x0b, 1: 0x2b, 2: 0x5b, 3: 0x7b}  # derived-ok: RISC-V standard custom-0/1/2/3 encodings
+_RISCV_CUSTOM_OPCODES = {0: 0x0B, 1: 0x2B, 2: 0x5B, 3: 0x7B}  # derived-ok: RISC-V standard custom-0/1/2/3 encodings
 # RoCC ``.insn`` func3 is the xd/xs1/xs2 register-usage field — a RoCC ABI field that varies per
 # instruction and is NOT an instruction-identity constraint (identity is func7; see rocc_decode), and
 # not per-target. Recorded as the standard reg-usage default so the pin carries a value.
@@ -65,7 +67,9 @@ def _contract_rocc_slot(target: str | None) -> int | None:
         return None
     try:
         import yaml  # function-local: off the hot path, avoids an import cycle
+
         from .facts import target_contract_path
+
         p = target_contract_path(target)
         if not p.is_file():
             return None
@@ -129,10 +133,10 @@ def _module_port_sig(hw_text: str, module: str) -> str | None:
     for line in hw_text.splitlines():
         if "hw.module" not in line or marker not in line:
             continue
-        open_idx = line.find(marker) + len(marker) - 1   # the '(' itself
+        open_idx = line.find(marker) + len(marker) - 1  # the '(' itself
         close = _paren_span(line, open_idx)
         if close != -1:
-            return line[open_idx + 1:close]
+            return line[open_idx + 1 : close]
     return None
 
 
@@ -152,11 +156,11 @@ def extract_accumulator(hw_text: str) -> dict[str, Any] | None:
     addr_w = None
     lane_bits_seen: list[int] = []
     mask_bits = 0
-    for decl in (d.strip() for d in sig.split(",")):        # ports have no nested parens in their types
+    for decl in (d.strip() for d in sig.split(",")):  # ports have no nested parens in their types
         if " : " not in decl:
             continue
         lhs, typ = decl.rsplit(" : ", 1)
-        name = lhs.split()[-1].lstrip("%")                  # drop the `in`/`out` dir + `%`
+        name = lhs.split()[-1].lstrip("%")  # drop the `in`/`out` dir + `%`
         if name == "io_write_bits_addr":
             addr_w = _int_width(typ)
         elif name.startswith("io_write_bits_data_") and name.endswith("_0"):
@@ -171,8 +175,7 @@ def extract_accumulator(hw_text: str) -> dict[str, Any] | None:
     lane_bits = lane_bits_seen[0] if lane_bits_seen else 32
     n_lanes = len(lane_bits_seen)
     row_bytes = mask_bits or (n_lanes * (lane_bits // 8))
-    banks = sum(1 for ln in hw_text.splitlines()
-                if "hw.instance" in ln and "@AccumulatorMem" in ln) or 1
+    banks = sum(1 for ln in hw_text.splitlines() if "hw.instance" in ln and "@AccumulatorMem" in ln) or 1
     per_bank = depth * row_bytes
     return {
         "name": "accumulator",
@@ -185,9 +188,11 @@ def extract_accumulator(hw_text: str) -> dict[str, Any] | None:
         "bytes": banks * per_bank,
         "bytes_per_bank": per_bank,
         "elem_bits": lane_bits,
-        "evidence": (f"{banks}x @AccumulatorMem instance; per-bank io_write_bits_addr:i{addr_w} "
-                     f"(depth={depth}); {n_lanes}x io_write_bits_data_*_0:i{lane_bits}; "
-                     f"{mask_bits} byte-mask bits -> {row_bytes} B/row; total={banks * per_bank} B"),
+        "evidence": (
+            f"{banks}x @AccumulatorMem instance; per-bank io_write_bits_addr:i{addr_w} "
+            f"(depth={depth}); {n_lanes}x io_write_bits_data_*_0:i{lane_bits}; "
+            f"{mask_bits} byte-mask bits -> {row_bytes} B/row; total={banks * per_bank} B"
+        ),
     }
 
 
@@ -205,8 +210,8 @@ def extract_funct_table(isa_src: str) -> dict[str, Any]:
     # Structural parse of ``val NAME = <n>.U`` (no bit-width annotation) — split the line, not a
     # regex. Reject ``<n>.U(<w>.W)`` (bit-width-annotated) by requiring only whitespace/comment after
     # ``.U``, matching the funct block (the annotated rs1-subfields begin at CONFIG_EX and are skipped).
-    for ln in lines[start + 1:]:
-        if "CONFIG_EX" in ln:                 # start of the rs1-subfield block -> stop
+    for ln in lines[start + 1 :]:
+        if "CONFIG_EX" in ln:  # start of the rs1-subfield block -> stop
             break
         s = ln.strip()
         if not s.startswith("val "):
@@ -220,7 +225,7 @@ def extract_funct_table(isa_src: str) -> dict[str, Any]:
         if not (num.isdigit() and name and all(c.isupper() or c.isdigit() or c == "_" for c in name)):
             continue
         if after and not (after[:1].isspace() or after.startswith("//")):
-            continue                          # e.g. ``.U(3.W)`` -> not a funct code
+            continue  # e.g. ``.U(3.W)`` -> not a funct code
         table.setdefault(int(num), name)
     legal = sorted(table)
     return {
@@ -231,7 +236,7 @@ def extract_funct_table(isa_src: str) -> dict[str, Any]:
         # mentions. Kept separate because they are not authoritative: see :func:`outside_block_names`.
         "outside_block_names": outside_block_names(isa_src, start_at=start),
         "evidence": f"GemminiISA.scala // funct values block: {len(legal)} codes "
-                    f"[{legal[0]}..{legal[-1]}] up to CONFIG_EX",
+        f"[{legal[0]}..{legal[-1]}] up to CONFIG_EX",
     }
 
 
@@ -269,8 +274,7 @@ def _scala_int_constants(text: str) -> dict[str, int]:
             continue
         lhs, sep, rhs = source.partition("=")
         name = lhs[4:].strip()
-        if (not sep or not name
-                or not all(c.isupper() or c.isdigit() or c == "_" for c in name)):
+        if not sep or not name or not all(c.isupper() or c.isdigit() or c == "_" for c in name):
             continue
         pending[name] = rhs.strip()
     values: dict[str, int] = {}
@@ -380,8 +384,7 @@ def outside_block_names(isa_src: str, start_at: int = 0) -> dict[str, list[str]]
         name = lhs[4:].strip()
         num, _after = rhs.strip().split(".U", 1)
         num = num.strip()
-        if not (num.isdigit() and name
-                and all(c.isupper() or c.isdigit() or c == "_" for c in name)):
+        if not (num.isdigit() and name and all(c.isupper() or c.isdigit() or c == "_" for c in name)):
             continue
         names = out.setdefault(num, [])
         if name not in names:
@@ -397,6 +400,7 @@ def extract_funct_table_via_decoder(target: str) -> dict[str, Any] | None:
     unavailable or the HW dialect cannot be parsed — an honest fallback, never a fake pass."""
     try:
         from . import mlc_bridge
+
         if not mlc_bridge.mlc_available()[0]:
             return None
         # Agnostic extraction: mlc resolves the target's version-matched core HW dialect (the passed
@@ -447,9 +451,9 @@ def _reconcile_funct(decoder: dict[str, Any] | None, header: dict[str, Any] | No
                 recovered[str(code)] = cands[0]
         if recovered:
             decoder["names_recovered_from_outside_block"] = recovered
-        decoder["header_only_functs"] = sorted(hs - ds)   # header claims, silicon never decodes (phantom)
+        decoder["header_only_functs"] = sorted(hs - ds)  # header claims, silicon never decodes (phantom)
         decoder["decoder_only_functs"] = sorted(ds - hs)  # silicon decodes, header omits (missing)
-        decoder["evidence"] += (f"; vs header: phantom={sorted(hs - ds)} missing={sorted(ds - hs)}")
+        decoder["evidence"] += f"; vs header: phantom={sorted(hs - ds)} missing={sorted(ds - hs)}"
     else:
         # No name vocabulary at all (target declares no ISA source) -> generic ``funct_<code>`` labels.
         # The CODES are the derived fact; the names are a convenience the target can supply later.
@@ -469,7 +473,7 @@ def _functs_from_headers(headers: Iterable[str | Path]) -> dict[int, str]:
         except OSError:
             continue
         for line in txt.splitlines():
-            parts = line.split()   # ``#define  k_<NAME>  <N>`` — any whitespace
+            parts = line.split()  # ``#define  k_<NAME>  <N>`` — any whitespace
             if len(parts) >= 3 and parts[0] == "#define" and parts[1].startswith("k_") and parts[2].isdigit():
                 name = parts[1][2:]
                 if name and all(c.isupper() or c.isdigit() or c == "_" for c in name):
@@ -488,9 +492,9 @@ def _defines_from_headers(headers: Iterable[str | Path], prefix: str) -> dict[st
         except OSError:
             continue
         for line in txt.splitlines():
-            parts = line.split()   # ``#define  <prefix><NAME>  <N>`` — any whitespace
+            parts = line.split()  # ``#define  <prefix><NAME>  <N>`` — any whitespace
             if len(parts) >= 3 and parts[0] == "#define" and parts[1].startswith(prefix) and parts[2].isdigit():
-                name = parts[1][len(prefix):]
+                name = parts[1][len(prefix) :]
                 if name and all(c.isupper() or c.isdigit() or c == "_" for c in name):
                     out.setdefault(name, int(parts[2]))
     return out
@@ -511,6 +515,7 @@ def crosscheck_semantic_class_names(target: str, semantic_class: dict | None = N
     header modulo a reviewed prefix-alias). Skips entirely (empty lists) when the target declares no ISA
     headers. No mlc needed — a pure header parse."""
     from ..target_experiment import load_capability_manifest
+
     if semantic_class is None:
         semantic_class = (load_capability_manifest(target).encoding or {}).get("semantic_class") or {}
     hdr_by_code = _functs_from_headers(_declared_isa_headers(target))  # already {code: name}
@@ -536,6 +541,7 @@ def crosscheck_config_subtype_names(target: str, config_subtype: dict | None = N
     ISA-header ``#define <NAME> <code>`` (the un-prefixed ``CONFIG_EX``/``CONFIG_LD``/``CONFIG_ST`` defines).
     Returns ``{exact, missing, mismatch}``; the gate is ``missing == mismatch == []``. Pure header parse."""
     from ..target_experiment import load_capability_manifest
+
     if config_subtype is None:
         config_subtype = (load_capability_manifest(target).encoding or {}).get("config_subtype") or {}
     hdr = _defines_from_headers(_declared_isa_headers(target), "")  # un-prefixed ``#define NAME N``
@@ -559,6 +565,7 @@ def _declared_isa_headers(target: str) -> list[Path]:
     repo-root-relative strings), resolved to absolute paths. Empty when the target has no descriptor
     or declares no headers (e.g. arc/cyclotron targets) — the caller then falls back to generic names."""
     from ..target_experiment import load_target_experiment
+
     exp = _REPO / "merlin" / "experiments"
     if not exp.is_dir():
         return []
@@ -589,7 +596,7 @@ def _funct_name_table(target: str, isa_path: Path | None) -> dict[str, Any] | No
         "legal_funct": legal,
         "names": {str(k): code_name[k] for k in legal},
         "evidence": f"ISA headers {[Path(h).name for h in headers]} '#define k_* <N>': "
-                    f"{len(legal)} names [{legal[0]}..{legal[-1]}]",
+        f"{len(legal)} names [{legal[0]}..{legal[-1]}]",
     }
 
 
@@ -618,16 +625,15 @@ def _core_hw_input(target: str) -> dict[str, str]:
     "mlc could not resolve a dialect" and "the dialect is resolved but not on disk" are different facts
     and only the second is fixable by rebuilding."""
     from . import mlc_bridge
+
     try:
         path = mlc_bridge.core_hw_mlir(target)
     except Exception:
         path = None
     if path is None:
-        return {"core_hw_mlir": "unresolved", "core_hw_sha": "unresolved",
-                "core_hw_sha256": "unresolved"}
+        return {"core_hw_mlir": "unresolved", "core_hw_sha": "unresolved", "core_hw_sha256": "unresolved"}
     core = Path(path)
-    return {"core_hw_mlir": core.name, "core_hw_sha": _sha(core),
-            "core_hw_sha256": _sha256(core)}
+    return {"core_hw_mlir": core.name, "core_hw_sha": _sha(core), "core_hw_sha256": _sha256(core)}
 
 
 def _facts_from_discovery(target: str, facts: dict) -> list[str]:
@@ -635,6 +641,7 @@ def _facts_from_discovery(target: str, facts: dict) -> list[str]:
     DIM from the discovered mesh, capacities summed from the discovered banks). Mutates ``facts`` in
     place; returns the list of fact names that came from discovery (for provenance)."""
     from . import mlc_bridge
+
     sourced: list[str] = []
     dim = mlc_bridge.discovered_dim(target)
     if dim:
@@ -645,14 +652,16 @@ def _facts_from_discovery(target: str, facts: dict) -> list[str]:
         mesh = mlc_bridge.discovered_mesh(target) or {}
         rec = {"name": "mesh", "rows": dim, "cols": dim, "source": "mlc_discovery"}
         if mesh:
-            rec.update({
-                "container": mesh.get("parent"),        # the module holding the grid
-                "element": mesh.get("child"),           # the replicated cell
-                "instances": mesh.get("count"),         # summed across CIRCT structural variants
-                "element_variants": mesh.get("elements") or [],
-                "mac_idiom": {k: mesh.get(k) for k in ("muls", "adds", "regs") if mesh.get(k)},
-                "corroborated": bool(mesh.get("corroborated")),
-            })
+            rec.update(
+                {
+                    "container": mesh.get("parent"),  # the module holding the grid
+                    "element": mesh.get("child"),  # the replicated cell
+                    "instances": mesh.get("count"),  # summed across CIRCT structural variants
+                    "element_variants": mesh.get("elements") or [],
+                    "mac_idiom": {k: mesh.get(k) for k in ("muls", "adds", "regs") if mesh.get(k)},
+                    "corroborated": bool(mesh.get("corroborated")),
+                }
+            )
         facts["arrays"] = [a for a in facts.get("arrays", []) if a.get("name") != "mesh"]
         facts["arrays"].append(rec)
         sourced.append("mesh")
@@ -660,12 +669,24 @@ def _facts_from_discovery(target: str, facts: dict) -> list[str]:
     if caps:
         keep = [m for m in facts.get("memories", []) if m.get("name") not in ("scratchpad", "accumulator")]
         if caps.get("operand_bytes"):
-            keep.append({"name": "scratchpad", "bytes": caps["operand_bytes"],
-                         "depth": caps.get("operand_depth"), "source": "mlc_discovery"})
+            keep.append(
+                {
+                    "name": "scratchpad",
+                    "bytes": caps["operand_bytes"],
+                    "depth": caps.get("operand_depth"),
+                    "source": "mlc_discovery",
+                }
+            )
             sourced.append("scratchpad")
         if caps.get("accumulator_bytes"):
-            keep.append({"name": "accumulator", "bytes": caps["accumulator_bytes"],
-                         "depth": caps.get("accumulator_depth"), "source": "mlc_discovery"})
+            keep.append(
+                {
+                    "name": "accumulator",
+                    "bytes": caps["accumulator_bytes"],
+                    "depth": caps.get("accumulator_depth"),
+                    "source": "mlc_discovery",
+                }
+            )
             sourced.append("accumulator")
         facts["memories"] = keep
     return sourced
@@ -712,7 +733,7 @@ def memories_from_port_geometry(fir_paths: Iterable[Path | str]) -> list[dict[st
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
-            continue                       # an unreadable elaboration contributes nothing; it lies about nothing
+            continue  # an unreadable elaboration contributes nothing; it lies about nothing
         for rec in banked_store_ports(text):
             key = (rec["row_bits"], rec["row_addr_bits"], rec["bank_id_bits"], rec["banks"])
             seen = merged.setdefault(key, {"records": [], "files": []})
@@ -738,9 +759,11 @@ def memories_from_port_geometry(fir_paths: Iterable[Path | str]) -> list[dict[st
             "source": "firrtl_port_geometry",
             "modules": sorted({r["module"] for r in recs}),
             "ports": sites,
-            "row_element_note": ("row_elems x elem_bits is the WRITE GRANULARITY the byte enable "
-                                 "declares (one lane per byte of the row), not a datapath element "
-                                 "width -- a port does not declare what type the stored value has"),
+            "row_element_note": (
+                "row_elems x elem_bits is the WRITE GRANULARITY the byte enable "
+                "declares (one lane per byte of the row), not a datapath element "
+                "width -- a port does not declare what type the stored value has"
+            ),
             "evidence": f"{rec['evidence']} [{', '.join(seen['files'])}]",
         }
         if not rec["banks_exact"]:
@@ -749,12 +772,16 @@ def memories_from_port_geometry(fir_paths: Iterable[Path | str]) -> list[dict[st
             # that is wrong by the bank factor reads as a fit and aborts three layers away.
             mem["banks_min"], mem["banks_max"] = rec["banks_min"], rec["banks_max"]
             mem["banks_unknown"] = rec.get("banks_unknown", "the bank count is bounded, not pinned")
-            mem["bytes_unknown"] = ("the bank count is not pinned by this elaboration, so a byte "
-                                    "capacity would be a guess multiplied by the bank factor")
+            mem["bytes_unknown"] = (
+                "the bank count is not pinned by this elaboration, so a byte "
+                "capacity would be a guess multiplied by the bank factor"
+            )
         if len(sites) > 1:
-            mem["ports_note"] = (f"{len(sites)} ports declare this geometry ({sites}); folded into one "
-                                 "store, since two distinct stores of identical geometry would publish "
-                                 "twice the capacity the device has")
+            mem["ports_note"] = (
+                f"{len(sites)} ports declare this geometry ({sites}); folded into one "
+                "store, since two distinct stores of identical geometry would publish "
+                "twice the capacity the device has"
+            )
         out.append(mem)
     return out
 
@@ -806,7 +833,8 @@ def _datapaths_from_cells(target: str, facts: dict) -> list[str]:
     if not fir:
         facts.setdefault("datapaths_undeterminable", []).append(
             "no elaborated FIRRTL is cached for this target, so its compute element's port geometry "
-            "could not be read (UNKNOWN, not absent)")
+            "could not be read (UNKNOWN, not absent)"
+        )
         return []
     dps, notes = datapaths_from_compute_cells(facts, fir, mlc_bridge.compute_unit_kinds(target))
     if notes:
@@ -832,6 +860,7 @@ def _timing_from_discovery(target: str, facts: dict) -> list[str]:
     timing", which is a claim about hardware, where the truth is that nobody could look.
     """
     from . import timing as _timing
+
     try:
         recs = _timing.discovered_timing(target)
     except Exception:  # noqa: BLE001 -- unreachable/unparseable RTL is UNKNOWN, never a fabricated depth
@@ -849,7 +878,7 @@ def _firrtl_bool_literal(expr: str) -> bool | None:
     prefix = "UInt<1>("
     if not expr.startswith(prefix) or not expr.endswith(")"):
         return None
-    token = expr[len(prefix):-1].strip().lower()
+    token = expr[len(prefix) : -1].strip().lower()
     try:
         value = int(token[2:], 16) if token.startswith("0h") else int(token, 10)
     except ValueError:
@@ -863,7 +892,7 @@ def _firrtl_call_args(expr: str, callee: str) -> list[str] | None:
     head = f"{callee}("
     if not expr.startswith(head) or not expr.endswith(")"):
         return None
-    body = expr[len(head):-1]
+    body = expr[len(head) : -1]
     args: list[str] = []
     depth = 0
     start = 0
@@ -898,13 +927,13 @@ def extract_max_pool_from_firrtl(fir_text: str) -> dict[str, Any] | None:
     for line_no, raw in enumerate(fir_text.splitlines(), 1):
         code = raw.split("@[", 1)[0].strip()
         if code.startswith("module ") and " :" in code:
-            module = code[len("module "):code.index(" :")].strip()
+            module = code[len("module ") : code.index(" :")].strip()
             continue
         if module != "StoreController":
             continue
         if not code.startswith(prefix):
             continue
-        expr = code[len(prefix):].strip()
+        expr = code[len(prefix) :].strip()
         args = _firrtl_call_args(expr, "and")
         if args is None or len(args) != 2:
             continue
@@ -924,8 +953,7 @@ def extract_max_pool_from_firrtl(fir_text: str) -> dict[str, Any] | None:
     return found[0]
 
 
-def extract_elaborated_rtl_features(target: str, facts: dict,
-                                    fir_path: Path | str | None = None) -> dict[str, Any]:
+def extract_elaborated_rtl_features(target: str, facts: dict, fir_path: Path | str | None = None) -> dict[str, Any]:
     """Normalize feature gates from exact elaborated RTL, with source config as corroboration only."""
     source = facts.get("source") or {}
     path = Path(fir_path or source.get("fir_path")) if (fir_path or source.get("fir_path")) else None
@@ -939,14 +967,19 @@ def extract_elaborated_rtl_features(target: str, facts: dict,
     corroboration: dict[str, Any] = {"status": "unavailable"}
     try:
         from merlin.targetgen import capability_discovery as discovery
+
         config = discovery.elaborated_config(target, facts)
         if config is not None:
             field = config.fields.get("has_max_pool")
             config_value = config.boolean("has_max_pool") if not config.ambiguities else None
             corroboration = {
-                "status": ("agree" if observed is not None and config_value is observed["value"]
-                           else "diverge" if observed is not None and isinstance(config_value, bool)
-                           else "unknown"),
+                "status": (
+                    "agree"
+                    if observed is not None and config_value is observed["value"]
+                    else "diverge"
+                    if observed is not None and isinstance(config_value, bool)
+                    else "unknown"
+                ),
                 "config": config.name,
                 "instantiated": config.instantiated or None,
                 "has_max_pool": config_value,
@@ -958,9 +991,11 @@ def extract_elaborated_rtl_features(target: str, facts: dict,
 
     value = observed["value"] if observed is not None else None
     status = "derived" if isinstance(value, bool) else "unknown"
-    evidence = (f"{path}:{observed['line']}: {observed['expression']}"
-                if path is not None and observed is not None
-                else "no unique structural FIRRTL pooling_is_enabled build gate was derivable")
+    evidence = (
+        f"{path}:{observed['line']}: {observed['expression']}"
+        if path is not None and observed is not None
+        else "no unique structural FIRRTL pooling_is_enabled build gate was derivable"
+    )
     return {
         "name": "elaborated_rtl_features",
         "features": {"max_pool": value},
@@ -973,8 +1008,12 @@ def extract_elaborated_rtl_features(target: str, facts: dict,
     }
 
 
-def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None = None,
-                chipyard_root: str | Path | None = None, target: str | None = None) -> dict[str, Any]:
+def build_facts(
+    hw_path: Path | str | None = None,
+    isa_path: Path | str | None = None,
+    chipyard_root: str | Path | None = None,
+    target: str | None = None,
+) -> dict[str, Any]:
     """Assemble the RTL facts for ``target``. PREFERS mlc RTL discovery (target-agnostic: mesh DIM +
     memory capacities + the decoder-derived ISA); the chipyard FIRRTL grep + HW-port parse is the
     legacy FALLBACK, run only for a target that ships a Chisel ISA source (gemmini) and skipped
@@ -995,7 +1034,7 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
     fir_sha = fir_sha256 = isa_sha = "n/a"
     elaborated_fir: Path | None = None
     v1: dict[str, Any] = {}
-    if isa_path.is_file():   # a chipyard target with a Chisel ISA source -> legacy FIRRTL grep + HW-port
+    if isa_path.is_file():  # a chipyard target with a Chisel ISA source -> legacy FIRRTL grep + HW-port
         try:
             # the elaboration the target's own simulators are built from (runtime.rtl_sim_config)
             arts, v1 = V1.sim_elaboration_facts(target, chipyard_root)
@@ -1006,8 +1045,7 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
             if acc:
                 mems.append(acc)
             v1["memories"] = mems
-            fir_sha, fir_sha256, isa_sha = (_sha(elaborated_fir), _sha256(elaborated_fir),
-                                             _sha(isa_path))
+            fir_sha, fir_sha256, isa_sha = (_sha(elaborated_fir), _sha256(elaborated_fir), _sha(isa_path))
         except Exception:  # noqa: BLE001 — chipyard artifacts absent/broken: rely on mlc discovery
             v1 = {}
 
@@ -1044,14 +1082,18 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
     if isa_path.is_file():
         layouts = extract_register_bundle_layouts(isa_path.read_text(errors="replace"))
         if layouts:
-            v1.setdefault("interfaces", []).append({
-                "name": "register_bundle_layouts",
-                "bundles": layouts,
-                "source": str(isa_path),
-                "method": "chisel_bundle_reverse_declaration_order",
-                "evidence": (f"{isa_path.name}: {len(layouts)} fully-derived packed Bundle layout(s); "
-                             "field widths from the file's val declarations"),
-            })
+            v1.setdefault("interfaces", []).append(
+                {
+                    "name": "register_bundle_layouts",
+                    "bundles": layouts,
+                    "source": str(isa_path),
+                    "method": "chisel_bundle_reverse_declaration_order",
+                    "evidence": (
+                        f"{isa_path.name}: {len(layouts)} fully-derived packed Bundle layout(s); "
+                        "field widths from the file's val declarations"
+                    ),
+                }
+            )
             sourced.append(f"register_layouts({len(layouts)})")
 
     # ISA fields prove that pooling is encodable, not that the elaborated StoreController contains the
@@ -1084,9 +1126,11 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
                 "generator": declared.generator,
                 "root": str(declared.root),
                 "declared_by": str(declared.origin),
-                "note": ("the elaboration this target's own descriptor names; the facts here were "
-                         "extracted from the HW dialect cached for it, and this records WHICH "
-                         "configuration that dialect is of -- it is not a second extraction of it"),
+                "note": (
+                    "the elaboration this target's own descriptor names; the facts here were "
+                    "extracted from the HW dialect cached for it, and this records WHICH "
+                    "configuration that dialect is of -- it is not a second extraction of it"
+                ),
             }
         except Exception:  # noqa: BLE001 — undeclared/unresolvable: leave `source` absent, never guess
             pass
@@ -1097,11 +1141,12 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
             "name": "merlin.targetgen.rtl.circt_introspect",
             "version": GENERATOR_VERSION,
             "method": f"mlc RTL discovery (target-agnostic: {', '.join(sourced) or 'none'}) + chipyard "
-                      "FIRRTL grep/HW-port fallback",
+            "FIRRTL grep/HW-port fallback",
         },
         "inputs": {
             "target": target,
-            "hw_mlir": hw_path.name, "hw_sha": _sha(hw_path),
+            "hw_mlir": hw_path.name,
+            "hw_sha": _sha(hw_path),
             "hw_sha256": _sha256(hw_path),
             # The SoC dialect above is only one of the two HW inputs, and for most targets it is the
             # one that is ABSENT: it feeds the legacy accumulator port-parse. What mlc discovery and
@@ -1113,7 +1158,9 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
             # when mlc cannot resolve one at all. A term's validity domain cannot name its elaboration
             # unless this field does.
             **_core_hw_input(target),
-            "fir_sha": fir_sha, "fir_sha256": fir_sha256, "isa_sha": isa_sha,
+            "fir_sha": fir_sha,
+            "fir_sha256": fir_sha256,
+            "isa_sha": isa_sha,
             "extractor_sha": _sha(Path(__file__)),
             "extractor_sha256": _sha256(Path(__file__)),
         },
@@ -1137,13 +1184,15 @@ def dump_facts(out_path: Path | str | None = None, **kw) -> dict[str, Any]:
     # Guarded: an extraction that lost the decode table looks identical to a good one on the way out.
     # Same ratchet every fact-extraction family is held to (see facts.write_facts_guarded).
     from .facts import write_facts_guarded
+
     write_facts_guarded(out, rec)
     return rec
 
 
 # ------------------------------------------------------------------------- cross-check / validation
-def validate(facts_rec: dict, contract: dict | None = None,
-             rocc_funct_class: dict | None = None) -> dict[str, list[str]]:
+def validate(
+    facts_rec: dict, contract: dict | None = None, rocc_funct_class: dict | None = None
+) -> dict[str, list[str]]:
     """Cross-check RTL facts against the hand-curated sources. Returns {'agree':[...], 'diverge':[...]}.
 
     Divergence is information (e.g. an unconfirmed contract capacity), not a hard error — the whole
@@ -1168,18 +1217,23 @@ def validate(facts_rec: dict, contract: dict | None = None,
             if extra:
                 diverge.append(f"rocc_decode classifies funct(s) {sorted(extra)} not in RTL legal set")
             else:
-                agree.append(f"rocc_decode funct classifier {sorted(classifier)} ⊆ RTL legal "
-                             f"{funct['legal_funct'][0]}..{funct['legal_funct'][-1]}")
+                agree.append(
+                    f"rocc_decode funct classifier {sorted(classifier)} ⊆ RTL legal "
+                    f"{funct['legal_funct'][0]}..{funct['legal_funct'][-1]}"
+                )
     return {"agree": agree, "diverge": diverge}
 
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
+
     ap = argparse.ArgumentParser(description="Deterministic, target-agnostic RTL facts via CIRCT HW (v2).")
-    ap.add_argument("--target", required=True,
-                    help="the accelerator target whose RTL facts to extract")
-    ap.add_argument("--out", default=None,
-                    help="output path (default: purgeable artifacts/cache/rtl_introspect/<target>/facts.json)")
+    ap.add_argument("--target", required=True, help="the accelerator target whose RTL facts to extract")
+    ap.add_argument(
+        "--out",
+        default=None,
+        help="output path (default: purgeable artifacts/cache/rtl_introspect/<target>/facts.json)",
+    )
     ap.add_argument("--hw", default=None, help="override the SoC HW-dialect input (default: per-target cache)")
     ap.add_argument("--validate", action="store_true", help="cross-check vs contract + rocc_decode")
     a = ap.parse_args(argv)
@@ -1189,22 +1243,26 @@ def main(argv: list[str] | None = None) -> int:
     acc = next((m for m in facts.get("memories", []) if m.get("name") == "accumulator"), {})
     funct = _facts_interface(facts, "funct_decode_table") or {}
     print(f"wrote {out}")
-    print(f"  accumulator: depth={acc.get('depth')} bytes={acc.get('bytes')} "
-          f"addr_width={acc.get('addr_width')}")
+    print(f"  accumulator: depth={acc.get('depth')} bytes={acc.get('bytes')} addr_width={acc.get('addr_width')}")
     print(f"  funct legal: {funct.get('legal_funct')}")
     if a.validate:
         import yaml
+
         from .facts import target_contract_path
+
         contract = yaml.safe_load(target_contract_path(a.target).read_text())
         rocc_class = None
         try:
             from ..rocc import decode as rocc_decode  # RoCC classifier; best-effort cross-check
+
             rocc_class = rocc_decode.funct_class_for(a.target)
         except Exception:  # noqa: BLE001 — no classifier for this target: skip that cross-check
             pass
         res = validate(rec, contract, rocc_class)
-        print("  AGREE:");  [print(f"    + {x}") for x in res["agree"]]
-        print("  DIVERGE:"); [print(f"    ! {x}") for x in res["diverge"]] or print("    (none)")
+        print("  AGREE:")
+        [print(f"    + {x}") for x in res["agree"]]
+        print("  DIVERGE:")
+        [print(f"    ! {x}") for x in res["diverge"]] or print("    (none)")
     return 0
 
 

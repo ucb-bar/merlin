@@ -37,6 +37,7 @@ simulator's own elaboration (:func:`sim_elaboration_facts`) takes its config fro
 target's contract declares for its simulators (``runtime.rtl_sim_config``). A target that declares none is
 reported as undeclared; nothing here guesses a config name.
 """
+
 from __future__ import annotations
 
 import json
@@ -45,14 +46,15 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
 from merlin.common.paths import ext_path
 
 # FIRRTL surface tokens. These are the FIRRTL LANGUAGE's own keywords and the RISC-V co-processor
 # ABI's own field names — a spec vocabulary shared by every design the format can express, not a
 # fact about any one target.
 _MODULE_KEYWORDS = ("module", "public module", "extmodule", "intmodule")
-_DEFINED_MODULE_KEYWORDS = ("module", "public module")   # keywords that carry a body we can read
-_MEM_KEYWORDS = ("smem", "cmem")                          # a synchronous / combinational SRAM
+_DEFINED_MODULE_KEYWORDS = ("module", "public module")  # keywords that carry a body we can read
+_MEM_KEYWORDS = ("smem", "cmem")  # a synchronous / combinational SRAM
 _UINT_MARKERS = ("UInt<", "SInt<")
 #: The sub-bundle field names a RISC-V co-processor instruction handoff carries. Fixed by the base
 #: ISA's instruction format, so matching them classifies a port without naming any target.
@@ -75,13 +77,13 @@ def find_artifacts(chipyard_root: str | Path | None, config: str) -> dict[str, P
     (the external checkout when None). ``config`` is required: which elaboration is meant is a fact about
     the target (:func:`sim_config` / :func:`declared_rtl_source`), never a default here."""
     if not config:
-        raise RtlSourceUndeclared("find_artifacts needs the elaborated config; none was given, and "
-                                  "picking one would be a guess about the hardware")
+        raise RtlSourceUndeclared(
+            "find_artifacts needs the elaborated config; none was given, and "
+            "picking one would be a guess about the hardware"
+        )
     chipyard_root = default_chipyard() if chipyard_root is None else chipyard_root
-    base = Path(chipyard_root) / "sims/verilator/generated-src" / \
-        f"chipyard.harness.TestHarness.{config}"
-    return {"fir": base / f"chipyard.harness.TestHarness.{config}.fir",
-            "hierarchy": base / "top_module_hierarchy.json"}
+    base = Path(chipyard_root) / "sims/verilator/generated-src" / f"chipyard.harness.TestHarness.{config}"
+    return {"fir": base / f"chipyard.harness.TestHarness.{config}.fir", "hierarchy": base / "top_module_hierarchy.json"}
 
 
 # ------------------------------------------------------------- the target's OWN declaration of its RTL
@@ -96,10 +98,10 @@ class RtlSource:
     """
 
     target: str
-    root: Path              # the external checkout root (from `.env` MERLIN_EXT_<NAME>)
-    config: str             # the elaborated config, e.g. the chipyard TestHarness config name
-    generator: str          # the generator source dir whose modules ARE this target's
-    origin: Path            # the declaration file this came from — provenance, so a wrong pin is traceable
+    root: Path  # the external checkout root (from `.env` MERLIN_EXT_<NAME>)
+    config: str  # the elaborated config, e.g. the chipyard TestHarness config name
+    generator: str  # the generator source dir whose modules ARE this target's
+    origin: Path  # the declaration file this came from — provenance, so a wrong pin is traceable
 
     def artifacts(self) -> dict[str, Path]:
         return find_artifacts(self.root, self.config)
@@ -118,6 +120,7 @@ def _yaml_doc(path: Path) -> dict[str, Any]:
     """A yaml mapping at ``path``, or ``{}``. Never raises — an unreadable declaration is "none"."""
     try:
         import yaml
+
         doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001 — absent/broken declaration is simply no declaration
         return {}
@@ -140,15 +143,17 @@ def _declaration_files(target: str) -> list[Path]:
             out.append(Path(p))
 
     add(target_contract_path(target))
-    try:                                        # the registry resolves OOT packages the path helper does not
+    try:  # the registry resolves OOT packages the path helper does not
         from ..target_registry import resolve
+
         add(resolve(target).contract_path)
-    except Exception:                           # noqa: BLE001 — an unresolvable target has no registry contract
+    except Exception:  # noqa: BLE001 — an unresolvable target has no registry contract
         pass
-    try:                                        # the ONE module allowed to know the experiments/ layout
+    try:  # the ONE module allowed to know the experiments/ layout
         from ..corpora import descriptor_path
+
         add(descriptor_path(target))
-    except Exception:                           # noqa: BLE001 — no descriptor is simply no declaration there
+    except Exception:  # noqa: BLE001 — no descriptor is simply no declaration there
         pass
     return out
 
@@ -187,19 +192,27 @@ def declared_rtl_source(target: str) -> RtlSource:
         if not root:
             raise RtlSourceUndeclared(
                 f"{target}: {path} declares an RTL source with neither `ext_root` (a .env "
-                f"MERLIN_EXT_<NAME> key) nor `root`, so the checkout it means is not resolvable")
+                f"MERLIN_EXT_<NAME> key) nor `root`, so the checkout it means is not resolvable"
+            )
         config = block.get("config")
         if not config:
             raise RtlSourceUndeclared(
                 f"{target}: {path} declares an RTL source with no `config`, so WHICH elaboration it "
                 f"means is not resolvable — an SoC checkout holds many, and picking one would be a "
-                f"guess about the hardware")
-        return RtlSource(target=target, root=Path(str(root)), config=str(config),
-                         generator=str(block.get("generator") or target), origin=path)
+                f"guess about the hardware"
+            )
+        return RtlSource(
+            target=target,
+            root=Path(str(root)),
+            config=str(config),
+            generator=str(block.get("generator") or target),
+            origin=path,
+        )
     raise RtlSourceUndeclared(
         f"{target}: no file of this target's declares an elaborated-RTL source. Add an `rtl_source:` "
         f"block (ext_root / config / generator) to its contract, or an `rtl.elaboration:` block to its "
-        f"experiment descriptor. Files consulted: {seen or 'none found'}")
+        f"experiment descriptor. Files consulted: {seen or 'none found'}"
+    )
 
 
 def sim_config(target: str) -> str:
@@ -211,16 +224,19 @@ def sim_config(target: str) -> str:
     holds. Raises :class:`RtlSourceUndeclared` when the target declares none -- a gap in its contract,
     never a config this module picks."""
     from ..runtime_build import rtl_sim_config
+
     cfg = rtl_sim_config(target)
     if not cfg:
         raise RtlSourceUndeclared(
             f"{target}: its contract declares no `runtime.rtl_sim_config`, so which chipyard elaboration "
-            f"its simulators are built from is not resolvable. Declare it in the target's contract.")
+            f"its simulators are built from is not resolvable. Declare it in the target's contract."
+        )
     return str(cfg)
 
 
-def sim_elaboration_facts(target: str, chipyard_root: str | Path | None = None
-                          ) -> tuple[dict[str, Path], dict[str, Any]]:
+def sim_elaboration_facts(
+    target: str, chipyard_root: str | Path | None = None
+) -> tuple[dict[str, Path], dict[str, Any]]:
     """``(artifacts, facts)`` from the role-anchored probes over ``target``'s simulator elaboration.
 
     The config is :func:`sim_config` (the target's own declaration); the checkout is ``chipyard_root``,
@@ -258,7 +274,7 @@ def _uint_dims(line: str) -> tuple[int, int, int] | None:
     idx = line.find("UInt<")
     if idx == -1:
         return None
-    width, sep, after = line[idx + len("UInt<"):].partition(">")
+    width, sep, after = line[idx + len("UInt<") :].partition(">")
     if not sep or not width.strip().isdigit():
         return None
     dims: list[str] = []
@@ -268,7 +284,7 @@ def _uint_dims(line: str) -> tuple[int, int, int] | None:
         rb = after.find("]", lb) if lb != -1 else -1
         if lb == -1 or rb == -1:
             break
-        dims.append(after[lb + 1:rb].strip())
+        dims.append(after[lb + 1 : rb].strip())
         pos = rb + 1
     if len(dims) < 2 or not (dims[0].isdigit() and dims[1].isdigit()):
         return None
@@ -310,7 +326,7 @@ def _mem_decl(stripped: str) -> tuple[str, str, str, str] | None:
         site = ""
         marker = typ.find("@[")
         if marker != -1:
-            site = typ[marker + 2:].rstrip("]").strip()
+            site = typ[marker + 2 :].rstrip("]").strip()
             typ = typ[:marker].strip()
         return kw, name.strip(), typ, site
     return None
@@ -327,7 +343,7 @@ def _mem_shape(typ: str) -> tuple[int, int, int] | None:
     for marker in _UINT_MARKERS:
         if not typ.startswith(marker):
             continue
-        width, sep, after = typ[len(marker):].partition(">")
+        width, sep, after = typ[len(marker) :].partition(">")
         if not sep or not width.strip().isdigit():
             return None
         dims: list[int] = []
@@ -337,7 +353,7 @@ def _mem_shape(typ: str) -> tuple[int, int, int] | None:
             rb = after.find("]", lb) if lb != -1 else -1
             if lb == -1 or rb == -1:
                 break
-            tok = after[lb + 1:rb].strip()
+            tok = after[lb + 1 : rb].strip()
             if not tok.isdigit():
                 break
             dims.append(int(tok))
@@ -475,25 +491,33 @@ def census_facts(fir: str | Path, hierarchy: str | Path, *, generator: str) -> d
     scoped, mems, ports = scan_fir(fir, generator)
     tree = json.loads(Path(hierarchy).read_text(encoding="utf-8"))
     dominant = _dominant_unit(_hierarchy_units(tree, scoped))
-    out: dict[str, Any] = {"arrays": [], "memories": [], "datapaths": [], "interfaces": [],
-                           "replication_groups": []}
+    out: dict[str, Any] = {"arrays": [], "memories": [], "datapaths": [], "interfaces": [], "replication_groups": []}
     if dominant is None:
-        out["census"] = {"generator": generator, "scoped_modules": len(scoped),
-                         "unit_root": None, "units": 0,
-                         "note": f"no module in the instance hierarchy is defined under "
-                                 f"generators/{generator}/, so this elaboration contains no unit of "
-                                 f"this target: nothing is derivable from it (UNKNOWN, not absent)"}
+        out["census"] = {
+            "generator": generator,
+            "scoped_modules": len(scoped),
+            "unit_root": None,
+            "units": 0,
+            "note": f"no module in the instance hierarchy is defined under "
+            f"generators/{generator}/, so this elaboration contains no unit of "
+            f"this target: nothing is derivable from it (UNKNOWN, not absent)",
+        }
         return out
     root, n_units, counts, widest = dominant
-    out["census"] = {"generator": generator, "scoped_modules": len(scoped), "unit_root": root,
-                     "units": n_units, "unit_module_instances": sum(counts.values())}
+    out["census"] = {
+        "generator": generator,
+        "scoped_modules": len(scoped),
+        "unit_root": root,
+        "units": n_units,
+        "unit_module_instances": sum(counts.values()),
+    }
 
     # ---- memories: every SRAM inside ONE unit, grouped by the Chisel site that declared it.
     groups: dict[tuple[str, str, str], dict[str, Any]] = {}
     for module, lines in sorted(mems.items()):
         instances = counts.get(module, 0)
         if not instances:
-            continue                     # declared in the target's tree but not inside this unit
+            continue  # declared in the target's tree but not inside this unit
         for line in lines:
             parsed = _mem_decl(line)
             if parsed is None:
@@ -509,35 +533,54 @@ def census_facts(fir: str | Path, hierarchy: str | Path, *, generator: str) -> d
         banks = rec["banks"]
         mods = sorted(rec["modules"])
         if shape is None:
-            undeterminable.append({
-                "name": name, "banks": banks, "type": typ, "modules": mods, "site": site,
-                "reason": "the declared type is not a UInt/SInt memory, so it carries no element "
-                          "width or depth this reader can state"})
+            undeterminable.append(
+                {
+                    "name": name,
+                    "banks": banks,
+                    "type": typ,
+                    "modules": mods,
+                    "site": site,
+                    "reason": "the declared type is not a UInt/SInt memory, so it carries no element "
+                    "width or depth this reader can state",
+                }
+            )
             continue
         elem_bits, row_elems, depth = shape
         row_bits = row_elems * elem_bits
         mem: dict[str, Any] = {
-            "name": name, "banks": banks, "depth": depth, "row_elems": row_elems,
-            "elem_bits": elem_bits, "row_bits_rtl": row_bits,
+            "name": name,
+            "banks": banks,
+            "depth": depth,
+            "row_elems": row_elems,
+            "elem_bits": elem_bits,
+            "row_bits_rtl": row_bits,
             "bytes": (banks * row_bits * depth) // 8 if row_bits * depth % 8 == 0 else None,
             "source": "firrtl_census",
             "modules": mods,
             "evidence": f"{banks}x `{rec['kind']} {name.split('.')[-1]} : {typ}` in {mods} "
-                        f"@ {site} (per {root} unit; {n_units} unit(s) in this elaboration)"}
+            f"@ {site} (per {root} unit; {n_units} unit(s) in this elaboration)",
+        }
         if mem["bytes"] is None:
-            mem["bytes_unknown"] = (f"one bank holds {row_bits} bits x {depth} rows, which is not a "
-                                    f"whole number of bytes; a byte capacity would be a rounding, not "
-                                    f"a measurement")
+            mem["bytes_unknown"] = (
+                f"one bank holds {row_bits} bits x {depth} rows, which is not a "
+                f"whole number of bytes; a byte capacity would be a rounding, not "
+                f"a measurement"
+            )
         out["memories"].append(mem)
         # A datapath is emitted ONLY when the RTL declares the element decomposition (a vector row).
         # A flat `UInt<256>` row states a word width and nothing about elements; deriving one would
         # hand every consumer a bank count that is wrong by the packing factor.
         if row_elems > 1:
-            out["datapaths"].append({
-                "name": name, "dtype": _element_token(elem_bits), "elem_bits": elem_bits,
-                "evidence": f"{rec['kind']} row `{typ}` @ {site}: an {elem_bits}-bit unsigned storage "
-                            f"element ({row_elems} per row). The FIRRTL declares the WIDTH; the "
-                            f"signedness/format of the value stored is not declared by a memory."})
+            out["datapaths"].append(
+                {
+                    "name": name,
+                    "dtype": _element_token(elem_bits),
+                    "elem_bits": elem_bits,
+                    "evidence": f"{rec['kind']} row `{typ}` @ {site}: an {elem_bits}-bit unsigned storage "
+                    f"element ({row_elems} per row). The FIRRTL declares the WIDTH; the "
+                    f"signedness/format of the value stored is not declared by a memory.",
+                }
+            )
     if undeterminable:
         out["memories_undeterminable"] = undeterminable
 
@@ -550,22 +593,27 @@ def census_facts(fir: str | Path, hierarchy: str | Path, *, generator: str) -> d
         tied = [(p, c) for (p, c), n in ranked if n == top]
         side = math.isqrt(top)
         array: dict[str, Any] = {
-            "instances": top, "container": ranked[0][0][0], "element": ranked[0][0][1],
+            "instances": top,
+            "container": ranked[0][0][0],
+            "element": ranked[0][0][1],
             "source": "firrtl_census",
             "evidence": f"{top} instances of {ranked[0][0][1]} under one {ranked[0][0][0]} — the widest "
-                        f"same-module sibling group inside the {root} unit"}
+            f"same-module sibling group inside the {root} unit",
+        }
         if len(tied) > 1:
             array["ambiguous_with"] = [{"container": p, "element": c} for p, c in tied[1:]]
             array["geometry_unknown"] = (
                 f"{len(tied)} sibling groups tie at {top} instances ({tied}); which one is the compute "
                 f"array — and therefore what a store's row spans — is not decidable from replication "
-                f"alone, so no row/column extent is claimed")
+                f"alone, so no row/column extent is claimed"
+            )
         elif side * side == top:
             array.update({"rows": side, "cols": side, "square": True})
         else:
             array["geometry_unknown"] = (
                 f"{top} is not a perfect square, so a row/column extent is not derivable from the "
-                f"instance count; the count itself is the fact")
+                f"instance count; the count itself is the fact"
+            )
         # NAMED BY WHAT WAS ESTABLISHED, not by what was hoped for. A group that resolves a
         # row/column extent is the compute array and takes the role name every consumer (and mlc's
         # own discovery, which de-duplicates on it) uses. A group that does not is exactly one fact —
@@ -578,16 +626,21 @@ def census_facts(fir: str | Path, hierarchy: str | Path, *, generator: str) -> d
     # ---- interfaces: a host co-processor command port on the unit boundary, read from its ports.
     cmd = _host_command_port(ports.get(root, ""))
     if cmd:
-        out["interfaces"].append({
-            "name": "rocc_cmd", "source": "firrtl_census",
-            "evidence": f"module {root} exposes a decoupled `{cmd}` port whose payload carries a "
-                        f"RISC-V instruction bundle ({sorted(_INSTRUCTION_FIELDS)}): a host-decoded "
-                        f"co-processor command handoff"})
+        out["interfaces"].append(
+            {
+                "name": "rocc_cmd",
+                "source": "firrtl_census",
+                "evidence": f"module {root} exposes a decoupled `{cmd}` port whose payload carries a "
+                f"RISC-V instruction bundle ({sorted(_INSTRUCTION_FIELDS)}): a host-decoded "
+                f"co-processor command handoff",
+            }
+        )
     else:
         out["interfaces_note"] = (
             f"module {root} exposes no decoupled port carrying a RISC-V instruction bundle, so this "
             f"unit is not reached by a host co-processor command queue. Data-movement and completion "
-            f"interfaces are NOT derived by this census — their absence here is unexamined, not absent.")
+            f"interfaces are NOT derived by this census — their absence here is unexamined, not absent."
+        )
     return out
 
 
@@ -630,7 +683,7 @@ def _inner_bundle(typ: str) -> str:
         elif typ[i] == "}":
             depth -= 1
             if depth == 0:
-                return typ[open_i + 1:i]
+                return typ[open_i + 1 : i]
     return ""
 
 
@@ -666,12 +719,19 @@ def _count_tiles_under_mesh(hierarchy: Path) -> int:
             n += 1
         for child in node.get("instances", []):
             walk(child, path + "/" + mod)
+
     walk(tree, "")
     return n
 
 
-def extract_facts(fir: str | Path, hierarchy: str | Path, *, target: str | None = None,
-                  generator: str | None = None, config: str | None = None) -> dict[str, Any]:
+def extract_facts(
+    fir: str | Path,
+    hierarchy: str | Path,
+    *,
+    target: str | None = None,
+    generator: str | None = None,
+    config: str | None = None,
+) -> dict[str, Any]:
     """Return a structure-only facts dict extracted from the elaborated FIRRTL.
 
     Two readers, in a fixed precedence (see the module docstring). The ROLE-ANCHORED probes below
@@ -689,9 +749,18 @@ def extract_facts(fir: str | Path, hierarchy: str | Path, *, target: str | None 
     generator = generator or target
     facts: dict[str, Any] = {
         "target": target,
-        "source": {"kind": "firrtl", "config": config, "fir": fir.name,
-                   "hierarchy": hierarchy.name, "fir_path": str(fir)},
-        "arrays": [], "memories": [], "datapaths": [], "interfaces": []}
+        "source": {
+            "kind": "firrtl",
+            "config": config,
+            "fir": fir.name,
+            "hierarchy": hierarchy.name,
+            "fir_path": str(fir),
+        },
+        "arrays": [],
+        "memories": [],
+        "datapaths": [],
+        "interfaces": [],
+    }
     if generator:
         facts["source"]["generator"] = generator
 
@@ -700,56 +769,77 @@ def extract_facts(fir: str | Path, hierarchy: str | Path, *, target: str | None 
     tiles = _count_tiles_under_mesh(hierarchy)
     if tiles:
         side = int(math.isqrt(tiles))
-        facts["arrays"].append({
-            "name": "mesh", "tiles": tiles,
-            "rows": side, "cols": side, "square": side * side == tiles,
-            "evidence": "top_module_hierarchy.json: Tile instances under Mesh"})
+        facts["arrays"].append(
+            {
+                "name": "mesh",
+                "tiles": tiles,
+                "rows": side,
+                "cols": side,
+                "square": side * side == tiles,
+                "evidence": "top_module_hierarchy.json: Tile instances under Mesh",
+            }
+        )
 
     # Scratchpad memory, scoped by FIRRTL source path (<gen>/.../Scratchpad.scala).
     # Line form: `smem mem : UInt<W>[E] [D] @[... Scratchpad.scala ...]`
-    probe = _probe_lines(fir, ("smem mem : UInt<", "Scratchpad.scala"), ("module AccumulatorMem",),
-                         ("module ReservationStation",), ("module FrontendTLB",))
+    probe = _probe_lines(
+        fir,
+        ("smem mem : UInt<", "Scratchpad.scala"),
+        ("module AccumulatorMem",),
+        ("module ReservationStation",),
+        ("module FrontendTLB",),
+    )
     sp = [ln for ln in probe[0] if _uint_dims(ln) is not None]
     if sp:
         ebits, row_elems, depth = _uint_dims(sp[0])
         banks = len(sp)
-        facts["memories"].append({
-            "name": "scratchpad", "banks": banks, "row_elems": row_elems,
-            "depth": depth, "elem_bits": ebits,
-            "bytes": banks * row_elems * (ebits // 8) * depth,
-            "evidence": f"{banks}x `smem mem : UInt<{ebits}>[{row_elems}] [{depth}]` @ Scratchpad.scala"})
+        facts["memories"].append(
+            {
+                "name": "scratchpad",
+                "banks": banks,
+                "row_elems": row_elems,
+                "depth": depth,
+                "elem_bits": ebits,
+                "bytes": banks * row_elems * (ebits // 8) * depth,
+                "evidence": f"{banks}x `smem mem : UInt<{ebits}>[{row_elems}] [{depth}]` @ Scratchpad.scala",
+            }
+        )
 
     # Accumulator memory present (size left unextracted rather than guessed).
     if probe[1]:
-        facts["memories"].append({
-            "name": "accumulator", "elem_bits": 32, "bytes": None,
-            "evidence": "module AccumulatorMem; acc datapath SInt<32>",
-            "note": "depth not extracted from this artifact (v1)"})
+        facts["memories"].append(
+            {
+                "name": "accumulator",
+                "elem_bits": 32,
+                "bytes": None,
+                "evidence": "module AccumulatorMem; acc datapath SInt<32>",
+                "note": "depth not extracted from this artifact (v1)",
+            }
+        )
 
     # Datapath element widths, for the stores the probes above actually found. Emitted ONLY when
     # those stores exist: the pair used to be appended unconditionally, so a design with neither
     # memory still had an 8-bit input and a 32-bit accumulator asserted about it, sourced from
     # nothing. A dtype nobody measured is worse than a dtype nobody has.
     if sp:
-        facts["datapaths"].append(
-            {"name": "input", "dtype": "i8", "evidence": "scratchpad smem UInt<8>"})
+        facts["datapaths"].append({"name": "input", "dtype": "i8", "evidence": "scratchpad smem UInt<8>"})
     if probe[1]:
-        facts["datapaths"].append(
-            {"name": "accumulator", "dtype": "i32", "evidence": "AccumulatorMem SInt<32>"})
+        facts["datapaths"].append({"name": "accumulator", "dtype": "i32", "evidence": "AccumulatorMem SInt<32>"})
 
     # Command interface (structure, by module presence).
     if probe[2]:
-        facts["interfaces"].append(
-            {"name": "rocc_cmd", "evidence": "module ReservationStation (RoCC decode/dispatch)"})
+        facts["interfaces"].append({"name": "rocc_cmd", "evidence": "module ReservationStation (RoCC decode/dispatch)"})
     if probe[3]:
         facts["interfaces"].append({"name": "dma_tlb", "evidence": "module FrontendTLB"})
 
     # ---------------------------------------------------------------- scoped structural census
     if not generator:
-        facts["census"] = {"status": "not_run",
-                           "why": "no generator scope was given, so the elaboration's own "
-                                  "provenance annotations cannot be used to tell this target's "
-                                  "modules from the rest of the SoC"}
+        facts["census"] = {
+            "status": "not_run",
+            "why": "no generator scope was given, so the elaboration's own "
+            "provenance annotations cannot be used to tell this target's "
+            "modules from the rest of the SoC",
+        }
         return facts
     census = census_facts(fir, hierarchy, generator=generator)
     facts["census"] = census.pop("census", {})
@@ -762,8 +852,9 @@ def extract_facts(fir: str | Path, hierarchy: str | Path, *, target: str | None 
                 f"{kind}: the role-anchored probes produced "
                 f"{[f.get('name') for f in facts[kind]]}, so the census's "
                 f"{[f.get('name') for f in found]} was not used (the probe names are the ones "
-                f"downstream links stores to datapaths by)")
-    facts.update(census)          # replication_groups / *_undeterminable / notes — evidence, unconsumed
+                f"downstream links stores to datapaths by)"
+            )
+    facts.update(census)  # replication_groups / *_undeterminable / notes — evidence, unconsumed
     return facts
 
 
@@ -823,20 +914,25 @@ def _check_compute_units(datapaths: dict[str, str], contract: dict[str, Any]) ->
 
 def emit_facts_yaml(facts: dict[str, Any]) -> str:
     import yaml
+
     return yaml.safe_dump(facts, sort_keys=False)
 
 
-GENERATOR_VERSION = "rtl-introspect-v1-grep-firrtl"   # bump when extraction changes; CIRCT pass = v2
+GENERATOR_VERSION = "rtl-introspect-v1-grep-firrtl"  # bump when extraction changes; CIRCT pass = v2
 
 
 def _src_sha(path: str) -> str:
-    proc = subprocess.run(["git", "-C", path, "rev-parse", "--short", "HEAD"],
-                          capture_output=True, text=True)
+    proc = subprocess.run(["git", "-C", path, "rev-parse", "--short", "HEAD"], capture_output=True, text=True)
     return proc.stdout.strip() or "unknown"
 
 
-def dump_facts(out_path: str | Path, *, target: str | None = None,
-               chipyard_root: str | Path | None = None, config: str | None = None) -> dict[str, Any]:
+def dump_facts(
+    out_path: str | Path,
+    *,
+    target: str | None = None,
+    chipyard_root: str | Path | None = None,
+    config: str | None = None,
+) -> dict[str, Any]:
     """Extract facts and write a REPRODUCIBLE rtl_facts.yaml (facts + generator version + source
     SHAs + extraction method). This makes RTL-fact extraction a recorded, attributable input —
     the thing an agent_spec target-generation experiment consumes.
@@ -844,6 +940,7 @@ def dump_facts(out_path: str | Path, *, target: str | None = None,
     Addressed by ``target`` (its simulator elaboration, :func:`sim_elaboration_facts`) or by an explicit
     ``config``. One of the two is required; neither is assumed."""
     import yaml
+
     if target is not None and config is None:
         arts, facts = sim_elaboration_facts(target, chipyard_root)
     else:
@@ -860,8 +957,7 @@ def dump_facts(out_path: str | Path, *, target: str | None = None,
         "generator": {
             "name": "merlin.targetgen.rtl.introspect",
             "version": GENERATOR_VERSION,
-            "method": "grep/regex over firtool-produced FIRRTL + hierarchy JSON "
-                      "(NOT yet a CIRCT hw/seq MLIR pass)",
+            "method": "grep/regex over firtool-produced FIRRTL + hierarchy JSON (NOT yet a CIRCT hw/seq MLIR pass)",
         },
         "source_shas": shas,
         "facts": facts,
@@ -878,6 +974,7 @@ CENSUS_VERSION = "rtl-introspect-firrtl-census-v1"
 def _sha256_16(path: Path) -> str:
     """A digest of the BYTES actually read, or ``missing`` — never a silently absent provenance field."""
     import hashlib
+
     if not Path(path).is_file():
         return "missing"
     h = hashlib.sha256()
@@ -918,7 +1015,8 @@ def build_facts_record(target: str) -> dict[str, Any]:
             raise FileNotFoundError(
                 f"{target}: the {what} its own declaration ({src.origin}) points at is not on disk: "
                 f"{path}. The DECLARATION is fine; the elaboration has not been built (or lives "
-                f"elsewhere) — that is a build to run, not a fact to guess.")
+                f"elsewhere) — that is a build to run, not a fact to guess."
+            )
     facts = extract_facts(fir, hier, target=target, generator=src.generator, config=src.config)
     return {
         "schema_version": "2.0",
@@ -926,9 +1024,9 @@ def build_facts_record(target: str) -> dict[str, Any]:
             "name": "merlin.targetgen.rtl.introspect",
             "version": CENSUS_VERSION,
             "method": "structural census over the firtool-produced FIRRTL + module hierarchy "
-                      "(modules scoped by their own @[generators/<gen>/...] provenance; SRAMs grouped "
-                      "by Chisel declaration site and counted per accelerator unit; array = the widest "
-                      "same-module sibling group)",
+            "(modules scoped by their own @[generators/<gen>/...] provenance; SRAMs grouped "
+            "by Chisel declaration site and counted per accelerator unit; array = the widest "
+            "same-module sibling group)",
         },
         "inputs": {
             "target": target,
@@ -936,8 +1034,10 @@ def build_facts_record(target: str) -> dict[str, Any]:
             "generator": src.generator,
             "declared_by": str(src.origin),
             "rtl_root": str(src.root),
-            "fir": fir.name, "fir_sha": _sha256_16(fir),
-            "hierarchy": hier.name, "hierarchy_sha": _sha256_16(hier),
+            "fir": fir.name,
+            "fir_sha": _sha256_16(fir),
+            "hierarchy": hier.name,
+            "hierarchy_sha": _sha256_16(hier),
             "rtl_sha": _checkout_sha(src.root),
             "generator_sha": _checkout_sha(Path(src.root) / "generators" / src.generator),
             "extractor_sha": _sha256_16(Path(__file__)),
@@ -993,9 +1093,23 @@ def augment_facts_file(path: str | Path, target: str) -> dict[str, Any] | None:
     body.setdefault("target", target)
     existing["facts"] = body
     existing.setdefault("inputs", {}).update(
-        {f"firrtl_{k}": v for k, v in census["inputs"].items()
-         if k in ("config", "generator", "fir", "fir_sha", "hierarchy", "hierarchy_sha",
-                  "declared_by", "rtl_sha", "generator_sha")})
+        {
+            f"firrtl_{k}": v
+            for k, v in census["inputs"].items()
+            if k
+            in (
+                "config",
+                "generator",
+                "fir",
+                "fir_sha",
+                "hierarchy",
+                "hierarchy_sha",
+                "declared_by",
+                "rtl_sha",
+                "generator_sha",
+            )
+        }
+    )
     existing["generator"] = {
         **(existing.get("generator") or {}),
         "firrtl_census": f"{CENSUS_VERSION} filled {filled or 'nothing'}",
@@ -1006,39 +1120,50 @@ def augment_facts_file(path: str | Path, target: str) -> dict[str, Any] | None:
 
 def main() -> int:
     import argparse
+
     ap = argparse.ArgumentParser(description="Extract structure-only RTL facts.")
     ap.add_argument("--out", default="rtl_facts.yaml")
-    ap.add_argument("--chipyard", default=None,
-                    help="external sim checkout (default: resolved from .env when needed)")
-    ap.add_argument("--config", default=None,
-                    help="without --target: the elaborated chipyard config to read (required; no config "
-                         "is assumed)")
-    ap.add_argument("--target", default=None,
-                    help="extract from the elaboration THIS TARGET declares (rtl_source / "
-                         "rtl.elaboration) and write the schema-2.0 JSON bundle")
-    ap.add_argument("--json-out", default=None,
-                    help="with --target: where to write the bundle (default: the target's rtl cache)")
+    ap.add_argument("--chipyard", default=None, help="external sim checkout (default: resolved from .env when needed)")
+    ap.add_argument(
+        "--config",
+        default=None,
+        help="without --target: the elaborated chipyard config to read (required; no config is assumed)",
+    )
+    ap.add_argument(
+        "--target",
+        default=None,
+        help="extract from the elaboration THIS TARGET declares (rtl_source / "
+        "rtl.elaboration) and write the schema-2.0 JSON bundle",
+    )
+    ap.add_argument(
+        "--json-out", default=None, help="with --target: where to write the bundle (default: the target's rtl cache)"
+    )
     args = ap.parse_args()
     if args.target:
         from .facts import rtl_facts_path
+
         rec = build_facts_record(args.target)
         out = Path(args.json_out) if args.json_out else rtl_facts_path(args.target)
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(rec, indent=2) + "\n", encoding="utf-8")
         body = rec["facts"]
-        print(f"wrote {out}: {len(body.get('arrays', []))} arrays, "
-              f"{len(body.get('memories', []))} memories, "
-              f"{len(body.get('datapaths', []))} datapaths, "
-              f"{len(body.get('interfaces', []))} interfaces "
-              f"[{rec['generator']['version']}]")
+        print(
+            f"wrote {out}: {len(body.get('arrays', []))} arrays, "
+            f"{len(body.get('memories', []))} memories, "
+            f"{len(body.get('datapaths', []))} datapaths, "
+            f"{len(body.get('interfaces', []))} interfaces "
+            f"[{rec['generator']['version']}]"
+        )
         return 0
     if not args.config:
         ap.error("pass --target, or --config naming the elaborated chipyard config to read")
     rec = dump_facts(args.out, chipyard_root=args.chipyard, config=args.config)
-    print(f"wrote {args.out}: {len(rec['facts'].get('arrays', []))} arrays, "
-          f"{len(rec['facts'].get('memories', []))} memories, "
-          f"{len(rec['facts'].get('interfaces', []))} interfaces "
-          f"[generator {rec['generator']['version']}]")
+    print(
+        f"wrote {args.out}: {len(rec['facts'].get('arrays', []))} arrays, "
+        f"{len(rec['facts'].get('memories', []))} memories, "
+        f"{len(rec['facts'].get('interfaces', []))} interfaces "
+        f"[generator {rec['generator']['version']}]"
+    )
     return 0
 
 
