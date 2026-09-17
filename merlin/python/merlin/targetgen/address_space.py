@@ -32,6 +32,7 @@ element width from the shared quant-format registry (which fails closed on an un
 rather than assuming a byte). :func:`corroborate` checks the derived row widths against the SRAM row
 widths mlc discovers directly in the RTL, so a wrong derivation is caught rather than believed.
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -85,15 +86,16 @@ def element_bits(token: str | None) -> int | None:
     if not token:
         return None
     from merlin.common import quant_formats as qf
+
     tok = str(token)
     try:
         if qf.has(tok):
             return int(qf.get(tok).element_bits)
-    except Exception:                                    # noqa: BLE001 -- registry unreadable: try machine
+    except Exception:  # noqa: BLE001 -- registry unreadable: try machine
         pass
     try:
         return qf.machine_bits(tok)
-    except Exception:                                    # noqa: BLE001 -- unrecognized spelling: UNKNOWN
+    except Exception:  # noqa: BLE001 -- unrecognized spelling: UNKNOWN
         return None
 
 
@@ -193,15 +195,22 @@ class Store:
         return working_set_rows(self, shape, dtype)
 
     def to_dict(self) -> dict:
-        return {"name": self.name, "bytes": self.nbytes, "depth": self.depth,
-                "row_elems": self.row_elems, "element_dtype": self.element_dtype,
-                "element_bits": self.element_bits, "row_bytes": self.row_bytes,
-                "total_rows": self.total_rows, "banks": self.banks,
-                "bytes_per_depth_entry": self.bytes_per_depth_entry,
-                "row_residue_bytes": self.row_residue_bytes,
-                "bank_residue_rows": self.bank_residue_rows,
-                "lane_granular": self.lane_granular,
-                "sources": dict(self.sources)}
+        return {
+            "name": self.name,
+            "bytes": self.nbytes,
+            "depth": self.depth,
+            "row_elems": self.row_elems,
+            "element_dtype": self.element_dtype,
+            "element_bits": self.element_bits,
+            "row_bytes": self.row_bytes,
+            "total_rows": self.total_rows,
+            "banks": self.banks,
+            "bytes_per_depth_entry": self.bytes_per_depth_entry,
+            "row_residue_bytes": self.row_residue_bytes,
+            "bank_residue_rows": self.bank_residue_rows,
+            "lane_granular": self.lane_granular,
+            "sources": dict(self.sources),
+        }
 
 
 def working_set_rows(store: Store, shape: Sequence[int], dtype: str | None = None) -> int | None:
@@ -270,15 +279,20 @@ class AddressSpace:
         return tuple(u.quantity for u in self.unknowns)
 
     def to_dict(self) -> dict:
-        return {"target": self.target,
-                "stores_status": self.stores_status,
-                "stores": [s.to_dict() for s in self.stores],
-                "array": ({"name": self.array_name, "rows": self.array_rows, "cols": self.array_cols}
-                          if self.array_rows is not None else None),
-                "separate_accumulator_space": self.separate_accumulator_space,
-                "row_widths": list(self.row_widths),
-                "unknowns": [u.to_dict() for u in self.unknowns],
-                "sources": dict(self.sources)}
+        return {
+            "target": self.target,
+            "stores_status": self.stores_status,
+            "stores": [s.to_dict() for s in self.stores],
+            "array": (
+                {"name": self.array_name, "rows": self.array_rows, "cols": self.array_cols}
+                if self.array_rows is not None
+                else None
+            ),
+            "separate_accumulator_space": self.separate_accumulator_space,
+            "row_widths": list(self.row_widths),
+            "unknowns": [u.to_dict() for u in self.unknowns],
+            "sources": dict(self.sources),
+        }
 
 
 def _facts_for(target: str, facts: dict[str, Any] | None) -> tuple[dict[str, Any] | None, str | None]:
@@ -292,18 +306,18 @@ def _facts_for(target: str, facts: dict[str, Any] | None) -> tuple[dict[str, Any
     input worth fixing), which is a different problem from a body of another shape.
     """
     from merlin.targetgen.rtl import facts as rtl_facts
+
     doc = facts
     if doc is None:
         try:
             doc = rtl_facts.load_facts(target)
-        except Exception as e:                           # noqa: BLE001 -- no artifact, no toolchain, ...
+        except Exception as e:  # noqa: BLE001 -- no artifact, no toolchain, ...
             return None, f"RTL facts unavailable: {type(e).__name__}: {e}"
-    if (isinstance(doc, dict) and "facts" not in doc
-            and any(k in doc for k in ("memories", "arrays", "datapaths"))):
-        return doc, None                                 # an injected bare body, already unwrapped
+    if isinstance(doc, dict) and "facts" not in doc and any(k in doc for k in ("memories", "arrays", "datapaths")):
+        return doc, None  # an injected bare body, already unwrapped
     try:
         return rtl_facts.facts_body(doc, target, needs="the on-chip address space"), None
-    except Exception as e:                               # noqa: BLE001 -- empty / differently-shaped body
+    except Exception as e:  # noqa: BLE001 -- empty / differently-shaped body
         return None, f"{type(e).__name__}: {e}"
 
 
@@ -314,15 +328,20 @@ def _array_geometry(body: dict[str, Any]) -> tuple[dict[str, Any] | None, str | 
     choose which unit the stores feed, and on a device with two arrays of different widths that choice
     IS the row width -- an assumption dressed as a derivation. Ambiguity is reported instead.
     """
-    cands = [a for a in (body.get("arrays") or [])
-             if isinstance(a, dict) and isinstance(a.get("rows"), int) and isinstance(a.get("cols"), int)]
+    cands = [
+        a
+        for a in (body.get("arrays") or [])
+        if isinstance(a, dict) and isinstance(a.get("rows"), int) and isinstance(a.get("cols"), int)
+    ]
     if len(cands) == 1:
         return cands[0], None
     if not cands:
         return None, "these facts declare no array with both a row and a column extent"
     names = [str(a.get("name")) for a in cands]
-    return None, (f"these facts declare {len(cands)} arrays ({', '.join(names)}); which one a store "
-                  "feeds is not derivable, and choosing would be an assumption")
+    return None, (
+        f"these facts declare {len(cands)} arrays ({', '.join(names)}); which one a store "
+        "feeds is not derivable, and choosing would be an assumption"
+    )
 
 
 def _evidence_tokens(text: Any) -> list[str]:
@@ -357,8 +376,14 @@ def _element_dtype_for(store_name: str, datapaths: list[dict]) -> tuple[str | No
         return str(hits[0]["dtype"]), how, None
     if not hits:
         declared = sorted(str(d.get("name")) for d in dps)
-        return None, None, (f"no datapath declares or evidences this store (declared: "
-                            f"{declared or 'none'}), so its element width is not derivable")
+        return (
+            None,
+            None,
+            (
+                f"no datapath declares or evidences this store (declared: "
+                f"{declared or 'none'}), so its element width is not derivable"
+            ),
+        )
     claimants = sorted(str(d.get("name")) for d in hits)
     return None, None, f"{len(hits)} datapaths claim this store ({', '.join(claimants)}); ambiguous"
 
@@ -375,8 +400,10 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
     unknowns: list[Unknown] = []
     body, reason = _facts_for(target, facts)
     if body is None:
-        space.unknowns = (Unknown("stores", reason or "no facts body"),
-                          Unknown("separate_accumulator_space", reason or "no facts body"))
+        space.unknowns = (
+            Unknown("stores", reason or "no facts body"),
+            Unknown("separate_accumulator_space", reason or "no facts body"),
+        )
         space.sources = {"facts": "unavailable"}
         return space
     space.sources = {"facts": "merlin.targetgen.rtl.facts.load_facts(target)['facts']"}
@@ -384,12 +411,22 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
     mems = body.get("memories")
     if mems is None:
         space.stores_status = UNKNOWN
-        unknowns.append(Unknown("stores", "these facts carry no `memories` list at all, so whether the "
-                                          "device has on-chip stores is UNKNOWN -- not that it has none"))
+        unknowns.append(
+            Unknown(
+                "stores",
+                "these facts carry no `memories` list at all, so whether the "
+                "device has on-chip stores is UNKNOWN -- not that it has none",
+            )
+        )
     elif not mems:
         space.stores_status = ABSENT
-        unknowns.append(Unknown("stores", "the extractor produced an EMPTY memory list: this device is "
-                                          "declared to have no on-chip store of its own"))
+        unknowns.append(
+            Unknown(
+                "stores",
+                "the extractor produced an EMPTY memory list: this device is "
+                "declared to have no on-chip store of its own",
+            )
+        )
     else:
         space.stores_status = DERIVED
 
@@ -398,17 +435,20 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
     if array is not None:
         space.array_name = str(array.get("name")) if array.get("name") else None
         space.array_rows, space.array_cols = int(array["rows"]), int(array["cols"])
-        space.sources["row_elems"] = (f"arrays[{space.array_name!r}].cols "
-                                      f"({space.array_rows}x{space.array_cols})")
+        space.sources["row_elems"] = f"arrays[{space.array_name!r}].cols ({space.array_rows}x{space.array_cols})"
         if space.array_rows != space.array_cols:
             # A square array cannot tell us which edge a row spans, and every array measured so far is
             # square, so nothing has ever exercised the choice. On a rectangular one it matters: the
             # column edge is taken (a row of the store feeds one row of operands ACROSS the array), and
             # that is stated as an assumption to corroborate rather than buried.
-            unknowns.append(Unknown(
-                "row_elems", f"the array is {space.array_rows}x{space.array_cols} (not square); the row "
-                             "width was taken as the COLUMN edge -- corroborate() against the RTL SRAM "
-                             "widths before trusting it"))
+            unknowns.append(
+                Unknown(
+                    "row_elems",
+                    f"the array is {space.array_rows}x{space.array_cols} (not square); the row "
+                    "width was taken as the COLUMN edge -- corroborate() against the RTL SRAM "
+                    "widths before trusting it",
+                )
+            )
     elif mems:
         # NO ARRAY IS NOT NO ACCESS WIDTH. A SIMT device has no systolic array at all -- its facts
         # carry a `simt` block instead -- and its store is reached one WARP at a time: a coalesced
@@ -416,8 +456,7 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
         # column edge plays on a spatial device. Reading only `arrays` reported "no row width" for a
         # target whose own facts state the width in the units that fit it, and the whole memory-mapping
         # axis then reported 0/0 required regimes on a 128 KiB store.
-        lanes = ((body.get("simt") or {}) if isinstance(body.get("simt"), dict) else {}).get(
-            "lanes_per_warp")
+        lanes = ((body.get("simt") or {}) if isinstance(body.get("simt"), dict) else {}).get("lanes_per_warp")
         if isinstance(lanes, int) and lanes > 0:
             space.array_cols = int(lanes)
             lane_granular = True
@@ -428,8 +467,12 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
     datapaths = [d for d in (body.get("datapaths") or []) if isinstance(d, dict)]
     space.datapaths = tuple(datapaths)
     if mems and not datapaths:
-        unknowns.append(Unknown("element_bits", "these facts declare no `datapaths`, so no element "
-                                                "width -- and a row is only measurable in elements"))
+        unknowns.append(
+            Unknown(
+                "element_bits",
+                "these facts declare no `datapaths`, so no element width -- and a row is only measurable in elements",
+            )
+        )
 
     stores: list[Store] = []
     for mem in mems or []:
@@ -441,15 +484,25 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
         if nbytes is None:
             unknowns.append(Unknown("bytes", "this memory declares no byte capacity", name))
         if depth is None:
-            unknowns.append(Unknown("depth", "this memory declares no depth, so its bank count cannot "
-                                             "be derived from its row total", name))
-        dtype, how, why = (_element_dtype_for(name, datapaths) if datapaths else (None, None, None))
+            unknowns.append(
+                Unknown(
+                    "depth",
+                    "this memory declares no depth, so its bank count cannot be derived from its row total",
+                    name,
+                )
+            )
+        dtype, how, why = _element_dtype_for(name, datapaths) if datapaths else (None, None, None)
         if why:
             unknowns.append(Unknown("element_dtype", why, name))
         bits = element_bits(dtype)
         if dtype and bits is None:
-            unknowns.append(Unknown("element_bits", f"datapath dtype {dtype!r} is not a spelling the "
-                                                    "quant-format registry recognizes", name))
+            unknowns.append(
+                Unknown(
+                    "element_bits",
+                    f"datapath dtype {dtype!r} is not a spelling the quant-format registry recognizes",
+                    name,
+                )
+            )
         row_elems = space.array_cols
         row_bytes = None
         if row_elems and bits:
@@ -458,10 +511,15 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
                 # ambiguous: whether the SRAM packs N of them into a row or pads each to a byte is a
                 # wiring fact these facts do not carry, and guessing picks a width that is wrong by up
                 # to the packing factor. Refuse, and say what would settle it.
-                unknowns.append(Unknown(
-                    "row_bytes", f"the datapath element is {bits} bits (not byte-aligned), so whether a "
-                                 "row packs the array's elements or pads each to a byte is not derivable "
-                                 "from these facts -- corroborate() against the RTL row width", name))
+                unknowns.append(
+                    Unknown(
+                        "row_bytes",
+                        f"the datapath element is {bits} bits (not byte-aligned), so whether a "
+                        "row packs the array's elements or pads each to a byte is not derivable "
+                        "from these facts -- corroborate() against the RTL row width",
+                        name,
+                    )
+                )
             else:
                 row_bytes = row_elems * (bits // 8)
         # A STORE MAY DECLARE ITS OWN ROW WIDTH, and where it does that is better evidence than the
@@ -472,18 +530,26 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
         # stated. Read only where the array path produced nothing, so no target's existing derivation
         # moves; where BOTH exist and disagree, the disagreement is surfaced rather than resolved.
         declared_bits = mem.get("row_bits_rtl")
-        declared_bytes = (int(declared_bits) // 8
-                          if isinstance(declared_bits, int) and declared_bits > 0
-                          and declared_bits % 8 == 0 else None)
+        declared_bytes = (
+            int(declared_bits) // 8
+            if isinstance(declared_bits, int) and declared_bits > 0 and declared_bits % 8 == 0
+            else None
+        )
         if row_bytes is None and declared_bytes:
             row_bytes = declared_bytes
-            srcs_row_bytes = (f"memories[{name!r}].row_bits_rtl ({declared_bits} bits): the row width "
-                              f"this store's own RTL declares")
+            srcs_row_bytes = (
+                f"memories[{name!r}].row_bits_rtl ({declared_bits} bits): the row width this store's own RTL declares"
+            )
         elif row_bytes and declared_bytes and declared_bytes != row_bytes:
-            unknowns.append(Unknown(
-                "row_bytes", f"the array-derived row width ({row_bytes} bytes) and the width this "
-                             f"store's RTL declares ({declared_bytes} bytes) DISAGREE; one of them is "
-                             f"wrong and a capacity computed from either is suspect", name))
+            unknowns.append(
+                Unknown(
+                    "row_bytes",
+                    f"the array-derived row width ({row_bytes} bytes) and the width this "
+                    f"store's RTL declares ({declared_bytes} bytes) DISAGREE; one of them is "
+                    f"wrong and a capacity computed from either is suspect",
+                    name,
+                )
+            )
             srcs_row_bytes = None
         else:
             srcs_row_bytes = None
@@ -491,19 +557,34 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
         if nbytes and row_bytes:
             total_rows, row_residue = nbytes // row_bytes, nbytes % row_bytes
             if row_residue:
-                unknowns.append(Unknown(
-                    "total_rows", f"{nbytes} bytes is not a whole number of {row_bytes}-byte rows "
-                                  f"({row_residue} bytes over): the derived row width is suspect", name))
+                unknowns.append(
+                    Unknown(
+                        "total_rows",
+                        f"{nbytes} bytes is not a whole number of {row_bytes}-byte rows "
+                        f"({row_residue} bytes over): the derived row width is suspect",
+                        name,
+                    )
+                )
             if depth:
                 banks, bank_residue = total_rows // depth, total_rows % depth
                 if bank_residue:
                     banks = None
-                    unknowns.append(Unknown(
-                        "banks", f"{total_rows} rows do not divide into banks of the declared depth "
-                                 f"{depth} ({bank_residue} rows over)", name))
+                    unknowns.append(
+                        Unknown(
+                            "banks",
+                            f"{total_rows} rows do not divide into banks of the declared depth "
+                            f"{depth} ({bank_residue} rows over)",
+                            name,
+                        )
+                    )
         elif nbytes and not (row_elems and lane_granular):
-            unknowns.append(Unknown("total_rows", "no row width, so a byte capacity says nothing about "
-                                                  "how many rows are addressable", name))
+            unknowns.append(
+                Unknown(
+                    "total_rows",
+                    "no row width, so a byte capacity says nothing about how many rows are addressable",
+                    name,
+                )
+            )
         elif nbytes:
             # row_elems without row_bytes: a lane-granular store. Its capacity IS derivable, per
             # element type -- `Store.capacity_rows(dtype)` -- so this is not an unknown, and recording
@@ -516,10 +597,23 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
             srcs["row_bytes"] = srcs_row_bytes
         elif row_bytes:
             srcs["row_bytes"] = f"array cols {row_elems} x {dtype} ({bits} bits)"
-        stores.append(Store(name=name, nbytes=nbytes, depth=depth, row_elems=row_elems,
-                            element_dtype=dtype, element_bits=bits, row_bytes=row_bytes,
-                            total_rows=total_rows, banks=banks, row_residue_bytes=row_residue,
-                            bank_residue_rows=bank_residue, lane_granular=lane_granular, sources=srcs))
+        stores.append(
+            Store(
+                name=name,
+                nbytes=nbytes,
+                depth=depth,
+                row_elems=row_elems,
+                element_dtype=dtype,
+                element_bits=bits,
+                row_bytes=row_bytes,
+                total_rows=total_rows,
+                banks=banks,
+                row_residue_bytes=row_residue,
+                bank_residue_rows=bank_residue,
+                lane_granular=lane_granular,
+                sources=srcs,
+            )
+        )
 
     space.stores = tuple(stores)
     sep, sep_reason = _separate_accumulator_space(space)
@@ -540,18 +634,24 @@ def _separate_accumulator_space(space: AddressSpace) -> tuple[bool | None, str |
     backend it may address them alike, which is the silent-wrong-data direction.
     """
     if space.stores_status != DERIVED:
-        return None, (f"stores are {space.stores_status}: with no store list there is no second space "
-                      "to have, and claiming there is none would overstate what we read")
+        return None, (
+            f"stores are {space.stores_status}: with no store list there is no second space "
+            "to have, and claiming there is none would overstate what we read"
+        )
     if len(space.stores) == 1:
         return False, None
     widths = [s.row_bytes for s in space.stores]
     if any(w is None for w in widths):
-        return None, ("at least one store's row width is unknown, so two stores cannot be compared -- "
-                      "reporting 'one space' here would license addressing them alike")
+        return None, (
+            "at least one store's row width is unknown, so two stores cannot be compared -- "
+            "reporting 'one space' here would license addressing them alike"
+        )
     if len(set(widths)) > 1:
         return True, None
-    return None, (f"all {len(widths)} stores have {widths[0]}-byte rows; equal granularity is not "
-                  "evidence that they share one address space")
+    return None, (
+        f"all {len(widths)} stores have {widths[0]}-byte rows; equal granularity is not "
+        "evidence that they share one address space"
+    )
 
 
 #: ``RoleResolution.basis`` values -- HOW a store came to hold a role, so a caller can decide what the
@@ -604,22 +704,29 @@ def operand_store(space: AddressSpace, *, dtype: str | None = None) -> RoleResol
         return RoleResolution(role, None, None, f"the facts' store list is {space.stores_status}")
     stores = [s for s in space.stores if s.row_bytes or s.row_elems]
     if not stores:
-        return RoleResolution(role, None, None,
-                              f"none of {[s.name for s in space.stores]} has a derivable row width")
+        return RoleResolution(role, None, None, f"none of {[s.name for s in space.stores]} has a derivable row width")
     if len(stores) == 1:
         return RoleResolution(role, stores[0], SOLE_STORE)
     widths = {s.name: _row_bits(s, dtype) for s in stores}
     unmeasured = sorted(name for name, bits in widths.items() if bits is None)
     if unmeasured:
-        return RoleResolution(role, None, None,
-                              f"row widths of {unmeasured} are not measurable at dtype {dtype!r}, so "
-                              f"{len(stores)} stores cannot be ranked")
+        return RoleResolution(
+            role,
+            None,
+            None,
+            f"row widths of {unmeasured} are not measurable at dtype {dtype!r}, so "
+            f"{len(stores)} stores cannot be ranked",
+        )
     narrowest = min(widths.values())
     tied = sorted(name for name, bits in widths.items() if bits == narrowest)
     if len(tied) > 1:
-        return RoleResolution(role, None, None,
-                              f"stores {tied} tie at the narrowest row ({narrowest} bits); which one "
-                              "holds operands is not decidable from width")
+        return RoleResolution(
+            role,
+            None,
+            None,
+            f"stores {tied} tie at the narrowest row ({narrowest} bits); which one "
+            "holds operands is not decidable from width",
+        )
     return RoleResolution(role, next(s for s in stores if s.name == tied[0]), BY_WIDTH)
 
 
@@ -634,18 +741,25 @@ def accumulator_store(space: AddressSpace) -> RoleResolution:
     role = "accumulator"
     if space.separate_accumulator_space is not True:
         if space.stores_status == DERIVED and len(space.stores) == 1:
-            why = (f"the facts name one store ({space.stores[0].name!r}); with no second address space "
-                   "there is no addressable accumulator region")
+            why = (
+                f"the facts name one store ({space.stores[0].name!r}); with no second address space "
+                "there is no addressable accumulator region"
+            )
         else:
-            why = next((u.reason for u in space.unknowns if u.quantity == "separate_accumulator_space"),
-                       f"the facts' store list is {space.stores_status}")
+            why = next(
+                (u.reason for u in space.unknowns if u.quantity == "separate_accumulator_space"),
+                f"the facts' store list is {space.stores_status}",
+            )
         return RoleResolution(role, None, None, why)
     widest = max(s.row_bytes for s in space.stores)
     tied = sorted(s.name for s in space.stores if s.row_bytes == widest)
     if len(tied) > 1:
-        return RoleResolution(role, None, None,
-                              f"stores {tied} tie at the widest row ({widest} bytes); which one "
-                              "accumulates is not decidable from width")
+        return RoleResolution(
+            role,
+            None,
+            None,
+            f"stores {tied} tie at the widest row ({widest} bytes); which one accumulates is not decidable from width",
+        )
     return RoleResolution(role, next(s for s in space.stores if s.name == tied[0]), BY_WIDTH)
 
 
@@ -711,40 +825,80 @@ def accumulator_kind(space: AddressSpace) -> AccumulatorKind:
     declared = _declared_accumulate_types(space.datapaths)
     types = sorted({dtype for _, dtype in declared})
     if len(types) > 1:
-        return AccumulatorKind(UNKNOWN_KIND, unknown=Unknown(
-            "accumulator_kind", f"the datapaths declare {len(types)} different accumulate types "
-                                f"({', '.join(f'{n}: {t}' for n, t in declared)}); which one a schedule "
-                                "accumulates in is not decidable from the facts"))
+        return AccumulatorKind(
+            UNKNOWN_KIND,
+            unknown=Unknown(
+                "accumulator_kind",
+                f"the datapaths declare {len(types)} different accumulate types "
+                f"({', '.join(f'{n}: {t}' for n, t in declared)}); which one a schedule "
+                "accumulates in is not decidable from the facts",
+            ),
+        )
     resolved = accumulator_store(space)
     if resolved.store is not None:
         store = resolved.store
         if store.element_dtype is None or not types:
-            return AccumulatorKind(UNKNOWN_KIND, unknown=Unknown(
-                "accumulator_kind", f"{store.name!r} is the widest of separate stores, but "
-                                    + ("no datapath is linked to it" if store.element_dtype is None
-                                       else "no datapath declares an accumulate type")
-                                    + ", so nothing says results accumulate there", store.name))
+            return AccumulatorKind(
+                UNKNOWN_KIND,
+                unknown=Unknown(
+                    "accumulator_kind",
+                    f"{store.name!r} is the widest of separate stores, but "
+                    + (
+                        "no datapath is linked to it"
+                        if store.element_dtype is None
+                        else "no datapath declares an accumulate type"
+                    )
+                    + ", so nothing says results accumulate there",
+                    store.name,
+                ),
+            )
         if store.element_dtype != types[0]:
-            return AccumulatorKind(UNKNOWN_KIND, unknown=Unknown(
-                "accumulator_kind", f"{store.name!r} holds {store.element_dtype} but the facts declare an "
-                                    f"accumulate type of {types[0]}", store.name))
-        return AccumulatorKind(ADDRESSABLE, store=store, rows=store.total_rows,
-                               dtype=store.element_dtype, datapath=declared[0][0])
+            return AccumulatorKind(
+                UNKNOWN_KIND,
+                unknown=Unknown(
+                    "accumulator_kind",
+                    f"{store.name!r} holds {store.element_dtype} but the facts declare an "
+                    f"accumulate type of {types[0]}",
+                    store.name,
+                ),
+            )
+        return AccumulatorKind(
+            ADDRESSABLE, store=store, rows=store.total_rows, dtype=store.element_dtype, datapath=declared[0][0]
+        )
     if not declared:
-        return AccumulatorKind(UNKNOWN_KIND, unknown=Unknown(
-            "accumulator_kind", f"no addressable accumulator store ({resolved.reason}), and no datapath "
-                                "declares an accumulate type"))
-    linked = [s.name for s in space.stores if s.element_dtype == types[0]
-              and _element_dtype_for(s.name, list(space.datapaths))[0] == types[0]]
+        return AccumulatorKind(
+            UNKNOWN_KIND,
+            unknown=Unknown(
+                "accumulator_kind",
+                f"no addressable accumulator store ({resolved.reason}), and no datapath declares an accumulate type",
+            ),
+        )
+    linked = [
+        s.name
+        for s in space.stores
+        if s.element_dtype == types[0] and _element_dtype_for(s.name, list(space.datapaths))[0] == types[0]
+    ]
     if linked:
-        return AccumulatorKind(UNKNOWN_KIND, unknown=Unknown(
-            "accumulator_kind", f"the accumulate type {types[0]} is linked to store(s) {linked}, but those "
-                                f"are not a separate accumulator space ({resolved.reason})"))
+        return AccumulatorKind(
+            UNKNOWN_KIND,
+            unknown=Unknown(
+                "accumulator_kind",
+                f"the accumulate type {types[0]} is linked to store(s) {linked}, but those "
+                f"are not a separate accumulator space ({resolved.reason})",
+            ),
+        )
     name, dtype = declared[0]
-    return AccumulatorKind(IN_DATAPATH, dtype=dtype, datapath=name, unknown=Unknown(
-        "accumulator_rows", f"the accumulator is state inside the compute element (datapath {name!r}, "
-                            f"{dtype}), not an addressable store; the facts do not declare how many tiles "
-                            "deep it is, so there are no accumulator rows to schedule into"))
+    return AccumulatorKind(
+        IN_DATAPATH,
+        dtype=dtype,
+        datapath=name,
+        unknown=Unknown(
+            "accumulator_rows",
+            f"the accumulator is state inside the compute element (datapath {name!r}, "
+            f"{dtype}), not an addressable store; the facts do not declare how many tiles "
+            "deep it is, so there are no accumulator rows to schedule into",
+        ),
+    )
 
 
 def corroborate(target: str, space: AddressSpace | None = None) -> dict:
@@ -763,13 +917,13 @@ def corroborate(target: str, space: AddressSpace | None = None) -> dict:
     is unavailable (the common case in a sandbox), never ``True``.
     """
     space = space or derive_address_space(target)
-    out: dict[str, Any] = {"target": target, "available": False, "reason": None,
-                           "agree": None, "stores": []}
+    out: dict[str, Any] = {"target": target, "available": False, "reason": None, "agree": None, "stores": []}
     try:
         from merlin.targetgen.rtl import mlc_bridge as mb
+
         caps = mb.discovered_capacities(target) or {}
         mm = mb.discovered_memory_map(target) or {}
-    except Exception as e:                               # noqa: BLE001 -- no mlc: undecidable, not a pass
+    except Exception as e:  # noqa: BLE001 -- no mlc: undecidable, not a pass
         out["reason"] = f"mlc discovery unavailable: {type(e).__name__}: {e}"
         return out
     if not caps or not mm:
@@ -778,19 +932,36 @@ def corroborate(target: str, space: AddressSpace | None = None) -> dict:
     out["available"] = True
     # mlc reports its two classified groups under role keys; pair each with its row width, then match by
     # measured (bytes, depth) so the pairing survives any naming difference.
-    groups = [{"bytes": caps.get("operand_bytes"), "depth": caps.get("operand_depth"),
-               "row_bytes": mm.get("operand_row_bytes"), "rep": mm.get("operand_mem")},
-              {"bytes": caps.get("accumulator_bytes"), "depth": caps.get("accumulator_depth"),
-               "row_bytes": mm.get("accum_row_bytes"), "rep": mm.get("accum_mem")}]
+    groups = [
+        {
+            "bytes": caps.get("operand_bytes"),
+            "depth": caps.get("operand_depth"),
+            "row_bytes": mm.get("operand_row_bytes"),
+            "rep": mm.get("operand_mem"),
+        },
+        {
+            "bytes": caps.get("accumulator_bytes"),
+            "depth": caps.get("accumulator_depth"),
+            "row_bytes": mm.get("accum_row_bytes"),
+            "rep": mm.get("accum_mem"),
+        },
+    ]
     verdicts: list[bool] = []
     for st in space.stores:
         hits = [g for g in groups if g["bytes"] == st.nbytes and g["depth"] == st.depth]
-        row: dict[str, Any] = {"store": st.name, "derived_row_bytes": st.row_bytes,
-                               "rtl_row_bytes": None, "rtl_instance": None, "rtl_banks": None,
-                               "agree": None}
+        row: dict[str, Any] = {
+            "store": st.name,
+            "derived_row_bytes": st.row_bytes,
+            "rtl_row_bytes": None,
+            "rtl_instance": None,
+            "rtl_banks": None,
+            "agree": None,
+        }
         if len(hits) != 1:
-            row["reason"] = (f"{len(hits)} mlc groups match (bytes={st.nbytes}, depth={st.depth}); "
-                             "unmatched, so nothing is claimed either way")
+            row["reason"] = (
+                f"{len(hits)} mlc groups match (bytes={st.nbytes}, depth={st.depth}); "
+                "unmatched, so nothing is claimed either way"
+            )
             out["stores"].append(row)
             continue
         g = hits[0]
@@ -805,15 +976,21 @@ def corroborate(target: str, space: AddressSpace | None = None) -> dict:
         else:
             row["reason"] = "one of the two widths is unknown, so they cannot be compared"
         out["stores"].append(row)
-    out["agree"] = (all(verdicts) if verdicts else None)
+    out["agree"] = all(verdicts) if verdicts else None
     if not verdicts:
         # mlc classified memories that the facts artifact does not carry (measured on one device: mlc
         # names a 4-byte-row shared memory and a 64-byte-row register file while the artifact's memory
         # list is empty, because the sibling-bank grouping finds no `<base>_<int>` segment to sum over).
         # Nothing was compared, and saying so is the point -- an empty comparison is not an agreement.
         named = [f"{g['rep']} ({g['row_bytes']}-byte rows)" for g in groups if g.get("rep")]
-        out["reason"] = (f"no derived store matched an mlc group ({len(space.stores)} derived, "
-                         f"{sum(1 for g in groups if g['bytes'])} with a discovered capacity): nothing "
-                         f"was compared" + (f"; mlc DOES name {'; '.join(named)}, so the facts artifact "
-                                            "is missing memories the RTL has" if named else ""))
+        out["reason"] = (
+            f"no derived store matched an mlc group ({len(space.stores)} derived, "
+            f"{sum(1 for g in groups if g['bytes'])} with a discovered capacity): nothing "
+            f"was compared"
+            + (
+                f"; mlc DOES name {'; '.join(named)}, so the facts artifact is missing memories the RTL has"
+                if named
+                else ""
+            )
+        )
     return out
